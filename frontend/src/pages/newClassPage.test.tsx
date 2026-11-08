@@ -48,7 +48,7 @@ describe('the new-class form', () => {
     fireEvent.change(screen.getByLabelText('Anything else?'), { target: { value: 'No standing please' } })
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${JOB_ID}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${JOB_ID}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     expect(call?.body).toEqual({
@@ -185,7 +185,7 @@ describe('the new-class form', () => {
   it('asks the user to connect MOWL first', async () => {
     fakeApi({ ...SESSION_ROUTES })
     renderAt('/classes/new')
-    expect(await screen.findByRole('link', { name: 'Connect MOWL on your account page' })).toHaveAttribute('href', '/account')
+    expect(await screen.findByRole('link', { name: 'Connect MOWL on your account page' })).toHaveAttribute('href', '/en/account')
     expect(screen.queryByLabelText('Class name')).toBeNull()
   })
 
@@ -242,6 +242,50 @@ describe('the new-class form', () => {
     expect(screen.getByRole('button', { name: 'Pop' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByLabelText('Style')).toHaveValue('90s')
     expect(document.body).not.toHaveTextContent(/zones? \d/i)
+  })
+
+  // Every length chip and every style chip writes its value (English, whatever the label) into the brief.
+  const LENGTH_CHIPS = [
+    ['30 min', 30],
+    ['45 min', 45],
+    ['60 min', 60],
+    ['90 min', 90],
+  ] as const
+  it.each(LENGTH_CHIPS)('sends the brief of the %s chip', async (label, minutes) => {
+    const api = fakeApi({ ...READY, ...CREATED })
+    renderAt('/classes/new')
+    await fill()
+    fireEvent.click(screen.getByRole('button', { name: label }))
+    expect(screen.getByLabelText('Length in minutes')).toHaveValue(minutes)
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    const body = api.to('POST', '/api/jobs')[0]?.body as { input: { brief: { length_min: number } } }
+    expect(body.input.brief.length_min).toBe(minutes)
+  })
+
+  const STYLE_CHIPS = [
+    ['80s', '80s'],
+    ['90s', '90s'],
+    ['2000s', '2000s'],
+    ['Pop', 'Pop'],
+    ['Rock', 'Rock'],
+    ['Dance', 'Dance'],
+    ['Hip hop', 'Hip hop'],
+    ['Latin', 'Latin'],
+  ] as const
+  it.each(STYLE_CHIPS)('sends the style of the %s chip', async (label, value) => {
+    const api = fakeApi({ ...READY, ...CREATED })
+    renderAt('/classes/new')
+    await fill()
+    fireEvent.click(screen.getByRole('button', { name: label }))
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    const body = api.to('POST', '/api/jobs')[0]?.body as { input: { brief: { style: string } } }
+    expect(body.input.brief.style).toBe(value)
   })
 
   it('lists the playlists as radio tiles in one group and prefills from a preset', async () => {
@@ -486,7 +530,7 @@ describe('the new-class form', () => {
     fireEvent.click(screen.getByRole('radio', { name: /Sunday climb/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${JOB_ID}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${JOB_ID}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     expect(call?.body).toMatchObject({

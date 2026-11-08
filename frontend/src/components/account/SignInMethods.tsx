@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { getIdentities, startOAuth, unlinkIdentity, type IdentitiesState } from '../../api/auth'
 import { providerName } from '../../api/messages'
 import { useGuard } from '../../auth/prompts'
+import { useT } from '../../i18n/I18n'
 import { goToProvider } from '../../lib/navigation'
 import { Notice, Section, useAction } from '../forms'
 
 /** Linked providers and the password: link, unlink (recent auth and step-up as needed). */
 export function SignInMethods() {
+  const t = useT()
   const guard = useGuard()
   const [state, setState] = useState<IdentitiesState | null>(null)
   const action = useAction()
@@ -43,20 +45,22 @@ export function SignInMethods() {
 
   if (state === null) {
     return (
-      <Section title="Sign-in methods">
-        <p>Loading</p>
+      <Section title={t('signin.title')}>
+        <p>{t('common.loading')}</p>
       </Section>
     )
   }
   const linked = new Set(state.identities.map((item) => item.provider))
   const linkable = state.available.filter((provider) => !linked.has(provider))
   return (
-    <Section title="Sign-in methods">
+    <Section title={t('signin.title')}>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <ul className="rows">
         <li>
-          <span>Password</span>
-          <span className="muted">{state.hasPassword ? 'Set' : 'Not set'}</span>
+          <span>{t('signin.password')}</span>
+          <span className="muted">
+            {state.hasPassword ? t('signin.passwordSet') : t('signin.passwordNotSet')}
+          </span>
         </li>
         {state.identities.map((item) => (
           <li key={item.id}>
@@ -69,7 +73,7 @@ export function SignInMethods() {
                 unlink(item.id)
               }}
             >
-              Unlink {providerName(item.provider)}
+              {t('signin.unlink', { provider: providerName(item.provider) })}
             </button>
           </li>
         ))}
@@ -84,7 +88,7 @@ export function SignInMethods() {
             link(provider)
           }}
         >
-          Link {providerName(provider)}
+          {t('signin.link', { provider: providerName(provider) })}
         </button>
       ))}
     </Section>

@@ -1,4 +1,5 @@
 import type { Song } from '../../api/songs'
+import { useT } from '../../i18n/I18n'
 
 /**
  * The songs under the time axis, as alternating blocks that start where each song starts in the
@@ -7,11 +8,12 @@ import type { Song } from '../../api/songs'
  * class. Titles are text; the strip is hidden by its caller while there is no song list.
  */
 export function SongStrip({ songs, total, left }: { songs: Song[]; total: number; left: number }) {
+  const t = useT()
   const share = (sec: number) => Math.min(Math.max(sec / total, 0), 1)
   return (
     <ol
       data-testid="song-strip"
-      aria-label="Songs"
+      aria-label={t('class.songStrip.label')}
       className="relative m-0 mt-1 h-7 list-none overflow-hidden p-0 text-[0.75rem]"
       style={{ marginLeft: `${String(left * 100)}%` }}
     >
@@ -22,7 +24,7 @@ export function SongStrip({ songs, total, left }: { songs: Song[]; total: number
           <li
             key={song.position}
             data-start={song.startSec}
-            title={`${song.title}, ${String(song.bpm)} BPM`}
+            title={t('class.songStrip.title', { title: song.title, bpm: song.bpm })}
             className={`absolute top-0 bottom-0 min-w-0 overflow-hidden whitespace-nowrap px-1 py-1 text-ellipsis ${i % 2 === 0 ? 'bg-stage-grid' : 'bg-stage'} border border-stage-grid text-stage-text`}
             style={{ left: `${String(from * 100)}%`, width: `${String((to - from) * 100)}%` }}
           >

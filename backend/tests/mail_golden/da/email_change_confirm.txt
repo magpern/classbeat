@@ -1,0 +1,14 @@
+Bekræft din nye adresse
+=======================
+
+Hvis du vil bruge denne adresse til din classbeat-konto, skal du logge ind og åbne linket nedenfor (gyldigt i 1 time).
+
+Bekræft ny adresse:
+https://classbeat.example.test/da/email-change#token=SAMPLE
+
+Hvis det ikke var dig, kan du se bort fra denne mail.
+
+--
+Du får denne mail, fordi nogen har brugt denne e-mailadresse på classbeat.
+classbeat: https://classbeat.example.test
+Spørgsmål? Skriv til support@classbeat.eu

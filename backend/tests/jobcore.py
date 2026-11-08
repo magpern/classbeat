@@ -86,6 +86,20 @@ def jobs_admin(clean_auth: None, database_url: str) -> Iterator[Connection]:
 
 
 @pytest.fixture
+def analysis_slot_by_default(jobs_admin: Connection) -> Iterator[None]:
+    """Every job made during the test holds a mix-analysis slot from its creation (#574), for the
+    tests of the analysis itself (fetch, limits, cache, design on it): their first run analyses
+    instead of being requeued for a slot. The requeue, the cap and the release are tested in
+    ``test_analysis_slots.py``, ``test_queue_functions.py`` and, through the real mix step, in
+    ``test_swedebeat_fetch.py``'s slot tests, which do not use this."""
+    jobs_admin.execute(text("ALTER TABLE jobs ALTER COLUMN analysis_slot SET DEFAULT true"))
+    try:
+        yield
+    finally:
+        jobs_admin.execute(text("ALTER TABLE jobs ALTER COLUMN analysis_slot SET DEFAULT false"))
+
+
+@pytest.fixture
 async def jenv(jobs_admin: Connection, app_database_url: str) -> AsyncIterator[JobsEnv]:
     settings = make_settings(app_database_url, job_lease_seconds=60)
     engine = create_engine(settings, pool_size=10)

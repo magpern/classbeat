@@ -1,0 +1,13 @@
+Din e-postadress har ändrats
+============================
+
+E-postadressen för ditt classbeat-konto har ändrats. Det här är den gamla adressen.
+
+När det hände: 6 november 2026 kl. 12:30 UTC
+
+Om det inte var du, säg till oss direkt. Kontakta oss på support@classbeat.eu
+
+--
+Du får den här säkerhetsaviseringen för att det här är e-postadressen till ett classbeat-konto. Sådana aviseringar skickas för att skydda dig.
+classbeat: https://classbeat.example.test
+Frågor? Skriv till support@classbeat.eu

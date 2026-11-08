@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from classbeat.auth.export import EXCLUDE, INCLUDE, NOT_EXPORTED
+from classbeat.auth.export import EXCLUDE, INCLUDE, NOT_EXPORTED, PUBLIC_BYTES
 from classbeat.db import SYSTEM_TABLES
 from jobtools import engine_for
 
@@ -101,10 +101,24 @@ def test_the_secret_columns_are_excluded(admin: Connection) -> None:
     for table, names in INCLUDE.items():
         for name in names:
             kind = live[table][name]
-            assert kind != "bytea", (table, name)
+            # A binary column is exported only when ``PUBLIC_BYTES`` names it with its reason.
+            assert kind != "bytea" or (table, name) in PUBLIC_BYTES, (table, name)
             assert not any(word in name for word in ("hash", "secret", "nonce", "dek")), name
     assert "password_hash" in EXCLUDE["users"]
     assert "token_hash" in EXCLUDE["sessions"]
+    assert "public_key" in EXCLUDE["webauthn_credentials"]
+    assert "sign_count" in EXCLUDE["webauthn_credentials"]
+
+
+def test_public_bytes_is_exactly_the_passkey_credential_id(admin: Connection) -> None:
+    """#771: the one binary column in the export is the passkey's credential id (ADR 0019,
+    Consequences), each entry included, a ``bytea`` column and given a reason."""
+    live = columns(admin)
+    assert set(PUBLIC_BYTES) == {("webauthn_credentials", "credential_id")}
+    for (table, name), reason in PUBLIC_BYTES.items():
+        assert name in INCLUDE[table], name
+        assert live[table][name] == "bytea", name
+        assert reason.strip(), name
 
 
 def test_the_check_can_fail(admin: Connection) -> None:

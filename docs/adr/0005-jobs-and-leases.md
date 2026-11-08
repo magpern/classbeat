@@ -60,6 +60,7 @@ security, so deleting a class still cascades and deleting a job still sets `job_
 | `idempotency_key text`, `request_hash bytea` | from the browser (§2); key check `^[A-Za-z0-9_-]{16,64}$`; `UNIQUE (owner_id, idempotency_key)` |
 | `attempt int`, `max_attempts int` | attempts of the current **phase**; `0 <= attempt <= max_attempts`, `1 <= max_attempts <= 10` (default 3). **Approve** starts a new phase and resets `attempt` to 0 (§2); the cost ceiling still spans the whole job (ADR 0006 §5) |
 | `available_at timestamptz` | a queued job is claimable from then on (backoff, §4) |
+| `analysis_slot boolean` | default `false` (migration 0032, #574; see the 2026-11-05 amendment below): the job must analyse a Swedebeat mix and is claimed only while a mix-analysis slot is free |
 | `lease_version bigint` | the fencing token (§3), default 0, only ever increases |
 | `leased_by text NULL`, `lease_expires_at timestamptz NULL`, `heartbeat_at timestamptz NULL` | set exactly while `running`: check `(state = 'running') = (leased_by IS NOT NULL AND lease_expires_at IS NOT NULL)`; `leased_by` ≤ 100 characters |
 | `cancel_requested_at timestamptz NULL` | set by the user (§2) |
@@ -122,6 +123,7 @@ queued ──claim──> running ──> completed | failed | cancelled
 | `running` → `queued` | worker | retryable error and `attempt < max_attempts`; `available_at` = backoff (§4). With `cancel_requested_at` set it goes to `cancelled` instead |
 | `running` → `queued` | worker | shutdown hand-back or `operation_busy` (§3, §7): fenced, `attempt - 1` (it doesn't count), `lease_version + 1`; `cancelled` instead if a cancel was requested |
 | `queued` → `failed` | reaper | a queued row with `attempt >= max_attempts` (should not exist): `internal`, so it never blocks the queue |
+| `running` → `queued` | worker | the run must analyse a mix and holds no analysis slot (#574): fenced like a hand-back, `attempt - 1`, `lease_version + 1`, `analysis_slot = true`, event `requeued {"reason": "analysis_slot"}`; `cancelled` instead if a cancel was requested. The next claim takes it only while a slot is free (§3) |
 | `running` → `queued` / `failed` / `cancelled` | reaper | lease expired (§3): requeue, `lease_lost` when attempts are spent, or `cancelled` if a cancel was requested |
 | `running` → `waiting_for_approval` | worker | fenced; writes the `song_list` revision, `approval_hash`, `expires_at` (§4); lease cleared |
 | `waiting_for_approval` → `queued` | user session | **Approve** (below): a new phase, `attempt = 0`, `available_at = now()`; the next claim makes it `running`. This is roadmap §4's `waiting_for_approval → running`: the job goes back through the queue so it takes a slot and a fresh lease |
@@ -225,7 +227,7 @@ for any role but `classbeat_owner`.
 
 | Function | Does |
 |---|---|
-| `queue_claim(p_worker text, p_lease_seconds int, p_kinds text[])` | checks `p_worker ~ '^[A-Za-z0-9._:-]{1,100}$'` and 30 ≤ `p_lease_seconds` ≤ 600; `SELECT id … WHERE state = 'queued' AND available_at <= now() AND attempt < max_attempts AND kind = ANY(p_kinds) ORDER BY available_at, created_at LIMIT 1 FOR UPDATE SKIP LOCKED`; sets `running`, `attempt + 1`, `lease_version + 1`, `leased_by`, `lease_expires_at = now() + lease`, `heartbeat_at`, `started_at` (first time); inserts the `claimed` event; returns the row or nothing |
+| `queue_claim(p_worker text, p_lease_seconds int, p_kinds text[], p_analysis_slots int)` | checks `p_worker ~ '^[A-Za-z0-9._:-]{1,100}$'`, 30 ≤ `p_lease_seconds` ≤ 600, 1 ≤ `p_analysis_slots` ≤ 16 and READ COMMITTED; `SELECT id … WHERE state = 'queued' AND available_at <= now() AND attempt < max_attempts AND kind = ANY(p_kinds) ORDER BY available_at, created_at LIMIT 1 FOR UPDATE SKIP LOCKED`; a job with `analysis_slot` (#574, queue v3) only while fewer than `p_analysis_slots` running jobs have it (counted under one transaction-level advisory lock), else it stays queued and the next job is looked at; sets `running`, `attempt + 1`, `lease_version + 1`, `leased_by`, `lease_expires_at = now() + lease`, `heartbeat_at`, `started_at` (first time); inserts the `claimed` event; returns the row or nothing |
 | `queue_reap(p_limit int)` | for up to `p_limit` (≤ 100) `running` jobs with `lease_expires_at < now()`, `FOR UPDATE SKIP LOCKED`: `lease_version + 1` (fences the old holder), then `cancelled` if a cancel was requested, else `queued` with backoff if `attempt < max_attempts`, else `failed` with `lease_lost`; also fails any `queued` row with `attempt >= max_attempts` as `internal`; inserts the events. A bad row is skipped, never raised on, so one row cannot stall other users' claims |
 | `queue_expire(p_limit int)` | for `waiting_for_approval` jobs with `expires_at < now()`, `FOR UPDATE SKIP LOCKED`: `expired`, event |
 | `queue_unsettled(p_limit int)` | lists terminal jobs with `credit_state = 'reserved'` (for §5); no update |
@@ -405,13 +407,28 @@ ended the job (worker, reaper, sweep or user). `completed` commits; every other 
 releases (roadmap §4: system failure, early cancellation, expiry). Token usage and cost per job
 live in `agent_runs` (ADR 0006 §6); M3b turns them into usage records.
 
+**Amendment (2026-11-05, #574, PR #630; read by #572):** a mix analysis has its own cap, separate
+from the generic worker slots.
+- **Table (§1):** `jobs.analysis_slot boolean NOT NULL DEFAULT false` (migration 0032). It is set when
+  a run that must analyse a mix holds no slot and is cleared in the transaction that stores the
+  analysis (or finds it cached). A slot job whose lease expired keeps its slot until the reaper
+  requeues it.
+- **Transition (§2):** the `running` → `queued` row for the slot requeue (attempt not counted, fenced).
+- **Event (§6):** that requeue writes `requeued` with payload `{"reason": "analysis_slot"}` (an enum;
+  the field is optional, so the other `requeued` events are unchanged). The class page reads it as
+  "waiting for a free slot" (#572); it carries no provider data.
+- **Queue (§3):** `queue_claim(p_worker, p_lease_seconds, p_kinds, p_analysis_slots)` is queue v3
+  (`classbeat-queue v3`). It claims a job with `analysis_slot` only while fewer running jobs hold a
+  slot than `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY` (1 to 16, default 1), counted under one advisory lock,
+  and claims other jobs past it, so analyses never fill every worker slot.
+
 ### 6. Progress: events and SSE
 
 **Event kinds and payloads.** `queued`, `claimed {attempt}`, `stage_started {stage}`, `tool_called
 {tool, ok, error?}` (`error` an enum code, never text), `revision_created {revision_id, kind,
 number}`, `waiting_for_approval {revision_id, expires_at}`, `approved`, `retry_scheduled
 {category, available_at}`, `cancel_requested`, `cancelled`, `completed {revision_id}`, `failed
-{category}`, `expired`, `requeued`, `external_operation {kind, state}`. Each kind has a Pydantic
+{category}`, `expired`, `requeued {reason?}`, `external_operation {kind, state}`. Each kind has a Pydantic
 model with `extra="forbid"`; payloads hold only enum values, ids of the owner's own rows, counts
 and timestamps. **Never** in a payload: tokens or credentials, error or exception texts, model
 text, tool arguments or results, track titles, artists or any other provider-derived data

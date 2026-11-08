@@ -5,14 +5,16 @@ account tables (``classbeat.auth.tables``; guard 8 in ``tests/test_auth_tables_g
 worker's purge task and the CLI call the functions exported here.
 
 The package is lazy (PEP 562): importing ``classbeat.auth`` or one of its modules loads only
-that module, and a name below is imported on first use. So the worker, which needs only
+that module (and ``classbeat.auth.lazy``, the export table, which imports nothing else of the
+package), and a name below is imported on first use. So the worker, which needs only
 ``purge``, never loads the web-only sign-in and mail modules (``oauth_client``, ``mail``) that
 the outbound-allowlist guard exempts (ADR 0006 section 9; ``tests/test_egress_guard.py``).
 """
 
-from importlib import import_module
-from importlib.util import find_spec
 from typing import TYPE_CHECKING, Any
+
+from classbeat.auth.lazy import EXPORTS as _EXPORTS
+from classbeat.auth.lazy import resolve as _resolve
 
 if TYPE_CHECKING:
     from classbeat.auth.accounts import (
@@ -39,7 +41,7 @@ if TYPE_CHECKING:
         find_accounts,
         get_account,
     )
-    from classbeat.auth.admin_lookup import account_emails
+    from classbeat.auth.admin_lookup import AccountState, account_emails, account_states
     from classbeat.auth.clientip import bucket_ip, client_ip
     from classbeat.auth.cookies import (
         CSRF_COOKIE,
@@ -52,6 +54,7 @@ if TYPE_CHECKING:
     from classbeat.auth.deps import (
         current_context,
         current_session,
+        mail_handoff_context,
         operator_contexts,
         request_device_token,
         request_ip,
@@ -74,6 +77,7 @@ if TYPE_CHECKING:
         hmac_digest,
         token_hash,
     )
+    from classbeat.auth.mailprefs import MailPreferences, get_mail_prefs, mail_prefs_for_email
     from classbeat.auth.notices import SecurityNotifier, register_security_notifier
     from classbeat.auth.operator import (
         WipeEvent,
@@ -83,7 +87,7 @@ if TYPE_CHECKING:
         wipe_mail,
         wipe_user,
     )
-    from classbeat.auth.owners import owner_active
+    from classbeat.auth.owners import active_email, owner_active
     from classbeat.auth.passwords import (
         PasswordHashBusy,
         PasswordHasher,
@@ -97,10 +101,12 @@ if TYPE_CHECKING:
         RateLimited,
         RateLimiter,
         admin_buckets,
+        admin_mail_test_buckets,
         connect_buckets,
         export_buckets,
         mfa_buckets,
         mowl_playlists_buckets,
+        mowl_qr_buckets,
         password_buckets,
         playlist_covers_buckets,
         redeem_buckets,
@@ -127,130 +133,19 @@ if TYPE_CHECKING:
         rewrap_v2_secrets,
         totp_rows_by_key,
     )
+    from classbeat.auth.unsubscribe_token import UNSUBSCRIBE_ALL, issue_unsubscribe_token
 
-# Exported name -> its module in this package. ``tests/test_egress_runtime.py`` checks it matches
-# the ``TYPE_CHECKING`` imports above and ``__all__``.
-_EXPORTS: dict[str, str] = {
-    "AccountError": "accounts",
-    "UserRow": "accounts",
-    "create_invite": "accounts",
-    "InviteRow": "accounts",
-    "create_admin_invite": "accounts",
-    "disable_invite": "accounts",
-    "get_invite": "accounts",
-    "list_invites": "accounts",
-    "create_user": "accounts",
-    "find_user": "accounts",
-    "grant_admin": "accounts",
-    "grant_admin_if_listed": "accounts",
-    "reset_mfa": "accounts",
-    "revoke_admin": "accounts",
-    "AccountRow": "admin_accounts",
-    "get_account": "admin_accounts",
-    "delete_account": "admin_accounts",
-    "disable_account": "admin_accounts",
-    "enable_account": "admin_accounts",
-    "find_accounts": "admin_accounts",
-    "account_emails": "admin_lookup",
-    "bucket_ip": "clientip",
-    "client_ip": "clientip",
-    "CSRF_COOKIE": "cookies",
-    "DEVICE_COOKIE": "cookies",
-    "SESSION_COOKIE": "cookies",
-    "clear_session_cookie": "cookies",
-    "set_device_cookie": "cookies",
-    "set_session_cookie": "cookies",
-    "current_context": "deps",
-    "current_session": "deps",
-    "operator_contexts": "deps",
-    "request_device_token": "deps",
-    "request_ip": "deps",
-    "request_session_token": "deps",
-    "require_admin": "deps",
-    "require_recent_auth": "deps",
-    "require_stepup": "deps",
-    "require_user": "deps",
-    "forget_devices": "devices",
-    "is_known_device": "devices",
-    "remember_device": "devices",
-    "record_event": "events",
-    "EmailAddress": "flowtools",
-    "register_reset_link_sender": "hooks",
-    "send_reset_link": "hooks",
-    "Keys": "keys",
-    "decrypt_totp_secret": "keys",
-    "derive_key": "keys",
-    "encrypt_totp_secret": "keys",
-    "hmac_digest": "keys",
-    "token_hash": "keys",
-    "SecurityNotifier": "notices",
-    "register_security_notifier": "notices",
-    "account_export": "export",
-    "export_buckets": "ratelimit",
-    "mowl_playlists_buckets": "ratelimit",
-    "playlist_covers_buckets": "ratelimit",
-    "swedebeat_mixes_buckets": "ratelimit",
-    "owner_active": "owners",
-    "WipeEvent": "operator",
-    "mark_wipe_mailed": "operator",
-    "pending_wipe_mails": "operator",
-    "vacuum_wiped_tables": "operator",
-    "wipe_mail": "operator",
-    "wipe_user": "operator",
-    "PasswordHashBusy": "passwords",
-    "PasswordHasher": "passwords",
-    "PasswordRuleError": "passwords",
-    "normalize_password": "passwords",
-    "purge_expired": "purge",
-    "Attempt": "ratelimit",
-    "Bucket": "ratelimit",
-    "RateLimited": "ratelimit",
-    "RateLimiter": "ratelimit",
-    "connect_buckets": "ratelimit",
-    "mfa_buckets": "ratelimit",
-    "password_buckets": "ratelimit",
-    "redeem_buckets": "ratelimit",
-    "spotify_start_buckets": "ratelimit",
-    "admin_buckets": "ratelimit",
-    "make_reset_link_sender": "reset_routes",
-    "IssuedSession": "sessions",
-    "Resolution": "sessions",
-    "SessionGone": "sessions",
-    "SessionInfo": "sessions",
-    "list_sessions": "sessions",
-    "resolve_session": "sessions",
-    "revoke_session": "sessions",
-    "revoke_user_sessions": "sessions",
-    "rotate_session": "sessions",
-    "start_session": "sessions",
-    "attach_state": "setup",
-    "detach_state": "setup",
-    "install": "setup",
-    "TotpUnreadable": "totp_keys",
-    "migrate_v1_secrets": "totp_keys",
-    "rewrap_v2_secrets": "totp_keys",
-    "totp_rows_by_key": "totp_keys",
-}
+# A name that is not loaded yet is resolved on first access by ``classbeat.auth.lazy.resolve``,
+# and an exported one is cached in this module's globals so later reads skip ``__getattr__``.
+# ``lazy.EXPORTS`` (exported name -> its module in this package) must match the
+# ``TYPE_CHECKING`` imports above and ``__all__``: ``tests/test_egress_runtime.py`` checks it.
 
 
 def __getattr__(name: str) -> Any:
-    module = _EXPORTS.get(name)
-    if module is not None:
-        value = getattr(import_module(f"{__name__}.{module}"), name)
+    value = _resolve(__name__, name)
+    if name in _EXPORTS:
         globals()[name] = value
-        return value
-    if not name.startswith("_") and "." not in name and _is_submodule(name):
-        return import_module(f"{__name__}.{name}")  # a submodule, as ``auth.tables``
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-def _is_submodule(name: str) -> bool:
-    try:
-        return find_spec(f"{__name__}.{name}") is not None
-    except (
-        ImportError
-    ):  # not a package below ``name``: an attribute lookup answers "no", never raises
-        return False
+    return value
 
 
 def __dir__() -> list[str]:
@@ -261,14 +156,17 @@ __all__ = [
     "CSRF_COOKIE",
     "DEVICE_COOKIE",
     "SESSION_COOKIE",
+    "UNSUBSCRIBE_ALL",
     "AccountError",
     "AccountRow",
+    "AccountState",
     "Attempt",
     "Bucket",
     "EmailAddress",
     "InviteRow",
     "IssuedSession",
     "Keys",
+    "MailPreferences",
     "PasswordHashBusy",
     "PasswordHasher",
     "PasswordRuleError",
@@ -283,7 +181,10 @@ __all__ = [
     "WipeEvent",
     "account_emails",
     "account_export",
+    "account_states",
+    "active_email",
     "admin_buckets",
+    "admin_mail_test_buckets",
     "attach_state",
     "bucket_ip",
     "clear_session_cookie",
@@ -308,18 +209,23 @@ __all__ = [
     "forget_devices",
     "get_account",
     "get_invite",
+    "get_mail_prefs",
     "grant_admin",
     "grant_admin_if_listed",
     "hmac_digest",
     "install",
     "is_known_device",
+    "issue_unsubscribe_token",
     "list_invites",
     "list_sessions",
+    "mail_handoff_context",
+    "mail_prefs_for_email",
     "make_reset_link_sender",
     "mark_wipe_mailed",
     "mfa_buckets",
     "migrate_v1_secrets",
     "mowl_playlists_buckets",
+    "mowl_qr_buckets",
     "normalize_password",
     "operator_contexts",
     "owner_active",

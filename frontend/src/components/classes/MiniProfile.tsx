@@ -1,3 +1,4 @@
+import { useT } from '../../i18n/I18n'
 import { lengthLabel, profileSeconds } from '../../lib/classCards'
 
 /**
@@ -5,10 +6,13 @@ import { lengthLabel, profileSeconds } from '../../lib/classCards'
  * are the zone. A sketch only: the full chart with axes and markers is the class page's.
  */
 export function MiniProfile({ profile, tall = false }: { profile: [number, number][]; tall?: boolean }) {
+  const t = useT() // renders again when the language changes: the length is looked up on each render
   const total = profileSeconds(profile)
   const bars = profile.filter(([, sec]) => sec > 0)
   const label =
-    total > 0 ? `Class profile, ${lengthLabel(total)}, ${String(bars.length)} intervals` : 'No class profile yet'
+    total > 0
+      ? t('class.profile.label', { length: lengthLabel(total), count: bars.length })
+      : t('class.profile.empty')
   const starts = bars.map((_, i) => bars.slice(0, i).reduce((sum, [, sec]) => sum + sec, 0))
   return (
     <svg

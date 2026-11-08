@@ -56,6 +56,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -95,7 +97,8 @@ jobs:
           printf '%s' "$SWEDEBEAT_APP" | python3 -c "import json, sys; d = json.load(sys.stdin); assert set(d) == {'key', 'iv'} and len(d['key']) == 32 and len(d['iv']) == 16" 2>/dev/null \
             || { echo "::error::SWEDEBEAT_APP must be JSON with a 32-character key and a 16-character iv"; exit 1; }
 
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         env:
           SWEDEBEAT_APP: ${{ secrets.SWEDEBEAT_APP }}
         with:
@@ -121,6 +124,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -146,7 +151,8 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
 
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: docker/postgres
           platforms: linux/amd64,linux/arm64
@@ -156,12 +162,39 @@ jobs:
           provenance: mode=max
           sbom: true
 
-  release:
-    name: GitHub Release
+  # GitHub artifact attestations for both images (#583, ADR 0020 Decision 3): a signed statement,
+  # by this workflow run, that the image digest the build just pushed came from this repository's
+  # tag. A separate job on purpose: the image job holds the Swedebeat app key and gets no
+  # `id-token`; this one gets no secret and no registry write. The attestation lives in GitHub's
+  # attestation store (no `push-to-registry`), keyed by the digest, so `gh attestation verify
+  # oci://...` finds it from the pulled image. It runs before the release: a failed attestation
+  # publishes no release.
+  attest-images:
+    name: Attest images
     needs: [image, db-image]
     runs-on: ubuntu-24.04
     permissions:
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ needs.image.outputs.digest }}
+
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.DB_IMAGE }}
+          subject-digest: ${{ needs.db-image.outputs.digest }}
+
+  release:
+    name: GitHub Release
+    needs: [image, db-image, attest-images]
+    runs-on: ubuntu-24.04
+    permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       # The tag's own deploy files become release assets (ADR 0020), after both images exist: a
       # release that carries a compose file always has the images it names.
@@ -169,17 +202,40 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Create the release
+      - name: Build the release assets
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
           RUNNER_TEMP: ${{ runner.temp }}
         run: |
           set -euo pipefail
           assets="$RUNNER_TEMP/release-assets"
           scripts/release-assets.sh build "$assets"
           ( cd "$assets" && sha256sum -c SHA256SUMS )
+
+      # Every asset, SHA256SUMS included, is a subject: `gh attestation verify <file> -R
+      # magpern/classbeat` then proves a downloaded file is the one this run built from the tag.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/release-assets/*
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          RUNNER_TEMP: ${{ runner.temp }}
+          APP_DIGEST: ${{ needs.image.outputs.digest }}
+          DB_DIGEST: ${{ needs.db-image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/release-assets"
+          # The digests the attested images have; the runbook compares them with what a pull resolves to.
+          notes="$RUNNER_TEMP/release-notes.md"
+          {
+            echo "Image digests (attested; verify with \`gh attestation verify\`, see docs/runbooks/vps-deploy.md):"
+            echo
+            echo "- \`$IMAGE@$APP_DIGEST\`"
+            echo "- \`$DB_IMAGE@$DB_DIGEST\`"
+          } > "$notes"
           flags=()
           if [[ "$TAG" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$TAG" --generate-notes --verify-tag "${flags[@]}" "$assets"/*
+          gh release create "$TAG" --generate-notes --notes-file "$notes" --verify-tag "${flags[@]}" "$assets"/*

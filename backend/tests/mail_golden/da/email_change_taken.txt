@@ -1,0 +1,14 @@
+Denne adresse er allerede i brug
+================================
+
+Nogen har bedt om at flytte en classbeat-konto til denne adresse, som allerede tilhører en konto.
+
+Log ind:
+https://classbeat.example.test/da/signin
+
+Hvis det ikke var dig, kan du se bort fra denne mail.
+
+--
+Du får denne mail, fordi nogen har brugt denne e-mailadresse på classbeat.
+classbeat: https://classbeat.example.test
+Spørgsmål? Skriv til support@classbeat.eu

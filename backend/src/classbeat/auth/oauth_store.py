@@ -57,6 +57,10 @@ class Flow:
     user_id: UUID | None
     invite_id: UUID | None
     return_to: str | None
+    locale: str | None = None  # the start request's language (ADR 0023), copied at the callback
+    # Seconds since the start, by the database clock (#687: a Google-only re-authentication must
+    # finish within 5 minutes of its start). None only where a test builds a Flow by hand.
+    age: float | None = None
 
     def state_matches(self, state: str) -> bool:
         return hmac.compare_digest(self.state_hash, token_hash(state))
@@ -71,6 +75,7 @@ async def create_flow(
     user_id: UUID | None,
     invite_id: UUID | None,
     return_to: str | None,
+    locale: str | None = None,
 ) -> NewFlow:
     flow = NewFlow(
         cookie=new_token(),
@@ -89,6 +94,7 @@ async def create_flow(
             user_id=user_id,
             invite_id=invite_id,
             return_to=return_to,
+            locale=locale,
             expires_at=func.now() + FLOW_LIFETIME,
         )
     )
@@ -113,10 +119,24 @@ async def take_flow(db: AsyncSession, cookie: str) -> Flow | None:
                 oauth_flows.c.user_id,
                 oauth_flows.c.invite_id,
                 oauth_flows.c.return_to,
+                oauth_flows.c.locale,
+                # Last: ``*fields, age = row`` below takes it off the end.
+                func.extract("epoch", func.now() - oauth_flows.c.created_at),
             )
         )
     ).first()
-    return None if row is None else Flow(*row)
+    if row is None:
+        return None
+    *fields, age = row
+    return Flow(*fields, age=float(age))
+
+
+async def has_password(db: AsyncSession, user_id: UUID) -> bool:
+    """Whether the user has a password (never the hash itself)."""
+    found = await db.execute(
+        select(users.c.password_hash.is_not(None)).where(users.c.id == user_id)
+    )
+    return bool(found.scalar_one_or_none())
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,8 +192,13 @@ async def add_identity(
 async def remove_identity(db: AsyncSession, user_id: UUID, identity_id: UUID) -> str:
     """Unlink one of the user's own identities. ``"gone"`` for an unknown id and for another
     user's (the caller answers 404), ``"last"`` when it is the user's only sign-in method,
-    else ``"removed"``. The user row is locked, so two parallel unlinks cannot remove both."""
-    await db.execute(select(users.c.id).where(users.c.id == user_id).with_for_update())
+    else ``"removed"``. The user row is locked, so two parallel unlinks cannot remove both. ``FOR
+    NO KEY UPDATE``, as ``userlock.lock_user``: a plain ``FOR UPDATE`` would block the ``FOR KEY
+    SHARE`` the session middleware's ``auth_events`` insert takes on the user (#675, #713, ADR 0019
+    section 6)."""
+    await db.execute(
+        select(users.c.id).where(users.c.id == user_id).with_for_update(key_share=True)
+    )
     own = (
         (await db.execute(select(identities.c.id).where(identities.c.user_id == user_id)))
         .scalars()

@@ -7,8 +7,12 @@ import {
   startSpotify,
   type SpotifyStatus,
 } from '../../api/spotify'
+import { sentenceText } from '../../api/sentences'
 import { parseRetryAfter, spotifySentence } from '../../api/spotifyMessages'
 import { useGuard } from '../../auth/prompts'
+import type { CatalogueKey } from '../../i18n/en'
+import { useT } from '../../i18n/I18n'
+import { t as translate } from '../../i18n/t'
 import { goToProvider } from '../../lib/navigation'
 import { Link, useQuery } from '../../router/Router'
 import { Field, Notice, Section, useAction } from '../forms'
@@ -19,25 +23,20 @@ import { ConsentSwitch } from './ConsentSwitch'
 // field asks for a Client Secret: Spotify sign-in is PKCE.
 
 const CLIENT_ID = /^[0-9a-fA-F]{32}$/
-const INVALID_CLIENT_ID =
-  'That does not look like a Spotify Client ID. It is 32 letters and digits (0-9 and a-f), shown on your app’s settings page in the Spotify Developer Dashboard.'
-const FEATURE_OFF = 'Song picking is not available right now.'
+const STATUS_TEXT: Record<string, CatalogueKey> = {
+  connected: 'mowl.statusConnected',
+  needs_reconnect: 'mowl.statusAgain',
+  not_connected: 'spot.notConnected',
+}
 
-export const DISCONNECT_TEXT =
-  'Disconnecting deletes what classbeat holds for Spotify: the stored sign-in, the working playlist setting and your consent for it, any playlist step that was left undecided, and the link between each class and the playlist classbeat made for it (the classes themselves stay). Playlists already in your Spotify stay there and classbeat will not touch them again. Spotify gives classbeat no way to end the connection on its side: remove classbeat’s access under Apps in your Spotify account settings.'
-export const CHANGE_CLIENT_ID_TEXT =
-  'classbeat keeps using the current connection until the new Client ID has worked. Then it replaces the stored sign-in and forgets the working playlist setting, so you are asked for your consent again; the playlist stays in your Spotify. Your classes keep their playlists. If the new app signs in a different Spotify account, you must confirm the switch, and classbeat then deletes what Disconnect deletes.'
-
-const STATUS_TEXT: Record<string, string> = {
-  connected: 'Connected',
-  needs_reconnect: 'Needs to be connected again',
-  not_connected: 'Not connected',
+function statusKey(status: string): CatalogueKey {
+  return (Object.hasOwn(STATUS_TEXT, status) ? STATUS_TEXT[status] : undefined) ?? 'spot.notConnected'
 }
 
 function startError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 422) return INVALID_CLIENT_ID
-    if (error.status === 404 && error.reason === 'feature_off') return FEATURE_OFF
+    if (error.status === 422) return translate('spot.invalidClientId')
+    if (error.status === 404 && error.reason === 'feature_off') return translate('spot.featureOff')
   }
   return errorMessage(error)
 }
@@ -74,24 +73,21 @@ function useSpotifyStatus() {
  * and a link to the wizard. Hidden while song picking is off.
  */
 export function SpotifySummary() {
+  const t = useT()
   const { status, reload } = useSpotifyStatus()
   if (!status) return null
   return (
-    <Section title="Spotify">
+    <Section title={t('spot.title')}>
       <ul className="rows">
         <li>
-          <span>Status</span>
-          <span data-testid="spotify-summary-status">
-            {Object.hasOwn(STATUS_TEXT, status.status)
-              ? STATUS_TEXT[status.status]
-              : STATUS_TEXT.not_connected}
-          </span>
+          <span>{t('mowl.status')}</span>
+          <span data-testid="spotify-summary-status">{t(statusKey(status.status))}</span>
         </li>
       </ul>
       {status.status === 'connected' ? <ConsentSwitch status={status} onChanged={reload} /> : null}
       <p>
         <Link to="/account/spotify">
-          {status.status === 'not_connected' ? 'Set up Spotify' : 'Manage Spotify'}
+          {status.status === 'not_connected' ? t('spot.setUp') : t('spot.manage')}
         </Link>
       </p>
     </Section>
@@ -100,6 +96,7 @@ export function SpotifySummary() {
 
 /** The Spotify wizard, the connection card and the consent step (the page /account/spotify). */
 export function SpotifyConnection() {
+  const t = useT()
   const guard = useGuard()
   const query = useQuery()
   const result = query.get('result')
@@ -158,41 +155,38 @@ export function SpotifyConnection() {
     }
   }
 
-  if (loadFailed) return <Notice kind="error">The Spotify connection could not be loaded.</Notice>
-  if (status === undefined) return <p>Loading</p>
-  if (status === null) return <Notice>{FEATURE_OFF}</Notice>
+  if (loadFailed) return <Notice kind="error">{t('spot.loadFailed')}</Notice>
+  if (status === undefined) return <p>{t('spot.loading')}</p>
+  if (status === null) return <Notice>{t('spot.featureOff')}</Notice>
 
   const connected = status.status === 'connected'
   const showWizard = !connected || changing || confirmSwitch
   const lastError =
     status.lastError === null
       ? null
-      : (status.lastErrorMessage ?? spotifySentence(status.lastError))
+      : (sentenceText(t, status.lastErrorSentence, status.lastErrorMessage) ??
+        spotifySentence(status.lastError))
 
   return (
     <div className="stack">
-      <h1>Spotify</h1>
+      <h1>{t('spot.title')}</h1>
       {result === 'connected' ? (
-        <Notice kind="success">Spotify is connected.</Notice>
+        <Notice kind="success">{t('spot.connected')}</Notice>
       ) : result ? (
         <Notice kind="error">{spotifySentence(result, retryAfter)}</Notice>
       ) : null}
       {note ? <Notice kind="success">{note}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
 
-      <Section title="Spotify connection">
+      <Section title={t('spot.connectionTitle')}>
         <ul className="rows">
           <li>
-            <span>Status</span>
-            <span data-testid="spotify-status">
-              {Object.hasOwn(STATUS_TEXT, status.status)
-                ? STATUS_TEXT[status.status]
-                : STATUS_TEXT.not_connected}
-            </span>
+            <span>{t('mowl.status')}</span>
+            <span data-testid="spotify-status">{t(statusKey(status.status))}</span>
           </li>
           {lastError !== null ? (
             <li>
-              <span>Last problem</span>
+              <span>{t('mowl.lastProblem')}</span>
               <span className="muted" data-testid="spotify-last-error">
                 {lastError}
               </span>
@@ -202,21 +196,15 @@ export function SpotifyConnection() {
 
         {showWizard ? (
           <form onSubmit={connect} noValidate>
-            <p>
-              classbeat connects to a Spotify app of your own, so the limits are yours. Follow
-              these steps once.
-            </p>
+            <p>{t('spot.intro')}</p>
             <ol>
+              <li>{t('spot.step1')}</li>
               <li>
-                Open the Spotify Developer Dashboard (developer.spotify.com/dashboard) and create
-                an app. The person who owns the app needs Spotify Premium. A Development Mode app
-                has an allow-list of 5 people: under User Management add your own Spotify account
-                (name and email). Spotify&rsquo;s endpoint and rate limits apply.
-              </li>
-              <li>
-                Copy classbeat&rsquo;s callback URL:
+                {t('spot.step2')}
                 <div className="field">
-                  <code data-testid="spotify-callback-url" className="break-all">{status.callbackUrl}</code>{' '}
+                  <code data-testid="spotify-callback-url" className="break-all">
+                    {status.callbackUrl}
+                  </code>{' '}
                   <button
                     className="button button--secondary"
                     type="button"
@@ -224,30 +212,21 @@ export function SpotifyConnection() {
                       copyUrl(status.callbackUrl)
                     }}
                   >
-                    Copy callback URL
+                    {t('spot.copyUrl')}
                   </button>
-                  {copy === 'copied' ? <span role="status"> Copied.</span> : null}
-                  {copy === 'failed' ? (
-                    <span role="status"> Could not copy. Select the address and copy it.</span>
-                  ) : null}
+                  {copy === 'copied' ? <span role="status">{t('spot.copied')}</span> : null}
+                  {copy === 'failed' ? <span role="status">{t('spot.copyFailed')}</span> : null}
                 </div>
               </li>
-              <li>Paste it into your app&rsquo;s Redirect URIs and save.</li>
-              <li>
-                Copy your app&rsquo;s Client ID into the field below. classbeat never needs the
-                app&rsquo;s Client Secret and does not ask for it.
-              </li>
-              <li>Press the button to sign in at Spotify and allow classbeat.</li>
+              <li>{t('spot.step3')}</li>
+              <li>{t('spot.step4')}</li>
+              <li>{t('spot.step5')}</li>
             </ol>
             {changing || confirmSwitch ? (
-              <p className="muted">
-                {confirmSwitch
-                  ? 'Enter the Client ID again and confirm to switch to the other Spotify account.'
-                  : CHANGE_CLIENT_ID_TEXT}
-              </p>
+              <p className="muted">{confirmSwitch ? t('spot.confirmHint') : t('spot.changeText')}</p>
             ) : null}
             <Field
-              label="Spotify Client ID"
+              label={t('spot.clientId')}
               type="text"
               autoComplete="off"
               autoCapitalize="off"
@@ -259,13 +238,13 @@ export function SpotifyConnection() {
                 setInvalid(false)
               }}
             />
-            {invalid ? <Notice kind="error">{INVALID_CLIENT_ID}</Notice> : null}
+            {invalid ? <Notice kind="error">{t('spot.invalidClientId')}</Notice> : null}
             <button className="button" type="submit" disabled={action.busy}>
               {confirmSwitch
-                ? 'Confirm and switch account'
+                ? t('spot.confirmSwitch')
                 : status.status === 'needs_reconnect'
-                  ? 'Connect Spotify again'
-                  : 'Connect Spotify'}
+                  ? t('spot.connectAgain')
+                  : t('spot.connect')}
             </button>
             {changing ? (
               <button
@@ -276,7 +255,7 @@ export function SpotifyConnection() {
                   setInvalid(false)
                 }}
               >
-                Keep the current Client ID
+                {t('spot.keepId')}
               </button>
             ) : null}
           </form>
@@ -294,11 +273,11 @@ export function SpotifyConnection() {
                     setDialog('change')
                   }}
                 >
-                  Change Client ID
+                  {t('spot.changeId')}
                 </button>
                 {dialog === 'change' ? (
-                  <div className="notice" role="group" aria-label="Confirm Client ID change">
-                    <p>{CHANGE_CLIENT_ID_TEXT}</p>
+                  <div className="notice" role="group" aria-label={t('spot.changeConfirm')}>
+                    <p>{t('spot.changeText')}</p>
                     <button
                       className="button"
                       type="button"
@@ -307,7 +286,7 @@ export function SpotifyConnection() {
                         setChanging(true)
                       }}
                     >
-                      Continue
+                      {t('spot.continue')}
                     </button>
                     <button
                       className="button button--secondary"
@@ -316,27 +295,24 @@ export function SpotifyConnection() {
                         setDialog(null)
                       }}
                     >
-                      Keep the current Client ID
+                      {t('spot.keepId')}
                     </button>
                   </div>
                 ) : null}
               </>
             ) : null}
             {dialog === 'disconnect' ? (
-              <div className="notice" role="group" aria-label="Confirm disconnect">
-                <p>{DISCONNECT_TEXT}</p>
+              <div className="notice" role="group" aria-label={t('spot.disconnectConfirm')}>
+                <p>{t('spot.disconnectText')}</p>
                 <button
                   className="button"
                   type="button"
                   disabled={action.busy}
                   onClick={() => {
-                    run(
-                      () => guard(() => disconnectSpotify()),
-                      'Spotify is disconnected. classbeat no longer uses its sign-in.',
-                    )
+                    run(() => guard(() => disconnectSpotify()), t('spot.disconnected'))
                   }}
                 >
-                  Yes, disconnect Spotify
+                  {t('spot.disconnectYes')}
                 </button>
                 <button
                   className="button button--secondary"
@@ -345,7 +321,7 @@ export function SpotifyConnection() {
                     setDialog(null)
                   }}
                 >
-                  Keep it connected
+                  {t('mowl.keep')}
                 </button>
               </div>
             ) : (
@@ -357,7 +333,7 @@ export function SpotifyConnection() {
                   setDialog('disconnect')
                 }}
               >
-                Disconnect Spotify
+                {t('spot.disconnect')}
               </button>
             )}
           </>
@@ -365,7 +341,7 @@ export function SpotifyConnection() {
       </Section>
 
       {connected ? (
-        <Section title="Working playlist">
+        <Section title={t('spot.workingTitle')}>
           <ConsentSwitch status={status} onChanged={reload} />
         </Section>
       ) : null}

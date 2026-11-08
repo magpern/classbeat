@@ -15,7 +15,10 @@ import asyncio
 import logging
 import smtplib
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from email.headerregistry import Address
 from email.message import EmailMessage
+from email.utils import format_datetime, make_msgid, parseaddr
 
 from classbeat.config import Settings
 from classbeat.egress import refuse_in_worker, tls_client_context
@@ -34,6 +37,14 @@ class MailMessage:
     to: str
     subject: str
     body: str
+    # The HTML alternative (``emails`` renders it from the same blocks as ``body``). Without it
+    # the mail is single-part text/plain.
+    html: str | None = None
+    locale: str = "en"
+    sender_name: str | None = None  # the From display name; the address is always smtp_sender
+    reply_to: str | None = None
+    # RFC 8058 one-click URL of an optional mail (``List-Unsubscribe`` and ``-Post`` headers).
+    list_unsubscribe: str | None = None
 
     def __repr__(self) -> str:
         return "MailMessage(...)"
@@ -57,10 +68,31 @@ class Mailer:
 
     def _build(self, message: MailMessage) -> EmailMessage:
         built = EmailMessage()
-        built["From"] = self._sender
+        address = parseaddr(self._sender)[1] or self._sender
+        if message.sender_name:
+            username, _, domain = address.rpartition("@")
+            built["From"] = Address(message.sender_name, username, domain)
+        else:
+            built["From"] = self._sender
         built["To"] = message.to
+        if message.reply_to:
+            built["Reply-To"] = message.reply_to
         built["Subject"] = message.subject
-        built.set_content(message.body)
+        built["Date"] = format_datetime(datetime.now(UTC))
+        built["Message-ID"] = make_msgid(domain=address.rpartition("@")[2] or None)
+        built["Auto-Submitted"] = "auto-generated"
+        if message.list_unsubscribe:
+            built["List-Unsubscribe"] = f"<{message.list_unsubscribe}>"
+            built["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+        built.set_content(message.body, charset="utf-8")
+        if message.html is not None:
+            built.add_alternative(message.html, subtype="html", charset="utf-8")
+        # After the content: ``set_content`` clears every ``Content-*`` header.
+        built["Content-Language"] = message.locale
+        # The signed ``List-Unsubscribe`` URL has no space to fold at; with the default 78-column
+        # limit the library would turn it into RFC 2047 encoded words, which a mail client does not
+        # read as a URL. 998 is the RFC 5322 maximum (the body is already encoded by now).
+        built.policy = built.policy.clone(max_line_length=998)
         return built
 
     def _send_blocking(self, message: MailMessage) -> None:

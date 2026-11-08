@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { classReasonText, isStale } from '../../api/classMessages'
 import { deleteClass, type ClassSummary } from '../../api/classes'
+import { useT } from '../../i18n/I18n'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Card } from '../ui/card'
@@ -26,6 +27,7 @@ export function DeleteClass({
   onDeleted: (kept: number) => void
   onReload: () => void
 }) {
+  const t = useT()
   const [uncertain, setUncertain] = useState(false)
   const action = useAction()
   const card = useRef<HTMLDivElement>(null)
@@ -44,7 +46,7 @@ export function DeleteClass({
         (error) => {
           if (error instanceof ApiError && error.reason === 'uncertain_write') {
             setUncertain(true)
-            return 'classbeat is not sure whether a save of this class to MOWL went through. Deleting the class now removes the only record of it.'
+            return t('class.delete.uncertain')
           }
           if (isStale(error)) onReload()
           return classReasonText(error)
@@ -60,14 +62,11 @@ export function DeleteClass({
   return (
     <Card ref={card} tabIndex={-1} className="flex scroll-mt-4 flex-col gap-3" role="region" aria-labelledby="delete-title">
       <h2 id="delete-title" className="m-0 font-display text-xl font-bold">
-        Delete class
+        {t('class.delete.title')}
       </h2>
       <Notice kind="error">
-        This deletes the class, all its versions and your conversation from classbeat. It cannot be
-        undone.{' '}
-        {kept > 0
-          ? `The ${String(kept)} workout${kept === 1 ? '' : 's'} classbeat saved to your MOWL account stay${kept === 1 ? 's' : ''} there; delete ${kept === 1 ? 'it' : 'them'} in MOWL.`
-          : 'Any workout classbeat saved to your MOWL account stays there; delete it in MOWL.'}
+        {t('class.delete.warning')}{' '}
+        {kept > 0 ? t('class.delete.kept', { count: kept }) : t('class.delete.keptNone')}
       </Notice>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <p>
@@ -78,7 +77,7 @@ export function DeleteClass({
             run(uncertain)
           }}
         >
-          {uncertain ? 'Delete anyway' : 'Yes, delete this class'}
+          {uncertain ? t('class.delete.anyway') : t('class.delete.confirm')}
         </Button>
         <Button
           variant="secondary"
@@ -89,7 +88,7 @@ export function DeleteClass({
             action.clear()
           }}
         >
-          Keep it
+          {t('class.delete.keep')}
         </Button>
       </p>
     </Card>

@@ -4,13 +4,13 @@ per action, and the limiter that keeps refusal rows from flooding the table.
 ``admin_audit.params`` is never a secret, code or token: each action declares a pydantic model
 (``extra="forbid"``, bounded fields), and ``admin_session`` refuses an action that is not listed
 or params its model rejects, before it opens a connection. The admin feature modules (#218,
-#220, #221, #222, #223) add their actions to ``ACTIONS``.
+#220, #221, #222, #223) add their actions to ``ACTIONS``. The free-text validators and types the
+feature modules' fields use are in ``classbeat.admin.audit_text``.
 """
 
 import json
 import logging
 import time
-import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
@@ -18,7 +18,6 @@ from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
 from pydantic import (
-    AfterValidator,
     AwareDatetime,
     BaseModel,
     ConfigDict,
@@ -54,67 +53,6 @@ class RequestParams(Params):
 
 class NoParams(Params):
     """An action whose target says everything (a read or write of one user or row)."""
-
-
-def json_bytes(value: str) -> int:
-    """How many bytes ``value`` takes inside a JSON string as ``checked_params`` writes it
-    (escapes included: a non-ASCII character is 6 or 12 bytes, not 1)."""
-    return len(json.dumps(value).encode()) - 2
-
-
-def bounded_text(max_bytes: int) -> AfterValidator:
-    """Free text that is safe to store in ``params``: no control character (Unicode ``Cc``, NUL
-    included, which ``jsonb`` refuses) and at most ``max_bytes`` once JSON-encoded, so a bound in
-    characters can never push the params past ``MAX_PARAMS_BYTES``."""
-
-    def check(value: str) -> str:
-        if any(unicodedata.category(c) == "Cc" for c in value):
-            raise ValueError("control characters are not allowed")
-        if json_bytes(value) > max_bytes:
-            raise ValueError(f"at most {max_bytes} bytes once encoded")
-        return value
-
-    return AfterValidator(check)
-
-
-# Format characters (Unicode ``Cf``: the bidi embeddings, overrides and isolates U+202A-202E and
-# U+2066-2069, zero-width characters, the BOM) and the line and paragraph separators: they change
-# how text shown in the admin pages reads without being visible themselves (#227, #279 review).
-_INVISIBLE_CATEGORIES: Final = frozenset({"Cf", "Zl", "Zp"})
-
-
-def no_format_characters() -> AfterValidator:
-    """Text an admin types to be shown to admins again (a code's label, a grant's note): no
-    format or separator character, checked apart from ``bounded_text``'s control characters."""
-
-    def check(value: str) -> str:
-        if any(unicodedata.category(c) in _INVISIBLE_CATEGORIES for c in value):
-            raise ValueError("format characters (bidi, zero-width) are not allowed")
-        return value
-
-    return AfterValidator(check)
-
-
-# Text an admin types that admins see again: no control character, bounded in encoded bytes (12
-# per character at most), and no format character. A code's label (AD2, trimmed) and a grant's
-# note (AD1).
-LabelText = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=80),
-    bounded_text(960),
-    no_format_characters(),
-]
-NoteText = Annotated[
-    str,
-    StringConstraints(min_length=1, max_length=200),
-    bounded_text(2400),
-    no_format_characters(),
-]
-
-
-# The Users list's search text (AD1 #218): no control character, and bounded in encoded bytes as
-# well as in characters (254 emoji would be 3048 bytes once encoded).
-UserQuery = Annotated[str, StringConstraints(max_length=254), bounded_text(1024)]
 
 
 class UserListParams(Params):
@@ -160,12 +98,6 @@ class RedeemCodeCreateParams(Params):
     expires_at: Annotated[str, StringConstraints(max_length=40)]
 
 
-# The audit filter's two free-text fields, bounded so the largest accepted filter still fits
-# MAX_PARAMS_BYTES (``tests/test_admin_audit.py`` measures the worst case).
-FilterEmail = Annotated[str, StringConstraints(min_length=1, max_length=320), bounded_text(640)]
-FilterTargetId = Annotated[str, StringConstraints(min_length=1, max_length=100), bounded_text(200)]
-
-
 class AuditListParams(Params):
     """The audit log's filter (AD4 #222, ``classbeat.admin.audit_routes``): ids, codes, the
     period and the page. A filter on a person (``actor_id``, ``actor_email``, ``target_user_id``,
@@ -197,6 +129,12 @@ class JobsParams(Params):
     days: Annotated[int, Field(ge=1, le=90)]
 
 
+class AbuseParams(Params):
+    """The Abuse view's window (#632), in minutes."""
+
+    minutes: Annotated[int, Field(ge=5, le=240)]
+
+
 class RefundParams(Params):
     """An admin refund (AD3 #221): the target (user, ledger row) says everything."""
 
@@ -215,6 +153,18 @@ class SettingSetParams(Params):
     days: Annotated[int, Field(ge=0, le=1_000_000)] | None = None
     level: Literal["info", "warning"] | None = None
     text_length: Annotated[int, Field(ge=0, le=100_000)] | None = None
+    # ``mail_kinds_disabled`` (#653): the kind ids switched off, never text. The mail branding keys
+    # log their length only (``text_length``), as the banner does.
+    kinds: list[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z_]{0,39}$")]] | None = Field(
+        default=None, max_length=100
+    )
+
+
+class MailTestParams(Params):
+    """A test send from the Mail page (#653): the kind id; the recipient is the admin's own
+    address and is never logged."""
+
+    kind: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z_]{0,39}$")]
 
 
 PlanPrice = Literal["monthly_price_cents", "intro_price_cents", "intro_price_until", "currency"]
@@ -278,6 +228,7 @@ ACTIONS: dict[str, type[Params]] = {
     # Usage, cost and jobs; the admin refund (AD3 #221, classbeat.admin.usage and .jobs).
     "usage.read": UsageParams,
     "job.list": JobsParams,
+    "abuse.list": AbuseParams,
     "refund.credit": RefundParams,
 }
 # The audit log (AD4 #222).
@@ -287,6 +238,11 @@ ACTIONS["setting.read"] = NoParams
 ACTIONS["setting.set"] = SettingSetParams
 ACTIONS["setting.clear"] = NoParams
 ACTIONS["plan.update"] = PlanUpdateParams
+# The Mail page (#653, classbeat.admin.mail): the branding and switches are read and written with
+# ``setting.read``/``setting.set``-style rows of their own; a preview and a test send log the kind.
+ACTIONS["mail.read"] = NoParams
+ACTIONS["mail.preview"] = MailTestParams
+ACTIONS["mail.test"] = MailTestParams
 # Model routes per route key (AD5 #223, classbeat.admin.models).
 ACTIONS["model.read"] = NoParams
 ACTIONS["model.route_set"] = ModelRouteParams

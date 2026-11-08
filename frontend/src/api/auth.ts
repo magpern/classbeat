@@ -1,7 +1,9 @@
+import { resolveBrowserLocale } from '../i18n/locales'
 import { clearSubmittedInputs } from '../lib/submittedInput'
 import { del, fetchSessionJson, get, post } from './client'
 import {
   count,
+  DecodeError,
   flag,
   list,
   object,
@@ -19,6 +21,8 @@ export interface SessionUser {
   email: string
   /** `admin` only while the session has passed TOTP within 12 hours. */
   role: string
+  /** The saved language, or null to follow the browser (ADR 0023). */
+  locale: string | null
 }
 
 export interface SessionDetails {
@@ -34,17 +38,54 @@ export interface SessionState {
   authenticated: boolean
   user: SessionUser | null
   session: SessionDetails | null
+  /** The languages the server offers, signed in or not. */
+  locales: string[]
+  /** Turnstile on the four anonymous auth forms (ADR 0025 section 11), or null while it is off. */
+  captcha: CaptchaConfig | null
+  /** CLASSBEAT_PASSKEYS (ADR 0019 section 1): whether the sign-in page offers passkeys. */
+  passkeys: boolean
+}
+
+/**
+ * `turnstile`: Cloudflare's widget with the public site key. `fake`: the e2e stack's local
+ * stand-in (`CLASSBEAT_TURNSTILE_FAKE`, refused in prod by the server), which loads nothing.
+ */
+export type CaptchaConfig = { kind: 'turnstile'; siteKey: string } | { kind: 'fake' }
+
+/** The routes' `action` (ADR 0025 section 1): a token solved for one form passes no other. */
+export type CaptchaAction = 'signin' | 'signup' | 'signup_email' | 'reset'
+
+function decodeCaptcha(value: unknown): CaptchaConfig | null {
+  if (value === undefined || value === null) return null
+  const captcha = object(value, 'captcha')
+  if (captcha.fake === true) return { kind: 'fake' }
+  const siteKey = text(captcha, 'site_key')
+  if (siteKey === '') throw new DecodeError('site_key')
+  return { kind: 'turnstile', siteKey }
+}
+
+/** The token as the protected routes read it; no field at all while Turnstile is off. */
+function captchaField(token: string | null | undefined): { captcha_token?: string } {
+  return token ? { captcha_token: token } : {}
 }
 
 export async function getSession(signal?: AbortSignal): Promise<SessionState> {
   const body = await fetchSessionJson(signal)
   const authenticated = flag(body, 'authenticated')
-  if (!authenticated) return { authenticated, user: null, session: null }
+  const locales = body.locales === undefined ? [] : strings(body, 'locales')
+  const captcha = decodeCaptcha(body.captcha)
+  const passkeys = body.passkeys === true
+  if (!authenticated) return { authenticated, user: null, session: null, locales, captcha, passkeys }
   const user = object(body.user, 'user')
   const session = object(body.session, 'session')
   return {
     authenticated,
-    user: { id: text(user, 'id'), email: text(user, 'email'), role: text(user, 'role') },
+    user: {
+      id: text(user, 'id'),
+      email: text(user, 'email'),
+      role: text(user, 'role'),
+      locale: optionalText(user, 'locale'),
+    },
     session: {
       expiresAt: text(session, 'expires_at'),
       recentAuth: flag(session, 'recent_auth'),
@@ -52,6 +93,9 @@ export async function getSession(signal?: AbortSignal): Promise<SessionState> {
       stepup: flag(session, 'stepup'),
       adminPendingMfa: flag(session, 'admin_pending_mfa'),
     },
+    locales,
+    captcha,
+    passkeys,
   }
 }
 
@@ -59,11 +103,14 @@ export async function signUp(input: {
   email: string
   password: string
   inviteCode: string
+  captchaToken?: string | null
 }): Promise<void> {
   await post('/api/auth/signup', {
     email: input.email,
     password: input.password,
     invite_code: input.inviteCode === '' ? null : input.inviteCode,
+    locale: resolveBrowserLocale(),
+    ...captchaField(input.captchaToken),
   })
 }
 
@@ -71,8 +118,15 @@ export async function confirmSignUp(token: string, password: string | null): Pro
   await post('/api/auth/signup/confirm', { token, password })
 }
 
-export async function login(email: string, password: string): Promise<{ role: string }> {
-  const body = object(await post('/api/auth/login', { email, password }), 'login')
+export async function login(
+  email: string,
+  password: string,
+  captchaToken?: string | null,
+): Promise<{ role: string }> {
+  const body = object(
+    await post('/api/auth/login', { email, password, ...captchaField(captchaToken) }),
+    'login',
+  )
   return { role: text(body, 'role') }
 }
 
@@ -97,8 +151,8 @@ export async function reauthWithTotp(code: string): Promise<void> {
 
 // --- password reset and change ---------------------------------------------------------
 
-export async function requestPasswordReset(email: string): Promise<void> {
-  await post('/api/auth/password/reset/request', { email })
+export async function requestPasswordReset(email: string, captchaToken?: string | null): Promise<void> {
+  await post('/api/auth/password/reset/request', { email, ...captchaField(captchaToken) })
 }
 
 export interface LinkedMethod {
@@ -106,23 +160,43 @@ export interface LinkedMethod {
   provider: string
 }
 
-export async function resetInfo(token: string): Promise<LinkedMethod[]> {
+export interface ResetPasskey {
+  id: string
+  label: string
+}
+
+export interface ResetInfo {
+  methods: LinkedMethod[]
+  /** Listed whatever the passkeys flag says: a reset must show a planted passkey (ADR 0019 section 9). */
+  passkeys: ResetPasskey[]
+}
+
+export async function resetInfo(token: string): Promise<ResetInfo> {
   const body = object(await post('/api/auth/password/reset/info', { token }), 'reset info')
-  return list(body, 'methods').map((row) => {
+  const methods = list(body, 'methods').map((row) => {
     const item = object(row, 'method')
     return { id: text(item, 'id'), provider: text(item, 'provider') }
   })
+  const passkeys = list(body, 'passkeys').map((row) => {
+    const item = object(row, 'passkey')
+    return { id: text(item, 'id'), label: text(item, 'label') }
+  })
+  return { methods, passkeys }
 }
 
+/** `keepMethods`: the listed methods the user left unticked. The server deletes every other
+ * linked method, so one linked after the page loaded never survives the reset (#639). `keepPasskeys` is the same for the passkeys the page listed. */
 export async function completeReset(
   token: string,
   password: string,
-  removeMethods: string[],
+  keepMethods: string[],
+  keepPasskeys: string[],
 ): Promise<void> {
   await post('/api/auth/password/reset/complete', {
     token,
     password,
-    remove_methods: removeMethods,
+    keep_methods: keepMethods,
+    keep_passkeys: keepPasskeys,
   })
 }
 
@@ -183,7 +257,8 @@ export async function getOAuthProviders(signal?: AbortSignal): Promise<string[]>
   return strings(body, 'providers')
 }
 
-export type OAuthPurpose = 'sign_in' | 'link' | 'reauth'
+/** `sign_in` never creates an account; only `sign_up` does, and only it carries an invite (#617). */
+export type OAuthPurpose = 'sign_in' | 'sign_up' | 'link' | 'reauth'
 
 /** The provider's authorization URL; the caller sends the browser there. */
 export async function startOAuth(
@@ -196,6 +271,7 @@ export async function startOAuth(
       purpose,
       invite_code: extra.inviteCode ? extra.inviteCode : null,
       return_to: extra.returnTo ?? null,
+      locale: resolveBrowserLocale(),
     }),
     'oauth start',
   )
@@ -217,8 +293,12 @@ export async function getPendingSignup(signal?: AbortSignal): Promise<PendingSig
   }
 }
 
-export async function submitPendingEmail(email: string): Promise<void> {
-  await post('/api/auth/oauth/pending/email', { email })
+export async function submitPendingEmail(email: string, captchaToken?: string | null): Promise<void> {
+  await post('/api/auth/oauth/pending/email', {
+    email,
+    locale: resolveBrowserLocale(),
+    ...captchaField(captchaToken),
+  })
 }
 
 // --- two-factor ------------------------------------------------------------------------
@@ -287,6 +367,8 @@ export interface DeviceSession {
   createdAt: string
   lastSeenAt: string
   userAgent: string | null
+  /** Seen from a new network or browser since then (ADR 0003 amendment of 2026-11-05, #632). */
+  locationChangedAt: string | null
   current: boolean
 }
 
@@ -301,6 +383,7 @@ export async function listDevices(signal?: AbortSignal): Promise<DeviceSession[]
       createdAt: text(row, 'created_at'),
       lastSeenAt: text(row, 'last_seen_at'),
       userAgent: optionalText(row, 'user_agent'),
+      locationChangedAt: optionalText(row, 'location_changed_at'),
       current: flag(row, 'current'),
     }
   })

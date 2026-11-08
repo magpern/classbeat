@@ -233,6 +233,21 @@ def test_the_auth_package_does_not_re_export_a_table_object() -> None:
     assert not {"metadata", *TABLE_NAMES} & set(package.__all__)
 
 
+def test_the_scanned_names_are_exactly_the_auth_tables() -> None:
+    """#771: the guard's table list follows ``classbeat.auth.tables``, so a new account table (the
+    passkey tables of ADR 0019) cannot be left out of guard 8."""
+    from auth_tables_scan import TABLE_NAMES
+    from classbeat.auth.tables import metadata
+
+    assert sorted(TABLE_NAMES) == sorted(metadata.tables)
+
+
+@pytest.mark.parametrize("table", ["webauthn_credentials", "webauthn_challenges"])
+def test_the_passkey_tables_are_guarded(table: str) -> None:
+    assert scan_source(f"q = 'DELETE FROM {table} WHERE id = :i'") != []  # noqa: S608 (scanned)
+    assert scan_source(f"from classbeat.auth.tables import {table}") != []
+
+
 # --- exemptions: docstrings and the marked line ------------------------------------------------
 
 EXEMPT_SOURCES = [

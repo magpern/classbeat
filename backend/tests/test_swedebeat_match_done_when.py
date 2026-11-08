@@ -31,7 +31,7 @@ from test_swedebeat_verify import (  # noqa: F401 - the fixtures: env, work, hen
     work,
 )
 
-pytestmark = pytest.mark.usefixtures("jenv", "mowl_api")
+pytestmark = pytest.mark.usefixtures("jenv", "mowl_api", "analysis_slot_by_default")
 
 SAME = "shared-mix-b5-0001"
 

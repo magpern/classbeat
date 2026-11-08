@@ -25,6 +25,12 @@ The database can tighten what the environment allows, never loosen it:
   zero-width characters, the soft hyphen, the BOM) and no line or paragraph separator (``Zl``,
   ``Zp``), on the write side and again when it is read for ``/api/settings/public`` (#227).
 
+- ``mail_sender_name``, ``mail_support_email``, ``mail_footer`` and ``mail_kinds_disabled``
+  (ADR 0022 sections 2 and 6, #653): the mail branding and the admin's switched-off kinds. They
+  are no flags (``MAIL_KEYS``, not ``KEYS``): the Mail page edits them. A missing, ``null`` or
+  invalid stored value means the environment's value (branding) or nothing disabled; only an
+  ``admin_can_disable`` kind id counts as disabled.
+
 A stored value that does not validate falls back to the key's default, which is its stricter
 choice (``invite``, ``granted``, Swedebeat off, running off, trial off, no banner), and is logged
 by key only: the value is never logged, since it may hold an admin's free text.
@@ -33,6 +39,7 @@ by key only: the value is never logged, since it may hold an admin's free text.
 import logging
 import re
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final, Literal
 
@@ -170,6 +177,55 @@ def banner_setting(stored: Any) -> Banner | None:
     return None
 
 
+def _short_text(value: Any, limit: int) -> str | None:
+    """``value`` when it is non-blank plain text of at most ``limit`` characters, else ``None``."""
+    if isinstance(value, str) and value.strip() and len(value) <= limit and _plain_text(value):
+        return value
+    return None
+
+
+def mail_sender_name_setting(stored: Any) -> str | None:
+    """The stored From display name; ``None`` (the default name) when absent or invalid."""
+    if stored is None:
+        return None
+    text = _short_text(stored, MAIL_SENDER_NAME_MAX)
+    if text is None:
+        _invalid("mail_sender_name")
+    return text
+
+
+def mail_support_email_setting(stored: Any) -> str | None:
+    """The stored support address; ``None`` (the environment's) when absent or invalid."""
+    if stored is None:
+        return None
+    if isinstance(stored, str) and _SUPPORT_ADDRESS.fullmatch(stored):
+        return stored
+    _invalid("mail_support_email")
+    return None
+
+
+def mail_footer_setting(stored: Any) -> str | None:
+    """The stored footer line; ``None`` (no footer) when absent or invalid."""
+    if stored is None:
+        return None
+    text = _short_text(stored, MAIL_FOOTER_MAX)
+    if text is None:
+        _invalid("mail_footer")
+    return text
+
+
+def mail_kinds_disabled_setting(stored: Any, can_disable: frozenset[str]) -> frozenset[str]:
+    """The stored kind ids that are switched off: only ids in ``can_disable`` (the registry's
+    ``admin_can_disable`` kinds) count, so a stale or invalid row never silences a mail that must
+    go out. Absent is none."""
+    if stored is None:
+        return frozenset()
+    if not isinstance(stored, list) or not all(isinstance(i, str) for i in stored):  # pyright: ignore[reportUnknownVariableType]
+        _invalid("mail_kinds_disabled")
+        return frozenset()
+    return frozenset(stored) & can_disable  # pyright: ignore[reportUnknownArgumentType]
+
+
 # --- validation at write time (the admin area, ADR 0011 section 6) ---------------------------
 
 
@@ -190,10 +246,22 @@ KEYS: Final = (
     "trial",
     "banner",
 )
+MAIL_KEYS: Final = ("mail_sender_name", "mail_support_email", "mail_footer", "mail_kinds_disabled")
+MAIL_SENDER_NAME_MAX: Final = 60
+MAIL_FOOTER_MAX: Final = 280
+_KIND_ID: Final = re.compile(r"^[a-z][a-z_]{0,39}$")
+# The same shape as ``Settings.mail_support_address``: a bare address, no display name.
+_SUPPORT_ADDRESS: Final = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
 _PLAN_ID: Final = re.compile(r"^[a-z_]{1,30}$")
 
 
-def validate_for_write(key: str, value: Any, *, trial_days_max: int) -> Any:
+def validate_for_write(
+    key: str,
+    value: Any,
+    *,
+    trial_days_max: int,
+    mail_kinds: Mapping[str, bool] | None = None,
+) -> Any:
     """The canonical value to store for ``key``, or ``FlagRefused``. Stricter than the read side:
     the read side falls back, the write side refuses.
 
@@ -205,7 +273,12 @@ def validate_for_write(key: str, value: Any, *, trial_days_max: int) -> Any:
       (``above_environment_bound`` over it). Whether the plan exists and ranks at most
       ``instructor`` is checked against ``plans`` by the caller.
     - ``banner``: exactly ``{text, level}``; plain text of 1 to 280 characters (no control,
-      format or separator character), level ``info`` or ``warning``."""
+      format or separator character), level ``info`` or ``warning``.
+    - ``mail_sender_name`` (1 to 60) and ``mail_footer`` (1 to 280): plain text, the banner's
+      rules. ``mail_support_email``: a bare address. ``mail_kinds_disabled``: a list of distinct
+      kind ids, each in ``mail_kinds`` (kind id -> whether the admin may disable it; an
+      essential kind is
+      ``essential_kind``, an id that is no kind ``unknown_kind``); an empty list is allowed."""
     if key == "signup_mode":
         if value == "open":
             raise FlagRefused("environment_only")
@@ -248,4 +321,37 @@ def validate_for_write(key: str, value: Any, *, trial_days_max: int) -> Any:
         if len(text) > BANNER_MAX_CHARS or not _plain_text(text):
             raise FlagRefused("invalid_value")
         return {"text": text, "level": level}
+    if key == "mail_sender_name":
+        return _mail_text(value, MAIL_SENDER_NAME_MAX)
+    if key == "mail_footer":
+        return _mail_text(value, MAIL_FOOTER_MAX)
+    if key == "mail_support_email":
+        if not isinstance(value, str) or not _SUPPORT_ADDRESS.fullmatch(value):
+            raise FlagRefused("invalid_value")
+        return value
+    if key == "mail_kinds_disabled":
+        return _mail_kinds(value, mail_kinds or {})
     raise FlagRefused("unknown_key")
+
+
+def _mail_text(value: Any, limit: int) -> str:
+    text = _short_text(value, limit)
+    if text is None:
+        raise FlagRefused("invalid_value")
+    return text
+
+
+def _mail_kinds(value: Any, kinds: Mapping[str, bool]) -> list[str]:
+    if not isinstance(value, list) or len(value) > 100:  # pyright: ignore[reportUnknownArgumentType]
+        raise FlagRefused("invalid_value")
+    ids: list[Any] = value  # pyright: ignore[reportUnknownVariableType]
+    if not all(isinstance(i, str) and _KIND_ID.fullmatch(i) for i in ids) or len(set(ids)) != len(
+        ids
+    ):
+        raise FlagRefused("invalid_value")
+    for kind_id in ids:
+        if kind_id not in kinds:
+            raise FlagRefused("unknown_kind")
+        if not kinds[kind_id]:
+            raise FlagRefused("essential_kind")
+    return sorted(ids)

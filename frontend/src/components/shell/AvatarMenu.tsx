@@ -1,4 +1,5 @@
 import { LogOut, Settings, ShieldCheck } from 'lucide-react'
+import { useT } from '../../i18n/I18n'
 import { useRouter } from '../../router/Router'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu'
 
@@ -25,6 +26,7 @@ export function AvatarMenu({
   /** Where the menu opens: up from the bottom of the sidebar, down from the phone header. */
   side?: 'top' | 'bottom'
 }) {
+  const t = useT()
   const { navigate } = useRouter()
   return (
     <DropdownMenu>
@@ -52,7 +54,7 @@ export function AvatarMenu({
           }}
         >
           <Settings aria-hidden="true" size={18} strokeWidth={2} className="mr-2" />
-          Account
+          {t('shell.nav.account')}
         </DropdownMenuItem>
         {isAdmin ? (
           <DropdownMenuItem
@@ -61,12 +63,12 @@ export function AvatarMenu({
             }}
           >
             <ShieldCheck aria-hidden="true" size={18} strokeWidth={2} className="mr-2" />
-            Admin
+            {t('shell.admin')}
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem disabled={busy} onSelect={onSignOut}>
           <LogOut aria-hidden="true" size={18} strokeWidth={2} className="mr-2" />
-          Sign out
+          {t('shell.menu.signOut')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

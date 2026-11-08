@@ -111,7 +111,7 @@ describe('a song job that failed', () => {
   it('prompts to reconnect Spotify for invalid_grant', async () => {
     fakeApi({ ...SESSION_ROUTES, [`GET ${JOB}`]: songJob('failed', { error_category: 'invalid_grant' }) })
     renderAt(`/jobs/${JOB_ID}`)
-    expect(await screen.findByRole('link', { name: 'Reconnect Spotify' })).toHaveAttribute('href', '/account/spotify')
+    expect(await screen.findByRole('link', { name: 'Reconnect Spotify' })).toHaveAttribute('href', '/en/account/spotify')
   })
 
   it('before the approval offers to pick again from the remembered form, not to resume', async () => {
@@ -130,7 +130,7 @@ describe('a song job that failed', () => {
     expect(screen.queryByRole('button', { name: 'Create the playlist again' })).toBeNull()
     fireEvent.click(await screen.findByRole('button', { name: 'Pick songs again' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     expect(call?.body).toEqual({
@@ -151,7 +151,7 @@ describe('a song job that failed', () => {
     renderAt(`/jobs/${JOB_ID}`)
     fireEvent.click(await screen.findByRole('button', { name: 'Create the playlist again' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     const input = (call?.body as { kind: string; input: Record<string, unknown> }).input
@@ -203,7 +203,7 @@ describe('a song job that failed', () => {
     expect(await screen.findByText(/Nothing was written to Spotify/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Create the playlist again' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     expect(api.to('POST', '/api/jobs')).toHaveLength(1)
   })
@@ -278,7 +278,7 @@ describe('the new-class form', () => {
     renderAt('/classes/new')
     const pick = await screen.findByRole('button', { name: 'Pick songs for me' })
     expect(pick).toBeDisabled()
-    expect(screen.getByRole('link', { name: 'Connect Spotify' })).toHaveAttribute('href', '/account/spotify')
+    expect(screen.getByRole('link', { name: 'Connect Spotify' })).toHaveAttribute('href', '/en/account/spotify')
   })
 
   it('asks for the working playlist consent first', async () => {
@@ -301,7 +301,7 @@ describe('the new-class form', () => {
     expect(screen.queryByLabelText('Playlist')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     const body = call?.body as { kind: string; input: Record<string, unknown> }
@@ -382,7 +382,7 @@ describe('the class page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Replace Hills <b>bold</b>' }))
     fireEvent.click(screen.getByRole('button', { name: 'Change the marked songs' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     expect(call?.body).toEqual({
@@ -455,7 +455,7 @@ describe('a song job with an undecided MOWL attach', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Create the playlist again' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     expect(api.to('POST', '/api/jobs')).toHaveLength(1)
   })
@@ -560,7 +560,7 @@ describe('creating the playlist again for a revise_songs list', () => {
     renderAt(`/jobs/${JOB_ID}`)
     fireEvent.click(await screen.findByRole('button', { name: 'Create the playlist again' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     expect(api.to('POST', '/api/jobs')[0]?.body).toEqual({
       kind: 'revise_songs',

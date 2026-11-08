@@ -1,0 +1,24 @@
+Your connections were removed
+=============================
+
+As a precaution after a security incident, classbeat removed the stored sign-ins of your account.
+
+Removed connections: Intelligent Cycling (MOWL), Spotify, Swedebeat. Connect them again from your account page.
+
+What to do:
+
+- Intelligent Cycling (MOWL): end your other sessions or change your password there. MOWL tokens cannot be revoked and may stay valid until they expire.
+- Spotify: remove classbeat's access (your own developer app) in your Spotify account settings.
+- Swedebeat: change your Swedebeat password.
+
+Two-factor authentication was removed and you were signed out everywhere. Choose a new password with the link below (valid for 30 minutes), then set up two-factor authentication again.
+
+Choose a new password:
+https://classbeat.example.test/en/reset#token=SAMPLE
+
+If you have questions, contact us at support@classbeat.eu
+
+--
+You got this security notice because this is the email address of a classbeat account. These notices are sent for your protection.
+classbeat: https://classbeat.example.test
+Questions? Write to support@classbeat.eu

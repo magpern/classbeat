@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import {
@@ -11,6 +11,7 @@ import {
   openStream,
   sse,
 } from '../test/jobFixtures'
+import { rememberInput } from '../lib/submittedInput'
 import { renderAt } from '../test/render'
 
 const JOB = `/api/jobs/${JOB_ID}`
@@ -79,8 +80,97 @@ describe('the Designing page', () => {
     renderAt(`/jobs/${JOB_ID}`)
     await screen.findByRole('button', { name: 'Stop designing' })
     expect(document.body.textContent).not.toMatch(/\b(jobs?|stages?|credits?|revisions?|tokens?)\b/i)
-    expect(screen.getByText(/You can close this page/)).toBeInTheDocument()
+    expect(screen.getByText(/You can leave this page/)).toBeInTheDocument()
     expect(document.querySelector('svg[class~="motion-safe:animate-pulse"]')).not.toBeNull()
+  })
+
+  it('says a design waits for a mix-analysis slot after a requeue, and drops it when a worker claims the job (#572)', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('queued'),
+      [`GET ${EVENTS}`]: (() => {
+        let opened = 0
+        return () =>
+          ++opened > 1
+            ? openStream()
+            : sse(
+                [1, 'queued'],
+                [2, 'claimed', { attempt: 1 }],
+                [3, 'stage_started', { stage: 'music' }],
+                [4, 'requeued', { reason: 'analysis_slot' }],
+              )
+      })(),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    await waitFor(() => {
+      expect(screen.getByTestId('progress')).toHaveTextContent('Waiting for a free slot. Other mixes are being analysed')
+    })
+    expect(screen.getByText(/You can leave this page/)).toBeInTheDocument()
+  })
+
+  it('stops saying it waits for a slot once the job was claimed (#572)', async () => {
+    // A queued body, so the page would still print the waiting text if `claimed` did not reset it;
+    // no stage event, so nothing else clears the flag. The tool call marks the end of the fold.
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('queued'),
+      [`GET ${EVENTS}`]: (() => {
+        let opened = 0
+        return () =>
+          ++opened > 1
+            ? openStream()
+            : sse(
+                [1, 'queued'],
+                [2, 'requeued', { reason: 'analysis_slot' }],
+                [3, 'claimed', { attempt: 1 }],
+                [4, 'tool_called', {}],
+              )
+      })(),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    await waitFor(() => {
+      expect(screen.getByTestId('progress')).toHaveTextContent('The designer has checked its draft 1 time(s).')
+    })
+    expect(screen.getByTestId('progress')).not.toHaveTextContent('Other mixes')
+  })
+
+  it('ignores a requeue that has no slot reason (#572)', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('queued'),
+      [`GET ${EVENTS}`]: (() => {
+        let opened = 0
+        return () =>
+          ++opened > 1 ? openStream() : sse([1, 'queued'], [2, 'stage_started', { stage: 'music' }], [3, 'requeued'])
+      })(),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    await waitFor(() => {
+      expect(screen.getByTestId('progress')).toHaveTextContent('Reading your playlist')
+    })
+    expect(screen.getByTestId('progress')).not.toHaveTextContent('Other mixes')
+  })
+
+  it('words the music stage of a Swedebeat design as fetching and analysing the mix, with no number (#572)', async () => {
+    rememberInput(JOB_ID, {
+      class_id: CLASS_ID,
+      brief: { sport: 'cycling', title: 'Hills' },
+      music: { source: 'mowl_swedebeat_mix', mix_id: 'mix-1' },
+      mowl_connection_id: 'c',
+    } as never)
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('running'),
+      [`GET ${EVENTS}`]: (() => {
+        let opened = 0
+        return () => (++opened > 1 ? openStream() : sse([1, 'queued'], [2, 'stage_started', { stage: 'music' }]))
+      })(),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    await waitFor(() => {
+      expect(screen.getByTestId('progress')).toHaveTextContent('Fetching and analysing your mix')
+    })
+    expect(screen.getByTestId('progress').textContent).not.toMatch(/\d/)
   })
 
   it('shows a scheduled retry in plain words and the designing stage', async () => {
@@ -117,7 +207,7 @@ describe('the Designing page', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByRole('heading', { name: 'Your class is ready' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Open the class' })).toHaveAttribute('href', `/classes/${CLASS_ID}`)
+    expect(screen.getByRole('link', { name: 'Open the class' })).toHaveAttribute('href', `/en/classes/${CLASS_ID}`)
     // Server text is text: markup in names, notes and titles is shown literally, never parsed.
     expect(await screen.findByText('Tuesday climb <b>bold</b>')).toBeInTheDocument()
     expect(screen.getByText('Two hills <img src=x onerror=alert(1)>')).toBeInTheDocument()
@@ -209,6 +299,25 @@ describe('a failed design', () => {
     expect(document.body).not.toHaveTextContent('rate_limited')
   })
 
+  it('words a known sentence code from the catalogue and shows the server text for an unknown one', async () => {
+    const body = (sentence: string) =>
+      jobBody('failed', {
+        kind: 'swedebeat_match',
+        error_category: 'rate_limited',
+        error_message: 'The server text.',
+        sentence,
+        sentence_params: {},
+      })
+    fakeApi({ ...SESSION_ROUTES, [`GET ${JOB}`]: body('swedebeat.stopped') })
+    const first = renderAt(`/jobs/${JOB_ID}`)
+    expect(await screen.findByText('Swedebeat asks to slow down. This match has stopped.')).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent('The server text.')
+    first.unmount()
+    fakeApi({ ...SESSION_ROUTES, [`GET ${JOB}`]: body('swedebeat.from_the_future') })
+    renderAt(`/jobs/${JOB_ID}`)
+    expect(await screen.findByText('The server text.')).toBeInTheDocument()
+  })
+
   it('offers no "Try again" or new-design button for a rate-limited Swedebeat match', async () => {
     // Even with a remembered design form for this job id, the button would start a new design.
     window.sessionStorage.setItem(
@@ -225,7 +334,8 @@ describe('a failed design', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByRole('heading', { name: 'The Swedebeat match stopped' })).toBeInTheDocument()
-    expect(screen.queryByRole('button')).toBeNull()
+    // The page itself: the cookie notice's OK button sits outside <main>.
+    expect(within(screen.getByRole('main')).queryByRole('button')).toBeNull()
   })
 
   it('points to the account page when MOWL has to be connected again', async () => {
@@ -234,7 +344,7 @@ describe('a failed design', () => {
       [`GET ${JOB}`]: jobBody('failed', { error_category: 'needs_reconnect' }),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    expect(await screen.findByRole('link', { name: 'Go to your account' })).toHaveAttribute('href', '/account')
+    expect(await screen.findByRole('link', { name: 'Go to your account' })).toHaveAttribute('href', '/en/account')
   })
 
   it.each(['cancelled', 'expired'])('offers "Design again", not "Try again", for a %s design', async (state) => {
@@ -294,7 +404,7 @@ describe('a failed design', () => {
     renderAt(`/jobs/${JOB_ID}`)
     fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEXT}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEXT}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     expect(call?.body).toEqual({
@@ -319,7 +429,7 @@ describe('a failed design', () => {
     renderAt(`/jobs/${JOB_ID}`)
     fireEvent.click(await screen.findByRole('button', { name: 'Start a new design' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/classes/new')
+      expect(window.location.pathname).toBe('/en/classes/new')
     })
   })
 })

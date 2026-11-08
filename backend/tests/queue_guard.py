@@ -29,6 +29,8 @@ TABLES = {
     "jobs": {"SELECT", "UPDATE"},
     "job_events": {"SELECT", "INSERT"},
     "external_operations": {"SELECT"},
+    # mail_handoff_take (ADR 0022 section 4, ME5); UPDATE only for its FOR UPDATE SKIP LOCKED.
+    "mail_handoff": {"SELECT", "UPDATE", "DELETE"},
 }
 # Schemas whose functions and operators below FirstNormalObjectId (16384) are initdb's built-ins.
 SYSTEM_SCHEMAS = ("pg_catalog", "information_schema", "pg_toast")
@@ -169,7 +171,7 @@ def check_queue(conn: Connection) -> list[str]:
 
     # Nothing that could shadow a built-in called by a function body, and nothing a function body
     # fires that could run user code as classbeat_queue (review finding B2, #102): no user-defined
-    # function, procedure, aggregate or operator in any schema besides the five, no trigger but
+    # function, procedure, aggregate or operator in any schema besides the queue's, no trigger but
     # the internal ones of foreign keys, no rule but the _RETURN rules of views. Named as the
     # startup check and the script name them (#108 item 4).
     hooks = (
@@ -223,7 +225,7 @@ def check_queue(conn: Connection) -> list[str]:
     calls = expression_calls(conn)
     need(not calls, f"expressions call a built-in that runs SQL text: {calls}")
 
-    # Ownership: exactly the five functions.
+    # Ownership: exactly the queue functions.
     owned = conn.execute(
         text(
             "SELECT classid::regclass::text, objid FROM pg_shdepend "

@@ -41,7 +41,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
-from classbeat.admin.audit import NoteText, Target, UserQuery, bounded_text
+from classbeat.admin.audit import Target
+from classbeat.admin.audit_text import NoteText, UserQuery, bounded_text
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.connections import connection_statuses
@@ -425,8 +426,8 @@ async def delete_user(
         target=Target(user_id=user_id, kind="user", id=str(user_id)),  # survives the delete
     ) as session:
         # Checked without the row lock: ending the target's jobs commits in the target's own
-        # sessions, whose inserts take a key-share lock this transaction's ``FOR UPDATE`` would
-        # block (ADR 0014 section 3).
+        # sessions and can wait for a running job (ADR 0014 section 3), and the user row lock
+        # is not held across that wait. The lock (``FOR NO KEY UPDATE``, #675) is taken after.
         found = await _target(session, user_id)
         if found.role == "admin":
             raise AdminRefused("target_is_admin", 409)

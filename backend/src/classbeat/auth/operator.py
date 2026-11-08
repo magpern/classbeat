@@ -15,12 +15,14 @@ from uuid import UUID
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
+from classbeat.auth import locale as account_locale
 from classbeat.auth import mails
 from classbeat.auth.devices import forget_devices
 from classbeat.auth.events import record_event
 from classbeat.auth.sessions import revoke_user_sessions
 from classbeat.auth.tables import auth_events, auth_tokens, mfa_recovery_codes, mfa_totp, users
 from classbeat.auth.tokens import RESET_LIFETIME, issue_token
+from classbeat.auth.userlock import lock_user
 from classbeat.config import Settings
 from classbeat.mail import MailMessage
 
@@ -41,7 +43,12 @@ class WipeEvent:
 
 async def wipe_user(db: AsyncSession, user_id: UUID, providers: list[str]) -> WipeEvent | None:
     """Record the wipe of ``providers`` and reset the user's TOTP if there is one. ``None`` (and
-    nothing written) when the user had neither."""
+    nothing written) when the user had neither.
+
+    The user row lock comes before the TOTP is read or deleted (ADR 0019 section 6, #643), the
+    way ``reset_mfa`` takes it: a sign-in or MFA verify in flight commits first and loses its
+    session to the revoke below, or waits and then finds the TOTP gone."""
+    await lock_user(db, user_id)
     has_totp = (
         await db.execute(select(mfa_totp.c.id).where(mfa_totp.c.user_id == user_id))
     ).first() is not None
@@ -99,7 +106,8 @@ async def wipe_mail(settings: Settings, db: AsyncSession, event: WipeEvent) -> M
             )
         )
         token = await issue_token(db, RESET_PURPOSE, event.user_id, RESET_LIFETIME)
-    return mails.connections_wiped_notice(settings, event.email, event.providers, token)
+    language = await account_locale.mail_locale_of(db, settings, event.user_id)
+    return mails.connections_wiped_notice(settings, event.email, event.providers, token, language)
 
 
 async def mark_wipe_mailed(db: AsyncSession, event_id: UUID) -> None:

@@ -226,7 +226,7 @@ def _plain(name: str, value: Any) -> Any:
     if isinstance(value, dict):
         return {str(k): _plain(name, v) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType]
     if isinstance(value, re.Pattern):
-        return value.pattern  # pyright: ignore[reportUnknownMemberType]
+        return {"pattern": value.pattern, "flags": int(value.flags)}  # pyright: ignore[reportUnknownMemberType]
     raise TypeError(f"{name}: a check constant of an unhashable kind; teach suite._plain")
 
 

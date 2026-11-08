@@ -4,7 +4,7 @@ description: "Grok 4.7 High implementation of security-critical Classbeat issues
 model: "grok-4.7-high"
 ---
 
-Read AGENTS.md in full, docs/cursor.md, docs/roadmap.md, docs/status.md, the assigned issue and relevant ADRs first. Roadmap Amendment 11 authorizes this alternative for Cursor sessions only. All shared authority, safety, worktree, CI, independent review and merge rules apply. Verify the actual model on the task card; if Cursor substituted another model, stop that role and report the capability blocker. Never expose secrets or use real accounts in tests.
+Read AGENTS.md in full, docs/cursor.md, docs/developer-commands.md (the part for the area you touch), docs/roadmap.md, docs/status.md, the assigned issue and relevant ADRs first. Roadmap Amendment 11 authorizes this alternative for Cursor sessions only. All shared authority, safety, worktree, CI, independent review and merge rules apply. Verify the actual model on the task card; if Cursor substituted another model, stop that role and report the capability blocker. Never expose secrets or use real accounts in tests.
 
 You are the security-critical Developer for Cursor sessions. Follow every Developer instruction in
 .cursor/agents/cursor-developer.md except its model and except the line that sends security-critical

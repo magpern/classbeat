@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { getPlaylistCovers, type Playlist } from '../../api/jobs'
+import { useT } from '../../i18n/I18n'
 import { CoverArt } from '../songs/CoverArt'
 
 /**
@@ -44,11 +45,12 @@ export function PlaylistTiles({
   /** Covers by Spotify playlist id (`usePlaylistCovers`); a playlist without one shows initials. */
   covers?: ReadonlyMap<string, string>
 }) {
+  const t = useT()
   const group = useId()
   return (
     <div className="flex flex-col gap-2">
       <span id={`${group}-label`} className="text-[0.9375rem] font-medium text-text">
-        Playlist
+        {t('newclass.playlist.label')}
       </span>
       <div
         role="radiogroup"
@@ -57,7 +59,7 @@ export function PlaylistTiles({
         className="grid grid-cols-2 gap-3 sm:grid-cols-3"
       >
         {playlists.map((p) => {
-          const name = p.name || 'Untitled playlist'
+          const name = p.name || t('newclass.untitledPlaylist')
           return (
             <label
               key={p.spotifyPlaylistId}
@@ -91,7 +93,7 @@ export function PlaylistTiles({
         })}
       </div>
       <p id={`${group}-hint`} className="m-0 text-[0.8125rem] text-muted">
-        classbeat adds this playlist to your MOWL music so it can read the songs. It stays private to you.
+        {t('newclass.playlist.hint')}
       </p>
     </div>
   )

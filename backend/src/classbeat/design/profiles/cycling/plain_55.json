@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "cycling.plain.55",
+  "version": 1,
+  "sport": "cycling",
+  "class_type": "plain",
+  "label_minutes": 55,
+  "evidence": "moderate",
+  "n": 113,
+  "source": "professional studio library",
+  "snapshot": "2026-11-05",
+  "rules": [
+    {
+      "rule": "tss_rate_low",
+      "metric": "tss_per_minute",
+      "low": 1.036,
+      "high": null,
+      "basis": "tukey_iqr",
+      "severity": "info",
+      "rationale_id": "load_enough",
+      "brief_overrides": [
+        "intensity:easy",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "tss_rate_high",
+      "metric": "tss_per_minute",
+      "low": null,
+      "high": 1.62,
+      "basis": "tukey_iqr",
+      "severity": "info",
+      "rationale_id": "load_bounded",
+      "brief_overrides": [
+        "intensity:hard",
+        "races",
+        "sprints",
+        "style",
+        "text"
+      ]
+    }
+  ]
+}

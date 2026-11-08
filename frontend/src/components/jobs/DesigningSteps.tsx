@@ -1,4 +1,5 @@
 import { Check, Circle, Loader } from 'lucide-react'
+import { useT } from '../../i18n/I18n'
 
 type Step = { stage: string; label: string }
 
@@ -13,9 +14,10 @@ export function stepNumber(steps: readonly Step[], current: string | null): numb
  * the job's stage events. State is told by icon and by text, never by colour alone.
  */
 export function DesigningSteps({ steps, current }: { steps: readonly Step[]; current: string | null }) {
+  const t = useT()
   const at = steps.findIndex((s) => s.stage === current)
   return (
-    <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Steps">
+    <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label={t('job.steps.label')}>
       {steps.map((s, i) => {
         const done = i < at
         const now = i === at
@@ -34,7 +36,7 @@ export function DesigningSteps({ steps, current }: { steps: readonly Step[]; cur
             )}
             <span>
               {s.label}
-              {done ? <span className="sr-only"> (done)</span> : null}
+              {done ? <span className="sr-only">{t('job.steps.done')}</span> : null}
             </span>
           </li>
         )

@@ -97,6 +97,9 @@ services:
   web:
     <<: *app
     restart: unless-stopped
+    # ADR 0026 stage 1 (#735): the same ceilings as compose.prod.yaml (runbook vps-deploy.md 5c).
+    cpus: ${WEB_CPUS:-1.0}
+    mem_limit: ${WEB_MEMORY:-1g}
     environment:
       <<: *app-env
       # The admin area's audited role (ADR 0011 section 5); the password is the
@@ -114,6 +117,9 @@ services:
       # stack cannot switch soundless on: web gets no CLASSBEAT_MODEL_PROVIDER here, so its `fake`
       # never counts as covering soundless, and no recorded route covers it before SL5.
       CLASSBEAT_SOUNDLESS_ENABLED: ${SOUNDLESS_ENABLED:-false}
+      # ADR 0024 (#647): "Scan with the MOWL app" on the account page, web only, off by default
+      # until the owner's live scan. The password form works either way.
+      CLASSBEAT_MOWL_QR_ENABLED: ${MOWL_QR_ENABLED:-false}
       # OAuth sign-in (ADR 0003 section 5), web only, as in compose.prod.yaml: a provider is on only
       # when its client id here and its secret file secrets/oauth_<provider>_client_secret both hold
       # a value (init creates the files empty, so every provider is off until set).
@@ -123,6 +129,8 @@ services:
       CLASSBEAT_OAUTH_VISIBLE_PROVIDERS: ${OAUTH_VISIBLE_PROVIDERS:-google}
     # swedebeat_app (ADR 0015 section 4) is web's only: Swedebeat's app key as a runtime
     # override of the key a release image holds. Empty from init (empty is no key).
+    # turnstile_secret_key (ADR 0025 section 7) is web's only too; empty from init. Turnstile stays
+    # off in this stack (no CLASSBEAT_TURNSTILE_* here).
     secrets:
       - database_password
       - app_secret_key
@@ -132,6 +140,7 @@ services:
       - oauth_google_client_secret
       - oauth_github_client_secret
       - oauth_microsoft_client_secret
+      - turnstile_secret_key
     ports:
       - "127.0.0.1:${WEB_PORT:-8000}:8000"
     healthcheck:
@@ -151,6 +160,9 @@ services:
     # ADR 0005 section 3: on SIGTERM the worker waits up to 25 s for runs to reach a checkpoint,
     # then hands their leases back (each under the role's 5 s lock_timeout) within these 30 s.
     stop_grace_period: 30s
+    # ADR 0026 stage 1 (#735): the same ceilings as compose.prod.yaml (runbook vps-deploy.md 5c).
+    cpus: ${WORKER_CPUS:-1.0}
+    mem_limit: ${WORKER_MEMORY:-3g}
     environment:
       <<: *app-env
       # ADR 0006 section 9: `fake` (the default in .env.example) for the dev stack and CI;
@@ -191,7 +203,7 @@ services:
         target: database_owner_password
 
   mailpit:
-    image: axllent/mailpit:v1.32.0
+    image: axllent/mailpit:v1.33.0
     restart: unless-stopped
     ports:
       - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
@@ -233,6 +245,9 @@ secrets:
     file: ./secrets/oauth_github_client_secret
   oauth_microsoft_client_secret:
     file: ./secrets/oauth_microsoft_client_secret
+  # Cloudflare Turnstile's secret (ADR 0025 section 7): web only; empty from init, never a real key.
+  turnstile_secret_key:
+    file: ./secrets/turnstile_secret_key
 
 volumes:
   db-data:

@@ -9,7 +9,8 @@ leave the effective flag off and ``admit`` refusing, with no job and no credit),
 ``admit``'s checks, and the effective flag ``GET /api/connections`` returns; the worker's
 backstops (``feature_off``, ``model_config``) before any call; the music kind never changing, at
 ``admit`` and in the final store, both ways. The revise is ``test_soundless_revise.py`` (SL2);
-Save and Update are ``test_save_soundless.py`` (SL3).
+Save and Update are ``test_save_soundless.py`` (SL3); here only that a class this path designs
+is admitted for Save (#586).
 """
 
 import json
@@ -24,7 +25,7 @@ from classbeat.agent.records import Provenance
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.soundless import SYSTEM_PROMPT
 from classbeat.agent.stage import prompt_version
-from classbeat.design import music_kind
+from classbeat.design import music_kind, revision
 from classbeat.models import routes as routes_module
 from classbeat.models.versions import all_prompt_versions, running_suite_version
 from designtools import BRIEF, FakeMowlMusic
@@ -188,6 +189,29 @@ async def test_a_soundless_design_completes_with_no_music_call_and_stores_no_mus
     assert prompt_version(sent.spec.system, sent.spec.tools) == made.prompt_version
 
 
+async def test_a_class_designed_without_music_is_admitted_for_save(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    """#586 (SL3 review): the class the real SL1 path stores (``music_source`` and revision music
+    ``none``, no link) is admitted by Save's approval, not only the rows ``test_save_soundless``
+    inserts, so the two cannot drift apart. Creation only: the write is that file's."""
+    class_id, job_id = await soundless_class(renv)
+    [rev] = renv.denv.revisions(job_id)
+    save = {
+        "kind": "save_workout",
+        "input": {
+            "class_id": str(class_id),
+            "revision_id": str(rev.id),
+            "content_hash": bytes(rev.content_hash).hex(),
+            "mowl_connection_id": str(renv.browser.connection_id),
+        },
+    }
+    made = await create(renv, save)
+    assert made.status_code == 201, made.text
+    assert made.json()["kind"] == "save_workout"
+    assert fake_mowl.requests == []  # a created job calls nothing; no link was ever needed
+
+
 # --- the gate at creation -------------------------------------------------------------------
 
 
@@ -226,7 +250,9 @@ async def test_the_flag_needs_every_plans_route_to_cover_soundless_read_on_every
     gate(fake=False)
     keys = plan_keys(renv)
     route(renv, *keys)
-    assert running_suite_version() == routes_module.SOUNDLESS_SUITE_VERSION  # SL5 (#531)
+    first = routes_module.SOUNDLESS_SUITE_VERSION
+    assert first is not None
+    assert running_suite_version() >= first  # SL5 (#531)
     # The SL1 state: SOUNDLESS_SUITE_VERSION is None, so even a fresh passing route covers nothing.
     monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", None)
     assert await connections_flag(renv) is False
@@ -383,6 +409,96 @@ async def test_a_design_of_the_other_kind_admitted_before_cannot_store(
     assert len(renv.revisions(class_id)) == 1
     source = renv.sql("SELECT music_source FROM classes WHERE id = :c", c=class_id).scalar_one()
     assert music_kind.is_none(source) == (first == "soundless")
+
+
+@pytest.mark.parametrize("kind", ["music", "soundless"])
+async def test_the_design_stores_check_the_music_kind_before_adopt_first(
+    renv: ReviseEnv,
+    fake_mowl: FakeMowlMusic,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """#589: a class with no current revision, whose ``music_source`` the superuser sets to the
+    other kind after admit, is refused ``invalid_input`` BEFORE ``adopt_first`` runs. The store is
+    one transaction that rolls back, so the result alone cannot show the order: the spy shows that
+    ``adopt_first`` was never reached, and nothing is written (no revision, no events of a
+    revision, the source as seeded)."""
+    if kind == "music":
+        asked, seeded, script = SPOTIFY, NONE, "good_first_draft"
+    else:
+        asked, seeded, script = NONE, SPOTIFY, "soundless_first_draft"
+    renv.use(script)
+    made = await create(renv, design_body(renv, asked))
+    assert made.status_code == 201, made.text
+    job_id, class_id = UUID(made.json()["id"]), UUID(made.json()["class_id"])
+    renv.sql(
+        "UPDATE classes SET music_source = CAST(:m AS jsonb) WHERE id = :c",
+        m=json.dumps(seeded),
+        c=class_id,
+    )
+    before = renv.sql(
+        "SELECT current_revision_id, brief FROM classes WHERE id = :c", c=class_id
+    ).one()
+    assert before.current_revision_id is None
+    reached: list[bool] = []
+    original = revision.adopt_first
+
+    async def spy(*args: Any, **kwargs: Any) -> bool:
+        reached.append(True)
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(revision, "adopt_first", spy)
+    await renv.run(design.KIND)
+    row = renv.denv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert reached == []  # refused before adopt_first
+    assert renv.revisions(class_id) == []
+    assert renv.denv.revisions(job_id) == []
+    after = renv.sql(
+        "SELECT music_source, current_revision_id, brief FROM classes WHERE id = :c", c=class_id
+    ).one()
+    assert (after.music_source, after.current_revision_id, after.brief) == (
+        seeded,
+        None,
+        before.brief,
+    )
+
+
+@pytest.mark.parametrize("source", [None, NONE])
+async def test_the_soundless_store_checks_strictly_after_adopt_first(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic, source: dict[str, str] | None
+) -> None:
+    """#589 (review finding 2 of #621): the ``before_adopt`` check accepts an unset source, and
+    ``adopt_first`` leaves a class that already has a current revision as it is, so a class with
+    a current revision and a NULL ``music_source`` (an older class; ``admit_music`` refuses it at
+    creation, so the superuser sets it past admit) reaches only the strict check after
+    ``adopt_first``: ``invalid_input``, nothing written. The control (``none``) stores."""
+    class_id, _ = await soundless_class(renv)
+    [first] = renv.revisions(class_id)
+    values = design_body(renv, NONE, class_id=str(class_id))["input"]
+    del values["title"]
+    job_id = new_job(
+        renv.denv.ops.admin, renv.owner, class_id, kind=design.KIND, input=json.dumps(values)
+    )
+    renv.sql(
+        "UPDATE classes SET music_source = CAST(:m AS jsonb) WHERE id = :c",
+        m=None if source is None else json.dumps(source),
+        c=class_id,
+    )
+    renv.use("soundless_first_draft")
+    await renv.run(design.KIND)
+    row = renv.denv.ops.row(job_id)
+    after = renv.sql(
+        "SELECT music_source, current_revision_id FROM classes WHERE id = :c", c=class_id
+    ).one()
+    assert (after.music_source, after.current_revision_id) == (source, first.id)
+    if source is not None:
+        assert (row.state, row.error_category) == ("completed", None)
+        assert len(renv.revisions(class_id)) == 2
+        return
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert renv.revisions(class_id) == [first]
+    assert renv.denv.revisions(job_id) == []
 
 
 async def test_a_running_brief_with_no_music_is_refused_at_input(renv: ReviseEnv) -> None:

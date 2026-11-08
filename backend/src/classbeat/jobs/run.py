@@ -11,6 +11,10 @@ A kind's pipeline gets a ``JobRun`` and reaches the database only through it:
   Spotify requests the job has sent so far (``budget``, ADR 0009 section 8) in the same transaction.
 - ``fenced()``: a fenced transaction for the kind's own writes (revisions, ``agent_runs``,
   external operations). ``LeaseLost`` marks the run lost.
+- ``require_analysis_slot()`` before a mix analysis (#574): a run that holds no analysis slot
+  stops with ``RunStopped("analysis_slot")`` and the runner requeues the job with one
+  (``transitions.wait_for_analysis_slot``); ``release_analysis_slot(fs)`` frees it in the
+  fenced transaction that stores the analysis.
 - ``external_call(timeout)``: around one provider write (X1). It starts with a checkpoint, so no
   call starts after a cancel or SIGTERM, and while it is open the call counts as in flight: a
   cancel does not interrupt it, a lost lease does not abandon it, and shutdown waits for it. The
@@ -64,6 +68,7 @@ class JobRun:
         approved: bool,
         lease_seconds: float,
         shutdown: asyncio.Event,
+        analysis_slot: bool = False,
     ) -> None:
         self.factory = factory
         self.lease = lease
@@ -73,6 +78,8 @@ class JobRun:
         self.approved = approved  # the post-approval phase
         self.lease_seconds = lease_seconds
         self.shutdown = shutdown
+        # The job was claimed holding one of the mix-analysis slots (``jobs.analysis_slot``).
+        self.analysis_slot = analysis_slot
         self.lost = False
         self.cancel_requested = False
         self.in_flight = 0
@@ -132,6 +139,24 @@ class JobRun:
         if cancel:
             self.cancel_requested = True
             raise RunStopped("cancelled")
+
+    def require_analysis_slot(self) -> None:
+        """Before anything of a mix analysis is reserved, attached or fetched (#574): without a
+        slot the run stops here and is requeued with one, the attempt not counted. Nothing the
+        run did before this may be lost by running it again (as for the shutdown hand-back)."""
+        if not self.analysis_slot:
+            raise RunStopped("analysis_slot")
+
+    async def release_analysis_slot(self, fs: FencedSession) -> None:
+        """Free the slot inside ``fs`` (the transaction that stores the analysis); ``fs`` must be
+        this run's. Call ``slot_released()`` once that transaction committed."""
+        if fs.lease is not self.lease:
+            raise ValueError("not this run's fenced session")
+        if self.analysis_slot:
+            await transitions.release_analysis_slot(fs)
+
+    def slot_released(self) -> None:
+        self.analysis_slot = False
 
     async def stage(self, name: str) -> None:
         await self.checkpoint()

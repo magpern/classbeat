@@ -174,3 +174,9 @@ GRANT SELECT (id, owner_id, kind, state, stage, error_category, credit_state, ex
 GRANT SELECT (id, owner_id, job_id, kind, state, error_category, created_at, updated_at,
               resolved_at, pending_at, call_ended_at)
   ON public.external_operations TO classbeat_maint;
+-- The Abuse view (#632 item 3): five columns of the security log, never the method or route.
+-- ip_hash (a keyed hash of the coarse network) is read only inside count(DISTINCT ...) by
+-- classbeat.admin.abuse; guard 11 (tests/maint_guard.py HASH_READS) names it as the one hash
+-- maint may read and the tests pin that no response carries it.
+GRANT SELECT (owner_id, session_id, ip_hash, status, at) ON public.security_log
+  TO classbeat_maint;

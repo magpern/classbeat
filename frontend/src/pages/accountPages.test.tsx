@@ -33,9 +33,12 @@ describe('sign-in page', () => {
     renderAt('/signin')
     type('Email', 'ann@example.test')
     type('Password', 'correct horse battery')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByRole('heading', { name: 'Your account' })).toBeInTheDocument()
-    expect(window.location.pathname).toBe('/account')
+    expect(window.location.pathname).toBe('/en/account')
     expect(api.to('POST', '/api/auth/login')[0]?.body).toEqual({
       email: 'ann@example.test',
       password: 'correct horse battery',
@@ -82,10 +85,76 @@ describe('sign-in page', () => {
       expect(goToProvider).toHaveBeenCalledWith('https://idp.example/authorize?x=1')
     })
     expect(api.to('POST', '/api/auth/oauth/google/start')[0]?.body).toEqual({
-      purpose: 'sign_in',
+      purpose: 'sign_up',
       invite_code: 'inv-1',
       return_to: null,
+      locale: 'en',
     })
+    expect(screen.queryByText('Enter your invite code first.')).toBeNull()
+  })
+
+  it('does not start a provider sign-up without an invite code (#617)', async () => {
+    goToProvider.mockClear()
+    const api = fakeApi({
+      'GET /api/auth/oauth/providers': { providers: ['google'] },
+      'POST /api/auth/oauth/google/start': { authorization_url: 'https://idp.example/authorize?x=1' },
+    })
+    renderAt('/signup')
+    const google = await screen.findByRole('button', { name: 'Continue with Google' })
+    const invite = screen.getByLabelText(/Invite code/)
+    expect(invite).toBeRequired()
+    expect(invite).not.toHaveAttribute('aria-invalid')
+    type(/Invite code/, '   ') // blanks only count as empty
+    fireEvent.click(google)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Enter your invite code first\.$/)
+    expect(invite).toHaveAttribute('aria-invalid', 'true')
+    expect(invite).toHaveFocus()
+    expect(api.to('POST', '/api/auth/oauth/google/start')).toHaveLength(0)
+    expect(goToProvider).not.toHaveBeenCalled()
+    expect(window.location.pathname).toBe('/en/signup')
+    // Typing a code clears the mark; then the same button starts the sign-up flow.
+    type(/Invite code/, 'inv-3')
+    expect(screen.queryByText('Enter your invite code first.')).toBeNull()
+    expect(invite).not.toHaveAttribute('aria-invalid')
+    fireEvent.click(google)
+    await waitFor(() => {
+      expect(goToProvider).toHaveBeenCalledWith('https://idp.example/authorize?x=1')
+    })
+    expect(api.to('POST', '/api/auth/oauth/google/start')[0]?.body).toMatchObject({
+      purpose: 'sign_up',
+      invite_code: 'inv-3',
+    })
+  })
+
+  it('tells an unknown Google account on sign-in to create an account, without invite text (#617)', async () => {
+    fakeApi({ 'GET /api/auth/oauth/providers': { providers: ['google'] } })
+    renderAt('/signin?oauth=no_account&provider=google')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^No classbeat account is linked to this Google account\. Create an account to join the invite-only beta\.$/,
+    )
+    const links = screen.getAllByRole('link', { name: 'Create an account' })
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', '/en/signup')
+    expect(screen.queryByText(/invite code/i)).toBeNull()
+    expect(screen.queryByText(/below/i)).toBeNull()
+    expect(screen.queryByLabelText(/Invite code/)).toBeNull()
+    fireEvent.click(links[0] as HTMLElement)
+    expect(await screen.findByRole('heading', { name: 'Create an account' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/en/signup')
+  })
+
+  it('shows no "Create an account" link for other sign-in outcomes', async () => {
+    fakeApi({ 'GET /api/auth/oauth/providers': { providers: [] } })
+    renderAt('/signin?oauth=invite_invalid')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no longer valid/)
+    expect(screen.queryByRole('link', { name: 'Create an account' })).toBeNull()
+  })
+
+  it('explains a failed provider sign-up on the sign-up page, above the invite field (#617)', async () => {
+    fakeApi({ 'GET /api/auth/oauth/providers': { providers: ['google'] } })
+    renderAt('/signup?oauth=invite_required')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/need an invite to create an account/)
+    expect(screen.getByLabelText(/Invite code/)).toBeInTheDocument()
   })
 
   it('signs in with a provider without an invite code', async () => {
@@ -103,6 +172,7 @@ describe('sign-in page', () => {
       purpose: 'sign_in',
       invite_code: null,
       return_to: null,
+      locale: 'en',
     })
   })
 
@@ -116,6 +186,9 @@ describe('sign-in page', () => {
     type('Email', 'new@example.test')
     type('Password', 'a long enough passphrase')
     expect(screen.getByText(/invite-only beta/)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
     expect(await screen.findByText(/we sent a link/)).toBeInTheDocument()
     expect(api.to('POST', '/api/auth/signup')[0]?.body).toMatchObject({
@@ -146,6 +219,9 @@ describe('sign-in page', () => {
     renderAt('/signin')
     type('Email', 'a@example.test')
     type('Password', 'correct horse battery')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe('/admin')
@@ -292,13 +368,15 @@ describe('account page', () => {
     })
   })
 
-  it('the re-authentication prompt says Google confirms only a sign-in of the last 5 minutes', async () => {
+  const GOOGLE_AND_MICROSOFT = [
+    { id: 'i2', provider: 'google', email_at_link: null, created_at: '2026-01-01T00:00:00Z' },
+    { id: 'i3', provider: 'microsoft', email_at_link: null, created_at: '2026-01-01T00:00:00Z' },
+  ]
+
+  const openReauthPrompt = async (hasPassword: boolean) => {
     fakeApi({
       ...base,
-      'GET /api/auth/identities': {
-        ...IDENTITIES,
-        identities: [{ id: 'i2', provider: 'google', email_at_link: null, created_at: '2026-01-01T00:00:00Z' }],
-      },
+      'GET /api/auth/identities': { ...IDENTITIES, has_password: hasPassword, identities: GOOGLE_AND_MICROSOFT },
       'POST /api/auth/password/change': reason(403, 'reauth_required'),
     })
     renderAt('/account#security')
@@ -307,10 +385,38 @@ describe('account page', () => {
     type('Repeat the new password', 'a brand new passphrase')
     fireEvent.click(screen.getByRole('button', { name: 'Save password' }))
     const dialog = await screen.findByRole('dialog')
-    await within(dialog).findByRole('button', { name: 'Confirm with Google' })
+    await within(dialog).findByRole('button', { name: 'Confirm with Microsoft' })
+    return dialog
+  }
+
+  it('with a password, the re-authentication prompt offers no Google (#687)', async () => {
+    const dialog = await openReauthPrompt(true)
+    expect(within(dialog).getByRole('button', { name: 'Confirm with password' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Confirm with Google' })).toBeNull()
     expect(dialog).toHaveTextContent(
-      'Google can confirm it only if you signed in there in the last 5 minutes. Your password always works.',
+      'Microsoft can confirm it only if you signed in there in the last 5 minutes. Your password always works.',
     )
+    expect(dialog).not.toHaveTextContent(/Google/)
+  })
+
+  it('without a password, the prompt offers Google with no 5-minute caveat (#687)', async () => {
+    const dialog = await openReauthPrompt(false)
+    expect(within(dialog).getByRole('button', { name: 'Confirm with Google' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Confirm with password' })).toBeNull()
+    expect(dialog).toHaveTextContent('Microsoft can confirm it only if you signed in there in the last 5 minutes.')
+    expect(dialog).not.toHaveTextContent(/Google can confirm/)
+  })
+
+  it('says to use the password when Google was refused for an account with one (#687)', async () => {
+    fakeApi({
+      'GET /api/auth/session': SIGNED_IN,
+      'GET /api/auth/identities': IDENTITIES,
+      'GET /api/auth/mfa': MFA_OFF,
+    })
+    renderAt('/account?oauth=reauth_use_password')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/Google cannot confirm it is you\. Confirm with your password\./)
+    expect(alert).toHaveTextContent(/Nothing was changed/)
   })
 
   it('does not treat inherited object keys as outcome codes', async () => {

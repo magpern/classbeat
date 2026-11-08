@@ -1,41 +1,42 @@
 import { MiniProfile } from '../components/classes/MiniProfile'
 import { EXAMPLE_PROFILE, EXAMPLE_SONGS, STEPS } from '../components/landing/exampleClass'
+import { useT } from '../i18n/I18n'
 import { Button } from '../components/ui/button'
 import { Link } from '../router/Router'
 
 /** The page for visitors who are not signed in (ADR 0013 section 5). */
 export function LandingPage() {
+  const t = useT()
   return (
     <div className="flex flex-col gap-12">
       <section className="landing flex flex-col gap-5" aria-labelledby="landing-title">
-        <p className="badge">Private beta</p>
+        <p className="badge">{t('landing.badge')}</p>
         <h1
           id="landing-title"
           className="m-0 font-display text-4xl font-extrabold leading-tight tracking-tight text-balance"
         >
-          Describe your indoor-cycling class, and classbeat picks the songs and times the efforts to the
-          music.
+          {t('landing.title')}
         </h1>
         <p className="m-0 flex flex-wrap items-center gap-3">
           <Button asChild>
-            <Link to="/signup">Sign up with an invite code</Link>
+            <Link to="/signup">{t('landing.signUp')}</Link>
           </Button>
           <Link to="/signin" className="inline-flex min-h-11 items-center">
-            I already have an account
+            {t('landing.haveAccount')}
           </Link>
         </p>
       </section>
 
       <section aria-labelledby="example-title" className="flex flex-col gap-4">
         <h2 id="example-title" className="m-0 font-display text-2xl font-bold">
-          An example class
+          {t('landing.example.title')}
         </h2>
         <p className="m-0 text-muted">
-          A made-up 30 minute ride. The songs and artists below are placeholders.
+          {t('landing.example.note')}
         </p>
         <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
           <MiniProfile profile={EXAMPLE_PROFILE} tall />
-          <ol className="m-0 flex list-none flex-col p-0" aria-label="Songs of the example class">
+          <ol className="m-0 flex list-none flex-col p-0" aria-label={t('landing.example.songs')}>
             {EXAMPLE_SONGS.map((song, i) => (
               <li
                 key={song.title}
@@ -45,11 +46,11 @@ export function LandingPage() {
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{song.title}</span>
                   <span className="block truncate text-[0.8125rem] text-muted">
-                    {song.artist} · {song.part}
+                    {t('landing.example.songMeta', { artist: song.artist, part: t(song.part) })}
                   </span>
                 </span>
                 <span className="text-right text-[0.8125rem] text-muted tabular-nums">
-                  {String(song.bpm)} BPM · {song.length}
+                  {t('landing.example.songStats', { bpm: song.bpm, length: song.length })}
                 </span>
               </li>
             ))}
@@ -59,7 +60,7 @@ export function LandingPage() {
 
       <section aria-labelledby="steps-title" className="flex flex-col gap-4">
         <h2 id="steps-title" className="m-0 font-display text-2xl font-bold">
-          How it works
+          {t('landing.how.title')}
         </h2>
         <ol className="m-0 grid list-none grid-cols-1 gap-4 p-0 md:grid-cols-3">
           {STEPS.map((step, i) => (
@@ -70,8 +71,8 @@ export function LandingPage() {
               >
                 {String(i + 1)}
               </span>
-              <h3 className="m-0 mb-1 font-display text-lg font-bold">{step.title}</h3>
-              <p className="m-0 text-[0.9375rem] text-muted">{step.text}</p>
+              <h3 className="m-0 mb-1 font-display text-lg font-bold">{t(step.title)}</h3>
+              <p className="m-0 text-[0.9375rem] text-muted">{t(step.text)}</p>
             </li>
           ))}
         </ol>

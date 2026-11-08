@@ -6,8 +6,9 @@ the attempt ended, exactly once and fenced:
 
 - the pipeline's outcome: ``completed`` or ``waiting_for_approval``, its ``store`` in the same
   transaction (``cancelled`` instead when a cancel was requested meanwhile);
-- ``RunStopped``: ``cancelled``, a hand-back on shutdown (the attempt not counted), or nothing
-  when the lease is lost (the reaper owns the job then);
+- ``RunStopped``: ``cancelled``, a hand-back on shutdown (the attempt not counted), a requeue
+  for a mix-analysis slot (``analysis_slot``, the attempt not counted, #574), or nothing when
+  the lease is lost (the reaper owns the job then);
 - a failure: retried with backoff, requeued for ``operation_busy``, or ``failed``; a
   ``JobFailure`` raised by the outcome's ``store`` rolls the store back and counts the same way
   (any other exception there is ``internal``).
@@ -51,7 +52,7 @@ logger = logging.getLogger(__name__)
 Factory = async_sessionmaker[AsyncSession]
 
 _LOAD = text(
-    "SELECT kind, input, attempt, approved_at, spotify_calls FROM jobs "
+    "SELECT kind, input, attempt, approved_at, spotify_calls, analysis_slot FROM jobs "
     "WHERE id = :job_id AND owner_id = :owner_id AND lease_version = :v"
 )
 
@@ -243,6 +244,7 @@ async def execute(
         approved=row.approved_at is not None,
         lease_seconds=config.lease_seconds,
         shutdown=shutdown,
+        analysis_slot=row.analysis_slot,
     )
     run.calls_saved = row.spotify_calls
     run.budget = egress.RequestBudget(
@@ -316,6 +318,9 @@ async def _stopped(execution: Execution, factory: Factory, reason: str) -> None:
         execution.settled, execution.result = True, "lost"
     elif reason == "shutdown":
         await hand_back(execution, factory)
+    elif reason == "analysis_slot":  # #574: queued again with the slot, the attempt not counted
+        await _record(execution, factory, transitions.wait_for_analysis_slot)
+        _log(execution, "job waits for an analysis slot", job_state=execution.result)
     else:
         await _record(execution, factory, transitions.cancel)
         _log(execution, "job cancelled", job_state=execution.result)

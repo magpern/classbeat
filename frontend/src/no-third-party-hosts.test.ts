@@ -28,6 +28,8 @@ const REMOTE_URL = /(?:https?:)?\/\/(?!localhost\b|127\.0\.0\.1\b)[a-z0-9.-]+\.[
 // each exact quoted string in that one file.
 const COVER_ART = './components/songs/CoverArt.tsx'
 const SPOTIFY_LOGO = './components/songs/SpotifyAttribution.tsx'
+// ADR 0024: the MOWL QR code, served from our own origin (the API refuses any other path).
+const MOWL_QR = './components/account/MowlQr.tsx'
 const COVER_HOSTS = [
   'https://i.scdn.co',
   'https://mosaic.scdn.co',
@@ -36,12 +38,17 @@ const COVER_HOSTS = [
 ]
 const QUOTED = COVER_HOSTS.map((host) => `'${host}'`)
 const COVER_HOST = QUOTED[0] ?? ''
+// ADR 0025 section 11: Cloudflare Turnstile's script, inserted by the Turnstile component on the
+// four auth forms only. The exemption is this exact quoted string in that one file.
+const TURNSTILE = './components/auth/Turnstile.tsx'
+const TURNSTILE_SCRIPT = "'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'"
 
 /** The remote URLs in a source file, after the SVG namespace and the allowed hosts. */
 function remoteUrls(path: string, source: string): string[] {
   // The SVG namespace is an identifier, not a request.
   let checked = source.replaceAll('http://www.w3.org/2000/svg', '')
   if (path === COVER_ART) for (const quoted of QUOTED) checked = checked.replaceAll(quoted, "''")
+  if (path === TURNSTILE) checked = checked.replaceAll(TURNSTILE_SCRIPT, "''")
   return checked.match(REMOTE_URL) ?? []
 }
 
@@ -89,21 +96,50 @@ describe('no third-party hosts', () => {
     expect(remoteUrls(COVER_ART, 'const a = "https://i.scdn.co"')).toHaveLength(1)
   })
 
+  it('the Turnstile component names its script once and no other host', () => {
+    const source = scripts[TURNSTILE] ?? ''
+    expect(source.split(TURNSTILE_SCRIPT).length - 1).toBe(1)
+    expect(remoteUrls('./elsewhere.tsx', source)).toEqual(['https://challenges.cloudflare.com'])
+    expect(remoteUrls(TURNSTILE, source)).toEqual([])
+  })
+
+  it('still fails for the Turnstile script in any other file, and for anything else in that file', () => {
+    expect(remoteUrls('./pages/SignInPage.tsx', `const a = ${TURNSTILE_SCRIPT}`)).toHaveLength(1)
+    expect(remoteUrls('./components/auth/AuthScreen.tsx', `const a = ${TURNSTILE_SCRIPT}`)).toHaveLength(1)
+    for (const other of [
+      "'https://challenges.cloudflare.com/turnstile/v0/api.js'",
+      "'https://challenges.cloudflare.com'",
+      '"https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"',
+      "'https://evil.example/api.js?render=explicit'",
+      "'//challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'",
+    ]) {
+      expect(remoteUrls(TURNSTILE, `const a = ${other}`)).toHaveLength(1)
+    }
+  })
+
+  it('index.html never loads the Turnstile script (only the component does, on the auth forms)', () => {
+    expect(indexHtml).not.toContain('challenges.cloudflare.com')
+  })
+
   it('no app source names or builds a Spotify URL (links come only from the API)', () => {
     const naming = Object.entries(scripts)
       .filter(([path]) => !path.startsWith('./test/'))
-      .filter(([, source]) => /open\.spotify\.com|spotify:(?:track|playlist|album|artist)|spotify\.link/i.test(source))
+      .filter(([, source]) =>
+        /open\.spotify\.com|spotify:(?:track|playlist|album|artist)|spotify\.link/i.test(source),
+      )
       .map(([path]) => path)
     expect(naming).toEqual([])
   })
 
-  it('only CoverArt and the Spotify logo render an image element', () => {
+  it('only CoverArt, the Spotify logo and the MOWL QR code render an image element', () => {
     // src/test/ holds test fixtures (hostile text such as an <img> in a description), not app code.
     const withImg = Object.entries(scripts)
       .filter(([path]) => !path.startsWith('./test/'))
       .filter(([, source]) => /<img\b|createElement\(\s*['"]img['"]|new Image\(/.test(source))
       .map(([path]) => path)
-    expect(withImg.sort()).toEqual([COVER_ART, SPOTIFY_LOGO].sort())
+    expect(withImg.sort()).toEqual([COVER_ART, MOWL_QR, SPOTIFY_LOGO].sort())
+    // The QR image's one source is the ticket's path, which the API checks is ours.
+    expect((scripts[MOWL_QR] ?? '').match(/src=\{[^}]+\}/g)).toEqual(['src={ticket.image}'])
     // The logo's images come from the two bundled brand files and nothing else.
     const logo = scripts[SPOTIFY_LOGO] ?? ''
     expect(logo.match(/src=\{(\w+)\}/g)).toEqual(['src={whiteLogo}', 'src={blackLogo}'])

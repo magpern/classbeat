@@ -67,11 +67,23 @@ class Payload(BaseModel):
 
 
 class Empty(Payload):
-    """``queued``, ``approved``, ``cancel_requested``, ``cancelled``, ``expired``, ``requeued``."""
+    """``queued``, ``approved``, ``cancel_requested``, ``cancelled``, ``expired``."""
 
 
+# Why a job went back to the queue without counting an attempt: no reason is the shutdown
+# hand-back; ``analysis_slot`` is a job that must analyse a mix and waits for one of the
+# worker's analysis slots (#574), so the page can say it is waiting for a free slot.
+class Requeued(Payload):
+    reason: Literal["analysis_slot"] | None = None
+
+
+# ADR 0026 stage 1 (#735): ``queue_claim`` records the claim's queue wait (from the job's
+# ``available_at`` to the claim, in ms) and whether the claim holds a mix-analysis slot. Both are
+# absent on events written before ``classbeat-queue v5``.
 class Claimed(Payload):
     attempt: Annotated[int, Field(ge=1, le=10)]
+    analysis_slot: bool | None = None
+    wait_ms: Annotated[int, Field(ge=0, le=10**12)] | None = None
 
 
 class StageStarted(Payload):
@@ -151,7 +163,7 @@ MODELS: Final[Mapping[str, type[Payload]]] = {
     "completed": Completed,
     "failed": Failed,
     "expired": Empty,
-    "requeued": Empty,
+    "requeued": Requeued,
     "external_operation": ExternalOperation,
 }
 # The stream ends after one of these (the job is over) and after ``waiting_for_approval``.

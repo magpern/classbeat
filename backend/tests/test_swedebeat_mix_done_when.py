@@ -45,7 +45,7 @@ from test_swedebeat_fetch import Harness, add_beats
 
 pytest_plugins = ["test_mowl_redaction"]
 
-pytestmark = pytest.mark.usefixtures("jenv", "mowl_api")
+pytestmark = pytest.mark.usefixtures("jenv", "mowl_api", "analysis_slot_by_default")
 
 MIXES_URL = "/api/music/swedebeat-mixes"
 SAME_ID = "shared-mix-a6-001"

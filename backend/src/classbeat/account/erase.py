@@ -32,6 +32,8 @@ from classbeat import auth
 from classbeat.context import UserContext, require_context
 from classbeat.db import system_session, user_session
 from classbeat.emailnorm import normalize_email
+from classbeat.emails.dispatch import MailPrefs
+from classbeat.emails.notices import read_prefs
 from classbeat.jobs import credits, user
 from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.issuer import owner_context
@@ -71,6 +73,16 @@ async def confirmed(factory: Factory, ctx: UserContext, typed: str) -> bool:
         return normalize_email(typed) == account.email_normalized
     except ValueError:  # not an address at all
         return False
+
+
+async def mail_target(factory: Factory, ctx: UserContext) -> tuple[str, MailPrefs] | None:
+    """The account's address and mail preferences, read before the cascade so the "account
+    deleted" notice never reloads a user that is gone (ADR 0022 section 1). ``None`` if gone."""
+    async with system_session(factory) as db:
+        account = await auth.get_account(db, ctx.user_id)
+        if account is None:
+            return None
+        return account.email, await read_prefs(db, ctx.user_id)
 
 
 async def end_jobs(

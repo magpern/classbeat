@@ -1,0 +1,24 @@
+Dine forbindelser er blevet fjernet
+===================================
+
+Som en forholdsregel efter en sikkerhedshændelse har classbeat fjernet de gemte logins til din konto.
+
+Fjernede forbindelser: Intelligent Cycling (MOWL), Spotify, Swedebeat. Opret forbindelse til dem igen fra din kontoside.
+
+Det skal du gøre:
+
+- Intelligent Cycling (MOWL): afslut dine andre sessioner, eller skift adgangskode dér. MOWL-tokens kan ikke tilbagekaldes og kan forblive gyldige, indtil de udløber.
+- Spotify: fjern classbeats adgang (din egen udviklerapp) i indstillingerne for din Spotify-konto.
+- Swedebeat: skift din Swedebeat-adgangskode.
+
+Tofaktorgodkendelsen er blevet fjernet, og du er blevet logget ud overalt. Vælg en ny adgangskode med linket nedenfor (gyldigt i 30 minutter), og sæt derefter tofaktorgodkendelse op igen.
+
+Vælg en ny adgangskode:
+https://classbeat.example.test/da/reset#token=SAMPLE
+
+Hvis du har spørgsmål, kan du kontakte os på support@classbeat.eu
+
+--
+Du får denne sikkerhedsbesked, fordi dette er e-mailadressen til en classbeat-konto. Sådanne beskeder sendes for at beskytte dig.
+classbeat: https://classbeat.example.test
+Spørgsmål? Skriv til support@classbeat.eu

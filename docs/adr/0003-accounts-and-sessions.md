@@ -2,6 +2,10 @@
 
 Status: Accepted
 
+**Amended by passkeys (#311, [ADR 0019](0019-passkeys.md), Accepted 2026-11-05; code on `main`,
+W1 to W9).** ADR 0019 §12 lists the only parts of this ADR it changes; each of §1, §3, §5, §6, §7,
+§9 and §10 below carries a one-line pointer to it, and everything else here stands.
+
 ## Context
 
 M1 adds accounts (roadmap §3, P0): email and password, Google, GitHub and Microsoft sign-in,
@@ -13,6 +17,8 @@ the user is known, as ADR 0002 §3 anticipated (system tables reached only throu
 ## Decision
 
 ### 1. Where the account data lives
+
+> Passkeys (ADR 0019 §6, §7): adds the system tables `webauthn_credentials` and `webauthn_challenges` and the column `users.webauthn_user_handle`.
 
 All M1 tables are system tables (ADR 0002 §3): no `owner_id`, no RLS, listed in
 `SYSTEM_TABLES` with a reason.
@@ -59,11 +65,11 @@ Every table has an `id uuid` primary key (server default) unless a key is named.
 |---|---|---|
 | `users` | `email`, `email_normalized` (unique), `email_verified_at` (not null), `password_hash` (nullable), `role` (`user`/`admin`), `disabled_at`, `created_at` | argon2id hash |
 | `identities` | `user_id`, `provider`, `subject`, `email_at_link`, `created_at`; `UNIQUE (provider, subject)` | none |
-| `sessions` | `user_id`, `token_hash` (unique), `created_at`, `last_seen_at`, `expires_at` (absolute), `reauth_at`, `mfa_at`, `stepup_at`, `user_agent` (truncated), `ip` | SHA-256 of the token |
+| `sessions` | `user_id`, `token_hash` (unique), `created_at`, `last_seen_at`, `expires_at` (absolute), `reauth_at`, `mfa_at`, `stepup_at`, `user_agent` (truncated), `ip`; `seen_ip_hash`, `seen_agent`, `location_changed_at`, `location_event_at` (amendment of 2026-11-05, #632) | SHA-256 of the token; `seen_ip_hash` an HMAC (`session-client` key, §8) |
 | `known_devices` | `user_id`, `device_hash` (unique), `created_at`, `last_used_at` | HMAC (`device` key, §8) |
 | `pending_signups` | `token_hash` (unique; null until the email is entered), `email`, `email_normalized` (both null until then; not unique: each row has its own token and the first confirmation wins), `password_hash` (nullable), `provider`, `subject`, `browser_hash` (all three set together or null), `invite_id` → `invites`, `expires_at` | SHA-256; argon2id |
 | `auth_tokens` | `purpose` (`reset_password`, `change_email`), `token_hash` (unique), `user_id`, `new_email`, `email_at_issue`, `expires_at`, `used_at` | SHA-256 |
-| `oauth_flows` | `flow_hash` (unique), `provider`, `purpose` (`sign_in`, `link`, `reauth`), `state_hash`, `nonce`, `pkce_verifier`, `user_id` (for `link`/`reauth`), `invite_id` → `invites`, `return_to`, `expires_at` | the flow id and state as SHA-256; the verifier and nonce are kept as given, live ≤ 10 min and are deleted on use |
+| `oauth_flows` | `flow_hash` (unique), `provider`, `purpose` (`sign_in`, `sign_up` (#617), `link`, `reauth`), `state_hash`, `nonce`, `pkce_verifier`, `user_id` (for `link`/`reauth`), `invite_id` → `invites`, `return_to`, `expires_at` | the flow id and state as SHA-256; the verifier and nonce are kept as given, live ≤ 10 min and are deleted on use |
 | `invites` | `code_hash` (unique), `created_by` (*set null*; null for the CLI), `used_by` (*set null*), `expires_at`, `used_at` | SHA-256 |
 | `mfa_totp` | `user_id` (unique), `secret_ciphertext`, `nonce`, `key_id`, `confirmed_at`, `last_step` | AES-256-GCM (§8) |
 | `mfa_recovery_codes` | `user_id`, `code_hash`, `used_at` | HMAC-SHA256 (§8) |
@@ -115,11 +121,18 @@ so the SPA can prompt.
 
 ### 3. Sessions and cookies
 
+> Passkeys (ADR 0019 §5, W9): a sign-in whose assertion reports `cross-platform` gets a 24-hour absolute expiry and no known-device cookie, instead of the 30-day limit.
+
 - **Token:** 32 random bytes (`secrets.token_urlsafe(32)`), server-issued only. It is never
   accepted from a URL, or from any header other than `Cookie`.
 - **Cookie** `__Host-classbeat_session`:
   - `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, no `Domain`;
   - `Max-Age` is the session's remaining absolute lifetime.
+- **Residual risk (SameSite=Lax):** Lax sends the cookie on a top-level cross-site navigation
+  with a safe method, so a link from another site opens the app signed in. That is accepted:
+  safe methods change nothing (§4), every write needs the `X-CSRF-Token` header and the origin
+  check, and a page that only follows a link cannot read the response. Strict was not chosen
+  because it would show a signed-out page on every link from mail, chat or a search result.
 - **Local development:**
   - Chromium and Firefox accept `Secure` and `__Host-` cookies on `http://127.0.0.1` and
     `http://localhost`, so local development and Playwright (Chromium) need no exception.
@@ -180,6 +193,14 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
 
 ### 5. Sign-in methods
 
+> Passkeys (ADR 0019 §7, §9): unlinking keeps its rule and passkeys never count toward the last method (removing a passkey is always allowed); the reset page also lists the user's passkeys, and its contract adds `keep_passkeys: [id]` next to `keep_methods`: every passkey not listed is deleted under the user row lock, whatever `CLASSBEAT_PASSKEYS` says.
+
+**Amended by [ADR 0025](0025-turnstile.md) (Turnstile, #721, #724):** password sign-in, password
+sign-up, the provider-email step and the reset request check a Cloudflare Turnstile token first,
+after the body's shape and before any account lookup, account-scoped bucket, argon2, mail or session
+(ADR 0025 sections 1 to 5); off in the `Settings` defaults, on by default in production since ADR 0025 Amendment 2 (`CLASSBEAT_TURNSTILE_ENABLED`). Everything below keeps
+its order after that check.
+
 **Passwords**
 - **Hashing:** argon2id via `argon2-cffi`, with memory 19 MiB, time 2 and parallelism 1 (the
   OWASP minimum). Hashes are rehashed on sign-in when these parameters change.
@@ -236,6 +257,36 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
   linked sign-in methods (provider names) and lets the user remove any of them in the same
   step (no recent auth or step-up needed: the reset is the proof), so an identity someone
   else linked doesn't survive the reset.
+  *(#639, 2026-11-05)* `complete` takes a **keep list**, `keep_methods: [id]` (required; the
+  methods the page showed and the user left unticked), and deletes every other identity of the
+  user, so one linked after `info` was never shown and goes; an id that is not the user's is
+  ignored. It locks the `users` row right after consuming the token (ADR 0019 §6), and every
+  password sign-in, re-authentication, MFA verify and OAuth sign-in, link or re-auth locks that
+  row first and re-checks under it what it proved (the password hash, the session, the
+  identity), so no session or identity made from the old credentials outlives the reset. The
+  lock is an explicit `SELECT ... FOR NO KEY UPDATE` (`auth/userlock.py`): two of them conflict,
+  which orders these flows, but it does not block the `FOR KEY SHARE` of a foreign-key insert
+  that references `users`. `FOR UPDATE` would, and deadlocked the reset and the rotations
+  against the session middleware, which locks a session row and then inserts an `auth_events`
+  row for its user (#632). In the reset the explicit lock takes the same mode as the
+  `UPDATE users` that follows it; it states the ADR 0019 §6 order rather than adding a wait.
+  *(#675, 2026-11-07)* Removing TOTP (`DELETE /api/auth/mfa/totp`), which signs out the
+  user's other sessions, takes the same lock first, so a sign-in in flight does not keep its
+  session past it. The admin disable and delete lock the target's row in the same mode
+  (`FOR UPDATE` deadlocked them against that middleware insert too). An account delete, the
+  user's own or the admin's, takes that lock first (`delete_account`), then deletes the
+  sessions, then the `users` row, whose own `DELETE` locks it `FOR UPDATE` before the cascade
+  reaches the sessions (ADR 0019 §6).
+  *(#643, 2026-11-06)* The other paths that revoke every session of a user take the same
+  lock first, before they delete the TOTP or any session: **sign out everywhere**
+  (`POST /api/auth/logout-all`), **`admin mfa-reset`** (`accounts.reset_mfa`) and the **TOTP
+  reset of `keys wipe`** (`operator.wipe_user`, ADR 0004 §2). Without it their `DELETE FROM
+  sessions` did not see a session that a sign-in or rotation was inserting at that moment, and
+  that session survived the revoke; with it the revoke waits for that commit and deletes the new
+  session too (`test_auth_revoke_races.py`), and an MFA verify that waits for it finds its
+  session gone.
+  Password change, email change, admin disable and role changes already wait, because their
+  `UPDATE users` (or `get_account(lock=True)`) conflicts with the lock.
 - **Email change:**
   - **Request:** gives the same answer whether or not the new address is in use. Only the mail
     differs: "confirm" for a free address, "an account with this address exists" for a taken
@@ -262,8 +313,12 @@ Authlib's `AsyncOAuth2Client` (httpx) is used with our own state storage in `oau
 is no Starlette session middleware.
 
 - **Start:** `POST /api/auth/oauth/{provider}/start`, CSRF-checked:
-  - It takes an optional invite code for `sign_in`. A code that is given is checked as for a
+  - It takes an optional invite code for `sign_up`. A code that is given is checked as for a
     password sign-up (and gets its own error); its id goes into the flow, not consumed yet.
+    **Amendment (2026-11-04, #617):** the sign-in screen starts `sign_in` and the sign-up screen
+    `sign_up` (migration 0031); a code sent with `sign_in` is ignored (not checked, not stored).
+    A failed `sign_up` callback returns to `/signup?oauth=…`, every other sign-in failure to
+    `/signin?oauth=…`; `no_account` also carries `&provider=` (the flow's provider).
   - It creates the flow: `state` (32 bytes), a PKCE verifier (S256), a nonce for OIDC, and an
     expiry of 10 minutes.
   - It sets the flow id as the `__Host-classbeat_oauth` cookie (`HttpOnly`, `SameSite=Lax`,
@@ -293,7 +348,9 @@ is no Starlette session middleware.
     requires `auth_time` within the last 5 minutes. A missing or older `auth_time` fails
     closed. Google omits `auth_time` unless asked, so it also gets `claims={"id_token":{"auth_time":
     {"essential":true}}}`; Microsoft's app registration adds it as an optional claim.
-  - **Amendment (2026-11-03, #522): Google re-authentication without `auth_time`.** On the
+  - **Amendment (2026-11-03, #522): Google re-authentication without `auth_time`.** (For
+    Google, the rule and the consequence below are replaced by the 2026-11-06 amendment, #687,
+    after the owner's live check; they still hold for Microsoft.) On the
     owner's dev stack every Google re-authentication failed with `reauth_failed` `{"why":
     "auth_time"}`: Google answered the `max_age=0` and `claims` request with an ID token whose
     `auth_time` was missing or older than 5 minutes, so it did not make the user sign in again.
@@ -355,10 +412,67 @@ is no Starlette session middleware.
     if it still fails with `auth_time_missing`, Google re-authentication cannot work for us and
     the Architect decides whether to hide the Google button in the prompt or build option (c).
     Report only the `why` words, never a token or claim value.
+  - **Amendment (2026-11-06, #687, owner decision): Google re-authentication by account kind.**
+    The owner's live check above ended as predicted: activating TOTP on a Google-linked account,
+    "Confirm with Google" always ended `reauth_stale` (Google ignores `max_age=0` and the
+    `claims` request, and returns an ID token without a fresh `auth_time` from a live Google
+    session). The owner chose between hiding Google, building an email code (option (c) of #522)
+    and keeping the dead end, and decided ("not Fort Knox", the owner's words) on a split by
+    account kind:
+    - **An account with a password** never re-authenticates through Google. The prompt does not
+      offer it; `POST /api/auth/oauth/google/start` with `purpose=reauth` answers 403
+      `reauth_use_password` and creates no flow; and the callback refuses it again under the user
+      lock (`reauth_use_password`, `why` `has_password`, a `reauth_failed` event), whatever
+      `auth_time` Google sends, so a password set between the start and the callback, or a start
+      that slipped past the first check, gains nothing. Such an account confirms with its password
+      (or Microsoft or GitHub as before).
+    - **An account without a password** (signed up with Google, or had its password removed by a
+      reset) is re-authenticated by Google's answer **without a fresh `auth_time`**, limited to
+      Google and to this proof of the same account: the flow is a `reauth` flow of this session's
+      user, single use (taken before the code exchange), with `state`, PKCE and the nonce
+      verified, the ID token checked as for any sign-in (`iss`, `aud`, `exp`, `iat`), its `sub`
+      the Google identity linked to this user, `email_verified` true (else `invalid`, `why`
+      `email_unverified`), and the callback no more than **5 minutes** after the start by the
+      database clock (else `reauth_expired`, `why` `flow_old`; the flow itself lives 10 minutes).
+      An `auth_time` that is present must not lie more than 60 s in the future (`reauth_stale`,
+      `auth_time_future`). A present but old `auth_time` is accepted.
+    - **Unchanged:** Microsoft keeps the `auth_time` rule of the #522 amendment (present, at most
+      5 minutes old, fail closed) for every account, with or without a password and with or
+      without Google linked; GitHub stays an accepted live-session proof; `REAUTH_STALE` keeps its
+      path and texts for Microsoft. Google's authorization request keeps `max_age=0` and the
+      `claims` request (harmless, and a fresh `auth_time` would still be accepted). The numbers
+      (300 s, 60 s skew) are not widened anywhere.
+
+    **Rationale.** Google cannot prove a fresh sign-in to us, so the choice was between Google
+    re-authentication that works on Google's terms and none at all. For an account with a
+    password nothing is lost: the password is a stronger proof and is always offered. For a
+    Google-only account the alternative was the reset detour of the #522 consequence (sign out
+    everywhere, set a password), which the owner judged too heavy for the beta. The checks that
+    remain bind Google's answer to this browser, this session and this account; what they cannot
+    show is that a person typed a Google password just now.
+
+    **Residual risk (accepted by the owner).** Someone holding a Google-only user's classbeat
+    session **in a browser that also has the user's live Google session** (the walk-up case: an
+    unlocked device) can pass recent authentication through Google without any credential, and so
+    activate TOTP, and with it do every action of §6 that recent authentication guards for an
+    account without confirmed TOTP: link or unlink an identity, set a password, change the email,
+    connect or disconnect MOWL, Spotify or Swedebeat, delete the account. A stolen classbeat cookie
+    used in another browser does not get there: the attacker would need the victim's Google
+    session too. Once TOTP is confirmed, every one of those actions also needs a TOTP step-up, which
+    Google never gives; but while TOTP is unconfirmed the walk-up attacker could enrol **their
+    own** TOTP and then hold the step-up themselves (and possibly lock the owner out), so that
+    step-up protects only a TOTP the owner set up. Accounts with a password are not exposed to
+    this: Google never counts for them.
+
+    **Messages.** The prompt offers "Confirm with Google" only to an account without a password,
+    with no 5-minute sentence for Google (Microsoft keeps its sentence). `reauth_use_password`
+    says the account has a password and to confirm with it; `reauth_expired` says the
+    confirmation took longer than 5 minutes and nothing was changed.
   - **GitHub:** it can't force a re-login, so a GitHub re-authentication only proves a live
     GitHub session (an accepted risk).
-  - **Order and fallback:** users with a password are offered it first. A user whose provider
-    re-authentication keeps failing can set a password through a reset and re-authenticate with it.
+  - **Order and fallback:** users with a password are offered it first (and, since #687, never
+    Google). A user whose provider re-authentication keeps failing can set a password through a
+    reset and re-authenticate with it.
 - **Enabling a provider:** a provider is on only when both its client id setting and its
   `oauth_<provider>_client_secret` secret file exist. Client secrets are never logged.
 - **Which enabled providers the screens offer:** `CLASSBEAT_OAUTH_VISIBLE_PROVIDERS` (default
@@ -368,7 +482,7 @@ is no Starlette session middleware.
 - **Outbound hosts:** only the provider endpoints (T19).
 
 **Callback outcomes** (identity key `(provider, subject)`, never email, T1). The flow purpose
-is evaluated first, then the rows for `sign_in` from the top:
+is evaluated first, then the rows for `sign_in` and `sign_up` from the top:
 
 | Situation | Result |
 |---|---|
@@ -376,7 +490,8 @@ is evaluated first, then the rows for `sign_in` from the top:
 | Flow purpose `reauth` | The identity must belong to the flow's user; then `reauth_at = now()` and the session rotates |
 | `sign_in`, identity exists | Sign in to its user (unless the user is disabled: the generic failure) |
 | New identity, the provider verified the email, and it matches an existing user | **Nothing is created or linked.** The page says an account with this email exists: sign in to it and link from the account page. Only someone in control of that mailbox can get here, so nothing leaks |
-| New identity, sign-up mode `closed`, or `invite` without a valid invite in the flow | **Nothing is created.** The page says an invite is needed (in `invite` mode, with a field to enter one and start again) |
+| New identity, flow purpose `sign_in` (the sign-in screen; #617, amendment of 2026-11-04) | **Nothing is created, linked or handed off**, in every sign-up mode. The outcome is `no_account`: the page says no classbeat account is linked to that provider account and links to sign-up |
+| New identity (`sign_up`), sign-up mode `closed`, or `invite` without a valid invite in the flow | **Nothing is created.** The page says an invite is needed (in `invite` mode, with a field to enter one and start again) |
 | New identity, the provider verified the email, and no user has it | Create the user (verified) and the identity, consuming the invite with the same conditional `UPDATE` as a password sign-up, in one transaction; if the invite is gone by then, the transaction rolls back and the page says the invite is no longer valid |
 | New identity, the email is unverified or missing (always Microsoft) | See the hand-off below |
 
@@ -405,6 +520,8 @@ client can't submit someone else's `subject`.
 
 ### 6. Recent authentication
 
+> Passkeys (ADR 0019 §4, §8): a passkey bound to the session's user is one more way to re-authenticate, never a step-up; adding, renaming and removing a passkey join the guarded actions below (with confirmed TOTP each also needs the step-up).
+
 `reauth_at` within **10 minutes** is needed to:
 - link or unlink an identity;
 - set or change the password, or change the email;
@@ -414,7 +531,7 @@ client can't submit someone else's `subject`.
 
 Re-authentication is one of the following, and each rotates the session:
 - the password (`POST /api/auth/reauth`);
-- an OAuth `reauth` flow (§5);
+- an OAuth `reauth` flow (§5; Google only for an account without a password, #687);
 - for admins, a TOTP code (which also sets `stepup_at`, so one code serves both).
 
 **Step-up** means a TOTP or recovery code within 5 minutes (`stepup_at`). For a user whose
@@ -427,6 +544,8 @@ TOTP is open to every user. For a non-admin it only adds this step-up protection
 sign-in only for the admin role (§7).
 
 ### 7. Admins and MFA
+
+> Passkeys (ADR 0019 §9): `admin mfa-reset` also removes the user's passkeys; a passkey never replaces the admin's TOTP.
 
 - **Role:** `users.role`. An admin's role only takes effect in a session that passed TOTP within
   the last 12 hours (§2).
@@ -479,7 +598,9 @@ sign-in only for the admin role (§7).
 - **The secret:** one secret file, `app_secret_key` (at least 32 random bytes, created by
   `scripts/worktree.sh init`).
 - **Derived keys:** HKDF-SHA256 (fixed salt `classbeat-v1`) derives separate 32-byte keys with
-  the info strings `csrf`, `rate-limit`, `device`, `recovery-codes`, `totp-v1`, `totp-pending`.
+  the info strings `csrf`, `rate-limit`, `device`, `recovery-codes`, `totp-v1`, `totp-pending`,
+  `session-client` (amendment of 2026-11-05, #632), `security-log` (amendment "the security
+  log", #632) and `mail-unsubscribe` (amendment of 2026-11-06, #655).
 - **TOTP secrets:** encrypted with AES-256-GCM (`cryptography`), a random 96-bit nonce per
   encryption stored alongside, AAD `user_id|totp`, and `key_id = "app-v1"`.
   - M2's envelope encryption (§7 of the roadmap) re-encrypts them under its scheme, and
@@ -489,6 +610,8 @@ sign-in only for the admin role (§7).
   - For TOTP secrets it needs the M2 scheme; until then, rotation means re-enrolling TOTP.
 
 ### 9. Rate limits
+
+> Passkeys (ADR 0019 §10): five more rows: passkey sign-in start (every request counts: address, IPv6 /48, global), passkey sign-in failures, register, passkey re-auth failures (the password re-auth buckets) and rename or remove.
 
 Fixed windows are counted in `rate_limits` with one upsert per check. There is no Redis.
 - **Bucket keys** are an HMAC of `(action, scope, value)`, so the table holds no email or IP in
@@ -526,19 +649,24 @@ Fixed windows are counted in `rate_limits` with one upsert per check. There is n
 | Sign-up requests, incl. the email entered on the provider path | 3 / hour (per address) | — | 5 / hour |
 | Reset and email-change mail | 3 / hour | 10 / hour | 10 / hour |
 | OAuth start and callback | — | — | 30 / 15 min |
+| Captcha verification (ADR 0025 section 6; every request counts, a success too) | — | — | 60 / 15 min |
 
 **Residual risk (T3).** Someone who knows a victim's email can, from many IPs, exhaust the
 per-account cap. The victim can then sign in only from a known device or by OAuth, and reset
 mails pause for up to an hour. This is accepted for the beta, where accounts are few and
-invited; the M6 security review revisits it.
+invited; the M6 security review revisits it. With Turnstile on (ADR 0025, T126) the per-account
+buckets are reserved only after a valid token, so this needs a solved challenge per attempt.
 
 ### 10. Logging
+
+> Passkeys (ADR 0019 §10): the three `__Host-classbeat_passkey_*` flow cookies (register, sign-in, re-auth) are never logged either.
 
 - **Never logged:** the session, device, CSRF and OAuth cookies; the `Authorization` and
   `X-CSRF-Token` headers; query strings on `/oauth/*` (our own access log replaces uvicorn's);
   request bodies on `/api/auth/*`.
 - **`auth_events`** record the kind (`sign_in`, `sign_in_failed`, `mfa_failed`,
-  `admin_granted`, …), never a password, token or code. A log-redaction test plants each kind
+  `admin_granted`, `sign_out`, `sign_out_all` (amendment of 2026-11-06, #646), …), never a
+  password, token or code. A log-redaction test plants each kind
   of secret and greps the captured logs (T7).
 
 ### 11. Tests and fakes
@@ -575,3 +703,398 @@ in-process SMTP fake in unit tests.
 - **Threat model:** T1, T3, T4 and T33 cite this ADR; T34 to T39 are new.
 - **Later:** M2's encryption takes over the TOTP secrets (§8) and its connect flows reuse
   `require_recent_auth`; M6 revisits the per-account denial-of-service risk (§9).
+
+## Amendment 2026-11-05: a stolen session (#577)
+
+**What a stolen session can do.** A valid session cookie (stolen, or used by malware or a
+malicious browser extension) is as good as the user for every action that does not need recent
+authentication or the step-up (§6): the server cannot tell a script from the browser, and with the
+session a script can read the CSRF token like the page does (§4 is no barrier here). Linking,
+credentials, connect and disconnect, export and delete still need a fresh password or TOTP. The
+goals are therefore to limit the damage and, in later PRs, to detect it.
+
+**General limit (§9).** Every signed-in `/api` request takes a slot in fixed windows before
+the CSRF check and the route (in the auth middleware, once the session is resolved; the body
+limit and the security headers wrap it from outside; every request counts, a refused one too), all in one `INSERT … ON CONFLICT` statement with the rows in bucket-hash order:
+
+| Bucket | Default (setting) |
+|---|---|
+| Per user, every request | 300 / minute (`CLASSBEAT_API_REQUESTS_PER_MINUTE`), 3000 / hour (`CLASSBEAT_API_REQUESTS_PER_HOUR`) |
+| Per user, writes (every method but `GET`, `HEAD`, `OPTIONS`) | 60 / minute (`CLASSBEAT_API_WRITES_PER_MINUTE`) |
+| Per user, the class and job reads (`/api/classes…`, `/api/jobs…`) | 120 / minute (`CLASSBEAT_API_READS_PER_MINUTE`) |
+| Per client address, signed-in requests of every user | 1200 / minute (`CLASSBEAT_API_IP_REQUESTS_PER_MINUTE`) |
+
+Above any of them the answer is 429 `rate_limited` with `Retry-After`. The route limits of §9 and
+the other ADRs still apply on top. Anonymous requests have only those route limits. The probes
+(`/api/health`, `/api/ready`) and sign-out (`/api/auth/logout`, `/api/auth/logout-all`) are never
+limited, so a user can always end every session, a script's included.
+
+**Save and Update caps.** Neither takes a credit or a model call, so writes to the user's MOWL
+account were bounded only by the per-user job limit. Both kinds' `admit` now count the user's
+`save_workout` and `update_workout` jobs created in the last hour and the last 24 hours
+(`CLASSBEAT_SAVES_PER_HOUR`, 30; `CLASSBEAT_SAVES_PER_DAY`, 100), under the owner lock, and refuse
+with 409 `quota` `saves` (`limit`, `used`, `window`). A plan may carry smaller values of its own
+(#806, migration `0042_plan_save_caps`: `plans.saves_per_hour` 1 to 1000 and `plans.saves_per_day`
+1 to 10 000, NULL on every plan): the effective cap is the smaller of the plan's value and the
+setting, so a plan can only tighten them, and a plan without a value uses the setting. The 409
+body is unchanged (`limit` is the effective cap).
+
+**Residual risk.** The user's buckets are shared with whoever holds the session: a script can use
+them up and slow the user down for up to an hour (sign-out stays open). The buckets are per user,
+not per session, because a script holding several sessions would multiply a per-session budget.
+Sessions are not yet bound to
+an address or client, the access log does not show which user made a request, and there is no
+abuse view; issue #577 lists those as the next PRs.
+
+## Amendment 2026-11-05: noticing a session used from a new network (#632)
+
+**Context.** A stolen session cookie works from any network and any client until it expires: the
+`ip` and `user_agent` stored at creation were never compared afterwards (#577, gap 3). The server
+cannot tell a script from the browser, but it can notice that a session moved, and that is the
+moment a theft shows. Logging the session out on a move is not an option: a phone moves between
+wifi and mobile data many times a day, and a mobile carrier can change the address of a running
+connection.
+
+**Decision.** Every session carries a **client mark**: the coarse network and the browser family it
+was last seen from.
+- **Coarse network:** the client address (§9, `client_ip`) bucketed like the rate limits
+  (`bucket_ip`: an IPv4 address as it is, IPv6 by its /64 prefix), stored only as
+  `seen_ip_hash = HMAC(session-client key, bucket)`. The address in the clear stays where it was
+  (`sessions.ip` at creation, `auth_events.ip`).
+- **Browser family:** `seen_agent`, a coarse word pair `<browser>/<os>` read from the
+  `User-Agent` (`chrome`, `edge`, `firefox`, `safari`, `opera`, `other` on `windows`, `macos`,
+  `ios`, `android`, `chromeos`, `linux`, `other`; no versions, so a browser update is not a move).
+- **When it is set:** at sign-in (`start_session`) and on every rotation (re-authentication, MFA,
+  step-up), from the request that did it. A session without a mark (created before migration
+  0033) takes the mark of its next request silently. If that first request is a thief's, the
+  session takes the thief's mark and the victim's next request is the recorded move: the theft is
+  still noticed, one request later. This holds only for sessions that existed at the deploy.
+
+Every request that resolves a session with a cookie (`deps.resolve_request`) compares the request's
+mark with the stored one, in the transaction that touches `last_seen_at`. When either part differs:
+1. One conditional `UPDATE … WHERE id = … AND (seen_ip_hash, seen_agent) IS DISTINCT FROM (…)`
+   stores the new mark, sets `location_changed_at = now()` and clears `reauth_at`, `stepup_at` and
+   `mfa_at`. The request itself already runs without them, even when a parallel request's update
+   won the race.
+2. The same `UPDATE` decides the event: it stamps `location_event_at = now()` only when the last
+   event is unset or at least a minute old (`CASE … RETURNING`, on the locked row), and only the
+   request whose update stamped it writes an `auth_events` row `session_location_changed`
+   (`detail`: the session id, `ip_changed`, `agent_changed` and the new `agent` family). So there
+   is **at most one event per session and minute, whatever the concurrency**: of parallel moves,
+   with the same or different new marks, exactly one writes it. The minute runs from the last
+   event, not the last move, so moves that keep coming less than a minute apart (a script and its
+   victim alternating) still write one event a minute, and the table cannot fill. Every move,
+   recorded or not, stores the mark and clears the times. A rotation carries `location_event_at`
+   over.
+   - **What is stored where:** `auth_events.ip` holds the full client address, as for every auth
+     event (§1, purged after 30 days). `detail` holds no address and no raw `User-Agent`, only the
+     coarse family, and no log line names either.
+3. **Nothing else happens.** The session stays signed in and every action that did not need
+   recent authentication keeps working. Linking, credentials, connect and disconnect, export and
+   delete (§6) need a fresh re-authentication (and the step-up where TOTP is on), so a recent
+   authentication made on the old network cannot be used from the new one. For an admin the admin
+   role also needs TOTP again (§7), because clearing `mfa_at` drops it to `mfa_required`.
+4. **The user sees it:** `GET /api/auth/sessions` returns `location_changed_at`, and the account
+   page marks that session "New location" with the time. With a stolen cookie the flagged session
+   is often the user's own ("This device"), so the page points to "Sign out everywhere" and a
+   password change for it; a re-authentication also rotates the token, which ends a stolen copy. A re-authentication, MFA verification or
+   step-up rotates the session, stores the new mark and clears `location_changed_at`.
+
+The SSE stream's periodic check (`session_probe`) resolves without a request and compares nothing.
+A notice mail is not sent yet; it waits for outgoing mail beyond the security notices (#352).
+
+**What a stolen session can still do (stated plainly).** A session is as good as the user for
+every action that does not need recent authentication or the step-up, from any network: reading
+the user's classes and messages, starting designs, saving to MOWL. The limits are the general
+limit and the Save and Update caps (amendment above) and the plan quotas. The detection is this
+signal (an `auth_events` row, and "New location" in the user's session list); a script that sends
+the victim's exact `User-Agent` from the victim's own network (malware on the victim's machine) is
+not noticed, and a later PR adds the security log and the admin abuse view (#632).
+
+**Alternatives.**
+- *Log out on a move:* rejected, it breaks every phone (above).
+- *Bind to the full address or the full `User-Agent`:* rejected, CGNAT and browser updates would
+  flag normal use all day. The family and the /64 keep the signal coarse.
+- *Device fingerprinting or a bot-detection service:* rejected in #577 (privacy, cost).
+- *Store the bucket in the clear to show the address:* rejected; the comparison needs only
+  equality, and the session list never shows an address.
+
+**Consequences.**
+- Migration 0033 adds the four columns; the data export includes `seen_agent` and
+  `location_changed_at` and excludes `seen_ip_hash` (a keyed hash) and `location_event_at`
+  (internal timing).
+- Rotating `app_secret_key` (§8) changes the `session-client` key, so every session's next request
+  counts as one move (one event, recent authentication cleared), and nothing more.
+- A user whose phone changes network often re-authenticates for the guarded actions more often;
+  those already need a re-authentication within 10 minutes, so the cost is small.
+- Tests: `backend/tests/test_session_anomaly.py`.
+
+## Amendment 2026-11-05: the security log (#632)
+
+**Context.** The access log (§10) records method, path, status and time and names no user, so it
+cannot show what one account or one session did; `auth_events` records sign-ins and moves, not
+ordinary requests. Noticing a stolen session (amendment above) and the admin abuse view (#632,
+next PR) need a short record of who called what, from roughly where, with what result, without
+turning the log into a store of addresses, browsers or request contents.
+
+**Decision.** A table `security_log` gets one row per **signed-in `/api` request**, written by the
+auth middleware once the response's status is known (`classbeat.auth.securitylog`):
+
+| Column | Holds |
+|---|---|
+| `owner_id` | the user whose session the request resolved (owned table, ADR 0002) |
+| `session_id` | that session's id; no foreign key, so the row outlives a rotation or sign-out until the purge |
+| `ip_hash` | `HMAC(security-log key, bucket_ip(client address))` (§8, §9): IPv4 as it is, IPv6 by its /64; 32 bytes |
+| `method` | `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, else `OTHER` |
+| `route` | the **route template** the request matches among the app's own (`/api/classes/{class_id}`), or `unmatched` |
+| `status` | the response status, the middleware's own refusals (429, 403) included |
+| `at` | the database's `now()` |
+| `limited_minute` | a 429 row's minute (epoch minutes), else null; unique per user (below) |
+
+- **What is never stored:** the address, the `User-Agent`, a cookie or token, the raw path, the
+  query string, the body. `Entry` (the row before it is written) has no field for them; the route
+  is matched against the templates of the app's OpenAPI paths with Starlette's `compile_path`, so
+  it is always one of a fixed set, never text taken from the request; the table's checks refuse a
+  method, route (lower-case words and `{name}` placeholders, at most 200 characters, no `?`, `%`,
+  `=` or space) or status of another shape, and a hash that is not 32 bytes. Tests plant each in
+  requests and search the whole table for them (`backend/tests/test_security_log.py`).
+- **Which requests: exactly those the general limit counted** (an allowlist shared with the
+  limiter, not a copy of its path rules). `check_api_limit` marks a request
+  (`securitylog.mark_counted`) right after the limiter's `begin_together`, allowed or refused, and
+  `entry_for` admits only marked requests; an AST guard checks that nothing else marks one. So a
+  signed-in request on a limited `/api` path is logged, its 429 and its Origin or CSRF 403
+  included; the limiter's exempt paths (`API_EXEMPT_PATHS`: `/api/health`, `/api/ready`,
+  `/api/auth/logout`, `/api/auth/logout-all`) are **never** logged, whatever the method or the
+  answer, nor are anonymous requests, sign-in (it starts without a session) and pages outside
+  `/api`. Sign-out is therefore not in the security log; it is recorded in `auth_events` instead
+(`sign_out`, `sign_out_all`: amendment of 2026-11-06, #646). Without
+  this, a refused sign-out (bad CSRF token) keeps the session and is not limited, so one cookie
+  could append rows without bound (#641 review). A refused request still gets its route, because
+  the template is matched, not read from the router. Nothing is looked up only for the log.
+- **Key:** a new HKDF info string `security-log` (§8), its own key, so log hashes cannot be
+  compared with `sessions.seen_ip_hash` (the `session-client` key) or the rate-limit buckets. With
+  the key, an IPv4 hash can be reversed by trying every address; the key lives only in the web
+  process (`app_secret_key`), and the abuse view needs only equality.
+  `ip_hash` is therefore a keyed pseudonym of the **full** IPv4 address (the IPv6 /64), not an
+  anonymised one. Rotating `app_secret_key` changes the key, so rows written before and after
+  do not compare equal: for up to `CLASSBEAT_SECURITY_LOG_DAYS` the abuse view's "several
+  networks" count can show one network twice. Expected and harmless; wait for the old rows to age
+  out (#749 review).
+- **Owned, with RLS (ADR 0002 §2):** `owner_id` `NOT NULL` referencing `users` `ON DELETE
+  CASCADE`, `UNIQUE (owner_id, id)`, `owner_isolation`. The middleware writes the row in the
+  user's own session with a bare context (`deps.security_log_context`, reachable only from the
+  security log). The admin view reads it through `classbeat_maint` with its own column grant
+  and audit row (ADR 0011 §5); #641 granted maint nothing (the view: "The admin abuse view" below).
+- **Bounded in count, not only in age:** every row but a 429 is a request the general limit
+  allowed (above), so those rows are at most `api_requests_per_hour × 24 ×
+  CLASSBEAT_SECURITY_LOG_DAYS` per user (3000 × 24 × 7 = 504,000 at the defaults). Requests past
+  the limit would be unbounded, so a 429 row carries its minute and a partial unique index on
+  `(owner_id, limited_minute)` with `ON CONFLICT DO NOTHING` keeps at most **one 429 row per user
+  and minute**, across all of the user's sessions: at most `1440 × CLASSBEAT_SECURITY_LOG_DAYS`
+  (10,080 at the defaults) per user. Keying it per session would not bound it: sessions are not
+  capped and a successful sign-in costs nothing against the limits (#641 review: 80 sign-ins, 80
+  rows in one minute). So a user's rows are at most 504,000 + 10,080 a week.
+  **Trade-off:** within one minute only the first limited session's row is kept (its
+  `session_id` and network); other sessions limited in the same minute leave no 429 row, and the
+  abuse view loses the count of 429s within a minute. Their allowed requests are still logged
+  with their own session ids.
+- **Failure:** a failed write (a driver error, a pool timeout, anything) is logged by class (and
+  SQLSTATE for a driver error) only and never changes the response: the route has already run and
+  committed (the log is best effort; a request that deleted its own account fails the foreign key
+  silently).
+- **Retention:** the worker's hourly purge (§1) deletes rows older than
+  `CLASSBEAT_SECURITY_LOG_DAYS` (default 7, 1 to 30), per user in that user's session, like the
+  Spotify connect flows. The account's deletion removes the rest (cascade).
+- **Export and deletion (ADR 0014, guard 12):** exported as `security_log` (method, route, status,
+  time and the row id); `ip_hash` (a keyed hash), `session_id` and `limited_minute` (internal)
+  are omitted. Retention
+  registry (guard 10): no content; deleted with the account.
+- **The admin abuse view (#632 item 3).** `GET /api/admin/abuse?minutes=` (5 to 240, default 60;
+  audit action `abuse.list`, English only like the admin pages) reads the last `minutes` of the
+  table in one read `admin_session` and lists, at most 20 rows each (with a `*_truncated` flag):
+  the **top users by request rate** (requests, per minute, busiest minute, 429 minutes, networks
+  and sessions seen), the **users who hit the rate limit** (429 minutes with the first
+  and last), and the **sessions seen from two or more networks** (networks, requests, first
+  and last). Each row names the user (id, email, role, disabled) so the page can offer the existing
+  `POST /api/admin/users/{id}/disable` (it revokes every session; its step-up and audit row are
+  that route's; not offered for an admin). Maint gets `SELECT (owner_id, session_id, ip_hash,
+  status, at)` on `security_log` and nothing else (never `method` or `route`). `ip_hash` is a keyed
+  hash, which guard 11 otherwise refuses for maint: `HASH_READS` in `tests/maint_guard.py` allows
+  exactly `security_log.ip_hash`, and the view reads it only as `count(DISTINCT ip_hash)`
+  (`test_admin_abuse.py` checks the SQL and that no output field could hold it). No response has an
+  address, hash, session id, token, route or User-Agent. **Limits:** "quota hits" are the 429s the
+  log keeps (one per user and minute); a 409 `quota` is not distinguishable in the log. The
+  rate-limit buckets (`rate_limits`) are keyed by hashes of an address or account, not by user, so
+  they are not read. The aggregates read the window of one table under maint's 30 s statement
+  timeout; migration 0040 adds `security_log (at)` (#750), so the window is a range scan (the
+  existing `(owner_id, at)` cannot serve a query with no `owner_id`; the per-user purge keeps
+  using it). Cost: one more index entry per logged request.
+  **A "network" is a keyed pseudonym, not always coarse:** `bucket_ip` keeps an IPv4 address whole
+  and cuts only IPv6 to /64, so for IPv4 `ip_hash` is a keyed pseudonym of the full address (the
+  key is the `security-log` key, held by the web process only). That is why the hash is only ever
+  counted. **Key rotation:** a window that spans a rotation of the `security-log` key counts one
+  network twice, which can list a false "moved session" (rare, self-healing within the window).
+  **Where the rule is enforced:** `test_admin_abuse.py` pins the form (`count(DISTINCT ip_hash)`)
+  and the place (no other module on the admin path names `security_log`), and the planted-value
+  sweep of `test_m5_security_admin_secrets.py` plants the log's hash and session id and fails if
+  any admin route returns them.
+
+**Alternatives.**
+- *Add the user to the access log:* rejected; the access log goes to the operator's log pipeline
+  with its own retention, outside the database's deletion paths and the export.
+- *A system table like `auth_events`:* rejected; the rows are per-user data written only once a
+  user is known, which ADR 0002 makes owned.
+- *Store the bucket or the address in the clear:* rejected; the abuse view needs only "same network
+  or not", and the address in the clear stays in `auth_events` (30 days).
+- *Log the raw path with ids redacted:* rejected; redaction is a blocklist. A matched template is
+  an allowlist.
+- *Write the row in the rate-limit statement:* rejected; the status is not known yet.
+
+**Consequences.**
+- Migration 0034 adds `security_log`; every request the general limit counts costs one more
+  short insert, in its own transaction after the response is built, so it adds that insert's
+  latency to the request (not measured separately; the listing's query-count test counts it).
+- The first logged request of a web process builds the OpenAPI schema once (cached on the app;
+  if building it fails, the error is logged and the next request tries again, never caching an
+  empty list).
+- Rotating `app_secret_key` changes the `security-log` key: rows before and after no longer
+  compare equal for the same network until the purge drops the old ones.
+- Routes added with `include_in_schema=False` under `/api` would log as `unmatched`; a test walks
+  `app.routes` (included routers too) and fails on such a route, and checks that every `/api`
+  template has the allowed shape and is matched back to itself.
+- Threat model T124. Tests: `backend/tests/test_security_log.py`, the migration test in
+  `backend/tests/test_migrations.py`, the purge in `backend/tests/test_auth_purge.py`.
+
+## Amendment 2026-11-06: sign-out events (#646)
+
+**Context.** Sign-out (`POST /api/auth/logout`) and sign-out everywhere (`POST
+/api/auth/logout-all`) wrote no `auth_events` row, and the security log never logs them (amendment
+above), so the security timeline and the planned admin abuse view (#632) could not tell a session
+that ended on purpose from one that expired or was revoked by a reset.
+
+**Decision.**
+
+- Two kinds. `sign_out`: this session ended, `detail` `{"session_id": "<id>"}` (the id the
+  location event and the security log already carry). `sign_out_all`: every session of the user
+  ended, `detail` `{"sessions": <count>}`. Both have the user and the request's address (`ip`),
+  like `sign_in` and `password_changed`; no `User-Agent`, token or anything else. `kind` is free
+  text (no `CHECK`, no registry), so no migration.
+- **Exactly one row per sign-out that ended something**, written in the revoke's transaction after
+  the delete and only when it deleted a session: a repeated call (the cookie is dead, so the
+  request is anonymous or a 401), a session a parallel sign-out or reset already ended, and a
+  sign-out everywhere that found nothing left write none. So the rows are bounded by the sessions
+  created (at most one `sign_out` per session), although the sign-out paths are exempt from the
+  rate limits.
+- **A failed write never keeps the session.** Other `auth_events` rows are atomic with their
+  change: a failed insert fails the request. Here that would leave the session alive, so the
+  insert runs in a savepoint: if it fails, only the savepoint rolls back, the failure is logged by
+  class and SQLSTATE (`sign-out event write failed: …`), and the revoke commits. A failure of the
+  transaction itself (a lost connection) fails the request with nothing revoked, as before.
+- **Lock order.** Sign-out now takes the user row lock first (`lock_user`, as sign-out everywhere
+  already did; ADR 0019 section 6). The event's foreign key takes `FOR KEY SHARE` on the user row
+  after the session row is locked; an account deletion locks the user row and then the sessions
+  (cascade), so without the lock the two deadlock. With it the deletion waits for the sign-out, or
+  the sign-out finds nothing to end.
+- **Export and deletion:** the rows are the user's `auth_events` (exported as `security_events`,
+  removed with the account by the cascade of migration 0015, purged after 30 days). There is no
+  user-facing list of `auth_events` yet; the export is the user's view of them. *(Since the
+  amendment of 2026-11-07, #678, the account page lists them.)*
+- Revoking one of the user's other sessions from the session list (`DELETE
+  /api/auth/sessions/{id}`) writes no event; it is outside #646. *(It writes one since the
+  amendment of 2026-11-07, #678.)*
+
+**Consequences.** One more row per sign-out and one more row lock per sign-out. Tests:
+`backend/tests/test_auth_sign_out_events.py` (one event each, none on a repeat or a lost race,
+the savepoint against a real database error, export and deletion, no deadlock with an account
+deletion).
+
+## Amendment 2026-11-06: email preferences and the signed unsubscribe link (#655)
+
+- **Columns:** `users.mail_unsubscribed_all boolean` and `users.mail_opted_out text[]`, the latter
+  limited by a CHECK to the optional categories (`welcome`, `account_activity`, `class_ready`).
+  Essential mail (sign-in, reset and confirmation links, plan ME4) has no switch and is always
+  sent. The security notices (`totp_enrolled`, `mfa_failures`, `identity_linked` and ME3's
+  `password_changed`, `identity_unlinked`, `totp_removed`, `account_deleted`) are the optional
+  category `account_activity` (ADR 0022): the user, the "all optional mail" switch and the
+  unsubscribe link can turn them off, and the copy says so. Both columns are in the GDPR export
+  (guard 12).
+- **Key (§8):** the ninth derived key, HKDF info `mail-unsubscribe`.
+- **Token:** `b64url("v1|user_id|scope|expiry") + "." + b64url(HMAC-SHA256)`, constant-time
+  compare, 90-day expiry, scope one of the optional categories or `all`. A token can only turn mail
+  off; it never reads, turns on or changes anything else, and an essential scope is refused at
+  issue and at verification.
+- **Links in a mail:** the page link `/unsubscribe#token=<category>&all=<all>` (fragment, so never
+  in a server log) and the one-click `POST /api/mail/unsubscribe?token=<category>`
+  (`List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, RFC 8058). There is
+  no GET route: opening a link never changes state. The page sends the token only when the person
+  presses a button, to `POST /api/mail/unsubscribe/confirm`.
+- **CSRF (§4):** exactly `/api/mail/unsubscribe` and `/api/mail/unsubscribe/confirm` skip the
+  Origin and CSRF checks, because a mail client posts without a cookie or Origin; the token is the
+  credential. No prefix match.
+- **Rate limit (§9):** `unsubscribe`, per IP, 60 per hour, checked before the token is verified.
+  A request FastAPI refuses with 422 before the route runs (a token past 512 characters, a body
+  that is not JSON) is not counted; it cannot carry a valid token.
+- **Answers:** a good token for a deleted account answers like a live one (200); every other bad
+  token gets the same 400 `link_invalid`, so the answer does not tell tamper from expiry from an
+  unknown user.
+- **Logging (§10):** `/api/mail/unsubscribe` is a secret-input path (its query is never logged);
+  the SWAG access log already omits query strings.
+
+## Amendment 2026-11-07: the security activity list and signing out one session (#678)
+
+**Context.** The data export was the user's only view of their `auth_events`, and signing out one
+of their sessions from the session list (`DELETE /api/auth/sessions/{id}`) wrote no event, so the
+security timeline could not tell that a session was ended on purpose (#646 review).
+
+**Decision.**
+
+- **Signing out one session writes a `sign_out`** (the existing kind; no new kind, no migration),
+  under the same rules as the amendment of 2026-11-06: one row only when the delete ended a
+  session, in a savepoint of the revoke's transaction (`routes._record_sign_out`), the request's
+  address, and the user row lock first (`lock_user`, ADR 0019 §6 rule 2), for the same deadlock
+  with an account deletion. `detail` is `{"session_id": "<ended>"}` and, when another of the
+  user's sessions ended it, also `"from_session": "<that session's id>"`. Ending the current
+  session from the list is a plain sign-out (the id only). Still at most one `sign_out` per
+  session, so the rows stay bounded by the sessions created.
+- **`GET /api/auth/events`** returns the caller's own rows, newest first (`auth/activity.py`):
+  - only rows whose `user_id` is the request's `UserContext.user_id`; no parameter names a user;
+  - only the kinds in `activity.SHOWN_KINDS`, an allowlist of what a person can recognise and act
+    on (sign-in and its failures, sign-out, sign-out everywhere, re-authentication, sign-up,
+    password change and reset, email change, linked and unlinked sign-in methods, two-factor
+    changes and failures, the operator's two-factor reset, and the new-network notice of #632).
+    Operator rows (`connections_wiped`, the CLI role changes), connection events and any kind added
+    later stay hidden until they are named there and worded in every catalogue;
+  - only `id`, `kind`, `at`, `ip` (the address the row holds, which the export already gives the
+    user), `provider` (only `google`, `github` or `microsoft`, read from `detail` for the kinds that
+    record one) and `other_session` (whether `detail` has `from_session`). Never the rest of
+    `detail`, never a session id;
+  - pages of `limit` rows (default 20, 1 to 100) with a keyset cursor `before` =
+    `<microseconds since the epoch>_<event id hex>` taken from the previous page's `next_before`
+    and ordered by `(at, id)` descending, so equal times never skip or repeat a row. The cursor
+    only bounds the caller's own filter: a forged or foreign one shows nothing but the caller's own
+    older rows (the route is `session` in the route matrix, not `owned_body`). A cursor of another
+    shape is a 422.
+  - Rows are purged after 30 days, so the page says it shows the last 30 days.
+- **The page:** a "Security activity" section on the account page's Sign-in and security tab,
+  with a "Show older" button for the next page, worded in every enabled language. A kind the page
+  has no words for is not shown (it cannot happen while the two allowlists agree; a frontend test
+  holds them equal).
+
+**Alternatives.**
+- *A new kind for signing out another session* (`session_revoked`): rejected; it is a sign-out, and
+  the existing kind keeps the export, the abuse view and the bound unchanged. `from_session` tells
+  the two apart.
+- *Show every kind with a generic label:* rejected; a blocklist would leak operator and future
+  kinds. An allowlist fails closed.
+- *Offset paging:* rejected; new rows shift the pages. *A cursor that names an event id only:*
+  rejected; it would need a lookup that could probe another user's ids.
+- *Hide the address, as the device list does:* not chosen; the address is what lets a person tell
+  an unknown sign-in from their own, and the export already shows it.
+
+**Consequences.** One more row and one more row lock per session signed out from the list. The
+list query filters on `user_id` and `kind` with the 30-day retention; there is no index on
+`auth_events.user_id` yet (the export and the cascade scan the same way), which a later migration
+can add if the table grows. Tests: `backend/tests/test_auth_activity.py` (isolation between two
+users, the kind and field allowlists, paging with equal times, cursor checks, the new event, the
+savepoint and the catch-all branch, no deadlock with an account deletion);
+`frontend/src/components/account/SecurityActivity.test.tsx`. Threat model T4.

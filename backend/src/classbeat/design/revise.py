@@ -75,7 +75,7 @@ from classbeat.design.kind import (
     music_step,
 )
 from classbeat.design.sport_rules import rules_for
-from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
+from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
 from classbeat.jobs.inputs import ModelJobInput
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.quota.route import with_plan, with_plan_run
@@ -294,6 +294,7 @@ async def run(job_run: JobRun) -> Complete:
                     result_revision_id=revision_id,
                     change=change,
                 )
+                await mail_handoff.enqueue_class_ready(fs)  # ME5: only after a fresh analysis
                 return revision_id
             except chat.MessageRefused:
                 raise JobFailure("internal") from None

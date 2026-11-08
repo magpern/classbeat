@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import { PLAYLISTS, connectMowl, getJob } from './design-helpers'
-import { PASSWORD, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
+import { PASSWORD, nextTotp, passCaptcha, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
 
 // Shared by m5-quota.spec.ts and m5-admin.spec.ts (M5 T1, #228): parallel API calls from several
 // browser contexts that hold one user's session, and the account page's plan line. Fakes only.
@@ -146,6 +146,7 @@ export async function newUser(browser: Browser, baseURL: string | undefined, tag
     await page.goto('/signin')
     await page.getByLabel('Email', { exact: true }).fill(email)
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+    await passCaptcha(page)
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
     await expect(page).not.toHaveURL(/\/signin/)
   } else await signInThroughUi(page, email)
@@ -159,4 +160,45 @@ export async function cancelJob(page: Page, id: string): Promise<void> {
     headers: { Origin: new URL(page.url()).origin, 'X-CSRF-Token': session.csrf_token },
   })
   expect(answer.status()).toBe(200)
+}
+
+/** The first admin visit: the page offers two-factor set-up (the session still says `user`). */
+export async function enrollTotp(page: Page): Promise<string> {
+  await page.goto('/admin')
+  await expect(page.getByRole('heading', { name: 'Set up two-factor' })).toBeVisible()
+  await page.getByRole('button', { name: 'Set up an authenticator app' }).click()
+  const secret = (await page.locator('code').first().textContent())!.trim()
+  await page.getByLabel('Code from the app').fill(await nextTotp(secret))
+  await page.getByRole('button', { name: 'Turn on two-factor' }).click()
+  await page.getByRole('button', { name: 'I have saved them' }).click()
+  await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toBeVisible()
+  return secret
+}
+
+/**
+ * Answer the step-up dialog when an admin write asks for it. `writePath` is the path prefix of the
+ * write that may ask (every admin write is under `/api/admin/`), so an unrelated non-GET call
+ * cannot end the wait early.
+ */
+export async function stepUp(page: Page, secret: string, writePath = '/api/admin/'): Promise<void> {
+  const dialog = page.getByRole('dialog', { name: 'Enter a two-factor code' })
+  // The write's 403 opens the dialog; its success (any non-403 answer to a write) means none will
+  // come, so the wait ends at once. A success that landed before this call is missed and the wait
+  // falls back to the 3 s ceiling: slower, never wrong.
+  await Promise.race([
+    dialog.waitFor({ state: 'visible', timeout: 3_000 }).catch(() => undefined),
+    page
+      .waitForResponse(
+        (r) =>
+          r.request().method() !== 'GET' && new URL(r.url()).pathname.startsWith(writePath) && r.status() !== 403,
+        { timeout: 3_000 },
+      )
+      .catch(() => undefined),
+  ])
+  const asked = await dialog.isVisible()
+  if (asked) {
+    await dialog.getByLabel('Authenticator or recovery code').fill(await nextTotp(secret))
+    await dialog.getByRole('button', { name: 'Continue' }).click()
+    await expect(dialog).toBeHidden()
+  }
 }

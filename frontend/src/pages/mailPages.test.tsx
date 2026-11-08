@@ -14,12 +14,16 @@ describe('sign-up', () => {
     type('Invite code', 'abc')
     type('Email', 'ann@example.test')
     type('Password', 'correct horse battery')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
     expect(await screen.findByText('Check your inbox')).toBeInTheDocument()
     expect(api.to('POST', '/api/auth/signup')[0]?.body).toEqual({
       email: 'ann@example.test',
       password: 'correct horse battery',
       invite_code: 'abc',
+      locale: 'en',
     })
   })
 
@@ -28,6 +32,9 @@ describe('sign-up', () => {
     renderAt('/signup')
     type('Email', 'ann@example.test')
     type('Password', 'correct horse battery')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/invite code is not valid/)
   })
@@ -38,7 +45,7 @@ describe('sign-up confirmation page', () => {
     const api = fakeApi({ 'POST /api/auth/signup/confirm': { status: 'created' } })
     renderAt('/signup/confirm#token=secret-token')
     expect(window.location.hash).toBe('')
-    expect(window.location.pathname).toBe('/signup/confirm')
+    expect(window.location.pathname).toBe('/en/signup/confirm')
 
     type('Password', 'correct horse battery')
     fireEvent.click(screen.getByRole('button', { name: 'Confirm account' }))
@@ -90,11 +97,12 @@ describe('provider email page', () => {
     expect(await screen.findByText(/a second try would not send anything/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Start the provider sign-in again/ })).toHaveAttribute(
       'href',
-      '/signin',
+      '/en/signin',
     )
     expect(screen.queryByRole('button', { name: 'Send confirmation link' })).toBeNull()
     expect(api.to('POST', '/api/auth/oauth/pending/email')[0]?.body).toEqual({
       email: 'ann@example.test',
+      locale: 'en',
     })
   })
 
@@ -108,7 +116,7 @@ describe('provider email page', () => {
     fakeApi({ 'GET /api/auth/oauth/pending': { pending: true, provider: 'microsoft', awaiting_email: true } })
     renderAt('/signin?oauth=email_needed')
     expect(await screen.findByText('Confirm your email address')).toBeInTheDocument()
-    expect(window.location.pathname).toBe('/signin/email')
+    expect(window.location.pathname).toBe('/en/signin/email')
   })
 })
 
@@ -117,6 +125,9 @@ describe('reset page', () => {
     const api = fakeApi({ 'POST /api/auth/password/reset/request': new Response(null, { status: 202 }) })
     renderAt('/reset')
     type('Email', 'ann@example.test')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Send reset link' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
     expect(await screen.findByText('Check your inbox')).toBeInTheDocument()
     expect(api.to('POST', '/api/auth/password/reset/request')[0]?.body).toEqual({
@@ -126,7 +137,7 @@ describe('reset page', () => {
 
   it('lists linked methods and removes the ticked ones in the same step', async () => {
     const api = fakeApi({
-      'POST /api/auth/password/reset/info': { methods: [{ id: 'm1', provider: 'github' }, { id: 'm2', provider: 'google' }] },
+      'POST /api/auth/password/reset/info': { methods: [{ id: 'm1', provider: 'github' }, { id: 'm2', provider: 'google' }], passkeys: [] },
       'POST /api/auth/password/reset/complete': { status: 'ok' },
     })
     renderAt('/reset#token=reset-token')
@@ -140,7 +151,8 @@ describe('reset page', () => {
     expect(api.to('POST', '/api/auth/password/reset/complete')[0]?.body).toEqual({
       token: 'reset-token',
       password: 'a brand new passphrase',
-      remove_methods: ['m1'],
+      keep_methods: ['m2'],
+      keep_passkeys: [],
     })
     expect(api.to('POST', '/api/auth/login')).toHaveLength(0)
   })
@@ -149,7 +161,7 @@ describe('reset page', () => {
     let reset = false
     const api = fakeApi({
       'GET /api/auth/session': () => (reset ? { authenticated: false, csrf_token: 'a' } : SIGNED_IN),
-      'POST /api/auth/password/reset/info': { methods: [] },
+      'POST /api/auth/password/reset/info': { methods: [], passkeys: [] },
       'POST /api/auth/password/reset/complete': () => {
         reset = true
         return { status: 'ok' }
@@ -200,11 +212,11 @@ describe('email change page', () => {
 
 describe('mail links opened in an already open tab', () => {
   it('reads and strips a token that arrives as a fragment-only change', async () => {
-    fakeApi({ 'POST /api/auth/password/reset/info': { methods: [] } })
+    fakeApi({ 'POST /api/auth/password/reset/info': { methods: [], passkeys: [] } })
     renderAt('/reset')
     expect(screen.getByRole('button', { name: 'Send reset link' })).toBeInTheDocument()
 
-    window.history.pushState(null, '', '/reset#token=later')
+    window.history.pushState(null, '', '/en/reset#token=later')
     window.dispatchEvent(new HashChangeEvent('hashchange'))
 
     expect(await screen.findByRole('button', { name: 'Change password' })).toBeInTheDocument()

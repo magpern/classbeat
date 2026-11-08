@@ -71,7 +71,7 @@ describe('account page card', () => {
   it('links to the wizard when not connected and to management when connected', async () => {
     spotifyApi()
     renderAt('/account')
-    expect(await screen.findByText('Set up Spotify')).toHaveAttribute('href', '/account/spotify')
+    expect(await screen.findByText('Set up Spotify')).toHaveAttribute('href', '/en/account/spotify')
     expect(screen.getByTestId('spotify-summary-status')).toHaveTextContent('Not connected')
   })
 

@@ -25,6 +25,7 @@ import pytest
 from classbeat.jobs.sentences import SONG_SENTENCES
 from classbeat.songs import song_list
 from classbeat.spotify import sentence
+from classbeat.spotify.errors import sentence_of
 from ctx import make_context
 from songtools import Rider, SongEnv
 from spotifyfake import CLIENT_A, USER_A
@@ -84,6 +85,7 @@ async def test_a_category_that_ends_the_pick_shows_its_sentence(
     assert (view["state"], view["error_category"]) == ("failed", category)
     # The quota names the hours of Spotify's Retry-After (kept on the job, #300).
     assert view["error_message"] == sentence(category, options.get("retry_after"))
+    assert view["sentence"] == sentence_of(category, options.get("retry_after")).code
     assert not any(text in str(view) for text in SECRETS)  # never Spotify's own words
     assert (await spotify_status(songenv, rider))[0] == status
     assert songenv.fake.playlists == {}  # nothing was created
@@ -166,6 +168,7 @@ async def test_three_rate_limits_in_a_row_end_quota_exhausted(songenv: SongEnv) 
     assert (rows[-1].error_category, rows[-1].spotify_rate_limits) == ("quota_exhausted", 3)
     view = await shown(rider, job_id)
     assert view["error_message"] == sentence("quota_exhausted", 30)
+    assert (view["sentence"], view["sentence_params"]) == ("spotify.quota_exhausted", {"count": 1})
 
 
 async def test_the_quota_sentence_names_the_hours_spotify_asked_for(songenv: SongEnv) -> None:

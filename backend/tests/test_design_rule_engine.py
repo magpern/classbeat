@@ -74,7 +74,9 @@ def _tss_spec(k: int) -> dict[str, Any]:
 
 @cache
 def _tss_rate(k: int) -> float:
-    return G.METRICS["tss_per_minute"](_tss_spec(k))
+    rate = G.METRICS["tss_per_minute"](_tss_spec(k))
+    assert rate is not None
+    return rate
 
 
 @cache
@@ -151,7 +153,7 @@ def _ids(hits: list[RuleHit]) -> list[str]:
 
 
 def test_every_shipped_rule_has_a_pair() -> None:
-    assert len(CASES) == 81 + 22  # six cycling profiles, two running (P9)
+    assert len(CASES) == 81 + 22 + 4  # six cycling profiles, two running (P9), two 55 minute (#388)
 
 
 @pytest.mark.parametrize(("profile", "rule"), CASES, ids=[f"{p.id}:{r.rule}" for p, r in CASES])

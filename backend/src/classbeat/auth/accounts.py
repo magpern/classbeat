@@ -17,8 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.auth.devices import forget_devices
 from classbeat.auth.events import record_event
+from classbeat.auth.passkey_recovery import remove_passkeys_except
 from classbeat.auth.sessions import revoke_user_sessions
 from classbeat.auth.tables import invites, mfa_recovery_codes, mfa_totp, users
+from classbeat.auth.userlock import lock_user
 from classbeat.config import Settings
 from classbeat.emailnorm import normalize_email
 
@@ -37,9 +39,16 @@ class UserRow:
 
 
 async def create_user(
-    db: AsyncSession, email: str, *, password_hash: str | None = None, role: str = "user"
+    db: AsyncSession,
+    email: str,
+    *,
+    password_hash: str | None = None,
+    role: str = "user",
+    locale: str | None = None,
 ) -> UUID:
-    """Create a user whose email is already proven (ADR 0003 section 1: no unverified state)."""
+    """Create a user whose email is already proven (ADR 0003 section 1: no unverified state).
+    ``locale`` is the sign-up language, already checked by the caller; the CLI and the admin area
+    leave it ``None`` (follow the browser, ADR 0023 section 2)."""
     return (
         await db.execute(
             insert(users)
@@ -49,6 +58,7 @@ async def create_user(
                 email_verified_at=func.now(),
                 password_hash=password_hash,
                 role=role,
+                locale=locale,
             )
             .returning(users.c.id)
         )
@@ -261,12 +271,20 @@ async def grant_admin_if_listed(db: AsyncSession, settings: Settings, user_id: U
 
 
 async def reset_mfa(db: AsyncSession, email: str) -> UserRow:
-    """Lost authenticator: remove the user's TOTP and recovery codes, revoke every session and
-    forget their known devices. The caller then sends the password-reset link (``hooks``)."""
+    """Lost authenticator: remove the user's TOTP, recovery codes and passkeys (ADR 0019 section
+    9, whatever ``CLASSBEAT_PASSKEYS`` says), revoke every session and forget their known devices.
+    The caller then sends the password-reset link (``hooks``).
+
+    The user row lock comes before every delete (ADR 0019 section 6, #643): a sign-in or an MFA
+    verify that is creating or rotating a session commits first and loses that session here,
+    or waits and then finds its session or TOTP gone."""
     user = await _require_user(db, email)
+    await lock_user(db, user.id)
     await db.execute(delete(mfa_totp).where(mfa_totp.c.user_id == user.id))
     await db.execute(delete(mfa_recovery_codes).where(mfa_recovery_codes.c.user_id == user.id))
+    passkeys = await remove_passkeys_except(db, user.id, ())
     await revoke_user_sessions(db, user.id)
     await forget_devices(db, user.id)
-    await record_event(db, "mfa_reset", user_id=user.id, detail={"source": "cli"})
+    detail = {"source": "cli", "passkeys_removed": passkeys}
+    await record_event(db, "mfa_reset", user_id=user.id, detail=detail)
     return user

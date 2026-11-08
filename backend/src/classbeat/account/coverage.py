@@ -21,12 +21,13 @@ SET_NULL = "n"
 _OWNED = (
     "agent_runs beat_one_corrections class_messages class_playlists class_revisions classes "
     "code_redemptions connections credit_ledger entitlements external_operations job_events jobs "
-    "mowl_playlist_links quota_periods saved_workouts spotify_oauth_flows spotify_pool "
-    "swedebeat_analyses swedebeat_mix_maps swedebeat_handoffs user_preferences"
+    "mail_handoff mowl_playlist_links quota_periods saved_workouts spotify_oauth_flows "
+    "spotify_pool security_log swedebeat_analyses swedebeat_mix_maps swedebeat_handoffs "
+    "user_preferences"
 )
 _ACCOUNT = (
     "auth_events auth_tokens identities known_devices mfa_recovery_codes mfa_totp "
-    "oauth_flows sessions"
+    "oauth_flows sessions webauthn_challenges webauthn_credentials"
 )
 
 USER_REFERENCES: Mapping[tuple[str, str], str] = MappingProxyType(

@@ -1,0 +1,15 @@
+Velkommen til classbeat
+=======================
+
+Beskriv et hold, så vælger classbeat sangene, designer holdet og gemmer det på din Intelligent Cycling-konto.
+
+Du kan logge ind med Google.
+
+Åbn classbeat:
+https://classbeat.example.test/da
+
+--
+Du får denne mail, fordi der netop er oprettet en classbeat-konto med denne adresse.
+classbeat: https://classbeat.example.test
+Spørgsmål? Skriv til support@classbeat.eu
+Afmeld disse mails: https://classbeat.example.test/da/unsubscribe#token=SAMPLE&all=SAMPLE

@@ -1,0 +1,22 @@
+{
+ "name": "cp_hard_push_55",
+ "about": "A hard 55 minute interval class asked: the brief wins over the provisional high load note.",
+ "brief": {
+  "length_min": 55,
+  "intensity": "hard",
+  "class_type": "interval"
+ },
+ "music": {
+  "tracks": 17
+ },
+ "expect": {
+  "patterns": {
+   "mode": "deviates",
+   "hard_start_by_sec": 120
+  },
+  "tss": [
+   60,
+   110
+  ]
+ }
+}

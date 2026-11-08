@@ -25,7 +25,7 @@ bad()  { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
 "$root/scripts/release-assets.sh" build "$work/assets"
 ( cd "$work/assets" && sha256sum -c --quiet SHA256SUMS ) || bad "SHA256SUMS does not verify"
 # The asset list is exactly what the runbook downloads.
-want="SHA256SUMS backup.sh check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml prod.env.example restore.sh swag-classbeat.subdomain.conf validate-backup.sh"
+want="SHA256SUMS backup.sh check-prod-compose-owner.bash check-prod-compose-probe.bash check-prod-compose-rollback.bash check-prod-compose-rules.bash check-prod-compose-runbook.bash check-prod-compose-secretfiles.bash check-prod-compose-secrets.bash check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-setup.bash check-prod-compose-site-selftest.bash check-prod-compose-site.bash check-prod-compose-turnstile.bash check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml prod.env.example restore.sh swag-classbeat.subdomain.conf validate-backup.sh"
 # find, not a glob: a glob (`*`) would not list a dotfile, so a hidden asset (a .env) could never fail this.
 list_dir() { find "$work/assets" -mindepth 1 -maxdepth 1 -printf '%f\n'; }
 got="$(list_dir | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
@@ -64,9 +64,11 @@ mkdir "$install"
 cp "$work/assets"/* "$install/"
 cp "$install/prod.env.example" "$install/.env"
 sed -i -e 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=1.2.3/' "$install/.env"
+# Turnstile is on by default (#792): a good install has the public site key (a placeholder) and, below, a secret file.
+echo 'TURNSTILE_SITE_KEY=0x4AAAAAAcheck' >> "$install/.env"
 names=(postgres_password database_owner_password database_password database_maint_password app_secret_key
   connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app
-  oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret)
+  oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret turnstile_secret_key)
 canary="secret-canary-$RANDOM$RANDOM$RANDOM"
 mksecrets() {
   rm -rf "$install/secrets"; mkdir -m 2700 "$install/secrets"
@@ -98,8 +100,55 @@ sed -i 's|^    user: postgres$|&\n    privileged: true|' "$install/compose.prod.
 expect "a local edit adding privileged is caught" 1 'not on the allow-list.*services\.db\.privileged'
 cp "$work/compose.prod.yaml.good" "$install/compose.prod.yaml"
 sed -i 's|^    user: postgres$|&\n    env_file: ./secrets/app_secret_key|' "$install/compose.prod.yaml"
-expect "a local edit adding env_file is caught" 1 'no env_file, label_file, profiles'
+expect "a local edit adding env_file is caught" 1 'services\.db\.environment: 1 variable|services\.db-functions\.environment'   # the render, before the text lint
 cp "$work/compose.prod.yaml.good" "$install/compose.prod.yaml"
+# The text rule's bypass (#610): an explicit `? env_file` key gets past the line match; the renders (the
+# dummy one, whose secret files hold a line, and the real one) do not.
+sed -i '0,/^    user: postgres$/s||&\n    ? env_file\n    : ./secrets/app_secret_key|' "$install/compose.prod.yaml"   # db only
+expect "a local edit adding '? env_file' is caught by the render" 1 'services\.db\.environment: 1 variable'
+cp "$work/compose.prod.yaml.good" "$install/compose.prod.yaml"
+# The real render (#610): an overlay of the owner's own in COMPOSE_FILE goes through the allow-list too.
+# Each case is refused by the real render alone (the dummy render never sees compose.extra.yaml), and the
+# secret file's content (a canary) never shows in the output (expect checks it).
+cp "$install/.env" "$work/env.before-real"
+sed -i 's/^COMPOSE_FILE=.*/COMPOSE_FILE=compose.prod.yaml:compose.extra.yaml/' "$install/.env"
+printf 'services:\n  web:\n    "env_file": ./secrets/app_secret_key\n' > "$install/compose.extra.yaml"
+expect "real render: a quoted env_file of a secret file" 1 'services\.web\.environment: 1 variable'
+printf 'services:\n  worker:\n    ? env_file\n    : ./secrets/connection_kek\n' > "$install/compose.extra.yaml"
+expect "real render: an explicit env_file key" 1 'services\.worker\.environment: 1 variable'
+printf 'services:\n  spy:\n    image: busybox\n    profiles: [ops]\n' > "$install/compose.extra.yaml"
+expect "real render: a profiled service" 1 'not on the allow-list.*services\.spy'
+printf 'services:\n  web:\n    networks: [spynet]\nnetworks:\n  spynet:\n    external: true\n    name: other\n' > "$install/compose.extra.yaml"
+expect "real render: a network of the owner's own" 1 'networks\.spynet'
+# A secret file that does not parse as an env file (#616 review): Compose's error quotes the whole line,
+# so it must never be printed. `expect` checks stdout and stderr for the canary; the fixed sentence is all.
+printf 'a~%s' "$canary" > "$install/secrets/oauth_microsoft_client_secret"
+printf '{"k":"%s"}' "$canary" > "$install/secrets/swedebeat_app"
+for f in oauth_microsoft_client_secret swedebeat_app; do
+  printf 'services:\n  web:\n    env_file: ./secrets/%s\n' "$f" > "$install/compose.extra.yaml"
+  expect "real render: an env_file of a secret that does not parse ($f) prints no Compose output" 1 \
+    "docker compose config fails with your \\.env: .*Compose's message is not printed"
+done
+# The same through the dummy render alone: a local edit of the LAN overlay (not in COMPOSE_FILE, so the
+# real render passes) naming the real file by its path.
+cp "$install/.env" "$work/env.parse"; cp "$work/env.before-real" "$install/.env"
+cp "$install/compose.prod.lan.yaml" "$work/compose.prod.lan.yaml.good"
+sed -i "s|^  web:\$|&\n    env_file: $install/secrets/oauth_microsoft_client_secret|" "$install/compose.prod.lan.yaml"
+expect "dummy render: an env_file of a secret that does not parse prints no Compose output" 1 \
+  "fails on the compose files with dummy values \\(Compose's message is not printed"
+cp "$work/compose.prod.lan.yaml.good" "$install/compose.prod.lan.yaml"; cp "$work/env.parse" "$install/.env"
+mksecrets
+mkdir -p "$install/smtp-ca"; : > "$install/smtp-ca/bridge.pem"
+bridge='services:\n  web:\n    volumes:\n      - ./smtp-ca/bridge.pem:/run/smtp-ca/bridge.pem%s\n    networks:\n      - bridge-mail\nnetworks:\n  bridge-mail:\n    external: true\n    name: proton-bridge-net\n'
+# shellcheck disable=SC2059  # the format is ours
+printf "$bridge" '' > "$install/compose.bridge.yaml"
+sed -i 's/^COMPOSE_FILE=.*/COMPOSE_FILE=compose.prod.yaml:compose.bridge.yaml/' "$install/.env"
+expect "real render: the bridge overlay writable" 1 'services\.web\.volumes'
+# shellcheck disable=SC2059  # the format is ours
+printf "$bridge" ':ro' > "$install/compose.bridge.yaml"
+cp "$install/.env" "$work/env.bridge"
+rm -f "$install/compose.extra.yaml"
+cp "$work/env.before-real" "$install/.env"
 sed -i 's/^PROXY_IP=.*/PROXY_IP=8.8.8.8/' "$install/.env"
 expect "a public PROXY_IP" 1 'PROXY_IP must be one private'
 sed -i 's/^PROXY_IP=.*/PROXY_IP=172.29.90.10/' "$install/.env"
@@ -111,7 +160,7 @@ sed -i '/CLIENT_SECRET/d' "$install/.env"
 # next to the install folder's files is an install, whatever the folder above it holds (#575 review).
 parent="$work/parent"; mkdir -p "$parent/docs/runbooks" "$parent/inst"
 cp "$install/compose.prod.yaml" "$parent/"
-cp "$install"/check-prod-compose.sh "$install"/compose.prod.*.yaml "$install"/compose.prod.yaml "$parent/inst/"
+cp "$install"/check-prod-compose*.sh "$install"/check-prod-compose-*.bash "$install"/compose.prod.*.yaml "$install"/compose.prod.yaml "$parent/inst/"
 out="$(cd "$parent/inst" && ./check-prod-compose.sh 2>&1)" && rc=0 || rc=$?
 if [ "$rc" = 1 ] && grep -Eq 'no .*\.env: cp prod\.env\.example' <<<"$out"; then ok "a parent folder with compose.prod.yaml and docs/runbooks is still an install"
 else bad "parent-folder layout (rc $rc): $(tail -2 <<<"$out")"; fi
@@ -144,6 +193,8 @@ if (( can_gid )); then
   expect "good install" 0 '^install check'
   cp "$work/env.lan" "$install/.env"
   expect "good LAN install" 0 '^install check'
+  cp "$work/env.bridge" "$install/.env"
+  expect "good install with the documented compose.bridge.yaml (#610)" 0 '^install check'
   cp "$work/env.good" "$install/.env"
   # 2b. The owner's own swag file (PROD_CHECK_SWAG_CONF, #500). The directive rules run before
   # nginx -t, so a refused file needs no Docker daemon here.
@@ -167,6 +218,20 @@ if (( can_gid )); then
   expect "folder open to the group" 1 'gives the group or others access'
   mksecrets; rm "$install/secrets/openai_api_key"
   expect "missing file" 1 'openai_api_key is missing'
+  # 2c. Turnstile on (the default) needs its keys (#798); the secret file is only size-tested, and
+  # `expect` fails if a canary (the other files' content, or this one's) shows in the output.
+  mksecrets; : > "$install/secrets/turnstile_secret_key"
+  expect "Turnstile on, empty secret file" 1 'turnstile_secret_key is missing or empty.*section 5b.*TURNSTILE_ENABLED=false'
+  mksecrets; cp "$install/.env" "$work/env.ts"; sed -i '/^TURNSTILE_SITE_KEY=/d' "$install/.env"
+  expect "Turnstile on, no site key" 1 'TURNSTILE_SITE_KEY in .env is empty.*section 5b.*TURNSTILE_ENABLED=false'
+  echo 'TURNSTILE_SITE_KEY=' >> "$install/.env"
+  expect "Turnstile on, empty site key" 1 'TURNSTILE_SITE_KEY in .env is empty'
+  echo 'TURNSTILE_ENABLED=false' >> "$install/.env"
+  : > "$install/secrets/turnstile_secret_key"
+  expect "Turnstile off, no keys" 0 '^install check'
+  mksecrets; cp "$work/env.ts" "$install/.env"; echo 'TURNSTILE_ENABLED=true' >> "$install/.env"
+  expect "Turnstile on explicitly, both keys present" 0 '^install check'
+  cp "$work/env.ts" "$install/.env"
   mksecrets
 else
   echo "skip: no root or passwordless sudo: the secret-file cases need group $gid"
@@ -183,6 +248,11 @@ if [ "\${1:-}" = inspect ]; then
   printf '%s' "\${SWAG_OUT-}"; exit 0
 fi
 if [ "\${1:-}" = run ]; then
+  # The rollback check's ls of the old image needs no network (#591): refuse it without the flag.
+  if [[ " \$* " == *" --entrypoint ls "* ]]; then
+    printf '%s\\n' "\$*" >> "$work/ls-run.args"
+    [[ " \$* " == *" --network none "* ]] || { echo "stub: docker run ls without --network none" >&2; exit 97; }
+  fi
   printf '%s' "\${REVS_OUT-}"; exit \${REVS_RC:-0}
 fi
 if [ "\${1:-}" = compose ] && [[ " \$* " == *" run "* ]]; then
@@ -270,7 +340,27 @@ rb "rollback: empty alembic_version" 1 'no Alembic revision' '' "$old_files"
 rb "rollback: odd revision text" 1 'odd revision' $'0026; drop\n' "$old_files"
 rb "rollback: db not reachable" 1 'cannot read the database revision' '' "$old_files" 1
 rb "rollback: image not pulled" 1 'cannot list the migrations' $'0026_plan_gates\n' '' 0 1
+if [ -s "$work/ls-run.args" ] && ! grep -qv -- '--network none' "$work/ls-run.args"; then
+  ok "rollback: the old image's ls runs with --network none"
+else bad "rollback: the old image's ls ran without --network none: $(tail -1 "$work/ls-run.args" 2>&1)"; fi
 if ( cd "$install" && ./check-prod-compose.sh --rollback-check >/dev/null 2>&1 ); then bad "rollback: no version given passed"; else ok "rollback: needs a version"; fi
+
+# The script is split into sourced parts (#763) that travel with it: without one, it refuses to run
+# (a download of the script alone must not run a partial set of checks), and every part in scripts/ is
+# one the script sources and the release ships.
+miss="$work/missing-part"; mkdir "$miss"; cp "$install"/check-prod-compose* "$install"/compose.prod*.yaml "$miss/"
+rm "$miss/check-prod-compose-owner.bash"
+out="$(cd "$miss" && ./check-prod-compose.sh 2>&1)" && rc=0 || rc=$?
+if [ "$rc" = 1 ] && grep -q 'check-prod-compose-owner.bash must be next to this script' <<<"$out"; then ok "a missing part is refused"
+else bad "a missing part (rc $rc): $(tail -2 <<<"$out")"; fi
+: >"$miss/check-prod-compose-owner.bash"
+out="$(cd "$miss" && ./check-prod-compose.sh 2>&1)" && rc=0 || rc=$?
+if [ "$rc" = 1 ] && grep -q 'check-prod-compose-owner.bash is empty' <<<"$out"; then ok "an empty part is refused"
+else bad "an empty part (rc $rc): $(tail -2 <<<"$out")"; fi
+# shellcheck disable=SC2016  # a literal `$here` in the pattern, not a shell expansion
+srcd="$(grep -o 'source "$here/check-prod-compose-[a-z-]*\.bash"' "$root/scripts/check-prod-compose.sh" | sed 's/.*compose-//; s/\.bash"//' | LC_ALL=C sort | tr '\n' ' ')"
+have="$(cd "$root/scripts" && printf '%s\n' check-prod-compose-*.bash | sed 's/check-prod-compose-//; s/\.bash$//' | LC_ALL=C sort | tr '\n' ' ')"
+if [ -n "$srcd" ] && [ "$srcd" = "$have" ]; then ok "every part is sourced"; else bad "parts sourced '$srcd' differ from the files '$have'"; fi
 
 (( fails == 0 )) || { echo "test-install-check: $fails failure(s)" >&2; exit 1; }
 echo "test-install-check: ok"

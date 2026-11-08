@@ -8,8 +8,17 @@ Metrics are measured over the fitted timeline (every interval, cool-down include
 fractions of the total time, zones are the library's 1 to 7, and ``zone4plus_share_in_first_25pct``
 is the share of the first quarter of the timeline spent in zone 4 or above. A class that never
 reaches zone 4 has its ``first_zone4plus_s`` set to the whole timeline length.
+
+The interval, sprint, climb, work/rest and intensity-factor metrics use the definitions of the
+mowl-workouts corpus statistics (``mowl corpus-analyze``, ``docs/corpus-stats.md``), so a profile
+bound made from that corpus is compared with the same quantity here. The differences, all forced
+by measuring a draft instead of a stored MOWL program, are listed at ``_climb_time_share`` and
+``_intensity_factor``. A metric that is undefined for a draft (``work_rest_ratio`` with no rest)
+is ``None`` and its rule does not fire, as the corpus leaves such a class out of its statistics.
 """
 
+import math
+import statistics
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from typing import Any, Final, Literal, Protocol
@@ -23,6 +32,9 @@ MAX_HITS: Final = 5
 HARD_ZONE: Final = 4
 TOP_ZONE: Final = 5
 FIRST_FRACTION: Final = 0.25
+REST_ZONE: Final = 2  # zone 2 and below is rest (corpus REST_ZONE)
+CLIMB_ZONE: Final = 3  # a climb is seated, zone 3 or above ...
+CLIMB_RPM: Final = 80  # ... at no more than this cadence (corpus CLIMB_RPM)
 
 Spec = Mapping[str, Any]
 Timeline = list[tuple[int, int, bool]]
@@ -70,6 +82,40 @@ def _timeline(spec: Spec) -> Timeline:
         for s in spec["segments"]
         for i in s["intervals"]
     ]
+
+
+@dataclass(frozen=True, slots=True)
+class _Interval:
+    sec: int
+    zone: int
+    standing: bool
+    acc: bool
+    rpm_to: int
+    kind: str
+
+
+def _intervals(spec: Spec) -> list[_Interval]:
+    """Every interval in order with its segment kind, sprint flag and top cadence.
+
+    A cadence that is not a ``[from, to]`` pair (``"beat"``, set from the music, or absent) has
+    no number: ``rpm_to`` is 0, as the corpus reads a stored interval whose ``RPMTo`` is 0.
+    """
+    out: list[_Interval] = []
+    for s in spec["segments"]:
+        for i in s["intervals"]:
+            rpm = i.get("rpm")
+            top = int(rpm[1]) if isinstance(rpm, list | tuple) and len(rpm) == 2 else 0
+            out.append(
+                _Interval(
+                    int(i["sec"]),
+                    int(i["zone"]),
+                    bool(i.get("standing", False)),
+                    bool(i.get("acc", False)),
+                    top,
+                    str(s["kind"]),
+                )
+            )
+    return out
 
 
 def _total(tl: Timeline) -> int:
@@ -134,7 +180,66 @@ def _standing_share(spec: Spec) -> float:
     return _share(sum(sec for sec, _, standing in tl if standing), _total(tl))
 
 
-METRICS: Final[dict[str, Callable[[Spec], float]]] = {
+def _longest_interval_s(spec: Spec) -> float:
+    return float(max((i.sec for i in _intervals(spec)), default=0))
+
+
+def _median_interval_s(spec: Spec) -> float:
+    return float(statistics.median([i.sec for i in _intervals(spec)] or [0]))
+
+
+def _sprint_count(spec: Spec) -> float:
+    """Acceleration intervals (``acc``), the corpus's ``acc_count`` (CycleID 4).
+
+    Difference: a draft has no ``acc`` (the agent schema cannot carry it), so this is always 0 for
+    a designed class and meaningful only for a workout read back from MOWL. No profile may ship a
+    ``sprints_*`` bound until drafts can carry sprints (ADR 0017 section 7a).
+    """
+    return float(sum(1 for i in _intervals(spec) if i.acc))
+
+
+def _climb_time_share(spec: Spec) -> float:
+    """Share of the timeline that is seated, zone 3 or above, at a top cadence of 1 to 80 rpm.
+
+    The corpus's ``climb_pct`` as a fraction (a heuristic: MOWL has no climb flag). Difference: an
+    interval with no cadence number never counts. ``"beat"`` is rare here: ``design.check`` fits
+    it to the music or drops it before the rules run.
+    """
+    tl = _intervals(spec)
+    climb = sum(
+        i.sec for i in tl if not i.standing and i.zone >= CLIMB_ZONE and 0 < i.rpm_to <= CLIMB_RPM
+    )
+    return _share(climb, sum(i.sec for i in tl))
+
+
+def _work_rest_ratio(spec: Spec) -> float | None:
+    """Zone 4+ seconds over zone 1-2 seconds of the main body (warm-up and cool-down left out).
+
+    The corpus's ``work_rest_ratio`` (recovery segments count as body). ``None`` when the body
+    has no rest, where the corpus has no ratio either.
+    """
+    body = [i for i in _intervals(spec) if i.kind not in ("warmup", "cooldown")]
+    rest = sum(i.sec for i in body if i.zone <= REST_ZONE)
+    if not rest:
+        return None
+    return sum(i.sec for i in body if i.zone >= HARD_ZONE) / rest
+
+
+def _intensity_factor(spec: Spec) -> float:
+    """``sqrt(TSS / (hours * 100))``, the corpus's ``intensity_factor``.
+
+    Difference: the corpus reads the TSS MOWL stored for the program; a draft has none, so this
+    uses the library estimate ``workout.tss`` (the server's own model, within 1 % of it unless
+    the draft has a zone 7 interval, whose TSS weight is a guess: ``tss_approximate``, ADR 0012
+    section 7).
+    """
+    total = _total(_timeline(spec))
+    if not total:
+        return 0.0
+    return math.sqrt(workout.tss(dict(spec)) / (total / 3600 * 100))
+
+
+METRICS: Final[dict[str, Callable[[Spec], float | None]]] = {
     "first_zone4plus_s": _first_zone4plus_s,
     "cooldown_s": _cooldown_s,
     "max_zone": _max_zone,
@@ -144,6 +249,12 @@ METRICS: Final[dict[str, Callable[[Spec], float]]] = {
     "tss_per_minute": _tss_per_minute,
     "zone4plus_share_in_first_25pct": _hard_in_first_quarter,
     "standing_time_share": _standing_share,
+    "longest_interval_s": _longest_interval_s,
+    "median_interval_s": _median_interval_s,
+    "sprint_count": _sprint_count,
+    "climb_time_share": _climb_time_share,
+    "work_rest_ratio": _work_rest_ratio,
+    "intensity_factor": _intensity_factor,
 }
 
 
@@ -183,7 +294,7 @@ def evaluate(
     """
     if profile is None:
         return []
-    cache: dict[str, float] = {}
+    cache: dict[str, float | None] = {}
     hits: list[RuleHit] = []
     for rule in profile.rules:
         if rule.rule in dismissed:
@@ -191,6 +302,8 @@ def evaluate(
         if rule.metric not in cache:
             cache[rule.metric] = METRICS[rule.metric](spec)
         value = cache[rule.metric]
+        if value is None:
+            continue  # undefined for this draft: no note
         if not _violates(rule, RULE_SPECS[rule.rule].side, value):
             continue
         explained = overrides_met(rule.brief_overrides, brief)

@@ -1,0 +1,13 @@
+Your class is ready
+===================
+
+classbeat has finished analysing the music of your class. Open the class to see the result.
+
+Open your class:
+https://classbeat.example.test/en/classes/00000000-0000-4000-8000-000000000000
+
+--
+You got this because classbeat finished a class you asked for, after analysing its music.
+classbeat: https://classbeat.example.test
+Questions? Write to support@classbeat.eu
+Unsubscribe from these emails: https://classbeat.example.test/en/unsubscribe#token=SAMPLE&all=SAMPLE

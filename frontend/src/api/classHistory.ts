@@ -1,6 +1,8 @@
 import { ApiError, get } from './client'
 import { count, flag, isObject, list, object, optionalText, text, type JsonObject } from './decode'
 import { clock } from '../lib/workout'
+import { decimal, plain } from '../i18n/format'
+import { t } from '../i18n/t'
 
 // The class history (ADR 0007 amendment of 2026-11-03, part H; backend classbeat/classes/history.py):
 // the timeline of a class's versions and the comparison of two. Server text (a chat request, a
@@ -170,12 +172,12 @@ export async function compareRevisions(
 /** Why two versions could not be compared, in the page's words (the server's category is never shown). */
 export function compareFailureText(error: unknown): string {
   if (error instanceof ApiError && error.status === 404) {
-    return 'One of these versions is no longer there.'
+    return t('class.compare.gone')
   }
   if (error instanceof ApiError && error.status === 500) {
-    return 'One of these versions can no longer be read, so the two cannot be compared.'
+    return t('class.compare.unreadable')
   }
-  return 'The two versions could not be compared. Try again.'
+  return t('class.compare.failed')
 }
 
 /** What asked for a version, in the page's words. */
@@ -183,68 +185,63 @@ export function askedFor(entry: TimelineEntry): string {
   if (entry.origin === 'duplicate') {
     const from = entry.duplicatedFrom
     const title = from?.classTitle ?? null
-    const version = from?.number !== null && from?.number !== undefined ? `, version ${String(from.number)}` : ''
-    return title !== null ? `Duplicated from “${title}”${version}` : 'Duplicated from a class that is gone'
+    if (title === null) return t('class.asked.duplicatedGone')
+    const number = from?.number ?? null
+    return number !== null ? t('class.asked.duplicatedVersion', { title, number }) : t('class.asked.duplicated', { title })
   }
   if (entry.origin === 'revise_draft') {
-    return entry.request !== null ? `You asked: “${entry.request}”` : 'Changed on request'
+    return entry.request !== null ? t('class.asked.request', { request: entry.request }) : t('class.asked.changed')
   }
-  if (entry.origin === 'revise_songs') return 'Songs changed'
-  return 'First design'
-}
-
-function plural(n: number, one: string, many: string): string {
-  return `${String(n)} ${n === 1 ? one : many}`
+  if (entry.origin === 'revise_songs') return t('class.asked.songs')
+  return t('class.asked.first')
 }
 
 function tssText(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+  return Number.isInteger(value) ? plain(value) : decimal(value, 1)
 }
 
 /** The comparison in plain sentences, from the older version to the newer one. */
 export function describeComparison(c: Comparison): string[] {
   const lines: string[] = []
   if (c.segmentsAdded > 0 || c.segmentsRemoved > 0) {
-    lines.push(
-      `Segments: ${String(c.segmentsAdded)} added, ${String(c.segmentsRemoved)} removed.`,
-    )
+    lines.push(t('class.compare.segments', { added: c.segmentsAdded, removed: c.segmentsRemoved }))
   }
   const touched = c.intervalsAdded + c.intervalsRemoved + c.intervalsChanged
   if (touched > 0) {
     const parts: string[] = []
-    if (c.intervalsChanged > 0) parts.push(`${plural(c.intervalsChanged, 'interval', 'intervals')} changed`)
-    if (c.intervalsAdded > 0) parts.push(`${plural(c.intervalsAdded, 'interval', 'intervals')} added`)
-    if (c.intervalsRemoved > 0) parts.push(`${plural(c.intervalsRemoved, 'interval', 'intervals')} removed`)
-    lines.push(`${parts.join(', ')}.`)
+    if (c.intervalsChanged > 0) parts.push(t('class.compare.intervalsChanged', { count: c.intervalsChanged }))
+    if (c.intervalsAdded > 0) parts.push(t('class.compare.intervalsAdded', { count: c.intervalsAdded }))
+    if (c.intervalsRemoved > 0) parts.push(t('class.compare.intervalsRemoved', { count: c.intervalsRemoved }))
+    lines.push(t('class.compare.intervals', { parts: parts.join(', ') }))
   }
   if (c.secondsBefore !== c.secondsAfter) {
     const diff = Math.abs(c.secondsAfter - c.secondsBefore)
-    const word = c.secondsAfter > c.secondsBefore ? 'longer' : 'shorter'
-    lines.push(`Length: ${clock(c.secondsBefore)} to ${clock(c.secondsAfter)} (${clock(diff)} ${word}).`)
+    const key = c.secondsAfter > c.secondsBefore ? 'class.compare.lengthLonger' : 'class.compare.lengthShorter'
+    lines.push(t(key, { from: clock(c.secondsBefore), to: clock(c.secondsAfter), diff: clock(diff) }))
   } else {
-    lines.push(`Length: the same, ${clock(c.secondsAfter)}.`)
+    lines.push(t('class.compare.lengthSame', { length: clock(c.secondsAfter) }))
   }
   lines.push(
     c.tssBefore === c.tssAfter
-      ? `TSS: the same, ${tssText(c.tssAfter)}.`
-      : `TSS: ${tssText(c.tssBefore)} to ${tssText(c.tssAfter)}.`,
+      ? t('class.compare.tssSame', { tss: tssText(c.tssAfter) })
+      : t('class.compare.tss', { from: tssText(c.tssBefore), to: tssText(c.tssAfter) }),
   )
   if (c.unknownBpmBefore !== c.unknownBpmAfter || c.unsureBefore !== c.unsureAfter) {
     lines.push(
-      `Timing warnings: ${String(c.unknownBpmBefore + c.unsureBefore)} to ${String(c.unknownBpmAfter + c.unsureAfter)}.`,
+      t('class.compare.timing', { from: c.unknownBpmBefore + c.unsureBefore, to: c.unknownBpmAfter + c.unsureAfter }),
     )
   }
   lines.push(
     c.sameSource && c.sameFingerprint
-      ? 'Music: the same.'
+      ? t('class.compare.musicSame')
       : c.sameSource
-        ? 'Music: the same source, but its songs changed.'
-        : 'Music: different music.',
+        ? t('class.compare.musicSongs')
+        : t('class.compare.musicDifferent'),
   )
   if (touched === 0 && c.segmentsAdded === 0 && c.segmentsRemoved === 0) {
-    lines.unshift(c.textChanged ? 'Only names, descriptions or cues differ.' : 'The workouts are the same.')
+    lines.unshift(t(c.textChanged ? 'class.compare.onlyText' : 'class.compare.same'))
   } else if (c.textChanged) {
-    lines.push('Some names, descriptions or cues differ too.')
+    lines.push(t('class.compare.textToo'))
   }
   return lines
 }

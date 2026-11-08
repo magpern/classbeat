@@ -8,7 +8,8 @@
   ``class_not_found``; 429 ``busy`` (the per-user limit); 400 for the header; 422 for the body;
   ``quota`` (ADR 0011 section 9, FE1's contract) is ``{reason: "quota", quota: "classes" |
   "cost", limit, used, period_end, plan}`` (``limit`` and ``used`` for ``classes`` only, a cost
-  refusal shows no money; ``period_end`` the ISO date the next period starts) and ``busy``
+  refusal shows no money; ``period_end`` the ISO date the next period starts; Save and Update add
+  ``saves`` with ``limit``, ``used`` and ``window``, #577) and ``busy``
   carries the plan's ``limit`` (also on approve);
   413 ``too_large`` for a body over ``BODY_MAX_BYTES`` (also on approve; the app-wide
   ``bodylimit.BodyLimit`` is equal and answers first, as ``body_too_large``). A kind with ``admit``
@@ -67,7 +68,7 @@ from classbeat.jobs.http import (
 from classbeat.jobs.inputs import JobInput, jsonb_size
 from classbeat.jobs.kinds import KIND_NAME, KINDS, JobKind, KindRegistry, Refused
 from classbeat.jobs.progress import read_revision
-from classbeat.jobs.sentences import job_sentence
+from classbeat.jobs.sentences import job_sentence_of
 from classbeat.jobs.user import Admission, CreateAdmit, JobLimitPolicy, NewJob
 from classbeat.usage import job_usage
 
@@ -125,6 +126,10 @@ class JobOut(BaseModel):
     approved_at: datetime | None
     error_category: str | None
     error_message: str | None = None  # a song-picking, Spotify or Swedebeat-wait sentence
+    # The same sentence as a catalogue code and its numbers (ADR 0023 section 6); the page words
+    # the code and shows ``error_message`` for a code it does not know.
+    sentence: str | None = None
+    sentence_params: dict[str, int] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
     finished_at: datetime | None
@@ -133,7 +138,7 @@ class JobOut(BaseModel):
     @classmethod
     def of(cls, view: service.JobView) -> "JobOut":
         out = cls.model_validate(view, from_attributes=True)
-        out.error_message = job_sentence(
+        found = job_sentence_of(
             view.state,
             view.error_category,
             view.spotify_failure,
@@ -142,6 +147,10 @@ class JobOut(BaseModel):
             datetime.now(UTC),
             view.kind,
         )
+        if found is not None:
+            out.error_message = found.text
+            out.sentence = found.code
+            out.sentence_params = found.params
         return out
 
 

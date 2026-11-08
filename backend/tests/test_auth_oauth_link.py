@@ -12,7 +12,7 @@ from authtools import Env
 from classbeat import auth
 from classbeat.auth.cookies import OAUTH_COOKIE
 from flows import PASSWORD, Browser, age_reauth, reason, signed_in
-from oauthtools import location, make_invite, sign_in_with, start
+from oauthtools import drop_password, location, make_invite, sign_in_with, sign_up_with, start
 from oidcfake import DROP, FakeProviders
 from smtpfake import SmtpFake
 
@@ -55,8 +55,8 @@ async def test_the_email_collision_path_sign_in_to_the_account_then_link(
         "g@example.com", password_hash=await oenv.app.state.password_hasher.hash(PASSWORD)
     )
     stranger = Browser(oenv)
-    outcome = await sign_in_with(stranger, fake, "google", invite=await make_invite(oenv))
-    assert location(outcome) == "/signin?oauth=account_exists"
+    outcome = await sign_up_with(stranger, fake, "google", invite=await make_invite(oenv))
+    assert location(outcome) == "/signup?oauth=account_exists"
     assert await oenv.scalar("SELECT count(*) FROM identities") == 0
     owner = Browser(oenv)
     assert (await owner.sign_in("g@example.com")).status_code == 200
@@ -209,6 +209,7 @@ async def test_oidc_reauth_sets_reauth_at_and_rotates_the_session(
     oenv: Env, fake: FakeProviders
 ) -> None:
     browser = await linked_browser(oenv, fake)
+    await drop_password(oenv)  # Google re-authenticates only an account without one (#687)
     await age_reauth(oenv)
     old = browser.cookies[auth.SESSION_COOKIE]
     started = await start(browser, "google", "reauth")
@@ -236,18 +237,20 @@ async def test_microsoft_reauth_adds_prompt_login(oenv: Env, fake: FakeProviders
     assert location(await browser.get(callback)) == "/account?oauth=reauthed"
 
 
-async def test_google_without_the_claims_request_sends_no_auth_time_and_reauth_fails_closed(
+async def test_google_without_the_claims_request_sends_no_auth_time_and_still_reauthenticates(
     oenv: Env, fake: FakeProviders
 ) -> None:
-    """The fake behaves like Google: no auth_time unless the claims parameter asks for it."""
+    """The fake behaves like Google: no auth_time unless the claims parameter asks for it. For an
+    account without a password that no longer matters (#687): Google never sends a fresh one."""
     browser = await linked_browser(oenv, fake)
+    await drop_password(oenv)
     await age_reauth(oenv)
     started = await start(browser, "google", "reauth")
     url = started.json()["authorization_url"]
     without = url.replace("claims=", "unrelated=")
     callback = fake.complete(without)
-    assert location(await browser.get(callback)) == "/account?oauth=reauth_stale"
-    assert await oenv.scalar("SELECT reauth_at < now() - interval '5 minutes' FROM sessions")
+    assert location(await browser.get(callback)) == "/account?oauth=reauthed"
+    assert await oenv.scalar("SELECT reauth_at > now() - interval '1 minute' FROM sessions")
 
 
 async def test_google_sign_in_and_link_do_not_ask_for_auth_time(
@@ -266,10 +269,11 @@ async def test_google_sign_in_and_link_do_not_ask_for_auth_time(
 async def test_reauth_fails_closed_without_a_fresh_auth_time(
     oenv: Env, fake: FakeProviders, auth_time: object
 ) -> None:
-    browser = await linked_browser(oenv, fake)
+    """Every OIDC provider but Google for an account without a password (#522, #687)."""
+    browser = await linked_browser(oenv, fake, "microsoft")
     await age_reauth(oenv)
     old = browser.cookies[auth.SESSION_COOKIE]
-    response = await sign_in_with(browser, fake, "google", purpose="reauth", auth_time=auth_time)
+    response = await sign_in_with(browser, fake, "microsoft", purpose="reauth", auth_time=auth_time)
     assert location(response) == "/account?oauth=reauth_stale"
     assert browser.cookies[auth.SESSION_COOKIE] == old
     assert await oenv.scalar("SELECT reauth_at < now() - interval '5 minutes' FROM sessions")
@@ -279,6 +283,7 @@ async def test_reauth_with_an_identity_of_another_user_is_refused(
     oenv: Env, fake: FakeProviders
 ) -> None:
     browser = await linked_browser(oenv, fake)
+    await drop_password(oenv)
     await age_reauth(oenv)
     response = await sign_in_with(browser, fake, "google", purpose="reauth", sub="someone-else")
     assert location(response) == "/account?oauth=identity_mismatch"

@@ -35,7 +35,7 @@ from mowlfake import FakeMowl
 from optools import KIND as JOB_KIND
 from optools import TOKEN_A, TOKEN_B, OpsEnv
 
-pytestmark = pytest.mark.usefixtures("mowl_api")
+pytestmark = pytest.mark.usefixtures("mowl_api", "analysis_slot_by_default")
 SAME_ID = "shared-mix-0001"
 TABLES = (
     "jobs",
@@ -207,6 +207,81 @@ async def test_the_fake_mix_is_fetched_analysed_cached_and_its_audio_deleted(
     assert len(peaks) == 1
     assert peaks[0] is not None
     assert 0 < peaks[0] < 1536
+    # ADR 0026 stage 1 (#735): the fetch and decode times, on the job and in the same log line.
+    assert row.analysed_at is not None
+    assert row.analysis_fetch_ms >= 0
+    assert row.analysis_decode_ms > 0  # the child process takes real time
+    (line,) = [
+        json.loads(line)
+        for line in operator_log.getvalue().splitlines()
+        if "swedebeat mix analysed" in line
+    ]
+    assert (line["fetch_ms"], line["decode_ms"]) == (row.analysis_fetch_ms, row.analysis_decode_ms)
+    assert "load_1m" in line
+
+
+# --- the mix-analysis slot (#574) ---------------------------------------------------------------
+
+
+async def test_a_miss_without_a_slot_is_requeued_before_the_daily_slot_or_any_request(
+    harness: Harness, mowl_api: FakeMowl, work: Path
+) -> None:
+    owner, connection = await account(harness)
+    mix = add_beats(mowl_api)
+    body = {"mix_id": mix, "connection_id": str(connection)}
+    job_id = new_job(
+        harness.ops.admin, owner, input=json.dumps(body), max_attempts=1, analysis_slot=False
+    )
+    seen = (list(mowl_api.requests), list(harness.media.requests), mowl_api.link_requests)
+    await harness.ops.run_next()
+    row = harness.ops.row(job_id)
+    assert (row.state, row.attempt, row.analysis_slot) == ("queued", 0, True)
+    assert harness.ops.events(job_id)[-1][1:3] == ("requeued", {"reason": "analysis_slot"})
+    assert (list(mowl_api.requests), list(harness.media.requests), mowl_api.link_requests) == seen
+    assert (
+        harness.ops.sql(
+            "SELECT count(*) FROM swedebeat_analyses WHERE owner_id = :o", o=owner
+        ).scalar_one()
+        == 0
+    )  # the daily slot is taken by the run that analyses, once
+    assert harness.results == []
+
+    await harness.ops.run_next()  # claimed again holding the slot (max_attempts 1: not spent)
+    row = harness.ops.row(job_id)
+    assert (row.state, row.attempt, row.analysis_slot) == ("completed", 1, False)
+    assert harness.results[0].cached is False
+    # #735: each claim records its own wait; the second one holds the slot.
+    claims = [p for _, k, p, _ in harness.ops.events(job_id) if k == "claimed"]
+    assert [p["analysis_slot"] for p in claims] == [False, True]
+    assert all(p["wait_ms"] >= 0 for p in claims)
+    assert row.analysed_at is not None
+    assert (
+        harness.ops.sql(
+            "SELECT count(*) FROM swedebeat_analyses WHERE owner_id = :o", o=owner
+        ).scalar_one()
+        == 1
+    )
+    assert len(harness.media.requests) == 1
+    assert leftovers(work) == []
+
+
+async def test_a_slot_is_freed_by_the_store_and_by_a_cache_hit(
+    harness: Harness, mowl_api: FakeMowl
+) -> None:
+    owner, connection = await account(harness)
+    mix = add_beats(mowl_api)
+    first = harness.job(owner, connection, mix)  # holds a slot (analysis_slot_by_default)
+    assert harness.ops.row(first).analysis_slot is True
+    await harness.ops.run_next()
+    assert (harness.ops.row(first).state, harness.ops.row(first).analysis_slot) == (
+        "completed", False,
+    )  # fmt: skip
+    second = harness.job(owner, connection, mix)  # waited for a slot; the map is cached now
+    await harness.ops.run_next()
+    assert harness.results[1].cached is True
+    assert (harness.ops.row(second).state, harness.ops.row(second).analysis_slot) == (
+        "completed", False,
+    )  # fmt: skip
 
 
 async def test_a_cache_hit_makes_no_request_at_all(
@@ -223,6 +298,10 @@ async def test_a_cache_hit_makes_no_request_at_all(
     assert harness.results[1].fingerprint == harness.results[0].fingerprint
     assert (list(mowl_api.requests), list(harness.media.requests), mowl_api.link_requests) == seen
     assert leftovers(work) == []
+    # #735: a cache hit records no analysis time.
+    assert (second.analysed_at, second.analysis_fetch_ms, second.analysis_decode_ms) == (
+        None, None, None,
+    )  # fmt: skip
 
 
 async def test_a_cached_map_made_for_another_connection_playlist_age_or_version_is_not_reused(

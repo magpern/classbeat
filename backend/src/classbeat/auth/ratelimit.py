@@ -7,10 +7,11 @@ success releases what it reserved (``Attempt.succeed``) and never touches a newe
 Bucket keys are an HMAC of ``(action, scope, value, window)``: no email or IP in the clear.
 """
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import Float, and_, delete, exists, func, literal, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -20,6 +21,9 @@ from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.keys import Keys, hmac_digest
 from classbeat.auth.tables import rate_limits
 from classbeat.db import system_session
+
+if TYPE_CHECKING:
+    from classbeat.config import Settings
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +49,14 @@ MAIL_PAIR = Limit("mail", "pair", 3, 3600)
 MAIL_ACCOUNT = Limit("mail", "account", 10, 3600)
 MAIL_IP = Limit("mail", "ip", 10, 3600)
 OAUTH_IP = Limit("oauth", "ip", 30, 15 * 60)
+# ADR 0025 section 6: Turnstile verifications on the four anonymous auth forms, per IP. Every
+# request counts (a success too; nothing is released), reserved before the siteverify call, so it
+# caps our outbound calls per client; above the per-IP sign-in limit, so a shared NAT meets that one
+# first.
+CAPTCHA_IP = Limit("captcha", "ip", 60, 15 * 60)
+# The unsubscribe POST (ME4 #655): anonymous (the token is the credential) and exempt from the
+# Origin check, so only the network is counted; a mail client's one-click and the page share it.
+UNSUBSCRIBE_IP = Limit("unsubscribe", "ip", 60, 3600)
 PASSWORD_CHANGE = Limit("password-change", "account", 10, 3600)
 # ADR 0004 section 4: provider connects (MOWL sign-in with a password) count requests, per
 # classbeat user, per IP and per normalized provider email, so the route can't be used to test
@@ -62,6 +74,9 @@ ADMIN_USER = Limit("admin", "account", 60, 60)
 # a success too, so the route can't be used to try codes faster than this.
 REDEEM_USER = Limit("redeem", "account", 10, 3600)
 REDEEM_IP = Limit("redeem", "ip", 30, 3600)
+# ADR 0022 section 6 (#653): the Mail page's "Send test to me", per admin and hour. Every request
+# counts, a refused one too, so the page cannot be used to send mail faster than this.
+ADMIN_MAIL_TEST = Limit("admin-mail-test", "account", 10, 3600)
 # ADR 0014 section 2: the data export reads every owned table, so it is limited per user and
 # hour (every request counts) and per IP.
 EXPORT_USER = Limit("export", "account", 5, 3600)
@@ -81,6 +96,10 @@ SWEDEBEAT_MIXES_IP = Limit("swedebeat-mixes", "ip", 60, 600)
 # be triggered cross-site, so it has buckets of its own; every request counts.
 PLAYLIST_COVERS_USER = Limit("playlist-covers", "account", 10, 600)
 PLAYLIST_COVERS_IP = Limit("playlist-covers", "ip", 30, 600)
+# ADR 0024 section 5 (#647): a MOWL QR ticket (one anonymous MOWL call, one image fetch and one
+# broker connection of up to 15 minutes). Every start counts, a refused one too; none is released.
+MOWL_QR_USER = Limit("mowl-qr", "account", 10, 15 * 60)
+MOWL_QR_IP = Limit("mowl-qr", "ip", 30, 15 * 60)
 # The cover read's cooldown after a Spotify 429: a dedicated bucket hash per user (not a fixed
 # window). Each 429 inserts a row whose ``window_start`` is the instant that cooldown ends; the
 # check asks whether any row's end is still in the future, so the latest end counts and a later,
@@ -89,6 +108,24 @@ PLAYLIST_COVERS_IP = Limit("playlist-covers", "ip", 30, 600)
 COVER_COOLDOWN_ACTION = "cover-cooldown"
 COVER_COOLDOWN_MIN_SECONDS = 60
 COVER_COOLDOWN_MAX_SECONDS = 3600
+
+# Issue #577 (ADR 0003 section 9, amendment of 2026-11-05): the general limit on signed-in
+# ``/api`` requests (``api_buckets``), so a script with a stolen session is slowed down. The
+# counts come from the settings (``CLASSBEAT_API_*``); the actions, scopes and windows are fixed
+# here. Every request counts, a refused one too. A bucket's key does not name its count, so
+# changing a setting keeps the running windows.
+#
+# Never limited: the probes (``/api/health`` touches nothing; ``/api/ready`` runs only
+# ``SELECT 1``, no owned data, and is exempt so an orchestrator's probe loop never fills a
+# bucket), and signing out, so a user whose buckets a script has used up can still end every
+# session, the script's included.
+API_EXEMPT_PATHS = frozenset(
+    {"/api/health", "/api/ready", "/api/auth/logout", "/api/auth/logout-all"}
+)
+# The reads a scraper wants (the user's classes, revisions, messages and history; the jobs and
+# their drafts and streams): a tighter per-minute bucket of their own for safe methods.
+API_READ_PREFIXES = ("/api/classes", "/api/jobs")
+API_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 OnSuccess = Literal["decrement", "delete"]
 
@@ -220,6 +257,53 @@ class RateLimiter:
                 attempt.retry_after = max(attempt.retry_after, retry_after)
         return attempt
 
+    async def begin_together(self, buckets: Sequence[Bucket]) -> Attempt:
+        """``begin`` in one statement and one transaction: a slot in every bucket, refused if
+        any is over its limit (the slots stay taken). For the general limit, which runs on every
+        signed-in request (``api_buckets``). The rows are written in bucket-hash order, so two
+        requests that share a bucket (the client address) lock their rows in the same order."""
+        rows: dict[bytes, Bucket] = {}
+        for bucket in buckets:
+            rows.setdefault(self.bucket_hash(bucket.limit, bucket.value), bucket)
+        attempt = Attempt(allowed=True, retry_after=0, _factory=self._factory)
+        if not rows:
+            return attempt
+        ordered = sorted(rows)
+        statement = (
+            insert(rate_limits)
+            .values(
+                [
+                    {
+                        "bucket_hash": bucket_hash,
+                        "window_start": _window_start(rows[bucket_hash].limit.window_seconds),
+                        "count": 1,
+                    }
+                    for bucket_hash in ordered
+                ]
+            )
+            .on_conflict_do_update(
+                index_elements=[rate_limits.c.bucket_hash, rate_limits.c.window_start],
+                set_={"count": rate_limits.c.count + 1},
+            )
+            .returning(
+                rate_limits.c.bucket_hash,
+                rate_limits.c.count.label("hits"),
+                rate_limits.c.window_start,
+                func.clock_timestamp().label("now"),
+            )
+        )
+        async with system_session(self._factory) as session:
+            found = (await session.execute(statement)).all()
+        for row in found:
+            bucket = rows[bytes(row.bucket_hash)]
+            attempt.slots.append(Slot(bytes(row.bucket_hash), row.window_start, bucket.on_success))
+            if row.hits > bucket.limit.max_count:
+                ends = row.window_start.timestamp() + bucket.limit.window_seconds
+                retry_after = max(math.ceil(ends - row.now.timestamp()), 1)
+                attempt.allowed = False
+                attempt.retry_after = max(attempt.retry_after, retry_after)
+        return attempt
+
     def cooldown_hash(self, value: str) -> bytes:
         return hmac_digest(self._keys.rate_limit, COVER_COOLDOWN_ACTION, value)
 
@@ -293,6 +377,11 @@ def connect_buckets(provider: str, user_id: str, ip: str, email_normalized: str)
     ]
 
 
+def mowl_qr_buckets(user_id: str, ip: str) -> list[Bucket]:
+    """A MOWL QR ticket start (ADR 0024 section 5): per user and per IP."""
+    return [Bucket(MOWL_QR_USER, user_id), Bucket(MOWL_QR_IP, bucket_ip(ip))]
+
+
 def spotify_start_buckets(user_id: str, ip: str) -> list[Bucket]:
     """A Spotify connect start (ADR 0009 section 4): per user and per IP."""
     return [Bucket(SPOTIFY_START_USER, user_id), Bucket(SPOTIFY_START_IP, bucket_ip(ip))]
@@ -301,6 +390,11 @@ def spotify_start_buckets(user_id: str, ip: str) -> list[Bucket]:
 def admin_buckets(user_id: str) -> list[Bucket]:
     """An admin area request (ADR 0011 section 6): 60 per admin and minute."""
     return [Bucket(ADMIN_USER, user_id)]
+
+
+def admin_mail_test_buckets(user_id: str) -> list[Bucket]:
+    """A test send from the admin Mail page (ADR 0022 section 6): 10 per admin and hour."""
+    return [Bucket(ADMIN_MAIL_TEST, user_id)]
 
 
 def redeem_buckets(user_id: str, ip: str) -> list[Bucket]:
@@ -326,3 +420,39 @@ def swedebeat_mixes_buckets(user_id: str, ip: str) -> list[Bucket]:
 def playlist_covers_buckets(user_id: str, ip: str) -> list[Bucket]:
     """The picker's cover read (ADR 0013 section 9 amendment, #537): per user and per IP."""
     return [Bucket(PLAYLIST_COVERS_USER, user_id), Bucket(PLAYLIST_COVERS_IP, bucket_ip(ip))]
+
+
+def _api_read(method: str, path: str) -> bool:
+    return method in API_SAFE_METHODS and any(
+        path == prefix or path.startswith(prefix + "/") for prefix in API_READ_PREFIXES
+    )
+
+
+def api_limited(path: str) -> bool:
+    """Whether the general limit applies to a signed-in request for ``path`` (#577)."""
+    return (path == "/api" or path.startswith("/api/")) and path not in API_EXEMPT_PATHS
+
+
+def api_buckets(
+    settings: "Settings", user_id: str, ip: str, method: str, path: str
+) -> list[Bucket]:
+    """The general limit's buckets of one signed-in ``/api`` request (#577): per user and minute
+    and per user and hour (every request), per user and minute for writes (every method but
+    ``GET``, ``HEAD`` and ``OPTIONS``) or for the class and job reads, and per client address and
+    minute (signed-in requests of every user)."""
+    buckets = [
+        Bucket(Limit("api", "account", settings.api_requests_per_minute, 60), user_id),
+        Bucket(Limit("api", "account", settings.api_requests_per_hour, 3600), user_id),
+    ]
+    if method not in API_SAFE_METHODS:
+        buckets.append(
+            Bucket(Limit("api-write", "account", settings.api_writes_per_minute, 60), user_id)
+        )
+    elif _api_read(method, path):
+        buckets.append(
+            Bucket(Limit("api-read", "account", settings.api_reads_per_minute, 60), user_id)
+        )
+    buckets.append(
+        Bucket(Limit("api", "ip", settings.api_ip_requests_per_minute, 60), bucket_ip(ip))
+    )
+    return buckets

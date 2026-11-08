@@ -218,9 +218,9 @@ def test_the_key_is_a_flag_the_admin_may_store_off_or_on() -> None:
 def test_a_suite_version_covers_soundless_from_the_first_with_soundless_cases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """SL5 (#531) set it to 11: the suite version whose design group holds the soundless cases."""
-    assert routes.SOUNDLESS_SUITE_VERSION == 11
-    assert [routes.soundless_suite(v) for v in (1, 10, 11, 12)] == [False, False, True, True]
+    """SL5 (#531) set it to 11 and #601 to 12: the first suite version with a sound music check."""
+    assert routes.SOUNDLESS_SUITE_VERSION == 12
+    assert [routes.soundless_suite(v) for v in (1, 10, 11, 12, 13)] == [False] * 3 + [True] * 2
     monkeypatch.setattr(routes, "SOUNDLESS_SUITE_VERSION", None)  # the SL1 state: nothing covers
     assert not any(routes.soundless_suite(v) for v in (1, 10, 11, 10_000))
 

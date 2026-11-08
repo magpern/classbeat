@@ -1,0 +1,14 @@
+Din konto er blevet slettet
+===========================
+
+Din classbeat-konto og de data, der var gemt sammen med den, er blevet slettet. Der gemmes ikke mere under denne adresse.
+
+Hvornår det skete: 6. november 2026 kl. 12:30 UTC
+
+Hvis det ikke var dig, skal du give os besked med det samme. Kontakt os på support@classbeat.eu
+
+--
+Du får denne mail, fordi din classbeat-konto er blevet slettet. Det er den eneste mail om det.
+classbeat: https://classbeat.example.test
+Spørgsmål? Skriv til support@classbeat.eu
+Afmeld disse mails: https://classbeat.example.test/da/unsubscribe#token=SAMPLE&all=SAMPLE

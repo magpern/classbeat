@@ -115,7 +115,7 @@ type Page = { rows: AuditRow[]; nextBefore: string | null }
  */
 export function Audit() {
   const onMfaRequired = useMfaRequired()
-  const { pathname, search, navigate } = useRouter()
+  const { path: pathname, search, navigate } = useRouter()
   const applied = filterFromSearch(new URLSearchParams(search))
   const appliedKey = filterSearch(applied)
   // The email filter, for the address it was applied with: Back, Forward or another address

@@ -4,11 +4,9 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, FastAPI, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -35,6 +33,8 @@ from classbeat.classes.history import router as history_router
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
+from classbeat.connections.mowl_qr import QrWaits
+from classbeat.connections.mowl_qr_routes import router as mowl_qr_router
 from classbeat.connections.routes import router as connections_router
 from classbeat.connections.swedebeat_routes import router as swedebeat_router
 from classbeat.crypto.keks import load_keyring
@@ -42,8 +42,9 @@ from classbeat.db import create_engine, create_session_factory, verify_database_
 from classbeat.design import configure_limits, mixadmit, music_kind, sport
 from classbeat.design.mixes import router as mixes_router
 from classbeat.design.routes import router as music_router  # registers design_draft (J3)
+from classbeat.emails.handoff import HandoffConsumer
 from classbeat.flags.routes import router as settings_router
-from classbeat.headers import SecurityHeaders, unhandled_error
+from classbeat.headers import SecurityHeaders, unhandled_error_handler
 from classbeat.jobs.events_routes import StreamLimiter
 from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
@@ -53,6 +54,7 @@ from classbeat.operations.routes import router as operations_router
 from classbeat.plans.routes import router as plans_router
 from classbeat.playlists.runtime import playlists_runtime
 from classbeat.quota import PlanRevisionPolicy
+from classbeat.spa_routes import add_single_page_app
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
 from classbeat.usage.routes import router as usage_router
@@ -99,26 +101,6 @@ async def ready(request: Request, response: Response) -> ReadyResponse:
     return ReadyResponse(status="ready")
 
 
-def _add_single_page_app(app: FastAPI, static_dir: Path) -> None:
-    """Serve ``static_dir``; any other GET outside ``/api`` gets ``index.html``."""
-    root = static_dir.resolve()
-
-    @app.get("/{path:path}", include_in_schema=False)
-    async def single_page_app(path: str) -> FileResponse:
-        if path == "api" or path.startswith("api/"):
-            raise HTTPException(status_code=404)
-        try:
-            candidate = (root / path).resolve()
-            if candidate.is_relative_to(root) and candidate.is_file():
-                return FileResponse(candidate)
-        except (OSError, ValueError):  # for example an embedded NUL in the path
-            pass
-        index = root / "index.html"
-        if not index.is_file():
-            raise HTTPException(status_code=404)
-        return FileResponse(index)
-
-
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the app. The database engine is created in the lifespan, not here."""
     settings = settings if settings is not None else Settings()
@@ -163,9 +145,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.stream_limiter = StreamLimiter()
             app.state.event_hub = EventHub(engine)
             app.state.event_hub.start()  # LISTEN job_events (ADR 0005 section 6)
+            # The worker's "class ready" hand-off (ADR 0022 section 4, ME5): LISTEN mail_handoff
+            # and a poll when SMTP is configured, else an hourly purge of rows past a day.
+            app.state.mail_handoff = HandoffConsumer(
+                engine, app.state.session_factory, app.state.mailer, settings
+            )
+            app.state.mail_handoff.start()
             yield
         finally:
             mixadmit.configure(None)
+            consumer = getattr(app.state, "mail_handoff", None)
+            if consumer is not None:
+                await consumer.stop()
+            await app.state.mowl_qr.close()  # every MOWL QR wait ends with the process (ADR 0024)
             hub = getattr(app.state, "event_hub", None)
             if hub is not None:
                 await hub.stop()
@@ -185,6 +177,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json" if docs_enabled else None,
     )
     app.state.settings = settings
+    # The MOWL QR waits of this process (ADR 0024 section 4): in memory, one per user.
+    app.state.mowl_qr = QrWaits()
     # The revise kinds' admit reads them (ADR 0007 section 4): the plan's revisions per class
     # under the setting, and the money bounds of the cost cap (ADR 0011 sections 3 and 4).
     configure_limits(settings, PlanRevisionPolicy(settings.revisions_per_class))
@@ -211,6 +205,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     admin_routes.install(app)  # every /api/admin route of the admin area (ADR 0011 section 6)
     app.include_router(spotify_router)
     app.include_router(connections_router)
+    app.include_router(mowl_qr_router)
     app.include_router(swedebeat_router)
     app.include_router(job_events_router)
     app.include_router(jobs_router)
@@ -229,7 +224,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():
-            _add_single_page_app(app, settings.static_dir)
+            add_single_page_app(app, settings.static_dir, settings)
         else:
             logger.warning("static_dir does not exist; not serving static files")
     # Outside the auth middleware, inside SecurityHeaders: a body over the cap is refused before any
@@ -237,7 +232,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(BodyLimit)
     # Added last, so it is the outermost middleware: the CSP and Referrer-Policy go on every
     # response, the auth middleware's own answers included (ADR 0013 section 9).
-    app.add_middleware(SecurityHeaders)
+    # ADR 0025 section 10: Cloudflare's origin in script-src and frame-src only with real Turnstile.
+    turnstile = settings.turnstile_enabled and not settings.turnstile_fake
+    app.add_middleware(SecurityHeaders, base_url=settings.public_base_url, turnstile=turnstile)
     # Starlette answers an unhandled exception outside that middleware: its 500 adds the headers.
-    app.add_exception_handler(Exception, unhandled_error)
+    app.add_exception_handler(
+        Exception, unhandled_error_handler(settings.public_base_url, turnstile=turnstile)
+    )
     return app

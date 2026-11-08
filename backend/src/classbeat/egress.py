@@ -42,9 +42,10 @@ else, in either process; it does not follow redirects and refuses one to another
 
 **The media client** (ADR 0016 §4, threat model T109): ``mowl_media_async_client()`` fetches a
 Swedebeat mix from the temporary link MOWL returns (A3, worker only). Its list is
-``MOWL_MEDIA_ALLOWLIST``, built from the literal ``MOWL_MEDIA_HOSTS``, which is **empty until the
-owner confirms the host**; so is nothing else's: the library's MOWL opener, with its
-``authorization`` header, cannot reach the media host (it is on no urllib list), and this client
+``MOWL_MEDIA_ALLOWLIST``, built from the literal ``MOWL_MEDIA_HOSTS``, which holds the one
+confirmed host (``users-playlists.s3-accelerate.amazonaws.com``, #524); nothing else's does: the
+library's MOWL opener, with its ``authorization`` header, cannot reach the media host (it is on no
+urllib list), and this client
 sends none of our headers. It follows no redirect at all, ends every request within
 ``MOWL_MEDIA_TOTAL_SECONDS`` and takes **no argument** (a list and a transport come only from
 tests, through ``mowl_media_test_client``, which the guard refuses in ``classbeat``). The body is
@@ -60,6 +61,23 @@ token, reaches no other host. It is built like the media client: no redirect at 
 header (only what the call site sets), ``trust_env=False``, a total deadline per request
 (``SWEDEBEAT_CLOUD_TOTAL_SECONDS``) and **no argument** (a transport comes only from tests, through
 ``swedebeat_cloud_test_client``, which the guard refuses in ``classbeat``).
+
+**The MOWL QR sign-in** (ADR 0024, #647; web process only, both refuse inside the worker):
+``mowl_qr_image_async_client()`` fetches a ticket's public QR image from ``media.mowl.com``
+(``MOWL_QR_IMAGE_ALLOWLIST``, on no urllib list, so the library's opener with its
+``authorization`` never reaches it), built like the media client: no redirect, no default
+header, ``trust_env=False``, a total deadline, **no argument**. ``mowl_mqtt_open()`` is the one
+**non-HTTP** rule: a TLS connection to MOWL's broker, ``(mq.intelligent-cycling.com, 8883)``
+exactly (``MQTT_ALLOWLIST``, checked by ``check_mqtt`` before the connect), with a verifying
+context and **no fallback** to plain MQTT on 1883 or any other port; it takes no argument, so
+neither a caller nor a MOWL answer can choose the host, the port or switch TLS off.
+
+**The Turnstile client** (ADR 0025 section 9, #721; web process only, it refuses inside the
+worker): ``turnstile_async_client()`` sends the siteverify request of the four anonymous auth forms
+to ``challenges.cloudflare.com`` (``TURNSTILE_ALLOWLIST``, on no urllib list). Built like the
+media client: no redirect, no default header, ``trust_env=False``, a total deadline
+(``TURNSTILE_TOTAL_SECONDS``), **no argument** (a transport comes only from tests, through
+``turnstile_test_client``, which the guard refuses in ``classbeat``).
 
 All paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
 log (``SSLKEYLOGFILE`` is ignored, threat model T49).
@@ -265,7 +283,7 @@ def worker_allowlist(model_providers: Iterable[str] = ()) -> Allowlist:
 
 # The Spotify client's list, in the web process and the worker alike (ADR 0009 §10).
 SPOTIFY_ALLOWLIST = Allowlist(SPOTIFY_HOSTS)
-# The media client's list (ADR 0016 §4): ``MOWL_MEDIA_HOSTS``, empty today.
+# The media client's list (ADR 0016 §4): ``MOWL_MEDIA_HOSTS``, the one confirmed host (#524).
 MOWL_MEDIA_ALLOWLIST = Allowlist(MOWL_MEDIA_HOSTS)
 # The catalogue client's list (ADR 0016 §4, B1): Swedebeat's catalogue host alone.
 SWEDEBEAT_CLOUD_ALLOWLIST = Allowlist(frozenset({SWEDEBEAT_CLOUD_HOST}))
@@ -982,3 +1000,147 @@ def swedebeat_cloud_test_client(
     production list and a fake transport (the fake catalogue, no network). The redirect, header
     and deadline behaviour is the production client's (the same builder)."""
     return _media_client(SWEDEBEAT_CLOUD_ALLOWLIST, total_seconds, inner)
+
+
+# --- MOWL QR sign-in (ADR 0024, #647) -----------------------------------------------------------
+#
+# Two outbound paths of the web process only (the worker never signs anyone in): the QR image
+# from MOWL's media host, and one MQTT connection per ticket to MOWL's broker. Both are literal,
+# code-only lists; neither carries any token or password of ours to its host (the image fetch
+# sends no header but the call site's; the MQTT connection sends the per-ticket broker credentials
+# MOWL handed out with the ticket and receives the session token).
+
+MOWL_QR_IMAGE_HOST: Final = "media.mowl.com"
+MOWL_QR_IMAGE_ALLOWLIST = Allowlist(frozenset({MOWL_QR_IMAGE_HOST}))
+# One image fetch's total time, body included.
+MOWL_QR_IMAGE_TOTAL_SECONDS: Final = 10.0
+
+
+def mowl_qr_image_network_transport() -> httpx.AsyncHTTPTransport:
+    """The network transport of the QR image client: the system trust store (as the urllib
+    path), no TLS key log, no proxy from the environment."""
+    return httpx.AsyncHTTPTransport(trust_env=False, verify=tls_client_context())
+
+
+def mowl_qr_image_async_client() -> httpx.AsyncClient:
+    """The dedicated client that fetches a MOWL QR ticket's image (ADR 0024 section 3), **in the
+    web process only**: inside the worker it refuses with ``OutboundBlocked`` before anything is
+    built. **It takes no argument**: its list is always ``MOWL_QR_IMAGE_ALLOWLIST``
+    (``media.mowl.com`` alone, on no urllib list), its deadline ``MOWL_QR_IMAGE_TOTAL_SECONDS``.
+    It is built like the media client: https on 443, no userinfo, **no redirect at all**, no
+    default header (the image is public; no MOWL ``authorization`` ever goes there),
+    ``trust_env=False``, a total deadline covering the body. One client per fetch."""
+    refuse_in_worker(MOWL_QR_IMAGE_HOST)
+    return _media_client(
+        MOWL_QR_IMAGE_ALLOWLIST, MOWL_QR_IMAGE_TOTAL_SECONDS, mowl_qr_image_network_transport()
+    )
+
+
+def mowl_qr_image_test_client(
+    inner: httpx.AsyncBaseTransport, *, total_seconds: float = MOWL_QR_IMAGE_TOTAL_SECONDS
+) -> httpx.AsyncClient:
+    """**Tests only** (the guard refuses it in ``classbeat``): the QR image client with the
+    production list and a fake transport (no network). Same builder, so the same redirect,
+    header and deadline behaviour."""
+    return _media_client(MOWL_QR_IMAGE_ALLOWLIST, total_seconds, inner)
+
+
+# --- Cloudflare Turnstile (ADR 0025 section 9, #721) -------------------------------------------
+#
+# The siteverify call of the web process (sign-in, sign-up, the provider-email step and the reset
+# request). It carries our Turnstile secret, the visitor's token and address and an idempotency key
+# to Cloudflare, and nothing else. A literal, code-only list on no urllib list.
+
+TURNSTILE_HOST: Final = "challenges.cloudflare.com"
+TURNSTILE_ALLOWLIST = Allowlist(frozenset({TURNSTILE_HOST}))
+# One verification's total time, both attempts and every body included (ADR 0025 section 4).
+TURNSTILE_TOTAL_SECONDS: Final = 5.0
+TURNSTILE_CONNECT_SECONDS: Final = 3.0
+
+
+def turnstile_network_transport() -> httpx.AsyncHTTPTransport:
+    """The network transport of the Turnstile client: the system trust store (as the urllib
+    path), no TLS key log, no proxy from the environment."""
+    return httpx.AsyncHTTPTransport(trust_env=False, verify=tls_client_context())
+
+
+def _turnstile_client(inner: httpx.AsyncBaseTransport, total_seconds: float) -> httpx.AsyncClient:
+    client = httpx.AsyncClient(
+        transport=AllowlistTransport(TURNSTILE_ALLOWLIST, inner, total_seconds=total_seconds),
+        trust_env=False,
+        timeout=httpx.Timeout(total_seconds, connect=min(TURNSTILE_CONNECT_SECONDS, total_seconds)),
+        follow_redirects=False,
+    )
+    client.headers.clear()
+    return client
+
+
+def turnstile_async_client() -> httpx.AsyncClient:
+    """The dedicated client of the Turnstile siteverify call (ADR 0025 section 9), **in the web
+    process only**: inside the worker it refuses with ``OutboundBlocked`` before anything is
+    built. **It takes no argument**: its list is always ``TURNSTILE_ALLOWLIST``
+    (``challenges.cloudflare.com`` alone, https on 443, on no urllib list), its deadline
+    ``TURNSTILE_TOTAL_SECONDS`` (connect ``TURNSTILE_CONNECT_SECONDS``). It follows **no redirect
+    at all**, sends **no default header** (only what the call site sets) and has
+    ``trust_env=False``. One client per verification (``async with``)."""
+    refuse_in_worker(TURNSTILE_HOST)
+    return _turnstile_client(turnstile_network_transport(), TURNSTILE_TOTAL_SECONDS)
+
+
+def turnstile_test_client(
+    inner: httpx.AsyncBaseTransport, *, total_seconds: float = TURNSTILE_TOTAL_SECONDS
+) -> httpx.AsyncClient:
+    """**Tests only** (the guard refuses it in ``classbeat``): the Turnstile client with the
+    production list and a fake transport (an ``httpx.MockTransport``, no network). Same builder,
+    so the same redirect, header and deadline behaviour."""
+    return _turnstile_client(inner, total_seconds)
+
+
+# MOWL's MQTT broker (ADR 0024 section 4). **TLS on 8883 only**, the one non-HTTP rule of the
+# process: the Windows app falls back to plain MQTT on 1883 when TLS fails, and the broker accepts
+# that; classbeat never does. A failed handshake or a certificate that does not verify is an
+# error, never a reason to try another port. The host and port are literals: the ticket's own
+# ``MQTTServerAddress``, ports and ``DisableSSL`` are never used to connect (the ticket parser
+# refuses a ticket that names another host).
+MOWL_MQTT_HOST: Final = "mq.intelligent-cycling.com"
+MOWL_MQTT_TLS_PORT: Final = 8883
+MQTT_ALLOWLIST: Final[frozenset[tuple[str, int]]] = frozenset(
+    {(MOWL_MQTT_HOST, MOWL_MQTT_TLS_PORT)}
+)
+# The TCP connect and the TLS handshake together.
+MOWL_MQTT_CONNECT_SECONDS: Final = 15.0
+
+
+def check_mqtt(host: str, port: int) -> None:
+    """``OutboundBlocked`` unless ``(host, port)`` is on ``MQTT_ALLOWLIST`` exactly (lower case
+    host, the TLS port; 1883 or any other port is refused)."""
+    if (host, port) not in MQTT_ALLOWLIST:
+        raise blocked(host)
+
+
+def mowl_mqtt_tls_context() -> ssl.SSLContext:
+    """The broker connection's TLS context: ``tls_client_context()`` (hostname check,
+    ``CERT_REQUIRED``, the system trust store, no key log), TLS 1.2 at least."""
+    context = tls_client_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    return context
+
+
+async def mowl_mqtt_open() -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    """Open the TLS connection to MOWL's broker (ADR 0024 section 4), **in the web process
+    only**, and return its streams. **It takes no argument**: the host, the port (8883) and the
+    verifying TLS context are its own, checked against ``MQTT_ALLOWLIST`` before the connect. No
+    proxy (asyncio reads none). The connect and handshake end within
+    ``MOWL_MQTT_CONNECT_SECONDS`` (``TimeoutError``); a TLS or connect error is raised as it is,
+    and nothing else is tried."""
+    refuse_in_worker(MOWL_MQTT_HOST)
+    host, port = MOWL_MQTT_HOST, MOWL_MQTT_TLS_PORT
+    check_mqtt(host, port)
+    async with asyncio.timeout(MOWL_MQTT_CONNECT_SECONDS):
+        return await asyncio.open_connection(
+            host,
+            port,
+            ssl=mowl_mqtt_tls_context(),
+            server_hostname=host,
+            ssl_handshake_timeout=MOWL_MQTT_CONNECT_SECONDS,
+        )

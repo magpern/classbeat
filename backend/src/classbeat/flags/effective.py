@@ -26,6 +26,18 @@ async def stored_all(db: AsyncSession) -> dict[str, Any]:
     return {row.key: row.value for row in (await db.execute(_ALL)).all()}
 
 
+async def mail_support_address(db: AsyncSession, environment: str) -> str:
+    """The support address people are told to write to: the admin's ``mail_support_email`` when it
+    is a valid bare address, else the environment's (the same rule as the mail branding, #653)."""
+    return core.mail_support_email_setting(await _stored(db, "mail_support_email")) or environment
+
+
+async def mail_kinds_disabled(db: AsyncSession, can_disable: frozenset[str]) -> frozenset[str]:
+    """The kinds of ``can_disable`` the admin switched off (``mail_kinds_disabled``; #653). For
+    the worker's "class ready" hand-off (ME5), which may not load the mail registry."""
+    return core.mail_kinds_disabled_setting(await _stored(db, "mail_kinds_disabled"), can_disable)
+
+
 async def signup_mode(db: AsyncSession, environment: SignupMode) -> SignupMode:
     """The stricter of ``CLASSBEAT_SIGNUP_MODE`` and the stored ``signup_mode``."""
     return core.stricter_signup(environment, await _stored(db, "signup_mode"))

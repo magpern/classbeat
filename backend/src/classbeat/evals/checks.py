@@ -66,8 +66,8 @@ these differences:
 - no ``changes_on_music`` and no ``quality_issues``: the soundless stages make no quality report;
 - ``no_beat``: no interval has the ``"beat"`` cadence (it follows the music, and there is none);
 - ``no_music_reference``: nothing the draft says (names, description, cues, a revise note) names
-  music (``MUSIC_WORDS``). The cues of a draft are the model's own words, and a class with no music
-  that tells the rider to ride to a song is a wrong class.
+  music (``names_music``: ``MUSIC_WORDS`` less ``NO_MUSIC``). The cues of a draft are the model's
+  own words, and a class with no music that tells the rider to ride to a song is a wrong class.
 
 A check's detail holds numbers and rule names only, never draft or music text.
 """
@@ -128,17 +128,34 @@ RUNNING_HARD_SHARE: Final[dict[str, Range]] = {
 }
 RUNNING_ZONES: Final = (1, 5)
 RUNNING_KEYS: Final = frozenset({"sec", "zone", "gradient"})
-# A soundless class says nothing about music (issue #531). Whole words only; "the beat" and "the
-# drop" are the music's, where a bare "beat" or "drop" is also what a rider does to a personal
-# best or to the resistance.
+# A soundless class says nothing about music (issue #531, #601). Whole words only, and only what
+# names music: "the beat" and "the drop" are the music's, where a bare "beat" or "drop" is what a
+# rider does to a personal best or to the resistance. Left out on purpose: a bare "bpm" (a heart
+# rate), "fine-tune", "the drop" as a descent or a drop in resistance. The soundless prompt itself
+# says "This class has no music", so a text that only says there is none is not a reference
+# (``NO_MUSIC`` is cut out first by ``names_music``).
 MUSIC_WORDS: Final = re.compile(
-    r"\b(?:music|songs?|playlists?|soundtrack|lyrics?|chorus|bpm|tunes?|the beat|the drop"
-    r"|beat drop|spotify|swedebeat)\b",
+    r"\b(?:music|songs?|playlists?|soundtrack|lyrics?|chorus|the beat|beat drop|bass drop"
+    r"|spotify|swedebeat"
+    r"|(?:the|a|this|that|next|your|each|every|these|those) tunes?|tunes"
+    r"|the drop (?:hits|lands|kicks|comes)|drop (?:hits|kicks) in"
+    r"|\d+ ?bpm (?:track|song|tune|beat|mix|tempo))\b",
+    re.IGNORECASE,
+)
+NO_MUSIC: Final = re.compile(
+    r"\b(?:no|without|zero)\s+(?:any\s+)?(?:music|songs?|playlists?|soundtrack)\b"
+    r"|\b(?:music|songs?|playlists?)[- ]free\b",
     re.IGNORECASE,
 )
 # Revisions: easier is at most this share of the base's TSS; the cooldown keeps within this.
 EASIER_TSS: Final = 0.95
 COOLDOWN_KEEP_SEC: Final = 60
+
+
+def names_music(text: str) -> bool:
+    """Whether ``text`` names music: ``MUSIC_WORDS`` after the plain statements that there is
+    none (``NO_MUSIC``) are cut out."""
+    return MUSIC_WORDS.search(NO_MUSIC.sub(" ", text)) is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,7 +343,7 @@ def run_checks(
     if case.soundless:
         beats = sum(1 for _, i in _intervals(spec) if i.get("rpm") == "beat")
         add("no_beat", beats == 0, f"{beats} intervals with the beat cadence")
-        said = [t for t in _texts(result, note) if MUSIC_WORDS.search(t)]
+        said = [t for t in _texts(result, note) if names_music(t)]
         add("no_music_reference", not said, f"{len(said)} texts that name music")
     else:
         moved = str(result.quality.get("changes_on_music", "0 of 0"))

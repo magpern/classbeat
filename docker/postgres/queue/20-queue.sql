@@ -29,8 +29,9 @@ BEGIN
   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'classbeat_app') THEN
     RAISE EXCEPTION 'classbeat_app does not exist; run docker/postgres/init/10-roles.sql first';
   END IF;
-  IF pg_catalog.to_regclass('public.jobs') IS NULL THEN
-    RAISE EXCEPTION 'public.jobs does not exist; run the migrations first';
+  IF pg_catalog.to_regclass('public.jobs') IS NULL
+     OR pg_catalog.to_regclass('public.mail_handoff') IS NULL THEN
+    RAISE EXCEPTION 'public.jobs or public.mail_handoff does not exist; run the migrations first';
   END IF;
   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'classbeat_queue') THEN
     CREATE ROLE classbeat_queue NOLOGIN;
@@ -62,7 +63,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- classbeat_queue owns the five functions and nothing else, and has no default privileges of its
+-- classbeat_queue owns the six functions and nothing else, and has no default privileges of its
 -- own. Anything else is not repaired automatically (dropping or reassigning it could lose data):
 -- the script stops and names it.
 DO $$
@@ -81,7 +82,8 @@ BEGIN
                         JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
                        WHERE p.oid = r.objid AND n.nspname = 'public'
                          AND p.proname IN ('queue_claim', 'queue_reap', 'queue_expire',
-                                           'queue_unsettled', 'queue_stats')) THEN
+                                           'queue_unsettled', 'queue_stats',
+                                           'mail_handoff_take')) THEN
       RAISE EXCEPTION 'classbeat_queue owns % (catalog %, object %); it may own only the queue '
         'functions: drop or reassign it by hand', coalesce(r.what, '?'), r.catalog, r.objid;
     END IF;
@@ -175,8 +177,11 @@ GRANT USAGE ON SCHEMA public TO classbeat_queue;
 GRANT SELECT, UPDATE ON TABLE public.jobs TO classbeat_queue;
 GRANT SELECT, INSERT ON TABLE public.job_events TO classbeat_queue;
 GRANT SELECT ON TABLE public.external_operations TO classbeat_queue;
+-- ADR 0022 section 4 (ME5): mail_handoff_take reads and deletes hand-off rows. UPDATE only because
+-- SELECT ... FOR UPDATE SKIP LOCKED requires it; no function updates the table.
+GRANT SELECT, UPDATE, DELETE ON TABLE public.mail_handoff TO classbeat_queue;
 
--- Any other function under one of the five names (an overload) goes: each must exist once.
+-- Any other function under one of the six names (an overload) goes: each must exist once.
 DO $$
 DECLARE
   r record;
@@ -185,10 +190,11 @@ BEGIN
              FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname = 'public'
               AND p.proname IN ('queue_claim', 'queue_reap', 'queue_expire', 'queue_unsettled',
-                                'queue_stats')
+                                'queue_stats', 'mail_handoff_take')
               AND p.oid::regprocedure::text NOT IN (
-                'queue_claim(text,integer,text[])', 'queue_reap(integer)',
-                'queue_expire(integer)', 'queue_unsettled(integer)', 'queue_stats()') LOOP
+                'queue_claim(text,integer,text[],integer)', 'queue_reap(integer)',
+                'queue_expire(integer)', 'queue_unsettled(integer)', 'queue_stats()',
+                'mail_handoff_take(integer)') LOOP
     EXECUTE format('DROP ROUTINE public.%s', r.signature);
   END LOOP;
 END $$;
@@ -207,7 +213,7 @@ BEGIN
            || pg_catalog.oidvectortypes(p.proargtypes) || ')' AS what
       FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
      WHERE NOT (n.nspname = 'public' AND p.proname IN ('queue_claim', 'queue_reap',
-                  'queue_expire', 'queue_unsettled', 'queue_stats'))
+                  'queue_expire', 'queue_unsettled', 'queue_stats', 'mail_handoff_take'))
        AND (p.oid >= 16384 OR n.nspname = 'public'
             OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
                 AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'))
@@ -298,8 +304,18 @@ END $$;
 
 -- Claim the next queued job of one of p_kinds whose attempts are not spent. A row whose update
 -- fails is skipped (and stays locked until this transaction ends), so it cannot stall the queue.
+-- A job with analysis_slot (it must analyse a mix, issue #574) is claimed only while fewer than
+-- p_analysis_slots running jobs have it; over the cap it stays queued and other jobs are claimed
+-- past it. The count runs under one transaction-level advisory lock, taken only for such a job,
+-- and in READ COMMITTED (refused otherwise), so it sees every such claim committed before the
+-- lock was granted: concurrent claimers never claim more than the cap between them. Only this
+-- function moves a job to running, and nothing sets analysis_slot on a running job.
+-- The claimed event records the claim's queue wait (wait_ms: from the job's available_at, which
+-- every requeue sets, to this claim) and whether the claim holds an analysis slot, for the stage 1
+-- measurement of ADR 0026 (#735, queue_stats below). started_at is set on the first claim only, so
+-- the event, not the row, carries the wait of every claim.
 CREATE OR REPLACE FUNCTION public.queue_claim(p_worker text, p_lease_seconds integer,
-                                              p_kinds text[])
+                                              p_kinds text[], p_analysis_slots integer)
   RETURNS TABLE (job_id uuid, owner_id uuid, lease_version bigint)
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
@@ -311,6 +327,9 @@ DECLARE
   v_version bigint;
   v_seq bigint;
   v_attempt integer;
+  v_slot boolean;
+  v_available timestamptz;
+  v_full boolean;  -- NULL until a job with analysis_slot is met and the slots are counted
 BEGIN
   IF p_worker IS NULL OR p_worker !~ '^[A-Za-z0-9._:-]{1,100}$' THEN
     RAISE EXCEPTION 'invalid worker id' USING ERRCODE = '22023';
@@ -318,19 +337,37 @@ BEGIN
   IF p_lease_seconds IS NULL OR p_lease_seconds < 30 OR p_lease_seconds > 600 THEN
     RAISE EXCEPTION 'p_lease_seconds must be 30 to 600' USING ERRCODE = '22023';
   END IF;
+  IF p_analysis_slots IS NULL OR p_analysis_slots < 1 OR p_analysis_slots > 16 THEN
+    RAISE EXCEPTION 'p_analysis_slots must be 1 to 16' USING ERRCODE = '22023';
+  END IF;
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'queue_claim runs in READ COMMITTED only' USING ERRCODE = '25001';
+  END IF;
   IF p_kinds IS NULL OR cardinality(p_kinds) = 0 THEN
     RETURN;
   END IF;
   FOR i IN 1..10 LOOP
-    SELECT j.id, j.owner_id INTO v_id, v_owner
+    SELECT j.id, j.owner_id, j.analysis_slot, j.available_at
+      INTO v_id, v_owner, v_slot, v_available
       FROM public.jobs j
      WHERE j.state = 'queued' AND j.available_at <= now() AND j.attempt < j.max_attempts
        AND j.kind = ANY (p_kinds) AND j.id <> ALL (v_skipped)
+       AND NOT (j.analysis_slot AND coalesce(v_full, false))
      ORDER BY j.available_at, j.created_at
      LIMIT 1
        FOR UPDATE SKIP LOCKED;
     IF NOT FOUND THEN
       RETURN;
+    END IF;
+    IF v_slot THEN
+      IF v_full IS NULL THEN
+        PERFORM pg_advisory_xact_lock(hashtextextended('classbeat.jobs.analysis_slots', 0));
+        v_full := (SELECT count(*) FROM public.jobs r
+                    WHERE r.state = 'running' AND r.analysis_slot) >= p_analysis_slots;
+      END IF;
+      IF v_full THEN
+        CONTINUE;  -- it stays queued; the next pass looks only at jobs without analysis_slot
+      END IF;
     END IF;
     BEGIN
       UPDATE public.jobs j
@@ -341,7 +378,10 @@ BEGIN
        WHERE j.id = v_id
       RETURNING j.lease_version, j.next_seq, j.attempt INTO v_version, v_seq, v_attempt;
       INSERT INTO public.job_events (owner_id, job_id, seq, kind, payload, lease_version)
-      VALUES (v_owner, v_id, v_seq, 'claimed', jsonb_build_object('attempt', v_attempt),
+      VALUES (v_owner, v_id, v_seq, 'claimed',
+              jsonb_build_object('attempt', v_attempt, 'analysis_slot', v_slot,
+                                 'wait_ms', greatest(floor(extract(epoch FROM now() - v_available)
+                                                           * 1000), 0)::bigint),
               v_version);
       PERFORM pg_notify('job_events', v_id::text);
     EXCEPTION WHEN OTHERS THEN
@@ -488,12 +528,22 @@ BEGIN
      LIMIT p_limit;
 END $$;
 
--- Counts only, never ids: jobs per state and uncertain external operations.
+-- Counts only, never ids: jobs per state and uncertain external operations, then the stage 1
+-- measurement of ADR 0026 (#735) over the last 7 days, all users together:
+--   claim_wait_{slot,other}_*  the queue wait of each claim (the claimed event's wait_ms), kept
+--     apart for claims that hold an analysis slot and the rest; samples and the p95 in ms;
+--   claim_wait_slot_peak_*  the same for slot claims at peak: the hour of the day (UTC, 0 to 23)
+--     with the most slot claims over the 7 days, pooled across the days (ties: the earlier hour);
+--   analysis_*  the fetch and the decode of each stored fresh mix analysis (jobs.analysis_*_ms).
+-- A p95 needs at least 20 samples; with fewer it is NULL, so a trigger never fires on too little.
 CREATE OR REPLACE FUNCTION public.queue_stats()
   RETURNS TABLE (metric text, total bigint)
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 #variable_conflict use_column
+DECLARE
+  c_days CONSTANT integer := 7;
+  c_min CONSTANT integer := 20;
 BEGIN
   RETURN QUERY
     SELECT 'jobs_' || s.state, (SELECT count(*) FROM public.jobs j WHERE j.state = s.state)
@@ -502,6 +552,91 @@ BEGIN
     UNION ALL
     SELECT 'external_operations_uncertain',
            (SELECT count(*) FROM public.external_operations e WHERE e.state = 'uncertain');
+  RETURN QUERY
+    WITH c AS (
+      SELECT round((e.payload ->> 'wait_ms')::numeric)::bigint AS wait_ms,
+             (e.payload ->> 'analysis_slot')::boolean AS slot,
+             extract(hour FROM e.created_at AT TIME ZONE 'UTC')::integer AS hour
+        FROM public.job_events e
+       WHERE e.kind = 'claimed' AND e.created_at > now() - make_interval(days => c_days)
+         AND CASE WHEN jsonb_typeof(e.payload -> 'wait_ms') = 'number'
+                  THEN (e.payload ->> 'wait_ms')::numeric BETWEEN 0 AND 1e12 END
+         AND jsonb_typeof(e.payload -> 'analysis_slot') = 'boolean'
+    ), peak AS (
+      SELECT c.hour FROM c WHERE c.slot GROUP BY c.hour ORDER BY count(*) DESC, c.hour LIMIT 1
+    ), a AS (
+      SELECT j.analysis_fetch_ms::bigint AS fetch_ms, j.analysis_decode_ms::bigint AS decode_ms
+        FROM public.jobs j WHERE j.analysed_at > now() - make_interval(days => c_days)
+    ), m(n, metric, total) AS (
+      SELECT 1, 'claim_wait_slot_samples_7d', (SELECT count(*) FROM c WHERE c.slot)
+      UNION ALL
+      SELECT 2, 'claim_wait_slot_p95_ms_7d',
+             (SELECT CASE WHEN count(*) >= c_min
+                          THEN percentile_disc(0.95) WITHIN GROUP (ORDER BY c.wait_ms) END
+                FROM c WHERE c.slot)
+      UNION ALL
+      SELECT 3, 'claim_wait_other_samples_7d', (SELECT count(*) FROM c WHERE NOT c.slot)
+      UNION ALL
+      SELECT 4, 'claim_wait_other_p95_ms_7d',
+             (SELECT CASE WHEN count(*) >= c_min
+                          THEN percentile_disc(0.95) WITHIN GROUP (ORDER BY c.wait_ms) END
+                FROM c WHERE NOT c.slot)
+      UNION ALL
+      SELECT 5, 'claim_wait_slot_peak_hour_utc', (SELECT peak.hour::bigint FROM peak)
+      UNION ALL
+      SELECT 6, 'claim_wait_slot_peak_samples',
+             (SELECT count(*) FROM c WHERE c.slot AND c.hour = (SELECT peak.hour FROM peak))
+      UNION ALL
+      SELECT 7, 'claim_wait_slot_peak_p95_ms',
+             (SELECT CASE WHEN count(*) >= c_min
+                          THEN percentile_disc(0.95) WITHIN GROUP (ORDER BY c.wait_ms) END
+                FROM c WHERE c.slot AND c.hour = (SELECT peak.hour FROM peak))
+      UNION ALL
+      SELECT 8, 'analysis_samples_7d', (SELECT count(*) FROM a)
+      UNION ALL
+      SELECT 9, 'analysis_fetch_p95_ms_7d',
+             (SELECT CASE WHEN count(*) >= c_min
+                          THEN percentile_disc(0.95) WITHIN GROUP (ORDER BY a.fetch_ms) END
+                FROM a)
+      UNION ALL
+      SELECT 10, 'analysis_decode_p95_ms_7d',
+             (SELECT CASE WHEN count(*) >= c_min
+                          THEN percentile_disc(0.95) WITHIN GROUP (ORDER BY a.decode_ms) END
+                FROM a)
+    )
+    SELECT m.metric, m.total FROM m ORDER BY m.n;
+END $$;
+
+-- The web process takes "class ready" hand-off rows (ADR 0022 section 4, ME5): first every row older
+-- than a day is dropped (sent or not: a late mail is no use), then up to p_limit of the rest are
+-- deleted and returned, oldest first. FOR UPDATE SKIP LOCKED: two web processes never take the same
+-- row, and a row another transaction holds is left for it. Taking a row discards it (fire and
+-- forget, one attempt). p_limit 0 is the purge alone (SMTP not configured). Rows of every user, so
+-- it runs as classbeat_queue (row security is forced on the table); it returns no address.
+CREATE OR REPLACE FUNCTION public.mail_handoff_take(p_limit integer)
+  RETURNS TABLE (id uuid, owner_id uuid, kind text, params jsonb)
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+#variable_conflict use_column
+BEGIN
+  IF p_limit IS NULL OR p_limit < 0 OR p_limit > 100 THEN
+    RAISE EXCEPTION 'p_limit must be 0 to 100' USING ERRCODE = '22023';
+  END IF;
+  DELETE FROM public.mail_handoff h
+   WHERE h.id IN (SELECT o.id FROM public.mail_handoff o
+                   WHERE o.created_at <= now() - interval '1 day'
+                     FOR UPDATE SKIP LOCKED);
+  IF p_limit = 0 THEN
+    RETURN;
+  END IF;
+  RETURN QUERY
+    DELETE FROM public.mail_handoff h
+     WHERE h.id IN (SELECT t.id FROM public.mail_handoff t
+                     WHERE t.created_at > now() - interval '1 day'
+                     ORDER BY t.created_at, t.id
+                     LIMIT p_limit
+                       FOR UPDATE SKIP LOCKED)
+    RETURNING h.id, h.owner_id, h.kind, h.params;
 END $$;
 
 -- Owner, ACL and version of each function. Every grantee but the owner is revoked first, so the
@@ -511,9 +646,10 @@ DECLARE
   f text;
   g record;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['public.queue_claim(text,integer,text[])', 'public.queue_reap(integer)',
+  FOREACH f IN ARRAY ARRAY['public.queue_claim(text,integer,text[],integer)',
+                           'public.queue_reap(integer)',
                            'public.queue_expire(integer)', 'public.queue_unsettled(integer)',
-                           'public.queue_stats()'] LOOP
+                           'public.queue_stats()', 'public.mail_handoff_take(integer)'] LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO classbeat_queue', f);
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', f);
     FOR g IN SELECT DISTINCT
@@ -528,6 +664,6 @@ BEGIN
     END LOOP;
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO classbeat_queue', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO classbeat_app', f);
-    EXECUTE format('COMMENT ON FUNCTION %s IS %L', f, 'classbeat-queue v2');
+    EXECUTE format('COMMENT ON FUNCTION %s IS %L', f, 'classbeat-queue v5');
   END LOOP;
 END $$;

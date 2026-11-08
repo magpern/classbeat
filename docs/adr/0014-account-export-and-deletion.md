@@ -53,7 +53,10 @@ origin checks refuse a request from another site, so a link, image or form elsew
 and hour (every request counts). Format `classbeat-export` version 1:
 
 - `account` (profile: id, email, role, dates, whether there is a password), `sign_in_methods`
-  (provider, provider subject, address at linking, date), `two_factor` (on or off, confirmed date,
+  (provider, provider subject, address at linking, date), `passkeys` (a top-level list of its
+  own, ADR 0019 #771: label, credential id as base64url, transports, `synced` (the backup state),
+  `backup_eligible`, created and last used; never the public key, the signature counter or the user
+  handle), `two_factor` (on or off, confirmed date,
   unused recovery codes: a count), `sessions` (dates, user agent, IP; no token), `known_devices`
   (dates), `security_events` (kind, IP, time, detail);
 - `connections`: one entry per provider with **status only** (status, last error category, dates);

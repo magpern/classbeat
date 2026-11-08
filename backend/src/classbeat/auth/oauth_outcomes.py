@@ -1,9 +1,11 @@
 """What a verified provider identity does at the callback (ADR 0003 section 5, the table of
 callback outcomes). Identities are keyed by ``(provider, subject)``, never by email (T1).
 
-The flow purpose is evaluated first (``link``, ``reauth``), then the ``sign_in`` rows from the
-top. Everything runs in the caller's transaction; the multi-step writes sit in a savepoint that
-rolls back as a whole (for example when the invite is gone by the time the account is created).
+The flow purpose is evaluated first (``link``, ``reauth``), then the ``sign_in`` and
+``sign_up`` rows from the top: a new identity on a ``sign_in`` flow ends ``no_account`` before any
+invite check, so only a ``sign_up`` flow can create an account (#617). Everything runs in the
+caller's transaction; the multi-step writes sit in a savepoint that rolls back as a whole (for
+example when the invite is gone by the time the account is created).
 """
 
 import secrets
@@ -16,12 +18,13 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.auth import mails
 from classbeat.auth.accounts import create_user, find_user, grant_admin_if_listed, use_invite
+from classbeat.auth.anomaly import client_mark
 from classbeat.auth.devices import remember_device
 from classbeat.auth.events import record_event
 from classbeat.auth.keys import Keys, token_hash
 from classbeat.auth.oauth_client import ProviderIdentity
+from classbeat.auth.oauth_providers import GOOGLE
 from classbeat.auth.oauth_store import Flow, add_identity, identity_owner
 from classbeat.auth.sessions import (
     IssuedSession,
@@ -31,9 +34,10 @@ from classbeat.auth.sessions import (
     start_session,
 )
 from classbeat.auth.tables import identities, invites, pending_signups
+from classbeat.auth.userlock import lock_user, session_alive
 from classbeat.config import Settings
+from classbeat.emails.notices import Notice, happened
 from classbeat.flags import effective as flags
-from classbeat.mail import MailMessage
 
 REAUTH_MAX_AGE = 300  # seconds: auth_time must be within the last 5 minutes
 AUTH_TIME_SKEW = 60
@@ -65,7 +69,7 @@ class Outcome:
     issued: IssuedSession | None = None
     device_token: str | None = None
     new_pending_token: str | None = None
-    mail: MailMessage | None = None
+    notice: Notice | None = None
     next: str = ""  # "signed_in", "linked", "reauthed" or "email_needed"
     # Why a non-ok outcome happened, for the operator's log line (#522): a fixed word, never a
     # code, state, nonce, token or email.
@@ -102,6 +106,12 @@ async def _link(db: AsyncSession, req: Request) -> Outcome:
     if info is None:
         return _fail("session_mismatch", "not_the_flows_user")
     ident, user_id = req.identity, info.user_id
+    # #639: the user row first (ADR 0019 section 6), then the linking session re-checked as
+    # committed now. A reset that committed since the callback resolved the session has deleted
+    # it, so nothing is linked; a reset that comes later waits and its keep list removes this one.
+    locked = await lock_user(db, user_id)
+    if locked is None or locked.disabled or not await session_alive(db, user_id, info.id):
+        return _fail("session_mismatch", "session_gone")
     if await add_identity(
         db,
         user_id,
@@ -116,8 +126,8 @@ async def _link(db: AsyncSession, req: Request) -> Outcome:
             ip=req.ip,
             detail={"provider": req.flow.provider},
         )
-        mail = mails.identity_linked_notice(info.email, req.flow.provider)
-        return Outcome("ok", mail=mail, next="linked")
+        notice = happened("identity_linked", info.email, user_id, provider=req.flow.provider)
+        return Outcome("ok", notice=notice, next="linked")
     owner = await identity_owner(db, req.flow.provider, ident.subject)
     if owner is not None and owner[0] == user_id:
         return Outcome("ok", next="linked")  # already linked to this very account
@@ -138,27 +148,76 @@ def _stale_auth_time(auth_time: int | None, now: float) -> str | None:
     return None
 
 
+def _google_only(req: Request) -> tuple[str, str] | None:
+    """Google re-authentication of an account without a password (#687, ADR 0003 section 5, the
+    2026-11-06 amendment). Google ignores ``max_age=0`` and the ``auth_time`` claims request, so
+    its answer is accepted without a fresh ``auth_time``, but only as the answer to this flow: the
+    caller has already checked state, PKCE, nonce, the session and that the subject is this user's
+    linked Google identity. On top of that the flow must have started at most 5 minutes ago (it is
+    single use, taken before the exchange) and Google must vouch for the email. An ``auth_time``
+    that is present must not lie in the future."""
+    age = req.flow.age
+    if age is None or age > REAUTH_MAX_AGE:
+        return "reauth_expired", "flow_old"
+    if not req.identity.email_verified:
+        return "invalid", "email_unverified"
+    auth_time = req.identity.auth_time
+    now = time.time() if req.now is None else req.now
+    if auth_time is not None and auth_time - now > AUTH_TIME_SKEW:
+        return "reauth_stale", "auth_time_future"
+    return None
+
+
+def _freshness(req: Request, *, has_password: bool) -> tuple[str, str] | None:
+    """``(outcome, why)`` when the provider's answer does not count as a re-authentication.
+
+    - Google: never for an account with a password (it confirms with the password, #687); for an
+      account without one, ``_google_only``.
+    - Microsoft: ``auth_time`` within 5 minutes, fail closed (#522), unchanged.
+    - GitHub: a live GitHub session (an accepted risk, section 5)."""
+    provider = req.flow.provider
+    if provider == "github":
+        return None
+    if provider == GOOGLE:
+        if has_password:
+            return "reauth_use_password", "has_password"
+        return _google_only(req)
+    now = time.time() if req.now is None else req.now
+    why = _stale_auth_time(req.identity.auth_time, now)
+    return None if why is None else ("reauth_stale", why)
+
+
 async def _reauth(db: AsyncSession, req: Request) -> Outcome:
     info = _own_session(req)
     if info is None:
         return _fail("session_mismatch", "not_the_flows_user")
+    locked = await lock_user(db, info.user_id)  # first (#639, ADR 0019 section 6); the session
+    # and identity checks below then see a reset that committed meanwhile.
+    if locked is None:
+        return _fail("session_mismatch", "session_gone")
     owner = await identity_owner(db, req.flow.provider, req.identity.subject)
     if owner is None or owner[0] != info.user_id:
         return _fail("identity_mismatch", "not_linked_to_this_user")
-    if req.flow.provider != "github":
-        now = time.time() if req.now is None else req.now
-        why = _stale_auth_time(req.identity.auth_time, now)
-        if why is not None:
-            await record_event(
-                db,
-                "reauth_failed",
-                user_id=info.user_id,
-                ip=req.ip,
-                detail={"why": why, "provider": req.flow.provider},
-            )
-            return _fail("reauth_stale", why)
+    refusal = _freshness(req, has_password=locked.password_hash is not None)
+    if refusal is not None:
+        code, why = refusal
+        await record_event(
+            db,
+            "reauth_failed",
+            user_id=info.user_id,
+            ip=req.ip,
+            detail={"why": why, "provider": req.flow.provider},
+        )
+        return _fail(code, why)
     try:
-        issued = await rotate_session(db, info, reauth=True, user_agent=req.user_agent, ip=req.ip)
+        issued = await rotate_session(
+            db,
+            info,
+            reauth=True,
+            user_agent=req.user_agent,
+            ip=req.ip,
+            mark=client_mark(req.keys, req.ip, req.user_agent),
+        )
     except SessionGone:
         return _fail("session_mismatch", "session_gone")
     await record_event(
@@ -184,13 +243,23 @@ async def _sign_in(db: AsyncSession, req: Request) -> Outcome:
     provider, ident, settings = req.flow.provider, req.identity, req.settings
     owner = await identity_owner(db, provider, ident.subject)
     if owner is not None:
-        user_id, disabled = owner
+        # #639: lock the owner's row first (ADR 0019 section 6) and look the identity up again
+        # as committed now: a reset that removed it since the first look leaves no session.
+        await lock_user(db, owner[0])
+        again = await identity_owner(db, provider, ident.subject)
+        if again is None or again[0] != owner[0]:
+            return _fail("invalid", "identity_gone")  # the generic failure
+        user_id, disabled = again
         if disabled:
             await record_event(db, "sign_in_failed", user_id=user_id, ip=req.ip)
             return _fail("invalid", "user_disabled")  # the generic failure
         return await _session_for(db, req, user_id)
     if ident.email_verified and ident.email and await find_user(db, ident.email) is not None:
         return _fail("account_exists")  # nothing is created or linked
+    if req.flow.purpose != "sign_up":
+        # The sign-in screen (#617): a new identity has no account, whatever the sign-up mode
+        # or invite. Nothing is created, linked or handed off; only a sign-up flow may create.
+        return _fail("no_account")
     mode = await flags.signup_mode(db, settings.signup_mode)  # stricter of env and database
     gated = mode != "open"
     if mode == "closed" or (gated and req.flow.invite_id is None):
@@ -211,6 +280,7 @@ async def _session_for(db: AsyncSession, req: Request, user_id: UUID) -> Outcome
         user_agent=req.user_agent,
         ip=req.ip,
         replacing_token=req.session_token,
+        mark=client_mark(req.keys, req.ip, req.user_agent),
     )
     device = await remember_device(db, req.keys, user_id, req.device_token)
     await record_event(
@@ -238,13 +308,14 @@ async def create_provider_account(
     email: str,
     provider: str,
     subject: str,
+    locale: str | None = None,
 ) -> UUID:
     """One savepoint: consume the invite, create the user (verified) and the identity.
     Raises ``Refused`` with ``invite_invalid`` or ``account_exists``; nothing is left behind."""
     try:
         async with db.begin_nested():
             await consume_invite(db, invite_id)
-            user_id = await create_user(db, email)
+            user_id = await create_user(db, email, locale=locale)
             await db.execute(
                 insert(identities).values(
                     user_id=user_id, provider=provider, subject=subject, email_at_link=email
@@ -268,12 +339,16 @@ async def _create_account(db: AsyncSession, req: Request, email: str) -> Outcome
             email=email,
             provider=req.flow.provider,
             subject=req.identity.subject,
+            locale=req.flow.locale,
         )
     except Refused as exc:
         return _fail(exc.code)
     await record_event(db, "signup_confirmed", user_id=user_id, ip=req.ip)
     outcome = await _session_for(db, req, user_id)
-    outcome.mail = mails.identity_linked_notice(email, req.flow.provider)
+    # An account was created, not a method added: the welcome names the provider (ADR 0022 s.7).
+    outcome.notice = Notice(
+        "welcome", email, {"provider": req.flow.provider}, locale=req.flow.locale, user_id=user_id
+    )
     return outcome
 
 
@@ -294,6 +369,7 @@ async def _hand_off(db: AsyncSession, req: Request) -> Outcome:
             subject=req.identity.subject,
             browser_hash=token_hash(browser),
             invite_id=req.flow.invite_id,
+            locale=req.flow.locale,
             expires_at=func.now() + HANDOFF_LIFETIME,
         )
     )

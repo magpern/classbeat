@@ -12,7 +12,7 @@ from classbeat import auth
 from classbeat.auth import oauth_providers
 from classbeat.auth.cookies import OAUTH_COOKIE
 from flows import Browser, reason, user_with_password
-from oauthtools import CLIENT_IDS, location, make_invite, sign_in_with, start
+from oauthtools import CLIENT_IDS, location, make_invite, sign_in_with, sign_up_with, start
 from oidcfake import FakeProviders
 from smtpfake import SmtpFake
 
@@ -99,7 +99,7 @@ async def test_new_google_user_with_a_verified_email_signs_up_and_in(
 ) -> None:
     browser = Browser(oenv)
     invite = await make_invite(oenv)
-    response = await sign_in_with(browser, fake, "google", invite=invite)
+    response = await sign_up_with(browser, fake, "google", invite=invite)
     assert location(response) == "/"
     assert browser.signed_in
     assert await oenv.scalar("SELECT count(*) FROM users") == 1
@@ -109,15 +109,16 @@ async def test_new_google_user_with_a_verified_email_signs_up_and_in(
     assert await oenv.scalar("SELECT used_by IS NOT NULL FROM invites") is True
     assert await oenv.scalar("SELECT count(*) FROM oauth_flows") == 0
     await asyncio.sleep(0.3)
-    [mail] = smtp.to("g@example.com")  # every new link mails the account address
-    assert "Google" in mail.text
+    [mail] = smtp.to("g@example.com")  # the welcome replaces "sign-in method added" here
+    assert mail.subject == "Welcome to classbeat"
+    assert "You can sign in with Google." in mail.text
     assert (await browser.get("/api/auth/session")).json()["user"]["email"] == "g@example.com"
 
 
 async def test_an_existing_identity_signs_in_without_an_invite(
     oenv: Env, fake: FakeProviders
 ) -> None:
-    await sign_in_with(Browser(oenv), fake, "google", invite=await make_invite(oenv))
+    await sign_up_with(Browser(oenv), fake, "google", invite=await make_invite(oenv))
     second = Browser(oenv)
     response = await sign_in_with(second, fake, "google", return_to="/classes")
     assert location(response) == "/classes"
@@ -126,7 +127,7 @@ async def test_an_existing_identity_signs_in_without_an_invite(
 
 
 async def test_return_to_must_be_a_relative_path(oenv: Env, fake: FakeProviders) -> None:
-    await sign_in_with(Browser(oenv), fake, "google", invite=await make_invite(oenv))
+    await sign_up_with(Browser(oenv), fake, "google", invite=await make_invite(oenv))
     for bad in ("https://evil.example/", "//evil.example", "/\\evil", "javascript:1"):
         browser = Browser(oenv)
         assert location(await sign_in_with(browser, fake, "google", return_to=bad)) == "/"
@@ -135,7 +136,7 @@ async def test_return_to_must_be_a_relative_path(oenv: Env, fake: FakeProviders)
 async def test_sign_in_to_a_disabled_user_gets_the_generic_failure(
     oenv: Env, fake: FakeProviders
 ) -> None:
-    await sign_in_with(Browser(oenv), fake, "google", invite=await make_invite(oenv))
+    await sign_up_with(Browser(oenv), fake, "google", invite=await make_invite(oenv))
     await oenv.run("UPDATE users SET disabled_at = now()")
     browser = Browser(oenv)
     assert location(await sign_in_with(browser, fake, "google")) == "/signin?oauth=invalid"
@@ -150,8 +151,8 @@ async def test_a_verified_email_that_matches_an_account_creates_and_links_nothin
 ) -> None:
     await oenv.user("g@example.com")
     browser = Browser(oenv)
-    response = await sign_in_with(browser, fake, "google", invite=await make_invite(oenv))
-    assert location(response) == "/signin?oauth=account_exists"
+    response = await sign_up_with(browser, fake, "google", invite=await make_invite(oenv))
+    assert location(response) == "/signup?oauth=account_exists"
     assert not browser.signed_in
     assert await identities(oenv) == 0
     assert await oenv.scalar("SELECT count(*) FROM users") == 1
@@ -159,7 +160,7 @@ async def test_a_verified_email_that_matches_an_account_creates_and_links_nothin
 
 
 @pytest.mark.parametrize("mode", ["closed", "invite"])
-async def test_without_a_valid_invite_nothing_is_created(
+async def test_a_sign_up_without_a_valid_invite_creates_nothing(
     clean_auth: None, app_database_url: str, fake: FakeProviders, mode: str
 ) -> None:
     async with running_env(
@@ -170,20 +171,55 @@ async def test_without_a_valid_invite_nothing_is_created(
     ) as env:
         env.app.state.oauth.transport = fake.transport
         browser = Browser(env)
-        response = await sign_in_with(browser, fake, "google")
-        assert location(response) == "/signin?oauth=invite_required"
+        response = await sign_up_with(browser, fake, "google")
+        assert location(response) == "/signup?oauth=invite_required"
         assert await env.scalar("SELECT count(*) FROM users") == 0
         assert await env.scalar("SELECT count(*) FROM pending_signups") == 0
         assert not browser.signed_in
         if mode == "closed":  # a closed mode stays closed even for a valid invite
             invite = await make_invite(env)
-            response = await sign_in_with(Browser(env), fake, "google", invite=invite)
-            assert location(response) == "/signin?oauth=invite_required"
+            response = await sign_up_with(Browser(env), fake, "google", invite=invite)
+            assert location(response) == "/signup?oauth=invite_required"
             assert await env.scalar("SELECT used_at IS NULL FROM invites") is True
 
 
+@pytest.mark.parametrize("mode", ["open", "invite", "closed"])
+@pytest.mark.parametrize("provider", ["google", "github"])
+async def test_a_new_identity_on_the_sign_in_screen_has_no_account_and_creates_nothing(
+    clean_auth: None, app_database_url: str, fake: FakeProviders, mode: str, provider: str
+) -> None:
+    """#617: the sign-in screen's flow (``sign_in``) never creates an account, in any sign-up
+    mode, and a new identity gets ``no_account``, not ``invite_required``. An invite code sent
+    with a ``sign_in`` start is ignored: not checked, not in the flow, not consumed."""
+    async with running_env(
+        app_database_url,
+        signup_mode=mode,
+        oauth_google_client_id=CLIENT_IDS["google"],
+        oauth_google_client_secret=fake.secret,
+        oauth_github_client_id=CLIENT_IDS["github"],
+        oauth_github_client_secret=fake.secret,
+    ) as env:
+        env.app.state.oauth.transport = fake.transport
+        invite = await make_invite(env)
+        browser = Browser(env)
+        started = await start(browser, provider, "sign_in", invite_code=invite)
+        assert started.status_code == 200
+        assert await env.scalar("SELECT invite_id IS NULL FROM oauth_flows") is True
+        response = await browser.get(fake.complete(started.json()["authorization_url"]))
+        assert location(response) == f"/signin?oauth=no_account&provider={provider}"
+        assert not browser.signed_in
+        assert await env.scalar("SELECT count(*) FROM users") == 0
+        assert await identities(env) == 0
+        assert await env.scalar("SELECT count(*) FROM pending_signups") == 0
+        assert await env.scalar("SELECT count(*) FROM oauth_flows") == 0
+        assert await env.scalar("SELECT used_at IS NULL FROM invites") is True
+        assert await env.scalar("SELECT count(*) FROM sessions") == 0
+        # A bogus code on a sign-in start is not checked either (it is not a sign-up).
+        assert (await start(Browser(env), provider, "sign_in", invite_code="x")).status_code == 200
+
+
 async def test_the_start_checks_a_given_invite_with_its_own_error(oenv: Env) -> None:
-    response = await start(Browser(oenv), "google", invite_code="not-an-invite")
+    response = await start(Browser(oenv), "google", "sign_up", invite_code="not-an-invite")
     assert (response.status_code, reason(response)) == (400, "invalid_invite")
     assert await oenv.scalar("SELECT count(*) FROM oauth_flows") == 0
 
@@ -193,10 +229,10 @@ async def test_an_invite_used_between_start_and_callback_is_reported_as_no_longe
 ) -> None:
     invite = await make_invite(oenv)
     browser = Browser(oenv)
-    started = await start(browser, "google", invite_code=invite)
+    started = await start(browser, "google", "sign_up", invite_code=invite)
     await oenv.run("UPDATE invites SET used_at = now()")
     callback = fake.complete(started.json()["authorization_url"])
-    assert location(await browser.get(callback)) == "/signin?oauth=invite_invalid"
+    assert location(await browser.get(callback)) == "/signup?oauth=invite_invalid"
     assert await oenv.scalar("SELECT count(*) FROM users") == 0
 
 
@@ -207,7 +243,7 @@ async def test_an_invite_is_consumed_atomically_by_parallel_callbacks(
     browsers = [Browser(oenv) for _ in range(4)]
     callbacks: list[str] = []
     for number, browser in enumerate(browsers):
-        started = await start(browser, "google", invite_code=invite)
+        started = await start(browser, "google", "sign_up", invite_code=invite)
         callbacks.append(
             fake.complete(
                 started.json()["authorization_url"],
@@ -220,7 +256,7 @@ async def test_an_invite_is_consumed_atomically_by_parallel_callbacks(
     )
     outcomes = sorted(location(r) for r in results)
     assert outcomes.count("/") == 1
-    assert outcomes.count("/signin?oauth=invite_invalid") == 3
+    assert outcomes.count("/signup?oauth=invite_invalid") == 3
     assert await oenv.scalar("SELECT count(*) FROM users") == 1
     assert await identities(oenv) == 1
 
@@ -230,7 +266,7 @@ async def test_an_invite_is_consumed_atomically_by_parallel_callbacks(
 
 async def test_a_replayed_callback_finds_no_flow(oenv: Env, fake: FakeProviders) -> None:
     browser = Browser(oenv)
-    started = await start(browser, "google", invite_code=await make_invite(oenv))
+    started = await start(browser, "google", "sign_up", invite_code=await make_invite(oenv))
     callback = fake.complete(started.json()["authorization_url"])
     flow_cookie = dict(browser.cookies)
     assert location(await browser.get(callback)) == "/"
@@ -243,7 +279,7 @@ async def test_a_replayed_callback_finds_no_flow(oenv: Env, fake: FakeProviders)
 
 async def test_parallel_callbacks_take_the_flow_once(oenv: Env, fake: FakeProviders) -> None:
     browser = Browser(oenv)
-    started = await start(browser, "google", invite_code=await make_invite(oenv))
+    started = await start(browser, "google", "sign_up", invite_code=await make_invite(oenv))
     callback = fake.complete(started.json()["authorization_url"])
     twins: list[Browser] = []
     for _ in range(5):
@@ -257,9 +293,9 @@ async def test_parallel_callbacks_take_the_flow_once(oenv: Env, fake: FakeProvid
 
 async def test_state_mismatch_is_refused_and_burns_the_flow(oenv: Env, fake: FakeProviders) -> None:
     browser = Browser(oenv)
-    started = await start(browser, "google", invite_code=await make_invite(oenv))
+    started = await start(browser, "google", "sign_up", invite_code=await make_invite(oenv))
     callback = fake.complete(started.json()["authorization_url"], state="forged-state")
-    assert location(await browser.get(callback)) == "/signin?oauth=invalid"
+    assert location(await browser.get(callback)) == "/signup?oauth=invalid"
     assert fake.token_requests == 0
     assert await oenv.scalar("SELECT count(*) FROM oauth_flows") == 0
     assert not browser.signed_in
@@ -268,7 +304,7 @@ async def test_state_mismatch_is_refused_and_burns_the_flow(oenv: Env, fake: Fak
 async def test_a_callback_without_the_flow_cookie_is_refused(
     oenv: Env, fake: FakeProviders
 ) -> None:
-    started = await start(Browser(oenv), "google", invite_code=await make_invite(oenv))
+    started = await start(Browser(oenv), "google", "sign_up", invite_code=await make_invite(oenv))
     callback = fake.complete(started.json()["authorization_url"])
     victim = Browser(oenv)  # login CSRF: this browser never started the flow
     assert location(await victim.get(callback)) == "/signin?oauth=invalid"
@@ -278,16 +314,16 @@ async def test_a_callback_without_the_flow_cookie_is_refused(
 
 async def test_the_flow_is_bound_to_its_provider(oenv: Env, fake: FakeProviders) -> None:
     browser = Browser(oenv)
-    started = await start(browser, "google", invite_code=await make_invite(oenv))
+    started = await start(browser, "google", "sign_up", invite_code=await make_invite(oenv))
     callback = fake.complete(started.json()["authorization_url"])
     wrong = callback.replace("/oauth/google/", "/oauth/microsoft/")
-    assert location(await browser.get(wrong)) == "/signin?oauth=invalid"
+    assert location(await browser.get(wrong)) == "/signup?oauth=invalid"
     assert fake.token_requests == 0
 
 
 async def test_an_expired_flow_is_refused(oenv: Env, fake: FakeProviders) -> None:
     browser = Browser(oenv)
-    started = await start(browser, "google", invite_code=await make_invite(oenv))
+    started = await start(browser, "google", "sign_up", invite_code=await make_invite(oenv))
     callback = fake.complete(started.json()["authorization_url"])
     await oenv.run("UPDATE oauth_flows SET expires_at = now() - interval '1 second'")
     assert location(await browser.get(callback)) == "/signin?oauth=invalid"
@@ -322,8 +358,8 @@ async def test_a_bad_id_token_creates_nothing(
     if bad.pop("wrong_key", False):
         bad["key"] = fake.other
     browser = Browser(oenv)
-    response = await sign_in_with(browser, fake, "google", invite=await make_invite(oenv), **bad)
-    assert location(response) == "/signin?oauth=invalid"
+    response = await sign_up_with(browser, fake, "google", invite=await make_invite(oenv), **bad)
+    assert location(response) == "/signup?oauth=invalid"
     assert not browser.signed_in
     assert await oenv.scalar("SELECT count(*) FROM users") == 0
     assert await oenv.scalar("SELECT count(*) FROM pending_signups") == 0
@@ -331,14 +367,14 @@ async def test_a_bad_id_token_creates_nothing(
 
 
 async def test_a_microsoft_tenant_mismatch_is_refused(oenv: Env, fake: FakeProviders) -> None:
-    response = await sign_in_with(
+    response = await sign_up_with(
         Browser(oenv),
         fake,
         "microsoft",
         invite=await make_invite(oenv),
         iss="https://login.microsoftonline.com/other-tenant/v2.0",
     )
-    assert location(response) == "/signin?oauth=invalid"
+    assert location(response) == "/signup?oauth=invalid"
     assert await oenv.scalar("SELECT count(*) FROM pending_signups") == 0
 
 
@@ -346,8 +382,8 @@ async def test_a_wrong_client_secret_fails_at_the_token_endpoint(
     oenv: Env, fake: FakeProviders
 ) -> None:
     fake.secret = "rotated-by-the-provider"
-    response = await sign_in_with(Browser(oenv), fake, "google", invite=await make_invite(oenv))
-    assert location(response) == "/signin?oauth=invalid"
+    response = await sign_up_with(Browser(oenv), fake, "google", invite=await make_invite(oenv))
+    assert location(response) == "/signup?oauth=invalid"
 
 
 async def test_github_signs_up_with_its_verified_primary_email(
@@ -357,7 +393,7 @@ async def test_github_signs_up_with_its_verified_primary_email(
         {"email": "other@example.com", "primary": False, "verified": True},
         {"email": "octo@example.com", "primary": True, "verified": True},
     ]
-    response = await sign_in_with(
+    response = await sign_up_with(
         Browser(oenv),
         fake,
         "github",
@@ -374,7 +410,7 @@ async def test_signing_in_again_replaces_the_browsers_session(
     oenv: Env, fake: FakeProviders
 ) -> None:
     browser = Browser(oenv)
-    await sign_in_with(browser, fake, "google", invite=await make_invite(oenv))
+    await sign_up_with(browser, fake, "google", invite=await make_invite(oenv))
     old = browser.cookies[auth.SESSION_COOKIE]
     await sign_in_with(browser, fake, "google")
     assert browser.cookies[auth.SESSION_COOKIE] != old
@@ -396,7 +432,7 @@ async def test_admin_emails_grant_at_oauth_sign_in(
         response = await sign_in_with(Browser(env), fake, "google")
         assert location(response) == "/signin?oauth=account_exists"
         await env.run("DELETE FROM users")
-        await sign_in_with(Browser(env), fake, "google")
+        await sign_up_with(Browser(env), fake, "google")
         assert await env.scalar("SELECT role FROM users") == "admin"
 
 
@@ -408,7 +444,7 @@ async def test_no_code_state_token_or_secret_reaches_the_logs(
 ) -> None:
     caplog.set_level(logging.DEBUG)
     browser = Browser(oenv)
-    started = await start(browser, "google", invite_code=await make_invite(oenv))
+    started = await start(browser, "google", "sign_up", invite_code=await make_invite(oenv))
     await browser.get(fake.complete(started.json()["authorization_url"]))
     bad = Browser(oenv)  # and a failing one
     failed = await start(bad, "google")

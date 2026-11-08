@@ -11,6 +11,7 @@ import {
   type JsonObject,
 } from './decode'
 import { errorMessage } from './messages'
+import { usd } from '../i18n/format'
 
 // The admin area's API (ADR 0011 section 6): Users (backend/src/classbeat/admin/users.py, #218)
 // and Codes (backend/src/classbeat/admin/codes.py, #220). Every route is behind the admin gate;
@@ -394,6 +395,11 @@ const ADMIN_REASONS: Record<string, string> = {
   price_incomplete:
     'An introduction price needs its end date (and the date needs the price), and any price needs a currency.',
   nothing_to_change: 'Nothing was changed.',
+  // Mail (#653).
+  essential_kind: 'That mail is always sent and cannot be switched off.',
+  unknown_kind: 'There is no such mail.',
+  mail_not_configured: 'The server has no mail server set up, so nothing can be sent.',
+  send_failed: 'The mail server did not accept the message. Try again later.',
 }
 
 /** The text for an admin API error. */
@@ -406,5 +412,5 @@ export function adminError(error: unknown): string {
 
 /** Micro-dollars as dollars and cents (the admin sees costs; users never do). */
 export function dollars(micros: number): string {
-  return `$${(micros / 1_000_000).toFixed(2)}`
+  return usd(micros / 1_000_000)
 }

@@ -39,6 +39,8 @@ RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 COPY --from=frontend /build/frontend/dist /app/static
+# The supported-language manifest the backend reads (ADR 0023 section 1): one file, two readers.
+COPY --from=frontend /build/frontend/src/i18n/locales.json /app/locales.json
 # Swedebeat's app key (ADR 0015 section 4, owner decision 2026-10-31). Only the release workflow
 # passes the BuildKit secret `swedebeat_app` (the repository secret SWEDEBEAT_APP) and sets
 # REQUIRE_SWEDEBEAT_APP=1, which makes a missing or malformed key fail the build. A pull

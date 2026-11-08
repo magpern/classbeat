@@ -96,7 +96,12 @@ async def test_the_session_has_the_limits_and_the_cookie_lifetime_of_the_adr(env
     assert abs(issued.max_age - 30 * 24 * 3600) < 5
     async with env.db() as db:
         issued2 = await auth.start_session(
-            db, env.settings, await env.user("b@example.com"), user_agent="x" * 500, ip=None
+            db,
+            env.settings,
+            await env.user("b@example.com"),
+            user_agent="x" * 500,
+            ip=None,
+            mark=None,
         )
     assert issued2.token != issued.token
     length = await env.scalar("SELECT max(length(user_agent)) FROM sessions")
@@ -142,7 +147,7 @@ async def test_rotation_issues_a_new_token_and_keeps_expires_at(env: Env, whoami
     async with env.db() as db:
         info = (await auth.resolve_session(env.factory, env.settings, old.token)).info
         assert info is not None
-        new = await auth.rotate_session(db, info, mfa=True)
+        new = await auth.rotate_session(db, info, mfa=True, mark=None)
     assert new.token != old.token
     assert new.expires_at == expires  # never extended past the original 30 days
     assert await env.scalar("SELECT count(*) FROM sessions") == 1
@@ -162,7 +167,7 @@ async def test_rotation_carries_over_reauth_and_mfa_unless_it_sets_them(env: Env
     async with env.db() as db:
         info = (await auth.resolve_session(env.factory, env.settings, old.token)).info
         assert info is not None
-        await auth.rotate_session(db, info, stepup=True)
+        await auth.rotate_session(db, info, stepup=True, mark=None)
     assert await env.scalar("SELECT reauth_at FROM sessions") == before
     assert await env.scalar("SELECT mfa_at IS NOT NULL FROM sessions") is True
     assert await env.scalar("SELECT stepup_at IS NOT NULL FROM sessions") is True
@@ -176,7 +181,7 @@ async def test_two_parallel_rotations_leave_exactly_one_session(env: Env) -> Non
     async def rotate() -> bool:
         try:
             async with env.db() as db:
-                await auth.rotate_session(db, info)
+                await auth.rotate_session(db, info, mark=None)
         except auth.SessionGone:
             return False
         return True
@@ -195,7 +200,13 @@ async def test_sign_in_replaces_the_browsers_old_session(env: Env) -> None:
     kept = await env.scalar("SELECT expires_at FROM sessions")
     async with env.db() as db:
         second = await auth.start_session(
-            db, env.settings, user_id, user_agent="b", ip=None, replacing_token=first.token
+            db,
+            env.settings,
+            user_id,
+            user_agent="b",
+            ip=None,
+            replacing_token=first.token,
+            mark=None,
         )
     assert second.expires_at == kept
     assert await env.scalar("SELECT count(*) FROM sessions") == 1
@@ -203,7 +214,13 @@ async def test_sign_in_replaces_the_browsers_old_session(env: Env) -> None:
     other = await env.user("other@example.com")
     async with env.db() as db:
         third = await auth.start_session(
-            db, env.settings, other, user_agent="b", ip=None, replacing_token=second.token
+            db,
+            env.settings,
+            other,
+            user_agent="b",
+            ip=None,
+            replacing_token=second.token,
+            mark=None,
         )
     assert third.expires_at > kept  # type: ignore[operator]
     assert await env.scalar("SELECT count(*) FROM sessions") == 1
@@ -337,7 +354,12 @@ async def test_session_endpoint_reports_the_user(env: Env) -> None:
     issued = await env.login(user_id)
     body = (await env.client.get("/api/auth/session", headers=session_cookie(issued.token))).json()
     assert body["authenticated"] is True
-    assert body["user"] == {"id": str(user_id), "email": "Me@Example.com", "role": "user"}
+    assert body["user"] == {
+        "id": str(user_id),
+        "email": "Me@Example.com",
+        "role": "user",
+        "locale": None,
+    }
     assert body["session"]["recent_auth"] is True
     assert datetime.fromisoformat(
         body["session"]["expires_at"]
@@ -359,7 +381,13 @@ async def test_sign_in_inherits_nothing_from_an_old_session_that_is_no_longer_va
         await env.run(breakage)
         async with env.db() as db:
             new = await auth.start_session(
-                db, env.settings, user_id, user_agent="b", ip=None, replacing_token=old.token
+                db,
+                env.settings,
+                user_id,
+                user_agent="b",
+                ip=None,
+                replacing_token=old.token,
+                mark=None,
             )
         assert abs(new.max_age - 30 * 24 * 3600) < 5, name  # a fresh 30 days
         assert await env.scalar("SELECT count(*) FROM sessions") == 1, name  # old one gone

@@ -6,6 +6,7 @@ import '@fontsource/archivo/latin-800.css'
 import '@fontsource/archivo/latin-ext-700.css'
 import '@fontsource/archivo/latin-ext-800.css'
 import { App } from './App'
+import { I18nProvider } from './i18n/I18n'
 import { applyTheme, readTheme } from './theme/theme'
 import './styles/tokens.css'
 import './styles/tailwind.css'
@@ -21,6 +22,8 @@ if (!root) throw new Error('Missing #root element in index.html')
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <I18nProvider>
+      <App />
+    </I18nProvider>
   </StrictMode>,
 )

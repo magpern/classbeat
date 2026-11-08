@@ -35,12 +35,13 @@ STANDING: Final = (
 )
 USUALLY: Final = "usually; the brief wins"
 _RULE_LINES: Final = MAX_SECTION_LINES - 2  # the header and the standing sentence
-_SECONDS: Final = ("first_zone4plus_s", "cooldown_s")
+_SECONDS: Final = ("first_zone4plus_s", "cooldown_s", "longest_interval_s", "median_interval_s")
 _SHARES: Final = (
     "zone4plus_time_share",
     "zone5plus_time_share",
     "zone4plus_share_in_first_25pct",
     "standing_time_share",
+    "climb_time_share",
 )
 
 

@@ -57,7 +57,8 @@ export const SIGNED_IN = {
  * JSON value (answered 200); a missing route fails the test loudly. `/api/auth/session`
  * defaults to anonymous, `/api/connections` and `/api/external-operations` to none, `/api/connections/spotify` to
  * 404 `feature_off` and
- * `/api/usage` to an empty month and `/api/music/playlist-covers` to none.
+ * `/api/mail/preferences` to everything on, `/api/usage` to an empty month, `/api/music/playlist-covers` and
+ * `/api/auth/events` to none.
  */
 export function fakeApi(routes: Record<string, Handler | object | string>) {
   rememberCsrfToken(null)
@@ -69,8 +70,10 @@ export function fakeApi(routes: Record<string, Handler | object | string>) {
     'GET /api/external-operations': { operations: [] },
     'GET /api/usage': USAGE_NONE,
     'GET /api/account/plan': PLAN_FREE,
-    'GET /api/settings/public': { banner: null, signup_mode: 'invite' },
+    'GET /api/settings/public': { banner: null, signup_mode: 'invite', support_address: 'support@classbeat.eu' },
     'GET /api/music/playlist-covers': { covers: [] },
+    'GET /api/mail/preferences': { unsubscribed_all: false, opted_out: [] },
+    'GET /api/auth/events': { events: [], next_before: null },
     ...routes,
   }
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {

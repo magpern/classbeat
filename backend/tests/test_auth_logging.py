@@ -115,7 +115,7 @@ async def test_requests_and_session_handling_log_no_token_hash_cookie_or_body(en
     async with env.db() as db:
         info = (await auth.resolve_session(env.factory, env.settings, issued.token)).info
         assert info is not None
-        rotated = await auth.rotate_session(db, info, mfa=True)
+        rotated = await auth.rotate_session(db, info, mfa=True, mark=None)
     await client.get(
         "/api/auth/session", headers={"Cookie": f"{auth.SESSION_COOKIE}={rotated.token}"}
     )

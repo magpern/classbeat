@@ -232,8 +232,9 @@ async def override(
     factory: Factory, keyring: KeyRing, ctx: UserContext, class_id: UUID, mix_id: str
 ) -> Step:
     """ "This is the right mix": the analysed mix, still in the user's listing. No new fetch
-    of audio. An expired row is refused before the listing. The stored approval is checked
-    again in the transaction that marks the row verified. Same owner is not enough."""
+    of audio. An expired row is refused before the listing. The soundless check and the stored
+    approval are checked again in the transaction that marks the row verified. Same owner is not
+    enough."""
     require_context(ctx)
     async with user_session(factory, ctx) as db:
         row, refused = await _bound_row(db, ctx.user_id, class_id)
@@ -254,6 +255,11 @@ async def override(
     if mix_id not in ids:
         return Step(reason="invalid_input")
     async with user_session(factory, ctx) as db:
+        # The class may have turned soundless during the listing: checked again here, as in
+        # ``open_from``, so its row is never marked verified (#530, #589).
+        soundless = await music_kind.refuse_soundless(db, ctx.user_id, class_id)
+        if soundless is not None:
+            return Step(reason=soundless.reason)
         bound, reason = await stored_approval(db, ctx.user_id, class_id)
         current = await live(db, ctx.user_id, class_id)
         if (

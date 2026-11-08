@@ -40,13 +40,17 @@ def test_each_purpose_gets_a_different_32_byte_key() -> None:
         keys.recovery_codes,
         keys.totp,
         keys.totp_pending,
+        keys.session_client,
+        keys.security_log,
     ]
-    assert len(set(values)) == 6
+    assert len(set(values)) == 8
     assert all(len(v) == 32 for v in values)
     assert keys.totp == derive_key(SECRET, "totp-v1")
     assert keys.recovery_codes == derive_key(SECRET, "recovery-codes")
     assert keys.rate_limit == derive_key(SECRET, "rate-limit")
     assert keys.device == derive_key(SECRET, "device")
+    assert keys.session_client == derive_key(SECRET, "session-client")
+    assert keys.security_log == derive_key(SECRET, "security-log")
     assert Keys.from_secret(SECRET + b"x").csrf != keys.csrf
 
 

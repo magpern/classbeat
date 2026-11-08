@@ -152,3 +152,46 @@ body {
     display: none !important;
   }
 }
+
+/* Cookie notice: small, bottom-left, never a modal. On the phone layout it sits above the tab bar. */
+.cookie-notice {
+  position: fixed;
+  left: var(--cb-space-4);
+  bottom: var(--cb-space-4);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cb-space-2);
+  align-items: flex-start;
+  max-width: min(20rem, calc(100vw - 2 * var(--cb-space-4)));
+  padding: var(--cb-space-3);
+  border: 1px solid var(--cb-line);
+  border-radius: var(--cb-radius-md);
+  background: var(--cb-raised);
+  color: var(--cb-text);
+  font-size: var(--cb-text-label);
+  box-shadow: 0 4px 16px var(--cb-scrim);
+}
+
+.cookie-notice__text {
+  margin: 0;
+}
+
+.cookie-notice__ok {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  padding: 0 var(--cb-space-4);
+  border: 0;
+  border-radius: var(--cb-radius-full);
+  background: var(--cb-brand);
+  color: var(--cb-on-brand);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 639px) {
+  .cookie-notice {
+    bottom: 6.5rem;
+  }
+}

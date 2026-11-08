@@ -59,6 +59,9 @@ RELEASED: dict[int, str] = {
     9: "620404228abea85076b2281d15018a362cdac33031b93df262d45155b610465d",
     10: "81694e693cb39a93c943f5354b17bab339b954292998fa0ce844bb759d76f07b",
     11: "efae43a32917755baac3d7d4de949129f40d6618355b734a79b247d37d196e56",
+    12: "b106e1e7363d63e38e70c79324892458dd11dbae355fbaa2edd53ce7b5eb1182",
+    13: "62e95221f2e7f41f876c4fc67f02412249078b31e48d5af6894e944fa75cf0ac",
+    14: "55d9ebfc04db240af025f75f0e7fb4fb7493cb8176a2d8dffe0d0717b300f8e2",
 }
 
 SUITE = load_suite()
@@ -170,11 +173,11 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     index = MANIFEST.case_index()
     assert set(SUITE.design_cases) == {c.name for c in load_cases()} | DESIGN_OWN
     assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()} | SONG_OWN
-    # #206, #208, #209, #399 and #465 (two running class_patterns cases); the smoke set holds the
-    # soundless cases of #531 (four of its 30 cases)
-    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10 + 2, 8 + 7)
-    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 53, 3 + 15)
-    assert len(index) == 30 + 53 + 3 + 15
+    # #206, #208, #209, #399, #465 (two running class_patterns cases) and #388 (two provisional 55
+    # minute ones); the smoke set holds the soundless cases of #531 (four of its 30 cases)
+    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10 + 2 + 2, 8 + 7)
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 55, 3 + 15)
+    assert len(index) == 30 + 55 + 3 + 15
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)

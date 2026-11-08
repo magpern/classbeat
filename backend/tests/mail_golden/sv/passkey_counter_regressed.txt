@@ -1,0 +1,17 @@
+En passkey nekades
+==================
+
+Passkeyn "MacBook" nekades när den användes för att logga in eller bekräfta att det var du, eftersom signaturräknaren inte hade ökat. Det kan hända när en passkey har kopierats till en annan enhet, och ibland när två förfrågningar kommer samtidigt. Passkeyn fungerar fortfarande.
+
+När det hände: 6 november 2026 kl. 12:30 UTC
+
+Granska ditt konto:
+https://classbeat.example.test/sv/account
+
+Om du inte nyss använde den här passkeyn, ta bort den från din kontosida, byt lösenord och säg till oss direkt. Kontakta oss på support@classbeat.eu
+
+--
+Du får den här säkerhetsaviseringen för att det här är e-postadressen till ett classbeat-konto. Sådana aviseringar skickas för att skydda dig.
+classbeat: https://classbeat.example.test
+Frågor? Skriv till support@classbeat.eu
+Avsluta prenumerationen på de här mejlen: https://classbeat.example.test/sv/unsubscribe#token=SAMPLE&all=SAMPLE

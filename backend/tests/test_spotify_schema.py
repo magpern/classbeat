@@ -117,7 +117,7 @@ def test_the_new_tables_meet_guards_1_2_9_and_10(admin: Connection) -> None:
 def test_the_queue_functions_are_unchanged(admin: Connection) -> None:
     from classbeat.db.queue_check import QUEUE_VERSION
 
-    assert QUEUE_VERSION == "classbeat-queue v2"
+    assert QUEUE_VERSION == "classbeat-queue v5"
     assert check_queue(admin) == []
 
 

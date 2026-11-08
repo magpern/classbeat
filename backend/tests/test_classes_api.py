@@ -529,6 +529,9 @@ async def test_listing_200_classes_of_25_revisions_takes_a_fixed_number_of_queri
         assert response.status_code == 200
         return len(statements)
 
+    # The session's first request stores its client mark once (#632, a session made without
+    # one); measure the steady state, which is what the listing costs on every later request.
+    assert (await mine.browser.get("/api/classes")).status_code == 200
     small = await measure()
     mine.sql(
         "INSERT INTO classes (id, owner_id, title) "
@@ -553,7 +556,9 @@ async def test_listing_200_classes_of_25_revisions_takes_a_fixed_number_of_queri
     )
     large = await measure()
     assert large == small
-    assert large <= 10  # session lookups plus the listing, whatever the data
+    # Session lookups, the listing and the security log's row (#632: its set_config and insert),
+    # whatever the data.
+    assert large <= 11
     listed = (await mine.browser.get("/api/classes")).json()["classes"]
     assert len(listed) == 200
     assert sorted(c["revision_count"] for c in listed)[-1] == 25

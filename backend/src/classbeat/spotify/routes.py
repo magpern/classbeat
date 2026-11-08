@@ -30,7 +30,7 @@ from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.db import system_session
 from classbeat.spotify import connect
-from classbeat.spotify.errors import sentence
+from classbeat.spotify.errors import sentence_of
 from classbeat.spotify.flow import CLIENT_ID_INPUT_MAX, normalize_client_id
 from classbeat.spotify.http import SpotifyHttp
 
@@ -76,6 +76,9 @@ class StatusOut(BaseModel):
     client_id: str | None  # the user's own public value
     last_error: str | None
     last_error_message: str | None
+    # The same sentence as a catalogue code and its numbers (ADR 0023 section 6).
+    last_error_sentence: str | None = None
+    last_error_sentence_params: dict[str, int] = Field(default_factory=dict)
     callback_url: str
     pool_consent: bool
     consent_version: int | None
@@ -121,11 +124,14 @@ async def status(
     found = await connections.spotify_status(request.app.state.session_factory, ctx)
     left = await song_views.playlists_left(request.app.state.session_factory, ctx)
     settings = _settings(request)
+    last = None if found.last_error is None else sentence_of(found.last_error)
     return StatusOut(
         status=found.status,
         client_id=found.client_id,
         last_error=found.last_error,
-        last_error_message=None if found.last_error is None else sentence(found.last_error),
+        last_error_message=None if last is None else last.text,
+        last_error_sentence=None if last is None else last.code,
+        last_error_sentence_params={} if last is None else last.params,
         callback_url=settings.spotify_redirect_uri,
         pool_consent=found.pool_consent,
         consent_version=found.consent_version,

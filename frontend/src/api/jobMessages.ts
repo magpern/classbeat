@@ -1,8 +1,12 @@
+import type { CatalogueKey } from '../i18n/en'
+import { t } from '../i18n/t'
 import { isSongKind } from './songs'
 import { pickStageLabel, songFailure } from './songMessages'
 
 // Plain sentences for a job's failure categories (ADR 0005 section 4) and stages. The category
-// code is never shown, and no provider or model text ever reaches these pages.
+// code is never shown, and no provider or model text ever reaches these pages. The words are the
+// catalogue's (ADR 0023); every function looks them up when it is called, so a change of language
+// shows at once. A component that calls one of them also calls `useT()`, so it renders again then.
 
 export interface FailureText {
   title: string
@@ -11,166 +15,59 @@ export interface FailureText {
   account?: boolean
 }
 
-const FAILURES: Record<string, FailureText> = {
-  upstream_unavailable: {
-    title: 'MOWL could not be reached',
-    detail: 'classbeat tried several times. Your class was not designed. Try again in a few minutes.',
-  },
-  rate_limited: {
-    title: 'MOWL asked classbeat to slow down',
-    detail: 'Your class was not designed. Wait a few minutes and try again.',
-  },
-  model_unavailable: {
-    title: 'The designer is busy',
-    detail: 'The service that designs the class could not take the request. Try again in a few minutes.',
-  },
-  lease_lost: {
-    title: 'The design was interrupted',
-    detail: 'It was interrupted too many times. Try again.',
-  },
-  operation_busy: {
-    title: 'Another design is using this playlist',
-    detail: 'Another design of yours was still adding the same playlist to MOWL. Try again in a moment.',
-  },
-  not_connected: {
-    title: 'MOWL is not connected',
-    detail: 'Connect MOWL on your account page, then start again.',
-    account: true,
-  },
-  needs_reconnect: {
-    title: 'MOWL no longer accepts the stored sign-in',
-    detail: 'Connect MOWL again on your account page, then start again.',
-    account: true,
-  },
-  key_unavailable: {
-    title: 'The stored MOWL sign-in could not be read',
-    detail: 'Connect MOWL again on your account page, then start again.',
-    account: true,
-  },
-  decrypt_failed: {
-    title: 'The stored MOWL sign-in could not be read',
-    detail: 'Connect MOWL again on your account page, then start again.',
-    account: true,
-  },
-  invalid_input: {
-    title: 'The request could not be used',
-    detail: 'Check the form and start again.',
-  },
-  account_disabled: {
-    title: 'Your account cannot start designs right now',
-    detail: 'Contact the person who invited you.',
-  },
-  model_refused: {
-    title: 'The designer declined this brief',
-    detail: 'Change the description and start again.',
-  },
-  model_config: {
-    title: 'classbeat cannot design classes right now',
-    detail: 'This is a problem on our side. Try again later.',
-  },
-  invalid_output: {
-    title: 'The designer did not produce a usable class',
-    detail: 'Try again, or simplify the description.',
-  },
-  limit_exceeded: {
-    title: 'This brief needed more work than one design may use',
-    detail: 'Try a shorter or simpler class.',
-  },
-  outbound_blocked: {
-    title: 'Something went wrong on our side',
-    detail: 'Try again later.',
-  },
-  internal: {
-    title: 'Something went wrong on our side',
-    detail: 'Try again later.',
-  },
-  // ADR 0007 section 12: not retryable.
-  program_changed: {
-    title: 'This workout was changed in MOWL',
-    detail: 'This workout was changed in MOWL after classbeat saved it.',
-  },
-  program_missing: {
-    title: 'This workout is gone from MOWL',
-    detail: 'This workout is no longer in your MOWL account.',
-  },
-  // ADR 0007 amendment "beat-one corrections": the music is not what the version was made on.
-  music_changed: {
-    title: 'The music changed',
-    detail:
-      'The playlist or mix is not the one this version was made on, so the timing fixes were not applied. Ask for a change by chat to design on the music as it is now.',
-  },
-  // Issue #485: an Update never changes a workout's sport, "Update anyway" included.
-  program_other_sport: {
-    title: 'This workout is for another sport',
-    detail: 'This workout in MOWL is for a different sport than this class, so classbeat did not replace it.',
-  },
-  // ADR 0008 section 6: the request only asked for other songs; nothing was designed.
-  use_change_songs: {
-    title: 'This request is only about the songs',
-    detail: 'Nothing was changed. Use Change songs on the class page to pick other ones.',
-  },
-  // ADR 0016 sections 3 and 4: a Swedebeat mix; never a host, link or file text.
-  media_host_not_allowed: {
-    title: 'New Swedebeat mixes cannot be analysed here yet',
-    detail:
-      'The mix was added to your MOWL account, but it could not be analysed. Mixes you analysed before still work. Try one of those, or another kind of music.',
-  },
-  media_refused: {
-    title: 'The audio of this mix could not be fetched',
-    detail: 'Nothing was designed. Try again later.',
-  },
-  analysis_failed: {
-    title: 'The audio of this mix could not be analysed',
-    detail: 'Try another mix.',
-  },
-  // ADR 0016 sections 2 and 7: the flag went off before the run; the daily analysis limit.
-  // The same category ends a Swedebeat design and a running design whose flag went off before the
-  // run; the page names which only when it knows (`featureOffText`), else this neutral sentence.
-  feature_off: {
-    title: 'This is switched off right now',
-    detail: 'Nothing was designed. Try again later.',
-  },
-  analysis_limit: {
-    title: 'Too many new Swedebeat mixes today',
-    detail:
-      'You have analysed 10 new mixes in the last 24 hours. Mixes analysed before still work; try a new one tomorrow.',
-  },
-  // ADR 0007 amendment 2026-11-03, item 2: the soundless switch is on but this plan's model route has
-  // not been evaluated for classes with no music. Plain words; never a route or plan name.
-  soundless_not_evaluated: {
-    title: 'Classes with no music are not ready for your plan yet',
-    detail: 'Nothing was designed. Choose a playlist instead, or try again later.',
-  },
-  music_unlinked: {
-    title: 'The music of this version is not in your MOWL account',
-    detail:
-      'The music of this version is not in your connected MOWL account. Change it and save the new version.',
-  },
+interface FailureKeys {
+  title: CatalogueKey
+  detail: CatalogueKey
+  account?: true
 }
 
-const SOUNDLESS_INVALID: FailureText = {
-  title: 'The request could not be used',
-  detail: 'A class with no music is for cycling and has no songs or mix. Check the form and start again.',
+function words(keys: FailureKeys): FailureText {
+  return { title: t(keys.title), detail: t(keys.detail), ...(keys.account ? { account: true } : {}) }
 }
 
-const FALLBACK: FailureText = {
-  title: 'The design did not finish',
-  detail: 'Try again later.',
+const FAILURES: Record<string, FailureKeys> = {
+  upstream_unavailable: { title: 'job.failure.upstream_unavailable.title', detail: 'job.failure.upstream_unavailable.detail' },
+  rate_limited: { title: 'job.failure.rate_limited.title', detail: 'job.failure.rate_limited.detail' },
+  model_unavailable: { title: 'job.failure.model_unavailable.title', detail: 'job.failure.model_unavailable.detail' },
+  lease_lost: { title: 'job.failure.lease_lost.title', detail: 'job.failure.lease_lost.detail' },
+  operation_busy: { title: 'job.failure.operation_busy.title', detail: 'job.failure.operation_busy.detail' },
+  not_connected: { title: 'job.failure.not_connected.title', detail: 'job.failure.not_connected.detail', account: true },
+  needs_reconnect: { title: 'job.failure.needs_reconnect.title', detail: 'job.failure.needs_reconnect.detail', account: true },
+  key_unavailable: { title: 'job.failure.key_unavailable.title', detail: 'job.failure.key_unavailable.detail', account: true },
+  decrypt_failed: { title: 'job.failure.key_unavailable.title', detail: 'job.failure.key_unavailable.detail', account: true },
+  invalid_input: { title: 'job.failure.invalid_input.title', detail: 'job.failure.invalid_input.detail' },
+  account_disabled: { title: 'job.failure.account_disabled.title', detail: 'job.failure.account_disabled.detail' },
+  model_refused: { title: 'job.failure.model_refused.title', detail: 'job.failure.model_refused.detail' },
+  model_config: { title: 'job.failure.model_config.title', detail: 'job.failure.model_config.detail' },
+  invalid_output: { title: 'job.failure.invalid_output.title', detail: 'job.failure.invalid_output.detail' },
+  limit_exceeded: { title: 'job.failure.limit_exceeded.title', detail: 'job.failure.limit_exceeded.detail' },
+  outbound_blocked: { title: 'job.failure.outbound_blocked.title', detail: 'job.failure.outbound_blocked.detail' },
+  internal: { title: 'job.failure.outbound_blocked.title', detail: 'job.failure.outbound_blocked.detail' },
+  program_changed: { title: 'job.failure.program_changed.title', detail: 'job.failure.program_changed.detail' },
+  program_missing: { title: 'job.failure.program_missing.title', detail: 'job.failure.program_missing.detail' },
+  music_changed: { title: 'job.failure.music_changed.title', detail: 'job.failure.music_changed.detail' },
+  program_other_sport: { title: 'job.failure.program_other_sport.title', detail: 'job.failure.program_other_sport.detail' },
+  use_change_songs: { title: 'job.failure.use_change_songs.title', detail: 'job.failure.use_change_songs.detail' },
+  media_host_not_allowed: { title: 'job.failure.media_host_not_allowed.title', detail: 'job.failure.media_host_not_allowed.detail' },
+  media_refused: { title: 'job.failure.media_refused.title', detail: 'job.failure.media_refused.detail' },
+  analysis_failed: { title: 'job.failure.analysis_failed.title', detail: 'job.failure.analysis_failed.detail' },
+  feature_off: { title: 'job.failure.feature_off.title', detail: 'job.failure.feature_off.detail' },
+  analysis_limit: { title: 'job.failure.analysis_limit.title', detail: 'job.failure.analysis_limit.detail' },
+  soundless_not_evaluated: { title: 'job.failure.soundless_not_evaluated.title', detail: 'job.failure.soundless_not_evaluated.detail' },
+  music_unlinked: { title: 'job.failure.music_unlinked.title', detail: 'job.failure.music_unlinked.detail' },
 }
 
-const FEATURE_OFF: Record<'swedebeat' | 'running' | 'soundless', FailureText> = {
-  soundless: {
-    title: 'Classes with no music are switched off right now',
-    detail: 'Nothing was designed. Choose a playlist instead, or try again later.',
-  },
-  swedebeat: {
-    title: 'Swedebeat is switched off right now',
-    detail: 'Nothing was designed. Try again later, or use another kind of music.',
-  },
-  running: {
-    title: 'Running classes are switched off right now',
-    detail: 'Nothing was designed. Try again later, or design a cycling class.',
-  },
+const SOUNDLESS_INVALID: FailureKeys = {
+  title: 'job.failure.soundlessInvalid.title',
+  detail: 'job.failure.soundlessInvalid.detail',
+}
+
+const FALLBACK: FailureKeys = { title: 'job.failure.fallback.title', detail: 'job.failure.fallback.detail' }
+
+const FEATURE_OFF: Record<'swedebeat' | 'running' | 'soundless', FailureKeys> = {
+  soundless: { title: 'job.failure.featureOff.soundless.title', detail: 'job.failure.featureOff.soundless.detail' },
+  swedebeat: { title: 'job.failure.featureOff.swedebeat.title', detail: 'job.failure.featureOff.swedebeat.detail' },
+  running: { title: 'job.failure.featureOff.running.title', detail: 'job.failure.featureOff.running.detail' },
 }
 
 /**
@@ -183,64 +80,69 @@ export function failureText(
   kind = '',
   feature: 'swedebeat' | 'running' | 'soundless' | null = null,
 ): FailureText {
-  if (category === 'feature_off' && feature !== null) return FEATURE_OFF[feature]
+  if (category === 'feature_off' && feature !== null) return words(FEATURE_OFF[feature])
   // A class with no music is cycling only and has no songs or mix: say what to change.
-  if (category === 'invalid_input' && feature === 'soundless') return SOUNDLESS_INVALID
+  if (category === 'invalid_input' && feature === 'soundless') return words(SOUNDLESS_INVALID)
   if (isSongKind(kind)) {
     const song = songFailure(category)
     if (song !== null) return song
   }
-  return category !== null && Object.hasOwn(FAILURES, category) ? FAILURES[category]! : FALLBACK
+  return words(category !== null && Object.hasOwn(FAILURES, category) ? FAILURES[category]! : FALLBACK)
 }
 
-const STAGES: Record<string, string> = {
-  music: 'Reading your playlist',
-  design: 'Building your class',
-  revise: 'Changing the class',
-  prepare: 'Checking the class and your MOWL account',
-  read: 'Reading the workout in MOWL',
-  save: 'Writing to MOWL',
-  verify: 'Checking what MOWL kept',
-  fit: 'Moving the changes onto the corrected beats',
+const STAGES: Record<string, CatalogueKey> = {
+  music: 'job.stage.music',
+  design: 'job.stage.design',
+  revise: 'job.stage.revise',
+  prepare: 'job.stage.prepare',
+  read: 'job.stage.read',
+  save: 'job.stage.save',
+  verify: 'job.stage.verify',
+  fit: 'job.stage.fit',
+}
+
+interface Step {
+  stage: string
+  key: CatalogueKey
 }
 
 /** Phase 1 of picking songs in the plain words of ADR 0013 section 6. */
-export const PICK_STEPS: readonly { stage: string; label: string }[] = [
-  { stage: 'pool_search', label: 'Finding songs that fit' },
-  { stage: 'pool_write', label: 'Saving your working playlist' },
-  { stage: 'pool_analyse', label: 'MOWL is listening to the music' },
-  { stage: 'choose', label: 'Choosing the best songs for each part' },
+const PICK_STEPS: readonly Step[] = [
+  { stage: 'pool_search', key: 'job.step.pool_search' },
+  { stage: 'pool_write', key: 'job.step.pool_write' },
+  { stage: 'pool_analyse', key: 'job.step.pool_analyse' },
+  { stage: 'choose', key: 'job.step.choose' },
 ]
 
 /** After the songs are approved: PHASE_TWO of backend songs/phase2.py, in its order. */
-const APPROVED_STEPS: readonly { stage: string; label: string }[] = [
-  { stage: 'prepare', label: 'Checking your accounts' },
-  { stage: 'create', label: 'Creating your playlist in Spotify' },
-  { stage: 'fill', label: 'Adding the approved songs to your playlist' },
-  { stage: 'attach', label: 'Adding your playlist to your MOWL music' },
-  { stage: 'music', label: 'Reading your playlist' },
-  { stage: 'design', label: 'Building your class' },
+const APPROVED_STEPS: readonly Step[] = [
+  { stage: 'prepare', key: 'job.step.prepare' },
+  { stage: 'create', key: 'songs.stage.create' },
+  { stage: 'fill', key: 'songs.stage.fill' },
+  { stage: 'attach', key: 'songs.stage.attach' },
+  { stage: 'music', key: 'job.stage.music' },
+  { stage: 'design', key: 'job.stage.design' },
 ]
 
 /** `revise_songs` runs both parts in one job and ends with `revise`, not `design` (backend songs/revise.py STAGES). */
-const REVISE_SONGS_STEPS: readonly { stage: string; label: string }[] = [
+const REVISE_SONGS_STEPS: readonly Step[] = [
   ...PICK_STEPS,
   ...APPROVED_STEPS.filter((s) => s.stage !== 'design'),
-  { stage: 'revise', label: 'Changing the class' },
+  { stage: 'revise', key: 'job.stage.revise' },
 ]
 
-const DRAFT_STEPS: readonly { stage: string; label: string }[] = [
-  { stage: 'music', label: 'Reading your playlist' },
-  { stage: 'design', label: 'Building your class' },
+const DRAFT_STEPS: readonly Step[] = [
+  { stage: 'music', key: 'job.stage.music' },
+  { stage: 'design', key: 'job.stage.design' },
 ]
 
 /** `refit_draft` (ADR 0007 amendment "beat-one corrections"): no model, two stages. */
-const REFIT_STEPS: readonly { stage: string; label: string }[] = [
-  { stage: 'music', label: 'Reading your music' },
-  { stage: 'fit', label: 'Moving the changes onto the corrected beats' },
+const REFIT_STEPS: readonly Step[] = [
+  { stage: 'music', key: 'job.step.refitMusic' },
+  { stage: 'fit', key: 'job.stage.fit' },
 ]
 
-const SOUNDLESS_STEPS: readonly { stage: string; label: string }[] = [{ stage: 'design', label: 'Building your class' }]
+const SOUNDLESS_STEPS: readonly Step[] = [{ stage: 'design', key: 'job.stage.design' }]
 
 /** The checklist of the Designing page for a job, in the order its stages run. */
 export function designSteps(
@@ -248,88 +150,97 @@ export function designSteps(
   approved: boolean,
   soundless = false,
 ): readonly { stage: string; label: string }[] {
-  if (kind === 'refit_draft') return REFIT_STEPS
-  // A soundless design reads no playlist and makes no MOWL or Spotify call (ADR 0007 amendment item 3).
-  if (soundless && kind === 'design_draft') return SOUNDLESS_STEPS
-  if (kind === 'revise_songs') return REVISE_SONGS_STEPS
-  if (kind === 'design_with_songs') return approved ? APPROVED_STEPS : PICK_STEPS
-  return DRAFT_STEPS
+  const steps = ((): readonly Step[] => {
+    if (kind === 'refit_draft') return REFIT_STEPS
+    // A soundless design reads no playlist and makes no MOWL or Spotify call (ADR 0007 amendment item 3).
+    if (soundless && kind === 'design_draft') return SOUNDLESS_STEPS
+    if (kind === 'revise_songs') return REVISE_SONGS_STEPS
+    if (kind === 'design_with_songs') return approved ? APPROVED_STEPS : PICK_STEPS
+    return DRAFT_STEPS
+  })()
+  return steps.map((s) => ({ stage: s.stage, label: t(s.key) }))
 }
 
 export function stageLabel(stage: string | null): string {
   const plain = PICK_STEPS.find((s) => s.stage === stage)
-  if (plain !== undefined) return plain.label
+  if (plain !== undefined) return t(plain.key)
   const song = pickStageLabel(stage)
   if (song !== null) return song
-  return stage !== null && Object.hasOwn(STAGES, stage) ? STAGES[stage]! : 'Getting started'
+  return t(stage !== null && Object.hasOwn(STAGES, stage) ? STAGES[stage]! : 'job.stage.default')
 }
 
-const RETRIES: Record<string, string> = {
-  upstream_unavailable: 'MOWL did not answer. Trying again shortly.',
-  rate_limited: 'MOWL asked classbeat to slow down. Trying again shortly.',
-  model_unavailable: 'The designer is busy. Trying again shortly.',
+/**
+ * The stage line while a Swedebeat mix is read. The `music` stage of such a design fetches and
+ * analyses the mix, which can take minutes; no figure is promised (#572).
+ */
+export const mixStageLabel = (): string => t('job.mixStage')
+
+/** Said while a design waits for a mix-analysis slot (`requeued` with the reason `analysis_slot`). */
+export const waitingForSlot = (): string => t('job.waitingForSlot')
+
+/** Said while a design is queued before any worker has started it. */
+export const waitingToStart = (): string => t('job.waitingToStart')
+
+/** The plain sentence under the progress line: leaving is safe. */
+export const youCanLeave = (): string => t('job.youCanLeave')
+
+const RETRIES: Record<string, CatalogueKey> = {
+  upstream_unavailable: 'job.retry.upstream_unavailable',
+  rate_limited: 'job.retry.rate_limited',
+  model_unavailable: 'job.retry.model_unavailable',
 }
 
 export function retryLabel(category: string | null): string {
-  return category !== null && Object.hasOwn(RETRIES, category)
-    ? RETRIES[category]!
-    : 'Something went wrong. Trying again shortly.'
+  return t(category !== null && Object.hasOwn(RETRIES, category) ? RETRIES[category]! : 'job.retry.default')
 }
 
 // Failure sentences for a change requested in the chat (`revise_draft`). The class keeps the
 // version it had; the request stays in the conversation.
 /** A request that only asks for other songs (ADR 0008 section 6): the way is Change songs. */
-export const USE_CHANGE_SONGS =
-  'This request is only about the songs, so nothing changed. Use Change songs to pick other ones.'
+export const songsOnlyChange = (): string => t('job.use.changeSongs')
 /** The same for a class whose music is a playlist of the user's own: it has no Change songs. */
-export const USE_NEW_CLASS_FOR_SONGS =
-  'This request is only about the songs, so nothing changed. This class uses a playlist of your own; to use other music, design a new class.'
+export const songsOnlyOwnPlaylist = (): string => t('job.use.newClassForSongs')
 
 /** The same for a running class: it is built on one MOWL playlist and has no song picking at all. */
-export const USE_OTHER_MUSIC_RUNNING =
-  'This request is only about the music, so nothing changed. A running class uses a playlist from your MOWL account and cannot swap songs; to use other music, design a new class.'
+export const musicOnlyRunning = (): string => t('job.use.otherMusicRunning')
 
 /** The same while the class's own song pick is not done (waiting, expired, stopped). */
-export const USE_FINISH_SONGS =
-  'This request is only about the songs, so nothing changed. Finish or retry the song pick on this page first; then use Change songs.'
+export const songsOnlyPickPending = (): string => t('job.use.finishSongs')
 
 /** The same for a class with no music: there are no songs, so there is nothing to change. */
-export const USE_NEW_CLASS_FOR_MUSIC_SOUNDLESS =
-  'This request is only about the music, so nothing changed. This class has no music; to add some, design a new class with a playlist.'
+export const musicOnlySoundless = (): string => t('job.use.newClassForMusicSoundless')
 
-const REVISE_FAILURES: Record<string, string> = {
-  upstream_unavailable: 'MOWL could not be reached. Nothing changed. Try again in a few minutes.',
-  rate_limited: 'MOWL asked classbeat to slow down. Nothing changed. Wait a few minutes and try again.',
-  model_unavailable: 'The designer is busy. Nothing changed. Try again in a few minutes.',
-  lease_lost: 'The change was interrupted too many times. Nothing changed. Try again.',
-  operation_busy: 'Another design of yours was still using the same playlist. Nothing changed. Try again in a moment.',
-  not_connected: 'MOWL is not connected. Connect it on your account page, then ask again.',
-  needs_reconnect: 'MOWL no longer accepts the stored sign-in. Connect it again on your account page, then ask again.',
-  key_unavailable: 'The stored MOWL sign-in could not be read. Connect MOWL again on your account page.',
-  decrypt_failed: 'The stored MOWL sign-in could not be read. Connect MOWL again on your account page.',
-  invalid_input: 'That request could not be used. Nothing changed. Ask in different words.',
-  account_disabled: 'Your account cannot change classes right now. Contact the person who invited you.',
-  model_refused: 'The designer declined this request. Nothing changed. Ask in different words.',
-  model_config: 'classbeat cannot change classes right now. This is a problem on our side. Try again later.',
-  invalid_output: 'The designer did not produce a usable change, or one that changes nothing. Nothing changed. Try again, or ask in different words.',
-  limit_exceeded: 'This request needed more work than one change may use. Nothing changed. Ask for something smaller.',
-  outbound_blocked: 'Something went wrong on our side. Nothing changed. Try again later.',
-  internal: 'Something went wrong on our side. Nothing changed. Try again later.',
-  music_unlinked: 'The music of this version is not in your connected MOWL account. Change it and save the new version.',
-  soundless_not_evaluated: 'Classes with no music are not ready for your plan yet. Nothing changed. Try again later.',
-  use_change_songs: USE_CHANGE_SONGS,
-  program_changed: 'This workout was changed in MOWL after classbeat saved it.',
-  program_missing: 'This workout is no longer in your MOWL account.',
-  program_other_sport: 'This workout in MOWL is for a different sport than this class, so classbeat did not replace it.',
+const REVISE_FAILURES: Record<string, CatalogueKey> = {
+  upstream_unavailable: 'job.revise.upstream_unavailable',
+  rate_limited: 'job.revise.rate_limited',
+  model_unavailable: 'job.revise.model_unavailable',
+  lease_lost: 'job.revise.lease_lost',
+  operation_busy: 'job.revise.operation_busy',
+  not_connected: 'job.revise.not_connected',
+  needs_reconnect: 'job.revise.needs_reconnect',
+  key_unavailable: 'job.revise.key_unavailable',
+  decrypt_failed: 'job.revise.key_unavailable',
+  invalid_input: 'job.revise.invalid_input',
+  account_disabled: 'job.revise.account_disabled',
+  model_refused: 'job.revise.model_refused',
+  model_config: 'job.revise.model_config',
+  invalid_output: 'job.revise.invalid_output',
+  limit_exceeded: 'job.revise.limit_exceeded',
+  outbound_blocked: 'job.revise.outbound_blocked',
+  internal: 'job.revise.outbound_blocked',
+  music_unlinked: 'job.revise.music_unlinked',
+  soundless_not_evaluated: 'job.revise.soundless_not_evaluated',
+  use_change_songs: 'job.use.changeSongs',
+  program_changed: 'job.revise.program_changed',
+  program_missing: 'job.revise.program_missing',
+  program_other_sport: 'job.revise.program_other_sport',
 }
 
 /** The sentence for a failed change request; the category code is never shown. */
 export function reviseFailureText(category: string | null, soundless = false): string {
   // `feature_off` of a revise is the soundless switch only for a class with no music.
-  if (soundless && category === 'feature_off') {
-    return 'Classes with no music are switched off right now. Nothing changed. Try again later.'
-  }
-  return category !== null && Object.hasOwn(REVISE_FAILURES, category)
-    ? REVISE_FAILURES[category]!
-    : 'The change did not finish. Nothing changed. Try again later.'
+  if (soundless && category === 'feature_off') return t('job.revise.soundlessFeatureOff')
+  return t(
+    category !== null && Object.hasOwn(REVISE_FAILURES, category) ? REVISE_FAILURES[category]! : 'job.revise.default',
+  )
 }

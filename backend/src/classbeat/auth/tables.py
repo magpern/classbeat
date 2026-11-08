@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -22,10 +23,11 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 metadata = MetaData()
 
+LOCALE_CHECK = "locale ~ '^[a-z]{2}$'"
 _ID = "gen_random_uuid()"
 _NOW = "now()"
 
@@ -63,7 +65,24 @@ users = Table(
     Column("role", Text, nullable=False, server_default="user"),
     _ts("disabled_at"),
     _ts("created_at", nullable=False, default_now=True),
+    # ADR 0022 section 5 (ME4, #655): the user's optional-mail preferences. Essential mail ignores
+    # both; the check keeps ``mail_opted_out`` to the categories a user may switch off.
+    Column("mail_unsubscribed_all", Boolean, nullable=False, server_default=text("false")),
+    Column("mail_opted_out", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
+    # ADR 0023 (ML2, #664): the account's language; NULL follows the browser (English mail).
+    Column("locale", Text),
+    # ADR 0019 section 4 (#771): the WebAuthn user handle, 32 random bytes made at the first
+    # passkey registration (never the uuid or the email); NULL until then.
+    Column("webauthn_user_handle", LargeBinary, unique=True),
     CheckConstraint("role IN ('user', 'admin')", name="users_role_check"),
+    CheckConstraint(
+        "mail_opted_out <@ ARRAY['welcome', 'account_activity', 'class_ready']::text[]",
+        name="users_mail_opted_out_check",
+    ),
+    CheckConstraint(LOCALE_CHECK, name="users_locale_check"),
+    CheckConstraint(
+        "octet_length(webauthn_user_handle) = 32", name="users_webauthn_user_handle_check"
+    ),
 )
 
 identities = Table(
@@ -106,6 +125,12 @@ sessions = Table(
     _ts("stepup_at"),
     Column("user_agent", Text),
     Column("ip", Text),
+    # The client mark (ADR 0003 amendment of 2026-11-05, #632, migration 0033): the HMAC of the
+    # coarse network and the browser family last seen, and when they last changed.
+    Column("seen_ip_hash", LargeBinary),
+    Column("seen_agent", Text),
+    _ts("location_changed_at"),
+    _ts("location_event_at"),  # the last session_location_changed event (one per minute)
     Index("sessions_user_id_idx", "user_id"),
     Index("sessions_expires_at_idx", "expires_at"),
 )
@@ -133,8 +158,10 @@ pending_signups = Table(
     Column("subject", Text),
     Column("browser_hash", LargeBinary),
     Column("invite_id", UUID(as_uuid=True), ForeignKey("invites.id", ondelete="CASCADE")),
+    Column("locale", Text),  # the sign-up language, copied to users.locale (ADR 0023)
     _ts("created_at", nullable=False, default_now=True),
     _ts("expires_at", nullable=False),
+    CheckConstraint(LOCALE_CHECK, name="pending_signups_locale_check"),
     CheckConstraint(
         "(provider IS NULL) = (subject IS NULL) AND (provider IS NULL) = (browser_hash IS NULL)",
         name="pending_signups_provider_together",
@@ -174,10 +201,14 @@ oauth_flows = Table(
     _user_fk(nullable=True),
     Column("invite_id", UUID(as_uuid=True), ForeignKey("invites.id", ondelete="CASCADE")),
     Column("return_to", Text),
+    Column("locale", Text),  # the start request's language, copied at the callback (ADR 0023)
     _ts("created_at", nullable=False, default_now=True),
     _ts("expires_at", nullable=False),
+    CheckConstraint(LOCALE_CHECK, name="oauth_flows_locale_check"),
     CheckConstraint("provider IN ('google', 'github', 'microsoft')", name="oauth_flows_provider"),
-    CheckConstraint("purpose IN ('sign_in', 'link', 'reauth')", name="oauth_flows_purpose"),
+    CheckConstraint(
+        "purpose IN ('sign_in', 'sign_up', 'link', 'reauth')", name="oauth_flows_purpose"
+    ),
 )
 
 mfa_totp = Table(
@@ -236,6 +267,71 @@ auth_events = Table(
     _ts("at", nullable=False, default_now=True),
     Column("detail", JSONB),
     Index("auth_events_at_idx", "at"),
+)
+
+# ADR 0019 sections 6 and 7 (#771): passkeys. System tables like ``identities``: sign-in finds a
+# credential by its id before any user is known. Nothing here is a secret (a public key cannot
+# sign); the challenge is a nonce that lives five minutes and is deleted when used.
+webauthn_credentials = Table(
+    "webauthn_credentials",
+    metadata,
+    _id(),
+    _user_fk(),
+    Column("credential_id", LargeBinary, nullable=False, unique=True),
+    Column("public_key", LargeBinary, nullable=False),  # the COSE key from registration
+    Column("sign_count", BigInteger, nullable=False, server_default="0"),
+    Column("transports", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
+    Column("backup_eligible", Boolean, nullable=False),
+    Column("backup_state", Boolean, nullable=False),
+    Column("label", Text, nullable=False),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("last_used_at"),
+    CheckConstraint(
+        "octet_length(credential_id) BETWEEN 1 AND 1023", name="webauthn_credentials_id_length"
+    ),
+    CheckConstraint(
+        "octet_length(public_key) BETWEEN 1 AND 2048", name="webauthn_credentials_key_length"
+    ),
+    CheckConstraint(
+        "sign_count BETWEEN 0 AND 4294967295", name="webauthn_credentials_sign_count_range"
+    ),
+    CheckConstraint(
+        "transports <@ ARRAY['usb', 'nfc', 'ble', 'internal', 'hybrid', 'smart-card']::text[]",
+        name="webauthn_credentials_transports_check",
+    ),
+    CheckConstraint(
+        "backup_eligible OR NOT backup_state", name="webauthn_credentials_backup_flags"
+    ),
+    CheckConstraint(
+        "char_length(label) BETWEEN 1 AND 64", name="webauthn_credentials_label_length"
+    ),
+    Index("webauthn_credentials_user_id_idx", "user_id"),
+)
+
+webauthn_challenges = Table(
+    "webauthn_challenges",
+    metadata,
+    _id(),
+    Column("flow_hash", LargeBinary, nullable=False, unique=True),
+    Column("purpose", Text, nullable=False),
+    Column("challenge", LargeBinary, nullable=False),
+    _user_fk(nullable=True),
+    Column("session_id", UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE")),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("expires_at", nullable=False),
+    CheckConstraint(
+        "purpose IN ('register', 'sign_in', 'reauth')", name="webauthn_challenges_purpose"
+    ),
+    CheckConstraint("octet_length(flow_hash) = 32", name="webauthn_challenges_flow_hash_length"),
+    CheckConstraint("octet_length(challenge) = 32", name="webauthn_challenges_challenge_length"),
+    # ``sign_in`` has no user or session yet; ``register`` and ``reauth`` are bound to both.
+    CheckConstraint(
+        "(purpose = 'sign_in') = (user_id IS NULL) AND (user_id IS NULL) = (session_id IS NULL)",
+        name="webauthn_challenges_binding",
+    ),
+    Index("webauthn_challenges_session_id_idx", "session_id"),
+    Index("webauthn_challenges_user_id_idx", "user_id"),
+    Index("webauthn_challenges_expires_at_idx", "expires_at"),
 )
 
 TABLE_NAMES = tuple(metadata.tables)

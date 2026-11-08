@@ -2,13 +2,17 @@ import { useEffect, useState } from 'react'
 import { getIdentities, logout, logoutAll } from '../api/auth'
 import { oauthOutcomeMessage } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
+import type { CatalogueKey } from '../i18n/en'
+import { useT } from '../i18n/I18n'
 import { Connections } from '../components/account/Connections'
 import { Swedebeat } from '../components/account/Swedebeat'
 import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
 import { DeleteAccount } from '../components/account/DeleteAccount'
 import { Devices } from '../components/account/Devices'
 import { ExportData } from '../components/account/ExportData'
+import { SecurityActivity } from '../components/account/SecurityActivity'
 import { Plan } from '../components/account/Plan'
+import { Passkeys } from '../components/account/Passkeys'
 import { SignInMethods } from '../components/account/SignInMethods'
 import { SpotifySummary } from '../components/account/Spotify'
 import { TwoFactor } from '../components/account/TwoFactor'
@@ -16,22 +20,25 @@ import { Usage } from '../components/account/Usage'
 import { Notice, Section, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { Button } from '../components/ui/button'
+import { LanguageSetting } from '../components/account/LanguageSetting'
+import { offeredLanguages } from '../components/LanguagePicker'
+import { EmailPreferences } from '../components/account/EmailPreferences'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
-import { useQuery, useRouter } from '../router/Router'
+import { replaceHash, useQuery, useRouter } from '../router/Router'
 import { ThemeSwitch } from '../theme/ThemeSwitch'
 
-const OAUTH_NOTES: Record<string, string> = {
-  linked: 'The sign-in method is linked to your account.',
-  reauthed: 'Thanks, you are confirmed. Repeat the change you were making.',
+const OAUTH_NOTES: Record<string, CatalogueKey> = {
+  linked: 'account.oauth.linked',
+  reauthed: 'account.oauth.reauthed',
 }
 
 const ACCOUNT_TABS = [
-  { id: 'connections', label: 'Connections' },
-  { id: 'plan', label: 'Plan and usage' },
-  { id: 'security', label: 'Sign-in and security' },
-  { id: 'data', label: 'Your data' },
-  { id: 'appearance', label: 'Appearance' },
-] as const
+  { id: 'connections', label: 'account.tab.connections' },
+  { id: 'plan', label: 'account.tab.plan' },
+  { id: 'security', label: 'account.tab.security' },
+  { id: 'data', label: 'account.tab.data' },
+  { id: 'appearance', label: 'account.tab.appearance' },
+] as const satisfies readonly { id: string; label: CatalogueKey }[]
 
 type TabId = (typeof ACCOUNT_TABS)[number]['id']
 
@@ -69,6 +76,7 @@ function initial(email: string): string {
  * and its confirmations.
  */
 function Account() {
+  const t = useT()
   const { session, refresh } = useSession()
   const { navigate } = useRouter()
   const outcome = useQuery().get('oauth')
@@ -120,7 +128,7 @@ function Account() {
   const choose = (value: string) => {
     if (!isTab(value)) return
     setTab(value)
-    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${value}`)
+    replaceHash(value)
   }
 
   return (
@@ -133,7 +141,9 @@ function Account() {
           {initial(email)}
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h1 className="m-0 text-sm font-medium tracking-wide text-muted uppercase">Your account</h1>
+          <h1 className="m-0 text-sm font-medium tracking-wide text-muted uppercase">
+            {t('account.heading')}
+          </h1>
           <p className="m-0 font-display text-2xl font-bold break-words">{name}</p>
           <p className="m-0 break-words text-muted" data-testid="account-email">
             {email}
@@ -143,17 +153,17 @@ function Account() {
       </header>
       {outcome ? (
         Object.hasOwn(OAUTH_NOTES, outcome) ? (
-          <Notice kind="success">{OAUTH_NOTES[outcome]}</Notice>
+          <Notice kind="success">{t(OAUTH_NOTES[outcome] ?? 'account.oauth.linked')}</Notice>
         ) : (
           <Notice kind="error">{oauthOutcomeMessage(outcome, hasPassword)}</Notice>
         )
       ) : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <Tabs value={tab} onValueChange={choose}>
-        <TabsList aria-label="Account">
+        <TabsList aria-label={t('account.tabs')}>
           {ACCOUNT_TABS.map((item) => (
             <TabsTrigger key={item.id} value={item.id}>
-              {item.label}
+              {t(item.label)}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -165,12 +175,15 @@ function Account() {
         <TabsContent value="plan" className="flex flex-col gap-4">
           <Plan />
           <details className="rounded-lg border border-line bg-surface p-4">
-            <summary className="min-h-11 cursor-pointer content-center font-medium">Show usage details</summary>
+            <summary className="min-h-11 cursor-pointer content-center font-medium">
+              {t('account.usageDetails')}
+            </summary>
             <Usage />
           </details>
         </TabsContent>
         <TabsContent value="security" className="flex flex-col gap-4">
           <SignInMethods />
+          <Passkeys />
           <ChangePassword />
           <TwoFactor />
           <Devices
@@ -179,15 +192,19 @@ function Account() {
               signOut(true)
             }}
           />
+          <SecurityActivity />
         </TabsContent>
         <TabsContent value="data" className="flex flex-col gap-4">
-          <Section title="Download my data">
+          <Section title={t('account.email')}>
+            <EmailPreferences />
+          </Section>
+          <Section title={t('export.button')}>
             <ExportData />
           </Section>
-          <Section title="Delete my account">
+          <Section title={t('delete.button')}>
             <DeleteAccount email={email} />
           </Section>
-          <Section title="Sign out">
+          <Section title={t('account.signOut')}>
             <p>
               <Button
                 variant="secondary"
@@ -196,14 +213,19 @@ function Account() {
                   signOut(false)
                 }}
               >
-                Sign out
+                {t('account.signOut')}
               </Button>
             </p>
           </Section>
         </TabsContent>
         <TabsContent value="appearance" className="flex flex-col gap-4">
-          <Section title="Theme">
-            <p className="text-muted">Dark is the default. Same as device follows your phone or computer.</p>
+          {offeredLanguages(session?.locales ?? []).length > 1 ? (
+            <Section title={t('account.language')}>
+              <LanguageSetting />
+            </Section>
+          ) : null}
+          <Section title={t('account.theme')}>
+            <p className="text-muted">{t('account.themeHelp')}</p>
             <ThemeSwitch />
           </Section>
         </TabsContent>

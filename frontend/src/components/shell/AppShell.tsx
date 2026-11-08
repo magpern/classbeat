@@ -1,15 +1,20 @@
+import { LegalFooter } from '../../pages/legal/LegalFooter'
 import { Home, Library, Music, Plus, User, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { logout } from '../../api/auth'
 import { useSession } from '../../auth/SessionContext'
+import { useT } from '../../i18n/I18n'
+import type { CatalogueKey } from '../../i18n/en'
 import { useLayout, type Layout } from '../../hooks/useLayout'
 import { cn } from '../../lib/cn'
 import { Link, useRouter } from '../../router/Router'
 import { ApiStatus } from '../ApiStatus'
 import { useAction } from '../forms'
+import { LanguagePicker } from '../LanguagePicker'
 import { Logo } from '../Logo'
 import { AvatarMenu } from './AvatarMenu'
 import { ClassesThisMonth } from './ClassesThisMonth'
+import { PhoneSignInNotice } from './PhoneSignInNotice'
 
 const JOB_PAGE = /^\/jobs\/[0-9a-fA-F-]{36}$/
 
@@ -21,16 +26,16 @@ export function isFocusRoute(pathname: string): boolean {
 
 interface Item {
   to: string
-  label: string
+  label: CatalogueKey
   icon: LucideIcon
   primary?: boolean
 }
 
-const HOME: Item = { to: '/', label: 'Home', icon: Home }
-const CLASSES: Item = { to: '/classes', label: 'My classes', icon: Library }
-const NEW: Item = { to: '/classes/new', label: 'New class', icon: Plus, primary: true }
-const MUSIC: Item = { to: '/music', label: 'Music', icon: Music }
-const ACCOUNT: Item = { to: '/account', label: 'Account', icon: User }
+const HOME: Item = { to: '/', label: 'shell.nav.home', icon: Home }
+const CLASSES: Item = { to: '/classes', label: 'shell.nav.classes', icon: Library }
+const NEW: Item = { to: '/classes/new', label: 'shell.nav.new', icon: Plus, primary: true }
+const MUSIC: Item = { to: '/music', label: 'shell.nav.music', icon: Music }
+const ACCOUNT: Item = { to: '/account', label: 'shell.nav.account', icon: User }
 
 function itemsFor(layout: Layout): Item[] {
   // The DOM order is the visual order: the pill first in the sidebar and rail, in the middle of the tab bar.
@@ -59,6 +64,7 @@ function lookOf(item: Item, layout: Layout, active: boolean): string {
 }
 
 function NavLink({ item, layout, pathname }: { item: Item; layout: Layout; pathname: string }) {
+  const t = useT()
   const Icon = item.icon
   const active = isActive(item, pathname)
   const iconOnly = layout === 'rail' || (item.primary === true && layout === 'phone')
@@ -66,22 +72,23 @@ function NavLink({ item, layout, pathname }: { item: Item; layout: Layout; pathn
     <Link
       to={item.to}
       aria-current={active ? 'page' : undefined}
-      aria-label={iconOnly ? item.label : undefined}
+      aria-label={iconOnly ? t(item.label) : undefined}
       className={cn(
         'inline-flex min-h-11 min-w-11 items-center no-underline transition-colors duration-150',
         lookOf(item, layout, active),
       )}
     >
       <Icon aria-hidden="true" size={item.primary === true && layout !== 'sidebar' ? 28 : 22} strokeWidth={2} />
-      {iconOnly ? null : <span>{item.label}</span>}
+      {iconOnly ? null : <span>{t(item.label)}</span>}
     </Link>
   )
 }
 
 function PrimaryNav({ layout, pathname }: { layout: Layout; pathname: string }) {
+  const t = useT()
   return (
     <nav
-      aria-label="Main"
+      aria-label={t('shell.nav.main')}
       className={
         layout === 'phone'
           ? 'fixed inset-x-0 bottom-0 z-30 flex items-end justify-around border-t border-line bg-surface px-2 pb-2'
@@ -96,32 +103,35 @@ function PrimaryNav({ layout, pathname }: { layout: Layout; pathname: string }) 
 }
 
 function BrandLink({ compact }: { compact?: boolean }) {
+  const t = useT()
   return (
-    <Link to="/" className="inline-flex min-h-11 items-center gap-3 text-text no-underline" aria-label="classbeat home">
+    <Link to="/" className="inline-flex min-h-11 items-center gap-3 text-text no-underline" aria-label={t('shell.brandHome')}>
       <Logo />
       {compact ? null : <span className="font-display text-xl font-extrabold tracking-tight">classbeat</span>}
     </Link>
   )
 }
 
-function SignedOutHeader({ ready }: { ready: boolean }) {
+function SignedOutHeader({ ready, offered }: { ready: boolean; offered: readonly string[] }) {
+  const t = useT()
   return (
     <header className="border-b border-line bg-surface">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
         <BrandLink />
         {ready ? (
-          <nav aria-label="Account" className="ml-auto flex items-center gap-2">
+          <nav aria-label={t('shell.nav.account')} className="ml-auto flex items-center gap-2">
+            <LanguagePicker offered={offered} />
             <Link
               to="/signin"
               className="inline-flex min-h-11 items-center rounded-full px-4 font-medium text-text no-underline hover:bg-raised"
             >
-              Sign in
+              {t('auth.signIn')}
             </Link>
             <Link
               to="/signup"
               className="inline-flex min-h-11 items-center rounded-full bg-brand px-5 font-medium text-on-brand no-underline hover:opacity-90"
             >
-              Sign up
+              {t('shell.signUp')}
             </Link>
           </nav>
         ) : null}
@@ -153,6 +163,7 @@ function Frame({ rootClass, top, mainClass, alert, bottom, children }: FrameProp
         <div className="mx-auto max-w-5xl">
           {alert}
           {children}
+          <LegalFooter />
         </div>
       </main>
       {bottom}
@@ -163,14 +174,20 @@ function Frame({ rootClass, top, mainClass, alert, bottom, children }: FrameProp
 /** The page frame: signed out, a plain header; signed in, the navigation for the width (ADR 0013 section 4). */
 export function AppShell({ children }: { children: ReactNode }) {
   const { status, session, refresh } = useSession()
-  const { pathname, navigate } = useRouter()
+  const { path: pathname, navigate } = useRouter()
   const layout = useLayout()
+  const t = useT()
   const action = useAction()
 
   if (status !== 'ready' || session === null || !session.authenticated) {
     return (
       <Frame
-        top={<SignedOutHeader ready={status === 'ready' && session !== null} />}
+        top={
+          <SignedOutHeader
+            ready={status === 'ready' && session !== null}
+            offered={session?.locales ?? []}
+          />
+        }
         mainClass="app-main"
         alert={null}
       >
@@ -187,11 +204,16 @@ export function AppShell({ children }: { children: ReactNode }) {
       navigate('/signin')
     })
   }
-  const alert = action.error ? (
-    <p role="alert" className="m-0 mb-4 rounded-md bg-bad-soft px-4 py-3 text-bad">
-      {action.error}
-    </p>
-  ) : null
+  const alert = (
+    <>
+      <PhoneSignInNotice busy={action.busy} onSignOut={signOut} />
+      {action.error ? (
+        <p role="alert" className="m-0 mb-4 rounded-md bg-bad-soft px-4 py-3 text-bad">
+          {action.error}
+        </p>
+      ) : null}
+    </>
+  )
 
   if (isFocusRoute(pathname)) {
     return (
@@ -203,7 +225,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               to="/"
               className="inline-flex min-h-11 items-center rounded-full bg-raised px-5 font-medium text-text no-underline hover:bg-line"
             >
-              {pathname.startsWith('/jobs/') ? 'Back to home' : 'Close'}
+              {pathname.startsWith('/jobs/') ? t('shell.backHome') : t('shell.close')}
             </Link>
           </header>
         }

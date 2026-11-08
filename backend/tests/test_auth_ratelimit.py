@@ -11,7 +11,7 @@ import pytest
 
 from authtools import Env
 from classbeat import auth
-from classbeat.auth.clientip import bucket_ip, client_ip
+from classbeat.auth.clientip import bucket_ip, bucket_ip48, client_ip
 from classbeat.auth.passwords import PasswordHashBusy, PasswordHasher
 from classbeat.auth.ratelimit import Bucket, Limit, RateLimited
 
@@ -115,6 +115,20 @@ async def test_the_adr_limits(env: Env) -> None:
     }
     for limit, (count, window) in table.items():
         assert (limit.max_count, limit.window_seconds) == (count, window)
+
+
+def test_the_ipv6_48_bucket_key() -> None:
+    """ADR 0019 section 10 (#771): passkey sign-in starts also count per IPv6 /48; IPv4 (and
+    anything that is not an address) has no /48 bucket."""
+    same = ["2001:db8:1:2::1", "2001:db8:1:ffff::9", "2001:0db8:0001::"]
+    assert {bucket_ip48(a) for a in same} == {"2001:db8:1::/48"}
+    assert bucket_ip48("2001:db8:2::1") == "2001:db8:2::/48"
+    assert bucket_ip48("2001:db8:1:2::1%eth0") == "2001:db8:1::/48"  # the scope id is dropped
+    # Two /64s of one /48 are two address buckets but one /48 bucket.
+    assert bucket_ip("2001:db8:1:2::1") != bucket_ip("2001:db8:1:3::1")
+    assert bucket_ip48("2001:db8:1:2::1") == bucket_ip48("2001:db8:1:3::1")
+    for no_48 in ("192.0.2.9", "::ffff:192.0.2.9", "unknown", ""):
+        assert bucket_ip48(no_48) is None, no_48
 
 
 async def test_ipv6_addresses_share_a_bucket_per_64(env: Env) -> None:

@@ -3,18 +3,22 @@ import { listDevices, signOutDevice, type DeviceSession } from '../../api/auth'
 import { Notice, Section, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Chip } from '../ui/chip'
+import { dateTime } from '../../i18n/format'
+import { useT } from '../../i18n/I18n'
 
 function when(iso: string): string {
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
+  return dateTime(iso)
 }
 
 /**
  * Signed-in devices (ADR 0003 section 3, ADR 0013 section 5): the user's own sessions with the
  * browser they came from and when they were last used (never the IP address), sign out one of
  * the others, or everywhere (`onSignOutEverywhere`, the same `POST /api/auth/logout-all`).
+ * A session seen from a new network or browser is marked "New location" (#632) until it signs in
+ * again there; it is never signed out for that.
  */
 export function Devices({ busy, onSignOutEverywhere }: { busy: boolean; onSignOutEverywhere: () => void }) {
+  const t = useT()
   const [devices, setDevices] = useState<DeviceSession[] | null>(null)
   const [failed, setFailed] = useState(false)
   const action = useAction()
@@ -46,20 +50,30 @@ export function Devices({ busy, onSignOutEverywhere }: { busy: boolean; onSignOu
   }
 
   return (
-    <Section title="Signed-in devices">
+    <Section title={t('devices.title')}>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      {failed ? <p className="text-muted">The devices could not be loaded. Reload the page to try again.</p> : null}
-      {devices === null && !failed ? <p>Loading</p> : null}
+      {failed ? <p className="text-muted">{t('devices.loadFailed')}</p> : null}
+      {devices === null && !failed ? <p>{t('common.loading')}</p> : null}
       {devices !== null ? (
         <ul className="m-0 flex list-none flex-col gap-2 p-0" data-testid="devices">
           {devices.map((device) => (
             <li key={device.id} className="flex flex-wrap items-center gap-2">
               <span className="min-w-0 flex-1 break-words">
-                {device.userAgent ?? 'Unknown browser'}
-                <span className="block text-muted">Last used {when(device.lastSeenAt)}</span>
+                {device.userAgent ?? t('devices.unknownBrowser')}
+                <span className="block text-muted">
+                  {t('devices.lastUsed', { when: when(device.lastSeenAt) })}
+                </span>
+                {device.locationChangedAt ? (
+                  <span className="block text-muted" data-testid="device-moved">
+                    {t(device.current ? 'devices.movedCurrent' : 'devices.movedOther', {
+                      when: when(device.locationChangedAt),
+                    })}
+                  </span>
+                ) : null}
               </span>
+              {device.locationChangedAt ? <Chip tone="warn">{t('devices.newLocation')}</Chip> : null}
               {device.current ? (
-                <Chip tone="ok">This device</Chip>
+                <Chip tone="ok">{t('devices.thisDevice')}</Chip>
               ) : (
                 <Button
                   variant="secondary"
@@ -68,7 +82,7 @@ export function Devices({ busy, onSignOutEverywhere }: { busy: boolean; onSignOu
                     signOut(device.id)
                   }}
                 >
-                  Sign out this device
+                  {t('devices.signOutThis')}
                 </Button>
               )}
             </li>
@@ -77,7 +91,7 @@ export function Devices({ busy, onSignOutEverywhere }: { busy: boolean; onSignOu
       ) : null}
       <p>
         <Button variant="secondary" disabled={busy} onClick={onSignOutEverywhere}>
-          Sign out everywhere
+          {t('devices.signOutAll')}
         </Button>
       </p>
     </Section>

@@ -1,5 +1,101 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 16 (2026-11-06, owner decisions: multilingual support; ADR 0023)
+
+The owner answered the questions of [docs/plans/multilingual.md](plans/multilingual.md) on 2026-11-06;
+the plan is at revision 3 (after the first review of PR #674). [ADR 0023](adr/0023-multilingual.md) records the design and is Accepted when
+its PR (issue #662) merges. The ML row of Amendment 15 is replaced by:
+
+| # | Milestone | Done when |
+|---|---|---|
+| ML | Multilingual support (ADR 0023, #657): ML0 plan and ADR (#662), ML1 translation runtime and locale formatting (#663), ML2 language preference (#664), ML3 hard-coded string guard and catalogue checks (#665), ML4 job and Spotify sentences as codes (#666), ML5a to ML5d string extraction (#667 to #670), ML6 Swedish and Danish mail (#671, needs ME1 to ME4), ML7 Swedish and Danish app catalogues (#672), ML8 done-when suite (#673) | English, Swedish or Danish can be chosen logged out and on the account; a new account keeps its sign-up language, which follows it to a new browser and sets its mail; every instructor-facing screen and every mail kind is served from the catalogues in all three languages; dates, numbers and money follow the language; CI fails on an unlisted missing key, a broken placeholder or a new hard-coded string, and the untranslated lists are empty; generated classes are unchanged (English) |
+
+- **Languages:** English (source and fallback), Swedish and Danish, all in ML. `CLASSBEAT_LOCALES`
+  (default all three) is an operator switch, not a review gate.
+- **Translation without human review** (owner): translations, legal and consent sentences included,
+  are drafted by a **Sonnet** translator (the PR's Developer; staffing change below) and checked by an independent
+  Opus-class Reviewer, the PR's one Reviewer under the unchanged review gate. "Opus-class" is the
+  current Opus generation (Opus 5.5 when this was written). No human proofreads and the owner does not
+  sign off.
+- **Dedicated translation PRs**: Swedish and Danish content is authored only in ML6, ML7 and later
+  catch-up translation PRs. This departs from AGENTS.md "Roles" for those PRs only: their Reviewer is
+  Opus-class although they are not security-critical (their Developer is Sonnet, the staffing change below). They run in Claude Code; the Codex and Cursor
+  entry points (Amendments 10 and 11) have a Reviewer but no Opus-class model and do no translation work. Feature PRs
+  add English keys only and list them on the untranslated list (ADR 0023 §8); CI fails on an unlisted
+  missing key, and the Orchestrator opens a catch-up translation PR when the list is not empty, at the
+  latest before a release.
+- **Generated classes stay English**: brief, prompts, model routes and eval suites are unchanged; a
+  class language is a possible later milestone (ADR 0023 §7).
+- **Admin area English only.**
+- **Order against a UI redesign:** the redesign is an owner idea, not a planned milestone. ML0 to ML4
+  and ML6 come first. ML5b to ML5d, ML7 and ML8 follow the redesign if and when it is planned (it then
+  writes against the catalogue from day one), otherwise straight after ML5a; nothing waits on it.
+- Review classes: ML0 docs with an Opus Reviewer (first review of a new design); ML2 Sonnet Developer,
+  Opus Reviewer; ML6, ML7 and catch-up translation PRs Sonnet Developer and Opus-class Reviewer; ML8 (#673, tests) and the rest Sonnet and Sonnet. Amendments
+  13 and 14 apply otherwise.
+- No live access is needed or authorized.
+- **Staffing change (2026-11-06, owner decision, given in session):** translation PRs (ML6 #671, ML7
+  #672 and later catch-up translation PRs) have a **Sonnet Developer (translator)** and an **Opus
+  Reviewer** (independent of the Developer, the PR's one Reviewer), instead of an Opus-class Developer
+  and Reviewer. This replaces the Opus-class Developer wherever this amendment, ADR 0023 and the plan
+  say so. Unchanged: Claude Code only, no human proofreading, no owner sign-off, the glossary, legal and
+  consent sentences agent-translated and agent-reviewed. ML8 (#673) is a test PR and stays Sonnet and
+  Sonnet.
+
+## Amendment 15 (2026-11-05, owner decision: account emails; ADR 0022)
+
+The owner approved the plan [docs/plans/account-emails.md](plans/account-emails.md) (revision 3) on
+2026-11-05. [ADR 0022](adr/0022-account-emails.md) records the design and is Accepted when its PR
+(#658 for issue #651) merges. (The plan and issues call it "ADR 0018" and "Amendment 12"; both numbers were
+already taken by M8, so the next free numbers are used.) The milestones below are added to the
+milestone table.
+
+| # | Milestone | Done when |
+|---|---|---|
+| ME | Account emails (ADR 0022, #649): ME0 plan and ADR (#651), ME1 branded multipart layout and email registry (#652), ME2 admin branding, switches, preview and test send (#653), ME3 new account notices (#654), ME4 email preferences and unsubscribe (#655), ME5 "class ready" mail via a worker hand-off (#656, needs ME1, ME4 and A4 #380) | Every mail is multipart, golden-tested and readable with images off; existing triggers and subjects unchanged except the OAuth-creation welcome; admin can set branding, switch optional kinds off, preview and test-send, essential kinds cannot be switched off; users can opt out per category or of all optional mail; "class ready" is sent once per qualifying job on the fakes; no test sends real mail |
+| MH | Help and contact (#650): **placeholder only**, not planned | Planned later by the Architect |
+| ML | Multilingual support (#657): a later milestone, not planned; ME keeps all strings in a catalogue so it can follow | Planned later by the owner and Architect |
+
+- **CSP change** (ADR 0022, amends ADR 0013 §9): app pages get a path-scoped `frame-src` for the admin mail
+  preview iframe; the preview response keeps its own CSP.
+- **Delivery is fire and forget** (ADR 0022 §4): one SMTP attempt, failures logged by error class,
+  no retries, outbox or tracking.
+- **One intended trigger change:** on Google, GitHub or Microsoft account creation the welcome mail
+  replaces the "sign-in method added" notice (ADR 0022 §7). All other triggers and subjects stay.
+- **Default support address:** `CLASSBEAT_MAIL_SUPPORT_ADDRESS` defaults to `support@classbeat.eu`,
+  an owner-confirmable default (ADR 0022 §3).
+- Review classes: ME1 to ME4 have a Sonnet Developer and an Opus Reviewer (new design; ME4 signs a
+  token); ME5 has an Opus Developer (fenced job write) and an Opus Reviewer; ME0 is docs, with an
+  Opus Reviewer for the first review of a new design. Amendments 13 and 14 apply otherwise.
+- No live access is authorized. Agents never mail real people; the owner uses "Send test to me"
+  after deploy.
+
+## Amendment 14 (2026-11-04, owner decision: token cost of the agent process)
+
+Where it differs, this amendment wins over Amendments 2, 4 and 13 and AGENTS.md. Every other
+gate (`PASS` per head SHA in the `Agent review (<model>): PASS|FAIL <head SHA>` comment, no
+approving review, merge only with `--match-head-commit`, merge check, no self-approval) is
+unchanged.
+
+- **Reviewer reuse ("first review new context, second re-use context"):** the first review of a
+  PR is a fresh context. Every later round on the same PR (a delta review after a `FAIL`, a
+  scoped review after a hand-resolved merge) resumes the **same Reviewer agent** with the new
+  head instead of spawning a new one, on security-critical PRs too; the Reviewer stays Opus
+  there and stays independent of the Developer and the Architect. This replaces the "fresh
+  Opus" for a delta that changes security-critical application code (Amendments 2, 4 and 13).
+  A fresh Reviewer is used only after a second `FAIL` on the same PR (after the Architect's
+  re-assessment), or when the Reviewer cannot be resumed (the comment says so). A Sonnet delta
+  review for a tests or docs-only delta on a security-critical PR (Amendment 4) stays an
+  option; resuming the same Opus Reviewer is the default.
+- **Mutation checks scoped:** only for the guarantees a PR adds or a fix changes, at most about
+  8 per review (Amendment 4's cap stays). A docs-only or test-only delta gets none beyond the
+  earlier finding it addresses, verified by reading or by one mutation. A docs-only review
+  needs no throwaway database.
+- **AGENTS.md split:** AGENTS.md is loaded into every agent's context, so its long "Developer
+  commands" reference (settings by feature, frontend, stack, e2e, CI and security checks) moved
+  unchanged to [developer-commands.md](developer-commands.md). AGENTS.md keeps the rules and a
+  short list of the essential commands.
+
 ## Amendment 13 (2026-11-03, owner decision: fewer Opus calls)
 
 Where it differs, this amendment wins over Amendments 1, 2 and 4 and AGENTS.md. It loosens model
@@ -16,7 +112,8 @@ is unchanged.
   in config), it gets exactly one final Opus review of the final head after the Sonnet rounds,
   not an Opus Developer.
 - **Delta rounds after a first `FAIL`** are reviewed by Sonnet unless the fix changes behaviour
-  of security-critical application code (then a fresh Opus). After a second `FAIL` on any PR the
+  of security-critical application code (then the Opus Reviewer, resumed under Amendment 14; a
+  fresh Opus only when it cannot be resumed). After a second `FAIL` on any PR the
   Architect re-assesses the design before another review (prefer allowlists over blocklists for
   guard checks), as the three-cycle rule says.
 
@@ -100,7 +197,8 @@ Where it differs, this amendment wins over Revision 6's review gate ("Developmen
   merge of `main` with no hand-resolved conflict, and CI is green, the Architect's mechanical
   merge check carries the verdict. A scoped fresh review is needed if `main` changed a module
   the PR changes or calls, or a conflict was resolved by hand.
-- **Fix rounds** after a `FAIL` get a fresh **delta review**: the diff since the last reviewed
+- **Fix rounds** after a `FAIL` get a **delta review** (fresh when this amendment was written;
+  by the resumed first Reviewer since Amendment 14): the diff since the last reviewed
   head, each earlier finding verified, and whatever the delta touches.
 - **Reviewers rely on CI** for the full suite; they run targeted tests and mutation checks of
   the guarantees that changed.
@@ -127,7 +225,8 @@ Where it differs, this amendment wins over Amendment 2's reviewer-model rule.
   security-critical PR may be done by a fresh **Sonnet** when the delta only adds or changes
   tests or docs, loosens no guard test (netguard, session guard, egress guard, RLS and role
   tests), and has no hand-resolved conflict in production code. After a second `FAIL` the
-  reviewer is a fresh Opus again.
+  reviewer is a fresh Opus again. (Amendment 14: resuming the same Opus Reviewer is now the
+  default for any delta round; this Sonnet option remains.)
 - **Review effort:** reviewers run targeted test files, never the full suite (CI does), and about
   8 mutation checks per review, chosen by risk; the mutation each earlier finding needs in a
   delta review is outside that cap, and a docs-only finding is verified by reading.

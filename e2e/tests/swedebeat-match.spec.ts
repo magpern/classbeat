@@ -197,6 +197,32 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
     expect(workerLogTail()).not.toContain('swedebeat media fetched')
   })
 
+  await test.step('a long absence: the hand-off is still there, with its expiry, and Check again works (#572)', async () => {
+    // The user walked away 20 hours ago: move the live row's clock back, keeping it inside its
+    // lifetime (expires_at - created_at is unchanged), then come back in a brand new page.
+    sql(
+      `UPDATE swedebeat_handoffs SET created_at = created_at - interval '20 hours', ` +
+        `checked_at = checked_at - interval '20 hours', expires_at = expires_at - interval '20 hours' ` +
+        `WHERE class_id = '${classId}' AND superseded_at IS NULL`,
+    )
+    const back = await page.context().newPage()
+    try {
+      await back.goto(`/classes/${classId}`)
+      await expect(nextStep(back)).toBeVisible(LONG)
+      await expect(nextStep(back).getByTestId('handoff-expiry')).toContainText('You can leave and come back')
+      await expect(nextStep(back).getByTestId('verdict')).toContainText('That mix is shorter than expected')
+      await expect(nextStep(back).getByText('This step has expired.')).toHaveCount(0)
+      // The same pick as before the absence, so the stored hand-off ends as it was.
+      const picker = nextStep(back).getByRole('group', { name: 'Which one did you make?' })
+      await picker.getByRole('radio', { name: /E2E Cached Mix/ }).check({ force: true })
+      await nextStep(back).getByRole('button', { name: 'Check again' }).click()
+      await expect(nextStep(back).getByTestId('verdict')).toContainText('That mix is shorter than expected', LONG)
+      await expect(nextStep(back).getByRole('button', { name: 'Check again' })).toBeEnabled(LONG)
+    } finally {
+      await back.close()
+    }
+  })
+
   await test.step('override: a verdict never blocks, and the class is designed on the mix', async () => {
     await nextStep(page).getByRole('button', { name: 'This is the right mix' }).click()
     await expect(nextStep(page).getByText('Mix verified')).toBeVisible()

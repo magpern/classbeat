@@ -1,0 +1,279 @@
+import { render, screen, act } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import initScript from '../../public/locale-init.js?raw'
+import { CATALOGUE_LOADERS } from './catalogues'
+import { I18nProvider, Trans, useLocale, useT } from './I18n'
+import manifest from './locales.json'
+import {
+  DEFAULT_LOCALE,
+  fromLanguages,
+  getActiveLocale,
+  isLocale,
+  LOCALE_STORAGE_KEY,
+  LOCALES,
+  bestLocale,
+  resolveBrowserLocale,
+  setActiveLocale,
+  storeLocale,
+} from './locales'
+import { loadCatalogue, plural, resetCatalogues, t, translate } from './t'
+
+const loaders = { xx: () => import('./testing/xx') }
+
+function languages(list: string[]) {
+  vi.spyOn(window.navigator, 'languages', 'get').mockReturnValue(list)
+}
+
+beforeEach(() => {
+  window.localStorage.clear()
+  document.documentElement.setAttribute('lang', 'en')
+})
+afterEach(() => {
+  vi.restoreAllMocks()
+  resetCatalogues()
+  setActiveLocale(DEFAULT_LOCALE)
+})
+
+describe('the manifest', () => {
+  it('lists English, Swedish and Danish', () => {
+    expect(manifest).toEqual(['en', 'sv', 'da'])
+    expect([...LOCALES]).toEqual(manifest)
+  })
+
+  it('has one static loader per non-English locale and no other', () => {
+    expect(Object.keys(CATALOGUE_LOADERS).sort()).toEqual(manifest.filter((l) => l !== 'en').sort())
+  })
+
+  it('is the list in public/locale-init.js', () => {
+    const list = /var locales = (\[[^\]]*\])/.exec(initScript)?.[1]
+    expect(list).toBeDefined()
+    expect(JSON.parse((list ?? '').replaceAll("'", '"'))).toEqual(manifest)
+  })
+
+  it('only accepts its own codes', () => {
+    for (const good of ['en', 'sv', 'da']) expect(isLocale(good)).toBe(true)
+    for (const bad of ['fr', 'sv-SE', 'xx', 'EN', '../en', '', 'constructor', null, 3])
+      expect(isLocale(bad)).toBe(false)
+  })
+
+  it('saves only its own codes', () => {
+    storeLocale('fr')
+    storeLocale('../x')
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
+    storeLocale('sv')
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('sv')
+    storeLocale('en')
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
+  })
+})
+
+describe('browser resolution', () => {
+  it('is English with nothing saved', () => {
+    languages([])
+    expect(resolveBrowserLocale()).toBe('en')
+  })
+
+  it('ignores a browser that prefers a language the manifest lacks', () => {
+    languages(['fr-FR', 'de', 'en-GB'])
+    expect(fromLanguages(['fr-FR', 'de'])).toBe('en')
+    expect(resolveBrowserLocale()).toBe('en')
+  })
+
+  it('takes the first manifest language', () => {
+    expect(fromLanguages(['fr', 'en-GB', 'sv'])).toBe('en')
+    expect(fromLanguages(['fr', 'sv-SE', 'en'])).toBe('sv')
+    expect(fromLanguages(['da-DK'])).toBe('da')
+  })
+
+  it('ignores a saved value outside the manifest', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'fr')
+    languages(['en-US'])
+    expect(resolveBrowserLocale()).toBe('en')
+  })
+
+  it('survives blocked storage', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    languages(['en'])
+    expect(resolveBrowserLocale()).toBe('en')
+  })
+})
+
+describe('bestLocale (the language of a URL that names none)', () => {
+  it('never returns a language the server does not offer', () => {
+    window.localStorage.setItem('cb-locale', 'da')
+    vi.spyOn(window.navigator, 'languages', 'get').mockReturnValue(['da-DK'])
+    expect(bestLocale(['en', 'sv'], 'da')).toBe('en') // saved account language not offered
+    expect(bestLocale(['sv'], 'da')).toBe('sv') // English not offered either
+    expect(bestLocale(['sv', 'da'], 'zz')).toBe('da') // an unknown saved value is ignored
+    expect(bestLocale(['xx', 'fr'], 'da')).toBe('en') // nothing usable offered: a manifest code anyway
+  })
+
+  it('takes any supported language while the server has not said', () => {
+    expect(bestLocale([], 'sv')).toBe('sv')
+  })
+})
+
+describe('locale-init.js (runs before first paint)', () => {
+  function run() {
+    window.eval(initScript)
+  }
+
+  it('gives a browser preferring sv lang="sv", and an unsupported one lang="en"', () => {
+    languages(['sv-SE', 'sv'])
+    run()
+    expect(document.documentElement).toHaveAttribute('lang', 'sv')
+    languages(['fr-FR'])
+    document.documentElement.setAttribute('lang', 'fr')
+    run()
+    expect(document.documentElement).toHaveAttribute('lang', 'en')
+  })
+
+  it('uses a saved da and ignores a saved fr', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'da')
+    run()
+    expect(document.documentElement).toHaveAttribute('lang', 'da')
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'fr')
+    run()
+    expect(document.documentElement).toHaveAttribute('lang', 'en')
+  })
+
+  it('uses a manifest language', () => {
+    languages(['en-GB'])
+    run()
+    expect(document.documentElement).toHaveAttribute('lang', 'en')
+  })
+
+  it('does not throw when storage does', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    expect(run).not.toThrow()
+    expect(document.documentElement).toHaveAttribute('lang', 'en')
+  })
+})
+
+describe('t, fallback and plurals', () => {
+  it('fills named placeholders and leaves unknown ones as written', () => {
+    expect(translate('en', 'usage.underOneCent', { amount: '$0.01' })).toBe('under $0.01')
+    expect(translate('en', 'usage.underOneCent')).toBe('under {amount}')
+    expect(translate('en', 'usage.underOneCent', { other: 1 })).toBe('under {amount}')
+  })
+
+  it('shows English for a locale with no catalogue loaded', () => {
+    expect(translate('xx', 'format.soonUnknown')).toBe('a few minutes from now')
+  })
+
+  it('loads a catalogue on demand and falls back per key', async () => {
+    expect(await loadCatalogue('xx', loaders)).toBe(true)
+    expect(translate('xx', 'usage.underOneCent', { amount: '$1', count: 1 })).toBe('ett $1')
+    expect(translate('xx', 'usage.underOneCent', { amount: '$1', count: 2 })).toBe('under $1 (xx)')
+    expect(translate('xx', 'format.soonUnknown')).toBe('a few minutes from now')
+  })
+
+  it('loads nothing for a locale the map does not name, or a hostile one', async () => {
+    expect(await loadCatalogue('fr', loaders)).toBe(false)
+    expect(await loadCatalogue('__proto__', loaders)).toBe(false)
+    expect(await loadCatalogue('../x', loaders)).toBe(false)
+    // Names every object inherits: the loader map must not answer for them.
+    expect(await loadCatalogue('constructor', loaders)).toBe(false)
+    expect(await loadCatalogue('toString', loaders)).toBe(false)
+    expect(await loadCatalogue('hasOwnProperty', loaders)).toBe(false)
+  })
+
+  it('treats a failed load as English', async () => {
+    const broken = { xx: () => Promise.reject(new Error('chunk')) }
+    expect(await loadCatalogue('xx', broken)).toBe(false)
+    expect(translate('xx', 'usage.underOneCent', { amount: 'a' })).toBe('under a')
+  })
+
+  it('chooses plural forms with Intl.PluralRules', () => {
+    const forms = { one: '{count} class', other: '{count} classes' }
+    expect(plural('en', 1, forms)).toBe('{count} class')
+    expect(plural('en', 2, forms)).toBe('{count} classes')
+    expect(plural('en', 0, { other: 'x' })).toBe('x')
+  })
+
+  it('words the class profile label for one interval and for several', () => {
+    const p = { length: '45 min' }
+    expect(translate('en', 'class.profile.label', { ...p, count: 1 })).toBe(
+      'Class profile, 45 min, 1 interval',
+    )
+    expect(translate('en', 'class.profile.label', { ...p, count: 3 })).toBe(
+      'Class profile, 45 min, 3 intervals',
+    )
+  })
+
+  it('words the class profile label in Swedish and Danish for one interval and for several', async () => {
+    await loadCatalogue('sv')
+    await loadCatalogue('da')
+    const p = { length: '45 min' }
+    expect(translate('sv', 'class.profile.label', { ...p, count: 1 })).toBe('Passprofil, 45 min, 1 intervall')
+    expect(translate('sv', 'class.profile.label', { ...p, count: 3 })).toBe(
+      'Passprofil, 45 min, 3 intervaller',
+    )
+    expect(translate('da', 'class.profile.label', { ...p, count: 1 })).toBe('Holdprofil, 45 min, 1 interval')
+    expect(translate('da', 'class.profile.label', { ...p, count: 3 })).toBe(
+      'Holdprofil, 45 min, 3 intervaller',
+    )
+  })
+
+  it('the active locale feeds t', () => {
+    expect(getActiveLocale()).toBe('en')
+    expect(t('format.soonUnknown')).toBe('a few minutes from now')
+  })
+})
+
+describe('React helpers', () => {
+  function Probe() {
+    const tt = useT()
+    return <p>{tt('format.soonUnknown')}</p>
+  }
+
+  it('useT works without a provider, in English', () => {
+    render(<Probe />)
+    expect(screen.getByText('a few minutes from now')).toBeInTheDocument()
+  })
+
+  it('the provider keeps English and sets lang for the manifest locale', async () => {
+    await act(async () => {
+      render(
+        <I18nProvider initial="en">
+          <Probe />
+        </I18nProvider>,
+      )
+      await Promise.resolve()
+    })
+    expect(screen.getByText('a few minutes from now')).toBeInTheDocument()
+    expect(document.documentElement).toHaveAttribute('lang', 'en')
+  })
+
+  it('the provider ignores a language outside the manifest', async () => {
+    function Pick() {
+      const { setLocale } = useLocale()
+      return <button onClick={() => setLocale('../x')}>pick</button>
+    }
+    render(
+      <I18nProvider initial="en">
+        <Pick />
+      </I18nProvider>,
+    )
+    await act(async () => {
+      screen.getByText('pick').click()
+      await Promise.resolve()
+    })
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
+    expect(document.documentElement).toHaveAttribute('lang', 'en')
+  })
+
+  it('Trans puts named slots into the sentence and drops nothing else', () => {
+    render(
+      <p data-testid="p">
+        <Trans id="usage.underOneCent" slots={{ amount: <b>$0.01</b> }} />
+      </p>,
+    )
+    expect(screen.getByTestId('p')).toHaveTextContent('under $0.01')
+    expect(screen.getByText('$0.01').tagName).toBe('B')
+  })
+})

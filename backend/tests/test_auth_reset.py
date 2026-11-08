@@ -3,6 +3,7 @@
 import logging
 
 import pytest
+from sqlalchemy import text
 
 from authtools import Env
 from classbeat import auth
@@ -18,11 +19,11 @@ async def ask(browser: Browser, email: str = EMAIL):
 
 
 async def complete(
-    browser: Browser, token: str, password: str = NEW, remove: list[str] | None = None
+    browser: Browser, token: str, password: str = NEW, keep: list[str] | None = None
 ):
     return await browser.post(
         "/api/auth/password/reset/complete",
-        {"token": token, "password": password, "remove_methods": remove or []},
+        {"token": token, "password": password, "keep_methods": keep or []},
     )
 
 
@@ -104,7 +105,8 @@ async def test_a_reset_token_works_once_and_not_after_it_expires(menv: Env, smtp
     assert (reused.status_code, reason(reused)) == (400, "invalid_token")
     await ask(Browser(menv))
     await menv.run("UPDATE auth_tokens SET expires_at = now() - interval '1 second'")
-    expired = await complete(Browser(menv), smtp.messages[1].token(), "yet another passphrase")
+    resets = [m for m in smtp.messages if "#token=" in m.text]  # not the "password changed" notice
+    expired = await complete(Browser(menv), resets[1].token(), "yet another passphrase")
     assert (expired.status_code, reason(expired)) == (400, "invalid_token")
     assert (await complete(Browser(menv), "garbage")).status_code == 400
 
@@ -118,7 +120,7 @@ async def test_a_weak_password_does_not_burn_the_token(menv: Env, smtp: SmtpFake
     assert (await complete(Browser(menv), token)).status_code == 200
 
 
-async def test_the_reset_page_lists_and_removes_linked_methods_without_recent_auth(
+async def test_the_reset_page_lists_and_removes_unkept_methods_without_recent_auth(
     menv: Env, smtp: SmtpFake
 ) -> None:
     user_id = await user_with_password(menv)
@@ -130,25 +132,86 @@ async def test_the_reset_page_lists_and_removes_linked_methods_without_recent_au
     assert info.status_code == 200
     assert {m["provider"] for m in info.json()["methods"]} == {"github", "google"}
     # Listing does not consume the token; no session or recent auth is involved.
-    done = await complete(Browser(menv), token, remove=[github])
+    done = await complete(Browser(menv), token, keep=[google])  # GitHub left ticked "remove"
     assert done.status_code == 200
     remaining = await menv.scalar("SELECT id FROM identities")
     assert str(remaining) == google
+    assert github != google
+    detail = await menv.scalar("SELECT detail FROM auth_events WHERE kind = 'password_reset'")
+    assert detail == {"methods_removed": 1, "passkeys_removed": 0}
 
 
-async def test_removing_a_method_of_another_user_is_404_and_leaves_the_token(
+async def test_an_identity_linked_after_info_does_not_survive_the_reset(
     menv: Env, smtp: SmtpFake
 ) -> None:
-    await user_with_password(menv)
-    other = await menv.user("other@example.com")
-    foreign = await link_identity(menv, other)
+    """#639: the page keeps what it showed; an identity linked between ``info`` and
+    ``complete`` was never shown, so it cannot be on the keep list and goes."""
+    user_id = await user_with_password(menv)
+    shown = await link_identity(menv, user_id, "github")
     await ask(Browser(menv))
     token = smtp.messages[0].token()
-    for bogus in (foreign, "11111111-1111-1111-1111-111111111111"):
-        refused = await complete(Browser(menv), token, remove=[bogus])
-        assert refused.status_code == 404
+    info = await Browser(menv).post("/api/auth/password/reset/info", {"token": token})
+    assert [m["id"] for m in info.json()["methods"]] == [shown]
+    await link_identity(menv, user_id, "google")  # planted after the page loaded
+    assert (await complete(Browser(menv), token, keep=[shown])).status_code == 200
+    assert [str(i) for i in await ids(menv)] == [shown]
+
+
+async def test_keep_ids_that_are_not_the_users_are_ignored_and_touch_nothing(
+    menv: Env, smtp: SmtpFake
+) -> None:
+    user_id = await user_with_password(menv)
+    own = await link_identity(menv, user_id, "github")
+    other = await menv.user("other@example.com")
+    foreign = await link_identity(menv, other, "google")
+    await ask(Browser(menv))
+    token = smtp.messages[0].token()
+    bogus = "11111111-1111-1111-1111-111111111111"
+    done = await complete(Browser(menv), token, keep=[foreign, bogus])
+    assert done.status_code == 200  # names nothing about other users' ids
+    assert [str(i) for i in await ids(menv)] == [foreign]  # the other user's stays
+    assert own != foreign
+
+
+async def test_an_old_page_sending_remove_methods_is_refused_and_keeps_everything(
+    menv: Env, smtp: SmtpFake
+) -> None:
+    """``keep_methods`` is required: a page from before #639 gets a 422, never "keep nothing"."""
+    user_id = await user_with_password(menv)
+    await link_identity(menv, user_id)
+    await ask(Browser(menv))
+    token = smtp.messages[0].token()
+    calls = spy_on_hashing(menv)
+    old = await Browser(menv).post(
+        "/api/auth/password/reset/complete",
+        {"token": token, "password": NEW, "remove_methods": []},
+    )
+    assert old.status_code == 422
+    assert calls == []
     assert await menv.scalar("SELECT count(*) FROM identities") == 1
-    assert (await complete(Browser(menv), token)).status_code == 200  # not consumed
+    assert (await complete(Browser(menv), token)).status_code == 200  # token not consumed
+
+
+async def test_a_keep_list_over_the_cap_is_refused_before_hashing_and_keeps_the_token(
+    menv: Env, smtp: SmtpFake
+) -> None:
+    """``MAX_METHODS`` (100) bounds the body: 101 ids is a 422, with no hashing and nothing used."""
+    user_id = await user_with_password(menv)
+    await link_identity(menv, user_id)
+    await ask(Browser(menv))
+    token = smtp.messages[0].token()
+    calls = spy_on_hashing(menv)
+    many = [f"00000000-0000-0000-0000-{n:012d}" for n in range(101)]
+    over = await complete(Browser(menv), token, keep=many)
+    assert over.status_code == 422
+    assert calls == []
+    assert await menv.scalar("SELECT count(*) FROM identities") == 1
+    assert (await complete(Browser(menv), token, keep=many[:100])).status_code == 200
+
+
+async def ids(env: Env) -> list[object]:
+    async with env.db() as db:
+        return list((await db.execute(text("SELECT id FROM identities ORDER BY id"))).scalars())
 
 
 async def test_info_with_a_bad_token_is_refused(menv: Env) -> None:
@@ -305,13 +368,13 @@ async def test_a_successful_complete_releases_its_ip_slot(menv: Env, smtp: SmtpF
 async def test_the_security_notifier_mails_totp_and_mfa_failure_notices(
     menv: Env, smtp: SmtpFake
 ) -> None:
-    import uuid
-
     from classbeat.auth import notices
 
+    # Both are optional kinds: only an address with an account is mailed (ME4).
+    user = await menv.user("user@example.com")
     # Registered at start-up by the web app.
-    await notices.notify_totp_enrolled(uuid.uuid4(), "user@example.com")
-    await notices.notify_mfa_failures(uuid.uuid4(), "user@example.com")
+    await notices.notify_totp_enrolled(user, "user@example.com")
+    await notices.notify_mfa_failures(user, "user@example.com")
     subjects = [m.subject for m in smtp.to("user@example.com")]
     assert any("Two-factor" in s for s in subjects)
     assert any("Failed two-factor" in s for s in subjects)
@@ -330,17 +393,6 @@ async def test_reauth_for_a_totp_user_sets_recent_auth_but_not_step_up(menv: Env
     assert session["stepup"] is False
     refused = await browser.post("/api/auth/password/change", {"new_password": NEW})
     assert (refused.status_code, reason(refused)) == (403, "stepup_required")
-
-
-async def test_complete_checks_method_ownership_before_hashing(menv: Env, smtp: SmtpFake) -> None:
-    await user_with_password(menv)
-    other = await menv.user("other@example.com")
-    foreign = await link_identity(menv, other)
-    await ask(Browser(menv))
-    calls = spy_on_hashing(menv)
-    refused = await complete(Browser(menv), smtp.messages[0].token(), remove=[foreign])
-    assert refused.status_code == 404
-    assert calls == []
 
 
 async def test_password_change_is_limited_per_user(menv: Env) -> None:

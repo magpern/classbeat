@@ -18,6 +18,10 @@ request carries the class and at most a candidate mix id.
   (``load_swedebeat_mix``: the same hosts, limits and daily slot). The length verdict is stored
   on the row; ``ok`` sets ``verified``. Recording it refuses ``invalid_input`` (nothing written)
   when the class's ``music_source`` is ``none`` by then (``music_kind.check_stored``).
+- **class ready** (ME5, #656): a check of a chosen mix ends with the "class ready" hand-off in
+  its finishing transaction (``jobs.mail_handoff``), which writes a row only when the job ran a
+  fresh analysis; a cached mix (also a "Check again" of an analysed mix), no mix, or several
+  candidates end with none.
 """
 
 import logging
@@ -34,7 +38,7 @@ from classbeat.context import UserContext
 from classbeat.design import music_kind
 from classbeat.design.swedebeat_music import load_swedebeat_mix
 from classbeat.flags import effective as flags
-from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun
+from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.operations.swedebeat import parse_mixes
@@ -243,7 +247,14 @@ async def run(job_run: JobRun) -> Complete:
         detail=_payload(candidates, verdict),
     )
     logger.info("swedebeat mix verdict", extra={"verdict": verdict.verdict})
-    return Complete()
+    return Complete(_class_ready)  # ME5: nothing unless the job ran a fresh analysis
+
+
+async def _class_ready(fs: FencedSession) -> None:
+    """ME5 (#656): in the transaction that finishes a check which analysed a mix, the "class
+    ready" hand-off. ``enqueue_class_ready`` writes it only when the job's ``fresh_analysis`` is
+    set (this attempt's, or an earlier attempt's whose result was then cached)."""
+    await mail_handoff.enqueue_class_ready(fs)
 
 
 VERIFY_MIX: Final = KINDS.register(

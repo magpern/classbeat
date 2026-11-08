@@ -1,7 +1,8 @@
 """The queue check of ADR 0005 section 3: web and worker refuse to run on a drifted job queue.
 
-The five ``SECURITY DEFINER`` functions of ``docker/postgres/queue/20-queue.sql`` and their owner
-``classbeat_queue`` are the only cross-user paths into the owned job tables. The check runs at
+The six ``SECURITY DEFINER`` functions of ``docker/postgres/queue/20-queue.sql`` and their owner
+``classbeat_queue`` are the only cross-user paths into the owned job tables (and, since ME5, into
+``mail_handoff``: ``mail_handoff_take``, ADR 0022 section 4). The check runs at
 startup (``verify_database_role``) and on every new pooled connection, like the role check, and
 refuses on any difference (no override): each function exists once, owned by
 ``classbeat_queue``, ``SECURITY DEFINER`` with exactly the fixed ``search_path``, the version
@@ -31,16 +32,21 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from classbeat.db.queue_digests import GUARD_TRIGGER_DIGESTS, QUEUE_DIGESTS
 
 QUEUE_ROLE = "classbeat_queue"
-QUEUE_VERSION = "classbeat-queue v2"
+QUEUE_VERSION = "classbeat-queue v5"
 SEARCH_PATH = "search_path=pg_catalog, pg_temp"
 # name -> identity arguments, as pg_get_function_identity_arguments renders them.
 QUEUE_FUNCTIONS: dict[str, str] = {
-    "queue_claim": "p_worker text, p_lease_seconds integer, p_kinds text[]",
+    "queue_claim": (
+        "p_worker text, p_lease_seconds integer, p_kinds text[], p_analysis_slots integer"
+    ),
     "queue_reap": "p_limit integer",
     "queue_expire": "p_limit integer",
     "queue_unsettled": "p_limit integer",
     "queue_stats": "",
+    "mail_handoff_take": "p_limit integer",
 }
+# The names as a SQL list, for the queries below.
+_NAMES_SQL = ", ".join(f"'{name}'" for name in QUEUE_FUNCTIONS)
 EXPECTED_ACL = "classbeat_app=X/classbeat_queue,classbeat_queue=X/classbeat_queue"
 # rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls, rolinherit
 EXPECTED_ATTRIBUTES = [False, False, False, False, False, True, False]
@@ -51,6 +57,7 @@ EXPECTED_DEPENDENCIES = frozenset(
         "pg_class:public.jobs:0:a",
         "pg_class:public.job_events:0:a",
         "pg_class:public.external_operations:0:a",
+        "pg_class:public.mail_handoff:0:a",
         "pg_namespace:public:0:a",
     }
 )
@@ -62,6 +69,9 @@ EXPECTED_PRIVILEGES = frozenset(
         "table:public.job_events:SELECT",
         "table:public.job_events:INSERT",
         "table:public.external_operations:SELECT",
+        "table:public.mail_handoff:SELECT",
+        "table:public.mail_handoff:UPDATE",  # for FOR UPDATE SKIP LOCKED only
+        "table:public.mail_handoff:DELETE",
     }
 )
 
@@ -91,7 +101,7 @@ SQL_TEXT_BUILTINS = (
     "set_config",
 )
 
-# The M5 guard triggers (ADR 0011 section 1), the one amendment to the invariant above: "the five
+# The M5 guard triggers (ADR 0011 section 1), the one amendment to the invariant above: "the
 # queue functions plus the M5 guard triggers, pinned by digest". Migrations 0007 and 0010 make
 # them as classbeat_owner; SECURITY INVOKER plpgsql that calls only built-ins and runs no SQL
 # text, on tables no queue function touches. Each is admitted only exactly: the function by name,
@@ -196,15 +206,13 @@ SELECT
                || '|' || coalesce(array_to_string(
                              ARRAY(SELECT x::text FROM unnest(p.proacl) x ORDER BY 1), ','), '')
           FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-         WHERE n.nspname = 'public' AND p.proname IN
-               ('queue_claim', 'queue_reap', 'queue_expire', 'queue_unsettled', 'queue_stats')
+         WHERE n.nspname = 'public' AND p.proname IN (__QUEUE_NAMES__)
          ORDER BY 1),
     ARRAY(
         SELECT 'function ' || n.nspname || '.' || p.proname || '('
                || pg_catalog.oidvectortypes(p.proargtypes) || ')'
           FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-         WHERE NOT (n.nspname = 'public' AND p.proname IN ('queue_claim', 'queue_reap',
-                    'queue_expire', 'queue_unsettled', 'queue_stats'))
+         WHERE NOT (n.nspname = 'public' AND p.proname IN (__QUEUE_NAMES__))
            AND (p.oid >= 16384 OR n.nspname = 'public'
                 OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
                     AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'))
@@ -277,7 +285,8 @@ SELECT
          WHERE NOT t.tgisinternal
            AND coalesce(__GUARD_TRIGGER__ IN (__GUARD_TRIGGERS__), false)
         ORDER BY 1)
-""".replace("__SQL_TEXT_BUILTINS__", ", ".join(f"'{name}'" for name in SQL_TEXT_BUILTINS))
+""".replace("__QUEUE_NAMES__", _NAMES_SQL)
+    .replace("__SQL_TEXT_BUILTINS__", ", ".join(f"'{name}'" for name in SQL_TEXT_BUILTINS))
     .replace("__GUARD_FUNCTION__", GUARD_FUNCTION_SIGNATURE)
     .replace("__GUARD_FUNCTIONS__", _quoted(guard_function_signatures()))
     .replace("__GUARD_TRIGGER__", GUARD_TRIGGER_SIGNATURE)

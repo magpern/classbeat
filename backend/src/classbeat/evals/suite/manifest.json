@@ -1,6 +1,6 @@
 {
- "suite_version": 11,
- "digest": "efae43a32917755baac3d7d4de949129f40d6618355b734a79b247d37d196e56",
+ "suite_version": 14,
+ "digest": "55d9ebfc04db240af025f75f0e7fb4fb7493cb8176a2d8dffe0d0717b300f8e2",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -71,7 +71,8 @@
    "design": [
     "cp_plain_30", "cp_plain_45", "cp_plain_60", "cp_interval_30", "cp_interval_45",
     "cp_interval_60", "cp_hard_start_30", "cp_short_warmup_45", "cp_ten_sprints_30",
-    "cp_easy_spin_45", "cp_run_hard_start_30", "cp_run_capped_45"
+    "cp_easy_spin_45", "cp_easy_spin_55", "cp_hard_push_55", "cp_run_hard_start_30",
+    "cp_run_capped_45"
    ]
   },
   "running": {

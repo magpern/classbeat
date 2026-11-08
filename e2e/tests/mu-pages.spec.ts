@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test'
-import { PASSWORD, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
+import { PASSWORD, passCaptcha, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
 import { PLAYLISTS, connectMowl, fakeMowl, getJob, jobId } from './design-helpers'
 import { useModelScript } from './model-script'
 import { designRunningAndOpen, reviseByChat, storeRunning } from './class-helpers'
@@ -164,6 +164,7 @@ test('the admin pages, signed in as an admin with a TOTP code', async () => {
   await page.goto('/signin')
   await page.getByLabel('Email', { exact: true }).fill(adminEmail)
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  await passCaptcha(page)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible(LONG)
 
@@ -183,6 +184,7 @@ test('the admin pages, signed in as an admin with a TOTP code', async () => {
     ['/admin/codes', 'Codes'],
     ['/admin/usage', 'Usage'],
     ['/admin/jobs', 'Jobs'],
+    ['/admin/abuse', 'Abuse'],
     ['/admin/audit', 'Audit log'],
     ['/admin/settings', 'Settings'],
   ]
@@ -195,6 +197,6 @@ test('the admin pages, signed in as an admin with a TOTP code', async () => {
 })
 
 test('every page was audited', () => {
-  // 4 before sign-in, 10 signed-in (two of them running, one with two versions), 5 account tabs, music, Spotify, 6 admin sections.
-  expect(findings.map((f) => f.page)).toHaveLength(27)
+  // 4 before sign-in, 10 signed-in (two of them running, one with two versions), 5 account tabs, music, Spotify, 7 admin sections.
+  expect(findings.map((f) => f.page)).toHaveLength(28)
 })

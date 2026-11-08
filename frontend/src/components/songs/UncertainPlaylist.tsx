@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { ApiError } from '../../api/client'
 import { checkAgain, doItAnyway, type Operation } from '../../api/jobs'
 import {
-  PLAYLIST_OUTCOME,
-  PLAYLIST_OVERWRITE_WARNING,
-  PLAYLIST_UNCERTAIN_TEXT,
-  PLAYLIST_UNCERTAIN_TITLE,
+  playlistOutcome,
+  playlistOverwriteWarning,
+  playlistUncertainText,
+  playlistUncertainTitle,
   type PlaylistOutcome,
 } from '../../api/songMessages'
+import { useT } from '../../i18n/I18n'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 
@@ -32,6 +33,7 @@ function Panel({
   operation: Operation
   onOutcome: (outcome: PlaylistOutcome) => void
 }) {
+  const t = useT()
   const [outcome, setOutcome] = useState<PlaylistOutcome | null>(null)
   const [confirming, setConfirming] = useState(false)
   const action = useAction()
@@ -39,10 +41,10 @@ function Panel({
 
   const describe = (error: unknown): string => {
     if (error instanceof ApiError && error.reason === 'call_may_be_running') {
-      return 'classbeat may still be writing to Spotify, so this cannot be decided yet. Wait a few minutes.'
+      return t('songs.uncertain.mayStillRunning')
     }
-    if (error instanceof ApiError && error.status === 409) return 'That was already settled. Reload the page.'
-    return 'That did not work. Try again.'
+    if (error instanceof ApiError && error.status === 409) return t('songs.uncertain.alreadySettled')
+    return t('common.didNotWork')
   }
 
   const decide = (which: 'check' | 'anyway') => {
@@ -57,22 +59,22 @@ function Panel({
 
   return (
     <div className="flex flex-col gap-3" data-testid="uncertain-playlist">
-      <h2 className="m-0 font-display text-xl font-bold text-text">{PLAYLIST_UNCERTAIN_TITLE}</h2>
-      {PLAYLIST_UNCERTAIN_TEXT.map((line) => (
+      <h2 className="m-0 font-display text-xl font-bold text-text">{playlistUncertainTitle()}</h2>
+      {playlistUncertainText().map((line) => (
         <p key={line} className="m-0 text-text">
           {line}
         </p>
       ))}
       {waiting ? (
-        <Notice>classbeat may still be sending this to Spotify, so Check again and Do it anyway wait a few minutes.</Notice>
+        <Notice>{t('songs.uncertain.waiting')}</Notice>
       ) : null}
       {outcome !== null ? (
-        <Notice kind={outcome === 'still_unsure' ? 'info' : 'success'}>{PLAYLIST_OUTCOME[outcome]}</Notice>
+        <Notice kind={outcome === 'still_unsure' ? 'info' : 'success'}>{playlistOutcome(outcome)}</Notice>
       ) : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {confirming ? (
-        <div className="flex flex-col gap-3" role="group" aria-label="Confirm">
-          <p className="m-0 text-text">{PLAYLIST_OVERWRITE_WARNING}</p>
+        <div className="flex flex-col gap-3" role="group" aria-label={t('songs.uncertain.confirm')}>
+          <p className="m-0 text-text">{playlistOverwriteWarning()}</p>
           <div className="flex flex-wrap gap-3">
             <Button
               disabled={action.busy || waiting}
@@ -80,7 +82,7 @@ function Panel({
                 decide('anyway')
               }}
             >
-              Yes, it was not written
+              {t('songs.uncertain.confirmYes')}
             </Button>
             <Button
               variant="secondary"
@@ -89,7 +91,7 @@ function Panel({
                 setConfirming(false)
               }}
             >
-              Cancel
+              {t('common.cancel')}
             </Button>
           </div>
         </div>
@@ -101,7 +103,7 @@ function Panel({
               decide('check')
             }}
           >
-            Check again
+            {t('songs.uncertain.checkAgain')}
           </Button>
           <Button
             variant="secondary"
@@ -110,7 +112,7 @@ function Panel({
               setConfirming(true)
             }}
           >
-            Do it anyway
+            {t('songs.uncertain.doAnyway')}
           </Button>
         </div>
       )}

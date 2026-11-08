@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
+from classbeat.auth import locale as account_locale
 from classbeat.auth import mails
 from classbeat.auth.accounts import find_user
 from classbeat.auth.clientip import bucket_ip
@@ -82,8 +83,9 @@ async def request_email_change(
         current = (
             await db.execute(select(users.c.email).where(users.c.id == ctx.user_id))
         ).scalar_one()
+        language = await account_locale.mail_locale_of(db, settings, ctx.user_id)
         if await find_user(db, body.new_email) is not None:
-            message = mails.email_change_taken(settings, body.new_email)  # nothing is stored
+            message = mails.email_change_taken(settings, body.new_email, language)  # nothing stored
         else:
             token = await issue_token(
                 db,
@@ -93,7 +95,7 @@ async def request_email_change(
                 new_email=body.new_email,
                 email_at_issue=current,
             )
-            message = mails.email_change_confirmation(settings, body.new_email, token)
+            message = mails.email_change_confirmation(settings, body.new_email, token, language)
         await record_event(
             db, "email_change_requested", user_id=ctx.user_id, ip=request_ip(request)
         )
@@ -124,6 +126,9 @@ async def confirm_email_change(
             if token.email_at_issue != current:
                 raise _Refused(400, "invalid_token")  # the address changed since the request
             old_email, new_email = current, token.new_email
+            language = await account_locale.mail_locale_of(
+                db, request.app.state.settings, ctx.user_id
+            )
             moved = False
             try:
                 async with db.begin_nested():
@@ -144,5 +149,9 @@ async def confirm_email_change(
         if exc.reason == "invalid_token":
             await reserve(request, [Bucket(SIGN_IN_IP, bucket_ip(request_ip(request)))])
         raise refuse(exc.status, exc.reason) from None
-    background.add_task(send_logged, mailer(request), mails.email_changed_notice(old_email))
+    background.add_task(
+        send_logged,
+        mailer(request),
+        mails.email_changed_notice(request.app.state.settings, old_email, language),
+    )
     return Changed(email=new_email)

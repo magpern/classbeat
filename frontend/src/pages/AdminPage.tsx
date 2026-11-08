@@ -1,8 +1,10 @@
 import { Link, useRouter } from '../router/Router'
+import { Abuse } from './admin/Abuse'
 import { AdminLayout } from './admin/AdminLayout'
 import { Audit } from './admin/Audit'
 import { Codes } from './admin/Codes'
 import { Jobs } from './admin/Jobs'
+import { Mail } from './admin/Mail'
 import { Settings } from './admin/Settings'
 import { Usage } from './admin/Usage'
 import { UserDetail } from './admin/UserDetail'
@@ -15,8 +17,7 @@ const USER = /^\/admin\/users\/([0-9a-fA-F-]{36})$/
  * whose role is `admin`; the server's `whoami` decides in `AdminLayout`.
  */
 export function AdminPage() {
-  const { pathname } = useRouter()
-  const path = pathname.replace(/\/+$/, '') || '/'
+  const { path } = useRouter()
   const user = USER.exec(path)
   let page
   if (user?.[1] !== undefined) page = <UserDetail key={user[1]} userId={user[1]} />
@@ -24,8 +25,10 @@ export function AdminPage() {
   else if (path === '/admin/codes') page = <Codes />
   else if (path === '/admin/usage') page = <Usage />
   else if (path === '/admin/jobs') page = <Jobs />
+  else if (path === '/admin/abuse') page = <Abuse />
   else if (path === '/admin/audit') page = <Audit />
   else if (path === '/admin/settings') page = <Settings />
+  else if (path === '/admin/mail') page = <Mail />
   else {
     page = (
       <p>

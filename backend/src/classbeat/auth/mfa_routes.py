@@ -18,6 +18,7 @@ from classbeat.auth import mfa, totp
 from classbeat.auth.cookies import set_session_cookie
 from classbeat.auth.deps import (
     current_session,
+    request_client_mark,
     request_ip,
     require_recent_auth,
     require_stepup,
@@ -35,9 +36,11 @@ from classbeat.auth.sessions import (
     rotate_session,
 )
 from classbeat.auth.totp_keys import TotpUnreadable
+from classbeat.auth.userlock import lock_user
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.db import system_session
+from classbeat.emails.notices import happened, queue
 
 router = APIRouter(prefix="/api/auth", tags=["mfa"])
 
@@ -117,12 +120,15 @@ async def _reserve(request: Request, info: SessionInfo):
 
 async def _rotate(request: Request, response: Response, info: SessionInfo, **flags: bool) -> None:
     """Rotate the session. Raises ``SessionGone`` when it was revoked meanwhile."""
+    ip = request_ip(request)
     async with system_session(_factory(request)) as db:
+        await lock_user(db, info.user_id)  # first, as every rotation (#639, ADR 0019 section 6)
         issued = await rotate_session(
             db,
             info,
             user_agent=request.headers.get("user-agent"),
-            ip=request_ip(request),
+            ip=ip,
+            mark=request_client_mark(request, ip),
             **flags,
         )
     set_session_cookie(response, issued)
@@ -243,16 +249,25 @@ async def confirm_enrollment(
 
 @router.delete("/mfa/totp", status_code=204)
 async def remove_totp(
-    request: Request, ctx: Annotated[UserContext, Depends(require_stepup)], info: Info
+    request: Request,
+    background: BackgroundTasks,
+    ctx: Annotated[UserContext, Depends(require_stepup)],
+    info: Info,
 ) -> None:
     """Removing TOTP needs step-up: a password-only re-auth is not enough."""
     session = _session(info)
     _need_totp(session)
     async with system_session(_factory(request)) as db:
-        await mfa.remove_totp(db, ctx.user_id)
+        # First, as every revoke (#675, ADR 0019 section 6): a sign-in in flight commits first
+        # and loses its session below, instead of keeping it past "sign out the others".
+        await lock_user(db, ctx.user_id)
+        removed = await mfa.remove_totp(db, ctx.user_id)
         await clear_mfa(db, session.id)
         await revoke_user_sessions(db, ctx.user_id, except_id=session.id)
         await record_event(db, "totp_removed", user_id=ctx.user_id, ip=request_ip(request))
+    # A parallel request that removed it first already mailed: one mail per change.
+    if removed:
+        queue(background, request, happened("totp_removed", session.email, ctx.user_id))
 
 
 @router.post("/mfa/recovery-codes")

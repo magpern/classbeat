@@ -19,6 +19,7 @@ import httpx
 from mowl.errors import MowlError
 
 from classbeat.connections.errors import Outcome, retry_after_of
+from classbeat.sentence import Sentence
 
 # ADR 0009 section 8, in the table's order.
 CATEGORIES: Final = (
@@ -84,15 +85,27 @@ def _plural(n: int, unit: str) -> str:
     return f"{n} {unit}" if n == 1 else f"{n} {unit}s"
 
 
-def sentence(category: str, retry_after: int | None = None) -> str:
-    """The plain sentence of ``category`` (a provider message is never shown)."""
+def sentence_of(category: str, retry_after: int | None = None) -> Sentence:
+    """The sentence of ``category`` as a code (``spotify.<category>``), its number and its English
+    text. A category we do not know is ``spotify.unknown`` (a provider message is never shown)."""
     text = SENTENCES.get(category)
     if text is None:
-        return UNKNOWN_SENTENCE
+        return Sentence("spotify.unknown", UNKNOWN_SENTENCE)
     seconds = retry_after if retry_after is not None and retry_after > 0 else 60
     minutes = max(1, -(-seconds // 60))
     hours = max(1, -(-seconds // 3600))
-    return text.format(minutes=_plural(minutes, "minute"), hours=_plural(hours, "hour"))
+    shown = text.format(minutes=_plural(minutes, "minute"), hours=_plural(hours, "hour"))
+    params: dict[str, int] = {}
+    if category == "rate_limited":
+        params = {"count": minutes}
+    elif category == "quota_exhausted":
+        params = {"count": hours}
+    return Sentence(f"spotify.{category}", shown, params)
+
+
+def sentence(category: str, retry_after: int | None = None) -> str:
+    """The plain sentence of ``category`` (a provider message is never shown)."""
+    return sentence_of(category, retry_after).text
 
 
 def by_status(status: int, retry_after: int | None, *, connect: bool) -> str:

@@ -26,8 +26,8 @@ from classbeat.admin.audit import (
     Target,
     UnknownAction,
     checked_params,
-    json_bytes,
 )
+from classbeat.admin.audit_text import json_bytes
 
 AUDIT = "/api/admin/audit"
 ROW_KEYS = {

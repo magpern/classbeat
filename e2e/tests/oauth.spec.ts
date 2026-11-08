@@ -1,5 +1,6 @@
 import { type Page } from '@playwright/test'
-import { createInvite, expect, linkFromMail, PASSWORD, signUpThroughUi, test, uniqueEmail } from './helpers'
+import { createInvite, expect, linkFromMail, passCaptcha, PASSWORD, signUpThroughUi, test, uniqueEmail } from './helpers'
+import { audit } from './mu-helpers'
 import { sql } from './song-helpers'
 
 // OAuth sign-in against the fake provider of compose.e2e.yaml (the `e2e` profile). The fake
@@ -83,13 +84,57 @@ test('sign up and sign in with Google through the fake provider', async ({ page 
   await expect(page.getByRole('alert')).toContainText('only way to sign in')
 })
 
-test('a first Google sign-in without an invite creates nothing and says why', async ({ page }) => {
+/** How many accounts have this test address, as the database superuser. */
+function accountsWith(email: string): number {
+  if (!/^[\w.+-]+@example\.test$/.test(email)) throw new Error('not a test address')
+  return Number(sql(`SELECT count(*) FROM users WHERE email = '${email}'`))
+}
+
+test('sign-up with Google and no invite never leaves the page (#617)', async ({ page }) => {
   const email = uniqueEmail('noinvite')
+  let providerVisits = 0
   await playProvider(page, 'accounts.google.com', { sub: `g-${email}`, email, emailVerified: true })
+  page.on('request', (request) => {
+    if (request.url().startsWith('https://accounts.google.com/')) providerVisits += 1
+  })
   await page.goto('/signup')
+  const invite = page.getByLabel(/Invite code/)
   await page.getByRole('button', { name: 'Continue with Google' }).click()
-  await expect(page.getByRole('alert')).toContainText('need an invite')
+  await expect(page.getByRole('alert')).toHaveText('Enter your invite code first.')
+  await expect(invite).toHaveAttribute('aria-invalid', 'true')
+  await expect(invite).toHaveAttribute('required', '')
+  await expect(invite).toBeFocused()
+  expect(new URL(page.url()).pathname).toBe('/en/signup')
+  expect(providerVisits).toBe(0)
+  expect(accountsWith(email)).toBe(0)
+  const findings = await audit(page, 'Sign up, invite missing', page.getByRole('button', { name: 'Create account' }))
+  expect(findings.problems).toEqual([])
+})
+
+test('sign-in with an unknown Google account says no account is linked and creates nothing (#617)', async ({ page }) => {
+  const email = uniqueEmail('noaccount')
+  await playProvider(page, 'accounts.google.com', { sub: `g-${email}`, email, emailVerified: true })
+  await page.goto('/signin')
+  await page.getByRole('button', { name: 'Continue with Google' }).click()
+  await expect(page.getByRole('alert')).toHaveText(
+    'No classbeat account is linked to this Google account. Create an account to join the invite-only beta.',
+  )
+  expect(new URL(page.url()).pathname).toBe('/en/signin')
+  await expect(page.getByText(/invite code/i)).toHaveCount(0)
+  await expect(page.getByLabel(/Invite code/)).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Account' })).toContainText('Sign in')
+  expect(accountsWith(email)).toBe(0)
+  const findings = await audit(page, 'Sign in, no account', page.getByRole('button', { name: 'Sign in', exact: true }))
+  expect(findings.problems).toEqual([])
+
+  // The link goes to sign-up, where a valid invite still starts the Google flow and creates it.
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.getByRole('link', { name: 'Create an account', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Create an account' })).toBeVisible()
+  await page.getByLabel(/Invite code/).fill(createInvite())
+  await page.getByRole('button', { name: 'Continue with Google' }).click()
+  await expect(page.getByRole('button', { name: email })).toBeVisible()
+  expect(accountsWith(email)).toBe(1)
 })
 
 test('Microsoft: an unverified email is handed off to the address page and confirmed by mail', async ({ page }) => {
@@ -102,8 +147,9 @@ test('Microsoft: an unverified email is handed off to the address page and confi
   await page.getByRole('button', { name: 'Continue with Microsoft' }).click()
 
   await expect(page.getByRole('heading', { name: 'Confirm your email address' })).toBeVisible()
-  expect(new URL(page.url()).pathname).toBe('/signin/email')
+  expect(new URL(page.url()).pathname).toBe('/en/signin/email')
   await page.getByLabel('Email', { exact: true }).fill(email)
+  await passCaptcha(page)
   await page.getByRole('button', { name: 'Send confirmation link' }).click()
   await expect(page.getByText(/a second try would not send anything/)).toBeVisible()
   await expect(page.getByRole('link', { name: /Start the provider sign-in again/ })).toBeVisible()
@@ -120,13 +166,48 @@ test('Microsoft: an unverified email is handed off to the address page and confi
   await expect(page.getByRole('button', { name: email })).toBeVisible()
 })
 
+test('the provider-email step waits for the check, resets after a refusal and then sends (#726)', async ({ page }) => {
+  const email = uniqueEmail('mscaptcha')
+  await playProvider(page, 'login.microsoftonline.com', { sub: `ms-c-${Date.now()}`, email: null, emailVerified: false })
+  // The first token is replaced by one the fake verifier refuses (ADR 0025 section 8).
+  const sent: string[] = []
+  await page.route('**/api/auth/oauth/pending/email', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    sent.push(String(body.captcha_token))
+    if (sent.length > 1) return route.continue()
+    return route.continue({ postData: JSON.stringify({ ...body, captcha_token: 'fake-fail' }) })
+  })
+
+  await page.goto('/signup')
+  await page.getByLabel(/Invite code/).fill(createInvite())
+  // The provider buttons never wait for the check.
+  await page.getByRole('button', { name: 'Continue with Microsoft' }).click()
+  await expect(page.getByRole('heading', { name: 'Confirm your email address' })).toBeVisible()
+  await page.getByLabel('Email', { exact: true }).fill(email)
+  const submit = page.getByRole('button', { name: 'Send confirmation link' })
+  await expect(submit).toBeDisabled()
+  await passCaptcha(page)
+  await submit.click()
+  await expect(page.getByRole('alert')).toHaveText('The security check did not pass. Please try again.')
+  await expect(page.getByTestId('captcha-fake')).not.toBeChecked()
+  await expect(submit).toBeDisabled()
+
+  await passCaptcha(page)
+  await submit.click()
+  await expect(page.getByText(/a second try would not send anything/)).toBeVisible()
+  expect(sent).toHaveLength(2)
+  expect(sent[1]).toMatch(/^fake-pass-/)
+  expect(sent[1]).not.toBe(sent[0])
+  await linkFromMail(page.request, email, 'Confirm your classbeat account')
+})
+
 /** Make the user's last sign-in older than the 10-minute window, as the database superuser. */
 function ageReauth(email: string): void {
   if (!/^[\w.+-]+@example\.test$/.test(email)) throw new Error('not a test address')
   sql(`UPDATE sessions SET reauth_at = now() - interval '11 minutes' WHERE user_id = (SELECT id FROM users WHERE email = '${email}')`)
 }
 
-test('Google re-authentication: no auth_time fails closed with a sentence, a fresh one passes (#522)', async ({ page }) => {
+test('Google re-authentication: refused with a password, accepted without auth_time for a Google-only account (#687)', async ({ page }) => {
   const email = uniqueEmail('reauth')
   const who: Persona = { sub: `g-${email}`, email, emailVerified: true }
   await playProvider(page, 'accounts.google.com', who)
@@ -134,6 +215,7 @@ test('Google re-authentication: no auth_time fails closed with a sentence, a fre
   await page.goto('/signin')
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  await passCaptcha(page)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
   await page.goto('/account#security')
@@ -145,27 +227,32 @@ test('Google re-authentication: no auth_time fails closed with a sentence, a fre
     await page.getByLabel('New password', { exact: true }).fill('another long passphrase')
     await page.getByLabel('Repeat the new password').fill('another long passphrase')
     await page.getByRole('button', { name: 'Save password' }).click()
-    const dialog = page.getByRole('dialog')
-    await expect(dialog).toContainText('Google can confirm it only if you signed in there in the last 5 minutes.')
-    await dialog.getByRole('button', { name: 'Confirm with Google' }).click()
+    return page.getByRole('dialog')
   }
 
-  // Google leaves auth_time out (a fresh iat and this flow's nonce, state and PKCE notwithstanding).
+  // With a password the prompt offers the password only, and the server refuses a Google start.
+  ageReauth(email)
+  let dialog = await changePassword()
+  await expect(dialog.getByRole('button', { name: 'Confirm with password' })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Confirm with Google' })).toHaveCount(0)
+  const csrf = (await (await page.request.get('/api/auth/session')).json()) as { csrf_token: string }
+  const refused = await page.request.post('/api/auth/oauth/google/start', {
+    data: { purpose: 'reauth' },
+    headers: { 'X-CSRF-Token': csrf.csrf_token, Origin: new URL(page.url()).origin },
+  })
+  expect(refused.status()).toBe(403)
+  expect(await refused.json()).toEqual({ detail: { reason: 'reauth_use_password' } })
+  // Close the prompt: going to the same URL again only changes the hash, so it would stay open.
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  // A Google-only account (no password): Google's answer counts without any auth_time.
+  sql(`UPDATE users SET password_hash = NULL WHERE email = '${email}'`)
   ageReauth(email)
   who.authTime = null
-  await changePassword()
-  await expect(page).toHaveURL(/\/account\?oauth=reauth_stale/)
-  const alert = page.getByRole('alert').filter({ hasText: 'did not confirm' })
-  await expect(alert).toContainText('signed in again in the last 5 minutes, so nothing was changed')
-  await expect(alert).toContainText('Use your password instead.')
-
-  // A sign-in at Google an hour ago is not fresh either.
-  who.authTime = 3600
-  await changePassword()
-  await expect(page).toHaveURL(/\/account\?oauth=reauth_stale/)
-
-  // A sign-in at Google just now passes.
-  who.authTime = 5
-  await changePassword()
+  dialog = await changePassword()
+  await expect(dialog.getByRole('button', { name: 'Confirm with password' })).toHaveCount(0)
+  await expect(dialog).not.toContainText('Google can confirm it only if')
+  await dialog.getByRole('button', { name: 'Confirm with Google' }).click()
   await expect(page.getByText('Thanks, you are confirmed. Repeat the change you were making.')).toBeVisible()
 })

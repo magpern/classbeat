@@ -1,0 +1,13 @@
+Dit hold er klar
+================
+
+classbeat har analyseret musikken til dit hold. Åbn holdet for at se resultatet.
+
+Åbn dit hold:
+https://classbeat.example.test/da/classes/00000000-0000-4000-8000-000000000000
+
+--
+Du får denne mail, fordi classbeat har gjort et hold færdigt, som du bad om, efter at have analyseret musikken.
+classbeat: https://classbeat.example.test
+Spørgsmål? Skriv til support@classbeat.eu
+Afmeld disse mails: https://classbeat.example.test/da/unsubscribe#token=SAMPLE&all=SAMPLE

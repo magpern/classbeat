@@ -29,12 +29,14 @@ const SECTIONS = [
   { to: '/admin/codes', label: 'Codes' },
   { to: '/admin/usage', label: 'Usage' },
   { to: '/admin/jobs', label: 'Jobs' },
+  { to: '/admin/abuse', label: 'Abuse' },
   { to: '/admin/audit', label: 'Audit log' },
   { to: '/admin/settings', label: 'Settings' },
+  { to: '/admin/mail', label: 'Mail' },
 ] as const
 
 function AdminNav() {
-  const { pathname } = useRouter()
+  const { path: pathname } = useRouter()
   return (
     <nav aria-label="Admin" className="mb-6 flex flex-wrap gap-x-1 border-b border-line">
       {SECTIONS.map((section) => {

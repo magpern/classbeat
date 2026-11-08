@@ -19,7 +19,7 @@ from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.soundless import check_soundless
 from classbeat.evals import suite
 from classbeat.evals.cases import Case, load_cases
-from classbeat.evals.checks import MUSIC_WORDS, run_checks
+from classbeat.evals.checks import MUSIC_WORDS, names_music, run_checks
 from classbeat.evals.runner import CaseResult, run_case
 from classbeat.models.versions import all_prompt_versions
 from smokescripts import good_draft
@@ -185,21 +185,90 @@ def test_a_draft_that_names_music_fails_no_music_reference() -> None:
 
 
 @pytest.mark.parametrize(
-    ("text", "names_music"),
+    ("text", "names"),
     [
         ("Ride to the beat", True),
         ("Drop the gear and stay on track", False),
         ("Beat your best", False),
         ("Spotify playlist", True),
-        ("Ride this one without music", True),
         ("Hold zone 3 for the whole song", True),
         ("Standing climb, heavy gear", False),
+        ("This class has no music", False),
+        ("Ridden without music, steady", False),
+        ("No music: stay at 90 rpm", False),
+        ("Ride without music to the beat", True),
+        ("No music, but sing the chorus", True),
+        ("Keep your heart rate near 150 bpm", False),
+        ("A 128 bpm track", True),
+        ("Fine-tune the resistance", False),
+        ("Fine-tuning your cadence", False),
+        ("Hum a tune and keep going", True),
+        ("Take the drop in resistance slowly", False),
+        ("The drop ahead is steep", False),
+        ("Hold on until the drop hits", True),
+        ("Wait for the bass drop", True),
     ],
 )
-def test_the_music_words_are_whole_words_a_soundless_class_does_not_use(
-    text: str, names_music: bool
-) -> None:
-    assert bool(MUSIC_WORDS.search(text)) is names_music
+def test_the_music_words_name_music_and_nothing_else(text: str, names: bool) -> None:
+    assert names_music(text) is names
+
+
+def test_the_music_words_alone_do_not_forgive_no_music() -> None:
+    # The statement that there is none is cut out by ``names_music``, not by ``MUSIC_WORDS``.
+    assert MUSIC_WORDS.search("no music")
+    assert not names_music("no music")
+
+
+def test_a_draft_that_says_it_has_no_music_passes_no_music_reference() -> None:
+    said = edited(
+        DESIGN, lambda d: d["segments"][1]["intervals"][0].update(cue="No music, ride by feel")
+    )
+    assert checked(DESIGN, said)["no_music_reference"] is True
+    assert checked(DESIGN, note="Ridden without music")["no_music_reference"] is True
+    assert checked(DESIGN, note="Ride to the song")["no_music_reference"] is False
+
+
+@pytest.mark.parametrize(
+    ("what", "edit"),
+    [
+        ("changes_on_music_min", lambda d: d["expect"].update(changes_on_music_min=0.5)),
+        ("allow_issues", lambda d: d["expect"].update(allow_issues=["zone_run_too_long"])),
+        ("songs_requested", lambda d: d["revise"].update(outcome="songs_requested")),
+    ],
+)
+def test_a_soundless_case_refuses_what_only_a_music_case_can_use(what: str, edit: Any) -> None:
+    data = raw(REVISE)
+    Case.model_validate_json(json.dumps(data))  # the case as it is, valid
+    edit(data)
+    with pytest.raises(ValueError, match="soundless"):
+        Case.model_validate_json(json.dumps(data))
+
+
+def test_a_music_case_still_takes_those_settings() -> None:
+    plain = next(c for c in load_cases() if not c.soundless and c.revise is None)
+    data = plain.model_dump(mode="json")
+    data["expect"].update(changes_on_music_min=0.5, allow_issues=["zone_run_too_long"])
+    case = Case.model_validate_json(json.dumps(data))
+    assert case.expect.changes_on_music_min == 0.5
+
+
+def test_the_digest_records_a_pattern_with_its_flags() -> None:
+    import re
+
+    plain = suite._plain("X", re.compile("music"))  # pyright: ignore[reportPrivateUsage]
+    loose = suite._plain("X", re.compile("music", re.IGNORECASE))  # pyright: ignore[reportPrivateUsage]
+    assert plain != loose
+    assert loose["pattern"] == "music"
+    assert suite.check_constants()["checks.MUSIC_WORDS"]["flags"] & re.IGNORECASE
+    _, cases, sources, constants = (
+        suite.read_manifest_data(),
+        {},
+        {},
+        copy.deepcopy(suite.check_constants()),
+    )
+    base = suite.suite_digest({}, cases, sources, constants)
+    constants["checks.MUSIC_WORDS"]["flags"] = 0
+    assert suite.suite_digest({}, cases, sources, constants) != base
 
 
 def test_a_beat_cadence_fails_no_beat_even_though_the_schema_refuses_it() -> None:
@@ -240,8 +309,8 @@ def test_a_soundless_run_that_fails_its_music_check_is_a_failed_case() -> None:
 # --- the suite: the digest and the coverage rule -----------------------------------------------
 
 
-def test_the_suite_is_version_11_and_its_digest_covers_the_soundless_parts() -> None:
-    assert SUITE.manifest.suite_version == 11
+def test_the_suite_is_current_and_its_digest_covers_the_soundless_parts() -> None:
+    assert SUITE.manifest.suite_version == 14
     assert "agent/soundless_input.py" in suite.RULE_SOURCES
     data, cases, sources, constants = (
         suite.read_manifest_data(),

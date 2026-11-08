@@ -129,7 +129,7 @@ describe('the Swedebeat part of the class page', () => {
     })
     fireEvent.click(start)
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     expect(call?.body).toEqual({
@@ -164,7 +164,7 @@ describe('the Swedebeat part of the class page', () => {
     fakeApi(routes({ swedebeat_match: null }, {}, 'needs_reconnect'))
     renderAt(PAGE)
     const prompt = await screen.findByTestId('reconnect-prompt')
-    expect(within(prompt).getByRole('link', { name: /Connect again/ })).toHaveAttribute('href', '/account#connections')
+    expect(within(prompt).getByRole('link', { name: /Connect again/ })).toHaveAttribute('href', '/en/account#connections')
     expect(screen.getByRole('button', { name: 'Match with Swedebeat' })).toBeDisabled()
   })
 
@@ -255,7 +255,7 @@ describe('the match page', () => {
     renderAt(PAGE)
     fireEvent.click(await screen.findByRole('button', { name: 'Replace the missing and unsure songs' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     expect(api.to('POST', '/api/jobs')[0]?.body).toEqual({
       kind: 'revise_songs',
@@ -456,7 +456,7 @@ describe('Next, in the Swedebeat app', () => {
     renderAt(PAGE)
     await press('Design the class on this mix')
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     expect(api.to('POST', `${HANDOFF}/design`)[0]?.body).toEqual({})
   })
@@ -515,6 +515,21 @@ describe('Next, in the Swedebeat app', () => {
     expect(api.to('POST', `${HANDOFF}/not-now`)).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: 'Show the steps again' }))
     expect(await screen.findByRole('button', { name: 'I made the mix' })).toBeInTheDocument()
+  })
+
+  it('shows until when a live step stays open and not for a verified one (#572)', async () => {
+    step({ [`GET ${HANDOFF}`]: () => handoffBody() })
+    renderAt(PAGE)
+    const note = await screen.findByTestId('handoff-expiry')
+    expect(note).toHaveTextContent('You can leave and come back. This step stays open until')
+    expect(note).toHaveTextContent(new Date('2026-11-09T10:00:00Z').toLocaleString())
+  })
+
+  it('does not show the expiry once the mix is verified (#572)', async () => {
+    step({ [`GET ${HANDOFF}`]: () => handoffBody({ state: 'verified', verdict: 'ok', mix_id: 'mix-1', checked_at: '2026-11-02T10:00:00Z' }) })
+    renderAt(PAGE)
+    expect(await screen.findByText('Mix verified')).toBeInTheDocument()
+    expect(screen.queryByTestId('handoff-expiry')).toBeNull()
   })
 
   it('offers a new step when the old one expired', async () => {

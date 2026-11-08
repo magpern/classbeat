@@ -1,6 +1,7 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import { createContext, forwardRef, useContext, useEffect, useRef, useState, type ComponentProps, type Ref } from 'react'
+import { useT } from '../../i18n/I18n'
 import { cn } from '../../lib/cn'
 import { keepTabInside, lockPageBehind } from '../../lib/modalLock'
 
@@ -53,6 +54,7 @@ export function DialogContent({
   onPointerDownOutside,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Content>) {
+  const t = useT()
   const triggerRef = useContext(DialogTriggerRefContext)
   // The portal renders after the first commit, so the element arrives through state.
   const [node, setNode] = useState<HTMLDivElement | null>(null)
@@ -89,13 +91,14 @@ export function DialogContent({
         }}
         onPointerDownOutside={(event) => {
           onPointerDownOutside?.(event)
-          if (event.target instanceof Element && event.target.closest('[role="dialog"]')) event.preventDefault()
+          if (event.target instanceof Element && event.target.closest('[role="dialog"]'))
+            event.preventDefault()
         }}
         {...props}
       >
         {children}
         <DialogPrimitive.Close
-          aria-label="Close"
+          aria-label={t('dialog.close')}
           className="absolute top-3 right-3 inline-flex size-11 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-muted hover:bg-raised"
         >
           <X aria-hidden="true" size={20} strokeWidth={2} />

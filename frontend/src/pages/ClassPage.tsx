@@ -19,6 +19,7 @@ import { useClassData, useRevision, type ClassData } from '../hooks/useClassData
 import { contentHash } from '../lib/canonical'
 import { DuplicateClass } from '../components/classes/DuplicateClass'
 import { Link } from '../router/Router'
+import { Trans, useT } from '../i18n/I18n'
 
 export function ClassPage({ classId }: { classId: string }) {
   return (
@@ -29,21 +30,17 @@ export function ClassPage({ classId }: { classId: string }) {
 }
 
 function ClassView({ classId }: { classId: string }) {
+  const t = useT()
   const { state, reload } = useClassData(classId)
   const [deleted, setDeleted] = useState<number | null>(null)
   if (deleted !== null) {
     return (
-      <Card title="Class deleted">
-        <p>The class, its versions and your conversation are gone from classbeat.</p>
-        {deleted > 0 ? (
-          <p>
-            The {deleted} workout{deleted === 1 ? '' : 's'} classbeat saved to your MOWL account
-            stay{deleted === 1 ? 's' : ''} there; delete {deleted === 1 ? 'it' : 'them'} in MOWL.
-          </p>
-        ) : null}
+      <Card title={t('class.page.deletedTitle')}>
+        <p>{t('class.page.deleted')}</p>
+        {deleted > 0 ? <p>{t('class.delete.kept', { count: deleted })}</p> : null}
         <p>
           <Link className="button" to="/classes">
-            My classes
+            {t('class.list.title')}
           </Link>
         </p>
       </Card>
@@ -51,28 +48,28 @@ function ClassView({ classId }: { classId: string }) {
   }
   if (state.status === 'loading') {
     return (
-      <Card title="One moment">
-        <p>Loading your class</p>
+      <Card title={t('class.page.loadingTitle')}>
+        <p>{t('class.page.loading')}</p>
       </Card>
     )
   }
   if (state.status === 'not_found') {
     return (
-      <Card title="Class not found">
-        <p>This class does not exist, or it is not yours.</p>
+      <Card title={t('class.page.notFoundTitle')}>
+        <p>{t('class.page.notFound')}</p>
         <p>
-          <Link to="/classes">My classes</Link>
+          <Link to="/classes">{t('class.list.title')}</Link>
         </p>
       </Card>
     )
   }
   if (state.status === 'failed') {
     return (
-      <Card title="The class could not be loaded">
-        <Notice kind="error">The server could not be reached or did not answer as expected.</Notice>
+      <Card title={t('class.page.failedTitle')}>
+        <Notice kind="error">{t('class.page.failed')}</Notice>
         <p>
           <button type="button" className="button" onClick={reload}>
-            Try again
+            {t('class.tryAgain')}
           </button>
         </p>
       </Card>
@@ -92,6 +89,7 @@ function ClassBody({
   reload: () => void
   onDeleted: (kept: number) => void
 }) {
+  const t = useT()
   const { summary, revisions, messages } = data
   const [chosen, setChosen] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -160,13 +158,13 @@ function ClassBody({
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <p className="m-0">
-        <Link to="/classes">My classes</Link>
+        <Link to="/classes">{t('class.list.title')}</Link>
       </p>
       <header className="flex flex-wrap items-center gap-3">
         <h1 className="m-0 font-display text-3xl font-extrabold">{summary.title}</h1>
         <Chip tone={classStatus(summary).tone}>{classStatus(summary).label}</Chip>
-        {summary.sport === 'running' ? <Chip data-testid="sport">Running</Chip> : null}
-        {summary.soundless ? <Chip data-testid="soundless">No music</Chip> : null}
+        {summary.sport === 'running' ? <Chip data-testid="sport">{t('class.page.running')}</Chip> : null}
+        {summary.soundless ? <Chip data-testid="soundless">{t('class.page.noMusic')}</Chip> : null}
         <div className="ml-auto flex items-center gap-2">
           {canChangeSongs ? (
             <Button
@@ -175,7 +173,7 @@ function ClassBody({
                 goTo('change-songs')
               }}
             >
-              Change songs
+              {t('class.page.changeSongs')}
             </Button>
           ) : null}
           <DuplicateClass
@@ -186,7 +184,7 @@ function ClassBody({
           />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="secondary" aria-label="More actions">
+              <Button variant="secondary" aria-label={t('class.page.moreActions')}>
                 <Ellipsis aria-hidden="true" size={18} />
               </Button>
             </DropdownMenuTrigger>
@@ -202,14 +200,14 @@ function ClassBody({
                   goTo('versions')
                 }}
               >
-                Versions
+                {t('class.versions')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
                   setDeleting(true)
                 }}
               >
-                Delete class
+                {t('class.page.deleteClass')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -228,25 +226,30 @@ function ClassBody({
       {summary.openJob !== null && summary.openJob.kind !== 'revise_draft' ? (
         <Notice>
           {summary.openJob.state === 'waiting_for_approval'
-            ? 'Songs are waiting for your approval. '
+            ? t('class.page.job.waiting')
             : summary.openJob.kind === 'design_draft'
-              ? 'This class is being designed. '
+              ? t('class.page.job.design')
               : summary.openJob.kind === 'refit_draft'
-                ? 'Your timing fixes are being applied. '
-                : 'The songs of this class are being worked on. '}
+                ? t('class.page.job.refit')
+                : t('class.page.job.songs')}{' '}
           <Link to={`/jobs/${summary.openJob.id}`}>
-            {summary.openJob.state === 'waiting_for_approval' ? 'Review the songs' : 'See how it is going'}
+            {summary.openJob.state === 'waiting_for_approval'
+              ? t('class.page.job.review')
+              : t('class.page.job.progress')}
           </Link>
         </Notice>
       ) : null}
       {summary.playlist !== null ? (
         <p data-testid="playlist">
-          Your Spotify playlist: <strong>{summary.playlist.name}</strong>
+          <Trans
+            id="class.page.playlist"
+            slots={{ name: <strong>{summary.playlist.name}</strong> }}
+          />
           {summary.playlist.link !== null ? (
             <>
               {' '}
               <a href={summary.playlist.link} target="_blank" rel="noopener noreferrer">
-                Open in Spotify
+                {t('class.page.openSpotify')}
               </a>
             </>
           ) : null}
@@ -258,9 +261,9 @@ function ClassBody({
 
       {summary.currentRevisionId === null ? (
         <Notice>
-          This class has no version yet.{' '}
+          {t('class.page.noVersion')}{' '}
           {summary.openJob === null ? (
-            <Link to="/classes/new">Design a class</Link>
+            <Link to="/classes/new">{t('class.list.design')}</Link>
           ) : null}
         </Notice>
       ) : null}
@@ -268,8 +271,10 @@ function ClassBody({
       {viewing !== undefined && !viewing.isCurrent ? (
         <div className="notice" data-kind="info" role="status" data-testid="not-current">
           <p>
-            You are looking at version {viewing.number}. The class uses version{' '}
-            {summary.currentRevisionNumber ?? '?'}, and changes start from that one.
+            {t('class.page.notCurrent', {
+              viewing: viewing.number,
+              current: summary.currentRevisionNumber ?? '?',
+            })}
           </p>
           <p>
             <button
@@ -280,7 +285,7 @@ function ClassBody({
                 use(viewing)
               }}
             >
-              Use this version
+              {t('class.useThisVersion')}
             </button>
             <button
               type="button"
@@ -289,18 +294,18 @@ function ClassBody({
                 setChosen(null)
               }}
             >
-              Back to version {summary.currentRevisionNumber ?? '?'}
+              {t('class.page.back', { number: summary.currentRevisionNumber ?? '?' })}
             </button>
           </p>
-          {busy ? <p className="muted">Wait for the running task to finish first.</p> : null}
+          {busy ? <p className="muted">{t('class.waitRunning')}</p> : null}
         </div>
       ) : null}
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-3">
-          {shown.status === 'loading' ? <p className="m-0">Loading the version</p> : null}
+          {shown.status === 'loading' ? <p className="m-0">{t('class.page.loadingVersion')}</p> : null}
           {shown.status === 'failed' ? (
-            <Notice kind="error">This version could not be loaded. Reload the page to try again.</Notice>
+            <Notice kind="error">{t('class.page.versionFailed')}</Notice>
           ) : null}
           {shown.status === 'ready' ? (
             <RevisionView

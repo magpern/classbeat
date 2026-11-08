@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { deleteAccount } from '../../api/auth'
 import { useGuard } from '../../auth/prompts'
 import { useSession } from '../../auth/SessionContext'
+import { useT } from '../../i18n/I18n'
 import { useRouter } from '../../router/Router'
 import { Field, Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
@@ -15,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
  * is on top. The typed text is sent only to that request and kept nowhere.
  */
 export function DeleteAccount({ email }: { email: string }) {
+  const t = useT()
   const guard = useGuard()
   const { refresh } = useSession()
   const { navigate } = useRouter()
@@ -56,22 +58,17 @@ export function DeleteAccount({ email }: { email: string }) {
           {/* The trigger belongs to the dialog, so focus returns to it when the dialog closes. */}
           <DialogTrigger asChild>
             <Button variant="danger" disabled={action.busy}>
-              Delete my account
+              {t('delete.button')}
             </Button>
           </DialogTrigger>
         </div>
         {open ? (
           <DialogContent aria-describedby="delete-account-description">
-            <DialogTitle>Delete your account?</DialogTitle>
-            <DialogDescription id="delete-account-description">
-              This deletes your account, your classes and song lists, your plan and usage, your
-              connections and your sign-in history. Jobs that are running are stopped first. It cannot
-              be undone; download your data first if you want a copy. Workouts saved to MOWL and
-              playlists in your Spotify stay there. Type your email to confirm.
-            </DialogDescription>
+            <DialogTitle>{t('delete.title')}</DialogTitle>
+            <DialogDescription id="delete-account-description">{t('delete.text')}</DialogDescription>
             <form onSubmit={submit}>
               <Field
-                label="Your email"
+                label={t('delete.emailLabel')}
                 type="email"
                 autoComplete="off"
                 spellCheck={false}
@@ -82,7 +79,7 @@ export function DeleteAccount({ email }: { email: string }) {
               />
               <div className="flex flex-wrap gap-2">
                 <Button type="submit" variant="danger" disabled={!matches}>
-                  Delete for good
+                  {t('delete.confirm')}
                 </Button>
                 <Button
                   variant="secondary"
@@ -91,7 +88,7 @@ export function DeleteAccount({ email }: { email: string }) {
                     setTyped('')
                   }}
                 >
-                  Keep my account
+                  {t('delete.keep')}
                 </Button>
               </div>
             </form>

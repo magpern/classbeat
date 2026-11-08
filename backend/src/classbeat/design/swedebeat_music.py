@@ -14,9 +14,12 @@ kinds' ``admit`` and their run check the flag before calling it. After ``design.
    connection** (``mowl_connection_id``: the table has no foreign key to it, so this is compared
    here), names the link's MOWL playlist and has the library's current map version. **A hit makes
    no request at all.**
-3. **A miss.** One of the user's daily analysis slots (``mixlimit.reserve``, ``analysis_limit``
-   past 10 in 24 hours; A4), then the user's fresh listing must hold the mix (``invalid_input``
-   otherwise) and gives
+3. **A miss.** A run without one of the worker's mix-analysis slots (#574,
+   ``JobRun.require_analysis_slot``) stops here and its job is requeued with one, the attempt
+   not counted; ``queue_claim`` then claims it only while a slot is free
+   (``CLASSBEAT_MIX_ANALYSIS_CONCURRENCY``). Then one of the user's daily analysis slots
+   (``mixlimit.reserve``, ``analysis_limit`` past 10 in 24 hours; A4), then the user's fresh
+   listing must hold the mix (``invalid_input`` otherwise) and gives
    its listed length; the attach (``operations.swedebeat``, which stores the link) and the wait for
    MOWL to index it; the temporary link from MOWL (``GET v1/swedebeat/playlist/{id}/
    TemporaryLinks``, one read through the library's call); the fetch (``mixfetch``: one
@@ -24,7 +27,12 @@ kinds' ``admit`` and their run check the flag before calling it. After ``design.
    analysis in a limited child process (``mixanalysis``); the directory is removed on every way
    out. The link lives in this function's local variable only.
 4. **Storing.** One fenced transaction (the connection and the link held again) upserts the row,
-   drops what is past 30 days and all but the newest 20 of the user.
+   drops what is past 30 days and all but the newest 20 of the user, frees the job's analysis
+   slot, marks the job as one that ran a fresh analysis (``jobs.fresh_analysis``, for the
+   "class ready" mail of ME5: ``classbeat.jobs.mail_handoff``) and records how long the fetch and
+   the decode took (``jobs.analysis_fetch_ms`` and ``analysis_decode_ms``, ADR 0026 stage 1:
+   ``classbeat.jobs.analysis_times``). The log line of the analysis carries the same two numbers
+   and the host's load average, never a link or a name.
 
 Errors are ``JobFailure`` categories: ``media_host_not_allowed`` (an empty production list ends
 every uncached mix so, with no media request), ``media_refused``, ``analysis_failed`` (undecodable
@@ -37,6 +45,7 @@ logged.
 import hashlib
 import json
 import logging
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -60,7 +69,7 @@ from classbeat.design.mixanalysis import (
 from classbeat.design.mixfetch import fetch_mix_audio, private_directory
 from classbeat.design.music import MixFacts, MusicStep
 from classbeat.egress import mowl_media_async_client
-from classbeat.jobs import FencedSession, JobFailure, JobRun
+from classbeat.jobs import FencedSession, JobFailure, JobRun, analysis_times, mail_handoff
 from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS
 from classbeat.operations.swedebeat import (
     SOURCE,
@@ -180,12 +189,40 @@ def _temporary_link(answer: object) -> str:
     return link
 
 
+@dataclass(frozen=True, slots=True)
+class Timing:
+    """Seconds a fresh analysis spent fetching the audio and decoding and analysing it (ADR 0026
+    stage 1, #735)."""
+
+    fetch: float
+    decode: float
+
+
+def _load_average() -> float | None:
+    """The host's one-minute load average (a container sees the host's), or ``None`` where the
+    platform has none: logged with each analysis so CPU pressure on the box can be read beside the
+    analysis times (ADR 0026 stage 1)."""
+    try:
+        return round(os.getloadavg()[0], 2)
+    except (AttributeError, OSError):
+        return None
+
+
 async def _store(
-    fs_run: JobRun, opened: OpenConnection, analysis: MixAnalysis, connection_id: UUID
+    fs_run: JobRun,
+    opened: OpenConnection,
+    analysis: MixAnalysis,
+    connection_id: UUID,
+    timing: Timing,
 ) -> None:
     payload = json.dumps(analysis.music_map, separators=(",", ":"), allow_nan=False)
     async with fs_run.fenced() as fs:
         await _store_row(fs, fs_run, opened, analysis, connection_id, payload)
+        await fs_run.release_analysis_slot(fs)  # #574: the slot is free once this commits
+        await mail_handoff.note_fresh_analysis(fs)  # ME5: the job ran a fresh analysis
+        # ADR 0026 stage 1 (#735): for the p95 of ``queue_stats()``.
+        await analysis_times.note_analysis_times(fs, timing.fetch, timing.decode)
+    fs_run.slot_released()
 
 
 async def _store_row(
@@ -266,11 +303,18 @@ async def open_swedebeat_mix(
         raise JobFailure("not_connected")
     hit = await _cached(run, opened, mix_id, connection_id)
     if hit is not None:
+        if run.analysis_slot:  # requeued for a slot, then another job stored the analysis
+            async with run.fenced() as fs:
+                await run.release_analysis_slot(fs)
+            run.slot_released()
         logger.info(
             "swedebeat mix from cache",
             extra={"job_id": str(run.lease.job_id), "songs": len(hit.music_map["songs"])},
         )
         return hit, opened
+    # #574: a miss analyses only in a job holding one of the mix-analysis slots; without one the
+    # job is requeued with it here, before the daily slot is taken or anything is called.
+    run.require_analysis_slot()
     async with run.fenced() as fs:
         await mixlimit.reserve(fs)
     await run.checkpoint()
@@ -302,11 +346,14 @@ async def open_swedebeat_mix(
     del answer
     await _extend(run, FETCH_SECONDS + ANALYSIS_SECONDS)
     with private_directory() as directory:
+        fetch_started = clock()
         audio = await fetch_mix_audio(run, link, directory, client_factory=client_factory)
         del link
+        decode_started = clock()
         result = await analyse_audio(
             run, audio, max_seconds=limit, map_version=music.MAP_VERSION, clock=clock
         )
+        timing = Timing(decode_started - fetch_started, clock() - decode_started)
     analysis = MixAnalysis(
         mix_id,
         playlist_id,
@@ -317,13 +364,16 @@ async def open_swedebeat_mix(
         fingerprint(result.music_map),
         cached=False,
     )
-    await _store(run, opened, analysis, connection_id)
+    await _store(run, opened, analysis, connection_id, timing)
     logger.info(
         "swedebeat mix analysed",
         extra={
             "job_id": str(run.lease.job_id),
             "songs": len(analysis.music_map["songs"]),
             "peak_rss_mb": None if result.peak_rss is None else result.peak_rss // (1 << 20),
+            "fetch_ms": analysis_times.to_ms(timing.fetch),
+            "decode_ms": analysis_times.to_ms(timing.decode),
+            "load_1m": _load_average(),
         },
     )
     return analysis, opened

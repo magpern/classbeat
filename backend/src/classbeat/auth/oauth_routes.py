@@ -8,13 +8,14 @@ before the SPA catch-all; its query string (code, state) is never logged.
 """
 
 import logging
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
+from classbeat.auth import locale as account_locale
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.cookies import (
     OAUTH_COOKIE,
@@ -35,18 +36,18 @@ from classbeat.auth.deps import (
     require_user,
 )
 from classbeat.auth.events import record_event
-from classbeat.auth.flowtools import factory, mailer, reserve, user_agent
+from classbeat.auth.flowtools import factory, reserve, user_agent
 from classbeat.auth.oauth_client import OAuthRuntime, ProviderError, authorization_url, identify
 from classbeat.auth.oauth_outcomes import Outcome, apply
 from classbeat.auth.oauth_outcomes import Request as OutcomeRequest
-from classbeat.auth.oauth_providers import visible_providers
-from classbeat.auth.oauth_store import Flow, create_flow, safe_return_to, take_flow
+from classbeat.auth.oauth_providers import GOOGLE, visible_providers
+from classbeat.auth.oauth_store import Flow, create_flow, has_password, safe_return_to, take_flow
 from classbeat.auth.ratelimit import OAUTH_IP, Bucket
 from classbeat.auth.sessions import SessionInfo
 from classbeat.auth.signup_routes import valid_invite
 from classbeat.db import system_session
+from classbeat.emails.notices import queue
 from classbeat.flags import effective as flags
-from classbeat.mail import send_logged
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth"])
@@ -77,9 +78,14 @@ OAUTH_ERROR_CODES = frozenset(
 
 
 class StartIn(BaseModel):
-    purpose: Literal["sign_in", "link", "reauth"] = "sign_in"
+    # ``sign_in`` (the sign-in screen) never creates an account; only ``sign_up`` (the sign-up
+    # screen) may, and only it carries an invite (#617).
+    purpose: Literal["sign_in", "sign_up", "link", "reauth"] = "sign_in"
     invite_code: str | None = Field(default=None, max_length=FIELD_MAX)
     return_to: str | None = Field(default=None, max_length=FIELD_MAX)
+    # The app's resolved language (ADR 0023 section 2): kept on the flow for the callback, which is
+    # a redirect with no body. Any value is accepted; one that is not offered is ignored.
+    locale: Any = None
 
 
 class StartOut(BaseModel):
@@ -127,9 +133,16 @@ async def start(
     elif body.purpose == "reauth":
         ctx = await require_user(await current_context(request, info))
         user_id = ctx.user_id
+        if provider == GOOGLE:
+            # #687: Google's answer carries no fresh auth_time, so it re-authenticates only an
+            # account without a password; one with a password confirms with it. The callback
+            # checks this again under the user lock (``oauth_outcomes._freshness``).
+            async with system_session(factory(request)) as db:
+                if await has_password(db, user_id):
+                    raise HTTPException(status_code=403, detail={"reason": "reauth_use_password"})
     invite_id: UUID | None = None
     settings = request.app.state.settings
-    if body.purpose == "sign_in" and body.invite_code:
+    if body.purpose == "sign_up" and body.invite_code:
         async with system_session(factory(request)) as db:
             invite_mode = await flags.signup_mode(db, settings.signup_mode) == "invite"
             if invite_mode:
@@ -145,6 +158,7 @@ async def start(
             user_id=user_id,
             invite_id=invite_id,
             return_to=safe_return_to(body.return_to),
+            locale=account_locale.for_new_account(request, body.locale),
         )
     set_oauth_cookie(response, flow.cookie)
     return StartOut(
@@ -162,7 +176,16 @@ async def start(
 def _target(flow: Flow | None, outcome: Outcome) -> str:
     purpose = flow.purpose if flow else "sign_in"
     if outcome.code != "ok":
-        base = "/account" if purpose in ("link", "reauth") else "/signin"
+        if purpose in ("link", "reauth"):
+            base = "/account"
+        elif purpose == "sign_up":
+            base = "/signup"  # the screen the flow started on, with its invite field (#617)
+        else:
+            base = "/signin"
+        if outcome.code == "no_account" and flow is not None:
+            # Which provider account has none, for the page's sentence (#617). ``flow.provider``
+            # is one of the three names the table's check allows, never anything a client sent.
+            return f"{base}?oauth=no_account&provider={flow.provider}"
         return f"{base}?oauth={outcome.code}"
     return_to = safe_return_to(flow.return_to if flow else None)  # checked again before use
     match outcome.next:
@@ -270,6 +293,5 @@ async def callback(
         set_device_cookie(response, outcome.device_token)
     if outcome.new_pending_token is not None:
         set_pending_cookie(response, outcome.new_pending_token)
-    if outcome.mail is not None:
-        background.add_task(send_logged, mailer(request), outcome.mail)
+    queue(background, request, outcome.notice)
     return response

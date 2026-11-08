@@ -5,7 +5,7 @@ model: sonnet
 # Default. The Architect spawns this role with model opus for security-critical issues (AGENTS.md, Roles); tooling (compose, scripts, runbooks) stays Sonnet (Amendment 13).
 ---
 
-You are the Developer for classbeat. Read `CLAUDE.md`, `AGENTS.md`, the issue you were given,
+You are the Developer for classbeat. Read `CLAUDE.md`, `AGENTS.md` (and `docs/developer-commands.md` for the area you touch), the issue you were given,
 and the roadmap sections and ADRs it names before writing code.
 
 - Work only in the worktree and branch you were given (`../classbeat-wt/<issue>-<slug>`,

@@ -46,29 +46,52 @@ read only.
   Prices are read and returned here only: no route outside ``/api/admin`` reads them (billing is
   off, ADR 0011 section 8).
 
+The mail settings (``mail_sender_name``, ``mail_support_email``, ``mail_footer`` and
+``mail_kinds_disabled``, #653) use the same two routes and are shown by
+``classbeat.admin.mail``, not in ``GET /settings``; their audit ``params`` are the key with the
+text's length, or the kind ids.
+
 The audit ``params`` of a write hold the key and what the value means (the mode, a plan and days,
 a banner's level and length, a plan's numbers, gates and currency code), never free text: a
 currency that is not three capital letters is left out.
 """
 
 import json
-import re
-from datetime import date, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Path, Request
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
 from classbeat.admin.audit import Target
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
+from classbeat.admin.plan_rules import (
+    GATES,
+    LIMITS,
+    PRICES,
+    bounds,
+    plan_params,
+    plan_refusal,
+    prices_complete,
+)
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
+from classbeat.admin.settings_models import (
+    BoundsOut,
+    FlagOut,
+    PersonOut,
+    PlanIn,
+    PlanOut,
+    ReadOnlyOut,
+    SettingIn,
+    SettingsOut,
+)
 from classbeat.config import Settings
 from classbeat.db import system_session
 from classbeat.design.music_kind import fake_covers
+from classbeat.emails.dispatch import DEFAULT_SENDER_NAME
+from classbeat.emails.live import config_from, kind_switches
 from classbeat.flags import core
 from classbeat.flags.core import FlagRefused
 from classbeat.models.routes import Variant, every_plan_covers
@@ -80,20 +103,6 @@ SETTINGS = "/settings"
 PLANS = "/plans"
 
 MAX_VALUE_BYTES = 2048  # app_settings_value
-HARD_BOUNDS = {  # the plans table's checks (migration 0007)
-    "classes_per_month": (0, 10_000),
-    "revisions_per_class": (0, 200),
-    "concurrent_jobs": (1, 16),
-    "monthly_cost_micros": (0, 10_000_000_000),
-    "max_class_minutes": (10, 180),  # migration 0026, the brief's own range
-}
-LIMITS = tuple(HARD_BOUNDS)
-GATES = ("games_allowed", "races_allowed", "ftp_tests_allowed")
-PRICE_CENTS = ("monthly_price_cents", "intro_price_cents")
-PRICES = (*PRICE_CENTS, "intro_price_until", "currency")
-PRICE_RANGE = (0, 10_000_000)  # migration 0026
-INTRO_UNTIL_RANGE = (date(2020, 1, 1), date(2100, 12, 31))
-CURRENCY = re.compile(r"[A-Z]{3}")
 
 _ALL_SETTINGS = text("SELECT key, value, updated_at, updated_by FROM app_settings")
 _UPSERT = text(
@@ -130,105 +139,6 @@ def _update_plan(columns: list[str]) -> Any:
     )
 
 
-class Out(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-
-class In(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class PersonOut(Out):
-    id: UUID
-    email: str | None
-
-
-class FlagOut(Out):
-    key: str
-    source: str  # environment or database
-    effective: Any
-    environment: Any
-    stored: Any  # the row's value, None when there is none
-    stored_valid: bool
-    updated_at: datetime | None
-    updated_by: PersonOut | None
-
-
-class PlanOut(Out):
-    id: str
-    name: str
-    rank: int
-    classes_per_month: int
-    revisions_per_class: int
-    concurrent_jobs: int
-    monthly_cost_micros: int
-    max_class_minutes: int
-    games_allowed: bool
-    races_allowed: bool
-    ftp_tests_allowed: bool
-    # Admin only (billing is off): never in a route outside ``/api/admin``.
-    monthly_price_cents: int | None
-    intro_price_cents: int | None
-    intro_price_until: date | None
-    currency: str | None
-    features: list[str]
-    updated_at: datetime
-    updated_by: PersonOut | None
-
-
-class BoundsOut(Out):
-    classes_per_month: int
-    revisions_per_class: int
-    concurrent_jobs: int
-    monthly_cost_micros: int
-    max_class_minutes: int
-    trial_days: int
-
-
-class ReadOnlyOut(Out):
-    agent_job_cost_micros: int
-    song_job_cost_micros: int
-    billing_enabled: bool
-
-
-class SettingsOut(Out):
-    flags: list[FlagOut]
-    plans: list[PlanOut]
-    bounds: BoundsOut
-    read_only: ReadOnlyOut
-
-
-class SettingIn(In):
-    value: Any
-
-
-class PlanIn(In):
-    """Wide schema ranges, so a value the table or the environment refuses reaches the route and
-    is refused there with an audit row; anything else (a string for a number, an unknown field)
-    is the schema's 422."""
-
-    classes_per_month: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
-    revisions_per_class: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
-    concurrent_jobs: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
-    monthly_cost_micros: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
-    max_class_minutes: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
-    games_allowed: StrictBool | None = None
-    races_allowed: StrictBool | None = None
-    ftp_tests_allowed: StrictBool | None = None
-    monthly_price_cents: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
-    intro_price_cents: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
-    intro_price_until: date | None = None
-    currency: str | None = Field(default=None, max_length=8)
-
-    def asked(self) -> dict[str, Any]:
-        """What the edit changes: every limit and gate given a value, and every price named at
-        all (``null`` clears a price)."""
-        sent = self.model_dump()
-        out: dict[str, Any] = {k: sent[k] for k in (*LIMITS, *GATES) if sent[k] is not None}
-        out.update({k: sent[k] for k in PRICES if k in self.model_fields_set})
-        return out
-
-
 KeyPath = Annotated[str, Path(pattern=r"^[a-z][a-z_]{0,39}$")]
 PlanPath = Annotated[str, Path(pattern=r"^[a-z_]{1,30}$")]
 
@@ -238,24 +148,6 @@ def _db(request: Request) -> AdminDb:
     if db is None:  # the gate answered 503 already; this keeps the type honest
         raise AdminRefused("admin_unavailable", 503)
     return db
-
-
-def _bounds(settings: Settings) -> dict[str, int]:
-    """The most a plan may store: the table's range under the environment's bound (ADR 0011
-    section 4: ``CLASSBEAT_JOBS_PER_USER`` is the hard upper bound for every plan)."""
-    return {
-        "classes_per_month": min(
-            HARD_BOUNDS["classes_per_month"][1], settings.classes_per_month_max
-        ),
-        "revisions_per_class": min(
-            HARD_BOUNDS["revisions_per_class"][1], settings.revisions_per_class
-        ),
-        "concurrent_jobs": min(HARD_BOUNDS["concurrent_jobs"][1], settings.jobs_per_user),
-        "monthly_cost_micros": min(
-            HARD_BOUNDS["monthly_cost_micros"][1], settings.monthly_cost_micros_max
-        ),
-        "max_class_minutes": min(HARD_BOUNDS["max_class_minutes"][1], settings.class_minutes_max),
-    }
 
 
 def _person(user_id: UUID | None, emails: dict[UUID, str]) -> PersonOut | None:
@@ -289,7 +181,7 @@ def _stored_valid(key: str, value: Any) -> bool:
     if value is None:
         return True
     try:
-        core.validate_for_write(key, value, trial_days_max=10**9)
+        core.validate_for_write(key, value, trial_days_max=10**9, mail_kinds=kind_switches())
     except FlagRefused:
         return False
     return True
@@ -376,7 +268,7 @@ async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
             _flag(k, settings, rows.get(k), ranks, emails, soundless, running) for k in core.KEYS
         ],
         plans=[_plan_out(p, emails) for p in plans],
-        bounds=BoundsOut(**_bounds(settings), trial_days=settings.trial_days_max),
+        bounds=BoundsOut(**bounds(settings), trial_days=settings.trial_days_max),
         read_only=ReadOnlyOut(
             agent_job_cost_micros=settings.agent_job_cost_micros,
             song_job_cost_micros=settings.song_job_cost_micros,
@@ -385,7 +277,46 @@ async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
     )
 
 
+def _mail_flag(key: str, settings: Settings, row: Any, emails: dict[UUID, str]) -> FlagOut:
+    """A mail setting as the Mail page shows it: what the send path uses and the environment's
+    value (``classbeat.emails.live``)."""
+    stored = None if row is None else row.value
+    config = config_from(settings, {key: stored})
+    environment: Any
+    effective: Any
+    if key == "mail_sender_name":
+        environment, effective = DEFAULT_SENDER_NAME, config.branding.sender_name
+    elif key == "mail_support_email":
+        environment, effective = settings.mail_support_address, config.branding.support_address
+    elif key == "mail_footer":
+        environment, effective = None, config.branding.footer
+    else:  # mail_kinds_disabled
+        environment, effective = [], sorted(config.disabled)
+    return FlagOut(
+        key=key,
+        source="database" if effective != environment else "environment",
+        effective=effective,
+        environment=environment,
+        stored=stored,
+        stored_valid=_stored_valid(key, stored),
+        updated_at=None if row is None else row.updated_at,
+        updated_by=None if row is None else _person(row.updated_by, emails),
+    )
+
+
+async def mail_flags(session: AsyncSession, settings: Settings) -> list[FlagOut]:
+    """The four mail settings with their effective values, for ``GET /api/admin/mail``."""
+    rows = {r.key: r for r in (await session.execute(_ALL_SETTINGS)).all()}
+    emails = await auth.account_emails(
+        session, [r.updated_by for r in rows.values() if r.updated_by is not None]
+    )
+    return [_mail_flag(k, settings, rows.get(k), emails) for k in core.MAIL_KEYS]
+
+
 async def _flag_view(session: AsyncSession, settings: Settings, key: str) -> FlagOut:
+    if key in core.MAIL_KEYS:
+        (mail,) = [f for f in await mail_flags(session, settings) if f.key == key]
+        return mail
     (view,) = [f for f in (await _view(session, settings)).flags if f.key == key]
     return view
 
@@ -402,6 +333,10 @@ def _set_params(key: str, value: Any) -> dict[str, Any]:
         return {"key": key, "value": value}
     if key == "trial":
         return {"key": key, "plan": value["plan"], "days": value["days"]}
+    if key == "mail_kinds_disabled":
+        return {"key": key, "kinds": list(value)}
+    if key in core.MAIL_KEYS:
+        return {"key": key, "text_length": len(value)}  # the text stays in app_settings
     return {"key": key, "level": value["level"], "text_length": len(value["text"])}
 
 
@@ -423,7 +358,9 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
     canonical: Any = None
     refusal: str | None = None
     try:
-        canonical = core.validate_for_write(key, body.value, trial_days_max=settings.trial_days_max)
+        canonical = core.validate_for_write(
+            key, body.value, trial_days_max=settings.trial_days_max, mail_kinds=kind_switches()
+        )
         if _stored_bytes(canonical) > MAX_VALUE_BYTES:
             refusal = "invalid_value"
     except FlagRefused as exc:
@@ -511,7 +448,7 @@ async def clear_flag(request: Request, actor: AdminActor, key: KeyPath) -> FlagO
         write=True,
         target=Target(kind="setting", id=key),
     ) as session:
-        if key not in core.KEYS:
+        if key not in (*core.KEYS, *core.MAIL_KEYS):
             raise AdminRefused("unknown_key", 422)
         if (await session.execute(_CLEAR, {"k": key, "by": actor.user_id})).first() is None:
             raise AdminRefused("not_found", 404)
@@ -527,21 +464,21 @@ async def update_plan(
 ) -> PlanOut:
     settings: Settings = request.app.state.settings
     asked = body.asked()
-    refusal = _plan_refusal(asked, _bounds(settings))
+    refusal = plan_refusal(asked, bounds(settings))
     async with admin_session(
         _db(request),
         actor,
         "plan.update",
         write=True,
         target=Target(kind="plan", id=plan_id),
-        params=_plan_params(asked),
+        params=plan_params(asked),
     ) as session:
         if refusal is not None:
             raise AdminRefused(refusal, 422)
         current = (await session.execute(_PLAN_FOR_UPDATE, {"p": plan_id})).one_or_none()
         if current is None:
             raise AdminRefused("not_found", 404)
-        if not _prices_complete({**current._asdict(), **asked}):
+        if not prices_complete({**current._asdict(), **asked}):
             raise AdminRefused("price_incomplete", 422)
         columns = list(asked)
         row = (
@@ -551,50 +488,3 @@ async def update_plan(
         ).one()
         emails = await auth.account_emails(session, [row.updated_by] if row.updated_by else [])
         return _plan_out(row, emails)
-
-
-def _plan_params(asked: dict[str, Any]) -> dict[str, Any]:
-    """The audit params of a plan edit: numbers, gates, an ISO date and a currency code; a
-    currency that is not three capital letters (free text) is left out."""
-    params: dict[str, Any] = {}
-    cleared = [name for name in PRICES if name in asked and asked[name] is None]
-    for name, value in asked.items():
-        if value is None or (name == "currency" and not CURRENCY.fullmatch(value)):
-            continue
-        params[name] = value.isoformat() if isinstance(value, date) else value
-    if cleared:
-        params["cleared"] = cleared
-    return params
-
-
-def _plan_refusal(asked: dict[str, Any], bounds: dict[str, int]) -> str | None:
-    """``out_of_range`` for a value the table refuses, ``above_environment_bound`` for a limit
-    within the table's range but over the environment's bound, ``invalid_value`` for a currency
-    that is not three capital letters; ``nothing_to_change`` for none."""
-    if not asked:
-        return "nothing_to_change"
-    for name, value in asked.items():
-        if name in LIMITS:
-            low, high = HARD_BOUNDS[name]
-            if not low <= value <= high:
-                return "out_of_range"
-            if value > bounds[name]:
-                return "above_environment_bound"
-        elif name in PRICE_CENTS and value is not None:
-            if not PRICE_RANGE[0] <= value <= PRICE_RANGE[1]:
-                return "out_of_range"
-        elif name == "intro_price_until" and value is not None:
-            if not INTRO_UNTIL_RANGE[0] <= value <= INTRO_UNTIL_RANGE[1]:
-                return "out_of_range"
-        elif name == "currency" and value is not None and not CURRENCY.fullmatch(value):
-            return "invalid_value"
-    return None
-
-
-def _prices_complete(merged: dict[str, Any]) -> bool:
-    """The table's two price checks (migration 0026) on the row as it would be: an introduction
-    price comes with its end date, and any price with a currency."""
-    if (merged["intro_price_cents"] is None) != (merged["intro_price_until"] is None):
-        return False
-    priced = merged["monthly_price_cents"] is not None or merged["intro_price_cents"] is not None
-    return not priced or merged["currency"] is not None

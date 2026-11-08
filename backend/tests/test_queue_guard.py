@@ -22,7 +22,7 @@ from jobtools import engine_for
 from queue_guard import check_queue
 from role_guard import check_roles
 
-CLAIM_SIG = "public.queue_claim(text,integer,text[])"
+CLAIM_SIG = "public.queue_claim(text,integer,text[],integer)"
 
 
 @pytest.fixture
@@ -198,6 +198,11 @@ SHADOWS = (
     "AS 'SELECT public.t_shadow()'",
     "CREATE FUNCTION public.jsonb_build_object(text, integer) RETURNS jsonb LANGUAGE sql "
     "AS 'SELECT to_jsonb(public.t_shadow())'",
+    # The claimed event's payload since classbeat-queue v5 (#735), and queue_stats' filter.
+    "CREATE FUNCTION public.jsonb_build_object(text, integer, text, boolean, text, bigint) "
+    "RETURNS jsonb LANGUAGE sql AS 'SELECT to_jsonb(public.t_shadow())'",
+    "CREATE FUNCTION public.jsonb_typeof(jsonb) RETURNS text LANGUAGE sql "
+    "AS 'SELECT public.t_shadow()::text'",
     "CREATE FUNCTION public.t_lt(timestamptz, timestamptz) RETURNS boolean LANGUAGE sql "
     "AS 'SELECT public.t_shadow() > 0'",
     "CREATE OPERATOR public.< "
@@ -210,6 +215,8 @@ UNSHADOW = (
     "DROP FUNCTION IF EXISTS public.make_interval(integer)",
     "DROP FUNCTION IF EXISTS public.power(integer, integer)",
     "DROP FUNCTION IF EXISTS public.jsonb_build_object(text, integer)",
+    "DROP FUNCTION IF EXISTS public.jsonb_build_object(text, integer, text, boolean, text, bigint)",
+    "DROP FUNCTION IF EXISTS public.jsonb_typeof(jsonb)",
     "DROP FUNCTION IF EXISTS public.t_shadow()",
 )
 
@@ -241,7 +248,7 @@ async def test_objects_in_public_cannot_shadow_built_ins_and_are_refused(
             # engine, without the startup check, calls them).
             with engine_for(app_database_url) as app, app.begin() as tx:
                 [row] = tx.execute(
-                    text("SELECT * FROM public.queue_claim('w1', 60, ARRAY['test_kind'])")
+                    text("SELECT * FROM public.queue_claim('w1', 60, ARRAY['test_kind'], 1)")
                 ).all()
                 assert row.job_id == job_id
             admin.execute(
@@ -250,7 +257,7 @@ async def test_objects_in_public_cannot_shadow_built_ins_and_are_refused(
             )
             with engine_for(app_database_url) as app, app.begin() as tx:
                 assert tx.execute(text("SELECT public.queue_reap(10)")).scalar_one() == 1
-                assert tx.execute(text("SELECT count(*) FROM public.queue_stats()")).scalar() == 8
+                assert tx.execute(text("SELECT count(*) FROM public.queue_stats()")).scalar() == 18
                 assert tx.execute(text("SELECT public.queue_expire(10)")).scalar_one() == 0
         finally:
             with engine.connect() as connection:

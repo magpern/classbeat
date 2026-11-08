@@ -1,39 +1,25 @@
 import { useEffect, useState } from 'react'
 import { getUsage, type Usage as UsageData } from '../../api/usage'
+import type { CatalogueKey } from '../../i18n/en'
+import { useT } from '../../i18n/I18n'
+import { integer, month as formatMonth, usdMicros } from '../../i18n/format'
 import { Notice, Section } from '../forms'
 
 // What the figure leaves out, as the backend's `notes` codes (ADR 0007 section 10).
-const NOTES: Record<string, string> = {
-  estimate_at_list_prices:
-    'The cost is an estimate at the provider’s list prices. It is not an invoice.',
-  sdk_retries:
-    'The software that talks to the provider retries quietly inside a request. Those extra attempts are not counted.',
-  lost_lease_turn:
-    'A step that finished after classbeat had already given its work to another worker cannot be recorded.',
-  failed_stream_turn:
-    'A request that failed after the provider began to bill it returns no usage, so it is not counted.',
+const NOTES: Record<string, CatalogueKey> = {
+  estimate_at_list_prices: 'usage.note.estimate_at_list_prices',
+  sdk_retries: 'usage.note.sdk_retries',
+  lost_lease_turn: 'usage.note.lost_lease_turn',
+  failed_stream_turn: 'usage.note.failed_stream_turn',
 }
 
-const OTHER_NOTE = 'There is another reason this figure may differ from the provider’s bill.'
-
-const KINDS: Record<string, string> = {
-  design_draft: 'Designing a class',
-  revise_draft: 'Changing a class',
+const KINDS: Record<string, CatalogueKey> = {
+  design_draft: 'usage.kind.design_draft',
+  revise_draft: 'usage.kind.revise_draft',
 }
 
 export function dollars(micros: number): string {
-  if (micros <= 0) return '$0.00'
-  if (micros < 10_000) return 'under $0.01'
-  return `$${(micros / 1_000_000).toFixed(2)}`
-}
-
-const number = new Intl.NumberFormat('en-US')
-
-function monthName(month: string): string {
-  const match = /^(\d{4})-(\d{2})$/.exec(month)
-  if (match === null) return month
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1))
-  return date.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  return usdMicros(micros)
 }
 
 /**
@@ -41,6 +27,7 @@ function monthName(month: string): string {
  * classes designed and revisions, and what the figure leaves out. Months are UTC months.
  */
 export function Usage() {
+  const t = useT()
   const [usage, setUsage] = useState<UsageData | null>(null)
   const [failed, setFailed] = useState(false)
   const [round, setRound] = useState(0)
@@ -63,10 +50,10 @@ export function Usage() {
 
   if (usage === null) {
     return (
-      <Section title="Usage">
+      <Section title={t('usage.title')}>
         {failed ? (
           <>
-            <Notice kind="error">Your usage could not be loaded.</Notice>
+            <Notice kind="error">{t('usage.loadFailed')}</Notice>
             <button
               type="button"
               className="button"
@@ -74,66 +61,69 @@ export function Usage() {
                 setRound((n) => n + 1)
               }}
             >
-              Try again
+              {t('common.tryAgain')}
             </button>
           </>
         ) : (
-          <p>Loading</p>
+          <p>{t('common.loading')}</p>
         )}
       </Section>
     )
   }
   const { total } = usage
   const tokens = total.inputTokens + total.outputTokens + total.cacheReadTokens + total.cacheWriteTokens
+  const reused = total.cacheReadTokens + total.cacheWriteTokens
   return (
-    <Section title="Usage">
-      <p>Your use in {monthName(usage.month)} (UTC months).</p>
+    <Section title={t('usage.title')}>
+      <p>{t('usage.period', { month: formatMonth(usage.month) })}</p>
       <dl className="facts" data-testid="usage-facts">
         <div>
-          <dt>Tokens</dt>
-          <dd>{number.format(tokens)}</dd>
+          <dt>{t('usage.tokens')}</dt>
+          <dd>{integer(tokens)}</dd>
         </div>
         <div>
-          <dt>Estimated cost</dt>
+          <dt>{t('usage.cost')}</dt>
           <dd>{dollars(total.costMicros)}</dd>
         </div>
         <div>
-          <dt>Classes designed</dt>
-          <dd>{number.format(usage.classesDesigned)}</dd>
+          <dt>{t('usage.designed')}</dt>
+          <dd>{integer(usage.classesDesigned)}</dd>
         </div>
         <div>
-          <dt>Revisions</dt>
-          <dd>{number.format(usage.revisions)}</dd>
+          <dt>{t('usage.revisions')}</dt>
+          <dd>{integer(usage.revisions)}</dd>
         </div>
       </dl>
       <p className="muted">
-        Tokens are the pieces of text the designer reads and writes: {number.format(total.inputTokens)}{' '}
-        in, {number.format(total.outputTokens)} out
-        {total.cacheReadTokens + total.cacheWriteTokens > 0
-          ? `, and ${number.format(total.cacheReadTokens + total.cacheWriteTokens)} reused from earlier requests`
-          : ''}
-        . Saving to MOWL uses none.
+        {reused > 0
+          ? t('usage.tokensExplainedReused', {
+              input: integer(total.inputTokens),
+              output: integer(total.outputTokens),
+              reused: integer(reused),
+            })
+          : t('usage.tokensExplained', {
+              input: integer(total.inputTokens),
+              output: integer(total.outputTokens),
+            })}
       </p>
       {usage.byKindModel.length > 0 ? (
         <table className="usage-table">
-          <caption className="muted">By kind of work and model</caption>
+          <caption className="muted">{t('usage.byKind')}</caption>
           <thead>
             <tr>
-              <th scope="col">Work</th>
-              <th scope="col">Model</th>
-              <th scope="col">Tokens</th>
-              <th scope="col">Cost</th>
+              <th scope="col">{t('usage.col.work')}</th>
+              <th scope="col">{t('usage.col.model')}</th>
+              <th scope="col">{t('usage.col.tokens')}</th>
+              <th scope="col">{t('usage.col.cost')}</th>
             </tr>
           </thead>
           <tbody>
             {usage.byKindModel.map((row) => (
               <tr key={`${row.jobKind}/${row.model}`}>
-                <td>{Object.hasOwn(KINDS, row.jobKind) ? KINDS[row.jobKind] : row.jobKind}</td>
+                <td>{Object.hasOwn(KINDS, row.jobKind) ? t(KINDS[row.jobKind]!) : row.jobKind}</td>
                 <td>{row.model}</td>
                 <td>
-                  {number.format(
-                    row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheWriteTokens,
-                  )}
+                  {integer(row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheWriteTokens)}
                 </td>
                 <td>{dollars(row.costMicros)}</td>
               </tr>
@@ -141,11 +131,11 @@ export function Usage() {
           </tbody>
         </table>
       ) : null}
-      <h3>What this leaves out</h3>
-      <p>The figure may be slightly lower than your provider&rsquo;s bill.</p>
+      <h3>{t('usage.leavesOut')}</h3>
+      <p>{t('usage.lowerThanBill')}</p>
       <ul data-testid="usage-notes">
         {usage.notes.map((code) => (
-          <li key={code}>{Object.hasOwn(NOTES, code) ? NOTES[code] : OTHER_NOTE}</li>
+          <li key={code}>{Object.hasOwn(NOTES, code) ? t(NOTES[code]!) : t('usage.note.other')}</li>
         ))}
       </ul>
     </Section>

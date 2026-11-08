@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { expect, test as base, type APIRequestContext, type Page } from '@playwright/test'
 
@@ -13,11 +13,15 @@ export function uniqueEmail(tag: string): string {
 
 /** A fresh single-use invite code from the operator CLI (ADR 0003 section 7). */
 export function createInvite(): string {
-  return execFileSync('docker', ['compose', 'exec', '-T', 'web', 'python', '-m', 'classbeat', 'invite', 'create'], {
-    cwd: new URL('../..', import.meta.url),
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'ignore'],
-  }).trim()
+  return execFileSync(
+    'docker',
+    ['compose', 'exec', '-T', 'web', 'python', '-m', 'classbeat', 'invite', 'create'],
+    {
+      cwd: new URL('../..', import.meta.url),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    },
+  ).trim()
 }
 
 /** The link in the newest mail with this subject to this address (waits for it to arrive). */
@@ -40,12 +44,27 @@ export async function linkFromMail(request: APIRequestContext, to: string, subje
   throw new Error(`no "${subject}" mail for ${to} arrived in mailpit`)
 }
 
+// Turnstile is on in the e2e stack with the fake verifier (compose.e2e.yaml; ADR 0025 section 8): the
+// sign-in, sign-up, provider-email and reset forms show a stand-in checkbox in place of Cloudflare's
+// widget, and their submit waits for it. It yields `fake-pass-<random>`, which the server accepts once.
+
+/** Ticks the stand-in check of the form on the page (any language: it is found by its test id). */
+export async function passCaptcha(page: Page): Promise<void> {
+  await page.getByTestId('captcha-fake').check()
+}
+
+/** A token the fake verifier accepts once, for API calls to the four protected routes. */
+export function captchaToken(): string {
+  return `fake-pass-${randomUUID()}`
+}
+
 /** Sign up with an invite, confirm by the mailed link and type the password again. */
 export async function signUpThroughUi(page: Page, email: string, password = PASSWORD): Promise<void> {
   await page.goto('/signup')
   await page.getByLabel('Invite code').fill(createInvite())
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByLabel('Password', { exact: true }).fill(password)
+  await passCaptcha(page)
   await page.getByRole('button', { name: 'Create account' }).click()
   await expect(page.getByRole('heading', { name: 'Check your inbox' })).toBeVisible()
 
@@ -59,6 +78,7 @@ export async function signInThroughUi(page: Page, email: string, password = PASS
   await page.goto('/signin')
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByLabel('Password', { exact: true }).fill(password)
+  await passCaptcha(page)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
 }
@@ -66,7 +86,7 @@ export async function signInThroughUi(page: Page, email: string, password = PASS
 // Sign-ups, mails and sign-in failures are rate limited per client IP (ADR 0003 section 9).
 // The e2e stack trusts the proxy range of the docker network (compose.e2e.yaml), so each test
 // presents its own address in X-Forwarded-For and the tests never share a limit.
-function randomClientIp(): string {
+export function randomClientIp(): string {
   const octet = () => 1 + Math.floor(Math.random() * 254)
   return `203.0.${octet()}.${octet()}`
 }

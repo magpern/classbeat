@@ -42,6 +42,7 @@ from jobcore import _INSERT_REVISION  # pyright: ignore[reportPrivateUsage]
 from jobtools import new_class, new_job
 from mfatools import Actor
 from savetools import DRAFT, draft_hash
+from webauthnfake import RP_ID
 
 # --- the classification -------------------------------------------------------------------------
 
@@ -74,6 +75,9 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/auth/email/confirm"): "session",
     ("POST", "/api/auth/mfa/verify"): "session",
     ("GET", "/api/auth/sessions"): "session",
+    # The cursor ``before`` carries a time and an event id but only bounds the caller's own rows
+    # (ADR 0003 amendment of 2026-11-07, #678): not an owned id.
+    ("GET", "/api/auth/events"): "session",
     ("DELETE", "/api/auth/sessions/{session_id}"): "owned",
     ("POST", "/api/auth/logout"): "public",
     ("POST", "/api/auth/logout-all"): "session",
@@ -91,9 +95,27 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/auth/mfa/stepup"): "session",
     ("GET", "/api/auth/identities"): "session",
     ("DELETE", "/api/auth/identities/{identity_id}"): "owned",
+    # ADR 0019 (#772): passkeys. The flag-off answer (404 feature_off) comes before the session
+    # check for register and rename; a passkey id of another user is 404 like an unknown one.
+    ("GET", "/api/auth/passkeys"): "session",
+    ("POST", "/api/auth/passkeys/register/start"): "session",
+    ("POST", "/api/auth/passkeys/register/finish"): "session",
+    # ADR 0019 (#773): username-less sign-in, anonymous like the password form.
+    ("POST", "/api/auth/passkeys/signin/start"): "public",
+    ("POST", "/api/auth/passkeys/signin/finish"): "public",
+    # ADR 0019 (#774): re-auth, bound to the caller's session and user.
+    ("POST", "/api/auth/passkeys/reauth/start"): "session",
+    ("POST", "/api/auth/passkeys/reauth/finish"): "session",
+    ("PATCH", "/api/auth/passkeys/{passkey_id}"): "owned",
+    ("DELETE", "/api/auth/passkeys/{passkey_id}"): "owned",
     ("GET", "/api/connections"): "session",
     ("POST", "/api/connections/mowl"): "session",
     ("DELETE", "/api/connections/mowl"): "session",
+    # ADR 0024 (#647): the QR sign-in; every wait is the starting session's own.
+    ("POST", "/api/connections/mowl/qr"): "session",
+    ("GET", "/api/connections/mowl/qr/{ticket_id}"): "session",
+    ("GET", "/api/connections/mowl/qr/{ticket_id}/image"): "session",
+    ("DELETE", "/api/connections/mowl/qr/{ticket_id}"): "session",
     ("POST", "/api/connections/swedebeat"): "session",
     ("DELETE", "/api/connections/swedebeat"): "session",
     ("PUT", "/api/connections/swedebeat/preference"): "session",
@@ -112,6 +134,14 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/account/plan"): "session",
     ("POST", "/api/account/redeem"): "session",
     ("POST", "/api/account/trial"): "session",
+    ("GET", "/api/mail/preferences"): "session",
+    ("PUT", "/api/mail/preferences"): "session",
+    ("PUT", "/api/account/locale"): "session",
+    # Anonymous by design (ADR 0003, ME4): the signed unsubscribe token in the request is the
+    # only authority, it can only turn optional mail off, and the two paths are the exact-match
+    # CSRF/Origin exemption, limited per IP before the token is checked (test_mail_prefs.py).
+    ("POST", "/api/mail/unsubscribe"): "public",
+    ("POST", "/api/mail/unsubscribe/confirm"): "public",
     ("GET", "/api/external-operations"): "owned_body",
     ("GET", "/api/external-operations/{operation_id}"): "owned",
     ("POST", "/api/external-operations/{operation_id}/check-again"): "owned",
@@ -153,6 +183,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("DELETE", "/api/admin/users/{user_id}"): "admin",
     ("GET", "/api/admin/audit"): "admin",
     ("GET", "/api/admin/usage"): "admin",
+    ("GET", "/api/admin/abuse"): "admin",
     ("POST", "/api/admin/users/{user_id}/credits/{ledger_id}/refund"): "admin",
     ("GET", "/api/admin/jobs"): "admin",
     ("GET", "/api/admin/invites"): "admin",
@@ -163,6 +194,9 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/admin/redeem-codes/{code_id}/disable"): "admin",
     ("GET", "/api/admin/settings"): "admin",
     ("PUT", "/api/admin/settings/{key}"): "admin",
+    ("GET", "/api/admin/mail"): "admin",
+    ("GET", "/api/admin/mail/{kind_id}/preview"): "admin",
+    ("POST", "/api/admin/mail/{kind_id}/test"): "admin",
     ("DELETE", "/api/admin/settings/{key}"): "admin",
     ("PATCH", "/api/admin/plans/{plan_id}"): "admin",
     ("GET", "/api/admin/models"): "admin",
@@ -328,6 +362,8 @@ async def env(app_database_url: str, maint_database_url: str) -> AsyncIterator[E
         database_maint_password=url.password,
         song_picking=True,
         jobs_per_user=16,
+        passkeys=True,  # so the passkey rename case reads the id (#782 review N4)
+        webauthn_rp_id=RP_ID,
     ) as running:
         yield running
 
@@ -511,6 +547,7 @@ async def test_routes_that_need_a_session_refuse_an_anonymous_caller(
 OWNED_PATH_PARAMS = (
     "session_id",
     "identity_id",
+    "passkey_id",
     "job_id",
     "operation_id",
     "class_id",
@@ -535,6 +572,7 @@ class Rows:
     session_id: uuid.UUID
     identity_id: uuid.UUID
     row_id: uuid.UUID  # a beat-one correction of the class (ADR 0007 amendment)
+    passkey_id: uuid.UUID  # ADR 0019 (#772)
 
     @property
     def digest(self) -> str:
@@ -551,6 +589,7 @@ class Rows:
             "session_id": self.session_id,
             "identity_id": self.identity_id,
             "row_id": self.row_id,
+            "passkey_id": self.passkey_id,
         }
 
 
@@ -595,9 +634,25 @@ async def plant(env: Env, conn: Connection, user: uuid.UUID) -> Rows:
         ),
         {"o": user, "c": class_id, "f": "ab" * 32},
     ).scalar_one()
+    passkey_id = conn.execute(
+        text(
+            "INSERT INTO webauthn_credentials (user_id, credential_id, public_key, "
+            "backup_eligible, backup_state, label) VALUES (:u, :c, :k, true, true, 'Key') "
+            "RETURNING id"
+        ),
+        {"u": user, "c": uuid.uuid4().bytes, "k": b"\xa1\x01\x02"},
+    ).scalar_one()
     other_session = (await env.login(user)).id
     return Rows(
-        user, class_id, job_id, revision_id, operation_id, other_session, identity_id, row_id
+        user,
+        class_id,
+        job_id,
+        revision_id,
+        operation_id,
+        other_session,
+        identity_id,
+        row_id,
+        passkey_id,
     )
 
 
@@ -702,6 +757,12 @@ OWNED_ROUTES = [
     OwnedRoute("DELETE", "/api/classes/{class_id}/beat-one"),
     OwnedRoute("DELETE", "/api/auth/sessions/{session_id}", control=frozenset({204})),
     OwnedRoute("DELETE", "/api/auth/identities/{identity_id}", control=frozenset({204, 409})),
+    # Passkeys on in this app, so rename reads the id: the owner's own is 200, a foreign one 404
+    # like an unknown one. Remove answers whatever the flag says (ADR 0019 section 7).
+    OwnedRoute(
+        "PATCH", "/api/auth/passkeys/{passkey_id}", lambda rows: {"label": "Mine"}, frozenset({200})
+    ),
+    OwnedRoute("DELETE", "/api/auth/passkeys/{passkey_id}", control=frozenset({204})),
 ]
 
 
@@ -742,6 +803,7 @@ def owned_state(conn: Connection, rows: Rows) -> dict[str, Any]:
         "operations": one("SELECT id, state FROM external_operations WHERE owner_id = :u"),
         "sessions": one("SELECT count(*) FROM sessions WHERE user_id = :u"),
         "identities": one("SELECT id FROM identities WHERE user_id = :u"),
+        "passkeys": one("SELECT id, label FROM webauthn_credentials WHERE user_id = :u"),
         "events": one("SELECT count(*) FROM job_events WHERE job_id = :j"),
         "beat_one": one("SELECT id, beats FROM beat_one_corrections WHERE owner_id = :u"),
     }

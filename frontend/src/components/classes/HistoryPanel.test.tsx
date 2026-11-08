@@ -267,6 +267,20 @@ describe('HistoryPanel states', () => {
     expect(screen.queryByRole('list', { name: 'Versions' })).toBeNull()
   })
 
+  it('shows the plain list when the page lists the same ids but not the same versions', async () => {
+    api.getHistory.mockResolvedValueOnce(HISTORY)
+    const { view } = show()
+    await screen.findAllByTestId('history-entry')
+    api.getHistory.mockReturnValue(new Promise(() => undefined))
+    // The current flag moved (so the history is read again) and version 3 is a different length:
+    // the ids match, the versions do not, so the old timeline is not shown for them.
+    const moved = ENTRIES.map((e) => summary({ ...e, isCurrent: e.number === 1, totalSec: e.number === 3 ? 1800 : e.totalSec }))
+    view.rerender(panel({ revisions: moved }))
+    expect(screen.queryByTestId('history-entry')).toBeNull()
+    expect(screen.queryByRole('list', { name: 'Version history' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Use this version 2' })).toBeTruthy() // the plain list
+  })
+
   it('shows the plain list while a new set of versions is read', async () => {
     api.getHistory.mockResolvedValueOnce(HISTORY)
     const { view } = show()

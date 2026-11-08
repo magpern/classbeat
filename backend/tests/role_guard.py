@@ -21,14 +21,18 @@ QUEUE_TABLE_PRIVILEGES = {
     "jobs": {"SELECT", "UPDATE"},
     "job_events": {"SELECT", "INSERT"},
     "external_operations": {"SELECT"},
+    # ADR 0022 section 4 (ME5): ``mail_handoff_take`` reads and deletes hand-off rows (UPDATE
+    # only for its ``FOR UPDATE SKIP LOCKED``).
+    "mail_handoff": {"SELECT", "UPDATE", "DELETE"},
 }
 # The SECURITY DEFINER functions classbeat_app may execute (regprocedure, as rendered).
 QUEUE_SIGNATURES = {
-    "queue_claim(text,integer,text[])",
+    "queue_claim(text,integer,text[],integer)",
     "queue_reap(integer)",
     "queue_expire(integer)",
     "queue_unsettled(integer)",
     "queue_stats()",
+    "mail_handoff_take(integer)",
 }
 # The M5 guard trigger functions (migration 0007, ADR 0011 section 1): SECURITY INVOKER, owned by
 # classbeat_owner, executable by nobody else (firing a trigger needs no EXECUTE).
@@ -74,6 +78,7 @@ APP_PLAN_COLUMNS = frozenset(
         "id", "name", "rank", "classes_per_month", "revisions_per_class", "concurrent_jobs",
         "monthly_cost_micros", "route_key", "features", "created_at", "updated_at", "updated_by",
         "max_class_minutes", "games_allowed", "races_allowed", "ftp_tests_allowed",
+        "saves_per_hour", "saves_per_day",
     }
 )  # fmt: skip
 # The only column-level privileges in public, exactly: (table, column) -> {(grantee, privilege)}.

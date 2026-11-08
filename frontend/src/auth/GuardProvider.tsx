@@ -1,17 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import {
-  getIdentities,
-  reauthWithPassword,
-  reauthWithTotp,
-  startOAuth,
-  stepUp,
-  type IdentitiesState,
-} from '../api/auth'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
-import { providerName } from '../api/messages'
-import { Field, Notice, useAction } from '../components/forms'
-import { goToProvider } from '../lib/navigation'
-import { PromptCancelled, GuardContext, reauthReturnTo, type Guard } from './prompts'
+import { ReauthPrompt, StepUpPrompt } from './GuardPrompts'
+import { PromptCancelled, GuardContext, type Guard } from './prompts'
 import { useSession } from './SessionContext'
 
 type Kind = 'reauth' | 'stepup'
@@ -55,7 +45,12 @@ export function GuardProvider({ children }: { children: ReactNode }) {
       const settled = new Promise<void>((done) => {
         settle = done
       })
-      const next: Pending = { kind, waiters: [{ resolve, reject }], settled, settle }
+      const next: Pending = {
+        kind,
+        waiters: [{ resolve, reject }],
+        settled,
+        settle,
+      }
       open.current = next
       setPending(next)
     })
@@ -128,165 +123,5 @@ export function GuardProvider({ children }: { children: ReactNode }) {
         </div>
       ) : null}
     </GuardContext.Provider>
-  )
-}
-
-interface PromptProps {
-  onDone: (success: boolean) => void
-}
-
-function ReauthPrompt({ onDone }: PromptProps) {
-  const { session } = useSession()
-  const [state, setState] = useState<IdentitiesState | null>(null)
-  const [password, setPassword] = useState('')
-  const [code, setCode] = useState('')
-  const action = useAction()
-  const isAdmin = session?.user?.role === 'admin'
-
-  useEffect(() => {
-    const controller = new AbortController()
-    getIdentities(controller.signal).then(setState, () => undefined)
-    return () => {
-      controller.abort()
-    }
-  }, [])
-
-  const submitPassword = (event: FormEvent) => {
-    event.preventDefault()
-    void action.run(async () => {
-      await reauthWithPassword(password)
-      onDone(true)
-    })
-  }
-  const submitCode = (event: FormEvent) => {
-    event.preventDefault()
-    void action.run(async () => {
-      await reauthWithTotp(code)
-      onDone(true)
-    })
-  }
-  const viaProvider = (provider: string) => {
-    void action.run(async () => {
-      const url = await startOAuth(provider, 'reauth', {
-        returnTo: reauthReturnTo(window.location.pathname, window.location.search, window.location.hash),
-      })
-      goToProvider(url)
-    })
-  }
-
-  const linked = state?.identities.map((item) => item.provider) ?? []
-  // Google and Microsoft prove a new sign-in only with an auth_time of the last 5 minutes (ADR
-  // 0003 section 5, #522); Google may not send one, so the prompt says so before the user goes.
-  const oidc = linked.filter((provider) => provider === 'google' || provider === 'microsoft')
-  return (
-    <>
-      <h2 id="prompt-title">Confirm it is you</h2>
-      <p>This change needs a recent sign-in. Confirm your identity to continue.</p>
-      {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      {state?.hasPassword ? (
-        <form onSubmit={submitPassword}>
-          <Field
-            label="Password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value)
-            }}
-            required
-          />
-          <button className="button" type="submit" disabled={action.busy}>
-            Confirm with password
-          </button>
-        </form>
-      ) : null}
-      {isAdmin ? (
-        <form onSubmit={submitCode}>
-          <Field
-            label="Authenticator or recovery code"
-            autoComplete="one-time-code"
-            value={code}
-            onChange={(e) => {
-              setCode(e.target.value)
-            }}
-            required
-          />
-          <button className="button" type="submit" disabled={action.busy}>
-            Confirm with code
-          </button>
-        </form>
-      ) : null}
-      {linked.map((provider) => (
-        <button
-          key={provider}
-          className="button button--secondary"
-          type="button"
-          disabled={action.busy}
-          onClick={() => {
-            viaProvider(provider)
-          }}
-        >
-          Confirm with {providerName(provider)}
-        </button>
-      ))}
-      {oidc.length > 0 ? (
-        <p className="text-sm text-muted">
-          {oidc.map(providerName).join(' and ')} can confirm it only if you signed in there in the last 5
-          minutes.{state?.hasPassword ? ' Your password always works.' : ''}
-        </p>
-      ) : null}
-      <button
-        className="button button--link"
-        type="button"
-        onClick={() => {
-          onDone(false)
-        }}
-      >
-        Cancel
-      </button>
-    </>
-  )
-}
-
-function StepUpPrompt({ onDone }: PromptProps) {
-  const [code, setCode] = useState('')
-  const action = useAction()
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    void action.run(async () => {
-      await stepUp(code)
-      onDone(true)
-    })
-  }
-  return (
-    <>
-      <h2 id="prompt-title">Enter a two-factor code</h2>
-      <p>This change needs a code from your authenticator app, or one of your recovery codes.</p>
-      {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      <form onSubmit={submit}>
-        <Field
-          label="Authenticator or recovery code"
-          autoComplete="one-time-code"
-          inputMode="text"
-          value={code}
-          onChange={(e) => {
-            setCode(e.target.value)
-          }}
-          required
-        />
-        <button className="button" type="submit" disabled={action.busy}>
-          Continue
-        </button>
-      </form>
-      <button
-        className="button button--link"
-        type="button"
-        onClick={() => {
-          onDone(false)
-        }}
-      >
-        Cancel
-      </button>
-    </>
   )
 }

@@ -1,11 +1,13 @@
+import type { CatalogueKey } from '../i18n/en'
+
 export type ThemeChoice = 'dark' | 'light' | 'system'
 
 export const THEME_STORAGE_KEY = 'cb-theme'
 export const DEFAULT_THEME: ThemeChoice = 'dark'
-export const THEME_CHOICES: readonly { value: ThemeChoice; label: string }[] = [
-  { value: 'dark', label: 'Dark' },
-  { value: 'light', label: 'Light' },
-  { value: 'system', label: 'Same as device' },
+export const THEME_CHOICES: readonly { value: ThemeChoice; label: CatalogueKey }[] = [
+  { value: 'dark', label: 'theme.dark' },
+  { value: 'light', label: 'theme.light' },
+  { value: 'system', label: 'theme.system' },
 ]
 
 export function isThemeChoice(value: unknown): value is ThemeChoice {
@@ -34,4 +36,17 @@ export function setTheme(choice: ThemeChoice): void {
   } catch {
     /* storage blocked: the choice lasts until the page closes */
   }
+}
+
+/** The theme the page shows: `system` is resolved by the device's light or dark preference. */
+export function resolvedTheme(): 'dark' | 'light' {
+  const attribute = document.documentElement.getAttribute('data-theme')
+  const choice = isThemeChoice(attribute) ? attribute : DEFAULT_THEME
+  if (choice !== 'system') return choice
+  return lightPreferred()?.matches === true ? 'light' : 'dark'
+}
+
+/** The device's light preference, or null where the browser has no media queries. */
+export function lightPreferred(): MediaQueryList | null {
+  return typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: light)') : null
 }

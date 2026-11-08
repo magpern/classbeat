@@ -1,28 +1,55 @@
 """Application settings, read from the environment (prefix ``CLASSBEAT_``) and secret files."""
 
 import ipaddress
-import json
-import logging
-import os
 import re
 import ssl
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
-from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
+from classbeat.config_hosts import (
+    _is_local_host,
+    check_prod_trusted_proxies,
+    check_public_base_url,
+    parse_networks,
+)
+from classbeat.config_passkeys import check_settings as check_passkey_settings
+from classbeat.config_roles import (  # noqa: F401 (re-exported from classbeat.config)
+    MODEL_KEY_FIELDS,
+    MODEL_SDK_REFUSED_ENVIRONMENT,
+    MODEL_SDK_REFUSED_PREFIXES,
+    ModelProviderRefused,
+    check_web_has_no_model_key,
+    check_worker_has_no_swedebeat_app,
+    check_worker_has_no_turnstile_secret,
+    check_worker_model_provider,
+    model_sdk_environment_problems,
+    worker_model_providers,
+)
+from classbeat.config_secrets import (  # noqa: F401 (re-exported from classbeat.config)
+    DEFAULT_SECRETS_DIR,
+    SecretFilesSettingsSource,
+    WithoutSecretsSource,
+    logger,
+    read_files,
+    secrets_dir,
+)
+from classbeat.config_swedebeat import swedebeat_app_keys
+from classbeat.config_turnstile import (  # noqa: F401 (re-exported from classbeat.config)
+    TURNSTILE_DUMMY_KEY,
+    TURNSTILE_SITE_KEY,
+)
+from classbeat.config_turnstile import check_secret_key as check_turnstile_secret_key
+from classbeat.config_turnstile import check_settings as check_turnstile_settings
+from classbeat.config_turnstile import check_site_key as check_turnstile_site_key
 from classbeat.emailnorm import normalize_email
 
-logger = logging.getLogger(__name__)
-
 DATABASE_DRIVER = "postgresql+psycopg"
-DEFAULT_SECRETS_DIR = "/run/secrets"
 # Fields read from secret files, and never from the environment.
 SECRET_FILE_FIELDS = (
     "database_password",
@@ -37,6 +64,7 @@ SECRET_FILE_FIELDS = (
     "openai_api_key",
     "deepseek_api_key",
     "swedebeat_app",
+    "turnstile_secret_key",
 )
 # Secret files the app runs without (the feature is off): an unreadable one is not set, with a
 # warning naming the field (#511). Every other secret file that exists but cannot be read is fatal.
@@ -47,109 +75,31 @@ OPTIONAL_SECRET_FILE_FIELDS = frozenset(
         "oauth_github_client_secret",
         "oauth_microsoft_client_secret",
         "swedebeat_app",
+        "turnstile_secret_key",
     }
 )
 # Read by the SQL init scripts too, with the same bytes (tests/test_roles_script.py): kept exact.
 BYTE_EXACT_SECRET_FIELDS = frozenset(
     {"database_password", "database_owner_password", "database_maint_password"}
 )
-# Each model provider's key file (ADR 0006 §9, ADR 0012 §2): worker only, never the web app.
-MODEL_KEY_FIELDS = {
-    "anthropic": "anthropic_api_key",
-    "openai": "openai_api_key",
-    "deepseek": "deepseek_api_key",
-}
-# Hosts where unencrypted SMTP (``smtp_tls = none``) is allowed: loopback and the compose service.
-PLAIN_SMTP_HOSTS = frozenset({"localhost", "mailpit"})
 MIN_APP_SECRET_BYTES = 32
 # ADR 0004 section 2: the id of the current KEK (the ``connection_kek`` secret file).
 CONNECTION_KEK_ID = re.compile(r"kek-[a-z0-9-]{1,28}")
-
-
-def swedebeat_app_keys(value: SecretStr) -> dict[str, str] | None:
-    """The ``swedebeat_app`` file's key and iv if it is a JSON object whose ``key`` is 32 and
-    ``iv`` 16 single-byte characters (the library encodes both as latin-1); else ``None``."""
-    try:
-        data = json.loads(value.get_secret_value())
-    except ValueError:
-        return None
-    if not isinstance(data, dict) or set(data) != {"key", "iv"}:  # pyright: ignore[reportUnknownArgumentType]
-        return None
-    key, iv = data["key"], data["iv"]
-    if not isinstance(key, str) or not isinstance(iv, str):
-        return None
-    try:
-        sized = len(key.encode("latin-1")) == 32 and len(iv.encode("latin-1")) == 16
-    except UnicodeEncodeError:
-        return None
-    return {"key": key, "iv": iv} if sized else None
-
-
-def secrets_dir() -> Path:
-    """Where secret files live: ``CLASSBEAT_SECRETS_DIR``, default ``/run/secrets``."""
-    return Path(os.environ.get("CLASSBEAT_SECRETS_DIR") or DEFAULT_SECRETS_DIR)
+# A bare address (no display name, no angle brackets, no whitespace or control characters).
+SUPPORT_ADDRESS = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
 
 
 def read_secret_files(
     directory: Path, names: tuple[str, ...], optional: frozenset[str] = frozenset()
 ) -> dict[str, str]:
-    """Read ``<directory>/<name>`` for each name; missing files and directories are skipped.
-
-    A file of a name in ``optional`` that cannot be read (its mode or group, #511) counts as not
-    set, and one warning names the field, never the path's content; any other unreadable file
-    raises. A file holding only whitespace counts as empty, except the three database passwords,
-    which ``10-roles.sql`` and ``31-maint-password.psql`` read byte for byte the same way.
-    """
-    if not directory.is_dir():
-        return {}
-    values: dict[str, str] = {}
-    for name in names:
-        path = directory / name
-        if path.is_file():
-            try:
-                raw = path.read_bytes()
-            except OSError:
-                if name not in optional:
-                    raise
-                logger.warning("secret file %s is not readable; treated as not set", name)
-                continue
-            text = raw.decode("utf-8")
-            # Only the trailing newline an editor or `echo` adds; spaces may be part of a secret.
-            text = text.removesuffix("\n").removesuffix("\r")
-            if name not in BYTE_EXACT_SECRET_FIELDS and not text.strip():
-                text = ""  # a blank file is the empty placeholder: that secret is off
-            values[name] = text
-    return values
+    """``classbeat.config_secrets.read_files`` with the database passwords read byte for byte
+    (``BYTE_EXACT_SECRET_FIELDS``): missing files are skipped, an unreadable one of a name in
+    ``optional`` is not set (with a warning naming the field), any other unreadable one raises."""
+    return read_files(directory, names, optional=optional, byte_exact=BYTE_EXACT_SECRET_FIELDS)
 
 
-class SecretFilesSettingsSource(PydanticBaseSettingsSource):
-    """Secrets come only from files, named after the field without the env prefix.
-
-    ``/run/secrets/database_password`` sets ``database_password``. pydantic-settings' own
-    secrets source would look for ``classbeat_database_password`` because of ``env_prefix``.
-    """
-
-    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
-        return None, field_name, False  # unused: __call__ reads the files directly
-
-    def __call__(self) -> dict[str, Any]:
-        return dict(
-            read_secret_files(secrets_dir(), SECRET_FILE_FIELDS, OPTIONAL_SECRET_FILE_FIELDS)
-        )
-
-
-class WithoutSecretsSource(PydanticBaseSettingsSource):
-    """Wraps the environment source and drops the secret fields: env vars never set secrets."""
-
-    def __init__(self, inner: PydanticBaseSettingsSource) -> None:
-        super().__init__(inner.settings_cls)
-        self._inner = inner
-
-    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
-        return self._inner.get_field_value(field, field_name)
-
-    def __call__(self) -> dict[str, Any]:
-        return {k: v for k, v in self._inner().items() if k not in SECRET_FILE_FIELDS}
+def _read_settings_secret_files() -> dict[str, str]:
+    return read_secret_files(secrets_dir(), SECRET_FILE_FIELDS, OPTIONAL_SECRET_FILE_FIELDS)
 
 
 class Settings(BaseSettings):
@@ -213,11 +163,18 @@ class Settings(BaseSettings):
     connection_kek_id: str = "kek-1"
     # Who may create an account (section 5): ``invite`` (default), ``closed`` or ``open``.
     signup_mode: Literal["invite", "closed", "open"] = "invite"
+    # The languages the operator enables, comma-separated bare codes (ADR 0023 section 1). ``en`` is
+    # always on; a language is offered when it is enabled and in the supported manifest.
+    locales: str = "en,sv,da"
 
     # Mail (section 5). Unset ``smtp_host``: no mail is sent (a warning is logged instead).
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_sender: str = "classbeat@localhost"
+    # The bare address that replaces "the operator" in mail: the footer's ``mailto:`` and the
+    # ``Reply-To`` (ADR 0022 section 3). An owner-confirmable default: the mailbox must exist
+    # before deploy. The admin setting (ME2) overrides it.
+    mail_support_address: str = "support@classbeat.eu"
     smtp_tls: Literal["starttls", "tls", "none"] = "starttls"
     smtp_username: str | None = None
     # From the file ``smtp_password`` (never the environment).
@@ -265,6 +222,12 @@ class Settings(BaseSettings):
     job_lease_seconds: int = Field(default=120, ge=30, le=600)
     # The worker's engine pool follows it (classbeat.worker.loop.worker_pool: 3 * n + 2 at most).
     worker_concurrency: int = Field(default=2, ge=1, le=16)
+    # Running jobs that may analyse a Swedebeat mix at once, across every worker (#574): a job
+    # that must analyse waits queued for one of these slots, so analyses never fill every worker
+    # slot. queue_claim enforces it; each worker passes its own value. Keep it below
+    # worker_concurrency summed over all workers: at or above it, analyses can take every slot
+    # and delay design jobs, which is what the cap is for.
+    mix_analysis_concurrency: int = Field(default=1, ge=1, le=16)
     # Reap, expire and settle (ADR 0005 section 3: every 30 s).
     worker_maintenance_seconds: float = Field(default=30.0, gt=0)
     # On SIGTERM, how long runs may take to reach a checkpoint or return from a call before
@@ -291,6 +254,23 @@ class Settings(BaseSettings):
     # Issue #496: the environment's upper bound on every plan's ``max_class_minutes`` (the
     # brief's own range, 10 to 180); a plan's effective cap is the smaller of the row and this.
     class_minutes_max: int = Field(default=180, ge=10, le=180)
+    # Issue #577: Save and Update (``save_workout`` and ``update_workout`` jobs together) per user
+    # in the last hour and the last 24 hours. Neither takes a credit or a model call, so without
+    # these a script with a stolen session could keep writing programs to the user's MOWL.
+    saves_per_hour: int = Field(default=30, ge=1, le=1_000)
+    saves_per_day: int = Field(default=100, ge=1, le=10_000)
+    # Issue #577: the general limit on signed-in ``/api`` requests (ADR 0003 section 9, amendment
+    # of 2026-11-05), fixed windows per user (all requests, per minute and per hour; writes and
+    # the class and job reads per minute) and per client address (signed-in requests, per minute).
+    api_requests_per_minute: int = Field(default=300, ge=1, le=100_000)
+    api_requests_per_hour: int = Field(default=3_000, ge=1, le=1_000_000)
+    api_writes_per_minute: int = Field(default=60, ge=1, le=100_000)
+    api_reads_per_minute: int = Field(default=120, ge=1, le=100_000)
+    api_ip_requests_per_minute: int = Field(default=1_200, ge=1, le=1_000_000)
+    # Issue #632: how many days the hourly purge keeps ``security_log`` rows (one per signed-in
+    # ``/api`` request; ADR 0003 amendment "security log"). Short by design, at most the 30 days
+    # of ``auth_events``.
+    security_log_days: int = Field(default=7, ge=1, le=30)
     chat_max_requests: int = Field(default=50, ge=1, le=200)
     chat_context_requests: int = Field(default=10, ge=1, le=30)
     # ADR 0007 section 8: how long a new MOWL workout may take to appear in My Workouts. Unset
@@ -347,6 +327,22 @@ class Settings(BaseSettings):
     # only (off by default). The admin flag ``soundless_enabled`` must also be stored ``on`` and
     # every plan's model route must cover soundless (``classbeat.flags.effective``).
     soundless_enabled: bool = False
+    # ADR 0024 (#647): connect MOWL by scanning a QR code with the MOWL phone app. The
+    # environment's switch, off by default until the owner's live scan; the password form stays
+    # either way.
+    mowl_qr_enabled: bool = False
+    # ADR 0025 (#721): Cloudflare Turnstile on sign-in, sign-up, the provider-email step and the
+    # reset request. Off by default (dev, CI, tests); on, it needs the public site key and the
+    # ``turnstile_secret_key`` secret file (web only, never the environment), unless
+    # ``turnstile_fake`` (the e2e stack's local stand-in, no network) is on, which prod refuses.
+    turnstile_enabled: bool = False
+    turnstile_fake: bool = False
+    turnstile_site_key: str | None = None
+    turnstile_secret_key: SecretStr | None = None
+    # ADR 0019 (#771): passkeys, off by default (web only). On, it needs the RP ID, the exact host
+    # (production classbeat.eu, test and beta classbeat.pernemark.se); ``config_passkeys``.
+    passkeys: bool = False
+    webauthn_rp_id: str | None = None
     swedebeat_app_file: Path = Path("/app/swedebeat_app.json")
 
     @classmethod
@@ -360,8 +356,8 @@ class Settings(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         return (
             init_settings,
-            WithoutSecretsSource(env_settings),
-            SecretFilesSettingsSource(settings_cls),
+            WithoutSecretsSource(env_settings, SECRET_FILE_FIELDS),
+            SecretFilesSettingsSource(settings_cls, _read_settings_secret_files),
         )
 
     @field_validator("log_level", mode="before")
@@ -423,6 +419,26 @@ class Settings(BaseSettings):
             )
         return value
 
+    @field_validator("turnstile_site_key")
+    @classmethod
+    def _check_turnstile_site_key(cls, value: str | None) -> str | None:
+        return check_turnstile_site_key(value)
+
+    @field_validator("turnstile_secret_key")
+    @classmethod
+    def _check_turnstile_secret_key(cls, value: SecretStr | None) -> SecretStr | None:
+        return check_turnstile_secret_key(value)  # the empty placeholder becomes None
+
+    @model_validator(mode="after")
+    def _check_turnstile(self) -> "Settings":
+        check_turnstile_settings(self)  # ADR 0025 section 7: no fake or test key in prod
+        return self
+
+    @property
+    def turnstile_hostname(self) -> str:
+        """The host a Turnstile answer must name (ADR 0025 section 4): ``public_base_url``'s."""
+        return urlsplit(self.public_base_url).hostname or ""
+
     def swedebeat_keys(self) -> dict[str, str] | None:
         """``{"key", "iv"}`` for the library's ``Credentials.swedebeat_app``, or ``None``: the
         runtime secret first, else the file a release image holds (read per call; a missing,
@@ -447,21 +463,17 @@ class Settings(BaseSettings):
             raise ValueError("connection_kek_id must match ^kek-[a-z0-9-]{1,28}$")
         return value
 
+    @field_validator("mail_support_address")
+    @classmethod
+    def _check_mail_support_address(cls, value: str) -> str:
+        if SUPPORT_ADDRESS.fullmatch(value) is None:
+            raise ValueError("mail_support_address must be a bare email address")
+        return value
+
     @field_validator("public_base_url")
     @classmethod
     def _check_public_base_url(cls, value: str) -> str:
-        parts = urlsplit(value)
-        if (
-            parts.scheme not in ("http", "https")
-            or not parts.hostname
-            or parts.path not in ("", "/")
-            or parts.query
-            or parts.fragment
-            or parts.username
-            or parts.password
-        ):
-            raise ValueError("public_base_url must be an http(s) origin without a path")
-        return public_origin(value)
+        return check_public_base_url(value)
 
     @model_validator(mode="after")
     def _plain_smtp_only_locally(self) -> "Settings":
@@ -517,6 +529,11 @@ class Settings(BaseSettings):
         return f"{self.public_base_url}/oauth/spotify/callback"
 
     @model_validator(mode="after")
+    def _check_passkeys(self) -> "Settings":
+        check_passkey_settings(self)  # in production a localhost RP ID is refused too
+        return self
+
+    @model_validator(mode="after")
     def _prod_needs_https(self) -> "Settings":
         if self.environment == "prod" and not self.public_base_url.startswith("https://"):
             raise ValueError("public_base_url must be https:// when environment is prod")
@@ -524,23 +541,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _prod_trusts_only_private_proxies(self) -> "Settings":
-        # Section 9: a trusted proxy chooses the client address that rate limits bucket by. In
-        # prod the one trusted peer is the reverse proxy on a private Docker network (swag,
-        # docs/runbooks/vps-deploy.md); a public range (Cloudflare's included: swag restores the
-        # client from CF-Connecting-IP, never this app) would let the open internet pick its own.
-        if self.environment != "prod":
-            return self
-        networks = self.trusted_proxy_networks
-        if not all(net.is_private for net in networks):
-            raise ValueError("trusted_proxies must be private addresses when environment is prod")
-        # #495: exactly one host (/32 or /128), never a range or a list. A range on the proxy
-        # network would let any other container there forge X-Forwarded-For and choose its
-        # rate-limit bucket. Empty (nothing trusted) stays allowed: it fails closed.
-        if len(networks) > 1 or any(net.prefixlen != net.max_prefixlen for net in networks):
-            raise ValueError(
-                "trusted_proxies must be one address (not a range or a list) when environment "
-                "is prod"
-            )
+        if self.environment == "prod":
+            check_prod_trusted_proxies(self.trusted_proxy_networks)  # section 9, #495
         return self
 
     @field_validator("trusted_proxies")
@@ -569,6 +571,13 @@ class Settings(BaseSettings):
         return frozenset(normalize_email(e) for e in self.admin_emails.split(",") if e.strip())
 
     @property
+    def enabled_locales(self) -> frozenset[str]:
+        """``locales`` as a set of two-letter codes, with ``en`` always in; anything else in the
+        list is dropped (the operator's typo never becomes a code)."""
+        codes = {c.strip().lower() for c in self.locales.split(",")}
+        return frozenset({c for c in codes if re.fullmatch(r"[a-z]{2}", c)} | {"en"})
+
+    @property
     def trusted_proxy_networks(self) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
         return parse_networks(self.trusted_proxies)
 
@@ -589,118 +598,8 @@ class Settings(BaseSettings):
         return _with_password(self.maint_database_url, password)
 
 
-def _is_local_host(host: str) -> bool:
-    if host.lower() in PLAIN_SMTP_HOSTS:
-        return True
-    try:
-        return ipaddress.ip_address(host.strip("[]")).is_loopback
-    except ValueError:
-        return False
-
-
-def public_origin(url: str) -> str:
-    """``scheme://host[:port]`` of ``url``, lower case, as a browser sends it in ``Origin``."""
-    parts = urlsplit(url)
-    host = parts.hostname or ""
-    if ":" in host:
-        host = f"[{host}]"
-    default = {"http": 80, "https": 443}.get(parts.scheme.lower())
-    port = f":{parts.port}" if parts.port is not None and parts.port != default else ""
-    return f"{parts.scheme.lower()}://{host.lower()}{port}"
-
-
-def parse_networks(
-    value: str,
-) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-    """Parse a comma-separated list of addresses and CIDR ranges."""
-    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
-    for item in value.split(","):
-        if item.strip():
-            try:
-                networks.append(ipaddress.ip_network(item.strip(), strict=False))
-            except ValueError:
-                raise ValueError("trusted_proxies must list IP addresses or CIDR ranges") from None
-    return tuple(networks)
-
-
 def _with_password(url: SecretStr, password: SecretStr | None) -> URL:
     result = make_url(url.get_secret_value())
     if password is not None:
         result = result.set(password=password.get_secret_value())
     return result
-
-
-class ModelProviderRefused(Exception):
-    """The worker's model-provider settings are not allowed; the message names the rule only."""
-
-
-# The model SDKs read keys, base URLs, organisation and project ids, extra headers and debug
-# logging of request bodies from variables with these prefixes, even with an explicit key and
-# base URL. classbeat passes everything explicitly, so any such variable is a misconfiguration or
-# a leak path (ADR 0012 §2; ADR 0006 §9 named ``ANTHROPIC_LOG`` and ``ANTHROPIC_CUSTOM_HEADERS``).
-# Matched case-insensitively (Windows environment names are). ``SSLKEYLOGFILE`` makes
-# ``ssl.create_default_context()`` write TLS session secrets to a file (enough to decrypt the
-# model key in a capture); the worker's own TLS contexts ignore it
-# (``classbeat.egress.tls_client_context``), and it is refused too in case any other does (#121).
-MODEL_SDK_REFUSED_PREFIXES = ("ANTHROPIC_", "OPENAI_", "DEEPSEEK_")
-MODEL_SDK_REFUSED_ENVIRONMENT = ("SSLKEYLOGFILE",)
-
-
-def model_sdk_environment_problems(environ: Mapping[str, str] | None = None) -> list[str]:
-    """The names (never the values) of the refused model SDK variables that are set, in
-    ``environ`` (the process environment by default), whatever their case."""
-    return sorted(
-        name
-        for name in (os.environ if environ is None else environ)
-        if name.upper().startswith(MODEL_SDK_REFUSED_PREFIXES)
-        or name.upper() in MODEL_SDK_REFUSED_ENVIRONMENT
-    )
-
-
-def worker_model_providers(settings: Settings) -> frozenset[str]:
-    """The model providers the worker can use (ADR 0012 §2): each one whose key file holds a
-    key, DeepSeek only with ``deepseek_enabled`` too. Their hosts, and no other model host, go on
-    the worker's allowlist (``classbeat.egress.worker_allowlist``)."""
-    usable = {provider for provider in MODEL_KEY_FIELDS if settings.model_key(provider) is not None}
-    if not settings.deepseek_enabled:
-        usable.discard("deepseek")
-    return frozenset(usable)
-
-
-def check_worker_model_provider(settings: Settings) -> None:
-    """ADR 0006 §9, ADR 0012 §2: ``anthropic`` needs the ``anthropic_api_key`` file; with a real
-    provider (``anthropic``, or any model key file present) none of the refused model SDK
-    variables may be set; ``fake`` never in prod."""
-    if settings.model_provider == "anthropic" and settings.anthropic_api_key is None:
-        raise ModelProviderRefused(
-            "model_provider is anthropic but the anthropic_api_key secret file is missing or empty"
-        )
-    refused = model_sdk_environment_problems()
-    real = settings.model_provider == "anthropic" or any(
-        settings.model_key(provider) is not None for provider in MODEL_KEY_FIELDS
-    )
-    if real and refused:
-        raise ModelProviderRefused(
-            "a real model provider: the worker must not set " + ", ".join(refused)
-        )
-    if settings.model_provider == "fake" and settings.environment == "prod":
-        raise ModelProviderRefused("model_provider fake is not allowed when environment is prod")
-
-
-def check_worker_has_no_swedebeat_app(settings: Settings) -> None:
-    """Swedebeat's app key is the web app's only (ADR 0015 section 4): no worker job signs in to
-    Swedebeat, so a readable ``swedebeat_app`` file refuses the worker's start."""
-    if settings.swedebeat_app is not None:
-        raise ModelProviderRefused(
-            "the worker must not see the swedebeat_app secret file (web only)"
-        )
-
-
-def check_web_has_no_model_key(settings: Settings) -> None:
-    """The web app never calls a model, so it never holds a model key (ADR 0006 §9, ADR 0012
-    §2): any readable model key file refuses the start."""
-    for provider, field in MODEL_KEY_FIELDS.items():
-        if settings.model_key(provider) is not None:
-            raise ModelProviderRefused(
-                f"the web app must not see the {field} secret file (worker only)"
-            )

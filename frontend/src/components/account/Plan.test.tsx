@@ -23,6 +23,15 @@ describe('the plan refusal sentences', () => {
     )
   })
 
+  it('words the Save and Update cap (#577) with its window, without a body limit too', () => {
+    expect(quotaText(quota({ quota: 'saves', limit: 1, used: 1, window: 'hour' }), 'save')).toBe(
+      'You have saved or updated 1 class in MOWL in the last hour, which is as many as classbeat allows. Try again in an hour.',
+    )
+    expect(quotaText(quota({ quota: 'saves', window: 'day' }), 'save')).toBe(
+      'You have saved to MOWL as many times as classbeat allows in the last 24 hours. Try again tomorrow.',
+    )
+  })
+
   it('words a cost quota without any dollar figure', () => {
     const text = quotaText(quota({ quota: 'cost', limit: 5, used: 5 }))
     expect(text).toContain('for October')
@@ -52,17 +61,17 @@ describe('the plan refusal sentences', () => {
       'Your plan allows classes of up to 30 minutes. Choose a shorter length.',
     )
     expect(quotaText(body({ quota: 'feature', feature: 'races' }))).toBe(
-      'Your plan does not include races. Take them out and try again.',
+      'Your plan does not include races. Take that out and try again.',
     )
     expect(quotaText(body({ quota: 'feature', feature: 'ftp_tests' }))).toContain('FTP tests')
     // Own properties only: inherited names must not reach the sentence as a function's source.
     for (const feature of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
       expect(quotaText(body({ quota: 'feature', feature }))).toBe(
-        'Your plan does not include part of this class. Take it out and try again.',
+        'Your plan does not include part of this class. Take that part out and try again.',
       )
     }
     expect(quotaText(body({ quota: 'feature', feature: '<b>x</b>' }))).toBe(
-      'Your plan does not include part of this class. Take it out and try again.',
+      'Your plan does not include part of this class. Take that part out and try again.',
     )
   })
 

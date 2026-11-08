@@ -13,7 +13,7 @@ from mowl.errors import MowlError
 
 from classbeat.connections import ConnectionFailure
 from classbeat.spotify import CATEGORIES, SENTENCES, sentence, spotify_call
-from classbeat.spotify.errors import QUOTA_THRESHOLD_SECONDS, classify_use
+from classbeat.spotify.errors import QUOTA_THRESHOLD_SECONDS, classify_use, sentence_of
 from spotifycore import FakeSpotify
 from spotifyfake import CLIENT_A, USER_A, USER_B
 from spotifytools import STATUS, Spot
@@ -49,6 +49,14 @@ def test_every_category_has_its_plain_sentence() -> None:
         "Spotify asks to slow down; trying again in about 1 minute."
     )
     assert "Spotify" in sentence("not_found")
+
+
+def test_only_the_waiting_categories_carry_a_count() -> None:
+    assert sentence_of("rate_limited", 90).params == {"count": 2}
+    assert sentence_of("quota_exhausted", 2 * 3600 + 1).params == {"count": 3}
+    assert sentence_of("rate_limited").params == {"count": 1}  # no hint: a minute
+    for category in set(CATEGORIES) - {"rate_limited", "quota_exhausted"}:
+        assert sentence_of(category, 90).params == {}, category
 
 
 def _mowl_error(status: int, message: str, retry_after: str | None = None) -> MowlError:
@@ -224,6 +232,7 @@ async def _use(
     # The status shows the category and its sentence, never a provider message.
     if failed.value.category not in ("rate_limited", "quota_exhausted"):
         assert status["last_error_message"] in (None, sentence(failed.value.category))
+        assert status["last_error_sentence"] in (None, sentence_of(failed.value.category).code)
     return failed.value
 
 

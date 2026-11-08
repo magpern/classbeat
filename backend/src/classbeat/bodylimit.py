@@ -18,15 +18,16 @@ and so is the SSE stream (a GET). WebSocket and lifespan scopes pass through.
 
 The limit is 64 KiB for every route: the largest body any route takes today is the job create's
 input (16 KiB, ``jobs.routes.INPUT_MAX_BYTES``), and the jobs API and the admin area keep their
-own, equal, caps (``jobs.routes.BODY_MAX_BYTES``, ``admin.routes.MAX_BODY_BYTES``) as a second
+own, equal, caps (``jobs.routes.BODY_MAX_BYTES``, ``admin.body_limit.MAX_BODY_BYTES``) as a second
 line. A route that legitimately needs more gets an entry in ``ROUTE_LIMITS`` (exact path to
 bytes) with the reason next to it; there is none. The test suite fails if the table is not empty
 without its entry being documented here.
 
-``/api/admin`` is deferred to ``admin.routes.AdminBodyLimit``: its contract is that the gate runs
-first (a non-admin gets 403, an admin's refusal gets an audit row) and the 413 ``body_too_large``
-or 400 ``body_unreadable`` follows, which needs the app to run. That limiter caps what the admin
-area reads at 64 KiB as well, so an anonymous caller still buffers no more than that.
+``/api/admin`` is deferred to ``admin.body_limit.AdminBodyLimit``: its contract is that the gate
+runs first (a non-admin gets 403, an admin's refusal gets an audit row) and the 413
+``body_too_large`` or 400 ``body_unreadable`` follows, which needs the app to run. That limiter
+caps what the admin area reads at 64 KiB as well, so an anonymous caller still buffers no more
+than that.
 
 A reverse proxy in front of the app needs the same cap (Caddy: ``request_body max_size``; nginx and
 SWAG: ``client_max_body_size``): docs/runbooks/vps-deploy.md, "Request body size".

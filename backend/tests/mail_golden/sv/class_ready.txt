@@ -1,0 +1,13 @@
+Ditt pass är klart
+==================
+
+classbeat har analyserat musiken i ditt pass. Öppna passet för att se resultatet.
+
+Öppna ditt pass:
+https://classbeat.example.test/sv/classes/00000000-0000-4000-8000-000000000000
+
+--
+Du får det här mejlet eftersom classbeat har gjort klart ett pass som du bad om, efter att ha analyserat musiken.
+classbeat: https://classbeat.example.test
+Frågor? Skriv till support@classbeat.eu
+Avsluta prenumerationen på de här mejlen: https://classbeat.example.test/sv/unsubscribe#token=SAMPLE&all=SAMPLE

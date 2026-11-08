@@ -24,5 +24,12 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0016](0016-swedebeat-music.md) | Swedebeat music: "My Swedebeat mix" and Spotify-to-Swedebeat matching (S2) | Proposed |
 | [0017](0017-class-pattern-soft-rules.md) | Class patterns as soft rules: profiles, warnings, evals (#388) | Proposed |
 | [0018](0018-mowl-running-classes.md) | MOWL running classes next to cycling (M8, #373) | Accepted |
-| [0019](0019-passkeys.md) | Passkeys with cross-device sign-in (#311) | Proposed |
+| [0019](0019-passkeys.md) | Passkeys with cross-device sign-in (#311; revised 2026-11-05, amends ADR 0003) | Proposed |
 | [0020](0020-image-only-install.md) | Image-only install: db image, release assets, install checks (#519) | Proposed |
+| [0021](0021-use-part-of-a-song.md) | Use part of a song: trim an intro or outro, start mid-track (#580); blocked, no source can play part of a song | Proposed |
+| [0022](0022-account-emails.md) | Account emails: registry, branded multipart mail, fire-and-forget delivery, preferences (ME, #649) | Accepted, subject to review |
+| [0023](0023-multilingual.md) | Multilingual support: English, Swedish and Danish UI and mail; agent-translated and agent-reviewed; classes stay English (ML, #657) | Accepted, subject to review |
+| [0024](0024-mowl-qr-connect.md) | Connect MOWL by scanning a QR code: anonymous ticket, image from our origin, TLS-only MQTT on 8883, per-session wait (#647) | Proposed |
+| [0025](0025-turnstile.md) | Cloudflare Turnstile on sign-in, sign-up, the provider-email step and the reset request: order before any account lookup, fail closed, web-only egress (#721) | Proposed |
+| [0026](0026-scaling-music-analysis.md) | Scaling music analysis: cap, measure and cache now; more workers on one box; a separate analysis host; autoscaling only on a measured trigger (#733) | Proposed |
+| [0027](0027-language-prefixed-urls.md) | Language-prefixed URLs `/en`, `/sv`, `/da` for the whole site: client redirect from old URLs, server head tags and sitemap, admin unprefixed (#719) | Accepted |

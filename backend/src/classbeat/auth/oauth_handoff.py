@@ -8,13 +8,16 @@ to. The confirmation link creates the account only in the browser that holds the
 
 import hmac
 from datetime import timedelta
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
 
+from classbeat.auth import locale as account_locale
 from classbeat.auth import mails
 from classbeat.auth.accounts import find_user
+from classbeat.auth.captcha import require_captcha
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.cookies import PENDING_COOKIE, clear_pending_cookie
 from classbeat.auth.deps import request_ip
@@ -26,6 +29,7 @@ from classbeat.auth.ratelimit import SIGNUP_ADDRESS, SIGNUP_IP, Bucket, password
 from classbeat.auth.tables import pending_signups
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
+from classbeat.emails.notices import Notice, queue
 from classbeat.mail import MailMessage, send_logged
 
 router = APIRouter(prefix="/api/auth/oauth", tags=["auth"])
@@ -40,10 +44,14 @@ class PendingState(BaseModel):
 
 
 class PendingEmailIn(BaseModel):
-    """Only an address. Any other field a client sends (provider, subject, invite) is ignored:
-    pydantic drops unknown keys and nothing reads them."""
+    """An address and, optionally, the app's language (ADR 0023 section 2; any value is accepted,
+    one that is not an offered code is ignored). Any other field a client sends (provider,
+    subject, invite) is ignored: pydantic drops unknown keys and nothing reads them."""
 
     email: EmailAddress
+    locale: Any = None
+    # The Turnstile token (ADR 0025 section 2): any value; a bad one is captcha_failed, never 422.
+    captcha_token: Any = None
 
 
 class Accepted(BaseModel):
@@ -61,6 +69,7 @@ def _browser_row(cookie: str | None):
         pending_signups.c.id,
         pending_signups.c.provider,
         pending_signups.c.email,
+        pending_signups.c.locale,
     ).where(
         pending_signups.c.browser_hash == token_hash(cookie),
         pending_signups.c.provider.is_not(None),
@@ -85,6 +94,8 @@ async def pending_state(request: Request) -> PendingState:
 async def submit_email(
     body: PendingEmailIn, request: Request, background: BackgroundTasks
 ) -> Accepted:
+    # ADR 0025 section 2: before the buckets, the pending cookie's row, the account lookup and mail.
+    await require_captcha(request, "signup_email", body.captcha_token)
     settings = request.app.state.settings
     normalized = normalize_email(body.email)
     await reserve(
@@ -101,9 +112,15 @@ async def submit_email(
             pass  # already filled in: same answer, nothing changes
         elif await find_user(db, body.email) is not None:
             # The row keeps no email or token and simply expires at its 15 minutes.
-            message = mails.account_exists(settings, body.email)
+            message = mails.account_exists(
+                settings, body.email, account_locale.for_request(request, body.locale)
+            )
         else:
             token = new_token()
+            # The request's language (the row's when the request names none) goes in the same
+            # update, and ``confirm_provider_signup`` copies it to the new account.
+            locale = account_locale.for_new_account(request, body.locale, row.locale)
+            mail_locale = account_locale.chosen(request, body.locale, row.locale)
             filled = await db.execute(
                 update(pending_signups)
                 .where(pending_signups.c.id == row.id, pending_signups.c.email.is_(None))
@@ -111,13 +128,14 @@ async def submit_email(
                     email=body.email,
                     email_normalized=normalized,
                     token_hash=token_hash(token),
+                    locale=locale,
                     expires_at=func.now() + CONFIRMATION_LIFETIME,
                 )
                 .returning(pending_signups.c.id)
             )
             if filled.first() is not None:
                 message = mails.provider_signup_confirmation(
-                    settings, body.email, row.provider, token
+                    settings, body.email, row.provider, token, mail_locale
                 )
     if message is not None:
         background.add_task(send_logged, mailer(request), message)
@@ -160,6 +178,7 @@ async def confirm_provider_signup(
                         pending_signups.c.provider,
                         pending_signups.c.subject,
                         pending_signups.c.invite_id,
+                        pending_signups.c.locale,
                     )
                 )
             ).first()
@@ -172,6 +191,7 @@ async def confirm_provider_signup(
                 email=pending.email,
                 provider=pending.provider,
                 subject=pending.subject,
+                locale=pending.locale,
             )
             await db.execute(
                 delete(pending_signups).where(
@@ -183,6 +203,9 @@ async def confirm_provider_signup(
         status = 400 if exc.code == "invalid_token" else 409
         raise _refuse(status, exc.code) from None
     clear_pending_cookie(response)
-    background.add_task(
-        send_logged, mailer(request), mails.identity_linked_notice(pending.email, pending.provider)
+    # An account was created, not a method added: the welcome names the provider (ADR 0022 s.7).
+    queue(
+        background,
+        request,
+        Notice("welcome", pending.email, {"provider": pending.provider}, locale=pending.locale),
     )

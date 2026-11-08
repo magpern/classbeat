@@ -1,13 +1,8 @@
 import { Info, StickyNote } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { dismissRule, showRuleAgain, type RuleHit } from '../../api/classes'
-import {
-  EXPLAINED_REASON,
-  MAX_NOTES,
-  NOTES_USE_CURRENT_RULES,
-  RULE_COPY,
-  valueText,
-} from '../../lib/patternNotes'
+import { useT } from '../../i18n/I18n'
+import { MAX_NOTES, RULE_COPY, valueText } from '../../lib/patternNotes'
 
 const ACTION =
   'inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent px-3 text-[0.9375rem] text-text underline underline-offset-2 hover:bg-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
@@ -33,6 +28,7 @@ export function PatternNotes({
   hits: RuleHit[]
   notesUseCurrentRules: boolean
 }) {
+  const t = useT()
   // Rule ids dismissed on this page (kept across versions of the class), and those being sent.
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set())
@@ -64,8 +60,8 @@ export function PatternNotes({
         flip(rule, !dismiss)
         setFailure(
           dismiss
-            ? 'The note could not be dismissed. Try again in a moment.'
-            : 'The note could not be shown again. Try again in a moment.',
+            ? t('class.notes.dismissFailed')
+            : t('class.notes.showAgainFailed'),
         )
       })
       .finally(() => {
@@ -87,12 +83,12 @@ export function PatternNotes({
       <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-4 text-[0.9375rem] text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
         <StickyNote aria-hidden="true" size={16} />
         <span>
-          Pattern notes <span className="tabular-nums">({notes.length})</span>
+          {t('class.notes.title')} <span className="tabular-nums">({notes.length})</span>
         </span>
       </summary>
       <div className="flex flex-col gap-2 px-4 pb-3">
         <p className="m-0 text-[0.8125rem] text-muted">
-          What is usual in classes of this kind. Your brief comes first; these never block anything.
+          {t('class.notes.intro')}
         </p>
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {notes.map((hit) => {
@@ -105,26 +101,26 @@ export function PatternNotes({
                   className="flex flex-wrap items-center gap-x-3 text-[0.9375rem] text-muted"
                   data-testid="pattern-note-hidden"
                 >
-                  <span>Note hidden.</span>
+                  <span>{t('class.notes.hidden')}</span>
                   <button
                     ref={remember(hit.rule)}
                     type="button"
                     className={ACTION}
-                    aria-label={`Show again: ${copy}`}
+                    aria-label={t('class.notes.showAgainAria', { note: copy ?? '' })}
                     onClick={() => {
                       change(hit.rule, false)
                     }}
                   >
-                    Show again
+                    {t('class.notes.showAgain')}
                   </button>
                 </li>
               )
             }
             const label = hit.explainedByBrief
-              ? 'Matches your brief'
+              ? t('class.notes.matches')
               : hit.severity === 'warn'
-                ? 'Worth a look'
-                : 'Good to know'
+                ? t('class.notes.worth')
+                : t('class.notes.good')
             return (
               <li
                 key={hit.rule}
@@ -141,7 +137,7 @@ export function PatternNotes({
                     </span>
                     <span className="text-[0.8125rem] text-muted">{valueText(hit)}</span>
                     {hit.explainedByBrief ? (
-                      <span className="text-[0.8125rem] text-muted">{EXPLAINED_REASON}</span>
+                      <span className="text-[0.8125rem] text-muted">{t('class.notes.explained')}</span>
                     ) : null}
                   </span>
                 </span>
@@ -149,12 +145,12 @@ export function PatternNotes({
                   ref={remember(hit.rule)}
                   type="button"
                   className={ACTION}
-                  aria-label={`Dismiss: ${copy}`}
+                  aria-label={t('class.notes.dismissAria', { note: copy ?? '' })}
                   onClick={() => {
                     change(hit.rule, true)
                   }}
                 >
-                  Dismiss
+                  {t('class.notes.dismiss')}
                 </button>
               </li>
             )
@@ -162,7 +158,7 @@ export function PatternNotes({
         </ul>
         {notesUseCurrentRules ? (
           <p className="m-0 text-[0.8125rem] text-muted" data-testid="notes-current-rules">
-            {NOTES_USE_CURRENT_RULES}
+            {t('class.notes.currentRules')}
           </p>
         ) : null}
         <p

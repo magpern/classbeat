@@ -11,17 +11,28 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth.admin_routes import router as admin_router
+from classbeat.auth.captcha import build_verifier
 from classbeat.auth.email_routes import router as email_router
 from classbeat.auth.identity_routes import router as identity_router
 from classbeat.auth.keys import Keys
+from classbeat.auth.locale_routes import router as locale_router
+from classbeat.auth.mail_routes import router as mail_router
 from classbeat.auth.mfa_routes import router as mfa_router
-from classbeat.auth.middleware import AuthMiddleware
+from classbeat.auth.middleware import (
+    AuthMiddleware,
+    database_error_response,
+    rate_limited_response,
+)
 from classbeat.auth.notices import register_security_notifier
 from classbeat.auth.notifier import MailNotifier
 from classbeat.auth.oauth_client import OAuthRuntime
 from classbeat.auth.oauth_handoff import router as handoff_router
 from classbeat.auth.oauth_providers import enabled_providers
 from classbeat.auth.oauth_routes import router as oauth_router
+from classbeat.auth.passkey_reauth_routes import router as passkey_reauth_router
+from classbeat.auth.passkey_register_routes import router as passkey_register_router
+from classbeat.auth.passkey_routes import router as passkey_router
+from classbeat.auth.passkey_signin_routes import router as passkey_signin_router
 from classbeat.auth.passwords import PasswordHashBusy, PasswordHasher
 from classbeat.auth.ratelimit import RateLimited, RateLimiter
 from classbeat.auth.reset_routes import router as reset_router
@@ -29,7 +40,6 @@ from classbeat.auth.routes import router
 from classbeat.auth.signin_routes import router as signin_router
 from classbeat.auth.signup_routes import router as signup_router
 from classbeat.config import Settings
-from classbeat.log import describe_database_error
 from classbeat.mail import Mailer
 
 logger = logging.getLogger(__name__)
@@ -37,7 +47,13 @@ logger = logging.getLogger(__name__)
 # Routes whose request bodies can hold a password or token, and the jobs API (its bodies are the
 # user's own text; its routes validate them themselves, this is the backstop, #115 item 2), and
 # redeem, whose body is a code (ADR 0011 section 2).
-SECRET_INPUT_PATHS = ("/api/auth/", "/api/connections", "/api/jobs", "/api/account/redeem")
+SECRET_INPUT_PATHS = (
+    "/api/auth/",
+    "/api/connections",
+    "/api/jobs",
+    "/api/account/redeem",
+    "/api/mail/unsubscribe",
+)
 
 
 def install(app: FastAPI) -> None:
@@ -46,27 +62,34 @@ def install(app: FastAPI) -> None:
     for flow in (signup_router, signin_router, reset_router, email_router):
         app.include_router(flow)
     app.include_router(mfa_router)
+    app.include_router(mail_router)
+    app.include_router(locale_router)
     # OAuth: the callback is not under /api and must precede the SPA catch-all (web.create_app
     # installs auth first). "pending" routes before the "{provider}" ones.
     for oauth in (handoff_router, oauth_router, identity_router):
         app.include_router(oauth)
+    # ADR 0019 (#772, #773, #774): passkeys. Register, sign-in and re-auth before ``/{passkey_id}``.
+    for passkeys in (
+        passkey_register_router,
+        passkey_signin_router,
+        passkey_reauth_router,
+        passkey_router,
+    ):
+        app.include_router(passkeys)
     app.include_router(admin_router)
     app.add_middleware(AuthMiddleware)
 
     @app.exception_handler(RateLimited)
     async def rate_limited(_: Request, exc: Exception) -> JSONResponse:
-        retry_after = exc.retry_after if isinstance(exc, RateLimited) else 60
-        return JSONResponse(
-            {"detail": {"reason": "rate_limited"}},
-            status_code=429,
-            headers={"Retry-After": str(retry_after)},
-        )
+        return rate_limited_response(exc.retry_after if isinstance(exc, RateLimited) else 60)
 
     @app.exception_handler(DBAPIError)
     async def database_error(_: Request, exc: Exception) -> JSONResponse:
-        # Class and SQLSTATE only: the message carries row values (emails, hashes).
-        text = describe_database_error(exc) if isinstance(exc, DBAPIError) else "database error"
-        logger.error("database error: %s", text)
+        # Class and SQLSTATE only: the message carries row values (emails, hashes). The auth
+        # middleware's checks run outside this handler and use the same response.
+        if isinstance(exc, DBAPIError):
+            return database_error_response(exc)
+        logger.error("database error")
         return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
 
     @app.exception_handler(RequestValidationError)
@@ -101,6 +124,14 @@ def attach_state(
     app.state.password_hasher = PasswordHasher(settings.password_hash_workers)
     app.state.mailer = Mailer(settings)
     app.state.oauth = OAuthRuntime(enabled_providers(settings))
+    # Turnstile on the anonymous auth forms (ADR 0025): None while it is off. Off in prod is the
+    # owner's emergency degrade (section 5), so it is said once at start, loudly.
+    app.state.captcha = build_verifier(settings)
+    if settings.environment == "prod" and not settings.turnstile_enabled:
+        logger.error(
+            "Turnstile is off (CLASSBEAT_TURNSTILE_ENABLED is false): sign-in, sign-up and reset "
+            "requests are not checked for automation"
+        )
     # httpx logs each request URL at INFO; the OAuth ones are not worth a log line.
     for noisy in ("httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
@@ -108,7 +139,7 @@ def attach_state(
     # is process-global (``auth.notices``): the last app created in a process wins, and
     # ``detach_state`` clears it. Fine for one app per process; tests that build several apps
     # must not rely on which mailer a notice goes through.
-    register_security_notifier(MailNotifier(app.state.mailer))
+    register_security_notifier(MailNotifier(app.state.mailer, settings, factory))
 
 
 def detach_state(app: FastAPI) -> None:

@@ -10,6 +10,14 @@
 # run time from Docker secret files.
 FROM postgres:17.11
 
+# Trivy fails the image scan on zlib1g (HIGH CVE-2026-76844, CVE-2026-85091; fixed in 1.3.1-1+deb13u1)
+# and the pinned postgres:17.11 still ships the old one. Upgrade only that package. Remove this
+# block when the postgres base image is bumped to one that carries the fix.
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY init /docker-entrypoint-initdb.d
 COPY queue /queue
 COPY maint /maint

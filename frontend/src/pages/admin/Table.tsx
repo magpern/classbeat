@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { shortDateTime } from '../../i18n/format'
 
 // A plain data table in the admin pages' style (the same classes as Users and Codes). Every
 // cell is rendered as React text; server values are never HTML.
@@ -70,8 +71,5 @@ export function Figure({ label, value }: { label: string; value: ReactNode }) {
 
 export function when(value: string | null): string {
   if (value === null) return ''
-  const at = new Date(value)
-  return Number.isNaN(at.getTime())
-    ? value
-    : at.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return shortDateTime(value)
 }

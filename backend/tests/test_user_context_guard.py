@@ -324,10 +324,12 @@ def test_a_handler_cannot_pass_a_raw_user_id_to_a_session() -> None:
 def test_operator_contexts_is_reached_only_by_the_cli() -> None:
     """``auth.operator_contexts`` builds a context per user (ADR 0004 section 1): it is for
     ``keys rewrap`` and ``keys wipe`` only. Its definition, the lazy export table of
-    ``classbeat.auth`` and ``keys_cli`` are the only sources that may name it."""
+    ``classbeat.auth`` (its ``__init__`` and ``lazy``) and ``keys_cli`` are the only sources that
+    may name it."""
     allowed = {
         "classbeat/auth/deps.py",
         "classbeat/auth/__init__.py",
+        "classbeat/auth/lazy.py",
         "classbeat/auth/operator.py",  # documents it
         "classbeat/keys_cli.py",
     }
@@ -350,6 +352,36 @@ def test_purge_contexts_is_reached_only_by_the_purge() -> None:
         if "purge_contexts" in path.read_text("utf-8")
     )
     assert users == ["classbeat/auth/deps.py", "classbeat/auth/purge.py"]
+
+
+def test_security_log_context_is_reached_only_by_the_security_log() -> None:
+    """``auth.security_log_context`` builds a bare context for a resolved session's user, to write
+    that request's ``security_log`` row (an owned table; #632). Only its definition and the
+    security log may name it; it is not exported from ``classbeat.auth``."""
+    users = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in (SRC / "classbeat").rglob("*.py")
+        if "security_log_context" in path.read_text("utf-8")
+    )
+    assert users == ["classbeat/auth/deps.py", "classbeat/auth/securitylog.py"]
+
+
+def test_mail_handoff_context_is_reached_only_by_the_class_ready_mail() -> None:
+    """``auth.mail_handoff_context`` builds a bare context for the owner of a "class ready"
+    hand-off row the web process took, to check that the class is still theirs (ME5, #656).
+    Only its definition, the auth package's export (its ``__init__`` and the ``lazy`` table) and
+    the hand-off consumer may name it."""
+    users = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in (SRC / "classbeat").rglob("*.py")
+        if "mail_handoff_context" in path.read_text("utf-8")
+    )
+    assert users == [
+        "classbeat/auth/__init__.py",
+        "classbeat/auth/deps.py",
+        "classbeat/auth/lazy.py",
+        "classbeat/emails/handoff.py",
+    ]
 
 
 # ``classbeat.jobs.issuer.owner_context`` builds a bare context for any UUID (#109 item 6). Only the

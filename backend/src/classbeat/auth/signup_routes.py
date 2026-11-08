@@ -10,6 +10,7 @@ them (``oauth_handoff``); in any other browser the row and its token stay untouc
 """
 
 from datetime import timedelta
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
@@ -18,8 +19,10 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat.auth import locale as account_locale
 from classbeat.auth import mails
 from classbeat.auth.accounts import create_user, find_user, use_invite
+from classbeat.auth.captcha import require_captcha
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.deps import request_ip
 from classbeat.auth.events import record_event
@@ -31,6 +34,7 @@ from classbeat.auth.ratelimit import SIGN_IN_IP, SIGNUP_ADDRESS, SIGNUP_IP, Buck
 from classbeat.auth.tables import invites, pending_signups
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
+from classbeat.emails.notices import Notice, queue
 from classbeat.flags import effective as flags
 from classbeat.mail import MailMessage, send_logged
 
@@ -44,6 +48,11 @@ class SignUpIn(BaseModel):
     email: EmailAddress
     password: str = Field(max_length=FIELD_MAX)
     invite_code: str | None = Field(default=None, max_length=FIELD_MAX)
+    # The app's resolved language (ADR 0023 section 2). Any value is accepted here: one that is not
+    # an offered code is ignored, never refused and never echoed.
+    locale: Any = None
+    # The Turnstile token (ADR 0025 section 2): any value; a bad one is captcha_failed, never 422.
+    captcha_token: Any = None
 
 
 class ConfirmIn(BaseModel):
@@ -86,6 +95,9 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
     except PasswordRuleError:
         raise refuse(400, "password_rule") from None
     normalized = normalize_email(body.email)
+    # ADR 0025 section 2: after the checks of the body alone, before the buckets, the sign-up mode,
+    # the invite, argon2, the account lookup and the mail.
+    await require_captcha(request, "signup", body.captcha_token)
     # Limited per normalized address and per IP; every request counts, known address or not.
     await reserve(
         request,
@@ -103,10 +115,12 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
         if invite_id is None:
             raise refuse(400, "invalid_invite")  # its own error (section 5)
     password_hash = await request.app.state.password_hasher.hash(password)  # both branches
+    locale = account_locale.for_new_account(request, body.locale)
+    mail_locale = account_locale.for_request(request, body.locale)
     message: MailMessage
     async with system_session(factory(request)) as db:
         if await find_user(db, body.email) is not None:
-            message = mails.account_exists(settings, body.email)  # nothing is stored
+            message = mails.account_exists(settings, body.email, mail_locale)  # nothing is stored
         else:
             token = new_token()
             await db.execute(
@@ -116,10 +130,11 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
                     email_normalized=normalized,
                     password_hash=password_hash,
                     invite_id=invite_id,
+                    locale=locale,
                     expires_at=func.now() + CONFIRMATION_LIFETIME,
                 )
             )
-            message = mails.signup_confirmation(settings, body.email, token)
+            message = mails.signup_confirmation(settings, body.email, token, mail_locale)
     background.add_task(send_logged, mailer(request), message)
     return Accepted()
 
@@ -178,14 +193,16 @@ async def confirm_sign_up(
     await attempt.succeed()
     try:
         async with system_session(factory(request)) as db:
-            await _create_account(db, digest, ip)
+            email = await _create_account(db, digest, ip)
     except _Refused as exc:
         raise refuse(exc.status, exc.reason) from None
+    queue(background, request, Notice("welcome", email))  # committed: one welcome
     return Created()
 
 
-async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> None:
-    """One transaction: consume the pending row, consume the invite, create the user."""
+async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> str:
+    """One transaction: consume the pending row, consume the invite, create the user. Returns
+    the new account's address."""
     pending = (
         await db.execute(
             delete(pending_signups)
@@ -197,6 +214,7 @@ async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> None:
                 pending_signups.c.email_normalized,
                 pending_signups.c.password_hash,
                 pending_signups.c.invite_id,
+                pending_signups.c.locale,
             )
         )
     ).first()
@@ -207,7 +225,9 @@ async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> None:
     created = None
     try:
         async with db.begin_nested():
-            created = await create_user(db, pending.email, password_hash=pending.password_hash)
+            created = await create_user(
+                db, pending.email, password_hash=pending.password_hash, locale=pending.locale
+            )
     except IntegrityError:
         pass  # never logged or chained: its DETAIL can hold the address
     if created is None:
@@ -222,3 +242,4 @@ async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> None:
         )
     )
     await record_event(db, "signup_confirmed", user_id=created, ip=ip)
+    return pending.email
