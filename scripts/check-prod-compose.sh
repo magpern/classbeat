@@ -37,6 +37,9 @@
 # 6b. PROD_CHECK_SWAG_CONF=/path/to/the/real/file (runbook sections 7 and 9): the same rules and
 #    `nginx -t` on the owner's live swag file, in either mode (with DNS only, the Cloudflare include
 #    and real_ip_header may both be absent);
+# 4e. in an install folder: with Turnstile on in the real render (the default since #792), TURNSTILE_SITE_KEY
+#    must be set and secrets/turnstile_secret_key must not be empty (size only, never read), or web would
+#    refuse to start; TURNSTILE_ENABLED=false skips it (#798, runbook sections 5b and 11);
 # and a self-test for 4, 4b, 4c, 4d, 5 and 6 as for 2. On the server: run it in /opt/classbeat after writing
 # .env (runbook section 9).
 #
@@ -102,7 +105,7 @@ cd "$root"
 # sourced into this shell, in the order the checks always ran, and holds one responsibility (its first
 # lines say which). They sit beside this script: a checkout's scripts/ and the install folder alike
 # (release-assets.sh ships them as assets), so the script alone, without them, is refused here.
-parts=(rollback setup rules secrets selftest-compose selftest-yaml owner secretfiles runbook
+parts=(rollback setup rules secrets selftest-compose selftest-yaml owner secretfiles turnstile runbook
   site site-selftest probe)
 for p in "${parts[@]}"; do
   [[ -f "$here/check-prod-compose-$p.bash" ]] \
@@ -128,6 +131,8 @@ fi
 source "$here/check-prod-compose-owner.bash"
 # shellcheck source=check-prod-compose-secretfiles.bash
 source "$here/check-prod-compose-secretfiles.bash"
+# shellcheck source=check-prod-compose-turnstile.bash
+source "$here/check-prod-compose-turnstile.bash"
 # shellcheck source=check-prod-compose-runbook.bash
 source "$here/check-prod-compose-runbook.bash"
 # shellcheck source=check-prod-compose-site.bash

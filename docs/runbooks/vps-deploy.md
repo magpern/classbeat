@@ -64,7 +64,7 @@ V=X.Y.Z                                           # the release, without the v
 for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml check-prod-compose.sh \
   check-prod-compose-rollback.bash check-prod-compose-setup.bash check-prod-compose-rules.bash check-prod-compose-secrets.bash \
   check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-owner.bash check-prod-compose-secretfiles.bash \
-  check-prod-compose-runbook.bash check-prod-compose-site.bash check-prod-compose-site-selftest.bash check-prod-compose-probe.bash \
+  check-prod-compose-turnstile.bash check-prod-compose-runbook.bash check-prod-compose-site.bash check-prod-compose-site-selftest.bash check-prod-compose-probe.bash \
   swag-classbeat.subdomain.conf prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
   curl --proto '=https' --tlsv1.2 -fsSLO "https://github.com/magpern/classbeat/releases/download/v$V/$f"
 done
@@ -331,7 +331,8 @@ section is no longer optional). Everything below is the owner's; agents do not t
    the container. Never use Cloudflare's dummy test keys in production: web refuses to start.
 3. **Enable.** A release that carries the default-on change needs nothing more once steps 1 and 2
    are done: `docker compose up -d web`. Web refuses to start when the site key is missing or the
-   secret file is empty. A release older than that one has the widget (PR #731) but a default of
+   secret file is empty. `./check-prod-compose.sh` (section 9) refuses the same before `up`
+   (size test only, the file is never read) unless `TURNSTILE_ENABLED=false`. A release older than that one has the widget (PR #731) but a default of
    off: set `TURNSTILE_ENABLED=true` in `.env` there. A release older than #731 has the backend check
    but no widget, so enabling it makes every sign-in, sign-up, provider-email and reset request fail
    with `captcha_failed`. With `TURNSTILE_ENABLED=false` web logs an `ERROR` at start and a `WARNING`
@@ -727,6 +728,8 @@ Amendment 2): before `up`, either have the Cloudflare widget, `TURNSTILE_SITE_KE
 key in `secrets/turnstile_secret_key` (section 5b), or put `TURNSTILE_ENABLED=false` in `.env`.
 Otherwise `web` refuses to start (the `touch` line below only creates an empty secret file).** Remove
 the `false` again once the widget and keys exist.
+The `./check-prod-compose.sh` run below fails with section 5b's pointer when Turnstile is on and the
+site key or the secret file is empty, so a forgotten step shows up before `up`.
 
 ```bash
 cd /opt/classbeat
@@ -737,7 +740,7 @@ rm -rf "staging-$NEW" && mkdir "staging-$NEW"
 for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml check-prod-compose.sh \
   check-prod-compose-rollback.bash check-prod-compose-setup.bash check-prod-compose-rules.bash check-prod-compose-secrets.bash \
   check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-owner.bash check-prod-compose-secretfiles.bash \
-  check-prod-compose-runbook.bash check-prod-compose-site.bash check-prod-compose-site-selftest.bash check-prod-compose-probe.bash \
+  check-prod-compose-turnstile.bash check-prod-compose-runbook.bash check-prod-compose-site.bash check-prod-compose-site-selftest.bash check-prod-compose-probe.bash \
   swag-classbeat.subdomain.conf prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
   curl --proto '=https' --tlsv1.2 -fsSLo "staging-$NEW/$f" "https://github.com/magpern/classbeat/releases/download/v$NEW/$f"
 done
