@@ -560,6 +560,28 @@ async def test_the_banner_is_stored_as_text_and_its_text_is_not_in_the_audit_row
     assert (await put(actor, "banner", {"text": "x" * 280, "level": "info"})).status_code == 200
 
 
+async def test_clearing_the_banner_removes_it_from_the_public_endpoint_and_is_audited(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    """#823: ``DELETE /api/admin/settings/banner`` is how an admin removes a banner: the public
+    endpoint answers ``banner: null`` at once (no cache), the admin view shows nothing stored,
+    and the audit row holds the key only, no text."""
+    actor = await stepped_admin(env, make_actor)
+    assert (
+        await put(actor, "banner", {"text": "Back at nine", "level": "info"})
+    ).status_code == 200
+    browser = Browser(env)
+    assert (await browser.get(PUBLIC)).json()["banner"] == {"text": "Back at nine", "level": "info"}
+    cleared = await actor.call("DELETE", f"{SETTINGS}/banner", None)
+    assert cleared.status_code == 200
+    assert (cleared.json()["stored"], cleared.json()["effective"]) == (None, None)
+    public = await browser.get(PUBLIC)
+    assert (public.json()["banner"], public.headers["cache-control"]) == (None, "no-store")
+    [row] = [r for r in rows_of(superuser, actor.user_id) if r.action == "setting.clear"]
+    assert (row.outcome, row.target_kind, row.target_id) == ("ok", "setting", "banner")
+    assert "Back at nine" not in str(row.params)
+
+
 @pytest.mark.parametrize(
     ("key", "value", "why"),
     [

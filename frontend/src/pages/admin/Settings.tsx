@@ -7,17 +7,17 @@ import {
   clearFlag,
   getSettings,
   setFlag,
-  type BannerValue,
   type Flag,
   type FlagKey,
   type SettingsView,
   type Trial,
 } from '../../api/adminSettings'
-import { SelectField, TextAreaField } from '../../components/classes/fields'
+import { SelectField } from '../../components/classes/fields'
 import { Field, Notice, Section, useAction } from '../../components/forms'
 import { Button } from '../../components/ui/button'
 import { Chip } from '../../components/ui/chip'
 import { Switch } from '../../components/ui/switch'
+import { BannerForm } from './BannerForm'
 import { PlanLimits } from './PlanLimits'
 import { isReason, useAdminWrite, useMfaRequired } from './StepUp'
 import { SectionTitle, when } from './Table'
@@ -156,8 +156,8 @@ function FlagCard({ item, view, onChanged }: { item: Flag; view: SettingsView; o
       {key === 'song_picking' ? <SongForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
       {key === 'swedebeat_enabled' ? <SwedebeatForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
       {key === 'trial' ? <TrialForm item={item} view={view} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
-      {key === 'banner' ? <BannerForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
-      {item.stored !== null ? (
+      {key === 'banner' ? <BannerForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} onRemove={() => { save(() => clearFlag(key)) }} /> : null}
+      {item.stored !== null && key !== 'banner' ? (
         <Button
           className="mt-2"
           variant="ghost"
@@ -302,39 +302,6 @@ function TrialForm({ item, view, busy, onSave }: { item: Flag; view: SettingsVie
         Save
       </Button>
       {forbidden ? <Reason id="reason-trials-off">{REASONS.trialsOff}</Reason> : <Reason id="reason-trial-plan">{REASONS.trialPlan}</Reason>}
-    </form>
-  )
-}
-
-function BannerForm({ item, busy, onSave }: { item: Flag; busy: boolean; onSave: (v: BannerValue) => void }) {
-  const stored = asBanner(item.stored)
-  const [words, setWords] = useState(stored?.text ?? '')
-  const [level, setLevel] = useState(stored?.level ?? 'info')
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    onSave({ text: words, level })
-  }
-  return (
-    <form onSubmit={submit} aria-label="Change the banner" className="flex flex-col gap-2">
-      <TextAreaField
-        label="Banner text"
-        hint="Shown on every page as plain text, at most 280 characters."
-        maxLength={280}
-        required
-        value={words}
-        onChange={(e) => {
-          setWords(e.target.value)
-        }}
-      />
-      <div className="flex flex-wrap items-end gap-2">
-        <SelectField label="Banner level" value={level} onChange={(e) => { setLevel(e.target.value) }}>
-          <option value="info">Information</option>
-          <option value="warning">Warning</option>
-        </SelectField>
-        <Button type="submit" disabled={busy}>
-          Save
-        </Button>
-      </div>
     </form>
   )
 }
