@@ -1,8 +1,10 @@
 """The sign-in ceremony's options and the assertion check through py_webauthn (ADR 0019 sections
 2, 5 and 10, #773). CPU only: no database, network or request.
 
-The options are the same for everyone: no ``allowCredentials`` (discoverable credentials), so a
-start reveals no account; user verification required.
+The sign-in options are the same for everyone: no ``allowCredentials`` (discoverable credentials),
+so a start reveals no account. A re-auth (#774) names the signed-in user's own credentials, a hint
+to the browser only: the finish looks the credential up with the session's user. User verification
+is required either way.
 
 ``verify_assertion`` first parses the response and checks, in this order, what section 10 names a
 reason category for (the client data type, the challenge, the origin, the RP ID hash, the UP and
@@ -17,7 +19,7 @@ ids and challenges) and never a chained cause.
 
 import hashlib
 import hmac
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -33,6 +35,7 @@ from webauthn.helpers.options_to_json_dict import options_to_json_dict
 from webauthn.helpers.structs import (
     ClientDataType,
     CredentialDeviceType,
+    PublicKeyCredentialDescriptor,
     UserVerificationRequirement,
 )
 
@@ -70,13 +73,16 @@ def from_b64url(value: str) -> bytes | None:
         return None
 
 
-def authentication_options(rp: RelyingParty, *, challenge: bytes) -> dict[str, Any]:
-    """The ``publicKey`` options of ``navigator.credentials.get`` as JSON (section 5)."""
+def authentication_options(
+    rp: RelyingParty, *, challenge: bytes, allow: Sequence[bytes] = ()
+) -> dict[str, Any]:
+    """The ``publicKey`` options of ``navigator.credentials.get`` as JSON: ``allow`` empty for a
+    sign-in (section 5), the user's own credential ids for a re-auth (section 8)."""
     options = generate_authentication_options(
         rp_id=rp.rp_id,
         challenge=challenge,
         timeout=CHALLENGE_SECONDS * 1000,
-        allow_credentials=[],
+        allow_credentials=[PublicKeyCredentialDescriptor(id=value) for value in allow],
         user_verification=UserVerificationRequirement.REQUIRED,
     )
     return options_to_json_dict(options)

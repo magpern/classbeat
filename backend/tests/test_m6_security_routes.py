@@ -102,6 +102,9 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     # ADR 0019 (#773): username-less sign-in, anonymous like the password form.
     ("POST", "/api/auth/passkeys/signin/start"): "public",
     ("POST", "/api/auth/passkeys/signin/finish"): "public",
+    # ADR 0019 (#774): re-auth, bound to the caller's session and user.
+    ("POST", "/api/auth/passkeys/reauth/start"): "session",
+    ("POST", "/api/auth/passkeys/reauth/finish"): "session",
     ("PATCH", "/api/auth/passkeys/{passkey_id}"): "owned",
     ("DELETE", "/api/auth/passkeys/{passkey_id}"): "owned",
     ("GET", "/api/connections"): "session",
