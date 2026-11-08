@@ -33,6 +33,14 @@ def password_reset(
     return emails.render(settings, "password_reset", to, {"token": token}, locale=locale)
 
 
+def mfa_reset_link(
+    settings: Settings, to: str, token: str, locale: str | None = None
+) -> MailMessage:
+    """The reset link of ``admin mfa-reset``, saying it removed the TOTP, recovery codes and
+    passkeys (ADR 0019 section 9)."""
+    return emails.render(settings, "mfa_reset_link", to, {"token": token}, locale=locale)
+
+
 def email_change_confirmation(
     settings: Settings, to: str, token: str, locale: str | None = None
 ) -> MailMessage:

@@ -50,7 +50,7 @@ def parse(html: str) -> Links:
 
 
 def test_the_registry_holds_the_existing_kinds_and_the_new_notices() -> None:
-    assert len(REGISTRY) == 20
+    assert len(REGISTRY) == 21
     assert {k.id for k in KINDS if k.category is Category.WELCOME} == {"welcome"}
     assert {k.id for k in KINDS if k.category is Category.ACCOUNT_ACTIVITY} == {
         "totp_enrolled",
@@ -69,6 +69,7 @@ def test_the_registry_holds_the_existing_kinds_and_the_new_notices() -> None:
         "signup_confirm",
         "provider_signup_confirm",
         "password_reset",
+        "mfa_reset_link",  # ADR 0019, #775: the link of ``admin mfa-reset``
         "email_change_confirm",
         "account_exists",
         "email_change_taken",
@@ -161,6 +162,7 @@ SUBJECTS = {
     "passkey_added": "A passkey was added to your classbeat account",  # ADR 0019, #772
     "passkey_removed": "A passkey was removed from your classbeat account",
     "passkey_counter_regressed": "A passkey sign-in to your classbeat account was refused",  # #773
+    "mfa_reset_link": "Reset your classbeat password",  # #775: the reset link of mfa-reset
 }
 
 

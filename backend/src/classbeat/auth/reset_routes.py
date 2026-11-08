@@ -2,12 +2,14 @@
 
 Reset: the request answers the same for any address and mails a 30-minute link (token in the URL
 fragment, posted to the API). Completing it signs the user out everywhere, deletes their known
-devices and every other outstanding token, and deletes every linked sign-in method the user did
-not keep, in the same step: the reset is the proof, so that needs neither recent auth nor
-step-up. Change: recent authentication (and step-up with a confirmed TOTP), revoking every other
-session.
+devices and every other outstanding token, and deletes every linked sign-in method and every
+passkey the user did not keep (ADR 0019 section 9, whatever ``CLASSBEAT_PASSKEYS`` says), in the
+same step: the reset is the proof, so that needs neither recent auth nor step-up. Change: recent
+authentication (and step-up with a confirmed TOTP), revoking every other session.
 """
 
+from dataclasses import asdict
+from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -26,6 +28,7 @@ from classbeat.auth.devices import forget_devices
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import EmailAddress, factory, mailer, reserve
 from classbeat.auth.hooks import ResetLinkSender
+from classbeat.auth.passkey_recovery import passkeys_for_reset, remove_passkeys_except
 from classbeat.auth.passwords import PasswordRuleError, normalize_password
 from classbeat.auth.ratelimit import (
     MAIL_ACCOUNT,
@@ -77,8 +80,16 @@ class LinkedMethod(BaseModel):
     provider: str
 
 
+class ResetPasskeyOut(BaseModel):
+    id: UUID
+    label: str
+    created_at: datetime
+    last_used_at: datetime | None
+
+
 class ResetInfo(BaseModel):
     methods: list[LinkedMethod]
+    passkeys: list[ResetPasskeyOut]
 
 
 class ResetCompleteIn(BaseModel):
@@ -88,6 +99,11 @@ class ResetCompleteIn(BaseModel):
     # the user is deleted (#639). Required, so an old page that sends ``remove_methods`` gets
     # a 422 and keeps its token instead of losing every identity.
     keep_methods: list[UUID] = Field(max_length=MAX_METHODS)
+    # ADR 0019 section 9: the passkeys the page showed and the user kept; every other passkey of
+    # the user is deleted. Optional, unlike ``keep_methods``: a page without the passkey list
+    # (before W6) sends none and the reset removes every passkey, the failure mode the ADR picks
+    # (the user has just set a password and registers again), never a reset that cannot finish.
+    keep_passkeys: list[UUID] = Field(default_factory=list, max_length=MAX_METHODS)
 
 
 class ChangePasswordIn(BaseModel):
@@ -98,22 +114,26 @@ class Done(BaseModel):
     status: str = "ok"
 
 
-async def reset_mail(settings: Settings, db: AsyncSession, user_id: UUID, email: str):
+async def reset_mail(
+    settings: Settings, db: AsyncSession, user_id: UUID, email: str, *, mfa_reset: bool = False
+):
     """Issue a reset token for the user and build the mail."""
     token = await issue_token(db, PURPOSE, user_id, RESET_LIFETIME)
     language = await account_locale.mail_locale_of(db, settings, user_id)
-    return mails.password_reset(settings, email, token, language)
+    build = mails.mfa_reset_link if mfa_reset else mails.password_reset
+    return build(settings, email, token, language)
 
 
 def make_reset_link_sender(
     settings: Settings, session_factory: async_sessionmaker[AsyncSession], mail: Mailer
 ) -> ResetLinkSender:
     """The sender ``auth.register_reset_link_sender`` takes: ``admin mfa-reset`` mails the
-    user a reset link (awaited: the CLI has no response to send first)."""
+    user a reset link (awaited: the CLI has no response to send first) that says what the
+    reset removed (ADR 0019 section 9)."""
 
     async def send(user_id: UUID, email: str) -> None:
         async with system_session(session_factory) as db:
-            message = await reset_mail(settings, db, user_id, email)
+            message = await reset_mail(settings, db, user_id, email, mfa_reset=True)
         await mail.send(message)
 
     return send
@@ -151,23 +171,22 @@ async def _invalid(request: Request) -> HTTPException:
 
 @router.post("/password/reset/info")
 async def reset_info(body: TokenIn, request: Request) -> ResetInfo:
-    """The linked sign-in methods the reset page offers to remove. Does not consume the token."""
+    """The linked sign-in methods and passkeys the reset page offers to remove. Does not consume
+    the token."""
     async with system_session(factory(request)) as db:
         token = await peek_token(db, PURPOSE, body.token)
-        rows = (
-            []
-            if token is None
-            else (
-                await db.execute(
-                    select(identities.c.id, identities.c.provider).where(
-                        identities.c.user_id == token.user_id
-                    )
-                )
-            ).all()
-        )
+        if token is None:
+            rows, passkeys = [], []
+        else:
+            linked = select(identities.c.id, identities.c.provider)
+            rows = (await db.execute(linked.where(identities.c.user_id == token.user_id))).all()
+            passkeys = await passkeys_for_reset(db, token.user_id)
     if token is None:
         raise await _invalid(request)
-    return ResetInfo(methods=[LinkedMethod(id=r.id, provider=r.provider) for r in rows])
+    return ResetInfo(
+        methods=[LinkedMethod(id=r.id, provider=r.provider) for r in rows],
+        passkeys=[ResetPasskeyOut(**asdict(p)) for p in passkeys],
+    )
 
 
 @router.post("/password/reset/complete")
@@ -213,6 +232,8 @@ async def complete_reset(
                     .returning(identities.c.id)
                 )
             ).all()
+            # The same rule for passkeys (ADR 0019 section 9), whatever the flag says.
+            passkeys_removed = await remove_passkeys_except(db, token.user_id, body.keep_passkeys)
             await revoke_user_sessions(db, token.user_id)
             await forget_devices(db, token.user_id)
             await delete_outstanding_tokens(db, token.user_id)
@@ -221,7 +242,7 @@ async def complete_reset(
                 "password_reset",
                 user_id=token.user_id,
                 ip=ip,
-                detail={"methods_removed": len(removed)},
+                detail={"methods_removed": len(removed), "passkeys_removed": passkeys_removed},
             )
     if token is None or email is None:
         raise refuse(400, "invalid_token")  # a parallel request consumed it
