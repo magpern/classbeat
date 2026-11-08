@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests scripts/ci-install-release.sh against a loopback HTTP server (no real network): a cold
 # cache, a warm cache, a download that answers 504 first, a wrong checksum, and a tampered cached
-# tarball. Run by the `checks` job.
+# tarball, a connection dropped mid-answer, and a download that never succeeds. Run by the `checks` job.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 install="$here/ci-install-release.sh"
@@ -25,12 +25,15 @@ bad="$(printf x | sha256sum | cut -d' ' -f1)"
 cat > "$work/server.py" <<'PY'
 import http.server, sys
 fails = int(sys.argv[2])
+drop = len(sys.argv) > 5 and sys.argv[5] == "drop"
 hits = 0
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         global hits
         hits += 1
         open(sys.argv[3], "w").write(str(hits))
+        if hits <= fails and drop:
+            self.connection.close(); return  # no response at all: curl error 52, retried only with --retry-all-errors
         if hits <= fails:
             self.send_response(504); self.end_headers(); return
         data = open(sys.argv[1] + "/tool.tgz", "rb").read()
@@ -42,9 +45,9 @@ open(sys.argv[4], "w").write(str(s.server_port))
 s.serve_forever()
 PY
 
-start_server() { # start_server <failures before the first 200>
+start_server() { # start_server <failures before the first 200> [drop: close the connection instead of 504]
   rm -f "$work/port" "$work/hits"
-  python3 -I "$work/server.py" "$work/www" "$1" "$work/hits" "$work/port" &
+  python3 -I "$work/server.py" "$work/www" "$1" "$work/hits" "$work/port" "${2:-}" &
   srv=$!
   for _ in $(seq 50); do [ -s "$work/port" ] && break; sleep 0.1; done
   [ -s "$work/port" ] || { echo "server did not start"; exit 1; }
@@ -83,6 +86,15 @@ stop_server
 start_server 1000
 run "persistent 504 fails" fail "$good" "$work/c5" "$work/d5"
 if [ ! -e "$work/c5/tool.tgz" ]; then report ok "no partial tarball promoted"; else report FAIL "partial tarball promoted"; fi
+if [ ! -e "$work/c5/tool.tgz.part" ] || [ ! -s "$work/c5/tool.tgz.part" ]; then report ok "no downloaded bytes left as a final or partial file"; else report FAIL "partial bytes left behind"; fi
+if [ ! -e "$work/d5/tool" ]; then report ok "nothing unpacked after a failed download"; else report FAIL "unpacked after a failed download"; fi
+stop_server
+
+# 6. The connection is closed without any answer twice (curl error 52, which plain --retry does
+# not retry, only --retry-all-errors): still installed and verified.
+start_server 2 drop
+run "dropped connection twice, then installed" 0 "$good" "$work/c6" "$work/d6"
+if [ -x "$work/d6/tool" ] && [ "$(hits)" -eq 3 ]; then report ok "dropped connections retried, binary in place"; else report FAIL "drop case: binary missing or hits=$(hits)"; fi
 stop_server
 
 [ "$failures" -eq 0 ] || { echo "$failures failure(s)"; exit 1; }

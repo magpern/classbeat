@@ -77,6 +77,13 @@ def admin_db(request: Request) -> AdminDb | None:
     return getattr(request.app.state, "admin_db", None)
 
 
+def require_admin_db(request: Request) -> AdminDb:
+    db = admin_db(request)
+    if db is None:  # the gate answered 503 already; this keeps the type honest
+        raise AdminRefused("admin_unavailable", 503)
+    return db
+
+
 async def admin_gate(
     request: Request,
     response: Response,

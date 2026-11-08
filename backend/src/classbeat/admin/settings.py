@@ -52,10 +52,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
 from classbeat.admin.audit import Target
-from classbeat.admin.db import AdminDb, AdminRefused, admin_session
+from classbeat.admin.db import AdminRefused, admin_session
 from classbeat.admin.plan_rules import bounds
 from classbeat.admin.plans import all_plans, plan_out
-from classbeat.admin.routes import AdminActor, admin_db, admin_router
+from classbeat.admin.routes import AdminActor, admin_router, require_admin_db
 from classbeat.admin.settings_models import (
     BoundsOut,
     FlagOut,
@@ -95,13 +95,6 @@ _CLEAR = text(
 _RANKS = text("SELECT id, rank FROM plans WHERE id = ANY(:ids)")
 
 KeyPath = Annotated[str, Path(pattern=r"^[a-z][a-z_]{0,39}$")]
-
-
-def _db(request: Request) -> AdminDb:
-    db = admin_db(request)
-    if db is None:  # the gate answered 503 already; this keeps the type honest
-        raise AdminRefused("admin_unavailable", 503)
-    return db
 
 
 def _person(user_id: UUID | None, emails: dict[UUID, str]) -> PersonOut | None:
@@ -281,7 +274,7 @@ def _set_params(key: str, value: Any) -> dict[str, Any]:
 
 @router.get(SETTINGS, response_model=SettingsOut)
 async def read_settings(request: Request, actor: AdminActor) -> SettingsOut:
-    async with admin_session(_db(request), actor, "setting.read") as session:
+    async with admin_session(require_admin_db(request), actor, "setting.read") as session:
         return await _view(session, request.app.state.settings)
 
 
@@ -309,7 +302,7 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
         if refusal == "unknown_plan":
             params = {"key": key}
     async with admin_session(
-        _db(request),
+        require_admin_db(request),
         actor,
         "setting.set",
         write=True,
@@ -378,7 +371,7 @@ async def _check_soundless_evaluated(session: AsyncSession, settings: Settings) 
 async def clear_flag(request: Request, actor: AdminActor, key: KeyPath) -> FlagOut:
     settings: Settings = request.app.state.settings
     async with admin_session(
-        _db(request),
+        require_admin_db(request),
         actor,
         "setting.clear",
         write=True,

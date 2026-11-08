@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
 from classbeat.admin.audit import Target
-from classbeat.admin.db import AdminDb, AdminRefused, admin_session
+from classbeat.admin.db import AdminRefused, admin_session
 from classbeat.admin.plan_rules import (
     GATES,
     LIMITS,
@@ -50,7 +50,7 @@ from classbeat.admin.plan_rules import (
     plan_refusal,
     prices_complete,
 )
-from classbeat.admin.routes import AdminActor, admin_db, admin_router
+from classbeat.admin.routes import AdminActor, admin_router, require_admin_db
 from classbeat.admin.settings_models import PersonOut, PlanIn, PlanOut
 from classbeat.config import Settings
 
@@ -82,13 +82,6 @@ def _update_plan(columns: list[str]) -> Any:
         f"UPDATE plans SET {assignments}, updated_at = now(), updated_by = :by "  # noqa: S608
         f"WHERE id = :p RETURNING {_PLAN_COLUMNS}"
     )
-
-
-def _db(request: Request) -> AdminDb:
-    db = admin_db(request)
-    if db is None:  # the gate answered 503 already; this keeps the type honest
-        raise AdminRefused("admin_unavailable", 503)
-    return db
 
 
 async def all_plans(session: AsyncSession) -> Sequence[Any]:
@@ -130,7 +123,7 @@ async def update_plan(
     asked = body.asked()
     refusal = plan_refusal(asked, bounds(settings))
     async with admin_session(
-        _db(request),
+        require_admin_db(request),
         actor,
         "plan.update",
         write=True,
