@@ -56,22 +56,18 @@ async function jobsSum(page: Page, ids: string[]): Promise<Sums> {
   return sum
 }
 
-// The account page's words for the figures (frontend/src/components/account/Usage.tsx).
-const dollars = (micros: number): string =>
-  micros <= 0 ? '$0.00' : micros < 10_000 ? 'under $0.01' : `$${(micros / 1_000_000).toFixed(2)}`
-const tokens = (s: Sums): string =>
-  new Intl.NumberFormat('en-US').format(s.input_tokens + s.output_tokens + s.cache_read_tokens + s.cache_write_tokens)
-
 async function expectAccountPage(page: Page, view: UsageView): Promise<void> {
   await page.goto('/account#plan')
   await page.getByText('Show usage details').click()
   const facts = page.getByTestId('usage-facts')
   await expect(facts).toBeVisible()
   const fact = (label: string) => facts.locator('div').filter({ has: page.getByText(label, { exact: true }) }).locator('dd')
-  await expect(fact('Tokens')).toHaveText(tokens(view.total))
-  await expect(fact('Estimated cost')).toHaveText(dollars(view.total.cost_micros))
   await expect(fact('Classes designed')).toHaveText(String(view.classes_designed))
   await expect(fact('Revisions')).toHaveText(String(view.revisions))
+  // Our cost of designing a class is internal accounting: the user never sees tokens or dollars (#820).
+  await expect(facts.getByText('Tokens')).toHaveCount(0)
+  await expect(page.getByText('Estimated cost')).toHaveCount(0)
+  await expect(page.getByText('What this leaves out')).toHaveCount(0)
 }
 
 test.afterAll(() => {

@@ -1478,35 +1478,10 @@ const sv: Catalogue = {
 
   // Account: usage card.
   'usage.title': 'Användning',
-  'usage.note.estimate_at_list_prices':
-    'Kostnaden är en uppskattning till leverantörens listpriser. Det är inte en faktura.',
-  'usage.note.sdk_retries':
-    'Programvaran som pratar med leverantören försöker om tyst inom en förfrågan. De extra försöken räknas inte.',
-  'usage.note.lost_lease_turn':
-    'Ett steg som blev klart efter att classbeat redan hade lämnat över sitt arbete till en annan arbetsprocess kan inte registreras.',
-  'usage.note.failed_stream_turn':
-    'En förfrågan som misslyckades efter att leverantören börjat debitera den returnerar ingen användning och räknas därför inte.',
-  'usage.note.other':
-    'Det finns en annan orsak till att den här siffran kan skilja sig från leverantörens faktura.',
-  'usage.kind.design_draft': 'Utformar ett pass',
-  'usage.kind.revise_draft': 'Ändrar ett pass',
   'usage.loadFailed': 'Din användning kunde inte laddas.',
   'usage.period': 'Din användning i {month} (månader i UTC).',
-  'usage.tokens': 'Tokens',
-  'usage.cost': 'Beräknad kostnad',
   'usage.designed': 'Utformade pass',
   'usage.revisions': 'Revideringar',
-  'usage.tokensExplained':
-    'Tokens är de textbitar som utformaren läser och skriver: {input} in, {output} ut. Att spara till MOWL använder inga.',
-  'usage.tokensExplainedReused':
-    'Tokens är de textbitar som utformaren läser och skriver: {input} in, {output} ut och {reused} återanvända från tidigare förfrågningar. Att spara till MOWL använder inga.',
-  'usage.byKind': 'Efter typ av arbete och modell',
-  'usage.col.work': 'Arbete',
-  'usage.col.model': 'Modell',
-  'usage.col.tokens': 'Tokens',
-  'usage.col.cost': 'Kostnad',
-  'usage.leavesOut': 'Vad detta inte inkluderar',
-  'usage.lowerThanBill': 'Siffran kan vara något lägre än leverantörens faktura.',
 
   // Account: MOWL connection card.
   'mowl.err.invalid_credentials': 'MOWL godkände inte den e-postadressen och det lösenordet.',
