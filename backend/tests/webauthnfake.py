@@ -27,6 +27,7 @@ from authtools import ORIGIN
 RP_ID = "classbeat.test"  # the host of authtools.ORIGIN
 
 UP, UV, BE, BS, AT = 0x01, 0x04, 0x08, 0x10, 0x40
+MISSING = object()  # ``SoftAuthenticator.attachment``: no ``authenticatorAttachment`` at all
 
 
 def b64url(data: bytes) -> str:
@@ -48,6 +49,8 @@ class SoftAuthenticator:
     backup_state: bool = True
     transports: list[str] = field(default_factory=lambda: ["internal", "hybrid"])
     credential_id: bytes = field(default_factory=lambda: secrets.token_bytes(16))
+    # What ``get`` reports as ``authenticatorAttachment``; ``MISSING`` leaves the key out.
+    attachment: Any = "platform"
     _key: Any = None
 
     def __post_init__(self) -> None:
@@ -186,11 +189,14 @@ class SoftAuthenticator:
         }
         if user_handle is not None:
             response["userHandle"] = b64url(user_handle)
-        return {
+        found: dict[str, Any] = {
             "id": b64url(self.credential_id),
             "rawId": b64url(self.credential_id),
             "type": "public-key",
-            "authenticatorAttachment": "platform",
+            "authenticatorAttachment": self.attachment,
             "clientExtensionResults": {},
             "response": response,
         }
+        if self.attachment is MISSING:
+            del found["authenticatorAttachment"]
+        return found
