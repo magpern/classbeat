@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { getSession, type SessionState } from '../api/auth'
 import { clearSubmittedInputs } from '../lib/submittedInput'
+import { setPhoneSignIn } from './phoneSignIn'
 
 type Status = 'loading' | 'ready' | 'error'
 
@@ -17,6 +18,11 @@ interface SessionValue {
   session: SessionState | null
   /** Fetches the session again (after sign-in, re-authentication, MFA ...). */
   refresh: () => Promise<SessionState | null>
+}
+
+function signedOut(): void {
+  clearSubmittedInputs()
+  setPhoneSignIn(false)
 }
 
 const SessionContext = createContext<SessionValue | null>(null)
@@ -28,7 +34,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       const next = await getSession()
-      if (!next.authenticated) clearSubmittedInputs()
+      if (!next.authenticated) signedOut()
       setSession(next)
       setStatus('ready')
       return next
@@ -43,7 +49,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     getSession().then(
       (next) => {
         if (!current) return
-        if (!next.authenticated) clearSubmittedInputs()
+        if (!next.authenticated) signedOut()
         setSession(next)
         setStatus('ready')
       },

@@ -14,6 +14,7 @@ import { LanguagePicker } from '../LanguagePicker'
 import { Logo } from '../Logo'
 import { AvatarMenu } from './AvatarMenu'
 import { ClassesThisMonth } from './ClassesThisMonth'
+import { PhoneSignInNotice } from './PhoneSignInNotice'
 
 const JOB_PAGE = /^\/jobs\/[0-9a-fA-F-]{36}$/
 
@@ -203,11 +204,16 @@ export function AppShell({ children }: { children: ReactNode }) {
       navigate('/signin')
     })
   }
-  const alert = action.error ? (
-    <p role="alert" className="m-0 mb-4 rounded-md bg-bad-soft px-4 py-3 text-bad">
-      {action.error}
-    </p>
-  ) : null
+  const alert = (
+    <>
+      <PhoneSignInNotice busy={action.busy} onSignOut={signOut} />
+      {action.error ? (
+        <p role="alert" className="m-0 mb-4 rounded-md bg-bad-soft px-4 py-3 text-bad">
+          {action.error}
+        </p>
+      ) : null}
+    </>
+  )
 
   if (isFocusRoute(pathname)) {
     return (

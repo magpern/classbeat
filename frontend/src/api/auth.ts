@@ -42,6 +42,8 @@ export interface SessionState {
   locales: string[]
   /** Turnstile on the four anonymous auth forms (ADR 0025 section 11), or null while it is off. */
   captcha: CaptchaConfig | null
+  /** CLASSBEAT_PASSKEYS (ADR 0019 section 1): whether the sign-in page offers passkeys. */
+  passkeys: boolean
 }
 
 /**
@@ -72,7 +74,8 @@ export async function getSession(signal?: AbortSignal): Promise<SessionState> {
   const authenticated = flag(body, 'authenticated')
   const locales = body.locales === undefined ? [] : strings(body, 'locales')
   const captcha = decodeCaptcha(body.captcha)
-  if (!authenticated) return { authenticated, user: null, session: null, locales, captcha }
+  const passkeys = body.passkeys === true
+  if (!authenticated) return { authenticated, user: null, session: null, locales, captcha, passkeys }
   const user = object(body.user, 'user')
   const session = object(body.session, 'session')
   return {
@@ -92,6 +95,7 @@ export async function getSession(signal?: AbortSignal): Promise<SessionState> {
     },
     locales,
     captcha,
+    passkeys,
   }
 }
 
@@ -156,21 +160,43 @@ export interface LinkedMethod {
   provider: string
 }
 
-export async function resetInfo(token: string): Promise<LinkedMethod[]> {
+export interface ResetPasskey {
+  id: string
+  label: string
+}
+
+export interface ResetInfo {
+  methods: LinkedMethod[]
+  /** Listed whatever the passkeys flag says: a reset must show a planted passkey (ADR 0019 section 9). */
+  passkeys: ResetPasskey[]
+}
+
+export async function resetInfo(token: string): Promise<ResetInfo> {
   const body = object(await post('/api/auth/password/reset/info', { token }), 'reset info')
-  return list(body, 'methods').map((row) => {
+  const methods = list(body, 'methods').map((row) => {
     const item = object(row, 'method')
     return { id: text(item, 'id'), provider: text(item, 'provider') }
   })
+  const passkeys = list(body, 'passkeys').map((row) => {
+    const item = object(row, 'passkey')
+    return { id: text(item, 'id'), label: text(item, 'label') }
+  })
+  return { methods, passkeys }
 }
 
 /** `keepMethods`: the listed methods the user left unticked. The server deletes every other
- * linked method, so one linked after the page loaded never survives the reset (#639). */
-export async function completeReset(token: string, password: string, keepMethods: string[]): Promise<void> {
+ * linked method, so one linked after the page loaded never survives the reset (#639). `keepPasskeys` is the same for the passkeys the page listed. */
+export async function completeReset(
+  token: string,
+  password: string,
+  keepMethods: string[],
+  keepPasskeys: string[],
+): Promise<void> {
   await post('/api/auth/password/reset/complete', {
     token,
     password,
     keep_methods: keepMethods,
+    keep_passkeys: keepPasskeys,
   })
 }
 
@@ -361,78 +387,6 @@ export async function listDevices(signal?: AbortSignal): Promise<DeviceSession[]
       current: flag(row, 'current'),
     }
   })
-}
-
-/**
- * The kinds of security event the server lists (`activity.SHOWN_KINDS`, ADR 0003 amendment of
- * 2026-11-07, #678). A test holds this list equal to the backend's; a kind not in it is dropped.
- */
-export const ACTIVITY_KINDS = [
-  'sign_in',
-  'sign_in_failed',
-  'sign_out',
-  'sign_out_all',
-  'reauth',
-  'reauth_failed',
-  'signup_confirmed',
-  'password_changed',
-  'password_reset',
-  'email_change_requested',
-  'email_changed',
-  'identity_linked',
-  'identity_unlinked',
-  'totp_enrolled',
-  'totp_replaced',
-  'totp_removed',
-  'recovery_codes_regenerated',
-  'mfa_failed',
-  'mfa_reset',
-  'session_location_changed',
-] as const
-
-export type ActivityKind = (typeof ACTIVITY_KINDS)[number]
-
-function isActivityKind(value: string): value is ActivityKind {
-  return (ACTIVITY_KINDS as readonly string[]).includes(value)
-}
-
-export interface ActivityEvent {
-  id: string
-  kind: ActivityKind
-  at: string
-  /** The address the event came from, as the data export holds it. */
-  ip: string | null
-  /** `google`, `github` or `microsoft` for a sign-in or re-authentication with a provider. */
-  provider: string | null
-  /** A sign-out made from another of the user's sessions (the device list). */
-  otherSession: boolean
-}
-
-export interface ActivityPage {
-  events: ActivityEvent[]
-  /** Pass to `listActivity` for the next, older page; null at the end. */
-  nextBefore: string | null
-}
-
-/** `GET /api/auth/events`: the user's own security events, newest first, a page at a time. */
-export async function listActivity(before: string | null, signal?: AbortSignal): Promise<ActivityPage> {
-  const query = before === null ? '' : `?before=${encodeURIComponent(before)}`
-  const body = object(await get(`/api/auth/events${query}`, signal), 'events')
-  const events: ActivityEvent[] = []
-  for (const item of list(body, 'events')) {
-    const row = object(item, 'event')
-    const kind = text(row, 'kind')
-    if (!isActivityKind(kind)) continue
-    events.push({
-      id: text(row, 'id'),
-      kind,
-      at: text(row, 'at'),
-      ip: optionalText(row, 'ip'),
-      provider: optionalText(row, 'provider'),
-      otherSession: flag(row, 'other_session'),
-    })
-  }
-  return { events, nextBefore: optionalText(body, 'next_before') }
 }
 
 /** Signs out one of the user's own devices (`DELETE /api/auth/sessions/{id}`). */

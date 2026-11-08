@@ -27,7 +27,7 @@ from test_auth_reset_races import against_a_held_lock, own_client, parked, until
 pytestmark = pytest.mark.usefixtures("frozen_rate_windows")
 
 CLIENT_IP = "127.0.0.1"  # httpx's ASGITransport peer
-FIELDS = {"id", "kind", "at", "ip", "provider", "other_session"}
+FIELDS = {"id", "kind", "at", "ip", "provider", "other_session", "passkey"}
 T0 = datetime(2026, 11, 1, 12, 0, tzinfo=UTC)
 
 
@@ -152,6 +152,45 @@ async def test_only_the_shown_kinds_and_fields_are_listed(env: Env) -> None:
     assert "never-shown" not in text_of_page
     assert str(issued.id) not in text_of_page  # the session ids in detail stay inside
     assert body["next_before"] is None
+
+
+async def test_passkey_kinds_and_the_passkey_method_are_listed_without_their_detail(
+    env: Env,
+) -> None:
+    """ADR 0019 section 10: the passkey kinds are shown, and a sign-in, re-authentication or
+    failure with ``method: passkey`` is flagged; the passkey's row id in ``detail`` never is."""
+    user_id = await env.user()
+    issued = await env.login(user_id)
+    row_id = str(uuid4())
+    shown = (
+        ("passkey_added", {"passkey": row_id}),
+        ("passkey_renamed", {"passkey": row_id}),
+        ("passkey_removed", {"passkey": row_id}),
+        ("passkey_counter_regressed", {"method": "passkey", "reason": "counter"}),
+        ("sign_in", {"method": "passkey", "passkey": row_id}),
+        ("reauth", {"method": "passkey", "passkey": row_id}),
+        ("sign_in_failed", {"method": "passkey", "reason": "signature"}),
+        ("reauth_failed", {"method": "passkey", "reason": "uv"}),
+        ("sign_in", {"method": "password"}),
+    )
+    for offset, (kind, detail) in enumerate(shown):
+        await add_event(env, user_id, kind, T0 + timedelta(seconds=offset), detail=detail)
+
+    body = (await listing(env, issued.token)).json()
+
+    assert [(e["kind"], e["passkey"]) for e in reversed(body["events"])] == [
+        ("passkey_added", False),
+        ("passkey_renamed", False),
+        ("passkey_removed", False),
+        ("passkey_counter_regressed", True),
+        ("sign_in", True),
+        ("reauth", True),
+        ("sign_in_failed", True),
+        ("reauth_failed", True),
+        ("sign_in", False),
+    ]
+    assert all(set(e) == FIELDS for e in body["events"])
+    assert row_id not in str(body)
 
 
 def test_the_shown_kinds_are_kinds_the_code_writes() -> None:

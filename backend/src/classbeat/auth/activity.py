@@ -11,8 +11,10 @@ holds (ADR 0014), with less in it:
   until it is named here and worded in every catalogue, and operator rows (``connections_wiped``,
   the CLI role changes) and connection events stay out.
 - **Only these fields:** the kind, the time, the address (``ip``, as the export holds it), the
-  sign-in provider for the kinds that record one (an allowlist of provider names) and whether a
-  sign-out was made from another session. Never the rest of ``detail``.
+  sign-in provider for the kinds that record one (an allowlist of provider names), whether the
+  sign-in, re-authentication or failure used a passkey (``detail.method``, ADR 0019 section 10)
+  and whether a sign-out was made from another session. Never the rest of ``detail``: a
+  passkey's row id, label and credential data stay inside.
 
 Rows are purged after 30 days (``purge``), so a page never reaches further back.
 """
@@ -51,10 +53,15 @@ SHOWN_KINDS: frozenset[str] = frozenset(
         "recovery_codes_regenerated",
         "mfa_failed",
         "mfa_reset",
+        "passkey_added",
+        "passkey_renamed",
+        "passkey_removed",
+        "passkey_counter_regressed",
         LOCATION_CHANGED,
     }
 )
 PROVIDERS: frozenset[str] = frozenset({GOOGLE, GITHUB, MICROSOFT})
+PASSKEY_METHOD = "passkey"  # ``detail.method`` of the passkey sign-in and re-authentication events
 OTHER_SESSION_KEY = "from_session"  # set on a sign-out made from another session's list
 
 PAGE_DEFAULT = 20
@@ -73,6 +80,7 @@ class ActivityItem:
     ip: str | None
     provider: str | None
     other_session: bool
+    passkey: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +108,10 @@ def decode_cursor(value: str) -> tuple[datetime, UUID] | None:
 def _provider(detail: Any) -> str | None:
     found = detail.get("provider") if isinstance(detail, dict) else None
     return found if isinstance(found, str) and found in PROVIDERS else None
+
+
+def _passkey(detail: Any) -> bool:
+    return isinstance(detail, dict) and detail.get("method") == PASSKEY_METHOD
 
 
 def _other_session(kind: str, detail: Any) -> bool:
@@ -136,6 +148,7 @@ async def list_activity(
             ip=row.ip,
             provider=_provider(row.detail),
             other_session=_other_session(row.kind, row.detail),
+            passkey=_passkey(row.detail),
         )
         for row in rows[:limit]
     ]

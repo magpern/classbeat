@@ -464,7 +464,7 @@ describe('Cloudflare Turnstile (captcha.site_key)', () => {
     cleanup()
     fakeApi({
       'GET /api/auth/session': REAL,
-      'POST /api/auth/password/reset/info': { methods: [] },
+      'POST /api/auth/password/reset/info': { methods: [], passkeys: [] },
     })
     renderAt('/reset#token=abc')
     await screen.findByLabelText('New password')

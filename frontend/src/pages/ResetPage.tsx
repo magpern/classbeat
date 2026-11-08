@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { completeReset, requestPasswordReset, resetInfo, type LinkedMethod } from '../api/auth'
+import { completeReset, requestPasswordReset, resetInfo, type ResetInfo } from '../api/auth'
 import { errorMessage, providerName } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
 import { useT } from '../i18n/I18n'
@@ -83,12 +83,13 @@ function RequestReset() {
 type Methods =
   | { state: 'loading' }
   | { state: 'bad'; message: string }
-  | { state: 'ok'; list: LinkedMethod[] }
+  | { state: 'ok'; info: ResetInfo }
 
 function ChoosePassword({ token }: { token: string }) {
   const t = useT()
   const [methods, setMethods] = useState<Methods>({ state: 'loading' })
   const [remove, setRemove] = useState<Set<string>>(new Set())
+  const [removePasskeys, setRemovePasskeys] = useState<Set<string>>(new Set())
   const [password, setPassword] = useState('')
   const [done, setDone] = useState(false)
   const action = useAction()
@@ -97,8 +98,8 @@ function ChoosePassword({ token }: { token: string }) {
   useEffect(() => {
     let current = true
     resetInfo(token).then(
-      (list) => {
-        if (current) setMethods({ state: 'ok', list })
+      (info) => {
+        if (current) setMethods({ state: 'ok', info })
       },
       (error: unknown) => {
         if (current) setMethods({ state: 'bad', message: errorMessage(error) })
@@ -109,8 +110,8 @@ function ChoosePassword({ token }: { token: string }) {
     }
   }, [token])
 
-  const toggle = (id: string) => {
-    setRemove((previous) => {
+  const toggle = (id: string, set: typeof setRemove = setRemove) => {
+    set((previous) => {
       const next = new Set(previous)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -121,9 +122,11 @@ function ChoosePassword({ token }: { token: string }) {
   const submit = (event: FormEvent) => {
     event.preventDefault()
     void action.run(async () => {
-      const shown = methods.state === 'ok' ? methods.list : []
-      const keep = shown.filter((method) => !remove.has(method.id)).map((method) => method.id)
-      await completeReset(token, password, keep)
+      const shown = methods.state === 'ok' ? methods.info : { methods: [], passkeys: [] }
+      const keep = shown.methods.filter((method) => !remove.has(method.id)).map((method) => method.id)
+      // Every passkey the page showed and the user left unticked; the server deletes the rest.
+      const keepPasskeys = shown.passkeys.filter((p) => !removePasskeys.has(p.id)).map((p) => p.id)
+      await completeReset(token, password, keep, keepPasskeys)
       // A reset revokes every session: update the nav without a reload.
       await refresh()
       setDone(true)
@@ -175,11 +178,11 @@ function ChoosePassword({ token }: { token: string }) {
           }}
           required
         />
-        {methods.list.length > 0 ? (
+        {methods.info.methods.length > 0 ? (
           <fieldset className="fieldset">
             <legend>{t('reset.linked')}</legend>
             <p className="field__hint">{t('reset.linkedHint')}</p>
-            {methods.list.map((method) => (
+            {methods.info.methods.map((method) => (
               <label key={method.id} className="check">
                 <input
                   type="checkbox"
@@ -189,6 +192,24 @@ function ChoosePassword({ token }: { token: string }) {
                   }}
                 />
                 {t('reset.remove', { provider: providerName(method.provider) })}
+              </label>
+            ))}
+          </fieldset>
+        ) : null}
+        {methods.info.passkeys.length > 0 ? (
+          <fieldset className="fieldset">
+            <legend>{t('reset.passkeys')}</legend>
+            <p className="field__hint">{t('reset.passkeysHint')}</p>
+            {methods.info.passkeys.map((passkey) => (
+              <label key={passkey.id} className="check">
+                <input
+                  type="checkbox"
+                  checked={removePasskeys.has(passkey.id)}
+                  onChange={() => {
+                    toggle(passkey.id, setRemovePasskeys)
+                  }}
+                />
+                {t('reset.removePasskey', { name: passkey.label })}
               </label>
             ))}
           </fieldset>

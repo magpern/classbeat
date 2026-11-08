@@ -137,7 +137,7 @@ describe('reset page', () => {
 
   it('lists linked methods and removes the ticked ones in the same step', async () => {
     const api = fakeApi({
-      'POST /api/auth/password/reset/info': { methods: [{ id: 'm1', provider: 'github' }, { id: 'm2', provider: 'google' }] },
+      'POST /api/auth/password/reset/info': { methods: [{ id: 'm1', provider: 'github' }, { id: 'm2', provider: 'google' }], passkeys: [] },
       'POST /api/auth/password/reset/complete': { status: 'ok' },
     })
     renderAt('/reset#token=reset-token')
@@ -152,6 +152,7 @@ describe('reset page', () => {
       token: 'reset-token',
       password: 'a brand new passphrase',
       keep_methods: ['m2'],
+      keep_passkeys: [],
     })
     expect(api.to('POST', '/api/auth/login')).toHaveLength(0)
   })
@@ -160,7 +161,7 @@ describe('reset page', () => {
     let reset = false
     const api = fakeApi({
       'GET /api/auth/session': () => (reset ? { authenticated: false, csrf_token: 'a' } : SIGNED_IN),
-      'POST /api/auth/password/reset/info': { methods: [] },
+      'POST /api/auth/password/reset/info': { methods: [], passkeys: [] },
       'POST /api/auth/password/reset/complete': () => {
         reset = true
         return { status: 'ok' }
@@ -211,7 +212,7 @@ describe('email change page', () => {
 
 describe('mail links opened in an already open tab', () => {
   it('reads and strips a token that arrives as a fragment-only change', async () => {
-    fakeApi({ 'POST /api/auth/password/reset/info': { methods: [] } })
+    fakeApi({ 'POST /api/auth/password/reset/info': { methods: [], passkeys: [] } })
     renderAt('/reset')
     expect(screen.getByRole('button', { name: 'Send reset link' })).toBeInTheDocument()
 
