@@ -8,7 +8,6 @@ import type { CatalogueKey } from '../../i18n/en'
 import { useLayout, type Layout } from '../../hooks/useLayout'
 import { cn } from '../../lib/cn'
 import { Link, useRouter } from '../../router/Router'
-import { ApiStatus } from '../ApiStatus'
 import { useAction } from '../forms'
 import { LanguagePicker } from '../LanguagePicker'
 import { Logo } from '../Logo'
@@ -135,7 +134,6 @@ function SignedOutHeader({ ready, offered }: { ready: boolean; offered: readonly
             </Link>
           </nav>
         ) : null}
-        <ApiStatus />
       </div>
     </header>
   )
@@ -281,7 +279,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           <PrimaryNav layout={layout} pathname={pathname} />
           <div className="mt-auto flex flex-col gap-3">
             <ClassesThisMonth compact={!sidebar} />
-            {sidebar ? <ApiStatus /> : null}
             {menu(sidebar, 'top')}
           </div>
         </aside>

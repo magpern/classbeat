@@ -13,23 +13,14 @@ describe('App shell', () => {
     expect(within(screen.getByRole('banner')).getByText('classbeat')).toBeInTheDocument()
   })
 
-  it('renders the landing section and the API status', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ status: 'ok' }), {
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        ),
-      ),
-    )
+  it('renders the landing section and no API status pill', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)))
 
     renderAt('/')
 
-    const landing = screen.getByRole('region', { name: /classbeat picks the songs/i })
+    const landing = await screen.findByRole('region', { name: /classbeat picks the songs/i })
     expect(within(landing).getByText('Private beta')).toBeInTheDocument()
-    expect(await within(screen.getByRole('banner')).findByText('API: ok')).toBeInTheDocument()
+    expect(screen.queryByText(/^API:/)).not.toBeInTheDocument()
   })
 
   it('shows an error in the nav when signing out fails and keeps the user signed in', async () => {

@@ -36,7 +36,7 @@ for (const language of LANGUAGES) {
     await expect(page.getByTestId('cookie-notice')).toHaveCount(0)
     expect(await page.context().cookies()).toEqual(cookiesBefore)
     await page.reload()
-    await expect(page.getByRole('status')).toBeVisible()
+    await expect(page.getByRole('banner')).toBeVisible()
     await expect(page.getByTestId('cookie-notice')).toHaveCount(0)
   })
 }
