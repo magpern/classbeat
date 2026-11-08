@@ -194,6 +194,45 @@ CATALOGUE: dict[S, str] = {
         "Du får det här mejlet eftersom classbeat har gjort klart ett pass som du bad om, efter "
         "att ha analyserat musiken."
     ),
+    S.SUBJECT_PASSKEY_ADDED: "En passkey har lagts till på ditt classbeat-konto",
+    S.SUBJECT_PASSKEY_REMOVED: "En passkey har tagits bort från ditt classbeat-konto",
+    S.PASSKEY_ADDED_HEADING: "En passkey har lagts till",
+    S.PASSKEY_ADDED_PRE: "Du kan nu logga in på ditt classbeat-konto med en ny passkey.",
+    S.PASSKEY_ADDED_BODY: (
+        'En passkey med namnet "{label}" har lagts till på ditt classbeat-konto som ett sätt att '
+        "logga in."
+    ),
+    S.PASSKEY_ADDED_WARN: (
+        "Om det inte var du, ta bort passkeyn från din kontosida, byt lösenord och säg till oss "
+        "direkt."
+    ),
+    S.PASSKEY_REMOVED_HEADING: "En passkey har tagits bort",
+    S.PASSKEY_REMOVED_PRE: (
+        "Det går inte längre att logga in på ditt classbeat-konto med en passkey."
+    ),
+    S.PASSKEY_REMOVED_BODY: (
+        'Passkeyn med namnet "{label}" har tagits bort från ditt classbeat-konto.'
+    ),
+    S.PASSKEY_REMOVED_WARN: "Om det inte var du, byt lösenord och säg till oss direkt.",
+    S.PASSKEY_WHEN: "När det hände",
+    S.SUBJECT_PASSKEY_COUNTER: "En inloggning med passkey på ditt classbeat-konto nekades",
+    S.PASSKEY_COUNTER_HEADING: "En inloggning med passkey nekades",
+    S.PASSKEY_COUNTER_PRE: "En passkey på ditt classbeat-konto kan ha kopierats.",
+    S.PASSKEY_COUNTER_BODY: (
+        'En inloggning med passkeyn "{label}" nekades eftersom signaturräknaren inte hade ökat. '
+        "Det kan hända när en passkey har kopierats till en annan enhet, och ibland när två "
+        "inloggningar kommer samtidigt. Passkeyn fungerar fortfarande."
+    ),
+    S.PASSKEY_COUNTER_WARN: (
+        "Om du inte nyss loggade in med den här passkeyn, ta bort den från din kontosida, byt "
+        "lösenord och säg till oss direkt."
+    ),
+    S.PASSKEY_MFA_RESET_NOTE: (
+        "Vi har tagit bort tvåfaktorsautentiseringen, återställningskoderna och passkeys på ditt "
+        "classbeat-konto och loggat ut dig överallt, som du bad om för att få tillbaka åtkomsten. "
+        "Välj ett nytt lösenord och ställ sedan in dem igen på din kontosida."
+    ),
+    S.PASSKEY_MFA_RESET_WARN: "Om du inte bad om detta, säg till oss direkt.",
 }
 
 MONTHS = (

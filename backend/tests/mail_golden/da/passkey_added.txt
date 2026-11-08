@@ -1,14 +1,14 @@
-A passkey was added
-===================
+Der er tilføjet en passkey
+==========================
 
-A passkey named "MacBook" was added to your classbeat account as a way to sign in.
+En passkey med navnet "MacBook" er tilføjet til din classbeat-konto som en måde at logge ind på.
 
-When it happened: 6. november 2026 kl. 12:30 UTC
+Hvornår det skete: 6. november 2026 kl. 12:30 UTC
 
 Gennemgå din konto:
 https://classbeat.example.test/da/account
 
-If this wasn't you, remove the passkey from your account page, change your password and tell us right away. Kontakt os på support@classbeat.eu
+Hvis det ikke var dig, skal du fjerne passkeyen fra din kontoside, skifte din adgangskode og give os besked med det samme. Kontakt os på support@classbeat.eu
 
 --
 Du får denne sikkerhedsbesked, fordi dette er e-mailadressen til en classbeat-konto. Sådanne beskeder sendes for at beskytte dig.

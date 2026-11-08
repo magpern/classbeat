@@ -1,14 +1,14 @@
 Välj ett nytt lösenord
 ======================
 
-We removed the two-factor authentication, recovery codes and passkeys of your classbeat account and signed you out everywhere, as asked to restore your access. Choose a new password, then set them up again on your account page.
+Vi har tagit bort tvåfaktorsautentiseringen, återställningskoderna och passkeys på ditt classbeat-konto och loggat ut dig överallt, som du bad om för att få tillbaka åtkomsten. Välj ett nytt lösenord och ställ sedan in dem igen på din kontosida.
 
 Om du vill välja ett nytt lösenord öppnar du länken nedan (giltig i 30 minuter). När du återställer lösenordet loggas du ut överallt.
 
 Välj ett nytt lösenord:
 https://classbeat.example.test/sv/reset#token=SAMPLE
 
-If you did not ask for this, tell us right away. Kontakta oss på support@classbeat.eu
+Om du inte bad om detta, säg till oss direkt. Kontakta oss på support@classbeat.eu
 
 --
 Du får den här säkerhetsaviseringen för att det här är e-postadressen till ett classbeat-konto. Sådana aviseringar skickas för att skydda dig.

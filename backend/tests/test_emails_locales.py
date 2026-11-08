@@ -49,8 +49,7 @@ def three_languages(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_the_untranslated_list_holds_only_the_strings_awaiting_a_catch_up_translation() -> None:
     """ML6 merged with an empty list; feature PRs since add English only and list it here (ADR 0023
     section 4), so each addition is pinned and visible in review. A catch-up PR empties it."""
-    passkeys = {s for s in S if s.name.startswith(("PASSKEY_", "SUBJECT_PASSKEY_"))}  # #772
-    assert passkeys == UNTRANSLATED
+    assert UNTRANSLATED == frozenset()  # the passkey catch-up (ADR 0019 W2, W3, W5) emptied it
 
 
 @pytest.mark.parametrize("code", TRANSLATED)
