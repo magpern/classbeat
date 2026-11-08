@@ -1,3 +1,4 @@
+import type { Response } from '@playwright/test'
 import { expect, signInThroughUi, test } from './helpers'
 import {
   addAuthenticator,
@@ -83,9 +84,14 @@ test('a removed passkey no longer signs in, and the password still does', async 
   // passkey list the app corrected with the signal API, offers nothing and the ceremony is
   // cancelled (no finish is sent). Both leave the user signed out, which is the guarantee; the
   // button is usable again after. Wait on the server's answer itself, not a fixed delay.
-  const started = page.waitForResponse((r) => r.url().endsWith('/api/auth/passkeys/signin/start'))
+  // The page may also run a conditional (autofill) ceremony of its own. Match only requests that
+  // started after the click, so the waits are the button's, not the autofill's.
+  const clickedAt = Date.now()
+  const after = (path: string) => (r: Response) =>
+    r.url().endsWith(path) && r.request().timing().startTime >= clickedAt
+  const started = page.waitForResponse(after('/api/auth/passkeys/signin/start'), { timeout: 10_000 })
   const finished = page
-    .waitForResponse((r) => r.url().endsWith('/api/auth/passkeys/signin/finish'), { timeout: 10_000 })
+    .waitForResponse(after('/api/auth/passkeys/signin/finish'), { timeout: 10_000 })
     .catch(() => null)
   await button.click({ timeout: 5_000 }).catch(() => undefined)
   expect((await started).status()).toBe(200)

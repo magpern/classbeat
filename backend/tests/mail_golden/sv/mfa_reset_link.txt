@@ -1,7 +1,7 @@
 Välj ett nytt lösenord
 ======================
 
-Vi har tagit bort tvåfaktorsautentiseringen, återställningskoderna och passkeys på ditt classbeat-konto och loggat ut dig överallt, som du bad om för att få tillbaka åtkomsten. Välj ett nytt lösenord och ställ sedan in dem igen på din kontosida.
+Vi har tagit bort tvåfaktorsautentiseringen, återställningskoderna och passkeys på ditt classbeat-konto, som du bad om för att få tillbaka åtkomsten. Välj ett nytt lösenord och ställ sedan in dem igen på din kontosida.
 
 Om du vill välja ett nytt lösenord öppnar du länken nedan (giltig i 30 minuter). När du återställer lösenordet loggas du ut överallt.
 

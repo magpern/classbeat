@@ -1,7 +1,7 @@
 Vælg en ny adgangskode
 ======================
 
-Vi har fjernet tofaktorgodkendelsen, gendannelseskoderne og passkeys på din classbeat-konto og logget dig ud overalt, som du bad om for at få adgang igen. Vælg en ny adgangskode, og sæt dem derefter op igen på din kontoside.
+Vi har fjernet tofaktorgodkendelsen, gendannelseskoderne og passkeys på din classbeat-konto, som du bad om for at få adgang igen. Vælg en ny adgangskode, og sæt dem derefter op igen på din kontoside.
 
 Hvis du vil vælge en ny adgangskode, skal du åbne linket nedenfor (gyldigt i 30 minutter). Når du nulstiller adgangskoden, bliver du logget ud overalt.
 

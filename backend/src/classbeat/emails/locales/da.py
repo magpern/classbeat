@@ -221,22 +221,27 @@ CATALOGUE: dict[S, str] = {
         "Hvis det ikke var dig, skal du skifte din adgangskode og give os besked med det samme."
     ),
     S.PASSKEY_WHEN: "Hvornår det skete",
-    S.SUBJECT_PASSKEY_COUNTER: "Et login med passkey på din classbeat-konto blev afvist",
-    S.PASSKEY_COUNTER_HEADING: "Et login med passkey blev afvist",
+    S.SUBJECT_PASSKEY_COUNTER: "En passkey på din classbeat-konto blev afvist",
+    S.PASSKEY_COUNTER_HEADING: "En passkey blev afvist",
     S.PASSKEY_COUNTER_PRE: "En passkey på din classbeat-konto kan være blevet kopieret.",
     S.PASSKEY_COUNTER_BODY: (
-        'Et login med passkeyen "{label}" blev afvist, fordi dens signaturtæller ikke var gået '
-        "op. Det kan ske, når en passkey er blevet kopieret til en anden enhed, og af og til når "
-        "to logins ankommer samtidigt. Passkeyen virker stadig."
+        'Passkeyen "{label}" blev afvist, da den blev brugt til at logge ind eller bekræfte, at '
+        "det var dig, fordi dens signaturtæller ikke var gået op. Det kan ske, når en passkey er "
+        "blevet kopieret til en anden enhed, og af og til når to forespørgsler ankommer "
+        "samtidigt. Passkeyen virker stadig."
     ),
     S.PASSKEY_COUNTER_WARN: (
-        "Hvis du ikke lige har logget ind med denne passkey, skal du fjerne den fra din "
+        "Hvis du ikke lige har brugt denne passkey, skal du fjerne den fra din "
         "kontoside, skifte din adgangskode og give os besked med det samme."
     ),
     S.PASSKEY_MFA_RESET_NOTE: (
         "Vi har fjernet tofaktorgodkendelsen, gendannelseskoderne og passkeys på din "
-        "classbeat-konto og logget dig ud overalt, som du bad om for at få adgang igen. Vælg en "
-        "ny adgangskode, og sæt dem derefter op igen på din kontoside."
+        "classbeat-konto, som du bad om for at få adgang igen. Vælg en ny adgangskode, og sæt "
+        "dem derefter op igen på din kontoside."
+    ),
+    S.PWCHANGED_PASSKEYS: (
+        "Dine passkeys er også blevet fjernet. Log ind med din nye adgangskode, og tilføj dem "
+        "derefter igen på din kontoside."
     ),
     S.PASSKEY_MFA_RESET_WARN: "Hvis du ikke bad om dette, skal du give os besked med det samme.",
 }

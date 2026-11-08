@@ -39,7 +39,7 @@ REAUTH_START = "/api/auth/passkeys/reauth/start"
 REAUTH_FINISH = "/api/auth/passkeys/reauth/finish"
 REAUTH_COOKIE = "__Host-classbeat_passkey_reauth"
 OLD = "2026-01-01T00:00:00+00:00"
-REFUSED_MAIL = "A passkey sign-in to your classbeat account was refused"
+REFUSED_MAIL = "A passkey on your classbeat account was refused"
 EVENT = "SELECT {0} FROM auth_events WHERE kind = :k AND detail->>'method' = 'passkey'"
 
 

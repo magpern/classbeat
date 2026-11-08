@@ -155,9 +155,9 @@ tests.
   `.localhost`; and `CLASSBEAT_ENVIRONMENT=prod` needs an `https` base URL (already enforced).
   *(2026-11-08, #788 and #780 reviews)* "Not an IP literal" includes a last label a browser reads
   as a number (`127.1`, and hex such as `0x7f.0x1`), and production also refuses a `localhost`
-  or `*.localhost` RP ID (only the e2e stack uses one). No public-suffix list is shipped, so a public suffix such as `github.io` passes this check;
-  browsers refuse such an RP ID themselves, so the residual is a confusing operator error, not a
-  weaker passkey.
+  or `*.localhost` RP ID (only the e2e stack uses one). No public-suffix list is shipped, so a
+  public suffix such as `github.io` passes this check; browsers refuse such an RP ID themselves,
+  so the residual is a confusing operator error, not a weaker passkey.
 - **RP ID decided (owner, 2026-11-05): production is `classbeat.eu`**; each environment sets its
   own exact host. **Amended (owner, 2026-11-07): the test and beta host is `classbeat.pernemark.se`**
   (not `dev.classbeat.eu`). The two RP IDs are separate, so a passkey made on one never works on the
@@ -313,9 +313,9 @@ A new system table `webauthn_challenges`, modelled on `oauth_flows` (ADR 0003 §
      session (#643, #675). `POST /api/auth/logout` (#646) and `DELETE /api/auth/sessions/{id}`
      (#678) take it before they delete their one session, because each then writes a `sign_out`
      event whose foreign key takes `FOR KEY SHARE` on the user row after the session row is
-     locked (ADR 0003 amendments of 2026-11-06 and 2026-11-07). *(#639, #643, 2026-11-06)* `keys wipe` deletes the user's
-     `connections` rows (`connections.delete_all_in`) before it takes the user lock, in the same
-     transaction. No flow that holds the user lock takes a `connections` row lock afterwards,
+     locked (ADR 0003 amendments of 2026-11-06 and 2026-11-07). *(#639, #643, 2026-11-06)*
+     `keys wipe` deletes the user's `connections` rows (`connections.delete_all_in`) before it
+     takes the user lock, in the same transaction. No flow that holds the user lock takes a `connections` row lock afterwards,
      except the cascade of an account delete (the user's own or the admin's), and both run only
      in `web`. The wipe runs with web and worker stopped (ADR 0004 §2: the operator procedure
      says to stop them first, and the wipe refuses to start while the app role is connected, a

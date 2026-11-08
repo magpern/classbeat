@@ -208,6 +208,7 @@ async def complete_reset(
     password_hash = await request.app.state.password_hasher.hash(password)
     keep = set(body.keep_methods)
     email: str | None = None
+    passkeys_removed = 0
     async with system_session(factory(request)) as db:
         token = await consume_token(db, PURPOSE, body.token)
         if token is not None:
@@ -247,7 +248,11 @@ async def complete_reset(
     if token is None or email is None:
         raise refuse(400, "invalid_token")  # a parallel request consumed it
     await attempt.succeed()
-    queue(background, request, happened("password_changed", email, token.user_id))
+    queue(
+        background,
+        request,
+        happened("password_changed", email, token.user_id, passkeys_removed=passkeys_removed),
+    )
     return Done()
 
 
