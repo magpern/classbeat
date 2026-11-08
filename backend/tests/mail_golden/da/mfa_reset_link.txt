@@ -1,14 +1,14 @@
 Vælg en ny adgangskode
 ======================
 
-We removed the two-factor authentication, recovery codes and passkeys of your classbeat account and signed you out everywhere, as asked to restore your access. Choose a new password, then set them up again on your account page.
+Vi har fjernet tofaktorgodkendelsen, gendannelseskoderne og passkeys på din classbeat-konto og logget dig ud overalt, som du bad om for at få adgang igen. Vælg en ny adgangskode, og sæt dem derefter op igen på din kontoside.
 
 Hvis du vil vælge en ny adgangskode, skal du åbne linket nedenfor (gyldigt i 30 minutter). Når du nulstiller adgangskoden, bliver du logget ud overalt.
 
 Vælg en ny adgangskode:
 https://classbeat.example.test/da/reset#token=SAMPLE
 
-If you did not ask for this, tell us right away. Kontakt os på support@classbeat.eu
+Hvis du ikke bad om dette, skal du give os besked med det samme. Kontakt os på support@classbeat.eu
 
 --
 Du får denne sikkerhedsbesked, fordi dette er e-mailadressen til en classbeat-konto. Sådanne beskeder sendes for at beskytte dig.

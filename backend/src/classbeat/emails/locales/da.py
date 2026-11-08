@@ -202,6 +202,43 @@ CATALOGUE: dict[S, str] = {
         "Du får denne mail, fordi classbeat har gjort et hold færdigt, som du bad om, efter at "
         "have analyseret musikken."
     ),
+    S.SUBJECT_PASSKEY_ADDED: "Der er tilføjet en passkey til din classbeat-konto",
+    S.SUBJECT_PASSKEY_REMOVED: "Der er fjernet en passkey fra din classbeat-konto",
+    S.PASSKEY_ADDED_HEADING: "Der er tilføjet en passkey",
+    S.PASSKEY_ADDED_PRE: "Du kan nu logge ind på din classbeat-konto med en ny passkey.",
+    S.PASSKEY_ADDED_BODY: (
+        'En passkey med navnet "{label}" er tilføjet til din classbeat-konto som en måde at '
+        "logge ind på."
+    ),
+    S.PASSKEY_ADDED_WARN: (
+        "Hvis det ikke var dig, skal du fjerne passkeyen fra din kontoside, skifte din "
+        "adgangskode og give os besked med det samme."
+    ),
+    S.PASSKEY_REMOVED_HEADING: "Der er fjernet en passkey",
+    S.PASSKEY_REMOVED_PRE: "Du kan ikke længere logge ind på din classbeat-konto med en passkey.",
+    S.PASSKEY_REMOVED_BODY: 'Passkeyen med navnet "{label}" er fjernet fra din classbeat-konto.',
+    S.PASSKEY_REMOVED_WARN: (
+        "Hvis det ikke var dig, skal du skifte din adgangskode og give os besked med det samme."
+    ),
+    S.PASSKEY_WHEN: "Hvornår det skete",
+    S.SUBJECT_PASSKEY_COUNTER: "Et login med passkey på din classbeat-konto blev afvist",
+    S.PASSKEY_COUNTER_HEADING: "Et login med passkey blev afvist",
+    S.PASSKEY_COUNTER_PRE: "En passkey på din classbeat-konto kan være blevet kopieret.",
+    S.PASSKEY_COUNTER_BODY: (
+        'Et login med passkeyen "{label}" blev afvist, fordi dens signaturtæller ikke var gået '
+        "op. Det kan ske, når en passkey er blevet kopieret til en anden enhed, og af og til når "
+        "to logins ankommer samtidigt. Passkeyen virker stadig."
+    ),
+    S.PASSKEY_COUNTER_WARN: (
+        "Hvis du ikke lige har logget ind med denne passkey, skal du fjerne den fra din "
+        "kontoside, skifte din adgangskode og give os besked med det samme."
+    ),
+    S.PASSKEY_MFA_RESET_NOTE: (
+        "Vi har fjernet tofaktorgodkendelsen, gendannelseskoderne og passkeys på din "
+        "classbeat-konto og logget dig ud overalt, som du bad om for at få adgang igen. Vælg en "
+        "ny adgangskode, og sæt dem derefter op igen på din kontoside."
+    ),
+    S.PASSKEY_MFA_RESET_WARN: "Hvis du ikke bad om dette, skal du give os besked med det samme.",
 }
 
 MONTHS = (
