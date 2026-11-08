@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
 
-test('landing page loads and the API is reachable', async ({ page }) => {
+test('landing page loads', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('banner').getByText('classbeat', { exact: true })).toBeVisible()
-  await expect(page.getByRole('status')).toHaveText('API: ok')
+  await expect(page.getByRole('region', { name: /classbeat picks the songs/i })).toBeVisible()
+  await expect(page.getByText(/^API:/)).toHaveCount(0)
 })
 
 // ADR 0013 section 9: the web process sends the app's CSP and no-referrer on every response; its
@@ -26,7 +27,7 @@ test('the SPA and the API carry the CSP and Referrer-Policy headers', async ({ p
   expect(headers['content-security-policy']).toContain("script-src 'self'")
   expect(headers['content-security-policy']).not.toContain('unsafe')
   expect(headers['referrer-policy']).toBe('no-referrer')
-  await expect(page.getByRole('status')).toHaveText('API: ok')
+  await expect(page.getByRole('region', { name: /classbeat picks the songs/i })).toBeVisible()
   // The page, its script, styles, fonts and the API call all load under the policy.
   expect(violations).toEqual([])
 

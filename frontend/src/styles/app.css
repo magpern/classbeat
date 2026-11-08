@@ -62,35 +62,6 @@ body {
   fill: var(--cb-on-brand);
 }
 
-.api-status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--cb-space-2);
-  margin: 0;
-  padding: var(--cb-space-1) var(--cb-space-3);
-  border: 1px solid var(--cb-line);
-  border-radius: var(--cb-radius-full);
-  background: var(--cb-raised);
-  color: var(--cb-muted);
-  font-size: var(--cb-text-sm);
-  font-variant-numeric: tabular-nums;
-}
-
-.api-status__dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: var(--cb-radius-full);
-  background: var(--cb-muted);
-}
-
-.api-status[data-state='ok'] .api-status__dot {
-  background: var(--cb-ok);
-}
-
-.api-status[data-state='unreachable'] .api-status__dot {
-  background: var(--cb-bad);
-}
-
 .app-main {
   max-width: var(--cb-content-width);
   margin: 0 auto;
