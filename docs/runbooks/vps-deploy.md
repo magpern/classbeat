@@ -9,6 +9,18 @@ run from a local session on that machine (the owner's terminal, or a Claude Code
 starts there), one step at a time with the owner's go-ahead. Agents checked the files offline
 (`check-prod-compose.sh`, section 13); they never touched the server, DNS, Cloudflare or a provider.
 
+**Upgrade notes (read before `up`).**
+
+- **From the release with #792 (Turnstile on by default in production, [ADR 0025](../adr/0025-turnstile.md)
+  Amendment 2).** `compose.prod.yaml` now passes `CLASSBEAT_TURNSTILE_ENABLED=${TURNSTILE_ENABLED:-true}`,
+  so a `.env` that does not mention `TURNSTILE_ENABLED` turns it on. A server **without a Turnstile
+  site key** (`TURNSTILE_SITE_KEY` in `.env`) **or without the key in `secrets/turnstile_secret_key`**
+  must put `TURNSTILE_ENABLED=false` in `.env` **before** the upgrade: `web` then fails its start-up
+  settings check (`turnstile_enabled needs CLASSBEAT_TURNSTILE_SITE_KEY`, or `turnstile_enabled needs
+  the turnstile_secret_key secret file (it is empty)`, from `config_turnstile.py`) and keeps
+  restarting. Remove the `false` again once the widget and keys exist (section 5b; the full steps
+  are in section 11).
+
 What is deployed: `compose.prod.yaml` (web, worker, db, and the one-shot migrate and db-functions)
 from the release images `ghcr.io/magpern/classbeat:X.Y.Z` and `ghcr.io/magpern/classbeat-db:X.Y.Z`
 (Postgres with the role, job-queue and admin-role SQL baked in), plus one site file in swag
