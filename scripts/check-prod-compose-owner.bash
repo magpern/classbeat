@@ -91,6 +91,49 @@ if [[ "$mode" == install ]]; then
   fi
 fi
 
+# --- A CLASSBEAT_ key the compose files never read (#827) -------------------------------------------
+# compose.prod.yaml reads PASSKEYS and passes it on as CLASSBEAT_PASSKEYS, so a CLASSBEAT_PASSKEYS line in
+# .env is silently ignored. A warning (not a failure: the line is harmless), naming the KEY only: the
+# env file is read for its names, a value never reaches a variable, a message or the output.
+# env_misnamed_keys ENV_FILE: prints KEY for each CLASSBEAT_<NAME> key of the file for which a compose
+# file of the stack reads ${NAME}; nothing for a file that is absent or has none.
+env_misnamed_keys() {
+  local file="$1" key name vars=" " f
+  [[ -f "$file" ]] || return 0
+  for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml; do
+    [[ -f "$f" ]] || continue
+    vars+="$(grep -Eo '\$\{[A-Z][A-Z0-9_]*' "$f" | sed 's/^\${//' | sort -u | tr '\n' ' ')"
+  done
+  while IFS= read -r key; do
+    name="${key#CLASSBEAT_}"
+    if [[ "$vars" == *" $name "* ]]; then printf '%s\n' "$key"; fi
+  done < <(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?(CLASSBEAT_[A-Za-z0-9_]+)[[:space:]]*=.*/\2/p' "$file" | sort -u)
+  return 0
+}
+warn_misnamed_env_keys() {   # warn_misnamed_env_keys ENV_FILE
+  local key
+  while IFS= read -r key; do
+    echo "check-prod-compose: warning: $1 sets $key, which compose.prod.yaml ignores: it reads ${key#CLASSBEAT_} (rename the key, runbook section 5)" >&2
+  done < <(env_misnamed_keys "$1")
+  return 0
+}
+warn_misnamed_env_keys "$env_file"
+if [[ $mode == repo ]]; then   # the self-tests and the checkout-only checks (ADR 0020)
+mk_env="$tmp/misnamed.env"; mk_canary="misnamed-canary-$RANDOM$RANDOM"
+printf 'CLASSBEAT_PASSKEYS=%s\n  export CLASSBEAT_WEBAUTHN_RP_ID = %s\nCLASSBEAT_PASSKEYS=again\nPASSKEYS=true\nWEBAUTHN_RP_ID=x\n# CLASSBEAT_SMTP_HOST=c\nCLASSBEAT_NOT_A_COMPOSE_VARIABLE=%s\nSMTP_HOST=h\n' \
+  "$mk_canary" "$mk_canary" "$mk_canary" > "$mk_env"
+mk_got="$(env_misnamed_keys "$mk_env" | tr '\n' ' ')"
+[[ "$mk_got" == "CLASSBEAT_PASSKEYS CLASSBEAT_WEBAUTHN_RP_ID " ]] \
+  || { echo "check-prod-compose: self-test: misnamed .env keys: got '$mk_got'" >&2; exit 1; }
+mk_out="$(warn_misnamed_env_keys "$mk_env" 2>&1)"
+if grep -qF -- "$mk_canary" <<<"$mk_out" || ! grep -q 'CLASSBEAT_PASSKEYS' <<<"$mk_out"; then
+  echo "check-prod-compose: self-test: the misnamed-key warning leaks a value or misses the key" >&2; exit 1
+fi
+printf 'PASSKEYS=true\nWEBAUTHN_RP_ID=x\nCLASSBEAT_VERSION=1.2.3\nCLASSBEAT_DOMAIN=x\n' > "$mk_env"
+[[ -z "$(env_misnamed_keys "$mk_env")$(warn_misnamed_env_keys "$mk_env" 2>&1)" ]] \
+  || { echo "check-prod-compose: self-test: a correct .env gave a misnamed-key warning" >&2; exit 1; }
+fi
+
 # --- No OAuth client secret in an env file (#507) --------------------------------------------------
 # A client secret goes in secrets/oauth_<provider>_client_secret, never in .env (compose would not
 # pass it on anyway). Only the variable's name is matched; its value is never printed.
