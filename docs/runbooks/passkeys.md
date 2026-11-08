@@ -36,16 +36,14 @@ but the old passkeys).
 Passkeys are **off by default** (`CLASSBEAT_PASSKEYS` unset or false) and are switched on per
 environment.
 
-**Before the first switch-on in production or test** a small agent PR must pass `CLASSBEAT_PASSKEYS`
-and `CLASSBEAT_WEBAUTHN_RP_ID` through `compose.prod.yaml` and add them to the variable allow-list of
-`scripts/check-prod-compose.sh`. **Today neither is passed**, so putting them in the server's `.env`
-changes nothing. Ask the Architect for that PR (it is listed under "Waiting for the owner" in
-[status.md](../status.md)); it is outside the documentation change that wrote this page.
+`compose.prod.yaml` passes both settings to `web` only (issue #790), from `.env` under the short names
+`PASSKEYS` (default `false`) and `WEBAUTHN_RP_ID` (default empty, which is unset: web then refuses to
+start with passkeys on, so a forgotten RP ID cannot go live). `scripts/check-prod-compose.sh` allows
+exactly these two names on `web`, refuses them on any other service and refuses `PASSKEYS` defaulting
+to anything but `false`. A server needs a release that includes this change.
 
-Once it is merged and released:
-
-1. Set `CLASSBEAT_WEBAUTHN_RP_ID` (section 1) and `CLASSBEAT_PASSKEYS=true` in the environment's
-   `.env`, then redeploy as in [vps-deploy.md](vps-deploy.md). A bad RP ID stops the stack at start;
+1. Set `WEBAUTHN_RP_ID` (section 1; the value for `CLASSBEAT_WEBAUTHN_RP_ID`) and `PASSKEYS=true` in
+   the environment's `.env` (see `prod.env.example`), then redeploy as in [vps-deploy.md](vps-deploy.md). A bad RP ID stops the stack at start;
    fix the value and start again.
 2. Check the swag site keeps today's `Permissions-Policy` line, which names neither
    `publickey-credentials-get` nor `publickey-credentials-create` (both then default to the site
