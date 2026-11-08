@@ -1,22 +1,31 @@
-"""Application settings, read from the environment (prefix ``CLASSBEAT_``) and secret files."""
+"""Application settings, read from the environment (prefix ``CLASSBEAT_``) and secret files.
 
-import ipaddress
-import re
+Every ``SecretStr`` field, the secret-file registries and the checks that combine fields live
+here; the non-secret field groups are pure mixins in ``config_accounts``, ``config_mail``,
+``config_jobs``, ``config_agent`` and ``config_features`` (#812).
+"""
+
 import ssl
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
+from pydantic import SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
-from classbeat.config_hosts import (
-    _is_local_host,
-    check_prod_trusted_proxies,
-    check_public_base_url,
-    parse_networks,
+from classbeat.config_accounts import (  # noqa: F401 (re-exported from classbeat.config)
+    CONNECTION_KEK_ID,
+    AccountSettings,
+)
+from classbeat.config_agent import AgentSettings
+from classbeat.config_features import FeatureSettings
+from classbeat.config_hosts import _is_local_host, check_prod_trusted_proxies
+from classbeat.config_jobs import JobSettings
+from classbeat.config_mail import (  # noqa: F401 (re-exported from classbeat.config)
+    SUPPORT_ADDRESS,
+    MailSettings,
 )
 from classbeat.config_passkeys import check_settings as check_passkey_settings
 from classbeat.config_roles import (  # noqa: F401 (re-exported from classbeat.config)
@@ -46,8 +55,6 @@ from classbeat.config_turnstile import (  # noqa: F401 (re-exported from classbe
 )
 from classbeat.config_turnstile import check_secret_key as check_turnstile_secret_key
 from classbeat.config_turnstile import check_settings as check_turnstile_settings
-from classbeat.config_turnstile import check_site_key as check_turnstile_site_key
-from classbeat.emailnorm import normalize_email
 
 DATABASE_DRIVER = "postgresql+psycopg"
 # Fields read from secret files, and never from the environment.
@@ -83,10 +90,6 @@ BYTE_EXACT_SECRET_FIELDS = frozenset(
     {"database_password", "database_owner_password", "database_maint_password"}
 )
 MIN_APP_SECRET_BYTES = 32
-# ADR 0004 section 2: the id of the current KEK (the ``connection_kek`` secret file).
-CONNECTION_KEK_ID = re.compile(r"kek-[a-z0-9-]{1,28}")
-# A bare address (no display name, no angle brackets, no whitespace or control characters).
-SUPPORT_ADDRESS = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
 
 
 def read_secret_files(
@@ -102,12 +105,18 @@ def _read_settings_secret_files() -> dict[str, str]:
     return read_secret_files(secrets_dir(), SECRET_FILE_FIELDS, OPTIONAL_SECRET_FILE_FIELDS)
 
 
-class Settings(BaseSettings):
+class Settings(
+    AccountSettings, MailSettings, JobSettings, AgentSettings, FeatureSettings, BaseSettings
+):
     """All configuration of the web app and the worker.
 
     Everything that can carry a credential is a ``SecretStr``: it is masked in ``repr``,
     ``str``, ``model_dump`` and validation errors.
     """
+
+    # Every ``SecretStr`` field is declared here, next to the registries above; the mixins hold
+    # only non-secret fields (tests/test_config_field_groups.py). Every model validator stays
+    # here too, so they run in the same order as before the split.
 
     model_config = SettingsConfigDict(
         env_prefix="CLASSBEAT_",
@@ -138,51 +147,13 @@ class Settings(BaseSettings):
     maint_database_url: SecretStr | None = None
     database_maint_password: SecretStr | None = None
     static_dir: Path | None = None
-    # The worker's claim poll when no ``jobs_queued`` notification arrives (ADR 0005 section 3).
-    worker_poll_seconds: float = 2.0
-    # How often the worker purges expired auth rows (ADR 0003 section 1: hourly).
-    purge_interval_seconds: float = 3600.0
 
-    # Accounts and sessions (ADR 0003).
+    # Accounts and sessions (ADR 0003; the other fields are in ``config_accounts``).
     # From the file ``app_secret_key`` (at least 32 bytes); the web app refuses to start without
     # it. All auth keys are derived from it (section 8).
     app_secret_key: SecretStr | None = None
-    # The one public origin, for the Origin check (section 4) and for links in mail.
-    public_base_url: str = "http://127.0.0.1:8000"
-    # Comma-separated addresses that become admin at their next sign-in (section 7).
-    admin_emails: str = ""
-    # Comma-separated addresses or CIDR ranges of reverse proxies whose X-Forwarded-For is
-    # believed (section 9). Empty: the peer address is the client.
-    trusted_proxies: str = ""
-    session_idle_days: int = 7
-    session_absolute_days: int = 30
-    password_hash_workers: int = 4
-    # The id of the current key-encryption key (ADR 0004 section 2). The key itself is the
-    # secret file ``connection_kek`` (read by ``classbeat.crypto.keks``, never the environment);
-    # retired keys are ``connection_kek_<id>``.
-    connection_kek_id: str = "kek-1"
-    # Who may create an account (section 5): ``invite`` (default), ``closed`` or ``open``.
-    signup_mode: Literal["invite", "closed", "open"] = "invite"
-    # The languages the operator enables, comma-separated bare codes (ADR 0023 section 1). ``en`` is
-    # always on; a language is offered when it is enabled and in the supported manifest.
-    locales: str = "en,sv,da"
-
-    # Mail (section 5). Unset ``smtp_host``: no mail is sent (a warning is logged instead).
-    smtp_host: str | None = None
-    smtp_port: int = 587
-    smtp_sender: str = "classbeat@localhost"
-    # The bare address that replaces "the operator" in mail: the footer's ``mailto:`` and the
-    # ``Reply-To`` (ADR 0022 section 3). An owner-confirmable default: the mailbox must exist
-    # before deploy. The admin setting (ME2) overrides it.
-    mail_support_address: str = "support@classbeat.eu"
-    smtp_tls: Literal["starttls", "tls", "none"] = "starttls"
-    smtp_username: str | None = None
     # From the file ``smtp_password`` (never the environment).
     smtp_password: SecretStr | None = None
-    # Opt-in: Bridge's own PEM leaf certificate, mounted read-only, that the SMTP server's
-    # certificate must chain to instead of the system store (a self-signed Proton Mail Bridge).
-    # Verification and the hostname check stay on. Unset: the system store.
-    smtp_ca_file: Path | None = None
 
     # OAuth sign-in (section 5). A provider is on only when its client id and its secret file
     # (``oauth_<provider>_client_secret``, never the environment) both exist.
@@ -197,107 +168,6 @@ class Settings(BaseSettings):
     # here. Linking, re-authentication and the callbacks work for every enabled provider.
     oauth_visible_providers: str = "google"
 
-    # The model provider of the worker (ADR 0006 §9): ``anthropic`` (the default) needs the
-    # ``anthropic_api_key`` secret file; ``fake`` (the dev stack and CI) is refused in ``prod``.
-    # ``check_worker_model_provider`` enforces both at worker start.
-    model_provider: Literal["anthropic", "fake"] = "anthropic"
-    # Agent runs (ADR 0006 sections 2, 5 and 8; classbeat.agent). The model and its request.
-    agent_model: str = Field(default="claude-opus-5-5", pattern=r"^[A-Za-z0-9._:-]{1,100}$")
-    agent_effort: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
-    agent_max_tokens: int = Field(default=32_000, ge=1_000, le=128_000)
-    # Limits per stage run, and the cost ceiling per job across stages and attempts.
-    agent_max_turns: int = Field(default=12, ge=1, le=100)
-    agent_max_tool_calls: int = Field(default=40, ge=1, le=500)
-    agent_max_corrections: int = Field(default=3, ge=0, le=20)
-    agent_stage_seconds: float = Field(default=300.0, gt=0, le=3600)
-    agent_job_cost_micros: int = Field(default=1_500_000, ge=0, le=100_000_000)  # $1.50
-    # The song-picking kinds' own ceiling across their stages and attempts (ADR 0008 section 3).
-    song_job_cost_micros: int = Field(default=3_000_000, ge=0, le=100_000_000)  # $3
-    # Output tokens reserved per turn by the cost check (thinking included).
-    agent_turn_output_reserve: int = Field(default=8_000, ge=0, le=128_000)
-    # The FakeProvider's script (a JSON file) when model_provider is fake.
-    fake_model_script: Path | None = None
-
-    # Jobs (ADR 0005 sections 3 and 4).
-    job_lease_seconds: int = Field(default=120, ge=30, le=600)
-    # The worker's engine pool follows it (classbeat.worker.loop.worker_pool: 3 * n + 2 at most).
-    worker_concurrency: int = Field(default=2, ge=1, le=16)
-    # Running jobs that may analyse a Swedebeat mix at once, across every worker (#574): a job
-    # that must analyse waits queued for one of these slots, so analyses never fill every worker
-    # slot. queue_claim enforces it; each worker passes its own value. Keep it below
-    # worker_concurrency summed over all workers: at or above it, analyses can take every slot
-    # and delay design jobs, which is what the cap is for.
-    mix_analysis_concurrency: int = Field(default=1, ge=1, le=16)
-    # Reap, expire and settle (ADR 0005 section 3: every 30 s).
-    worker_maintenance_seconds: float = Field(default=30.0, gt=0)
-    # On SIGTERM, how long runs may take to reach a checkpoint or return from a call before
-    # their leases are handed back (inside compose's 30 s stop_grace_period).
-    worker_shutdown_wait_seconds: float = Field(default=25.0, ge=0, le=25)
-    approval_ttl_hours: int = Field(default=168, ge=1, le=8760)
-    # operation_busy requeues per phase that cost no attempt; after that each one counts (#86).
-    job_busy_requeue_limit: int = Field(default=5, ge=0, le=100)
-    # Queued and running jobs per user; creation and approval above it are 429 (ADR 0005 s. 2).
-    jobs_per_user: int = Field(default=2, ge=1, le=100)
-    # Revising a class by chat (ADR 0007 section 4): chat revisions a class may have (the first
-    # design is not counted), user requests stored per class, and how many earlier requests
-    # along the revision chain go back to the model.
-    revisions_per_class: int = Field(default=25, ge=1, le=200)
-    # ADR 0011 section 4: the environment's upper bound on a trial's length. A stored
-    # ``trial.days`` above it is clamped when a trial starts; 0 turns trials off.
-    trial_days_max: int = Field(default=30, ge=0, le=366)
-    # ADR 0011 section 4: the environment's upper bounds on every plan's money limits; a plan's
-    # effective ``classes_per_month`` and ``monthly_cost_micros`` are the smaller of the row
-    # and these. ``CLASSBEAT_JOBS_PER_USER`` and ``CLASSBEAT_REVISIONS_PER_CLASS`` bound the
-    # plan's concurrent jobs and revisions per class alike.
-    classes_per_month_max: int = Field(default=200, ge=0, le=10_000)
-    monthly_cost_micros_max: int = Field(default=300_000_000, ge=0, le=100_000_000_000)
-    # Issue #496: the environment's upper bound on every plan's ``max_class_minutes`` (the
-    # brief's own range, 10 to 180); a plan's effective cap is the smaller of the row and this.
-    class_minutes_max: int = Field(default=180, ge=10, le=180)
-    # Issue #577: Save and Update (``save_workout`` and ``update_workout`` jobs together) per user
-    # in the last hour and the last 24 hours. Neither takes a credit or a model call, so without
-    # these a script with a stolen session could keep writing programs to the user's MOWL.
-    saves_per_hour: int = Field(default=30, ge=1, le=1_000)
-    saves_per_day: int = Field(default=100, ge=1, le=10_000)
-    # Issue #577: the general limit on signed-in ``/api`` requests (ADR 0003 section 9, amendment
-    # of 2026-11-05), fixed windows per user (all requests, per minute and per hour; writes and
-    # the class and job reads per minute) and per client address (signed-in requests, per minute).
-    api_requests_per_minute: int = Field(default=300, ge=1, le=100_000)
-    api_requests_per_hour: int = Field(default=3_000, ge=1, le=1_000_000)
-    api_writes_per_minute: int = Field(default=60, ge=1, le=100_000)
-    api_reads_per_minute: int = Field(default=120, ge=1, le=100_000)
-    api_ip_requests_per_minute: int = Field(default=1_200, ge=1, le=1_000_000)
-    # Issue #632: how many days the hourly purge keeps ``security_log`` rows (one per signed-in
-    # ``/api`` request; ADR 0003 amendment "security log"). Short by design, at most the 30 days
-    # of ``auth_events``.
-    security_log_days: int = Field(default=7, ge=1, le=30)
-    chat_max_requests: int = Field(default=50, ge=1, le=200)
-    chat_context_requests: int = Field(default=10, ge=1, le=30)
-    # ADR 0007 section 8: how long a new MOWL workout may take to appear in My Workouts. Unset
-    # (the default), an uncertain save that left no new program stays uncertain for the user;
-    # set (by the owner, after measuring it at live activation), such a save whose call returned
-    # at least this long ago is ``failed``. A day at most.
-    mowl_listing_lag_seconds: float | None = Field(default=None, gt=0, le=86400)
-    # Song picking and the Spotify connection (ADR 0008, ADR 0009). Off by default: the owner
-    # switches live features on (roadmap Amendment 1); off, every Spotify route answers 404
-    # ``feature_off``. A connect flow lives at most 10 minutes (the table's check), a token is
-    # refreshed when it has less than the margin left, and a refresh request (inside the row
-    # lock) ends within its timeout, below the role's 30 s statement and 60 s idle limits.
-    song_picking: bool = False
-    spotify_flow_ttl_seconds: int = Field(default=600, ge=60, le=600)
-    spotify_refresh_margin_seconds: int = Field(default=120, ge=0, le=1800)
-    spotify_refresh_timeout_seconds: float = Field(default=10.0, gt=0, le=20)
-    # ADR 0008 section 2: how long a new Spotify playlist may take to appear in the user's
-    # playlist listing. Unset (the default), an uncertain create whose listing shows no playlist
-    # with its ``ref`` stays uncertain; set (by the owner, after measuring it at live activation),
-    # such a create whose call returned at least this long ago is ``failed``. A day at most.
-    spotify_listing_lag_seconds: float | None = Field(default=None, gt=0, le=86400)
-    # ADR 0009 section 8: the Spotify requests one job may send across its stages and attempts
-    # (the token refreshes included); the request over it is never sent (``limit_exceeded``).
-    spotify_calls_per_job: int = Field(default=300, ge=1, le=10_000)
-    # ADR 0008 section 2: how long a pick waits for MOWL's track list of the pool playlist to
-    # show exactly the candidates just written (``pool_not_synced`` after it).
-    spotify_pool_sync_wait_seconds: float = Field(default=120.0, ge=0, le=600)
     # From the file ``anthropic_api_key`` (never the environment), mounted on the worker only;
     # the web app refuses to start when it can read it. An empty file counts as no key
     # (``scripts/worktree.sh init`` creates an empty one; it is never a real key).
@@ -306,43 +176,17 @@ class Settings(BaseSettings):
     # ``deepseek_api_key`` files, worker only, empty file = none, never the environment).
     openai_api_key: SecretStr | None = None
     deepseek_api_key: SecretStr | None = None
-    # ADR 0012 §2: off, the DeepSeek host is not on the worker's list and no DeepSeek provider is
-    # built for a job. The owner turns it on only after ADR 0012 §6 holds.
-    deepseek_enabled: bool = False
-    # ADR 0015: the Swedebeat connection. ``swedebeat_enabled`` is the environment's kill switch
-    # (off by default; the admin flag ``swedebeat_enabled`` can only tighten it, ADR 0011 section
-    # 7). Swedebeat's AES app key (JSON ``{"key", "iv"}``: 32 and 16 characters) comes from, in
-    # this order: the optional secret file ``swedebeat_app`` (a runtime Docker secret, web only,
-    # never the environment; the home server's way) and the file ``swedebeat_app_file`` that a
-    # release image build writes (the owner's GitHub secret ``SWEDEBEAT_APP``, ADR 0015 section
-    # 4; absent from every PR, CI and e2e image). With neither, connecting answers
-    # ``app_key_unavailable``.
-    swedebeat_enabled: bool = False
+    # ADR 0015: the Swedebeat connection (its switch ``swedebeat_enabled`` is in
+    # ``config_features``). Swedebeat's AES app key (JSON ``{"key", "iv"}``: 32 and 16
+    # characters) comes from, in this order: the optional secret file ``swedebeat_app`` (a runtime
+    # Docker secret, web only, never the environment; the home server's way) and the file
+    # ``swedebeat_app_file`` that a release image build writes (the owner's GitHub secret
+    # ``SWEDEBEAT_APP``, ADR 0015 section 4; absent from every PR, CI and e2e image).
+    # With neither, connecting answers ``app_key_unavailable``.
     swedebeat_app: SecretStr | None = None
-    # ADR 0018 section 5: running classes. The environment's kill switch (off by default; the
-    # admin flag ``running_enabled`` can only tighten it), read by the web (admit) and the worker
-    # (a queued running job checks it again).
-    running_enabled: bool = False
-    # ADR 0007 amendment of 2026-11-03 (soundless classes, #527): the environment's kill switch
-    # only (off by default). The admin flag ``soundless_enabled`` must also be stored ``on`` and
-    # every plan's model route must cover soundless (``classbeat.flags.effective``).
-    soundless_enabled: bool = False
-    # ADR 0024 (#647): connect MOWL by scanning a QR code with the MOWL phone app. The
-    # environment's switch, off by default until the owner's live scan; the password form stays
-    # either way.
-    mowl_qr_enabled: bool = False
-    # ADR 0025 (#721): Cloudflare Turnstile on sign-in, sign-up, the provider-email step and the
-    # reset request. Off by default (dev, CI, tests); on, it needs the public site key and the
-    # ``turnstile_secret_key`` secret file (web only, never the environment), unless
-    # ``turnstile_fake`` (the e2e stack's local stand-in, no network) is on, which prod refuses.
-    turnstile_enabled: bool = False
-    turnstile_fake: bool = False
-    turnstile_site_key: str | None = None
+    # ADR 0025 (#721): Turnstile's secret key file (web only, never the environment), needed when
+    # ``turnstile_enabled`` is on and ``turnstile_fake`` is off (``config_features``).
     turnstile_secret_key: SecretStr | None = None
-    # ADR 0019 (#771): passkeys, off by default (web only). On, it needs the RP ID, the exact host
-    # (production classbeat.eu, test and beta classbeat.pernemark.se); ``config_passkeys``.
-    passkeys: bool = False
-    webauthn_rp_id: str | None = None
     swedebeat_app_file: Path = Path("/app/swedebeat_app.json")
 
     @classmethod
@@ -376,13 +220,6 @@ class Settings(BaseSettings):
             raise ValueError(f"{info.field_name} is not a valid database URL") from None
         if url.drivername != DATABASE_DRIVER:
             raise ValueError(f"{info.field_name} must use the {DATABASE_DRIVER}:// scheme")
-        return value
-
-    @field_validator("worker_poll_seconds")
-    @classmethod
-    def _check_poll(cls, value: float) -> float:
-        if value <= 0:
-            raise ValueError("worker_poll_seconds must be greater than 0")
         return value
 
     @field_validator("app_secret_key")
@@ -419,11 +256,6 @@ class Settings(BaseSettings):
             )
         return value
 
-    @field_validator("turnstile_site_key")
-    @classmethod
-    def _check_turnstile_site_key(cls, value: str | None) -> str | None:
-        return check_turnstile_site_key(value)
-
     @field_validator("turnstile_secret_key")
     @classmethod
     def _check_turnstile_secret_key(cls, value: SecretStr | None) -> SecretStr | None:
@@ -456,25 +288,6 @@ class Settings(BaseSettings):
         field = MODEL_KEY_FIELDS.get(provider)
         return None if field is None else getattr(self, field)
 
-    @field_validator("connection_kek_id")
-    @classmethod
-    def _check_connection_kek_id(cls, value: str) -> str:
-        if CONNECTION_KEK_ID.fullmatch(value) is None:
-            raise ValueError("connection_kek_id must match ^kek-[a-z0-9-]{1,28}$")
-        return value
-
-    @field_validator("mail_support_address")
-    @classmethod
-    def _check_mail_support_address(cls, value: str) -> str:
-        if SUPPORT_ADDRESS.fullmatch(value) is None:
-            raise ValueError("mail_support_address must be a bare email address")
-        return value
-
-    @field_validator("public_base_url")
-    @classmethod
-    def _check_public_base_url(cls, value: str) -> str:
-        return check_public_base_url(value)
-
     @model_validator(mode="after")
     def _plain_smtp_only_locally(self) -> "Settings":
         if (
@@ -486,11 +299,6 @@ class Settings(BaseSettings):
                 "smtp_tls=none is only allowed for a loopback host or the mailpit service"
             )
         return self
-
-    @field_validator("smtp_ca_file", mode="before")
-    @classmethod
-    def _empty_smtp_ca_file_is_unset(cls, value: object) -> object:
-        return None if isinstance(value, str) and not value.strip() else value
 
     @model_validator(mode="after")
     def _check_smtp_ca_file(self) -> "Settings":
@@ -505,13 +313,6 @@ class Settings(BaseSettings):
             # The path and the OS error text stay out of the message.
             raise ValueError("smtp_ca_file must be a readable PEM certificate file") from None
         return self
-
-    @field_validator("smtp_port")
-    @classmethod
-    def _check_smtp_port(cls, value: int) -> int:
-        if not 1 <= value <= 65535:
-            raise ValueError("smtp_port must be between 1 and 65535")
-        return value
 
     @model_validator(mode="after")
     def _spotify_needs_a_loopback_address(self) -> "Settings":
@@ -544,42 +345,6 @@ class Settings(BaseSettings):
         if self.environment == "prod":
             check_prod_trusted_proxies(self.trusted_proxy_networks)  # section 9, #495
         return self
-
-    @field_validator("trusted_proxies")
-    @classmethod
-    def _check_trusted_proxies(cls, value: str) -> str:
-        parse_networks(value)
-        return value
-
-    @field_validator("session_idle_days", "session_absolute_days", "password_hash_workers")
-    @classmethod
-    def _check_positive(cls, value: int, info: ValidationInfo) -> int:
-        if value < 1:
-            raise ValueError(f"{info.field_name} must be at least 1")
-        return value
-
-    @field_validator("purge_interval_seconds")
-    @classmethod
-    def _check_purge_interval(cls, value: float) -> float:
-        if value <= 0:
-            raise ValueError("purge_interval_seconds must be greater than 0")
-        return value
-
-    @property
-    def admin_email_set(self) -> frozenset[str]:
-        """``admin_emails`` in the normalized form of ADR 0003 section 1 (ASCII lower case)."""
-        return frozenset(normalize_email(e) for e in self.admin_emails.split(",") if e.strip())
-
-    @property
-    def enabled_locales(self) -> frozenset[str]:
-        """``locales`` as a set of two-letter codes, with ``en`` always in; anything else in the
-        list is dropped (the operator's typo never becomes a code)."""
-        codes = {c.strip().lower() for c in self.locales.split(",")}
-        return frozenset({c for c in codes if re.fullmatch(r"[a-z]{2}", c)} | {"en"})
-
-    @property
-    def trusted_proxy_networks(self) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-        return parse_networks(self.trusted_proxies)
 
     def sqlalchemy_url(self) -> URL:
         """The app role's URL, with ``database_password`` substituted when it is set."""
