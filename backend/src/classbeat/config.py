@@ -16,7 +16,7 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
 from classbeat.config_hosts import _is_local_host, parse_networks, public_origin
-from classbeat.config_passkeys import check_passkey_settings
+from classbeat.config_passkeys import check_settings as check_passkey_settings
 from classbeat.config_roles import (  # noqa: F401 (re-exported from classbeat.config)
     MODEL_KEY_FIELDS,
     MODEL_SDK_REFUSED_ENVIRONMENT,
@@ -615,7 +615,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _check_passkeys(self) -> "Settings":
-        check_passkey_settings(self.passkeys, self.webauthn_rp_id, self.public_base_url)
+        check_passkey_settings(self)  # in production a localhost RP ID is refused too
         return self
 
     @model_validator(mode="after")

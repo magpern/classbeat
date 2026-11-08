@@ -72,6 +72,8 @@ def test_accepted(base_url: str, rp_id: str) -> None:
         ("http://127.0.0.1:8000", "127.0.0.1", "IP address"),
         ("http://10.0.0.1", "10.0.0.1", "IP address"),
         ("http://127.1", "127.1", "IP address"),  # a browser reads this as 127.0.0.1
+        ("http://0x7f.0x1", "0x7f.0x1", "IP address"),  # hex: also 127.0.0.1 to a browser
+        ("http://a.0x", "a.0x", "IP address"),  # a bare 0x is the number 0
         ("http://[::1]:8000", "::1", "lowercase DNS name"),
         (BETA, "classbeat.pernemark.se:443", "lowercase DNS name"),  # a port
         (BETA, "classbeat.pernemark.se.", "lowercase DNS name"),  # a trailing dot
@@ -104,6 +106,24 @@ def test_settings_refuse_a_bad_rp_id_at_start_whatever_the_flag() -> None:
     for rp_id in ("127.0.0.1", "localhost"):
         with pytest.raises(ValidationError):
             settings(public_base_url="http://127.0.0.1:8000", passkeys=True, webauthn_rp_id=rp_id)
+
+
+def test_production_refuses_a_localhost_rp_id() -> None:
+    """Only the e2e stack uses ``localhost`` (section 11); production never may (#788 review)."""
+    for host in ("localhost", "app.localhost"):
+        base = f"https://{host}"
+        with pytest.raises(ValidationError, match="localhost when environment is prod"):
+            settings(environment="prod", public_base_url=base, passkeys=True, webauthn_rp_id=host)
+        assert relying_party(settings(public_base_url=base, webauthn_rp_id=host)).rp_id == host
+    prod = settings(
+        environment="prod", public_base_url=PROD, passkeys=True, webauthn_rp_id="classbeat.eu"
+    )
+    assert relying_party(prod).rp_id == "classbeat.eu"
+
+
+def test_a_hex_looking_label_that_is_no_number_is_a_name() -> None:
+    assert rp_id_problem("app.0xg1.example", "https://app.0xg1.example") is None
+    assert rp_id_problem("x.0xbeefy", "https://x.0xbeefy") is None
 
 
 def test_the_environment_names(monkeypatch: pytest.MonkeyPatch) -> None:

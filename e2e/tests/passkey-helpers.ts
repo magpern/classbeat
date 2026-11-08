@@ -153,7 +153,7 @@ export function passkeyLabels(email: string): string[] {
 /** Makes the user's last sign-in older than the 10-minute window, as the database superuser. */
 export function ageReauth(email: string): void {
   sql(
-    `UPDATE sessions SET reauth_at = now() - interval '11 minutes' WHERE user_id = (SELECT id FROM users WHERE email = '${checkedEmail(email)}')`,
+    `UPDATE sessions SET reauth_at = now() - interval '11 minutes' WHERE id = (SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id WHERE u.email = '${checkedEmail(email)}' ORDER BY s.created_at DESC LIMIT 1)`,
   )
 }
 

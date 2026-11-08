@@ -188,6 +188,20 @@ async def test_another_sessions_flow_is_refused(penv: Env) -> None:
     assert await count(penv, EVENT.format("count(*)"), k="reauth") == 0
 
 
+async def test_a_flow_of_another_purpose_is_refused(penv: Env) -> None:
+    """A ``register`` flow of this user and session under the re-auth cookie (#784 review N1)."""
+    client, device = await ready(penv)
+    registering = await start(client)
+    assert registering.status_code == 200
+    client.cookies[REAUTH_COOKIE] = client.cookies[REGISTER_COOKIE]
+    # Signed over the register flow's own challenge, so only the purpose check can refuse it.
+    response = await finish(client, device.get(registering.json(), None, rp_id=RP_ID))
+    assert (response.status_code, reason(response)) == (400, "passkey_failed")
+    assert cleared(response, REAUTH_COOKIE)
+    assert await failed(penv, "challenge") == 1
+    assert await count(penv, EVENT.format("count(*)"), k="reauth") == 0
+
+
 async def test_a_flow_of_a_session_that_rotated_since_is_refused(penv: Env) -> None:
     client, device = await ready(penv)
     begun = await client.post(REAUTH_START)

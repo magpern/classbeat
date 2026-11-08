@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 # single dots. No scheme, port, path, upper case, empty label or trailing dot can match.
 _LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 _DNS_NAME = re.compile(rf"{_LABEL}(?:\.{_LABEL})*")
+# A last label a browser's URL parser reads as a number: decimal (octal too) or ``0x`` hex.
+_NUMBER = re.compile(r"[0-9]+|0x[0-9a-f]*")
 
 
 class PasskeySettingsRefused(ValueError):
@@ -48,29 +50,48 @@ def rp_id_problem(rp_id: str, public_base_url: str) -> str | None:
     host = (urlsplit(public_base_url).hostname or "").lower()
     if host != rp_id and not host.endswith(f".{rp_id}"):
         return "webauthn_rp_id must be the host of public_base_url or a parent domain of it"
-    local = rp_id == "localhost" or rp_id.endswith(".localhost")
-    if "." not in rp_id and not local:
+    if "." not in rp_id and not _is_local(rp_id):
         return "webauthn_rp_id must have at least two labels (or be localhost)"
     return None
 
 
 def _is_ip_literal(name: str) -> bool:
-    # ``ip_address`` takes only the dotted-quad form; a numeric last label (``127.1``, ``10.0.1``)
-    # is an address to a browser's URL parser too, and is never a top-level domain.
+    # ``ip_address`` takes only the dotted-quad form; a numeric last label (``127.1``, ``10.0.1``,
+    # ``0x7f.0x1``) is an address to a browser's URL parser too (the WHATWG "ends in a number"
+    # rule), and is never a top-level domain.
     try:
         ipaddress.ip_address(name)
     except ValueError:
-        return name.rsplit(".", 1)[-1].isdigit()
+        return _NUMBER.fullmatch(name.rsplit(".", 1)[-1]) is not None
     return True
 
 
-def check_passkey_settings(passkeys: bool, rp_id: str | None, public_base_url: str) -> None:
+def _is_local(rp_id: str) -> bool:
+    return rp_id == "localhost" or rp_id.endswith(".localhost")
+
+
+def check_passkey_settings(
+    passkeys: bool, rp_id: str | None, public_base_url: str, *, prod: bool = False
+) -> None:
     """The start-up check: with ``passkeys`` on, ``rp_id`` must be set (owner answer 6) and pass
-    ``rp_id_problem``; a set ``rp_id`` is checked whatever the flag says."""
+    ``rp_id_problem``; a set ``rp_id`` is checked whatever the flag says. In production a
+    ``localhost`` RP ID is refused too (only the e2e stack uses one, section 11)."""
     if passkeys and rp_id is None:
         raise PasskeySettingsRefused("passkeys needs CLASSBEAT_WEBAUTHN_RP_ID")
     if rp_id is not None and (problem := rp_id_problem(rp_id, public_base_url)) is not None:
         raise PasskeySettingsRefused(problem)
+    if prod and rp_id is not None and _is_local(rp_id):
+        raise PasskeySettingsRefused("webauthn_rp_id may not be localhost when environment is prod")
+
+
+def check_settings(settings: "Settings") -> None:
+    """``check_passkey_settings`` for the ``Settings`` validator, which runs in every role."""
+    check_passkey_settings(
+        settings.passkeys,
+        settings.webauthn_rp_id,
+        settings.public_base_url,
+        prod=settings.environment == "prod",
+    )
 
 
 def relying_party(settings: "Settings") -> RelyingParty:

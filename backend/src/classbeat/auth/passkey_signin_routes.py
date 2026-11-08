@@ -28,8 +28,9 @@ cookie (the browser's previous sign-in flow goes first).
 
 Every failure but ``passkey_unknown`` is 400 ``passkey_failed`` with no detail; the category goes
 to ``auth_events`` (``sign_in_failed`` ``{method: "passkey", reason}``). The flow cookie is
-cleared on every finish. An admin's role still takes effect only after TOTP in the new session
-(``start_session`` never sets ``mfa_at``).
+cleared on every finish answer, the 429 of both failure buckets included; an unexpected server
+error leaves it, and its challenge is then already taken or expires. An admin's role still takes
+effect only after TOTP in the new session (``start_session`` never sets ``mfa_at``).
 """
 
 import secrets
@@ -51,6 +52,7 @@ from classbeat.auth.cookies import (
 from classbeat.auth.deps import request_device_token, request_ip
 from classbeat.auth.devices import is_known_device
 from classbeat.auth.flowtools import factory, limiter, reserve
+from classbeat.auth.middleware import rate_limited_response
 from classbeat.auth.passkey_assertion import (
     AssertionRefused,
     authentication_options,
@@ -132,6 +134,13 @@ def _answer(status: int, reason: str) -> JSONResponse:
     return response
 
 
+def _limited(limited: RateLimited) -> JSONResponse:
+    """The 429 of a failure bucket, with the flow cookie cleared like every finish answer."""
+    refused = rate_limited_response(limited.retry_after)
+    clear_passkey_cookie(refused, PURPOSE)
+    return refused
+
+
 async def _failed(request: Request, user_id: UUID | None, reason: str) -> JSONResponse:
     """The generic failure; the category goes to ``auth_events`` only."""
     async with system_session(factory(request)) as db:
@@ -144,7 +153,10 @@ async def signin_finish(
     _: FeatureOn, body: FinishIn, request: Request, background: BackgroundTasks
 ) -> JSONResponse:
     ip = request_ip(request)
-    by_ip = await reserve(request, failure_ip_buckets(ip))
+    try:
+        by_ip = await reserve(request, failure_ip_buckets(ip))
+    except RateLimited as limited:
+        return _limited(limited)
     cookie = request.cookies.get(COOKIE)
     if not cookie:
         return await _failed(request, None, "challenge")
@@ -166,9 +178,12 @@ async def signin_finish(
         )
     if found is None:
         return _answer(400, "passkey_unknown")
-    by_account = await reserve(
-        request, failure_account_buckets(str(found.user_id), known_device=known)
-    )
+    try:
+        by_account = await reserve(
+            request, failure_account_buckets(str(found.user_id), known_device=known)
+        )
+    except RateLimited as limited:  # after the take: the challenge is already gone
+        return _limited(limited)
     # Step 3 and 4: no transaction, no lock (section 6, rule 3).
     if not user_handle_matches(body.credential, found.user_handle):
         return await _failed(request, found.user_id, "user_handle")
