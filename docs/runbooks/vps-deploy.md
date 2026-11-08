@@ -200,10 +200,11 @@ Fill in these files by hand (writing into an existing file keeps its group and m
   `secrets/oauth_microsoft_client_secret`: the OAuth client secrets, mounted into `web` only. The
   loop above creates them **empty** (that provider is off) and never empties one that exists; the
   files must exist, or `up` fails with a missing-file error. To switch Google on, section 5a.
-- `secrets/turnstile_secret_key`: leave **empty** (the loop above made it) while Turnstile is off
-  (`TURNSTILE_ENABLED` unset or `false`, the default); section 5b switches it on. It is mounted into `web` only, so the file
-  must exist or `up` fails. Web refuses to start with `TURNSTILE_ENABLED=true` and an empty file,
-  and in prod with one of Cloudflare's test keys ([ADR 0025](../adr/0025-turnstile.md) section 7).
+- `secrets/turnstile_secret_key`: the loop above makes it **empty**, which only works with
+  `TURNSTILE_ENABLED=false` in `.env`. Turnstile is **on by default**: write the secret key into it
+  (section 5b) or set `TURNSTILE_ENABLED=false` until the widget exists. It is mounted into `web` only, so the file
+  must exist or `up` fails. Web refuses to start with Turnstile on and an empty file or no
+  `TURNSTILE_SITE_KEY`, and in prod with one of Cloudflare's test keys ([ADR 0025](../adr/0025-turnstile.md) section 7).
 
 A file that holds only blanks counts as empty. If an optional file (`smtp_password`, the three
 `oauth_*_client_secret`, `swedebeat_app`, `turnstile_secret_key`) cannot be read, `web` starts without it and logs
@@ -240,6 +241,7 @@ SMTP_SENDER=noreply@classbeat.pernemark.se
 # optional: SIGNUP_MODE=invite  CONNECTION_KEK_ID=kek-1  MODEL_PROVIDER=anthropic
 # optional: OAUTH_GOOGLE_CLIENT_ID=...apps.googleusercontent.com  OAUTH_VISIBLE_PROVIDERS=google   (section 5a)
 # optional: OAUTH_GITHUB_CLIENT_ID=...  OAUTH_MICROSOFT_CLIENT_ID=...   (client ids only; never a client secret here)
+# Turnstile is ON by default: set TURNSTILE_SITE_KEY=... and fill secrets/turnstile_secret_key (section 5b), or set TURNSTILE_ENABLED=false until they exist
 ```
 
 `CLASSBEAT_PUBLIC_BASE_URL` is the one public origin (ADR 0003 section 4): the CSRF origin check,
@@ -303,11 +305,12 @@ with `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_MICROSOFT_CLIENT_ID` and their secret fil
 `auth_time` optional claim, AGENTS.md), and appear on the screens only when named in
 `OAUTH_VISIBLE_PROVIDERS`.
 
-### 5b. Cloudflare Turnstile on the sign-in, sign-up, provider-email and reset forms (optional)
+### 5b. Cloudflare Turnstile on the sign-in, sign-up, provider-email and reset forms (on by default)
 
-[ADR 0025](../adr/0025-turnstile.md). Turnstile is **off by default** (`TURNSTILE_ENABLED` unset
-means `false`); the compose default stays off until the owner flips it in a separate change.
-Everything below is the owner's; agents do not touch the Cloudflare dashboard.
+[ADR 0025](../adr/0025-turnstile.md). Turnstile is **on by default** since the release that carries
+Amendment 2 (`TURNSTILE_ENABLED` unset means `true`), so a server needs the widget, the site key and the
+secret file before `web` starts, or `TURNSTILE_ENABLED=false` in `.env` until it has them (this
+section is no longer optional). Everything below is the owner's; agents do not touch the Cloudflare dashboard.
 
 1. **Widget.** Cloudflare dashboard, Turnstile, add a widget for the host name of the real site,
    exactly the value of `CLASSBEAT_DOMAIN` (today `classbeat.pernemark.se`); no `localhost`. Only
@@ -326,19 +329,20 @@ Everything below is the owner's; agents do not touch the Cloudflare dashboard.
    `ls -ln secrets/turnstile_secret_key` (mode `-rw-r-----`, group 10010). Rotating only the secret
    later needs `docker compose up -d --force-recreate web`: a changed file alone does not recreate
    the container. Never use Cloudflare's dummy test keys in production: web refuses to start.
-3. **Enable.** Only on a release that includes the widget (PR #731, the Turnstile widget): any
-   earlier release has the backend check but no widget, so enabling it makes every sign-in, sign-up,
-   provider-email and reset request fail with `captcha_failed`. Then set `TURNSTILE_ENABLED=true` in
-   `.env` and `docker compose up -d web`. Web refuses to start when it is enabled and the site key
-   is missing or the secret file is empty. While Turnstile is off in production (the default), web
-   logs an `ERROR` at start and a `WARNING` for every protected request; that is expected until
-   this step.
+3. **Enable.** A release that carries the default-on change needs nothing more once steps 1 and 2
+   are done: `docker compose up -d web`. Web refuses to start when the site key is missing or the
+   secret file is empty. A release older than that one has the widget (PR #731) but a default of
+   off: set `TURNSTILE_ENABLED=true` in `.env` there. A release older than #731 has the backend check
+   but no widget, so enabling it makes every sign-in, sign-up, provider-email and reset request fail
+   with `captcha_failed`. With `TURNSTILE_ENABLED=false` web logs an `ERROR` at start and a `WARNING`
+   for every protected request; that is expected only until this step.
 4. **Live check** (report only pass or fail and the `why` word): sign in, sign up with an invite,
    request a password reset and finish a provider-email step; repeat in Swedish and Danish and in
    dark and light; the browser console shows no CSP violation and no error `110200` (domain or
    referrer); `docker compose logs web | grep 'captcha refused'` shows no line for those attempts.
    If anything fails, set `TURNSTILE_ENABLED=false` (step 6) and report it.
-5. **Keep it on.** A deploy keeps the setting from `.env`; nothing else is needed.
+5. **Keep it on.** Nothing else is needed; an old `TURNSTILE_ENABLED=true` in `.env` may stay or
+   go. Never leave `TURNSTILE_ENABLED=false` in `.env` once the keys exist.
 6. **Emergency switch** (Cloudflare unreachable, or the check blocks real users): set
    `TURNSTILE_ENABLED=false` in `.env` and `docker compose up -d web`. Web then logs an `ERROR` at
    start and a `WARNING` on every protected request; every other limit still runs. Switch it back on
@@ -347,7 +351,7 @@ Everything below is the owner's; agents do not touch the Cloudflare dashboard.
 
 The widget loads from `challenges.cloudflare.com`; if swag or Cloudflare rewrites the
 `Content-Security-Policy` header, the check does not load (section 8). The privacy notice and the
-cookie notice already name the check; do not enable it for real users while they are missing.
+cookie notice already name the check; they ship in the release, so do not run an older one with it on.
 
 ### 5c. CPU and memory ceilings (ADR 0026 stage 1)
 
@@ -718,6 +722,12 @@ one line per address every 10 seconds, with the number it skipped), so a flood t
 **Take a backup first** (section 12), always: it is the rollback. An update replaces the release's
 files and the version; nothing is cloned or checked out.
 
+**Upgrading to the release that turns Turnstile on by default ([ADR 0025](../adr/0025-turnstile.md)
+Amendment 2): before `up`, either have the Cloudflare widget, `TURNSTILE_SITE_KEY` in `.env` and the
+key in `secrets/turnstile_secret_key` (section 5b), or put `TURNSTILE_ENABLED=false` in `.env`.
+Otherwise `web` refuses to start (the `touch` line below only creates an empty secret file).** Remove
+the `false` again once the widget and keys exist.
+
 ```bash
 cd /opt/classbeat
 OLD="$(sed -n 's/^CLASSBEAT_VERSION=//p' .env | tr -d "\"' \r")"; NEW=X.Y.Z   # NEW = the release you want, no v
@@ -759,8 +769,8 @@ steps, and copy the swag sample to swag if the first `diff` shows a change. A st
 Swedebeat connection (#366) has no `secrets/swedebeat_app`, and one older than #507 has no
 `secrets/oauth_*_client_secret`, and one older than #724 has no `secrets/turnstile_secret_key`;
 without them `up` fails with a missing-file error for that secret, which the `touch` line above fixes
-(an empty OAuth file keeps that provider off, an empty Turnstile file keeps Turnstile off; `touch`
-never empties a file). A file it creates gets group 10010 from the folder and mode 640 from `umask 027`. A stack
+(an empty OAuth file keeps that provider off; an empty Turnstile file only works with
+`TURNSTILE_ENABLED=false`, because Turnstile is on by default; `touch` never empties a file). A file it creates gets group 10010 from the folder and mode 640 from `umask 027`. A stack
 set up before #511 has files of mode 600 and the deploy user's group, which the containers cannot
 read: run the one-time commands of section 5 (`groupadd`, `chgrp` and `chmod 2700` on the folder,
 then `sudo chgrp 10010 secrets/* && chmod 640 secrets/*`) before `up`; the check names them.
