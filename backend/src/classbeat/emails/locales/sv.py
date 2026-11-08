@@ -215,22 +215,27 @@ CATALOGUE: dict[S, str] = {
     ),
     S.PASSKEY_REMOVED_WARN: "Om det inte var du, byt lösenord och säg till oss direkt.",
     S.PASSKEY_WHEN: "När det hände",
-    S.SUBJECT_PASSKEY_COUNTER: "En inloggning med passkey på ditt classbeat-konto nekades",
-    S.PASSKEY_COUNTER_HEADING: "En inloggning med passkey nekades",
+    S.SUBJECT_PASSKEY_COUNTER: "En passkey på ditt classbeat-konto nekades",
+    S.PASSKEY_COUNTER_HEADING: "En passkey nekades",
     S.PASSKEY_COUNTER_PRE: "En passkey på ditt classbeat-konto kan ha kopierats.",
     S.PASSKEY_COUNTER_BODY: (
-        'En inloggning med passkeyn "{label}" nekades eftersom signaturräknaren inte hade ökat. '
-        "Det kan hända när en passkey har kopierats till en annan enhet, och ibland när två "
-        "inloggningar kommer samtidigt. Passkeyn fungerar fortfarande."
+        'Passkeyn "{label}" nekades när den användes för att logga in eller bekräfta att det var '
+        "du, eftersom signaturräknaren inte hade ökat. Det kan hända när en passkey har "
+        "kopierats till en annan enhet, och ibland när två förfrågningar kommer samtidigt. "
+        "Passkeyn fungerar fortfarande."
     ),
     S.PASSKEY_COUNTER_WARN: (
-        "Om du inte nyss loggade in med den här passkeyn, ta bort den från din kontosida, byt "
+        "Om du inte nyss använde den här passkeyn, ta bort den från din kontosida, byt "
         "lösenord och säg till oss direkt."
     ),
     S.PASSKEY_MFA_RESET_NOTE: (
         "Vi har tagit bort tvåfaktorsautentiseringen, återställningskoderna och passkeys på ditt "
-        "classbeat-konto och loggat ut dig överallt, som du bad om för att få tillbaka åtkomsten. "
-        "Välj ett nytt lösenord och ställ sedan in dem igen på din kontosida."
+        "classbeat-konto, som du bad om för att få tillbaka åtkomsten. Välj ett nytt lösenord "
+        "och ställ sedan in dem igen på din kontosida."
+    ),
+    S.PWCHANGED_PASSKEYS: (
+        "Dina passkeys har också tagits bort. Logga in med ditt nya lösenord och lägg sedan till "
+        "dem igen på din kontosida."
     ),
     S.PASSKEY_MFA_RESET_WARN: "Om du inte bad om detta, säg till oss direkt.",
 }

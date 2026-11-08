@@ -10,7 +10,7 @@ import pytest
 from classbeat.config import Settings
 from classbeat.emails import REGISTRY, Category, Kind, MailPrefs, build, send
 from classbeat.emails.blocks import Content, Note, Paragraph
-from classbeat.emails.catalogue import mail_locale
+from classbeat.emails.catalogue import LOCALES, mail_locale
 from classbeat.emails.layout import Branding, Ctx, render_html, render_text
 from classbeat.emails.locales.en import CATALOGUE, S, format_when
 from classbeat.emails.urls import UnsafeLink, check_link
@@ -125,6 +125,14 @@ def test_every_catalogue_string_is_used_by_some_kind() -> None:
     try:
         for kind in KINDS:
             sample_message(kind)
+        # A branch the sample does not take: the passkeys a reset removed (W5 N4, #797).
+        password_changed = REGISTRY["password_changed"]
+        build(
+            golden_settings(),
+            password_changed,
+            "a@example.test",
+            {**password_changed.sample, "passkeys_removed": 1},
+        )
     finally:
         Ctx.t = original  # pyright: ignore[reportAttributeAccessIssue]
     # The sample message carries the unsubscribe line (ME4), so every string is used.
@@ -161,7 +169,7 @@ SUBJECTS = {
     "class_ready": "Your classbeat class is ready",  # ME5, new
     "passkey_added": "A passkey was added to your classbeat account",  # ADR 0019, #772
     "passkey_removed": "A passkey was removed from your classbeat account",
-    "passkey_counter_regressed": "A passkey sign-in to your classbeat account was refused",  # #773
+    "passkey_counter_regressed": "A passkey on your classbeat account was refused",  # #773
     "mfa_reset_link": "Reset your classbeat password",  # #775: the reset link of mfa-reset
 }
 
@@ -180,6 +188,22 @@ def test_the_mail_matches_its_golden_files(kind: Kind) -> None:
     assert message.html is not None
     assert message.body == (GOLDEN / f"{k.id}.txt").read_text(encoding="utf-8")
     assert message.html == (GOLDEN / f"{k.id}.html").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("locale", sorted(LOCALES))
+def test_password_changed_names_removed_passkeys_only_when_asked(locale: str) -> None:
+    kind = REGISTRY["password_changed"]
+    plain = build(golden_settings(), kind, "a@example.test", kind.sample, locale=locale)
+    said = build(
+        golden_settings(),
+        kind,
+        "a@example.test",
+        {**kind.sample, "passkeys_removed": 2},
+        locale=locale,
+    )
+    assert plain.body != said.body
+    assert "passkey" in said.body.lower()
+    assert "passkey" not in plain.body.lower()
 
 
 def urls_in_text(text: str) -> set[str]:

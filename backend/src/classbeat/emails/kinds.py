@@ -194,6 +194,7 @@ def password_changed(c: Ctx, p: Params) -> Content:
         (
             Heading(c.t(S.PWCHANGED_HEADING)),
             Paragraph(c.t(S.PWCHANGED_BODY)),
+            *((Paragraph(c.t(S.PWCHANGED_PASSKEYS)),) if p.get("passkeys_removed") else ()),
             EventTime(c.t(S.PWCHANGED_WHEN), _when(p)),
             Button(c.t(S.ACCOUNT_BUTTON), c.url("/account")),
             Note(c.t(S.PWCHANGED_WARN) + " " + c.t(S.CONTACT_LEAD), contact=True),

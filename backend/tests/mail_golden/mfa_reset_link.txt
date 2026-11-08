@@ -1,7 +1,7 @@
 Choose a new password
 =====================
 
-We removed the two-factor authentication, recovery codes and passkeys of your classbeat account and signed you out everywhere, as asked to restore your access. Choose a new password, then set them up again on your account page.
+We removed the two-factor authentication, recovery codes and passkeys of your classbeat account, as asked to restore your access. Choose a new password, then set them up again on your account page.
 
 To choose a new password, open the link below (valid for 30 minutes). Resetting signs you out everywhere.
 

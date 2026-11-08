@@ -167,6 +167,22 @@ async def test_the_event_and_the_mail_hold_counts_only(either: Env, smtp: SmtpFa
         assert "Secret label" not in mail.text
 
 
+async def test_the_password_changed_mail_names_removed_passkeys_only_when_there_were_some(
+    either: Env, smtp: SmtpFake
+) -> None:
+    user = await either.user(EMAIL)
+    assert (await complete(either, await reset_token(either, smtp))).status_code == 200
+    changed = [m for m in smtp.to(EMAIL) if "password was changed" in m.text]
+    assert changed
+    assert "passkeys were removed" not in " ".join(changed[-1].text.split())
+
+    await plant(either, user, "One")
+    sent = len(smtp.to(EMAIL))
+    assert (await complete(either, await reset_token(either, smtp))).status_code == 200
+    changed = [m for m in smtp.to(EMAIL)[sent:] if "password was changed" in m.text]
+    assert "passkeys were removed too" in " ".join(changed[-1].text.split())
+
+
 async def test_a_keep_list_over_the_cap_is_refused_and_keeps_the_token(
     either: Env, smtp: SmtpFake
 ) -> None:

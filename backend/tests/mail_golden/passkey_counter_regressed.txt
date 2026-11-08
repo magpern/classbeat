@@ -1,14 +1,14 @@
-A passkey sign-in was refused
-=============================
+A passkey was refused
+=====================
 
-A sign-in with the passkey named "MacBook" was refused because its signature counter did not go up. This can happen when a passkey has been copied to another device, and now and then when two sign-ins arrive at once. The passkey still works.
+The passkey named "MacBook" was refused when it was used to sign in or to confirm it was you, because its signature counter did not go up. This can happen when a passkey has been copied to another device, and now and then when two requests arrive at once. The passkey still works.
 
 When it happened: 6 November 2026, 12:30 UTC
 
 Review your account:
 https://classbeat.example.test/en/account
 
-If you did not just sign in with this passkey, remove it from your account page, change your password and tell us right away. Contact us at support@classbeat.eu
+If you did not just use this passkey, remove it from your account page, change your password and tell us right away. Contact us at support@classbeat.eu
 
 --
 You got this security notice because this is the email address of a classbeat account. These notices are sent for your protection.

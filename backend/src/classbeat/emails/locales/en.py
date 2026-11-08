@@ -156,6 +156,7 @@ class S(Enum):
     PASSKEY_COUNTER_BODY = auto()
     PASSKEY_COUNTER_WARN = auto()
     PASSKEY_MFA_RESET_NOTE = auto()
+    PWCHANGED_PASSKEYS = auto()
     PASSKEY_MFA_RESET_WARN = auto()
 
 
@@ -355,22 +356,27 @@ CATALOGUE: dict[S, str] = {
     ),
     S.PASSKEY_REMOVED_WARN: "If this wasn't you, change your password and tell us right away.",
     S.PASSKEY_WHEN: "When it happened",
-    S.SUBJECT_PASSKEY_COUNTER: "A passkey sign-in to your classbeat account was refused",
-    S.PASSKEY_COUNTER_HEADING: "A passkey sign-in was refused",
+    S.SUBJECT_PASSKEY_COUNTER: "A passkey on your classbeat account was refused",
+    S.PASSKEY_COUNTER_HEADING: "A passkey was refused",
     S.PASSKEY_COUNTER_PRE: "A passkey on your classbeat account may have been copied.",
     S.PASSKEY_COUNTER_BODY: (
-        'A sign-in with the passkey named "{label}" was refused because its signature counter '
-        "did not go up. This can happen when a passkey has been copied to another device, and "
-        "now and then when two sign-ins arrive at once. The passkey still works."
+        'The passkey named "{label}" was refused when it was used to sign in or to confirm it '
+        "was you, because its signature counter did not go up. This can happen when a passkey "
+        "has been copied to another device, and now and then when two requests arrive at once. "
+        "The passkey still works."
     ),
     S.PASSKEY_COUNTER_WARN: (
-        "If you did not just sign in with this passkey, remove it from your account page, "
+        "If you did not just use this passkey, remove it from your account page, "
         "change your password and tell us right away."
     ),
     S.PASSKEY_MFA_RESET_NOTE: (
         "We removed the two-factor authentication, recovery codes and passkeys of your classbeat "
-        "account and signed you out everywhere, as asked to restore your access. Choose a new "
-        "password, then set them up again on your account page."
+        "account, as asked to restore your access. Choose a new password, then set them up "
+        "again on your account page."
+    ),
+    S.PWCHANGED_PASSKEYS: (
+        "Your passkeys were removed too. Sign in with your new password, then add them again on "
+        "your account page."
     ),
     S.PASSKEY_MFA_RESET_WARN: "If you did not ask for this, tell us right away.",
 }

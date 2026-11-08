@@ -20,7 +20,7 @@ from smtpfake import SmtpFake
 pytestmark = pytest.mark.usefixtures("frozen_rate_windows")
 
 REGRESSED = "SELECT count(*) FROM auth_events WHERE kind = 'passkey_counter_regressed'"
-SUBJECT = "A passkey sign-in to your classbeat account was refused"
+SUBJECT = "A passkey on your classbeat account was refused"
 
 
 async def stored_count(env: Env) -> int:
