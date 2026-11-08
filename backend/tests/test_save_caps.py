@@ -205,7 +205,6 @@ async def test_a_plan_cap_leaves_users_on_other_plans_alone(
     on_instructor = await senv.saved_class(TOKEN_B)
     move_to(senv, on_instructor.owner, "instructor")
     plan_caps(hour=1, day=None, plan="instructor")
-    plan_caps(hour=1, day=None, plan="free")
     for saved in (on_pro, on_instructor):
         plant(senv, saved.owner, "save_workout")
     detail = await refused_save(senv, save_browser, on_instructor)
