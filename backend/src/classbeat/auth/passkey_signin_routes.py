@@ -23,7 +23,8 @@ cookie (the browser's previous sign-in flow goes first).
 5. One write transaction (``passkey_signin_session.complete``): ``lock_user`` first, the
    counter rule, the disabled check, the ``ADMIN_EMAILS`` grant and ``start_session``. A reset
    that commits first leaves the credential gone and no session; one that comes later waits for
-   this commit and revokes it.
+   this commit and revokes it. An assertion reporting ``cross-platform`` (owner question 4,
+   #776) gets a 24-hour session and no known-device cookie.
 
 Every failure but ``passkey_unknown`` is 400 ``passkey_failed`` with no detail; the category goes
 to ``auth_events`` (``sign_in_failed`` ``{method: "passkey", reason}``). The flow cookie is
@@ -57,6 +58,7 @@ from classbeat.auth.passkey_assertion import (
     user_handle_matches,
     verify_assertion,
 )
+from classbeat.auth.passkey_attachment_policy import is_cross_platform
 from classbeat.auth.passkey_limits import (
     StartBucket,
     failure_account_buckets,
@@ -182,7 +184,9 @@ async def signin_finish(
     if asserted.backup_eligible != found.backup_eligible:
         return await _failed(request, found.user_id, "backup_flag")
     # Step 5: the one write transaction (``passkey_signin_session``).
-    outcome = await complete(request, found, asserted, ip)
+    outcome = await complete(
+        request, found, asserted, ip, cross_platform=is_cross_platform(body.credential)
+    )
     queue(background, request, outcome.notice)
     if outcome.issued is None or outcome.user is None:
         return _answer(400, "passkey_failed")
@@ -193,5 +197,6 @@ async def signin_finish(
     response = JSONResponse(signed_in.model_dump(mode="json"))
     clear_passkey_cookie(response, PURPOSE)
     set_session_cookie(response, outcome.issued)
-    set_device_cookie(response, outcome.device)
+    if outcome.device:  # none after a cross-platform sign-in (owner question 4)
+        set_device_cookie(response, outcome.device)
     return response

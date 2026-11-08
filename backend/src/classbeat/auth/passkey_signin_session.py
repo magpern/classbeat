@@ -11,7 +11,9 @@ order:
 3. A disabled user gets the generic failure, like a wrong password.
 4. The ``ADMIN_EMAILS`` grant and ``start_session`` as for a password sign-in (#632's client mark,
    ``reauth_at`` now, never ``mfa_at``: an admin still needs TOTP in the new session), the known
-   device and the ``sign_in`` event ``{method: "passkey"}``.
+   device and the ``sign_in`` event ``{method: "passkey"}``. A ``cross_platform`` assertion
+   (owner question 4, #776) caps the new session at 24 hours (``session_cap``) and makes no
+   known device, so ``device`` stays empty and the route sets no device cookie.
 
 So a reset either commits first (the credential is gone, or the session is never made) or waits
 for this commit and then revokes the new session with the rest.
@@ -30,8 +32,10 @@ from classbeat.auth.devices import remember_device
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import factory, user_agent
 from classbeat.auth.passkey_assertion import Asserted
+from classbeat.auth.passkey_attachment_policy import CROSS_DEVICE_SESSION
 from classbeat.auth.passkey_counter import METHOD, advance_or_refuse, record_passkey_failure
 from classbeat.auth.passkey_signin_store import SignInCredential
+from classbeat.auth.session_cap import cap_session
 from classbeat.auth.sessions import IssuedSession, start_session
 from classbeat.auth.tables import users
 from classbeat.auth.userlock import lock_user
@@ -49,7 +53,8 @@ class SignedInUser:
 @dataclass(frozen=True, slots=True)
 class Outcome:
     """What the transaction decided: a session (``issued``, ``device``, ``user``) or a failure
-    category in ``reason``; ``notice`` is the counter mail to send, if any."""
+    category in ``reason``; ``notice`` is the counter mail to send, if any. ``device`` is empty
+    when no known device was made (a cross-platform sign-in)."""
 
     reason: str | None = None
     issued: IssuedSession | None = None
@@ -66,7 +71,12 @@ async def record_failure(
 
 
 async def complete(
-    request: Request, found: SignInCredential, asserted: Asserted, ip: str
+    request: Request,
+    found: SignInCredential,
+    asserted: Asserted,
+    ip: str,
+    *,
+    cross_platform: bool,
 ) -> Outcome:
     settings, user_id, passkey = request.app.state.settings, found.user_id, str(found.id)
     async with system_session(factory(request)) as db:
@@ -96,9 +106,13 @@ async def complete(
             replacing_token=request_session_token(request),
             mark=request_client_mark(request, ip),
         )
-        device = await remember_device(
-            db, request.app.state.keys, user_id, request_device_token(request)
-        )
+        device = ""
+        if cross_platform:  # client-reported: only ever makes the session stricter
+            issued = await cap_session(db, issued, CROSS_DEVICE_SESSION)
+        else:
+            device = await remember_device(
+                db, request.app.state.keys, user_id, request_device_token(request)
+            )
         await record_event(
             db, "sign_in", user_id=user_id, ip=ip, detail={"method": METHOD, "passkey": passkey}
         )
