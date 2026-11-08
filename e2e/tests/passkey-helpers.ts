@@ -82,8 +82,12 @@ export async function userOnSecurityTab(page: Page, tag: string): Promise<string
 }
 
 export async function openSecurityTab(page: Page): Promise<void> {
-  await page.getByRole('tab', { name: 'Sign-in and security' }).click()
-  await expect(page.getByRole('heading', { name: 'Passkeys', exact: true })).toBeVisible()
+  // The page may still be settling after a sign-in (the session is read again), which can reset the
+  // tab, so the click is repeated until the card shows.
+  await expect(async () => {
+    await page.getByRole('tab', { name: 'Sign-in and security' }).click({ timeout: 2_000 })
+    await expect(page.getByRole('heading', { name: 'Passkeys', exact: true })).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 15_000 })
 }
 
 /** Adds a passkey from the account page's card and waits for its row. */
