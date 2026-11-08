@@ -1462,34 +1462,10 @@ const da: Catalogue = {
 
   // Account: usage card.
   'usage.title': 'Forbrug',
-  'usage.note.estimate_at_list_prices':
-    'Prisen er et estimat til udbyderens listepriser. Det er ikke en faktura.',
-  'usage.note.sdk_retries':
-    'Softwaren, der taler med udbyderen, prøver stille igen inden for en anmodning. Disse ekstra forsøg tælles ikke med.',
-  'usage.note.lost_lease_turn':
-    'Et trin, der blev færdigt, efter at classbeat allerede havde givet sit arbejde videre til en anden arbejdsproces, kan ikke registreres.',
-  'usage.note.failed_stream_turn':
-    'En anmodning, der fejlede, efter at udbyderen var begyndt at fakturere den, returnerer intet forbrug og tælles derfor ikke med.',
-  'usage.note.other': 'Der er en anden grund til, at dette tal kan afvige fra udbyderens faktura.',
-  'usage.kind.design_draft': 'Designer et hold',
-  'usage.kind.revise_draft': 'Ændrer et hold',
   'usage.loadFailed': 'Dit forbrug kunne ikke indlæses.',
   'usage.period': 'Dit forbrug i {month} (UTC-måneder).',
-  'usage.tokens': 'Tokens',
-  'usage.cost': 'Anslået pris',
   'usage.designed': 'Designede hold',
   'usage.revisions': 'Revisioner',
-  'usage.tokensExplained':
-    'Tokens er de tekststykker, designeren læser og skriver: {input} ind, {output} ud. At gemme i MOWL bruger ingen.',
-  'usage.tokensExplainedReused':
-    'Tokens er de tekststykker, designeren læser og skriver: {input} ind, {output} ud og {reused} genbrugt fra tidligere anmodninger. At gemme i MOWL bruger ingen.',
-  'usage.byKind': 'Efter slags arbejde og model',
-  'usage.col.work': 'Arbejde',
-  'usage.col.model': 'Model',
-  'usage.col.tokens': 'Tokens',
-  'usage.col.cost': 'Pris',
-  'usage.leavesOut': 'Hvad dette ikke omfatter',
-  'usage.lowerThanBill': 'Tallet kan være lidt lavere end udbyderens faktura.',
 
   // Account: MOWL connection card.
   'mowl.err.invalid_credentials': 'MOWL accepterede ikke den e-mailadresse og adgangskode.',

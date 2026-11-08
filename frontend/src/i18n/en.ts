@@ -1247,28 +1247,10 @@ export const en = {
 
   // Account: usage card.
   'usage.title': 'Usage',
-  'usage.note.estimate_at_list_prices': 'The cost is an estimate at the provider’s list prices. It is not an invoice.',
-  'usage.note.sdk_retries': 'The software that talks to the provider retries quietly inside a request. Those extra attempts are not counted.',
-  'usage.note.lost_lease_turn': 'A step that finished after classbeat had already given its work to another worker cannot be recorded.',
-  'usage.note.failed_stream_turn': 'A request that failed after the provider began to bill it returns no usage, so it is not counted.',
-  'usage.note.other': 'There is another reason this figure may differ from the provider’s bill.',
-  'usage.kind.design_draft': 'Designing a class',
-  'usage.kind.revise_draft': 'Changing a class',
   'usage.loadFailed': 'Your usage could not be loaded.',
   'usage.period': 'Your use in {month} (UTC months).',
-  'usage.tokens': 'Tokens',
-  'usage.cost': 'Estimated cost',
   'usage.designed': 'Classes designed',
   'usage.revisions': 'Revisions',
-  'usage.tokensExplained': 'Tokens are the pieces of text the designer reads and writes: {input} in, {output} out. Saving to MOWL uses none.',
-  'usage.tokensExplainedReused': 'Tokens are the pieces of text the designer reads and writes: {input} in, {output} out, and {reused} reused from earlier requests. Saving to MOWL uses none.',
-  'usage.byKind': 'By kind of work and model',
-  'usage.col.work': 'Work',
-  'usage.col.model': 'Model',
-  'usage.col.tokens': 'Tokens',
-  'usage.col.cost': 'Cost',
-  'usage.leavesOut': 'What this leaves out',
-  'usage.lowerThanBill': 'The figure may be slightly lower than your provider’s bill.',
 
   // Account: MOWL connection card.
   'mowl.err.invalid_credentials': 'MOWL did not accept that email and password.',

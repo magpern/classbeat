@@ -115,7 +115,7 @@ describe('account tabs', () => {
 })
 
 describe('plan and usage tab', () => {
-  it('keeps the token and cost details behind Show usage details', async () => {
+  it('keeps the usage figures behind Show usage details', async () => {
     fakeApi(base)
     renderAt('/account#plan')
     const summary = await screen.findByText('Show usage details')
