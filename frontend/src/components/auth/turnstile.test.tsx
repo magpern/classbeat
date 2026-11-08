@@ -375,6 +375,10 @@ describe('Cloudflare Turnstile (captcha.site_key)', () => {
     fakeApi({ 'GET /api/auth/session': REAL, 'GET /api/auth/oauth/providers': { providers: [] } })
     renderAt('/reset')
     await screen.findByRole('group', { name: 'Security check' })
+    // The group can show before the effect that adds api.js has run (a flake under load, #787).
+    await waitFor(() => {
+      expect(scripts()).toHaveLength(1)
+    })
     await act(async () => {
       scripts()[0]!.dispatchEvent(new Event('error'))
       await Promise.resolve()

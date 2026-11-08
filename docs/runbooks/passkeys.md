@@ -42,13 +42,15 @@ start with passkeys on, so a forgotten RP ID cannot go live). `scripts/check-pro
 exactly these two names on `web`, refuses them on any other service and refuses `PASSKEYS` defaulting
 to anything but `false`. A server needs a release that includes this change.
 
-1. Set `WEBAUTHN_RP_ID` (section 1; the value for `CLASSBEAT_WEBAUTHN_RP_ID`) and `PASSKEYS=true` in
-   the environment's `.env` (see `prod.env.example`), then redeploy as in [vps-deploy.md](vps-deploy.md). A bad RP ID stops the stack at start;
-   fix the value and start again.
+1. Set `WEBAUTHN_RP_ID` (section 1; the value for `CLASSBEAT_WEBAUTHN_RP_ID`) and `PASSKEYS=true`
+   in the environment's `.env` (see `prod.env.example`), then redeploy as in
+   [vps-deploy.md](vps-deploy.md). A bad RP ID (in production also `localhost`) stops the stack at
+   start; fix the value and start again.
 2. Check the swag site keeps today's `Permissions-Policy` line, which names neither
    `publickey-credentials-get` nor `publickey-credentials-create` (both then default to the site
-   itself, which passkeys need). `scripts/check-prod-compose.sh` refuses a sample that sets either to
-   `()` or `*`, and one whose allowlist leaves out `self`; if you edit the header on the server by hand, keep it that way.
+   itself, which passkeys need). `scripts/check-prod-compose.sh` refuses a sample that sets either
+   to `()` or `*`, and one whose allowlist leaves out `self`; if you edit the header on the server
+   by hand, keep it that way.
 3. Do the real-phone check (section 5).
 
 **Switching off:** set `CLASSBEAT_PASSKEYS=false` (or remove it) and redeploy. Then:

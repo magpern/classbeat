@@ -153,7 +153,9 @@ tests.
   lowercase DNS name with no scheme, port, path or trailing dot; not an IP literal; equal to the
   public host or a dot-suffix of it; at least two labels unless it is `localhost` or ends in
   `.localhost`; and `CLASSBEAT_ENVIRONMENT=prod` needs an `https` base URL (already enforced).
-  No public-suffix list is shipped, so a public suffix such as `github.io` passes this check;
+  *(2026-11-08, #788 and #780 reviews)* "Not an IP literal" includes a last label a browser reads
+  as a number (`127.1`, and hex such as `0x7f.0x1`), and production also refuses a `localhost`
+  or `*.localhost` RP ID (only the e2e stack uses one). No public-suffix list is shipped, so a public suffix such as `github.io` passes this check;
   browsers refuse such an RP ID themselves, so the residual is a confusing operator error, not a
   weaker passkey.
 - **RP ID decided (owner, 2026-11-05): production is `classbeat.eu`**; each environment sets its
@@ -336,6 +338,11 @@ A new system table `webauthn_challenges`, modelled on `oauth_flows` (ADR 0003 §
      key takes `FOR KEY SHARE` on `users`) or ran the grant check (`UPDATE users`) would take the
      locks in the reset's opposite order, and one that committed the counter update separately would
      let a reset slip in between and leave a session made from a deleted passkey.
+     A label update (the rename route, §7) is outside this rule: it writes no key, counter or
+     session, and its only lock on `users` is the `FOR KEY SHARE` of its `auth_events` foreign
+     key, which does not conflict with `FOR NO KEY UPDATE`, so it cannot deadlock with a reset.
+     A rename that loses the race to a reset finds the row gone and answers 404. *(#782 review
+     N6, 2026-11-08)*
   3. Verification (CPU-bound signature checks) never runs while a lock is held.
   Tests: with a `users` row lock held by the test, a register finish, a sign-in finish, a re-auth
   finish and a reset each wait and then complete (no deadlock error); a register finish racing a

@@ -21,9 +21,10 @@ import pytest
 from sqlalchemy import text
 
 from authtools import Env
+from classbeat import auth
 from flows import Browser
 from passkeysignin import SESSIONS, finish_signin
-from passkeytools import count, finish, reason, register, signed_in, start, user_id_of
+from passkeytools import EMAIL, count, finish, reason, register, signed_in, start, user_id_of
 from passkeytools import penv as penv
 from smtpfake import SmtpFake
 from test_auth_reset_races import POLLS, own_client, waiting_for_a_lock
@@ -174,3 +175,39 @@ async def test_a_reauth_finish_racing_a_reset_that_drops_its_passkey_leaves_no_s
     assert await count(penv, SESSIONS) == 0  # no rotated session outlives the reset
     assert await count(penv, CREDENTIALS) == 0
     assert (await client.get("/api/auth/session")).json()["authenticated"] is False
+
+
+async def test_mfa_reset_deletes_passkeys_only_under_the_user_row_lock(penv: Env) -> None:
+    """``admin mfa-reset`` (``accounts.reset_mfa``) takes the user row lock before its passkey
+    delete (#785 review N1): a register finish that holds the lock with its passkey inserted but
+    not yet committed is waited for, and that passkey is deleted too. A delete before the lock
+    would not see the uncommitted row, and the passkey would outlive the reset."""
+    await signed_in(penv)
+    user_id = await user_id_of(penv)
+    resetting: asyncio.Future[None] | None = None
+
+    async def reset_mfa() -> None:
+        async with penv.db() as db:
+            await auth.reset_mfa(db, EMAIL)
+
+    try:
+        async with penv.db() as db:  # what a register finish holds before it commits
+            await db.execute(
+                text("SELECT id FROM users WHERE id = :u FOR NO KEY UPDATE"), {"u": user_id}
+            )
+            await db.execute(
+                text(
+                    "INSERT INTO webauthn_credentials (user_id, credential_id, public_key, "
+                    "backup_eligible, backup_state, label, transports) "
+                    "VALUES (:u, :c, :k, true, true, 'Racing', '{internal}')"
+                ),
+                {"u": user_id, "c": b"racing-credential", "k": b"\xa1\x01\x02"},
+            )
+            resetting = asyncio.ensure_future(reset_mfa())
+            await until_waiting(penv, 1, resetting)
+    finally:
+        if resetting is not None and not resetting.done():
+            await asyncio.wait([resetting])
+    assert resetting is not None
+    await resetting
+    assert await count(penv, CREDENTIALS) == 0

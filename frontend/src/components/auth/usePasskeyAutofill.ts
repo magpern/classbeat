@@ -16,15 +16,20 @@ interface Options {
   onError: (message: string | null) => void
 }
 
-function visible(): Promise<void> {
-  if (document.visibilityState === 'visible') return Promise.resolve()
+/** Resolves once the page is visible, or at once when `signal` aborts (its listener goes too). */
+function visible(signal: AbortSignal): Promise<void> {
+  if (signal.aborted || document.visibilityState === 'visible') return Promise.resolve()
   return new Promise((resolve) => {
-    const check = () => {
-      if (document.visibilityState !== 'visible') return
+    const done = () => {
       document.removeEventListener('visibilitychange', check)
+      signal.removeEventListener('abort', done)
       resolve()
     }
+    const check = () => {
+      if (document.visibilityState === 'visible') done()
+    }
     document.addEventListener('visibilitychange', check)
+    signal.addEventListener('abort', done)
   })
 }
 
@@ -64,7 +69,7 @@ export function usePasskeyAutofill({ paused, onSignedIn, onError }: Options): vo
       if (!(await conditionalAvailable()) || signal.aborted) return
       let failures = 0
       while (!signal.aborted) {
-        await visible()
+        await visible(signal)
         if (signal.aborted) return
         try {
           const outcome = await signInWithPasskey({ conditional: true, signal })

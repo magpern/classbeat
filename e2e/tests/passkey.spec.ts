@@ -79,12 +79,19 @@ test('a removed passkey no longer signs in, and the password still does', async 
   await page.goto('/signin')
   const button = page.getByRole('button', { name: 'Sign in with a passkey' })
   await expect(button).toBeVisible()
-  // Either the server refuses the assertion (an alert) or the browser, whose passkey list the app
-  // corrected with the signal API, offers nothing and the ceremony is cancelled (no message). Both
-  // leave the user signed out, which is the guarantee; the button is usable again after.
+  // Either the server refuses the assertion (400 passkey_unknown, an alert) or the browser, whose
+  // passkey list the app corrected with the signal API, offers nothing and the ceremony is
+  // cancelled (no finish is sent). Both leave the user signed out, which is the guarantee; the
+  // button is usable again after. Wait on the server's answer itself, not a fixed delay.
+  const started = page.waitForResponse((r) => r.url().endsWith('/api/auth/passkeys/signin/start'))
+  const finished = page
+    .waitForResponse((r) => r.url().endsWith('/api/auth/passkeys/signin/finish'), { timeout: 10_000 })
+    .catch(() => null)
   await button.click({ timeout: 5_000 }).catch(() => undefined)
+  expect((await started).status()).toBe(200)
+  const answer = await finished
+  expect(answer === null ? 'cancelled' : answer.status()).not.toBe(200)
   await expect(button).toBeEnabled()
-  await page.waitForTimeout(1_000)
   await expect(page.getByRole('heading', { name: 'Your account' })).toHaveCount(0)
 
   await signInThroughUi(page, email)

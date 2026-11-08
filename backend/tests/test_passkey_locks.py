@@ -28,6 +28,7 @@ from passkeytools import (
     Client,
     count,
     finish,
+    mails,
     plant,
     reason,
     signed_in,
@@ -35,6 +36,7 @@ from passkeytools import (
     user_id_of,
 )
 from passkeytools import penv as penv
+from smtpfake import SmtpFake
 from test_auth_reset_races import against_a_held_lock
 from test_passkey_reauth import REAUTH_START, ready
 from test_passkey_reauth import finish as reauth_finish
@@ -117,23 +119,28 @@ async def test_a_signin_finish_waits_for_the_user_row_lock_then_completes(penv: 
 
 
 async def test_a_signin_finish_racing_a_reset_that_drops_its_passkey_makes_no_session(
-    penv: Env,
+    penv: Env, smtp: SmtpFake
 ) -> None:
     holder, client, assertion = await signin_ready(penv)
+    mailed = len(smtp.to(holder.email))  # the "passkey added" notice of the registration
     reset = ("DELETE FROM webauthn_credentials WHERE user_id = :u", REVOKE)
     response = await against_a_held_lock(
         penv, holder.user_id, finish_signin(client, assertion), *reset
     )
     assert (response.status_code, reason(response)) == (400, "passkey_failed")
     assert await count(penv, SESSIONS) == 0
+    # Section 5.5.2: a credential gone under the lock writes nothing. Not a sign-in, and not
+    # mistaken for a counter regression (no event, no failure and no mail; #783 review N2).
     assert (
         await count(
             penv,
-            "SELECT count(*) FROM auth_events WHERE kind = 'sign_in' "
-            "AND detail->>'method' = 'passkey'",
+            "SELECT count(*) FROM auth_events WHERE (kind = 'sign_in' "
+            "AND detail->>'method' = 'passkey') "
+            "OR kind IN ('sign_in_failed', 'passkey_counter_regressed')",
         )
         == 0
     )
+    assert len(await mails(smtp, holder.email, mailed + 1)) == mailed
 
 
 async def test_a_reset_after_a_signin_finish_revokes_its_session(penv: Env) -> None:
@@ -207,6 +214,24 @@ async def test_a_reauth_finish_racing_a_reset_that_drops_its_passkey_rotates_not
         "'reauth_failed')"
     )
     assert await count(penv, written) == 0  # gone: nothing written
+
+
+async def test_a_reauth_finish_racing_a_disable_refuses_and_leaves_the_counter(
+    penv: Env,
+) -> None:
+    """The disabled check runs inside the write transaction, under the lock (#784 review N2)."""
+    client, user, assertion = await reauth_ready(penv, sign_count=3)
+    disable = "UPDATE users SET disabled_at = now() WHERE id = :u"
+    response = await against_a_held_lock(penv, user, reauth_finish(client, assertion), disable)
+    assert (response.status_code, reason(response)) == (400, "passkey_failed")
+    assert await count(penv, REAUTHED) == 0
+    disabled = (
+        "SELECT count(*) FROM auth_events WHERE kind = 'reauth_failed' "
+        "AND detail->>'reason' = 'disabled'"
+    )
+    assert await count(penv, disabled) == 1
+    assert await count(penv, "SELECT sign_count FROM webauthn_credentials") == 0
+    assert await penv.scalar("SELECT last_used_at FROM webauthn_credentials") is None
 
 
 async def test_a_reauth_finish_racing_a_reset_that_keeps_the_passkey_rolls_the_counter_back(

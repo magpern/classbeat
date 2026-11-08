@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SIGNED_IN, fakeApi, json, reason } from '../../test/fakeApi'
 import { REQUEST_OPTIONS, credential, error, installPasskeys, uninstallPasskeys } from '../../test/passkeyMock'
@@ -286,6 +286,19 @@ describe('passkey autofill restarts', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000)
     })
+    expect(browser.get).not.toHaveBeenCalled()
+  })
+
+  it('leaves no visibility listener behind when the page goes away while hidden', async () => {
+    const added = vi.spyOn(document, 'addEventListener')
+    const removed = vi.spyOn(document, 'removeEventListener')
+    const { browser } = setup('hidden')
+    await waitFor(() => {
+      expect(added.mock.calls.some(([type]) => type === 'visibilitychange')).toBe(true)
+    })
+    const [, listener] = added.mock.calls.find(([type]) => type === 'visibilitychange') ?? []
+    cleanup()
+    expect(removed).toHaveBeenCalledWith('visibilitychange', listener)
     expect(browser.get).not.toHaveBeenCalled()
   })
 

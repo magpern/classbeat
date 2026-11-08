@@ -26,6 +26,7 @@ DAY = 24 * 3600
 SESSION_COOKIE = "__Host-classbeat_session"
 DEVICE_COOKIE = "__Host-classbeat_device"
 DEVICES = "SELECT count(*) FROM known_devices WHERE user_id = :u"
+SIGN_IN = "SELECT detail FROM auth_events WHERE kind = 'sign_in' AND detail->>'method' = 'passkey'"
 
 
 @pytest.mark.parametrize(
@@ -87,6 +88,9 @@ async def test_a_cross_platform_sign_in_lasts_24_hours_and_sets_no_device_cookie
     assert DEVICE_COOKIE not in client.cookies
     assert await count(penv, DEVICES, u=holder.user_id) == devices  # no known device made
     assert (await client.get("/api/auth/session")).json()["authenticated"] is True
+    detail = await penv.scalar(SIGN_IN)
+    assert isinstance(detail, dict)
+    assert detail["cross_device"] is True  # the event says the session was capped
 
 
 @pytest.mark.parametrize("attachment", ["platform", MISSING, None])
@@ -99,6 +103,9 @@ async def test_a_platform_or_unreported_sign_in_is_unchanged(penv: Env, attachme
     assert await remaining(penv, holder.user_id) > 29 * DAY  # the normal 30 days
     assert cookie(response, DEVICE_COOKIE) is not None
     assert DEVICE_COOKIE in client.cookies
+    detail = await penv.scalar(SIGN_IN)
+    assert isinstance(detail, dict)
+    assert "cross_device" not in detail
 
 
 async def test_an_unknown_attachment_string_is_refused_not_trusted(penv: Env) -> None:

@@ -13,7 +13,8 @@ order:
    ``reauth_at`` now, never ``mfa_at``: an admin still needs TOTP in the new session), the known
    device and the ``sign_in`` event ``{method: "passkey"}``. A ``cross_platform`` assertion
    (owner question 4, #776) caps the new session at 24 hours (``session_cap``) and makes no
-   known device, so ``device`` stays empty and the route sets no device cookie.
+   known device, so ``device`` stays empty and the route sets no device cookie; its ``sign_in``
+   event says ``cross_device: true``.
 
 So a reset either commits first (the credential is gone, or the session is never made) or waits
 for this commit and then revokes the new session with the rest.
@@ -107,15 +108,15 @@ async def complete(
             mark=request_client_mark(request, ip),
         )
         device = ""
+        detail: dict[str, object] = {"method": METHOD, "passkey": passkey}
         if cross_platform:  # client-reported: only ever makes the session stricter
             issued = await cap_session(db, issued, CROSS_DEVICE_SESSION)
+            detail["cross_device"] = True  # for support and audit: this session was capped
         else:
             device = await remember_device(
                 db, request.app.state.keys, user_id, request_device_token(request)
             )
-        await record_event(
-            db, "sign_in", user_id=user_id, ip=ip, detail={"method": METHOD, "passkey": passkey}
-        )
+        await record_event(db, "sign_in", user_id=user_id, ip=ip, detail=detail)
         row = (
             await db.execute(select(users.c.email, users.c.role).where(users.c.id == user_id))
         ).one()

@@ -40,8 +40,9 @@ Applies to classbeat source. New code follows it at once; existing files follow 
 4. **Token-frugal checks.** Never read a huge file whole when grep or a line range answers the
    question. During work run only the test files that cover what you changed (CI runs the rest).
 
-**Exempt from rules 1 and 2:** data and generated files (the `frontend/src/i18n/*.ts`
-catalogues, `backend/tests/mail_golden/**`, lockfiles, SQL migrations). **Tests** are exempt from
+**Exempt from rules 1 and 2:** data and generated files (the `frontend/src/i18n/*.ts` and
+`backend/src/classbeat/emails/locales/*.py` string catalogues, `backend/tests/mail_golden/**`,
+lockfiles, SQL migrations). **Tests** are exempt from
 rule 2 (table-driven tests are long on purpose), though a new test file should still have one
 subject. This replaces the 500-line cap for classbeat only; `mowl-workouts` keeps its own.
 Security-critical modules (for example `egress.py`) are split only in a PR that gets the Opus

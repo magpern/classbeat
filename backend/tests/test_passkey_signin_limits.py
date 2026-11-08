@@ -26,8 +26,14 @@ from classbeat.auth.passkey_limits import (
 from classbeat.auth.passkey_signin_routes import reserve_in_order
 from classbeat.auth.ratelimit import Limit
 from flows import PASSWORD
-from passkeysignin import anonymous, sign_in_with_passkey, start_signin, with_passkey
-from passkeytools import HOME, reason
+from passkeysignin import (
+    SIGNIN_COOKIE,
+    anonymous,
+    sign_in_with_passkey,
+    start_signin,
+    with_passkey,
+)
+from passkeytools import HOME, cleared, reason
 from passkeytools import penv as penv
 
 pytestmark = pytest.mark.usefixtures("frozen_rate_windows")
@@ -147,6 +153,8 @@ async def test_failures_from_one_address_are_limited_and_a_success_releases(penv
     )
     refused = await sign_in_with_passkey(anonymous(penv), holder)
     assert (refused.status_code, reason(refused)) == (429, "rate_limited")
+    assert int(refused.headers["Retry-After"]) >= 1
+    assert cleared(refused, SIGNIN_COOKIE)  # every finish answer clears the flow cookie (W3 N1)
 
 
 async def test_failures_count_per_account_except_from_a_known_device(penv: Env) -> None:
@@ -164,4 +172,5 @@ async def test_failures_count_per_account_except_from_a_known_device(penv: Env) 
     )
     refused = await sign_in_with_passkey(anonymous(penv, "203.0.113.98"), holder)
     assert (refused.status_code, reason(refused)) == (429, "rate_limited")
+    assert cleared(refused, SIGNIN_COOKIE)  # after the take: the flow is gone either way
     assert (await sign_in_with_passkey(holder.browser, holder)).status_code == 200

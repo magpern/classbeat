@@ -5,7 +5,8 @@ into the client data so py_webauthn's own error text would quote it) and then se
 every form a log line could carry it, in the log output at DEBUG, in every ``auth_events`` row and
 in every refusal's body: the credential id, the public key, ``clientDataJSON``,
 ``attestationObject``, ``authenticatorData``, the signature, the user handle, the challenges and
-the flow cookies, plus a planted origin and RP ID. No network: the netguard is on.
+the flow cookies (register, sign-in and re-auth), plus a planted origin, RP ID and passkey label.
+The counter-regression path (its event and mail) runs too. No network: the netguard is on.
 """
 
 import base64
@@ -21,12 +22,15 @@ from classbeat.log import configure_logging
 from passkeysignin import SIGNIN_COOKIE, anonymous, finish_signin, start_signin, with_passkey
 from passkeytools import REGISTER_COOKIE, finish, signed_in, start
 from passkeytools import penv as penv
+from test_passkey_reauth import REAUTH_COOKIE, REAUTH_START
+from test_passkey_reauth import finish as reauth_finish
 from webauthnfake import SoftAuthenticator, b64url, unb64url
 
 pytestmark = pytest.mark.usefixtures("frozen_rate_windows", "restore_logging")
 
 PLANTED_ORIGIN = "https://planted-origin-qqqqqqqqqqqq.example"
 PLANTED_RP_ID = "planted-rp-id-wwwwwwwwwwww.example"
+PLANTED_LABEL = "planted-label-eeeeeeeeeeee"
 
 
 def forms(value: bytes | str) -> set[str]:
@@ -69,7 +73,7 @@ async def test_no_planted_value_reaches_a_log_an_event_or_a_refusal(penv: Env) -
     planted["register challenge"] = unb64url(begun.json()["publicKey"]["challenge"])
     planted["register cookie"] = owner.cookies[REGISTER_COOKIE]
     registration = device.create(begun.json())
-    assert (await finish(owner, registration)).status_code == 201
+    assert (await finish(owner, registration, label=PLANTED_LABEL)).status_code == 201
     await owner.post("/api/auth/logout")
     holder = await with_passkey(penv, "second@example.com")  # a second, ordinary user
 
@@ -106,7 +110,30 @@ async def test_no_planted_value_reaches_a_log_an_event_or_a_refusal(penv: Env) -
     await start_signin(browser)
     broken = {**assertion, "response": {**assertion["response"], "authenticatorData": "AAAA"}}
     refusals.append(await finish_signin(browser, broken))
+
+    # A re-auth in the signed-in browser, with its challenge and flow cookie (#784 review N3).
+    device.sign_count = 0
+    reauth_options = (await client.post(REAUTH_START)).json()
+    planted["re-auth challenge"] = unb64url(reauth_options["publicKey"]["challenge"])
+    planted["re-auth cookie"] = client.cookies[REAUTH_COOKIE]
+    reauthed = device.get(reauth_options, None)
+    assert (await reauth_finish(client, reauthed)).status_code == 200
+    planted["clientDataJSON (re-auth)"] = unb64url(reauthed["response"]["clientDataJSON"])
+    planted["signature (re-auth)"] = unb64url(reauthed["response"]["signature"])
+
+    # A counter regression: its event, failure event and mail (#783 review N4).
+    device.sign_count = 7
+    browser = anonymous(penv)
+    started = (await start_signin(browser)).json()
+    assert (await finish_signin(browser, device.get(started, handle))).status_code == 200
+    device.sign_count = 3
+    browser = anonymous(penv)
+    started = (await start_signin(browser)).json()
+    refusals.append(await finish_signin(browser, device.get(started, handle)))
+    regressed = "SELECT count(*) FROM auth_events WHERE kind = 'passkey_counter_regressed'"
+    assert await penv.scalar(regressed) == 1
     planted["origin"], planted["rp id"] = PLANTED_ORIGIN, PLANTED_RP_ID
+    planted["label"] = PLANTED_LABEL
 
     assert [r.status_code for r in refusals] == [400] * len(refusals)
     logs, events = stream.getvalue(), await collect_events(penv)

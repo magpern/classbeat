@@ -42,6 +42,7 @@ from jobcore import _INSERT_REVISION  # pyright: ignore[reportPrivateUsage]
 from jobtools import new_class, new_job
 from mfatools import Actor
 from savetools import DRAFT, draft_hash
+from webauthnfake import RP_ID
 
 # --- the classification -------------------------------------------------------------------------
 
@@ -361,6 +362,8 @@ async def env(app_database_url: str, maint_database_url: str) -> AsyncIterator[E
         database_maint_password=url.password,
         song_picking=True,
         jobs_per_user=16,
+        passkeys=True,  # so the passkey rename case reads the id (#782 review N4)
+        webauthn_rp_id=RP_ID,
     ) as running:
         yield running
 
@@ -754,10 +757,10 @@ OWNED_ROUTES = [
     OwnedRoute("DELETE", "/api/classes/{class_id}/beat-one"),
     OwnedRoute("DELETE", "/api/auth/sessions/{session_id}", control=frozenset({204})),
     OwnedRoute("DELETE", "/api/auth/identities/{identity_id}", control=frozenset({204, 409})),
-    # Passkeys off in this app: rename is 404 feature_off before the id is read; remove answers
-    # whatever the flag says (ADR 0019 section 7).
+    # Passkeys on in this app, so rename reads the id: the owner's own is 200, a foreign one 404
+    # like an unknown one. Remove answers whatever the flag says (ADR 0019 section 7).
     OwnedRoute(
-        "PATCH", "/api/auth/passkeys/{passkey_id}", lambda rows: {"label": "Mine"}, frozenset({404})
+        "PATCH", "/api/auth/passkeys/{passkey_id}", lambda rows: {"label": "Mine"}, frozenset({200})
     ),
     OwnedRoute("DELETE", "/api/auth/passkeys/{passkey_id}", control=frozenset({204})),
 ]
