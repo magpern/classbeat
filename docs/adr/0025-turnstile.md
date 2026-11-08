@@ -322,7 +322,7 @@ existing `web-out` network; the network-level egress rule stays an M6 item (acce
    a reset, finish a provider-email step; switch to sv and da and to dark and light; the browser
    console shows no CSP violation and no `110200` (domain or referrer, open question 2);
    `docker compose logs web` shows no `captcha refused … why=` line for those attempts. If anything
-   fails, remove `TURNSTILE_ENABLED=true` and restart web; agents fix it before PR 3.
+   fails, set `TURNSTILE_ENABLED=false` and restart web; agents fix it before PR 3.
 5. Once step 4 passes, PR 3 merges; deploy its release. *(Amended: PR 3 does not flip the default, Amendment 1 (f); the default-on change is the separate follow-up of Amendment 2. Once a release with it is deployed, the explicit `TURNSTILE_ENABLED=true` in `.env` can go; keeping it does no harm. A server that upgrades to that release before the widget, the site key and the secret exist must set `TURNSTILE_ENABLED=false` first, or `web` will not start.)*
 6. Emergency: `TURNSTILE_ENABLED=false`, `docker compose up -d web`; switch back once Cloudflare
    recovers.

@@ -241,6 +241,7 @@ SMTP_SENDER=noreply@classbeat.pernemark.se
 # optional: SIGNUP_MODE=invite  CONNECTION_KEK_ID=kek-1  MODEL_PROVIDER=anthropic
 # optional: OAUTH_GOOGLE_CLIENT_ID=...apps.googleusercontent.com  OAUTH_VISIBLE_PROVIDERS=google   (section 5a)
 # optional: OAUTH_GITHUB_CLIENT_ID=...  OAUTH_MICROSOFT_CLIENT_ID=...   (client ids only; never a client secret here)
+# Turnstile is ON by default: set TURNSTILE_SITE_KEY=... and fill secrets/turnstile_secret_key (section 5b), or set TURNSTILE_ENABLED=false until they exist
 ```
 
 `CLASSBEAT_PUBLIC_BASE_URL` is the one public origin (ADR 0003 section 4): the CSRF origin check,

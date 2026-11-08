@@ -1,14 +1,14 @@
-A passkey sign-in was refused
-=============================
+Et login med passkey blev afvist
+================================
 
-A sign-in with the passkey named "MacBook" was refused because its signature counter did not go up. This can happen when a passkey has been copied to another device, and now and then when two sign-ins arrive at once. The passkey still works.
+Et login med passkeyen "MacBook" blev afvist, fordi dens signaturtæller ikke var gået op. Det kan ske, når en passkey er blevet kopieret til en anden enhed, og af og til når to logins ankommer samtidigt. Passkeyen virker stadig.
 
-When it happened: 6. november 2026 kl. 12:30 UTC
+Hvornår det skete: 6. november 2026 kl. 12:30 UTC
 
 Gennemgå din konto:
 https://classbeat.example.test/da/account
 
-If you did not just sign in with this passkey, remove it from your account page, change your password and tell us right away. Kontakt os på support@classbeat.eu
+Hvis du ikke lige har logget ind med denne passkey, skal du fjerne den fra din kontoside, skifte din adgangskode og give os besked med det samme. Kontakt os på support@classbeat.eu
 
 --
 Du får denne sikkerhedsbesked, fordi dette er e-mailadressen til en classbeat-konto. Sådanne beskeder sendes for at beskytte dig.

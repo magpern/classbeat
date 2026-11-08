@@ -203,6 +203,11 @@ services:
       # emergency and off switch (web then starts and logs an ERROR). The fake is never set here.
       CLASSBEAT_TURNSTILE_ENABLED: ${TURNSTILE_ENABLED:-true}
       CLASSBEAT_TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      # ADR 0019 (#790): passkeys, web only, off by default. On, the RP ID is required (production
+      # classbeat.eu, test classbeat.pernemark.se; runbook docs/runbooks/passkeys.md section 1);
+      # empty is unset, so web refuses to start with passkeys on and no RP ID. Neither is a secret.
+      CLASSBEAT_PASSKEYS: ${PASSKEYS:-false}
+      CLASSBEAT_WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
     # swedebeat_app: Swedebeat's app key if the image does not hold it (ADR 0015 section 4).
     # oauth_*_client_secret: web only; each file must exist, empty while that provider is off.
     # turnstile_secret_key: web only; the file must exist; Turnstile is on by default, so it must hold the key unless TURNSTILE_ENABLED=false.

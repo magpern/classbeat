@@ -72,7 +72,14 @@ for m in \
   '.services.web.environment.CLASSBEAT_TURNSTILE_FAKE = "true"' \
   '.services.worker.environment.CLASSBEAT_TURNSTILE_FAKE = "false"' \
   '.services.worker.environment.CLASSBEAT_TURNSTILE_ENABLED = "false"' \
-  '.services.worker.environment.CLASSBEAT_TURNSTILE_SITE_KEY = ""'; do
+  '.services.worker.environment.CLASSBEAT_TURNSTILE_SITE_KEY = ""' \
+  '.services.web.environment.CLASSBEAT_PASSKEYS = "true"' \
+  '.services.worker.environment.CLASSBEAT_PASSKEYS = "false"' \
+  '.services.worker.environment.CLASSBEAT_WEBAUTHN_RP_ID = ""' \
+  '.services.migrate.environment.CLASSBEAT_PASSKEYS = "false"' \
+  '.services.web.environment.CLASSBEAT_PASSKEYS_EXTRA = "x"' \
+  '.services.web.environment.CLASSBEAT_WEBAUTHN_ORIGIN = "https://example.test"' \
+  'del(.services.web.environment.CLASSBEAT_WEBAUTHN_RP_ID)'; do
   expect_refused shared "$shared" "$m"
 done
 # Secret files (#511): the group, the users, one name per file, no other way into secrets/.
