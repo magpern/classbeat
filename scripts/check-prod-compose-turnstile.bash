@@ -35,7 +35,7 @@ fi
 if [[ $mode == repo ]]; then   # the self-tests (ADR 0020); the install-folder cases are in scripts/test-install-check.sh
 ts_dir="$tmp/turnstile-files"; mkdir "$ts_dir"
 ts_canary="turnstile-canary-$RANDOM$RANDOM"
-ts_json() { jq -n --arg e "$1" --arg k "$2" '{services:{web:{environment:{CLASSBEAT_TURNSTILE_ENABLED:$e,CLASSBEAT_TURNSTILE_SITE_KEY:$k}}}}'; }
+ts_json() { jq -n --arg e "${1//\\n/$'\n'}" --arg k "$2" '{services:{web:{environment:{CLASSBEAT_TURNSTILE_ENABLED:$e,CLASSBEAT_TURNSTILE_SITE_KEY:$k}}}}'; }
 ts_expect() {   # ts_expect WANT(ok|refused) ENABLED SITE_KEY SECRET(none|empty|full)
   local want="$1" rc=0 out
   rm -f "$ts_dir/turnstile_secret_key"
@@ -64,7 +64,7 @@ ts_expect ok false '' none
 ts_expect ok false '' empty
 ts_expect ok False '' none
 ts_expect ok 0 '' none
-ts_expect refused "$(printf 'false\n')" 0x4AAAAAAcheck none
+ts_expect refused 'false\n' 0x4AAAAAAcheck none
 ts_expect refused 'false ' 0x4AAAAAAcheck none
 ts_expect ok FALSE '' none
 fi
