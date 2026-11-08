@@ -198,7 +198,7 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
 **Amended by [ADR 0025](0025-turnstile.md) (Turnstile, #721, #724):** password sign-in, password
 sign-up, the provider-email step and the reset request check a Cloudflare Turnstile token first,
 after the body's shape and before any account lookup, account-scoped bucket, argon2, mail or session
-(ADR 0025 sections 1 to 5); off by default (`CLASSBEAT_TURNSTILE_ENABLED`). Everything below keeps
+(ADR 0025 sections 1 to 5); off in the `Settings` defaults, on by default in production since ADR 0025 Amendment 2 (`CLASSBEAT_TURNSTILE_ENABLED`). Everything below keeps
 its order after that check.
 
 **Passwords**

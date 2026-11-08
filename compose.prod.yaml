@@ -197,14 +197,15 @@ services:
       CLASSBEAT_OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
       CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID: ${OAUTH_MICROSOFT_CLIENT_ID:-}
       CLASSBEAT_OAUTH_VISIBLE_PROVIDERS: ${OAUTH_VISIBLE_PROVIDERS:-google}
-      # ADR 0025: Cloudflare Turnstile on sign-in, sign-up and reset, web only. Off by default
-      # until the owner has created the widget and passed the live check; on, it needs the public
-      # site key here and the secret in secrets/turnstile_secret_key. The fake is never set here.
-      CLASSBEAT_TURNSTILE_ENABLED: ${TURNSTILE_ENABLED:-false}
+      # ADR 0025 (Amendment 2): Cloudflare Turnstile on sign-in, sign-up and reset, web only. On by
+      # default: it needs the public site key here (TURNSTILE_SITE_KEY) and the secret in
+      # secrets/turnstile_secret_key, or web refuses to start. TURNSTILE_ENABLED=false is the
+      # emergency and off switch (web then starts and logs an ERROR). The fake is never set here.
+      CLASSBEAT_TURNSTILE_ENABLED: ${TURNSTILE_ENABLED:-true}
       CLASSBEAT_TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
     # swedebeat_app: Swedebeat's app key if the image does not hold it (ADR 0015 section 4).
     # oauth_*_client_secret: web only; each file must exist, empty while that provider is off.
-    # turnstile_secret_key: web only; the file must exist, empty while Turnstile is off.
+    # turnstile_secret_key: web only; the file must exist; Turnstile is on by default, so it must hold the key unless TURNSTILE_ENABLED=false.
     secrets:
       - database_password
       - app_secret_key

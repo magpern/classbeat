@@ -76,6 +76,8 @@ render() {
 }
 # compose.prod.yaml's defaults: no OAuth variable set, so every provider is off.
 unset OAUTH_GOOGLE_CLIENT_ID OAUTH_GITHUB_CLIENT_ID OAUTH_MICROSOFT_CLIENT_ID OAUTH_VISIBLE_PROVIDERS
+# Likewise Turnstile (ADR 0025 Amendment 2): a stray TURNSTILE_ENABLED in the shell must not change the default the rules pin to "true".
+unset TURNSTILE_ENABLED TURNSTILE_SITE_KEY
 defaults="$(render -f "$dir/compose.prod.yaml")"
 # Dummy client ids (public values, not secret): web's settings must equal them, so they come from
 # the variables and from nothing written into the compose files.

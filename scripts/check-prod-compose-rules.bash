@@ -56,13 +56,14 @@ check_common() {
     || fail "the MOWL QR sign-in must be off by default" || return 1
   q '.services.worker.environment | has("CLASSBEAT_MOWL_QR_ENABLED") | not' \
     || fail "the MOWL QR sign-in belongs to web only" || return 1
-  # ADR 0025 (#724): Turnstile's secret on web only, its switch and site key web's only, off by
-  # default until the owner's live check (PR 3 of #721 flips the default), and the fake never in
-  # a production file, whatever service.
+  # ADR 0025 (#724, Amendment 2): Turnstile's secret on web only, its switch and site key web's
+  # only, on by default (the dummy render sets no TURNSTILE_ENABLED, so the default must render
+  # "true"; "false" is the owner's own emergency setting in .env, never the shipped default), and
+  # the fake never in a production file, whatever service.
   q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("turnstile_secret_key")) | .key] == ["web"]' \
     || fail "turnstile_secret_key belongs to web only" || return 1
-  q '.services.web.environment.CLASSBEAT_TURNSTILE_ENABLED == "false"' \
-    || fail "Turnstile must be off by default (until #721's last PR)" || return 1
+  q '.services.web.environment.CLASSBEAT_TURNSTILE_ENABLED == "true"' \
+    || fail "Turnstile must be on by default (ADR 0025 Amendment 2)" || return 1
   q '[.services | to_entries[] | select(.value.environment // {} | keys | map(select(startswith("CLASSBEAT_TURNSTILE_"))) | length > 0) | .key] == ["web"]' \
     || fail "the Turnstile settings belong to web only" || return 1
   q '[.services[] | .environment // {} | has("CLASSBEAT_TURNSTILE_FAKE")] | any | not' \

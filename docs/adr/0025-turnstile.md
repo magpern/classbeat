@@ -1,8 +1,9 @@
 # ADR 0025: Cloudflare Turnstile on sign-in, sign-up, the provider-email step and the reset request (#721)
 
 Status: Proposed. Accepted when this PR merges after an Opus `PASS` (first review of a new
-security design). Turnstile ships **off** in code defaults and is switched on in production only by
-the last PR of the split (§13), after the owner has created the widget.
+security design). Turnstile ships **off** in the `Settings` defaults (dev, CI, tests). History:
+Amendment 2 (2026-11-08): at the owner's request the production default in `compose.prod.yaml` is
+**on** (#721 default-on follow-up); the owner must still create the widget and deploy the keys.
 
 Related: [ADR 0003](0003-accounts-and-sessions.md) §4 (Origin and CSRF), §5 (the flows), §9 (rate
 limits, client IP), §10 (logging), §11 (fakes); [ADR 0006](0006-agent-runs.md) §9 and `egress.py`
@@ -175,8 +176,8 @@ failures / 15 min) so a shared gym NAT is not hit first by it. 429 with `Retry-A
 ### 7. Settings and secrets
 
 - `CLASSBEAT_TURNSTILE_ENABLED` (bool, **default false** in `Settings`, so dev, CI and tests run
-  without it); `compose.prod.yaml` passes `${TURNSTILE_ENABLED:-false}` from PR 1 and
-  `${TURNSTILE_ENABLED:-true}` from PR 3 (details under "Which file sets what" below).
+  without it); `compose.prod.yaml` passed `${TURNSTILE_ENABLED:-false}` from PR 1 and passes
+  `${TURNSTILE_ENABLED:-true}` since Amendment 2 (2026-11-08); details under "Which file sets what".
 - `CLASSBEAT_TURNSTILE_SITE_KEY` (public, environment). Given to the SPA by `GET /api/auth/session`
   as `captcha: {"site_key": "…"}` when enabled, `null` when off; nothing is baked into the bundle.
 - Secret file **`turnstile_secret_key`** (`SECRET_FILE_FIELDS`, never the environment, `SecretStr`,
@@ -203,10 +204,12 @@ failures / 15 min) so a shared gym NAT is not hit first by it. 429 with `Retry-A
     `compose.e2e.yaml`; `CLASSBEAT_ENVIRONMENT` stays `dev` there):
     `CLASSBEAT_TURNSTILE_ENABLED: "true"` and `CLASSBEAT_TURNSTILE_FAKE: "true"`, next to the other
     e2e-only switches; **amended: these land with PR 2, see Amendment 1 (a)**;
-  - `compose.prod.yaml`, service `web`: `CLASSBEAT_TURNSTILE_ENABLED: ${TURNSTILE_ENABLED:-false}`
-    (PR 1), `:-true` (PR 3), and `CLASSBEAT_TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}`. It never sets
-    `CLASSBEAT_TURNSTILE_FAKE`, and `check-prod-compose.sh` refuses the name in it and, from PR 3,
-    requires the `:-true` default.
+  - `compose.prod.yaml`, service `web`: `CLASSBEAT_TURNSTILE_ENABLED: ${TURNSTILE_ENABLED:-true}`
+    (`:-false` from PR 1 until Amendment 2), and `CLASSBEAT_TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}`.
+    It never sets `CLASSBEAT_TURNSTILE_FAKE`, and `check-prod-compose.sh` refuses the name in it and
+    requires the default to render `"true"` (its self-test refuses a `"false"` default and a missing key).
+    With the default on, web does not start without `TURNSTILE_SITE_KEY` and a non-empty
+    `secrets/turnstile_secret_key`; `TURNSTILE_ENABLED=false` in `.env` is the way to run without them.
 
 ### 8. Tests, fakes and netguard
 
@@ -310,14 +313,17 @@ existing `web-out` network; the network-level egress rule stays an M6 item (acce
    `CLASSBEAT_DOMAIN`, then remove the old one.
 2. Put the site key in the server `.env` as `TURNSTILE_SITE_KEY`; write the secret key to
    `secrets/turnstile_secret_key` (`<deploy user>:10010`, mode 0640).
-3. Deploy a release that contains PR 1 and PR 2 **with `TURNSTILE_ENABLED=true` set explicitly** in
-   `.env` (the default is still off). PR 3 does not flip the default (Amendment 1 (f)).
+3. Deploy a release that contains PR 1 and PR 2. *(Amended by Amendment 2: from the release that
+   carries the default-on change, `TURNSTILE_ENABLED=true` is no longer needed, because the default is
+   on. A server without the widget, the site key and the secret file will not start `web` until they
+   exist or `TURNSTILE_ENABLED=false` is set. Before that release, set `TURNSTILE_ENABLED=true`
+   explicitly in `.env`.)*
 4. Live check, reporting only pass or fail and `why` words: sign in, sign up with an invite, request
    a reset, finish a provider-email step; switch to sv and da and to dark and light; the browser
    console shows no CSP violation and no `110200` (domain or referrer, open question 2);
    `docker compose logs web` shows no `captcha refused … why=` line for those attempts. If anything
    fails, remove `TURNSTILE_ENABLED=true` and restart web; agents fix it before PR 3.
-5. Once step 4 passes, PR 3 merges; deploy its release. *(Amended: PR 3 no longer flips the default, so the explicit setting stays until the separate default-on follow-up PR has been deployed and only then can go; see Amendment 1 (f).)*
+5. Once step 4 passes, PR 3 merges; deploy its release. *(Amended: PR 3 does not flip the default, Amendment 1 (f); the default-on change is the separate follow-up of Amendment 2. Once a release with it is deployed, the explicit `TURNSTILE_ENABLED=true` in `.env` can go; keeping it does no harm. A server that upgrades to that release before the widget, the site key and the secret exist must set `TURNSTILE_ENABLED=false` first, or `web` will not start.)*
 6. Emergency: `TURNSTILE_ENABLED=false`, `docker compose up -d web`; switch back once Cloudflare
    recovers.
 
@@ -380,3 +386,22 @@ existing `web-out` network; the network-level egress rule stays an M6 item (acce
   PR. This supersedes the "on in prod" parts of §7, §13 and owner step 5.
   That follow-up PR changes a production security default (a gate on every sign-in form), so
   its reviewer is Opus (review gate, item 2) even though the diff is tiny.
+
+## Amendment 2 (2026-11-08): the production default is on (#721 follow-up)
+
+At the owner's request (2026-11-08, "Do 721") the follow-up of Amendment 1 (f) flips the default:
+
+- `compose.prod.yaml` passes `CLASSBEAT_TURNSTILE_ENABLED: ${TURNSTILE_ENABLED:-true}` to `web`.
+  `Settings` keeps `turnstile_enabled = False`, so the dev stack, CI and backend tests are unchanged;
+  `compose.e2e.yaml` keeps its explicit fake. The fake is still never set in a production file.
+- `check-prod-compose-rules.bash` requires the default to render `"true"` (the dummy render sets no
+  `TURNSTILE_ENABLED`, and the script now unsets it first so a stray shell value cannot hide a wrong
+  default). The self-test refuses a `"false"` default and a missing key.
+- **Consequence for servers:** with the default on, `web` refuses to start (§7 start-up rules)
+  without `TURNSTILE_SITE_KEY` and a non-empty `secrets/turnstile_secret_key`. An upgrade to the
+  release that contains this change on a server that has not yet got the Cloudflare widget, site
+  key and secret file must set `TURNSTILE_ENABLED=false` in `.env` first (runbook section 11);
+  `false` is also the emergency switch (§12, owner step 6). A fresh install must either have the
+  keys (runbook section 5b) or set `false`.
+- The Cloudflare steps (owner steps 1, 2 and 4) and every production deploy remain the owner's.
+- Reviewer: Opus, as Amendment 1 (f) requires (a production security default).

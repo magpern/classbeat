@@ -67,7 +67,8 @@ for m in \
   '.services.web.environment.CLASSBEAT_OAUTH_EXTRA = "x"' \
   '.services.worker.secrets += [{"source":"turnstile_secret_key"}]' \
   '.services.web.secrets |= map(select(.source != "turnstile_secret_key"))' \
-  '.services.web.environment.CLASSBEAT_TURNSTILE_ENABLED = "true"' \
+  '.services.web.environment.CLASSBEAT_TURNSTILE_ENABLED = "false"' \
+  'del(.services.web.environment.CLASSBEAT_TURNSTILE_ENABLED)' \
   '.services.web.environment.CLASSBEAT_TURNSTILE_FAKE = "true"' \
   '.services.worker.environment.CLASSBEAT_TURNSTILE_FAKE = "false"' \
   '.services.worker.environment.CLASSBEAT_TURNSTILE_ENABLED = "false"' \

@@ -1,8 +1,9 @@
 """Turnstile settings, start-up refusals and deploy files (ADR 0025 sections 7 and 13, PR 1).
 
-Off by default everywhere; on, it needs the site key and the secret file; the fake is refused in
-prod whatever the switch says, and so are Cloudflare's test keys (by pattern); the secret is a
-web-only file, never the environment; the production default stays off in this PR."""
+Off by default in `Settings` (dev, CI, tests); on, it needs the site key and the secret file; the
+fake is refused in prod whatever the switch says, and so are Cloudflare's test keys (by pattern);
+the secret is a web-only file, never the environment; `compose.prod.yaml` defaults it on
+(Amendment 2)."""
 
 import logging
 from pathlib import Path
@@ -227,10 +228,10 @@ def test_the_secret_is_a_web_only_file(name: str) -> None:
 
 
 @pytest.mark.skipif(not (ROOT / "compose.yaml").is_file(), reason="not a full checkout")
-def test_prod_is_off_by_default_and_never_sets_the_fake() -> None:
+def test_prod_is_on_by_default_and_never_sets_the_fake() -> None:
     web = _compose("compose.prod.yaml")["services"]["web"]["environment"]
-    # PR 1 of #721: off; PR 3 changes the default to true after the owner's live check.
-    assert web["CLASSBEAT_TURNSTILE_ENABLED"] == "${TURNSTILE_ENABLED:-false}"
+    # ADR 0025 Amendment 2 (#721): on by default in production; false turns it off.
+    assert web["CLASSBEAT_TURNSTILE_ENABLED"] == "${TURNSTILE_ENABLED:-true}"
     assert web["CLASSBEAT_TURNSTILE_SITE_KEY"] == "${TURNSTILE_SITE_KEY:-}"
     for name in ("compose.prod.yaml", "compose.prod.loopback.yaml", "compose.prod.lan.yaml"):
         assert "TURNSTILE_FAKE" not in (ROOT / name).read_text("utf-8")
