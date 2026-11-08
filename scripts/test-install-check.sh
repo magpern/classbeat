@@ -223,7 +223,7 @@ if (( can_gid )); then
   mksecrets; : > "$install/secrets/turnstile_secret_key"
   expect "Turnstile on, empty secret file" 1 'turnstile_secret_key is missing or empty.*section 5b.*TURNSTILE_ENABLED=false'
   mksecrets; cp "$install/.env" "$work/env.ts"; sed -i '/^TURNSTILE_SITE_KEY=/d' "$install/.env"
-  expect "Turnstile on, no site key" 1 'TURNSTILE_SITE_KEY in .env is empty.*section 5b|section 5b.*TURNSTILE_ENABLED=false'
+  expect "Turnstile on, no site key" 1 'TURNSTILE_SITE_KEY in .env is empty.*section 5b.*TURNSTILE_ENABLED=false'
   echo 'TURNSTILE_SITE_KEY=' >> "$install/.env"
   expect "Turnstile on, empty site key" 1 'TURNSTILE_SITE_KEY in .env is empty'
   echo 'TURNSTILE_ENABLED=false' >> "$install/.env"

@@ -4,15 +4,21 @@
 # Since #792 compose.prod.yaml turns Turnstile on unless .env says TURNSTILE_ENABLED=false, and `web` refuses to
 # start with it on and no TURNSTILE_SITE_KEY or an empty secret file. In an install folder that is a failure
 # here, before `up`, like every other install check (runbook sections 5b and 11). The secret file is only
-# size-tested (`-s`): it is never opened, and neither it nor the site key is ever printed.
+# size-tested (`-s`): it is never opened, and neither it nor the site key is ever printed. A file of only blanks or
+# a newline has a size and passes; telling it apart would mean reading it, which this check never does.
 # check_turnstile_keys RENDERED_JSON SECRETS_DIR
 check_turnstile_keys() {
-  local j="$1" dir="$2" enabled site
-  enabled="$(jq -r '.services.web.environment.CLASSBEAT_TURNSTILE_ENABLED // ""' <<<"$j")" \
-    || fail "the real render could not be read (Turnstile)" || return 1
-  # Off only when the value says so (the spellings the app's boolean setting reads as false); anything
-  # else is on or fails web's own parse, and either way the keys are needed.
-  case "${enabled,,}" in false|0|no|off|f|n) return 0 ;; esac
+  local j="$1" dir="$2" site
+  # The comparison is inside jq: `$(...)` strips trailing newlines, so a rendered "false\n" would read as off
+  # here while the app's boolean parse rejects it. jq -e exits 0 only for true: off needs the exact spelling.
+  if jq -e '(.services.web.environment.CLASSBEAT_TURNSTILE_ENABLED // "") | tostring | ascii_downcase
+      | IN("false","0","no","off","f","n")' <<<"$j" >/dev/null; then
+    return 0
+  else
+    local rc=$?
+    # 1 = not an off spelling (on, or web's own parse fails; the keys are needed); anything else = jq failed.
+    [[ $rc == 1 ]] || fail "the real render could not be read (Turnstile)" || return 1
+  fi
   site="$(jq -r '.services.web.environment.CLASSBEAT_TURNSTILE_SITE_KEY // ""' <<<"$j")"
   [[ -n "${site//[[:space:]]/}" ]] \
     || fail "Turnstile is on (the default) but TURNSTILE_SITE_KEY in .env is empty, so web would refuse to start: set it (runbook section 5b) or put TURNSTILE_ENABLED=false in .env until the widget and keys exist" \
@@ -29,7 +35,7 @@ fi
 if [[ $mode == repo ]]; then   # the self-tests (ADR 0020); the install-folder cases are in scripts/test-install-check.sh
 ts_dir="$tmp/turnstile-files"; mkdir "$ts_dir"
 ts_canary="turnstile-canary-$RANDOM$RANDOM"
-ts_json() { jq -n --arg e "$1" --arg k "$2" '{services:{web:{environment:{CLASSBEAT_TURNSTILE_ENABLED:$e,CLASSBEAT_TURNSTILE_SITE_KEY:$k}}}}'; }
+ts_json() { jq -n --arg e "${1//\\n/$'\n'}" --arg k "$2" '{services:{web:{environment:{CLASSBEAT_TURNSTILE_ENABLED:$e,CLASSBEAT_TURNSTILE_SITE_KEY:$k}}}}'; }
 ts_expect() {   # ts_expect WANT(ok|refused) ENABLED SITE_KEY SECRET(none|empty|full)
   local want="$1" rc=0 out
   rm -f "$ts_dir/turnstile_secret_key"
@@ -58,4 +64,7 @@ ts_expect ok false '' none
 ts_expect ok false '' empty
 ts_expect ok False '' none
 ts_expect ok 0 '' none
+ts_expect refused 'false\n' 0x4AAAAAAcheck none
+ts_expect refused 'false ' 0x4AAAAAAcheck none
+ts_expect ok FALSE '' none
 fi

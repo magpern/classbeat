@@ -203,7 +203,7 @@ Fill in these files by hand (writing into an existing file keeps its group and m
 - `secrets/turnstile_secret_key`: the loop above makes it **empty**, which only works with
   `TURNSTILE_ENABLED=false` in `.env`. Turnstile is **on by default**: write the secret key into it
   (section 5b) or set `TURNSTILE_ENABLED=false` until the widget exists. It is mounted into `web` only, so the file
-  must exist or `up` fails. Web refuses to start with Turnstile on and an empty file or no
+  must exist or `up` fails. Web refuses to start with Turnstile on and an empty file (zero bytes, or only blanks or a newline) or no
   `TURNSTILE_SITE_KEY`, and in prod with one of Cloudflare's test keys ([ADR 0025](../adr/0025-turnstile.md) section 7).
 
 A file that holds only blanks counts as empty. If an optional file (`smtp_password`, the three
@@ -331,8 +331,11 @@ section is no longer optional). Everything below is the owner's; agents do not t
    the container. Never use Cloudflare's dummy test keys in production: web refuses to start.
 3. **Enable.** A release that carries the default-on change needs nothing more once steps 1 and 2
    are done: `docker compose up -d web`. Web refuses to start when the site key is missing or the
-   secret file is empty. `./check-prod-compose.sh` (section 9) refuses the same before `up`
-   (size test only, the file is never read) unless `TURNSTILE_ENABLED=false`. A release older than that one has the widget (PR #731) but a default of
+   secret file is empty (the app also treats a file of only blanks or a newline as empty).
+   `./check-prod-compose.sh` (section 9) refuses an empty (zero-byte) file before `up`
+   (size test only, the file is never read, so a blank-only file passes it: write the key with the
+   command in step 2). It renders with the caller's environment ahead of `.env`, so an exported
+   `TURNSTILE_ENABLED` or `TURNSTILE_SITE_KEY` in your shell wins over `.env` there. Both refusals are skipped with `TURNSTILE_ENABLED=false`. A release older than that one has the widget (PR #731) but a default of
    off: set `TURNSTILE_ENABLED=true` in `.env` there. A release older than #731 has the backend check
    but no widget, so enabling it makes every sign-in, sign-up, provider-email and reset request fail
    with `captcha_failed`. With `TURNSTILE_ENABLED=false` web logs an `ERROR` at start and a `WARNING`
