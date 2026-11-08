@@ -60,30 +60,38 @@ jobs:
           echo "total=$total" >> "$GITHUB_OUTPUT"
 
   # Everything cheap that must run on every change, as steps of one runner (one billed
-  # minute-rounding instead of seven). Trivy and gitleaks are checksum-verified release binaries.
+  # minute-rounding instead of seven). Trivy and gitleaks are checksum-verified release binaries
+  # (scripts/ci-install-release.sh: retried, cached, re-verified after a cache restore).
   checks:
     name: Checks
     runs-on: ubuntu-24.04
     # A hung check (the site-config tokenizer, a Docker pull) must fail the job, not run to GitHub's
     # six-hour default.
     timeout-minutes: 30
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+      TRIVY_VERSION: 0.76.1
+      TRIVY_SHA256: c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
+      # The cache holds the tarball; ci-install-release.sh checks its SHA-256 again after a restore
+      # and fails the job on a mismatch. Bump the `v1` in the key to evict a bad entry.
+      - name: Cache gitleaks download
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/release-cache/gitleaks
+          key: v1-gitleaks-${{ runner.os }}-${{ runner.arch }}-${{ env.GITLEAKS_VERSION }}
+
       - name: Install gitleaks
-        env:
-          VERSION: 8.30.1
-          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
         run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP"
-          curl -fsSL -o gitleaks.tgz \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
-          echo "${SHA256}  gitleaks.tgz" | sha256sum --check
-          tar -xzf gitleaks.tgz gitleaks
+          "$GITHUB_WORKSPACE/scripts/ci-install-release.sh" gitleaks "$GITLEAKS_SHA256" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            "$RUNNER_TEMP/release-cache/gitleaks" "$RUNNER_TEMP"
 
       # A pull request's own commits (#116 item 8; the checkout holds every branch), a merge
       # group's commits on top of its base, or the commits a push to main added (`before` to the
@@ -136,6 +144,9 @@ jobs:
 
       - name: CI gate and change-filter tests
         run: scripts/test-ci-gate.sh
+
+      - name: Release-install script tests
+        run: scripts/test-ci-install-release.sh
 
       # The queue functions' expected md5 (backend/src/classbeat/db/queue_digests.py) is computed
       # on one Postgres image: compose's db and db-functions and the backend job's service must
@@ -226,17 +237,19 @@ jobs:
       # Trivy fails on HIGH and CRITICAL findings that have a fix available (--ignore-unfixed):
       # an accepted risk, see AGENTS.md. Exceptions go in .trivyignore with a reason and an
       # exp:YYYY-MM-DD expiry. The image scan lives in the `e2e` job.
+      # The cache holds the tarball; ci-install-release.sh checks its SHA-256 again after a restore
+      # and fails the job on a mismatch. Bump the `v1` in the key to evict a bad entry.
+      - name: Cache Trivy download
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/release-cache/trivy
+          key: v1-trivy-${{ runner.os }}-${{ runner.arch }}-${{ env.TRIVY_VERSION }}
+
       - name: Install Trivy
-        env:
-          VERSION: 0.76.1
-          SHA256: c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0
         run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP"
-          curl -fsSL -o trivy.tgz \
-            "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz"
-          echo "${SHA256}  trivy.tgz" | sha256sum --check
-          tar -xzf trivy.tgz trivy
+          "$GITHUB_WORKSPACE/scripts/ci-install-release.sh" trivy "$TRIVY_SHA256" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            "$RUNNER_TEMP/release-cache/trivy" "$RUNNER_TEMP"
 
       - name: Trivy repository scan
         run: |
@@ -461,6 +474,8 @@ jobs:
       # The test-only fake OpenID provider (compose.e2e.yaml); never part of the default stack.
       COMPOSE_FILE: compose.yaml:compose.e2e.yaml
       COMPOSE_PROFILES: e2e
+      TRIVY_VERSION: 0.76.1
+      TRIVY_SHA256: c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0
     defaults:
       run:
         working-directory: e2e
@@ -475,17 +490,19 @@ jobs:
           cache: npm
           cache-dependency-path: e2e/package-lock.json
 
+      # The cache holds the tarball; ci-install-release.sh checks its SHA-256 again after a restore
+      # and fails the job on a mismatch. Bump the `v1` in the key to evict a bad entry.
+      - name: Cache Trivy download
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/release-cache/trivy
+          key: v1-trivy-${{ runner.os }}-${{ runner.arch }}-${{ env.TRIVY_VERSION }}
+
       - name: Install Trivy
-        env:
-          VERSION: 0.76.1
-          SHA256: c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0
         run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP"
-          curl -fsSL -o trivy.tgz \
-            "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz"
-          echo "${SHA256}  trivy.tgz" | sha256sum --check
-          tar -xzf trivy.tgz trivy
+          "$GITHUB_WORKSPACE/scripts/ci-install-release.sh" trivy "$TRIVY_SHA256" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            "$RUNNER_TEMP/release-cache/trivy" "$RUNNER_TEMP"
 
       - name: Create .env and secrets
         working-directory: .

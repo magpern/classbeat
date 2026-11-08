@@ -11,6 +11,8 @@ check_turnstile_keys() {
   local j="$1" dir="$2" site
   # The comparison is inside jq: `$(...)` strips trailing newlines, so a rendered "false\n" would read as off
   # here while the app's boolean parse rejects it. jq -e exits 0 only for true: off needs the exact spelling.
+  # jq -e judges the LAST output, so the input must stay one JSON document (`docker compose config --format json`
+  # prints one); a second document saying "off" after the first would pass as off.
   if jq -e '(.services.web.environment.CLASSBEAT_TURNSTILE_ENABLED // "") | tostring | ascii_downcase
       | IN("false","0","no","off","f","n")' <<<"$j" >/dev/null; then
     return 0
@@ -67,4 +69,11 @@ ts_expect ok 0 '' none
 ts_expect refused 'false\n' 0x4AAAAAAcheck none
 ts_expect refused 'false ' 0x4AAAAAAcheck none
 ts_expect ok FALSE '' none
+# An empty ENABLED is not an off spelling (compose renders `${TURNSTILE_ENABLED:-true}`, so it never is empty;
+# a missing key would be refused too): the keys are needed.
+ts_expect refused '' 0x4AAAAAAcheck none
+# Input jq cannot read fails closed with its own message (jq exits other than 1).
+if (check_turnstile_keys 'not json' "$ts_dir") >"$tmp/ts-bad-json" 2>&1 || ! grep -q 'could not be read (Turnstile)' "$tmp/ts-bad-json"; then
+  echo "check-prod-compose: self-test: unreadable render JSON was not refused as unreadable (Turnstile)" >&2; exit 1
+fi
 fi

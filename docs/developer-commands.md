@@ -815,7 +815,12 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 | `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` (the empty model key is replaced by a random canary first), only `worker` mounts the three model keys (`anthropic_api_key`, `openai_api_key`, `deepseek_api_key`, a random canary each) and runs `fake`, no container has a model key variable, `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint), and `database_maint_password` on `db-functions` and `web` only |
 | `e2e`: Trivy image scan | Trivy on the image the running stack was built from (never pushed); then Playwright runs |
 
-Trivy and gitleaks are checksum-verified release binaries. `pip-audit` (exact version) lives in
+Trivy and gitleaks are checksum-verified release binaries, installed by `scripts/ci-install-release.sh`
+(tested by `scripts/test-ci-install-release.sh`, which runs against a loopback server that answers 504 first).
+The download retries (`curl -fSL --retry 5 --retry-all-errors --retry-delay 3`), because GitHub's release CDN
+answered 504 on 2026-11-08. The tarball is cached with `actions/cache` (key: `v1`, tool, OS, arch, version) and
+its SHA-256 is checked again after every restore, so a tampered cache entry fails the job; to evict a bad entry,
+bump the `v1` in the key. `pip-audit` (exact version) lives in
 the `audit` dependency group of `backend/pyproject.toml`, so its own dependencies are hash-locked in
 `uv.lock` and CI installs it with `uv sync --frozen --only-group audit`; the runtime image
 (`uv sync --locked --no-dev`) never contains it. The audited requirements are exported with hashes
