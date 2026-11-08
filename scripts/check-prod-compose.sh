@@ -110,6 +110,8 @@ parts=(rollback setup rules secrets selftest-compose selftest-yaml owner secretf
 for p in "${parts[@]}"; do
   [[ -f "$here/check-prod-compose-$p.bash" ]] \
     || { echo "check-prod-compose: check-prod-compose-$p.bash must be next to this script (download every check-prod-compose* asset, runbook section 4)" >&2; exit 1; }
+  [[ -s "$here/check-prod-compose-$p.bash" ]] \
+    || { echo "check-prod-compose: check-prod-compose-$p.bash is empty (download every check-prod-compose* asset again, runbook section 4)" >&2; exit 1; }
 done
 # shellcheck source=check-prod-compose-rollback.bash
 source "$here/check-prod-compose-rollback.bash"

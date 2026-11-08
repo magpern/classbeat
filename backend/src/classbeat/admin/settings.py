@@ -369,7 +369,7 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
     if key == "trial" and refusal is None:
         # Read before the audited transaction (plans is a system table), so a refusal row for a
         # plan that does not exist records only the reason, never the string the admin typed.
-        refusal = await _trialplan_refusal(request, canonical["plan"])
+        refusal = await _trial_plan_refusal(request, canonical["plan"])
         if refusal == "unknown_plan":
             params = {"key": key}
     async with admin_session(
@@ -398,7 +398,7 @@ def _stored_bytes(value: Any) -> int:
     return len(json.dumps(value, ensure_ascii=False, separators=(", ", ": ")).encode())
 
 
-async def _trialplan_refusal(request: Request, plan: str) -> str | None:
+async def _trial_plan_refusal(request: Request, plan: str) -> str | None:
     async with system_session(request.app.state.session_factory) as db:
         ranks = await plan_ranks(db, plan, TRIAL_MAX_PLAN)
     if plan not in ranks:

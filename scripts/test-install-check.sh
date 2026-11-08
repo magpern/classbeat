@@ -353,6 +353,10 @@ rm "$miss/check-prod-compose-owner.bash"
 out="$(cd "$miss" && ./check-prod-compose.sh 2>&1)" && rc=0 || rc=$?
 if [ "$rc" = 1 ] && grep -q 'check-prod-compose-owner.bash must be next to this script' <<<"$out"; then ok "a missing part is refused"
 else bad "a missing part (rc $rc): $(tail -2 <<<"$out")"; fi
+: >"$miss/check-prod-compose-owner.bash"
+out="$(cd "$miss" && ./check-prod-compose.sh 2>&1)" && rc=0 || rc=$?
+if [ "$rc" = 1 ] && grep -q 'check-prod-compose-owner.bash is empty' <<<"$out"; then ok "an empty part is refused"
+else bad "an empty part (rc $rc): $(tail -2 <<<"$out")"; fi
 # shellcheck disable=SC2016  # a literal `$here` in the pattern, not a shell expansion
 srcd="$(grep -o 'source "$here/check-prod-compose-[a-z-]*\.bash"' "$root/scripts/check-prod-compose.sh" | sed 's/.*compose-//; s/\.bash"//' | LC_ALL=C sort | tr '\n' ' ')"
 have="$(cd "$root/scripts" && printf '%s\n' check-prod-compose-*.bash | sed 's/check-prod-compose-//; s/\.bash$//' | LC_ALL=C sort | tr '\n' ' ')"
