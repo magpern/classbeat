@@ -299,6 +299,12 @@ def _maint_callees(root: Path = SRC / "admin") -> set[Path]:
                         value = getattr(module, alias.name)
                     else:  # ``from classbeat import connections``: a submodule not yet imported
                         value = importlib.import_module(f"{node.module}.{alias.name}")
+                    if value is auth:
+                        # ``classbeat.auth`` resolves its exports lazily and caches each one in
+                        # its namespace on first use, so ``vars(auth)`` holds whatever an earlier
+                        # test touched (``operator_contexts`` pulled ``auth/deps.py`` in). The
+                        # names the admin code uses are the ``auth.<name>`` branch below.
+                        continue
                     values += vars(value).values() if inspect.ismodule(value) else [value]
             elif isinstance(node, ast.Import):
                 for alias in node.names:
