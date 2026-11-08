@@ -79,7 +79,8 @@ _COLUMNS = {
     "plans": "id name rank classes_per_month revisions_per_class concurrent_jobs "
     "monthly_cost_micros route_key features created_at updated_at updated_by "
     "max_class_minutes games_allowed races_allowed ftp_tests_allowed "
-    "monthly_price_cents intro_price_cents intro_price_until currency",
+    "monthly_price_cents intro_price_cents intro_price_until currency "
+    "saves_per_hour saves_per_day",
     "redeem_codes": "id label plan_id features grant_days max_redemptions redeemed_count "
     "expires_at disabled_at created_by created_at",
     "entitlements": "id owner_id plan_id features source starts_at ends_at code_id granted_by "
@@ -111,7 +112,8 @@ _UPDATES = {
     "invites": "expires_at",
     "plans": "classes_per_month revisions_per_class concurrent_jobs monthly_cost_micros "
     "max_class_minutes games_allowed races_allowed ftp_tests_allowed "
-    "monthly_price_cents intro_price_cents intro_price_until currency updated_at updated_by",
+    "monthly_price_cents intro_price_cents intro_price_until currency "
+    "saves_per_hour saves_per_day updated_at updated_by",
     "redeem_codes": "disabled_at",
     "entitlements": "revoked_at revoked_by",
     "credit_ledger": "state reason settled_at refunded_by",

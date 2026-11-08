@@ -30,6 +30,8 @@ CLASSES_MAX = 50
 COST_MAX = 120_000_000
 TRIAL_DAYS_MAX = 14
 CLASS_MINUTES_MAX = 120
+SAVES_PER_HOUR = 40  # the environment's save caps (#577), not the defaults, so a read shows them
+SAVES_PER_DAY = 200
 
 
 @pytest.fixture
@@ -47,6 +49,8 @@ async def env(app_database_url: str, maint_database_url: str) -> AsyncIterator[E
         monthly_cost_micros_max=COST_MAX,
         trial_days_max=TRIAL_DAYS_MAX,
         class_minutes_max=CLASS_MINUTES_MAX,
+        saves_per_hour=SAVES_PER_HOUR,
+        saves_per_day=SAVES_PER_DAY,
     ) as running:
         yield running
 
@@ -74,7 +78,7 @@ def reset(conn: Connection) -> None:
         text(
             "UPDATE plans SET races_allowed = true, ftp_tests_allowed = true, "
             "monthly_price_cents = NULL, intro_price_cents = NULL, intro_price_until = NULL, "
-            "currency = NULL"
+            "currency = NULL, saves_per_hour = NULL, saves_per_day = NULL"
         )
     )
     conn.execute(text(migration_module("plan_gates").SEED))
@@ -225,6 +229,11 @@ async def test_the_read_shows_each_flag_with_its_effective_value_and_source(
         "monthly_cost_micros": COST_MAX,
         "max_class_minutes": CLASS_MINUTES_MAX,
         "trial_days": TRIAL_DAYS_MAX,
+        "saves_per_hour": SAVES_PER_HOUR,
+        "saves_per_day": SAVES_PER_DAY,
+    }
+    assert {(p["saves_per_hour"], p["saves_per_day"]) for p in view.json()["plans"]} == {
+        (None, None)
     }
     read_only = view.json()["read_only"]
     assert read_only["billing_enabled"] is False
@@ -812,7 +821,8 @@ async def test_the_plans_other_columns_are_out_of_the_maint_roles_reach(
     assert privileges == [
         "classes_per_month", "concurrent_jobs", "currency", "ftp_tests_allowed", "games_allowed",
         "intro_price_cents", "intro_price_until", "max_class_minutes", "monthly_cost_micros",
-        "monthly_price_cents", "races_allowed", "revisions_per_class", "updated_at", "updated_by",
+        "monthly_price_cents", "races_allowed", "revisions_per_class", "saves_per_day",
+        "saves_per_hour", "updated_at", "updated_by",
     ]  # fmt: skip
 
 
@@ -1000,3 +1010,103 @@ async def test_a_refused_currency_is_not_logged(
     assert (response.status_code, reason(response)) == (422, "invalid_value")
     dump = superuser.execute(text("SELECT string_agg(params::text, ' ') FROM admin_audit")).scalar()
     assert "x<b>" not in (dump or "")
+
+
+# --- the plan's Save and Update caps (#806, #809) ---------------------------------------------
+
+
+def caps_row(conn: Connection, plan_id: str) -> Any:
+    return conn.execute(
+        text("SELECT saves_per_hour, saves_per_day, updated_by FROM plans WHERE id = :p"),
+        {"p": plan_id},
+    ).one()
+
+
+async def test_save_caps_are_set_audited_shown_and_cleared_with_null(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    edit = {"saves_per_hour": 5, "saves_per_day": 20}
+    response = await actor.call("PATCH", f"{PLANS}/instructor", edit)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["saves_per_hour"], body["saves_per_day"]) == (5, 20)
+    assert body["classes_per_month"] == 30  # untouched
+    row = caps_row(superuser, "instructor")
+    assert tuple(row) == (5, 20, actor.user_id)
+    assert tuple(caps_row(superuser, "pro"))[:2] == (None, None)  # another plan is untouched
+    view = await actor.get(SETTINGS)
+    instructor = next(p for p in view.json()["plans"] if p["id"] == "instructor")
+    assert (instructor["saves_per_hour"], instructor["saves_per_day"]) == (5, 20)
+    # One cap cleared alone: NULL, so the environment's setting applies again; the other stays.
+    cleared = await actor.call("PATCH", f"{PLANS}/instructor", {"saves_per_hour": None})
+    assert cleared.status_code == 200, cleared.text
+    assert (cleared.json()["saves_per_hour"], cleared.json()["saves_per_day"]) == (None, 20)
+    assert tuple(caps_row(superuser, "instructor"))[:2] == (None, 20)
+    both = await actor.call(
+        "PATCH", f"{PLANS}/instructor", {"saves_per_hour": None, "saves_per_day": None}
+    )
+    assert both.status_code == 200
+    assert tuple(caps_row(superuser, "instructor"))[:2] == (None, None)
+    audited = [r for r in rows_of(superuser, actor.user_id) if r.action == "plan.update"]
+    assert [(r.outcome, r.target_kind, r.target_id) for r in audited] == [
+        ("ok", "plan", "instructor")
+    ] * 3
+    assert [given(r.params) for r in audited] == [
+        edit,
+        {"cleared": ["saves_per_hour"]},
+        {"cleared": ["saves_per_hour", "saves_per_day"]},
+    ]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"saves_per_hour": 0},
+        {"saves_per_hour": 1001},
+        {"saves_per_hour": -1},
+        {"saves_per_day": 0},
+        {"saves_per_day": 10_001},
+        {"saves_per_hour": 5, "saves_per_day": 0},
+    ],
+)
+async def test_a_save_cap_outside_the_tables_check_is_422_and_changes_nothing(
+    env: Env, make_actor: Any, superuser: Connection, body: dict[str, int]
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    superuser.execute(
+        text("UPDATE plans SET saves_per_hour = 7, saves_per_day = 9 WHERE id = 'pro'")
+    )
+    response = await actor.call("PATCH", f"{PLANS}/pro", body)
+    assert (response.status_code, reason(response)) == (422, "out_of_range")
+    assert tuple(caps_row(superuser, "pro"))[:2] == (7, 9)
+    [row] = [r for r in rows_of(superuser, actor.user_id) if r.action == "plan.update"]
+    assert (row.outcome, row.reason, row.target_id) == ("refused", "out_of_range", "pro")
+    assert given(row.params) == body  # numbers only, refused ones included
+
+
+async def test_save_caps_at_the_tables_edges_are_accepted_above_the_setting_too(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    """The route's range is the table's check (migration 0042): both edges are stored, so the
+    two agree. A value above the environment's setting is stored as well: it has no effect
+    (the effective cap is the smaller one, ``classbeat.quota.save_caps_policy``)."""
+    actor = await stepped_admin(env, make_actor)
+    for edit in (
+        {"saves_per_hour": 1, "saves_per_day": 1},
+        {"saves_per_hour": 1000, "saves_per_day": 10_000},
+    ):
+        response = await actor.call("PATCH", f"{PLANS}/pro", edit)
+        assert response.status_code == 200, (edit, response.text)
+        assert tuple(caps_row(superuser, "pro"))[:2] == tuple(edit.values())
+    assert SAVES_PER_HOUR < 1000
+    assert SAVES_PER_DAY < 10_000
+
+
+async def test_a_save_cap_of_the_wrong_type_is_a_schema_error(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    for bad in ({"saves_per_hour": "5"}, {"saves_per_day": True}, {"saves_per_day": 2.5}):
+        assert (await actor.call("PATCH", f"{PLANS}/pro", bad)).status_code == 422, bad
+    assert tuple(caps_row(superuser, "pro"))[:2] == (None, None)

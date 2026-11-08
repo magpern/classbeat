@@ -1,5 +1,5 @@
-"""The admin area's Settings, flags and plan limits (ADR 0011 sections 4, 6 and 7; AD4 #222), on
-the router shell of #210.
+"""The admin area's Settings and flags (ADR 0011 sections 4, 6 and 7; AD4 #222), on the router
+shell of #210. The plan edit (``PATCH /plans/{plan_id}``) is ``classbeat.admin.plans``.
 
 Every route has ``admin_gate`` (admin role, TOTP within 12 hours, step-up within 5 minutes for
 every write, the admin rate limit, ``no-store``; CSRF by the auth middleware) and does its
@@ -32,19 +32,6 @@ read only.
 - ``DELETE /settings/{key}``: clears the stored value (the JSON ``null``, which every reader takes
   as no row: maint has no ``DELETE`` on ``app_settings``), so the environment's value applies
   (404 ``not_found`` when nothing was stored).
-- ``PATCH /plans/{plan_id}`` ``{classes_per_month?, revisions_per_class?, concurrent_jobs?,
-  monthly_cost_micros?, max_class_minutes?, games_allowed?, races_allowed?, ftp_tests_allowed?,
-  monthly_price_cents?, intro_price_cents?, intro_price_until?, currency?}``: edits the limits
-  within the table's ranges and under the environment's upper bounds (422 ``out_of_range`` or
-  ``above_environment_bound``; ``max_class_minutes`` under ``CLASSBEAT_CLASS_MINUTES_MAX``), the
-  feature gates (booleans) and the prices (#496). A limit or gate sent as ``null`` is left as it
-  is; a price sent as ``null`` is cleared. A price is whole cents from 0 to 10 000 000, the
-  introduction price's end a date from 2020 to 2100 (``out_of_range``), the currency three capital
-  letters (``invalid_value``); an introduction price without its end date (or the reverse), or a
-  price without a currency, once merged with the stored row, is 422 ``price_incomplete``. The next
-  request reads the new values; credits already held and jobs already created stay as they are.
-  Prices are read and returned here only: no route outside ``/api/admin`` reads them (billing is
-  off, ADR 0011 section 8).
 
 The mail settings (``mail_sender_name``, ``mail_support_email``, ``mail_footer`` and
 ``mail_kinds_disabled``, #653) use the same two routes and are shown by
@@ -52,8 +39,7 @@ The mail settings (``mail_sender_name``, ``mail_support_email``, ``mail_footer``
 text's length, or the kind ids.
 
 The audit ``params`` of a write hold the key and what the value means (the mode, a plan and days,
-a banner's level and length, a plan's numbers, gates and currency code), never free text: a
-currency that is not three capital letters is left out.
+a banner's level and length), never free text.
 """
 
 import json
@@ -67,22 +53,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat import auth
 from classbeat.admin.audit import Target
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
-from classbeat.admin.plan_rules import (
-    GATES,
-    LIMITS,
-    PRICES,
-    bounds,
-    plan_params,
-    plan_refusal,
-    prices_complete,
-)
+from classbeat.admin.plan_rules import bounds
+from classbeat.admin.plans import all_plans, plan_out
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.admin.settings_models import (
     BoundsOut,
     FlagOut,
     PersonOut,
-    PlanIn,
-    PlanOut,
     ReadOnlyOut,
     SettingIn,
     SettingsOut,
@@ -100,7 +77,6 @@ from classbeat.plans.entitle import TRIAL_MAX_PLAN, plan_ranks
 router = admin_router()
 
 SETTINGS = "/settings"
-PLANS = "/plans"
 
 MAX_VALUE_BYTES = 2048  # app_settings_value
 
@@ -116,31 +92,9 @@ _CLEAR = text(
     "UPDATE app_settings SET value = 'null'::jsonb, updated_at = now(), updated_by = :by "
     "WHERE key = :k AND value <> 'null'::jsonb RETURNING key"
 )
-_PLAN_COLUMNS = (
-    "id, name, rank, classes_per_month, revisions_per_class, concurrent_jobs, "
-    "monthly_cost_micros, max_class_minutes, games_allowed, races_allowed, ftp_tests_allowed, "
-    "monthly_price_cents, intro_price_cents, intro_price_until, currency, features, updated_at, "
-    "updated_by"
-)
-_PLANS = text(f"SELECT {_PLAN_COLUMNS} FROM plans ORDER BY rank")  # noqa: S608
-_PLAN_FOR_UPDATE = text(f"SELECT {_PLAN_COLUMNS} FROM plans WHERE id = :p FOR UPDATE")  # noqa: S608
 _RANKS = text("SELECT id, rank FROM plans WHERE id = ANY(:ids)")
 
-
-def _update_plan(columns: list[str]) -> Any:
-    """``UPDATE plans`` of exactly ``columns``, every name one of ``LIMITS``, ``GATES`` or
-    ``PRICES`` (constants, never the request's text), each bound to the parameter of its name."""
-    if not columns or not set(columns) <= {*LIMITS, *GATES, *PRICES}:
-        raise ValueError("an editable plan column")
-    assignments = ", ".join(f"{c} = :{c}" for c in columns)
-    return text(
-        f"UPDATE plans SET {assignments}, updated_at = now(), updated_by = :by "  # noqa: S608
-        f"WHERE id = :p RETURNING {_PLAN_COLUMNS}"
-    )
-
-
 KeyPath = Annotated[str, Path(pattern=r"^[a-z][a-z_]{0,39}$")]
-PlanPath = Annotated[str, Path(pattern=r"^[a-z_]{1,30}$")]
 
 
 def _db(request: Request) -> AdminDb:
@@ -152,29 +106,6 @@ def _db(request: Request) -> AdminDb:
 
 def _person(user_id: UUID | None, emails: dict[UUID, str]) -> PersonOut | None:
     return None if user_id is None else PersonOut(id=user_id, email=emails.get(user_id))
-
-
-def _plan_out(row: Any, emails: dict[UUID, str]) -> PlanOut:
-    return PlanOut(
-        id=row.id,
-        name=row.name,
-        rank=row.rank,
-        classes_per_month=row.classes_per_month,
-        revisions_per_class=row.revisions_per_class,
-        concurrent_jobs=row.concurrent_jobs,
-        monthly_cost_micros=row.monthly_cost_micros,
-        max_class_minutes=row.max_class_minutes,
-        games_allowed=row.games_allowed,
-        races_allowed=row.races_allowed,
-        ftp_tests_allowed=row.ftp_tests_allowed,
-        monthly_price_cents=row.monthly_price_cents,
-        intro_price_cents=row.intro_price_cents,
-        intro_price_until=row.intro_price_until,
-        currency=row.currency,
-        features=list(row.features),
-        updated_at=row.updated_at,
-        updated_by=_person(row.updated_by, emails),
-    )
 
 
 def _stored_valid(key: str, value: Any) -> bool:
@@ -257,7 +188,7 @@ def _effective_trial(
 
 async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
     rows = {r.key: r for r in (await session.execute(_ALL_SETTINGS)).all()}
-    plans = list((await session.execute(_PLANS)).all())
+    plans = await all_plans(session)
     people = [r.updated_by for r in (*rows.values(), *plans) if r.updated_by is not None]
     emails = await auth.account_emails(session, people)
     ranks = {p.id: p.rank for p in plans}
@@ -267,8 +198,13 @@ async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
         flags=[
             _flag(k, settings, rows.get(k), ranks, emails, soundless, running) for k in core.KEYS
         ],
-        plans=[_plan_out(p, emails) for p in plans],
-        bounds=BoundsOut(**bounds(settings), trial_days=settings.trial_days_max),
+        plans=[plan_out(p, emails) for p in plans],
+        bounds=BoundsOut(
+            **bounds(settings),
+            trial_days=settings.trial_days_max,
+            saves_per_hour=settings.saves_per_hour,
+            saves_per_day=settings.saves_per_day,
+        ),
         read_only=ReadOnlyOut(
             agent_job_cost_micros=settings.agent_job_cost_micros,
             song_job_cost_micros=settings.song_job_cost_micros,
@@ -453,38 +389,3 @@ async def clear_flag(request: Request, actor: AdminActor, key: KeyPath) -> FlagO
         if (await session.execute(_CLEAR, {"k": key, "by": actor.user_id})).first() is None:
             raise AdminRefused("not_found", 404)
         return await _flag_view(session, settings, key)
-
-
-# --- plan limits ------------------------------------------------------------------------------
-
-
-@router.patch(f"{PLANS}/{{plan_id}}", response_model=PlanOut)
-async def update_plan(
-    request: Request, actor: AdminActor, plan_id: PlanPath, body: PlanIn
-) -> PlanOut:
-    settings: Settings = request.app.state.settings
-    asked = body.asked()
-    refusal = plan_refusal(asked, bounds(settings))
-    async with admin_session(
-        _db(request),
-        actor,
-        "plan.update",
-        write=True,
-        target=Target(kind="plan", id=plan_id),
-        params=plan_params(asked),
-    ) as session:
-        if refusal is not None:
-            raise AdminRefused(refusal, 422)
-        current = (await session.execute(_PLAN_FOR_UPDATE, {"p": plan_id})).one_or_none()
-        if current is None:
-            raise AdminRefused("not_found", 404)
-        if not prices_complete({**current._asdict(), **asked}):
-            raise AdminRefused("price_incomplete", 422)
-        columns = list(asked)
-        row = (
-            await session.execute(
-                _update_plan(columns), {**asked, "p": plan_id, "by": actor.user_id}
-            )
-        ).one()
-        emails = await auth.account_emails(session, [row.updated_by] if row.updated_by else [])
-        return _plan_out(row, emails)

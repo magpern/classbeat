@@ -57,6 +57,9 @@ export interface Plan {
   /** A date, `YYYY-MM-DD`. */
   introPriceUntil: string | null
   currency: string | null
+  /** The plan's own Save and Update caps (#809); null = the server's setting applies. */
+  savesPerHour: number | null
+  savesPerDay: number | null
   features: string[]
   updatedAt: string
   updatedBy: Person | null
@@ -69,6 +72,9 @@ export interface Bounds {
   monthlyCostMicros: number
   maxClassMinutes: number
   trialDays: number
+  /** The server's Save and Update caps (CLASSBEAT_SAVES_PER_HOUR, _PER_DAY); a plan can only tighten them. */
+  savesPerHour: number
+  savesPerDay: number
 }
 
 export interface ReadOnly {
@@ -126,6 +132,8 @@ export function decodePlan(value: unknown): Plan {
     introPriceCents: optionalCount(item, 'intro_price_cents'),
     introPriceUntil: optionalText(item, 'intro_price_until'),
     currency: optionalText(item, 'currency'),
+    savesPerHour: optionalCount(item, 'saves_per_hour'),
+    savesPerDay: optionalCount(item, 'saves_per_day'),
     features: strings(item, 'features'),
     updatedAt: text(item, 'updated_at'),
     updatedBy: decodePerson(item.updated_by),
@@ -146,6 +154,8 @@ export async function getSettings(signal?: AbortSignal): Promise<SettingsView> {
       monthlyCostMicros: count(bounds, 'monthly_cost_micros'),
       maxClassMinutes: count(bounds, 'max_class_minutes'),
       trialDays: count(bounds, 'trial_days'),
+      savesPerHour: count(bounds, 'saves_per_hour'),
+      savesPerDay: count(bounds, 'saves_per_day'),
     },
     readOnly: {
       agentJobCostMicros: count(readOnly, 'agent_job_cost_micros'),
@@ -183,6 +193,9 @@ export interface PlanLimits {
   introPriceCents?: number | null
   introPriceUntil?: string | null
   currency?: string | null
+  /** A save cap: a number sets it, null clears it (the server's setting applies), undefined leaves it out. */
+  savesPerHour?: number | null
+  savesPerDay?: number | null
 }
 
 /** Sends only the limits that changed (`PATCH /plans/{id}`). */
@@ -200,6 +213,8 @@ export async function updatePlan(id: string, limits: PlanLimits): Promise<Plan> 
   if (limits.introPriceCents !== undefined) body.intro_price_cents = limits.introPriceCents
   if (limits.introPriceUntil !== undefined) body.intro_price_until = limits.introPriceUntil
   if (limits.currency !== undefined) body.currency = limits.currency
+  if (limits.savesPerHour !== undefined) body.saves_per_hour = limits.savesPerHour
+  if (limits.savesPerDay !== undefined) body.saves_per_day = limits.savesPerDay
   return decodePlan(await request('PATCH', `${BASE}/plans/${encodeURIComponent(id)}`, { body }))
 }
 

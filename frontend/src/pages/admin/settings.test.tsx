@@ -47,6 +47,8 @@ function plan(id: string, name: string, rank: number, limits: [number, number, n
     intro_price_cents: null,
     intro_price_until: null,
     currency: null,
+    saves_per_hour: null,
+    saves_per_day: null,
     features: [],
     updated_at: '2026-10-31T08:00:00Z',
     updated_by: null,
@@ -84,6 +86,8 @@ function view(
       monthly_cost_micros: 300_000_000,
       max_class_minutes: 180,
       trial_days: overrides.trialDays ?? 30,
+      saves_per_hour: 30,
+      saves_per_day: 100,
     },
     read_only: {
       agent_job_cost_micros: 1_500_000,
@@ -280,6 +284,58 @@ describe('admin settings', () => {
       intro_price_until: '2027-03-01',
       currency: 'USD',
     })
+  })
+
+  it('sets the save caps, shows the server setting, and clears one with null', async () => {
+    const stored = { ...plan('pro', 'Pro', 2, [100, 25, 2, 200_000_000]), saves_per_day: 50 }
+    const base = view()
+    const api = adminApi({
+      [`GET ${SETTINGS}`]: { ...base, plans: [...base.plans.slice(0, 2), stored] },
+      'PATCH /api/admin/plans/pro': stored,
+    })
+    renderAt('/admin/settings')
+    const form = await screen.findByRole('form', { name: 'Pro limits' })
+    expect(within(form).getByLabelText('Saves per hour')).toHaveValue('')
+    expect(within(form).getByLabelText('Saves per day')).toHaveValue('50')
+    expect(within(form).getByText('Server setting: 30.')).toBeInTheDocument()
+    expect(within(form).getByText('Server setting: 100.')).toBeInTheDocument()
+    fireEvent.change(within(form).getByLabelText('Saves per hour'), { target: { value: '5' } })
+    fireEvent.change(within(form).getByLabelText('Saves per day'), { target: { value: '' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save Pro' }))
+    await waitFor(() => {
+      expect(api.to('PATCH', '/api/admin/plans/pro')).toHaveLength(1)
+    })
+    expect(api.to('PATCH', '/api/admin/plans/pro')[0]?.body).toEqual({ saves_per_hour: 5, saves_per_day: null })
+  })
+
+  it.each([['0', ''], ['1001', ''], ['2.5', ''], ['', '0'], ['', '10001']])(
+    'refuses save caps %j and %j before sending anything',
+    async (hour, day) => {
+      const api = adminApi({ [`GET ${SETTINGS}`]: view() })
+      renderAt('/admin/settings')
+      const form = await screen.findByRole('form', { name: 'Free limits' })
+      fireEvent.change(within(form).getByLabelText('Saves per hour'), { target: { value: hour } })
+      fireEvent.change(within(form).getByLabelText('Saves per day'), { target: { value: day } })
+      fireEvent.click(within(form).getByRole('button', { name: 'Save Free' }))
+      expect(await within(form).findByText(/Saves per hour are 1 to 1000/)).toBeInTheDocument()
+      expect(api.to('PATCH', '/api/admin/plans/free')).toHaveLength(0)
+    },
+  )
+
+  it('accepts the save caps at the edges of their ranges', async () => {
+    const api = adminApi({
+      [`GET ${SETTINGS}`]: view(),
+      'PATCH /api/admin/plans/free': plan('free', 'Free', 0, [3, 3, 1, 10_000_000]),
+    })
+    renderAt('/admin/settings')
+    const form = await screen.findByRole('form', { name: 'Free limits' })
+    fireEvent.change(within(form).getByLabelText('Saves per hour'), { target: { value: '1000' } })
+    fireEvent.change(within(form).getByLabelText('Saves per day'), { target: { value: '1' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save Free' }))
+    await waitFor(() => {
+      expect(api.to('PATCH', '/api/admin/plans/free')).toHaveLength(1)
+    })
+    expect(api.to('PATCH', '/api/admin/plans/free')[0]?.body).toEqual({ saves_per_hour: 1000, saves_per_day: 1 })
   })
 
   it('clears a stored price with null', async () => {
