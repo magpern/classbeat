@@ -358,14 +358,11 @@ async def test_a_soundless_class_can_be_changed_only_while_its_gate_is_open(
         assert body["can_change"] is False
         assert [r["number"] for r in body["revisions"]] == [1]
         music_kind.configure(music_kind.SoundlessGate(enabled=True, fake_covers=True))
-        sql(mine.admin, "INSERT INTO app_settings (key, value) "
-            "VALUES ('soundless_enabled', '\"on\"'::jsonb)")  # fmt: skip
         assert (await mine.browser.get(path)).json()["can_change"] is True
         music_kind.configure(music_kind.SoundlessGate(enabled=True, fake_covers=False))
         assert (await mine.browser.get(path)).json()["can_change"] is False  # plan not covered
     finally:
         music_kind.configure(None)
-        sql(mine.admin, "DELETE FROM app_settings WHERE key = 'soundless_enabled'")
 
 
 async def test_a_running_class_is_read_with_the_running_schema(two: tuple[Plant, Plant]) -> None:

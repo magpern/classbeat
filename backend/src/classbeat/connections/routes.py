@@ -98,9 +98,9 @@ class ConnectionsOut(BaseModel):
     # offers Running only when a running design would be admitted. Signed-in users only;
     # nothing here says anything about the user's own account.
     running_enabled: bool = False
-    # ADR 0007 amendment of 2026-11-03 (#527): the effective ``soundless_enabled`` (the
-    # environment's switch, a stored ``on`` and every plan's route covering soundless), so the
-    # form offers "No music" only when a soundless design would be admitted.
+    # ADR 0007 amendments of 2026-11-03 (#527) and 2026-11-08 (#824): the effective
+    # ``soundless_enabled`` (the environment's switch and every plan's route covering soundless),
+    # so the form offers "No music" only when a soundless design would be admitted.
     soundless_enabled: bool = False
     # ADR 0024 (#647): whether the desktop page may offer "Scan with the MOWL app"
     # (``CLASSBEAT_MOWL_QR_ENABLED``). Nothing here says anything about the user's own account.

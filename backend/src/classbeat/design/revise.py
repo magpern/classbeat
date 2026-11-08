@@ -334,7 +334,7 @@ async def _run_soundless(
         given.request_message_id,
         bytes.fromhex(given.base_revision_hash),
     )
-    await music_kind.still_on(job_run)  # the switch, before anything is called
+    music_kind.still_on()  # the switch, before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")
     music_kind.require_covered(model)  # a model evaluated for soundless only
     step = music_kind.NoMusicStep()

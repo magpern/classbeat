@@ -4,8 +4,9 @@ items 1 to 7; SL1, #527), against Postgres as ``classbeat_app``, the fake MOWL a
 
 Covered: a soundless ``design_draft`` completes on the fakes with no MOWL request and no ``music``
 stage, storing ``{"source": "none"}`` as the revision's music and the class's ``music_source``;
-the model sees no ``music`` key and no music text; the three-condition gate (every path that must
-leave the effective flag off and ``admit`` refusing, with no job and no credit), the order of
+the model sees no ``music`` key and no music text; the gate (the environment's switch and every
+plan's route, no stored value since #824: every path that must leave the effective flag off and
+``admit`` refusing, with no job and no credit), the order of
 ``admit``'s checks, and the effective flag ``GET /api/connections`` returns; the worker's
 backstops (``feature_off``, ``model_config``) before any call; the music kind never changing, at
 ``admit`` and in the final store, both ways. The revise is ``test_soundless_revise.py`` (SL2);
@@ -19,6 +20,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from classbeat import design
 from classbeat.agent.records import Provenance
@@ -47,28 +49,16 @@ def gate(*, enabled: bool = True, fake: bool = True) -> None:
     music_kind.configure(music_kind.SoundlessGate(enabled=enabled, fake_covers=fake))
 
 
-def admin_flag(renv: ReviseEnv, value: Any, *, raw: str | None = None) -> None:
-    """The stored ``soundless_enabled``: ``value`` as JSON, ``raw`` a JSON text (``null``, as
-    the admin's DELETE leaves it), or no row for ``None``."""
-    renv.sql("DELETE FROM app_settings WHERE key = 'soundless_enabled'")
-    if value is not None or raw is not None:
-        renv.sql(
-            "INSERT INTO app_settings (key, value) VALUES ('soundless_enabled', CAST(:v AS jsonb))",
-            v=raw if raw is not None else json.dumps(value),
-        )
-
-
 @pytest.fixture(autouse=True)
 def soundless_on(renv: ReviseEnv) -> Iterator[None]:
-    """The environment's switch on, the web's ``fake`` covering (as the e2e stack) and the admin
-    flag stored ``on``; after ``renv``, whose app configured the gate from its settings (off)."""
+    """The environment's switch on and the web's ``fake`` covering (as the e2e stack); nothing is
+    stored (there is no admin flag since #824). After ``renv``, whose app configured the gate from
+    its settings (off)."""
     gate()
-    admin_flag(renv, "on")
     try:
         yield
     finally:
         music_kind.configure(None)
-        admin_flag(renv, None)
         clear_gate(renv.denv.ops.admin)
 
 
@@ -215,29 +205,38 @@ async def test_a_class_designed_without_music_is_admitted_for_save(
 # --- the gate at creation -------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "case", ["environment_off", "nothing_stored", "deleted", "invalid", "stored_off"]
-)
-async def test_every_switch_path_leaves_the_flag_off_and_admit_refusing_feature_off(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic, case: str
+@pytest.mark.parametrize("fake", [True, False])
+async def test_the_environment_switch_off_leaves_the_flag_off_and_admit_refusing_feature_off(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic, monkeypatch: pytest.MonkeyPatch, fake: bool
 ) -> None:
-    """Item 2: on only with the environment on **and** a stored ``on``. An environment-only on,
-    nothing stored, the admin's DELETE (JSON ``null``), an invalid or an ``off`` value: off."""
-    if case == "environment_off":
-        gate(enabled=False)  # the database can never switch it on past the environment
-    elif case == "nothing_stored":
-        admin_flag(renv, None)
-    elif case == "deleted":
-        admin_flag(renv, None, raw="null")
-    elif case == "invalid":
-        admin_flag(renv, "yes")
-    else:
-        admin_flag(renv, "off")
+    """Item 2 (as amended on 2026-11-08, #824): ``CLASSBEAT_SOUNDLESS_ENABLED`` off is off, even
+    with every plan's route covering soundless (or the web's ``fake``)."""
+    gate(enabled=False, fake=fake)
+    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
+    route(renv, *plan_keys(renv))
     assert await connections_flag(renv) is False
     await refused_with(renv, "feature_off")
     assert fake_mowl.requests == []
     cycling = await create(renv, design_body(renv, SPOTIFY))  # music never reads the flag
     assert cycling.status_code == 201, cycling.text
+
+
+async def test_the_switch_and_every_plans_route_suffice_with_no_stored_row(
+    renv: ReviseEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#824: no ``app_settings`` row takes part. With the environment on and a covering route for
+    every plan (no ``fake``), the flag is on and a soundless design is admitted, and the key can
+    no longer be stored at all (the narrowed check of migration 0043)."""
+    gate(fake=False)
+    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
+    route(renv, *plan_keys(renv))
+    assert await connections_flag(renv) is True
+    made = await create(renv, design_body(renv))
+    assert made.status_code == 201, made.text
+    with pytest.raises(IntegrityError):
+        renv.sql(
+            "INSERT INTO app_settings (key, value) VALUES ('soundless_enabled', '\"on\"'::jsonb)"
+        )
 
 
 async def test_the_flag_needs_every_plans_route_to_cover_soundless_read_on_every_request(
@@ -312,9 +311,8 @@ async def test_admit_checks_the_switch_then_its_own_plan_then_every_plan(
     others: bool,
     reason: str | None,
 ) -> None:
-    gate(fake=False)
+    gate(enabled=switch, fake=False)
     monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
-    admin_flag(renv, "on" if switch else "off")
     keys, mine = plan_keys(renv), await own_key(renv)
     route(
         renv,
@@ -339,7 +337,7 @@ async def test_a_queued_soundless_design_whose_switch_went_off_ends_feature_off_
     made = await create(renv, design_body(renv))
     assert made.status_code == 201, made.text
     job_id = UUID(made.json()["id"])
-    admin_flag(renv, None)  # the admin cleared it while the job waited
+    gate(enabled=False)  # the worker runs with the environment's switch off
     await renv.run(design.KIND)
     row = renv.denv.ops.row(job_id)
     assert (row.state, row.error_category) == ("failed", "feature_off")

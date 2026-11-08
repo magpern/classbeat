@@ -37,7 +37,6 @@ SETTING_KEYS = (
     "song_picking",
     "swedebeat_enabled",
     "running_enabled",
-    "soundless_enabled",
     "trial",
     "banner",
     "mail_sender_name",

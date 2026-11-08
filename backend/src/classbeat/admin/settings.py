@@ -18,14 +18,13 @@ read only.
   ``plan_above_instructor``), a key that is no flag, billing and Swedebeat included (422
   ``unknown_key``), and ``running_enabled`` stored ``on`` while a plan's ``route_key`` has no
   ``design`` route whose recorded result covers running (422 ``running_not_evaluated``; ADR 0012
-  amendment of 2026-11-03, issue #465), and ``soundless_enabled`` stored ``on`` while a plan's
-  ``route_key`` has no ``design`` route that covers soundless (422 ``soundless_not_evaluated``;
-  ADR 0007 amendment of 2026-11-03, #527); both through ``models.routes.every_plan_covers``, and
-  the web's own ``fake`` provider outside prod counts (``design.music_kind.fake_covers``). A
-  refusal changes nothing and writes one ``refused`` audit row. ``running_enabled``'s and
-  ``soundless_enabled``'s effective values are the three conditions (environment, stored ``on``,
+  amendment of 2026-11-03, issue #465) through ``models.routes.every_plan_covers`` (the web's own
+  ``fake`` provider outside prod counts, ``design.music_kind.fake_covers``). Soundless classes have
+  no key (``soundless_enabled`` was retired, ADR 0007 amendment of 2026-11-08, #824), so it is
+  ``unknown_key`` too. A refusal changes nothing and writes one ``refused`` audit row.
+  ``running_enabled``'s effective value is the three conditions (environment, stored ``on``,
   every plan covered), computed on every read like the form's (ADR 0018 amendment of 2026-11-04,
-  #509), so the check at store time is not what keeps them safe: it reads the routes without the
+  #509), so the check at store time is not what keeps it safe: it reads the routes without the
   row locks the route writes take, and a route cleared just after it only makes the next read
   off (a job admitted in between ends ``model_config`` in the worker, which checks its model on
   every attempt, before any call).
@@ -117,7 +116,6 @@ def _flag(
     row: Any,
     ranks: dict[str, int],
     emails: dict[UUID, str],
-    soundless_covered: bool = False,
     running_covered: bool = False,
 ) -> FlagOut:
     stored = None if row is None else row.value
@@ -138,11 +136,6 @@ def _flag(
         switch = core.running_switch(settings.running_enabled, stored)
         effective = "on" if switch and running_covered else "off"
         source = "database" if settings.running_enabled and stored is not None else "environment"
-    elif key == "soundless_enabled":
-        environment = "on" if settings.soundless_enabled else "off"
-        switch = core.soundless_switch(settings.soundless_enabled, stored)
-        effective = "on" if switch and soundless_covered else "off"
-        source = "database" if settings.soundless_enabled and stored is not None else "environment"
     elif key == "trial":
         environment = {"plan": None, "days": 0}
         trial = core.trial_setting(stored)
@@ -185,12 +178,9 @@ async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
     people = [r.updated_by for r in (*rows.values(), *plans) if r.updated_by is not None]
     emails = await auth.account_emails(session, people)
     ranks = {p.id: p.rank for p in plans}
-    soundless = await _covered(session, settings, "soundless")
     running = await _covered(session, settings, "running")
     return SettingsOut(
-        flags=[
-            _flag(k, settings, rows.get(k), ranks, emails, soundless, running) for k in core.KEYS
-        ],
+        flags=[_flag(k, settings, rows.get(k), ranks, emails, running) for k in core.KEYS],
         plans=[plan_out(p, emails) for p in plans],
         bounds=BoundsOut(
             **bounds(settings),
@@ -252,13 +242,7 @@ async def _flag_view(session: AsyncSession, settings: Settings, key: str) -> Fla
 
 def _set_params(key: str, value: Any) -> dict[str, Any]:
     """The audit params of a validated write: what it means, never free text."""
-    if key in (
-        "signup_mode",
-        "song_picking",
-        "swedebeat_enabled",
-        "running_enabled",
-        "soundless_enabled",
-    ):
+    if key in ("signup_mode", "song_picking", "swedebeat_enabled", "running_enabled"):
         return {"key": key, "value": value}
     if key == "trial":
         return {"key": key, "plan": value["plan"], "days": value["days"]}
@@ -315,8 +299,6 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
             await _check_trial_plan(session, canonical["plan"])
         if key == "running_enabled" and canonical == "on":
             await _check_running_evaluated(session, settings)
-        if key == "soundless_enabled" and canonical == "on":
-            await _check_soundless_evaluated(session, settings)
         await session.execute(_UPSERT, {"k": key, "v": json.dumps(canonical), "by": actor.user_id})
         return await _flag_view(session, settings, key)
 
@@ -358,13 +340,6 @@ async def _check_running_evaluated(session: AsyncSession, settings: Settings) ->
     ``CLASSBEAT_RUNNING_ENABLED`` stays the kill switch, and the worker checks each job again."""
     if not await _covered(session, settings, "running"):
         raise AdminRefused("running_not_evaluated", 422)
-
-
-async def _check_soundless_evaluated(session: AsyncSession, settings: Settings) -> None:
-    """``soundless_enabled`` is stored ``on`` only with coverage (#527). The effective flag checks
-    it again on every read, so a plan added or a route cleared later still turns it off."""
-    if not await _covered(session, settings, "soundless"):
-        raise AdminRefused("soundless_not_evaluated", 422)
 
 
 @router.delete(f"{SETTINGS}/{{key}}", response_model=FlagOut)

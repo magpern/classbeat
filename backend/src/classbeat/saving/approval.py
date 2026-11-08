@@ -38,8 +38,8 @@ against the authenticated user and failing closed:
 The ``running_enabled`` flag is not checked here (the reconcilers rebuild the spec through
 ``revision`` and must still decide a running write when the flag is off): the Save and Update
 kinds check it next to these, ``running_refused``. Likewise the soundless switch
-(``CLASSBEAT_SOUNDLESS_ENABLED`` and a stored ``soundless_enabled`` of exactly ``on``; no
-coverage check, Save calls no model): ``soundless_refused``, at creation and in ``prepare`` only.
+(``CLASSBEAT_SOUNDLESS_ENABLED`` only, no stored value since #824; no coverage check, Save calls
+no model): ``soundless_refused``, at creation and in ``prepare`` only.
 
 For an Update (``classbeat.saving.update``) also ``saved_target``: the saved row is the user's
 own live row of that class (``invalid_input`` otherwise, section 9: a detached row is never
@@ -73,7 +73,6 @@ from classbeat.design.revision import (
     SpotifyRevisionMusic,
     canonical,
 )
-from classbeat.flags import effective
 from classbeat.operations.attach import SOURCE
 from classbeat.operations.swedebeat import SOURCE as MIX_LINK_SOURCE
 
@@ -236,14 +235,12 @@ async def running_refused(db: AsyncSession, found: Revision) -> bool:
     return found.running and not await class_sport.running_switch(db)
 
 
-async def soundless_refused(db: AsyncSession, found: Revision) -> bool:
+def soundless_refused(found: Revision) -> bool:
     """Whether Save or Update must refuse ``feature_off``: the revision is soundless and the
-    soundless switch (``CLASSBEAT_SOUNDLESS_ENABLED`` and a stored ``soundless_enabled`` of
-    exactly ``on``) is off now (ADR 0007 amendment of 2026-11-03, item 2). Coverage is not read:
-    no model runs. A class with music never reads the flag; the reconcilers never call this."""
-    if not found.soundless:
-        return False
-    return not await effective.soundless_switch(db, music_kind.current().enabled)
+    soundless switch (``CLASSBEAT_SOUNDLESS_ENABLED``; no stored value since #824) is off (ADR
+    0007 amendments of 2026-11-03, item 2, and 2026-11-08). Coverage is not read: no model runs.
+    A class with music never reads the flag; the reconcilers never call this."""
+    return found.soundless and not music_kind.switch_on()
 
 
 async def playlist_for(db: AsyncSession, ctx: UserContext, found: Revision) -> int | None:
