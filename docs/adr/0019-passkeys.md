@@ -111,10 +111,13 @@ in its PR. The 3.0.1 wheel was checked in #638's review: `generate_registration_
 `generate_authentication_options`, `verify_registration_response` and
 `verify_authentication_response` keep the keyword names this ADR uses (`expected_rp_id`,
 `expected_origin`, `require_user_verification`, `credential_current_sign_count`), the package has no
-network code, and `pem_root_certs_bytes_by_fmt` defaults to none. **Algorithms:** verification is
-given the same `supported_pub_key_algs` as the options (ES256, EdDSA, RS256; §4), never the
-library's longer default, so a credential with another algorithm is refused at registration and at
-sign-in.
+network code, and `pem_root_certs_bytes_by_fmt` defaults to none. **Algorithms:** registration
+verification is given the same `supported_pub_key_algs` as the options (ES256, EdDSA, RS256; §4),
+never the library's longer default. py_webauthn 3.0.1 takes no such argument on authentication and
+verifies with whatever algorithm the stored key names, so sign-in and re-auth check first that the
+stored key's COSE algorithm is one of the three (`passkey_assertion.verify_assertion`). A
+credential with another algorithm is therefore refused at registration, and a stored key of
+another algorithm is refused at sign-in and re-auth.
 **Counter:** both verify calls pass `credential_current_sign_count=0`; the counter rule is ours
 alone (§7). py_webauthn 3.0.1 refuses a rollback itself, with the same `InvalidAuthenticationResponse`
 it raises for every other failure, so passing the stored count would leave the `counter` category,
@@ -140,7 +143,7 @@ tests.
 
 ### 3. RP ID and origin
 
-- **`CLASSBEAT_WEBAUTHN_RP_ID`** (optional). Default: the host of `CLASSBEAT_PUBLIC_BASE_URL`.
+- **`CLASSBEAT_WEBAUTHN_RP_ID`** (required when `CLASSBEAT_PASSKEYS` is on; start-up refuses to run without it, so the RP ID is always an explicit choice). It must be the host of `CLASSBEAT_PUBLIC_BASE_URL` or a parent of it.
   **Never derived from a request header**: not `Host`, `Origin`, `X-Forwarded-Host` or anything
   the proxy sets. Both values are read once at start.
 - **Expected origin** is exactly the `CLASSBEAT_PUBLIC_BASE_URL` origin (scheme, host, port), one
@@ -230,8 +233,9 @@ Origin check as for the password form.
      browser has it, so a passkey of a deleted account or a removed passkey stops being offered.
   3. `userHandle` must be present and equal the credential's user's handle.
   4. `verify_authentication_response` with the stored public key, `credential_current_sign_count=0`
-     (§2), the RP ID, the origin, UV required and the three algorithms, holding no lock and outside
-     any transaction. The backup-eligible flag must equal the stored one (it never changes).
+     (§2), the RP ID, the origin and UV required, holding no lock and outside any transaction. The
+     three algorithms are enforced by our own check of the stored key's algorithm just before the
+     call (§2), since the library takes no algorithm list here. The backup-eligible flag must equal the stored one (it never changes).
   5. **One write transaction** (the lock order of §6), in this order:
      1. `SELECT … FROM users WHERE id = :cred_user FOR NO KEY UPDATE` (the credential's user from
         step 2).
@@ -523,7 +527,9 @@ not, since it applies to signed-in requests only.
 `auth_events` kinds: `passkey_added`, `passkey_renamed`, `passkey_removed`,
 `passkey_counter_regressed`, and `sign_in`, `sign_in_failed`, `reauth`, `reauth_failed` with
 `{method: "passkey"}`. Detail holds the passkey's row id and a reason category (`challenge`,
-`origin`, `rp_id`, `user_handle`, `uv`, `signature`, `counter`, `backup_flag`, `format`), never a
+`origin`, `rp_id`, `user_handle`, `uv`, `signature`, `counter`, `backup_flag`, `format`, and
+`unknown` (a re-auth with a credential that is not the session's user's, §7) and `disabled` (a
+disabled user's sign-in), never a
 label, credential id, key, challenge or client data. The three passkey flow cookies join ADR 0003
 §10's never-logged cookies.
 
@@ -685,9 +691,10 @@ everything else in ADR 0003 stands. W8 adds a one-line pointer to ADR 0019 in ea
 - One new dependency (BSD-3-Clause, owner question 1), two new system tables and one column, one
   migration (the next free number at merge), and new guard 8, guard 12 and export entries:
   `coverage.USER_REFERENCES` gains `webauthn_credentials.user_id` and `webauthn_challenges.user_id`
-  (cascade); the export's `sign_in_methods` gains `passkeys` (label, credential id as base64url,
-  transports, synced, created and last used; `public_key` and `sign_count` are excluded as key
-  material and an internal replay guard, `webauthn_user_handle` as an internal handle);
+  (cascade); the export gains a top-level `passkeys` list beside `sign_in_methods` (label, credential id as
+  base64url, transports, `synced` (the backup state), `backup_eligible`, created and last used;
+  `public_key` and `sign_count` are excluded as key material and an internal replay guard,
+  `webauthn_user_handle` as an internal handle);
   `webauthn_challenges` is not exported (lives five minutes). Account deletion cascades.
 - The RP ID ties passkeys to one domain: a domain change costs every user their passkeys (§3).
 - Synced passkeys at counter 0 have no clone detection; that is accepted (T116) and inherent to
@@ -699,8 +706,8 @@ everything else in ADR 0003 stands. W8 adds a one-line pointer to ADR 0019 in ea
 
 ## Threat model
 
-New rows, added by W8 when the code they describe is on `main`. T113 to T120 are claimed by this
-ADR (T112 is the SMTP pin; T121 to T123 were taken on `main` meanwhile and are not passkeys'):
+These rows are in [the threat model](../security/threat-model.md) as T113 to T120 (W8, #779),
+written there against the code on `main`; the text below is the design they were written from:
 
 | # | Threat | Mitigation |
 |---|---|---|

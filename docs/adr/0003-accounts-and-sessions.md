@@ -2,15 +2,9 @@
 
 Status: Accepted
 
-**Pending amendment: passkeys (#311, [ADR 0019](0019-passkeys.md), Proposed, revised
-2026-11-05).** Once ADR 0019 is Accepted it amends, and only in the ways its §12 table lists:
-§1 (two system tables and `users.webauthn_user_handle`), §3 (a shorter session after a
-cross-device sign-in, only if the owner says yes), §5 (passkeys never count toward the last-method
-rule; the reset lists passkeys and deletes every one not on a keep list), §6 (a passkey
-re-authenticates but is never a step-up; adding, renaming and removing a passkey need recent
-authentication), §7 (`admin mfa-reset` also deletes passkeys; a passkey never replaces admin TOTP),
-§9 (five passkey rate-limit rows) and §10 (three never-logged flow cookies). Until then, and until
-the code is on `main`, this ADR describes what runs; the per-section pointers come with the code.
+**Amended by passkeys (#311, [ADR 0019](0019-passkeys.md), Accepted 2026-11-05; code on `main`,
+W1 to W9).** ADR 0019 §12 lists the only parts of this ADR it changes; each of §1, §3, §5, §6, §7,
+§9 and §10 below carries a one-line pointer to it, and everything else here stands.
 
 ## Context
 
@@ -23,6 +17,8 @@ the user is known, as ADR 0002 §3 anticipated (system tables reached only throu
 ## Decision
 
 ### 1. Where the account data lives
+
+> Passkeys (ADR 0019 §6, §7): adds the system tables `webauthn_credentials` and `webauthn_challenges` and the column `users.webauthn_user_handle`.
 
 All M1 tables are system tables (ADR 0002 §3): no `owner_id`, no RLS, listed in
 `SYSTEM_TABLES` with a reason.
@@ -125,6 +121,8 @@ so the SPA can prompt.
 
 ### 3. Sessions and cookies
 
+> Passkeys (ADR 0019 §5, W9): a sign-in whose assertion reports `cross-platform` gets a 24-hour absolute expiry and no known-device cookie, instead of the 30-day limit.
+
 - **Token:** 32 random bytes (`secrets.token_urlsafe(32)`), server-issued only. It is never
   accepted from a URL, or from any header other than `Cookie`.
 - **Cookie** `__Host-classbeat_session`:
@@ -194,6 +192,8 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
   - It is checked again before use.
 
 ### 5. Sign-in methods
+
+> Passkeys (ADR 0019 §7, §9): unlinking keeps its rule and passkeys never count toward the last method (removing a passkey is always allowed); the reset page also lists the user's passkeys, and its contract adds `keep_passkeys: [id]` next to `keep_methods`: every passkey not listed is deleted under the user row lock, whatever `CLASSBEAT_PASSKEYS` says.
 
 **Amended by [ADR 0025](0025-turnstile.md) (Turnstile, #721, #724):** password sign-in, password
 sign-up, the provider-email step and the reset request check a Cloudflare Turnstile token first,
@@ -520,6 +520,8 @@ client can't submit someone else's `subject`.
 
 ### 6. Recent authentication
 
+> Passkeys (ADR 0019 §4, §8): a passkey bound to the session's user is one more way to re-authenticate, never a step-up; adding, renaming and removing a passkey join the guarded actions below (with confirmed TOTP each also needs the step-up).
+
 `reauth_at` within **10 minutes** is needed to:
 - link or unlink an identity;
 - set or change the password, or change the email;
@@ -542,6 +544,8 @@ TOTP is open to every user. For a non-admin it only adds this step-up protection
 sign-in only for the admin role (§7).
 
 ### 7. Admins and MFA
+
+> Passkeys (ADR 0019 §9): `admin mfa-reset` also removes the user's passkeys; a passkey never replaces the admin's TOTP.
 
 - **Role:** `users.role`. An admin's role only takes effect in a session that passed TOTP within
   the last 12 hours (§2).
@@ -607,6 +611,8 @@ sign-in only for the admin role (§7).
 
 ### 9. Rate limits
 
+> Passkeys (ADR 0019 §10): five more rows: passkey sign-in start (every request counts: address, IPv6 /48, global), passkey sign-in failures, register, passkey re-auth failures (the password re-auth buckets) and rename or remove.
+
 Fixed windows are counted in `rate_limits` with one upsert per check. There is no Redis.
 - **Bucket keys** are an HMAC of `(action, scope, value)`, so the table holds no email or IP in
   the clear. Unknown emails are bucketed by their normalized form, the same as known ones.
@@ -652,6 +658,8 @@ invited; the M6 security review revisits it. With Turnstile on (ADR 0025, T126) 
 buckets are reserved only after a valid token, so this needs a solved challenge per attempt.
 
 ### 10. Logging
+
+> Passkeys (ADR 0019 §10): the three `__Host-classbeat_passkey_*` flow cookies (register, sign-in, re-auth) are never logged either.
 
 - **Never logged:** the session, device, CSRF and OAuth cookies; the `Authorization` and
   `X-CSRF-Token` headers; query strings on `/oauth/*` (our own access log replaces uvicorn's);

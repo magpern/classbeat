@@ -70,6 +70,20 @@ for v in '$http_x_forwarded_for' '$remote_addr'; do
   expect_site_refused 's/^( *)location \/ \{$/&\n        proxy_set_header\n            X-Forwarded-For '"$v"';/' \
     'a location sets proxy_set_header'
 done
+# Permissions-Policy and passkeys (ADR 0019 section 11, W8): `()` or `*` for either publickey
+# feature is refused, in either case and in a second header; (self) and leaving them out pass.
+pp_msg='Permissions-Policy must leave'
+for f in publickey-credentials-get publickey-credentials-create; do
+  expect_site_refused 's/usb=\(\)"/usb=(), '"$f"'=()"/' "$pp_msg $f"
+  expect_site_refused 's/usb=\(\)"/usb=(), '"$f"'=*"/' "$pp_msg $f"
+  expect_site_refused 's/usb=\(\)"/usb=(), '"$f"'=( )"/' "$pp_msg $f"
+  expect_site_refused 's/usb=\(\)"/usb=(), '"$f"'=(\\"https:\/\/a.example\\")"/' "$pp_msg $f"
+  expect_site_refused '/add_header Permissions-Policy/a\    add_header Permissions-Policy "'"$f"'=()" always;' "$pp_msg $f"
+  expect_site_accepted 's/usb=\(\)"/usb=(), '"$f"'=(self)"/'
+  expect_site_accepted 's/usb=\(\)"/usb=(), '"$f"'=(self \\"https:\/\/a.example\\")"/'
+done
+expect_site_refused 's/usb=\(\)"/usb=(), PublicKey-Credentials-Get=()"/' "$pp_msg publickey-credentials-get"
+expect_site_accepted 's/usb=\(\)"/usb=(), publickey-credentials-get=(self), publickey-credentials-create=(self)"/'
 # A backslash inside a quoted string (#470, review of #592): `\\"` ends the string after one backslash
 # (sed turns the four backslashes below into two, nginx reads two as one), so the second
 # X-Forwarded-For after it is a real directive.
