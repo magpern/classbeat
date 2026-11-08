@@ -255,7 +255,12 @@ SMTP_SENDER=noreply@classbeat.pernemark.se
 # optional: OAUTH_GOOGLE_CLIENT_ID=...apps.googleusercontent.com  OAUTH_VISIBLE_PROVIDERS=google   (section 5a)
 # optional: OAUTH_GITHUB_CLIENT_ID=...  OAUTH_MICROSOFT_CLIENT_ID=...   (client ids only; never a client secret here)
 # Turnstile is ON by default: set TURNSTILE_SITE_KEY=... and fill secrets/turnstile_secret_key (section 5b), or set TURNSTILE_ENABLED=false until they exist
+# optional: PASSKEYS=true  WEBAUTHN_RP_ID=classbeat.pernemark.se   (passkeys.md; NOT CLASSBEAT_PASSKEYS: .env uses the unprefixed names)
 ```
+
+.env uses the names **without** the `CLASSBEAT_` prefix (`PASSKEYS`, `WEBAUTHN_RP_ID`, `TURNSTILE_SITE_KEY`, ...):
+`compose.prod.yaml` adds the prefix for the container, so a `CLASSBEAT_PASSKEYS` line in `.env` is silently ignored.
+`check-prod-compose.sh` warns about such a key (its name only, never a value).
 
 `CLASSBEAT_PUBLIC_BASE_URL` is the one public origin (ADR 0003 section 4): the CSRF origin check,
 mail links, the Spotify callback, the OAuth sign-in redirect URI (`<base>/oauth/<provider>/callback`,

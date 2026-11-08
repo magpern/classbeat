@@ -196,6 +196,13 @@ if (( can_gid )); then
   cp "$work/env.bridge" "$install/.env"
   expect "good install with the documented compose.bridge.yaml (#610)" 0 '^install check'
   cp "$work/env.good" "$install/.env"
+  # A CLASSBEAT_ key that compose.prod.yaml reads without the prefix (#827): a warning naming the key, never its
+  # value (the values here are the secret canary, so expect fails if one is printed); a good .env gives none.
+  out="$(run_check)"; if grep -q 'warning' <<<"$out"; then bad "a correct .env gave a warning"; else ok "no misnamed-key warning for a correct .env"; fi
+  printf 'CLASSBEAT_PASSKEYS=%s\nCLASSBEAT_WEBAUTHN_RP_ID=%s\n' "$canary" "$canary" >> "$install/.env"
+  expect "misnamed CLASSBEAT_PASSKEYS warns, install check still passes" 0 'warning: .*sets CLASSBEAT_PASSKEYS, which compose.prod.yaml ignores: it reads PASSKEYS'
+  expect "misnamed CLASSBEAT_WEBAUTHN_RP_ID warns" 0 'sets CLASSBEAT_WEBAUTHN_RP_ID, which compose.prod.yaml ignores: it reads WEBAUTHN_RP_ID'
+  cp "$work/env.good" "$install/.env"
   # 2b. The owner's own swag file (PROD_CHECK_SWAG_CONF, #500). The directive rules run before
   # nginx -t, so a refused file needs no Docker daemon here.
   # shellcheck disable=SC2016  # a literal nginx variable
