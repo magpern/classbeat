@@ -4,8 +4,9 @@
 ``CLASSBEAT_MONTHLY_COST_MICROS_MAX`` bound a plan's money limits, ``CLASSBEAT_JOBS_PER_USER``
 its concurrent jobs, ``CLASSBEAT_REVISIONS_PER_CLASS`` its revisions per class and
 ``CLASSBEAT_CLASS_MINUTES_MAX`` its longest class (#496). ``CLASSBEAT_SAVES_PER_HOUR`` and
-``CLASSBEAT_SAVES_PER_DAY`` cap Save and Update per user (#577, ``classbeat.saving.caps``); no
-plan has a value of its own for them yet. The feature gates have no bound. The
+``CLASSBEAT_SAVES_PER_DAY`` cap Save and Update per user (#577, ``classbeat.saving.caps``); a plan
+may carry its own, smaller values (#806, ``classbeat.quota.save_caps_policy``). The feature
+gates have no bound. The
 effective value of each limit is the smaller of the plan row and the bound; ``effective`` is the
 one place that takes it, for the ledger, the policies, ``GET /api/account/plan`` and the admin
 user page alike.

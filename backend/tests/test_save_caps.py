@@ -9,7 +9,7 @@ created and MOWL is never called. Against the fake MOWL; never the network.
 """
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -111,6 +111,74 @@ async def test_save_at_the_hour_cap_is_409_and_creates_nothing(
         "window": "hour",
     }
     assert mowl_calls(fake_programs) == calls
+
+
+@pytest.fixture
+def plan_caps(senv: SaveEnv) -> Iterator[Callable[..., None]]:
+    """Set ``pro``'s own caps; ``plans`` is shared by the whole database, so reset them after."""
+
+    def set_caps(hour: int | None, day: int | None) -> None:
+        senv.sql(
+            "UPDATE plans SET saves_per_hour = :h, saves_per_day = :d WHERE id = 'pro'",
+            h=hour,
+            d=day,
+        )
+
+    yield set_caps
+    set_caps(None, None)
+
+
+async def test_a_plan_value_tightens_the_setting(
+    senv: SaveEnv, save_browser: Any, caps: Any, plan_caps: Any
+) -> None:
+    """The setting allows 10 an hour; the user's plan (``pro``) allows 1: the plan's value wins and
+    the 409 body is the same shape, with the effective cap as ``limit`` (#806)."""
+    caps(hour=10, day=10)
+    saved = await senv.saved_class()
+    plan_caps(hour=1, day=None)
+    plant(senv, saved.owner, "save_workout")
+    detail = await refused_save(senv, save_browser, saved)
+    assert detail == {"reason": "quota", "quota": "saves", "limit": 1, "used": 1, "window": "hour"}
+
+
+async def test_a_plan_day_value_tightens_the_setting(
+    senv: SaveEnv, save_browser: Any, caps: Any, plan_caps: Any
+) -> None:
+    caps(hour=10, day=10)
+    saved = await senv.saved_class()
+    plan_caps(hour=None, day=2)
+    plant(senv, saved.owner, "save_workout", hours_ago=3)
+    plant(senv, saved.owner, "update_workout", hours_ago=4)
+    detail = await refused_save(senv, save_browser, saved)
+    assert (detail["limit"], detail["used"], detail["window"]) == (2, 2, "day")
+
+
+async def test_a_plan_value_above_the_setting_does_not_loosen_it(
+    senv: SaveEnv, save_browser: Any, caps: Any, plan_caps: Any
+) -> None:
+    caps(hour=1, day=10)
+    saved = await senv.saved_class()
+    plan_caps(hour=500, day=900)
+    plant(senv, saved.owner, "save_workout")
+    detail = await refused_save(senv, save_browser, saved)
+    assert (detail["limit"], detail["window"]) == (1, "hour")
+
+
+async def test_a_plan_without_a_value_uses_the_setting(
+    senv: SaveEnv, save_browser: Any, caps: Any, plan_caps: Any
+) -> None:
+    caps(hour=2, day=10)
+    saved = await senv.saved_class()
+    plan_caps(hour=None, day=None)
+    plant(senv, saved.owner, "save_workout")
+    browser = await save_browser(saved)
+    assert (await browser.save()).status_code == 201  # one used of two
+
+
+def test_the_plan_columns_are_range_checked(senv: SaveEnv, plan_caps: Any) -> None:
+    for column, bad in (("saves_per_hour", 0), ("saves_per_hour", 1001), ("saves_per_day", 10001)):
+        with pytest.raises(Exception, match=f"plans_{column}"):
+            senv.sql(f"UPDATE plans SET {column} = :v WHERE id = 'pro'", v=bad)  # noqa: S608
 
 
 async def test_the_hour_rolls(senv: SaveEnv, save_browser: Any, caps: Any) -> None:

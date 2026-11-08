@@ -101,6 +101,9 @@ plans = Table(
     Column("intro_price_cents", Integer),
     Column("intro_price_until", Date),
     Column("currency", Text),
+    # Migration 0042 (#806): per-plan Save/Update caps, NULL = the environment's setting.
+    Column("saves_per_hour", Integer),
+    Column("saves_per_day", Integer),
 )
 
 redeem_codes = Table(
