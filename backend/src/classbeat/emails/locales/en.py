@@ -155,6 +155,8 @@ class S(Enum):
     PASSKEY_COUNTER_PRE = auto()
     PASSKEY_COUNTER_BODY = auto()
     PASSKEY_COUNTER_WARN = auto()
+    PASSKEY_MFA_RESET_NOTE = auto()
+    PASSKEY_MFA_RESET_WARN = auto()
 
 
 CATALOGUE: dict[S, str] = {
@@ -365,6 +367,12 @@ CATALOGUE: dict[S, str] = {
         "If you did not just sign in with this passkey, remove it from your account page, "
         "change your password and tell us right away."
     ),
+    S.PASSKEY_MFA_RESET_NOTE: (
+        "We removed the two-factor authentication, recovery codes and passkeys of your classbeat "
+        "account and signed you out everywhere, as asked to restore your access. Choose a new "
+        "password, then set them up again on your account page."
+    ),
+    S.PASSKEY_MFA_RESET_WARN: "If you did not ask for this, tell us right away.",
 }
 
 

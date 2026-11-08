@@ -149,6 +149,11 @@ async def test_mfa_reset_removes_totp_and_recovery_codes_revokes_sessions_and_ma
         "SELECT id, 'x', 'y', 'app-v1' FROM users"
     )
     await env.run("INSERT INTO mfa_recovery_codes (user_id, code_hash) SELECT id, 'h' FROM users")
+    await env.run(  # ADR 0019 section 9 (#775): passkeys go too, whatever the flag says
+        "INSERT INTO webauthn_credentials (user_id, credential_id, public_key, backup_eligible, "
+        "backup_state, label) VALUES (:u, '\\x01', '\\xa1', false, false, 'Key')",
+        u=user_id,
+    )
     async with env.db() as db:
         await auth.remember_device(db, env.app.state.keys, user_id, None)
     async with SmtpFake() as smtp:
@@ -162,7 +167,10 @@ async def test_mfa_reset_removes_totp_and_recovery_codes_revokes_sessions_and_ma
     assert "reset link mailed" in err
     [mail] = smtp.to("lost@example.com")  # the registered sender mailed the reset link
     assert "/reset#token=" in mail.text
+    assert "recovery codes and passkeys" in " ".join(mail.text.split())
+    assert "passkeys removed" in err
     assert await env.scalar("SELECT purpose FROM auth_tokens") == "reset_password"
+    assert await env.scalar("SELECT count(*) FROM webauthn_credentials") == 0
     assert await env.scalar("SELECT count(*) FROM mfa_totp WHERE user_id = :u", u=user_id) == 0
     assert (
         await env.scalar("SELECT count(*) FROM mfa_recovery_codes WHERE user_id = :u", u=user_id)

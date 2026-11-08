@@ -66,7 +66,7 @@ def add_subcommands(parser: argparse.ArgumentParser) -> None:
     for name, text in (
         ("grant", "make an existing user an admin"),
         ("revoke", "make an admin a plain user"),
-        ("mfa-reset", "remove the user's TOTP and recovery codes and mail a reset link"),
+        ("mfa-reset", "remove the user's TOTP, recovery codes and passkeys and mail a reset link"),
     ):
         admin.add_parser(name, help=text).add_argument("email")
     jobs = sub.add_parser("jobs", help="the job queue").add_subparsers(dest="action", required=True)
@@ -119,12 +119,13 @@ async def _admin(args: argparse.Namespace, settings: Settings, out: TextIO, err:
             sent = await auth.send_reset_link(user.id, user.email)
         except MailError as exc:
             print(
-                f"TOTP and recovery codes removed; sessions revoked; reset link NOT mailed: {exc}",
+                "TOTP, recovery codes and passkeys removed; sessions revoked; "
+                f"reset link NOT mailed: {exc}",
                 file=err,
             )
             return 1
         print(
-            "TOTP and recovery codes removed; all sessions revoked; "
+            "TOTP, recovery codes and passkeys removed; all sessions revoked; "
             + ("reset link mailed" if sent else "reset link NOT mailed: no sender is registered"),
             file=err,
         )

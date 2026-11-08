@@ -138,7 +138,7 @@ async def test_the_reset_page_lists_and_removes_unkept_methods_without_recent_au
     assert str(remaining) == google
     assert github != google
     detail = await menv.scalar("SELECT detail FROM auth_events WHERE kind = 'password_reset'")
-    assert detail == {"methods_removed": 1}
+    assert detail == {"methods_removed": 1, "passkeys_removed": 0}
 
 
 async def test_an_identity_linked_after_info_does_not_survive_the_reset(

@@ -67,6 +67,8 @@ _ALL = (
         {"provider": "google", **_TOKEN},
     ),
     _essential("password_reset", kinds.password_reset, _TOKEN),
+    # ADR 0019 (#775): the link ``admin mfa-reset`` mails, saying what it removed.
+    _essential("mfa_reset_link", passkey_kinds.mfa_reset_link, _TOKEN),
     _essential("email_change_confirm", kinds.email_change_confirm, _TOKEN),
     _essential("account_exists", kinds.account_exists, {}),
     _essential("email_change_taken", kinds.email_change_taken, {}),

@@ -28,5 +28,8 @@ UNTRANSLATED: frozenset[S] = frozenset(
         S.PASSKEY_COUNTER_PRE,
         S.PASSKEY_COUNTER_BODY,
         S.PASSKEY_COUNTER_WARN,
+        # ADR 0019 W5 (#775): the ``admin mfa-reset`` link says what it removed.
+        S.PASSKEY_MFA_RESET_NOTE,
+        S.PASSKEY_MFA_RESET_WARN,
     }
 )

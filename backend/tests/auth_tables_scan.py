@@ -114,6 +114,7 @@ SUBMODULES = frozenset(
         "passkey_policy",
         "passkey_reauth_routes",
         "passkey_reauth_session",
+        "passkey_recovery",
         "passkey_register_routes",
         "passkey_routes",
         "passkey_signin_routes",

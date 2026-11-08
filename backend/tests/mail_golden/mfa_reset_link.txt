@@ -1,0 +1,16 @@
+Choose a new password
+=====================
+
+We removed the two-factor authentication, recovery codes and passkeys of your classbeat account and signed you out everywhere, as asked to restore your access. Choose a new password, then set them up again on your account page.
+
+To choose a new password, open the link below (valid for 30 minutes). Resetting signs you out everywhere.
+
+Choose a new password:
+https://classbeat.example.test/en/reset#token=SAMPLE
+
+If you did not ask for this, tell us right away. Contact us at support@classbeat.eu
+
+--
+You got this security notice because this is the email address of a classbeat account. These notices are sent for your protection.
+classbeat: https://classbeat.example.test
+Questions? Write to support@classbeat.eu
