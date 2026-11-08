@@ -25,7 +25,7 @@ bad()  { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
 "$root/scripts/release-assets.sh" build "$work/assets"
 ( cd "$work/assets" && sha256sum -c --quiet SHA256SUMS ) || bad "SHA256SUMS does not verify"
 # The asset list is exactly what the runbook downloads.
-want="SHA256SUMS backup.sh check-prod-compose-owner.bash check-prod-compose-probe.bash check-prod-compose-rollback.bash check-prod-compose-rules.bash check-prod-compose-runbook.bash check-prod-compose-secretfiles.bash check-prod-compose-secrets.bash check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-setup.bash check-prod-compose-site-selftest.bash check-prod-compose-site.bash check-prod-compose-turnstile.bash check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml prod.env.example restore.sh swag-classbeat.subdomain.conf validate-backup.sh"
+want="SHA256SUMS backup.sh check-prod-compose-owner.bash check-prod-compose-probe.bash check-prod-compose-rollback.bash check-prod-compose-rules.bash check-prod-compose-runbook.bash check-prod-compose-secretfiles.bash check-prod-compose-secrets.bash check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-setup.bash check-prod-compose-site-selftest.bash check-prod-compose-site.bash check-prod-compose-turnstile.bash check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml install-swag-logrotate.sh prod.env.example restore.sh swag-classbeat-logrotate.conf swag-classbeat.subdomain.conf validate-backup.sh"
 # find, not a glob: a glob (`*`) would not list a dotfile, so a hidden asset (a .env) could never fail this.
 list_dir() { find "$work/assets" -mindepth 1 -maxdepth 1 -printf '%f\n'; }
 got="$(list_dir | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
@@ -58,6 +58,26 @@ if [ -f "$runbook" ]; then
 fi
 # No asset may be a secret holder: nothing but committed text files, none under secrets/ or named .env.
 if grep -rIlE -- '-----BEGIN [A-Z ]*PRIVATE KEY|swedebeat_app\.json' "$work/assets" >/dev/null; then bad "an asset mentions a key or the app key file"; fi
+
+# The log-rotation installer (#826): against a stub docker it writes the shipped rule to swag's
+# volume path, dry-runs it, schedules nothing, and --check writes nothing.
+lr="$work/logrotate"; mkdir -p "$lr/bin"
+cat > "$lr/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+echo "docker $*" >> "$LR_LOG"
+case "$*" in *"cat >"*) cat > "$LR_WRITTEN" ;; esac
+STUB
+chmod +x "$lr/bin/docker"
+export LR_LOG="$lr/log" LR_WRITTEN="$lr/written"
+if PATH="$lr/bin:$PATH" "$work/assets/install-swag-logrotate.sh" >/dev/null 2>&1 \
+  && cmp -s "$lr/written" "$work/assets/swag-classbeat-logrotate.conf" \
+  && grep -q 'logrotate -d /config/log/classbeat-logrotate.conf' "$lr/log" \
+  && ! grep -qE 'cron|systemctl' "$lr/log"; then ok "logrotate installer writes the rule and dry-runs it"
+else bad "logrotate installer did not write the shipped rule and dry-run it"; fi
+rm -f "$lr/written" "$lr/log"
+if PATH="$lr/bin:$PATH" "$work/assets/install-swag-logrotate.sh" --check >/dev/null 2>&1 \
+  && [ ! -e "$lr/written" ] && grep -q 'logrotate -d' "$lr/log"; then ok "logrotate installer --check only dry-runs"
+else bad "logrotate installer --check wrote or did not dry-run"; fi
 
 install="$work/install"
 mkdir "$install"

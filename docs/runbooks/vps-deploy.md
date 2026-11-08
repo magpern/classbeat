@@ -78,11 +78,11 @@ for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml chec
   check-prod-compose-rollback.bash check-prod-compose-setup.bash check-prod-compose-rules.bash check-prod-compose-secrets.bash \
   check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-owner.bash check-prod-compose-secretfiles.bash \
   check-prod-compose-turnstile.bash check-prod-compose-runbook.bash check-prod-compose-site.bash check-prod-compose-site-selftest.bash check-prod-compose-probe.bash \
-  swag-classbeat.subdomain.conf prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
+  swag-classbeat.subdomain.conf swag-classbeat-logrotate.conf install-swag-logrotate.sh prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
   curl --proto '=https' --tlsv1.2 -fsSLO "https://github.com/magpern/classbeat/releases/download/v$V/$f"
 done
 sha256sum -c SHA256SUMS                           # every line OK
-chmod +x check-prod-compose.sh backup.sh restore.sh validate-backup.sh   # a download has no exec bit
+chmod +x check-prod-compose.sh install-swag-logrotate.sh backup.sh restore.sh validate-backup.sh   # a download has no exec bit
 cp prod.env.example .env                          # filled in by section 5
 ```
 
@@ -101,7 +101,7 @@ anything else runs:
 
 ```bash
 gh attestation verify SHA256SUMS -R magpern/classbeat --signer-workflow magpern/classbeat/.github/workflows/release.yml || echo "NOT VERIFIED: SHA256SUMS"
-for a in $(awk '{print $2}' SHA256SUMS); do        # the names in the verified list: the other twenty-one assets
+for a in $(awk '{print $2}' SHA256SUMS); do        # the names in the verified list: the other twenty-four assets
   gh attestation verify "$a" -R magpern/classbeat --signer-workflow magpern/classbeat/.github/workflows/release.yml || echo "NOT VERIFIED: $a"
 done
 ```
@@ -544,27 +544,39 @@ the server's own address. It does not look at any firewall. The hop from swag to
    inherited one), a second server block and the other lines the app relies on, then runs `nginx -t`
    on it.
 6. **Access-log retention: 30 days (required; the privacy notice at `/privacy` says so).** The log
-   holds each visitor's IP address, and the sample sets no retention itself. Write this rotation rule
-   to `/config/log/classbeat-logrotate.conf` in swag's volume (the current file holds at most one
-   day, so 29 rotated files make 30 days at most):
+   holds each visitor's IP address, and the sample sets no retention itself. The release ships the
+   rule (`swag-classbeat-logrotate.conf`: `daily`, `rotate 29`, `maxage 30`; the current file holds
+   at most one day, so 29 rotated files make 30 days at most) and a script that installs it. From
+   `/opt/classbeat`, with swag running:
 
-   ```
-   /config/log/nginx/classbeat.access.log {
-       daily
-       rotate 29
-       maxage 30
-       missingok
-       notifempty
-       compress
-       delaycompress
-       copytruncate
-   }
+   ```bash
+   ./install-swag-logrotate.sh          # writes /config/log/classbeat-logrotate.conf in swag, then `logrotate -d`
+   ./install-swag-logrotate.sh --check  # later: only the dry run on the installed rule
    ```
 
-   Check it with `docker exec swag logrotate -d /config/log/classbeat-logrotate.conf`, and run it
-   daily as the deploy user (cron or a systemd timer):
-   `docker exec swag logrotate -s /config/log/classbeat-logrotate.status /config/log/classbeat-logrotate.conf`.
-   If you change the period, change the privacy notice in the same PR (`privacy.retention.li7`).
+   `SWAG_CONTAINER=name` names a swag container that is not called `swag`. The dry run rotates
+   nothing; read its output for errors. The script schedules nothing. Run the real rotation daily as
+   the deploy user, with a systemd timer (or a cron line, `17 3 * * * docker exec swag logrotate -s
+   /config/log/classbeat-logrotate.status /config/log/classbeat-logrotate.conf`):
+
+   ```ini
+   # /etc/systemd/system/classbeat-logrotate.service
+   [Service]
+   Type=oneshot
+   User=DEPLOY_USER
+   ExecStart=/usr/bin/docker exec swag logrotate -s /config/log/classbeat-logrotate.status /config/log/classbeat-logrotate.conf
+
+   # /etc/systemd/system/classbeat-logrotate.timer
+   [Timer]
+   OnCalendar=*-*-* 03:17:00
+   Persistent=true
+   [Install]
+   WantedBy=timers.target
+   ```
+
+   Then `sudo systemctl daemon-reload && sudo systemctl enable --now classbeat-logrotate.timer`.
+   If you change the period, change the rule file and the privacy notice (`privacy.retention.li7`)
+   in the same PR (`backend/tests/test_swag_logrotate_rule.py` fails if they differ).
    Likewise the security log's period is `CLASSBEAT_SECURITY_LOG_DAYS` (default 7, 1 to 30): if you
    change it, change the notice (`privacy.retention.li4`) too.
 
@@ -758,7 +770,7 @@ for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml chec
   check-prod-compose-rollback.bash check-prod-compose-setup.bash check-prod-compose-rules.bash check-prod-compose-secrets.bash \
   check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-owner.bash check-prod-compose-secretfiles.bash \
   check-prod-compose-turnstile.bash check-prod-compose-runbook.bash check-prod-compose-site.bash check-prod-compose-site-selftest.bash check-prod-compose-probe.bash \
-  swag-classbeat.subdomain.conf prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
+  swag-classbeat.subdomain.conf swag-classbeat-logrotate.conf install-swag-logrotate.sh prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
   curl --proto '=https' --tlsv1.2 -fsSLo "staging-$NEW/$f" "https://github.com/magpern/classbeat/releases/download/v$NEW/$f"
 done
 ( cd "staging-$NEW" && sha256sum -c SHA256SUMS --quiet )          # truncation only, see section 3
@@ -767,7 +779,7 @@ done
 mkdir -p "previous-$OLD" && cp compose.prod*.yaml check-prod-compose*.sh check-prod-compose-*.bash backup.sh restore.sh validate-backup.sh \
   swag-classbeat.subdomain.conf prod.env.example SHA256SUMS "previous-$OLD/"
 mv -f "staging-$NEW"/* . && rmdir "staging-$NEW"
-chmod +x check-prod-compose.sh backup.sh restore.sh validate-backup.sh   # a download has no exec bit
+chmod +x check-prod-compose.sh install-swag-logrotate.sh backup.sh restore.sh validate-backup.sh   # a download has no exec bit
 diff -u previous-$OLD/swag-classbeat.subdomain.conf swag-classbeat.subdomain.conf   # swag's copy changed?
 diff -u previous-$OLD/prod.env.example prod.env.example                              # new settings to put in .env?
 ( umask 027; touch secrets/swedebeat_app secrets/turnstile_secret_key \

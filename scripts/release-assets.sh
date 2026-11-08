@@ -33,6 +33,8 @@ assets=(
   "scripts/check-prod-compose-site-selftest.bash check-prod-compose-site-selftest.bash"
   "scripts/check-prod-compose-probe.bash check-prod-compose-probe.bash"
   "docs/runbooks/swag-classbeat.subdomain.conf swag-classbeat.subdomain.conf"
+  "docs/runbooks/swag-classbeat-logrotate.conf swag-classbeat-logrotate.conf"
+  "scripts/install-swag-logrotate.sh install-swag-logrotate.sh"
   "docs/runbooks/prod.env.example prod.env.example"
   "scripts/backup.sh backup.sh"
   "scripts/restore.sh restore.sh"
@@ -55,7 +57,7 @@ case "${1:-}" in
       [ -f "$root/$src" ] && [ ! -L "$root/$src" ] || { echo "release-assets: $src is not a regular file" >&2; exit 1; }
       cp "$root/$src" "$dir/$name"
     done
-    chmod 0755 "$dir/check-prod-compose.sh" "$dir/backup.sh" "$dir/restore.sh" "$dir/validate-backup.sh"
+    chmod 0755 "$dir/check-prod-compose.sh" "$dir/install-swag-logrotate.sh" "$dir/backup.sh" "$dir/restore.sh" "$dir/validate-backup.sh"
     ( cd "$dir" && sha256sum -- * > SHA256SUMS )
     ;;
   *)
