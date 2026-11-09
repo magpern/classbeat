@@ -28,7 +28,7 @@ describe('the plan refusal sentences', () => {
       'You have saved or updated 1 class in MOWL in the last hour, which is the limit. Try again in an hour.',
     )
     expect(quotaText(quota({ quota: 'saves', window: 'day' }), 'save')).toBe(
-      'You have reached the limit for saving to MOWL in the last 24 hours. Try again tomorrow.',
+      'You have reached the limit for saving to MOWL in the last 24 hours. Try again later.',
     )
   })
 

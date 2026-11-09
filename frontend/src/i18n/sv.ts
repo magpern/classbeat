@@ -262,7 +262,7 @@ const sv: Catalogue = {
   'sentence.job.analysis_failed': 'Ljudet i den här mixen kunde inte analyseras. Prova en annan mix.',
   'sentence.job.feature_off': 'Den här funktionen är avstängd på den här servern just nu. Inget utformades.',
   'sentence.job.analysis_limit':
-    'Du har analyserat 10 nya Swedebeat-mixar de senaste 24 timmarna. Prova igen i morgon eller använd en som analyserats tidigare.',
+    'Du har analyserat 10 nya Swedebeat-mixar de senaste 24 timmarna. Prova igen senare eller använd en som analyserats tidigare.',
   'sentence.job.handoff_expired':
     'Den kontrollen har gått ut. Börja om från Swedebeat-steget; inget hämtades.',
   'sentence.swedebeat.wait': {
@@ -953,7 +953,7 @@ const sv: Catalogue = {
   'job.failure.feature_off.detail': 'Inget utformades. Försök igen senare.',
   'job.failure.analysis_limit.title': 'För många nya Swedebeat-mixar i dag',
   'job.failure.analysis_limit.detail':
-    'Du har analyserat 10 nya mixar på 24 timmar. Prova igen i morgon eller använd en som analyserats tidigare.',
+    'Du har analyserat 10 nya mixar på 24 timmar. Prova igen senare eller använd en som analyserats tidigare.',
   'job.failure.soundless_not_evaluated.title': 'Pass utan musik är inte klara än',
   'job.failure.soundless_not_evaluated.detail':
     'Inget utformades. Välj en spellista i stället, eller försök igen senare.',
@@ -1347,7 +1347,7 @@ const sv: Catalogue = {
   'plan.quota.feature.newNamed': 'Din plan omfattar inte {name}. Ta bort det och försök igen.',
   'plan.quota.saves.window.day': 'de senaste 24 timmarna',
   'plan.quota.saves.window.hour': 'den senaste timmen',
-  'plan.quota.saves.later.day': 'Försök igen i morgon.',
+  'plan.quota.saves.later.day': 'Försök igen senare.',
   'plan.quota.saves.later.hour': 'Försök igen om en timme.',
   'plan.quota.saves': 'Du har nått gränsen för att spara till MOWL under {window}. {later}',
   'plan.quota.savesLimit': 'Du har sparat eller uppdaterat {classes} i MOWL under {window}, vilket är gränsen. {later}',
@@ -1574,7 +1574,6 @@ const sv: Catalogue = {
   'spot.changeAccount': 'Ett annat Spotify-konto kräver din bekräftelse. Varje pass förlorar sedan länken till sin spellista, och oavgjorda spellistesteg raderas.',
   'spot.title': 'Spotify',
   'spot.notConnected': 'Inte ansluten',
-  'spot.setUp': 'Konfigurera Spotify',
   'spot.manage': 'Hantera Spotify',
   'spot.loadFailed': 'Spotify-anslutningen kunde inte laddas.',
   'spot.loading': 'Laddar',
@@ -1695,7 +1694,7 @@ const sv: Catalogue = {
   'swmatch.reason.quota':
     'Din plan har inte plats för det här just nu.',
   'swmatch.reason.analysis_limit':
-    'Du har nått dagens gräns för nya mixanalyser. Prova igen i morgon eller använd en mix som analyserats tidigare.',
+    'Du har nått dagens gräns för nya mixanalyser. Prova igen senare eller använd en mix som analyserats tidigare.',
   'swmatch.reason.decrypt_failed':
     'Vi kan inte läsa din sparade inloggning. Anslut igen på din kontosida.',
   'swmatch.reason.pool_busy':

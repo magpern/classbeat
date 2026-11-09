@@ -100,7 +100,7 @@ export function RevisionView({
           <p>{t('class.unknownBpm')}</p>
           <ul>
             {revision.unknownBpm.map((track) => (
-              <li key={track.index}>{track.title}</li>
+              <li key={track.index} className="break-words">{track.title}</li>
             ))}
           </ul>
         </div>

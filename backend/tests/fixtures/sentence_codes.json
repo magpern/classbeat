@@ -152,7 +152,7 @@
   {
     "code": "job.analysis_limit",
     "params": {},
-    "english": "You have analysed 10 new Swedebeat mixes in the last 24 hours. Try again tomorrow, or use one analysed before."
+    "english": "You have analysed 10 new Swedebeat mixes in the last 24 hours. Try again later, or use one analysed before."
   },
   {
     "code": "job.handoff_expired",

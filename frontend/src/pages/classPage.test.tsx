@@ -87,6 +87,8 @@ describe('the class page', () => {
     expect(container.querySelectorAll('[data-bar]')).toHaveLength(4)
     expect(screen.getByRole('region', { name: 'Climb' })).toBeInTheDocument()
     expect(screen.getByTestId('unknown-bpm')).toHaveTextContent('Song <i>without</i> BPM')
+    // A long unbroken title wraps instead of widening the page at 320 px (issue #872).
+    expect(screen.getByText('Song <i>without</i> BPM')).toHaveClass('break-words')
     expect(screen.getByTestId('music-changed')).toBeInTheDocument()
     // Model and user text is text: no element was made from it.
     for (const tag of ['img', 'script', 'b', 'i']) expect(container.querySelector(tag)).toBeNull()
