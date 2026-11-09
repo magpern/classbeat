@@ -33,43 +33,43 @@ export function SongRows({
             data-testid="song"
           >
             <div className="flex min-w-0 flex-1 basis-64 items-center gap-3">
-            <span className="w-8 shrink-0 text-right text-muted">
-              {song.position}
-            </span>
-            <CoverArt src={song.cover} label={song.title} />
-            <div className="min-w-0 flex-1">
-              <p className="m-0 break-words font-medium text-text">{song.title}</p>
-              <p className="m-0 break-words text-[0.9375rem] text-muted">{song.artist}</p>
-              {song.openSpotify !== null ? (
-                <a
-                  href={song.openSpotify}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={t('songs.list.openSpotifyLabel', { title: song.title })}
-                  className="text-[0.8125rem] font-medium"
-                >
-                  {t('songs.list.openSpotify')}
-                </a>
-              ) : null}
-            </div>
+              <span className="w-8 shrink-0 text-right text-muted">
+                {song.position}
+              </span>
+              <CoverArt src={song.cover} label={song.title} />
+              <div className="min-w-0 flex-1">
+                <p className="m-0 break-words font-medium text-text">{song.title}</p>
+                <p className="m-0 break-words text-[0.9375rem] text-muted">{song.artist}</p>
+                {song.openSpotify !== null ? (
+                  <a
+                    href={song.openSpotify}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={t('songs.list.openSpotifyLabel', { title: song.title })}
+                    className="text-[0.8125rem] font-medium"
+                  >
+                    {t('songs.list.openSpotify')}
+                  </a>
+                ) : null}
+              </div>
             </div>
             <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
-            <Chip>{roleLabel(song.role)}</Chip>
-            <span className="text-[0.9375rem] text-muted">{t('songs.list.bpm', { bpm: Math.round(song.bpm) })}</span>
-            <span className="text-[0.9375rem] text-muted">{minutes(song.lengthSec)}</span>
-            {song.isNew ? <Chip tone="ok">{t('songs.list.new')}</Chip> : null}
-            {marks !== undefined && onToggle !== undefined ? (
-              <ChipButton
-                pressed={marked}
-                disabled={disabled}
-                aria-label={t('songs.list.replaceLabel', { title: song.title })}
-                onClick={() => {
-                  onToggle(song.position)
-                }}
-              >
-                {t('songs.list.replace')}
-              </ChipButton>
-            ) : null}
+              <Chip>{roleLabel(song.role)}</Chip>
+              <span className="text-[0.9375rem] text-muted">{t('songs.list.bpm', { bpm: Math.round(song.bpm) })}</span>
+              <span className="text-[0.9375rem] text-muted">{minutes(song.lengthSec)}</span>
+              {song.isNew ? <Chip tone="ok">{t('songs.list.new')}</Chip> : null}
+              {marks !== undefined && onToggle !== undefined ? (
+                <ChipButton
+                  pressed={marked}
+                  disabled={disabled}
+                  aria-label={t('songs.list.replaceLabel', { title: song.title })}
+                  onClick={() => {
+                    onToggle(song.position)
+                  }}
+                >
+                  {t('songs.list.replace')}
+                </ChipButton>
+              ) : null}
             </div>
           </li>
         )

@@ -522,7 +522,15 @@ describe('Next, in the Swedebeat app', () => {
     renderAt(PAGE)
     const note = await screen.findByTestId('handoff-expiry')
     expect(note).toHaveTextContent('You can leave and come back. This step stays open until')
-    expect(note).toHaveTextContent(new Date('2026-11-09T10:00:00Z').toLocaleString())
+    expect(note).toHaveTextContent(
+      new Date('2026-11-09T10:00:00Z').toLocaleString('en', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+      }),
+    )
   })
 
   it('does not show the expiry once the mix is verified (#572)', async () => {
