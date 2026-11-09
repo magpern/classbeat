@@ -58,9 +58,9 @@ const everySet = (): { slot: SlotId; role: string; set: ImageSet }[] =>
   })
 
 describe('the slot manifest', () => {
-  it('lists nine picture sets (hero 4, steps 3, sign-in panel 1, the empty states 1 shared by two slots)', () => {
-    expect(new Set(everySet().map((e) => e.set.name)).size).toBe(9)
-    expect(everySet().length).toBe(10)
+  it('lists 14 picture sets (hero 4, steps 6, sign-in panel 2, the empty states 2 shared by two slots)', () => {
+    expect(new Set(everySet().map((e) => e.set.name)).size).toBe(14)
+    expect(everySet().length).toBe(16)
     expect(SLOTS.emptyHome.sets).toEqual(SLOTS.emptyClasses.sets)
   })
 
@@ -108,6 +108,21 @@ describe('the slot manifest', () => {
     }
   })
 
+  it('the light and the dark picture of a slot have the same sizes, so the layout does not move with the theme', () => {
+    for (const [id, slot] of Object.entries(SLOTS)) {
+      const { light, dark } = slot.sets
+      if (light && dark) expect(dark.sizes, id).toEqual(light.sizes)
+    }
+  })
+
+  it('a sign-in panel picture weighs 40 KB or less in AVIF at every width', () => {
+    for (const set of Object.values(SLOTS.authPanel.sets)) {
+      for (const [width] of set.sizes) {
+        expect(statSync(diskPath(fileUrl(set, width, 'avif'))).size, `${set.name} ${String(width)}`).toBeLessThanOrEqual(40 * 1024)
+      }
+    }
+  })
+
   it('a card or empty-state picture weighs 30 KB or less in AVIF and 60 KB or less in JPEG at every width', () => {
     for (const id of ['stepDescribe', 'stepApprove', 'stepSave', 'emptyHome', 'emptyClasses'] as const) {
       for (const set of Object.values(SLOTS[id].sets)) {
@@ -119,9 +134,11 @@ describe('the slot manifest', () => {
     }
   })
 
-  it('the empty-state picture is 4:3, the box imagery.css gives it', () => {
-    const [w, h] = largest(SLOTS.emptyHome.sets.light as ImageSet)
-    expect(w * 3).toBe(h * 4)
+  it('the empty-state pictures are 4:3, the box imagery.css gives them', () => {
+    for (const set of Object.values(SLOTS.emptyHome.sets)) {
+      const [w, h] = largest(set)
+      expect(w * 3).toBe(h * 4)
+    }
     expect(css).toMatch(/\.slot--empty \{[^}]*aspect-ratio: 4 \/ 3;/)
   })
 
@@ -165,19 +182,33 @@ describe('resolveSlot', () => {
     expect(resolveSlot('hero', 'dark')?.phone?.name).toBe('hero-dark-phone')
   })
 
-  it('shows a light-only picture under the dim on dark, undimmed on light', () => {
-    expect(resolveSlot('stepDescribe', 'light')).toMatchObject({ dimmed: false })
-    expect(resolveSlot('stepDescribe', 'dark')).toMatchObject({ dimmed: true })
-    expect(resolveSlot('authPanel', 'dark')?.set.name).toBe('auth-panel-light')
+  it('gives the steps, the sign-in panel and the empty states a picture of their own in each theme, never dimmed', () => {
+    const names = {
+      stepDescribe: 'step-describe',
+      stepApprove: 'step-approve',
+      stepSave: 'step-save',
+      authPanel: 'auth-panel',
+      emptyHome: 'empty-home',
+      emptyClasses: 'empty-home',
+    } as const
+    for (const [id, name] of Object.entries(names) as [SlotId, string][]) {
+      expect(resolveSlot(id, 'light'), id).toMatchObject({ dimmed: false })
+      expect(resolveSlot(id, 'dark'), id).toMatchObject({ dimmed: false })
+      expect(resolveSlot(id, 'light')?.set.name, id).toBe(`${name}-light`)
+      expect(resolveSlot(id, 'dark')?.set.name, id).toBe(`${name}-dark`)
+    }
   })
 
-  it('shows the step 3 and the empty-state pictures on light, and dimmed on dark', () => {
-    for (const id of ['stepSave', 'emptyHome', 'emptyClasses'] as const) {
-      expect(resolveSlot(id, 'light'), id).toMatchObject({ dimmed: false })
-      expect(resolveSlot(id, 'dark'), id).toMatchObject({ dimmed: true })
+  it('shows a light-only slot under the dim on dark (`dim`), undimmed on light', () => {
+    const saved = SLOTS.stepSave
+    SLOTS.stepSave = { ...saved, sets: { light: saved.sets.light } }
+    try {
+      expect(resolveSlot('stepSave', 'light')).toMatchObject({ dimmed: false })
+      expect(resolveSlot('stepSave', 'dark')).toMatchObject({ dimmed: true })
+      expect(resolveSlot('stepSave', 'dark')?.set.name).toBe('step-save-light')
+    } finally {
+      SLOTS.stepSave = saved
     }
-    expect(resolveSlot('stepSave', 'dark')?.set.name).toBe('step-save-light')
-    expect(resolveSlot('emptyHome', 'light')?.set.name).toBe('empty-home-light')
   })
 
   it('shows nothing for a slot without files, or with `hide` and no picture of its own', () => {
@@ -189,9 +220,8 @@ describe('resolveSlot', () => {
     } finally {
       SLOTS.stepSave = empty
     }
-    const hidden = { ...SLOTS.stepDescribe, onDark: 'hide' as const }
     const saved = SLOTS.stepDescribe
-    SLOTS.stepDescribe = hidden
+    SLOTS.stepDescribe = { ...saved, sets: { light: saved.sets.light }, onDark: 'hide' }
     try {
       expect(resolveSlot('stepDescribe', 'dark')).toBeNull()
     } finally {

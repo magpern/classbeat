@@ -31,7 +31,7 @@ export interface Slot {
   sets: Partial<Record<ImageTheme, ImageSet>>
   /** A narrower crop for a phone (`PHONE_MEDIA`), per theme; without one the phone gets `sets`. */
   phone?: Partial<Record<ImageTheme, ImageSet>>
-  /** Dark theme with only a light picture: `dim` shows it under the dark dim, `hide` shows nothing. */
+  /** Dark theme with no dark picture: `dim` shows the light one under the dark dim, `hide` shows nothing. */
   onDark: 'dim' | 'hide'
   /** The alt text, or null when the picture is decorative (empty alt, hidden from assistive tech). */
   alt: CatalogueKey | null
@@ -50,7 +50,14 @@ export const FORMATS = [
 
 const set = (name: string, ...sizes: Size[]): ImageSet => ({ name, sizes })
 
-const EMPTY_STATE = set('empty-home-light', [480, 360], [768, 576])
+const CARD: [Size, Size] = [[480, 320], [768, 512]]
+const EMPTY: [Size, Size] = [[480, 360], [768, 576]]
+const PANEL: [Size, Size] = [[480, 600], [960, 1200]]
+/** A picture per theme: `<name>-light` and `<name>-dark`, the same sizes. */
+const both = (name: string, sizes: [Size, Size]) => ({
+  light: set(`${name}-light`, ...sizes),
+  dark: set(`${name}-dark`, ...sizes),
+})
 
 export const SLOTS: Record<SlotId, Slot> = {
   hero: {
@@ -63,28 +70,28 @@ export const SLOTS: Record<SlotId, Slot> = {
     alt: null,
   },
   stepDescribe: {
-    sets: { light: set('step-describe-light', [480, 320], [768, 512]) },
+    sets: both('step-describe', CARD),
     onDark: 'dim',
     alt: 'landing.img.describe',
   },
   stepApprove: {
-    sets: { light: set('step-approve-light', [480, 320], [768, 512]) },
+    sets: both('step-approve', CARD),
     onDark: 'dim',
     alt: 'landing.img.approve',
   },
   stepSave: {
-    sets: { light: set('step-save-light', [480, 320], [768, 512]) },
+    sets: both('step-save', CARD),
     onDark: 'dim',
     alt: 'landing.img.save',
   },
   authPanel: {
-    sets: { light: set('auth-panel-light', [480, 600], [960, 1200]) },
+    sets: both('auth-panel', PANEL),
     onDark: 'dim',
     alt: null,
   },
-  // The empty Home and the empty My classes share one calm picture (two slots, one file set).
-  emptyHome: { sets: { light: EMPTY_STATE }, onDark: 'dim', alt: null },
-  emptyClasses: { sets: { light: EMPTY_STATE }, onDark: 'dim', alt: null },
+  // The empty Home and the empty My classes share one calm picture (two slots, one file set per theme).
+  emptyHome: { sets: both('empty-home', EMPTY), onDark: 'dim', alt: null },
+  emptyClasses: { sets: both('empty-home', EMPTY), onDark: 'dim', alt: null },
 }
 
 export interface ResolvedSlot {

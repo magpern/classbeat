@@ -555,13 +555,14 @@ real media types and the CSP stays `img-src 'self'`.
   hidden from assistive technology).
 - **Themes:** a slot has a picture per theme (`sets.dark`, `sets.light`). With only a light picture,
   `onDark: 'dim'` shows it on the dark page under a dim of the page colour (`--cb-image-dim`) and
-  `'hide'` shows nothing. The three step pictures and the two empty-state pictures are light-only and
-  dimmed on dark. The hero text sits on a scrim of the page colour (`--cb-hero-scrim`);
+  `'hide'` shows nothing. The three steps, the sign-in panel and the two empty states have a picture
+  per theme (`<name>-light`, `<name>-dark`, the same sizes, built with `both(name, sizes)` in the manifest),
+  so the dim is only the fallback for a slot that has a light picture alone. The hero text sits on a scrim of the page colour (`--cb-hero-scrim`);
   `styles/heroScrim.test.ts` checks the text contrast over the worst photo in both themes, so
   change a scrim strength only together with that test. No colour literals: the scrim and the dim
   are `color-mix` of `--cb-bg`.
-- **Empty states:** the empty Home and the empty My classes (`emptyHome`, `emptyClasses`, one file set
-  `empty-home-light`, 4:3, 480 and 768) draw their text through `EmptyPicture`, which adds the picture
+- **Empty states:** the empty Home and the empty My classes (`emptyHome`, `emptyClasses`, one file set per theme
+  `empty-home-light` and `-dark`, 4:3, 480 and 768) draw their text through `EmptyPicture`, which adds the picture
   beside it (below it on a narrow screen): decorative (empty alt), lazy, `max-width` 18rem. A slot with
   no set leaves the text exactly as it was. A source with readable text, a wordmark or a logo-like mark
   is not used.
