@@ -6,7 +6,7 @@ import { audit, setTheme, stackContext, type Findings } from './mu-helpers'
 import { listedTitles, readyToPick, sql, startPick, untilState } from './song-helpers'
 import { resetSpotify } from './spotify-helpers'
 import { CACHED_MIX_ID, ownerIdForEmail, resetSwedebeatMixes, seedCachedMix, swedebeatMixState, workerLogTail } from './swedebeat-mix-helpers'
-import { EMAIL_A, PASSWORD_A, catalogueCalls, fakeState, resetSwedebeat, setCatalogue, useSwedebeatThroughUi } from './swedebeat-helpers'
+import { EMAIL_A, PASSWORD_A, catalogueCalls, fakeState, resetSwedebeat, setCatalogue, fillSwedebeat, openSwedebeatDialog } from './swedebeat-helpers'
 
 // ADR 0016 section 5 to 7, path (b), on the fakes (B5): a picked class is matched against the fake
 // Swedebeat catalogue (found, unsure, missing), its two unmatched songs are replaced and matched
@@ -69,11 +69,10 @@ const nextStep = (page: Page) => page.getByRole('region', { name: 'Next, in the 
 
 async function connectSwedebeat(page: Page): Promise<void> {
   await page.goto('/account')
-  await useSwedebeatThroughUi(page)
-  await card(page).getByLabel('Swedebeat email').fill(EMAIL_A)
-  await card(page).getByLabel('Swedebeat password').fill(PASSWORD_A)
-  await card(page).getByRole('button', { name: 'Connect Swedebeat' }).click()
-  await expect(card(page).getByText('Swedebeat is connected.')).toBeVisible()
+  const dialog = await openSwedebeatDialog(page)
+  await fillSwedebeat(dialog, EMAIL_A, PASSWORD_A)
+  await dialog.getByRole('button', { name: 'Connect Swedebeat' }).click()
+  await expect(page.getByText('Swedebeat is connected.')).toBeVisible()
 }
 
 test('match, replace, approve, then verify with a wrong-length mix and override', async ({ page }) => {

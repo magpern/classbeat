@@ -50,11 +50,23 @@ export function fakeMowl(action: 'arm' | 'release' | 'state', playlistId: string
 /** On the account page, connect the fake MOWL account. Needs a fresh sign-in. */
 export async function connectMowl(page: Page): Promise<void> {
   await page.goto('/account')
-  const mowl = page.getByRole('region', { name: 'MOWL (Intelligent Cycling)' })
-  await mowl.getByLabel('MOWL email').fill(MOWL_EMAIL)
-  await mowl.getByLabel('MOWL password').fill(MOWL_PASSWORD)
-  await mowl.getByRole('button', { name: 'Connect MOWL' }).click()
-  await expect(mowl.getByText('MOWL is connected.')).toBeVisible()
+  await page.getByTestId('connection-mowl').getByRole('button', { name: 'Connect MOWL' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Connect MOWL' })
+  await dialog.getByLabel('MOWL email').fill(MOWL_EMAIL)
+  await dialog.getByLabel('MOWL password').fill(MOWL_PASSWORD)
+  await dialog.getByRole('button', { name: 'Connect MOWL' }).click()
+  await expect(page.getByText('MOWL is connected.')).toBeVisible()
+}
+
+/** On the account page, disconnect MOWL through the confirmation dialog. */
+export async function disconnectMowl(page: Page): Promise<void> {
+  await page.goto('/account')
+  await page.getByTestId('connection-mowl').getByRole('button', { name: 'Disconnect MOWL' }).click()
+  await page
+    .getByRole('dialog', { name: 'Disconnect MOWL?' })
+    .getByRole('button', { name: 'Yes, disconnect MOWL' })
+    .click()
+  await expect(page.getByText(/MOWL is disconnected/)).toBeVisible()
 }
 
 /** Fill the new-class form for the brief the recorded model script was written for (30 minutes,

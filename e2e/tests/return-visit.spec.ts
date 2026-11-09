@@ -8,7 +8,7 @@ import {
   resetSwedebeatMixes,
   seedCachedMix,
 } from './swedebeat-mix-helpers'
-import { useSwedebeatThroughUi } from './swedebeat-helpers'
+import { useSwedebeat } from './swedebeat-helpers'
 
 // #572 (ADR 0005): a user who closes the page during a design comes back to the job's real state,
 // and a design that finished while they were away lands on the finished class. "Away" is a closed
@@ -77,7 +77,7 @@ test('a design on a Swedebeat mix that finished while the user was away opens as
   const email = uniqueEmail('return-mix')
   await signUpThroughUi(page, email)
   await signInThroughUi(page, email)
-  await useSwedebeatThroughUi(page)
+  await useSwedebeat(page)
   await connectMowl(page)
   const connections = await page.request.get('/api/connections')
   const mowl = ((await connections.json()) as { connections: { provider: string; id: string }[] }).connections.find(

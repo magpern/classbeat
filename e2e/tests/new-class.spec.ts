@@ -14,11 +14,12 @@ test('a user without MOWL is sent to connect it, then starts a design from a pla
   await expect(page.getByRole('link', { name: 'Connect MOWL on your account page' })).toBeVisible()
 
   await page.goto('/account')
-  const mowl = page.getByRole('region', { name: 'MOWL (Intelligent Cycling)' })
+  await page.getByTestId('connection-mowl').getByRole('button', { name: 'Connect MOWL' }).click()
+  const mowl = page.getByRole('dialog', { name: 'Connect MOWL' })
   await mowl.getByLabel('MOWL email').fill(MOWL_EMAIL)
   await mowl.getByLabel('MOWL password').fill(MOWL_PASSWORD)
   await mowl.getByRole('button', { name: 'Connect MOWL' }).click()
-  await expect(mowl.getByText('MOWL is connected.')).toBeVisible()
+  await expect(page.getByText('MOWL is connected.')).toBeVisible()
 
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })

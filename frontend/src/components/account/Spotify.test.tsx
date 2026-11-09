@@ -52,11 +52,10 @@ describe('feature switched off', () => {
   it('hides the card on the account page', async () => {
     fakeApi(ACCOUNT_ROUTES)
     renderAt('/account')
-    await screen.findByRole('heading', { name: 'MOWL (Intelligent Cycling)' })
+    await screen.findByTestId('connection-mowl')
     await waitFor(() => {
-      expect(screen.queryByRole('heading', { name: 'Spotify' })).toBeNull()
+      expect(screen.queryByTestId('connection-spotify')).toBeNull()
     })
-    expect(screen.queryByText('Set up Spotify')).toBeNull()
   })
 
   it('says so on the Spotify page instead of showing a wizard', async () => {
@@ -71,14 +70,15 @@ describe('account page card', () => {
   it('links to the wizard when not connected and to management when connected', async () => {
     spotifyApi()
     renderAt('/account')
-    expect(await screen.findByText('Set up Spotify')).toHaveAttribute('href', '/en/account/spotify')
-    expect(screen.getByTestId('spotify-summary-status')).toHaveTextContent('Not connected')
+    expect(await screen.findByRole('link', { name: 'Connect Spotify' })).toHaveAttribute('href', '/en/account/spotify')
+    expect(screen.getByTestId('connection-spotify')).toHaveTextContent('Optional')
+    expect(screen.getByTestId('connection-spotify')).toHaveTextContent('Picks songs for your classes')
   })
 
   it('shows a connected status', async () => {
     spotifyApi(status({ status: 'connected' }))
     renderAt('/account')
-    expect(await screen.findByText('Manage Spotify')).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'Manage Spotify' })).toHaveAttribute('href', '/en/account/spotify')
     expect(screen.getByTestId('spotify-summary-status')).toHaveTextContent('Connected')
   })
 })

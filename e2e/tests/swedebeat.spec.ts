@@ -9,8 +9,10 @@ import {
   fakeState,
   holdSession,
   resetSwedebeat,
+  fillSwedebeat,
+  openSwedebeatDialog,
   setOutage,
-  useSwedebeatThroughUi,
+  swedebeatRow,
 } from './swedebeat-helpers'
 
 // Swedebeat connect end to end (ADR 0015) against the fake Swedebeat of compose.e2e.yaml, which
@@ -30,39 +32,40 @@ async function newUser(page: Page, tag: string): Promise<void> {
   const email = uniqueEmail(tag)
   await signUpThroughUi(page, email)
   await signInThroughUi(page, email) // a fresh sign-in counts as recent authentication
-  await useSwedebeatThroughUi(page)
 }
 
-const card = (page: Page) => page.getByRole('region', { name: 'Swedebeat', exact: true })
+const card = swedebeatRow
 
-async function fill(page: Page, email: string, password: string): Promise<void> {
-  const swedebeat = card(page)
-  await swedebeat.getByLabel('Swedebeat email').fill(email)
-  await swedebeat.getByLabel('Swedebeat password').fill(password)
+async function disconnect(page: Page): Promise<void> {
+  await card(page).getByRole('button', { name: 'Disconnect Swedebeat' }).click()
+  await page
+    .getByRole('dialog', { name: 'Disconnect Swedebeat?' })
+    .getByRole('button', { name: 'Yes, disconnect Swedebeat' })
+    .click()
 }
 
 test('connect, wrong password, status after a reload, and disconnect', async ({ page }) => {
   await newUser(page, 'sb-connect')
-  const swedebeat = card(page)
+  const dialog = await openSwedebeatDialog(page)
 
-  await fill(page, EMAIL_A, 'not-the-password')
-  await swedebeat.getByRole('button', { name: 'Connect Swedebeat' }).click()
-  await expect(swedebeat.getByRole('alert')).toHaveText('Swedebeat did not accept that email and password.')
-  await expect(swedebeat.getByLabel('Swedebeat password')).toHaveValue('')
+  await fillSwedebeat(dialog, EMAIL_A, 'not-the-password')
+  await dialog.getByRole('button', { name: 'Connect Swedebeat' }).click()
+  await expect(dialog.getByRole('alert')).toHaveText('Swedebeat did not accept that email and password.')
+  await expect(dialog.getByLabel('Swedebeat password')).toHaveValue('')
 
-  await swedebeat.getByLabel('Swedebeat password').fill(PASSWORD_A)
+  await dialog.getByLabel('Swedebeat password').fill(PASSWORD_A)
   const connected = page.waitForResponse((r) => r.url().endsWith('/api/connections/swedebeat'))
-  await swedebeat.getByRole('button', { name: 'Connect Swedebeat' }).click()
+  await dialog.getByRole('button', { name: 'Connect Swedebeat' }).click()
   const answer = await connected
   expect(answer.status()).toBe(200)
   expect(new URL(answer.url()).search).toBe('') // nothing in the URL
   const text = await answer.text()
   expect(text).not.toContain(PASSWORD_A)
   expect(text).not.toMatch(/token|device/i) // the answer holds no secret
-  await expect(swedebeat.getByText('Swedebeat is connected.')).toBeVisible()
-  await expect(swedebeat.getByTestId('swedebeat-status')).toHaveText('Connected')
-  await expect(swedebeat.getByTestId('swedebeat-account')).toHaveText(EMAIL_A)
-  await expect(swedebeat.getByLabel('Swedebeat password')).toHaveCount(0)
+  await expect(page.getByText('Swedebeat is connected.')).toBeVisible()
+  await expect(card(page).getByTestId('swedebeat-status')).toHaveText('Connected')
+  await expect(card(page).getByTestId('swedebeat-account')).toHaveText(EMAIL_A)
+  await expect(page.getByLabel('Swedebeat password')).toHaveCount(0) // the dialog closed
 
   // The fake saw a decoded, correctly encoded login without force.
   const logins = fakeState().logins
@@ -76,9 +79,8 @@ test('connect, wrong password, status after a reload, and disconnect', async ({ 
   await expect(card(page).getByTestId('swedebeat-status')).toHaveText('Connected')
   expect(await page.content()).not.toContain(PASSWORD_A)
 
-  await card(page).getByRole('button', { name: 'Disconnect Swedebeat' }).click()
-  await card(page).getByRole('button', { name: 'Yes, disconnect Swedebeat' }).click()
-  await expect(card(page).getByText(/Swedebeat is disconnected/)).toBeVisible()
+  await disconnect(page)
+  await expect(page.getByText(/Swedebeat is disconnected/)).toBeVisible()
   await expect(card(page).getByRole('button', { name: 'Connect Swedebeat' })).toBeVisible()
   await expect(card(page).getByTestId('swedebeat-status')).toHaveCount(0)
 })
@@ -86,17 +88,17 @@ test('connect, wrong password, status after a reload, and disconnect', async ({ 
 test('another device holds the session: asked first, then signed in here anyway', async ({ page }) => {
   await newUser(page, 'sb-device')
   holdSession(EMAIL_A)
-  const swedebeat = card(page)
+  const dialog = await openSwedebeatDialog(page)
 
-  await fill(page, EMAIL_A, PASSWORD_A)
-  await swedebeat.getByRole('button', { name: 'Connect Swedebeat' }).click()
-  await expect(swedebeat.getByRole('alert')).toContainText('signed in on another device')
-  await expect(swedebeat.getByTestId('swedebeat-status')).toHaveCount(0) // nothing stored
+  await fillSwedebeat(dialog, EMAIL_A, PASSWORD_A)
+  await dialog.getByRole('button', { name: 'Connect Swedebeat' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('signed in on another device')
+  await expect(card(page).getByTestId('swedebeat-status')).toHaveCount(0) // nothing stored
   expect(fakeState().logins.map((l) => [l.force, l.ok])).toEqual([[false, false]])
 
-  await swedebeat.getByLabel('Swedebeat password').fill(PASSWORD_A)
-  await swedebeat.getByRole('button', { name: 'Sign in here anyway' }).click()
-  await expect(swedebeat.getByTestId('swedebeat-status')).toHaveText('Connected')
+  await dialog.getByLabel('Swedebeat password').fill(PASSWORD_A)
+  await dialog.getByRole('button', { name: 'Sign in here anyway' }).click()
+  await expect(card(page).getByTestId('swedebeat-status')).toHaveText('Connected')
   expect(fakeState().logins.map((l) => [l.force, l.ok])).toEqual([
     [false, false],
     [true, true],
@@ -107,9 +109,11 @@ test('another device holds the session: asked first, then signed in here anyway'
 test('an outage is explained in plain words and stores nothing', async ({ page }) => {
   await newUser(page, 'sb-outage')
   setOutage(true)
-  await fill(page, EMAIL_A, PASSWORD_A)
-  await card(page).getByRole('button', { name: 'Connect Swedebeat' }).click()
-  await expect(card(page).getByRole('alert')).toContainText('Swedebeat could not be reached.')
+  const dialog = await openSwedebeatDialog(page)
+  await fillSwedebeat(dialog, EMAIL_A, PASSWORD_A)
+  await dialog.getByRole('button', { name: 'Connect Swedebeat' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Swedebeat could not be reached.')
+  await dialog.getByRole('button', { name: 'Close' }).click()
   await expect(card(page).getByTestId('swedebeat-status')).toHaveCount(0)
 })
 
@@ -122,16 +126,18 @@ test('two users on different Swedebeat accounts never see or share each other’
   await newUser(one, 'sb-one')
   await newUser(two, 'sb-two')
 
-  await fill(one, EMAIL_A, PASSWORD_A)
-  await card(one).getByRole('button', { name: 'Connect Swedebeat' }).click()
+  const dialogOne = await openSwedebeatDialog(one)
+  await fillSwedebeat(dialogOne, EMAIL_A, PASSWORD_A)
+  await dialogOne.getByRole('button', { name: 'Connect Swedebeat' }).click()
   await expect(card(one).getByTestId('swedebeat-account')).toHaveText(EMAIL_A)
 
   // The second user has nothing of the first user's connection.
   await two.reload()
   await expect(card(two).getByTestId('swedebeat-status')).toHaveCount(0)
   await expect(card(two).getByRole('button', { name: 'Connect Swedebeat' })).toBeVisible()
-  await fill(two, EMAIL_B, PASSWORD_B)
-  await card(two).getByRole('button', { name: 'Connect Swedebeat' }).click()
+  const dialogTwo = await openSwedebeatDialog(two)
+  await fillSwedebeat(dialogTwo, EMAIL_B, PASSWORD_B)
+  await dialogTwo.getByRole('button', { name: 'Connect Swedebeat' }).click()
   await expect(card(two).getByTestId('swedebeat-account')).toHaveText(EMAIL_B)
 
   await one.reload()
@@ -144,8 +150,7 @@ test('two users on different Swedebeat accounts never see or share each other’
   expect(ok.every((l) => !l.force)).toBe(true)
 
   // Disconnecting one leaves the other.
-  await card(one).getByRole('button', { name: 'Disconnect Swedebeat' }).click()
-  await card(one).getByRole('button', { name: 'Yes, disconnect Swedebeat' }).click()
+  await disconnect(one)
   await expect(card(one).getByTestId('swedebeat-status')).toHaveCount(0)
   await two.reload()
   await expect(card(two).getByTestId('swedebeat-account')).toHaveText(EMAIL_B)

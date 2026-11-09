@@ -14,7 +14,7 @@ import {
   type FakeProgram,
 } from './class-helpers'
 import { audit } from './mu-helpers'
-import { useSwedebeatThroughUi } from './swedebeat-helpers'
+import { useSwedebeat } from './swedebeat-helpers'
 import {
   CACHED_MIX_ID,
   CACHED_MIX_NAME,
@@ -189,7 +189,7 @@ test('a Swedebeat mix class: correct one song, apply and save', async ({ page })
   await signUpThroughUi(page, email)
   await signInThroughUi(page, email)
   await connectMowl(page)
-  await useSwedebeatThroughUi(page) // #525: the mix choice needs the user's own switch
+  await useSwedebeat(page) // #525: the mix choice needs the user's own preference
   const connections = (await (await page.request.get('/api/connections')).json()) as {
     connections: { provider: string; id: string }[]
   }

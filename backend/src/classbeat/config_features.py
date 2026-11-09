@@ -33,9 +33,9 @@ class FeatureSettings(BaseSettings):
     # must also cover soundless (``classbeat.flags.effective``).
     soundless_enabled: bool = False
     # ADR 0024 (#647): connect MOWL by scanning a QR code with the MOWL phone app. The
-    # environment's switch, off by default until the owner's live scan; the password form stays
-    # either way.
-    mowl_qr_enabled: bool = False
+    # environment's switch, on by default (owner decision 2026-11-09, ADR 0028; it was off until
+    # the owner's live scan); the password form stays either way.
+    mowl_qr_enabled: bool = True
     # ADR 0025 (#721): Cloudflare Turnstile on sign-in, sign-up, the provider-email step and the
     # reset request. Off by default (dev, CI, tests); on, it needs the public site key and the
     # ``turnstile_secret_key`` secret file (web only, never the environment), unless
