@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../../../api/client'
 import { connectSwedebeat, setSwedebeatPreference, type Connection } from '../../../api/connections'
 import { errorMessage } from '../../../api/messages'
@@ -31,6 +31,10 @@ function connectError(error: unknown): string {
  * what lets the backend talk to Swedebeat at all, so the dialog stores it as on, then connects. If
  * the dialog ends without a connection the preference is put back as it was: a failed attempt
  * leaves nothing half-set. Another device being signed in is asked about, not decided.
+ *
+ * Every call the dialog makes goes through one queue, so a rollback never lands before an attempt it
+ * follows (a close during a slow connect) or after one that came later (a reopen and a new try), and
+ * whether anything was connected is read when the rollback runs, not when it was asked for.
  */
 export function SwedebeatDialog({
   open,
@@ -53,14 +57,32 @@ export function SwedebeatDialog({
   const [password, setPassword] = useState('')
   const [taken, setTaken] = useState(false)
   const done = useRef(false)
+  const queue = useRef<Promise<void>>(Promise.resolve())
+
+  const enqueue = <T,>(job: () => Promise<T>): Promise<T> => {
+    const result = queue.current.then(job)
+    queue.current = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return result
+  }
+
+  // Each opening starts with nothing connected, whatever an earlier opening ended with.
+  useEffect(() => {
+    if (open) done.current = false
+  }, [open])
 
   const close = () => {
     action.clear()
     setTaken(false)
     // Put the preference back when nothing was connected (best effort: a failure leaves it on, which
     // only means Swedebeat is offered, never that anything is sent without a connection).
-    if (!done.current && !wasUsing) void setSwedebeatPreference(false).catch(() => undefined)
-    done.current = false
+    if (!wasUsing) {
+      void enqueue(async () => {
+        if (!done.current) await setSwedebeatPreference(false)
+      }).catch(() => undefined)
+    }
     onClose()
   }
 
@@ -69,13 +91,14 @@ export function SwedebeatDialog({
     const sent = { email: email.trim(), password, force: taken }
     void action
       .run(
-        async () => {
-          await setSwedebeatPreference(true)
-          const made = await guard(() => connectSwedebeat(sent.email, sent.password, sent.force))
-          done.current = true
-          setTaken(false)
-          onConnected(made)
-        },
+        () =>
+          enqueue(async () => {
+            await setSwedebeatPreference(true)
+            const made = await guard(() => connectSwedebeat(sent.email, sent.password, sent.force))
+            done.current = true
+            setTaken(false)
+            onConnected(made)
+          }),
         (error) => {
           if (error instanceof ApiError && error.reason === 'device_in_use') {
             setTaken(true)

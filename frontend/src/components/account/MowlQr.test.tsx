@@ -144,6 +144,40 @@ describe('Scan with the MOWL app', () => {
     expect(api.to('GET', `${QR}/${ID}`)).toHaveLength(0) // no poll after the stop
   })
 
+  it('cancels a code that arrives after the dialog was closed', async () => {
+    const api = fakeApi({
+      ...ACCOUNT_ROUTES,
+      ...ON,
+      [`POST ${QR}`]: TICKET,
+      [`DELETE ${QR}/${ID}`]: () => new Response(null, { status: 204 }),
+    })
+    // Hold the start answer back until the dialog is gone.
+    const fast = globalThis.fetch
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await fast(input, init)
+      const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
+      if (init?.method === 'POST' && path === QR) await gate
+      return response
+    })
+    renderAt('/account')
+    const mowl = await openMowl()
+    await waitFor(() => {
+      expect(api.to('POST', QR)).toHaveLength(1)
+    })
+    fireEvent.click(mowl.getByRole('button', { name: 'Close' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+    release()
+    await waitFor(() => {
+      expect(api.to('DELETE', `${QR}/${ID}`)).toHaveLength(1)
+    })
+  })
+
   it('is not offered in the phone layout, where the password form remains', async () => {
     setWidth(390)
     fakeApi({ ...ACCOUNT_ROUTES, ...ON })

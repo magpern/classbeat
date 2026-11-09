@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within, type BoundFunctions, type queries } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { SIGNED_IN, fakeApi, json, reason } from '../../../test/fakeApi'
 import { renderAt } from '../../../test/render'
 
@@ -121,6 +121,85 @@ describe('connect Swedebeat', () => {
         { uses_swedebeat: false },
       ])
     })
+  })
+
+  it('puts the preference back after a failed try that follows a connect and a disconnect in the same visit', async () => {
+    let connected = false
+    let accept = true
+    const api = fakeApi({
+      ...ACCOUNT_ROUTES,
+      'GET /api/connections': () => list({ ...ON, uses_swedebeat: connected }, connected ? [CONNECTED] : []),
+      'DELETE /api/connections/swedebeat': () => {
+        connected = false
+        return new Response(null, { status: 204 })
+      },
+      [PREFERENCE]: stored,
+      [POST]: () => {
+        if (!accept) return reason(400, 'invalid_credentials')
+        connected = true
+        return CONNECTED
+      },
+    })
+    renderAt('/account')
+    let dialog = await openDialog()
+    await fill(dialog)
+    fireEvent.click(dialog.getByRole('button', { name: 'Connect Swedebeat' }))
+    expect(await screen.findByText('Swedebeat is connected.')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Swedebeat' }))
+    const confirm = within(await screen.findByRole('dialog', { name: 'Disconnect Swedebeat?' }))
+    fireEvent.click(confirm.getByRole('button', { name: 'Yes, disconnect Swedebeat' }))
+    expect(await screen.findByText(/Swedebeat is disconnected/)).toBeInTheDocument()
+    accept = false
+    dialog = await openDialog()
+    await fill(dialog)
+    fireEvent.click(dialog.getByRole('button', { name: 'Connect Swedebeat' }))
+    expect(await dialog.findByRole('alert')).toBeInTheDocument()
+    fireEvent.click(dialog.getByRole('button', { name: 'Close' }))
+    await waitFor(() => {
+      expect(api.to('PUT', '/api/connections/swedebeat/preference').map((c) => c.body)).toEqual([
+        { uses_swedebeat: true },
+        { uses_swedebeat: false }, // the disconnect
+        { uses_swedebeat: true },
+        { uses_swedebeat: false }, // the rollback of the failed try
+      ])
+    })
+  })
+
+  it('waits for a slow connect before it decides about the rollback when the dialog is closed meanwhile', async () => {
+    let connected = false
+    const api = fakeApi({
+      ...ACCOUNT_ROUTES,
+      'GET /api/connections': () => list({ ...ON, uses_swedebeat: connected }, connected ? [CONNECTED] : []),
+      [PREFERENCE]: stored,
+      [POST]: () => {
+        connected = true
+        return CONNECTED
+      },
+    })
+    // Hold the connect answer back until the test lets it through.
+    const fast = globalThis.fetch
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await fast(input, init)
+      const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
+      if (init?.method === 'POST' && path === '/api/connections/swedebeat') await gate
+      return response
+    })
+    renderAt('/account')
+    const dialog = await openDialog()
+    await fill(dialog)
+    fireEvent.click(dialog.getByRole('button', { name: 'Connect Swedebeat' }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/connections/swedebeat')).toHaveLength(1)
+    })
+    fireEvent.click(dialog.getByRole('button', { name: 'Close' }))
+    release()
+    expect(await screen.findByText('Swedebeat is connected.')).toBeInTheDocument()
+    // The connection exists, so the preference stays on: no rollback was sent.
+    expect(api.to('PUT', '/api/connections/swedebeat/preference').map((c) => c.body)).toEqual([{ uses_swedebeat: true }])
   })
 
   it('leaves the preference alone when the user already had it on', async () => {

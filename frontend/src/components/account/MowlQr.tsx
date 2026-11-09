@@ -75,7 +75,16 @@ export function MowlQr({
     if (id !== null) void cancelMowlQr(id).catch(() => undefined)
   }, [])
 
-  useEffect(() => release, [release])
+  // A code that comes back after the panel went away (the dialog closed during the start) is
+  // cancelled at once instead of living until it expires.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      release()
+    }
+  }, [release])
 
   useEffect(() => {
     if (ticket === null) return
@@ -130,6 +139,10 @@ export function MowlQr({
     void action.run(async () => {
       release()
       const started = await guard(() => startMowlQr())
+      if (!mounted.current) {
+        void cancelMowlQr(started.ticketId).catch(() => undefined)
+        return
+      }
       live.current = started.ticketId
       setNow(Date.now())
       setTicket(started)
