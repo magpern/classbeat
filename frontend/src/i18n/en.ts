@@ -44,6 +44,9 @@ export const en = {
   'landing.how.approve.text': 'Swap any song that does not fit.',
   'landing.how.save.title': 'Save to MOWL',
   'landing.how.save.text': 'Ready to teach, in your account.',
+  'landing.img.describe': 'An instructor writing a class plan on a notepad',
+  'landing.img.approve': 'Hands choosing songs on a phone',
+  'landing.img.save': 'A phone mounted on an indoor bike',
 
   // Sign in, sign up and the pages behind the mail links.
   'auth.signIn': 'Sign in',

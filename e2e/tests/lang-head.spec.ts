@@ -53,6 +53,15 @@ for (const code of CODES) {
         })
       })
 
+      test(`${path}: the link preview names the image, its size and the large card (#854)`, async ({ request }) => {
+        const html = await (await request.get(path)).text()
+        const og = (key: string) => new RegExp(`<meta (?:property|name)="${key}" content="([^"]*)">`).exec(html)?.[1]
+        expect(pathOf(og('og:image') ?? '')).toBe('/img/og-share.jpg')
+        expect(og('og:image:width')).toBe('1200')
+        expect(og('og:image:height')).toBe('630')
+        expect(og('twitter:card')).toBe('summary_large_image')
+      })
+
       test(`${path}: the browser shows the same lang and the links stay in the head`, async ({ page: tab }) => {
         await tab.goto(path)
         await expect(tab.locator('html')).toHaveAttribute('lang', code)
@@ -70,6 +79,16 @@ test.describe('pages that are not for search', () => {
     expect(html).toMatch(/<html[^>]*\blang="sv"/)
     expect(html).toContain('name="robots" content="noindex"')
     expect(links(html)).toEqual([])
+    expect(html).not.toContain('og:image')
+  })
+
+  test('the link-preview image and a picture of the page are served with their types (#854)', async ({ request }) => {
+    const preview = await request.get('/img/og-share.jpg')
+    expect(preview.status()).toBe(200)
+    expect(preview.headers()['content-type']).toBe('image/jpeg')
+    const hero = await request.get('/img/hero-light-1600.avif')
+    expect(hero.status()).toBe(200)
+    expect(hero.headers()['content-type']).toBe('image/avif')
   })
 
   test('an unknown language is a 404 that still serves the app', async ({ page, request }) => {

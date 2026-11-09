@@ -1,5 +1,6 @@
 """Serving the built single-page app, ``/sitemap.xml`` and ``/robots.txt`` (ADR 0027)."""
 
+import mimetypes
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Response
@@ -7,6 +8,11 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 from classbeat import spa
 from classbeat.config import Settings
+
+# The picture formats of ``public/img`` (issue 854): not every Python build knows them, and a
+# file answered as text/plain is not drawn (the CSP and nosniff forbid guessing).
+for _ext, _type in ((".avif", "image/avif"), (".webp", "image/webp"), (".jpg", "image/jpeg")):
+    mimetypes.add_type(_type, _ext)
 
 # HEAD answers like GET (FastAPI adds no HEAD to a GET route); the server drops the body.
 _READ = ["GET", "HEAD"]

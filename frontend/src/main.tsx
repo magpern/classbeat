@@ -8,6 +8,7 @@ import { applyTheme, readTheme } from './theme/theme'
 import './styles/tokens.css'
 import './styles/tailwind.css'
 import './styles/app.css'
+import './styles/imagery.css'
 import './styles/forms.css'
 import './styles/classes.css'
 

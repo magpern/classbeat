@@ -41,6 +41,9 @@ const da: Catalogue = {
   'landing.how.approve.text': 'Skift de sange ud, der ikke passer.',
   'landing.how.save.title': 'Gem i MOWL',
   'landing.how.save.text': 'Klar til at undervise, på din konto.',
+  'landing.img.describe': 'En instruktør skriver et holdoplæg i en notesbog',
+  'landing.img.approve': 'Hænder der vælger sange på en mobil',
+  'landing.img.save': 'En mobil monteret på en motionscykel',
 
   // Sign in, sign up and the pages behind the mail links.
   'auth.signIn': 'Log ind',

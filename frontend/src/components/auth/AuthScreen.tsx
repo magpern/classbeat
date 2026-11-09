@@ -7,6 +7,7 @@ import { goToProvider } from '../../lib/navigation'
 import { Link } from '../../router/Router'
 import { Field, Notice, useAction } from '../forms'
 import { AuthCard } from './AuthCard'
+import { AuthSplit } from './AuthSplit'
 import { PasskeySignIn } from './PasskeySignIn'
 import { ProviderButton } from './ProviderButton'
 import { useCaptcha } from './Turnstile'
@@ -113,98 +114,100 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onPasskeySigned
   }
 
   return (
-    <AuthCard title={t(copy.title)}>
-      {mode === 'signup' ? <p className="auth__lead">{t('auth.inviteLead')}</p> : null}
-      {notice ? <Notice kind="error">{notice}</Notice> : null}
-      {notice && noticeLink ? (
-        <p className="card__links">
-          <Link to={noticeLink.to}>{noticeLink.text}</Link>
-        </p>
-      ) : null}
-      {inviteMissing ? <Notice kind="error">{t('auth.inviteFirst')}</Notice> : null}
-      {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      {mode === 'signup' ? (
-        <Field
-          ref={inviteRef}
-          label={t('auth.inviteCode')}
-          autoComplete="off"
-          value={invite}
-          required
-          aria-invalid={inviteMissing ? true : undefined}
-          onChange={(e) => {
-            setInvite(e.target.value)
-            if (e.target.value.trim() !== '') setInviteMissing(false)
-          }}
-        />
-      ) : null}
-      {providers.length > 0 || onPasskeySignedIn ? (
-        <>
-          <div className="auth__social">
-            {onPasskeySignedIn ? <PasskeySignIn onSignedIn={onPasskeySignedIn} /> : null}
-            {providers.map((provider) => (
-              <ProviderButton
-                key={provider}
-                provider={provider}
-                disabled={action.busy}
-                onClick={() => {
-                  start(provider)
-                }}
-              >
-                {t('auth.continueWith', { provider: providerName(provider) })}
-              </ProviderButton>
-            ))}
-          </div>
-          <p className="auth__divider">
-            <span>{t('auth.or')}</span>
+    <AuthSplit>
+      <AuthCard title={t(copy.title)}>
+        {mode === 'signup' ? <p className="auth__lead">{t('auth.inviteLead')}</p> : null}
+        {notice ? <Notice kind="error">{notice}</Notice> : null}
+        {notice && noticeLink ? (
+          <p className="card__links">
+            <Link to={noticeLink.to}>{noticeLink.text}</Link>
           </p>
-        </>
-      ) : null}
-      <form onSubmit={submit}>
-        <Field
-          label={t('common.email')}
-          type="email"
-          autoComplete={mode === 'signin' ? (onPasskeySignedIn ? 'username webauthn' : 'username') : 'email'}
-          value={email}
-          onChange={(e) => {
-            setEmail(e.target.value)
-          }}
-          required
-        />
-        <Field
-          label={t('common.password')}
-          type="password"
-          autoComplete={copy.autoComplete}
-          hint={mode === 'signup' ? t('auth.passwordHint') : undefined}
-          value={password}
-          onChange={(e) => {
-            setPassword(e.target.value)
-          }}
-          required
-        />
-        {captcha.element}
-        <button
-          className="button button--block"
-          type="submit"
-          disabled={action.busy || !captcha.ready}
-          aria-describedby={captcha.describedBy}
-        >
-          {t(copy.submit)}
-        </button>
-      </form>
-      <p className="auth__legal">
-        {t('auth.legal')}{' '}
-        <Trans
-          id="legal.read"
-          slots={{
-            privacy: <Link to="/privacy">{t('legal.inline.privacy')}</Link>,
-            terms: <Link to="/terms">{t('legal.inline.terms')}</Link>,
-          }}
-        />
-      </p>
-      <p className="card__links">
-        <Link to={copy.swap.to}>{t(copy.swap.text)}</Link>
-        {mode === 'signin' ? <Link to="/reset">{t('auth.forgot')}</Link> : null}
-      </p>
-    </AuthCard>
+        ) : null}
+        {inviteMissing ? <Notice kind="error">{t('auth.inviteFirst')}</Notice> : null}
+        {action.error ? <Notice kind="error">{action.error}</Notice> : null}
+        {mode === 'signup' ? (
+          <Field
+            ref={inviteRef}
+            label={t('auth.inviteCode')}
+            autoComplete="off"
+            value={invite}
+            required
+            aria-invalid={inviteMissing ? true : undefined}
+            onChange={(e) => {
+              setInvite(e.target.value)
+              if (e.target.value.trim() !== '') setInviteMissing(false)
+            }}
+          />
+        ) : null}
+        {providers.length > 0 || onPasskeySignedIn ? (
+          <>
+            <div className="auth__social">
+              {onPasskeySignedIn ? <PasskeySignIn onSignedIn={onPasskeySignedIn} /> : null}
+              {providers.map((provider) => (
+                <ProviderButton
+                  key={provider}
+                  provider={provider}
+                  disabled={action.busy}
+                  onClick={() => {
+                    start(provider)
+                  }}
+                >
+                  {t('auth.continueWith', { provider: providerName(provider) })}
+                </ProviderButton>
+              ))}
+            </div>
+            <p className="auth__divider">
+              <span>{t('auth.or')}</span>
+            </p>
+          </>
+        ) : null}
+        <form onSubmit={submit}>
+          <Field
+            label={t('common.email')}
+            type="email"
+            autoComplete={mode === 'signin' ? (onPasskeySignedIn ? 'username webauthn' : 'username') : 'email'}
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value)
+            }}
+            required
+          />
+          <Field
+            label={t('common.password')}
+            type="password"
+            autoComplete={copy.autoComplete}
+            hint={mode === 'signup' ? t('auth.passwordHint') : undefined}
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value)
+            }}
+            required
+          />
+          {captcha.element}
+          <button
+            className="button button--block"
+            type="submit"
+            disabled={action.busy || !captcha.ready}
+            aria-describedby={captcha.describedBy}
+          >
+            {t(copy.submit)}
+          </button>
+        </form>
+        <p className="auth__legal">
+          {t('auth.legal')}{' '}
+          <Trans
+            id="legal.read"
+            slots={{
+              privacy: <Link to="/privacy">{t('legal.inline.privacy')}</Link>,
+              terms: <Link to="/terms">{t('legal.inline.terms')}</Link>,
+            }}
+          />
+        </p>
+        <p className="card__links">
+          <Link to={copy.swap.to}>{t(copy.swap.text)}</Link>
+          {mode === 'signin' ? <Link to="/reset">{t('auth.forgot')}</Link> : null}
+        </p>
+      </AuthCard>
+    </AuthSplit>
   )
 }
