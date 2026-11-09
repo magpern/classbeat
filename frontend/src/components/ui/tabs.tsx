@@ -14,6 +14,7 @@ export function TabsTrigger({ className, ...props }: ComponentProps<typeof TabsP
       className={cn(
         'min-h-11 cursor-pointer border-0 border-b-2 border-transparent bg-transparent px-4 text-[0.9375rem] font-medium whitespace-nowrap text-muted',
         'hover:text-text data-[state=active]:border-brand data-[state=active]:text-text',
+        'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand',
         className,
       )}
       {...props}

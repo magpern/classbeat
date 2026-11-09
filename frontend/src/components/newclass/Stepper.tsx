@@ -37,9 +37,14 @@ export function Stepper({
   }
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-[0.9375rem] font-medium text-text">
-        {label}
-      </label>
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <label htmlFor={id} className="text-[0.9375rem] font-medium text-text">
+          {label}
+        </label>
+        <span className="text-[0.8125rem] whitespace-nowrap text-muted">
+          {t('newclass.stepper.range', { min, max })}
+        </span>
+      </div>
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -75,9 +80,6 @@ export function Stepper({
         >
           <Plus aria-hidden="true" size={18} />
         </button>
-        <span className="text-[0.8125rem] text-muted">
-          {t('newclass.stepper.range', { min, max })}
-        </span>
       </div>
     </div>
   )

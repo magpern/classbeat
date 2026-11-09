@@ -10,7 +10,7 @@ export function LandingPage() {
   return (
     <div className="flex flex-col gap-12">
       <section className="landing flex flex-col gap-5" aria-labelledby="landing-title">
-        <p className="badge">{t('landing.badge')}</p>
+        <p className="badge w-fit">{t('landing.badge')}</p>
         <h1
           id="landing-title"
           className="m-0 font-display text-4xl font-extrabold leading-tight tracking-tight text-balance"

@@ -14,6 +14,15 @@ export function MiniProfile({ profile, tall = false }: { profile: [number, numbe
       ? t('class.profile.label', { length: lengthLabel(total), count: bars.length })
       : t('class.profile.empty')
   const starts = bars.map((_, i) => bars.slice(0, i).reduce((sum, [, sec]) => sum + sec, 0))
+  if (total <= 0) {
+    return (
+      <div
+        role="img"
+        aria-label={label}
+        className={`w-full rounded-md border border-dashed border-line ${tall ? 'h-40' : 'h-14'}`}
+      />
+    )
+  }
   return (
     <svg
       role="img"
