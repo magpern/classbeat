@@ -59,8 +59,8 @@ SENTENCES: Final[dict[str, str]] = {
         "your Spotify app."
     ),
     "not_allowlisted": (
-        "Spotify refused this account. In your Spotify app's User Management, add its name "
-        "and email. The app owner needs Premium."
+        "Spotify refused this account. In your Spotify app's User Management, add the account's "
+        "name and email. App owners need Premium."
     ),
     "forbidden": "Spotify refused this request for your account or playlist.",
     "rate_limited": "Spotify asks to slow down; trying again in about {minutes}.",

@@ -218,7 +218,7 @@ export const en = {
   'sentence.spotify.invalid_grant': 'Spotify no longer accepts the connection. Reconnect Spotify.',
   'sentence.spotify.app_misconfigured': 'Spotify does not recognise this app setup. Check the Client ID and the redirect URI in your Spotify app.',
   'sentence.spotify.not_allowlisted':
-    "Spotify refused this account. In your Spotify app's User Management, add its name and email. The app owner needs Premium.",
+    "Spotify refused this account. In your Spotify app's User Management, add the account's name and email. App owners need Premium.",
   'sentence.spotify.forbidden': 'Spotify refused this request for your account or playlist.',
   'sentence.spotify.rate_limited': { one: 'Spotify asks to slow down; trying again in about {count} minute.', other: 'Spotify asks to slow down; trying again in about {count} minutes.' },
   'sentence.spotify.quota_exhausted': {
@@ -819,11 +819,12 @@ export const en = {
   'job.failure.rate_limited.title': 'MOWL asked us to slow down',
   'job.failure.rate_limited.detail': 'Your class was not designed. Wait a few minutes and try again.',
   'job.failure.model_unavailable.title': 'The designer is busy',
-  'job.failure.model_unavailable.detail': 'The service that designs the class could not take the request. Try again in a few minutes.',
+  'job.failure.model_unavailable.detail':
+    'The designer could not take the request. Nothing was designed. Try again in a few minutes.',
   'job.failure.lease_lost.title': 'The design was interrupted',
-  'job.failure.lease_lost.detail': 'It was interrupted too many times. Try again.',
+  'job.failure.lease_lost.detail': 'The design was interrupted several times. Try again.',
   'job.failure.operation_busy.title': 'Another design is using this playlist',
-  'job.failure.operation_busy.detail': 'Another design of yours was still adding the same playlist to MOWL. Try again in a moment.',
+  'job.failure.operation_busy.detail': 'Another design of yours is still adding this playlist to MOWL. Try again in a moment.',
   'job.failure.not_connected.title': 'MOWL is not connected',
   'job.failure.not_connected.detail': 'Connect MOWL on your account page, then start again.',
   'job.failure.needs_reconnect.title': 'MOWL no longer accepts the stored sign-in',
@@ -845,9 +846,9 @@ export const en = {
   'job.failure.outbound_blocked.title': 'Something went wrong on our side',
   'job.failure.outbound_blocked.detail': 'Try again later.',
   'job.failure.program_changed.title': 'This workout was changed in MOWL',
-  'job.failure.program_changed.detail': 'This workout was changed in MOWL after we saved it.',
+  'job.failure.program_changed.detail': 'This workout was changed in MOWL after you saved it. Nothing was written.',
   'job.failure.program_missing.title': 'This workout is gone from MOWL',
-  'job.failure.program_missing.detail': 'This workout is no longer in your MOWL account.',
+  'job.failure.program_missing.detail': 'This workout is no longer in your MOWL account. Nothing was written.',
   'job.failure.music_changed.title': 'The music changed',
   'job.failure.music_changed.detail':
     'The music has changed since this version, so the timing fixes were not applied. Ask for a change in chat.',
@@ -857,8 +858,7 @@ export const en = {
   'job.failure.use_change_songs.title': 'This request is only about the songs',
   'job.failure.use_change_songs.detail': 'Nothing was changed. Use Change songs on the class page to pick other ones.',
   'job.failure.media_host_not_allowed.title': 'New Swedebeat mixes cannot be analysed here yet',
-  'job.failure.media_host_not_allowed.detail':
-    'The mix was added to your MOWL account but could not be analysed. Mixes analysed before still work.',
+  'job.failure.media_host_not_allowed.detail': 'The mix is in your MOWL account. Pick a mix analysed before, or try again later.',
   'job.failure.media_refused.title': 'The mix audio could not be fetched',
   'job.failure.media_refused.detail': 'Nothing was designed. Try again later.',
   'job.failure.analysis_failed.title': 'The mix audio could not be analysed',
@@ -867,7 +867,7 @@ export const en = {
   'job.failure.feature_off.detail': 'Nothing was designed. Try again later.',
   'job.failure.analysis_limit.title': 'Too many new Swedebeat mixes today',
   'job.failure.analysis_limit.detail':
-    'You have analysed 10 new mixes in 24 hours. Earlier mixes still work; try a new one tomorrow.',
+    'You have analysed 10 new mixes in 24 hours. Try again tomorrow, or use one analysed before.',
   'job.failure.soundless_not_evaluated.title': 'Classes without music are not ready yet',
   'job.failure.soundless_not_evaluated.detail': 'Nothing was designed. Choose a playlist instead, or try again later.',
   'job.failure.music_unlinked.title': 'The music is not in your MOWL account',
@@ -1527,6 +1527,52 @@ export const en = {
   'swmatch.nothingWritten': 'Nothing was written to Swedebeat.',
   'swmatch.approve': 'Approve this selection',
   'swmatch.replace': 'Replace songs',
+  'swmatch.reason.feature_off':
+    'Swedebeat matching is switched off right now. Try again later.',
+  'swmatch.reason.not_found':
+    'This class or its selection no longer exists. Reload the page.',
+  'swmatch.reason.stale_match':
+    'The songs changed after this match was made. Reload the page and match again.',
+  'swmatch.reason.handoff_expired':
+    'This step has expired. Start it again.',
+  'swmatch.reason.class_busy':
+    'This class already has a task running. Wait for it to finish, then try again.',
+  'swmatch.reason.not_connected':
+    'MOWL or Swedebeat is not connected. Connect it on your account page first.',
+  'swmatch.reason.rate_limited':
+    'Too many requests. Try again in a few minutes.',
+  'swmatch.reason.upstream_unavailable':
+    'MOWL or Swedebeat could not be reached. Try again in a few minutes.',
+  'swmatch.reason.invalid_input':
+    'That did not work. Reload the page and try again.',
+  'swmatch.reason.not_checked':
+    'Check for your mix first, then say it is the right one.',
+  'swmatch.reason.busy':
+    'You have as many tasks running as allowed. Wait for one to finish.',
+  'swmatch.reason.quota':
+    'Your plan has no room for this right now.',
+  'swmatch.reason.analysis_limit':
+    "You have used today's limit of new mix analyses. Try again tomorrow, or use a mix analysed before.",
+  'swmatch.reason.decrypt_failed':
+    'We cannot read your stored sign-in. Connect again on your account page.',
+  'swmatch.reason.pool_busy':
+    'Another song pick is still running. Wait for it to finish, then try again.',
+  'swmatch.reason.song_picking_off':
+    'Picking songs is switched off right now. Try again later.',
+  'swmatch.reason.consent_missing':
+    'Allow the working playlist in your Spotify settings first.',
+  'swmatch.reason.revision_limit':
+    'This class has reached its limit of versions.',
+  'swmatch.reason.chat_full':
+    "This class's chat is full, so it cannot be changed any more.",
+  'swmatch.reason.stale_base':
+    'The class changed in the meantime. Reload the page and try again.',
+  'swmatch.reason.swedebeat_rounds':
+    'Songs have been replaced three times already. Keep the selection or approve it.',
+  'swmatch.reason.write_unresolved':
+    'An earlier step on Spotify is still undecided. Decide it first (Check again or Do it anyway), then try again.',
+  'swmatch.reason.fallback':
+    'That did not work. Try again in a moment.',
   'swstart.blurb':
     'See which of these songs Swedebeat has. Only titles and artists are looked up; nothing is written to your Swedebeat account.',
   'swstart.connectFirst': 'Connect Swedebeat on your account page first',

@@ -90,6 +90,11 @@ describe('backend-mirrored sentences, error reasons and rule rationales', () => 
     expect(en['sentence.spotify.not_allowlisted']).toMatch(/Premium/)
     expect(sv['sentence.spotify.not_allowlisted']).toMatch(/Premium/)
     expect(da['sentence.spotify.not_allowlisted']).toMatch(/Premium/)
+    // "its name" left it unclear whose name: the sentence names the account (issue #866).
+    expect(en['sentence.spotify.not_allowlisted']).not.toMatch(/\bits\b/)
+    expect(en['sentence.spotify.not_allowlisted']).toMatch(/add the account's name and email/)
+    expect(sv['sentence.spotify.not_allowlisted']).toMatch(/kontots namn/)
+    expect(da['sentence.spotify.not_allowlisted']).toMatch(/kontoens navn/)
   })
 
   it('holds the backend English to the same limits', () => {

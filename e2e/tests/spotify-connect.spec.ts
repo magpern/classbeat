@@ -217,7 +217,7 @@ test('another Spotify account for the same user needs a confirmed switch', async
 const SENTENCES: Record<string, string | RegExp> = {
   invalid_grant: 'Spotify no longer accepts the connection. Reconnect Spotify.',
   app_misconfigured: /Check the Client ID and the redirect URI in your Spotify app\./,
-  not_allowlisted: /add its name and email\. The app owner needs Premium\./,
+  not_allowlisted: /add the account's name and email\. App owners need Premium\./,
   forbidden: 'Spotify refused this request for your account or playlist.',
   upstream_unavailable: 'Spotify is not answering.',
   not_found: 'Spotify could not find that playlist.',

@@ -225,7 +225,7 @@ const da: Catalogue = {
   'sentence.spotify.app_misconfigured':
     'Spotify genkender ikke denne appopsætning. Tjek Client ID og omdirigerings-URI’en i din Spotify-app.',
   'sentence.spotify.not_allowlisted':
-    'Spotify afviste kontoen. Tilføj dens navn og e-mailadresse under User Management i din Spotify-app. Appens ejer skal have Premium.',
+    'Spotify afviste kontoen. Tilføj kontoens navn og e-mailadresse under User Management i din Spotify-app. Appens ejer skal have Premium.',
   'sentence.spotify.forbidden': 'Spotify afviste anmodningen for din konto eller playliste.',
   'sentence.spotify.rate_limited': {
     one: 'Spotify beder os sætte tempoet ned; prøver igen om cirka {count} minut.',
@@ -892,12 +892,11 @@ const da: Catalogue = {
   'job.failure.rate_limited.detail': 'Dit hold blev ikke designet. Vent nogle minutter, og prøv igen.',
   'job.failure.model_unavailable.title': 'Designeren har travlt',
   'job.failure.model_unavailable.detail':
-    'Tjenesten, der designer holdet, kunne ikke tage imod anmodningen. Prøv igen om nogle minutter.',
+    'Designeren kunne ikke tage imod anmodningen. Intet blev designet. Prøv igen om nogle minutter.',
   'job.failure.lease_lost.title': 'Designet blev afbrudt',
-  'job.failure.lease_lost.detail': 'Det blev afbrudt for mange gange. Prøv igen.',
+  'job.failure.lease_lost.detail': 'Designet blev afbrudt flere gange. Prøv igen.',
   'job.failure.operation_busy.title': 'Et andet design bruger denne playliste',
-  'job.failure.operation_busy.detail':
-    'Et andet design af dig føjede stadig samme playliste til MOWL. Prøv igen om lidt.',
+  'job.failure.operation_busy.detail': 'Et andet design af dig føjer stadig denne playliste til MOWL. Prøv igen om lidt.',
   'job.failure.not_connected.title': 'MOWL er ikke tilsluttet',
   'job.failure.not_connected.detail': 'Tilslut MOWL på din kontoside, og start derefter forfra.',
   'job.failure.needs_reconnect.title': 'MOWL accepterer ikke længere det gemte login',
@@ -919,9 +918,9 @@ const da: Catalogue = {
   'job.failure.outbound_blocked.title': 'Noget gik galt hos os',
   'job.failure.outbound_blocked.detail': 'Prøv igen senere.',
   'job.failure.program_changed.title': 'Dette træningspas blev ændret i MOWL',
-  'job.failure.program_changed.detail': 'Dette træningspas blev ændret i MOWL, efter at vi gemte det.',
+  'job.failure.program_changed.detail': 'Dette træningspas blev ændret i MOWL, efter at du gemte det. Intet blev skrevet.',
   'job.failure.program_missing.title': 'Dette træningspas findes ikke længere i MOWL',
-  'job.failure.program_missing.detail': 'Dette træningspas findes ikke længere i din MOWL-konto.',
+  'job.failure.program_missing.detail': 'Dette træningspas findes ikke længere i din MOWL-konto. Intet blev skrevet.',
   'job.failure.music_changed.title': 'Musikken blev ændret',
   'job.failure.music_changed.detail':
     'Musikken er ændret siden denne version, så tidsrettelserne blev sprunget over. Bed om en ændring i chatten.',
@@ -933,7 +932,7 @@ const da: Catalogue = {
     'Intet blev ændret. Brug Skift sange på holdsiden for at vælge andre.',
   'job.failure.media_host_not_allowed.title': 'Nye Swedebeat-mix kan ikke analyseres her endnu',
   'job.failure.media_host_not_allowed.detail':
-    'Mixet blev føjet til din MOWL-konto, men kunne ikke analyseres. Tidligere analyserede mix virker stadig.',
+    'Mixet ligger i din MOWL-konto. Vælg et mix, der er analyseret før, eller prøv igen senere.',
   'job.failure.media_refused.title': 'Lyden fra dette mix kunne ikke hentes',
   'job.failure.media_refused.detail': 'Intet blev designet. Prøv igen senere.',
   'job.failure.analysis_failed.title': 'Lyden fra dette mix kunne ikke analyseres',
@@ -942,7 +941,7 @@ const da: Catalogue = {
   'job.failure.feature_off.detail': 'Intet blev designet. Prøv igen senere.',
   'job.failure.analysis_limit.title': 'For mange nye Swedebeat-mix i dag',
   'job.failure.analysis_limit.detail':
-    'Du har analyseret 10 nye mix inden for 24 timer. Tidligere mix virker stadig; prøv et nyt i morgen.',
+    'Du har analyseret 10 nye mix på 24 timer. Prøv igen i morgen, eller brug et analyseret før.',
   'job.failure.soundless_not_evaluated.title': 'Hold uden musik er ikke klar endnu',
   'job.failure.soundless_not_evaluated.detail':
     'Intet blev designet. Vælg i stedet en playliste, eller prøv igen senere.',
@@ -1068,7 +1067,7 @@ const da: Catalogue = {
   'songs.start.account_changed':
     'Din Spotify-konto er ikke den, som sangene blev valgt til. Vælg sange igen.',
   'songs.start.write_unresolved':
-    'Et tidligere Spotify-trin er stadig uafklaret. Afgør det først (Tjek igen eller Gør det alligevel), og prøv så igen.',
+    'Et tidligere Spotify-trin er stadig uafklaret. Afgør det først (Tjek igen eller Gør det alligevel), prøv så igen.',
   'songs.start.idempotency_mismatch': 'Det virkede ikke. Tjek formularen, og prøv igen.',
   'songs.start.default': 'Det virkede ikke. Prøv igen.',
   'songs.failure.invalid_grant.title': 'Spotify accepterer ikke længere forbindelsen',
@@ -1659,6 +1658,52 @@ const da: Catalogue = {
   'swmatch.nothingWritten': 'Intet blev skrevet til Swedebeat.',
   'swmatch.approve': 'Godkend dette udvalg',
   'swmatch.replace': 'Erstat sange',
+  'swmatch.reason.feature_off':
+    'Swedebeat-matchning er slået fra lige nu. Prøv igen senere.',
+  'swmatch.reason.not_found':
+    'Dette hold eller dets udvalg findes ikke længere. Genindlæs siden.',
+  'swmatch.reason.stale_match':
+    'Sangene blev ændret, efter at matchningen blev lavet. Genindlæs siden, og match igen.',
+  'swmatch.reason.handoff_expired':
+    'Dette trin er udløbet. Start det forfra.',
+  'swmatch.reason.class_busy':
+    'Dette hold har allerede en opgave i gang. Vent, til den er færdig, og prøv så igen.',
+  'swmatch.reason.not_connected':
+    'MOWL eller Swedebeat er ikke tilsluttet. Tilslut det først på din kontoside.',
+  'swmatch.reason.rate_limited':
+    'For mange forespørgsler. Prøv igen om nogle minutter.',
+  'swmatch.reason.upstream_unavailable':
+    'MOWL eller Swedebeat kunne ikke nås. Prøv igen om nogle minutter.',
+  'swmatch.reason.invalid_input':
+    'Det virkede ikke. Genindlæs siden, og prøv igen.',
+  'swmatch.reason.not_checked':
+    'Søg først efter dit mix, og bekræft så, at det er det rigtige.',
+  'swmatch.reason.busy':
+    'Du har allerede så mange opgaver i gang, som der er plads til. Vent, til en er færdig.',
+  'swmatch.reason.quota':
+    'Din plan har ikke plads til det her lige nu.',
+  'swmatch.reason.analysis_limit':
+    'Du har nået dagens grænse for nye mixanalyser. Prøv igen i morgen, eller brug et mix, der er analyseret før.',
+  'swmatch.reason.decrypt_failed':
+    'Vi kan ikke læse dit gemte login. Tilslut igen på din kontoside.',
+  'swmatch.reason.pool_busy':
+    'Et andet sangvalg er stadig i gang. Vent, til det er færdigt, og prøv så igen.',
+  'swmatch.reason.song_picking_off':
+    'Sangvalg er slået fra lige nu. Prøv igen senere.',
+  'swmatch.reason.consent_missing':
+    'Tillad arbejdsplaylisten i dine Spotify-indstillinger først.',
+  'swmatch.reason.revision_limit':
+    'Dette hold har nået sin grænse for antal versioner.',
+  'swmatch.reason.chat_full':
+    'Chatten for dette hold er fuld, så holdet kan ikke ændres mere.',
+  'swmatch.reason.stale_base':
+    'Holdet blev ændret i mellemtiden. Genindlæs siden, og prøv igen.',
+  'swmatch.reason.swedebeat_rounds':
+    'Sange er allerede skiftet ud tre gange. Behold udvalget, eller godkend det.',
+  'swmatch.reason.write_unresolved':
+    'Et tidligere trin på Spotify er stadig uafgjort. Afgør det først (Tjek igen eller Gør det alligevel), prøv så igen.',
+  'swmatch.reason.fallback':
+    'Det virkede ikke. Prøv igen om lidt.',
   'swstart.blurb': 'Se, hvilke af disse sange Swedebeat har. Kun titler og kunstnere slås op; intet skrives til din Swedebeat-konto.',
   'swstart.connectFirst': 'Tilslut først Swedebeat på din kontoside',
   'swstart.match': 'Match med Swedebeat',

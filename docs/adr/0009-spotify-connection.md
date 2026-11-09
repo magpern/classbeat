@@ -302,7 +302,7 @@ the three category checks of ADR 0007 §1):
 |---|---|---|---|
 | `invalid_grant` | token endpoint 400 `invalid_grant`; or 401 on the repeat of a read after one refresh (the only two that flip the status, §6) | no (reconnect) | "Spotify no longer accepts the connection. Reconnect Spotify." |
 | `app_misconfigured` | token endpoint `invalid_client`, `invalid_request`, `invalid_scope`, `unauthorized_client` or `unsupported_response_type` (§6 amendment, 2026-10-31); `redirect_uri` mismatch reported by Spotify as `error` on the callback | no | "Spotify does not recognise this app setup. Check the Client ID and the redirect URI in your Spotify app." |
-| `not_allowlisted` | 403 on the first `GET /me` of a connect | no | "Spotify refused this account. In your Spotify app's *User Management*, add its name and email. The app owner needs Premium." (copy pass 5, ADR 0028 §2: 20 words; the 5-person allow-list is said on the setup step) |
+| `not_allowlisted` | 403 on the first `GET /me` of a connect | no | "Spotify refused this account. In your Spotify app's *User Management*, add the account's name and email. App owners need Premium." (copy pass 5, ADR 0028 §2: 20 words; "its" made plain by issue #866; the 5-person allow-list is said on the setup step) |
 | `forbidden` | any other 403 | no | "Spotify refused this request for your account or playlist." (the ownership checks of ADR 0008 §2 run first, so this is rare) |
 | `rate_limited` | 429 with `Retry-After` ≤ 3600 s | yes, waits at least the hint | "Spotify asks to slow down; trying again in about N minutes." |
 | `quota_exhausted` | 429 with `Retry-After` > 3600 s, or 3 `rate_limited` retries in a row on one job | no | "Your Spotify app has used up its allowance for now. Try again in about N hours." |

@@ -231,7 +231,7 @@ describe('the callback result in the query', () => {
     [
       'not_allowlisted',
       '',
-      "Spotify refused this account. In your Spotify app's User Management, add its name and email. The app owner needs Premium.",
+      "Spotify refused this account. In your Spotify app's User Management, add the account's name and email. App owners need Premium.",
     ],
     ['forbidden', '', 'Spotify refused this request for your account or playlist.'],
     ['rate_limited', '&retry_after=600', 'Spotify asks to slow down; trying again in about 10 minutes.'],

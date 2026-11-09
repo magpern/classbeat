@@ -23,7 +23,7 @@ ADR_SENTENCES = {
     "app_misconfigured": "Spotify does not recognise this app setup. Check the Client ID and the "
     "redirect URI in your Spotify app.",
     "not_allowlisted": "Spotify refused this account. In your Spotify app's User Management, add "
-    "its name and email. The app owner needs Premium.",
+    "the account's name and email. App owners need Premium.",
     "forbidden": "Spotify refused this request for your account or playlist.",
     "rate_limited": "Spotify asks to slow down; trying again in about 2 minutes.",
     "quota_exhausted": "Your Spotify app has used up its allowance for now. Try again in about "
