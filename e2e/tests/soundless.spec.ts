@@ -156,8 +156,8 @@ test('design with no music, change it, save it and update the same program', asy
 
   // Save: a private program, the revision's intervals, and PlaylistID -1 (no playlist).
   await confirmWrite(page, 'Save to MOWL', 'Save to MOWL')
-  await expect(page.getByText('Saved without music. The workout is in your MOWL account, private.')).toBeVisible(LONG)
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 2. It is up to date.')
+  await expect(page.getByText('Saved to MOWL without music, as a private workout.')).toBeVisible(LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 2. Up to date.')
   const first = savePrograms()
   expect(first).toHaveLength(1)
   expectSoundlessProgram(first[0]!, 'soundless_revise_good')
@@ -168,9 +168,9 @@ test('design with no music, change it, save it and update the same program', asy
   await expect(savedState(page)).toHaveText(
     'Saved to MOWL as version 2. The current version (3) has changes that are not saved yet.',
   )
-  await confirmWrite(page, 'Update saved workout', 'Update workout')
-  await expect(page.getByText('Updated. Your MOWL workout now matches this version.')).toBeVisible(LONG)
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 3. It is up to date.')
+  await confirmWrite(page, 'Update workout', 'Update workout')
+  await expect(page.getByText('Updated. MOWL now matches this version.')).toBeVisible(LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 3. Up to date.')
   const after = savePrograms()
   expect(after).toHaveLength(1)
   expect(after[0]!.program_id).toBe(first[0]!.program_id)
@@ -196,7 +196,7 @@ test('an update MOWL took but classbeat could not confirm does not claim a match
   await page.getByRole('link', { name: 'E2E soundless keep' }).click()
   const cls = classId(page)
   await confirmWrite(page, 'Save to MOWL', 'Save to MOWL')
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. It is up to date.', LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. Up to date.', LONG)
   const saved = savePrograms()
   expect(saved).toHaveLength(1)
 
@@ -205,14 +205,14 @@ test('an update MOWL took but classbeat could not confirm does not claim a match
   fakeControl('POST', 'save-no-music?read=-1&keep=1')
   fakeControl('POST', `save-playlist?program=${String(saved[0]!.program_id)}&playlist=${String(DRAFT_PLAYLIST_MOWL_ID)}`)
   await reviseByChat(page, 'soundless_revise_good', 'Make the first minutes easier.', 2)
-  await confirmWrite(page, 'Update saved workout', 'Update workout')
+  await confirmWrite(page, 'Update workout', 'Update workout')
   // The playlist attached in the app is a change in MOWL: nothing is written until the user says so.
-  await expect(page.getByText('This workout was changed in MOWL after classbeat saved it. Nothing was written.')).toBeVisible(LONG)
+  await expect(page.getByText('This workout was changed in MOWL after you saved it. Nothing was written.')).toBeVisible(LONG)
   expect(savePrograms()[0]!.playlist_id).toBe(DRAFT_PLAYLIST_MOWL_ID)
-  await page.getByRole('button', { name: 'Update anyway (replaces your changes in MOWL)' }).click()
+  await page.getByRole('button', { name: 'Update anyway' }).click()
   await savePanel(page).getByRole('group', { name: 'Confirm' }).getByRole('button', { name: 'Yes, replace it' }).click()
-  await expect(page.getByText(/^The update went through, but classbeat could not confirm MOWL now matches/)).toBeVisible(LONG)
-  await expect(page.getByText('Updated. Your MOWL workout now matches this version.')).toHaveCount(0)
+  await expect(page.getByText(/^Updated, but we could not confirm MOWL matches/)).toBeVisible(LONG)
+  await expect(page.getByText('Updated. MOWL now matches this version.')).toHaveCount(0)
   // MOWL (the fake, in this played case) kept the user's playlist, so the write was not what we sent.
   expect(savePrograms()[0]!.playlist_id).toBe(DRAFT_PLAYLIST_MOWL_ID)
   const body = (await (await page.request.get(`/api/classes/${cls}`)).json()) as {
@@ -242,7 +242,7 @@ test('the "No music" form and a soundless class page pass the accessibility audi
   await page.goto('/classes')
   await page.getByRole('link', { name: 'E2E soundless axe' }).click()
   await expect(page.getByTestId('soundless')).toHaveText('No music')
-  const pageFindings = await audit(page, 'Class, No music', page.getByTestId('save-panel').getByRole('button', { name: 'Save to MOWL' }))
+  const pageFindings = await audit(page, 'Class, No music', page.getByTestId('class-header').getByRole('button', { name: 'Save to MOWL' }))
   expect(pageFindings.problems).toEqual([])
 })
 
@@ -258,7 +258,7 @@ test('a class designed to a playlist still designs, saves and links as before', 
   expect(state.reads.tracks ?? 0).toBeGreaterThanOrEqual(1)
 
   await confirmWrite(page, 'Save to MOWL', 'Save to MOWL')
-  await expect(page.getByText('Saved. The workout is in your MOWL account, private.')).toBeVisible(LONG)
+  await expect(page.getByText('Saved to MOWL as a private workout.')).toBeVisible(LONG)
   const programs = savePrograms()
   expect(programs).toHaveLength(1)
   expect(programs[0]).toMatchObject({ playlist_id: DRAFT_PLAYLIST_MOWL_ID, public: false })

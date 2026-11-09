@@ -89,31 +89,40 @@ describe('the saved state', () => {
     expect(screen.queryByRole('button', { name: /Update/ })).toBeNull()
   })
 
+  it('puts Save to MOWL and what MOWL holds in the class header (ADR 0028 section 5)', async () => {
+    start({ saved: UNSAVED })
+    renderAt(PAGE)
+    const header = await screen.findByTestId('class-header')
+    expect(within(header).getByRole('heading', { level: 1 })).toBeInTheDocument()
+    expect(within(header).getByRole('button', { name: 'Save to MOWL' })).toBeEnabled()
+    expect(within(header).getByTestId('saved-state')).toHaveTextContent('Not saved to MOWL yet.')
+  })
+
   it('saved and up to date: says which version and offers no Update', async () => {
     start({ saved: saved({ latest_up_to_date: true }) })
     renderAt(PAGE)
     expect(await screen.findByTestId('saved-state')).toHaveTextContent(
-      'Saved to MOWL as version 1. It is up to date.',
+      'Saved to MOWL as version 1. Up to date.',
     )
-    expect(screen.queryByRole('button', { name: 'Update saved workout' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Save as a new workout' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Update workout' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Save as new' })).toBeInTheDocument()
   })
 
   it('current differs: says so and offers Update and a new Save', async () => {
     start({ saved: saved(), current_revision_number: 2 })
     renderAt(PAGE)
     expect(await screen.findByTestId('saved-state')).toHaveTextContent(
-      /Saved to MOWL as version 1\. The current version \(2\) has changes that are not saved yet/,
+      /Saved to MOWL as version 1\. Version 2 has unsaved changes/,
     )
-    expect(screen.getByRole('button', { name: 'Update saved workout' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Save as a new workout' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Update workout' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Save as new' })).toBeEnabled()
   })
 
   it('detached after a MOWL change: explains it and offers Save only', async () => {
     start({ saved: { ...UNSAVED, detached_count: 1 } })
     renderAt(PAGE)
     expect(await screen.findByTestId('saved-state')).toHaveTextContent(
-      /saved earlier to a previous MOWL connection.*cannot be updated/,
+      /Saved earlier to an old MOWL connection.*cannot be updated/,
     )
     expect(screen.queryByRole('button', { name: /Update/ })).toBeNull()
     expect(screen.getByRole('button', { name: 'Save to MOWL' })).toBeEnabled()
@@ -123,7 +132,7 @@ describe('the saved state', () => {
     start({ saved: saved({ latest_saved_workout_id: undefined }) })
     renderAt(PAGE)
     expect(await screen.findByTestId('update-unavailable')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Update saved workout' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Update workout' })).toBeDisabled()
   })
 })
 
@@ -136,8 +145,8 @@ describe('Save', () => {
     renderAt(PAGE)
     fireEvent.click(await screen.findByRole('button', { name: 'Save to MOWL' }))
     const dialog = screen.getByRole('group', { name: 'Confirm' })
-    expect(dialog).toHaveTextContent(/add version 1 of this class to your MOWL account as a new workout/)
-    expect(dialog).toHaveTextContent(/private: only you can see it/)
+    expect(dialog).toHaveTextContent(/Version 1 is added to your MOWL account as a new workout/)
+    expect(dialog).toHaveTextContent(/Only you can see it/)
     expect(jobsPosts(api)).toHaveLength(0)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save to MOWL' }))
     await waitFor(() => {
@@ -160,9 +169,9 @@ describe('Save', () => {
   it('says a new workout will be added when one is saved already', async () => {
     start({ saved: saved() })
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Save as a new workout' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Save as new' }))
     expect(screen.getByRole('group', { name: 'Confirm' })).toHaveTextContent(
-      /A new workout will be added; the one you saved earlier stays as it is/,
+      /Your earlier workout stays as it is/,
     )
   })
 
@@ -189,7 +198,7 @@ describe('Save', () => {
       expect(screen.getByTestId('save-progress')).toHaveTextContent('Saving to MOWL: Writing to MOWL')
     })
     expect(screen.getByRole('button', { name: 'Save to MOWL' })).toBeDisabled()
-    expect(await screen.findByText(/Saved\. The workout is in your MOWL account, private/)).toBeInTheDocument()
+    expect(await screen.findByText(/Saved to MOWL as a private workout/)).toBeInTheDocument()
   })
 
   it('explains the write_unresolved refusal and points to the box below', async () => {
@@ -201,7 +210,7 @@ describe('Save', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Save to MOWL' }))
     fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Save to MOWL' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      /earlier save or update of this class to MOWL is still undecided.*Check again or Do it anyway in the box below/,
+      /earlier save or update is still undecided.*box below/,
     )
     expect(screen.queryByText('write_unresolved')).toBeNull()
     await waitFor(() => {
@@ -262,7 +271,7 @@ describe('Save', () => {
       { 'POST /api/jobs': () => json({ detail: { reason: 'quota', ...detail } }, 409) },
     )
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Update saved workout' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Update workout' }))
     fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Update workout' }))
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(sentence)
@@ -277,10 +286,10 @@ describe('Update', () => {
       { 'POST /api/jobs': () => jobBody('queued', { id: SAVE_JOB, kind: 'update_workout' }) },
     )
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Update saved workout' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Update workout' }))
     const dialog = screen.getByRole('group', { name: 'Confirm' })
-    expect(dialog).toHaveTextContent(/first read the workout in your MOWL account/)
-    expect(dialog).toHaveTextContent(/stops and writes nothing/)
+    expect(dialog).toHaveTextContent(/We read the workout in MOWL first/)
+    expect(dialog).toHaveTextContent(/nothing is written/)
     expect(jobsPosts(api)).toHaveLength(0)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Update workout' }))
     await waitFor(() => {
@@ -302,7 +311,7 @@ describe('Update', () => {
   it('explains the write_unresolved refusal', async () => {
     start({ saved: saved() }, { 'POST /api/jobs': () => reason(409, 'write_unresolved') })
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Update saved workout' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Update workout' }))
     fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Update workout' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/still undecided.*box below/)
   })
@@ -324,10 +333,10 @@ describe('Update', () => {
       },
     )
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Update saved workout' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Update workout' }))
     fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Update workout' }))
-    expect(await screen.findByText(/changed in MOWL after classbeat saved it\. Nothing was written/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Update anyway (replaces your changes in MOWL)' })).toBeInTheDocument()
+    expect(await screen.findByText(/changed in MOWL after you saved it\. Nothing was written/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Update anyway' })).toBeInTheDocument()
   })
 
   it('shows the Updated sentence when the update ended before the reload saw it open', async () => {
@@ -341,9 +350,9 @@ describe('Update', () => {
       },
     )
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Update saved workout' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Update workout' }))
     fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Update workout' }))
-    expect(await screen.findByText(/Updated\. Your MOWL workout now matches this version/)).toBeInTheDocument()
+    expect(await screen.findByText(/Updated\. MOWL now matches this version/)).toBeInTheDocument()
   })
 
   it('after program_changed offers Update anyway, and sends overwrite only after its dialog', async () => {
@@ -365,10 +374,10 @@ describe('Update', () => {
       },
     )
     renderAt(PAGE)
-    expect(await screen.findByText(/changed in MOWL after classbeat saved it\. Nothing was written/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Update anyway (replaces your changes in MOWL)' }))
+    expect(await screen.findByText(/changed in MOWL after you saved it\. Nothing was written/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Update anyway' }))
     const dialog = screen.getByRole('group', { name: 'Confirm' })
-    expect(dialog).toHaveTextContent(/replaces the workout in your MOWL account.*including any changes you made to it in MOWL/)
+    expect(dialog).toHaveTextContent(/replaces the workout in MOWL, including your changes there/)
     expect(jobsPosts(api)).toHaveLength(0)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Yes, replace it' }))
     await waitFor(() => {
@@ -396,7 +405,7 @@ describe('Update', () => {
     )
     renderAt(PAGE)
     expect(
-      await screen.findByText(/for a different sport than this class, so classbeat did not replace it\. Nothing was written/),
+      await screen.findByText(/for a different sport, so it was not replaced\. Nothing was written/),
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Update anyway/ })).not.toBeInTheDocument()
     expect(jobsPosts(api)).toHaveLength(0)
@@ -423,7 +432,7 @@ describe('the progress after the outcome', () => {
       },
     )
     await click('Save to MOWL', 'Save to MOWL')
-    expect(await screen.findByText(/Saved\. The workout is in your MOWL account, private/)).toBeInTheDocument()
+    expect(await screen.findByText(/Saved to MOWL as a private workout/)).toBeInTheDocument()
     expect(screen.queryByTestId('save-progress')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
   })
@@ -437,8 +446,8 @@ describe('the progress after the outcome', () => {
         [`GET ${path}/events`]: () => sse([1, 'completed']),
       },
     )
-    await click('Update saved workout', 'Update workout')
-    expect(await screen.findByText(/Updated\. Your MOWL workout now matches this version/)).toBeInTheDocument()
+    await click('Update workout', 'Update workout')
+    expect(await screen.findByText(/Updated\. MOWL now matches this version/)).toBeInTheDocument()
     expect(screen.queryByTestId('save-progress')).toBeNull()
   })
 
@@ -465,7 +474,7 @@ describe('the progress after the outcome', () => {
       },
     )
     await click('Save to MOWL', 'Save to MOWL')
-    const notice = await screen.findByText(/classbeat can no longer read that task/)
+    const notice = await screen.findByText(/We can no longer read that task/)
     expect(notice).toHaveTextContent(/check it before you try again/)
     expect(document.body).not.toHaveTextContent('This task is no longer there')
     expect(screen.queryByTestId('save-progress')).toBeNull()
@@ -498,12 +507,12 @@ describe('the "can no longer read that task" notice', () => {
     renderAt(PAGE)
     fireEvent.click(await screen.findByRole('button', { name: 'Save to MOWL' }))
     fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Save to MOWL' }))
-    expect(await screen.findByText(/classbeat can no longer read that task/)).toBeInTheDocument()
+    expect(await screen.findByText(/We can no longer read that task/)).toBeInTheDocument()
     // A reload of the class does not clear it (it tells the user to check MOWL first) ...
     await waitFor(() => {
       expect(posts).toBe(1)
     })
-    expect(screen.getByText(/classbeat can no longer read that task/)).toBeInTheDocument()
+    expect(screen.getByText(/We can no longer read that task/)).toBeInTheDocument()
     // ... starting the next write does.
     fireEvent.click(screen.getByRole('button', { name: 'Save to MOWL' }))
     fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Save to MOWL' }))
@@ -511,7 +520,7 @@ describe('the "can no longer read that task" notice', () => {
       expect(posts).toBe(2)
     })
     await waitFor(() => {
-      expect(screen.queryByText(/classbeat can no longer read that task/)).toBeNull()
+      expect(screen.queryByText(/We can no longer read that task/)).toBeNull()
     })
   })
 })
@@ -528,9 +537,9 @@ describe('an undecided write', () => {
     renderAt(PAGE)
     const panel = await screen.findByTestId('uncertain-write')
     expect(panel).toHaveAttribute('data-kind', 'save')
-    expect(panel).toHaveTextContent(/did not get a clear answer.*may be in your MOWL account, whole or only partly, or it may not be there at all/)
+    expect(panel).toHaveTextContent(/no clear answer.*may be in your MOWL account, whole or partly, or not at all/)
     fireEvent.click(within(panel).getByRole('button', { name: 'Check again' }))
-    expect((await screen.findAllByText(/found the workout in your MOWL account and recorded it as saved/)).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/found the workout in MOWL and marked it saved/)).length).toBeGreaterThan(0)
     expect(api.to('POST', `${OPS}/${OP}/check-again`)).toHaveLength(1)
   })
 
@@ -542,8 +551,8 @@ describe('an undecided write', () => {
     renderAt(PAGE)
     const panel = await screen.findByTestId('uncertain-write')
     expect(panel).toHaveAttribute('data-kind', 'update')
-    expect(panel).toHaveTextContent(/unchanged, updated, or only partly updated/)
-    expect(panel).toHaveTextContent(/new, empty workout with the same name in My Workouts/)
+    expect(panel).toHaveTextContent(/unchanged or partly updated/)
+    expect(panel).toHaveTextContent(/empty workout with the same name.*My Workouts/)
   })
 
   it('shows a write left by the reaper (no call end) as the same panel', async () => {
@@ -556,7 +565,7 @@ describe('an undecided write', () => {
       },
     )
     renderAt(PAGE)
-    expect(await screen.findByTestId('uncertain-write')).toHaveTextContent(/could not tell whether your workout was saved/)
+    expect(await screen.findByTestId('uncertain-write')).toHaveTextContent(/could not tell if your workout was saved/)
     expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled()
   })
 
@@ -624,7 +633,7 @@ describe('an undecided write', () => {
     renderAt(PAGE)
     fireEvent.click(await screen.findByRole('button', { name: 'Do it anyway' }))
     const warning = screen.getByRole('group', { name: 'Confirm' })
-    expect(warning).toHaveTextContent(/may add a second workout to your MOWL account/)
+    expect(warning).toHaveTextContent(/MOWL may get a second copy/)
     expect(api.to('POST', `${OPS}/${OP}/do-it-anyway`)).toHaveLength(0)
     fireEvent.click(within(warning).getByRole('button', { name: 'Yes, it was not saved' }))
     expect(await screen.findByRole('button', { name: 'Save again' })).toBeEnabled()
@@ -651,7 +660,7 @@ describe('an undecided write', () => {
     )
     renderAt(PAGE)
     fireEvent.click(await screen.findByRole('button', { name: 'Check again' }))
-    expect((await screen.findAllByText(/checked and your MOWL workout is unchanged/)).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/We checked: your MOWL workout is unchanged/)).length).toBeGreaterThan(0)
     expect(document.body).not.toHaveTextContent('Understood')
     fireEvent.click(await screen.findByRole('button', { name: 'Update again' }))
     // The plain Update dialog, not the Update anyway one: the check proved the MOWL copy untouched.
@@ -719,7 +728,7 @@ describe('verified or not', () => {
 
   async function runUpdate() {
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Update saved workout' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Update workout' }))
     fireEvent.click(
       within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Update workout' }),
     )
@@ -728,24 +737,23 @@ describe('verified or not', () => {
   it('a verified Update says the MOWL workout now matches, in a polite status', async () => {
     startUpdate({ saved: saved({ latest_verified: true }) })
     await runUpdate()
-    const sentence = await screen.findByText('Updated. Your MOWL workout now matches this version.')
+    const sentence = await screen.findByText('Updated. MOWL now matches this version.')
     expect(sentence).toHaveAttribute('role', 'status')
   })
 
   it('an unverified Update never says it matches, and points to the MOWL app', async () => {
     startUpdate({ saved: saved({ latest_verified: false }), current_revision_number: 2 })
     await runUpdate()
-    const sentence = await screen.findByText(/The update went through, but classbeat could not confirm MOWL now matches/)
-    expect(sentence).toHaveTextContent(/it may still have a playlist you added in the app/)
+    const sentence = await screen.findByText(/Updated, but we could not confirm MOWL matches/)
     expect(sentence).toHaveTextContent(/Check the workout in the MOWL app/)
     expect(sentence).toHaveAttribute('role', 'status')
-    expect(screen.queryByText(/Your MOWL workout now matches this version/)).toBeNull()
+    expect(screen.queryByText(/MOWL now matches this version/)).toBeNull()
   })
 
   it('an answer without the verified flag is not worded as a match either', async () => {
     startUpdate({ saved: saved() })
     await runUpdate()
-    expect(await screen.findByText(/could not confirm MOWL now matches/)).toBeInTheDocument()
+    expect(await screen.findByText(/could not confirm MOWL matches/)).toBeInTheDocument()
     expect(screen.queryByText(/now matches this version/)).toBeNull()
   })
 
@@ -762,7 +770,7 @@ describe('verified or not', () => {
       },
     )
     await runUpdate()
-    expect(await screen.findByText('Updated. Your MOWL workout now matches this version.')).toBeInTheDocument()
+    expect(await screen.findByText('Updated. MOWL now matches this version.')).toBeInTheDocument()
   })
 
   it('a failed read of the class counts as not confirmed', async () => {
@@ -777,7 +785,7 @@ describe('verified or not', () => {
       },
     )
     await runUpdate()
-    expect(await screen.findByText(/could not confirm MOWL now matches/)).toBeInTheDocument()
+    expect(await screen.findByText(/could not confirm MOWL matches/)).toBeInTheDocument()
   })
 })
 
@@ -786,7 +794,7 @@ describe('the state line', () => {
     for (const latest_verified of [true, false, undefined]) {
       start({ saved: saved({ latest_up_to_date: true, latest_verified }) })
       const view = renderAt(PAGE)
-      expect(await screen.findByTestId('saved-state')).toHaveTextContent('Saved to MOWL as version 1. It is up to date.')
+      expect(await screen.findByTestId('saved-state')).toHaveTextContent('Saved to MOWL as version 1. Up to date.')
       view.unmount()
     }
   })
@@ -806,9 +814,9 @@ describe('a soundless class', () => {
     renderAt(PAGE)
     fireEvent.click(await screen.findByRole('button', { name: 'Save to MOWL' }))
     const dialog = screen.getByRole('group', { name: 'Confirm' })
-    expect(dialog).toHaveTextContent(/as a new workout without music\. It is private/)
+    expect(dialog).toHaveTextContent(/as a new workout without music\. Only you can see it/)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save to MOWL' }))
-    expect(await screen.findByText(/Saved without music\. The workout is in your MOWL account, private/)).toBeInTheDocument()
+    expect(await screen.findByText(/Saved to MOWL without music, as a private workout/)).toBeInTheDocument()
     // No playlist is named anywhere in what the page sends.
     expect(JSON.stringify(jobsPosts(api)[0]!.body)).not.toMatch(/playlist/)
   })
@@ -831,11 +839,11 @@ describe('a soundless class', () => {
       },
     )
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Update saved workout' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Update workout' }))
     const dialog = screen.getByRole('group', { name: 'Confirm' })
-    expect(dialog).toHaveTextContent(/with version 1, without music\./)
+    expect(dialog).toHaveTextContent(/version 1 replaces it, without music/)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Update workout' }))
-    expect(await screen.findByText(/could not confirm MOWL now matches/)).toBeInTheDocument()
+    expect(await screen.findByText(/could not confirm MOWL matches/)).toBeInTheDocument()
     expect(screen.queryByText(/now matches this version/)).toBeNull()
   })
 })

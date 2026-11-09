@@ -70,8 +70,8 @@ test('design, change, pick an older version, save, change and update', async ({ 
   await expect(group).toContainText('version 1')
   await expect(group).toContainText('It is private')
   await group.getByRole('button', { name: 'Save to MOWL', exact: true }).click()
-  await expect(page.getByText('Saved. The workout is in your MOWL account, private.')).toBeVisible(LONG)
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. It is up to date.')
+  await expect(page.getByText('Saved to MOWL as a private workout.')).toBeVisible(LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. Up to date.')
 
   const first = savePrograms()
   expect(first).toHaveLength(1)
@@ -82,9 +82,9 @@ test('design, change, pick an older version, save, change and update', async ({ 
   await expect(savedState(page)).toHaveText(
     'Saved to MOWL as version 1. The current version (3) has changes that are not saved yet.',
   )
-  await confirmWrite(page, 'Update saved workout', 'Update workout')
-  await expect(page.getByText('Updated. Your MOWL workout now matches this version.')).toBeVisible(LONG)
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 3. It is up to date.')
+  await confirmWrite(page, 'Update workout', 'Update workout')
+  await expect(page.getByText('Updated. MOWL now matches this version.')).toBeVisible(LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 3. Up to date.')
 
   // One program, the same one, with the content of version 3, private, on the linked playlist.
   const after = savePrograms()
@@ -99,7 +99,7 @@ async function savedClass(page: Page, tag: string): Promise<FakeProgram> {
   await signedInWithMowl(page, tag)
   await designAndOpen(page, `E2E ${tag}`, PLAYLISTS.draft.name)
   await confirmWrite(page, 'Save to MOWL', 'Save to MOWL')
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. It is up to date.', LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. Up to date.', LONG)
   const programs = savePrograms()
   expect(programs).toHaveLength(1)
   return programs[0]!
@@ -115,10 +115,10 @@ test('a save whose answer is lost is found by Check again', async ({ page }) => 
   listing(true)
   await confirmWrite(page, 'Save to MOWL', 'Save to MOWL')
   await expect(
-    page.getByText('classbeat could not tell whether MOWL took it. Read the box below, then decide.'),
+    page.getByText('We could not tell whether MOWL took it. Decide in the box below.'),
   ).toBeVisible(LONG)
   const box = undecided(page)
-  await expect(box.getByRole('heading', { name: 'classbeat could not tell whether your workout was saved' })).toBeVisible()
+  await expect(box.getByRole('heading', { name: 'We could not tell if your workout was saved' })).toBeVisible()
   await expect(savedState(page)).toHaveText('Not saved to MOWL yet.')
   expect(saveState()).toMatchObject({ writes: LAST_WRITE, programs: [1] }) // sent once, never again
 
@@ -126,8 +126,8 @@ test('a save whose answer is lost is found by Check again', async ({ page }) => 
   // writes nothing.
   listing(false)
   await box.getByRole('button', { name: 'Check again' }).click()
-  await expect(savePanel(page).getByText('classbeat found the workout in your MOWL account and recorded it as saved.')).toBeVisible()
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. It is up to date.')
+  await expect(savePanel(page).getByText('We found the workout in MOWL and marked it saved.')).toBeVisible()
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. Up to date.')
   await expect(box).toHaveCount(0)
   expect(saveState()).toMatchObject({ writes: LAST_WRITE, programs: [1] })
   expectProgram(savePrograms()[0]!, 'good_first_draft')
@@ -145,7 +145,7 @@ test('a second workout is made only when the user decides the first was not save
 
   // Do it anyway asks first, and neither asking nor deciding sends anything.
   await box.getByRole('button', { name: 'Do it anyway' }).click()
-  await expect(box.getByRole('group', { name: 'Confirm' })).toContainText('this may add a second workout')
+  await expect(box.getByRole('group', { name: 'Confirm' })).toContainText('MOWL may get a second copy')
   expect(saveState()).toMatchObject({ writes: LAST_WRITE, programs: [1] })
   await box.getByRole('button', { name: 'Yes, it was not saved' }).click()
   await expect(savePanel(page).getByText('Understood. You can save it again now;')).toBeVisible()
@@ -155,7 +155,7 @@ test('a second workout is made only when the user decides the first was not save
   // Only the next Save, with its own confirmation, adds the second program.
   saveArm('')
   await confirmWrite(page, 'Save again', 'Save to MOWL')
-  await expect(page.getByText('Saved. The workout is in your MOWL account, private.')).toBeVisible(LONG)
+  await expect(page.getByText('Saved to MOWL as a private workout.')).toBeVisible(LONG)
   expect(saveState().programs).toEqual([2])
   const programs = savePrograms()
   expect(programs.map((p) => p.program_id)).toHaveLength(2)
@@ -169,9 +169,9 @@ test('an update left partly done stays undecided until the user overwrites', asy
   // The program header (with the new description) and the first segment are written; the answer
   // to the next write is lost, so the segment list is still the old one.
   saveArm('5:drop')
-  await confirmWrite(page, 'Update saved workout', 'Update workout')
+  await confirmWrite(page, 'Update workout', 'Update workout')
   const box = undecided(page)
-  await expect(box.getByRole('heading', { name: 'classbeat could not tell whether your workout was updated' })).toBeVisible(LONG)
+  await expect(box.getByRole('heading', { name: 'We could not tell if your workout was updated' })).toBeVisible(LONG)
   await expect(savedState(page)).toHaveText(
     'Saved to MOWL as version 1. The current version (2) has changes that are not saved yet.',
   )
@@ -182,7 +182,7 @@ test('an update left partly done stays undecided until the user overwrites', asy
 
   // Check again cannot tell a half-written program from an untouched one: still undecided.
   await box.getByRole('button', { name: 'Check again' }).click()
-  await expect(savePanel(page).getByText('classbeat still cannot tell whether the workout was updated.')).toBeVisible()
+  await expect(savePanel(page).getByText('We still cannot tell whether it was updated.')).toBeVisible()
   await expect(box.getByRole('button', { name: 'Do it anyway' })).toBeVisible()
 
   // Do it anyway: the user decides it did not happen; the next update overwrites.
@@ -193,10 +193,10 @@ test('an update left partly done stays undecided until the user overwrites', asy
   saveArm('')
   await savePanel(page).getByRole('button', { name: 'Update again' }).click()
   const group = savePanel(page).getByRole('group', { name: 'Confirm' })
-  await expect(group).toContainText('including any changes you made to it in MOWL, or whatever a write that did not finish left there')
+  await expect(group).toContainText('including your changes there')
   await group.getByRole('button', { name: 'Yes, replace it' }).click()
-  await expect(page.getByText('Updated. Your MOWL workout now matches this version.')).toBeVisible(LONG)
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 2. It is up to date.')
+  await expect(page.getByText('Updated. MOWL now matches this version.')).toBeVisible(LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 2. Up to date.')
 
   const repaired = savePrograms()
   expect(repaired).toHaveLength(1)
@@ -210,15 +210,15 @@ test('a workout changed in MOWL is not updated until the user says so', async ({
 
   editInMowl(saved.program_id) // the user renames it in the MOWL app
   const writesBefore = saveState().writes
-  await confirmWrite(page, 'Update saved workout', 'Update workout')
-  await expect(page.getByText('This workout was changed in MOWL after classbeat saved it. Nothing was written.')).toBeVisible(LONG)
+  await confirmWrite(page, 'Update workout', 'Update workout')
+  await expect(page.getByText('This workout was changed in MOWL after you saved it. Nothing was written.')).toBeVisible(LONG)
   expect(saveState().writes).toBe(writesBefore)
   expect(savePrograms()[0]!.name).toBe('Renamed in the MOWL app')
 
   // Update anyway replaces the user's change, after asking.
-  await page.getByRole('button', { name: 'Update anyway (replaces your changes in MOWL)' }).click()
+  await page.getByRole('button', { name: 'Update anyway' }).click()
   await savePanel(page).getByRole('group', { name: 'Confirm' }).getByRole('button', { name: 'Yes, replace it' }).click()
-  await expect(page.getByText('Updated. Your MOWL workout now matches this version.')).toBeVisible(LONG)
+  await expect(page.getByText('Updated. MOWL now matches this version.')).toBeVisible(LONG)
   const after = savePrograms()
   expect(after).toHaveLength(1)
   expect(after[0]!.program_id).toBe(saved.program_id)
@@ -235,7 +235,7 @@ test('after MOWL is connected as another account, only a new version can be save
   await page.getByRole('link', { name: 'E2E other-account' }).click()
 
   // The saved workout is history: no Update, and Save of this version says its music is not linked.
-  await expect(savedState(page)).toContainText('saved earlier to a previous MOWL connection')
+  await expect(savedState(page)).toContainText('Saved earlier to an old MOWL connection')
   await expect(page.getByRole('button', { name: /^Update/ })).toHaveCount(0)
   await confirmWrite(page, 'Save to MOWL', 'Save to MOWL')
   await expect(
@@ -248,7 +248,7 @@ test('after MOWL is connected as another account, only a new version can be save
   await reviseByChat(page, 'revise_good', 'Make the first minutes easier.', 2)
   expect(fakeMowl('state', PLAYLISTS.draft.id).attaches).toBe(2)
   await confirmWrite(page, 'Save to MOWL', 'Save to MOWL')
-  await expect(page.getByText('Saved. The workout is in your MOWL account, private.')).toBeVisible(LONG)
+  await expect(page.getByText('Saved to MOWL as a private workout.')).toBeVisible(LONG)
   const programs = savePrograms()
   expect(programs).toHaveLength(2)
   expect(programs[0]).toMatchObject({ program_id: old.program_id, account: 0 })

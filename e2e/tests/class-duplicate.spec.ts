@@ -66,7 +66,7 @@ test('duplicate a class, save the copy, isolation and the monthly limit', async 
   await savePanel(page).getByRole('button', { name: 'Save to MOWL' }).click()
   const group = savePanel(page).getByRole('group', { name: 'Confirm' })
   await group.getByRole('button', { name: 'Save to MOWL', exact: true }).click()
-  await expect(page.getByText('Saved. The workout is in your MOWL account, private.')).toBeVisible(LONG)
+  await expect(page.getByText('Saved to MOWL as a private workout.')).toBeVisible(LONG)
   expect(savePrograms()).toHaveLength(1)
   await page.goto(`/classes/${source}`)
   await expect(page.getByRole('heading', { name: 'E2E duplicate', exact: true })).toBeVisible()

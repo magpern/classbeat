@@ -84,7 +84,7 @@ test('usage is the sum of the jobs, saving adds none and deleting the class keep
   await reviseByChat(page, 'revise_good', 'Make the first minutes easier.', 2)
   await reviseByChat(page, 'revise_second', 'Ease the warm-up a little more.', 3)
   await confirmWrite(page, 'Save to MOWL', 'Save to MOWL')
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 3. It is up to date.', LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 3. Up to date.', LONG)
 
   // The class's three jobs that used the model: the design and the two changes.
   const messages = (await (await page.request.get(`/api/classes/${id}/messages`)).json()) as {

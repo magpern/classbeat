@@ -103,8 +103,8 @@ test('design a running class, save it, change it and update the same program', a
 
   // Save: the fake MOWL holds a running program (ActivityTypeID 1, segments 0).
   await confirmWrite(page, 'Save to MOWL', 'Save to MOWL')
-  await expect(page.getByText('Saved. The workout is in your MOWL account, private.')).toBeVisible(LONG)
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. It is up to date.')
+  await expect(page.getByText('Saved to MOWL as a private workout.')).toBeVisible(LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. Up to date.')
   const first = savePrograms()
   expect(first).toHaveLength(1)
   expectRunningProgram(first[0]!, 'running_first_draft')
@@ -120,9 +120,9 @@ test('design a running class, save it, change it and update the same program', a
   await expect(savedState(page)).toHaveText(
     'Saved to MOWL as version 1. The current version (2) has changes that are not saved yet.',
   )
-  await confirmWrite(page, 'Update saved workout', 'Update workout')
-  await expect(page.getByText('Updated. Your MOWL workout now matches this version.')).toBeVisible(LONG)
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 2. It is up to date.')
+  await confirmWrite(page, 'Update workout', 'Update workout')
+  await expect(page.getByText('Updated. MOWL now matches this version.')).toBeVisible(LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 2. Up to date.')
   const after = savePrograms()
   expect(after).toHaveLength(1)
   expect(after[0]!.program_id).toBe(first[0]!.program_id)
@@ -134,7 +134,7 @@ test('a running class is not updated onto a program of another sport', async ({ 
   await signedInWithMowl(page, 'run-sport')
   await designRunningAndOpen(page, 'E2E running sport', PLAYLISTS.draft.name)
   await confirmWrite(page, 'Save to MOWL', 'Save to MOWL')
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. It is up to date.', LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. Up to date.', LONG)
   const saved = savePrograms()
   expect(saved).toHaveLength(1)
   const program = saved[0]!
@@ -142,10 +142,10 @@ test('a running class is not updated onto a program of another sport', async ({ 
   // In MOWL the program is now a cycling one (the user swapped it in the app).
   setProgramSport(program.program_id, 0)
   await reviseByChat(page, 'running_revise', 'Make the first jog easier.', 2)
-  await confirmWrite(page, 'Update saved workout', 'Update workout')
+  await confirmWrite(page, 'Update workout', 'Update workout')
   await expect(
     page.getByText(
-      'This workout in MOWL is for a different sport than this class, so classbeat did not replace it. Nothing was written.',
+      'This MOWL workout is for a different sport, so it was not replaced. Nothing was written.',
     ),
   ).toBeVisible(LONG)
   // It is not a change the user can override: no "Update anyway" anywhere on the page.

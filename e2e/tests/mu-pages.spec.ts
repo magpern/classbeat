@@ -114,7 +114,7 @@ test('the signed-in pages: home, classes, new class, designing, ready, class', a
   await page.getByRole('link', { name: 'MU done-when' }).first().click()
   await expect(page).toHaveURL(/\/classes\/[0-9a-f-]{36}$/)
   await expect(page.getByRole('heading', { name: 'MU done-when', level: 1 })).toBeVisible()
-  await check('class', page.getByTestId('save-panel').getByRole('button').first())
+  await check('class', page.getByTestId('class-header').getByRole('button').first())
 
   // The same class with two versions: the history list (Compare / View / Use this version for each)
   // is audited by axe here, not only by the Vitest name test (#474, #475).
@@ -122,7 +122,7 @@ test('the signed-in pages: home, classes, new class, designing, ready, class', a
     await page.setViewportSize({ width: 1440, height: 900 })
     await reviseByChat(page, 'revise_good', 'Make the first minutes easier.', 2)
     await expect(page.getByTestId('history-entry')).toHaveCount(2, LONG)
-    await check('class (two versions)', page.getByTestId('save-panel').getByRole('button').first())
+    await check('class (two versions)', page.getByTestId('class-header').getByRole('button').first())
   } finally {
     useModelScript('good_first_draft')
   }
@@ -132,7 +132,7 @@ test('the signed-in pages: home, classes, new class, designing, ready, class', a
   try {
     await designRunningAndOpen(page, 'MU running', PLAYLISTS.draft.name)
     await expect(page.getByTestId('sport')).toHaveText('Running')
-    await check('class (running)', page.getByTestId('save-panel').getByRole('button').first())
+    await check('class (running)', page.getByTestId('class-header').getByRole('button').first())
   } finally {
     useModelScript('good_first_draft')
   }

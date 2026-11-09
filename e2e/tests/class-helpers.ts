@@ -171,7 +171,7 @@ export async function reviseByChat(page: Page, script: ModelScript, request: str
   await expect(page.getByText(`classbeat changed it, version ${version}`)).toBeVisible(LONG)
 }
 
-export const savePanel = (page: Page): Locator => page.getByTestId('save-panel')
+export const savePanel = (page: Page): Locator => page.getByTestId('class-header')
 export const savedState = (page: Page): Locator => page.getByTestId('saved-state')
 
 /** Click a button of the Save panel, then the confirmation's button (the writes are asked first). */

@@ -367,14 +367,10 @@ const da: Catalogue = {
   'class.change.text': 'Navne, beskrivelse eller instruktioner blev ændret.',
 
   // Save, Update and the undecided write (ADR 0007 sections 5 to 8 and 12).
-  'class.saveReason.write_unresolved':
-    'En tidligere gemning eller opdatering af dette hold i MOWL er stadig uafklaret. Afgør den først med Tjek igen eller Gør det alligevel i feltet nedenfor, og prøv så igen.',
-  'class.saveReason.call_may_be_running':
-    'classbeat skriver måske stadig dette hold til MOWL. Vent et par minutter, og prøv så igen.',
-  'class.saveReason.hash_mismatch':
-    'Den version er ikke den, som siden viste: den blev ændret et andet sted. Siden er indlæst igen.',
-  'class.saveReason.class_busy':
-    'Dette hold er optaget af en anden opgave, måske fra en anden fane. Siden er indlæst igen. Vent, til den er færdig, og prøv så igen.',
+  'class.saveReason.write_unresolved': 'En tidligere gemning eller opdatering er stadig uafklaret. Afgør den i feltet nedenfor, og prøv igen.',
+  'class.saveReason.call_may_be_running': 'En skrivning til MOWL kører måske stadig. Vent et par minutter, og prøv igen.',
+  'class.saveReason.hash_mismatch': 'Denne version blev ændret et andet sted. Siden er indlæst igen.',
+  'class.saveReason.class_busy': 'Dette hold er optaget, måske i en anden fane. Siden er indlæst igen. Prøv igen, når det er færdigt.',
   'class.saveReason.not_connected': 'MOWL er ikke tilsluttet. Tilslut det på din kontoside, og prøv så igen.',
   'class.saveReason.music_unlinked':
     'Musikken i denne version findes ikke i din tilsluttede MOWL-konto. Ændr den, og gem den nye version.',
@@ -385,10 +381,8 @@ const da: Catalogue = {
     'Den anmodning er allerede sendt med andet indhold. Genindlæs siden, og prøv igen.',
   'class.saveFailure.upstream_unavailable':
     'MOWL kunne ikke kontaktes. Der blev ikke skrevet noget. Prøv igen om et par minutter.',
-  'class.saveFailure.rate_limited':
-    'MOWL bad classbeat om at sætte tempoet ned. Der blev ikke skrevet noget. Vent et par minutter, og prøv igen.',
-  'class.saveFailure.lease_lost':
-    'Arbejdet blev afbrudt for mange gange. Hvis classbeat ikke kunne afgøre, om noget nåede MOWL, står det på listen nedenfor, så du kan afgøre det. Ellers blev der ikke skrevet noget; prøv igen.',
+  'class.saveFailure.rate_limited': 'MOWL bad os sætte tempoet ned. Der blev ikke skrevet noget. Vent et par minutter, og prøv igen.',
+  'class.saveFailure.lease_lost': 'Arbejdet blev afbrudt for mange gange. Alt uafklaret står nedenfor; ellers blev der ikke skrevet noget. Prøv igen.',
   'class.saveFailure.not_connected':
     'MOWL er ikke tilsluttet. Tilslut det på din kontoside, og prøv så igen.',
   'class.saveFailure.needs_reconnect':
@@ -401,43 +395,31 @@ const da: Catalogue = {
     'En anden opgave fra dig brugte stadig MOWL. Der blev ikke skrevet noget. Prøv igen om lidt.',
   'class.saveFailure.music_unlinked':
     'Musikken i denne version findes ikke i din tilsluttede MOWL-konto. Ændr den, og gem den nye version.',
-  'class.saveFailure.program_changed':
-    'Dette træningspas blev ændret i MOWL, efter at classbeat gemte det. Der blev ikke skrevet noget.',
+  'class.saveFailure.program_changed': 'Dette træningspas blev ændret i MOWL, efter at du gemte det. Der blev ikke skrevet noget.',
   'class.saveFailure.program_missing':
     'Dette træningspas findes ikke længere i din MOWL-konto. Der blev ikke skrevet noget.',
-  'class.saveFailure.program_other_sport':
-    'Dette træningspas i MOWL er til en anden sport end dette hold, så classbeat erstattede det ikke. Der blev ikke skrevet noget.',
+  'class.saveFailure.program_other_sport': 'Dette træningspas i MOWL er til en anden sport, så det blev ikke erstattet. Der blev ikke skrevet noget.',
   'class.saveFailure.internal': 'Noget gik galt hos os. Prøv igen senere.',
   'class.saveFailure.default':
     'Jobbet blev ikke færdigt. Se i feltet nedenfor efter noget uafklaret, og prøv så igen.',
-  'class.uncertain.save.1':
-    'classbeat bad MOWL om at tilføje dette hold som et nyt træningspas og fik ikke et tydeligt svar.',
-  'class.uncertain.save.2':
-    'Træningspasset kan være i din MOWL-konto, helt eller kun delvist, eller det er der slet ikke. classbeat prøver ikke igen af sig selv, så du ikke ved et uheld får to kopier.',
-  'class.uncertain.update.1':
-    'classbeat bad MOWL om at opdatere det træningspas, der blev gemt tidligere, og fik ikke et tydeligt svar.',
-  'class.uncertain.update.2':
-    'Din MOWL-kopi kan være uændret, opdateret eller kun delvist opdateret. MOWL kan også have oprettet et nyt, tomt træningspas med samme navn under Mine træningspas; hvis du finder et, er det dit eget private træningspas, og du kan slette det i MOWL. classbeat prøver ikke igen af sig selv.',
-  'class.warning.duplicate':
-    'Gør det alligevel betyder, at du afgør, at træningspasset ikke blev gemt. Hvis det alligevel blev gemt, kan det her tilføje et andet træningspas til din MOWL-konto; du kan slette ekstra kopier i MOWL-appen.',
-  'class.warning.overwrite':
-    'Gør det alligevel betyder, at du afgør, at opdateringen ikke fandt sted. Din MOWL-kopi kan være delvist opdateret; den næste opdatering erstatter den med denne version.',
-  'class.outcome.save.found': 'classbeat fandt træningspasset i din MOWL-konto og noterede det som gemt.',
-  'class.outcome.save.nothing':
-    'classbeat tjekkede, og træningspasset var ikke gemt. Du kan gemme det igen nu.',
-  'class.outcome.save.still_unsure': 'classbeat kan stadig ikke afgøre, om træningspasset blev gemt.',
-  'class.outcome.save.decided':
-    'Forstået. Du kan gemme det igen nu; hvis det alligevel blev gemt, får du to kopier i MOWL.',
-  'class.outcome.update.found': 'classbeat så, at dit MOWL-træningspas var opdateret, og noterede det.',
-  'class.outcome.update.nothing':
-    'classbeat tjekkede, og dit MOWL-træningspas er uændret. Du kan opdatere det igen nu.',
-  'class.outcome.update.still_unsure': 'classbeat kan stadig ikke afgøre, om træningspasset blev opdateret.',
+  'class.uncertain.save.1': 'Vi bad MOWL tilføje holdet som et nyt træningspas og fik ikke et tydeligt svar.',
+  'class.uncertain.save.2': 'Det kan være i din MOWL-konto, helt eller delvist, eller slet ikke. Vi prøver ikke igen af os selv, så du ikke får en kopi ved et uheld.',
+  'class.uncertain.update.1': 'Vi bad MOWL opdatere det træningspas, du gemte tidligere, og fik ikke et tydeligt svar.',
+  'class.uncertain.update.2': 'Din MOWL-kopi kan være uændret eller delvist opdateret. Et tomt træningspas med samme navn kan også ligge under Mine træningspas; du kan slette det.',
+  'class.warning.duplicate': 'Gør det alligevel: du afgør, at det ikke blev gemt. Hvis det blev, kan MOWL få en kopi mere; slet ekstra kopier i MOWL-appen.',
+  'class.warning.overwrite': 'Gør det alligevel: du afgør, at opdateringen ikke fandt sted. Din MOWL-kopi kan være delvist opdateret; den næste opdatering erstatter den.',
+  'class.outcome.save.found': 'Vi fandt træningspasset i MOWL og markerede det som gemt.',
+  'class.outcome.save.nothing': 'Vi tjekkede: det blev ikke gemt. Du kan gemme igen.',
+  'class.outcome.save.still_unsure': 'Vi kan stadig ikke afgøre, om det blev gemt.',
+  'class.outcome.save.decided': 'Forstået. Du kan gemme igen; hvis det alligevel blev gemt, får du to kopier i MOWL.',
+  'class.outcome.update.found': 'Vi så, at dit træningspas i MOWL var opdateret, og noterede det.',
+  'class.outcome.update.nothing': 'Vi tjekkede: dit træningspas i MOWL er uændret. Du kan opdatere igen.',
+  'class.outcome.update.still_unsure': 'Vi kan stadig ikke afgøre, om det blev opdateret.',
   'class.outcome.update.decided': 'Forstået. Den næste opdatering erstatter din MOWL-kopi med denne version.',
-  'class.saved': 'Gemt. Træningspasset er i din MOWL-konto, privat.',
-  'class.savedSoundless': 'Gemt uden musik. Træningspasset er i din MOWL-konto, privat.',
-  'class.updated': 'Opdateret. Dit MOWL-træningspas svarer nu til denne version.',
-  'class.updatedUnverified':
-    'Opdateringen gik igennem, men classbeat kunne ikke bekræfte, at MOWL nu stemmer overens (det kan stadig have en playliste, som du tilføjede i appen). Tjek træningspasset i MOWL-appen.',
+  'class.saved': 'Gemt i MOWL som et privat træningspas.',
+  'class.savedSoundless': 'Gemt i MOWL uden musik, som et privat træningspas.',
+  'class.updated': 'Opdateret. MOWL svarer nu til denne version.',
+  'class.updatedUnverified': 'Opdateret, men vi kunne ikke bekræfte, at MOWL stemmer. Tjek træningspasset i MOWL-appen.',
 
   // Pattern notes (ADR 0017 section 4); the sentences mirror the backend's rationales.
   'class.rule.warmup_short':
@@ -549,7 +531,7 @@ const da: Catalogue = {
   'class.page.back': 'Tilbage til version {number}',
   'class.page.loadingVersion': 'Indlæser versionen',
   'class.page.versionFailed': 'Denne version kunne ikke indlæses. Genindlæs siden, og prøv igen.',
-  'class.side.label': 'Gem, ændr og versioner',
+  'class.side.label': 'Ændr og versioner',
   'class.songStrip.label': 'Sange',
   'class.songStrip.title': '{title}, {bpm} BPM',
 
@@ -756,50 +738,36 @@ const da: Catalogue = {
   'class.save.runUpdate': 'Opdaterer i MOWL:',
   'class.save.stop': 'Stop',
   'class.save.checking': 'Opdateret. Tjekker, hvad MOWL beholdt…',
-  'class.save.uncertain':
-    'classbeat kunne ikke afgøre, om MOWL modtog det. Læs feltet nedenfor, og afgør så.',
-  'class.save.updateAnyway': 'Opdater alligevel (erstatter dine ændringer i MOWL)',
-  'class.save.stopped':
-    'Dette blev stoppet, før der blev skrevet noget, eller også viser classbeat det nedenfor.',
-  'class.save.detachedLine':
-    'Dette hold blev tidligere gemt i en tidligere MOWL-forbindelse. Det træningspas er ikke længere koblet til, så det kan ikke opdateres. Gem tilføjer et nyt til din nuværende MOWL-konto.',
+  'class.save.uncertain': 'Vi kunne ikke afgøre, om MOWL modtog det. Afgør i feltet nedenfor.',
+  'class.save.updateAnyway': 'Opdater alligevel',
+  'class.save.stopped': 'Stoppet, før der blev skrevet noget, eller også står det nedenfor.',
+  'class.save.detachedLine': 'Gemt tidligere via en gammel MOWL-forbindelse og kan ikke opdateres. Gem tilføjer et nyt træningspas.',
   'class.save.notSaved': 'Endnu ikke gemt i MOWL.',
-  'class.save.upToDate': 'Gemt i MOWL som version {saved}. Den er opdateret.',
-  'class.save.behind':
-    'Gemt i MOWL som version {saved}. Den aktuelle version ({current}) har ændringer, der endnu ikke er gemt.',
-  'class.save.detachedOther':
-    'Et andet træningspas blev tidligere gemt i en tidligere MOWL-forbindelse og er ikke længere koblet til.',
-  'class.save.noVersion': 'Der er endnu ingen version at gemme.',
-  'class.save.lost':
-    'classbeat kan ikke længere læse den opgave, så det kan ikke afgøre, hvordan den endte. Linjen ovenfor viser, hvad MOWL har for dette hold nu; tjek den, før du prøver igen.',
+  'class.save.upToDate': 'Gemt i MOWL som version {saved}. Ajour.',
+  'class.save.behind': 'Gemt i MOWL som version {saved}. Version {current} har ugemte ændringer.',
+  'class.save.detachedOther': 'Et andet træningspas blev gemt via en gammel MOWL-forbindelse og er ikke længere koblet til.',
+  'class.save.noVersion': 'Ingen version at gemme endnu.',
+  'class.save.lost': 'Vi kan ikke længere læse opgaven. Linjen ovenfor viser, hvad MOWL har; tjek den, før du prøver igen.',
   'class.save.again': 'Gem igen',
-  'class.save.asNew': 'Gem som et nyt træningspas',
+  'class.save.asNew': 'Gem som ny',
   'class.save.updateAgain': 'Opdater igen',
-  'class.save.update': 'Opdater gemt træningspas',
-  'class.save.confirmSave':
-    'classbeat tilføjer version {number} af dette hold til din MOWL-konto som et nyt træningspas. Det er privat: kun du kan se det.',
-  'class.save.confirmSaveSoundless':
-    'classbeat tilføjer version {number} af dette hold til din MOWL-konto som et nyt træningspas uden musik. Det er privat: kun du kan se det.',
-  'class.save.confirmSaveMore': 'Et nyt træningspas tilføjes; det, du gemte tidligere, bliver, som det er.',
-  'class.save.confirmUpdate':
-    'classbeat læser først træningspasset i din MOWL-konto. Hvis du har ændret det i MOWL, efter at classbeat gemte det, stopper classbeat og skriver ingenting. Ellers erstatter det træningspasset med version {number}. Det forbliver privat, i din MOWL-konto.',
-  'class.save.confirmUpdateSoundless':
-    'classbeat læser først træningspasset i din MOWL-konto. Hvis du har ændret det i MOWL, efter at classbeat gemte det, stopper classbeat og skriver ingenting. Ellers erstatter det træningspasset med version {number}, uden musik. Det forbliver privat, i din MOWL-konto.',
+  'class.save.update': 'Opdater træningspas',
+  'class.save.confirmSave': 'Version {number} tilføjes til din MOWL-konto som et nyt træningspas. Kun du kan se det.',
+  'class.save.confirmSaveSoundless': 'Version {number} tilføjes til din MOWL-konto som et nyt træningspas uden musik. Kun du kan se det.',
+  'class.save.confirmSaveMore': 'Det tidligere træningspas bliver, som det er.',
+  'class.save.confirmUpdate': 'Vi læser først træningspasset i MOWL. Har du ændret det dér, skrives der ikke noget. Ellers erstattes det af version {number}. Det forbliver privat.',
+  'class.save.confirmUpdateSoundless': 'Vi læser først træningspasset i MOWL. Har du ændret det dér, skrives der ikke noget. Ellers erstattes det af version {number}, uden musik. Det forbliver privat.',
   'class.save.overwriteTitle': 'Opdater alligevel?',
-  'class.save.overwriteText':
-    'Det her erstatter træningspasset i din MOWL-konto med version {number}, inklusive alle ændringer, du har lavet i det i MOWL, eller hvad en skrivning, der ikke blev færdig, efterlod der. Det kan ikke fortrydes. Træningspasset forbliver privat.',
+  'class.save.overwriteText': 'Version {number} erstatter træningspasset i MOWL, også dine ændringer dér. Det kan ikke fortrydes. Det forbliver privat.',
   'class.save.updateButton': 'Opdater træningspas',
   'class.save.replace': 'Ja, erstat det',
-  'class.save.updateUnavailable':
-    'Det er endnu ikke muligt at opdatere det gemte træningspas. Gem tilføjer i stedet et nyt træningspas.',
+  'class.save.updateUnavailable': 'Opdatering er endnu ikke mulig. Gem tilføjer et nyt træningspas.',
 
   // Undecided writes and the undecided playlist attach (ADR 0005 section 7, ADR 0007 section 8).
-  'class.write.title.save': 'classbeat kunne ikke afgøre, om dit træningspas blev gemt',
-  'class.write.title.update': 'classbeat kunne ikke afgøre, om dit træningspas blev opdateret',
-  'class.write.waiting':
-    'classbeat sender måske stadig dette til MOWL, så Tjek igen og Gør det alligevel venter til {time}.',
-  'class.write.running':
-    'classbeat skriver måske stadig til MOWL, så det kan ikke afgøres endnu. Vent et par minutter.',
+  'class.write.title.save': 'Vi kunne ikke afgøre, om dit træningspas blev gemt',
+  'class.write.title.update': 'Vi kunne ikke afgøre, om dit træningspas blev opdateret',
+  'class.write.waiting': 'Vi sender måske stadig dette til MOWL, så Tjek igen og Gør det alligevel venter til {time}.',
+  'class.write.running': 'Vi skriver måske stadig til MOWL, så det kan ikke afgøres endnu. Vent et par minutter.',
   'class.write.settled': 'Det var allerede afgjort. Listen er opdateret.',
   'class.write.notSaved': 'Ja, det blev ikke gemt',
   'class.write.notUpdated': 'Ja, det blev ikke opdateret',

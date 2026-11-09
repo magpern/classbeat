@@ -139,7 +139,7 @@ test('a Spotify class: correct, apply, revise, save, change and update', async (
 
   // Save writes the corrected timing to the fake MOWL.
   await confirmWrite(page, 'Save to MOWL', 'Save to MOWL')
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 3. It is up to date.', LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 3. Up to date.', LONG)
   const [saved] = savePrograms()
   expect(programSeconds(saved!)).toEqual(await seconds(page, id, third.current_revision_id))
 
@@ -152,8 +152,8 @@ test('a Spotify class: correct, apply, revise, save, change and update', async (
   if (JSON.stringify(v4) !== JSON.stringify(programSeconds(saved!))) {
     await expect(savedState(page)).toContainText('has changes that are not saved yet')
   }
-  await confirmWrite(page, /^Update saved workout/, 'Update workout')
-  await expect(page.getByText('Updated. Your MOWL workout now matches this version.')).toBeVisible(LONG)
+  await confirmWrite(page, /^Update workout/, 'Update workout')
+  await expect(page.getByText('Updated. MOWL now matches this version.')).toBeVisible(LONG)
   const after = savePrograms()
   expect(after).toHaveLength(1)
   expect(after[0]!.program_id).toBe(saved!.program_id)
@@ -233,7 +233,7 @@ test('a Swedebeat mix class: correct one song, apply and save', async ({ page })
   expect(Number(shift)).toBe(0.4)
 
   await confirmWrite(page, 'Save to MOWL', 'Save to MOWL')
-  await expect(savedState(page)).toHaveText('Saved to MOWL as version 2. It is up to date.', LONG)
+  await expect(savedState(page)).toHaveText('Saved to MOWL as version 2. Up to date.', LONG)
   const [saved] = savePrograms()
   expect(programSeconds(saved!)).toEqual(v2)
 
