@@ -1052,8 +1052,7 @@ const da: Catalogue = {
   'songs.stage.attach': 'Føjer din playliste til din MOWL-musik',
   'songs.approve.expired': 'Sangene udløb, før de blev godkendt. Intet blev skrevet til din Spotify.',
   'songs.approve.superseded': 'En nyere liste med sange har afløst disse, så de ikke kan godkendes mere.',
-  'songs.approve.hash_mismatch':
-    'Sangene blev ændret, efter at siden blev indlæst, så intet blev godkendt. Genindlæs siden for at se den aktuelle liste.',
+  'songs.approve.hash_mismatch': 'Sangene blev ændret, så intet blev godkendt. Genindlæs for at se den aktuelle liste.',
   'songs.approve.not_connected':
     'Spotify eller MOWL er ikke tilsluttet. Tilslut det på din kontoside, kom så tilbage, og godkend.',
   'songs.approve.account_changed':
@@ -1228,16 +1227,14 @@ const da: Catalogue = {
   'songs.ended.pickAgain': 'Vælg sange igen',
   'songs.ended.startNew': 'Start et nyt hold',
   'songs.ended.backToClass': 'Tilbage til holdet',
-  'songs.approval.privacy':
-    'Når du godkender, opretter classbeat en privat playliste med disse sange i din egen Spotify-konto. En privat playliste vises ikke på din profil eller i søgningen, men alle med linket til den kan åbne den.',
-  'songs.approval.stopped':
-    'Disse sange blev stoppet, men classbeat kunne ikke læse holdet, så intet nyt blev startet. Tryk på Bed om ændringer igen for at prøve en gang til.',
+  'songs.approval.privacy': 'Privat playliste i din Spotify. Alle med linket kan åbne den.',
+  'songs.approval.stopped': 'Sangene blev stoppet, men vi kunne ikke læse holdet. Tryk på Bed om ændringer igen.',
   'songs.approval.cannotChange': 'Disse sange kan ikke ændres mere, så intet blev startet. Vælg sange igen.',
   'songs.approval.loading': 'Indlæser sangene',
   'songs.approval.loadFailedTitle': 'Sangene kunne ikke indlæses',
-  'songs.approval.loadFailed': 'Sangene kunne ikke indlæses. Intet blev godkendt.',
+  'songs.approval.loadFailed': 'Intet blev godkendt.',
   'songs.approval.approvedTitle': 'Du godkendte disse sange',
-  'songs.approval.approvedText': 'classbeat laver din playliste og gør holdet færdigt.',
+  'songs.approval.approvedText': 'Vi laver din playliste og gør holdet færdigt.',
   'songs.approval.refresh': 'Opdater',
   'songs.approval.supersededTitle': 'En nyere liste afløste disse sange',
   'songs.approval.supersededText':
@@ -1246,21 +1243,19 @@ const da: Catalogue = {
   'songs.approval.stoppedTitle': 'Disse sange blev stoppet',
   'songs.approval.expiredText': 'Sangene udløb, før de blev godkendt. Intet blev skrevet til din Spotify.',
   'songs.approval.stoppedText': 'Sangene blev stoppet. Intet blev skrevet til din Spotify.',
-  'songs.approval.eyebrow': 'Playliste til godkendelse',
+  'songs.approval.barLabel': 'Godkendelse',
   'songs.approval.heading': 'Sange til dit hold',
   'songs.approval.summary': '{count} sange, {total} i alt. Du bad om {target}.',
   'songs.approval.omittedNoBpm': {
     one: '{count} sang blev udeladt, fordi MOWL ikke har nogen BPM for den.',
     other: '{count} sange blev udeladt, fordi MOWL ikke har nogen BPM for dem.',
   },
-  'songs.approval.expiry':
-    'Godkend senest {when}. Derefter udløber sangene, og intet bliver skrevet til din Spotify.',
+  'songs.approval.expiry': 'Godkend senest {when}.',
   'songs.approval.approve': 'Godkend sangene',
-  'songs.approval.noteLabel': 'Hvad skal være anderledes? (valgfrit)',
-  'songs.approval.markHint':
-    'Markér de sange, der skal erstattes, og bed derefter om ændringer. De andre sange bliver.',
+  'songs.approval.noteLabel': 'Hvad skal ændres? (valgfrit)',
+  'songs.approval.markHint': 'Markér sange, der skal erstattes. Resten bliver.',
   'songs.approval.askChanges': 'Bed om ændringer',
-  'songs.approval.stopAndChange': 'Stop og ændr anmodningen',
+  'songs.approval.stopAndChange': 'Stop og ændr',
   'songs.approval.reload': 'Genindlæs siden',
   'songs.approval.openClass': 'Åbn holdet',
 

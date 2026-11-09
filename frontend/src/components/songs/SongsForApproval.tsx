@@ -1,35 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { ApiError } from '../../api/client'
-import { cancelJob, type Job } from '../../api/jobs'
-import { approveRefusal, startError, type Refusal } from '../../api/songMessages'
-import {
-  approveSongs,
-  createPickJob,
-  getSongList,
-  PICK_KIND,
-  type PickInput,
-  type SongList,
-} from '../../api/songs'
+import { type Job } from '../../api/jobs'
+import { approveRefusal, type Refusal } from '../../api/songMessages'
+import { approveSongs, getSongList, PICK_KIND, type SongList } from '../../api/songs'
 import { useT } from '../../i18n/I18n'
-import { t as translate } from '../../i18n/t'
-import {
-  currentConnectionIds,
-  digest,
-  classContext,
-  followUpBrief,
-  isNotConnected,
-  minutes,
-  startAfterCancel,
-  whenText,
-} from '../../lib/songs'
-import { actionKey, dropActionKey, recallPick, rememberPick } from '../../lib/submittedInput'
-import { Link, useRouter } from '../../router/Router'
-import { Notice, useAction } from '../forms'
+import { minutes, whenText } from '../../lib/songs'
+import { Link } from '../../router/Router'
+import { Notice } from '../forms'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
+import { StickyActionBar } from '../ui/sticky-action-bar'
 import { CoverMosaic } from './CoverArt'
 import { SongRows } from './SongRows'
 import { SpotifyAttribution } from './SpotifyAttribution'
+import { useNewPick } from './useNewPick'
 
 type Load =
   | { status: 'loading' }
@@ -60,68 +43,6 @@ function useSongList(job: Job) {
   }, [])
   // A job without an approval revision has no list to show.
   return { load: job.approvalRevisionId === null ? ({ status: 'failed' } as Load) : load, reload }
-}
-
-/**
- * Starts a new pick for the class of `job` after stopping the waiting one (ADR 0008 section 5):
- * the two calls are sequential, and a `class_busy` answer to the second waits for the first.
- */
-function useNewPick(job: Job, list: SongList) {
-  const { navigate } = useRouter()
-  const action = useAction()
-  const locked = useRef(false)
-  const start = (replace: number[] | null, note: string) => {
-    if (locked.current) return
-    locked.current = true
-    const scope = `pick.${job.id}.${digest(`${(replace ?? []).join(',')}|${note}`)}`
-    void action
-      .run(async () => {
-        try {
-          await cancelJob(job.id)
-        } catch (error) {
-          // 409: the job ended on its own (expired, say), which a new pick accepts as well.
-          if (!(error instanceof ApiError && error.status === 409)) throw error
-        }
-        const ids = await currentConnectionIds()
-        // The class's own brief; this tab's remembered form only when the class has none. The
-        // waiting job is already stopped here, so a failed read must say so and not look like
-        // nothing happened.
-        const context = await classContext(job.classId).catch(() => {
-          throw new StoppedError()
-        })
-        const kept = recallPick(job.id)
-        const input: PickInput = {
-          class_id: job.classId,
-          brief: followUpBrief(context.brief ?? kept?.brief ?? null, list.targetSec, note),
-          mode: 'pick',
-          ...(replace !== null && replace.length > 0
-            ? { seed: { song_list_revision_id: list.id, replace } }
-            : {}),
-          mowl_connection_id: ids.mowl,
-          spotify_connection_id: ids.spotify,
-        }
-        const created = await startAfterCancel(() => createPickJob(input, actionKey(scope)))
-        dropActionKey(scope)
-        rememberPick(created.id, input)
-        navigate(`/jobs/${created.id}`)
-      }, describeStart)
-      .finally(() => {
-        locked.current = false
-      })
-  }
-  return { start, action }
-}
-
-/** The waiting songs were stopped, but the class could not be read for the new pick. */
-class StoppedError extends Error {}
-
-function describeStart(error: unknown): string {
-  if (error instanceof StoppedError) return translate('songs.approval.stopped')
-  if (isNotConnected(error)) return startError(new ApiError(409, 'not_connected', null, undefined))
-  if (error instanceof ApiError && error.reason === 'invalid_input') {
-    return translate('songs.approval.cannotChange')
-  }
-  return startError(error)
 }
 
 export function SongsForApproval({
@@ -171,8 +92,14 @@ function Approval({
   const [marks, setMarks] = useState<ReadonlySet<number>>(new Set())
   const [note, setNote] = useState('')
   const locked = useRef(false)
+  // The notices sit at the top of a long page, the button in the bar: bring a new one into view.
+  const notices = useRef<HTMLDivElement>(null)
   const pick = useNewPick(job, list)
   const isPick = job.kind === PICK_KIND
+  const shown = problem ?? pick.action.error
+  useEffect(() => {
+    if (shown !== null) notices.current?.scrollIntoView({ block: 'nearest' })
+  }, [shown])
 
   const toggle = (position: number) => {
     setMarks((previous) => {
@@ -237,102 +164,102 @@ function Approval({
 
   const final = refusal?.final === true
   const replace = [...marks].sort((a, b) => a - b).map((position) => position - 1)
+  const busyNow = busy || pick.action.busy
   return (
-    <section className="flex flex-col gap-4" aria-labelledby="songs-title">
-      <header className="flex flex-col items-start gap-4 rounded-lg border border-line bg-surface p-4 sm:flex-row sm:items-end sm:p-6">
-        <CoverMosaic songs={list.songs} className="size-40 shrink-0 sm:size-48" />
-        <div className="flex min-w-0 flex-col gap-2">
-          <p className="m-0 text-[0.8125rem] font-medium uppercase tracking-wide text-muted">{t('songs.approval.eyebrow')}</p>
-          <h1 id="songs-title" className="m-0 break-words font-display text-3xl font-extrabold text-text sm:text-4xl">
-            {t('songs.approval.heading')}
-          </h1>
-          <p className="m-0 text-text">
-            {t('songs.approval.summary', {
-              count: list.songs.length,
-              total: minutes(list.totalSec),
-              target: minutes(list.targetSec),
-            })}
-          </p>
-          <SpotifyAttribution />
+    <section className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]" aria-labelledby="songs-title">
+      <div className="flex min-w-0 flex-col gap-4">
+        <div ref={notices} className="flex flex-col gap-4 empty:hidden">
+          {problem !== null ? <Notice kind="error">{problem}</Notice> : null}
+          {pick.action.error ? <Notice kind="error">{pick.action.error}</Notice> : null}
+          {refusal?.account === true ? (
+            <p className="m-0">
+              <Link to="/account">{t('job.goToAccount')}</Link>
+            </p>
+          ) : null}
         </div>
-      </header>
-      {list.note !== '' ? <p className="m-0 text-muted">{list.note}</p> : null}
-      {list.omittedNoBpm > 0 ? (
-        <Notice>
-          {t('songs.approval.omittedNoBpm', { count: list.omittedNoBpm })}
-        </Notice>
-      ) : null}
-      <SongRows
-        songs={list.songs}
-        marks={isPick && !final ? marks : undefined}
-        onToggle={isPick && !final ? toggle : undefined}
-        disabled={busy || pick.action.busy}
-      />
-      <p className="m-0 text-[0.9375rem] text-muted">{t('songs.approval.privacy')}</p>
-      {list.expiresAt !== null ? (
-        <p className="m-0 text-[0.9375rem] text-muted" data-testid="expiry">
-          {t('songs.approval.expiry', { when: whenText(list.expiresAt) })}
-        </p>
-      ) : null}
-      {problem !== null ? <Notice kind="error">{problem}</Notice> : null}
-      {pick.action.error ? <Notice kind="error">{pick.action.error}</Notice> : null}
-      {refusal?.account === true ? (
-        <p className="m-0">
-          <Link to="/account">{t('job.goToAccount')}</Link>
-        </p>
-      ) : null}
-      {final ? (
-        <FinalActions refusal={refusal} classId={job.classId} pick={isPick ? pick : null} reload={reload} />
-      ) : (
-        <>
-          <div className="flex flex-wrap gap-3">
-            <Button disabled={busy || pick.action.busy} onClick={approve}>
-              {t('songs.approval.approve')}
-            </Button>
+        <header className="flex flex-col items-start gap-4 rounded-lg border border-line bg-surface p-4 sm:flex-row sm:items-end sm:p-6">
+          <CoverMosaic songs={list.songs} className="size-40 shrink-0 sm:size-48" />
+          <div className="flex min-w-0 flex-col gap-2">
+            <h1 id="songs-title" className="m-0 break-words font-display text-3xl font-extrabold text-text sm:text-4xl">
+              {t('songs.approval.heading')}
+            </h1>
+            <p className="m-0 text-text">
+              {t('songs.approval.summary', {
+                count: list.songs.length,
+                total: minutes(list.totalSec),
+                target: minutes(list.targetSec),
+              })}
+            </p>
+            <SpotifyAttribution />
           </div>
-          {isPick ? (
-            <div className="flex flex-col gap-2">
-              <label htmlFor="change-note" className="text-[0.9375rem] font-medium text-text">
-                {t('songs.approval.noteLabel')}
-              </label>
-              <textarea
-                id="change-note"
-                className="min-h-20 rounded-md border border-line bg-raised p-3 text-text"
-                maxLength={500}
-                value={note}
-                onChange={(e) => {
-                  setNote(e.target.value)
-                }}
-              />
-              <p className="m-0 text-[0.9375rem] text-muted">
-                {t('songs.approval.markHint')}
-              </p>
-              <div>
-                <Button
-                  variant="secondary"
-                  disabled={busy || pick.action.busy || replace.length === 0}
-                  onClick={() => {
-                    pick.start(replace, note)
-                  }}
-                >
-                  {t('songs.approval.askChanges')}
-                </Button>
-              </div>
-            </div>
-          ) : (
+        </header>
+        {list.note !== '' ? <p className="m-0 text-muted">{list.note}</p> : null}
+        {list.omittedNoBpm > 0 ? (
+          <Notice>{t('songs.approval.omittedNoBpm', { count: list.omittedNoBpm })}</Notice>
+        ) : null}
+        <SongRows
+          songs={list.songs}
+          marks={isPick && !final ? marks : undefined}
+          onToggle={isPick && !final ? toggle : undefined}
+          disabled={busyNow}
+        />
+        <p className="m-0 text-[0.9375rem] text-muted">{t('songs.approval.privacy')}</p>
+        {final ? (
+          <FinalActions refusal={refusal} classId={job.classId} pick={isPick ? pick : null} reload={reload} />
+        ) : isPick ? (
+          <div className="flex flex-col gap-2">
+            <label htmlFor="change-note" className="text-[0.9375rem] font-medium text-text">
+              {t('songs.approval.noteLabel')}
+            </label>
+            <textarea
+              id="change-note"
+              className="min-h-20 rounded-md border border-line bg-raised p-3 text-text"
+              maxLength={500}
+              value={note}
+              onChange={(e) => {
+                setNote(e.target.value)
+              }}
+            />
+            <p className="m-0 text-[0.9375rem] text-muted">{t('songs.approval.markHint')}</p>
             <div>
               <Button
                 variant="secondary"
-                disabled={busy || pick.action.busy}
+                disabled={busyNow || replace.length === 0}
                 onClick={() => {
-                  pick.start(null, '')
+                  pick.start(replace, note)
                 }}
               >
-                {t('songs.approval.stopAndChange')}
+                {t('songs.approval.askChanges')}
               </Button>
             </div>
-          )}
-        </>
+          </div>
+        ) : (
+          <div>
+            <Button
+              variant="secondary"
+              disabled={busyNow}
+              onClick={() => {
+                pick.start(null, '')
+              }}
+            >
+              {t('songs.approval.stopAndChange')}
+            </Button>
+          </div>
+        )}
+      </div>
+      {final ? null : (
+        <div className="min-w-0 lg:self-stretch">
+          <StickyActionBar label={t('songs.approval.barLabel')} className="lg:p-5">
+            {list.expiresAt !== null ? (
+              <p className="m-0 min-w-0 text-[0.8125rem] text-muted max-lg:flex-1" data-testid="expiry">
+                {t('songs.approval.expiry', { when: whenText(list.expiresAt) })}
+              </p>
+            ) : null}
+            <Button disabled={busyNow} onClick={approve} className="w-full max-lg:w-auto max-lg:shrink-0">
+              {t('songs.approval.approve')}
+            </Button>
+          </StickyActionBar>
+        </div>
       )}
     </section>
   )

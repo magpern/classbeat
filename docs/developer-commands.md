@@ -460,6 +460,10 @@ npm run build        # typecheck, then Vite writes frontend/dist
   length, music source, effort and genre, and `StickyActionBar` for "Design my class"; the bar's padding and the
   phone spacer include the home-indicator inset through the tokens `--cb-safe-bottom`, `--cb-bar-pad` and
   `--cb-bar-space` (`env(safe-area-inset-bottom)` is 0 until the viewport meta has `viewport-fit=cover`).
+  The song approval screen (`src/components/songs/SongsForApproval.tsx`, `SongRows.tsx`) lists the songs as `ListRow`s
+  and puts "Approve songs" and the approval deadline in `StickyActionBar`; the change request (note, "Ask for
+  changes", "Stop and change") stays on the page, not in the bar. Approving and asking for new songs are
+  unchanged (`approveSongs`, `useNewPick.ts`); only the layout and the words changed.
 - Theme: `src/theme/theme.ts` and `ThemeSwitch` (Dark default, Light, Same as device) keep the choice in
   `localStorage` (try/catch, the page works without it); `public/theme-init.js` applies it before first paint.
 - Languages (ADR 0023, ML1): `src/i18n/` holds `locales.json` (the manifest, `["en"]`), `en.ts` (source catalogue),

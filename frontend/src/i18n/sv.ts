@@ -1066,8 +1066,7 @@ const sv: Catalogue = {
   'songs.stage.attach': 'Lägger till din spellista i din MOWL-musik',
   'songs.approve.expired': 'Låtarna gick ut innan de godkändes. Inget skrevs till ditt Spotify.',
   'songs.approve.superseded': 'En nyare lista med låtar har ersatt de här, så de kan inte godkännas längre.',
-  'songs.approve.hash_mismatch':
-    'Låtarna ändrades efter att den här sidan laddades, så inget godkändes. Ladda om sidan för att se den aktuella listan.',
+  'songs.approve.hash_mismatch': 'Låtarna ändrades, så inget godkändes. Ladda om för att se den aktuella listan.',
   'songs.approve.not_connected':
     'Spotify eller MOWL är inte anslutet. Anslut det på din kontosida, kom sedan tillbaka och godkänn.',
   'songs.approve.account_changed': 'Ditt Spotify-konto är inte det som låtarna valdes för. Be om nya låtar.',
@@ -1243,16 +1242,14 @@ const sv: Catalogue = {
   'songs.ended.pickAgain': 'Välj låtar igen',
   'songs.ended.startNew': 'Starta ett nytt pass',
   'songs.ended.backToClass': 'Tillbaka till passet',
-  'songs.approval.privacy':
-    'När du godkänner skapar classbeat en privat spellista med de här låtarna i ditt eget Spotify-konto. En privat spellista visas inte på din profil eller i sökningen, men alla som har länken till den kan öppna den.',
-  'songs.approval.stopped':
-    'Låtarna stoppades, men classbeat kunde inte läsa passet, så inget nytt startades. Tryck på Be om ändringar igen för att försöka en gång till.',
+  'songs.approval.privacy': 'Privat spellista i ditt Spotify. Alla med länken kan öppna den.',
+  'songs.approval.stopped': 'Låtarna stoppades, men vi kunde inte läsa passet. Tryck på Be om ändringar igen.',
   'songs.approval.cannotChange': 'Låtarna kan inte ändras längre, så inget startades. Välj låtar igen.',
   'songs.approval.loading': 'Laddar låtarna',
   'songs.approval.loadFailedTitle': 'Låtarna kunde inte laddas',
-  'songs.approval.loadFailed': 'Låtarna kunde inte laddas. Inget godkändes.',
+  'songs.approval.loadFailed': 'Inget godkändes.',
   'songs.approval.approvedTitle': 'Du godkände de här låtarna',
-  'songs.approval.approvedText': 'classbeat skapar din spellista och gör klart passet.',
+  'songs.approval.approvedText': 'Vi skapar din spellista och gör klart passet.',
   'songs.approval.refresh': 'Uppdatera',
   'songs.approval.supersededTitle': 'En nyare lista ersatte de här låtarna',
   'songs.approval.supersededText':
@@ -1261,21 +1258,19 @@ const sv: Catalogue = {
   'songs.approval.stoppedTitle': 'De här låtarna stoppades',
   'songs.approval.expiredText': 'Låtarna gick ut innan de godkändes. Inget skrevs till ditt Spotify.',
   'songs.approval.stoppedText': 'Låtarna stoppades. Inget skrevs till ditt Spotify.',
-  'songs.approval.eyebrow': 'Spellista för godkännande',
+  'songs.approval.barLabel': 'Godkännande',
   'songs.approval.heading': 'Låtar till ditt pass',
   'songs.approval.summary': '{count} låtar, {total} totalt. Du bad om {target}.',
   'songs.approval.omittedNoBpm': {
     one: '{count} låt utelämnades eftersom MOWL inte har någon BPM för den.',
     other: '{count} låtar utelämnades eftersom MOWL inte har någon BPM för dem.',
   },
-  'songs.approval.expiry':
-    'Godkänn senast {when}. Därefter går låtarna ut och inget skrivs till ditt Spotify.',
+  'songs.approval.expiry': 'Godkänn senast {when}.',
   'songs.approval.approve': 'Godkänn låtarna',
-  'songs.approval.noteLabel': 'Vad ska vara annorlunda? (valfritt)',
-  'songs.approval.markHint':
-    'Markera låtarna som ska bytas ut och be sedan om ändringar. De andra låtarna blir kvar.',
+  'songs.approval.noteLabel': 'Vad ska ändras? (valfritt)',
+  'songs.approval.markHint': 'Markera låtar att byta ut. Resten blir kvar.',
   'songs.approval.askChanges': 'Be om ändringar',
-  'songs.approval.stopAndChange': 'Stoppa och ändra begäran',
+  'songs.approval.stopAndChange': 'Stoppa och ändra',
   'songs.approval.reload': 'Ladda om sidan',
   'songs.approval.openClass': 'Öppna passet',
 
