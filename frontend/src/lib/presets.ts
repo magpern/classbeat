@@ -1,15 +1,18 @@
 // Home presets prefill /classes/new through query parameters. Only whole numbers in the form
 // ranges and the three intensity words are taken; anything else is ignored.
 
+import type { CatalogueKey } from '../i18n/en'
+
 export interface Preset {
-  label: string
+  /** The catalogue key of the label (en, sv and da). */
+  label: CatalogueKey
   params: Record<string, string>
 }
 
 export const PRESETS: readonly Preset[] = [
-  { label: '45 min hills', params: { length: '45', climbs: '3', intensity: 'moderate' } },
-  { label: '30 min intervals', params: { length: '30', sprints: '6', intensity: 'hard' } },
-  { label: '60 min endurance', params: { length: '60', intensity: 'easy' } },
+  { label: 'home.preset.hills', params: { length: '45', climbs: '3', intensity: 'moderate' } },
+  { label: 'home.preset.intervals', params: { length: '30', sprints: '6', intensity: 'hard' } },
+  { label: 'home.preset.endurance', params: { length: '60', intensity: 'easy' } },
 ]
 
 export function presetLink(preset: Preset): string {

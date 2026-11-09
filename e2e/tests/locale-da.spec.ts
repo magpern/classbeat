@@ -11,7 +11,7 @@ test.setTimeout(240_000)
 
 const w: Words = {
   code: 'da',
-  landingSignUp: 'Opret dig med en invitationskode',
+  landingSignUp: 'Deltag i betaen',
   signIn: 'Log ind',
   createAccount: 'Opret konto',
   inviteCode: 'Invitationskode',

@@ -1,25 +1,26 @@
-import { Check, Circle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { getConnections } from '../../api/connections'
 import { getSpotifyStatus } from '../../api/spotify'
 import { useT } from '../../i18n/I18n'
 import { Link } from '../../router/Router'
-import { Card, CardTitle } from '../ui/card'
+import { ConnectionRow } from '../account/connections/ConnectionRow'
+import { Button } from '../ui/button'
 
 interface Step {
-  key: string
-  label: string
-  done: boolean
-  to?: string
-  action?: string
+  key: 'mowl' | 'spotify'
+  mark: string
+  name: string
+  optional: boolean
+  status: string
+  to: string
 }
 
 type State = { status: 'loading' } | { status: 'ready'; steps: Step[] } | { status: 'hidden' }
 
 /**
- * "Get set up": account, MOWL and, where song picking is on, Spotify. Built from the existing
- * connection APIs and shown until every step is done. A failed read hides it rather than
- * guessing.
+ * "Get set up": the connections still missing, as rows with one Connect button each: MOWL and,
+ * where song picking is on, Spotify (optional). Built from the existing connection APIs and shown
+ * until every one is connected. A failed read hides it rather than guessing.
  */
 export function SetupChecklist() {
   const t = useT()
@@ -32,26 +33,28 @@ export function SetupChecklist() {
         const spotify = await getSpotifyStatus(abort.signal)
         if (abort.signal.aborted) return
         const mowl = connections.find((c) => c.provider === 'mowl')
-        const steps: Step[] = [
-          { key: 'account', label: t('setup.account'), done: true },
-          {
-            key: 'mowl',
-            label: mowl?.status === 'needs_reconnect' ? t('setup.mowlAgain') : t('setup.mowl'),
-            done: mowl?.status === 'connected',
-            to: '/account',
-            action: t('setup.action'),
-          },
-        ]
-        if (spotify !== null) {
+        const steps: Step[] = []
+        if (mowl?.status !== 'connected') {
           steps.push({
-            key: 'spotify',
-            label: spotify.status === 'needs_reconnect' ? t('setup.spotifyAgain') : t('setup.spotify'),
-            done: spotify.status === 'connected',
-            to: '/account/spotify',
-            action: t('setup.action'),
+            key: 'mowl',
+            mark: 'M',
+            name: t('conn.mowl.name'),
+            optional: false,
+            status: mowl?.status === 'needs_reconnect' ? t('mowl.statusAgain') : t('conn.mowl.purpose'),
+            to: '/account',
           })
         }
-        setState(steps.every((s) => s.done) ? { status: 'hidden' } : { status: 'ready', steps })
+        if (spotify !== null && spotify.status !== 'connected') {
+          steps.push({
+            key: 'spotify',
+            mark: 'S',
+            name: t('spot.title'),
+            optional: true,
+            status: spotify.status === 'needs_reconnect' ? t('mowl.statusAgain') : t('conn.spotify.purpose'),
+            to: '/account/spotify',
+          })
+        }
+        setState(steps.length === 0 ? { status: 'hidden' } : { status: 'ready', steps })
       } catch {
         if (!abort.signal.aborted) setState({ status: 'hidden' })
       }
@@ -63,31 +66,33 @@ export function SetupChecklist() {
 
   if (state.status !== 'ready') return null
   return (
-    <Card aria-labelledby="setup-title" role="region">
-      <CardTitle id="setup-title">{t('setup.title')}</CardTitle>
-      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+    <section aria-labelledby="setup-title" className="flex flex-col gap-3">
+      <h2 id="setup-title" className="m-0 font-display text-xl font-bold">
+        {t('setup.title')}
+      </h2>
+      <ul className="m-0 flex list-none flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface p-0">
         {state.steps.map((step) => (
-          <li key={step.key} className="flex min-h-11 items-center gap-3">
-            {step.done ? (
-              <Check aria-hidden="true" size={20} strokeWidth={2} className="text-ok" />
-            ) : (
-              <Circle aria-hidden="true" size={20} strokeWidth={2} className="text-muted" />
-            )}
-            <span className={step.done ? 'text-muted' : 'text-text'}>
-              {step.label}
-              <span className="sr-only">{step.done ? t('setup.done') : t('setup.notDone')}</span>
-            </span>
-            {!step.done && step.to !== undefined ? (
-              <Link
-                to={step.to}
-                className="ml-auto inline-flex min-h-11 items-center rounded-full bg-raised px-4 font-medium text-text no-underline hover:bg-line"
-              >
-                {step.action}
-              </Link>
-            ) : null}
-          </li>
+          <ConnectionRow
+            key={step.key}
+            testId={`setup-${step.key}`}
+            mark={step.mark}
+            name={step.name}
+            optional={step.optional}
+            status={step.status}
+            // On a narrow phone the text keeps at least 8rem and the button drops to its own line.
+            className="flex-wrap sm:flex-nowrap [&>div:nth-child(2)]:min-w-32 [&>div:nth-child(2)]:basis-32"
+            action={
+              <div className="w-full sm:w-auto">
+                <Button asChild variant="secondary">
+                  <Link to={step.to} aria-label={t('setup.connectNamed', { name: step.name })}>
+                    {t('conn.connect')}
+                  </Link>
+                </Button>
+              </div>
+            }
+          />
         ))}
       </ul>
-    </Card>
+    </section>
   )
 }

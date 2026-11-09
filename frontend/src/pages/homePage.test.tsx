@@ -27,21 +27,24 @@ function home(extra: Record<string, unknown> = {}) {
 }
 
 describe('Home', () => {
-  it('greets the user and shows recent classes as cards', async () => {
+  it('greets the user and shows recent classes as rows', async () => {
     home({ 'GET /api/connections': { connections: [MOWL] } })
     renderAt('/')
-    expect(await screen.findByRole('heading', { name: 'Welcome back, ann' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Welcome back' })).toBeInTheDocument()
     expect(await screen.findByRole('link', { name: 'Tuesday climb' })).toHaveAttribute('href', expect.stringMatching(/^\/en\/classes\//))
     expect(screen.getByRole('img', { name: /Class profile/ })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'See all your classes' })).toHaveAttribute('href', '/en/classes')
+    const recent = screen.getByRole('region', { name: 'Recent classes' })
+    expect(within(recent).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(recent).getByRole('link', { name: 'See all' })).toHaveAttribute('href', '/en/classes')
   })
 
-  it('has one primary Design a class action and presets that link to the form', async () => {
+  it('has one primary Design a class action and quick starts that link to the form', async () => {
     home()
     renderAt('/')
-    const region = await screen.findByRole('region', { name: 'Design a new class' })
-    expect(within(region).getByRole('link', { name: 'Design a class' })).toHaveAttribute('href', '/en/classes/new')
-    const presets = within(region).getByRole('list', { name: 'Start from a preset' })
+    const design = await screen.findByRole('link', { name: 'Design a class' })
+    expect(design).toHaveAttribute('href', '/en/classes/new')
+    expect(screen.getAllByRole('link', { name: 'Design a class' })).toHaveLength(1)
+    const presets = screen.getByRole('list', { name: 'Quick start' })
     const links = within(presets).getAllByRole('link')
     expect(links.map((l) => l.textContent)).toEqual(['45 min hills', '30 min intervals', '60 min endurance'])
     expect(links[0]).toHaveAttribute('href', '/en/classes/new?length=45&climbs=3&intensity=moderate')
@@ -61,30 +64,40 @@ describe('Home', () => {
   })
 })
 
-describe('Get set up checklist', () => {
-  it('asks to connect MOWL while it is not connected, and Spotify as optional when song picking is on', async () => {
+describe('Get set up', () => {
+  it('lists MOWL while it is not connected, and Spotify as optional when song picking is on', async () => {
     home({ 'GET /api/connections/spotify': SPOTIFY('not_connected') })
     renderAt('/')
     const region = await screen.findByRole('region', { name: 'Get set up' })
-    const items = within(region).getAllByRole('listitem')
-    expect(items.map((i) => i.textContent)).toEqual([
-      'Create your account, done',
-      'Connect MOWL, not done yetConnect',
-      'Connect Spotify (optional), not done yetConnect',
+    const rows = within(region).getAllByRole('listitem')
+    expect(rows.map((r) => r.textContent)).toEqual([
+      'MMOWLNeeded to save classes as workoutsConnect',
+      'SSpotifyOptionalPicks songs for your classesConnect',
     ])
-    expect(within(items[1] as HTMLElement).getByRole('link', { name: 'Connect' })).toHaveAttribute('href', '/en/account')
-    expect(within(items[2] as HTMLElement).getByRole('link', { name: 'Connect' })).toHaveAttribute('href', '/en/account/spotify')
+    expect(within(rows[0] as HTMLElement).getByRole('link', { name: 'Connect MOWL' })).toHaveAttribute('href', '/en/account')
+    expect(within(rows[1] as HTMLElement).getByRole('link', { name: 'Connect Spotify' })).toHaveAttribute(
+      'href',
+      '/en/account/spotify',
+    )
   })
 
-  it('has no Spotify step with song picking off, and asks to connect MOWL again when it needs it', async () => {
+  it('has no Spotify row with song picking off, and says MOWL needs connecting again when it does', async () => {
     home({
       'GET /api/connections': { connections: [{ ...MOWL, status: 'needs_reconnect' }] },
       'GET /api/connections/spotify': SPOTIFY_OFF,
     })
     renderAt('/')
     const region = await screen.findByRole('region', { name: 'Get set up' })
-    expect(within(region).getByText(/Connect MOWL again/)).toBeInTheDocument()
+    expect(within(region).getByText('Needs to be connected again')).toBeInTheDocument()
     expect(within(region).queryByText(/Spotify/)).toBeNull()
+  })
+
+  it('shows only what is still missing', async () => {
+    home({ 'GET /api/connections': { connections: [MOWL] }, 'GET /api/connections/spotify': SPOTIFY('not_connected') })
+    renderAt('/')
+    const region = await screen.findByRole('region', { name: 'Get set up' })
+    expect(within(region).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(region).queryByText('MOWL')).toBeNull()
   })
 
   it('is gone once everything is set up', async () => {

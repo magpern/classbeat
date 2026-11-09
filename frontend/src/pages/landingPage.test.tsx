@@ -6,14 +6,17 @@ import { fakeApi } from '../test/fakeApi'
 import { renderAt } from '../test/render'
 
 describe('Landing', () => {
-  it('has the headline, the invite sign-up call to action and a sign-in link', async () => {
+  it('has the headline, one call to action and the sign-in link only in the header', async () => {
     setWidth(390)
     fakeApi({})
     renderAt('/')
-    expect(await screen.findByRole('heading', { level: 1, name: /classbeat picks the songs/ })).toBeInTheDocument()
-    const cta = screen.getByRole('link', { name: 'Sign up with an invite code' })
+    expect(await screen.findByRole('heading', { level: 1, name: 'Your class, timed to the music.' })).toBeInTheDocument()
+    const cta = screen.getByRole('link', { name: 'Join the beta' })
     expect(cta).toHaveAttribute('href', '/en/signup')
-    expect(screen.getByRole('link', { name: 'I already have an account' })).toHaveAttribute('href', '/en/signin')
+    // The page body has the one action; Sign in and Sign up are the header's.
+    const body = screen.getByRole('main')
+    expect(within(body).getAllByRole('link').filter((l) => l.getAttribute('href') === '/en/signin')).toHaveLength(0)
+    expect(screen.getAllByRole('link', { name: 'Sign in' })).toHaveLength(1)
   })
 
   it('shows an example class on the stage with its numbered song list', async () => {

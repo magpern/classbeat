@@ -464,6 +464,12 @@ npm run build        # typecheck, then Vite writes frontend/dist
   and puts "Approve songs" and the approval deadline in `StickyActionBar`; the change request (note, "Ask for
   changes", "Stop and change") stays on the page, not in the bar. Approving and asking for new songs are
   unchanged (`approveSongs`, `useNewPick.ts`); only the layout and the words changed.
+  Home (`src/pages/HomePage.tsx`) has one primary "Design a class" button beside the title, quick-start
+  chips (`src/lib/presets.ts`, labels in the catalogue), "Get set up" (`SetupChecklist.tsx`: the missing connections
+  as `ConnectionRow`s) and the recent classes; Home and My classes draw a class the same way, as a `ClassRow` in a
+  `ClassList` (`src/components/classes/ClassRow.tsx`). The Landing page (`LandingPage.tsx`) has the title, one line,
+  one "Join the beta" button (Sign in stays in the header), the example class and three steps.
+  `src/i18n/homeLandingCopy.test.ts` pins the ADR 0028 length limits of those strings in en, sv and da.
 - Theme: `src/theme/theme.ts` and `ThemeSwitch` (Dark default, Light, Same as device) keep the choice in
   `localStorage` (try/catch, the page works without it); `public/theme-init.js` applies it before first paint.
 - Languages (ADR 0023, ML1): `src/i18n/` holds `locales.json` (the manifest, `["en"]`), `en.ts` (source catalogue),

@@ -92,7 +92,8 @@ describe('My classes', () => {
       classBody({ id: SECOND, title: 'Intervals' }),
       classBody({ id: THIRD, title: 'Endurance ride' }),
     ])
-    const titles = () => screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    const titles = () =>
+      screen.getAllByRole('listitem').map((row) => within(row).getByRole('link').textContent)
     await screen.findByRole('link', { name: 'Hills' })
     expect(titles()).toEqual(['Hills', 'Intervals', 'Endurance ride'])
     expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')

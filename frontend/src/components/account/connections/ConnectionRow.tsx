@@ -15,6 +15,7 @@ export function ConnectionRow({
   status,
   action,
   testId,
+  className,
 }: {
   mark: string
   name: string
@@ -22,11 +23,13 @@ export function ConnectionRow({
   status: ReactNode
   action: ReactNode
   testId: string
+  className?: string
 }) {
   const t = useT()
   return (
     <ListRow
       data-testid={testId}
+      className={className}
       leading={
         <span
           aria-hidden="true"
