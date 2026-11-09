@@ -418,8 +418,7 @@ const da: Catalogue = {
   'class.saved': 'Gemt i MOWL som et privat træningspas.',
   'class.savedSoundless': 'Gemt i MOWL uden musik, som et privat træningspas.',
   'class.updated': 'Opdateret. MOWL svarer nu til denne version.',
-  'class.updatedUnverified':
-    'Opdateret, men vi kunne ikke bekræfte, at MOWL stemmer. Der kan stadig ligge en playliste, du har tilføjet i appen.',
+  'class.updatedUnverified': 'Opdateret, men vi kunne ikke bekræfte, at MOWL stemmer. Tjek træningspasset i MOWL-appen.',
 
   // Pattern notes (ADR 0017 section 4); the sentences mirror the backend's rationales.
   'class.rule.warmup_short':
@@ -709,7 +708,7 @@ const da: Catalogue = {
   'class.chat.askAgain': 'Du kan bede om ændringen igen nu.',
   'class.chat.changeSongs': 'Skift sange',
   'class.chat.stopped': 'Denne ændring blev stoppet. Intet blev ændret.',
-  'class.chat.empty': 'Intet spurgt endnu. Sig, hvad der skal ændres, og vi ændrer holdet.',
+  'class.chat.empty': 'Ingen ønsker endnu. Sig, hvad der skal ændres, og vi ændrer holdet.',
   'class.chat.requests': 'Dine ønsker',
   'class.chat.youAsked': 'Du bad om',
   'class.chat.changed': 'Ændret',
@@ -1080,7 +1079,7 @@ const da: Catalogue = {
   'songs.start.account_changed':
     'Din Spotify-konto er ikke den, som sangene blev valgt til. Vælg sange igen.',
   'songs.start.write_unresolved':
-    'Et tidligere trin hos Spotify er stadig uafklaret. Afgør det først (Tjek igen eller Gør det alligevel), og prøv så igen.',
+    'Et tidligere Spotify-trin er stadig uafklaret. Afgør det først (Tjek igen eller Gør det alligevel), og prøv så igen.',
   'songs.start.idempotency_mismatch': 'Det virkede ikke. Tjek formularen, og prøv igen.',
   'songs.start.default': 'Det virkede ikke. Prøv igen.',
   'songs.failure.invalid_grant.title': 'Spotify accepterer ikke længere forbindelsen',

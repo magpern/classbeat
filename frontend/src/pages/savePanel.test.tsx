@@ -741,11 +741,11 @@ describe('verified or not', () => {
     expect(sentence).toHaveAttribute('role', 'status')
   })
 
-  it('an unverified Update never says it matches, and mentions a playlist added in the MOWL app', async () => {
+  it('an unverified Update never says it matches, and points to the MOWL app', async () => {
     startUpdate({ saved: saved({ latest_verified: false }), current_revision_number: 2 })
     await runUpdate()
     const sentence = await screen.findByText(/Updated, but we could not confirm MOWL matches/)
-    expect(sentence).toHaveTextContent(/still have a playlist you added in the app/)
+    expect(sentence).toHaveTextContent(/Check the workout in the MOWL app/)
     expect(sentence).toHaveAttribute('role', 'status')
     expect(screen.queryByText(/MOWL now matches this version/)).toBeNull()
   })

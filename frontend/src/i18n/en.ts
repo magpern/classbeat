@@ -363,8 +363,7 @@ export const en = {
   'class.saved': 'Saved to MOWL as a private workout.',
   'class.savedSoundless': 'Saved to MOWL without music, as a private workout.',
   'class.updated': 'Updated. MOWL now matches this version.',
-  'class.updatedUnverified':
-    'Updated, but we could not confirm MOWL matches. It may still have a playlist you added in the app.',
+  'class.updatedUnverified': 'Updated, but we could not confirm MOWL matches. Check the workout in the MOWL app.',
 
   // Pattern notes (ADR 0017 section 4); the sentences mirror the backend's rationales.
   'class.rule.warmup_short': 'Most classes of this kind ride a few minutes before the first hard effort.',

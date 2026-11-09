@@ -418,8 +418,7 @@ const sv: Catalogue = {
   'class.saved': 'Sparat i MOWL som ett privat träningspass.',
   'class.savedSoundless': 'Sparat i MOWL utan musik, som ett privat träningspass.',
   'class.updated': 'Uppdaterat. MOWL motsvarar nu den här versionen.',
-  'class.updatedUnverified':
-    'Uppdaterat, men vi kunde inte bekräfta att MOWL stämmer. Där kan fortfarande finnas en spellista du lade till i appen.',
+  'class.updatedUnverified': 'Uppdaterat, men vi kunde inte bekräfta att MOWL stämmer. Kontrollera träningspasset i MOWL-appen.',
 
   // Pattern notes (ADR 0017 section 4); the sentences mirror the backend's rationales.
   'class.rule.warmup_short':
@@ -1090,7 +1089,7 @@ const sv: Catalogue = {
     'De här låtarna kan inte bli en spellista igen: de har redan använts eller aldrig godkänts. Välj låtar igen.',
   'songs.start.account_changed': 'Ditt Spotify-konto är inte det som låtarna valdes för. Välj låtar igen.',
   'songs.start.write_unresolved':
-    'Ett tidigare steg på Spotify är fortfarande oavgjort. Avgör det först (Kontrollera igen eller Gör det ändå) och försök sedan igen.',
+    'Ett tidigare Spotify-steg är fortfarande oavgjort. Avgör det först (Kontrollera igen eller Gör det ändå), försök sedan igen.',
   'songs.start.idempotency_mismatch': 'Det fungerade inte. Kontrollera formuläret och försök igen.',
   'songs.start.default': 'Det fungerade inte. Försök igen.',
   'songs.failure.invalid_grant.title': 'Spotify godkänner inte längre anslutningen',

@@ -449,7 +449,7 @@ test('a playlist write that may not have happened is left to the user, who check
 
   // Do it anyway asks for a second confirmation that names the risk (two playlists of one name).
   await page.getByRole('button', { name: 'Do it anyway' }).click()
-  await expect(page.getByText(/you may end up with two playlists of the same name/)).toBeVisible()
+  await expect(page.getByText(/you may get two playlists of the same name/)).toBeVisible()
   await page.getByRole('button', { name: 'Yes, not written' }).click()
   await expect(page.getByText(/You decided to write it again\. Create the playlist again/)).toBeVisible()
   expect(finalPlaylists()).toEqual([]) // still nothing in Spotify: deciding writes nothing

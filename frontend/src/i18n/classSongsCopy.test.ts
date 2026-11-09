@@ -71,7 +71,14 @@ const LIMITS: readonly [CatalogueKey, number][] = [
 ]
 
 /** Every key of these groups is an error message: at most 20 words. */
-const ERROR_PREFIXES = ['class.reason.', 'class.saveReason.', 'class.saveFailure.', 'class.duplicate.reason.'] as const
+const ERROR_PREFIXES = [
+  'class.reason.',
+  'class.saveReason.',
+  'class.saveFailure.',
+  'class.duplicate.reason.',
+  'songs.start.',
+  'songs.failure.',
+] as const
 
 /** The screens this pass covers: all class.* but the mirrored rules, all songs.*, and the email-change notice. */
 const inScope = (key: string) =>
@@ -102,7 +109,8 @@ describe('class and song screen copy', () => {
     // A renamed or removed key must fail here instead of silently dropping out of the guard.
     for (const [key] of LIMITS) expect(en[key], key).toBeTypeOf('string')
     expect(SCOPE_KEYS.length).toBeGreaterThan(400)
-    expect(ERROR_KEYS.length).toBeGreaterThan(40)
+    expect(ERROR_KEYS.length).toBeGreaterThan(80)
+    expect(ERROR_KEYS.some((k) => k.startsWith('songs.failure.'))).toBe(true)
     expect(SCOPE_KEYS.some((k) => k.startsWith('songs.'))).toBe(true)
     expect(SCOPE_KEYS.some((k) => k.startsWith('class.rule.'))).toBe(false)
   })
