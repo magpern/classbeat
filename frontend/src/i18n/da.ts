@@ -853,7 +853,7 @@ const da: Catalogue = {
   'newclass.ftp.minutes': '{count} minutter',
   'newclass.notes': 'Noget andet?',
   'newclass.notes.hint': 'Fortæl, hvordan holdet skal føles.',
-  'newclass.notes.hintNoGames': 'Fortæl, hvordan holdet skal føles. Spil er ikke en del af din plan.',
+  'newclass.notes.hintNoGames': 'Fortæl, hvordan det skal føles. Spil indgår ikke i din plan.',
   'newclass.side.title': 'Dit hold indtil videre',
   'newclass.side.sketchNote': 'En grov skitse af dine tal. Claude designer det rigtige hold.',
   'newclass.side.classesLeft': 'Bruger 1 af dine {count} resterende hold denne måned',
@@ -884,8 +884,8 @@ const da: Catalogue = {
   'newclass.style.latin': 'Latin',
   'job.failure.upstream_unavailable.title': 'MOWL kunne ikke nås',
   'job.failure.upstream_unavailable.detail':
-    'classbeat prøvede flere gange. Dit hold blev ikke designet. Prøv igen om nogle minutter.',
-  'job.failure.rate_limited.title': 'MOWL bad classbeat om at sætte tempoet ned',
+    'Vi prøvede flere gange. Dit hold blev ikke designet. Prøv igen om nogle minutter.',
+  'job.failure.rate_limited.title': 'MOWL bad os sætte tempoet ned',
   'job.failure.rate_limited.detail': 'Dit hold blev ikke designet. Vent nogle minutter, og prøv igen.',
   'job.failure.model_unavailable.title': 'Designeren har travlt',
   'job.failure.model_unavailable.detail':
@@ -894,7 +894,7 @@ const da: Catalogue = {
   'job.failure.lease_lost.detail': 'Det blev afbrudt for mange gange. Prøv igen.',
   'job.failure.operation_busy.title': 'Et andet design bruger denne playliste',
   'job.failure.operation_busy.detail':
-    'Et andet design fra dig var stadig i gang med at føje den samme playliste til MOWL. Prøv igen om lidt.',
+    'Et andet design af dig føjede stadig samme playliste til MOWL. Prøv igen om lidt.',
   'job.failure.not_connected.title': 'MOWL er ikke tilsluttet',
   'job.failure.not_connected.detail': 'Tilslut MOWL på din kontoside, og start derefter forfra.',
   'job.failure.needs_reconnect.title': 'MOWL accepterer ikke længere det gemte login',
@@ -907,30 +907,30 @@ const da: Catalogue = {
   'job.failure.account_disabled.detail': 'Kontakt personen, der inviterede dig.',
   'job.failure.model_refused.title': 'Designeren afviste denne beskrivelse',
   'job.failure.model_refused.detail': 'Ret beskrivelsen, og start forfra.',
-  'job.failure.model_config.title': 'classbeat kan ikke designe hold lige nu',
+  'job.failure.model_config.title': 'Vi kan ikke designe hold lige nu',
   'job.failure.model_config.detail': 'Det er et problem hos os. Prøv igen senere.',
   'job.failure.invalid_output.title': 'Designeren lavede ikke et brugbart hold',
   'job.failure.invalid_output.detail': 'Prøv igen, eller gør beskrivelsen enklere.',
-  'job.failure.limit_exceeded.title': 'Denne beskrivelse krævede mere arbejde, end et design må bruge',
+  'job.failure.limit_exceeded.title': 'Beskrivelsen var for stor til ét design',
   'job.failure.limit_exceeded.detail': 'Prøv et kortere eller enklere hold.',
   'job.failure.outbound_blocked.title': 'Noget gik galt hos os',
   'job.failure.outbound_blocked.detail': 'Prøv igen senere.',
   'job.failure.program_changed.title': 'Dette træningspas blev ændret i MOWL',
-  'job.failure.program_changed.detail': 'Dette træningspas blev ændret i MOWL, efter at classbeat gemte det.',
+  'job.failure.program_changed.detail': 'Dette træningspas blev ændret i MOWL, efter at vi gemte det.',
   'job.failure.program_missing.title': 'Dette træningspas findes ikke længere i MOWL',
   'job.failure.program_missing.detail': 'Dette træningspas findes ikke længere i din MOWL-konto.',
   'job.failure.music_changed.title': 'Musikken blev ændret',
   'job.failure.music_changed.detail':
-    'Playlisten eller mixet er ikke det, som denne version blev lavet på, så tidsrettelserne blev ikke anvendt. Bed om en ændring i chatten for at designe efter musikken, som den er nu.',
+    'Musikken er ændret siden denne version, så tidsrettelserne blev sprunget over. Bed om en ændring i chatten.',
   'job.failure.program_other_sport.title': 'Dette træningspas er til en anden sport',
   'job.failure.program_other_sport.detail':
-    'Dette træningspas i MOWL er til en anden sport end dette hold, så classbeat erstattede det ikke.',
+    'Dette træningspas i MOWL er til en anden sport end dette hold, så vi erstattede det ikke.',
   'job.failure.use_change_songs.title': 'Denne anmodning handler kun om sangene',
   'job.failure.use_change_songs.detail':
     'Intet blev ændret. Brug Skift sange på holdsiden for at vælge andre.',
   'job.failure.media_host_not_allowed.title': 'Nye Swedebeat-mix kan ikke analyseres her endnu',
   'job.failure.media_host_not_allowed.detail':
-    'Mixet blev føjet til din MOWL-konto, men det kunne ikke analyseres. Mix, du har analyseret før, virker stadig. Prøv et af dem eller en anden slags musik.',
+    'Mixet blev føjet til din MOWL-konto, men kunne ikke analyseres. Tidligere analyserede mix virker stadig.',
   'job.failure.media_refused.title': 'Lyden fra dette mix kunne ikke hentes',
   'job.failure.media_refused.detail': 'Intet blev designet. Prøv igen senere.',
   'job.failure.analysis_failed.title': 'Lyden fra dette mix kunne ikke analyseres',
@@ -939,13 +939,12 @@ const da: Catalogue = {
   'job.failure.feature_off.detail': 'Intet blev designet. Prøv igen senere.',
   'job.failure.analysis_limit.title': 'For mange nye Swedebeat-mix i dag',
   'job.failure.analysis_limit.detail':
-    'Du har analyseret 10 nye mix inden for de seneste 24 timer. Mix, der er analyseret før, virker stadig; prøv et nyt i morgen.',
-  'job.failure.soundless_not_evaluated.title': 'Hold uden musik er ikke klar til din plan endnu',
+    'Du har analyseret 10 nye mix inden for 24 timer. Tidligere mix virker stadig; prøv et nyt i morgen.',
+  'job.failure.soundless_not_evaluated.title': 'Hold uden musik er ikke klar endnu',
   'job.failure.soundless_not_evaluated.detail':
     'Intet blev designet. Vælg i stedet en playliste, eller prøv igen senere.',
-  'job.failure.music_unlinked.title': 'Musikken i denne version findes ikke i din MOWL-konto',
-  'job.failure.music_unlinked.detail':
-    'Musikken i denne version findes ikke i din tilsluttede MOWL-konto. Ændr den, og gem den nye version.',
+  'job.failure.music_unlinked.title': 'Musikken findes ikke i din MOWL-konto',
+  'job.failure.music_unlinked.detail': 'Ændr musikken, og gem en ny version.',
   'job.failure.soundlessInvalid.title': 'Anmodningen kunne ikke bruges',
   'job.failure.soundlessInvalid.detail':
     'Et hold uden musik er til cykling og har hverken sange eller mix. Tjek formularen, og start forfra.',
@@ -976,7 +975,7 @@ const da: Catalogue = {
   'job.step.prepare': 'Tjekker dine konti',
   'job.step.refitMusic': 'Læser din musik',
   'job.retry.upstream_unavailable': 'MOWL svarede ikke. Prøver igen om lidt.',
-  'job.retry.rate_limited': 'MOWL bad classbeat om at sætte tempoet ned. Prøver igen om lidt.',
+  'job.retry.rate_limited': 'MOWL bad os sætte tempoet ned. Prøver igen om lidt.',
   'job.retry.model_unavailable': 'Designeren har travlt. Prøver igen om lidt.',
   'job.retry.default': 'Noget gik galt. Prøver igen om lidt.',
   'job.mixStage': 'Henter og analyserer dit mix',
@@ -987,16 +986,15 @@ const da: Catalogue = {
   'job.use.changeSongs':
     'Denne anmodning handler kun om sangene, så intet blev ændret. Brug Skift sange for at vælge andre.',
   'job.use.newClassForSongs':
-    'Denne anmodning handler kun om sangene, så intet blev ændret. Dette hold bruger din egen playliste; for at bruge anden musik skal du designe et nyt hold.',
+    'Denne anmodning handler kun om sangene, så intet blev ændret. Dette hold bruger din egen playliste. For anden musik, design et nyt hold.',
   'job.use.otherMusicRunning':
-    'Denne anmodning handler kun om musikken, så intet blev ændret. Et løbehold bruger en playliste fra din MOWL-konto og kan ikke skifte sange; for at bruge anden musik skal du designe et nyt hold.',
+    'Denne anmodning handler kun om musikken, så intet blev ændret. Et løbehold beholder sin playliste. For anden musik, design et nyt hold.',
   'job.use.finishSongs':
-    'Denne anmodning handler kun om sangene, så intet blev ændret. Gør sangvalget på denne side færdigt, eller prøv det igen først, og brug derefter Skift sange.',
+    'Denne anmodning handler kun om sangene, så intet blev ændret. Gør sangvalget på siden færdigt, eller prøv det igen, og brug derefter Skift sange.',
   'job.use.newClassForMusicSoundless':
-    'Denne anmodning handler kun om musikken, så intet blev ændret. Dette hold har ingen musik; for at tilføje musik skal du designe et nyt hold med en playliste.',
+    'Denne anmodning handler kun om musikken, så intet blev ændret. Dette hold har ingen musik. Design et nyt hold med en playliste.',
   'job.revise.upstream_unavailable': 'MOWL kunne ikke nås. Intet blev ændret. Prøv igen om nogle minutter.',
-  'job.revise.rate_limited':
-    'MOWL bad classbeat om at sætte tempoet ned. Intet blev ændret. Vent nogle minutter, og prøv igen.',
+  'job.revise.rate_limited': 'MOWL bad os sætte tempoet ned. Intet blev ændret. Vent nogle minutter, og prøv igen.',
   'job.revise.model_unavailable': 'Designeren har travlt. Intet blev ændret. Prøv igen om nogle minutter.',
   'job.revise.lease_lost': 'Ændringen blev afbrudt for mange gange. Intet blev ændret. Prøv igen.',
   'job.revise.operation_busy':
@@ -1011,10 +1009,9 @@ const da: Catalogue = {
     'Din konto kan ikke ændre hold lige nu. Kontakt personen, der inviterede dig.',
   'job.revise.model_refused':
     'Designeren afviste denne anmodning. Intet blev ændret. Formulér dig anderledes.',
-  'job.revise.model_config':
-    'classbeat kan ikke ændre hold lige nu. Det er et problem hos os. Prøv igen senere.',
+  'job.revise.model_config': 'Vi kan ikke ændre hold lige nu. Det er et problem hos os. Prøv igen senere.',
   'job.revise.invalid_output':
-    'Designeren lavede ikke en brugbar ændring eller en, der ikke ændrer noget. Intet blev ændret. Prøv igen, eller formulér dig anderledes.',
+    'Designeren lavede ikke en brugbar ændring. Intet blev ændret. Prøv igen, eller formulér dig anderledes.',
   'job.revise.limit_exceeded':
     'Denne anmodning krævede mere arbejde, end en ændring må bruge. Intet blev ændret. Bed om noget mindre.',
   'job.revise.outbound_blocked': 'Noget gik galt hos os. Intet blev ændret. Prøv igen senere.',
@@ -1022,10 +1019,10 @@ const da: Catalogue = {
     'Musikken i denne version findes ikke i din tilsluttede MOWL-konto. Ændr den, og gem den nye version.',
   'job.revise.soundless_not_evaluated':
     'Hold uden musik er ikke klar til din plan endnu. Intet blev ændret. Prøv igen senere.',
-  'job.revise.program_changed': 'Dette træningspas blev ændret i MOWL, efter at classbeat gemte det.',
+  'job.revise.program_changed': 'Dette træningspas blev ændret i MOWL, efter at vi gemte det.',
   'job.revise.program_missing': 'Dette træningspas findes ikke længere i din MOWL-konto.',
   'job.revise.program_other_sport':
-    'Dette træningspas i MOWL er til en anden sport end dette hold, så classbeat erstattede det ikke.',
+    'Dette træningspas i MOWL er til en anden sport end dette hold, så vi erstattede det ikke.',
   'job.revise.soundlessFeatureOff':
     'Hold uden musik er slået fra lige nu. Intet blev ændret. Prøv igen senere.',
   'job.revise.default': 'Ændringen blev ikke færdig. Intet blev ændret. Prøv igen senere.',
@@ -1154,17 +1151,16 @@ const da: Catalogue = {
   'job.ready.noDraft': 'Dette design blev færdigt uden et udkast.',
   'job.ready.draftFailed': 'Udkastet kunne ikke indlæses.',
   'job.ready.openClass': 'Åbn holdet',
-  'job.ready.designAnother': 'Design et hold mere',
+  'job.ready.designAnother': 'Design nyt hold',
   'job.again.notConnected':
-    'MOWL er ikke tilsluttet, eller det blev tilsluttet igen, siden dette design startede. Tilslut det på din kontoside, hvis det er nødvendigt, og start derefter et nyt design.',
-  'job.again.classBusy':
-    'Dette hold har allerede et design i gang, måske fra en anden fane. Vent, til det er færdigt, og prøv så igen.',
+    'MOWL er ikke tilsluttet, eller blev tilsluttet igen, siden designet startede. Tilslut det på din kontoside, og start igen.',
+  'job.again.classBusy': 'Dette hold har allerede et design i gang, måske i en anden fane. Vent, og prøv igen.',
   'job.again.tooMany': 'Du har allerede designs i gang. Vent, til et er færdigt.',
   'job.again.design': 'Design igen',
-  'job.again.startNew': 'Start et nyt design',
+  'job.again.startNew': 'Start nyt design',
   'job.again.tryAgain': 'Prøv igen',
   'job.matchStopped': 'Swedebeat-matchningen stoppede',
-  'job.goToAccount': 'Gå til din konto',
+  'job.goToAccount': 'Gå til konto',
   'songs.list.label': 'Sange',
   'songs.list.openSpotify': 'ÅBN SPOTIFY',
   'songs.list.openSpotifyLabel': 'ÅBN SPOTIFY, {title}',
@@ -1194,7 +1190,7 @@ const da: Catalogue = {
   'songs.change.loading': 'Indlæser sangene',
   'songs.change.intro': 'Markér sange, der skal udskiftes. Intet skrives til Spotify, før du godkender.',
   'songs.change.different': 'Hvad skal være anderledes?',
-  'songs.change.marked': 'Skift de markerede sange',
+  'songs.change.marked': 'Skift markerede sange',
   'songs.change.all': 'Skift alle sange',
   'songs.ended.stoppedTitle': 'Du stoppede dette',
   'songs.ended.stoppedApproved':
@@ -1210,7 +1206,7 @@ const da: Catalogue = {
   'songs.ended.reconnect': 'Tilslut Spotify igen',
   'songs.ended.createAgain': 'Opret playlisten igen',
   'songs.ended.pickAgain': 'Vælg sange igen',
-  'songs.ended.startNew': 'Start et nyt hold',
+  'songs.ended.startNew': 'Start nyt hold',
   'songs.ended.backToClass': 'Tilbage til holdet',
   'songs.approval.privacy': 'Privat playliste i din Spotify. Alle med linket kan åbne den.',
   'songs.approval.stopped': 'Sangene blev stoppet, men vi kunne ikke læse holdet. Tryk på Bed om ændringer igen.',
@@ -1279,10 +1275,9 @@ const da: Catalogue = {
   // Music page.
   'music.page.title': 'Musik',
   'music.page.connectTitle': 'Tilslut Spotify',
-  'music.page.connectText':
-    'Tilslut Spotify, så classbeat kan vælge sange til dig og lave playlister til dine hold.',
+  'music.page.connectText': 'Tilslut Spotify, så vi kan vælge sange til dig og lave playlister til dine hold.',
   'music.page.connectButton': 'Tilslut Spotify',
-  'music.page.madeTitle': 'Playlister, classbeat har lavet',
+  'music.page.madeTitle': 'Playlister vi har lavet',
   'music.page.madeLoading': 'Indlæser dine playlister',
   'music.page.madeFailed': 'Dine playlister kunne ikke indlæses.',
   'music.page.madeEmpty':

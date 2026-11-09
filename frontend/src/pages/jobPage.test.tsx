@@ -103,7 +103,7 @@ describe('the Designing page', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     await waitFor(() => {
-      expect(screen.getByTestId('progress')).toHaveTextContent('Waiting for a free slot. Other mixes are being analysed')
+      expect(screen.getByTestId('progress')).toHaveTextContent('Waiting for a free slot. Other mixes are ahead of yours')
     })
     expect(screen.getByText(/You can leave this page/)).toBeInTheDocument()
   })
@@ -344,7 +344,7 @@ describe('a failed design', () => {
       [`GET ${JOB}`]: jobBody('failed', { error_category: 'needs_reconnect' }),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    expect(await screen.findByRole('link', { name: 'Go to your account' })).toHaveAttribute('href', '/en/account')
+    expect(await screen.findByRole('link', { name: 'Go to account' })).toHaveAttribute('href', '/en/account')
   })
 
   it.each(['cancelled', 'expired'])('offers "Design again", not "Try again", for a %s design', async (state) => {
@@ -427,7 +427,7 @@ describe('a failed design', () => {
       [`GET ${JOB}`]: jobBody('cancelled'),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Start a new design' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Start new design' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe('/en/classes/new')
     })
@@ -462,7 +462,7 @@ describe('an uncertain playlist attach', () => {
     renderAt(`/jobs/${JOB_ID}`)
     fireEvent.click(await screen.findByRole('button', { name: 'Check again' }))
     expect(await screen.findByText(/playlist is in your MOWL music/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Start a new design|Design again/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Start new design|Design again/ })).toBeInTheDocument()
     expect(api.to('POST', `/api/external-operations/${OPERATION_ID}/check-again`)[0]?.headers.get('X-CSRF-Token')).toBe('csrf-session')
   })
 
@@ -477,7 +477,7 @@ describe('an uncertain playlist attach', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Check again' }))
     expect(await screen.findByText(/still cannot tell/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Do it anyway' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Design again|Start a new design/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Design again|Start new design/ })).toBeNull()
   })
 
   it('Do it anyway asks first and warns about a second copy', async () => {
@@ -498,7 +498,7 @@ describe('an uncertain playlist attach', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add it again' }))
     expect(await screen.findByText(/may leave two copies there/)).toBeInTheDocument()
     expect(api.to('POST', `/api/external-operations/${OPERATION_ID}/do-it-anyway`)).toHaveLength(1)
-    expect(screen.getByRole('button', { name: /Start a new design|Design again/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Start new design|Design again/ })).toBeInTheDocument()
   })
 
   it('a final or settled row (409) refreshes the list instead of failing the page', async () => {
@@ -532,6 +532,6 @@ describe('an uncertain playlist attach', () => {
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByTestId('no-undecided')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull()
-    expect(await screen.findByRole('button', { name: /Start a new design|Design again/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Start new design|Design again/ })).toBeInTheDocument()
   })
 })

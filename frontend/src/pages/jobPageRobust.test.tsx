@@ -93,7 +93,7 @@ describe('an uncertain attach whose list is empty or unreadable', () => {
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByText('What is left to decide could not be loaded.')).toBeInTheDocument()
     expect(screen.queryByTestId('no-undecided')).toBeNull()
-    expect(screen.queryByRole('button', { name: /Design again|Start a new design/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Design again|Start new design/ })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('button', { name: 'Check again' })).toBeInTheDocument()
   })
@@ -124,7 +124,7 @@ describe('after a decision', () => {
       expect(reads).toBe(2)
       expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull()
     })
-    expect(await screen.findByRole('button', { name: /Design again|Start a new design/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Design again|Start new design/ })).toBeInTheDocument()
     expect(screen.queryByTestId('no-undecided')).toBeNull() // the outcome says it already
   })
 
@@ -254,11 +254,11 @@ describe('Design again after MOWL was connected again', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('connected again since')
+    expect(await screen.findByRole('alert')).toHaveTextContent('reconnected since')
     expect(window.sessionStorage.getItem(`classbeat.design-input.${JOB_ID}`)).toBeNull()
     expect(window.sessionStorage.getItem(`classbeat.design-again-key.${JOB_ID}`)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Start a new design' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start new design' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe('/en/classes/new')
     })
