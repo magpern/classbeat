@@ -45,7 +45,7 @@ test('a design in flight is shown as it is on return, and finishes while the use
     await back.getByRole('link', { name: 'E2E away ride' }).click()
     await expect(back).toHaveURL(/\/classes\/[0-9a-f-]{36}$/)
     await expect(back.getByText('This class is being designed.')).toContainText('you can leave this page')
-    await back.getByRole('link', { name: 'See how it is going' }).click()
+    await back.getByRole('link', { name: 'See progress' }).click()
     await expect(back).toHaveURL(new RegExp(`/jobs/${id}$`))
     // No browser memory of the form is needed: the page says the job's real state.
     await expect(back.getByTestId('progress').getByText('Reading your playlist')).toBeVisible(LONG)

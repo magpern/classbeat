@@ -565,7 +565,7 @@ describe('an undecided write', () => {
       },
     )
     renderAt(PAGE)
-    expect(await screen.findByTestId('uncertain-write')).toHaveTextContent(/could not tell if your workout was saved/)
+    expect(await screen.findByTestId('uncertain-write')).toHaveTextContent(/could not confirm your workout was saved/)
     expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled()
   })
 
@@ -635,7 +635,7 @@ describe('an undecided write', () => {
     const warning = screen.getByRole('group', { name: 'Confirm' })
     expect(warning).toHaveTextContent(/MOWL may get a second copy/)
     expect(api.to('POST', `${OPS}/${OP}/do-it-anyway`)).toHaveLength(0)
-    fireEvent.click(within(warning).getByRole('button', { name: 'Yes, it was not saved' }))
+    fireEvent.click(within(warning).getByRole('button', { name: 'Yes, not saved' }))
     expect(await screen.findByRole('button', { name: 'Save again' })).toBeEnabled()
     expect(api.to('POST', `${OPS}/${OP}/do-it-anyway`)).toHaveLength(1)
     expect(jobsPosts(api)).toHaveLength(0)
@@ -690,7 +690,7 @@ describe('an undecided write', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Do it anyway' }))
     const warning = screen.getByRole('group', { name: 'Confirm' })
     expect(warning).toHaveTextContent(/partly updated; the next update replaces it/)
-    fireEvent.click(within(warning).getByRole('button', { name: 'Yes, it was not updated' }))
+    fireEvent.click(within(warning).getByRole('button', { name: 'Yes, not updated' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Update again' }))
     const dialog = screen.getByRole('group', { name: 'Confirm' })
     expect(dialog).toHaveTextContent(/Update anyway\?/)
@@ -741,11 +741,11 @@ describe('verified or not', () => {
     expect(sentence).toHaveAttribute('role', 'status')
   })
 
-  it('an unverified Update never says it matches, and points to the MOWL app', async () => {
+  it('an unverified Update never says it matches, and mentions a playlist added in the MOWL app', async () => {
     startUpdate({ saved: saved({ latest_verified: false }), current_revision_number: 2 })
     await runUpdate()
     const sentence = await screen.findByText(/Updated, but we could not confirm MOWL matches/)
-    expect(sentence).toHaveTextContent(/Check the workout in the MOWL app/)
+    expect(sentence).toHaveTextContent(/still have a playlist you added in the app/)
     expect(sentence).toHaveAttribute('role', 'status')
     expect(screen.queryByText(/MOWL now matches this version/)).toBeNull()
   })

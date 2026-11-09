@@ -40,7 +40,7 @@ const sv: Catalogue = {
   'landing.how.approve.title': 'Godkänn låtar',
   'landing.how.approve.text': 'Byt ut låtar som inte passar.',
   'landing.how.save.title': 'Spara i MOWL',
-  'landing.how.save.text': 'Klart att köra, i ditt konto.',
+  'landing.how.save.text': 'Redo att leda, i ditt konto.',
 
   // Sign in, sign up and the pages behind the mail links.
   'auth.signIn': 'Logga in',
@@ -324,22 +324,22 @@ const sv: Catalogue = {
 
   // Reasons the class API refuses with (ADR 0007 sections 2, 3 and 12).
   'class.reason.stale_base':
-    'Det här passet ändrades i en annan flik eller ett annat fönster, så din begäran skickades inte. Sidan har laddats om. Läs den aktuella versionen och fråga igen.',
+    'Passet ändrades i en annan flik, så din begäran skickades inte. Sidan har laddats om; fråga igen.',
   'class.reason.hash_mismatch':
     'Den versionen är inte den som den här sidan visade: den ändrades någon annanstans. Sidan har laddats om.',
   'class.reason.class_busy':
-    'Det här passet är upptaget med en annan uppgift, kanske från en annan flik. Sidan har laddats om. Vänta tills uppgiften är klar och försök sedan igen.',
+    'Passet är upptaget med en annan uppgift. Sidan har laddats om. Vänta tills den är klar och försök igen.',
   'class.reason.revision_limit':
-    'Det här passet har nått det högsta antal ändringar som ett pass kan ha. Behåll den version du gillar, eller utforma ett nytt pass.',
+    'Passet har nått gränsen för antal ändringar. Behåll den version du gillar, eller utforma ett nytt pass.',
   'class.reason.not_changeable':
-    'Det här passet har ingen egen musik, så det kan inte ändras via chatten. Du kan fortfarande visa, använda och spara dess versioner.',
+    'Passet har ingen egen musik, så det kan inte ändras via chatten. Du kan fortfarande visa, använda och spara versioner.',
   'class.reason.chat_full':
     'Den här konversationen är full. Behåll den version du gillar, eller utforma ett nytt pass.',
   'class.reason.not_found': 'Det här passet, eller den versionen, finns inte längre. Sidan har laddats om.',
   'class.reason.not_connected': 'MOWL är inte anslutet. Anslut det på din kontosida och fråga sedan igen.',
   'class.reason.invalid_input': 'Den begäran kunde inte användas. Kontrollera den och försök igen.',
   'class.reason.call_may_be_running':
-    'classbeat kanske fortfarande skriver det här passet till MOWL, och om du raderar det nu försvinner den enda posten om den skrivningen. Vänta några minuter och försök sedan radera det igen.',
+    'En skrivning till MOWL kan fortfarande pågå, och om du raderar nu försvinner dess enda post. Vänta några minuter.',
   'class.reason.music_unlinked':
     'Musiken i den här versionen finns inte i ditt anslutna MOWL-konto. Ändra den och spara den nya versionen.',
   'class.reason.running_not_evaluated':
@@ -418,7 +418,8 @@ const sv: Catalogue = {
   'class.saved': 'Sparat i MOWL som ett privat träningspass.',
   'class.savedSoundless': 'Sparat i MOWL utan musik, som ett privat träningspass.',
   'class.updated': 'Uppdaterat. MOWL motsvarar nu den här versionen.',
-  'class.updatedUnverified': 'Uppdaterat, men vi kunde inte bekräfta att MOWL stämmer. Kontrollera träningspasset i MOWL-appen.',
+  'class.updatedUnverified':
+    'Uppdaterat, men vi kunde inte bekräfta att MOWL stämmer. Där kan fortfarande finnas en spellista du lade till i appen.',
 
   // Pattern notes (ADR 0017 section 4); the sentences mirror the backend's rationales.
   'class.rule.warmup_short':
@@ -474,8 +475,7 @@ const sv: Catalogue = {
   'class.notes.upTo': 'upp till {high}',
   'class.notes.perMinute': '{value} TSS per minut',
   'class.notes.title': 'Mönsteranteckningar',
-  'class.notes.intro':
-    'Vad som är vanligt i pass av det här slaget. Din beskrivning går först; de här anteckningarna hindrar aldrig något.',
+  'class.notes.intro': 'Vanligt för den här sortens pass. Anteckningar hindrar aldrig något.',
   'class.notes.hidden': 'Anteckningen är dold.',
   'class.notes.showAgain': 'Visa igen',
   'class.notes.showAgainAria': 'Visa igen: {note}',
@@ -487,7 +487,7 @@ const sv: Catalogue = {
   'class.notes.worth': 'Värt att titta på',
   'class.notes.good': 'Bra att veta',
   'class.notes.explained': 'Din beskrivning ber om detta, så det är bara en anteckning.',
-  'class.notes.currentRules': 'Anteckningarna följer de aktuella reglerna',
+  'class.notes.currentRules': 'Anteckningarna följer aktuella regler',
 
   // The class card, my classes and the class page.
   'class.card.tss': 'TSS {value}',
@@ -502,7 +502,7 @@ const sv: Catalogue = {
   'class.list.loading': 'Laddar dina pass',
   'class.list.failed': 'Dina pass kunde inte laddas.',
   'class.list.none': 'Inga pass ännu',
-  'class.list.noneText': 'Beskriv ett pass så utformar classbeat det utifrån din spellista.',
+  'class.list.noneText': 'Beskriv ett pass så utformar vi det utifrån din spellista.',
   'class.list.show': 'Visa',
   'class.list.filterAll': 'Alla',
   'class.list.filterSaved': 'Sparade i MOWL',
@@ -528,7 +528,7 @@ const sv: Catalogue = {
   'class.page.job.refit': 'Dina tidskorrigeringar tillämpas.',
   'class.page.job.songs': 'Det arbetas med låtarna i det här passet.',
   'class.page.job.review': 'Granska låtarna',
-  'class.page.job.progress': 'Se hur det går',
+  'class.page.job.progress': 'Se förloppet',
   'class.page.playlist': 'Din Spotify-spellista: {name}',
   'class.page.openSpotify': 'Öppna i Spotify',
   'class.page.noVersion': 'Det här passet har ingen version ännu.',
@@ -544,18 +544,16 @@ const sv: Catalogue = {
   // Delete class (ADR 0007 section 11).
   'class.delete.title': 'Radera pass',
   'class.delete.uncertain':
-    'classbeat är inte säker på om en sparning av det här passet i MOWL gick igenom. Om du raderar passet nu försvinner den enda posten om det.',
+    'Vi vet inte säkert om en sparning av passet i MOWL gick igenom. Om du raderar det nu försvinner den enda posten om den.',
   'class.delete.warning':
     'Det här raderar passet, alla dess versioner och din konversation från classbeat. Det går inte att ångra.',
   'class.delete.kept': {
-    one: 'Det träningspass som classbeat sparade i ditt MOWL-konto blir kvar där; radera det i MOWL.',
-    other:
-      'De {count} träningspass som classbeat sparade i ditt MOWL-konto blir kvar där; radera dem i MOWL.',
+    one: 'Det träningspass vi sparade i ditt MOWL-konto blir kvar där; radera det i MOWL.',
+    other: 'De {count} träningspass vi sparade i ditt MOWL-konto blir kvar där; radera dem i MOWL.',
   },
-  'class.delete.keptNone':
-    'Alla träningspass som classbeat sparade i ditt MOWL-konto blir kvar där; radera dem i MOWL.',
+  'class.delete.keptNone': 'Alla träningspass vi sparade i ditt MOWL-konto blir kvar där; radera dem i MOWL.',
   'class.delete.anyway': 'Radera ändå',
-  'class.delete.confirm': 'Ja, radera det här passet',
+  'class.delete.confirm': 'Ja, radera',
   'class.delete.keep': 'Behåll det',
 
   // Duplicate a class.
@@ -563,9 +561,9 @@ const sv: Catalogue = {
   'class.duplicate.trigger': '{label} {title}',
   'class.duplicate.title': 'Duplicera det här passet',
   'class.duplicate.descriptionVersion':
-    'Version {number} blir version 1 av ett nytt pass. Det är inte sparat i MOWL och har ännu inga godkända låtar eller någon konversation. Det räknas som ett pass den här månaden.',
+    'Version {number} blir version 1 av ett nytt pass, inte sparat i MOWL, utan godkända låtar eller konversation. Det räknas som ett pass denna månad.',
   'class.duplicate.descriptionThis':
-    'Den här versionen blir version 1 av ett nytt pass. Det är inte sparat i MOWL och har ännu inga godkända låtar eller någon konversation. Det räknas som ett pass den här månaden.',
+    'Versionen blir version 1 av ett nytt pass, inte sparat i MOWL och utan godkända låtar eller konversation. Det räknas som ett pass denna månad.',
   'class.duplicate.name': 'Kopians namn',
   'class.duplicate.sending': 'Duplicerar…',
 
@@ -586,9 +584,9 @@ const sv: Catalogue = {
   'class.status.changing': 'Ändras',
   'class.status.busy': 'Upptaget',
   'class.status.noVersion': 'Ingen version ännu',
-  'class.status.unsavedChanges': 'Version {number} har ändringar som inte finns i MOWL ännu',
-  'class.status.saved': 'Version {number} sparad i MOWL',
-  'class.status.notSaved': 'Version {number}, inte sparad i MOWL',
+  'class.status.unsavedChanges': 'Version {number}, osparade ändringar',
+  'class.status.saved': 'Version {number} i MOWL',
+  'class.status.notSaved': 'Version {number}, inte sparad',
   'class.compare.gone': 'En av de här versionerna finns inte längre.',
   'class.compare.unreadable':
     'En av de här versionerna kan inte längre läsas, så de två går inte att jämföra.',
@@ -628,7 +626,7 @@ const sv: Catalogue = {
   'class.duplicate.reason.soundless_not_evaluated':
     'Pass utan musik är inte tillgängliga i din plan ännu, så det här går inte att kopiera.',
   'class.duplicate.reason.not_changeable':
-    'Det här passet har ingen egen musik, så det kan inte ändras via chatten. Du kan fortfarande visa, använda och spara dess versioner.',
+    'Passet har ingen egen musik, så det kan inte ändras via chatten. Du kan fortfarande visa, använda och spara versioner.',
   'class.duplicate.reason.hash_mismatch':
     'Den versionen är inte den som den här sidan visade: den ändrades någon annanstans. Ladda om sidan och försök igen.',
   'class.duplicate.reason.not_found': 'Det här passet, eller den versionen, finns inte längre.',
@@ -671,7 +669,7 @@ const sv: Catalogue = {
   'class.history.unavailable': 'Versionshistoriken kunde inte läsas, så bara den enkla listan visas.',
   'class.history.pick': 'Välj två versioner för att jämföra dem.',
   'class.history.cannotChange':
-    'Ändra det är inte tillgängligt för det här passet just nu: det har ingen egen musik, eller så är den sortens pass avstängt. Du kan fortfarande visa, jämföra, använda och spara dess versioner.',
+    'Ändra det är inte tillgängligt för det här passet just nu. Du kan fortfarande visa, jämföra, använda och spara versioner.',
   'class.history.unreadable': {
     one: '{count} tidigare version kan inte längre läsas och visas inte i listan.',
     other: '{count} tidigare versioner kan inte längre läsas och visas inte i listan.',
@@ -693,7 +691,7 @@ const sv: Catalogue = {
   'class.beat.song': 'Låt {song}',
   'class.beat.title': 'Beat 1',
   'class.beat.intro':
-    'Lyssna på passet. Om ändringarna i en låt kommer ett beat för tidigt flyttar du dess beat 1 senare; om de kommer för sent flyttar du det tidigare. En takt har fyra beat, så ett steg är en fjärdedels takt.',
+    'Lyssna på passet. Om en ändring kommer ett beat för tidigt, flytta beat 1 senare; om för sent, tidigare. Ett steg är en fjärdedels takt.',
   'class.beat.from': 'Från {start}, {bpm} BPM',
   'class.beat.bpmChanged': 'Tempot på den här låten ändrades sedan du ställde in dess beat 1: lyssna igen.',
   'class.beat.estimate': 'Beat 1 är en uppskattning här: lyssna på den första ändringen i den här låten.',
@@ -705,13 +703,13 @@ const sv: Catalogue = {
   'class.beat.laterButton': 'Senare',
   'class.beat.resetButton': 'Återställ',
   'class.beat.stale':
-    'De här tidskorrigeringarna gäller musik som den här versionen inte spelar: den analyserades på nytt eller ändrades, eller så finns låten inte i den här versionen. De sparas och räknas inte mot gränsen, så om du gör en tidigare version aktuell kan de användas igen. Rensa dem om du inte behöver dem längre.',
+    'De här tidskorrigeringarna gäller musik som den här versionen inte spelar. De sparas och räknas inte mot gränsen. Rensa dem om de inte behövs.',
   'class.beat.staleRow': 'Låt {song}: {beats}',
   'class.beat.clearAria': 'Rensa den tidigare tidskorrigeringen för låt {song}',
   'class.beat.clear': 'Rensa',
   'class.beat.clearAll': 'Rensa alla tidskorrigeringar',
   'class.beat.pending':
-    'Den här versionen använder inte dina tidskorrigeringar ännu. Tillämpa dem för att skapa en ny version där ändringarna flyttats till de korrigerade beaten; spara eller uppdatera den i MOWL efteråt.',
+    'Den här versionen använder inte dina tidskorrigeringar ännu. Tillämpa dem för att skapa en ny version; spara eller uppdatera den sedan i MOWL.',
   'class.beat.apply': 'Tillämpa tidskorrigeringar',
 
   // The Change it chat (ADR 0007 section 3).
@@ -724,12 +722,11 @@ const sv: Catalogue = {
   'class.chat.askAgain': 'Du kan be om ändringen igen nu.',
   'class.chat.changeSongs': 'Byt låtar',
   'class.chat.stopped': 'Den här ändringen stoppades. Inget ändrades.',
-  'class.chat.empty':
-    'Inget har efterfrågats ännu. Säg vad som ska ändras, så ändrar classbeat det här passet.',
+  'class.chat.empty': 'Inget efterfrågat än. Säg vad som ska ändras, så ändrar vi passet.',
   'class.chat.requests': 'Dina önskemål',
   'class.chat.youAsked': 'Du bad om',
-  'class.chat.changed': 'classbeat ändrade det',
-  'class.chat.changedVersion': 'classbeat ändrade det, version {number}',
+  'class.chat.changed': 'Ändrat',
+  'class.chat.changedVersion': 'Ändrat, version {number}',
   'class.chat.musicChanged': 'Musiken ändrades: spellistan i MOWL är inte den som var där förut.',
   'class.chat.designerNote': 'Anteckning från utformaren:',
   'class.chat.viewVersion': 'Visa version {number}',
@@ -737,13 +734,12 @@ const sv: Catalogue = {
   'class.chat.tooLong': 'En begäran får vara högst {max} tecken; den här har {count}.',
   'class.chat.noVersion': 'Det finns ingen version att ändra ännu.',
   'class.chat.unavailable':
-    'Ändra det är inte tillgängligt för det här passet just nu. Du kan fortfarande visa, jämföra, använda och spara dess versioner.',
+    'Ändra det är inte tillgängligt för det här passet just nu. Du kan fortfarande visa, jämföra, använda och spara versioner.',
   'class.chat.busy':
     'Det här passet är upptaget med en annan uppgift. Du kan be om en ändring när den är klar.',
   'class.chat.form': 'Be om en ändring',
   'class.chat.label': 'Vad ska ändras?',
-  'class.chat.hint':
-    'Till exempel: gör den andra klättringen längre, eller lägg till en sprint före nedvarvningen. Högst {max} tecken.',
+  'class.chat.hint': 'Till exempel: en längre andra klättring. Högst {max} tecken.',
 
   // Save to MOWL and Update (ADR 0007 sections 5 to 9).
   'class.save.title': 'Spara i MOWL',
@@ -777,32 +773,32 @@ const sv: Catalogue = {
   'class.save.updateUnavailable': 'Uppdatering är inte tillgänglig ännu. Spara lägger till ett nytt träningspass.',
 
   // Undecided writes and the undecided playlist attach (ADR 0005 section 7, ADR 0007 section 8).
-  'class.write.title.save': 'Vi kunde inte avgöra om ditt träningspass sparades',
-  'class.write.title.update': 'Vi kunde inte avgöra om ditt träningspass uppdaterades',
+  'class.write.title.save': 'Vi kunde inte bekräfta att träningspasset sparades',
+  'class.write.title.update': 'Vi kunde inte bekräfta att träningspasset uppdaterades',
   'class.write.waiting': 'Vi kanske fortfarande skickar det här till MOWL, så Kontrollera igen och Gör det ändå väntar till {time}.',
   'class.write.running': 'Vi kanske fortfarande skriver till MOWL, så det går inte att avgöra ännu. Vänta några minuter.',
   'class.write.settled': 'Det var redan avgjort. Listan har uppdaterats.',
-  'class.write.notSaved': 'Ja, det sparades inte',
-  'class.write.notUpdated': 'Ja, det uppdaterades inte',
+  'class.write.notSaved': 'Ja, inte sparat',
+  'class.write.notUpdated': 'Ja, inte uppdaterat',
   'class.write.loadFailed': 'Det som återstår att avgöra för det här passet kunde inte laddas.',
   'class.write.heading': 'Oklart vad som nådde MOWL',
-  'class.attach.title': 'classbeat kunde inte avgöra om din spellista lades till',
+  'class.attach.title': 'Vi kunde inte bekräfta att spellistan lades till',
   'class.attach.intro':
-    'För att läsa din musik bad classbeat MOWL att lägga till spellistan du valde i din MOWL-musik. MOWL svarade inte tydligt, så spellistan kan finnas där nu eller inte. classbeat försöker inte igen av sig själv, så att du inte av misstag får två kopior.',
+    'Vi bad MOWL lägga till din spellista och fick inget tydligt svar. Den kan finnas där eller inte. Vi försöker aldrig igen på egen hand.',
   'class.attach.found': 'Spellistan finns i din MOWL-musik. Du kan utforma passet igen nu.',
   'class.attach.absent': 'Spellistan finns inte i din MOWL-musik. Du kan utforma passet igen nu.',
-  'class.attach.still_unsure': 'classbeat kan fortfarande inte avgöra om spellistan lades till.',
+  'class.attach.still_unsure': 'Vi kan fortfarande inte avgöra om spellistan lades till.',
   'class.attach.decided':
     'Uppfattat. Nästa utformning lägger till spellistan i din MOWL-musik igen, vilket kan lämna två kopior där.',
   'class.attach.settled': 'Det var redan avgjort. Listan nedan är aktuell.',
   'class.attach.loadFailed': 'Det som återstår att avgöra kunde inte laddas.',
   'class.attach.none':
-    'classbeat har inget steg kvar för dig att avgöra här, så det kan inte erbjuda Kontrollera igen eller Gör det ändå. Om du vill vara säker på att spellistan inte läggs till två gånger tittar du i din MOWL-musik. För att rensa classbeats post om den kopplar du bort MOWL och ansluter det igen på {account} och startar sedan en ny utformning från formuläret.',
+    'Inget återstår att avgöra här. Kontrollera spellistan i din MOWL-musik. För att rensa vår post kopplar du bort och ansluter MOWL igen på {account}.',
   'class.attach.accountPage': 'din kontosida',
   'class.attach.earlier': 'Det här steget kommer från en tidigare utformning av dig.',
   'class.attach.warning':
-    'Gör det ändå betyder att du avgör att spellistan inte lades till. Nästa utformning lägger till den i din MOWL-musik igen. Om den ändå lades till får du två kopior av den där.',
-  'class.attach.addAgain': 'Ja, lägg till den igen',
+    'Gör det ändå: du avgör att den inte lades till. Nästa utformning lägger till den igen, så du kan få två kopior.',
+  'class.attach.addAgain': 'Lägg till igen',
   'common.tryAgain': 'Försök igen',
   'newclass.title': 'Utforma ett pass',
   'newclass.loading': 'Laddar din MOWL-musik',
@@ -1091,7 +1087,7 @@ const sv: Catalogue = {
   'songs.start.invalid_input': 'Begäran accepterades inte. Kontrollera fälten och försök igen.',
   'songs.start.not_connected': 'Spotify eller MOWL är inte anslutet. Anslut det först på din kontosida.',
   'songs.start.receipt_invalid':
-    'De här låtarna kan inte göras om till en spellista igen: de har redan använts eller aldrig godkänts. Välj låtar igen.',
+    'De här låtarna kan inte bli en spellista igen: de har redan använts eller aldrig godkänts. Välj låtar igen.',
   'songs.start.account_changed': 'Ditt Spotify-konto är inte det som låtarna valdes för. Välj låtar igen.',
   'songs.start.write_unresolved':
     'Ett tidigare steg på Spotify är fortfarande oavgjort. Avgör det först (Kontrollera igen eller Gör det ändå) och försök sedan igen.',
@@ -1101,18 +1097,17 @@ const sv: Catalogue = {
   'songs.failure.app_misconfigured.title': 'Spotify känner inte igen den här appinställningen',
   'songs.failure.not_allowlisted.title': 'Spotify avvisade det här kontot',
   'songs.failure.forbidden.title': 'Spotify avvisade begäran',
-  'songs.failure.rate_limited.title': 'Spotify eller MOWL bad classbeat att sakta ner',
+  'songs.failure.rate_limited.title': 'Spotify eller MOWL bad oss sakta ner',
   'songs.failure.rate_limited.detail': 'Vänta några minuter och försök igen.',
   'songs.failure.quota_exhausted.title': 'Din Spotify-app har använt upp sin kvot',
   'songs.failure.quota_exhausted.detail':
     'Din Spotify-app har använt upp sin kvot för tillfället. Försök igen om några timmar.',
   'songs.failure.upstream_unavailable.title': 'Det gick inte att nå Spotify eller MOWL',
-  'songs.failure.upstream_unavailable.detail':
-    'classbeat försökte flera gånger. Försök igen om några minuter.',
+  'songs.failure.upstream_unavailable.detail': 'Vi försökte flera gånger. Försök igen om några minuter.',
   'songs.failure.not_found.title': 'En spellista finns inte längre i Spotify',
   'songs.failure.not_found.detail': 'Arbetsspellistan finns inte längre i Spotify. Börja om.',
-  'songs.failure.scope_mismatch.title': 'Spotify gav inte den åtkomst som classbeat behöver',
-  'songs.failure.account_changed.title': 'Det här är inte det Spotify-konto som låtarna valdes för',
+  'songs.failure.scope_mismatch.title': 'Spotify gav inte den åtkomst vi behöver',
+  'songs.failure.account_changed.title': 'Fel Spotify-konto för de här låtarna',
   'songs.failure.access_denied.title': 'Spotify anslöts inte',
   'songs.failure.not_connected.title': 'Spotify eller MOWL är inte anslutet',
   'songs.failure.not_connected.detail': 'Anslut det på din kontosida och börja sedan om.',
@@ -1125,13 +1120,13 @@ const sv: Catalogue = {
   'songs.failure.playlist_mismatch.detail':
     'Spotifys spellista stämde inte med de godkända låtarna; inget utformades. Skapa den igen.',
   'songs.failure.pool_too_small.title': 'Det hittades inte tillräckligt många användbara låtar',
-  'songs.uncertain.title': 'classbeat kunde inte avgöra om din spellista skrevs i Spotify',
+  'songs.uncertain.title': 'Vi kunde inte bekräfta att spellistan skrevs',
   'songs.uncertain.text1':
-    'Spotify svarade inte i tid medan classbeat skrev spellistan för dina godkända låtar. Spellistan kan finnas i ditt Spotify nu eller inte.',
+    'Spotify svarade inte i tid medan vi skrev spellistan för dina godkända låtar. Spellistan kan finnas i ditt Spotify nu eller inte.',
   'songs.uncertain.text2':
     'Kontrollera igen frågar Spotify vad som finns där. Gör det ändå skriver utan att veta.',
   'songs.uncertain.overwriteWarning':
-    'Om spellistan redan finns i ditt Spotify kan du få två spellistor med samma namn. Du kan radera den extra i Spotify. Gå bara vidare om du är säker på att den inte skrevs.',
+    'Finns den redan i ditt Spotify kan du få två spellistor med samma namn. Fortsätt bara om du är säker på att den inte skrevs.',
   'songs.outcome.found':
     'Spellistan finns i ditt Spotify. Skapa spellistan igen för att gå vidare med ditt pass.',
   'songs.outcome.nothing':
@@ -1142,12 +1137,12 @@ const sv: Catalogue = {
     'Spotify ger fortfarande inget besked. Vänta några minuter och kontrollera igen.',
   'common.didNotWork': 'Det fungerade inte. Försök igen.',
   'songs.uncertain.mayStillRunning':
-    'classbeat kanske fortfarande skriver till Spotify, så det går inte att avgöra ännu. Vänta några minuter.',
+    'Vi kanske fortfarande skriver till Spotify, så det går inte att avgöra ännu. Vänta några minuter.',
   'songs.uncertain.alreadySettled': 'Det var redan avgjort. Ladda om sidan.',
   'songs.uncertain.waiting':
-    'classbeat kanske fortfarande skickar det här till Spotify, så Kontrollera igen och Gör det ändå väntar några minuter.',
+    'Vi kanske fortfarande skickar det här till Spotify, så Kontrollera igen och Gör det ändå väntar några minuter.',
   'songs.uncertain.confirm': 'Bekräfta',
-  'songs.uncertain.confirmYes': 'Ja, den skrevs inte',
+  'songs.uncertain.confirmYes': 'Ja, inte skrivet',
   'songs.uncertain.checkAgain': 'Kontrollera igen',
   'songs.uncertain.doAnyway': 'Gör det ändå',
   'job.steps.label': 'Steg',
@@ -1220,16 +1215,15 @@ const sv: Catalogue = {
   'songs.change.wait': 'Vänta först tills den pågående uppgiften är klar.',
   'songs.change.loadFailed': 'Låtarna kunde inte laddas. Ladda om sidan.',
   'songs.change.loading': 'Laddar låtarna',
-  'songs.change.intro':
-    'Markera de låtar du vill byta ut. De andra låtarna blir kvar, och du godkänner den nya listan innan något skrivs till ditt Spotify.',
+  'songs.change.intro': 'Markera låtar att byta ut. Inget skrivs till Spotify innan du godkänner.',
   'songs.change.different': 'Vad ska vara annorlunda?',
   'songs.change.marked': 'Byt de markerade låtarna',
   'songs.change.all': 'Byt alla låtar',
   'songs.ended.stoppedTitle': 'Du stoppade det här',
   'songs.ended.stoppedApproved': 'Du stoppade jobbet efter att ha godkänt låtarna. Passet blev inte klart.',
   'songs.ended.stoppedNothing': 'Inget skrevs till ditt Spotify.',
-  'songs.ended.expiredApproved': 'Det här jobbet gick ut',
-  'songs.ended.expiredSongs': 'De här låtarna gick ut',
+  'songs.ended.expiredApproved': 'Jobbet gick ut',
+  'songs.ended.expiredSongs': 'Låtarna gick ut',
   'songs.ended.expiredApprovedDetail': 'Jobbet tog för lång tid och avslutades.',
   'songs.ended.expiredSongsDetail': 'Ingen godkände låtarna i tid. Inget skrevs till ditt Spotify.',
   'songs.ended.loadFailed': 'Det som återstår att avgöra kunde inte laddas. Ladda om sidan.',
@@ -1459,7 +1453,7 @@ const sv: Catalogue = {
   'cred.email.title': 'E-postadress',
   'cred.email.current': 'Din adress är {email}.',
   'cred.email.sent':
-    'Om {email} kan användas är en bekräftelselänk på väg dit. Öppna den medan du är inloggad för att slutföra. Din adress ändras först då.',
+    'Om {email} kan användas har vi skickat en bekräftelselänk dit. Öppna den medan du är inloggad; din adress ändras då.',
   'cred.email.newLabel': 'Ny e-postadress',
   'cred.email.change': 'Ändra e-post',
   'cred.password.title': 'Lösenord',
