@@ -18,7 +18,7 @@ describe('App shell', () => {
 
     renderAt('/')
 
-    const landing = await screen.findByRole('region', { name: /classbeat picks the songs/i })
+    const landing = await screen.findByRole('region', { name: /timed to the music/i })
     expect(within(landing).getByText('Private beta')).toBeInTheDocument()
     expect(screen.queryByText(/^API:/)).not.toBeInTheDocument()
   })

@@ -1,12 +1,14 @@
 import { MiniProfile } from '../components/classes/MiniProfile'
-import { EXAMPLE_PROFILE, EXAMPLE_SONGS, STEPS } from '../components/landing/exampleClass'
+import { EXAMPLE_PROFILE, EXAMPLE_SONGS, STEPS, type ExampleSong } from '../components/landing/exampleClass'
 import { useT } from '../i18n/I18n'
 import { Button } from '../components/ui/button'
+import { ListRow } from '../components/ui/list-row'
 import { Link } from '../router/Router'
 
 /** The page for visitors who are not signed in (ADR 0013 section 5). */
 export function LandingPage() {
   const t = useT()
+  const stats = (song: ExampleSong) => t('landing.example.songStats', { bpm: song.bpm, length: song.length })
   return (
     <div className="flex flex-col gap-12">
       <section className="landing flex flex-col gap-5" aria-labelledby="landing-title">
@@ -17,13 +19,11 @@ export function LandingPage() {
         >
           {t('landing.title')}
         </h1>
-        <p className="m-0 flex flex-wrap items-center gap-3">
+        <p className="m-0 max-w-prose text-lg text-muted">{t('landing.lead')}</p>
+        <p className="m-0">
           <Button asChild>
             <Link to="/signup">{t('landing.signUp')}</Link>
           </Button>
-          <Link to="/signin" className="inline-flex min-h-11 items-center">
-            {t('landing.haveAccount')}
-          </Link>
         </p>
       </section>
 
@@ -31,28 +31,31 @@ export function LandingPage() {
         <h2 id="example-title" className="m-0 font-display text-2xl font-bold">
           {t('landing.example.title')}
         </h2>
-        <p className="m-0 text-muted">
-          {t('landing.example.note')}
-        </p>
+        <p className="m-0 text-muted">{t('landing.example.note')}</p>
         <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
           <MiniProfile profile={EXAMPLE_PROFILE} tall />
-          <ol className="m-0 flex list-none flex-col p-0" aria-label={t('landing.example.songs')}>
+          <ol
+            className="m-0 flex list-none flex-col divide-y divide-line p-0"
+            aria-label={t('landing.example.songs')}
+          >
             {EXAMPLE_SONGS.map((song, i) => (
-              <li
+              <ListRow
                 key={song.title}
-                className="grid grid-cols-[1.5rem_1fr_auto] items-center gap-x-3 border-t border-line py-2 first:border-t-0"
-              >
-                <span className="text-muted tabular-nums">{String(i + 1)}</span>
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{song.title}</span>
-                  <span className="block truncate text-[0.8125rem] text-muted">
+                className="px-0 py-2"
+                leading={<span className="w-6 shrink-0 text-muted tabular-nums">{String(i + 1)}</span>}
+                title={song.title}
+                description={
+                  <>
                     {t('landing.example.songMeta', { artist: song.artist, part: t(song.part) })}
+                    <span className="block tabular-nums sm:hidden">{stats(song)}</span>
+                  </>
+                }
+                action={
+                  <span className="hidden text-right text-[0.8125rem] text-muted tabular-nums sm:block">
+                    {stats(song)}
                   </span>
-                </span>
-                <span className="text-right text-[0.8125rem] text-muted tabular-nums">
-                  {t('landing.example.songStats', { bpm: song.bpm, length: song.length })}
-                </span>
-              </li>
+                }
+              />
             ))}
           </ol>
         </div>

@@ -118,7 +118,7 @@ function SignedOutHeader({ ready, offered }: { ready: boolean; offered: readonly
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
         <BrandLink />
         {ready ? (
-          <nav aria-label={t('shell.nav.account')} className="ml-auto flex items-center gap-2">
+          <nav aria-label={t('shell.nav.account')} className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <LanguagePicker offered={offered} />
             <Link
               to="/signin"

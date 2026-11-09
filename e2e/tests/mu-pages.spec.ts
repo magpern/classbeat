@@ -59,8 +59,8 @@ async function visit(path: string, ready: ReturnType<Page['locator']>) {
 }
 
 test('the pages before sign-in', async () => {
-  await visit('/', page.getByRole('link', { name: 'Sign up with an invite code' }))
-  await check('landing', page.getByRole('link', { name: 'Sign up with an invite code' }))
+  await visit('/', page.getByRole('link', { name: 'Join the beta' }))
+  await check('landing', page.getByRole('link', { name: 'Join the beta' }))
   await visit('/signin', page.getByRole('button', { name: 'Sign in', exact: true }))
   await check('sign in', page.getByRole('button', { name: 'Sign in', exact: true }))
   await visit('/signup', page.getByRole('button', { name: 'Create account' }))

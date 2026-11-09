@@ -27,7 +27,7 @@ const LONG = { timeout: 60_000 }
 
 const da: Words = {
   code: 'da',
-  landingSignUp: 'Opret dig med en invitationskode',
+  landingSignUp: 'Deltag i betaen',
   signIn: 'Log ind',
   createAccount: 'Opret konto',
   inviteCode: 'Invitationskode',

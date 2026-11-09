@@ -1,6 +1,6 @@
 import { Search } from 'lucide-react'
 import { useId, useState } from 'react'
-import { ClassCard } from '../components/classes/ClassCard'
+import { ClassList, ClassRow } from '../components/classes/ClassRow'
 import { Notice } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { Button } from '../components/ui/button'
@@ -106,23 +106,22 @@ function Classes() {
           {shown.length === 0 ? (
             <p className="m-0 text-muted">{t('class.list.noMatch')}</p>
           ) : (
-            <ul className="m-0 grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
+            <ClassList>
               {shown.map((c) => (
-                <li key={c.id}>
-                  <ClassCard
-                    cls={c}
-                    actions={
-                      <DuplicateClass
-                        classId={c.id}
-                        title={c.title}
-                        revisionId={c.currentRevisionId}
-                        versionNumber={c.currentRevisionNumber}
-                      />
-                    }
-                  />
-                </li>
+                <ClassRow
+                  key={c.id}
+                  cls={c}
+                  actions={
+                    <DuplicateClass
+                      classId={c.id}
+                      title={c.title}
+                      revisionId={c.currentRevisionId}
+                      versionNumber={c.currentRevisionNumber}
+                    />
+                  }
+                />
               ))}
-            </ul>
+            </ClassList>
           )}
         </>
       ) : null}
