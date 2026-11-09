@@ -27,8 +27,8 @@ function numberFormat(options: Intl.NumberFormatOptions): Intl.NumberFormat {
   return found as Intl.NumberFormat
 }
 
-const DATE: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'numeric', day: 'numeric' }
-const TIME: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: 'numeric', second: 'numeric' }
+const DATE: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' }
+const TIME: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: 'numeric' }
 
 function parse(iso: string): Date | null {
   const at = new Date(iso)

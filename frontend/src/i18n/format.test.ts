@@ -20,9 +20,13 @@ const AT = new Date(ISO)
 
 describe('format (English)', () => {
   it('dates and times match toLocale*', () => {
-    expect(dateTime(ISO)).toBe(AT.toLocaleString('en'))
-    expect(date(ISO)).toBe(AT.toLocaleDateString('en'))
-    expect(time(ISO)).toBe(AT.toLocaleTimeString('en'))
+    // No seconds, and a named month so a date cannot be read two ways (UI review G8).
+    expect(dateTime(ISO)).toBe(
+      AT.toLocaleString('en', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' }),
+    )
+    expect(date(ISO)).toBe(AT.toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' }))
+    expect(time(ISO)).toBe(AT.toLocaleTimeString('en', { hour: 'numeric', minute: 'numeric' }))
+    expect(dateTime(ISO)).not.toMatch(/:\d\d:\d\d/)
     expect(shortDate(ISO)).toBe(AT.toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' }))
     expect(shortDateTime(ISO)).toBe(
       AT.toLocaleString('en', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),

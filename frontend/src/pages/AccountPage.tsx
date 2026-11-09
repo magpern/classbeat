@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { getIdentities, logout, logoutAll } from '../api/auth'
 import { oauthOutcomeMessage } from '../api/messages'
@@ -174,9 +175,14 @@ function Account() {
         </TabsContent>
         <TabsContent value="plan" className="flex flex-col gap-4">
           <Plan />
-          <details className="rounded-lg border border-line bg-surface p-4">
-            <summary className="min-h-11 cursor-pointer content-center font-medium">
+          <details className="group rounded-lg border border-line bg-surface p-4">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between font-medium [&::-webkit-details-marker]:hidden">
               {t('account.usageDetails')}
+              <ChevronDown
+                aria-hidden="true"
+                size={18}
+                className="text-muted transition-transform group-open:rotate-180"
+              />
             </summary>
             <Usage />
           </details>
