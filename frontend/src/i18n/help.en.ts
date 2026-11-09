@@ -6,27 +6,26 @@ export const helpEn = {
   'help.link': 'Help',
   'help.inline.account': 'account page',
   'help.title': 'Help and contact',
-  'help.lead':
-    'Short answers about how classbeat works, and how to reach us. You do not need to be signed in to read this page.',
+  'help.lead': 'Short answers, and how to reach us. You do not need to sign in to read this page.',
 
   'help.connect.title': 'Connecting your accounts',
   'help.connect.mowl.q': 'How do I connect MOWL?',
   'help.connect.mowl.a':
-    'Open the Connections tab on your {account}. Sign in to your Intelligent Cycling (MOWL) account with your email and password, or scan the code shown there with the MOWL app on your phone. classbeat uses a password once to get a sign-in token and keeps only the token, encrypted, never the password. You can disconnect at any time, which deletes the token classbeat holds. To end the sign-in on MOWL’s side, change your MOWL password.',
+    'Open the Connections tab on your {account} and press Connect on MOWL. Sign in to your Intelligent Cycling (MOWL) account with your email and password. On a larger screen you may also be offered a code to scan with the MOWL app. We use your password once to get a sign-in token and keep only the token, encrypted. Disconnect at any time and we delete it. To end the sign-in on MOWL’s side, change your MOWL password.',
   'help.connect.spotify.q': 'How do I connect Spotify?',
   'help.connect.spotify.a':
-    'Spotify is needed when you ask classbeat to pick songs for you. On the Connections tab, Set up Spotify takes you through creating a Spotify app of your own in the Spotify Developer Dashboard, so its limits are yours (the person who owns the app needs Spotify Premium), and pasting the app’s Client ID into classbeat. You then sign in at Spotify and allow classbeat. classbeat never needs and never asks for the app’s Client Secret.',
+    'Spotify is needed when you want us to pick songs for you. On the Connections tab, press Connect on Spotify. We guide you through making a Spotify app of your own in the Spotify Developer Dashboard, so its limits are yours. You then paste the app’s Client ID here. The person who owns the app needs Spotify Premium. Then you sign in at Spotify and allow access. We never need or ask for the app’s Client Secret.',
   'help.connect.swedebeat.q': 'Do I need Swedebeat?',
   'help.connect.swedebeat.a':
-    'No, it is optional. Designing a class to one of your Swedebeat mixes uses the mixes listed in your MOWL account. If you teach with Swedebeat, turn on I use Swedebeat on the Connections tab and sign in with your Swedebeat account to match a class’s songs to Swedebeat. As with MOWL, the password is used once and only the token is kept.',
+    'No, it is optional. If you teach with Swedebeat, press Connect on Swedebeat on the Connections tab. You can then design a class to one of your Swedebeat mixes, which come from your MOWL account, and match a class’s songs to Swedebeat. As with MOWL, we use the password once and keep only the token.',
 
   'help.design.title': 'Designing a class',
   'help.design.how.q': 'How is a class designed?',
   'help.design.how.a':
-    'You describe the length, the effort and the music: your own playlist, songs classbeat picks for you, a Swedebeat mix, or no music. An AI assistant proposes the intervals, efforts and cues and, if you asked for songs, a list of songs checked against MOWL’s tempo and length. Designing can take a few minutes, and you can leave the page meanwhile. The result is a suggestion, so check a class before you teach it.',
+    'You describe the length, the effort and the music: your own playlist, songs we pick for you, a Swedebeat mix, or no music. An AI assistant proposes the intervals, efforts and cues. If you asked for songs, it also proposes a song list checked against MOWL’s tempo and length. Designing can take a few minutes, and you can leave the page meanwhile. The result is a suggestion, so check a class before you teach it.',
   'help.design.saved.q': 'What is saved, and when?',
   'help.design.saved.a':
-    'The assistant only proposes. When you approve a song list, classbeat creates a private playlist with those songs in your Spotify and adds it to your MOWL music. The workout itself goes to your MOWL account, private, only when you press Save to MOWL on the class. If you do not approve a list in time, nothing is written to your Spotify.',
+    'The assistant only proposes. When you approve a song list, we create a private playlist with those songs in your Spotify and add it to your MOWL music. The workout itself goes to your MOWL account, private, only when you press Save to MOWL on the class. If you do not approve a list in time, nothing is written to your Spotify.',
   'help.design.change.q': 'Can I change a class afterwards?',
   'help.design.change.a':
     'Yes. Describe what should be different on the class page, or use Change songs to replace some of the songs. Every change makes a new version. Earlier versions stay, and you can make one of them current with Use this version. Save to MOWL again to update the workout there.',
@@ -34,8 +33,8 @@ export const helpEn = {
   'help.plan.title': 'Plans and limits',
   'help.plan.limits.q': 'What limits apply to me?',
   'help.plan.limits.a':
-    'Your plan sets how many classes you can design each month, how many changes a class can have, how long a class may be, how many designs can run at once, and whether games and races are included. There is also a monthly budget for the assistant’s work. Months are counted in UTC and start over on the first. The Plan and usage tab on your account page shows what you have used.',
-  'help.plan.code.q': 'How do I redeem a code or start a trial?',
+    'Your plan sets how many classes you can design each month and how many changes a class can have. It also sets how long a class may be, how many designs can run at once, and whether games and races are included. There is also a monthly budget for the assistant’s work. Months are counted in UTC and start over on the first. The Plan and usage tab on your account page shows what you have used.',
+  'help.plan.code.q': 'How do I use a code or trial?',
   'help.plan.code.a':
     'On the Plan and usage tab, type the code under Redeem a code, or press the trial button when a trial is on offer. A code can be invalid, expired or used up, and a trial can be used once.',
 
@@ -43,13 +42,13 @@ export const helpEn = {
   'help.signin.reset.q': 'I forgot my password',
   'help.signin.reset.a':
     'Choose Forgot your password? on the sign-in page and we send a link that works for 30 minutes. A password is 12 to 128 characters. When you choose a new one, you are signed out everywhere.',
-  'help.signin.methods.q': 'Can I sign in with Google, GitHub or Microsoft?',
+  'help.signin.methods.q': 'Sign in with Google, GitHub or Microsoft?',
   'help.signin.methods.a':
     'Yes, when they are offered on the sign-in page. You can link or unlink them under Sign-in and security on your account page. Your account uses the email address the provider has verified.',
   'help.signin.twofactor.q': 'Is there two-factor authentication?',
   'help.signin.twofactor.a':
-    'Yes. Under Sign-in and security you can set up an authenticator app. It then asks for a code before the sensitive changes on that page, and you get recovery codes that are shown only once, so save them.',
-  'help.signin.devices.q': 'How do I see where I am signed in?',
+    'Yes. Under Sign-in and security you can set up an authenticator app. It then asks for a code before sensitive changes on that page. You get recovery codes that are shown only once, so save them.',
+  'help.signin.devices.q': 'Where am I signed in?',
   'help.signin.devices.a':
     'Sign-in and security lists the devices you are signed in on and the security activity of the last 30 days. You can sign out one device or everywhere. If you see something you did not do, sign out everywhere and change your password.',
 
