@@ -745,7 +745,7 @@ The e2e stack trusts the docker network as proxy so each test presents its own `
 address (separate rate limits). Sign-up is limited to 5 per IP and hour: use `down -v` between full
 runs of a stack that is not given per-test addresses.
 
-CI runs the same in the `e2e` job (when the playwright filter is true: UI, e2e, compose or Docker files) and uploads `playwright-report` only on failure.
+CI runs the same in the `e2e` job, in 3 shards (`playwright test --shard=K/N`; when the playwright filter is true: UI, e2e, compose or Docker files) and each shard uploads `playwright-report-K` only on failure.
 
 ### CI: what runs, and when
 
@@ -780,6 +780,16 @@ The backend test shard count has one source: the `shard` list of the `backend-te
 `include` or `exclude`, or anything but `1..N`, and passes N to the shard check and to every shard
 (never `strategy.job-total`).
 
+The Playwright (`e2e`) shard count has one source too: `env.E2E_SHARD_COUNT` of the `e2e` job (an
+integer from 1 to 20, now 3). The job's matrix is the one axis `shard`, set to
+`${{ fromJSON(needs.changes.outputs.e2e_matrix) }}`, because the list is dynamic: `changes` gives
+`[1..N]` when `playwright` is true and `[1]` when only the stack needs checking, so a stack-only
+change does not start a stack on runners 2..N for nothing. `scripts/ci-shards.sh <workflow> e2e`
+(run in `changes`, tested in `checks`) reads and validates the count and the matrix (another axis,
+`include`, `exclude` or another expression fails), `--list` prints `[1..N]`, and `changes` passes
+the count as `e2e_shards` to every shard (`playwright test --shard=$SHARD/$TOTAL`, never
+`strategy.job-total`). The default call (`scripts/ci-shards.sh`) is still the backend count.
+
 | Job | Runs | What it does |
 |---|---|---|
 | `changes` | always | `scripts/ci-changes.sh`: `git diff` of the PR's base and head (or the merge group's `base_sha` and `head_sha`) gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`), `playwright` (`frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed (an unknown commit, a missing SHA) everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh`, `ci-shards.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
@@ -787,7 +797,7 @@ The backend test shard count has one source: the `shard` list of the `backend-te
 | `backend` | `backend` | once per run: ruff, format, pyright, the queue functions' md5 regenerated on the pinned image (fails when `queue_digests.py` is stale), and the shard check: `backend/tests/shards.py check N` compares pytest's own collection with the split, so every test file runs in exactly one shard and none is empty |
 | `backend-tests` | `backend` | pytest in a matrix of 3 shards (`fail-fast: false`), each its own runner and Postgres service; a file's shard is `sha256(path) % N + 1` (`tests/shards.py list K N`), so the split needs no list and no dependency. Change the shard count only in the matrix (`shard: [1, 2, 3]`); `changes` reads it from there (`scripts/ci-shards.sh`) and passes it to the check and every shard |
 | `frontend` | `frontend` | lint, typecheck, Vitest, build |
-| `e2e` | `stack` | the stack, the checks below, the Trivy image scan, then Playwright only when `playwright` is true (UI, e2e, compose or Docker files, or `all`); a backend-only change skips it, `main` runs it after every merge |
+| `e2e` | `stack` | a matrix of 3 shards (`fail-fast: false`, the count above), each its own runner with its own compose stack and fakes, so `workers: 1` in `e2e/playwright.config.ts` stays. Every shard starts the stack and runs the stack checks below (including the secret checks on its own `docker inspect`, mounts and logs); Playwright runs only when `playwright` is true (UI, e2e, compose or Docker files, or `all`) as `playwright test --shard=K/N` (Playwright splits by test count, so shard times can differ), and each shard uploads `playwright-report-K` on failure. **Shard 1 only:** the Trivy image scan, the `classbeat-db` image build and scan, and the backup and restore drill (they check the repository, not the stack a shard ran), so a stack-only change (a one-shard matrix) does them exactly once. A backend-only change skips the job; `main` runs it after every merge |
 | `ci` | always | the required check; see the gate below |
 
 A docs-only PR therefore runs `changes`, `checks` and `ci` (plus `pr-title`).
@@ -799,7 +809,7 @@ its filter output is `false`. A job that is needed (filter `true`) but skipped, 
 fails the gate, and so does a job missing from `needs`, a short result list or malformed input (it fails closed). The
 `backend-tests` matrix has one result in `needs` (success only when every shard succeeded), gated
 by the `backend` filter: a failed or cancelled shard, or the matrix skipped while `backend` is
-true, fails the gate. Add a new job to `needs` of `ci`, to `ci-gate.sh` (and its filter) and to
+true, fails the gate. The `e2e` matrix is the same, gated by the `stack` filter. Add a new job to `needs` of `ci`, to `ci-gate.sh` (and its filter) and to
 the tests.
 
 ### Security checks (CI)
@@ -816,8 +826,8 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 | pip-audit | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
 | npm audit | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
 | Trivy repository scan | Trivy on the repository (vulnerabilities, Dockerfile misconfiguration; compose is not scanned) |
-| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` (the empty model key is replaced by a random canary first), only `worker` mounts the three model keys (`anthropic_api_key`, `openai_api_key`, `deepseek_api_key`, a random canary each) and runs `fake`, no container has a model key variable, `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint), and `database_maint_password` on `db-functions` and `web` only |
-| `e2e`: Trivy image scan | Trivy on the image the running stack was built from (never pushed); then Playwright runs |
+| `e2e`: stack checks | builds the stack in every shard: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` (the empty model key is replaced by a random canary first), only `worker` mounts the three model keys (`anthropic_api_key`, `openai_api_key`, `deepseek_api_key`, a random canary each) and runs `fake`, no container has a model key variable, `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint), and `database_maint_password` on `db-functions` and `web` only |
+| `e2e`: Trivy image scan | Trivy on the image the running stack was built from (never pushed), in shard 1 only; then Playwright runs |
 
 Trivy and gitleaks are checksum-verified release binaries, installed by `scripts/ci-install-release.sh`
 (tested by `scripts/test-ci-install-release.sh`, which runs against a loopback server that answers 504 first).

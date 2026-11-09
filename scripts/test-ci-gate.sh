@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests scripts/ci-gate.sh, scripts/ci-changes.sh and scripts/ci-shards.sh with sample inputs.
-# Run by the `checks` job.
+# Tests scripts/ci-gate.sh, scripts/ci-changes.sh and scripts/ci-shards.sh (and the e2e shard
+# wiring in the CI workflow) with sample inputs. Run by the `checks` job.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 
@@ -101,6 +101,17 @@ gate "shards failed, backend filter false"    1 "$(needs success success skipped
 gate "shards missing, six results"            1 "$(needs success success success skipped skipped true false false | jq -c 'del(.["backend-tests"])')" "success success success success skipped skipped"
 gate "shards missing from needs"              1 "$(needs success success success skipped skipped true false false | jq -c 'del(.["backend-tests"])')" "success success success skipped skipped"
 gate "a shard listed as its own job"          1 "$(needs success success success skipped skipped true false false | jq -c '.["backend-tests-1"] = {"result": "success"}')" "success success success success skipped skipped success"
+
+# The e2e matrix (the Playwright shards) is one aggregate result too, gated by the stack filter:
+# a stack-only change runs a one-shard matrix, so a skipped matrix is only fine when stack is false.
+#     name                                  want  needs: ... filters, then the backend-tests result
+gate "e2e shards passed"                      0 "$(needs success success skipped skipped success false false true)"
+gate "an e2e shard failed"                    1 "$(needs success success skipped skipped failure false false true)"
+gate "an e2e shard cancelled"                 1 "$(needs success success skipped skipped cancelled false false true)"
+gate "e2e shards skipped, stack filter true"  1 "$(needs success success skipped skipped skipped false false true)"
+gate "e2e shards skipped, stack filter false" 0 "$(needs success success skipped skipped skipped false false false)"
+gate "e2e shards failed, stack filter false"  1 "$(needs success success skipped skipped failure false false false)"
+gate "an e2e shard listed as its own job"     1 "$(needs success success skipped skipped success false false true | jq -c '.["e2e-2"] = {"result": "success"}')" "success success skipped skipped success success success"
 
 # changes <name> <event> <"file file ..."> <expected "backend frontend stack playwright all">
 tmp="$(mktemp -d)"
@@ -256,13 +267,26 @@ for ev in "" unset; do
 done
 
 # ci-shards.sh: the shard count is the length of the backend-tests `shard` list, and only a
-# matrix that is exactly `shard: [1..N]` has one. Needs yq (on the CI runners; skipped without).
+# matrix that is exactly `shard: [1..N]` has one. The e2e matrix is the one axis `shard` set to the
+# expression over `changes`' e2e_matrix output, and its count is the job's env.E2E_SHARD_COUNT.
+# Needs yq (on the CI runners; skipped without).
 # shards <name> <expected count, or "fail"> <matrix as YAML flow>
 shards() {
   local name="$1" want="$2" matrix="$3" got
   printf 'jobs:\n  backend-tests:\n    strategy:\n      matrix: %s\n' "$matrix" > "$tmp/wf.yml"
   if got="$("$here/ci-shards.sh" "$tmp/wf.yml" 2> /dev/null)"; then :; else got=fail; fi
   if [ "$got" = "$want" ]; then report ok "shards: $name"; else report FAIL "shards: $name (got '$got', want '$want')"; fi
+}
+# e2e_shards <name> <expected count, or "fail"> <E2E_SHARD_COUNT as YAML, or "-" for none> <matrix as YAML flow>
+e2e_shards() {
+  local name="$1" want="$2" count="$3" matrix="$4" got
+  if [ "$count" = "-" ]; then
+    printf 'jobs:\n  e2e:\n    strategy:\n      matrix: %s\n' "$matrix" > "$tmp/wf.yml"
+  else
+    printf 'jobs:\n  e2e:\n    env:\n      E2E_SHARD_COUNT: %s\n    strategy:\n      matrix: %s\n' "$count" "$matrix" > "$tmp/wf.yml"
+  fi
+  if got="$("$here/ci-shards.sh" "$tmp/wf.yml" e2e 2> /dev/null)"; then :; else got=fail; fi
+  if [ "$got" = "$want" ]; then report ok "e2e shards: $name"; else report FAIL "e2e shards: $name (got '$got', want '$want')"; fi
 }
 if command -v yq > /dev/null; then
   shards "three shards"                3    '{shard: [1, 2, 3]}'
@@ -281,13 +305,89 @@ if command -v yq > /dev/null; then
   shards "no shard axis"               fail '{part: [1, 2]}'
   # shellcheck disable=SC2016  # a literal GitHub expression, not shell
   shards "matrix from an expression"   fail '"${{ fromJSON(needs.x.outputs.m) }}"'
+
+  # shellcheck disable=SC2016  # literal GitHub expressions, not shell
+  {
+    e2e_expr='"${{ fromJSON(needs.changes.outputs.e2e_matrix) }}"'
+    e2e_shards "three shards"             3    3    "{shard: $e2e_expr}"
+    e2e_shards "one shard"                1    1    "{shard: $e2e_expr}"
+    e2e_shards "twenty shards"            20   20   "{shard: $e2e_expr}"
+    e2e_shards "a second axis"            fail 3    "{shard: $e2e_expr, browser: [chromium]}"
+    e2e_shards "an include"               fail 3    "{shard: $e2e_expr, include: [{shard: 4}]}"
+    e2e_shards "an exclude"               fail 3    "{shard: $e2e_expr, exclude: [{shard: 3}]}"
+    e2e_shards "a static list"            fail 3    '{shard: [1, 2, 3]}'
+    e2e_shards "another expression"       fail 3    '{shard: "${{ fromJSON(needs.changes.outputs.shards) }}"}'
+    e2e_shards "no shard axis"            fail 3    '{part: [1, 2]}'
+    e2e_shards "matrix is an expression"  fail 3    "$e2e_expr"
+    e2e_shards "no count"                 fail -    "{shard: $e2e_expr}"
+    e2e_shards "count 0"                  fail 0    "{shard: $e2e_expr}"
+    e2e_shards "count 21"                 fail 21   "{shard: $e2e_expr}"
+    e2e_shards "negative count"           fail -1   "{shard: $e2e_expr}"
+    e2e_shards "fractional count"         fail 2.5  "{shard: $e2e_expr}"
+    e2e_shards "count is a string"        fail '"3"' "{shard: $e2e_expr}"
+    e2e_shards "count is a list"          fail '[3]' "{shard: $e2e_expr}"
+  }
   rm -f "$tmp/wf.yml"
   if "$here/ci-shards.sh" "$tmp/missing.yml" > /dev/null 2>&1; then report FAIL "shards: missing file"; else report ok "shards: missing file"; fi
-  # The real workflow has a valid matrix.
-  if n="$("$here/ci-shards.sh" "$here/../.github/workflows/ci.yml" 2> /dev/null)"; then
-    report ok "shards: ci.yml has $n shards"
+  if "$here/ci-shards.sh" "$here/../.github/workflows/ci.yml" nope > /dev/null 2>&1; then report FAIL "shards: unknown job"; else report ok "shards: unknown job"; fi
+  if "$here/ci-shards.sh" "$here/../.github/workflows/ci.yml" e2e --nope > /dev/null 2>&1; then report FAIL "shards: unknown option"; else report ok "shards: unknown option"; fi
+
+  # The real workflow has valid matrices, and the shard lists are [1..N].
+  wf="$here/../.github/workflows/ci.yml"
+  if n="$("$here/ci-shards.sh" "$wf" 2> /dev/null)"; then
+    report ok "shards: ci.yml has $n backend shards"
   else
     report FAIL "shards: ci.yml has no valid backend-tests matrix"
+  fi
+  if n="$("$here/ci-shards.sh" "$wf" e2e 2> /dev/null)"; then
+    report ok "shards: ci.yml has $n e2e shards"
+    list="$("$here/ci-shards.sh" "$wf" e2e --list)"
+    want="$(seq -s, 1 "$n" | sed 's/^/[/; s/$/]/')"
+    if [ "$list" = "$want" ]; then report ok "shards: e2e --list is $list"; else report FAIL "shards: e2e --list is '$list', want '$want'"; fi
+  else
+    report FAIL "shards: ci.yml has no valid e2e matrix"
+  fi
+  if [ "$("$here/ci-shards.sh" "$wf" backend-tests --list 2> /dev/null)" = "$(seq -s, 1 "$("$here/ci-shards.sh" "$wf")" | sed 's/^/[/; s/$/]/')" ]; then
+    report ok "shards: backend-tests --list"
+  else
+    report FAIL "shards: backend-tests --list"
+  fi
+
+  # What the e2e shards run: the steps that check the repository (the scans, the database image,
+  # the backup drill) are shard 1 only, so a stack-only change and a full run do them once; the
+  # steps that check the stack a shard ran have no shard condition and run in every shard.
+  # `changes` hands every shard the count it computed (never strategy.job-total), and each shard
+  # uploads its own report.
+  e2e_step() { yq -r ".jobs.e2e.steps[] | select(.name == \"$1\") | $2" "$wf"; }
+  for step in "Cache Trivy download" "Install Trivy" "Scan the image the stack runs" "Database image builds with the repository's SQL" \
+    "Scan the database image" "Backup and restore drill"; do
+    cond="$(e2e_step "$step" '.if // ""')"
+    if [ "$cond" = "matrix.shard == 1" ]; then report ok "e2e: '$step' is shard 1 only"; else report FAIL "e2e: '$step' has if '$cond', want 'matrix.shard == 1'"; fi
+  done
+  for step in "Start the stack" "Check /api/ready and /" "Check the containers run as non-root" \
+    "Check no secret value is in docker inspect" "Check postgres_password is mounted on db and db-functions only" \
+    "Check database_maint_password is mounted on db-functions and web only" \
+    "Check the OAuth client secrets are mounted on web only" "Check the model keys are mounted on the worker only" \
+    "Check no secret value is in the web, worker and web-passkeys logs"; do
+    found="$(e2e_step "$step" '.name')"
+    cond="$(e2e_step "$step" '.if // ""')"
+    if [ "$found" = "$step" ] && [ -z "$cond" ]; then report ok "e2e: '$step' runs in every shard"; else report FAIL "e2e: '$step' is missing or has if '$cond'"; fi
+  done
+  if grep -v '^[[:space:]]*#' "$wf" | grep -q 'job-total'; then report FAIL "e2e: the workflow uses strategy.job-total"; else report ok "e2e: no strategy.job-total"; fi
+  # shellcheck disable=SC2016  # literal GitHub expression, not shell
+  if [ "$(yq -r '.jobs.e2e.steps[] | select(.uses // "" | test("upload-artifact")) | .with.name' "$wf")" = 'playwright-report-${{ matrix.shard }}' ]; then
+    report ok "e2e: the report artifact name is per shard"
+  else
+    report FAIL "e2e: the report artifact name is not per shard"
+  fi
+  # shellcheck disable=SC2016  # literal GitHub expressions, not shell
+  if [ "$(e2e_step 'Run the tests (shard ${{ matrix.shard }})' '.run')" != "" ] \
+    && e2e_step 'Run the tests (shard ${{ matrix.shard }})' '.run' | grep -q -- '--shard="$SHARD/$TOTAL"' \
+    && [ "$(e2e_step 'Run the tests (shard ${{ matrix.shard }})' '.env.TOTAL')" = '${{ needs.changes.outputs.e2e_shards }}' ] \
+    && [ "$(e2e_step 'Run the tests (shard ${{ matrix.shard }})' '.env.SHARD')" = '${{ matrix.shard }}' ]; then
+    report ok "e2e: playwright runs --shard=\$SHARD/\$TOTAL with the count from changes"
+  else
+    report FAIL "e2e: the Playwright step does not run --shard with SHARD and the count from changes"
   fi
 else
   # On the CI runner yq is required: these cases must not skip silently there.

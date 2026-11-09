@@ -38,6 +38,10 @@ jobs:
       all: ${{ steps.filter.outputs.all }}
       # The backend test shard count, from the backend-tests matrix's shard list (the one source).
       shards: ${{ steps.shards.outputs.total }}
+      # The Playwright shard count and the e2e matrix's shard list, from the e2e job's
+      # env.E2E_SHARD_COUNT (the one source): [1..N], or [1] when only the stack needs checking.
+      e2e_shards: ${{ steps.e2e-shards.outputs.total }}
+      e2e_matrix: ${{ steps.e2e-shards.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -58,6 +62,23 @@ jobs:
           set -euo pipefail
           total="$(scripts/ci-shards.sh)"
           echo "total=$total" >> "$GITHUB_OUTPUT"
+
+      # Fails the run when the e2e matrix or its count is not what scripts/ci-shards.sh accepts.
+      # A change that does not run Playwright (a stack-only change) gets one shard: it does the
+      # stack checks and the scans once, and shards 2..N don't start a stack for nothing.
+      - id: e2e-shards
+        env:
+          PLAYWRIGHT: ${{ steps.filter.outputs.playwright }}
+        run: |
+          set -euo pipefail
+          total="$(scripts/ci-shards.sh .github/workflows/ci.yml e2e)"
+          if [ "$PLAYWRIGHT" = true ]; then
+            matrix="$(scripts/ci-shards.sh .github/workflows/ci.yml e2e --list)"
+          else
+            matrix='[1]'
+          fi
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   # Everything cheap that must run on every change, as steps of one runner (one billed
   # minute-rounding instead of seven). Trivy and gitleaks are checksum-verified release binaries
@@ -465,12 +486,28 @@ jobs:
           echo "shard $SHARD of $TOTAL: ${#files[@]} test files"
           uv run pytest "${files[@]}"
 
+  # The stack, its checks and Playwright, in shards. `workers: 1` stays (the fakes are one shared
+  # state), so the parallelism is runners: each shard has its own compose stack and fakes, and runs
+  # its slice of the specs (`playwright test --shard`, by test count). The `ci` gate sees one result
+  # for the matrix: failure or cancelled if any shard is. Everything that checks the stack a shard
+  # ran runs in every shard; what checks the repository (the image scans, the database image, the
+  # backup drill) runs in shard 1 only.
   e2e:
-    name: Stack, image scan and E2E (Playwright)
+    name: Stack, image scan and E2E (Playwright, shard ${{ matrix.shard }})
     needs: changes
     if: needs.changes.outputs.stack == 'true'
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      # The shard list comes from `changes` ([1..N], or [1] when Playwright does not run), and N
+      # from E2E_SHARD_COUNT below: scripts/ci-shards.sh reads that, and refuses another axis,
+      # include or exclude, or another shard expression.
+      matrix:
+        shard: ${{ fromJSON(needs.changes.outputs.e2e_matrix) }}
     env:
+      # The only place the Playwright shard count is set (1 to 20). Steps take it from the
+      # `changes` output e2e_shards, never from here and never from strategy.job-total.
+      E2E_SHARD_COUNT: 3
       # The test-only fake OpenID provider (compose.e2e.yaml); never part of the default stack.
       COMPOSE_FILE: compose.yaml:compose.e2e.yaml
       COMPOSE_PROFILES: e2e
@@ -493,12 +530,14 @@ jobs:
       # The cache holds the tarball; ci-install-release.sh checks its SHA-256 again after a restore
       # and fails the job on a mismatch. Bump the `v1` in the key to evict a bad entry.
       - name: Cache Trivy download
+        if: matrix.shard == 1
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ${{ runner.temp }}/release-cache/trivy
           key: v1-trivy-${{ runner.os }}-${{ runner.arch }}-${{ env.TRIVY_VERSION }}
 
       - name: Install Trivy
+        if: matrix.shard == 1
         run: |
           "$GITHUB_WORKSPACE/scripts/ci-install-release.sh" trivy "$TRIVY_SHA256" \
             "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
@@ -726,9 +765,13 @@ jobs:
             fi
           done
 
+      # Shard 1 only: this scan, the database image build and scan, and the backup drill below.
+      # They check the repository, not the stack a shard ran, so a second and third run would only
+      # repeat them (and Trivy is installed in shard 1 only).
       # The image the running stack was built from (never pushed). Fails on HIGH and CRITICAL
       # findings that have a fix available (--ignore-unfixed): an accepted risk, see AGENTS.md.
       - name: Scan the image the stack runs
+        if: matrix.shard == 1
         working-directory: .
         run: |
           set -euo pipefail
@@ -742,6 +785,7 @@ jobs:
       # not in `checks`: it needs Docker, so it runs for a `stack` change (docker/ is one), not on
       # every pull request; main and the weekly run do it too (#470, review of #573). Nothing is pushed.
       - name: Database image builds with the repository's SQL
+        if: matrix.shard == 1
         working-directory: .
         run: |
           set -euo pipefail
@@ -770,6 +814,7 @@ jobs:
       # reason; every other file and package stays a gate. The fix is a newer postgres tag, which
       # moves the queue functions' md5 (queue_digests.py); remove the entries with it.
       - name: Scan the database image
+        if: matrix.shard == 1
         working-directory: .
         run: |
           "$RUNNER_TEMP/trivy" image \
@@ -777,8 +822,9 @@ jobs:
             classbeat-db-check
 
       # Playwright steps run only when the UI, e2e, compose or Docker files changed (the
-      # `playwright` output of scripts/ci-changes.sh); the stack checks and the image scan above
-      # and below run for every `stack` change. main and the weekly run do everything.
+      # `playwright` output of scripts/ci-changes.sh, which also gives `changes` the one-shard
+      # matrix); the stack checks and the scans run for every `stack` change, the scans once.
+      # main and the weekly run do everything.
       - name: Install the e2e dependencies
         if: needs.changes.outputs.playwright == 'true'
         run: npm ci
@@ -792,13 +838,22 @@ jobs:
       # M6 (#338): back up, destroy, restore into a fresh project and verify (rows, RLS, sign-in,
       # right key decrypts, wrong key fails). Own compose projects; the image build is a cache hit.
       - name: Backup and restore drill
+        if: matrix.shard == 1
         working-directory: .
         timeout-minutes: 10
         run: scripts/backup-restore-drill.sh ci
 
-      - name: Run the tests
+      # Each shard runs its slice of the specs. The count is the one `changes` computed from
+      # E2E_SHARD_COUNT, passed to every shard alike; never strategy.job-total.
+      - name: Run the tests (shard ${{ matrix.shard }})
         if: needs.changes.outputs.playwright == 'true'
-        run: npx playwright test
+        env:
+          SHARD: ${{ matrix.shard }}
+          TOTAL: ${{ needs.changes.outputs.e2e_shards }}
+        run: |
+          set -euo pipefail
+          [[ $TOTAL =~ ^[1-9][0-9]*$ ]] || { echo "::error::no shard count from changes"; exit 1; }
+          npx playwright test --shard="$SHARD/$TOTAL"
 
       # Everything the E2E run did went through web, worker and web-passkeys (sign-ins, connects,
       # picks, saves, the admin area, passkeys): none of their logs may hold the value of a secret
@@ -834,7 +889,7 @@ jobs:
         if: failure() && needs.changes.outputs.playwright == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: e2e/playwright-report/
           retention-days: 7
 
