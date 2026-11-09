@@ -456,6 +456,10 @@ npm run build        # typecheck, then Vite writes frontend/dist
   four shared controls of ADR 0028 section 2: `SegmentedControl` (radio group, one of a few options; replaces
   `ToggleGroup`), `Stepper`, `ListRow` and `StickyActionBar` (right column on a desktop, bottom bar on a phone),
   merged with `cn()` from `src/lib/cn.ts`. Icons are `lucide-react`. New UI uses these, not new hand-written CSS.
+  The New class page (`src/pages/NewClassPage.tsx`, `src/components/newclass/`) uses `SegmentedControl` for sport,
+  length, music source, effort and genre, and `StickyActionBar` for "Design my class"; the bar's padding and the
+  phone spacer include the home-indicator inset through the tokens `--cb-safe-bottom`, `--cb-bar-pad` and
+  `--cb-bar-space` (`env(safe-area-inset-bottom)` is 0 until the viewport meta has `viewport-fit=cover`).
 - Theme: `src/theme/theme.ts` and `ThemeSwitch` (Dark default, Light, Same as device) keep the choice in
   `localStorage` (try/catch, the page works without it); `public/theme-init.js` applies it before first paint.
 - Languages (ADR 0023, ML1): `src/i18n/` holds `locales.json` (the manifest, `["en"]`), `en.ts` (source catalogue),

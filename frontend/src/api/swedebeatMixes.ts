@@ -40,7 +40,7 @@ export function swedebeatMixListError(error: unknown): string {
     const known: Record<string, string> = {
       upstream_unavailable: 'MOWL could not be reached. Try again in a few minutes.',
       key_unavailable: 'MOWL could not be reached. Try again in a few minutes.',
-      rate_limited: 'MOWL asked classbeat to slow down. Try again in a few minutes.',
+      rate_limited: 'MOWL is busy. Try again in a few minutes.',
       outbound_blocked: 'Your Swedebeat mixes could not be loaded right now. Try again in a few minutes.',
     }
     const sentence = Object.hasOwn(known, error.reason) ? known[error.reason] : undefined

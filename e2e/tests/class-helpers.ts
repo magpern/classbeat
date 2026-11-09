@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 import { signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
-import { connectMowl, choosePlaylist, fakeControl, getJob, jobId, startDesign } from './design-helpers'
+import { chooseLength, connectMowl, choosePlaylist, fakeControl, getJob, jobId, startDesign } from './design-helpers'
 import { useModelScript, type ModelScript } from './model-script'
 import { sql } from './song-helpers'
 
@@ -94,10 +94,10 @@ export async function designAndOpen(page: Page, title: string, playlistName: str
 export async function startRunningDesign(page: Page, title: string, playlistName: string): Promise<string> {
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })
-  await form.getByRole('button', { name: 'Running', exact: true }).click()
+  await form.getByRole('radio', { name: 'Running', exact: true }).click()
   await form.getByLabel('Class name').fill(title)
   await choosePlaylist(form, playlistName)
-  await form.getByLabel('Length in minutes').fill('30')
+  await chooseLength(form, 30)
   await form.getByRole('button', { name: 'Design my class' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
   return jobId(page)
@@ -130,9 +130,9 @@ export async function startSoundlessDesign(
 ): Promise<string> {
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })
-  await form.getByRole('button', { name: 'No music', exact: true }).click()
+  await form.getByRole('radio', { name: 'No music', exact: true }).click()
   await form.getByLabel('Class name').fill(title)
-  await form.getByLabel('Length in minutes').fill('30')
+  await chooseLength(form, 30)
   beforeStart()
   await form.getByRole('button', { name: 'Design my class' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)

@@ -1,5 +1,5 @@
 import { expect, signInThroughUi, signUpThroughUi, test, uniqueEmail } from './helpers'
-import { connectMowl, getJob, jobId } from './design-helpers'
+import { chooseLength, connectMowl, getJob, jobId } from './design-helpers'
 import { useModelScript } from './model-script'
 import {
   CACHED_MIX_ID,
@@ -38,9 +38,9 @@ async function startMixDesign(page: import('@playwright/test').Page, title: stri
   await page.goto('/classes/new')
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill(title)
-  await form.getByRole('button', { name: 'Use my Swedebeat mix' }).click()
+  await form.getByRole('radio', { name: 'Swedebeat mix', exact: true }).click()
   await form.getByRole('radio', { name: new RegExp(mixName) }).check({ force: true })
-  await form.getByLabel('Length in minutes').fill('10')
+  await chooseLength(form, 10)
   await form.getByLabel('Climbs', { exact: true }).fill('1')
   await form.getByLabel('Sprints', { exact: true }).fill('1')
   await form.getByRole('button', { name: 'Design my class' }).click()
@@ -52,7 +52,7 @@ test('lists mixes in the picker and designs on a cached map', async ({ page }) =
   useModelScript('e2e_swedebeat_mix')
   const email = await signedInWithMowl(page, 'sb-mix-cached')
   await page.goto('/classes/new')
-  await page.getByRole('button', { name: 'Use my Swedebeat mix' }).click()
+  await page.getByRole('radio', { name: 'Swedebeat mix', exact: true }).click()
   await expect(page.getByRole('radio', { name: new RegExp(CACHED_MIX_NAME) })).toBeVisible()
   await expect(page.getByRole('radio', { name: new RegExp(UNCACHED_MIX_NAME) })).toBeVisible()
 

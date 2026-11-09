@@ -10,7 +10,7 @@ const MIXES = [
 describe('MixTiles', () => {
   it('points at the Swedebeat app when MOWL lists no mixes', () => {
     render(<MixTiles mixes={[]} value="" onChange={() => undefined} />)
-    expect(screen.getByText(/Create a mix in the Swedebeat app/)).toBeInTheDocument()
+    expect(screen.getByText(/Sync one from the Swedebeat app/)).toBeInTheDocument()
     expect(screen.queryByRole('radiogroup')).toBeNull()
   })
 

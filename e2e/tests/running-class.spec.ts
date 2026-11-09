@@ -65,21 +65,21 @@ test('the new-class form: Running hides the bike-only knobs, Cycling brings them
   await signedInWithMowl(page, 'run-form')
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })
-  const sport = form.getByRole('group', { name: 'Sport' })
-  await expect(sport.getByRole('button', { name: 'Cycling' })).toHaveAttribute('aria-pressed', 'true')
+  const sport = form.getByRole('radiogroup', { name: 'Sport' })
+  await expect(sport.getByRole('radio', { name: 'Cycling' })).toBeChecked()
   await expect(form.getByLabel('Climbs', { exact: true })).toBeVisible()
   await expect(form.getByLabel('FTP test')).toBeVisible()
 
-  await sport.getByRole('button', { name: 'Running' }).click()
-  await expect(sport.getByRole('button', { name: 'Running' })).toHaveAttribute('aria-pressed', 'true')
+  await sport.getByRole('radio', { name: 'Running' }).click()
+  await expect(sport.getByRole('radio', { name: 'Running' })).toBeChecked()
   await expect(form.getByRole('heading', { name: 'The run' })).toBeVisible()
   for (const label of ['Climbs', 'Sprints', 'Races', 'FTP test']) {
     await expect(form.getByLabel(label, { exact: true })).toHaveCount(0)
   }
-  await expect(form.getByRole('button', { name: 'Pick songs for me' })).toHaveCount(0)
-  await expect(form.getByRole('button', { name: 'Use my Swedebeat mix' })).toHaveCount(0)
+  await expect(form.getByRole('radio', { name: 'Pick for me', exact: true })).toHaveCount(0)
+  await expect(form.getByRole('radio', { name: 'Swedebeat mix', exact: true })).toHaveCount(0)
 
-  await sport.getByRole('button', { name: 'Cycling' }).click()
+  await sport.getByRole('radio', { name: 'Cycling' }).click()
   await expect(form.getByLabel('Climbs', { exact: true })).toBeVisible()
   await expect(form.getByRole('heading', { name: 'The ride' })).toBeVisible()
 })
@@ -167,7 +167,7 @@ test('with the admin switch off the form has no Running control', async ({
   await signedInWithMowl(page, 'run-off')
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })
-  await expect(form.getByRole('button', { name: 'Running', exact: true })).toBeVisible()
+  await expect(form.getByRole('radio', { name: 'Running', exact: true })).toBeVisible()
 
   // The stored admin flag can only tighten the environment's (ADR 0018 section 5).
   storeRunning('off')
@@ -175,7 +175,7 @@ test('with the admin switch off the form has no Running control', async ({
     await page.reload()
     const off = page.getByRole('form', { name: 'New class' })
     await expect(off.getByLabel('Class name')).toBeVisible()
-    await expect(off.getByRole('button', { name: 'Running', exact: true })).toHaveCount(0)
+    await expect(off.getByRole('radio', { name: 'Running', exact: true })).toHaveCount(0)
     await expect(off.getByText('Sport', { exact: true })).toHaveCount(0)
     await expect(off.getByLabel('Climbs', { exact: true })).toBeVisible()
     // #509: the admin's DELETE (nothing stored) is off too, not on as before.
@@ -183,7 +183,7 @@ test('with the admin switch off the form has no Running control', async ({
     await page.reload()
     const cleared = page.getByRole('form', { name: 'New class' })
     await expect(cleared.getByLabel('Class name')).toBeVisible()
-    await expect(cleared.getByRole('button', { name: 'Running', exact: true })).toHaveCount(0)
+    await expect(cleared.getByRole('radio', { name: 'Running', exact: true })).toHaveCount(0)
   } finally {
     storeRunning('on')
   }

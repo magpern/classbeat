@@ -128,7 +128,7 @@ describe('presets', () => {
       'GET /api/music/mowl-playlists': { playlists: [{ spotify_playlist_id: 'p1', name: 'Mix' }] },
     })
     renderAt('/classes/new?length=30&sprints=6&intensity=hard')
-    expect(await screen.findByLabelText('Length in minutes')).toHaveValue(30)
+    expect(await screen.findByRole('radio', { name: '30 min' })).toBeChecked()
     expect(screen.getByLabelText('Sprints')).toHaveValue(6)
     expect(screen.getByLabelText('Climbs')).toHaveValue(0)
     expect(screen.getByRole('radio', { name: 'Hard' })).toBeChecked()
@@ -143,7 +143,7 @@ describe('presets', () => {
     })
     renderAt('/')
     await userEvent.click(await screen.findByRole('link', { name: '60 min endurance' }))
-    expect(await screen.findByLabelText('Length in minutes')).toHaveValue(60)
+    expect(await screen.findByRole('radio', { name: '60 min' })).toBeChecked()
     expect(screen.getByRole('radio', { name: 'Easy' })).toBeChecked()
   })
 })

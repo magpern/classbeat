@@ -86,10 +86,10 @@ test('the signed-in pages: home, classes, new class, designing, ready, class', a
   await check('new class', form.getByRole('button', { name: 'Design my class' }))
 
   // ADR 0018: the same form with Running chosen (the control exists because the e2e stack turns it on).
-  await form.getByRole('button', { name: 'Running', exact: true }).click()
+  await form.getByRole('radio', { name: 'Running', exact: true }).click()
   await expect(form.getByRole('heading', { name: 'The run' })).toBeVisible()
   await check('new class (running)', form.getByRole('button', { name: 'Design my class' }))
-  await form.getByRole('button', { name: 'Cycling', exact: true }).click()
+  await form.getByRole('radio', { name: 'Cycling', exact: true }).click()
 
   await form.getByLabel('Class name').fill('MU done-when')
   await form.getByRole('radio', { name: PLAYLISTS.slow.name }).check({ force: true })

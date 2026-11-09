@@ -11,7 +11,7 @@ test('a user without MOWL is sent to connect it, then starts a design from a pla
   await signInThroughUi(page, email)
 
   await page.getByRole('link', { name: 'New class' }).click()
-  await expect(page.getByRole('link', { name: 'Connect MOWL on your account page' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Connect MOWL', exact: true })).toBeVisible()
 
   await page.goto('/account')
   await page.getByTestId('connection-mowl').getByRole('button', { name: 'Connect MOWL' }).click()
@@ -25,11 +25,11 @@ test('a user without MOWL is sent to connect it, then starts a design from a pla
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill('E2E climb')
   // Song picking is on in this stack (compose.e2e.yaml) but this user has no Spotify: the choice is
-  // shown, "Pick songs for me" cannot be selected and points at the wizard, and the playlist form
+  // shown, "Pick for me" cannot be selected and points at the wizard, and the playlist form
   // works as before (the pick flow itself is song-pick.spec.ts).
-  await expect(form.getByRole('button', { name: 'Pick songs for me' })).toBeDisabled()
+  await expect(form.getByRole('radio', { name: 'Pick for me', exact: true })).toBeDisabled()
   await expect(form.getByRole('link', { name: 'Connect Spotify' })).toBeVisible()
-  await expect(form.getByText(/classbeat adds this playlist to your MOWL music/)).toBeVisible()
+  await expect(form.getByText(/Added to your MOWL music, private to you\./)).toBeVisible()
   await form.getByRole('radio', { name: 'E2E Hill Climb' }).check({ force: true })
   await form.getByRole('button', { name: 'Design my class' }).click()
 

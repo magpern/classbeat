@@ -32,10 +32,10 @@ describe('MusicChoice', () => {
     )
     expect(screen.getByText('MOWL could not be reached. Try again in a few minutes.')).toBeInTheDocument()
     expect(document.body).not.toHaveTextContent('upstream_unavailable')
-    expect(screen.getByRole('button', { name: 'Use my Swedebeat mix' })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: 'Swedebeat mix' })).toBeDisabled()
   })
 
-  it('reports pressed state and gives every chip a 44 px target', () => {
+  it('reports the checked option and gives every option a 44 px target', () => {
     withRouter(
       <MusicChoice
         songs={{ kind: 'ready', spotifyConnectionId: 's1' }}
@@ -44,11 +44,11 @@ describe('MusicChoice', () => {
         onChange={() => undefined}
       />,
     )
-    for (const button of screen.getAllByRole('button')) {
+    for (const button of screen.getAllByRole('radio')) {
       expect(button.className).toContain('min-h-11')
     }
-    expect(screen.getByRole('button', { name: 'Use my Swedebeat mix' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'Use my playlist' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('radio', { name: 'Swedebeat mix' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'My playlist' })).not.toBeChecked()
   })
 
   it('calls onChange when a choice is picked', () => {
@@ -63,7 +63,7 @@ describe('MusicChoice', () => {
         }}
       />,
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Use my Swedebeat mix' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Swedebeat mix' }))
     expect(chosen).toBe('swedebeat_mix')
   })
 
@@ -76,7 +76,7 @@ describe('MusicChoice', () => {
         onChange={() => undefined}
       />,
     )
-    expect(screen.getByRole('group', { name: 'Music' })).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Music' })).toBeInTheDocument()
   })
 
   it('offers No music alone when the soundless flag is on and nothing else is', () => {
@@ -92,9 +92,9 @@ describe('MusicChoice', () => {
         }}
       />,
     )
-    const button = screen.getByRole('button', { name: 'No music' })
+    const button = screen.getByRole('radio', { name: 'No music' })
     expect(button.className).toContain('min-h-11')
-    expect(button).toHaveAttribute('aria-pressed', 'false')
+    expect(button).not.toBeChecked()
     fireEvent.click(button)
     expect(chosen).toBe('none')
   })
@@ -103,14 +103,14 @@ describe('MusicChoice', () => {
     const { rerender } = withRouter(
       <MusicChoice songs={{ kind: 'off' }} swedebeat={{ kind: 'off' }} soundless value="none" onChange={() => undefined} />,
     )
-    expect(screen.getByRole('button', { name: 'No music' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText(/without a playlist or songs/)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'No music' })).toBeChecked()
+    expect(screen.getByText(/play your own music/)).toBeInTheDocument()
     rerender(
       <RouterProvider>
         <MusicChoice songs={{ kind: 'off' }} swedebeat={{ kind: 'off' }} soundless value="playlist" onChange={() => undefined} />
       </RouterProvider>,
     )
-    expect(screen.queryByText(/without a playlist or songs/)).toBeNull()
+    expect(screen.queryByText(/play your own music/)).toBeNull()
   })
 
   it('has no No music chip without the flag, with or without other choices', () => {
@@ -122,6 +122,6 @@ describe('MusicChoice', () => {
         onChange={() => undefined}
       />,
     )
-    expect(screen.queryByRole('button', { name: 'No music' })).toBeNull()
+    expect(screen.queryByRole('radio', { name: 'No music' })).toBeNull()
   })
 })
