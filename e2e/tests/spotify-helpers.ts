@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 
 // Shared by the Spotify specs: the fake Spotify's public test data and test control
 // (e2e/fake-spotify/server.py), and the browser's visit to its authorize page. The fake is only on
@@ -123,9 +123,15 @@ export async function playSpotify(
   return { seen }
 }
 
-/** On the Spotify wizard page, enter a Client ID and press the connect button. */
+/** The Spotify dialog on Account, Connections (`/account/spotify` opens it). */
+export function spotifyDialog(page: Page): Locator {
+  return page.getByRole('dialog', { name: 'Spotify', exact: true })
+}
+
+/** In the Spotify dialog (opened by `/account/spotify`), enter a Client ID and press the connect button. */
 export async function connectSpotify(page: Page, clientId: string): Promise<void> {
   await page.goto('/account/spotify')
-  await page.getByLabel('Spotify Client ID').fill(clientId)
-  await page.getByRole('button', { name: /^Connect Spotify/ }).click()
+  const dialog = spotifyDialog(page)
+  await dialog.getByLabel('Spotify Client ID').fill(clientId)
+  await dialog.getByRole('button', { name: /^Connect Spotify/ }).click()
 }

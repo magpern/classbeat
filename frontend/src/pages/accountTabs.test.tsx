@@ -208,12 +208,12 @@ describe('the consent switch', () => {
         return { status: 'ok' }
       },
     })
-    renderAt('/account/spotify') // the consent lives on the Spotify page (ADR 0028)
+    renderAt('/account/spotify') // the consent lives in the Spotify dialog on Connections
     const toggle = await screen.findByRole('switch', { name: 'Allow the working playlist' })
     expect(toggle).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByTestId('spotify-consent-text').textContent).toBe(CONSENT_TEXT)
     fireEvent.click(toggle)
-    const dialog = await screen.findByRole('dialog')
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' })
     await confirmWithPassword(dialog, 'my password here')
     expect(await screen.findByText(/classbeat may use the working playlist/)).toBeInTheDocument()
     const puts = api.to('PUT', '/api/connections/spotify/pool-consent')

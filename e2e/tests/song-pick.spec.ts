@@ -11,7 +11,7 @@ import {
   untilState,
   type FakePlaylist,
 } from './song-helpers'
-import { CLIENT_A, CLIENT_B, USER_B, USER_A, control, fakeState, playSpotify, resetSpotify, signInAtSpotify } from './spotify-helpers'
+import { CLIENT_A, CLIENT_B, USER_B, USER_A, control, fakeState, playSpotify, resetSpotify, signInAtSpotify, spotifyDialog } from './spotify-helpers'
 
 // Song picking end to end (ADR 0008 sections 5, 6 and 12; roadmap M4 "done when") against the fake
 // Spotify, the fake MOWL and the recorded fake model (e2e_pick.json): from the brief to a class with
@@ -45,13 +45,14 @@ async function newUser(page: Page, tag: string): Promise<void> {
   await signInThroughUi(page, email)
 }
 
-/** On the Spotify page of a connected user: Change Client ID, continue, and start the connect. */
+/** In the Spotify dialog of a connected user: Change Client ID, continue, and start the connect. */
 async function changeClientId(page: Page, clientId: string): Promise<void> {
   await page.goto('/account/spotify')
-  await page.getByRole('button', { name: 'Change Client ID' }).click()
-  await page.getByRole('button', { name: 'Continue' }).click()
-  await page.getByLabel('Spotify Client ID').fill(clientId)
-  await page.getByRole('button', { name: /^Connect Spotify/ }).click()
+  const dialog = spotifyDialog(page)
+  await dialog.getByRole('button', { name: 'Change Client ID' }).click()
+  await dialog.getByRole('button', { name: 'Continue' }).click()
+  await dialog.getByLabel('Spotify Client ID').fill(clientId)
+  await dialog.getByRole('button', { name: /^Connect Spotify/ }).click()
 }
 
 const ITEMS = '/v1/playlists/[0-9A-Za-z]+/items'

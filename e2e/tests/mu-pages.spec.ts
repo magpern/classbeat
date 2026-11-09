@@ -150,8 +150,9 @@ test('the account tabs, music and Spotify pages', async () => {
   }
   await visit('/music', page.getByRole('heading', { name: 'Music', level: 1 }))
   await check('music', page.getByRole('heading', { name: 'Music', level: 1 }))
-  await visit('/account/spotify', page.getByRole('main').getByRole('button').first())
-  await check('spotify', page.getByRole('main').getByRole('button').first())
+  // Connections with the Spotify dialog open.
+  await visit('/account/spotify', page.getByRole('dialog', { name: 'Spotify', exact: true }).getByRole('button').first())
+  await check('spotify', page.getByRole('dialog', { name: 'Spotify', exact: true }).getByRole('button').first())
 })
 
 test('the admin pages, signed in as an admin with a TOTP code', async () => {

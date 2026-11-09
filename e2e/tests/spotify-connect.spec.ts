@@ -12,10 +12,12 @@ import {
   playSpotify,
   resetSpotify,
   signInAtSpotify,
+  spotifyDialog,
 } from './spotify-helpers'
 
 // The Spotify connection end to end (ADR 0009 sections 2 to 9; ADR 0008 section 12) against the
-// fake Spotify of compose.e2e.yaml: the wizard, the consent, Disconnect, two users on different
+// fake Spotify of compose.e2e.yaml: the wizard (a dialog on Account, Connections, that
+// /account/spotify opens), the consent, Disconnect, two users on different
 // Client IDs and every error category's page text. The fake answers as accounts.spotify.com and
 // api.spotify.com inside the compose network; here Playwright plays the browser's visit to the
 // authorize page (spotify-helpers.ts). Public test values only: no real Spotify account.
@@ -40,15 +42,16 @@ test('the wizard shows the callback address and refuses a Client ID that is not 
   await newUser(page, 'sp-wizard')
   await page.goto('/account')
   await expect(page.getByTestId('connection-spotify')).toContainText('Picks songs for your classes')
-  await page.getByRole('link', { name: 'Connect Spotify' }).click()
+  await page.getByTestId('connection-spotify').getByRole('button', { name: 'Connect Spotify' }).click()
+  const dialog = spotifyDialog(page)
 
-  await expect(page.getByTestId('spotify-callback-url')).toHaveText(CALLBACK)
-  await expect(page.getByText(/never needs the app.s Client Secret/)).toBeVisible()
+  await expect(dialog.getByTestId('spotify-callback-url')).toHaveText(CALLBACK)
+  await expect(dialog.getByText(/never needs the app.s Client Secret/)).toBeVisible()
   await expect(page.getByLabel(/secret/i)).toHaveCount(0) // no field for a Client Secret
 
-  await page.getByLabel('Spotify Client ID').fill('not-a-client-id')
-  await page.getByRole('button', { name: 'Connect Spotify' }).click()
-  await expect(page.getByText(/does not look like a Spotify Client ID/)).toBeVisible()
+  await dialog.getByLabel('Spotify Client ID').fill('not-a-client-id')
+  await dialog.getByRole('button', { name: 'Connect Spotify' }).click()
+  await expect(dialog.getByText(/does not look like a Spotify Client ID/)).toBeVisible()
   expect(fakeState().requests).toEqual([]) // blocked in the page: nothing was sent anywhere
   await expect(page.getByTestId('spotify-status')).toHaveText('Not connected')
 })
@@ -198,7 +201,7 @@ test('another Spotify account for the same user needs a confirmed switch', async
   await page.getByRole('button', { name: 'Change Client ID' }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByLabel('Spotify Client ID').fill(CLIENT_B)
-  await page.getByRole('button', { name: /^Connect Spotify/ }).click()
+  await spotifyDialog(page).getByRole('button', { name: /^Connect Spotify/ }).click()
   await expect(page.getByText(/This is a different Spotify account than before/)).toBeVisible()
   await expect(page.getByTestId('spotify-status')).toHaveText('Connected') // the old connection stays
   await expect(page.getByRole('button', { name: 'Confirm and switch account' })).toBeVisible()
@@ -229,7 +232,7 @@ test('every error category has its plain sentence on the Spotify page, and none 
   await newUser(page, 'sp-errors')
   for (const [category, sentence] of Object.entries(SENTENCES)) {
     await page.goto(`/account/spotify?result=${category}`)
-    await expect(page.getByRole('main').getByText(sentence).first(), category).toBeVisible()
+    await expect(spotifyDialog(page).getByText(sentence).first(), category).toBeVisible()
   }
   await page.goto('/account/spotify?result=rate_limited&retry_after=120')
   await expect(page.getByText('Spotify asks to slow down; trying again in about 2 minutes.')).toBeVisible()

@@ -25,7 +25,6 @@ import { ResetPage } from './pages/ResetPage'
 import { SignInPage } from './pages/SignInPage'
 import { SignUpConfirmPage } from './pages/SignUpConfirmPage'
 import { SignUpPage } from './pages/SignUpPage'
-import { SpotifyPage } from './pages/SpotifyPage'
 import { TermsPage } from './pages/TermsPage'
 import { hasUnknownLanguage, isAdminPath } from './router/paths'
 import { Link, RouterProvider, useRouter } from './router/Router'
@@ -79,7 +78,8 @@ const PAGES: Readonly<Record<string, () => ReactNode>> = {
   '/classes/new': () => <NewClassPage />,
   '/music': () => <MusicPage />,
   '/account': () => <AccountPage />,
-  '/account/spotify': () => <SpotifyPage />,
+  // Connections with the Spotify dialog open; Spotify's callback returns here (`?result=`).
+  '/account/spotify': () => <AccountPage />,
 }
 
 /** Every path pattern the app answers, for the guard that keeps two-letter first segments free. */

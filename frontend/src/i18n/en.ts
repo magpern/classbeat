@@ -1127,7 +1127,6 @@ export const en = {
   'theme.light': 'Light',
   'theme.system': 'Same as device',
   'dialog.close': 'Close',
-  'spotifyPage.back': 'Back to your account',
   'unsub.title': 'Unsubscribe',
   'unsub.needsLink': 'This page needs the link from the mail.',
   'unsub.doneTitle': 'You are unsubscribed',
@@ -1407,7 +1406,6 @@ export const en = {
   'spot.loadFailed': 'The Spotify connection could not be loaded.',
   'spot.loading': 'Loading',
   'spot.connected': 'Spotify is connected.',
-  'spot.connectionTitle': 'Spotify connection',
   'spot.intro': 'classbeat connects to a Spotify app of your own, so the limits are yours. Follow these steps once.',
   'spot.step1':
     'Open the Spotify Developer Dashboard (developer.spotify.com/dashboard) and create an app. The person who owns the app needs Spotify Premium. A Development Mode app has an allow-list of 5 people: under User Management add your own Spotify account (name and email). Spotify’s endpoint and rate limits apply.',
