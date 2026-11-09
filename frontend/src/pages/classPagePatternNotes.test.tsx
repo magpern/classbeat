@@ -28,7 +28,7 @@ describe('the class page pattern notes', () => {
     renderAt(`/classes/${CLASS_ID}`)
     expect(await screen.findByRole('heading', { name: /Tuesday climb/ })).toBeInTheDocument()
     expect(screen.queryByTestId('pattern-notes')).toBeNull()
-    expect(screen.queryByText(/Notes use the current rules/)).toBeNull()
+    expect(screen.queryByText(/Notes follow current rules/)).toBeNull()
   })
 
   it('shows the block, the flag line, and dismisses without disabling anything', async () => {
@@ -40,7 +40,7 @@ describe('the class page pattern notes', () => {
     renderAt(`/classes/${CLASS_ID}`)
     const block = await screen.findByTestId('pattern-notes')
     await user.click(block.querySelector('summary') as HTMLElement)
-    expect(screen.getByText('Notes use the current rules')).toBeInTheDocument()
+    expect(screen.getByText('Notes follow current rules')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).toBeNull()
     for (const button of screen.getAllByRole('button')) {
       if (/^(Save|Approve)/.test(button.textContent)) expect(button).toBeEnabled()

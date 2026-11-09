@@ -255,7 +255,7 @@ describe('the class page', () => {
     })
     renderAt(PAGE)
     expect(await screen.findByText(/This class is being designed/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'See how it is going' })).toHaveAttribute('href', `/en/jobs/${REVISE_JOB}`)
+    expect(screen.getByRole('link', { name: 'See progress' })).toHaveAttribute('href', `/en/jobs/${REVISE_JOB}`)
   })
 
   it.each([
@@ -365,7 +365,7 @@ describe('asking for a change', () => {
     const box = await screen.findByLabelText('What should change?')
     fireEvent.change(box, { target: { value: 'Make it harder' } })
     fireEvent.click(screen.getByRole('button', { name: 'Change it' }))
-    expect(await screen.findByText(/changed in another tab or window, so your request was not sent/)).toBeInTheDocument()
+    expect(await screen.findByText(/changed in another tab, so your request was not sent/)).toBeInTheDocument()
     await waitFor(() => {
       expect(api.to('GET', CLASS_PATH).length).toBeGreaterThanOrEqual(2)
       expect(api.to('GET', `${CLASS_PATH}/messages`).length).toBeGreaterThanOrEqual(2)
@@ -375,7 +375,7 @@ describe('asking for a change', () => {
   })
 
   it.each([
-    ['revision_limit', /most changes one class can have/],
+    ['revision_limit', /its limit of changes/],
     ['chat_full', /conversation is full/],
     ['class_busy', /busy with another task/],
     ['running_not_evaluated', /cannot be changed on your plan right now/],
@@ -420,9 +420,9 @@ describe('deleting a class', () => {
     })
     renderAt(PAGE)
     await openDelete()
-    expect(screen.getByText(/The 2 workouts classbeat saved to your MOWL account stay there; delete them in MOWL/)).toBeInTheDocument()
+    expect(screen.getByText(/The 2 workouts we saved to your MOWL account stay there; delete them in MOWL/)).toBeInTheDocument()
     expect(api.to('DELETE', CLASS_PATH)).toHaveLength(0)
-    fireEvent.click(screen.getByRole('button', { name: 'Yes, delete this class' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, delete' }))
     expect(await screen.findByRole('heading', { name: 'Class deleted' })).toBeInTheDocument()
     expect(api.to('DELETE', CLASS_PATH)[0]?.headers.get('X-CSRF-Token')).toBe('csrf-session')
   })
@@ -455,7 +455,7 @@ describe('deleting a class', () => {
     })
     renderAt(PAGE)
     await openDelete()
-    fireEvent.click(screen.getByRole('button', { name: 'Yes, delete this class' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, delete' }))
     expect(await screen.findByText(/not sure whether a save of this class to MOWL went through/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Delete anyway' }))
     expect(await screen.findByRole('heading', { name: 'Class deleted' })).toBeInTheDocument()
@@ -470,7 +470,7 @@ describe('deleting a class', () => {
     })
     renderAt(PAGE)
     await openDelete()
-    fireEvent.click(screen.getByRole('button', { name: 'Yes, delete this class' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, delete' }))
     expect(await screen.findByText(/busy with another task/)).toBeInTheDocument()
     await waitFor(() => {
       expect(api.to('GET', CLASS_PATH).length).toBeGreaterThanOrEqual(2)
@@ -487,12 +487,12 @@ describe('deleting while a write may still land', () => {
     })
     renderAt(PAGE)
     await openDelete()
-    fireEvent.click(screen.getByRole('button', { name: 'Yes, delete this class' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, delete' }))
     expect(
-      await screen.findByText(/may still be writing this class to MOWL.*only record of that write.*Wait a few minutes/),
+      await screen.findByText(/A write to MOWL may still be running.*deleting now would lose its only record.*Wait a few minutes/),
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete anyway' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Yes, delete this class' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Yes, delete' })).toBeInTheDocument()
     expect(api.to('DELETE', `${CLASS_PATH}?confirm_uncertain=true`)).toHaveLength(0)
   })
 })
