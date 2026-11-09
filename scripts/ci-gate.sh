@@ -12,6 +12,7 @@
 # `backend-tests` is a matrix (the pytest shards): GitHub gives `needs` one result for it, success
 # only when every shard succeeded, failure or cancelled when any shard did not. It is gated by the
 # `backend` filter like `backend`, so a skipped matrix while that filter is true fails the gate.
+# `e2e` is a matrix too (the Playwright shards; one shard for a stack-only change), gated by `stack`.
 #
 # Fails closed. jq validates the values, not only the shape, before it decides anything: exactly
 # one JSON document; exactly the six expected jobs; every result one of success, failure,
