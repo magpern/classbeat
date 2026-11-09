@@ -35,6 +35,22 @@
   --cb-zone-6: #f0483c;
   --cb-zone-7: #f0483c;
 
+  /* Sign-in providers (ADR 0028 section 4): each provider's own button look and logo colours, the
+     same in both themes (Google's dark button, Microsoft's dark button). */
+  --cb-google-bg: #131314;
+  --cb-google-line: #8e918f;
+  --cb-google-text: #e3e3e3;
+  --cb-google-blue: #4285f4;
+  --cb-google-red: #ea4335;
+  --cb-google-yellow: #fbbc05;
+  --cb-google-green: #34a853;
+  --cb-microsoft-bg: #2f2f2f;
+  --cb-microsoft-text: #ffffff;
+  --cb-microsoft-red: #f25022;
+  --cb-microsoft-green: #7fba00;
+  --cb-microsoft-blue: #00a4ef;
+  --cb-microsoft-yellow: #ffb900;
+
   /* The stage: class profiles always sit on charcoal */
   --cb-stage: #26272b;
   --cb-stage-grid: #383a42;

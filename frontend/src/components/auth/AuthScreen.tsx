@@ -8,6 +8,7 @@ import { Link } from '../../router/Router'
 import { Field, Notice, useAction } from '../forms'
 import { AuthCard } from './AuthCard'
 import { PasskeySignIn } from './PasskeySignIn'
+import { ProviderButton } from './ProviderButton'
 import { useCaptcha } from './Turnstile'
 
 export type AuthMode = 'signin' | 'signup'
@@ -141,17 +142,16 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onPasskeySigned
           <div className="auth__social">
             {onPasskeySignedIn ? <PasskeySignIn onSignedIn={onPasskeySignedIn} /> : null}
             {providers.map((provider) => (
-              <button
+              <ProviderButton
                 key={provider}
-                type="button"
-                className="button button--secondary button--block"
+                provider={provider}
                 disabled={action.busy}
                 onClick={() => {
                   start(provider)
                 }}
               >
                 {t('auth.continueWith', { provider: providerName(provider) })}
-              </button>
+              </ProviderButton>
             ))}
           </div>
           <p className="auth__divider">
