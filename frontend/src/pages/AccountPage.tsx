@@ -5,6 +5,7 @@ import { oauthOutcomeMessage } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
 import type { CatalogueKey } from '../i18n/en'
 import { useT } from '../i18n/I18n'
+import { AccountHeader } from '../components/account/AccountHeader'
 import { ConnectionsList } from '../components/account/connections/ConnectionsList'
 import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
 import { DeleteAccount } from '../components/account/DeleteAccount'
@@ -64,13 +65,9 @@ export function AccountPage() {
   )
 }
 
-function initial(email: string): string {
-  const first = [...email.trim()][0]
-  return first === undefined ? '?' : first.toUpperCase()
-}
-
 /**
- * Account (ADR 0013 section 5): a profile header with Change email, then five tabs. A restyle:
+ * Account (ADR 0013 section 5): an identity header (the name is the page's `h1`), then five
+ * tabs. A restyle:
  * every section keeps its requests, its recent-authentication and step-up prompts (the guard)
  * and its confirmations.
  */
@@ -85,7 +82,6 @@ function Account() {
   const [hasPassword, setHasPassword] = useState<boolean | null | undefined>(undefined)
   const action = useAction()
   const email = session?.user?.email ?? ''
-  const name = email.includes('@') ? email.slice(0, email.indexOf('@')) : email
 
   const signOut = (everywhere: boolean) => {
     void action.run(async () => {
@@ -132,24 +128,7 @@ function Account() {
 
   return (
     <div className="flex flex-col gap-6 text-text">
-      <header className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-5 sm:flex-row sm:items-start">
-        <span
-          aria-hidden="true"
-          className="inline-flex size-16 shrink-0 items-center justify-center rounded-full bg-brand font-display text-2xl font-bold text-on-brand"
-        >
-          {initial(email)}
-        </span>
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h1 className="m-0 text-sm font-medium tracking-wide text-muted uppercase">
-            {t('account.heading')}
-          </h1>
-          <p className="m-0 font-display text-2xl font-bold break-words">{name}</p>
-          <p className="m-0 break-words text-muted" data-testid="account-email">
-            {email}
-          </p>
-          <ChangeEmail current={email} />
-        </div>
-      </header>
+      <AccountHeader email={email} />
       {outcome ? (
         Object.hasOwn(OAUTH_NOTES, outcome) ? (
           <Notice kind="success">{t(OAUTH_NOTES[outcome] ?? 'account.oauth.linked')}</Notice>
@@ -185,6 +164,7 @@ function Account() {
         </TabsContent>
         <TabsContent value="security" className="flex flex-col gap-4">
           <SignInMethods />
+          <ChangeEmail current={email} />
           <Passkeys />
           <ChangePassword />
           <TwoFactor />

@@ -80,7 +80,7 @@ export async function signInThroughUi(page: Page, email: string, password = PASS
   await page.getByLabel('Password', { exact: true }).fill(password)
   await passCaptcha(page)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
+  await expect(page.getByTestId('account-email')).toBeVisible()
 }
 
 // Sign-ups, mails and sign-in failures are rate limited per client IP (ADR 0003 section 9).

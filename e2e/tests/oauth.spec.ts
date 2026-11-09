@@ -217,7 +217,7 @@ test('Google re-authentication: refused with a password, accepted without auth_t
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
   await passCaptcha(page)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
+  await expect(page.getByTestId('account-email')).toBeVisible()
   await page.goto('/account#security')
   await page.getByRole('button', { name: 'Link Google' }).click()
   await expect(page.getByText('The sign-in method is linked to your account.')).toBeVisible()

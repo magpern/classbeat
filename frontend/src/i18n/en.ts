@@ -1539,7 +1539,6 @@ export const en = {
   'account.tab.security': 'Sign-in and security',
   'account.tab.data': 'Your data',
   'account.tab.appearance': 'Appearance',
-  'account.heading': 'Your account',
   'account.tabs': 'Account',
   'account.usageDetails': 'Show usage details',
   'account.email': 'Email',

@@ -23,7 +23,7 @@ export function ChangeEmail({ current }: { current: string }) {
 
   return (
     <Section title={t('cred.email.title')}>
-      <p>
+      <p className="wrap-anywhere">
         <Trans id="cred.email.current" slots={{ email: <strong>{current}</strong> }} />
       </p>
       {sentTo ? <Notice kind="success">{t('cred.email.sent', { email: sentTo })}</Notice> : null}

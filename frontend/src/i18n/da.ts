@@ -1741,7 +1741,6 @@ const da: Catalogue = {
   'account.tab.security': 'Login og sikkerhed',
   'account.tab.data': 'Dine data',
   'account.tab.appearance': 'Udseende',
-  'account.heading': 'Din konto',
   'account.tabs': 'Konto',
   'account.usageDetails': 'Vis forbrugsdetaljer',
   'account.email': 'Mail',
