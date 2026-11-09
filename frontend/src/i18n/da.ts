@@ -932,7 +932,7 @@ const da: Catalogue = {
     'Intet blev ændret. Brug Skift sange på holdsiden for at vælge andre.',
   'job.failure.media_host_not_allowed.title': 'Nye Swedebeat-mix kan ikke analyseres her endnu',
   'job.failure.media_host_not_allowed.detail':
-    'Mixet ligger i din MOWL-konto. Vælg et mix, der er analyseret før, eller prøv igen senere.',
+    'Mixet ligger i din MOWL-konto. Prøv et, der er analyseret før.',
   'job.failure.media_refused.title': 'Lyden fra dette mix kunne ikke hentes',
   'job.failure.media_refused.detail': 'Intet blev designet. Prøv igen senere.',
   'job.failure.analysis_failed.title': 'Lyden fra dette mix kunne ikke analyseres',
@@ -941,7 +941,7 @@ const da: Catalogue = {
   'job.failure.feature_off.detail': 'Intet blev designet. Prøv igen senere.',
   'job.failure.analysis_limit.title': 'For mange nye Swedebeat-mix i dag',
   'job.failure.analysis_limit.detail':
-    'Du har analyseret 10 nye mix på 24 timer. Prøv igen i morgen, eller brug et analyseret før.',
+    'Du har analyseret 10 nye mix på 24 timer. Prøv igen i morgen, eller brug et tidligere analyseret mix.',
   'job.failure.soundless_not_evaluated.title': 'Hold uden musik er ikke klar endnu',
   'job.failure.soundless_not_evaluated.detail':
     'Intet blev designet. Vælg i stedet en playliste, eller prøv igen senere.',
@@ -1021,7 +1021,7 @@ const da: Catalogue = {
     'Musikken i denne version findes ikke i din tilsluttede MOWL-konto. Ændr den, og gem den nye version.',
   'job.revise.soundless_not_evaluated':
     'Hold uden musik er ikke klar til din plan endnu. Intet blev ændret. Prøv igen senere.',
-  'job.revise.program_changed': 'Dette træningspas blev ændret i MOWL, efter at vi gemte det.',
+  'job.revise.program_changed': 'Dette træningspas blev ændret i MOWL, efter at du gemte det.',
   'job.revise.program_missing': 'Dette træningspas findes ikke længere i din MOWL-konto.',
   'job.revise.program_other_sport':
     'Dette træningspas i MOWL er til en anden sport end dette hold, så vi erstattede det ikke.',
@@ -1067,7 +1067,7 @@ const da: Catalogue = {
   'songs.start.account_changed':
     'Din Spotify-konto er ikke den, som sangene blev valgt til. Vælg sange igen.',
   'songs.start.write_unresolved':
-    'Et tidligere Spotify-trin er stadig uafklaret. Afgør det først (Tjek igen eller Gør det alligevel), prøv så igen.',
+    'Et tidligere Spotify-trin er stadig uafklaret. Afgør det først (Tjek igen eller Gør det alligevel), og prøv så igen.',
   'songs.start.idempotency_mismatch': 'Det virkede ikke. Tjek formularen, og prøv igen.',
   'songs.start.default': 'Det virkede ikke. Prøv igen.',
   'songs.failure.invalid_grant.title': 'Spotify accepterer ikke længere forbindelsen',
@@ -1691,7 +1691,7 @@ const da: Catalogue = {
   'swmatch.reason.song_picking_off':
     'Sangvalg er slået fra lige nu. Prøv igen senere.',
   'swmatch.reason.consent_missing':
-    'Tillad arbejdsplaylisten i dine Spotify-indstillinger først.',
+    'Tillad arbejdsplaylisten i Spotify-dialogen under Forbindelser på din kontoside.',
   'swmatch.reason.revision_limit':
     'Dette hold har nået sin grænse for antal versioner.',
   'swmatch.reason.chat_full':

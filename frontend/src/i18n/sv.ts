@@ -944,7 +944,7 @@ const sv: Catalogue = {
   'job.failure.use_change_songs.detail': 'Inget ändrades. Använd Byt låtar på passidan för att välja andra.',
   'job.failure.media_host_not_allowed.title': 'Nya Swedebeat-mixar kan inte analyseras här ännu',
   'job.failure.media_host_not_allowed.detail':
-    'Mixen finns i ditt MOWL-konto. Välj en mix som analyserats tidigare eller försök igen senare.',
+    'Mixen finns i ditt MOWL-konto. Prova en som analyserats tidigare.',
   'job.failure.media_refused.title': 'Ljudet från den här mixen kunde inte hämtas',
   'job.failure.media_refused.detail': 'Inget utformades. Försök igen senare.',
   'job.failure.analysis_failed.title': 'Ljudet från den här mixen kunde inte analyseras',
@@ -1032,7 +1032,7 @@ const sv: Catalogue = {
     'Musiken i den här versionen finns inte i ditt anslutna MOWL-konto. Ändra den och spara den nya versionen.',
   'job.revise.soundless_not_evaluated':
     'Pass utan musik är inte klara för din plan ännu. Inget ändrades. Försök igen senare.',
-  'job.revise.program_changed': 'Det här träningspasset ändrades i MOWL efter att vi sparade det.',
+  'job.revise.program_changed': 'Det här träningspasset ändrades i MOWL efter att du sparade det.',
   'job.revise.program_missing': 'Det här träningspasset finns inte längre i ditt MOWL-konto.',
   'job.revise.program_other_sport':
     'Det här träningspasset i MOWL är för en annan sport än det här passet, så vi ersatte det inte.',
@@ -1703,7 +1703,7 @@ const sv: Catalogue = {
   'swmatch.reason.song_picking_off':
     'Låtval är avstängt just nu. Försök igen senare.',
   'swmatch.reason.consent_missing':
-    'Tillåt arbetsspellistan i dina Spotify-inställningar först.',
+    'Tillåt arbetsspellistan i Spotify-dialogen under Anslutningar på din kontosida.',
   'swmatch.reason.revision_limit':
     'Det här passet har nått sin gräns för antal versioner.',
   'swmatch.reason.chat_full':

@@ -858,7 +858,7 @@ export const en = {
   'job.failure.use_change_songs.title': 'This request is only about the songs',
   'job.failure.use_change_songs.detail': 'Nothing was changed. Use Change songs on the class page to pick other ones.',
   'job.failure.media_host_not_allowed.title': 'New Swedebeat mixes cannot be analysed here yet',
-  'job.failure.media_host_not_allowed.detail': 'The mix is in your MOWL account. Pick a mix analysed before, or try again later.',
+  'job.failure.media_host_not_allowed.detail': 'The mix is in your MOWL account. Try one analysed before.',
   'job.failure.media_refused.title': 'The mix audio could not be fetched',
   'job.failure.media_refused.detail': 'Nothing was designed. Try again later.',
   'job.failure.analysis_failed.title': 'The mix audio could not be analysed',
@@ -931,7 +931,7 @@ export const en = {
   'job.revise.outbound_blocked': 'Something went wrong on our side. Nothing changed. Try again later.',
   'job.revise.music_unlinked': 'The music of this version is not in your connected MOWL account. Change it and save the new version.',
   'job.revise.soundless_not_evaluated': 'Classes with no music are not ready for your plan yet. Nothing changed. Try again later.',
-  'job.revise.program_changed': 'This workout was changed in MOWL after we saved it.',
+  'job.revise.program_changed': 'This workout was changed in MOWL after you saved it.',
   'job.revise.program_missing': 'This workout is no longer in your MOWL account.',
   'job.revise.program_other_sport':
     'This workout in MOWL is for a different sport than this class, so we did not replace it.',
@@ -1560,7 +1560,7 @@ export const en = {
   'swmatch.reason.song_picking_off':
     'Picking songs is switched off right now. Try again later.',
   'swmatch.reason.consent_missing':
-    'Allow the working playlist in your Spotify settings first.',
+    'Allow the working playlist in the Spotify dialog under Connections on your account page.',
   'swmatch.reason.revision_limit':
     'This class has reached its limit of versions.',
   'swmatch.reason.chat_full':

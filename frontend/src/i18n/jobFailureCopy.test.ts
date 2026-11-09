@@ -64,14 +64,17 @@ describe('job failure copy', () => {
       }
       // The old wording said the mix "was added" and "could not be analysed", which no longer matches.
       expect(textOf(catalogue, detail), lang).not.toMatch(/was added|lades till|blev føjet/)
+      // Retrying cannot help: the server's media allow-list decides, so the failure does not suggest it.
+      expect(textOf(catalogue, detail), lang).not.toMatch(/try again|försök igen|prøv igen/i)
     }
   })
 
   it('keeps the daily limit of the failure and of the sentence in step', () => {
-    const next = { en: /Try again tomorrow, or use one analysed before/, sv: /Prova igen i morgon eller använd en som analyserats tidigare/, da: /Prøv igen i morgen, eller brug et analyseret før/ }
+    const next = { en: /Try again tomorrow, or use one analysed before/, sv: /Prova igen i morgon eller använd en som analyserats tidigare/, da: /Prøv igen i morgen, eller brug et tidligere analyseret mix/ }
     for (const [lang, catalogue] of catalogues()) {
       const l = lang as 'en' | 'sv' | 'da'
       expect(textOf(catalogue, 'job.failure.analysis_limit.detail'), lang).toMatch(next[l])
+      expect(textOf(catalogue, 'sentence.job.analysis_limit'), lang).toMatch(next[l])
       expect(textOf(catalogue, 'sentence.job.analysis_limit'), lang).toMatch(/10/)
     }
   })
