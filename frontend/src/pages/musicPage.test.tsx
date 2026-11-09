@@ -30,7 +30,7 @@ describe('the Music page', () => {
   it('shows MOWL playlists as initials tiles and made playlists with the API link', async () => {
     fakeApi(routes())
     renderAt('/music')
-    expect(await screen.findByRole('heading', { name: 'Playlists classbeat made' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Playlists we made' })).toBeInTheDocument()
     const open = await screen.findByRole('link', { name: 'OPEN SPOTIFY' })
     expect(open).toHaveAttribute('href', LINK)
     expect(screen.getByRole('link', { name: 'Hill day' })).toHaveAttribute('href', '/en/classes/c1')

@@ -842,7 +842,7 @@ const sv: Catalogue = {
   'newclass.summary.length': 'Längd',
   'newclass.summary.music': 'Musik',
   'newclass.summary.noMusic': 'Ingen musik',
-  'newclass.summary.songsPicked': 'Låtar som väljs åt dig',
+  'newclass.summary.songsPicked': 'Låtar som vi väljer',
   'newclass.summary.noMix': 'Ingen mix vald ännu',
   'newclass.summary.noPlaylist': 'Ingen spellista vald ännu',
   'newclass.noPlaylists.title': 'Inga spellistor hittades',
@@ -906,8 +906,8 @@ const sv: Catalogue = {
   'newclass.style.latin': 'Latin',
   'job.failure.upstream_unavailable.title': 'Det gick inte att nå MOWL',
   'job.failure.upstream_unavailable.detail':
-    'classbeat försökte flera gånger. Ditt pass utformades inte. Försök igen om några minuter.',
-  'job.failure.rate_limited.title': 'MOWL bad classbeat att sakta ner',
+    'Vi försökte flera gånger. Ditt pass utformades inte. Försök igen om några minuter.',
+  'job.failure.rate_limited.title': 'MOWL bad oss sakta ner',
   'job.failure.rate_limited.detail': 'Ditt pass utformades inte. Vänta några minuter och försök igen.',
   'job.failure.model_unavailable.title': 'Utformaren är upptagen',
   'job.failure.model_unavailable.detail':
@@ -929,30 +929,29 @@ const sv: Catalogue = {
   'job.failure.account_disabled.detail': 'Kontakta personen som bjöd in dig.',
   'job.failure.model_refused.title': 'Utformaren avböjde den här beskrivningen',
   'job.failure.model_refused.detail': 'Ändra beskrivningen och börja om.',
-  'job.failure.model_config.title': 'classbeat kan inte utforma pass just nu',
+  'job.failure.model_config.title': 'Vi kan inte utforma pass just nu',
   'job.failure.model_config.detail': 'Det här är ett problem hos oss. Försök igen senare.',
   'job.failure.invalid_output.title': 'Utformaren gjorde inget användbart pass',
   'job.failure.invalid_output.detail': 'Försök igen, eller förenkla beskrivningen.',
-  'job.failure.limit_exceeded.title': 'Den här beskrivningen krävde mer arbete än en utformning får använda',
+  'job.failure.limit_exceeded.title': 'Beskrivningen var för stor för en utformning',
   'job.failure.limit_exceeded.detail': 'Prova ett kortare eller enklare pass.',
   'job.failure.outbound_blocked.title': 'Något gick fel hos oss',
   'job.failure.outbound_blocked.detail': 'Försök igen senare.',
   'job.failure.program_changed.title': 'Det här träningspasset ändrades i MOWL',
-  'job.failure.program_changed.detail':
-    'Det här träningspasset ändrades i MOWL efter att classbeat sparade det.',
+  'job.failure.program_changed.detail': 'Det här träningspasset ändrades i MOWL efter att vi sparade det.',
   'job.failure.program_missing.title': 'Det här träningspasset finns inte längre i MOWL',
   'job.failure.program_missing.detail': 'Det här träningspasset finns inte längre i ditt MOWL-konto.',
   'job.failure.music_changed.title': 'Musiken ändrades',
   'job.failure.music_changed.detail':
-    'Spellistan eller mixen är inte den som den här versionen gjordes på, så tidskorrigeringarna tillämpades inte. Be om en ändring via chatten för att utforma efter musiken som den är nu.',
+    'Musiken har ändrats sedan den här versionen, så tidskorrigeringarna hoppades över. Be om en ändring i chatten.',
   'job.failure.program_other_sport.title': 'Det här träningspasset är för en annan sport',
   'job.failure.program_other_sport.detail':
-    'Det här träningspasset i MOWL är för en annan sport än det här passet, så classbeat ersatte det inte.',
+    'Det här träningspasset i MOWL är för en annan sport än det här passet, så vi ersatte det inte.',
   'job.failure.use_change_songs.title': 'Den här begäran gäller bara låtarna',
   'job.failure.use_change_songs.detail': 'Inget ändrades. Använd Byt låtar på passidan för att välja andra.',
   'job.failure.media_host_not_allowed.title': 'Nya Swedebeat-mixar kan inte analyseras här ännu',
   'job.failure.media_host_not_allowed.detail':
-    'Mixen lades till i ditt MOWL-konto, men den kunde inte analyseras. Mixar som du analyserat tidigare fungerar fortfarande. Prova en av dem, eller en annan sorts musik.',
+    'Mixen lades till i ditt MOWL-konto men kunde inte analyseras. Tidigare analyserade mixar fungerar fortfarande.',
   'job.failure.media_refused.title': 'Ljudet från den här mixen kunde inte hämtas',
   'job.failure.media_refused.detail': 'Inget utformades. Försök igen senare.',
   'job.failure.analysis_failed.title': 'Ljudet från den här mixen kunde inte analyseras',
@@ -961,13 +960,12 @@ const sv: Catalogue = {
   'job.failure.feature_off.detail': 'Inget utformades. Försök igen senare.',
   'job.failure.analysis_limit.title': 'För många nya Swedebeat-mixar i dag',
   'job.failure.analysis_limit.detail':
-    'Du har analyserat 10 nya mixar de senaste 24 timmarna. Mixar som analyserats tidigare fungerar fortfarande; prova en ny i morgon.',
-  'job.failure.soundless_not_evaluated.title': 'Pass utan musik är inte klara för din plan ännu',
+    'Du har analyserat 10 nya mixar på 24 timmar. Tidigare mixar fungerar fortfarande; prova en ny i morgon.',
+  'job.failure.soundless_not_evaluated.title': 'Pass utan musik är inte klara än',
   'job.failure.soundless_not_evaluated.detail':
     'Inget utformades. Välj en spellista i stället, eller försök igen senare.',
-  'job.failure.music_unlinked.title': 'Musiken i den här versionen finns inte i ditt MOWL-konto',
-  'job.failure.music_unlinked.detail':
-    'Musiken i den här versionen finns inte i ditt anslutna MOWL-konto. Ändra den och spara den nya versionen.',
+  'job.failure.music_unlinked.title': 'Musiken finns inte i ditt MOWL-konto',
+  'job.failure.music_unlinked.detail': 'Ändra musiken och spara en ny version.',
   'job.failure.soundlessInvalid.title': 'Begäran kunde inte användas',
   'job.failure.soundlessInvalid.detail':
     'Ett pass utan musik är för cykling och har inga låtar eller någon mix. Kontrollera formuläret och börja om.',
@@ -998,7 +996,7 @@ const sv: Catalogue = {
   'job.step.prepare': 'Kontrollerar dina konton',
   'job.step.refitMusic': 'Läser din musik',
   'job.retry.upstream_unavailable': 'MOWL svarade inte. Försöker igen om en liten stund.',
-  'job.retry.rate_limited': 'MOWL bad classbeat att sakta ner. Försöker igen om en liten stund.',
+  'job.retry.rate_limited': 'MOWL bad oss sakta ner. Försöker igen om en liten stund.',
   'job.retry.model_unavailable': 'Utformaren är upptagen. Försöker igen om en liten stund.',
   'job.retry.default': 'Något gick fel. Försöker igen om en liten stund.',
   'job.mixStage': 'Hämtar och analyserar din mix',
@@ -1009,17 +1007,16 @@ const sv: Catalogue = {
   'job.use.changeSongs':
     'Den här begäran gäller bara låtarna, så inget ändrades. Använd Byt låtar för att välja andra.',
   'job.use.newClassForSongs':
-    'Den här begäran gäller bara låtarna, så inget ändrades. Det här passet använder en egen spellista; för att använda annan musik utformar du ett nytt pass.',
+    'Den här begäran gäller bara låtarna, så inget ändrades. Det här passet använder en egen spellista. För annan musik, utforma ett nytt pass.',
   'job.use.otherMusicRunning':
-    'Den här begäran gäller bara musiken, så inget ändrades. Ett löppass använder en spellista från ditt MOWL-konto och kan inte byta låtar; för att använda annan musik utformar du ett nytt pass.',
+    'Den här begäran gäller bara musiken, så inget ändrades. Ett löppass behåller sin spellista. För annan musik, utforma ett nytt pass.',
   'job.use.finishSongs':
     'Den här begäran gäller bara låtarna, så inget ändrades. Slutför eller försök om låtvalet på den här sidan först och använd sedan Byt låtar.',
   'job.use.newClassForMusicSoundless':
-    'Den här begäran gäller bara musiken, så inget ändrades. Det här passet har ingen musik; för att lägga till musik utformar du ett nytt pass med en spellista.',
+    'Den här begäran gäller bara musiken, så inget ändrades. Det här passet har ingen musik. Utforma ett nytt pass med en spellista.',
   'job.revise.upstream_unavailable':
     'Det gick inte att nå MOWL. Inget ändrades. Försök igen om några minuter.',
-  'job.revise.rate_limited':
-    'MOWL bad classbeat att sakta ner. Inget ändrades. Vänta några minuter och försök igen.',
+  'job.revise.rate_limited': 'MOWL bad oss sakta ner. Inget ändrades. Vänta några minuter och försök igen.',
   'job.revise.model_unavailable': 'Utformaren är upptagen. Inget ändrades. Försök igen om några minuter.',
   'job.revise.lease_lost': 'Ändringen avbröts för många gånger. Inget ändrades. Försök igen.',
   'job.revise.operation_busy':
@@ -1032,10 +1029,9 @@ const sv: Catalogue = {
   'job.revise.invalid_input': 'Den begäran kunde inte användas. Inget ändrades. Formulera dig annorlunda.',
   'job.revise.account_disabled': 'Ditt konto kan inte ändra pass just nu. Kontakta personen som bjöd in dig.',
   'job.revise.model_refused': 'Utformaren avböjde den här begäran. Inget ändrades. Formulera dig annorlunda.',
-  'job.revise.model_config':
-    'classbeat kan inte ändra pass just nu. Det här är ett problem hos oss. Försök igen senare.',
+  'job.revise.model_config': 'Vi kan inte ändra pass just nu. Det här är ett problem hos oss. Försök igen senare.',
   'job.revise.invalid_output':
-    'Utformaren gjorde ingen användbar ändring, eller en som inte ändrar något. Inget ändrades. Försök igen, eller formulera dig annorlunda.',
+    'Utformaren gjorde ingen användbar ändring. Inget ändrades. Försök igen, eller formulera dig annorlunda.',
   'job.revise.limit_exceeded':
     'Den här begäran krävde mer arbete än en ändring får använda. Inget ändrades. Be om något mindre.',
   'job.revise.outbound_blocked': 'Något gick fel hos oss. Inget ändrades. Försök igen senare.',
@@ -1043,10 +1039,10 @@ const sv: Catalogue = {
     'Musiken i den här versionen finns inte i ditt anslutna MOWL-konto. Ändra den och spara den nya versionen.',
   'job.revise.soundless_not_evaluated':
     'Pass utan musik är inte klara för din plan ännu. Inget ändrades. Försök igen senare.',
-  'job.revise.program_changed': 'Det här träningspasset ändrades i MOWL efter att classbeat sparade det.',
+  'job.revise.program_changed': 'Det här träningspasset ändrades i MOWL efter att vi sparade det.',
   'job.revise.program_missing': 'Det här träningspasset finns inte längre i ditt MOWL-konto.',
   'job.revise.program_other_sport':
-    'Det här träningspasset i MOWL är för en annan sport än det här passet, så classbeat ersatte det inte.',
+    'Det här träningspasset i MOWL är för en annan sport än det här passet, så vi ersatte det inte.',
   'job.revise.soundlessFeatureOff':
     'Pass utan musik är avstängda just nu. Inget ändrades. Försök igen senare.',
   'job.revise.default': 'Ändringen blev inte klar. Inget ändrades. Försök igen senare.',
@@ -1176,17 +1172,16 @@ const sv: Catalogue = {
   'job.ready.noDraft': 'Den här utformningen blev klar utan utkast.',
   'job.ready.draftFailed': 'Utkastet kunde inte laddas.',
   'job.ready.openClass': 'Öppna passet',
-  'job.ready.designAnother': 'Utforma ett till pass',
+  'job.ready.designAnother': 'Utforma nytt pass',
   'job.again.notConnected':
-    'MOWL är inte anslutet, eller anslöts på nytt sedan den här utformningen startade. Anslut det på din kontosida om det behövs och starta sedan en ny utformning.',
-  'job.again.classBusy':
-    'Det här passet har redan en utformning som pågår, kanske från en annan flik. Vänta tills den är klar och försök sedan igen.',
+    'MOWL är inte anslutet, eller anslöts på nytt sedan utformningen startade. Anslut det på din kontosida och starta om.',
+  'job.again.classBusy': 'Det här passet har redan en utformning igång, kanske i en annan flik. Vänta och försök igen.',
   'job.again.tooMany': 'Du har redan utformningar som körs. Vänta tills en är klar.',
   'job.again.design': 'Utforma igen',
-  'job.again.startNew': 'Starta en ny utformning',
+  'job.again.startNew': 'Starta ny utformning',
   'job.again.tryAgain': 'Försök igen',
   'job.matchStopped': 'Swedebeat-matchningen stoppades',
-  'job.goToAccount': 'Gå till ditt konto',
+  'job.goToAccount': 'Gå till konto',
   'songs.list.label': 'Låtar',
   'songs.list.openSpotify': 'ÖPPNA SPOTIFY',
   'songs.list.openSpotifyLabel': 'ÖPPNA SPOTIFY, {title}',
@@ -1216,7 +1211,7 @@ const sv: Catalogue = {
   'songs.change.loading': 'Laddar låtarna',
   'songs.change.intro': 'Markera låtar att byta ut. Inget skrivs till Spotify innan du godkänner.',
   'songs.change.different': 'Vad ska vara annorlunda?',
-  'songs.change.marked': 'Byt de markerade låtarna',
+  'songs.change.marked': 'Byt markerade låtar',
   'songs.change.all': 'Byt alla låtar',
   'songs.ended.stoppedTitle': 'Du stoppade det här',
   'songs.ended.stoppedApproved': 'Du stoppade jobbet efter att ha godkänt låtarna. Passet blev inte klart.',
@@ -1231,7 +1226,7 @@ const sv: Catalogue = {
   'songs.ended.reconnect': 'Anslut Spotify igen',
   'songs.ended.createAgain': 'Skapa spellistan igen',
   'songs.ended.pickAgain': 'Välj låtar igen',
-  'songs.ended.startNew': 'Starta ett nytt pass',
+  'songs.ended.startNew': 'Starta nytt pass',
   'songs.ended.backToClass': 'Tillbaka till passet',
   'songs.approval.privacy': 'Privat spellista i ditt Spotify. Alla med länken kan öppna den.',
   'songs.approval.stopped': 'Låtarna stoppades, men vi kunde inte läsa passet. Tryck på Be om ändringar igen.',
@@ -1300,10 +1295,9 @@ const sv: Catalogue = {
   // Music page.
   'music.page.title': 'Musik',
   'music.page.connectTitle': 'Anslut Spotify',
-  'music.page.connectText':
-    'Anslut Spotify så att classbeat kan välja låtar åt dig och skapa spellistor till dina pass.',
+  'music.page.connectText': 'Anslut Spotify så att vi kan välja låtar åt dig och skapa spellistor till dina pass.',
   'music.page.connectButton': 'Anslut Spotify',
-  'music.page.madeTitle': 'Spellistor som classbeat har gjort',
+  'music.page.madeTitle': 'Spellistor vi har gjort',
   'music.page.madeLoading': 'Laddar dina spellistor',
   'music.page.madeFailed': 'Dina spellistor kunde inte laddas.',
   'music.page.madeEmpty':

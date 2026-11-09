@@ -203,7 +203,7 @@ describe('a running class page', () => {
     })
     renderAt(`/classes/${CLASS_ID}`)
     const outcome = await screen.findByTestId('use-change-songs')
-    expect(outcome).toHaveTextContent('A running class uses a playlist from your MOWL account')
+    expect(outcome).toHaveTextContent('A running class keeps its playlist')
     expect(outcome).not.toHaveTextContent('Use Change songs')
     expect(within(outcome).queryByRole('button')).toBeNull()
   })
