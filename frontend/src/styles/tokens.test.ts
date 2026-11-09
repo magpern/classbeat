@@ -193,3 +193,22 @@ describe('reduced motion', () => {
     expect(tokensCss).not.toMatch(/--cb-color-/)
   })
 })
+
+// ADR 0028 section 1.1: titles are wide, but a wide title must not scroll the page sideways at 390 px
+// (e2e lang-axe: long Swedish and Danish compounds), so it wraps and a phone gets a narrower width.
+describe('wide titles', () => {
+  it('the title rule hyphenates and breaks inside a word as a last resort', () => {
+    const rule = block(tailwindCss, '  .font-display')
+    expect(rule).toMatch(/font-stretch:\s*var\(--cb-font-stretch-display\)/)
+    expect(rule).toMatch(/hyphens:\s*auto/)
+    expect(rule).toMatch(/overflow-wrap:\s*anywhere/)
+  })
+
+  it('a phone has a narrower stretch than the desktop', () => {
+    const wide = /--cb-font-stretch-display:\s*(\d+)%/.exec(block(tokensCss, ':root'))
+    const start = tokensCss.indexOf('@media (max-width: 40rem)')
+    expect(start).toBeGreaterThanOrEqual(0)
+    const phone = /--cb-font-stretch-display:\s*(\d+)%/.exec(tokensCss.slice(start))
+    expect(Number(phone?.[1])).toBeLessThan(Number(wide?.[1]))
+  })
+})

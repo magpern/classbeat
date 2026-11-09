@@ -55,11 +55,15 @@
 /*
  * Titles are Archivo at its wide setting (ADR 0028 section 1.1): every `font-display` element gets the
  * width of --cb-font-stretch-display. It sits in the base layer, so `font-stretch-normal` (or any
- * other font-stretch utility) on an element still wins.
+ * other font-stretch utility) on an element still wins. A wide title must never push the page
+ * sideways (a long Swedish or Danish compound at 390 px): it hyphenates and, as a last resort,
+ * breaks inside the word.
  */
 @layer base {
   .font-display {
     font-stretch: var(--cb-font-stretch-display);
+    hyphens: auto;
+    overflow-wrap: anywhere;
   }
 }
 

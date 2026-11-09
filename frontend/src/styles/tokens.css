@@ -101,6 +101,13 @@
   --cb-duration: 150ms;
 }
 
+/* A phone has less width for a wide title (ADR 0028 section 1.1). */
+@media (max-width: 40rem) {
+  :root {
+    --cb-font-stretch-display: 108%;
+  }
+}
+
 :root[data-theme='light'] {
   color-scheme: light;
   --cb-bg: #f5f5f8;
