@@ -40,7 +40,7 @@ const da: Catalogue = {
   'landing.how.approve.title': 'Godkend sange',
   'landing.how.approve.text': 'Skift de sange ud, der ikke passer.',
   'landing.how.save.title': 'Gem i MOWL',
-  'landing.how.save.text': 'Klar til at køre, på din konto.',
+  'landing.how.save.text': 'Klar til at undervise, på din konto.',
 
   // Sign in, sign up and the pages behind the mail links.
   'auth.signIn': 'Log ind',
@@ -314,33 +314,33 @@ const da: Catalogue = {
 
   // Reasons the class API refuses with (ADR 0007 sections 2, 3 and 12).
   'class.reason.stale_base':
-    'Dette hold blev ændret i en anden fane eller et andet vindue, så din anmodning blev ikke sendt. Siden er indlæst igen. Læs den aktuelle version, og spørg igen.',
+    'Holdet blev ændret i en anden fane, så din anmodning blev ikke sendt. Siden er indlæst igen; spørg igen.',
   'class.reason.hash_mismatch':
     'Den version er ikke den, som siden viste: den blev ændret et andet sted. Siden er indlæst igen.',
   'class.reason.class_busy':
-    'Dette hold er optaget af en anden opgave, måske fra en anden fane. Siden er indlæst igen. Vent, til den er færdig, og prøv så igen.',
+    'Holdet er optaget af en anden opgave. Siden er indlæst igen. Vent, til den er færdig, og prøv igen.',
   'class.reason.revision_limit':
-    'Dette hold har nået det højeste antal ændringer, et hold kan have. Behold den version, du kan lide, eller design et nyt hold.',
+    'Holdet har nået grænsen for antal ændringer. Behold den version, du kan lide, eller design et nyt hold.',
   'class.reason.not_changeable':
-    'Dette hold har ingen egen musik, så det kan ikke ændres via chatten. Du kan stadig se, bruge og gemme dets versioner.',
+    'Holdet har ingen egen musik, så det kan ikke ændres via chatten. Du kan stadig se, bruge og gemme versioner.',
   'class.reason.chat_full':
     'Denne samtale er fuld. Behold den version, du kan lide, eller design et nyt hold.',
   'class.reason.not_found': 'Dette hold, eller den version, findes ikke længere. Siden er indlæst igen.',
   'class.reason.not_connected': 'MOWL er ikke tilsluttet. Tilslut det på din kontoside, og spørg så igen.',
   'class.reason.invalid_input': 'Den anmodning kunne ikke bruges. Tjek den, og prøv igen.',
   'class.reason.call_may_be_running':
-    'classbeat skriver måske stadig dette hold til MOWL, og hvis du sletter det nu, forsvinder den eneste registrering af den skrivning. Vent et par minutter, og prøv så at slette det igen.',
+    'En skrivning til MOWL kører måske stadig, og hvis du sletter nu, forsvinder dens eneste registrering. Vent et par minutter.',
   'class.reason.music_unlinked':
     'Musikken i denne version findes ikke i din tilsluttede MOWL-konto. Ændr den, og gem den nye version.',
   'class.reason.running_not_evaluated':
-    'Løbehold kan ikke ændres på din plan lige nu, så din anmodning blev ikke sendt, og der blev ikke trukket noget. Prøv igen senere.',
+    'Løbehold kan ikke ændres på din plan lige nu. Din anmodning blev ikke sendt, og der blev ikke trukket noget.',
   'class.reason.no_beat_data':
     'Denne version har ingen beat-data at rette. Bed først om en ændring via chatten, og prøv så igen.',
   'class.reason.correction_limit':
     'Dette hold har så mange tidsrettelser, som det kan rumme. Nulstil nogle, og prøv så igen.',
   'class.reason.nothing_pending': 'Den aktuelle version bruger allerede disse tidsrettelser.',
   'class.reason.refit_limit':
-    'Timingen på dette hold er rettet så mange gange, som det er muligt. Design et nyt hold for at starte forfra.',
+    'Timingen på dette hold er rettet så mange gange som muligt. Design et nyt hold for at starte forfra.',
   'class.reason.changedMeanwhile': 'Dette hold blev ændret i mellemtiden. Siden er indlæst igen.',
   'class.origin.design_draft': 'Første design',
   'class.origin.revise_draft': 'Ændret efter ønske',
@@ -390,7 +390,8 @@ const da: Catalogue = {
   'class.saveFailure.default':
     'Jobbet blev ikke færdigt. Se i feltet nedenfor efter noget uafklaret, og prøv så igen.',
   'class.uncertain.save.1': 'Vi bad MOWL tilføje holdet som et nyt træningspas og fik ikke et tydeligt svar.',
-  'class.uncertain.save.2': 'Det kan være i din MOWL-konto, helt eller delvist, eller slet ikke. Vi prøver ikke igen af os selv, så du ikke får en kopi ved et uheld.',
+  'class.uncertain.save.2':
+    'Det kan være i din MOWL-konto, helt eller delvist, eller slet ikke. Vi prøver aldrig igen af os selv, for at undgå en ekstra kopi.',
   'class.uncertain.update.1': 'Vi bad MOWL opdatere det træningspas, du gemte tidligere, og fik ikke et tydeligt svar.',
   'class.uncertain.update.2': 'Din MOWL-kopi kan være uændret eller delvist opdateret. Et tomt træningspas med samme navn kan også ligge under Mine træningspas; du kan slette det.',
   'class.warning.duplicate': 'Gør det alligevel: du afgør, at det ikke blev gemt. Hvis det blev, kan MOWL få en kopi mere; slet ekstra kopier i MOWL-appen.',
@@ -455,8 +456,7 @@ const da: Catalogue = {
   'class.notes.upTo': 'op til {high}',
   'class.notes.perMinute': '{value} TSS pr. minut',
   'class.notes.title': 'Mønsternoter',
-  'class.notes.intro':
-    'Hvad der er almindeligt på hold af denne slags. Din beskrivelse kommer først; disse noter blokerer aldrig noget.',
+  'class.notes.intro': 'Almindeligt for denne slags hold. Noter blokerer aldrig noget.',
   'class.notes.hidden': 'Noten er skjult.',
   'class.notes.showAgain': 'Vis igen',
   'class.notes.showAgainAria': 'Vis igen: {note}',
@@ -468,7 +468,7 @@ const da: Catalogue = {
   'class.notes.worth': 'Værd at se på',
   'class.notes.good': 'Godt at vide',
   'class.notes.explained': 'Din beskrivelse beder om dette, så det er kun en note.',
-  'class.notes.currentRules': 'Noterne følger de aktuelle regler',
+  'class.notes.currentRules': 'Noterne følger aktuelle regler',
 
   // The class card, my classes and the class page.
   'class.card.tss': 'TSS {value}',
@@ -483,7 +483,7 @@ const da: Catalogue = {
   'class.list.loading': 'Indlæser dine hold',
   'class.list.failed': 'Dine hold kunne ikke indlæses.',
   'class.list.none': 'Ingen hold endnu',
-  'class.list.noneText': 'Beskriv et hold, så designer classbeat det ud fra din playliste.',
+  'class.list.noneText': 'Beskriv et hold, så designer vi det ud fra din playliste.',
   'class.list.show': 'Vis',
   'class.list.filterAll': 'Alle',
   'class.list.filterSaved': 'Gemt i MOWL',
@@ -509,7 +509,7 @@ const da: Catalogue = {
   'class.page.job.refit': 'Dine tidsrettelser bliver anvendt.',
   'class.page.job.songs': 'Der arbejdes på sangene på dette hold.',
   'class.page.job.review': 'Gennemgå sangene',
-  'class.page.job.progress': 'Se, hvordan det går',
+  'class.page.job.progress': 'Se forløbet',
   'class.page.playlist': 'Din Spotify-playliste: {name}',
   'class.page.openSpotify': 'Åbn i Spotify',
   'class.page.noVersion': 'Dette hold har endnu ingen version.',
@@ -525,17 +525,16 @@ const da: Catalogue = {
   // Delete class (ADR 0007 section 11).
   'class.delete.title': 'Slet hold',
   'class.delete.uncertain':
-    'classbeat er ikke sikker på, om en gemning af dette hold i MOWL gik igennem. Hvis du sletter holdet nu, forsvinder den eneste registrering af den.',
+    'Vi er ikke sikre på, om en gemning af holdet i MOWL gik igennem. Hvis du sletter holdet nu, forsvinder den eneste registrering af den.',
   'class.delete.warning':
     'Det her sletter holdet, alle dets versioner og din samtale fra classbeat. Det kan ikke fortrydes.',
   'class.delete.kept': {
-    one: 'Det træningspas, som classbeat gemte i din MOWL-konto, bliver der; slet det i MOWL.',
-    other: 'De {count} træningspas, som classbeat gemte i din MOWL-konto, bliver der; slet dem i MOWL.',
+    one: 'Det træningspas, vi gemte i din MOWL-konto, bliver der; slet det i MOWL.',
+    other: 'De {count} træningspas, vi gemte i din MOWL-konto, bliver der; slet dem i MOWL.',
   },
-  'class.delete.keptNone':
-    'Alle træningspas, som classbeat gemte i din MOWL-konto, bliver der; slet dem i MOWL.',
+  'class.delete.keptNone': 'Alle træningspas, vi gemte i din MOWL-konto, bliver der; slet dem i MOWL.',
   'class.delete.anyway': 'Slet alligevel',
-  'class.delete.confirm': 'Ja, slet dette hold',
+  'class.delete.confirm': 'Ja, slet',
   'class.delete.keep': 'Behold det',
 
   // Duplicate a class.
@@ -543,9 +542,9 @@ const da: Catalogue = {
   'class.duplicate.trigger': '{label} {title}',
   'class.duplicate.title': 'Duplikér dette hold',
   'class.duplicate.descriptionVersion':
-    'Version {number} bliver version 1 af et nyt hold. Det er ikke gemt i MOWL og har endnu ingen godkendte sange eller samtale. Det tæller som ét hold denne måned.',
+    'Version {number} bliver version 1 af et nyt hold, ikke gemt i MOWL, uden godkendte sange eller samtale. Det tæller som ét hold denne måned.',
   'class.duplicate.descriptionThis':
-    'Denne version bliver version 1 af et nyt hold. Det er ikke gemt i MOWL og har endnu ingen godkendte sange eller samtale. Det tæller som ét hold denne måned.',
+    'Denne version bliver version 1 af et nyt hold, ikke gemt i MOWL, uden godkendte sange eller samtale. Det tæller som ét hold denne måned.',
   'class.duplicate.name': 'Kopiens navn',
   'class.duplicate.sending': 'Duplikerer…',
 
@@ -566,9 +565,9 @@ const da: Catalogue = {
   'class.status.changing': 'Ændres',
   'class.status.busy': 'Optaget',
   'class.status.noVersion': 'Ingen version endnu',
-  'class.status.unsavedChanges': 'Version {number} har ændringer, der endnu ikke er i MOWL',
-  'class.status.saved': 'Version {number} gemt i MOWL',
-  'class.status.notSaved': 'Version {number}, ikke gemt i MOWL',
+  'class.status.unsavedChanges': 'Version {number}, ugemte ændringer',
+  'class.status.saved': 'Version {number} i MOWL',
+  'class.status.notSaved': 'Version {number}, ikke gemt',
   'class.compare.gone': 'En af disse versioner findes ikke længere.',
   'class.compare.unreadable': 'En af disse versioner kan ikke længere læses, så de to kan ikke sammenlignes.',
   'class.compare.failed': 'De to versioner kunne ikke sammenlignes. Prøv igen.',
@@ -603,7 +602,7 @@ const da: Catalogue = {
   'class.duplicate.reason.soundless_not_evaluated':
     'Hold uden musik er endnu ikke tilgængelige på din plan, så dette kan ikke kopieres.',
   'class.duplicate.reason.not_changeable':
-    'Dette hold har ingen egen musik, så det kan ikke ændres via chatten. Du kan stadig se, bruge og gemme dets versioner.',
+    'Holdet har ingen egen musik, så det kan ikke ændres via chatten. Du kan stadig se, bruge og gemme versioner.',
   'class.duplicate.reason.hash_mismatch':
     'Den version er ikke den, som siden viste: den blev ændret et andet sted. Genindlæs siden, og prøv igen.',
   'class.duplicate.reason.not_found': 'Dette hold, eller den version, findes ikke længere.',
@@ -645,7 +644,7 @@ const da: Catalogue = {
   'class.history.unavailable': 'Versionshistorikken kunne ikke læses, så kun den enkle liste vises.',
   'class.history.pick': 'Vælg to versioner for at sammenligne dem.',
   'class.history.cannotChange':
-    'Ændr det er ikke tilgængeligt for dette hold lige nu: det har ingen egen musik, eller den slags hold er slået fra. Du kan stadig se, sammenligne, bruge og gemme dets versioner.',
+    'Ændr det er ikke tilgængeligt for dette hold lige nu. Du kan stadig se, sammenligne, bruge og gemme versioner.',
   'class.history.unreadable': {
     one: '{count} tidligere version kan ikke længere læses og vises ikke på listen.',
     other: '{count} tidligere versioner kan ikke længere læses og vises ikke på listen.',
@@ -667,7 +666,7 @@ const da: Catalogue = {
   'class.beat.song': 'Sang {song}',
   'class.beat.title': 'Beat 1',
   'class.beat.intro':
-    'Lyt til holdet. Hvis ændringerne i en sang kommer et beat for tidligt, så flyt dens beat 1 senere; hvis de kommer for sent, så flyt det tidligere. En takt har fire beat, så ét trin er en fjerdedel af en takt.',
+    'Lyt til holdet. Kommer en ændring et beat for tidligt, så flyt beat 1 senere; for sent, så tidligere. Ét trin er en kvart takt.',
   'class.beat.from': 'Fra {start}, {bpm} BPM',
   'class.beat.bpmChanged': 'Tempoet på denne sang blev ændret, siden du satte dens beat 1: lyt igen.',
   'class.beat.estimate': 'Beat 1 er et skøn her: lyt til den første ændring i denne sang.',
@@ -679,13 +678,13 @@ const da: Catalogue = {
   'class.beat.laterButton': 'Senere',
   'class.beat.resetButton': 'Nulstil',
   'class.beat.stale':
-    'Disse tidsrettelser gælder musik, som denne version ikke spiller: den blev analyseret igen eller ændret, eller sangen er ikke i denne version. De gemmes og tæller ikke med i grænsen, så hvis du gør en tidligere version aktuel, kan de bruges igen. Ryd dem, hvis du ikke længere har brug for dem.',
+    'Disse tidsrettelser gælder musik, som denne version ikke spiller. De gemmes og tæller ikke med i grænsen. Ryd dem, hvis de ikke er nødvendige.',
   'class.beat.staleRow': 'Sang {song}: {beats}',
   'class.beat.clearAria': 'Ryd den tidligere tidsrettelse for sang {song}',
   'class.beat.clear': 'Ryd',
   'class.beat.clearAll': 'Ryd alle tidsrettelser',
   'class.beat.pending':
-    'Denne version bruger endnu ikke dine tidsrettelser. Anvend dem for at lave en ny version, hvor ændringerne er flyttet til de rettede beat; gem eller opdater den i MOWL bagefter.',
+    'Denne version bruger endnu ikke dine tidsrettelser. Anvend dem for at lave en ny version; gem eller opdater den derefter i MOWL.',
   'class.beat.apply': 'Anvend tidsrettelser',
 
   // The Change it chat (ADR 0007 section 3).
@@ -698,12 +697,11 @@ const da: Catalogue = {
   'class.chat.askAgain': 'Du kan bede om ændringen igen nu.',
   'class.chat.changeSongs': 'Skift sange',
   'class.chat.stopped': 'Denne ændring blev stoppet. Intet blev ændret.',
-  'class.chat.empty':
-    'Der er endnu ikke bedt om noget. Sig, hvad der skal ændres, så ændrer classbeat dette hold.',
+  'class.chat.empty': 'Ingen ønsker endnu. Sig, hvad der skal ændres, og vi ændrer holdet.',
   'class.chat.requests': 'Dine ønsker',
   'class.chat.youAsked': 'Du bad om',
-  'class.chat.changed': 'classbeat ændrede det',
-  'class.chat.changedVersion': 'classbeat ændrede det, version {number}',
+  'class.chat.changed': 'Ændret',
+  'class.chat.changedVersion': 'Ændret, version {number}',
   'class.chat.musicChanged': 'Musikken blev ændret: playlisten i MOWL er ikke den, der var der før.',
   'class.chat.designerNote': 'Note fra designeren:',
   'class.chat.viewVersion': 'Vis version {number}',
@@ -716,8 +714,7 @@ const da: Catalogue = {
     'Dette hold er optaget af en anden opgave. Du kan bede om en ændring, når den er færdig.',
   'class.chat.form': 'Bed om en ændring',
   'class.chat.label': 'Hvad skal ændres?',
-  'class.chat.hint':
-    'For eksempel: gør den anden stigning længere, eller tilføj en sprint før nedkølingen. Højst {max} tegn.',
+  'class.chat.hint': 'For eksempel: en længere anden stigning. Højst {max} tegn.',
 
   // Save to MOWL and Update (ADR 0007 sections 5 to 9).
   'class.save.title': 'Gem i MOWL',
@@ -742,8 +739,10 @@ const da: Catalogue = {
   'class.save.confirmSave': 'Version {number} tilføjes til din MOWL-konto som et nyt træningspas. Kun du kan se det.',
   'class.save.confirmSaveSoundless': 'Version {number} tilføjes til din MOWL-konto som et nyt træningspas uden musik. Kun du kan se det.',
   'class.save.confirmSaveMore': 'Det tidligere træningspas bliver, som det er.',
-  'class.save.confirmUpdate': 'Vi læser først træningspasset i MOWL. Har du ændret det dér, skrives der ikke noget. Ellers erstattes det af version {number}. Det forbliver privat.',
-  'class.save.confirmUpdateSoundless': 'Vi læser først træningspasset i MOWL. Har du ændret det dér, skrives der ikke noget. Ellers erstattes det af version {number}, uden musik. Det forbliver privat.',
+  'class.save.confirmUpdate':
+    'Vi læser først træningspasset i MOWL. Er det ændret dér, skrives intet. Ellers erstattes det af version {number}. Det forbliver privat.',
+  'class.save.confirmUpdateSoundless':
+    'Vi læser først træningspasset i MOWL. Er det ændret dér, skrives intet. Ellers erstattes det af version {number}, uden musik. Det forbliver privat.',
   'class.save.overwriteTitle': 'Opdater alligevel?',
   'class.save.overwriteText': 'Version {number} erstatter træningspasset i MOWL, også dine ændringer dér. Det kan ikke fortrydes. Det forbliver privat.',
   'class.save.updateButton': 'Opdater træningspas',
@@ -751,32 +750,32 @@ const da: Catalogue = {
   'class.save.updateUnavailable': 'Opdatering er endnu ikke mulig. Gem tilføjer et nyt træningspas.',
 
   // Undecided writes and the undecided playlist attach (ADR 0005 section 7, ADR 0007 section 8).
-  'class.write.title.save': 'Vi kunne ikke afgøre, om dit træningspas blev gemt',
-  'class.write.title.update': 'Vi kunne ikke afgøre, om dit træningspas blev opdateret',
+  'class.write.title.save': 'Vi kunne ikke bekræfte, at træningspasset blev gemt',
+  'class.write.title.update': 'Vi kunne ikke bekræfte, at træningspasset blev opdateret',
   'class.write.waiting': 'Vi sender måske stadig dette til MOWL, så Tjek igen og Gør det alligevel venter til {time}.',
   'class.write.running': 'Vi skriver måske stadig til MOWL, så det kan ikke afgøres endnu. Vent et par minutter.',
   'class.write.settled': 'Det var allerede afgjort. Listen er opdateret.',
-  'class.write.notSaved': 'Ja, det blev ikke gemt',
-  'class.write.notUpdated': 'Ja, det blev ikke opdateret',
+  'class.write.notSaved': 'Ja, ikke gemt',
+  'class.write.notUpdated': 'Ja, ikke opdateret',
   'class.write.loadFailed': 'Det, der er tilbage at afgøre for dette hold, kunne ikke indlæses.',
   'class.write.heading': 'Uklart, hvad der nåede MOWL',
-  'class.attach.title': 'classbeat kunne ikke afgøre, om din playliste blev tilføjet',
+  'class.attach.title': 'Vi kunne ikke bekræfte, at playlisten blev tilføjet',
   'class.attach.intro':
-    'For at læse din musik bad classbeat MOWL om at tilføje den playliste, du valgte, til din MOWL-musik. MOWL svarede ikke tydeligt, så playlisten kan være der nu eller ikke. classbeat prøver ikke igen af sig selv, så du ikke ved et uheld får to kopier.',
+    'Vi bad MOWL tilføje din playliste og fik intet tydeligt svar. Den er der måske, måske ikke. Vi prøver aldrig igen af os selv.',
   'class.attach.found': 'Playlisten er i din MOWL-musik. Du kan designe holdet igen nu.',
   'class.attach.absent': 'Playlisten er ikke i din MOWL-musik. Du kan designe holdet igen nu.',
-  'class.attach.still_unsure': 'classbeat kan stadig ikke afgøre, om playlisten blev tilføjet.',
+  'class.attach.still_unsure': 'Vi kan stadig ikke afgøre, om playlisten blev tilføjet.',
   'class.attach.decided':
     'Forstået. Det næste design tilføjer playlisten til din MOWL-musik igen, hvilket kan efterlade to kopier der.',
   'class.attach.settled': 'Det var allerede afgjort. Listen nedenfor er opdateret.',
   'class.attach.loadFailed': 'Det, der er tilbage at afgøre, kunne ikke indlæses.',
   'class.attach.none':
-    'classbeat har intet trin tilbage, som du skal afgøre her, så det kan ikke tilbyde Tjek igen eller Gør det alligevel. Hvis du vil være sikker på, at playlisten ikke bliver tilføjet to gange, så se i din MOWL-musik. For at rydde classbeats registrering af den skal du afbryde MOWL og tilslutte det igen på {account} og derefter starte et nyt design fra formularen.',
+    'Intet er tilbage at afgøre her. Tjek playlisten i din MOWL-musik. Afbryd og tilslut MOWL igen på {account} for at rydde vores registrering.',
   'class.attach.accountPage': 'din kontoside',
   'class.attach.earlier': 'Dette trin stammer fra et tidligere design af dig.',
   'class.attach.warning':
-    'Gør det alligevel betyder, at du afgør, at playlisten ikke blev tilføjet. Det næste design tilføjer den til din MOWL-musik igen. Hvis den alligevel blev tilføjet, får du to kopier af den der.',
-  'class.attach.addAgain': 'Ja, tilføj den igen',
+    'Gør det alligevel: du afgør, at den ikke blev tilføjet. Det næste design tilføjer den igen, så du kan få to kopier.',
+  'class.attach.addAgain': 'Tilføj igen',
   'common.tryAgain': 'Prøv igen',
   'newclass.title': 'Design et hold',
   'newclass.loading': 'Indlæser din MOWL-musik',
@@ -1069,24 +1068,24 @@ const da: Catalogue = {
   'songs.start.account_changed':
     'Din Spotify-konto er ikke den, som sangene blev valgt til. Vælg sange igen.',
   'songs.start.write_unresolved':
-    'Et tidligere trin hos Spotify er stadig uafklaret. Afgør det først (Tjek igen eller Gør det alligevel), og prøv så igen.',
+    'Et tidligere Spotify-trin er stadig uafklaret. Afgør det først (Tjek igen eller Gør det alligevel), og prøv så igen.',
   'songs.start.idempotency_mismatch': 'Det virkede ikke. Tjek formularen, og prøv igen.',
   'songs.start.default': 'Det virkede ikke. Prøv igen.',
   'songs.failure.invalid_grant.title': 'Spotify accepterer ikke længere forbindelsen',
   'songs.failure.app_misconfigured.title': 'Spotify genkender ikke denne appopsætning',
   'songs.failure.not_allowlisted.title': 'Spotify afviste denne konto',
   'songs.failure.forbidden.title': 'Spotify afviste anmodningen',
-  'songs.failure.rate_limited.title': 'Spotify eller MOWL bad classbeat om at sætte tempoet ned',
+  'songs.failure.rate_limited.title': 'Spotify eller MOWL bad os sætte tempoet ned',
   'songs.failure.rate_limited.detail': 'Vent nogle minutter, og prøv igen.',
   'songs.failure.quota_exhausted.title': 'Din Spotify-app har brugt sin kvote op',
   'songs.failure.quota_exhausted.detail':
     'Din Spotify-app har brugt sin kvote op for nu. Prøv igen om nogle timer.',
   'songs.failure.upstream_unavailable.title': 'Spotify eller MOWL kunne ikke nås',
-  'songs.failure.upstream_unavailable.detail': 'classbeat prøvede flere gange. Prøv igen om nogle minutter.',
+  'songs.failure.upstream_unavailable.detail': 'Vi prøvede flere gange. Prøv igen om nogle minutter.',
   'songs.failure.not_found.title': 'En playliste findes ikke længere i Spotify',
   'songs.failure.not_found.detail': 'Arbejdsplaylisten findes ikke længere i Spotify. Start forfra.',
-  'songs.failure.scope_mismatch.title': 'Spotify gav ikke den adgang, som classbeat har brug for',
-  'songs.failure.account_changed.title': 'Det er ikke den Spotify-konto, som sangene blev valgt til',
+  'songs.failure.scope_mismatch.title': 'Spotify gav ikke den adgang, vi skal bruge',
+  'songs.failure.account_changed.title': 'Forkert Spotify-konto til disse sange',
   'songs.failure.access_denied.title': 'Spotify blev ikke tilsluttet',
   'songs.failure.not_connected.title': 'Spotify eller MOWL er ikke tilsluttet',
   'songs.failure.not_connected.detail': 'Tilslut det på din kontoside, og start derefter forfra.',
@@ -1099,13 +1098,13 @@ const da: Catalogue = {
   'songs.failure.playlist_mismatch.detail':
     'Spotifys playliste stemte ikke med de godkendte sange; intet blev designet. Opret den igen.',
   'songs.failure.pool_too_small.title': 'Der blev ikke fundet nok brugbare sange',
-  'songs.uncertain.title': 'classbeat kunne ikke afgøre, om din playliste blev skrevet i Spotify',
+  'songs.uncertain.title': 'Vi kunne ikke bekræfte, at playlisten blev skrevet',
   'songs.uncertain.text1':
-    'Spotify svarede ikke i tide, mens classbeat skrev playlisten til dine godkendte sange. Playlisten findes måske i din Spotify nu, eller også gør den ikke.',
+    'Spotify svarede ikke i tide, mens vi skrev playlisten til dine godkendte sange. Den er måske i din Spotify nu, måske ikke.',
   'songs.uncertain.text2':
     'Tjek igen spørger Spotify, hvad der er der. Gør det alligevel skriver uden at vide det.',
   'songs.uncertain.overwriteWarning':
-    'Hvis playlisten allerede findes i din Spotify, kan du ende med to playlister med samme navn. Du kan slette den ekstra i Spotify. Gå kun videre, hvis du er sikker på, at den ikke blev skrevet.',
+    'Findes den allerede, kan du få to playlister med samme navn. Fortsæt kun, hvis du er sikker på, at den ikke blev skrevet.',
   'songs.outcome.found':
     'Playlisten findes i din Spotify. Opret playlisten igen for at komme videre med dit hold.',
   'songs.outcome.nothing':
@@ -1115,12 +1114,12 @@ const da: Catalogue = {
   'songs.outcome.still_unsure': 'Spotify giver stadig ikke besked. Vent nogle minutter, og tjek igen.',
   'common.didNotWork': 'Det virkede ikke. Prøv igen.',
   'songs.uncertain.mayStillRunning':
-    'classbeat skriver måske stadig til Spotify, så det kan ikke afgøres endnu. Vent nogle minutter.',
+    'Vi skriver måske stadig til Spotify, så det kan ikke afgøres endnu. Vent nogle minutter.',
   'songs.uncertain.alreadySettled': 'Det var allerede afgjort. Genindlæs siden.',
   'songs.uncertain.waiting':
-    'classbeat sender måske stadig dette til Spotify, så Tjek igen og Gør det alligevel venter nogle minutter.',
+    'Vi sender måske stadig dette til Spotify, så Tjek igen og Gør det alligevel venter nogle minutter.',
   'songs.uncertain.confirm': 'Bekræft',
-  'songs.uncertain.confirmYes': 'Ja, den blev ikke skrevet',
+  'songs.uncertain.confirmYes': 'Ja, ikke skrevet',
   'songs.uncertain.checkAgain': 'Tjek igen',
   'songs.uncertain.doAnyway': 'Gør det alligevel',
   'job.steps.label': 'Trin',
@@ -1193,8 +1192,7 @@ const da: Catalogue = {
   'songs.change.wait': 'Vent først, til den igangværende opgave er færdig.',
   'songs.change.loadFailed': 'Sangene kunne ikke indlæses. Genindlæs siden.',
   'songs.change.loading': 'Indlæser sangene',
-  'songs.change.intro':
-    'Markér de sange, du vil have erstattet. De andre sange bliver, og du godkender den nye liste, før noget bliver skrevet til din Spotify.',
+  'songs.change.intro': 'Markér sange, der skal udskiftes. Intet skrives til Spotify, før du godkender.',
   'songs.change.different': 'Hvad skal være anderledes?',
   'songs.change.marked': 'Skift de markerede sange',
   'songs.change.all': 'Skift alle sange',
@@ -1430,7 +1428,7 @@ const da: Catalogue = {
   'cred.email.title': 'E-mailadresse',
   'cred.email.current': 'Din adresse er {email}.',
   'cred.email.sent':
-    'Hvis {email} kan bruges, er et bekræftelseslink på vej dertil. Åbn det, mens du er logget ind, for at gøre det færdigt. Din adresse ændres først da.',
+    'Hvis {email} kan bruges, har vi sendt et bekræftelseslink dertil. Åbn det, mens du er logget ind; så ændres adressen.',
   'cred.email.newLabel': 'Ny e-mailadresse',
   'cred.email.change': 'Skift mail',
   'cred.password.title': 'Adgangskode',

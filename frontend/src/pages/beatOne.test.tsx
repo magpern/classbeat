@@ -152,7 +152,7 @@ describe('the Beat 1 panel', () => {
     })
     renderAt(PAGE)
     fireEvent.click(await screen.findByRole('button', { name: /Move beat 1 of Opening .* earlier/ }))
-    expect(await screen.findByText(/changed in another tab or window/)).toBeInTheDocument()
+    expect(await screen.findByText(/changed in another tab/)).toBeInTheDocument()
     await waitFor(() => {
       expect(api.to('GET', CLASS_PATH).length).toBeGreaterThan(1)
     })
@@ -167,7 +167,7 @@ describe('the Beat 1 panel', () => {
     })
     renderAt(PAGE)
     const block = await screen.findByTestId('beat-one-stale')
-    expect(block).toHaveTextContent(/analysed again or\s+changed/)
+    expect(block).toHaveTextContent(/for music this version does not play/)
     expect(block).toHaveTextContent('Song 4: 1 beat earlier')
     fireEvent.click(within(block).getByRole('button', { name: 'Clear the earlier timing fix of song 4' }))
     await waitFor(() => {
