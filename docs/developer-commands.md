@@ -543,7 +543,9 @@ slots (`hero`, `stepDescribe`, `stepApprove`, `stepSave`, `authPanel`, `emptyHom
 into a `<picture>` (AVIF, then WebP, then JPEG; a phone crop under `PHONE_MEDIA`; `width` and
 `height` set; the hero `eager` with `fetchpriority="high"`, everything else `lazy`). The files live
 in `frontend/public/img/` as `<set>-<width>.avif|webp|jpg`; the server answers `/img/*` with their
-real media types and the CSP stays `img-src 'self'`.
+media types (named in `spa_routes.IMAGE_MEDIA_TYPES`, not the platform's table) and
+`Cache-Control: public, max-age=86400` (the files keep their names when replaced), and the CSP
+stays `img-src 'self'`.
 
 - **Add or replace a picture:** encode the files (below), put all three formats of every width in
   `public/img/`, and list the set in `SLOTS` (`set('name', [w, h], ...)`, smallest first, one aspect

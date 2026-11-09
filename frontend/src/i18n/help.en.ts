@@ -14,7 +14,7 @@ export const helpEn = {
     'Open the Connections tab on your {account} and press Connect on MOWL. Sign in to your Intelligent Cycling (MOWL) account with your email and password. On a larger screen you may also be offered a code to scan with the MOWL app. We use your password once to get a sign-in token and keep only the token, encrypted. Disconnect at any time and we delete it. To end the sign-in on MOWL’s side, change your MOWL password.',
   'help.connect.spotify.q': 'How do I connect Spotify?',
   'help.connect.spotify.a':
-    'Spotify is needed when you want us to pick songs for you. On the Connections tab, press Connect on Spotify. We guide you through making a Spotify app of your own in the Spotify Developer Dashboard, so its limits are yours. You then paste the app’s Client ID here. The person who owns the app needs Spotify Premium. Then you sign in at Spotify and allow access. We never need or ask for the app’s Client Secret.',
+    'Spotify is needed when you want us to pick songs for you. On the Connections tab, press Connect on Spotify. We guide you through making a Spotify app of your own in the Spotify Developer Dashboard, so its limits are yours. You then paste the app’s Client ID into the window that opens. The person who owns the app needs Spotify Premium. Then you sign in at Spotify and allow access. We never need or ask for the app’s Client Secret.',
   'help.connect.swedebeat.q': 'Do I need Swedebeat?',
   'help.connect.swedebeat.a':
     'No, it is optional. If you teach with Swedebeat, press Connect on Swedebeat on the Connections tab. You can then design a class to one of your Swedebeat mixes, which come from your MOWL account, and match a class’s songs to Swedebeat. As with MOWL, we use the password once and keep only the token.',
@@ -34,7 +34,7 @@ export const helpEn = {
   'help.plan.limits.q': 'What limits apply to me?',
   'help.plan.limits.a':
     'Your plan sets how many classes you can design each month and how many changes a class can have. It also sets how long a class may be, how many designs can run at once, and whether games and races are included. There is also a monthly budget for the assistant’s work. Months are counted in UTC and start over on the first. The Plan and usage tab on your account page shows what you have used.',
-  'help.plan.code.q': 'How do I use a code or trial?',
+  'help.plan.code.q': 'Redeem a code or start a trial',
   'help.plan.code.a':
     'On the Plan and usage tab, type the code under Redeem a code, or press the trial button when a trial is on offer. A code can be invalid, expired or used up, and a trial can be used once.',
 

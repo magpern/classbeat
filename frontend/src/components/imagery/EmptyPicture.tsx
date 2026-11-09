@@ -19,7 +19,7 @@ export function EmptyPicture({ slot, children }: Props) {
   return (
     <div className="empty-pic">
       <div className="empty-pic__text">{children}</div>
-      <SlotPicture slot={slot} sizes="(min-width: 40rem) 18rem, 100vw" className="slot--empty" />
+      <SlotPicture slot={slot} sizes="(min-width: 40rem) 18rem, min(100vw, 18rem)" className="slot--empty" />
     </div>
   )
 }

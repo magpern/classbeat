@@ -97,11 +97,11 @@ describe('keyboard', () => {
       const active = document.activeElement
       // The sidebar's avatar button is named by its visible text (the aria-hidden initial is not part of it).
       const name = active?.getAttribute('aria-label') ?? active?.querySelector('span:not([aria-hidden])')?.textContent ?? active?.textContent ?? ''
-      if (['Home, classbeat', 'New class', 'Home', 'My classes', 'Music', 'Account', 'ann@example.test'].includes(name)) {
+      if (['classbeat, home', 'New class', 'Home', 'My classes', 'Music', 'Account', 'ann@example.test'].includes(name)) {
         reached.push(name)
       }
     }
-    expect(reached).toEqual(['Home, classbeat', 'New class', 'Home', 'My classes', 'Music', 'Account', 'ann@example.test'])
+    expect(reached).toEqual(['classbeat, home', 'New class', 'Home', 'My classes', 'Music', 'Account', 'ann@example.test'])
     await userEvent.keyboard('{Enter}')
     expect(await screen.findByRole('menuitem', { name: 'Account' })).toBeInTheDocument()
   })
@@ -164,7 +164,7 @@ describe('focus layout', () => {
     await screen.findByRole('heading', { name: 'Design a class' })
     expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull()
     expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute('href', '/en')
-    expect(screen.getByRole('link', { name: 'Home, classbeat' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'classbeat, home' })).toBeInTheDocument()
   })
 
   it('Designing hides the navigation and shows Back to home', async () => {

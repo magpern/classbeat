@@ -157,7 +157,10 @@ describe('a guard prompt from inside the dialog', () => {
     // Escape and a click on the prompt's backdrop are the prompt's, not the dialog's.
     fireEvent.keyDown(prompt, { key: 'Escape' })
     fireEvent.pointerDown(prompt.parentElement!)
+    fireEvent.click(prompt.parentElement!)
     expect(screen.getByRole('dialog', { name: 'Spotify' })).toBe(spotify)
+    expect(screen.getByRole('dialog', { name: 'Confirm it is you' })).toBe(prompt) // still showing
+    expect(spotify.closest('[inert]')).not.toBeNull() // and the dialog still waits under it
     fireEvent.change(await within(prompt).findByLabelText('Password'), { target: { value: 'pw' } })
     fireEvent.click(within(prompt).getByRole('button', { name: 'Confirm with password' }))
     await waitFor(() => {
@@ -175,6 +178,15 @@ describe('/account/spotify', () => {
     expect(await dialog.findByLabelText('Spotify Client ID')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Connections' })).toHaveAttribute('aria-selected', 'true')
     expect(await screen.findByTestId('connection-spotify')).toBeInTheDocument()
+  })
+
+  it('opens the dialog even when the connections list could not be loaded', async () => {
+    spotifyApi('not_connected', { 'GET /api/connections': () => new Response('{}', { status: 500 }) })
+    renderAt('/account/spotify')
+    const dialog = within(await screen.findByRole('dialog', { name: 'Spotify' }))
+    expect(await dialog.findByLabelText('Spotify Client ID')).toBeInTheDocument()
+    expect(screen.getByText('The connections could not be loaded.')).toBeInTheDocument()
+    expect(await (await row()).findByRole('button', { name: 'Connect Spotify' })).toBeInTheDocument()
   })
 
   it('opens Connections even with another tab in the fragment', async () => {

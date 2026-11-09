@@ -91,3 +91,41 @@ async def test_the_picture_files_are_served_with_their_own_type(
         response = await client.get(f"/img/{name}")
         assert response.status_code == 200
         assert response.headers["content-type"] == media_type
+
+
+async def test_the_picture_types_do_not_depend_on_the_platforms_table(
+    unreachable_database_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A Python build or operating system whose mimetypes table knows none of the formats.
+    # FileResponse binds ``guess_type`` at import, so that name is the one it uses.
+    monkeypatch.setattr("starlette.responses.guess_type", lambda *args, **kwargs: (None, None))
+    monkeypatch.setattr("mimetypes.guess_type", lambda *args, **kwargs: (None, None))
+    root = tmp_path / "dist"
+    (root / "img").mkdir(parents=True)
+    (root / "index.html").write_text(INDEX, encoding="utf-8")
+    for name in ("a-480.avif", "a-480.webp", "a-480.jpg"):
+        (root / "img" / name).write_bytes(b"\x00")
+    async with make_client(unreachable_database_url, static_dir=root) as client:
+        for name, media_type in (
+            ("a-480.avif", "image/avif"),
+            ("a-480.webp", "image/webp"),
+            ("a-480.jpg", "image/jpeg"),
+        ):
+            response = await client.get(f"/img/{name}")
+            assert response.status_code == 200
+            assert response.headers["content-type"] == media_type
+
+
+async def test_the_pictures_are_cached_for_a_day_and_nothing_else_in_the_app_is(
+    unreachable_database_url: str, tmp_path: Path
+) -> None:
+    root = tmp_path / "dist"
+    (root / "img").mkdir(parents=True)
+    (root / "index.html").write_text(INDEX, encoding="utf-8")
+    (root / "img" / "a-480.webp").write_bytes(b"\x00")
+    (root / "app.js").write_text("1", encoding="utf-8")
+    async with make_client(unreachable_database_url, static_dir=root) as client:
+        picture = await client.get("/img/a-480.webp")
+        assert picture.headers["cache-control"] == "public, max-age=86400"
+        assert picture.headers["content-type"] == "image/webp"
+        assert "cache-control" not in (await client.get("/app.js")).headers

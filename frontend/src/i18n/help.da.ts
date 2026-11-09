@@ -14,7 +14,7 @@ export const helpDa: Catalogue = {
     'Åbn fanen Forbindelser på {account} og tryk på Tilslut ved MOWL. Log ind på din Intelligent Cycling-konto (MOWL) med e-mailadresse og adgangskode. På en større skærm kan du også få en kode at scanne med MOWL-appen. Vi bruger adgangskoden én gang til at få en login-token og gemmer kun token, krypteret. Du kan afbryde forbindelsen når som helst, og så sletter vi den. Vil du afslutte loginet hos MOWL, skal du skifte din MOWL-adgangskode.',
   'help.connect.spotify.q': 'Hvordan forbinder jeg Spotify?',
   'help.connect.spotify.a':
-    'Spotify skal bruges, når du vil have os til at vælge sange til dig. På fanen Forbindelser trykker du på Tilslut ved Spotify. Vi fører dig igennem at oprette din egen Spotify-app i Spotify Developer Dashboard, så begrænsningerne bliver dine egne. Derefter indsætter du appens Client ID her. Den, der ejer appen, skal have Spotify Premium. Så logger du ind hos Spotify og giver lov. Vi har aldrig brug for appens Client Secret og spørger aldrig efter den.',
+    'Spotify skal bruges, når du vil have os til at vælge sange til dig. På fanen Forbindelser trykker du på Tilslut ved Spotify. Vi fører dig igennem at oprette din egen Spotify-app i Spotify Developer Dashboard, så begrænsningerne bliver dine egne. Derefter indsætter du appens Client ID i vinduet, der åbner. Den, der ejer appen, skal have Spotify Premium. Så logger du ind hos Spotify og giver lov. Vi har aldrig brug for appens Client Secret og spørger aldrig efter den.',
   'help.connect.swedebeat.q': 'Har jeg brug for Swedebeat?',
   'help.connect.swedebeat.a':
     'Nej, det er valgfrit. Underviser du med Swedebeat, så tryk på Tilslut ved Swedebeat på fanen Forbindelser. Så kan du lave et hold til et af dine Swedebeat-mix, som hentes fra din MOWL-konto, og matche holdets sange med Swedebeat. Som med MOWL bruger vi adgangskoden kun én gang og gemmer kun token.',
@@ -42,7 +42,7 @@ export const helpDa: Catalogue = {
   'help.signin.reset.q': 'Jeg har glemt min adgangskode',
   'help.signin.reset.a':
     'Vælg Har du glemt din adgangskode? på loginsiden, så sender vi et link, der gælder i 30 minutter. En adgangskode er på 12 til 128 tegn. Når du vælger en ny, bliver du logget ud overalt.',
-  'help.signin.methods.q': 'Log ind med Google, GitHub eller Microsoft?',
+  'help.signin.methods.q': 'Kan jeg bruge Google, GitHub eller Microsoft?',
   'help.signin.methods.a':
     'Ja, når de tilbydes på loginsiden. Du kan knytte dem til eller fjerne dem under Login og sikkerhed på kontosiden. Kontoen bruger den e-mailadresse, som udbyderen har bekræftet.',
   'help.signin.twofactor.q': 'Findes der tofaktorgodkendelse?',

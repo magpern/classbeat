@@ -30,7 +30,7 @@ export function ListRow({
           {title}
           {badge}
         </span>
-        {description ? <span className="text-[0.9375rem] text-muted">{description}</span> : null}
+        {description ? <span className="text-[0.9375rem] break-words text-muted">{description}</span> : null}
       </div>
       {action}
     </li>
