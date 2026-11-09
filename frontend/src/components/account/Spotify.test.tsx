@@ -231,7 +231,7 @@ describe('the callback result in the query', () => {
     [
       'not_allowlisted',
       '',
-      "Spotify refused this account. In your Spotify app's User Management add this account's name and email (Development Mode allows 5 people), and make sure the app's owner has Spotify Premium.",
+      "Spotify refused this account. In your Spotify app's User Management, add its name and email. The app owner needs Premium.",
     ],
     ['forbidden', '', 'Spotify refused this request for your account or playlist.'],
     ['rate_limited', '&retry_after=600', 'Spotify asks to slow down; trying again in about 10 minutes.'],
@@ -252,17 +252,17 @@ describe('the callback result in the query', () => {
     [
       'scope_mismatch',
       '',
-      'Spotify did not give the access classbeat needs. Connect again and allow it.',
+      'Spotify did not give the access we need. Connect again and allow it.',
     ],
     [
       'invalid_response',
       '',
-      'Spotify did not give the access classbeat needs. Connect again and allow it.',
+      'Spotify did not give the access we need. Connect again and allow it.',
     ],
     [
       'account_changed',
       '',
-      'This is a different Spotify account than before. Confirm to switch (classbeat forgets the working playlist).',
+      'This is a different Spotify account than before. Confirm to switch. We will forget your working playlist.',
     ],
     ['access_denied', '', 'Spotify was not connected.'],
   ])('shows %s%s', async (category, extra, sentence) => {

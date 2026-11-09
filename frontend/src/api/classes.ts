@@ -389,7 +389,7 @@ export interface Revision extends RevisionSummary, DraftContent {
   tssApproximate: boolean
   /** ADR 0017 section 4: pattern notes under today's rules (at most 5, dismissed ones left out). */
   ruleHits: RuleHit[]
-  /** The recorded rules differ from today's: the block says "Notes use the current rules". */
+  /** The recorded rules differ from today's: the block says "Notes follow current rules". */
   notesUseCurrentRules: boolean
   /** The content exactly as the server sent it: what the version hash is taken over. */
   raw: unknown

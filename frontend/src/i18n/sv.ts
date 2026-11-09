@@ -224,7 +224,7 @@ const sv: Catalogue = {
   'sentence.spotify.app_misconfigured':
     'Spotify känner inte igen den här appinställningen. Kontrollera Client ID och omdirigerings-URI:n i din Spotify-app.',
   'sentence.spotify.not_allowlisted':
-    'Spotify avvisade det här kontot. Lägg till kontots namn och e-postadress under User Management i din Spotify-app (utvecklarläget tillåter 5 personer) och se till att appens ägare har Spotify Premium.',
+    'Spotify avvisade kontot. Lägg till dess namn och e-postadress under User Management i din Spotify-app. Appens ägare behöver Premium.',
   'sentence.spotify.forbidden': 'Spotify avvisade begäran för ditt konto eller din spellista.',
   'sentence.spotify.rate_limited': {
     one: 'Spotify ber oss sakta ner; försöker igen om cirka {count} minut.',
@@ -237,11 +237,11 @@ const sv: Catalogue = {
   'sentence.spotify.upstream_unavailable': 'Spotify svarar inte.',
   'sentence.spotify.not_found': 'Spotify hittade inte den spellistan.',
   'sentence.spotify.scope_mismatch':
-    'Spotify gav inte den åtkomst som classbeat behöver. Anslut igen och tillåt den.',
+    'Spotify gav inte den åtkomst vi behöver. Anslut igen och tillåt den.',
   'sentence.spotify.invalid_response':
-    'Spotify gav inte den åtkomst som classbeat behöver. Anslut igen och tillåt den.',
+    'Spotify gav inte den åtkomst vi behöver. Anslut igen och tillåt den.',
   'sentence.spotify.account_changed':
-    'Det här är ett annat Spotify-konto än tidigare. Bekräfta för att byta (classbeat glömmer arbetsspellistan).',
+    'Det här är ett annat Spotify-konto än tidigare. Bekräfta för att byta. Vi glömmer din arbetsspellista.',
   'sentence.spotify.access_denied': 'Spotify anslöts inte.',
   'sentence.spotify.unknown': 'Något gick fel med Spotify. Försök igen senare.',
   'sentence.job.consent_missing': 'Tillåt arbetsspellistan i dina Spotify-inställningar först.',
@@ -257,12 +257,12 @@ const sv: Catalogue = {
     'Ditt Spotify-konto är inte det som de här låtarna valdes för. Be om nya låtar.',
   'sentence.job.pool_busy': 'Ett annat låtval pågår fortfarande.',
   'sentence.job.media_host_not_allowed':
-    'Mixen lades till i ditt MOWL-konto, men den kunde inte analyseras: det går inte att analysera en ny Swedebeat-mix på den här servern ännu. Mixar som analyserats tidigare fungerar fortfarande.',
+    'Mixen finns i ditt MOWL-konto, men den här servern kan inte analysera nya mixar än. Prova en som analyserats tidigare.',
   'sentence.job.media_refused': 'Ljudet i den här mixen kunde inte hämtas. Inget utformades.',
   'sentence.job.analysis_failed': 'Ljudet i den här mixen kunde inte analyseras. Prova en annan mix.',
   'sentence.job.feature_off': 'Den här funktionen är avstängd på den här servern just nu. Inget utformades.',
   'sentence.job.analysis_limit':
-    'Du har analyserat 10 nya Swedebeat-mixar de senaste 24 timmarna. Mixar som analyserats tidigare fungerar fortfarande; prova en ny i morgon.',
+    'Du har analyserat 10 nya Swedebeat-mixar de senaste 24 timmarna. Prova igen i morgon eller använd en som analyserats tidigare.',
   'sentence.job.handoff_expired':
     'Den kontrollen har gått ut. Börja om från Swedebeat-steget; inget hämtades.',
   'sentence.swedebeat.wait': {

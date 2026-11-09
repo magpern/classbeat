@@ -22,20 +22,17 @@ ADR_SENTENCES = {
     "invalid_grant": "Spotify no longer accepts the connection. Reconnect Spotify.",
     "app_misconfigured": "Spotify does not recognise this app setup. Check the Client ID and the "
     "redirect URI in your Spotify app.",
-    "not_allowlisted": "Spotify refused this account. In your Spotify app's User Management add "
-    "this account's name and email (Development Mode allows 5 people), and make sure the app's "
-    "owner has Spotify Premium.",
+    "not_allowlisted": "Spotify refused this account. In your Spotify app's User Management, add "
+    "its name and email. The app owner needs Premium.",
     "forbidden": "Spotify refused this request for your account or playlist.",
     "rate_limited": "Spotify asks to slow down; trying again in about 2 minutes.",
     "quota_exhausted": "Your Spotify app has used up its allowance for now. Try again in about "
     "3 hours.",
     "upstream_unavailable": "Spotify is not answering.",
-    "scope_mismatch": "Spotify did not give the access classbeat needs. Connect again and allow "
-    "it.",
-    "invalid_response": "Spotify did not give the access classbeat needs. Connect again and allow "
-    "it.",
-    "account_changed": "This is a different Spotify account than before. Confirm to switch "
-    "(classbeat forgets the working playlist).",
+    "scope_mismatch": "Spotify did not give the access we need. Connect again and allow it.",
+    "invalid_response": "Spotify did not give the access we need. Connect again and allow it.",
+    "account_changed": "This is a different Spotify account than before. Confirm to switch. We "
+    "will forget your working playlist.",
     "access_denied": "Spotify was not connected.",
 }
 

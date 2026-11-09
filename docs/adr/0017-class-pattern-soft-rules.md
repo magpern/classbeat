@@ -195,7 +195,7 @@ The hits are a **pure function** of the revision's segments, the class's stored 
 per revision**, and superseded profile versions are not kept in the image. An old revision
 therefore always shows notes under today's rules, however old it is. If the revision's provenance
 `rules.digest` is recorded and differs from the loaded profile's digest, the block adds one muted
-line, "Notes use the current rules", and nothing else: no error, no blocked action. A revision with
+line, "Notes follow current rules", and nothing else: no error, no blocked action. A revision with
 no recorded digest sets no line. When no profile applies today (or the class's stored brief is gone)
 there are no notes and no line either, because there is nothing to compare. The provenance digest answers "what did the model see?", never "what do
 we show?". If no profile applies to the class today, no block is shown.
@@ -218,6 +218,8 @@ we show?". If no profile applies to the class today, no block is shown.
   the class is wrong: for example "Most classes of this kind ride at least six minutes before the
   first hard effort. This one starts at four." No reference to a studio, a brand or a count of
   classes beyond "most", and no number from the source other than the profile's bounds.
+  Each sentence is at most 16 words and never has "classbeat" as its subject (ADR 0028 §2, copy
+  pass 5); `frontend/src/i18n/sentenceRuleCopy.test.ts` pins both in every language.
 - **Recording.** What was shown or dismissed is not logged per user. The revision keeps `rules`
   in its provenance (§2); the dismissal list is the only per-class state; both are in the account
   export and deletion paths because they are in `classes` and `class_revisions`
@@ -406,7 +408,7 @@ merge is used.
 | P2 | `feat(design): soft-rule engine` | pure `evaluate(spec, brief, profile) -> list[RuleHit]` over the fitted spec for the v1 metric catalogue, severity lowering for `brief_overrides`, ordering and cap 5, dismissal filter | pair fixtures for every shipped rule (inside / outside), override and cap tests; no import of the agent or the database | Sonnet | P1 |
 | P3 | `feat(agent): class_type in the brief and profile selection` | optional `Brief.class_type`, the derivation when absent, job input and `classes.brief` validation, `select_profile(brief)` wiring; the new-class form is **not** changed | an old brief still validates and designs as before; derivation table tested; brief size guard unchanged | Opus | P1 |
 | P4 | `feat(agent): rules section and tool result for design and revise` | `model_input` section (cap, wording, absent when `None`), `rules` in `preview_draft` / `submit_draft`, provenance `rules`, dismissed rules (P1b's column) excluded on revise, caps and planted-value tests (no brief or music text in the section) | a replay run shows the section and hits; no profile -> byte-identical input to today; `submit_draft` accepts a draft with every rule violated; **no tool name, description or schema and no system prompt text is edited, so every stage's `prompt_version` is unchanged (test)** | Opus | P2, P3, P1b |
-| P5 | `feat(web): pattern notes on the revision API` | revision `GET` returns `ruleHits` computed from the stored brief and the **current** profile, the "notes use the current rules" flag when the provenance digest differs, dismissed rules filtered, owner-only and 404 tests | cross-user 404s; a dismissed rule stays hidden on the next revision; a changed profile changes old revisions' notes and sets the flag; nothing stored per revision | Sonnet | P2, P1b, P4 |
+| P5 | `feat(web): pattern notes on the revision API` | revision `GET` returns `ruleHits` computed from the stored brief and the **current** profile, the "notes follow current rules" flag when the provenance digest differs, dismissed rules filtered, owner-only and 404 tests | cross-user 404s; a dismissed rule stays hidden on the next revision; a changed profile changes old revisions' notes and sets the flag; nothing stored per revision | Sonnet | P2, P1b, P4 |
 | P6 | `feat(web): "Pattern notes" block on the class page` | `RevisionView` block, copy per §4, dismiss and undo, muted `explained_by_brief`, no alert role, nothing disables an action, a11y and 44 px targets | component and page tests, axe clean; a revision with no hits renders as today | Sonnet | P5, P1b |
 | P7 | `test(evals): class_patterns category` | the `class_patterns` manifest category and cases of §5 (fixtures, scripted runs, brief-wins predicates), `rules_version` in the results header and `compare`, suite digest and `suite_version` bump | the gate's verdict covers the new category; replay green; live baseline is an owner-run step, not part of done | Sonnet | P4 |
 | P8 | `docs(runbook): refresh rule profiles from new aggregates` | owner runbook: how aggregates become a profile (the generator script stays private), the PR checklist of §6, when to bump versions, how to add a sport | a reviewer can follow it without the private notes; contains no source name | Sonnet | P1 |
