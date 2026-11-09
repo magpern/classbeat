@@ -127,7 +127,7 @@ describe('a song job that failed', () => {
       'POST /api/jobs': () => json(NEW_JOB, 201),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    expect(screen.queryByRole('button', { name: 'Create the playlist again' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Create playlist again' })).toBeNull()
     fireEvent.click(await screen.findByRole('button', { name: 'Pick songs again' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
@@ -149,7 +149,7 @@ describe('a song job that failed', () => {
       'POST /api/jobs': () => json(NEW_JOB, 201),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Create the playlist again' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Create playlist again' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
@@ -173,11 +173,11 @@ describe('a song job that failed', () => {
       'POST /api/jobs': () => reason(409, 'receipt_invalid'),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Create the playlist again' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Create playlist again' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/cannot be turned into a playlist again/)
   })
 
-  it('shows the uncertain panel for a final-playlist write and offers Create the playlist again once decided', async () => {
+  it('shows the uncertain panel for a final-playlist write and offers Create playlist again once decided', async () => {
     const operation = {
       id: OPERATION_ID,
       kind: 'spotify_create_playlist',
@@ -198,10 +198,10 @@ describe('a song job that failed', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByText(/could not tell whether your playlist was written in Spotify/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Create the playlist again' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Create playlist again' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
     expect(await screen.findByText(/Nothing was written to Spotify/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Create the playlist again' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create playlist again' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
@@ -228,7 +228,7 @@ describe('a song job that failed', () => {
     expect(screen.getByText(/two playlists of the same name/)).toBeInTheDocument()
     expect(api.to('POST', `/api/external-operations/${OPERATION_ID}/do-it-anyway`)).toHaveLength(0)
     fireEvent.click(screen.getByRole('button', { name: 'Yes, it was not written' }))
-    expect(await screen.findByRole('button', { name: 'Create the playlist again' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Create playlist again' })).toBeInTheDocument()
   })
 
   it('says a stopped or expired list wrote nothing', async () => {
@@ -374,13 +374,13 @@ describe('the class page', () => {
     })
     renderAt(`/classes/${CLASS_ID}`)
     const region = await screen.findByRole('region', { name: 'Change songs' })
-    fireEvent.click(await screen.findByRole('button', { name: 'Change the marked songs' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Change marked songs' }))
     expect(await screen.findByText('Write what you want different about the songs.')).toBeInTheDocument()
     fireEvent.change(region.querySelector('textarea')!, { target: { value: 'Faster please' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Change the marked songs' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Change marked songs' }))
     expect(await screen.findByText('Mark the songs to replace, or replace all of them.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Replace Hills <b>bold</b>' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Change the marked songs' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Change marked songs' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
@@ -451,9 +451,9 @@ describe('a song job with an undecided MOWL attach', () => {
     expect(await screen.findByRole('button', { name: 'Check again' })).toBeInTheDocument()
     expect(screen.getByText(/MOWL did not answer clearly/)).toBeInTheDocument()
     expect(screen.queryByText(/written in Spotify/)).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Create the playlist again' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Create playlist again' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Create the playlist again' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Create playlist again' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
@@ -475,14 +475,14 @@ describe('a song job with an undecided MOWL attach', () => {
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByText(/written in Spotify/)).toBeInTheDocument()
     expect(await screen.findByText(/MOWL did not answer clearly/)).toBeInTheDocument()
-    const resume = () => screen.queryByRole('button', { name: 'Create the playlist again' })
+    const resume = () => screen.queryByRole('button', { name: 'Create playlist again' })
     const checks = screen.getAllByRole('button', { name: 'Check again' })
     expect(checks).toHaveLength(2)
     fireEvent.click(checks[0]!) // the playlist write
     await screen.findByText(/Nothing was written to Spotify/)
     expect(resume()).toBeNull()
     fireEvent.click(screen.getAllByRole('button', { name: 'Check again' })[1]!) // the attach
-    expect(await screen.findByRole('button', { name: 'Create the playlist again' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Create playlist again' })).toBeInTheDocument()
   })
 })
 
@@ -515,7 +515,7 @@ describe('a request that only asks for other songs (use_change_songs)', () => {
     fakeApi(routes({}))
     renderAt(`/classes/${CLASS_ID}`)
     const outcome = await screen.findByTestId('use-change-songs')
-    expect(outcome).toHaveTextContent(/uses a playlist of your own.*design a new class/)
+    expect(outcome).toHaveTextContent(/uses your own playlist.*design a new class/)
     expect(within(outcome).queryByRole('button', { name: 'Change songs' })).toBeNull()
   })
 
@@ -526,7 +526,7 @@ describe('a request that only asks for other songs (use_change_songs)', () => {
       renderAt(`/classes/${CLASS_ID}`)
       const outcome = await screen.findByTestId('use-change-songs')
       expect(outcome).toHaveTextContent(/Finish or retry the song pick/)
-      expect(outcome.textContent).not.toContain('playlist of your own')
+      expect(outcome.textContent).not.toContain('your own playlist')
       expect(within(outcome).queryByRole('button', { name: 'Change songs' })).toBeNull()
     },
   )
@@ -558,7 +558,7 @@ describe('creating the playlist again for a revise_songs list', () => {
       'POST /api/jobs': () => json({ ...NEW_JOB, kind: 'revise_songs' }, 201),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Create the playlist again' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Create playlist again' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })

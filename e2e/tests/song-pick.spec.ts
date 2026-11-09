@@ -249,7 +249,7 @@ test('a playlist that does not match the approved songs fails the job, and Creat
   expect(partial!.entries).toHaveLength(3) // what Spotify kept; it is left alone, never reused
 
   // Create the playlist again: the approval is the receipt, so nothing is approved a second time.
-  await page.getByRole('button', { name: 'Create the playlist again' }).click()
+  await page.getByRole('button', { name: 'Create playlist again' }).click()
   await expect(page).not.toHaveURL(new RegExp(`/jobs/${id}$`))
   const again = /\/jobs\/([0-9a-f-]{36})$/.exec(page.url())![1]!
   await untilState(page, again, 'completed')
@@ -277,7 +277,7 @@ async function askChange(page: Page): Promise<string> {
   const change = page.getByRole('region', { name: 'Change songs' })
   await change.getByRole('button', { name: 'Replace Tempo Cascade 24' }).click()
   await change.getByLabel('What should be different?').fill('A harder song for the climb.')
-  await change.getByRole('button', { name: 'Change the marked songs' }).click()
+  await change.getByRole('button', { name: 'Change marked songs' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
   const id = /\/jobs\/([0-9a-f-]{36})$/.exec(page.url())![1]!
   await untilState(page, id, 'waiting_for_approval')
@@ -306,7 +306,7 @@ test('Change songs: one song replaced, a new playlist after one Approve, the old
   await expect(page.getByTestId('playlist')).toContainText('E2E changed ride')
 })
 
-test('Change songs: a failed write is resumed with Create the playlist again', async ({ page }) => {
+test('Change songs: a failed write is resumed with Create playlist again', async ({ page }) => {
   await pickedClass(page, 'pick-chgr', 'E2E resumed change')
   const job = await askChange(page)
   const titles = await listedTitles(page)
@@ -316,7 +316,7 @@ test('Change songs: a failed write is resumed with Create the playlist again', a
   await untilState(page, job, 'failed')
   expect((await getJob(page, job)).error_category).toBe('playlist_mismatch')
 
-  await page.getByRole('button', { name: 'Create the playlist again' }).click()
+  await page.getByRole('button', { name: 'Create playlist again' }).click()
   await expect(page).not.toHaveURL(new RegExp(`/jobs/${job}$`))
   const again = /\/jobs\/([0-9a-f-]{36})$/.exec(page.url())![1]!
   await untilState(page, again, 'completed')
@@ -440,13 +440,13 @@ test('a playlist write that may not have happened is left to the user, who check
   await untilState(page, id, 'failed')
   expect((await getJob(page, id)).error_category).toBe('uncertain_write')
   await expect(page.getByText('classbeat could not tell whether your playlist was written in Spotify')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Create the playlist again' })).toHaveCount(0) // not before it is decided
+  await expect(page.getByRole('button', { name: 'Create playlist again' })).toHaveCount(0) // not before it is decided
   expect(finalPlaylists()).toEqual([])
 
   await page.getByRole('button', { name: 'Check again' }).click()
   // Spotify's listing shows no playlist of ours and no lag is configured, so classbeat will not guess.
   await expect(page.getByText('Spotify still does not say. Wait a few minutes and check again.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Create the playlist again' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Create playlist again' })).toHaveCount(0)
 
   // Do it anyway asks for a second confirmation that names the risk (two playlists of one name).
   await page.getByRole('button', { name: 'Do it anyway' }).click()
@@ -455,7 +455,7 @@ test('a playlist write that may not have happened is left to the user, who check
   await expect(page.getByText(/You decided to write it again\. Create the playlist again/)).toBeVisible()
   expect(finalPlaylists()).toEqual([]) // still nothing in Spotify: deciding writes nothing
 
-  await page.getByRole('button', { name: 'Create the playlist again' }).click()
+  await page.getByRole('button', { name: 'Create playlist again' }).click()
   await expect(page).not.toHaveURL(new RegExp(`/jobs/${id}$`))
   const again = /\/jobs\/([0-9a-f-]{36})$/.exec(page.url())![1]!
   await untilState(page, again, 'completed')
