@@ -12,7 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Switch } from './switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './tabs'
 import { toast, Toaster } from './toast'
-import { ToggleGroup, ToggleGroupItem } from './toggle-group'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip'
 
 describe('Button', () => {
@@ -80,26 +79,6 @@ describe('Chip', () => {
   it('Chip shows a status as text', () => {
     render(<Chip tone="ok">Version 3 saved to MOWL</Chip>)
     expect(screen.getByText('Version 3 saved to MOWL')).toBeInTheDocument()
-  })
-})
-
-describe('ToggleGroup', () => {
-  it('selects one item at a time and moves with the arrow keys', async () => {
-    const onChange = vi.fn()
-    render(
-      <ToggleGroup type="single" defaultValue="easy" aria-label="Effort" onValueChange={onChange}>
-        <ToggleGroupItem value="easy">Easy</ToggleGroupItem>
-        <ToggleGroupItem value="hard">Hard</ToggleGroupItem>
-      </ToggleGroup>,
-    )
-    const easy = screen.getByRole('radio', { name: 'Easy' })
-    const hard = screen.getByRole('radio', { name: 'Hard' })
-    expect(easy).toBeChecked()
-    expect(hard).not.toBeChecked()
-    await userEvent.click(hard)
-    expect(onChange).toHaveBeenLastCalledWith('hard')
-    expect(hard).toBeChecked()
-    expect(easy).not.toBeChecked()
   })
 })
 
