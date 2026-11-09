@@ -188,31 +188,16 @@ def test_the_input_module_is_a_rule_source_of_the_suite() -> None:
 # --- the flag and coverage ---------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("environment", "stored", "on"),
-    [
-        (False, "on", False),  # the kill switch wins
-        (True, None, False),  # nothing stored (or the cleared JSON null) is off, unlike running
-        (True, "off", False),
-        (True, "yes", False),  # invalid: off
-        (True, 1, False),
-        (True, "on", True),
-    ],
-)
-def test_the_switch_is_on_only_with_the_environment_and_a_stored_on(
-    environment: bool, stored: Any, on: bool
-) -> None:
-    assert core.soundless_switch(environment, stored) is on
-
-
-def test_the_key_is_a_flag_the_admin_may_store_off_or_on() -> None:
-    assert "soundless_enabled" in core.KEYS
-    assert "soundless_enabled" in SETTING_KEYS
+def test_the_retired_key_is_no_flag_the_admin_may_store() -> None:
+    """#824 (ADR 0007 amendment of 2026-11-08): ``soundless_enabled`` is no stored key any more;
+    the write side refuses it as an unknown key and ``flags.core`` has no stored switch for it."""
+    assert "soundless_enabled" not in core.KEYS
+    assert "soundless_enabled" not in SETTING_KEYS
+    assert not hasattr(core, "soundless_switch")
     for value in ("off", "on"):
-        assert core.validate_for_write("soundless_enabled", value, trial_days_max=30) == value
-    for bad in ("yes", None, True, 1, {"value": "on"}):
-        with pytest.raises(core.FlagRefused):
-            core.validate_for_write("soundless_enabled", bad, trial_days_max=30)
+        with pytest.raises(core.FlagRefused) as refused:
+            core.validate_for_write("soundless_enabled", value, trial_days_max=30)
+        assert refused.value.reason == "unknown_key"
 
 
 def test_a_suite_version_covers_soundless_from_the_first_with_soundless_cases(

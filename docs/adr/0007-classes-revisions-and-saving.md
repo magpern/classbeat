@@ -908,7 +908,9 @@ set, positive. The music shapes need no migration. **The flag does** (item 2).
    is `none` exactly when the class's `music_source` is `none`; after that check, the `-1` and the
    `feature_off` of item 2 follow the revision's music. The refusals of item 9 and
    `ClassOut.soundless` read `music_source`; the checks above keep the two in agreement.
-2. **The flag, which cannot be switched on around the gate.** `CLASSBEAT_SOUNDLESS_ENABLED`
+2. **The flag, which cannot be switched on around the gate.** *(Superseded in part by the
+   amendment of 2026-11-08 below, #824: the stored admin value is retired; the environment switch,
+   the coverage condition and the `admit` order stay.)* `CLASSBEAT_SOUNDLESS_ENABLED`
    (compose `SOUNDLESS_ENABLED`, default false, web and worker) is the kill switch only. The admin
    flag `soundless_enabled` (`off`/`on`) is a new `app_settings` key: SL1 adds a migration that
    widens the `app_settings.key` CHECK (as `0016` and `0025` did; its downgrade deletes the row
@@ -1557,3 +1559,49 @@ depends on HI1); DU1 #547, duplicate (backend; Opus Developer, Opus review: clas
 quotas, music ownership); DU2 #548, Duplicate on the class page and My classes with e2e (Sonnet,
 Sonnet; depends on DU1 and HI2); DU3 #585, copy the beat-one corrections (backend; Opus, Opus;
 depends on BC1 #553 and DU1).
+
+## Amendment of 2026-11-08: the soundless admin flag is retired (#824)
+
+**Context.** Owner decision (2026-11-08): a class with no music is just a class without music, not a
+feature an admin switches on. The stored `soundless_enabled` value (item 2 of the amendment of
+2026-11-03) added nothing the other two conditions do not already enforce: the environment switch
+is the kill switch, and the coverage condition keeps any design from running a soundless prompt
+with no recorded eval.
+
+**Decision.**
+
+1. **Two conditions, no stored value.** Soundless is effective exactly when
+   `CLASSBEAT_SOUNDLESS_ENABLED` is on **and** every plan's `route_key` has a `design` route that
+   covers soundless (`models.routes.every_plan_covers`: a recorded live result on suite version 12
+   or later; the web's own `fake` outside prod counts, as before). `flags.effective.soundless_enabled`
+   reads no `app_settings` row; `GET /api/connections` keeps returning `soundless_enabled`, now
+   these two conditions. `flags.core.soundless_switch` and `flags.effective.soundless_switch` are
+   gone; the switch is `design.music_kind.switch_on()`, the process's environment value.
+2. **The `admit` order is unchanged:** the switch (`feature_off`), then the job's own plan's route
+   (`soundless_not_evaluated`), then every plan's route (`feature_off`), for a design, a revise of a
+   soundless class and a duplicate of one. The worker's `still_on` now checks the worker's own
+   switch (no database read); `require_covered` still ends a job on a model that does not cover
+   soundless with `model_config` before any call. Save and Update refuse a soundless revision
+   `feature_off` when the environment switch is off, at creation and in `prepare`; the reconcilers
+   still never read it.
+3. **The admin key is removed.** `soundless_enabled` leaves `flags.core.KEYS`,
+   `plans.tables.SETTING_KEYS` and the admin Settings: `GET /api/admin/settings` no longer lists it,
+   and `PUT` or `DELETE /api/admin/settings/soundless_enabled` is 422 `unknown_key` with a `refused`
+   audit row. The admin's 422 `soundless_not_evaluated` store refusal is gone with it (the job
+   refusal of the same name stays).
+4. **Migration `0043_retire_soundless_flag`.** The upgrade deletes any stored `soundless_enabled`
+   row (`on`, `off` or the cleared JSON `null`) and narrows the `app_settings.key` CHECK (the
+   pattern of `0016`, `0025`, `0027` and `0035`), so the key cannot be stored again; a database that
+   still holds a row upgrades cleanly. The downgrade widens the CHECK back and restores no row; the
+   older code reads a missing row as off, its stricter default.
+
+**Alternatives.** Keep the key but ignore it (rejected: a setting the admin can store that does
+nothing misleads, and an ignored row can be read again by mistake); drop the coverage gate as well
+(rejected: a design would run a prompt with no recorded eval).
+
+**Consequences.** The owner's steps before soundless goes on for real users are the live checks of
+the amendment of 2026-11-03 (two saves read back, a recorded live suite pass and `models enable`
+for each plan key) and then `SOUNDLESS_ENABLED=true`; there is no admin step
+(`docs/runbooks/soundless-evals.md`). Owner-side safety is unchanged: without coverage the
+effective flag is off whatever the environment says. In the e2e stack (environment on, the web's
+`fake` covering) "No music" is offered without anything stored.

@@ -119,23 +119,6 @@ export function storeRunning(value: 'on' | 'off' | null): void {
   )
 }
 
-/**
- * The stored admin flag `soundless_enabled` (ADR 0007 amendment of 2026-11-03, #527): "No music" is
- * offered only with the environment switch (the stack sets it), a stored `on` and every plan's route
- * covering soundless; the web's own `fake` provider outside prod counts as covering. Nothing stored
- * is off.
- */
-export function storeSoundless(value: 'on' | 'off' | null): void {
-  if (value === null) {
-    sql("DELETE FROM app_settings WHERE key = 'soundless_enabled'")
-    return
-  }
-  sql(
-    `INSERT INTO app_settings (key, value) VALUES ('soundless_enabled', '"${value}"') ` +
-      `ON CONFLICT (key) DO UPDATE SET value = '"${value}"'`,
-  )
-}
-
 /** Open the new-class form, choose "No music" (no playlist), fill the brief the soundless script was
  *  written for (30 minutes) and start the design. Returns the job's id. */
 export async function startSoundlessDesign(

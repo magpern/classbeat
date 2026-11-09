@@ -526,21 +526,16 @@ NONE: dict[str, str] = {"source": "none"}
 
 @pytest.fixture
 def soundless(jobs_admin: Connection) -> Iterator[Callable[..., None]]:
-    """``set(enabled=, fake=, stored=)``: the soundless gate (#527) of the web app under test, as
-    ``test_soundless_jobs`` sets it; cleared afterwards."""
+    """``set(enabled=, fake=)``: the soundless gate (#527) of the web app under test, as
+    ``test_soundless_jobs`` sets it (no stored admin flag since #824); cleared afterwards."""
 
-    def configure(*, enabled: bool = True, fake: bool = True, stored: bool = True) -> None:
+    def configure(*, enabled: bool = True, fake: bool = True) -> None:
         music_kind.configure(music_kind.SoundlessGate(enabled=enabled, fake_covers=fake))
-        sql(jobs_admin, "DELETE FROM app_settings WHERE key = 'soundless_enabled'")
-        if stored:
-            sql(jobs_admin, "INSERT INTO app_settings (key, value) "
-                "VALUES ('soundless_enabled', '\"on\"'::jsonb)")  # fmt: skip
 
     try:
         yield configure
     finally:
         music_kind.configure(None)
-        sql(jobs_admin, "DELETE FROM app_settings WHERE key = 'soundless_enabled'")
 
 
 def soundless_source(admin: Connection, browser: Browser) -> Source:
@@ -554,7 +549,6 @@ async def test_a_soundless_class_is_refused_while_the_gate_is_off(
     classes = mine.classes()
     for setting, reason in (
         ({"enabled": False}, "feature_off"),  # the environment's switch
-        ({"stored": False}, "feature_off"),  # the admin flag not stored on
         ({"fake": False}, "soundless_not_evaluated"),  # the user's own plan has no covering route
     ):
         soundless(**setting)

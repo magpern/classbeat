@@ -14,7 +14,6 @@ import {
   savedState,
   signedInWithMowl,
   startSoundlessDesign,
-  storeSoundless,
   zonesOf,
   type FakeProgram,
 } from './class-helpers'
@@ -25,9 +24,9 @@ import { sql } from './song-helpers'
 // SL7 (issue #533, ADR 0007 amendment of 2026-11-03 "soundless classes"): a class with no music is
 // designed, revised by chat, saved and updated on the fakes. The stack turns the environment switch
 // on for web and worker (compose.e2e.yaml) and gives the web the `fake` provider, which counts as
-// covering every plan's route outside prod; the spec stores `soundless_enabled = on`. The worker
-// replays the recorded soundless scripts (model-script.ts). The tests share the fakes' state and
-// the worker's script, so they run one after the other.
+// covering every plan's route outside prod; nothing is stored (the admin flag was retired, #824).
+// The worker replays the recorded soundless scripts (model-script.ts). The tests share the fakes'
+// state and the worker's script, so they run one after the other.
 //
 // UNVERIFIED against real MOWL: what MOWL does with `PlaylistID: -1` (accepts it as "no music",
 // reads it back as -1 or as null, and whether an update sending -1 clears a playlist the user
@@ -39,10 +38,6 @@ test.setTimeout(240_000)
 
 const ALL_PLAYLISTS = Object.values(PLAYLISTS)
 
-test.beforeAll(() => {
-  storeSoundless('on') // nothing stored is off
-})
-
 test.beforeEach(() => {
   saveArm('', true) // no programs, no injected failures, the fake's -1 read-back as written
   useModelScript('good_first_draft')
@@ -51,7 +46,6 @@ test.beforeEach(() => {
 test.afterAll(() => {
   saveArm('', true)
   useModelScript('good_first_draft')
-  storeSoundless(null)
 })
 
 interface MusicCalls {
@@ -112,7 +106,7 @@ function expectSoundlessProgram(program: FakeProgram, script: ModelScript): void
   expect(zonesOf(program)).toEqual(shape.zones)
 }
 
-test('"No music" is offered only while the stored flag is on, and drops the playlist choice', async ({ page }) => {
+test('"No music" is offered with nothing stored, and drops the playlist choice', async ({ page }) => {
   await signedInWithMowl(page, 'sl-form')
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })
@@ -129,18 +123,8 @@ test('"No music" is offered only while the stored flag is on, and drops the play
   await form.getByRole('button', { name: 'Use my playlist' }).click()
   await expect(form.getByRole('radio', { name: PLAYLISTS.draft.name })).toBeVisible()
 
-  // The stored flag can only tighten the environment's switch: off, and nothing stored, hide it.
-  try {
-    for (const value of ['off', null] as const) {
-      storeSoundless(value)
-      await page.reload()
-      const closed = page.getByRole('form', { name: 'New class' })
-      await expect(closed.getByLabel('Class name')).toBeVisible()
-      await expect(closed.getByRole('button', { name: 'No music', exact: true })).toHaveCount(0)
-    }
-  } finally {
-    storeSoundless('on')
-  }
+  // #824: no admin setting takes part; the key cannot even be stored (migration 0043).
+  expect(sql("SELECT count(*) FROM app_settings WHERE key = 'soundless_enabled'")).toBe('0')
 })
 
 test('design with no music, change it, save it and update the same program', async ({ page }) => {

@@ -810,5 +810,6 @@ stale (`prompt_versions`), for running coverage too.
   (409 `soundless_not_evaluated`, before any credit is reserved) and per request in the effective
   `soundless_enabled` flag, which is on only with the environment switch, a stored `on` (missing is `off`)
   and coverage for every plan key. The admin refuses to store `on` without coverage (422
-  `soundless_not_evaluated`). This does not change running's rule; #509 tracks the same gap there and can
+  `soundless_not_evaluated`). (Since ADR 0007's amendment of 2026-11-08, #824, there is no stored value:
+  the effective flag is the environment switch and coverage for every plan key, and the admin key is gone.) This does not change running's rule; #509 tracks the same gap there and can
   reuse the helper (`models.routes.covers`). Cycling keeps section 5 unchanged.

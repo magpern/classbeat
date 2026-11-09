@@ -28,9 +28,9 @@ class FeatureSettings(BaseSettings):
     # admin flag ``running_enabled`` can only tighten it), read by the web (admit) and the worker
     # (a queued running job checks it again).
     running_enabled: bool = False
-    # ADR 0007 amendment of 2026-11-03 (soundless classes, #527): the environment's kill switch
-    # only (off by default). The admin flag ``soundless_enabled`` must also be stored ``on`` and
-    # every plan's model route must cover soundless (``classbeat.flags.effective``).
+    # ADR 0007 amendments of 2026-11-03 (soundless classes, #527) and 2026-11-08 (#824): the
+    # environment's kill switch (off by default). There is no admin flag; every plan's model route
+    # must also cover soundless (``classbeat.flags.effective``).
     soundless_enabled: bool = False
     # ADR 0024 (#647): connect MOWL by scanning a QR code with the MOWL phone app. The
     # environment's switch, off by default until the owner's live scan; the password form stays

@@ -148,7 +148,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused(found.reason)
     if await approval.running_refused(db, found):
         return Refused("feature_off")  # ADR 0018 section 5: running is off now
-    if await approval.soundless_refused(db, found):
+    if approval.soundless_refused(found):
         return Refused("feature_off")  # soundless is switched off now
     if ctx.connection("mowl") != parsed.mowl_connection_id:
         return Refused("not_connected")
@@ -200,8 +200,8 @@ async def _approved(
             raise JobFailure(PREPARE_CATEGORY.get(found.reason, "invalid_input"))
         if await approval.running_refused(fs.db, found):
             raise JobFailure("feature_off")  # switched off since the job was queued
-        if await approval.soundless_refused(fs.db, found):
-            raise JobFailure("feature_off")  # switched off since the job was queued
+        if approval.soundless_refused(found):
+            raise JobFailure("feature_off")  # the worker's soundless switch is off
         target = await approval.saved_target(
             fs.db, run.ctx, given.the_class, given.saved_workout_id
         )
