@@ -95,7 +95,7 @@ test('a pick, one Approve, and a private playlist of exactly the approved songs 
   const titles = await listedTitles(page)
   expect(titles).toHaveLength(8)
   await expect(page.getByText(/8 songs, \d+:\d+ in total\. You asked for 30:00\./)).toBeVisible()
-  await expect(page.getByText(/creates a private playlist with these songs in your own Spotify account/)).toBeVisible()
+  await expect(page.getByText(/Private playlist in your Spotify\. Anyone with its link can open it\./)).toBeVisible()
   await expect(page.getByTestId('expiry')).toContainText('Approve by')
   expect(await page.getByRole('main').innerText()).not.toMatch(/FakeTrack|FakeList|spotify:/)
   const writesBefore = spotifyWrites().length
@@ -205,7 +205,7 @@ test('songs changed behind the page make the approval refuse on the hash and wri
       `WHERE id = (SELECT approval_revision_id FROM jobs WHERE id = '${id}')`,
   )
   await page.getByRole('button', { name: 'Approve songs' }).click()
-  await expect(page.getByRole('alert')).toContainText('These songs changed after this page was loaded, so nothing was approved.')
+  await expect(page.getByRole('alert')).toContainText('These songs changed, so nothing was approved.')
   expect((await getJob(page, id)).state).toBe('waiting_for_approval') // nothing started
   expect(spotifyWrites()).toHaveLength(writes)
   expect(finalPlaylists()).toEqual([])

@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { classBody, classRoutes } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
@@ -51,10 +51,32 @@ describe('the Songs for approval page', () => {
     expect(rows[0]).toHaveTextContent('4:01')
     expect(rows[0]).not.toHaveTextContent('New')
     expect(rows[1]).toHaveTextContent('New')
-    expect(screen.getByTestId('expiry')).toHaveTextContent(/Approve by .* these songs expire/)
-    expect(screen.getByText(/anyone with its link can open it/)).toBeInTheDocument()
+    expect(screen.getByTestId('expiry')).toHaveTextContent(/^Approve by /)
+    expect(screen.getByText(/Anyone with its link can open it/)).toBeInTheDocument()
     expect(screen.getByText(/1 song was left out because MOWL has no BPM/)).toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/spotify:|[A-Za-z0-9]{22}/)
+  })
+
+  it('puts Approve and the expiry in the sticky action bar, and the songs in list rows', async () => {
+    fakeApi(approvalRoutes())
+    renderAt(`/jobs/${JOB_ID}`)
+    const bar = await screen.findByRole('region', { name: 'Approval' })
+    expect(within(bar).getByRole('button', { name: 'Approve songs' })).toBeInTheDocument()
+    expect(within(bar).getByTestId('expiry')).toHaveTextContent(/^Approve by /)
+    // The change controls are on the page, not in the bar.
+    expect(within(bar).queryByRole('button', { name: 'Ask for changes' })).toBeNull()
+    const list = screen.getByRole('list', { name: 'Songs' })
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.getAllByTestId('song-title').map((n) => n.textContent)).toEqual(['Hills <b>bold</b>', expect.any(String)])
+  })
+
+  it('has no action bar once a refusal is final', async () => {
+    fakeApi({ ...approvalRoutes(), [`POST ${JOB}/approve`]: () => reason(409, 'not_waiting') })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve songs' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/can no longer be approved/)
+    expect(screen.queryByRole('region', { name: 'Approval' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Reload the page' })).toBeInTheDocument()
   })
 
   it('links a song back to Spotify only with the API link, and drops one that is not a track link', async () => {
@@ -113,7 +135,7 @@ describe('the Songs for approval page', () => {
   const REFUSALS: [string, number, RegExp, boolean][] = [
     ['expired', 409, /These songs expired before they were approved/, true],
     ['superseded', 409, /A newer list of songs has replaced these/, true],
-    ['hash_mismatch', 409, /These songs changed after this page was loaded/, true],
+    ['hash_mismatch', 409, /These songs changed, so nothing was approved/, true],
     ['account_changed', 409, /not the one these songs were chosen for/, true],
     ['invalid_input', 422, /approval was not accepted/, true],
     ['not_waiting', 409, /can no longer be approved/, true],
@@ -186,7 +208,7 @@ describe('the Songs for approval page', () => {
       [`GET ${LIST_PATH}`]: () => (++tries === 1 ? reason(500, 'internal') : listBody()),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    expect(await screen.findByText('The songs could not be loaded. Nothing was approved.')).toBeInTheDocument()
+    expect(await screen.findByText('Nothing was approved.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('button', { name: 'Approve songs' })).toBeInTheDocument()
   })
@@ -217,7 +239,7 @@ describe('Ask for changes', () => {
     const ask = await screen.findByRole('button', { name: 'Ask for changes' })
     expect(ask).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
-    fireEvent.change(screen.getByLabelText(/What should be different/), { target: { value: 'More rock' } })
+    fireEvent.change(screen.getByLabelText(/What to change/), { target: { value: 'More rock' } })
     fireEvent.click(ask)
     await waitFor(() => {
       expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
@@ -280,7 +302,7 @@ describe('Ask for changes', () => {
     expect(await screen.findByRole('button', { name: 'Approve songs' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Ask for changes' })).toBeNull()
     expect(screen.queryByRole('button', { name: /^Replace/ })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Stop and change the request' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stop and change' })).toBeInTheDocument()
     expect(api.to('POST', '/api/jobs')).toHaveLength(0)
   })
 })
@@ -351,7 +373,7 @@ describe('Ask for changes and the brief', () => {
     renderAt(`/jobs/${JOB_ID}`)
     fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
     fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(/These songs were stopped, but classbeat could not read the class/)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/we could not read the class/)
     expect(api.to('POST', '/api/jobs')).toHaveLength(0)
     fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
     await waitFor(() => {
