@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from classbeat import locales, spa
+from classbeat import locales, spa, spa_preview
 from classbeat.config import Settings
 from test_web import make_client
 from test_web_language import BASE, INDEX, PUBLIC
@@ -41,7 +41,10 @@ def test_a_public_page_names_the_absolute_image_its_size_and_the_large_card() ->
     pages = spa.build_pages(INDEX, Settings())
     for code in OFFERED:
         for page in PUBLIC:
-            assert og_tags(pages.public[(code, page)]) == [
+            tags = [
+                t for t in og_tags(pages.public[(code, page)]) if "image" in t[0] or "card" in t[0]
+            ]
+            assert tags == [
                 ("og:image", f"{BASE}/img/og-share.jpg"),
                 ("og:image:width", "1200"),
                 ("og:image:height", "630"),
@@ -62,7 +65,7 @@ def test_pages_that_are_not_public_carry_no_preview_tags() -> None:
 
 
 def test_the_shipped_image_has_the_size_the_tags_state() -> None:
-    assert jpeg_size(OG_FILE.read_bytes()) == spa.OG_IMAGE_SIZE
+    assert jpeg_size(OG_FILE.read_bytes()) == spa_preview.OG_IMAGE_SIZE
     assert OG_FILE.stat().st_size < 150_000  # a crawler may give up on a big preview
 
 

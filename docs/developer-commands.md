@@ -583,10 +583,13 @@ stays `img-src 'self'`.
   A photo with fine detail may want a lower `-crf` or `-q:v`; look at the result before keeping it.
   A source narrower than the widest rendition is not upscaled: list the widths it supports only.
 - **Link preview:** `public/img/og-share.jpg` (1200 x 630, JPEG, under 150 KB). The server adds
-  `og:image` (absolute, from `public_base_url`), its width and height and
-  `twitter:card=summary_large_image` to the public pages only (`classbeat.spa`, next to canonical
-  and hreflang, which it leaves as ADR 0027 has them); `tests/test_web_og_image.py` and
-  `e2e/tests/lang-head.spec.ts` pin it.
+  `og:image` (absolute, from `public_base_url`), its width and height,
+  `twitter:card=summary_large_image` and, in the page's own language, `og:title`,
+  `og:description` and `og:locale` to the public pages only (`classbeat.spa_preview`, called from
+  `classbeat.spa` next to canonical and hreflang, which it leaves as ADR 0027 has them). The
+  title and description per language and page are in `spa_preview.COPY` (ADR 0028 section 2:
+  short title with the brand, description at most 25 words). `tests/test_web_og_image.py`,
+  `tests/test_web_og_text.py` and `e2e/tests/lang-head.spec.ts` pin it.
 - Review a new picture for stray letters, logos, odd bikes and recognisable faces before shipping it.
 
 ### Adding a language
@@ -609,6 +612,7 @@ so check it by hand.
 | 4 | Write the app catalogue `frontend/src/i18n/nb.ts` (default export, every key of `en.ts`; keys it lacks go in `untranslated.json`) and the two spread-in files `help.nb.ts` and `legal.nb.ts`. | `guard.test.ts` ("nb is complete and consistent": missing keys, placeholder names, markup, plural categories from `Intl.PluralRules`; leaving out the `legal` or `help` spread fails it with `legal.link.privacy is missing` and so on) |
 | 5 | Add the language's own name to `NAMES` in `frontend/src/components/LanguagePicker.tsx` (`nb: 'Norsk bokmål'`). | `language.test.tsx` ("nb has its own name in NAMES": fails with `add nb to NAMES in components/LanguagePicker.tsx`; the picker's option list and `OFFERED` there come from the manifest) |
 | 6 | Mail: write `backend/src/classbeat/emails/locales/nb.py` (`CATALOGUE`, `MONTHS`, `format_when`; model it on `da.py`), and register it in `backend/src/classbeat/emails/catalogue.py` (`LOCALES` and `_FORMAT_WHEN`); a string the new catalogue still lacks is listed in `emails/locales/untranslated.py` (ADR 0023 section 4). | `test_emails_locales.py::test_every_manifest_code_has_a_catalogue` (step 1 alone fails it) |
+| 6b | Link preview: add the language's `og:locale` to `OG_LOCALE` and its title and description for the landing, privacy and terms pages to `COPY` in `backend/src/classbeat/spa_preview.py` (a language without copy shows the English text). | `test_web_og_text.py::test_the_three_languages_have_copy_and_a_locale` |
 | 7 | Mail tests: add `nb` to `TRANSLATED` in `backend/tests/test_emails_locales.py` and to the literal manifest tuples there (the `three_languages` fixture and `mail_locale` tests). | Nothing to do: `TRANSLATED`, the `three_languages` fixture and the `mail_locale` test derive from the manifest (`MANIFEST`), so `nb` is in the completeness, placeholder, link, header and golden tests as soon as step 1 is done. |
 | 8 | Regenerate the mail golden files: from `backend/`, `uv run python tests/mailgolden.py`, creating `backend/tests/mail_golden/nb/` (34 files today); read the diff. | `test_emails_locales.py::test_the_mail_matches_its_golden_files[nb-*]` (18 failures with `nb` in `TRANSLATED` and no files) |
 | 9 | Decide whether it is on by default: `CLASSBEAT_LOCALES` is a subset switch, and the default in `backend/src/classbeat/config_accounts.py` (`locales`), `compose.prod.yaml` (`LOCALES`), `docs/runbooks/prod.env.example` and the "Language preference" paragraph in this file lists the offered languages. Without the change `nb` is supported but not offered until an operator sets `LOCALES`. | Nothing pins the default any more: `test_web_language.py`, `test_locale.py` and `test_mail_links.py` take their language lists from the manifest and the default `locales` (`offered_locales(Settings())`), so they follow the change and an `nb` that is supported but not on by default is correctly left out of the head tags and the sitemap. |

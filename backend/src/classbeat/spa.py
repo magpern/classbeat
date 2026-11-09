@@ -1,6 +1,6 @@
 """What the server adds to the single-page app's ``index.html`` for language-prefixed URLs
 (ADR 0027 sections 5 and 6): ``<html lang>``, canonical and hreflang links for the public pages,
-the link-preview image (``og:image``) for the public pages, ``noindex`` for the rest, plus
+the link-preview tags (``spa_preview``) for the public pages, ``noindex`` for the rest, plus
 ``/sitemap.xml`` and ``/robots.txt``.
 
 Every string built here comes from ``public_base_url``, the locale manifest, the enabled languages
@@ -14,15 +14,13 @@ from html import escape
 
 from classbeat import locales
 from classbeat.config import Settings
+from classbeat.spa_preview import og_tags
 
 # The pages a search engine may index, as paths after the language ("" is the landing page).
 PUBLIC_PATHS: tuple[str, ...] = ("", "/privacy", "/terms")
 X_DEFAULT = locales.DEFAULT_LOCALE
 NO_CACHE = {"Cache-Control": "no-cache"}
 NOINDEX = '<meta name="robots" content="noindex">'
-# The link-preview picture (issue 854): one file, 1200 x 630, in the frontend's ``public/img``.
-OG_IMAGE_PATH = "/img/og-share.jpg"
-OG_IMAGE_SIZE = (1200, 630)
 
 _HTML_LANG = re.compile(r'(<html\b[^>]*?\blang=")[^"]*(")')
 
@@ -36,16 +34,6 @@ def is_unknown_language(first_segment: str) -> bool:
 
 def _esc(value: str) -> str:
     return escape(value, quote=True)
-
-
-def _og_tags(base: str) -> list[str]:
-    width, height = OG_IMAGE_SIZE
-    return [
-        f'<meta property="og:image" content="{_esc(base + OG_IMAGE_PATH)}">',
-        f'<meta property="og:image:width" content="{width}">',
-        f'<meta property="og:image:height" content="{height}">',
-        '<meta name="twitter:card" content="summary_large_image">',
-    ]
 
 
 def _page_url(base: str, lang: str, page: str) -> str:
@@ -102,7 +90,7 @@ def build_pages(index: str, settings: Settings) -> SpaPages:
                 f'<link rel="alternate" hreflang="x-default" '
                 f'href="{_esc(_page_url(base, X_DEFAULT, page))}">'
             )
-            public[(code, page)] = _fill(index, code, "\n".join(links + _og_tags(base)))
+            public[(code, page)] = _fill(index, code, "\n".join(links + og_tags(base, code, page)))
     return SpaPages(_fill(index, None, NOINDEX), by_lang_noindex, public)
 
 
