@@ -1,10 +1,10 @@
 import { Trans, useT } from '../../i18n/I18n'
 import { Link } from '../../router/Router'
-import { ChipButton } from '../ui/chip'
+import { SegmentedControl, type SegmentedOption } from '../ui/segmented-control'
 
 export type Music = 'playlist' | 'pick' | 'swedebeat_mix' | 'none'
 
-/** What "Pick songs for me" needs (ADR 0008 section 9). `off`: the feature is hidden. */
+/** What "Pick for me" needs (ADR 0008 section 9). `off`: the feature is hidden. */
 export type SongsAvailability =
   | { kind: 'off' }
   | { kind: 'needs_spotify' }
@@ -12,7 +12,7 @@ export type SongsAvailability =
   | { kind: 'ready'; spotifyConnectionId: string }
 
 /**
- * Whether "Use my Swedebeat mix" is offered (ADR 0016 section 3). The new-class page renders the form
+ * Whether "Swedebeat mix" is offered (ADR 0016 section 3). The new-class page renders the form
  * only with a connected MOWL account, so there is no "needs MOWL" state here.
  */
 export type SwedebeatMixAvailability =
@@ -46,53 +46,17 @@ export function MusicChoice({
   if (songs.kind === 'off' && swedebeat.kind === 'off' && !soundless) return null
   const ready = songs.kind === 'ready'
   const swedebeatReady = swedebeat.kind === 'ready'
+  const options: SegmentedOption<Music>[] = [
+    { value: 'playlist', label: t('music.playlist') },
+    ...(songs.kind !== 'off' ? [{ value: 'pick' as const, label: t('music.pick'), disabled: !ready }] : []),
+    ...(swedebeat.kind !== 'off'
+      ? [{ value: 'swedebeat_mix' as const, label: t('music.swedebeat'), disabled: !swedebeatReady }]
+      : []),
+    ...(soundless ? [{ value: 'none' as const, label: t('music.none') }] : []),
+  ]
   return (
-    <div className="flex flex-col gap-2" role="group" aria-labelledby="music-label">
-      <span id="music-label" className="text-[0.9375rem] font-medium text-text">
-        {t('music.label')}
-      </span>
-      <div className="flex flex-wrap gap-2">
-        <ChipButton
-          pressed={value === 'playlist'}
-          onClick={() => {
-            onChange('playlist')
-          }}
-        >
-          {t('music.playlist')}
-        </ChipButton>
-        {songs.kind !== 'off' ? (
-          <ChipButton
-            pressed={value === 'pick'}
-            disabled={!ready}
-            onClick={() => {
-              onChange('pick')
-            }}
-          >
-            {t('music.pick')}
-          </ChipButton>
-        ) : null}
-        {swedebeat.kind !== 'off' ? (
-          <ChipButton
-            pressed={value === 'swedebeat_mix'}
-            disabled={!swedebeatReady}
-            onClick={() => {
-              onChange('swedebeat_mix')
-            }}
-          >
-            {t('music.swedebeat')}
-          </ChipButton>
-        ) : null}
-        {soundless ? (
-          <ChipButton
-            pressed={value === 'none'}
-            onClick={() => {
-              onChange('none')
-            }}
-          >
-            {t('music.none')}
-          </ChipButton>
-        ) : null}
-      </div>
+    <div className="flex min-w-0 flex-col gap-2">
+      <SegmentedControl aria-label={t('music.label')} options={options} value={value} onValueChange={onChange} className="max-w-full" />
       {songs.kind === 'needs_spotify' ? (
         <p className="m-0 text-[0.9375rem] text-muted">
           <Trans

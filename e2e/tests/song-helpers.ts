@@ -1,10 +1,10 @@
 import { expect, type Page } from '@playwright/test'
-import { connectMowl, getJob, jobId } from './design-helpers'
+import { chooseLength, connectMowl, getJob, jobId } from './design-helpers'
 import { useModelScript, type ModelScript } from './model-script'
 import { CLIENT_A, compose, connectSpotify, control, playSpotify } from './spotify-helpers'
 
 // Shared by song-pick.spec.ts: a user with MOWL and Spotify connected and the working-playlist
-// consent given, and the new-class form's "Pick songs for me". Public test values only.
+// consent given, and the new-class form's "Pick for me". Public test values only.
 
 /** A signed-in page with MOWL connected, Spotify connected on CLIENT_A and the consent given. */
 export async function readyToPick(page: Page, clientId: string = CLIENT_A): Promise<void> {
@@ -23,8 +23,8 @@ export async function startPick(page: Page, title: string, script: ModelScript =
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill(title)
-  await form.getByRole('button', { name: 'Pick songs for me' }).click()
-  await form.getByLabel('Length in minutes').fill('30')
+  await form.getByRole('radio', { name: 'Pick for me', exact: true }).click()
+  await chooseLength(form, 30)
   await form.getByLabel('Climbs', { exact: true }).fill('1')
   await form.getByLabel('Sprints', { exact: true }).fill('2')
   await form.getByRole('button', { name: 'Design my class' }).click()

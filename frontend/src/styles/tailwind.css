@@ -45,6 +45,7 @@
   --font-display: var(--cb-font-display);
   --font-mono: var(--cb-font-mono);
   --spacing-bar: var(--cb-bar-space);
+  --spacing-bar-pad: var(--cb-bar-pad);
   --spacing-sticky: var(--cb-sticky-top);
   --radius-sm: var(--cb-radius-sm);
   --radius-md: var(--cb-radius-md);

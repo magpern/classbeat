@@ -29,7 +29,7 @@ export function SketchBars({ profile }: { profile: [number, number][] }) {
                 y={56 - height}
                 width={Math.max((sec / total) * 200 - 0.5, 0.5)}
                 height={height}
-                style={{ fill: 'var(--cb-stage-muted)' }}
+                className="fill-stage-muted"
               />
             )
           })

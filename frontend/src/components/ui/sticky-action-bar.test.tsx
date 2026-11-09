@@ -33,6 +33,14 @@ describe('StickyActionBar', () => {
     expect(spacer).toHaveClass('h-bar', 'lg:hidden')
   })
 
+  it('pads the bottom of the phone bar by the safe-area inset, from a token and not an inline style', () => {
+    const { container } = render(<StickyActionBar label="Actions">x</StickyActionBar>)
+    const bar = screen.getByRole('region', { name: 'Actions' })
+    expect(bar.className).toContain('max-lg:pb-bar-pad')
+    expect(bar.className).not.toContain('env(')
+    expect(container.innerHTML).not.toContain('style=')
+  })
+
   it('lets the caller add classes', () => {
     render(
       <StickyActionBar label="Actions" className="gap-6">

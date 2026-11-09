@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { expect, signInThroughUi, signUpThroughUi, test, uniqueEmail } from './helpers'
-import { PLAYLISTS, connectMowl, fakeMowl, getJob, jobId } from './design-helpers'
+import { PLAYLISTS, chooseLength, connectMowl, fakeMowl, getJob, jobId } from './design-helpers'
 import { useModelScript } from './model-script'
 import {
   LONG,
@@ -199,9 +199,9 @@ test('a Swedebeat mix class: correct one song, apply and save', async ({ page })
   await page.goto('/classes/new')
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill('E2E beat one mix')
-  await form.getByRole('button', { name: 'Use my Swedebeat mix' }).click()
+  await form.getByRole('radio', { name: 'Swedebeat mix', exact: true }).click()
   await form.getByRole('radio', { name: new RegExp(CACHED_MIX_NAME) }).check({ force: true })
-  await form.getByLabel('Length in minutes').fill('10')
+  await chooseLength(form, 10)
   await form.getByLabel('Climbs', { exact: true }).fill('1')
   await form.getByLabel('Sprints', { exact: true }).fill('1')
   await form.getByRole('button', { name: 'Design my class' }).click()

@@ -81,12 +81,23 @@ export async function choosePlaylist(form: Locator, playlistName: string): Promi
   await expect(radio).toBeChecked()
 }
 
+/** Choose the class length in the form: a common length is one segment of the control, any other
+ *  needs "Other", which brings the number field. */
+export async function chooseLength(form: Locator, minutes: number): Promise<void> {
+  if ([30, 45, 60, 90].includes(minutes)) {
+    await form.getByRole('radio', { name: `${minutes} min`, exact: true }).click()
+    return
+  }
+  await form.getByRole('radio', { name: 'Other', exact: true }).click()
+  await form.getByLabel('Length in minutes').fill(String(minutes))
+}
+
 export async function startDesign(page: Page, title: string, playlistName: string): Promise<string> {
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill(title)
   await choosePlaylist(form, playlistName)
-  await form.getByLabel('Length in minutes').fill('30')
+  await chooseLength(form, 30)
   await form.getByLabel('Climbs', { exact: true }).fill('1')
   await form.getByLabel('Sprints', { exact: true }).fill('2')
   await form.getByRole('button', { name: 'Design my class' }).click()

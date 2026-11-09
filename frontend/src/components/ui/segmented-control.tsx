@@ -70,7 +70,7 @@ export function SegmentedControl<T extends string>({
   return (
     <div
       role="radiogroup"
-      className={cn('inline-flex flex-wrap gap-1 rounded-full bg-raised p-1', className)}
+      className={cn('inline-flex flex-wrap gap-1 rounded-3xl bg-raised p-1', className)}
       {...name}
     >
       {options.map((option, index) => (

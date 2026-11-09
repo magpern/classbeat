@@ -96,7 +96,9 @@
   --cb-radius-full: 999px;
   --cb-target: 2.75rem;
   --cb-content-width: 64rem;
-  --cb-bar-space: 5.5rem; /* room kept under the page for the phone's sticky action bar */
+  --cb-safe-bottom: env(safe-area-inset-bottom, 0px); /* the notch or home indicator under the page */
+  --cb-bar-pad: max(var(--cb-space-4), var(--cb-safe-bottom)); /* the phone action bar's bottom padding, clear of the inset */
+  --cb-bar-space: calc(5.5rem + var(--cb-safe-bottom)); /* room kept under the page for that bar, inset included */
   --cb-sticky-top: var(--cb-space-4); /* where the desktop sticky action bar stops */
   --cb-duration: 150ms;
 }

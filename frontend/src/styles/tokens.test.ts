@@ -212,3 +212,26 @@ describe('wide titles', () => {
     expect(Number(phone?.[1])).toBeLessThan(Number(wide?.[1]))
   })
 })
+
+// The phone's sticky action bar (ADR 0028 section 2): its padding and the spacer under the page both
+// count the bottom safe-area inset, so a notched phone never hides the end of the page behind the bar.
+describe('sticky action bar space', () => {
+  const root = block(tokensCss, ':root')
+
+  it('reads the bottom safe-area inset once, with a 0 fallback', () => {
+    expect(root).toMatch(/--cb-safe-bottom:\s*env\(safe-area-inset-bottom,\s*0px\)/)
+  })
+
+  it('the bar padding is at least the usual padding and at least the inset', () => {
+    expect(root).toMatch(/--cb-bar-pad:\s*max\(var\(--cb-space-4\),\s*var\(--cb-safe-bottom\)\)/)
+  })
+
+  it('the spacer is the bar height plus the inset', () => {
+    expect(root).toMatch(/--cb-bar-space:\s*calc\(5\.5rem \+ var\(--cb-safe-bottom\)\)/)
+  })
+
+  it('tailwind maps both to utilities', () => {
+    expect(tailwindCss).toMatch(/--spacing-bar:\s*var\(--cb-bar-space\)/)
+    expect(tailwindCss).toMatch(/--spacing-bar-pad:\s*var\(--cb-bar-pad\)/)
+  })
+})

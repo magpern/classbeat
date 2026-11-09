@@ -110,17 +110,17 @@ test('"No music" is offered with nothing stored, and drops the playlist choice',
   await signedInWithMowl(page, 'sl-form')
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })
-  const noMusic = form.getByRole('button', { name: 'No music', exact: true })
+  const noMusic = form.getByRole('radio', { name: 'No music', exact: true })
   await expect(noMusic).toBeVisible()
   await expect(form.getByRole('radio', { name: PLAYLISTS.draft.name })).toBeVisible()
 
   await noMusic.click()
-  await expect(noMusic).toHaveAttribute('aria-pressed', 'true')
+  await expect(noMusic).toBeChecked()
   await expect(form.getByRole('radio', { name: PLAYLISTS.draft.name })).toHaveCount(0)
-  await expect(form.getByText(/without a playlist or songs/)).toBeVisible()
+  await expect(form.getByText(/play your own music/)).toBeVisible()
 
   // Back to a playlist: the choice returns.
-  await form.getByRole('button', { name: 'Use my playlist' }).click()
+  await form.getByRole('radio', { name: 'My playlist', exact: true }).click()
   await expect(form.getByRole('radio', { name: PLAYLISTS.draft.name })).toBeVisible()
 
   // #824: no admin setting takes part; the key cannot even be stored (migration 0043).
@@ -225,8 +225,8 @@ test('the "No music" form and a soundless class page pass the accessibility audi
   await signedInWithMowl(page, 'sl-axe')
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })
-  await form.getByRole('button', { name: 'No music', exact: true }).click()
-  await expect(form.getByText(/without a playlist or songs/)).toBeVisible()
+  await form.getByRole('radio', { name: 'No music', exact: true }).click()
+  await expect(form.getByText(/play your own music/)).toBeVisible()
   const formFindings = await audit(page, 'New class, No music', form.getByRole('button', { name: 'Design my class' }))
   expect(formFindings.problems).toEqual([])
 
