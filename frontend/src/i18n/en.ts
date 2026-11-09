@@ -245,7 +245,7 @@ export const en = {
   'sentence.job.media_refused': 'The audio of this mix could not be fetched. Nothing was designed.',
   'sentence.job.analysis_failed': 'The audio of this mix could not be analysed. Try another mix.',
   'sentence.job.feature_off': 'This feature is switched off on this server right now. Nothing was designed.',
-  'sentence.job.analysis_limit': 'You have analysed 10 new Swedebeat mixes in the last 24 hours. Try again tomorrow, or use one analysed before.',
+  'sentence.job.analysis_limit': 'You have analysed 10 new Swedebeat mixes in the last 24 hours. Try again later, or use one analysed before.',
   'sentence.job.handoff_expired': 'That check expired. Start again from the Swedebeat step; nothing was fetched.',
   'sentence.swedebeat.wait': { one: 'Swedebeat asks to slow down; trying again in about {count} minute.', other: 'Swedebeat asks to slow down; trying again in about {count} minutes.' },
   'sentence.swedebeat.stopped': 'Swedebeat asks to slow down. This match has stopped.',
@@ -867,7 +867,7 @@ export const en = {
   'job.failure.feature_off.detail': 'Nothing was designed. Try again later.',
   'job.failure.analysis_limit.title': 'Too many new Swedebeat mixes today',
   'job.failure.analysis_limit.detail':
-    'You have analysed 10 new mixes in 24 hours. Try again tomorrow, or use one analysed before.',
+    'You have analysed 10 new mixes in 24 hours. Try again later, or use one analysed before.',
   'job.failure.soundless_not_evaluated.title': 'Classes without music are not ready yet',
   'job.failure.soundless_not_evaluated.detail': 'Nothing was designed. Choose a playlist instead, or try again later.',
   'job.failure.music_unlinked.title': 'The music is not in your MOWL account',
@@ -1218,7 +1218,7 @@ export const en = {
   'plan.quota.feature.newNamed': 'Your plan does not include {name}. Take that out and try again.',
   'plan.quota.saves.window.day': 'the last 24 hours',
   'plan.quota.saves.window.hour': 'the last hour',
-  'plan.quota.saves.later.day': 'Try again tomorrow.',
+  'plan.quota.saves.later.day': 'Try again later.',
   'plan.quota.saves.later.hour': 'Try again in an hour.',
   'plan.quota.saves': 'You have reached the limit for saving to MOWL in {window}. {later}',
   'plan.quota.savesLimit': 'You have saved or updated {classes} in MOWL in {window}, which is the limit. {later}',
@@ -1437,7 +1437,6 @@ export const en = {
   'spot.changeAccount': 'A different Spotify account needs your confirmation. Each class then loses its playlist link, and undecided playlist steps are deleted.',
   'spot.title': 'Spotify',
   'spot.notConnected': 'Not connected',
-  'spot.setUp': 'Set up Spotify',
   'spot.manage': 'Manage Spotify',
   'spot.loadFailed': 'The Spotify connection could not be loaded.',
   'spot.loading': 'Loading',
@@ -1552,7 +1551,7 @@ export const en = {
   'swmatch.reason.quota':
     'Your plan has no room for this right now.',
   'swmatch.reason.analysis_limit':
-    "You have used today's limit of new mix analyses. Try again tomorrow, or use a mix analysed before.",
+    "You have used today's limit of new mix analyses. Try again later, or use a mix analysed before.",
   'swmatch.reason.decrypt_failed':
     'We cannot read your stored sign-in. Connect again on your account page.',
   'swmatch.reason.pool_busy':

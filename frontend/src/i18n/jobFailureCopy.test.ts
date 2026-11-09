@@ -70,7 +70,7 @@ describe('job failure copy', () => {
   })
 
   it('keeps the daily limit of the failure and of the sentence in step', () => {
-    const next = { en: /Try again tomorrow, or use one analysed before/, sv: /Prova igen i morgon eller använd en som analyserats tidigare/, da: /Prøv igen i morgen, eller brug et tidligere analyseret mix/ }
+    const next = { en: /Try again later, or use one analysed before/, sv: /Prova igen senare eller använd en som analyserats tidigare/, da: /Prøv igen senere, eller brug et tidligere analyseret mix/ }
     for (const [lang, catalogue] of catalogues()) {
       const l = lang as 'en' | 'sv' | 'da'
       expect(textOf(catalogue, 'job.failure.analysis_limit.detail'), lang).toMatch(next[l])

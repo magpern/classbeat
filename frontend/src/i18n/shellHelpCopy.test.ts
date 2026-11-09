@@ -146,6 +146,10 @@ const STARTS_WITH_NAME = /^["'(\u201c\u201e\u00bb]?classbeat\b/i
 const NAME_FIRST_LABELS: readonly CatalogueKey[] = ['shell.brandHome']
 
 describe('shell, cookie notice, help and activity copy', () => {
+  it('words the sign-in methods heading as a question in every language', () => {
+    for (const lang of [en, sv, da]) expect(lang['help.signin.methods.q']).toMatch(/^(Can|Kan) .*\?$/)
+  })
+
   it('is not checked against an empty set of keys', () => {
     // A renamed or removed key must fail here instead of silently dropping out of the guard.
     for (const [key] of LIMITS) expect(en[key], key).toBeDefined()

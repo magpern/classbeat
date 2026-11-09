@@ -247,7 +247,7 @@ describe('Save', () => {
     [
       'saves per day',
       { quota: 'saves', limit: 100, used: 100, window: 'day' },
-      /You have saved or updated 100 classes in MOWL in the last 24 hours, which is the limit\. Try again tomorrow\./,
+      /You have saved or updated 100 classes in MOWL in the last 24 hours, which is the limit\. Try again later\./,
     ],
   ]
   it.each(QUOTA_REFUSALS)('words the %s plan refusal with its own sentence', async (_kind, detail, sentence) => {

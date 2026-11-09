@@ -41,7 +41,7 @@ export function DraftSummaryView({ draft }: { draft: DraftSummary }) {
           </p>
           <ul>
             {draft.unknownBpm.map((track) => (
-              <li key={track.index}>{track.title}</li>
+              <li key={track.index} className="break-words">{track.title}</li>
             ))}
           </ul>
         </div>

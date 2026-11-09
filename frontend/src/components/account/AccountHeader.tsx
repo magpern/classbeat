@@ -25,11 +25,9 @@ export function AccountHeader({ email }: { email: string }) {
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <h1 className="m-0 font-display text-2xl font-bold break-words">{name}</h1>
-        {name !== email ? (
-          <p className="m-0 break-words text-muted" data-testid="account-email">
-            {email}
-          </p>
-        ) : null}
+        <p className="m-0 break-words text-muted" data-testid="account-email">
+          {email}
+        </p>
       </div>
     </header>
   )

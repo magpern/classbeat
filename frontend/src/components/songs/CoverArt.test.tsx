@@ -145,4 +145,17 @@ describe('isPlaylistCoverUrl', () => {
     const asAlbum = render(<CoverArt src={mosaic} label="Hills" />)
     expect(asAlbum.container.querySelector('img')).toBeNull()
   })
+
+  it('lets a long unbroken title and artist wrap, so a 320 px row never scrolls sideways', () => {
+    const long = 'A'.repeat(120)
+    const song = { position: 1, title: long, artist: long, role: 'warmup', bpm: 100, length_sec: 240, new: false }
+    const list = decodeSongList({
+      id: 'r', number: 1, status: 'waiting', job_id: null, expires_at: null, approved_at: null,
+      content_hash: 'h', mode: 'pick', target_sec: 480, total_sec: 471, omitted_no_bpm: 0, note: '',
+      songs: [song],
+    })
+    render(<SongRows songs={list.songs} />)
+    expect(screen.getByTestId('song-title')).toHaveClass('break-words')
+    expect(screen.getByText(long, { selector: 'span.block' })).toHaveClass('break-words')
+  })
 })

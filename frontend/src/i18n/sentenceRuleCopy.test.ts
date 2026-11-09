@@ -28,8 +28,8 @@ const textsOf = (catalogue: Catalogue, key: CatalogueKey): string[] => {
 }
 const catalogues = (): [string, Catalogue][] => [['en', en], ['sv', sv], ['da', da]]
 
-/** "classbeat" as the subject: it starts a sentence, or follows a colon, a semicolon or an opening bracket. */
-const NAME_AS_SUBJECT = /(^|[.!?:;(]\s*)classbeat\b/i
+/** "classbeat" as the subject: it starts a sentence, or follows a colon, a semicolon, a comma or an opening bracket. */
+const NAME_AS_SUBJECT = /(^|[.!?:;,(]\s*)classbeat\b/i
 
 /** Words that make a sentence say what to do next, per language, for the texts the pass rewrote. */
 const NEXT_STEP: readonly [CatalogueKey, Readonly<Record<string, RegExp>>][] = [
@@ -38,7 +38,7 @@ const NEXT_STEP: readonly [CatalogueKey, Readonly<Record<string, RegExp>>][] = [
   ['sentence.spotify.invalid_response', { en: /Connect again/, sv: /Anslut igen/, da: /Opret forbindelse igen/ }],
   ['sentence.spotify.account_changed', { en: /Confirm to switch/, sv: /Bekräfta för att byta/, da: /Bekræft for at skifte/ }],
   ['sentence.job.media_host_not_allowed', { en: /Try one analysed before/, sv: /Prova en som analyserats tidigare/, da: /Prøv et, der er analyseret før/ }],
-  ['sentence.job.analysis_limit', { en: /Try again tomorrow/, sv: /Prova igen i morgon/, da: /Prøv igen i morgen/ }],
+  ['sentence.job.analysis_limit', { en: /Try again later/, sv: /Prova igen senare/, da: /Prøv igen senere/ }],
 ]
 
 describe('backend-mirrored sentences, error reasons and rule rationales', () => {
@@ -87,14 +87,21 @@ describe('backend-mirrored sentences, error reasons and rule rationales', () => 
   it('keeps the Spotify allow-list sentence truthful about who adds the account', () => {
     // The user owns the Spotify app they connect (they create it and paste its Client ID), so the
     // sentence tells them to add the account themselves, and that the app's owner needs Premium.
-    expect(en['sentence.spotify.not_allowlisted']).toMatch(/Premium/)
+    expect(en['sentence.spotify.not_allowlisted']).toMatch(/App owners need Premium\.$/)
     expect(sv['sentence.spotify.not_allowlisted']).toMatch(/Premium/)
     expect(da['sentence.spotify.not_allowlisted']).toMatch(/Premium/)
+    // The user adds the account in their own app's User Management, not classbeat.
+    expect(en['sentence.spotify.not_allowlisted']).toMatch(/User Management, add the account/)
     // "its name" left it unclear whose name: the sentence names the account (issue #866).
     expect(en['sentence.spotify.not_allowlisted']).not.toMatch(/\bits\b/)
     expect(en['sentence.spotify.not_allowlisted']).toMatch(/add the account's name and email/)
     expect(sv['sentence.spotify.not_allowlisted']).toMatch(/kontots namn/)
     expect(da['sentence.spotify.not_allowlisted']).toMatch(/kontoens navn/)
+  })
+
+  it('catches a comma-introduced classbeat subject', () => {
+    expect('Done, classbeat will retry.').toMatch(NAME_AS_SUBJECT)
+    expect('Sign in to classbeat.').not.toMatch(NAME_AS_SUBJECT)
   })
 
   it('holds the backend English to the same limits', () => {

@@ -263,7 +263,7 @@ const da: Catalogue = {
   'sentence.job.analysis_failed': 'Lyden i dette mix kunne ikke analyseres. Prøv et andet mix.',
   'sentence.job.feature_off': 'Denne funktion er slået fra på denne server lige nu. Intet blev designet.',
   'sentence.job.analysis_limit':
-    'Du har analyseret 10 nye Swedebeat-mix de seneste 24 timer. Prøv igen i morgen, eller brug et tidligere analyseret mix.',
+    'Du har analyseret 10 nye Swedebeat-mix de seneste 24 timer. Prøv igen senere, eller brug et tidligere analyseret mix.',
   'sentence.job.handoff_expired':
     'Den kontrol er udløbet. Start forfra fra Swedebeat-trinnet; intet blev hentet.',
   'sentence.swedebeat.wait': {
@@ -941,7 +941,7 @@ const da: Catalogue = {
   'job.failure.feature_off.detail': 'Intet blev designet. Prøv igen senere.',
   'job.failure.analysis_limit.title': 'For mange nye Swedebeat-mix i dag',
   'job.failure.analysis_limit.detail':
-    'Du har analyseret 10 nye mix på 24 timer. Prøv igen i morgen, eller brug et tidligere analyseret mix.',
+    'Du har analyseret 10 nye mix på 24 timer. Prøv igen senere, eller brug et tidligere analyseret mix.',
   'job.failure.soundless_not_evaluated.title': 'Hold uden musik er ikke klar endnu',
   'job.failure.soundless_not_evaluated.detail':
     'Intet blev designet. Vælg i stedet en playliste, eller prøv igen senere.',
@@ -1336,7 +1336,7 @@ const da: Catalogue = {
   'plan.quota.feature.newNamed': 'Din plan omfatter ikke {name}. Tag det ud, og prøv igen.',
   'plan.quota.saves.window.day': 'de seneste 24 timer',
   'plan.quota.saves.window.hour': 'den seneste time',
-  'plan.quota.saves.later.day': 'Prøv igen i morgen.',
+  'plan.quota.saves.later.day': 'Prøv igen senere.',
   'plan.quota.saves.later.hour': 'Prøv igen om en time.',
   'plan.quota.saves': 'Du har nået grænsen for at gemme i MOWL inden for {window}. {later}',
   'plan.quota.savesLimit': 'Du har gemt eller opdateret {classes} i MOWL inden for {window}, hvilket er grænsen. {later}',
@@ -1562,7 +1562,6 @@ const da: Catalogue = {
   'spot.changeAccount': 'En anden Spotify-konto kræver din bekræftelse. Hvert hold mister derefter linket til sin playliste, og uafklarede playlistetrin slettes.',
   'spot.title': 'Spotify',
   'spot.notConnected': 'Ikke tilsluttet',
-  'spot.setUp': 'Opsæt Spotify',
   'spot.manage': 'Administrer Spotify',
   'spot.loadFailed': 'Spotify-forbindelsen kunne ikke indlæses.',
   'spot.loading': 'Indlæser',
@@ -1683,7 +1682,7 @@ const da: Catalogue = {
   'swmatch.reason.quota':
     'Din plan har ikke plads til det her lige nu.',
   'swmatch.reason.analysis_limit':
-    'Du har nået dagens grænse for nye mixanalyser. Prøv igen i morgen, eller brug et mix, der er analyseret før.',
+    'Du har nået dagens grænse for nye mixanalyser. Prøv igen senere, eller brug et mix, der er analyseret før.',
   'swmatch.reason.decrypt_failed':
     'Vi kan ikke læse dit gemte login. Tilslut igen på din kontoside.',
   'swmatch.reason.pool_busy':

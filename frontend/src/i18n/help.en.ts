@@ -42,7 +42,7 @@ export const helpEn = {
   'help.signin.reset.q': 'I forgot my password',
   'help.signin.reset.a':
     'Choose Forgot your password? on the sign-in page and we send a link that works for 30 minutes. A password is 12 to 128 characters. When you choose a new one, you are signed out everywhere.',
-  'help.signin.methods.q': 'Sign in with Google, GitHub or Microsoft?',
+  'help.signin.methods.q': 'Can I use Google, GitHub or Microsoft?',
   'help.signin.methods.a':
     'Yes, when they are offered on the sign-in page. You can link or unlink them under Sign-in and security on your account page. Your account uses the email address the provider has verified.',
   'help.signin.twofactor.q': 'Is there two-factor authentication?',
