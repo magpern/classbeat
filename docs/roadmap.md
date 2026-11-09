@@ -1,5 +1,22 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 17 (2026-11-09, owner decisions: UI refresh; ADR 0028)
+
+The owner's decisions apply now. The design that carries them out is
+[ADR 0028](adr/0028-ui-refresh.md); it refines ADR 0013 and keeps its tokens, zone colours, stage,
+CSP and accessibility rules.
+
+- **UI refresh:** calmer screens, one control per job, shorter copy (length limits in ADR 0028 §2),
+  the primary action never buried, Account → Connections as rows with a dialog per service.
+  Colours stay; titles use Archivo at a wide setting.
+- **Swedebeat always shows in Connections**, as optional. This replaces "until then classbeat shows
+  nothing about Swedebeat" (Amendment 9, owner decision #525). The stored preference stays in the
+  backend as an implementation detail of Connect and Disconnect.
+- **MOWL by QR is on by default** (`mowl_qr_enabled` true). This replaces "off until the owner's
+  one live scan" (ADR 0024); the switch stays as an operator's off-switch.
+- **Milestone MX, UI refresh.** One PR per screen, in the order of ADR 0028 §5. Done when every
+  screen in that list follows ADR 0028 and the e2e and axe checks are green.
+
 ## Amendment 16 (2026-11-06, owner decisions: multilingual support; ADR 0023)
 
 The owner answered the questions of [docs/plans/multilingual.md](plans/multilingual.md) on 2026-11-06;
