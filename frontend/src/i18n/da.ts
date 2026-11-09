@@ -1526,7 +1526,7 @@ const da: Catalogue = {
   'mfa.recoveryTitle': 'Gem disse gendannelseskoder nu.',
   'mfa.recoveryText': '{title} Hver af dem virker én gang i stedet for en appkode. De vises ikke igen.',
   'mfa.recoveryList': 'Gendannelseskoder',
-  'mfa.saved': 'Jeg har gemt koderne',
+  'mfa.saved': 'Jeg gemte dem',
   'mfa.setUp': 'Opsæt godkendelsesapp',
   'mfa.scan': 'Scan denne kode med en godkendelsesapp, eller skriv nøglen i hånden.',
   'mfa.qrLabel': 'QR-kode til godkendelse',

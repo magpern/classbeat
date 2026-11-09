@@ -1,5 +1,3 @@
-/* The Turnstile check inside the auth forms. Tokens only (tokens.css); loaded after forms.css. */
-
 /* ADR 0025 section 11: the Turnstile check (or the e2e stand-in) inside the auth forms. */
 .captcha {
   position: relative;

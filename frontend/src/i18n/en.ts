@@ -1402,7 +1402,7 @@ export const en = {
   'mfa.recoveryTitle': 'Save these recovery codes now.',
   'mfa.recoveryText': '{title} Each works once in place of an app code. They will not be shown again.',
   'mfa.recoveryList': 'Recovery codes',
-  'mfa.saved': 'I saved the codes',
+  'mfa.saved': 'I saved them',
   'mfa.setUp': 'Set up authenticator',
   'mfa.scan': 'Scan this code with an authenticator app, or type the key.',
   'mfa.qrLabel': 'Authenticator QR code',

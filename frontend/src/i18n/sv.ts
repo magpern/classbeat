@@ -1537,7 +1537,7 @@ const sv: Catalogue = {
   'mfa.recoveryTitle': 'Spara de här återställningskoderna nu.',
   'mfa.recoveryText': '{title} Var och en fungerar en gång i stället för en appkod. De visas inte igen.',
   'mfa.recoveryList': 'Återställningskoder',
-  'mfa.saved': 'Jag har sparat koderna',
+  'mfa.saved': 'Jag sparade dem',
   'mfa.setUp': 'Konfigurera autentiseringsapp',
   'mfa.scan': 'Skanna den här koden med en autentiseringsapp, eller skriv nyckeln för hand.',
   'mfa.qrLabel': 'QR-kod för autentisering',

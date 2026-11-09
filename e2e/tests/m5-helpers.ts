@@ -170,7 +170,7 @@ export async function enrollTotp(page: Page): Promise<string> {
   const secret = (await page.locator('code').first().textContent())!.trim()
   await page.getByLabel('Code from the app').fill(await nextTotp(secret))
   await page.getByRole('button', { name: 'Turn on two-factor' }).click()
-  await page.getByRole('button', { name: 'I saved the codes' }).click()
+  await page.getByRole('button', { name: 'I saved them' }).click()
   await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toBeVisible()
   return secret
 }

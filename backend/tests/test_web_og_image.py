@@ -97,6 +97,8 @@ async def test_the_picture_types_do_not_depend_on_the_platforms_table(
     unreachable_database_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A Python build or operating system whose mimetypes table knows none of the formats.
+    # FileResponse binds ``guess_type`` at import, so that name is the one it uses.
+    monkeypatch.setattr("starlette.responses.guess_type", lambda *args, **kwargs: (None, None))
     monkeypatch.setattr("mimetypes.guess_type", lambda *args, **kwargs: (None, None))
     root = tmp_path / "dist"
     (root / "img").mkdir(parents=True)

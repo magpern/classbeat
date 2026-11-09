@@ -176,7 +176,7 @@ test('the admin pages, signed in as an admin with a TOTP code', async () => {
   const key = (await page.locator('code').first().innerText()).trim()
   await page.getByLabel('Code from the app').fill(totpCode(key))
   await page.getByRole('button', { name: 'Turn on two-factor' }).click()
-  await page.getByRole('button', { name: 'I saved the codes' }).click()
+  await page.getByRole('button', { name: 'I saved them' }).click()
   await page.goto('/admin')
   await expect(page.getByRole('navigation', { name: 'Admin' })).toBeVisible(LONG)
 
