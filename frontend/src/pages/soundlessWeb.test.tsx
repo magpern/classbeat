@@ -197,8 +197,8 @@ describe('the Designing page of a soundless job', () => {
   })
 
   it.each([
-    ['feature_off', 'Classes with no music are switched off right now'],
-    ['soundless_not_evaluated', 'Classes with no music are not ready for your plan yet'],
+    ['feature_off', 'Classes without music are switched off'],
+    ['soundless_not_evaluated', 'Classes without music are not ready yet'],
     ['invalid_input', 'The request could not be used'],
   ])('words an ended job with %s', async (category, title) => {
     window.sessionStorage.setItem(`classbeat.design-input.${JOB_ID}`, JSON.stringify(INPUT))
@@ -221,11 +221,11 @@ describe('the job messages', () => {
   })
 
   it('words feature_off per feature and invalid_input for a soundless request', () => {
-    expect(failureText('feature_off', '', 'soundless').title).toMatch(/no music are switched off/)
+    expect(failureText('feature_off', '', 'soundless').title).toMatch(/without music are switched off/)
     expect(failureText('feature_off', '', 'swedebeat').title).toMatch(/Swedebeat/)
     expect(failureText('invalid_input', '', 'soundless').detail).toMatch(/no music is for cycling/)
     expect(failureText('invalid_input').detail).toBe('Check the form and start again.')
-    expect(failureText('soundless_not_evaluated').title).toMatch(/not ready for your plan/)
+    expect(failureText('soundless_not_evaluated').title).toMatch(/not ready yet/)
   })
 
   it('words a refused change of a soundless class only for that class', () => {
@@ -281,8 +281,8 @@ describe('the class page of a soundless class', () => {
     })
     renderAt(PAGE)
     const outcome = await screen.findByTestId('use-change-songs')
-    expect(outcome).toHaveTextContent('This class has no music; to add some, design a new class with a playlist.')
-    expect(outcome).not.toHaveTextContent(/Use Change songs|playlist of your own/)
+    expect(outcome).toHaveTextContent('This class has no music. Design a new class with a playlist.')
+    expect(outcome).not.toHaveTextContent(/Use Change songs|your own playlist/)
     expect(within(outcome).queryByRole('button')).toBeNull()
   })
 
@@ -292,7 +292,7 @@ describe('the class page of a soundless class', () => {
       [`GET /api/jobs/${REVISE_JOB}`]: jobBody('failed', { id: REVISE_JOB, error_category: 'use_change_songs' }),
     })
     renderAt(PAGE)
-    expect(await screen.findByTestId('use-change-songs')).toHaveTextContent('This class uses a playlist of your own')
+    expect(await screen.findByTestId('use-change-songs')).toHaveTextContent('This class uses your own playlist')
   })
 
   it('words the soundless refusal of a change in plain language', async () => {
