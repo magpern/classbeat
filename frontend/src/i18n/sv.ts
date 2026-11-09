@@ -1291,7 +1291,6 @@ const sv: Catalogue = {
   'theme.light': 'Ljust',
   'theme.system': 'Samma som enheten',
   'dialog.close': 'Stäng',
-  'spotifyPage.back': 'Tillbaka till ditt konto',
   'unsub.title': 'Avsluta prenumeration',
   'unsub.needsLink': 'Den här sidan behöver länken från mejlet.',
   'unsub.doneTitle': 'Du är avregistrerad',
@@ -1600,7 +1599,6 @@ const sv: Catalogue = {
   'spot.loadFailed': 'Spotify-anslutningen kunde inte laddas.',
   'spot.loading': 'Laddar',
   'spot.connected': 'Spotify är anslutet.',
-  'spot.connectionTitle': 'Spotify-anslutning',
   'spot.intro':
     'classbeat ansluter till en Spotify-app som du äger själv, så begränsningarna är dina. Följ de här stegen en gång.',
   'spot.step1':

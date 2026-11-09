@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import { ReauthPrompt, StepUpPrompt } from './GuardPrompts'
+import { PromptLayer } from './PromptLayer'
 import { PromptCancelled, GuardContext, type Guard } from './prompts'
 import { useSession } from './SessionContext'
 
@@ -112,15 +113,13 @@ export function GuardProvider({ children }: { children: ReactNode }) {
     <GuardContext.Provider value={value}>
       {children}
       {pending ? (
-        <div className="overlay">
-          <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="prompt-title">
-            {pending.kind === 'reauth' ? (
-              <ReauthPrompt onDone={(ok) => void finish(ok)} />
-            ) : (
-              <StepUpPrompt onDone={(ok) => void finish(ok)} />
-            )}
-          </div>
-        </div>
+        <PromptLayer labelledBy="prompt-title">
+          {pending.kind === 'reauth' ? (
+            <ReauthPrompt onDone={(ok) => void finish(ok)} />
+          ) : (
+            <StepUpPrompt onDone={(ok) => void finish(ok)} />
+          )}
+        </PromptLayer>
       ) : null}
     </GuardContext.Provider>
   )

@@ -48,6 +48,15 @@ beforeEach(() => {
   goToProvider.mockClear()
 })
 
+/** Opens /account/spotify (Connections with the Spotify dialog open); queries inside the dialog. */
+async function openSpotify(url: string) {
+  renderAt(url)
+  return within(await screen.findByRole('dialog', { name: 'Spotify' }))
+}
+
+// The body of the Spotify dialog (Spotify.tsx and SpotifyWizard.tsx), opened by /account/spotify.
+// The row, opening and closing the dialog and the return from Spotify: connections/SpotifyConnection.test.tsx.
+
 describe('feature switched off', () => {
   it('hides the card on the account page', async () => {
     fakeApi(ACCOUNT_ROUTES)
@@ -60,34 +69,17 @@ describe('feature switched off', () => {
 
   it('says so on the Spotify page instead of showing a wizard', async () => {
     fakeApi(ACCOUNT_ROUTES)
-    renderAt('/account/spotify')
-    expect(await screen.findByText('Song picking is not available right now.')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Spotify Client ID')).toBeNull()
-  })
-})
-
-describe('account page card', () => {
-  it('links to the wizard when not connected and to management when connected', async () => {
-    spotifyApi()
-    renderAt('/account')
-    expect(await screen.findByRole('link', { name: 'Connect Spotify' })).toHaveAttribute('href', '/en/account/spotify')
-    expect(screen.getByTestId('connection-spotify')).toHaveTextContent('Optional')
-    expect(screen.getByTestId('connection-spotify')).toHaveTextContent('Picks songs for your classes')
-  })
-
-  it('shows a connected status', async () => {
-    spotifyApi(status({ status: 'connected' }))
-    renderAt('/account')
-    expect(await screen.findByRole('link', { name: 'Manage Spotify' })).toHaveAttribute('href', '/en/account/spotify')
-    expect(screen.getByTestId('spotify-summary-status')).toHaveTextContent('Connected')
+    const sp = await openSpotify('/account/spotify')
+    expect(await sp.findByText('Song picking is not available right now.')).toBeInTheDocument()
+    expect(sp.queryByLabelText('Spotify Client ID')).toBeNull()
   })
 })
 
 describe('the wizard', () => {
   it('walks through the dashboard steps with the Premium and allow-list sentences', async () => {
     spotifyApi()
-    renderAt('/account/spotify')
-    const steps = within((await screen.findByTestId('spotify-callback-url')).closest('ol')!)
+    const sp = await openSpotify('/account/spotify')
+    const steps = within((await sp.findByTestId('spotify-callback-url')).closest('ol')!)
       .getAllByRole('listitem')
       .map((item) => item.textContent)
     expect(steps).toHaveLength(5)
@@ -96,32 +88,32 @@ describe('the wizard', () => {
     expect(all).toMatch(/allow-list of 5 people/)
     expect(all).toMatch(/User Management/)
     expect(all).toMatch(/Redirect URIs/)
-    expect(screen.getByTestId('spotify-callback-url')).toHaveTextContent(CALLBACK)
+    expect(sp.getByTestId('spotify-callback-url')).toHaveTextContent(CALLBACK)
   })
 
   it('copies the fixed callback URL', async () => {
     const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     spotifyApi()
-    renderAt('/account/spotify')
-    fireEvent.click(await screen.findByRole('button', { name: 'Copy callback URL' }))
-    expect(await screen.findByText('Copied.')).toBeInTheDocument()
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.click(await sp.findByRole('button', { name: 'Copy callback URL' }))
+    expect(await sp.findByText('Copied.')).toBeInTheDocument()
     expect(writeText).toHaveBeenCalledWith(CALLBACK)
   })
 
   it('says so when the clipboard is not available', async () => {
     Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
     spotifyApi()
-    renderAt('/account/spotify')
-    fireEvent.click(await screen.findByRole('button', { name: 'Copy callback URL' }))
-    expect(await screen.findByText(/Could not copy/)).toBeInTheDocument()
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.click(await sp.findByRole('button', { name: 'Copy callback URL' }))
+    expect(await sp.findByText(/Could not copy/)).toBeInTheDocument()
   })
 
   it('never offers a Client Secret field', async () => {
     spotifyApi()
-    renderAt('/account/spotify')
-    await screen.findByLabelText('Spotify Client ID')
-    const inputs = Array.from(document.querySelectorAll('input, textarea, select'))
+    const sp = await openSpotify('/account/spotify')
+    await sp.findByLabelText('Spotify Client ID')
+    const inputs = Array.from(screen.getByRole('dialog', { name: 'Spotify' }).querySelectorAll('input, textarea, select'))
     expect(inputs).toHaveLength(1)
     for (const input of inputs) {
       const label = input.id ? (document.querySelector(`label[for="${input.id}"]`)?.textContent ?? '') : ''
@@ -129,18 +121,18 @@ describe('the wizard', () => {
         /secret|password/i,
       )
     }
-    expect(screen.queryByLabelText(/secret/i)).toBeNull()
+    expect(sp.queryByLabelText(/secret/i)).toBeNull()
   })
 
   it('starts the connect with the trimmed Client ID and no other field, then leaves for Spotify', async () => {
     const api = spotifyApi(status(), {
       'POST /api/connections/spotify/start': { authorize_url: AUTHORIZE },
     })
-    renderAt('/account/spotify')
-    fireEvent.change(await screen.findByLabelText('Spotify Client ID'), {
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.change(await sp.findByLabelText('Spotify Client ID'), {
       target: { value: `  ${GOOD_ID}  ` },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Spotify' }))
+    fireEvent.click(sp.getByRole('button', { name: 'Connect Spotify' }))
     await waitFor(() => {
       expect(goToProvider).toHaveBeenCalledWith(AUTHORIZE)
     })
@@ -153,11 +145,11 @@ describe('the wizard', () => {
     const api = spotifyApi(status(), {
       'POST /api/connections/spotify/start': { authorize_url: AUTHORIZE },
     })
-    renderAt('/account/spotify')
+    const sp = await openSpotify('/account/spotify')
     const typed = 'not-a-client-id-PRIVATE-123'
-    fireEvent.change(await screen.findByLabelText('Spotify Client ID'), { target: { value: typed } })
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Spotify' }))
-    const alert = await screen.findByRole('alert')
+    fireEvent.change(await sp.findByLabelText('Spotify Client ID'), { target: { value: typed } })
+    fireEvent.click(sp.getByRole('button', { name: 'Connect Spotify' }))
+    const alert = await sp.findByRole('alert')
     expect(alert).toHaveTextContent('That does not look like a Spotify Client ID.')
     expect(document.body.textContent).not.toContain(typed)
     expect(api.to('POST', '/api/connections/spotify/start')).toHaveLength(0)
@@ -168,20 +160,20 @@ describe('the wizard', () => {
     'blocks the Client ID %j',
     async (value) => {
       const api = spotifyApi()
-      renderAt('/account/spotify')
-      fireEvent.change(await screen.findByLabelText('Spotify Client ID'), { target: { value } })
-      fireEvent.click(screen.getByRole('button', { name: 'Connect Spotify' }))
-      expect(await screen.findByRole('alert')).toBeInTheDocument()
+      const sp = await openSpotify('/account/spotify')
+      fireEvent.change(await sp.findByLabelText('Spotify Client ID'), { target: { value } })
+      fireEvent.click(sp.getByRole('button', { name: 'Connect Spotify' }))
+      expect(await sp.findByRole('alert')).toBeInTheDocument()
       expect(api.to('POST', '/api/connections/spotify/start')).toHaveLength(0)
     },
   )
 
   it('shows the same sentence, without the value, when the server refuses it', async () => {
     spotifyApi(status(), { 'POST /api/connections/spotify/start': reason(422, 'invalid_client_id') })
-    renderAt('/account/spotify')
-    fireEvent.change(await screen.findByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Spotify' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('does not look like a Spotify Client ID')
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.change(await sp.findByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
+    fireEvent.click(sp.getByRole('button', { name: 'Connect Spotify' }))
+    expect(await sp.findByRole('alert')).toHaveTextContent('does not look like a Spotify Client ID')
     expect(document.body.textContent).not.toContain(GOOD_ID)
   })
 
@@ -191,10 +183,10 @@ describe('the wizard', () => {
         'Retry-After': '600',
       }),
     })
-    renderAt('/account/spotify')
-    fireEvent.change(await screen.findByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Spotify' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Try again in 10 minutes.')
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.change(await sp.findByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
+    fireEvent.click(sp.getByRole('button', { name: 'Connect Spotify' }))
+    expect(await sp.findByRole('alert')).toHaveTextContent('Try again in 10 minutes.')
   })
 
   it('asks for the password again when the session is not recent, then starts', async () => {
@@ -207,10 +199,10 @@ describe('the wizard', () => {
       'POST /api/connections/spotify/start': () =>
         confirmed ? { authorize_url: AUTHORIZE } : reason(403, 'reauth_required'),
     })
-    renderAt('/account/spotify')
-    fireEvent.change(await screen.findByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Spotify' }))
-    const dialog = await screen.findByRole('dialog')
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.change(await sp.findByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
+    fireEvent.click(sp.getByRole('button', { name: 'Connect Spotify' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' })
     fireEvent.change(await within(dialog).findByLabelText('Password'), { target: { value: 'pw' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm with password' }))
     await waitFor(() => {
@@ -223,9 +215,9 @@ describe('the wizard', () => {
 describe('the callback result in the query', () => {
   it('shows connected', async () => {
     spotifyApi(status({ status: 'connected' }))
-    renderAt('/account/spotify?result=connected')
-    expect(await screen.findByText('Spotify is connected.')).toBeInTheDocument()
-    expect(screen.getByTestId('spotify-status')).toHaveTextContent('Connected')
+    const sp = await openSpotify('/account/spotify?result=connected')
+    expect(await sp.findByText('Spotify is connected.')).toBeInTheDocument()
+    expect(sp.getByTestId('spotify-status')).toHaveTextContent('Connected')
   })
 
   // ADR 0009 section 8, every category and its sentence.
@@ -275,17 +267,17 @@ describe('the callback result in the query', () => {
     ['access_denied', '', 'Spotify was not connected.'],
   ])('shows %s%s', async (category, extra, sentence) => {
     spotifyApi()
-    renderAt(`/account/spotify?result=${category}${extra}`)
-    expect(await screen.findByRole('alert')).toHaveTextContent(sentence)
+    const sp = await openSpotify(`/account/spotify?result=${category}${extra}`)
+    expect(await sp.findByRole('alert')).toHaveTextContent(sentence)
   })
 
   it('never shows an unknown result code or a bad retry hint', async () => {
     spotifyApi()
-    renderAt('/account/spotify?result=%3Cb%3Eweird%3C%2Fb%3E&retry_after=abc')
-    expect(await screen.findByRole('alert')).toHaveTextContent(
+    const sp = await openSpotify('/account/spotify?result=%3Cb%3Eweird%3C%2Fb%3E&retry_after=abc')
+    expect(await sp.findByRole('alert')).toHaveTextContent(
       'Something went wrong with Spotify. Try again later.',
     )
-    expect(screen.queryByText(/weird/)).toBeNull()
+    expect(sp.queryByText(/weird/)).toBeNull()
     expect(document.querySelector('b')).toBeNull()
   })
 
@@ -293,9 +285,9 @@ describe('the callback result in the query', () => {
     const api = spotifyApi(status({ status: 'connected' }), {
       'POST /api/connections/spotify/start': { authorize_url: AUTHORIZE },
     })
-    renderAt('/account/spotify?result=account_changed')
-    fireEvent.change(await screen.findByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm and switch account' }))
+    const sp = await openSpotify('/account/spotify?result=account_changed')
+    fireEvent.change(await sp.findByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
+    fireEvent.click(sp.getByRole('button', { name: 'Confirm and switch account' }))
     await waitFor(() => {
       expect(goToProvider).toHaveBeenCalled()
     })
@@ -311,14 +303,14 @@ describe('the connection card', () => {
     ['access_denied', 'Spotify was not connected.'],
   ])("shows the server's sentence for last_error %s", async (category, sentence) => {
     spotifyApi(status({ status: 'connected', last_error: category, last_error_message: sentence }))
-    renderAt('/account/spotify')
-    expect(await screen.findByTestId('spotify-last-error')).toHaveTextContent(sentence)
+    const sp = await openSpotify('/account/spotify')
+    expect(await sp.findByTestId('spotify-last-error')).toHaveTextContent(sentence)
   })
 
   it('falls back to its own sentence, and never prints an unknown code', async () => {
     spotifyApi(status({ status: 'connected', last_error: 'forbidden' }))
-    renderAt('/account/spotify')
-    expect(await screen.findByTestId('spotify-last-error')).toHaveTextContent(
+    const sp = await openSpotify('/account/spotify')
+    expect(await sp.findByTestId('spotify-last-error')).toHaveTextContent(
       'Spotify refused this request for your account or playlist.',
     )
   })
@@ -327,8 +319,8 @@ describe('the connection card', () => {
     spotifyApi(
       status({ status: 'connected', last_error: 'x', last_error_message: '<img src=x onerror=alert(1)>' }),
     )
-    renderAt('/account/spotify')
-    expect(await screen.findByTestId('spotify-last-error')).toHaveTextContent('<img src=x')
+    const sp = await openSpotify('/account/spotify')
+    expect(await sp.findByTestId('spotify-last-error')).toHaveTextContent('<img src=x')
     expect(document.querySelector('img')).toBeNull()
   })
 
@@ -340,16 +332,16 @@ describe('the connection card', () => {
         last_error_message: 'Spotify no longer accepts the connection. Reconnect Spotify.',
       }),
     )
-    renderAt('/account/spotify')
-    expect(await screen.findByTestId('spotify-status')).toHaveTextContent('Needs to be connected again')
-    expect(screen.getByRole('button', { name: 'Connect Spotify again' })).toBeInTheDocument()
-    expect(screen.queryByText('Working playlist')).toBeNull()
+    const sp = await openSpotify('/account/spotify')
+    expect(await sp.findByTestId('spotify-status')).toHaveTextContent('Needs to be connected again')
+    expect(sp.getByRole('button', { name: 'Connect Spotify again' })).toBeInTheDocument()
+    expect(sp.queryByText('Working playlist')).toBeNull()
   })
 
   it('does not render the Client ID, ids or tokens it was given', async () => {
     spotifyApi(status({ status: 'connected', client_id: GOOD_ID }))
-    renderAt('/account/spotify')
-    await screen.findByTestId('spotify-status')
+    const sp = await openSpotify('/account/spotify')
+    await sp.findByTestId('spotify-status')
     expect(document.body.textContent).not.toContain(GOOD_ID)
   })
 
@@ -362,9 +354,9 @@ describe('the connection card', () => {
         return new Response(null, { status: 204 })
       },
     })
-    renderAt('/account/spotify')
-    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Spotify' }))
-    const dialog = screen.getByRole('group', { name: 'Confirm disconnect' })
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.click(await sp.findByRole('button', { name: 'Disconnect Spotify' }))
+    const dialog = sp.getByRole('group', { name: 'Confirm disconnect' })
     expect(dialog).toHaveTextContent('the stored sign-in')
     expect(dialog).toHaveTextContent('the working playlist setting and your consent for it')
     expect(dialog).toHaveTextContent('left undecided')
@@ -372,17 +364,17 @@ describe('the connection card', () => {
     expect(dialog).toHaveTextContent('remove classbeat’s access under Apps in your Spotify account settings')
     expect(api.to('DELETE', '/api/connections/spotify')).toHaveLength(0)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Yes, disconnect Spotify' }))
-    expect(await screen.findByText(/Spotify is disconnected/)).toBeInTheDocument()
+    expect(await sp.findByText(/Spotify is disconnected/)).toBeInTheDocument()
     expect(api.to('DELETE', '/api/connections/spotify')).toHaveLength(1)
-    expect(await screen.findByRole('button', { name: 'Connect Spotify' })).toBeInTheDocument()
+    expect(await sp.findByRole('button', { name: 'Connect Spotify' })).toBeInTheDocument()
   })
 
   it('keeps the connection when Disconnect is cancelled', async () => {
     const api = spotifyApi(status({ status: 'connected' }))
-    renderAt('/account/spotify')
-    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Spotify' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Keep it connected' }))
-    expect(screen.getByRole('button', { name: 'Disconnect Spotify' })).toBeInTheDocument()
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.click(await sp.findByRole('button', { name: 'Disconnect Spotify' }))
+    fireEvent.click(sp.getByRole('button', { name: 'Keep it connected' }))
+    expect(sp.getByRole('button', { name: 'Disconnect Spotify' })).toBeInTheDocument()
     expect(api.to('DELETE', '/api/connections/spotify')).toHaveLength(0)
   })
 
@@ -390,18 +382,18 @@ describe('the connection card', () => {
     const api = spotifyApi(status({ status: 'connected' }), {
       'POST /api/connections/spotify/start': { authorize_url: AUTHORIZE },
     })
-    renderAt('/account/spotify')
-    fireEvent.click(await screen.findByRole('button', { name: 'Change Client ID' }))
-    const dialog = screen.getByRole('group', { name: 'Confirm Client ID change' })
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.click(await sp.findByRole('button', { name: 'Change Client ID' }))
+    const dialog = sp.getByRole('group', { name: 'Confirm Client ID change' })
     expect(dialog).toHaveTextContent('keeps using the current connection until the new Client ID has worked')
     expect(dialog).toHaveTextContent('forgets the working playlist setting')
     expect(dialog).toHaveTextContent('asked for your consent again')
     expect(dialog).toHaveTextContent('the playlist stays in your Spotify')
     expect(dialog).toHaveTextContent('a different Spotify account')
-    expect(screen.queryByLabelText('Spotify Client ID')).toBeNull()
+    expect(sp.queryByLabelText('Spotify Client ID')).toBeNull()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }))
-    fireEvent.change(await screen.findByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Spotify' }))
+    fireEvent.change(await sp.findByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
+    fireEvent.click(sp.getByRole('button', { name: 'Connect Spotify' }))
     await waitFor(() => {
       expect(goToProvider).toHaveBeenCalledWith(AUTHORIZE)
     })
@@ -410,10 +402,10 @@ describe('the connection card', () => {
 
   it('leaves the Client ID alone when the change is cancelled', async () => {
     const api = spotifyApi(status({ status: 'connected' }))
-    renderAt('/account/spotify')
-    fireEvent.click(await screen.findByRole('button', { name: 'Change Client ID' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Keep the current Client ID' }))
-    expect(screen.queryByLabelText('Spotify Client ID')).toBeNull()
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.click(await sp.findByRole('button', { name: 'Change Client ID' }))
+    fireEvent.click(sp.getByRole('button', { name: 'Keep the current Client ID' }))
+    expect(sp.queryByLabelText('Spotify Client ID')).toBeNull()
     expect(api.to('POST', '/api/connections/spotify/start')).toHaveLength(0)
   })
 })
@@ -421,9 +413,9 @@ describe('the connection card', () => {
 describe('the pool consent', () => {
   it('is not offered before Spotify is connected', async () => {
     spotifyApi()
-    renderAt('/account/spotify')
-    await screen.findByLabelText('Spotify Client ID')
-    expect(screen.queryByRole('switch', { name: 'Allow the working playlist' })).toBeNull()
+    const sp = await openSpotify('/account/spotify')
+    await sp.findByLabelText('Spotify Client ID')
+    expect(sp.queryByRole('switch', { name: 'Allow the working playlist' })).toBeNull()
   })
 
   it('shows the exact wording with the link-sharing sentence and records the consent', async () => {
@@ -436,15 +428,15 @@ describe('the pool consent', () => {
         return new Response(null, { status: 204 })
       },
     })
-    renderAt('/account/spotify')
-    const quote = await screen.findByTestId('spotify-consent-text')
+    const sp = await openSpotify('/account/spotify')
+    const quote = await sp.findByTestId('spotify-consent-text')
     expect(quote.textContent).toBe(CONSENT_TEXT)
     expect(quote).toHaveTextContent('anyone with its link could open it')
-    expect(screen.getByTestId('spotify-consent-state')).toHaveTextContent('not allowed it yet')
+    expect(sp.getByTestId('spotify-consent-state')).toHaveTextContent('not allowed it yet')
     expect(api.to('PUT', '/api/connections/spotify/pool-consent')).toHaveLength(0)
-    fireEvent.click(screen.getByRole('switch', { name: 'Allow the working playlist' }))
-    expect(await screen.findByText(/classbeat may use the working playlist/)).toBeInTheDocument()
-    expect(screen.getByTestId('spotify-consent-state')).toHaveTextContent('You have allowed')
+    fireEvent.click(sp.getByRole('switch', { name: 'Allow the working playlist' }))
+    expect(await sp.findByText(/classbeat may use the working playlist/)).toBeInTheDocument()
+    expect(sp.getByTestId('spotify-consent-state')).toHaveTextContent('You have allowed')
     const [call] = api.to('PUT', '/api/connections/spotify/pool-consent')
     expect(call?.headers.get('X-CSRF-Token')).toBe('csrf-session')
   })
@@ -459,25 +451,25 @@ describe('the pool consent', () => {
         return new Response(null, { status: 204 })
       },
     })
-    renderAt('/account/spotify')
-    fireEvent.click(await screen.findByRole('switch', { name: 'Allow the working playlist' }))
-    const dialog = screen.getByRole('group', { name: 'Confirm revoke' })
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.click(await sp.findByRole('switch', { name: 'Allow the working playlist' }))
+    const dialog = sp.getByRole('group', { name: 'Confirm revoke' })
     expect(dialog).toHaveTextContent('The playlist stays in your Spotify')
     expect(dialog).toHaveTextContent('delete it there')
     expect(dialog).toHaveTextContent('the next pick creates a new working playlist')
     expect(api.to('DELETE', '/api/connections/spotify/pool-consent')).toHaveLength(0)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Yes, revoke my consent' }))
-    expect(await screen.findByText(/Your consent is withdrawn/)).toBeInTheDocument()
+    expect(await sp.findByText(/Your consent is withdrawn/)).toBeInTheDocument()
     expect(api.to('DELETE', '/api/connections/spotify/pool-consent')).toHaveLength(1)
-    expect(await screen.findByRole('switch', { name: 'Allow the working playlist' })).toBeInTheDocument()
+    expect(await sp.findByRole('switch', { name: 'Allow the working playlist' })).toBeInTheDocument()
   })
 
   it('keeps the consent when the revoke is cancelled', async () => {
     const api = spotifyApi(status({ status: 'connected', pool_consent: true, consent_version: 1 }))
-    renderAt('/account/spotify')
-    fireEvent.click(await screen.findByRole('switch', { name: 'Allow the working playlist' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Keep my consent' }))
-    expect(screen.getByRole('switch', { name: 'Allow the working playlist' })).toBeInTheDocument()
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.click(await sp.findByRole('switch', { name: 'Allow the working playlist' }))
+    fireEvent.click(sp.getByRole('button', { name: 'Keep my consent' }))
+    expect(sp.getByRole('switch', { name: 'Allow the working playlist' })).toBeInTheDocument()
     expect(api.to('DELETE', '/api/connections/spotify/pool-consent')).toHaveLength(0)
   })
 
@@ -485,8 +477,8 @@ describe('the pool consent', () => {
     spotifyApi(status({ status: 'connected' }), {
       'PUT /api/connections/spotify/pool-consent': reason(409, 'not_connected'),
     })
-    renderAt('/account/spotify')
-    fireEvent.click(await screen.findByRole('switch', { name: 'Allow the working playlist' }))
-    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    const sp = await openSpotify('/account/spotify')
+    fireEvent.click(await sp.findByRole('switch', { name: 'Allow the working playlist' }))
+    expect(await sp.findByRole('alert')).toBeInTheDocument()
   })
 })

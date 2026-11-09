@@ -7,6 +7,7 @@ import type { CatalogueKey } from '../i18n/en'
 import { useT } from '../i18n/I18n'
 import { AccountHeader } from '../components/account/AccountHeader'
 import { ConnectionsList } from '../components/account/connections/ConnectionsList'
+import { SPOTIFY_PATH } from '../components/account/connections/SpotifyRow'
 import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
 import { DeleteAccount } from '../components/account/DeleteAccount'
 import { Devices } from '../components/account/Devices'
@@ -50,8 +51,10 @@ function isTab(value: string): value is TabId {
  * The open tab lives in the address's fragment (`/account#security`), so a link or a reload
  * keeps it and the query string (OAuth outcomes, return addresses) is untouched. Coming back
  * from a provider sign-in (`?oauth=`) opens Sign-in and security, where it started.
+ * `/account/spotify` is Connections with the Spotify dialog open (SpotifyRow).
  */
-function initialTab(oauth: string | null): TabId {
+function initialTab(oauth: string | null, spotify: boolean): TabId {
+  if (spotify) return 'connections'
   const hash = window.location.hash.replace(/^#/, '')
   if (isTab(hash)) return hash
   return oauth !== null ? 'security' : 'connections'
@@ -74,9 +77,10 @@ export function AccountPage() {
 function Account() {
   const t = useT()
   const { session, refresh } = useSession()
-  const { navigate } = useRouter()
+  const { navigate, path } = useRouter()
   const outcome = useQuery().get('oauth')
-  const [tab, setTab] = useState<TabId>(() => initialTab(outcome))
+  const spotify = path === SPOTIFY_PATH
+  const [tab, setTab] = useState<TabId>(() => initialTab(outcome, spotify))
   // Whether a failed provider re-authentication can point to the password (#522).
   // undefined while loading, null when it could not be read.
   const [hasPassword, setHasPassword] = useState<boolean | null | undefined>(undefined)
@@ -106,6 +110,13 @@ function Account() {
       controller.abort()
     }
   }, [outcome])
+
+  // Arriving at /account/spotify from another tab (a link) shows Connections, where its dialog is.
+  const [wasSpotify, setWasSpotify] = useState(spotify)
+  if (spotify !== wasSpotify) {
+    setWasSpotify(spotify)
+    if (spotify) setTab('connections')
+  }
 
   // A fragment-only navigation (a link to `/account#plan`, the browser's back button) changes
   // the tab without remounting the page.

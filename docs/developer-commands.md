@@ -439,12 +439,17 @@ npm run build        # typecheck, then Vite writes frontend/dist
 
 - Proxy target: set `API_PROXY_TARGET` (shell or `frontend/.env`, git-ignored) to point the dev
   server at another backend, for example `API_PROXY_TARGET=http://localhost:8001 npm run dev`.
-- `/account/spotify` (`pages/SpotifyPage.tsx`, `components/account/Spotify.tsx`; signed-in users only) is
-  where the Spotify callback ends: `?result=connected`, or a failure category shown as a sentence
-  (`account_changed` asks the user to confirm the switch). It holds the connect wizard (the user's Client ID,
-  32 hex characters; never a field for a Client Secret), the connection card (status, Connect Spotify again, change
-  Client ID, Disconnect with its dialogs) and the "Working playlist" consent (give or revoke). With song
-  picking off the API answers 404 `feature_off` and the page says "Song picking is not available right now."
+- Spotify is a dialog on Account, Connections (`components/account/connections/SpotifyRow.tsx` and
+  `SpotifyDialog.tsx`; its body `components/account/Spotify.tsx` and `SpotifyWizard.tsx`). `/account/spotify`
+  (signed-in users only) is Connections with that dialog open: the inbound links (Home, music pages, song
+  screens) and the Spotify callback end there, `?result=connected` or a failure category shown as a sentence
+  in the dialog (`account_changed` asks the user to confirm the switch). Closing the dialog replaces the address
+  with `/account#connections`. The dialog holds the connect wizard (the user's Client ID, 32 hex characters;
+  never a field for a Client Secret), the status (Connect Spotify again, change Client ID, Disconnect with its
+  confirmations) and the "Working playlist" consent (give or revoke). With song picking off the API answers 404
+  `feature_off`, the row is left out and the dialog says "Song picking is not available right now."
+- Guard prompts (recent authentication, step-up; `auth/PromptLayer.tsx`) show in a layer of their own above any
+  open dialog, which waits `inert` under them (Escape and backdrop clicks are the prompt's).
 - Colours, spacing and type live only in `frontend/src/styles/tokens.css` (Night Studio, ADR 0013 section 2:
   dark by default, light with `data-theme="light"`, `data-theme="system"` follows the device). No colour literal
   (hex, `rgb(`, `hsl(`) may appear anywhere else in `src` (`src/styles/tokens.test.ts`).

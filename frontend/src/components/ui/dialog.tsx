@@ -45,6 +45,11 @@ export const DialogTrigger = forwardRef<
 })
 export const DialogClose = DialogPrimitive.Close
 
+/** The dialog is behind another layer (a guard prompt made it `inert`). */
+function behind(node: HTMLElement | null): boolean {
+  return node?.closest('[inert]') != null
+}
+
 export function DialogContent({
   className,
   children,
@@ -52,6 +57,7 @@ export function DialogContent({
   onCloseAutoFocus,
   onFocusOutside,
   onPointerDownOutside,
+  onEscapeKeyDown,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Content>) {
   const t = useT()
@@ -91,8 +97,13 @@ export function DialogContent({
         }}
         onPointerDownOutside={(event) => {
           onPointerDownOutside?.(event)
-          if (event.target instanceof Element && event.target.closest('[role="dialog"]'))
+          if (behind(node) || (event.target instanceof Element && event.target.closest('[role="dialog"]')))
             event.preventDefault()
+        }}
+        // Under a guard prompt (this dialog is `inert` then), Escape and clicks belong to the prompt.
+        onEscapeKeyDown={(event) => {
+          onEscapeKeyDown?.(event)
+          if (behind(node)) event.preventDefault()
         }}
         {...props}
       >

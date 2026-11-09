@@ -1276,7 +1276,6 @@ const da: Catalogue = {
   'theme.light': 'Lyst',
   'theme.system': 'Samme som enheden',
   'dialog.close': 'Luk',
-  'spotifyPage.back': 'Tilbage til din konto',
   'unsub.title': 'Afmeld',
   'unsub.needsLink': 'Denne side kræver linket fra mailen.',
   'unsub.doneTitle': 'Du er afmeldt',
@@ -1585,7 +1584,6 @@ const da: Catalogue = {
   'spot.loadFailed': 'Spotify-forbindelsen kunne ikke indlæses.',
   'spot.loading': 'Indlæser',
   'spot.connected': 'Spotify er tilsluttet.',
-  'spot.connectionTitle': 'Spotify-forbindelse',
   'spot.intro':
     'classbeat forbinder til en Spotify-app, du selv ejer, så grænserne er dine. Følg disse trin én gang.',
   'spot.step1':

@@ -7,19 +7,18 @@ import {
   type Connection,
   type SwedebeatAccess,
 } from '../../../api/connections'
-import { getSpotifyStatus, type SpotifyStatus } from '../../../api/spotify'
 import { useGuard } from '../../../auth/prompts'
 import { useLayout } from '../../../hooks/useLayout'
 import type { CatalogueKey } from '../../../i18n/en'
 import { useT } from '../../../i18n/I18n'
 import { t as translate } from '../../../i18n/t'
-import { Link } from '../../../router/Router'
 import { Notice, useAction } from '../../forms'
 import { Button } from '../../ui/button'
 import { forgetWarning } from '../mowlWarning'
 import { ConfirmDisconnect } from './ConfirmDisconnect'
 import { ConnectionRow } from './ConnectionRow'
 import { MowlDialog } from './MowlDialog'
+import { SpotifyRow } from './SpotifyRow'
 import { SwedebeatDialog } from './SwedebeatDialog'
 
 type Which = 'mowl' | 'swedebeat'
@@ -57,8 +56,8 @@ interface View {
 /**
  * Account, Connections (ADR 0028 section 3): MOWL, Spotify and Swedebeat as three rows. Each has a
  * status line and one button; Connect opens a dialog for that service, Disconnect asks first.
- * Spotify's set-up is its own page (the redirect to Spotify and back needs one), so its button
- * is a link to it. Swedebeat is always listed, as optional.
+ * Spotify's dialog is also opened by /account/spotify, where Spotify's callback returns
+ * (SpotifyRow). Swedebeat is always listed, as optional.
  */
 export function ConnectionsList() {
   const t = useT()
@@ -66,7 +65,6 @@ export function ConnectionsList() {
   const layout = useLayout()
   const action = useAction()
   const [view, setView] = useState<View | null>(null)
-  const [spotify, setSpotify] = useState<SpotifyStatus | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [open, setOpen] = useState<Open>(null)
   const [note, setNote] = useState<string | null>(null)
@@ -92,12 +90,6 @@ export function ConnectionsList() {
       () => {
         if (!controller.signal.aborted) setLoadFailed(true)
       },
-    )
-    getSpotifyStatus(controller.signal).then(
-      (found) => {
-        if (!controller.signal.aborted) setSpotify(found)
-      },
-      () => undefined, // no Spotify row; the rest of the list still works
     )
     return () => {
       controller.abort()
@@ -207,33 +199,7 @@ export function ConnectionsList() {
               : askConnect('mowl', mowl ? t('mowl.connectAgainButton') : t('mowl.connectButton'), t('conn.connect'))
           }
         />
-        {spotify !== null ? (
-          <ConnectionRow
-            testId="connection-spotify"
-            mark="S"
-            name={t('spot.title')}
-            optional
-            status={
-              spotify.status === 'not_connected' ? (
-                t('conn.spotify.purpose')
-              ) : (
-                <span data-testid="spotify-summary-status">
-                  {spotify.status === 'connected' ? t('mowl.statusConnected') : t('mowl.statusAgain')}
-                </span>
-              )
-            }
-            action={
-              <Button variant="secondary" asChild>
-                <Link
-                  to="/account/spotify"
-                  aria-label={spotify.status === 'not_connected' ? t('spot.connect') : t('spot.manage')}
-                >
-                  {spotify.status === 'not_connected' ? t('conn.connect') : t('conn.manage')}
-                </Link>
-              </Button>
-            }
-          />
-        ) : null}
+        <SpotifyRow />
         <ConnectionRow
           testId="connection-swedebeat"
           mark="Sb"

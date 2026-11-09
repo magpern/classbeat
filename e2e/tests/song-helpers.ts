@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test'
 import { chooseLength, connectMowl, getJob, jobId } from './design-helpers'
 import { useModelScript, type ModelScript } from './model-script'
-import { CLIENT_A, compose, connectSpotify, control, playSpotify } from './spotify-helpers'
+import { CLIENT_A, compose, connectSpotify, control, playSpotify, spotifyDialog } from './spotify-helpers'
 
 // Shared by song-pick.spec.ts: a user with MOWL and Spotify connected and the working-playlist
 // consent given, and the new-class form's "Pick for me". Public test values only.
@@ -14,6 +14,9 @@ export async function readyToPick(page: Page, clientId: string = CLIENT_A): Prom
   await expect(page.getByText('Spotify is connected.')).toBeVisible()
   await page.getByRole('switch', { name: 'Allow the working playlist' }).click()
   await expect(page.getByTestId('spotify-consent-state')).toHaveText('You have allowed the working playlist.')
+  // Close the Spotify dialog: the page behind it (the menu, New class) is inert while it is open.
+  await spotifyDialog(page).getByRole('button', { name: 'Close' }).click()
+  await expect(spotifyDialog(page)).toHaveCount(0)
 }
 
 /** Fill the new-class form for a song pick (30 minutes, one climb, two sprints) and start it.
