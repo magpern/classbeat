@@ -1,5 +1,5 @@
 /*
- * Imagery (issue 854): the Landing hero, the how-it-works pictures and the sign-in panel.
+ * Imagery (issue 854): the Landing hero, the how-it-works pictures, the sign-in panel and the empty states.
  * Colours come from tokens only: a scrim or dim is --cb-bg at the strength a token gives
  * (--cb-hero-scrim, --cb-image-dim), so both themes follow the tokens. The phone breakpoint is
  * PHONE_MEDIA in components/imagery/imageSlots.ts (a test keeps the two equal).
@@ -113,4 +113,23 @@
 .slot--fill-panel {
   position: absolute;
   inset: 0;
+}
+
+/* The empty states (Home, My classes): the text, with a calm 4:3 picture beside it or below it. */
+.empty-pic {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cb-space-4) var(--cb-space-6);
+}
+.empty-pic__text {
+  flex: 1 1 14rem;
+  max-width: 26rem;
+  min-width: 0;
+}
+.slot--empty {
+  flex: 0 1 18rem;
+  max-width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--cb-radius-lg);
 }

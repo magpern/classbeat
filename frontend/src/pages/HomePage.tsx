@@ -1,5 +1,6 @@
 import { useT } from '../i18n/I18n'
 import { ClassList, ClassRow } from '../components/classes/ClassRow'
+import { EmptyPicture } from '../components/imagery/EmptyPicture'
 import { SetupChecklist } from '../components/home/SetupChecklist'
 import { Notice } from '../components/forms'
 import { Button } from '../components/ui/button'
@@ -55,7 +56,9 @@ export function HomePage() {
           </>
         ) : null}
         {listing.status === 'ready' && listing.classes.length === 0 ? (
-          <p className="m-0 text-muted">{t('home.empty')}</p>
+          <EmptyPicture slot="emptyHome">
+            <p className="m-0 text-muted">{t('home.empty')}</p>
+          </EmptyPicture>
         ) : null}
         {listing.status === 'ready' && listing.classes.length > 0 ? (
           <ClassList>

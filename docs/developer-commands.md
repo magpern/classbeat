@@ -539,7 +539,7 @@ npm run build        # typecheck, then Vite writes frontend/dist
 ### Images
 
 Pictures (issue 854) are drawn from `frontend/src/components/imagery/imageSlots.ts`, a typed list of
-slots (`hero`, `stepDescribe`, `stepApprove`, `stepSave`, `authPanel`); `SlotPicture` turns a slot
+slots (`hero`, `stepDescribe`, `stepApprove`, `stepSave`, `authPanel`, `emptyHome`, `emptyClasses`); `SlotPicture` turns a slot
 into a `<picture>` (AVIF, then WebP, then JPEG; a phone crop under `PHONE_MEDIA`; `width` and
 `height` set; the hero `eager` with `fetchpriority="high"`, everything else `lazy`). The files live
 in `frontend/public/img/` as `<set>-<width>.avif|webp|jpg`; the server answers `/img/*` with their
@@ -555,12 +555,20 @@ real media types and the CSP stays `img-src 'self'`.
   hidden from assistive technology).
 - **Themes:** a slot has a picture per theme (`sets.dark`, `sets.light`). With only a light picture,
   `onDark: 'dim'` shows it on the dark page under a dim of the page colour (`--cb-image-dim`) and
-  `'hide'` shows nothing. The hero text sits on a scrim of the page colour (`--cb-hero-scrim`);
+  `'hide'` shows nothing. The three steps, the sign-in panel and the two empty states have a picture
+  per theme (`<name>-light`, `<name>-dark`, the same sizes, built with `both(name, sizes)` in the manifest),
+  so the dim is only the fallback for a slot that has a light picture alone. The hero text sits on a scrim of the page colour (`--cb-hero-scrim`);
   `styles/heroScrim.test.ts` checks the text contrast over the worst photo in both themes, so
   change a scrim strength only together with that test. No colour literals: the scrim and the dim
   are `color-mix` of `--cb-bg`.
+- **Empty states:** the empty Home and the empty My classes (`emptyHome`, `emptyClasses`, one file set per theme
+  `empty-home-light` and `-dark`, 4:3, 480 and 768) draw their text through `EmptyPicture`, which adds the picture
+  beside it (below it on a narrow screen): decorative (empty alt), lazy, `max-width` 18rem. A slot with
+  no set leaves the text exactly as it was. A source with readable text, a wordmark or a logo-like mark
+  is not used.
 - **Encode** (ffmpeg with `libaom-av1` and `libwebp`; source decoded to PNG first). For each width
-  `W` (wide sources: 960 and 1600; a 3:2 card: 480 and 768; a phone crop 4:5: 480 and 752):
+  `W` (wide sources: 960 and 1600; a 3:2 card: 480 and 768; a 4:3 empty-state picture: 480 and 768;
+  a phone crop 4:5: 480 and 752):
 
   ```bash
   vf="scale=W:-2:flags=lanczos,format=yuv420p"        # a crop first for the phone hero:
