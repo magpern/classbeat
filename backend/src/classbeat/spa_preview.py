@@ -39,8 +39,8 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
     "sv": {
         "": (
             "classbeat | Ditt pass, i takt med musiken",
-            "Beskriv turen så väljer vi låtarna. Utforma spinningpass i takt med musiken "
-            "och spara dem i MOWL.",
+            "Beskriv turen så väljer vi låtarna. Utforma pass för inomhuscykling i takt med "
+            "musiken och spara dem i MOWL.",
         ),
         "/privacy": (
             "Integritet | classbeat",
@@ -54,12 +54,12 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
     "da": {
         "": (
             "classbeat | Dit hold, i takt med musikken",
-            "Beskriv turen, så vælger vi sangene. Design spinninghold i takt med musikken "
-            "og gem dem i MOWL.",
+            "Beskriv turen, så vælger vi sangene. Design hold til indendørscykling i takt med "
+            "musikken og gem dem i MOWL.",
         ),
         "/privacy": (
             "Privatliv | classbeat",
-            "Hvad vi gemmer om dig, hvorfor, og hvordan du eksporterer eller sletter det.",
+            "Hvad vi gemmer om dig og hvorfor. Sådan eksporterer eller sletter du det.",
         ),
         "/terms": (
             "Vilkår | classbeat",

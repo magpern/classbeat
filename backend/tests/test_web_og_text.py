@@ -67,6 +67,18 @@ def test_the_landing_titles_in_each_language_match_the_apps_own_headline() -> No
         assert headline in preview(pages.public[(code, "")])["title"]
 
 
+# One distinctive glossary word per language that each landing description must use.
+LANDING_WORD = {"en": "indoor-cycling", "sv": "inomhuscykling", "da": "indendørscykling"}
+
+
+def test_each_landing_description_uses_its_languages_own_wording_and_no_trademark() -> None:
+    for code, word in LANDING_WORD.items():
+        assert word in spa_preview.COPY[code][""][1]
+    for code, pages in spa_preview.COPY.items():
+        for title, description in pages.values():
+            assert "spinning" not in f"{title} {description}".lower(), code
+
+
 def test_the_copy_follows_the_length_rules() -> None:
     for code, pages in spa_preview.COPY.items():
         for page, (title, description) in pages.items():
