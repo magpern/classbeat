@@ -422,7 +422,7 @@ async def test_a_retried_design_attempt_hands_off_one_row_from_its_finishing_att
     assert handoffs(menv) == [(job_id, str(menv.ops.row(job_id).class_id))]
 
 
-async def test_the_empty_production_list_says_the_mix_was_added_to_mowl_but_not_analysed(
+async def test_the_empty_production_list_says_the_mix_is_in_mowl_but_not_analysed(
     browsers: Any, menv: MixEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """ADR 0016 section 4: with the real (empty) media list an uncached mix is attached into the
@@ -442,8 +442,9 @@ async def test_the_empty_production_list_says_the_mix_was_added_to_mowl_but_not_
     assert menv.media.requests == []
     assert all(p.sent == [] for p in menv.providers)  # no model call
     shown = (await browser.get(f"/api/jobs/{job_id}")).json()
-    assert "added to your MOWL account" in shown["error_message"]
-    assert "could not be analysed" in shown["error_message"]
+    assert "is in your MOWL account" in shown["error_message"]
+    assert "cannot analyse new mixes" in shown["error_message"]
+    assert "Try one analysed before." in shown["error_message"]
 
 
 # --- admit: the flag, the MOWL connection, the user's own listing ---------------------------------
