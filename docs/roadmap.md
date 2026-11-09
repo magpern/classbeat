@@ -10,10 +10,11 @@ CSP and accessibility rules.
   the primary action never buried, Account → Connections as rows with a dialog per service.
   Colours stay; titles use Archivo at a wide setting.
 - **Swedebeat always shows in Connections**, as optional. This replaces "until then classbeat shows
-  nothing about Swedebeat" (Amendment 9, owner decision #525). The stored preference stays in the
+  nothing about Swedebeat" (ADR 0015, amendment of 2026-11-03, issue #525). The stored preference stays in the
   backend as an implementation detail of Connect and Disconnect.
 - **MOWL by QR is on by default** (`mowl_qr_enabled` true). This replaces "off until the owner's
-  one live scan" (ADR 0024); the switch stays as an operator's off-switch.
+  one live scan" (ADR 0024); the switch stays as an operator's off-switch. On a phone the
+  dialog still shows the password form only (ADR 0024 §7).
 - **Milestone MX, UI refresh.** One PR per screen, in the order of ADR 0028 §5. Done when every
   screen in that list follows ADR 0028 and the e2e and axe checks are green.
 

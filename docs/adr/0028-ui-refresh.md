@@ -4,6 +4,9 @@ Status: Accepted (owner decisions 2026-11-09, roadmap Amendment 17). It refines
 [ADR 0013](0013-ui-design-night-studio.md) (Night Studio) and does not replace it: the tokens, the
 zone colours, the stage, the component stack, the CSP and the accessibility rules all stay.
 
+Amends: [ADR 0024](0024-mowl-qr-connect.md) (default on) and the 2026-11-03 amendment of
+[ADR 0015](0015-swedebeat-connection.md) (the switch is no longer shown).
+
 Related: [ADR 0023](0023-multilingual.md) (every string in en, sv and da),
 [ADR 0024](0024-mowl-qr-connect.md) (MOWL by QR), [ADR 0015](0015-swedebeat-connection.md)
 (Swedebeat), [ADR 0009](0009-spotify-connection.md) (Spotify).
@@ -23,17 +26,23 @@ explored the answer. The owner reviewed it on 2026-11-09.
 
 1. The colours stay as designed: violet accent, the ADR 0013 zone colours and stage. Titles use
    Archivo at a wide setting (`font-stretch`), body text stays Inter.
+   The width axis needs the variable font, so the tokens PR swaps the bundled `@fontsource/archivo`
+   (static 700/800) for `@fontsource-variable/archivo` (same family, SIL OFL, still served by us).
 2. **Swedebeat always shows in Connections**, as optional. The "I use Swedebeat" switch is no
-   longer shown, and the rule "until then classbeat shows nothing about Swedebeat" in `swed.intro`
+   longer shown, and the rule "until then classbeat shows nothing about Swedebeat" (`swed.useOff`)
    is gone. The stored preference (#525) stays in the backend, where it still decides whether
    anything is sent to Swedebeat: the Connect dialog stores it as on, then connects; Disconnect
-   stores it as off, then disconnects. No backend change. The deployment flag `swedebeat_enabled`
+   stores it as off, then disconnects. If the connect fails, the dialog stores it as off again, so a
+   failed attempt leaves nothing half-set. No backend change. The deployment flag `swedebeat_enabled`
    and the admin "Swedebeat sign-in for" setting still decide whether Swedebeat can be
    **connected**: when it cannot, the row stays and says so, it is not hidden.
 3. **MOWL by QR is on by default.** `mowl_qr_enabled` defaults to true (settings, compose,
    `.env.example`). This supersedes "off by default until the owner's live scan" in
    [ADR 0024](0024-mowl-qr-connect.md). The switch stays as an off-switch for an operator. The
-   live scan is still worth doing; it is now a verification, not a gate.
+   live scan is still worth doing; it is now a verification, not a gate. The change touches
+   `config_features.py`, `compose.yaml`, `compose.prod.yaml` (the default and its comment),
+   `.env.example`, `docs/developer-commands.md`, and the prod compose guard
+   `scripts/check-prod-compose-rules.bash`, which pins the value today.
 4. No dark screenshot set is needed; both themes are checked in the component tests and by the
    token tests.
 
@@ -60,8 +69,10 @@ A list of three rows: MOWL, Spotify, Swedebeat. Each shows a mark, the name, **O
 it is, one line (what it is for, or "Connected" and the account) and one button, **Connect** or
 **Disconnect**. Connect opens a dialog for that service:
 
-- **MOWL:** "Scan code" (the default, when `mowl_qr_enabled`) and "Use password" tabs. A line
-  that the password is not kept.
+- **MOWL:** "Scan code" and "Use password" tabs. Scan code is the default when
+  `mowl_qr_enabled` is on **and the layout is wider than a phone's**: a phone cannot scan its own
+  screen, so ADR 0024 §7 stands and the phone dialog shows the password form only. A line that the
+  password is not kept.
 - **Spotify:** the three setup steps (create the app, add the redirect URI, paste the Client ID)
   and Continue to Spotify. The `/account/spotify` page stays reachable for the working-playlist
   consent and "Change Client ID".
