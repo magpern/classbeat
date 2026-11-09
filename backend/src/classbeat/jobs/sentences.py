@@ -38,15 +38,15 @@ SONG_SENTENCES: Final[dict[str, str]] = {
     "pool_busy": "Another song pick is still running.",
     # ADR 0016 sections 3 and 4: a Swedebeat mix. Never the host, a link or a file's own words.
     "media_host_not_allowed": (
-        "The mix was added to your MOWL account, but it could not be analysed: analysing a new "
-        "Swedebeat mix is not available on this server yet. Mixes analysed before still work."
+        "The mix is in your MOWL account, but this server cannot analyse new mixes yet. "
+        "Try one analysed before."
     ),
     "media_refused": "The audio of this mix could not be fetched. Nothing was designed.",
     "analysis_failed": "The audio of this mix could not be analysed. Try another mix.",
     "feature_off": "This feature is switched off on this server right now. Nothing was designed.",
     "analysis_limit": (
-        "You have analysed 10 new Swedebeat mixes in the last 24 hours. Mixes analysed before "
-        "still work; try a new one tomorrow."
+        "You have analysed 10 new Swedebeat mixes in the last 24 hours. Try again tomorrow, "
+        "or use one analysed before."
     ),
     "handoff_expired": (
         "That check expired. Start again from the Swedebeat step; nothing was fetched."

@@ -225,7 +225,7 @@ const da: Catalogue = {
   'sentence.spotify.app_misconfigured':
     'Spotify genkender ikke denne appopsætning. Tjek Client ID og omdirigerings-URI’en i din Spotify-app.',
   'sentence.spotify.not_allowlisted':
-    'Spotify afviste denne konto. Tilføj kontoens navn og e-mailadresse under User Management i din Spotify-app (udviklertilstand tillader 5 personer), og sørg for, at appens ejer har Spotify Premium.',
+    'Spotify afviste kontoen. Tilføj dens navn og e-mailadresse under User Management i din Spotify-app. Appens ejer skal have Premium.',
   'sentence.spotify.forbidden': 'Spotify afviste anmodningen for din konto eller playliste.',
   'sentence.spotify.rate_limited': {
     one: 'Spotify beder os sætte tempoet ned; prøver igen om cirka {count} minut.',
@@ -238,11 +238,11 @@ const da: Catalogue = {
   'sentence.spotify.upstream_unavailable': 'Spotify svarer ikke.',
   'sentence.spotify.not_found': 'Spotify kunne ikke finde den playliste.',
   'sentence.spotify.scope_mismatch':
-    'Spotify gav ikke den adgang, classbeat har brug for. Opret forbindelse igen, og tillad den.',
+    'Spotify gav ikke den adgang, vi har brug for. Opret forbindelse igen, og tillad den.',
   'sentence.spotify.invalid_response':
-    'Spotify gav ikke den adgang, classbeat har brug for. Opret forbindelse igen, og tillad den.',
+    'Spotify gav ikke den adgang, vi har brug for. Opret forbindelse igen, og tillad den.',
   'sentence.spotify.account_changed':
-    'Det er en anden Spotify-konto end før. Bekræft for at skifte (classbeat glemmer arbejdsplaylisten).',
+    'Det er en anden Spotify-konto end før. Bekræft for at skifte. Vi glemmer din arbejdsplaylist.',
   'sentence.spotify.access_denied': 'Spotify blev ikke tilsluttet.',
   'sentence.spotify.unknown': 'Noget gik galt med Spotify. Prøv igen senere.',
   'sentence.job.consent_missing': 'Tillad arbejdsplaylisten i dine Spotify-indstillinger først.',
@@ -258,12 +258,12 @@ const da: Catalogue = {
     'Din Spotify-konto er ikke den, som disse sange blev valgt til. Bed om nye sange.',
   'sentence.job.pool_busy': 'Et andet sangvalg kører stadig.',
   'sentence.job.media_host_not_allowed':
-    'Mixet blev føjet til din MOWL-konto, men det kunne ikke analyseres: det er endnu ikke muligt at analysere et nyt Swedebeat-mix på denne server. Mix, der er analyseret før, virker stadig.',
+    'Mixet ligger i din MOWL-konto, men denne server kan endnu ikke analysere nye mix. Prøv et, der er analyseret før.',
   'sentence.job.media_refused': 'Lyden i dette mix kunne ikke hentes. Intet blev designet.',
   'sentence.job.analysis_failed': 'Lyden i dette mix kunne ikke analyseres. Prøv et andet mix.',
   'sentence.job.feature_off': 'Denne funktion er slået fra på denne server lige nu. Intet blev designet.',
   'sentence.job.analysis_limit':
-    'Du har analyseret 10 nye Swedebeat-mix inden for de seneste 24 timer. Mix, der er analyseret før, virker stadig; prøv et nyt i morgen.',
+    'Du har analyseret 10 nye Swedebeat-mix de seneste 24 timer. Prøv igen i morgen, eller brug et tidligere analyseret mix.',
   'sentence.job.handoff_expired':
     'Den kontrol er udløbet. Start forfra fra Swedebeat-trinnet; intet blev hentet.',
   'sentence.swedebeat.wait': {

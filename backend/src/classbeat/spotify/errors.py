@@ -51,7 +51,7 @@ APP_ERROR_CODES: Final = frozenset(
     }
 )
 
-_SCOPE_SENTENCE = "Spotify did not give the access classbeat needs. Connect again and allow it."
+_SCOPE_SENTENCE = "Spotify did not give the access we need. Connect again and allow it."
 SENTENCES: Final[dict[str, str]] = {
     "invalid_grant": "Spotify no longer accepts the connection. Reconnect Spotify.",
     "app_misconfigured": (
@@ -59,9 +59,8 @@ SENTENCES: Final[dict[str, str]] = {
         "your Spotify app."
     ),
     "not_allowlisted": (
-        "Spotify refused this account. In your Spotify app's User Management add this "
-        "account's name and email (Development Mode allows 5 people), and make sure the app's "
-        "owner has Spotify Premium."
+        "Spotify refused this account. In your Spotify app's User Management, add its name "
+        "and email. The app owner needs Premium."
     ),
     "forbidden": "Spotify refused this request for your account or playlist.",
     "rate_limited": "Spotify asks to slow down; trying again in about {minutes}.",
@@ -73,8 +72,8 @@ SENTENCES: Final[dict[str, str]] = {
     "scope_mismatch": _SCOPE_SENTENCE,
     "invalid_response": _SCOPE_SENTENCE,
     "account_changed": (
-        "This is a different Spotify account than before. Confirm to switch (classbeat forgets "
-        "the working playlist)."
+        "This is a different Spotify account than before. Confirm to switch. We will forget "
+        "your working playlist."
     ),
     "access_denied": "Spotify was not connected.",
 }

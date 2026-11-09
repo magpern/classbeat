@@ -125,7 +125,7 @@ From `backend/` (setup in the repo `README.md`):
 ## After the merge (the owner)
 
 New profiles apply to the next design or revise job and to the next read of an old revision (notes
-are recomputed from the current profile, with the muted line "Notes use the current rules" when the
+are recomputed from the current profile, with the muted line "Notes follow current rules" when the
 provenance digest differs). The new `suite_version` and digest, however, make every recorded eval
 result **stale** (reasons `suite_version` and `manifest_digest` in `classbeat.models.routes`): an
 existing route keeps working, flagged, but a new `models enable` is refused until a passing result

@@ -12,7 +12,7 @@
   {
     "code": "spotify.not_allowlisted",
     "params": {},
-    "english": "Spotify refused this account. In your Spotify app's User Management add this account's name and email (Development Mode allows 5 people), and make sure the app's owner has Spotify Premium."
+    "english": "Spotify refused this account. In your Spotify app's User Management, add its name and email. The app owner needs Premium."
   },
   {
     "code": "spotify.forbidden",
@@ -46,17 +46,17 @@
   {
     "code": "spotify.scope_mismatch",
     "params": {},
-    "english": "Spotify did not give the access classbeat needs. Connect again and allow it."
+    "english": "Spotify did not give the access we need. Connect again and allow it."
   },
   {
     "code": "spotify.invalid_response",
     "params": {},
-    "english": "Spotify did not give the access classbeat needs. Connect again and allow it."
+    "english": "Spotify did not give the access we need. Connect again and allow it."
   },
   {
     "code": "spotify.account_changed",
     "params": {},
-    "english": "This is a different Spotify account than before. Confirm to switch (classbeat forgets the working playlist)."
+    "english": "This is a different Spotify account than before. Confirm to switch. We will forget your working playlist."
   },
   {
     "code": "spotify.access_denied",
@@ -132,7 +132,7 @@
   {
     "code": "job.media_host_not_allowed",
     "params": {},
-    "english": "The mix was added to your MOWL account, but it could not be analysed: analysing a new Swedebeat mix is not available on this server yet. Mixes analysed before still work."
+    "english": "The mix is in your MOWL account, but this server cannot analyse new mixes yet. Try one analysed before."
   },
   {
     "code": "job.media_refused",
@@ -152,7 +152,7 @@
   {
     "code": "job.analysis_limit",
     "params": {},
-    "english": "You have analysed 10 new Swedebeat mixes in the last 24 hours. Mixes analysed before still work; try a new one tomorrow."
+    "english": "You have analysed 10 new Swedebeat mixes in the last 24 hours. Try again tomorrow, or use one analysed before."
   },
   {
     "code": "job.handoff_expired",
