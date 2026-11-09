@@ -66,11 +66,13 @@ describe('the new-class form and No music', () => {
     )
     renderAt('/classes/new')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Silent ride' } })
+    // With a playlist the picker and its hint are on the page, so the checks below can fail.
+    expect(screen.getByText('Added to your MOWL music, private to you.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: 'No music' }))
     expect(screen.getByRole('radio', { name: 'No music' })).toBeChecked()
     expect(screen.getByText(/play your own music/)).toBeInTheDocument()
     expect(screen.queryByRole('radio', { name: 'Tempo' })).toBeNull()
-    expect(screen.queryByText(/classbeat adds this playlist/)).toBeNull()
+    expect(screen.queryByText('Added to your MOWL music, private to you.')).toBeNull()
     // The summary names the choice.
     expect(screen.getAllByText('No music').length).toBeGreaterThan(1)
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))

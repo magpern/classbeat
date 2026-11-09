@@ -1,6 +1,5 @@
 """Serving the built single-page app, ``/sitemap.xml`` and ``/robots.txt`` (ADR 0027)."""
 
-import mimetypes
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Response
@@ -9,13 +8,15 @@ from fastapi.responses import FileResponse, HTMLResponse
 from classbeat import spa
 from classbeat.config import Settings
 
-# The picture formats of ``public/img`` (issue 854): not every Python build knows them, and a
-# file answered as text/plain is not drawn (the CSP and nosniff forbid guessing).
-for _ext, _type in ((".avif", "image/avif"), (".webp", "image/webp"), (".jpg", "image/jpeg")):
-    mimetypes.add_type(_type, _ext)
-
 # HEAD answers like GET (FastAPI adds no HEAD to a GET route); the server drops the body.
 _READ = ["GET", "HEAD"]
+
+# The picture formats of ``public/img`` (issue 854), named here and not left to the platform's
+# ``mimetypes`` table, which an operating system or Python build may lack or change: a file answered
+# as text/plain is not drawn (the CSP and nosniff forbid guessing).
+IMAGE_MEDIA_TYPES = {".avif": "image/avif", ".webp": "image/webp", ".jpg": "image/jpeg"}
+# The files keep their names when a picture is replaced, so they are cached for a day, not for good.
+IMAGE_HEADERS = {"Cache-Control": "public, max-age=86400"}
 
 EMAIL_ASSET_HEADERS = {
     "Cross-Origin-Resource-Policy": "cross-origin",
@@ -64,6 +65,12 @@ def add_single_page_app(app: FastAPI, static_dir: Path, settings: Settings) -> N
                     # The logo in mail is loaded cross-origin by mail clients (ADR 0022
                     # section 3); only /email/* is opened up, and it may be cached for a week.
                     return FileResponse(candidate, headers=EMAIL_ASSET_HEADERS)
+                if path.startswith("img/"):
+                    return FileResponse(
+                        candidate,
+                        media_type=IMAGE_MEDIA_TYPES.get(candidate.suffix.lower()),
+                        headers=IMAGE_HEADERS,
+                    )
                 return FileResponse(candidate)
         except (OSError, ValueError):  # for example an embedded NUL in the path
             pass

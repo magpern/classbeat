@@ -13,7 +13,7 @@ export const helpSv: Catalogue = {
     'Öppna fliken Anslutningar på {account} och tryck på Anslut vid MOWL. Logga in på ditt Intelligent Cycling-konto (MOWL) med e-postadress och lösenord. På en större skärm kan du också få en kod att skanna med MOWL-appen. Vi använder lösenordet en enda gång för att få en inloggningstoken och sparar bara token, krypterad. Du kan koppla från när som helst, och då raderar vi den. Vill du avsluta inloggningen hos MOWL byter du ditt MOWL-lösenord.',
   'help.connect.spotify.q': 'Hur kopplar jag Spotify?',
   'help.connect.spotify.a':
-    'Spotify behövs när du vill att vi ska välja låtar åt dig. På fliken Anslutningar trycker du på Anslut vid Spotify. Vi guidar dig genom att skapa en egen Spotify-app i Spotify Developer Dashboard, så att begränsningarna blir dina egna. Sedan klistrar du in appens Client ID här. Den som äger appen behöver Spotify Premium. Därefter loggar du in hos Spotify och ger tillåtelse. Vi behöver aldrig appens Client Secret och frågar aldrig efter den.',
+    'Spotify behövs när du vill att vi ska välja låtar åt dig. På fliken Anslutningar trycker du på Anslut vid Spotify. Vi guidar dig genom att skapa en egen Spotify-app i Spotify Developer Dashboard, så att begränsningarna blir dina egna. Sedan klistrar du in appens Client ID i fönstret som öppnas. Den som äger appen behöver Spotify Premium. Därefter loggar du in hos Spotify och ger tillåtelse. Vi behöver aldrig appens Client Secret och frågar aldrig efter den.',
   'help.connect.swedebeat.q': 'Behöver jag Swedebeat?',
   'help.connect.swedebeat.a':
     'Nej, det är valfritt. Undervisar du med Swedebeat trycker du på Anslut vid Swedebeat på fliken Anslutningar. Då kan du utforma ett pass till en av dina Swedebeat-mixar, som hämtas från ditt MOWL-konto, och matcha passets låtar mot Swedebeat. Precis som med MOWL använder vi lösenordet en enda gång och sparar bara token.',
@@ -41,7 +41,7 @@ export const helpSv: Catalogue = {
   'help.signin.reset.q': 'Jag har glömt mitt lösenord',
   'help.signin.reset.a':
     'Välj Har du glömt ditt lösenord? på inloggningssidan så skickar vi en länk som gäller i 30 minuter. Ett lösenord är 12 till 128 tecken långt. När du väljer ett nytt loggas du ut överallt.',
-  'help.signin.methods.q': 'Logga in med Google, GitHub eller Microsoft?',
+  'help.signin.methods.q': 'Kan jag använda Google, GitHub eller Microsoft?',
   'help.signin.methods.a':
     'Ja, när de erbjuds på inloggningssidan. Du kan koppla eller ta bort dem under Inloggning och säkerhet på kontosidan. Kontot använder den e-postadress som leverantören har verifierat.',
   'help.signin.twofactor.q': 'Finns det tvåfaktorsautentisering?',

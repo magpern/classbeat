@@ -126,7 +126,20 @@ export function ConnectionsList() {
     })
   }
 
-  if (loadFailed) return <Notice kind="error">{t('mowl.loadFailed')}</Notice>
+  if (loadFailed)
+    // Spotify's row loads its own status and owns its dialog, so a link to /account/spotify (the
+    // return from Spotify) still opens it when the list could not be loaded.
+    return (
+      <section aria-labelledby="connections-title" className="flex flex-col gap-3">
+        <h2 id="connections-title" className="m-0 font-display text-xl font-bold">
+          {t('conn.title')}
+        </h2>
+        <Notice kind="error">{t('mowl.loadFailed')}</Notice>
+        <ul className="m-0 flex list-none flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface p-0 empty:hidden">
+          <SpotifyRow />
+        </ul>
+      </section>
+    )
   if (view === null) return <p>{t('common.loading')}</p>
 
   const { mowl, swedebeat, access } = view

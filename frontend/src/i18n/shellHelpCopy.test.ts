@@ -106,6 +106,10 @@ const longest = (catalogue: Catalogue, key: CatalogueKey): number => Math.max(..
 const textOf = (catalogue: Catalogue, key: CatalogueKey): string => textsOf(catalogue, key).join(' ')
 const sentences = (text: string): string[] => text.split(/(?<=[.!?])\s+/).filter((s) => s !== '')
 
+/** The text as a whole word or phrase: "Connect" is not found in "Connections" (nor "Anslut" in "Anslutningar"). */
+const wholeWord = (label: string): RegExp =>
+  new RegExp(`(?<![\\p{L}\\p{N}])${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'u')
+
 const catalogues = (): [string, Catalogue][] => [['en', en], ['sv', sv], ['da', da]]
 
 /** The buttons and tab names a help answer tells the reader to use: each must appear in the answer. */
@@ -131,6 +135,15 @@ const STALE_SWITCH = /I use Swedebeat|Jag använder Swedebeat|Jeg bruger Swedebe
 
 /** The pre-login legal notice names the product once; nothing in this pass is allow-listed. */
 const NAME_AS_SUBJECT = /(^|[.!?:;]\s+)classbeat\b/i
+
+/** A sentence that starts with the name, also behind an opening quote or bracket. */
+const STARTS_WITH_NAME = /^["'(\u201c\u201e\u00bb]?classbeat\b/i
+
+/**
+ * The home link's accessible name is not a sentence: it starts with the visible brand ("classbeat,
+ * home"), so a voice-control user who says what they see ("click classbeat") reaches it (WCAG 2.5.3).
+ */
+const NAME_FIRST_LABELS: readonly CatalogueKey[] = ['shell.brandHome']
 
 describe('shell, cookie notice, help and activity copy', () => {
   it('is not checked against an empty set of keys', () => {
@@ -203,7 +216,7 @@ describe('shell, cookie notice, help and activity copy', () => {
       for (const [key, names] of NAMES_IN_ANSWER) {
         for (const name of names) {
           const label = textOf(catalogue, name).replace(/\{\w+\}/g, '').trim()
-          expect(textOf(catalogue, key), `${lang} ${key} names "${label}"`).toContain(label)
+          expect(textOf(catalogue, key), `${lang} ${key} names "${label}"`).toMatch(wholeWord(label))
         }
       }
     }
@@ -243,12 +256,36 @@ describe('shell, cookie notice, help and activity copy', () => {
 
   it('does not make the product name the subject of a sentence', () => {
     for (const [lang, catalogue] of catalogues()) {
-      for (const key of SCOPE_KEYS) {
+      for (const key of SCOPE_KEYS.filter((k) => !NAME_FIRST_LABELS.includes(k))) {
         expect(textOf(catalogue, key), `${lang} ${key}`).not.toMatch(NAME_AS_SUBJECT)
+        for (const sentence of sentences(textOf(catalogue, key))) {
+          expect(sentence, `${lang} ${key}: ${sentence}`).not.toMatch(STARTS_WITH_NAME)
+        }
       }
     }
     expect(NAME_AS_SUBJECT.test('classbeat could not tell')).toBe(true)
     expect(NAME_AS_SUBJECT.test('Sent. classbeat picks songs')).toBe(true)
+    expect(NAME_AS_SUBJECT.test('Sent.  classbeat picks songs')).toBe(true)
     expect(NAME_AS_SUBJECT.test('Home, classbeat')).toBe(false)
+    expect(sentences('Sent. "classbeat picks songs" now.').some((s) => STARTS_WITH_NAME.test(s))).toBe(true)
+    expect(sentences('Sent. Open classbeat now.').some((s) => STARTS_WITH_NAME.test(s))).toBe(false)
+  })
+
+  it('starts the home link name with the visible brand', () => {
+    for (const [lang, catalogue] of catalogues()) {
+      for (const key of NAME_FIRST_LABELS) {
+        expect(textOf(catalogue, key), `${lang} ${key}`).toMatch(/^classbeat, \S+$/)
+      }
+    }
+  })
+
+  it('names the Connect button as a whole word, not inside Connections', () => {
+    // The old check used a plain substring, so "Connections" satisfied "Connect" (and "Anslutningar"
+    // satisfied "Anslut"). The matcher itself is pinned here.
+    expect(wholeWord('Connect').test('Open Connections and press Connect.')).toBe(true)
+    expect(wholeWord('Connect').test('Open Connections.')).toBe(false)
+    expect(wholeWord('Anslut').test('Öppna Anslutningar.')).toBe(false)
+    expect(wholeWord('Anslut').test('Tryck på Anslut.')).toBe(true)
+    expect(wholeWord('Save to MOWL').test('Press Save to MOWL.')).toBe(true)
   })
 })

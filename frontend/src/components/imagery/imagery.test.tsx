@@ -153,6 +153,20 @@ describe('EmptyPicture', () => {
     }
   })
 
+  it('never asks for more than the 18 rem the picture is drawn at', () => {
+    setTheme('light')
+    const { container } = wrap(
+      <EmptyPicture slot="emptyClasses">
+        <p>No classes yet</p>
+      </EmptyPicture>,
+    )
+    const sources = [...container.querySelectorAll('source')]
+    expect(sources.length).toBeGreaterThan(0)
+    for (const source of sources) {
+      expect(source.getAttribute('sizes')).toBe('(min-width: 40rem) 18rem, min(100vw, 18rem)')
+    }
+  })
+
   it('draws only the text when the slot has no picture', () => {
     setTheme('light')
     const saved = SLOTS.emptyHome
@@ -205,7 +219,13 @@ describe('AuthSplit', () => {
         <section>card</section>
       </AuthSplit>,
     )
-    expect(container.querySelector('aside.auth-panel img')).toHaveAttribute('src', '/img/auth-panel-dark-960.jpg')
+    const panel = container.querySelector('aside.auth-panel')!
+    expect(panel.querySelector('img')).toHaveAttribute('src', '/img/auth-panel-dark-960.jpg')
+    // Every file the panel can load is the dark set's: the AVIF, WebP and JPEG sources too, never a light one.
+    const files = [...panel.querySelectorAll('source')].flatMap((source) => source.getAttribute('srcset')?.split(', ') ?? [])
+    expect(files.length).toBeGreaterThan(0)
+    for (const file of files) expect(file).toMatch(/^\/img\/auth-panel-dark-\d+\.(avif|webp|jpg) \d+w$/)
+    expect(panel.innerHTML).not.toContain('auth-panel-light')
   })
 
   it('leaves the card alone when the theme has no panel picture', () => {
