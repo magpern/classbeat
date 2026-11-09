@@ -33,3 +33,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0025](0025-turnstile.md) | Cloudflare Turnstile on sign-in, sign-up, the provider-email step and the reset request: order before any account lookup, fail closed, web-only egress (#721) | Proposed |
 | [0026](0026-scaling-music-analysis.md) | Scaling music analysis: cap, measure and cache now; more workers on one box; a separate analysis host; autoscaling only on a measured trigger (#733) | Proposed |
 | [0027](0027-language-prefixed-urls.md) | Language-prefixed URLs `/en`, `/sv`, `/da` for the whole site: client redirect from old URLs, server head tags and sitemap, admin unprefixed (#719) | Accepted |
+| [0028](0028-ui-refresh.md) | UI refresh: calmer screens, shorter copy, Connections as rows and dialogs, Swedebeat always listed, MOWL QR on by default (MX) | Accepted |
