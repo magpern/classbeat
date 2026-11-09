@@ -25,7 +25,7 @@ export const en = {
   // Landing page.
   'landing.badge': 'Private beta',
   'landing.title': 'Your class, timed to the music.',
-  'landing.lead': 'Describe the ride. We pick the songs and save it to MOWL.',
+  'landing.lead': 'Describe the ride. We pick the songs.',
   'landing.signUp': 'Join the beta',
   'landing.example.title': 'An example class',
   'landing.example.note': 'A made-up 30-minute ride. The songs are placeholders.',
@@ -43,7 +43,7 @@ export const en = {
   'landing.how.approve.title': 'Approve songs',
   'landing.how.approve.text': 'Swap any song that does not fit.',
   'landing.how.save.title': 'Save to MOWL',
-  'landing.how.save.text': 'Your class goes straight to MOWL.',
+  'landing.how.save.text': 'Ready to teach, in your account.',
 
   // Sign in, sign up and the pages behind the mail links.
   'auth.signIn': 'Sign in',

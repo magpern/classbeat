@@ -4,7 +4,6 @@ import da from './da'
 import { en } from './en'
 import type { Catalogue, CatalogueKey } from './en'
 
-
 // ADR 0028 section 2 for Home and Landing: button 1 to 3 words, label at most 4, helper at most 12,
 // error at most 20; "classbeat" is never the subject of an app-screen sentence (Home); in en, sv, da.
 

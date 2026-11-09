@@ -22,7 +22,7 @@ const da: Catalogue = {
   // Landing page.
   'landing.badge': 'Privat beta',
   'landing.title': 'Dit hold, i takt med musikken.',
-  'landing.lead': 'Beskriv turen. Vi vælger sangene og gemmer holdet i MOWL.',
+  'landing.lead': 'Beskriv turen. Vi vælger sangene.',
   'landing.signUp': 'Deltag i betaen',
   'landing.example.title': 'Et eksempelhold',
   'landing.example.note': 'En opdigtet tur på 30 minutter. Sangene er pladsholdere.',
@@ -40,7 +40,7 @@ const da: Catalogue = {
   'landing.how.approve.title': 'Godkend sange',
   'landing.how.approve.text': 'Skift de sange ud, der ikke passer.',
   'landing.how.save.title': 'Gem i MOWL',
-  'landing.how.save.text': 'Holdet sendes direkte til MOWL.',
+  'landing.how.save.text': 'Klar til at køre, på din konto.',
 
   // Sign in, sign up and the pages behind the mail links.
   'auth.signIn': 'Log ind',

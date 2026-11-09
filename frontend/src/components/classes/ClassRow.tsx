@@ -27,23 +27,27 @@ export function ClassRow({ cls, actions }: { cls: ClassSummary; actions?: ReactN
   const seconds = profileSeconds(cls.profile)
   return (
     <ListRow
-      className="flex-wrap sm:flex-nowrap"
+      // On a phone the text column keeps at least 10rem and the action drops to its own line.
+      className="flex-wrap sm:flex-nowrap [&>div:nth-child(2)]:min-w-40 [&>div:nth-child(2)]:basis-40"
       leading={
         <div className="w-24 shrink-0 sm:w-36">
           <MiniProfile profile={cls.profile} />
         </div>
       }
       title={
-        <Link to={`/classes/${cls.id}`} className="min-w-0 text-text no-underline wrap-anywhere hover:underline focus-visible:underline">
+        <Link
+          to={`/classes/${cls.id}`}
+          className="min-w-0 text-text no-underline wrap-anywhere hover:underline focus-visible:underline"
+        >
           {cls.title}
         </Link>
       }
       description={
         <span className="flex flex-col items-start gap-1.5">
           {seconds > 0 ? (
-            <span className="flex gap-4 tabular-nums">
-              <span>{lengthLabel(seconds)}</span>
-              <span>
+            <span className="flex flex-wrap gap-x-4 tabular-nums">
+              <span className="whitespace-nowrap">{lengthLabel(seconds)}</span>
+              <span className="whitespace-nowrap">
                 <Trans
                   id="class.card.tss"
                   slots={{
@@ -53,10 +57,12 @@ export function ClassRow({ cls, actions }: { cls: ClassSummary; actions?: ReactN
               </span>
             </span>
           ) : null}
-          <Chip tone={status.tone}>{status.label}</Chip>
+          <Chip tone={status.tone} className="text-left">
+            {status.label}
+          </Chip>
         </span>
       }
-      action={actions}
+      action={actions ? <div className="w-full sm:w-auto">{actions}</div> : null}
     />
   )
 }

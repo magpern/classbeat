@@ -22,7 +22,7 @@ const sv: Catalogue = {
   // Landing page.
   'landing.badge': 'Privat beta',
   'landing.title': 'Ditt pass, i takt med musiken.',
-  'landing.lead': 'Beskriv turen. Vi väljer låtarna och sparar passet i MOWL.',
+  'landing.lead': 'Beskriv turen. Vi väljer låtarna.',
   'landing.signUp': 'Prova betan',
   'landing.example.title': 'Ett exempelpass',
   'landing.example.note': 'En påhittad tur på 30 minuter. Låtarna är platshållare.',
@@ -40,7 +40,7 @@ const sv: Catalogue = {
   'landing.how.approve.title': 'Godkänn låtar',
   'landing.how.approve.text': 'Byt ut låtar som inte passar.',
   'landing.how.save.title': 'Spara i MOWL',
-  'landing.how.save.text': 'Passet skickas direkt till MOWL.',
+  'landing.how.save.text': 'Klart att köra, i ditt konto.',
 
   // Sign in, sign up and the pages behind the mail links.
   'auth.signIn': 'Logga in',

@@ -79,12 +79,16 @@ export function SetupChecklist() {
             name={step.name}
             optional={step.optional}
             status={step.status}
+            // On a narrow phone the text keeps at least 8rem and the button drops to its own line.
+            className="flex-wrap sm:flex-nowrap [&>div:nth-child(2)]:min-w-32 [&>div:nth-child(2)]:basis-32"
             action={
-              <Button asChild variant="secondary">
-                <Link to={step.to} aria-label={t('setup.connectNamed', { name: step.name })}>
-                  {t('conn.connect')}
-                </Link>
-              </Button>
+              <div className="w-full sm:w-auto">
+                <Button asChild variant="secondary">
+                  <Link to={step.to} aria-label={t('setup.connectNamed', { name: step.name })}>
+                    {t('conn.connect')}
+                  </Link>
+                </Button>
+              </div>
             }
           />
         ))}
