@@ -161,8 +161,8 @@ describe('signed-in devices', () => {
     expect(list).toHaveTextContent('This device')
     expect(list).not.toHaveTextContent('192.0.2.10')
     expect(list).not.toHaveTextContent('198.51.100.7')
-    expect(within(list).getAllByRole('button', { name: 'Sign out this device' })).toHaveLength(1)
-    fireEvent.click(within(list).getByRole('button', { name: 'Sign out this device' }))
+    expect(within(list).getAllByRole('button', { name: 'Sign out device' })).toHaveLength(1)
+    fireEvent.click(within(list).getByRole('button', { name: 'Sign out device' }))
     await waitFor(() => {
       expect(screen.getByTestId('devices')).not.toHaveTextContent('Safari on iPhone')
     })
@@ -177,10 +177,10 @@ describe('signed-in devices', () => {
     const items = within(list).getAllByRole('listitem')
     expect(items[0]).not.toHaveTextContent('New location')
     expect(items[1]).toHaveTextContent('New location')
-    expect(within(items[1]!).getByTestId('device-moved')).toHaveTextContent('Used from a new network or browser at')
+    expect(within(items[1]!).getByTestId('device-moved')).toHaveTextContent('New network or browser at')
     expect(within(items[1]!).getByTestId('device-moved')).not.toHaveTextContent('198.51.100.7')
-    expect(within(items[1]!).getByRole('button', { name: 'Sign out this device' })).toBeInTheDocument()
-    expect(within(items[1]!).getByTestId('device-moved')).toHaveTextContent('sign this device out')
+    expect(within(items[1]!).getByRole('button', { name: 'Sign out device' })).toBeInTheDocument()
+    expect(within(items[1]!).getByTestId('device-moved')).toHaveTextContent('Sign this device out')
   })
 
   it('points the current device, which has no sign-out button, to Sign out everywhere', async () => {
@@ -191,8 +191,8 @@ describe('signed-in devices', () => {
     const current = within(list).getAllByRole('listitem')[0]!
     expect(current).toHaveTextContent('This device')
     expect(current).toHaveTextContent('New location')
-    expect(within(current).getByTestId('device-moved')).toHaveTextContent('use Sign out everywhere below')
-    expect(within(current).queryByRole('button', { name: 'Sign out this device' })).toBeNull()
+    expect(within(current).getByTestId('device-moved')).toHaveTextContent('Sign out everywhere below')
+    expect(within(current).queryByRole('button', { name: 'Sign out device' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Sign out everywhere' })).toBeInTheDocument()
   })
 })
@@ -232,7 +232,7 @@ describe('the consent switch', () => {
     fireEvent.click(toggle)
     const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' })
     await confirmWithPassword(dialog, 'my password here')
-    expect(await screen.findByText(/classbeat may use the working playlist/)).toBeInTheDocument()
+    expect(await screen.findByText(/We may use the working playlist/)).toBeInTheDocument()
     const puts = api.to('PUT', '/api/connections/spotify/pool-consent')
     expect(puts).toHaveLength(2)
     // The same request as the old "I agree" button: no body, the server records the version of
@@ -267,6 +267,12 @@ describe('delete my account', () => {
     renderAt('/account#data')
     fireEvent.click(await screen.findByRole('button', { name: 'Delete my account' }))
     const confirm = await screen.findByRole('dialog', { name: 'Delete your account?' })
+    // What else is deleted and what stays are visible, and part of the dialog's description.
+    const also = within(confirm).getByText(/Also deleted: your song lists, plan and usage/)
+    const stays = within(confirm).getByText(/Workouts saved to MOWL and playlists in your Spotify stay there/)
+    expect(also.closest('details')).toBeNull()
+    expect(stays.closest('details')).toBeNull()
+    for (const part of [also, stays]) expect(confirm.getAttribute('aria-describedby')).toContain(part.id)
     const go = within(confirm).getByRole('button', { name: 'Delete for good' })
     expect(go).toBeDisabled()
     fireEvent.change(within(confirm).getByLabelText('Your email'), { target: { value: 'someone@else.test' } })
@@ -405,13 +411,13 @@ describe('removing two-factor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove two-factor' }))
     fireEvent.click(
       within(screen.getByRole('group', { name: 'Confirm removing two-factor' })).getByRole('button', {
-        name: 'Yes, remove two-factor',
+        name: 'Remove two-factor',
       }),
     )
     const prompt = await screen.findByRole('dialog')
     fireEvent.change(within(prompt).getByLabelText('Authenticator or recovery code'), { target: { value: '654321' } })
     fireEvent.click(within(prompt).getByRole('button', { name: 'Continue' }))
-    expect(await screen.findByRole('button', { name: 'Set up an authenticator app' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Set up authenticator' })).toBeInTheDocument()
     expect(api.to('DELETE', '/api/auth/mfa/totp')).toHaveLength(2)
     expect(api.to('POST', '/api/auth/mfa/stepup')[0]?.body).toEqual({ code: '654321' })
   })

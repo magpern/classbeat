@@ -36,7 +36,7 @@ test('connect MOWL, see the status, disconnect', async ({ page }) => {
 
   await row.getByRole('button', { name: 'Disconnect MOWL' }).click()
   const confirm = page.getByRole('dialog', { name: 'Disconnect MOWL?' })
-  await expect(confirm.getByText(/second time/)).toBeVisible() // the warning of ADR 0006 section 3
+  await expect(confirm.getByText(/two copies/)).toBeVisible() // the warning of ADR 0006 section 3
   await confirm.getByRole('button', { name: 'Yes, disconnect MOWL' }).click()
   await expect(page.getByText(/MOWL is disconnected/)).toBeVisible()
   await expect(row.getByRole('button', { name: 'Connect MOWL' })).toBeVisible()

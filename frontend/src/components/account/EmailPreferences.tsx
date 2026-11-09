@@ -78,6 +78,7 @@ export function EmailPreferences() {
           <label htmlFor={`${baseId}-${kind.id}`}>{t(kind.label)}</label>
         </div>
       ))}
+      <p className="m-0 text-muted">{t('mailprefs.securityNote')}</p>
     </div>
   )
 }

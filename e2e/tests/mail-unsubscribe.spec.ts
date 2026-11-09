@@ -42,8 +42,8 @@ test('an optional mail unsubscribes by one click and by its page, and the accoun
 
   // Opening the page, or fetching the one-click URL with GET (a mail scanner), changes nothing.
   await page.goto(unsubscribePage)
-  await expect(page.getByRole('button', { name: 'Stop this kind of email' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Stop all optional email' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Stop these emails' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Stop optional email' })).toBeVisible()
   await page.request.get(`${oneClick.pathname}${oneClick.search}`)
   expect(await prefs()).toEqual({ unsubscribed_all: false, opted_out: [] })
 
@@ -75,17 +75,17 @@ test('an optional mail unsubscribes by one click and by its page, and the accoun
   await activity.click()
   await expect.poll(prefs).toEqual({ unsubscribed_all: false, opted_out: [] })
 
-  // The page's "Stop this kind" button, from the same mail.
+  // The page's "Stop these emails" button, from the same mail.
   await page.goto(unsubscribePage)
-  await page.getByRole('button', { name: 'Stop this kind of email' }).click()
+  await page.getByRole('button', { name: 'Stop these emails' }).click()
   await expect(page.getByRole('heading', { name: 'You are unsubscribed' })).toBeVisible()
-  await expect(page.getByText('classbeat will no longer send you this kind of email.')).toBeVisible()
+  await expect(page.getByText('We will no longer send you this kind of email.')).toBeVisible()
   expect(await prefs()).toEqual({ unsubscribed_all: false, opted_out: ['welcome'] })
 
-  // "Stop all optional email": everything optional is off and the account page locks the kinds.
+  // "Stop optional email": everything optional is off and the account page locks the kinds.
   await page.goto(unsubscribePage)
-  await page.getByRole('button', { name: 'Stop all optional email' }).click()
-  await expect(page.getByText('classbeat will no longer send you optional email.')).toBeVisible()
+  await page.getByRole('button', { name: 'Stop optional email' }).click()
+  await expect(page.getByText('We will no longer send you optional email.')).toBeVisible()
   expect((await prefs()).unsubscribed_all).toBe(true)
   await page.goto('/account#data')
   await expect(all).not.toBeChecked()
@@ -109,7 +109,7 @@ test('the unsubscribe page without a link, and with a link that is not ours', as
   await expect(page.getByText('This page needs the link from the mail.')).toBeVisible()
 
   await page.goto('/unsubscribe#token=forged.token')
-  await page.getByRole('button', { name: 'Stop this kind of email' }).click()
+  await page.getByRole('button', { name: 'Stop these emails' }).click()
   await expect(page.getByText('This link is no longer valid.', { exact: false })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'You are unsubscribed' })).toHaveCount(0)
 })

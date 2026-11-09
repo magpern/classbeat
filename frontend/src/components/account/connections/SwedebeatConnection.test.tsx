@@ -220,7 +220,7 @@ describe('connect Swedebeat', () => {
   it.each([
     [reason(503, 'upstream_unavailable'), 'Swedebeat could not be reached.'],
     [reason(503, 'app_key_unavailable'), 'Swedebeat sign-in is not available on this server.'],
-    [reason(502, 'unknown'), 'Swedebeat answered in a way classbeat did not expect.'],
+    [reason(502, 'unknown'), 'Swedebeat answered in an unexpected way.'],
     [json({ detail: { reason: 'rate_limited' } }, 429, { 'Retry-After': '600' }), 'Try again in 10 minutes.'],
   ])('shows the error category in plain words (%#)', async (answer, text) => {
     fakeApi({ ...ACCOUNT_ROUTES, 'GET /api/connections': list(ON), [PREFERENCE]: stored, [POST]: answer })
@@ -249,7 +249,7 @@ describe('connect Swedebeat', () => {
     expect(await dialog.findByText(/signed in on another device/)).toBeInTheDocument()
     expect(dialog.getByLabelText('Swedebeat password')).toHaveValue('')
     fireEvent.change(dialog.getByLabelText('Swedebeat password'), { target: { value: PASSWORD } })
-    fireEvent.click(dialog.getByRole('button', { name: 'Sign in here anyway' }))
+    fireEvent.click(dialog.getByRole('button', { name: 'Sign in anyway' }))
     expect(await screen.findByText('Swedebeat is connected.')).toBeInTheDocument()
     expect(api.to('POST', '/api/connections/swedebeat').map((c) => (c.body as { force: boolean }).force)).toEqual([
       false,

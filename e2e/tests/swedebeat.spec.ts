@@ -97,7 +97,7 @@ test('another device holds the session: asked first, then signed in here anyway'
   expect(fakeState().logins.map((l) => [l.force, l.ok])).toEqual([[false, false]])
 
   await dialog.getByLabel('Swedebeat password').fill(PASSWORD_A)
-  await dialog.getByRole('button', { name: 'Sign in here anyway' }).click()
+  await dialog.getByRole('button', { name: 'Sign in anyway' }).click()
   await expect(card(page).getByTestId('swedebeat-status')).toHaveText('Connected')
   expect(fakeState().logins.map((l) => [l.force, l.ok])).toEqual([
     [false, false],

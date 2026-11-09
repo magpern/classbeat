@@ -106,7 +106,7 @@ export async function signOut(page: Page, email: string): Promise<void> {
 /** Username-less sign-in from the sign-in page: the button, or the autofill ceremony if it came first. */
 export async function signInWithPasskey(page: Page): Promise<void> {
   await page.goto('/signin')
-  const button = page.getByRole('button', { name: 'Sign in with a passkey' })
+  const button = page.getByRole('button', { name: 'Use a passkey' })
   await expect(button).toBeVisible()
   await button.click({ timeout: 5_000 }).catch(() => undefined)
   await expect(page.getByTestId('account-email')).toBeVisible()

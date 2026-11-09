@@ -62,7 +62,7 @@ describe('Scan with the MOWL app', () => {
     })
     renderAt('/account')
     const mowl = await openMowl()
-    const image = await mowl.findByRole('img', { name: 'QR code to scan with the MOWL app' })
+    const image = await mowl.findByRole('img', { name: 'MOWL QR code' })
     expect(image).toHaveAttribute('src', `${QR}/${ID}/image`)
     expect(mowl.getByTestId('mowl-qr-countdown')).toHaveTextContent('15:00')
     // The password form stays as the other tab.
@@ -86,7 +86,7 @@ describe('Scan with the MOWL app', () => {
     await nextPoll()
     expect(await mowl.findByText(/The code expired/)).toBeInTheDocument()
     expect(mowl.queryByRole('img', { name: /QR code/ })).toBeNull()
-    expect(mowl.getByRole('button', { name: 'Show a new code' })).toBeInTheDocument()
+    expect(mowl.getByRole('button', { name: 'New code' })).toBeInTheDocument()
   })
 
   it('says so when the scan worked but the connection is gone', async () => {

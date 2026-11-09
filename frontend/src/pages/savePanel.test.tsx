@@ -242,12 +242,12 @@ describe('Save', () => {
     [
       'saves per hour',
       { quota: 'saves', limit: 30, used: 30, window: 'hour' },
-      /You have saved or updated 30 classes in MOWL in the last hour, which is as many as classbeat allows\. Try again in an hour\./,
+      /You have saved or updated 30 classes in MOWL in the last hour, which is the limit\. Try again in an hour\./,
     ],
     [
       'saves per day',
       { quota: 'saves', limit: 100, used: 100, window: 'day' },
-      /You have saved or updated 100 classes in MOWL in the last 24 hours, which is as many as classbeat allows\. Try again tomorrow\./,
+      /You have saved or updated 100 classes in MOWL in the last 24 hours, which is the limit\. Try again tomorrow\./,
     ],
   ]
   it.each(QUOTA_REFUSALS)('words the %s plan refusal with its own sentence', async (_kind, detail, sentence) => {

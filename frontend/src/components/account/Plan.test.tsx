@@ -25,10 +25,10 @@ describe('the plan refusal sentences', () => {
 
   it('words the Save and Update cap (#577) with its window, without a body limit too', () => {
     expect(quotaText(quota({ quota: 'saves', limit: 1, used: 1, window: 'hour' }), 'save')).toBe(
-      'You have saved or updated 1 class in MOWL in the last hour, which is as many as classbeat allows. Try again in an hour.',
+      'You have saved or updated 1 class in MOWL in the last hour, which is the limit. Try again in an hour.',
     )
     expect(quotaText(quota({ quota: 'saves', window: 'day' }), 'save')).toBe(
-      'You have saved to MOWL as many times as classbeat allows in the last 24 hours. Try again tomorrow.',
+      'You have reached the limit for saving to MOWL in the last 24 hours. Try again tomorrow.',
     )
   })
 
@@ -129,7 +129,7 @@ describe('the plan panel on the account page', () => {
     const name = await screen.findByTestId('plan-name')
     expect(name.textContent).toBe('Your plan: Instructor (from a code), until 15 December')
     expect(screen.getByTestId('plan-classes').textContent).toBe('3 of 30 classes in October')
-    expect(screen.getByRole('progressbar', { name: /budget used/ }).getAttribute('aria-valuenow')).toBe('40')
+    expect(screen.getByRole('progressbar', { name: /Budget used/ }).getAttribute('aria-valuenow')).toBe('40')
     expect(screen.queryByRole('button', { name: /trial/i })).toBeNull()
   })
 
@@ -189,7 +189,7 @@ describe('the plan panel on the account page', () => {
       },
     })
     renderAt('/account#plan')
-    fireEvent.click(await screen.findByRole('button', { name: 'Start your 14-day trial' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Start 14-day trial' }))
     await waitFor(() => {
       expect(screen.getByTestId('plan-name').textContent).toContain('your trial')
     })

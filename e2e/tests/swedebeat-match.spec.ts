@@ -129,7 +129,7 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
 
   await test.step('replace the two songs, approve the new list, and match again', async () => {
     useModelScript('e2e_swedebeat_replace')
-    await match(page).getByRole('button', { name: 'Replace the missing and unsure songs' }).click()
+    await match(page).getByRole('button', { name: 'Replace songs' }).click()
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
     const id = jobId(page)
     await untilState(page, id, 'waiting_for_approval')
@@ -151,7 +151,7 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
   await test.step('approve the selection: nothing is written to Swedebeat', async () => {
     await page.goto(`/classes/${classId}`)
     await expect(match(page).getByTestId('match-totals')).toHaveText('8 found, 0 unsure, 0 not in Swedebeat.', LONG)
-    await expect(match(page).getByRole('button', { name: 'Replace the missing and unsure songs' })).toHaveCount(0)
+    await expect(match(page).getByRole('button', { name: 'Replace songs' })).toHaveCount(0)
     await check(page, 'match view: all found', match(page).getByRole('button', { name: 'Approve this selection' }))
 
     await match(page).getByRole('button', { name: 'Approve this selection' }).click()
@@ -161,9 +161,9 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
     // 8 songs of 4 minutes, less about 10 seconds for each of the 7 changes.
     await expect(nextStep(page).getByTestId('next-facts')).toContainText('8 songs, about 30:50 long as a mix')
     await expect(nextStep(page).getByTestId('next-facts')).toContainText('E2E matched ride')
-    await expect(nextStep(page).getByRole('button', { name: 'I made the mix' })).toBeVisible()
+    await expect(nextStep(page).getByRole('button', { name: 'I made it' })).toBeVisible()
     await expect(nextStep(page).getByRole('button', { name: 'Not now' })).toBeVisible()
-    await check(page, 'next step: before the first check', nextStep(page).getByRole('button', { name: 'I made the mix' }))
+    await check(page, 'next step: before the first check', nextStep(page).getByRole('button', { name: 'I made it' }))
   })
 
   await test.step('verify: no new mix yet, then a wrong-length mix the user picks', async () => {
@@ -175,7 +175,7 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
     seedCachedMix(ownerIdForEmail(email), mowl.id, CACHED_MIX_ID)
     const before = swedebeatMixState()
 
-    await nextStep(page).getByRole('button', { name: 'I made the mix' }).click()
+    await nextStep(page).getByRole('button', { name: 'I made it' }).click()
     await expect(nextStep(page).getByTestId('verdict')).toContainText('Swedebeat has not shown a new mix yet', LONG)
     await expect(nextStep(page).getByRole('button', { name: 'Check again' })).toBeVisible()
     const picker = nextStep(page).getByRole('group', { name: 'Which one did you make?' })
@@ -186,8 +186,8 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
     await nextStep(page).getByRole('button', { name: 'Check again' }).click()
     await expect(nextStep(page).getByTestId('verdict')).toContainText('That mix is shorter than expected', LONG)
     await expect(nextStep(page).getByTestId('verdict')).toContainText('may be missing')
-    await expect(nextStep(page).getByRole('button', { name: 'This is the right mix' })).toBeEnabled()
-    await check(page, 'next step: a mix that is too short', nextStep(page).getByRole('button', { name: 'This is the right mix' }))
+    await expect(nextStep(page).getByRole('button', { name: 'That’s the one' })).toBeEnabled()
+    await check(page, 'next step: a mix that is too short', nextStep(page).getByRole('button', { name: 'That’s the one' }))
 
     // A cached analysis: no attach, no link and no audio fetch for the user's pick.
     const after = swedebeatMixState()
@@ -223,15 +223,15 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
   })
 
   await test.step('override: a verdict never blocks, and the class is designed on the mix', async () => {
-    await nextStep(page).getByRole('button', { name: 'This is the right mix' }).click()
+    await nextStep(page).getByRole('button', { name: 'That’s the one' }).click()
     await expect(nextStep(page).getByText('Mix verified')).toBeVisible()
-    await check(page, 'next step: verified', nextStep(page).getByRole('button', { name: 'Design the class on this mix' }))
+    await check(page, 'next step: verified', nextStep(page).getByRole('button', { name: 'Design the class' }))
 
     const row = sql(`SELECT state || ',' || mix_id FROM swedebeat_handoffs WHERE class_id = '${classId}' AND superseded_at IS NULL`)
     expect(row).toBe(`verified,${CACHED_MIX_ID}`)
 
     useModelScript('e2e_swedebeat_mix')
-    await nextStep(page).getByRole('button', { name: 'Design the class on this mix' }).click()
+    await nextStep(page).getByRole('button', { name: 'Design the class' }).click()
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
     const id = jobId(page)
     await expect(page.getByRole('heading', { name: 'Your class is ready' })).toBeVisible(LONG)

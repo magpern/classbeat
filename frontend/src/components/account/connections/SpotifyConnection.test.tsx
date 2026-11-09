@@ -82,7 +82,7 @@ describe('the Spotify row', () => {
     spotifyApi('needs_reconnect')
     renderAt('/account')
     const spotify = await row()
-    expect(await spotify.findByTestId('spotify-summary-status')).toHaveTextContent('Needs to be connected again')
+    expect(await spotify.findByTestId('spotify-summary-status')).toHaveTextContent('Needs reconnecting')
     fireEvent.click(spotify.getByRole('button', { name: 'Manage Spotify' }))
     const dialog = within(await screen.findByRole('dialog', { name: 'Spotify' }))
     expect(await dialog.findByRole('button', { name: 'Connect Spotify again' })).toBeInTheDocument()

@@ -333,8 +333,8 @@ describe('account page', () => {
     })
     renderAt('/account?oauth=reauth_stale')
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/did not confirm that you signed in again in the last 5 minutes/)
-    expect(alert).toHaveTextContent(/nothing was changed/)
+    expect(alert).toHaveTextContent(/did not confirm a sign-in in the last 5 minutes/)
+    expect(alert).toHaveTextContent(/Nothing changed/)
     await waitFor(() => {
       expect(alert).toHaveTextContent(/Use your password instead\.$/)
     })
@@ -350,7 +350,7 @@ describe('account page', () => {
     renderAt('/account?oauth=reauth_stale')
     const alert = await screen.findByRole('alert')
     await waitFor(() => {
-      expect(alert).toHaveTextContent(/choose "Forgot your password\?" on the sign-in page/)
+      expect(alert).toHaveTextContent(/To set a password, sign out and choose “Forgot your password\?”/)
     })
     expect(alert).not.toHaveTextContent(/Use your password instead/)
   })
@@ -364,7 +364,7 @@ describe('account page', () => {
     renderAt('/account?oauth=reauth_stale')
     const alert = (await screen.findAllByRole('alert'))[0]
     await waitFor(() => {
-      expect(alert).toHaveTextContent(/Use your password instead, if you have one\./)
+      expect(alert).toHaveTextContent(/Use your password, or set one/)
     })
   })
 
@@ -394,7 +394,7 @@ describe('account page', () => {
     expect(within(dialog).getByRole('button', { name: 'Confirm with password' })).toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: 'Confirm with Google' })).toBeNull()
     expect(dialog).toHaveTextContent(
-      'Microsoft can confirm it only if you signed in there in the last 5 minutes. Your password always works.',
+      'To confirm with Microsoft, sign in there in the last 5 minutes. Your password always works.',
     )
     expect(dialog).not.toHaveTextContent(/Google/)
   })
@@ -403,8 +403,8 @@ describe('account page', () => {
     const dialog = await openReauthPrompt(false)
     expect(within(dialog).getByRole('button', { name: 'Confirm with Google' })).toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: 'Confirm with password' })).toBeNull()
-    expect(dialog).toHaveTextContent('Microsoft can confirm it only if you signed in there in the last 5 minutes.')
-    expect(dialog).not.toHaveTextContent(/Google can confirm/)
+    expect(dialog).toHaveTextContent('To confirm with Microsoft, sign in there in the last 5 minutes.')
+    expect(dialog).not.toHaveTextContent(/To confirm with Google/)
   })
 
   it('says to use the password when Google was refused for an account with one (#687)', async () => {
@@ -493,9 +493,9 @@ describe('account page', () => {
       'POST /api/auth/mfa/totp/confirm': { recovery_codes: ['AAAAA11111', 'BBBBB22222'] },
     })
     renderAt('/account#security')
-    fireEvent.click(await screen.findByRole('button', { name: 'Set up an authenticator app' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Set up authenticator' }))
     // Drawn inline (no data: URL, which the CSP's img-src does not allow), shapes only.
-    const qr = await screen.findByRole('img', { name: 'QR code for your authenticator app' })
+    const qr = await screen.findByRole('img', { name: 'Authenticator QR code' })
     expect(qr.tagName.toLowerCase()).toBe('svg')
     expect(qr.getAttribute('viewBox')).toBe('0 0 12 12')
     expect(qr.querySelector('g')?.getAttribute('transform')).toBe('scale(4)')
@@ -556,7 +556,7 @@ describe('admin page', () => {
       'GET /api/auth/mfa': MFA_OFF,
     })
     renderAt('/admin')
-    expect(await screen.findByRole('button', { name: 'Set up an authenticator app' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Set up authenticator' })).toBeInTheDocument()
   })
 
   it('turns non-admins away', async () => {

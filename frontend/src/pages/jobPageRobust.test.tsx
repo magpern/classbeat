@@ -74,7 +74,7 @@ describe('an uncertain attach whose list is empty or unreadable', () => {
     const note = await screen.findByTestId('no-undecided')
     expect(note).toHaveAttribute('role', 'status')
     expect(note).toHaveTextContent('disconnect and reconnect MOWL')
-    expect(note).toHaveTextContent('a second time')
+    expect(note).toHaveTextContent('two copies')
     expect(note).not.toHaveTextContent('checks the playlist once more')
     expect(screen.getByRole('link', { name: 'your account page' })).toHaveAttribute('href', '/en/account')
     expect(await screen.findByRole('button', { name: 'Design again' })).toBeInTheDocument()

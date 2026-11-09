@@ -33,7 +33,7 @@ describe('passkey sign-in', () => {
     page()
     renderAt('/signin')
     await screen.findByRole('button', { name: 'Sign in' })
-    expect(screen.queryByRole('button', { name: 'Sign in with a passkey' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Use a passkey' })).toBeNull()
     expect(screen.getByLabelText('Email')).toHaveAttribute('autocomplete', 'username')
   })
 
@@ -45,7 +45,7 @@ describe('passkey sign-in', () => {
     })
     renderAt('/signin')
     await screen.findByRole('button', { name: 'Sign in' })
-    expect(screen.queryByRole('button', { name: 'Sign in with a passkey' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Use a passkey' })).toBeNull()
     expect(api.to('POST', '/api/auth/passkeys/signin/start')).toHaveLength(0)
   })
 
@@ -62,7 +62,7 @@ describe('passkey sign-in', () => {
       signedIn,
     )
     renderAt('/signin')
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use a passkey' }))
     expect(await screen.findByTestId('account-email')).toBeInTheDocument()
     expect(window.location.pathname).toBe('/en/account')
     expect(browser.get.mock.calls[0]?.[0]).not.toHaveProperty('mediation')
@@ -88,7 +88,7 @@ describe('passkey sign-in', () => {
       signedIn,
     )
     renderAt('/signin')
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use a passkey' }))
     expect(await screen.findByText('Signed in with your phone or security key; sign out when you are done.')).toBeInTheDocument()
     expect(isPhoneSignIn()).toBe(true)
     const notice = screen.getByText('Signed in with your phone or security key; sign out when you are done.').closest('div')!
@@ -113,7 +113,7 @@ describe('passkey sign-in', () => {
     )
     renderAt('/signin')
     // The sign-in page found the session signed out: the flag is gone already.
-    await screen.findByRole('button', { name: 'Sign in with a passkey' })
+    await screen.findByRole('button', { name: 'Use a passkey' })
     expect(isPhoneSignIn()).toBe(false)
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ann@example.test' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct horse battery' } })
@@ -129,9 +129,9 @@ describe('passkey sign-in', () => {
     installPasskeys({ result: error('NotAllowedError') })
     page()
     renderAt('/signin')
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use a passkey' }))
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Sign in with a passkey' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Use a passkey' })).toBeEnabled()
     })
     expect(screen.queryByRole('alert')).toBeNull()
   })
@@ -140,9 +140,9 @@ describe('passkey sign-in', () => {
     installPasskeys()
     page({ 'POST /api/auth/passkeys/signin/start': reason(503, 'passkey_busy') })
     renderAt('/signin')
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use a passkey' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Passkey sign-in is busy right now. Sign in with your password or a provider, or try the passkey again in a few minutes.',
+      'Passkey sign-in is busy. Use your password or a provider, or try the passkey again in a few minutes.',
     )
   })
 
@@ -153,7 +153,7 @@ describe('passkey sign-in', () => {
         json({ detail: { reason: 'rate_limited' } }, 429, { 'Retry-After': '120' }),
     })
     renderAt('/signin')
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use a passkey' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/Too many attempts/)
   })
 
@@ -161,7 +161,7 @@ describe('passkey sign-in', () => {
     const browser = installPasskeys({ result: credential(), signals: true })
     page({ 'POST /api/auth/passkeys/signin/finish': reason(400, 'passkey_unknown') })
     renderAt('/signin')
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use a passkey' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('not registered here any more')
     expect(browser.signalUnknownCredential).toHaveBeenCalledWith({ rpId: 'classbeat.test', credentialId: 'cred-1' })
   })
@@ -172,7 +172,7 @@ describe('passkey autofill', () => {
     const browser = installPasskeys({ conditional: true })
     page()
     renderAt('/signin')
-    await screen.findByRole('button', { name: 'Sign in with a passkey' })
+    await screen.findByRole('button', { name: 'Use a passkey' })
     expect(screen.getByLabelText('Email')).toHaveAttribute('autocomplete', 'username webauthn')
     await waitFor(() => {
       expect(browser.get).toHaveBeenCalledTimes(1)
@@ -200,7 +200,7 @@ describe('passkey autofill', () => {
     const browser = installPasskeys({ conditional: false })
     page()
     renderAt('/signin')
-    await screen.findByRole('button', { name: 'Sign in with a passkey' })
+    await screen.findByRole('button', { name: 'Use a passkey' })
     expect(screen.getByLabelText('Email')).toHaveAttribute('autocomplete', 'username webauthn')
     expect(browser.get).not.toHaveBeenCalled()
   })
@@ -211,10 +211,10 @@ describe('passkey autofill', () => {
       'POST /api/auth/passkeys/signin/start': reason(503, 'passkey_busy'),
     })
     renderAt('/signin')
-    expect(await screen.findByRole('alert')).toHaveTextContent(/busy right now/)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/is busy/)
     expect(browser.get).not.toHaveBeenCalled()
     expect(api.to('POST', '/api/auth/passkeys/signin/start')).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'Sign in with a passkey' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Use a passkey' })).toBeEnabled()
   })
 
   it('pauses while the button runs its own ceremony', async () => {
@@ -226,7 +226,7 @@ describe('passkey autofill', () => {
     })
     const conditional = browser.get.mock.calls[0]?.[0] as { signal: AbortSignal }
     browser.get.mockImplementationOnce(() => new Promise(() => undefined))
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in with a passkey' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use a passkey' }))
     await waitFor(() => {
       expect(conditional.signal.aborted).toBe(true)
     })

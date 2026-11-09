@@ -88,7 +88,7 @@ describe('Get set up', () => {
     })
     renderAt('/')
     const region = await screen.findByRole('region', { name: 'Get set up' })
-    expect(within(region).getByText('Needs to be connected again')).toBeInTheDocument()
+    expect(within(region).getByText('Needs reconnecting')).toBeInTheDocument()
     expect(within(region).queryByText(/Spotify/)).toBeNull()
   })
 

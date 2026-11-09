@@ -49,7 +49,7 @@ test('re-authentication with the passkey, then rename and remove', async ({ page
   await page.getByRole('button', { name: 'Remove Desk' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByRole('heading', { name: 'Confirm it is you' })).toBeVisible()
-  await dialog.getByRole('button', { name: 'Confirm with a passkey' }).click()
+  await dialog.getByRole('button', { name: 'Use your passkey' }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.getByText('You have no passkeys yet.')).toBeVisible()
   expect(passkeyLabels(email)).toEqual([])
@@ -78,7 +78,7 @@ test('a removed passkey no longer signs in, and the password still does', async 
 
   await signOut(page, email)
   await page.goto('/signin')
-  const button = page.getByRole('button', { name: 'Sign in with a passkey' })
+  const button = page.getByRole('button', { name: 'Use a passkey' })
   await expect(button).toBeVisible()
   // Either the server refuses the assertion (400 passkey_unknown, an alert) or the browser, whose
   // passkey list the app corrected with the signal API, offers nothing and the ceremony is

@@ -58,7 +58,7 @@ describe('passkey option in the re-authentication prompt', () => {
     const api = routes({ flag: true, passkeys: ONE, grant })
     open(grant)
     const dialog = await screen.findByRole('dialog')
-    fireEvent.click(await within(dialog).findByRole('button', { name: 'Confirm with a passkey' }))
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Use your passkey' }))
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull()
     })
@@ -82,7 +82,7 @@ describe('passkey option in the re-authentication prompt', () => {
     await waitFor(() => {
       expect(api.to('GET', '/api/auth/identities').length).toBeGreaterThan(0)
     })
-    expect(within(dialog).queryByRole('button', { name: 'Confirm with a passkey' })).toBeNull()
+    expect(within(dialog).queryByRole('button', { name: 'Use your passkey' })).toBeNull()
   })
 
   it('the step-up prompt asks for the code and has no passkey button even when one is offered elsewhere', async () => {
@@ -92,6 +92,6 @@ describe('passkey option in the re-authentication prompt', () => {
     open(grant, 'stepup_required')
     const dialog = await screen.findByRole('dialog')
     await within(dialog).findByLabelText('Authenticator or recovery code')
-    expect(within(dialog).queryByRole('button', { name: 'Confirm with a passkey' })).toBeNull()
+    expect(within(dialog).queryByRole('button', { name: 'Use your passkey' })).toBeNull()
   })
 })

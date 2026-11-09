@@ -27,8 +27,8 @@ test('the passkey pages pass axe and break no CSP rule', async ({ page }) => {
   // The sign-in page first, while the authenticator holds nothing: with a passkey in it the autofill
   // ceremony would sign the user in at once and the page would be gone before it is audited.
   await page.goto('/signin')
-  await expect(page.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible()
-  await check('sign-in page', page.getByRole('button', { name: 'Sign in with a passkey' }), 'main')
+  await expect(page.getByRole('button', { name: 'Use a passkey' })).toBeVisible()
+  await check('sign-in page', page.getByRole('button', { name: 'Use a passkey' }), 'main')
 
   const authenticator = await addAuthenticator(page)
   const email = await userOnSecurityTab(page, 'pk-a11y')
@@ -39,8 +39,8 @@ test('the passkey pages pass axe and break no CSP rule', async ({ page }) => {
   ageReauth(email)
   await page.getByRole('button', { name: 'Remove Work laptop' }).click()
   const dialog = page.getByRole('dialog')
-  await expect(dialog.getByRole('button', { name: 'Confirm with a passkey' })).toBeVisible()
-  await check('re-auth prompt', dialog.getByRole('button', { name: 'Confirm with a passkey' }), '[role="dialog"]')
+  await expect(dialog.getByRole('button', { name: 'Use your passkey' })).toBeVisible()
+  await check('re-auth prompt', dialog.getByRole('button', { name: 'Use your passkey' }), '[role="dialog"]')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
   await expect(dialog).toHaveCount(0)
 

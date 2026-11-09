@@ -120,7 +120,7 @@ describe('connect MOWL', () => {
     renderAt('/account')
     fireEvent.click(await screen.findByRole('button', { name: 'Disconnect MOWL' }))
     const confirm = within(await screen.findByRole('dialog', { name: 'Disconnect MOWL?' }))
-    expect(confirm.getByText(/second time/)).toBeInTheDocument() // the warning of ADR 0006 section 3
+    expect(confirm.getByText(/two copies/)).toBeInTheDocument() // the warning of ADR 0006 section 3
     expect(api.to('DELETE', '/api/connections/mowl')).toHaveLength(0)
     fireEvent.click(confirm.getByRole('button', { name: 'Yes, disconnect MOWL' }))
     expect(await screen.findByText(/MOWL is disconnected/)).toBeInTheDocument()
@@ -139,7 +139,7 @@ describe('connect MOWL', () => {
     })
     renderAt('/account')
     const status = await screen.findByTestId('mowl-status')
-    expect(status).toHaveTextContent('Needs to be connected again')
+    expect(status).toHaveTextContent('Needs reconnecting')
     expect(status).toHaveTextContent('MOWL no longer accepts the stored sign-in')
     expect(screen.getByRole('button', { name: 'Connect MOWL again' })).toBeInTheDocument()
   })
