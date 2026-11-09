@@ -1,6 +1,8 @@
 import { ApiError, get, post } from './client'
 import { count, flag, list, object, optionalCount, optionalText, strings, text } from './decode'
 import { decodeJob, type Job } from './jobs'
+import type { CatalogueKey } from '../i18n/en'
+import { t } from '../i18n/t'
 
 // The Swedebeat match of a class and the manual "Next, in the Swedebeat app" step (ADR 0016
 // sections 5 to 7). The browser only talks to classbeat's own API: it never calls Swedebeat, and
@@ -202,36 +204,36 @@ export async function notNow(classId: string): Promise<void> {
   await post(`${base(classId)}/swedebeat-handoff/not-now`)
 }
 
-// Plain sentences for the refusals of these routes. Never a provider message or a reason code.
+// Plain sentences for the refusals of these routes (catalogue keys swmatch.reason.*, ADR 0028 section 2).
+// Never a provider message or a reason code.
 
-const REASONS: Record<string, string> = {
-  feature_off: 'Swedebeat matching is not available right now.',
-  not_found: 'This class or its selection no longer exists. Reload the page.',
-  stale_match: 'The songs changed after this match was made. Reload the page and match again.',
-  handoff_expired: 'This step has expired. Start it again.',
-  class_busy: 'This class already has a task running. Wait for it to finish, then try again.',
-  not_connected: 'MOWL or Swedebeat is not connected. Connect it on your account page first.',
-  rate_limited: 'Too many requests. Try again in a few minutes.',
-  upstream_unavailable: 'MOWL or Swedebeat could not be reached. Try again in a few minutes.',
-  key_unavailable: 'MOWL or Swedebeat could not be reached. Try again in a few minutes.',
-  outbound_blocked: 'MOWL or Swedebeat could not be reached. Try again in a few minutes.',
-  invalid_input: 'That did not work. Reload the page and try again.',
-  not_checked: 'Check for your mix first, then say it is the right one.',
-  busy: 'You already have the most tasks running. Wait for one to finish.',
-  quota: 'Your plan has no room for this right now.',
-  analysis_limit: 'You have analysed the most mixes allowed for today. Try again tomorrow.',
-  too_large: 'That did not work. Reload the page and try again.',
-  idempotency_mismatch: 'That did not work. Reload the page and try again.',
-  decrypt_failed: 'The stored sign-in could not be read. Connect again on your account page.',
-  pool_busy: 'Another song pick is still running. Wait for it to finish, then try again.',
-  song_picking_off: 'Picking songs is not available right now.',
-  consent_missing: 'Allow the working playlist in your Spotify settings on your account page first.',
-  revision_limit: 'This class has reached the most versions it can have.',
-  chat_full: 'The conversation of this class is full, so it cannot be changed any more.',
-  stale_base: 'The class changed in the meantime. Reload the page and try again.',
-  swedebeat_rounds: 'Songs have been replaced three times already. Keep the selection or approve it.',
-  write_unresolved:
-    'An earlier step on Spotify is still undecided. Decide it first (Check again or Do it anyway), then try again.',
+const REASONS: Record<string, CatalogueKey> = {
+  feature_off: 'swmatch.reason.feature_off',
+  not_found: 'swmatch.reason.not_found',
+  stale_match: 'swmatch.reason.stale_match',
+  handoff_expired: 'swmatch.reason.handoff_expired',
+  class_busy: 'swmatch.reason.class_busy',
+  not_connected: 'swmatch.reason.not_connected',
+  rate_limited: 'swmatch.reason.rate_limited',
+  upstream_unavailable: 'swmatch.reason.upstream_unavailable',
+  key_unavailable: 'swmatch.reason.upstream_unavailable',
+  outbound_blocked: 'swmatch.reason.upstream_unavailable',
+  invalid_input: 'swmatch.reason.invalid_input',
+  not_checked: 'swmatch.reason.not_checked',
+  busy: 'swmatch.reason.busy',
+  quota: 'swmatch.reason.quota',
+  analysis_limit: 'swmatch.reason.analysis_limit',
+  too_large: 'swmatch.reason.invalid_input',
+  idempotency_mismatch: 'swmatch.reason.invalid_input',
+  decrypt_failed: 'swmatch.reason.decrypt_failed',
+  pool_busy: 'swmatch.reason.pool_busy',
+  song_picking_off: 'swmatch.reason.song_picking_off',
+  consent_missing: 'swmatch.reason.consent_missing',
+  revision_limit: 'swmatch.reason.revision_limit',
+  chat_full: 'swmatch.reason.chat_full',
+  stale_base: 'swmatch.reason.stale_base',
+  swedebeat_rounds: 'swmatch.reason.swedebeat_rounds',
+  write_unresolved: 'swmatch.reason.write_unresolved',
 }
 
 /** A reconnect is needed: the sign-in with MOWL or Swedebeat was refused. */
@@ -241,8 +243,8 @@ export function needsReconnect(error: unknown): boolean {
 
 export function swedebeatError(error: unknown): string {
   if (error instanceof ApiError && error.reason !== null && Object.hasOwn(REASONS, error.reason)) {
-    return REASONS[error.reason]!
+    return t(REASONS[error.reason]!)
   }
-  if (error instanceof ApiError && error.status === 429) return REASONS.rate_limited!
-  return 'That did not work. Try again in a moment.'
+  if (error instanceof ApiError && error.status === 429) return t(REASONS.rate_limited!)
+  return t('swmatch.reason.fallback')
 }

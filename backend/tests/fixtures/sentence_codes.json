@@ -12,7 +12,7 @@
   {
     "code": "spotify.not_allowlisted",
     "params": {},
-    "english": "Spotify refused this account. In your Spotify app's User Management, add its name and email. The app owner needs Premium."
+    "english": "Spotify refused this account. In your Spotify app's User Management, add the account's name and email. App owners need Premium."
   },
   {
     "code": "spotify.forbidden",

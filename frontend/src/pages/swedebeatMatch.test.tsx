@@ -583,7 +583,7 @@ describe('Next, in the Swedebeat app', () => {
     })
     renderAt(PAGE)
     await press('I made it')
-    expect(await screen.findByText(/analysed the most mixes allowed for today/)).toBeInTheDocument()
+    expect(await screen.findByText(/used today's limit of new mix analyses/)).toBeInTheDocument()
   })
 
   it('is absent until the selection is approved, and never calls the hand-off before', async () => {

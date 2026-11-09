@@ -224,7 +224,7 @@ const sv: Catalogue = {
   'sentence.spotify.app_misconfigured':
     'Spotify känner inte igen den här appinställningen. Kontrollera Client ID och omdirigerings-URI:n i din Spotify-app.',
   'sentence.spotify.not_allowlisted':
-    'Spotify avvisade kontot. Lägg till dess namn och e-postadress under User Management i din Spotify-app. Appens ägare behöver Premium.',
+    'Spotify avvisade kontot. Lägg till kontots namn och e-postadress under User Management i din Spotify-app. Appens ägare behöver Premium.',
   'sentence.spotify.forbidden': 'Spotify avvisade begäran för ditt konto eller din spellista.',
   'sentence.spotify.rate_limited': {
     one: 'Spotify ber oss sakta ner; försöker igen om cirka {count} minut.',
@@ -904,12 +904,12 @@ const sv: Catalogue = {
   'job.failure.rate_limited.detail': 'Ditt pass utformades inte. Vänta några minuter och försök igen.',
   'job.failure.model_unavailable.title': 'Utformaren är upptagen',
   'job.failure.model_unavailable.detail':
-    'Tjänsten som utformar passet kunde inte ta emot begäran. Försök igen om några minuter.',
+    'Utformaren kunde inte ta emot begäran. Inget utformades. Försök igen om några minuter.',
   'job.failure.lease_lost.title': 'Utformningen avbröts',
-  'job.failure.lease_lost.detail': 'Den avbröts för många gånger. Försök igen.',
+  'job.failure.lease_lost.detail': 'Utformningen avbröts flera gånger. Försök igen.',
   'job.failure.operation_busy.title': 'En annan utformning använder den här spellistan',
   'job.failure.operation_busy.detail':
-    'En annan utformning av dig lade fortfarande till samma spellista i MOWL. Försök igen om en stund.',
+    'En annan utformning av dig lägger fortfarande till den här spellistan i MOWL. Försök igen om en stund.',
   'job.failure.not_connected.title': 'MOWL är inte anslutet',
   'job.failure.not_connected.detail': 'Anslut MOWL på din kontosida och börja sedan om.',
   'job.failure.needs_reconnect.title': 'MOWL godkänner inte längre den sparade inloggningen',
@@ -931,9 +931,9 @@ const sv: Catalogue = {
   'job.failure.outbound_blocked.title': 'Något gick fel hos oss',
   'job.failure.outbound_blocked.detail': 'Försök igen senare.',
   'job.failure.program_changed.title': 'Det här träningspasset ändrades i MOWL',
-  'job.failure.program_changed.detail': 'Det här träningspasset ändrades i MOWL efter att vi sparade det.',
+  'job.failure.program_changed.detail': 'Det här träningspasset ändrades i MOWL efter att du sparade det. Inget skrevs.',
   'job.failure.program_missing.title': 'Det här träningspasset finns inte längre i MOWL',
-  'job.failure.program_missing.detail': 'Det här träningspasset finns inte längre i ditt MOWL-konto.',
+  'job.failure.program_missing.detail': 'Det här träningspasset finns inte längre i ditt MOWL-konto. Inget skrevs.',
   'job.failure.music_changed.title': 'Musiken ändrades',
   'job.failure.music_changed.detail':
     'Musiken har ändrats sedan den här versionen, så tidskorrigeringarna hoppades över. Be om en ändring i chatten.',
@@ -944,7 +944,7 @@ const sv: Catalogue = {
   'job.failure.use_change_songs.detail': 'Inget ändrades. Använd Byt låtar på passidan för att välja andra.',
   'job.failure.media_host_not_allowed.title': 'Nya Swedebeat-mixar kan inte analyseras här ännu',
   'job.failure.media_host_not_allowed.detail':
-    'Mixen lades till i ditt MOWL-konto men kunde inte analyseras. Tidigare analyserade mixar fungerar fortfarande.',
+    'Mixen finns i ditt MOWL-konto. Prova en som analyserats tidigare.',
   'job.failure.media_refused.title': 'Ljudet från den här mixen kunde inte hämtas',
   'job.failure.media_refused.detail': 'Inget utformades. Försök igen senare.',
   'job.failure.analysis_failed.title': 'Ljudet från den här mixen kunde inte analyseras',
@@ -953,7 +953,7 @@ const sv: Catalogue = {
   'job.failure.feature_off.detail': 'Inget utformades. Försök igen senare.',
   'job.failure.analysis_limit.title': 'För många nya Swedebeat-mixar i dag',
   'job.failure.analysis_limit.detail':
-    'Du har analyserat 10 nya mixar på 24 timmar. Tidigare mixar fungerar fortfarande; prova en ny i morgon.',
+    'Du har analyserat 10 nya mixar på 24 timmar. Prova igen i morgon eller använd en som analyserats tidigare.',
   'job.failure.soundless_not_evaluated.title': 'Pass utan musik är inte klara än',
   'job.failure.soundless_not_evaluated.detail':
     'Inget utformades. Välj en spellista i stället, eller försök igen senare.',
@@ -1032,7 +1032,7 @@ const sv: Catalogue = {
     'Musiken i den här versionen finns inte i ditt anslutna MOWL-konto. Ändra den och spara den nya versionen.',
   'job.revise.soundless_not_evaluated':
     'Pass utan musik är inte klara för din plan ännu. Inget ändrades. Försök igen senare.',
-  'job.revise.program_changed': 'Det här träningspasset ändrades i MOWL efter att vi sparade det.',
+  'job.revise.program_changed': 'Det här träningspasset ändrades i MOWL efter att du sparade det.',
   'job.revise.program_missing': 'Det här träningspasset finns inte längre i ditt MOWL-konto.',
   'job.revise.program_other_sport':
     'Det här träningspasset i MOWL är för en annan sport än det här passet, så vi ersatte det inte.',
@@ -1670,6 +1670,52 @@ const sv: Catalogue = {
   'swmatch.nothingWritten': 'Inget skrevs till Swedebeat.',
   'swmatch.approve': 'Godkänn urvalet',
   'swmatch.replace': 'Byt ut låtar',
+  'swmatch.reason.feature_off':
+    'Swedebeat-matchning är avstängd just nu. Försök igen senare.',
+  'swmatch.reason.not_found':
+    'Det här passet eller dess urval finns inte längre. Ladda om sidan.',
+  'swmatch.reason.stale_match':
+    'Låtarna ändrades efter att matchningen gjordes. Ladda om sidan och matcha igen.',
+  'swmatch.reason.handoff_expired':
+    'Det här steget har gått ut. Starta om det.',
+  'swmatch.reason.class_busy':
+    'Det här passet har redan en uppgift igång. Vänta tills den är klar och försök sedan igen.',
+  'swmatch.reason.not_connected':
+    'MOWL eller Swedebeat är inte anslutet. Anslut det först på din kontosida.',
+  'swmatch.reason.rate_limited':
+    'För många förfrågningar. Försök igen om några minuter.',
+  'swmatch.reason.upstream_unavailable':
+    'MOWL eller Swedebeat kunde inte nås. Försök igen om några minuter.',
+  'swmatch.reason.invalid_input':
+    'Det fungerade inte. Ladda om sidan och försök igen.',
+  'swmatch.reason.not_checked':
+    'Sök först efter din mix och bekräfta sedan att det är rätt.',
+  'swmatch.reason.busy':
+    'Du har redan så många uppgifter igång som är tillåtet. Vänta tills en är klar.',
+  'swmatch.reason.quota':
+    'Din plan har inte plats för det här just nu.',
+  'swmatch.reason.analysis_limit':
+    'Du har nått dagens gräns för nya mixanalyser. Prova igen i morgon eller använd en mix som analyserats tidigare.',
+  'swmatch.reason.decrypt_failed':
+    'Vi kan inte läsa din sparade inloggning. Anslut igen på din kontosida.',
+  'swmatch.reason.pool_busy':
+    'Ett annat låtval pågår fortfarande. Vänta tills det är klart och försök sedan igen.',
+  'swmatch.reason.song_picking_off':
+    'Låtval är avstängt just nu. Försök igen senare.',
+  'swmatch.reason.consent_missing':
+    'Tillåt arbetsspellistan i Spotify-dialogen under Anslutningar på din kontosida.',
+  'swmatch.reason.revision_limit':
+    'Det här passet har nått sin gräns för antal versioner.',
+  'swmatch.reason.chat_full':
+    'Chatten för det här passet är full, så passet kan inte ändras mer.',
+  'swmatch.reason.stale_base':
+    'Passet ändrades under tiden. Ladda om sidan och försök igen.',
+  'swmatch.reason.swedebeat_rounds':
+    'Låtar har redan bytts ut tre gånger. Behåll urvalet eller godkänn det.',
+  'swmatch.reason.write_unresolved':
+    'Ett tidigare steg på Spotify är fortfarande oavgjort. Avgör det först (Kontrollera igen eller Gör det ändå), försök sedan igen.',
+  'swmatch.reason.fallback':
+    'Det fungerade inte. Försök igen om en stund.',
   'swstart.blurb':
     'Se vilka av de här låtarna som finns i Swedebeat. Bara titlar och artister slås upp; inget skrivs till ditt Swedebeat-konto.',
   'swstart.connectFirst': 'Anslut Swedebeat på din kontosida först',
