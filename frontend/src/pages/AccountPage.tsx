@@ -5,8 +5,7 @@ import { oauthOutcomeMessage } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
 import type { CatalogueKey } from '../i18n/en'
 import { useT } from '../i18n/I18n'
-import { Connections } from '../components/account/Connections'
-import { Swedebeat } from '../components/account/Swedebeat'
+import { ConnectionsList } from '../components/account/connections/ConnectionsList'
 import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
 import { DeleteAccount } from '../components/account/DeleteAccount'
 import { Devices } from '../components/account/Devices'
@@ -15,7 +14,6 @@ import { SecurityActivity } from '../components/account/SecurityActivity'
 import { Plan } from '../components/account/Plan'
 import { Passkeys } from '../components/account/Passkeys'
 import { SignInMethods } from '../components/account/SignInMethods'
-import { SpotifySummary } from '../components/account/Spotify'
 import { TwoFactor } from '../components/account/TwoFactor'
 import { Usage } from '../components/account/Usage'
 import { Notice, Section, useAction } from '../components/forms'
@@ -169,9 +167,7 @@ function Account() {
           ))}
         </TabsList>
         <TabsContent value="connections" className="flex flex-col gap-4">
-          <Connections />
-          <SpotifySummary />
-          <Swedebeat />
+          <ConnectionsList />
         </TabsContent>
         <TabsContent value="plan" className="flex flex-col gap-4">
           <Plan />

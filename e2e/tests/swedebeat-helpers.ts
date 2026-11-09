@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import { inContainer } from './spotify-helpers'
 
 // Shared by the Swedebeat spec: the fake Swedebeat's public test data and test control
@@ -64,14 +64,32 @@ export const catalogueCalls = (): (string | null)[] =>
     .calls.filter((c) => c.path === '/track/extendedsearch')
     .map((c) => c.email)
 
+/** The Swedebeat row of the account page's Connections list (ADR 0028). */
+export const swedebeatRow = (page: Page): Locator => page.getByTestId('connection-swedebeat')
+
+/** Opens the Connect Swedebeat dialog from the account page's list. */
+export async function openSwedebeatDialog(page: Page): Promise<Locator> {
+  if (!/\/account(\/|$|\?|#)/.test(new URL(page.url()).pathname)) await page.goto('/account')
+  await swedebeatRow(page).getByRole('button', { name: 'Connect Swedebeat' }).click()
+  return page.getByRole('dialog', { name: 'Connect Swedebeat' })
+}
+
+/** Fills the open dialog's email and password. */
+export async function fillSwedebeat(dialog: Locator, email: string, password: string): Promise<void> {
+  await dialog.getByLabel('Swedebeat email').fill(email)
+  await dialog.getByLabel('Swedebeat password').fill(password)
+}
+
 /**
- * Turns on the signed-in user's "I use Swedebeat" switch on the account page (#525: default off, and
- * every Swedebeat feature needs it), the way a user does.
+ * Turns the stored "I use Swedebeat" preference (#525) on through the app's own API, the way the
+ * Connect dialog does (ADR 0028: the switch is no longer on the page). For specs that need the
+ * mix choice but have no reason to connect a Swedebeat account.
  */
-export async function useSwedebeatThroughUi(page: Page): Promise<void> {
-  if (!page.url().includes('/account')) await page.goto('/account')
-  const toggle = page.getByRole('region', { name: 'Swedebeat', exact: true }).getByRole('switch', { name: 'I use Swedebeat' })
-  await expect(toggle).toBeVisible()
-  if ((await toggle.getAttribute('aria-checked')) !== 'true') await toggle.click()
-  await expect(toggle).toHaveAttribute('aria-checked', 'true')
+export async function useSwedebeat(page: Page): Promise<void> {
+  const session = (await (await page.request.get('/api/auth/session')).json()) as { csrf_token: string }
+  const answer = await page.request.put('/api/connections/swedebeat/preference', {
+    data: { uses_swedebeat: true },
+    headers: { 'X-CSRF-Token': session.csrf_token },
+  })
+  expect(answer.ok()).toBe(true)
 }

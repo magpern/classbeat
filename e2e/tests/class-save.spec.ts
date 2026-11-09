@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from './helpers'
-import { PLAYLISTS, connectMowl, fakeMowl } from './design-helpers'
+import { PLAYLISTS, connectMowl, disconnectMowl, fakeMowl } from './design-helpers'
 import { savedShape, useModelScript, type ModelScript } from './model-script'
 import {
   DRAFT_PLAYLIST_MOWL_ID,
@@ -229,11 +229,7 @@ test('after MOWL is connected as another account, only a new version can be save
   const old = await savedClass(page, 'other-account')
 
   // Disconnect and connect again; the fake issues a new session, a different account to it.
-  await page.goto('/account')
-  const mowl = page.getByRole('region', { name: 'MOWL (Intelligent Cycling)' })
-  await mowl.getByRole('button', { name: 'Disconnect MOWL' }).click()
-  await mowl.getByRole('group', { name: 'Confirm disconnect' }).getByRole('button', { name: 'Yes, disconnect MOWL' }).click()
-  await expect(page.getByText('MOWL is disconnected.')).toBeVisible()
+  await disconnectMowl(page)
   await connectMowl(page)
   await page.goto('/classes')
   await page.getByRole('link', { name: 'E2E other-account' }).click()

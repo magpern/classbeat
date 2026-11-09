@@ -112,6 +112,7 @@ async def test_scan_connects_and_stores_the_token_encrypted(
 async def test_the_switch_off_answers_feature_off(
     env: Env, make_actor: Any, mowl_api: FakeMowl
 ) -> None:
+    env.app.state.settings = env.settings.model_copy(update={"mowl_qr_enabled": False})
     actor = await make_actor(await env.user(USER))
     response = await actor.post(QR)
     assert (response.status_code, response.json()) == (404, {"detail": {"reason": "feature_off"}})

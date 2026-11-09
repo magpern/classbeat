@@ -442,14 +442,14 @@ async def test_a_ticket_failure_is_a_category(
     assert failed.value.__cause__ is None and failed.value.__context__ is None  # noqa: PT018
 
 
-def test_the_switch_is_off_by_default_and_on_web_only() -> None:
+def test_the_switch_is_on_by_default_and_on_web_only() -> None:
     root = Path(__file__).resolve().parents[2]
-    assert Settings.model_fields["mowl_qr_enabled"].default is False
+    assert Settings.model_fields["mowl_qr_enabled"].default is True
     for compose in ("compose.yaml", "compose.prod.yaml"):
         services = yaml.safe_load((root / compose).read_text("utf-8"))["services"]
         assert services["web"]["environment"]["CLASSBEAT_MOWL_QR_ENABLED"] == (
-            "${MOWL_QR_ENABLED:-false}"
+            "${MOWL_QR_ENABLED:-true}"
         )
         # The worker never signs anyone in: it neither gets the switch nor reaches the hosts.
         assert "CLASSBEAT_MOWL_QR_ENABLED" not in services["worker"]["environment"]
-    assert "MOWL_QR_ENABLED=false" in (root / ".env.example").read_text("utf-8")
+    assert "MOWL_QR_ENABLED=true" in (root / ".env.example").read_text("utf-8")

@@ -14,7 +14,7 @@ import type { CatalogueKey } from '../../i18n/en'
 import { useT } from '../../i18n/I18n'
 import { t as translate } from '../../i18n/t'
 import { goToProvider } from '../../lib/navigation'
-import { Link, useQuery } from '../../router/Router'
+import { useQuery } from '../../router/Router'
 import { Field, Notice, Section, useAction } from '../forms'
 import { ConsentSwitch } from './ConsentSwitch'
 
@@ -66,32 +66,6 @@ function useSpotifyStatus() {
     }
   }, [])
   return { status, loadFailed, reload }
-}
-
-/**
- * The account page's Spotify card: the status, the working-playlist consent switch once connected,
- * and a link to the wizard. Hidden while song picking is off.
- */
-export function SpotifySummary() {
-  const t = useT()
-  const { status, reload } = useSpotifyStatus()
-  if (!status) return null
-  return (
-    <Section title={t('spot.title')}>
-      <ul className="rows">
-        <li>
-          <span>{t('mowl.status')}</span>
-          <span data-testid="spotify-summary-status">{t(statusKey(status.status))}</span>
-        </li>
-      </ul>
-      {status.status === 'connected' ? <ConsentSwitch status={status} onChanged={reload} /> : null}
-      <p>
-        <Link to="/account/spotify">
-          {status.status === 'not_connected' ? t('spot.setUp') : t('spot.manage')}
-        </Link>
-      </p>
-    </Section>
-  )
 }
 
 /** The Spotify wizard, the connection card and the consent step (the page /account/spotify). */

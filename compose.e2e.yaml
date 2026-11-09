@@ -140,6 +140,9 @@ services:
     environment:
       # ADR 0015: the Swedebeat connection is on in the e2e stack only.
       CLASSBEAT_SWEDEBEAT_ENABLED: "true"
+      # ADR 0028: the MOWL QR is on by default, and the e2e fake MOWL has no QR endpoint, so the
+      # specs connect MOWL with the password form (the dialog then has no Scan tab).
+      CLASSBEAT_MOWL_QR_ENABLED: "false"
       # ADR 0018: running classes are on in the e2e stack only (the default stack keeps them off).
       CLASSBEAT_RUNNING_ENABLED: "true"
       # ADR 0007 amendment of 2026-11-03 (SL7, #533): soundless classes are on in the e2e stack only

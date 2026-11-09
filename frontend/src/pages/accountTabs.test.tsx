@@ -58,9 +58,13 @@ describe('account tabs', () => {
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
     const panel = screen.getByRole('tabpanel')
     expect(panel).toHaveAttribute('aria-labelledby', tabs[0]?.id)
-    // #525: no Swedebeat card for a user who has neither the flag nor a stored connection.
-    expect(await within(panel).findByRole('heading', { name: 'MOWL (Intelligent Cycling)' })).toBeInTheDocument()
-    expect(within(panel).queryByRole('heading', { name: 'Swedebeat' })).toBeNull()
+    // ADR 0028: the three services are always listed; Swedebeat says it is not available here.
+    expect(await within(panel).findByRole('heading', { name: 'Connections' })).toBeInTheDocument()
+    expect(within(panel).getByTestId('connection-mowl')).toBeInTheDocument()
+    const swedebeat = within(panel).getByTestId('connection-swedebeat')
+    expect(swedebeat).toHaveTextContent('Optional')
+    expect(swedebeat).toHaveTextContent('Not available right now')
+    expect(within(swedebeat).queryByRole('button')).toBeNull()
   })
 
   it('move with the arrow keys and keep the open tab in the address', async () => {
@@ -204,7 +208,7 @@ describe('the consent switch', () => {
         return { status: 'ok' }
       },
     })
-    renderAt('/account')
+    renderAt('/account/spotify') // the consent lives on the Spotify page (ADR 0028)
     const toggle = await screen.findByRole('switch', { name: 'Allow the working playlist' })
     expect(toggle).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByTestId('spotify-consent-text').textContent).toBe(CONSENT_TEXT)

@@ -52,7 +52,14 @@ function left(expiresAt: string, now: number): string {
 }
 
 /** The QR panel of the MOWL card, shown in the wider layouts only (a phone cannot scan itself). */
-export function MowlQr({ onConnected }: { onConnected: (connection: Connection) => void }) {
+export function MowlQr({
+  onConnected,
+  autoStart = false,
+}: {
+  onConnected: (connection: Connection) => void
+  /** Show the code as soon as the panel opens (the dialog's Scan tab), without the intro. */
+  autoStart?: boolean
+}) {
   const t = useT()
   const guard = useGuard()
   const action = useAction()
@@ -129,6 +136,15 @@ export function MowlQr({ onConnected }: { onConnected: (connection: Connection) 
     }, startError)
   }
 
+  // One code when the panel opens; the ref keeps a double-run effect from spending a second one.
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (!autoStart || autoStarted.current) return
+    autoStarted.current = true
+    start()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on open
+  }, [autoStart])
+
   const stop = () => {
     release()
     setTicket(null)
@@ -137,7 +153,7 @@ export function MowlQr({ onConnected }: { onConnected: (connection: Connection) 
 
   return (
     <div data-testid="mowl-qr">
-      <h3>{t('mowlqr.title')}</h3>
+      {autoStart ? null : <h3>{t('mowlqr.title')}</h3>}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {ticket ? (
         <>
@@ -153,7 +169,7 @@ export function MowlQr({ onConnected }: { onConnected: (connection: Connection) 
       ) : (
         <>
           {ended ? <Notice kind="info">{ended}</Notice> : null}
-          <p>{t('mowlqr.intro')}</p>
+          {autoStart ? null : <p>{t('mowlqr.intro')}</p>}
           <button className="button" type="button" disabled={action.busy} onClick={start}>
             {ended ? t('mowlqr.showNew') : t('mowlqr.show')}
           </button>

@@ -5,7 +5,7 @@ import { setWidth } from '../../test/layout'
 import { renderAt } from '../../test/render'
 import { POLL_MS } from './MowlQr'
 
-// ADR 0024: connect MOWL by scanning a QR code. The page talks to classbeat's API only.
+// ADR 0024, ADR 0028: connect MOWL by scanning a QR code in the dialog. The page talks to classbeat's API only.
 
 const ACCOUNT_ROUTES = {
   'GET /api/auth/session': SIGNED_IN,
@@ -30,11 +30,10 @@ function status(value: string, extra: object = {}) {
   return { status: value, reason: null, expires_at: TICKET.expires_at, connection: null, ...extra }
 }
 
-async function mowlSection() {
-  const heading = await screen.findByRole('heading', { name: 'MOWL (Intelligent Cycling)' })
-  const section = heading.closest('section')
-  if (section === null) throw new Error('no section')
-  return within(section)
+/** Opens the Connect MOWL dialog from its row; the QR tab starts its code on its own. */
+async function openMowl() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Connect MOWL' }))
+  return within(await screen.findByRole('dialog', { name: 'Connect MOWL' }))
 }
 
 async function nextPoll() {
@@ -62,19 +61,18 @@ describe('Scan with the MOWL app', () => {
       [`GET ${QR}/${ID}`]: () => (++polls < 2 ? status('waiting') : status('connected', { connection: CONNECTED })),
     })
     renderAt('/account')
-    const mowl = await mowlSection()
-    fireEvent.click(await mowl.findByRole('button', { name: 'Show the code' }))
+    const mowl = await openMowl()
     const image = await mowl.findByRole('img', { name: 'QR code to scan with the MOWL app' })
     expect(image).toHaveAttribute('src', `${QR}/${ID}/image`)
     expect(mowl.getByTestId('mowl-qr-countdown')).toHaveTextContent('15:00')
-    // The password form stays as the fallback next to the code.
-    expect(mowl.getByLabelText('MOWL password')).toBeInTheDocument()
+    // The password form stays as the other tab.
+    expect(mowl.getByRole('tab', { name: 'Use password' })).toBeInTheDocument()
     await nextPoll()
     expect(mowl.getByTestId('mowl-qr-countdown')).toHaveTextContent('14:58')
     await nextPoll()
-    expect(await mowl.findByText('MOWL is connected.')).toBeInTheDocument()
-    expect(mowl.getByTestId('mowl-status')).toHaveTextContent('Connected')
-    expect(mowl.queryByTestId('mowl-qr')).toBeNull()
+    expect(await screen.findByText('MOWL is connected.')).toBeInTheDocument()
+    expect(screen.getByTestId('mowl-status')).toHaveTextContent('Connected')
+    expect(screen.queryByTestId('mowl-qr')).toBeNull() // the dialog closed
     expect(api.to('GET', `${QR}/${ID}`)).toHaveLength(2)
     expect(api.to('POST', QR)[0]?.headers.get('X-CSRF-Token')).toBe('csrf-session')
     expect(api.to('DELETE', `${QR}/${ID}`)).toHaveLength(0) // a finished wait is not cancelled
@@ -83,8 +81,7 @@ describe('Scan with the MOWL app', () => {
   it('offers a new code after the code expires', async () => {
     fakeApi({ ...ACCOUNT_ROUTES, ...ON, [`POST ${QR}`]: TICKET, [`GET ${QR}/${ID}`]: status('expired') })
     renderAt('/account')
-    const mowl = await mowlSection()
-    fireEvent.click(await mowl.findByRole('button', { name: 'Show the code' }))
+    const mowl = await openMowl()
     await mowl.findByRole('img', { name: /QR code/ })
     await nextPoll()
     expect(await mowl.findByText(/The code expired/)).toBeInTheDocument()
@@ -95,8 +92,7 @@ describe('Scan with the MOWL app', () => {
   it('says so when the scan worked but the connection is gone', async () => {
     fakeApi({ ...ACCOUNT_ROUTES, ...ON, [`POST ${QR}`]: TICKET, [`GET ${QR}/${ID}`]: status('connected') })
     renderAt('/account')
-    const mowl = await mowlSection()
-    fireEvent.click(await mowl.findByRole('button', { name: 'Show the code' }))
+    const mowl = await openMowl()
     await mowl.findByRole('img', { name: /QR code/ })
     await nextPoll()
     expect(await mowl.findByText(/connection could not be found/)).toBeInTheDocument()
@@ -111,8 +107,7 @@ describe('Scan with the MOWL app', () => {
       [`GET ${QR}/${ID}`]: status('failed', { reason: 'upstream_unavailable' }),
     })
     renderAt('/account')
-    const mowl = await mowlSection()
-    fireEvent.click(await mowl.findByRole('button', { name: 'Show the code' }))
+    const mowl = await openMowl()
     await mowl.findByRole('img', { name: /QR code/ })
     await nextPoll()
     expect(await mowl.findByText(/MOWL could not be reached/)).toBeInTheDocument()
@@ -125,8 +120,7 @@ describe('Scan with the MOWL app', () => {
   ])('shows a refused start (%#)', async (answer, text) => {
     fakeApi({ ...ACCOUNT_ROUTES, ...ON, [`POST ${QR}`]: answer })
     renderAt('/account')
-    const mowl = await mowlSection()
-    fireEvent.click(await mowl.findByRole('button', { name: 'Show the code' }))
+    const mowl = await openMowl()
     expect(await mowl.findByRole('alert')).toHaveTextContent(text)
   })
 
@@ -139,8 +133,7 @@ describe('Scan with the MOWL app', () => {
       [`DELETE ${QR}/${ID}`]: () => new Response(null, { status: 204 }),
     })
     renderAt('/account')
-    const mowl = await mowlSection()
-    fireEvent.click(await mowl.findByRole('button', { name: 'Show the code' }))
+    const mowl = await openMowl()
     await mowl.findByRole('img', { name: /QR code/ })
     fireEvent.click(mowl.getByRole('button', { name: 'Stop' }))
     await waitFor(() => {
@@ -155,25 +148,27 @@ describe('Scan with the MOWL app', () => {
     setWidth(390)
     fakeApi({ ...ACCOUNT_ROUTES, ...ON })
     renderAt('/account')
-    const mowl = await mowlSection()
+    const mowl = await openMowl()
     expect(await mowl.findByLabelText('MOWL password')).toBeInTheDocument()
     expect(mowl.queryByTestId('mowl-qr')).toBeNull()
+    expect(mowl.queryByRole('tab')).toBeNull()
   })
 
   it('is not offered while the server switch is off', async () => {
     fakeApi({ ...ACCOUNT_ROUTES, 'GET /api/connections': { connections: [] } })
     renderAt('/account')
-    const mowl = await mowlSection()
+    const mowl = await openMowl()
     expect(await mowl.findByLabelText('MOWL password')).toBeInTheDocument()
     expect(mowl.queryByTestId('mowl-qr')).toBeNull()
+    expect(mowl.queryByRole('tab')).toBeNull()
   })
 
   it('is not offered when MOWL is already connected', async () => {
     fakeApi({ ...ACCOUNT_ROUTES, 'GET /api/connections': { connections: [CONNECTED], mowl_qr_enabled: true } })
     renderAt('/account')
-    const mowl = await mowlSection()
-    expect(await mowl.findByTestId('mowl-status')).toHaveTextContent('Connected')
-    expect(mowl.queryByTestId('mowl-qr')).toBeNull()
+    expect(await screen.findByTestId('mowl-status')).toHaveTextContent('Connected')
+    expect(screen.queryByTestId('mowl-qr')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Connect MOWL' })).toBeNull()
   })
 })
 
@@ -185,8 +180,7 @@ describe('the QR ticket answer', () => {
       [`POST ${QR}`]: { ...TICKET, image: 'https://evil.example/qr.png' },
     })
     renderAt('/account')
-    const mowl = await mowlSection()
-    fireEvent.click(await mowl.findByRole('button', { name: 'Show the code' }))
+    const mowl = await openMowl()
     expect(await mowl.findByRole('alert')).toHaveTextContent('That did not work. Try again.')
     expect(mowl.queryByRole('img', { name: /QR code/ })).toBeNull()
   })

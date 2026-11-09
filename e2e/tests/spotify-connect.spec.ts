@@ -39,8 +39,8 @@ async function newUser(page: Page, tag: string): Promise<void> {
 test('the wizard shows the callback address and refuses a Client ID that is not 32 hex characters', async ({ page }) => {
   await newUser(page, 'sp-wizard')
   await page.goto('/account')
-  await expect(page.getByTestId('spotify-summary-status')).toHaveText('Not connected')
-  await page.getByRole('link', { name: 'Set up Spotify' }).click()
+  await expect(page.getByTestId('connection-spotify')).toContainText('Picks songs for your classes')
+  await page.getByRole('link', { name: 'Connect Spotify' }).click()
 
   await expect(page.getByTestId('spotify-callback-url')).toHaveText(CALLBACK)
   await expect(page.getByText(/never needs the app.s Client Secret/)).toBeVisible()

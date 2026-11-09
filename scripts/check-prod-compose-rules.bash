@@ -52,8 +52,8 @@ check_common() {
     || fail "soundless classes must be off by default" || return 1
   q '.services.worker.environment.CLASSBEAT_SOUNDLESS_ENABLED == "false"' \
     || fail "soundless classes must be off by default on the worker too" || return 1
-  q '.services.web.environment.CLASSBEAT_MOWL_QR_ENABLED == "false"' \
-    || fail "the MOWL QR sign-in must be off by default" || return 1
+  q '.services.web.environment.CLASSBEAT_MOWL_QR_ENABLED == "true"' \
+    || fail "the MOWL QR sign-in must be on by default (ADR 0028)" || return 1
   q '.services.worker.environment | has("CLASSBEAT_MOWL_QR_ENABLED") | not' \
     || fail "the MOWL QR sign-in belongs to web only" || return 1
   # ADR 0025 (#724, Amendment 2): Turnstile's secret on web only, its switch and site key web's
