@@ -76,7 +76,6 @@ const LIMITS: readonly [CatalogueKey, number][] = [
   ['mfa.scan', 12],
   ['spot.intro', 12],
   ['spot.step5', 12],
-  ['spot.confirmHint', 12],
   ['swnext.expiry', 12],
   ['swnext.prefOff', 12],
   ['swmatch.checkUnsure', 12],
@@ -225,6 +224,33 @@ describe('account, security and connection copy', () => {
     expect(en['spot.disconnectDeleted']).toMatch(/consent/i)
     expect(en['spot.disconnectKept']).toMatch(/playlists/i)
     expect(en['spot.step4']).toMatch(/Client Secret/)
+  })
+
+  it('states the account-switch consequence where the switch is offered and confirmed', () => {
+    // ADR 0009 section 7: a different Spotify account forgets the account, so every class loses its
+    // playlist link and undecided playlist steps are deleted. This is visible text, not only Details,
+    // and the Client ID change text no longer promises that every class keeps its playlist.
+    const consequence: readonly [string, RegExp, RegExp][] = [
+      ['en', /loses its playlist link/, /undecided playlist steps are deleted/],
+      ['sv', /förlorar[^.]*länken till sin spellista/, /oavgjorda spellistesteg raderas/],
+      ['da', /mister[^.]*linket til sin playliste/, /uafklarede playlistetrin slettes/],
+    ]
+    for (const [lang, catalogue] of catalogues()) {
+      const [, link, steps] = consequence.find(([l]) => l === lang) ?? []
+      for (const key of ['spot.changeAccount', 'spot.confirmHint'] as const) {
+        expect(textOf(catalogue, key), `${lang} ${key}`).toMatch(link ?? /^$/)
+        expect(textOf(catalogue, key), `${lang} ${key}`).toMatch(steps ?? /^$/)
+      }
+      expect(textOf(catalogue, 'spot.changeText'), `${lang} spot.changeText`).not.toMatch(
+        /keep their playlists|behåller sina spellistor|beholder deres playlister/,
+      )
+    }
+  })
+
+  it('tells the user how to remove our access after Spotify is disconnected', () => {
+    expect(en['spot.disconnected']).toMatch(/Apps in your Spotify account settings/)
+    expect(sv['spot.disconnected']).toMatch(/Appar i dina Spotify-kontoinställningar/)
+    expect(da['spot.disconnected']).toMatch(/Apps i dine Spotify-kontoindstillinger/)
   })
 
   it('keeps the counter honest (a limit that is never reached would pass any text)', () => {

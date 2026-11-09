@@ -87,7 +87,9 @@ export function SpotifyWizard({
         <li>{t('spot.step5')}</li>
       </ol>
       {changing || confirmSwitch ? (
-        <p className="m-0 text-muted">{confirmSwitch ? t('spot.confirmHint') : t('spot.changeText')}</p>
+        <p className="m-0 text-muted">
+          {confirmSwitch ? t('spot.confirmHint') : `${t('spot.changeText')} ${t('spot.changeAccount')}`}
+        </p>
       ) : null}
       <Field
         label={t('spot.clientId')}

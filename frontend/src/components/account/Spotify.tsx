@@ -161,9 +161,9 @@ export function SpotifyConnection({ onStatus }: { onStatus?: (status: SpotifySta
       {connected && !changing && dialog === 'change' ? (
         <div className="notice" role="group" aria-label={t('spot.changeConfirm')}>
           <p>{t('spot.changeText')}</p>
+          <p>{t('spot.changeAccount')}</p>
           <Details>
             <p className="m-0">{t('spot.changeDeleted')}</p>
-            <p className="m-0">{t('spot.changeAccount')}</p>
           </Details>
           <div className="flex flex-wrap gap-2">
             <button

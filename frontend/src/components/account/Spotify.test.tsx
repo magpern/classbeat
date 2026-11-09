@@ -286,6 +286,10 @@ describe('the callback result in the query', () => {
       'POST /api/connections/spotify/start': { authorize_url: AUTHORIZE },
     })
     const sp = await openSpotify('/account/spotify?result=account_changed')
+    // What the switch deletes is on the confirmation step itself, not behind a Details.
+    const hint = await sp.findByText(/Each class loses its playlist link/)
+    expect(hint).toHaveTextContent('undecided playlist steps are deleted')
+    expect(hint.closest('details')).toBeNull()
     fireEvent.change(await sp.findByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
     fireEvent.click(sp.getByRole('button', { name: 'Switch account' }))
     await waitFor(() => {
@@ -364,7 +368,7 @@ describe('the connection card', () => {
     expect(dialog).toHaveTextContent('Remove our access under Apps in your Spotify account settings')
     expect(api.to('DELETE', '/api/connections/spotify')).toHaveLength(0)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Yes, disconnect Spotify' }))
-    expect(await sp.findByText(/Spotify is disconnected/)).toBeInTheDocument()
+    expect(await sp.findByText(/Spotify is disconnected/)).toHaveTextContent('open Apps in your Spotify account settings')
     expect(api.to('DELETE', '/api/connections/spotify')).toHaveLength(1)
     expect(await sp.findByRole('button', { name: 'Connect Spotify' })).toBeInTheDocument()
   })
@@ -389,9 +393,16 @@ describe('the connection card', () => {
     expect(dialog).toHaveTextContent('the working playlist setting is forgotten')
     expect(dialog).toHaveTextContent('asked for your consent again')
     expect(dialog).toHaveTextContent('The playlist stays in your Spotify')
-    expect(dialog).toHaveTextContent('a different Spotify account')
+    // The account-switch consequence is read without opening Details (ADR 0009 section 7), and the
+    // text no longer promises that every class keeps its playlist.
+    const switchNote = within(dialog).getByText(/A different Spotify account needs your confirmation/)
+    expect(switchNote).toHaveTextContent('Each class then loses its playlist link')
+    expect(switchNote).toHaveTextContent('undecided playlist steps are deleted')
+    expect(switchNote.closest('details')).toBeNull()
+    expect(dialog).not.toHaveTextContent('Your classes keep their playlists')
     expect(sp.queryByLabelText('Spotify Client ID')).toBeNull()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }))
+    expect(sp.getByText(/A different Spotify account needs your confirmation/).closest('details')).toBeNull()
     fireEvent.change(await sp.findByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
     fireEvent.click(sp.getByRole('button', { name: 'Connect Spotify' }))
     await waitFor(() => {

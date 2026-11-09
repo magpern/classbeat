@@ -20,7 +20,7 @@ describe('unsubscribe page', () => {
     expect(
       screen.getByText(/Sign-in, password reset and confirmation links are always sent/),
     ).toBeInTheDocument()
-    expect(screen.queryByText(/security notices, is still sent/)).toBeNull()
+    expect(screen.queryByText(/security notices[^.]*(still|always) (sent|arrive)/)).toBeNull()
   })
 
   it('posts the category token for the first button', async () => {
@@ -86,6 +86,6 @@ describe('account email section', () => {
     expect(copy).toHaveTextContent('Sign-in, reset and confirmation links always arrive.')
     const note = screen.getByText(/Account activity notices include security warnings/)
     expect(note).toHaveTextContent(/Switched off, you get no such email/)
-    expect(note).not.toHaveTextContent(/security alerts/)
+    expect(note.closest('details')).toBeNull()
   })
 })

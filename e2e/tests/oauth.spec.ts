@@ -252,7 +252,7 @@ test('Google re-authentication: refused with a password, accepted without auth_t
   who.authTime = null
   dialog = await changePassword()
   await expect(dialog.getByRole('button', { name: 'Confirm with password' })).toHaveCount(0)
-  await expect(dialog).not.toContainText('Google can confirm it only if')
+  await expect(dialog).not.toContainText('in the last 5 minutes')
   await dialog.getByRole('button', { name: 'Confirm with Google' }).click()
   await expect(page.getByText('Thanks, you are confirmed. Repeat the change you were making.')).toBeVisible()
 })

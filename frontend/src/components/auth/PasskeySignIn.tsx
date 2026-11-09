@@ -11,7 +11,7 @@ interface Props {
 }
 
 /**
- * "Sign in with a passkey" (ADR 0019 section 5) and the autofill that shares its ceremony. The
+ * "Use a passkey" (ADR 0019 section 5) and the autofill that shares its ceremony. The
  * caller renders it only where the flag is on and the browser supports WebAuthn.
  */
 export function PasskeySignIn({ onSignedIn }: Props) {

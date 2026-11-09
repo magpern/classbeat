@@ -267,6 +267,12 @@ describe('delete my account', () => {
     renderAt('/account#data')
     fireEvent.click(await screen.findByRole('button', { name: 'Delete my account' }))
     const confirm = await screen.findByRole('dialog', { name: 'Delete your account?' })
+    // What else is deleted and what stays are visible, and part of the dialog's description.
+    const also = within(confirm).getByText(/Also deleted: your song lists, plan and usage/)
+    const stays = within(confirm).getByText(/Workouts saved to MOWL and playlists in your Spotify stay there/)
+    expect(also.closest('details')).toBeNull()
+    expect(stays.closest('details')).toBeNull()
+    for (const part of [also, stays]) expect(confirm.getAttribute('aria-describedby')).toContain(part.id)
     const go = within(confirm).getByRole('button', { name: 'Delete for good' })
     expect(go).toBeDisabled()
     fireEvent.change(within(confirm).getByLabelText('Your email'), { target: { value: 'someone@else.test' } })

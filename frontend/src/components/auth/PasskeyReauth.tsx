@@ -12,7 +12,7 @@ interface Props {
 }
 
 /**
- * "Confirm with a passkey" in the re-authentication prompt (ADR 0019 section 8). Offered only
+ * "Use your passkey" in the re-authentication prompt (ADR 0019 section 8). Offered only
  * where the flag is on, the browser has WebAuthn and the user has a passkey to use: a passkey
  * confirms identity but is never a step-up, so the step-up prompt has no such button.
  */

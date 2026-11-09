@@ -63,11 +63,15 @@ export function DeleteAccount({ email }: { email: string }) {
           </DialogTrigger>
         </div>
         {open ? (
-          <DialogContent aria-describedby="delete-account-description">
+          <DialogContent aria-describedby="delete-account-description delete-account-also delete-account-stays">
             <DialogTitle>{t('delete.title')}</DialogTitle>
             <DialogDescription id="delete-account-description">{t('delete.text')}</DialogDescription>
-            <p className="m-0">{t('delete.also')}</p>
-            <p className="m-0">{t('delete.stays')}</p>
+            <p className="m-0" id="delete-account-also">
+              {t('delete.also')}
+            </p>
+            <p className="m-0" id="delete-account-stays">
+              {t('delete.stays')}
+            </p>
             <form onSubmit={submit}>
               <Field
                 label={t('delete.emailLabel')}
