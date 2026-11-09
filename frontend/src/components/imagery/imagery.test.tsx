@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { AuthSplit } from '../auth/AuthSplit'
 import { HowItWorks } from '../landing/HowItWorks'
 import { LandingHero } from '../landing/LandingHero'
+import { EmptyPicture } from './EmptyPicture'
 import { I18nProvider } from '../../i18n/I18n'
 import { RouterProvider } from '../../router/Router'
 import { SLOTS } from './imageSlots'
@@ -67,32 +68,87 @@ describe('SlotPicture', () => {
 
   it('draws nothing for a slot with no picture', () => {
     setTheme('light')
-    const { container } = wrap(<SlotPicture slot="stepSave" sizes="100vw" />)
-    expect(container.querySelector('picture')).toBeNull()
+    const saved = SLOTS.stepSave
+    SLOTS.stepSave = { ...saved, sets: {} }
+    try {
+      const { container } = wrap(<SlotPicture slot="stepSave" sizes="100vw" />)
+      expect(container.querySelector('picture')).toBeNull()
+    } finally {
+      SLOTS.stepSave = saved
+    }
   })
 })
 
 describe('HowItWorks', () => {
-  it('shows no pictures while a step has none, in either theme (the row never mixes)', () => {
-    expect(SLOTS.stepSave.sets).toEqual({})
+  it('shows a described picture on every card in light, and the same pictures dimmed in dark', () => {
     for (const theme of ['light', 'dark'] as const) {
       setTheme(theme)
       const { container, unmount } = wrap(<HowItWorks />)
-      expect(container.querySelectorAll('picture')).toHaveLength(0)
+      expect(container.querySelectorAll('picture')).toHaveLength(3)
       expect(within(container).getAllByRole('listitem')).toHaveLength(3)
+      expect(within(container).getAllByRole('img')).toHaveLength(3)
+      expect(container.querySelectorAll('.slot--dim')).toHaveLength(theme === 'dark' ? 3 : 0)
+      expect([...container.querySelectorAll('img')].map((i) => i.getAttribute('src'))).toEqual([
+        '/img/step-describe-light-768.jpg',
+        '/img/step-approve-light-768.jpg',
+        '/img/step-save-light-768.jpg',
+      ])
       unmount()
     }
   })
 
-  it('shows a picture on every card once every step has one', () => {
+  it('shows no pictures while one step has none, in either theme (the row never mixes)', () => {
     const saved = SLOTS.stepSave
-    SLOTS.stepSave = { ...saved, sets: SLOTS.stepApprove.sets }
+    SLOTS.stepSave = { ...saved, sets: {} }
     try {
-      setTheme('light')
-      const { container } = wrap(<HowItWorks />)
-      expect(container.querySelectorAll('picture')).toHaveLength(3)
+      for (const theme of ['light', 'dark'] as const) {
+        setTheme(theme)
+        const { container, unmount } = wrap(<HowItWorks />)
+        expect(container.querySelectorAll('picture')).toHaveLength(0)
+        expect(within(container).getAllByRole('listitem')).toHaveLength(3)
+        unmount()
+      }
     } finally {
       SLOTS.stepSave = saved
+    }
+  })
+})
+
+describe('EmptyPicture', () => {
+  it('keeps the text and adds a decorative, lazy picture, dimmed on dark', () => {
+    for (const theme of ['light', 'dark'] as const) {
+      setTheme(theme)
+      const { container, unmount } = wrap(
+        <EmptyPicture slot="emptyClasses">
+          <p>No classes yet</p>
+        </EmptyPicture>,
+      )
+      expect(screen.getByText('No classes yet')).toBeInTheDocument()
+      const img = container.querySelector('[data-slot="emptyClasses"] img')
+      expect(img).toHaveAttribute('alt', '')
+      expect(img).toHaveAttribute('aria-hidden', 'true')
+      expect(img).toHaveAttribute('loading', 'lazy')
+      expect(img).toHaveAttribute('src', '/img/empty-home-light-768.jpg')
+      expect(container.querySelector('.slot--dim') !== null).toBe(theme === 'dark')
+      unmount()
+    }
+  })
+
+  it('draws only the text when the slot has no picture', () => {
+    setTheme('light')
+    const saved = SLOTS.emptyHome
+    SLOTS.emptyHome = { ...saved, sets: {} }
+    try {
+      const { container } = wrap(
+        <EmptyPicture slot="emptyHome">
+          <p>Nothing here</p>
+        </EmptyPicture>,
+      )
+      expect(screen.getByText('Nothing here')).toBeInTheDocument()
+      expect(container.querySelector('picture')).toBeNull()
+      expect(container.querySelector('.empty-pic')).toBeNull()
+    } finally {
+      SLOTS.emptyHome = saved
     }
   })
 })

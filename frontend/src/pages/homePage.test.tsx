@@ -54,6 +54,19 @@ describe('Home', () => {
     home({ 'GET /api/classes': { classes: [] } })
     renderAt('/')
     expect(await screen.findByText(/No classes yet/)).toBeInTheDocument()
+    // a calm decorative picture beside the text: empty alt, lazy, size set
+    const img = document.querySelector('main [data-slot="emptyHome"] img')
+    expect(img).toHaveAttribute('alt', '')
+    expect(img).toHaveAttribute('loading', 'lazy')
+    expect(img).toHaveAttribute('width', '768')
+    expect(img).toHaveAttribute('height', '576')
+  })
+
+  it('shows no empty-state picture once there are classes', async () => {
+    home()
+    renderAt('/')
+    await screen.findByRole('link', { name: 'Tuesday climb' })
+    expect(document.querySelector('[data-slot="emptyHome"]')).toBeNull()
   })
 
   it('offers to try again when the list fails', async () => {

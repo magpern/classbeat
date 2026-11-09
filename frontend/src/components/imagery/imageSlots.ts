@@ -8,7 +8,14 @@ import type { CatalogueKey } from '../../i18n/en'
  */
 
 export type ImageTheme = 'dark' | 'light'
-export type SlotId = 'hero' | 'stepDescribe' | 'stepApprove' | 'stepSave' | 'authPanel'
+export type SlotId =
+  | 'hero'
+  | 'stepDescribe'
+  | 'stepApprove'
+  | 'stepSave'
+  | 'authPanel'
+  | 'emptyHome'
+  | 'emptyClasses'
 
 /** `[width, height]` in pixels of one rendition. */
 export type Size = readonly [width: number, height: number]
@@ -43,6 +50,8 @@ export const FORMATS = [
 
 const set = (name: string, ...sizes: Size[]): ImageSet => ({ name, sizes })
 
+const EMPTY_STATE = set('empty-home-light', [480, 360], [768, 576])
+
 export const SLOTS: Record<SlotId, Slot> = {
   hero: {
     sets: { dark: set('hero-dark', [960, 540], [1600, 900]), light: set('hero-light', [960, 540], [1600, 900]) },
@@ -63,13 +72,19 @@ export const SLOTS: Record<SlotId, Slot> = {
     onDark: 'dim',
     alt: 'landing.img.approve',
   },
-  // No picture yet: drop in step-save-light-<width>.avif/webp/jpg and list the set here.
-  stepSave: { sets: {}, onDark: 'dim', alt: 'landing.img.save' },
+  stepSave: {
+    sets: { light: set('step-save-light', [480, 320], [768, 512]) },
+    onDark: 'dim',
+    alt: 'landing.img.save',
+  },
   authPanel: {
     sets: { light: set('auth-panel-light', [480, 600], [960, 1200]) },
     onDark: 'dim',
     alt: null,
   },
+  // The empty Home and the empty My classes share one calm picture (two slots, one file set).
+  emptyHome: { sets: { light: EMPTY_STATE }, onDark: 'dim', alt: null },
+  emptyClasses: { sets: { light: EMPTY_STATE }, onDark: 'dim', alt: null },
 }
 
 export interface ResolvedSlot {

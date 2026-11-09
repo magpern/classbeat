@@ -17,6 +17,13 @@ describe('My classes', () => {
     renderAt('/classes')
     expect(await screen.findByRole('heading', { name: 'No classes yet' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Design a class' })).toHaveAttribute('href', '/en/classes/new')
+    expect(screen.getByRole('region', { name: 'No classes yet' })).toHaveTextContent(
+      'Describe a class and we design it from your playlist.',
+    )
+    const img = document.querySelector('[data-slot="emptyClasses"] img')
+    expect(img).toHaveAttribute('alt', '')
+    expect(img).toHaveAttribute('aria-hidden', 'true')
+    expect(img).toHaveAttribute('loading', 'lazy')
   })
 
   it('lists the classes as cards with their state, titles as text', async () => {

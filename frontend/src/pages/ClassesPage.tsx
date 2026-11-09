@@ -1,6 +1,7 @@
 import { Search } from 'lucide-react'
 import { useId, useState } from 'react'
 import { ClassList, ClassRow } from '../components/classes/ClassRow'
+import { EmptyPicture } from '../components/imagery/EmptyPicture'
 import { Notice } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { Button } from '../components/ui/button'
@@ -62,7 +63,9 @@ function Classes() {
       {listing.status === 'ready' && listing.classes.length === 0 ? (
         <Card role="region" aria-labelledby="none-title">
           <CardTitle id="none-title">{t('class.list.none')}</CardTitle>
-          <CardContent>{t('class.list.noneText')}</CardContent>
+          <EmptyPicture slot="emptyClasses">
+            <CardContent>{t('class.list.noneText')}</CardContent>
+          </EmptyPicture>
         </Card>
       ) : null}
       {listing.status === 'ready' && listing.classes.length > 0 ? (
