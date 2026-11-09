@@ -24,7 +24,7 @@ describe('CookieNotice', () => {
 
   it('names the Cloudflare security check on the sign-in pages and stays informational', () => {
     mount()
-    expect(screen.getByTestId('cookie-notice')).toHaveTextContent(/security check from Cloudflare/)
+    expect(screen.getByTestId('cookie-notice')).toHaveTextContent(/Cloudflare’s security check/)
     expect(screen.queryByRole('button', { name: /accept|reject|decline/i })).toBeNull()
   })
 
