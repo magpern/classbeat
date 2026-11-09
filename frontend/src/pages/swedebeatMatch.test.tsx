@@ -140,7 +140,7 @@ describe('the Swedebeat part of the class page', () => {
     everyCallIsOurs(api)
   })
 
-  it('offers no match start while "I use Swedebeat" is off (#525)', async () => {
+  it('offers no match start while Swedebeat is off (#525)', async () => {
     const view = { ...connections(null), swedebeat: { enabled: true, available: true, uses_swedebeat: false } }
     const api = fakeApi(routes({ swedebeat_match: null }, { 'GET /api/connections': view }, null))
     renderAt(PAGE)
@@ -164,7 +164,7 @@ describe('the Swedebeat part of the class page', () => {
     fakeApi(routes({ swedebeat_match: null }, {}, 'needs_reconnect'))
     renderAt(PAGE)
     const prompt = await screen.findByTestId('reconnect-prompt')
-    expect(within(prompt).getByRole('link', { name: /Connect again/ })).toHaveAttribute('href', '/en/account#connections')
+    expect(within(prompt).getByRole('link', { name: /Open Connections/ })).toHaveAttribute('href', '/en/account#connections')
     expect(screen.getByRole('button', { name: 'Match with Swedebeat' })).toBeDisabled()
   })
 
@@ -205,7 +205,7 @@ describe('the match page', () => {
     expect(within(region).getByText('Wanted 1 <i>x</i>')).toBeInTheDocument()
     expect(region.querySelector('i')).toBeNull()
     expect(within(region).getByText(/the mix will lack it/)).toBeInTheDocument()
-    expect(within(region).getByText(/Check the unsure songs/)).toBeInTheDocument()
+    expect(within(region).getByText(/Keep unsure songs only/)).toBeInTheDocument()
     expect(screen.queryByTestId('next-step')).toBeNull()
     everyCallIsOurs(api)
   })
@@ -216,7 +216,7 @@ describe('the match page', () => {
     const region = await screen.findByRole('region', { name: 'Swedebeat match' })
     await within(region).findAllByTestId('match-song')
     expect(within(region).queryByText(/will lack/)).toBeNull()
-    expect(within(region).queryByRole('button', { name: /Replace the missing/ })).toBeNull()
+    expect(within(region).queryByRole('button', { name: 'Replace songs' })).toBeNull()
   })
 
   it('approves the selection with the revision id only, then reloads', async () => {
@@ -253,7 +253,7 @@ describe('the match page', () => {
       'POST /api/jobs': () => json({ ...NEW_JOB, kind: 'revise_songs' }, 201),
     })
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Replace the missing and unsure songs' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace songs' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
@@ -273,7 +273,7 @@ describe('the match page', () => {
   it('words the three-round limit', async () => {
     fakeApi({ ...routes(), 'POST /api/jobs': () => reason(409, 'swedebeat_rounds') })
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Replace the missing and unsure songs' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace songs' }))
     expect(await screen.findByText(/replaced three times already/)).toBeInTheDocument()
   })
 
@@ -281,7 +281,7 @@ describe('the match page', () => {
     fakeApi(routes({ open_job: { id: NEW_JOB.id, kind: 'revise_songs', state: 'running' } }))
     renderAt(PAGE)
     expect(await screen.findByRole('button', { name: 'Approve this selection' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Replace the missing and unsure songs' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Replace songs' })).toBeDisabled()
   })
 
   it('shows a failure to load the match', async () => {
@@ -327,7 +327,7 @@ describe('Next, in the Swedebeat app', () => {
     expect(within(region).getByTestId('next-facts')).toHaveTextContent('3 songs, about 11:20 long')
     expect(within(region).getAllByRole('listitem')).toHaveLength(4)
     await waitFor(() => {
-      expect(within(region).getByRole('button', { name: 'I made the mix' })).toBeEnabled()
+      expect(within(region).getByRole('button', { name: 'I made it' })).toBeEnabled()
     })
     expect(within(region).getByRole('button', { name: 'Not now' })).toBeEnabled()
   })
@@ -347,14 +347,14 @@ describe('Next, in the Swedebeat app', () => {
           : reason(404, 'not_found'),
     })
     renderAt(PAGE)
-    await press('I made the mix')
+    await press('I made it')
     expect(await screen.findByText('Mix verified')).toBeInTheDocument()
     expect(screen.getByTestId('verdict')).toHaveTextContent('That is your mix')
     expect(api.to('POST', HANDOFF)).toHaveLength(1)
     const [check] = api.to('POST', `${HANDOFF}/check`)
     expect(check?.body).toEqual({})
     expect(check?.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
-    expect(screen.queryByRole('button', { name: 'I made the mix' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'I made it' })).toBeNull()
     everyCallIsOurs(api)
   })
 
@@ -367,7 +367,7 @@ describe('Next, in the Swedebeat app', () => {
     renderAt(PAGE)
     expect(await screen.findByRole('button', { name: 'Check again' })).toBeEnabled()
     expect(screen.getByTestId('verdict')).toHaveTextContent('has not shown a new mix yet')
-    expect(screen.queryByRole('button', { name: 'I made the mix' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'I made it' })).toBeNull()
   })
 
   it('names the songs most likely missing when the mix is too short', async () => {
@@ -387,7 +387,7 @@ describe('Next, in the Swedebeat app', () => {
     })
     renderAt(PAGE)
     expect(await screen.findByTestId('verdict')).toHaveTextContent('shorter than expected. Songs 2, 3 may be missing.')
-    expect(screen.getByRole('button', { name: 'This is the right mix' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'That’s the one' })).toBeEnabled()
   })
 
   it('says a too long mix is too long', async () => {
@@ -443,7 +443,7 @@ describe('Next, in the Swedebeat app', () => {
       [`POST ${HANDOFF}/override`]: () => handoffBody({ state: 'verified', verdict: 'too_short', mix_id: 'mix-1' }),
     })
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'This is the right mix' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'That’s the one' }))
     expect(await screen.findByText('Mix verified')).toBeInTheDocument()
     expect(api.to('POST', `${HANDOFF}/override`)[0]?.body).toEqual({ mix_id: 'mix-1' })
   })
@@ -454,32 +454,32 @@ describe('Next, in the Swedebeat app', () => {
       [`POST ${HANDOFF}/design`]: () => json({ job_id: NEW_JOB.id, revision_id: null, designed: false }, 201),
     })
     renderAt(PAGE)
-    await press('Design the class on this mix')
+    await press('Design the class')
     await waitFor(() => {
       expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     expect(api.to('POST', `${HANDOFF}/design`)[0]?.body).toEqual({})
   })
 
-  it('offers no design on the verified mix while "I use Swedebeat" is off (#525)', async () => {
+  it('offers no design on the verified mix while Swedebeat is off (#525)', async () => {
     const api = step({
       [`GET ${HANDOFF}`]: () => handoffBody({ state: 'verified', verdict: 'ok', mix_id: 'mix-1', checked_at: '2026-11-02T10:00:00Z' }),
       'GET /api/connections': { ...connections(), swedebeat: { enabled: true, available: true, uses_swedebeat: false } },
     })
     renderAt(PAGE)
-    expect(await screen.findByTestId('needs-preference')).toHaveTextContent('I use Swedebeat” is off')
+    expect(await screen.findByTestId('needs-preference')).toHaveTextContent('Swedebeat is off')
     expect(screen.getByText('Mix verified')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Design the class on this mix' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Design the class' })).toBeNull()
     expect(api.to('POST', `${HANDOFF}/design`)).toHaveLength(0)
   })
 
-  it('disables "I made the mix" while "I use Swedebeat" is off and no step was started (#557)', async () => {
+  it('disables "I made it" while Swedebeat is off and no step was started (#557)', async () => {
     const api = step({
       'GET /api/connections': { ...connections(), swedebeat: { enabled: true, available: true, uses_swedebeat: false } },
     })
     renderAt(PAGE)
     expect(await screen.findByTestId('needs-preference')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'I made the mix' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'I made it' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Not now' })).toBeEnabled()
     expect(api.to('POST', HANDOFF)).toHaveLength(0)
   })
@@ -502,8 +502,8 @@ describe('Next, in the Swedebeat app', () => {
     renderAt(PAGE)
     expect(await screen.findByTestId('preference-unknown')).toHaveTextContent('could not check')
     expect(screen.queryByTestId('needs-preference')).toBeNull()
-    expect(screen.queryByText(/Turn it on/)).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Design the class on this mix' })).toBeNull()
+    expect(screen.queryByText(/Swedebeat is off/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Design the class' })).toBeNull()
     expect(api.to('POST', `${HANDOFF}/design`)).toHaveLength(0)
   })
 
@@ -513,8 +513,8 @@ describe('Next, in the Swedebeat app', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Not now' }))
     expect(await screen.findByText(/Your selection stays approved/)).toBeInTheDocument()
     expect(api.to('POST', `${HANDOFF}/not-now`)).toHaveLength(1)
-    fireEvent.click(screen.getByRole('button', { name: 'Show the steps again' }))
-    expect(await screen.findByRole('button', { name: 'I made the mix' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show steps again' }))
+    expect(await screen.findByRole('button', { name: 'I made it' })).toBeInTheDocument()
   })
 
   it('shows until when a live step stays open and not for a verified one (#572)', async () => {
@@ -549,7 +549,7 @@ describe('Next, in the Swedebeat app', () => {
     })
     renderAt(PAGE)
     expect(await screen.findByText(/This step has expired/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'I made the mix' }))
+    fireEvent.click(screen.getByRole('button', { name: 'I made it' }))
     expect(await screen.findByText(/has not shown a new mix yet/)).toBeInTheDocument()
     expect(api.to('POST', HANDOFF)).toHaveLength(1)
   })
@@ -560,7 +560,7 @@ describe('Next, in the Swedebeat app', () => {
       [`POST ${HANDOFF}/check`]: () => reason(409, 'needs_reconnect'),
     })
     renderAt(PAGE)
-    await press('I made the mix')
+    await press('I made it')
     expect(await screen.findByTestId('reconnect-prompt')).toBeInTheDocument()
   })
 
@@ -571,7 +571,7 @@ describe('Next, in the Swedebeat app', () => {
       [`GET /api/jobs/${NEW_JOB.id}`]: () => jobBody('failed', { id: NEW_JOB.id, error_category: 'needs_reconnect' }),
     })
     renderAt(PAGE)
-    await press('I made the mix')
+    await press('I made it')
     expect(await screen.findByTestId('reconnect-prompt')).toBeInTheDocument()
     expect(screen.getByText('MOWL no longer accepts the stored sign-in')).toBeInTheDocument()
   })
@@ -582,7 +582,7 @@ describe('Next, in the Swedebeat app', () => {
       [`POST ${HANDOFF}/check`]: () => reason(409, 'analysis_limit'),
     })
     renderAt(PAGE)
-    await press('I made the mix')
+    await press('I made it')
     expect(await screen.findByText(/analysed the most mixes allowed for today/)).toBeInTheDocument()
   })
 

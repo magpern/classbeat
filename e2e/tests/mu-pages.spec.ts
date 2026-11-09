@@ -172,11 +172,11 @@ test('the admin pages, signed in as an admin with a TOTP code', async () => {
   // Turning on two-factor (the key is on the page as text, the fake authenticator is totpCode)
   // passes the admin's TOTP check for this session: /admin then opens.
   await page.goto('/account#security')
-  await page.getByRole('button', { name: 'Set up an authenticator app' }).click()
+  await page.getByRole('button', { name: 'Set up authenticator' }).click()
   const key = (await page.locator('code').first().innerText()).trim()
   await page.getByLabel('Code from the app').fill(totpCode(key))
   await page.getByRole('button', { name: 'Turn on two-factor' }).click()
-  await page.getByRole('button', { name: 'I have saved them' }).click()
+  await page.getByRole('button', { name: 'Codes saved' }).click()
   await page.goto('/admin')
   await expect(page.getByRole('navigation', { name: 'Admin' })).toBeVisible(LONG)
 

@@ -222,7 +222,7 @@ test('a Spotify account switch while songs wait makes the approval refuse and wr
   await changeClientId(other, CLIENT_B)
   await expect(other.getByText(/This is a different Spotify account than before/)).toBeVisible({ timeout: 20_000 })
   await other.getByLabel('Spotify Client ID').fill(CLIENT_B)
-  await other.getByRole('button', { name: 'Confirm and switch account' }).click()
+  await other.getByRole('button', { name: 'Switch account' }).click()
   await expect(other.getByText('Spotify is connected.')).toBeVisible()
   await other.close()
 

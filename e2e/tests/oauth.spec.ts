@@ -151,8 +151,8 @@ test('Microsoft: an unverified email is handed off to the address page and confi
   await page.getByLabel('Email', { exact: true }).fill(email)
   await passCaptcha(page)
   await page.getByRole('button', { name: 'Send confirmation link' }).click()
-  await expect(page.getByText(/a second try would not send anything/)).toBeVisible()
-  await expect(page.getByRole('link', { name: /Start the provider sign-in again/ })).toBeVisible()
+  await expect(page.getByText(/Nothing more can be sent from this page/)).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Sign in again' })).toBeVisible()
 
   // The link finishes the account in this browser, and does not sign it in.
   await page.goto(await linkFromMail(page.request, email, 'Confirm your classbeat account'))
@@ -194,7 +194,7 @@ test('the provider-email step waits for the check, resets after a refusal and th
 
   await passCaptcha(page)
   await submit.click()
-  await expect(page.getByText(/a second try would not send anything/)).toBeVisible()
+  await expect(page.getByText(/Nothing more can be sent from this page/)).toBeVisible()
   expect(sent).toHaveLength(2)
   expect(sent[1]).toMatch(/^fake-pass-/)
   expect(sent[1]).not.toBe(sent[0])

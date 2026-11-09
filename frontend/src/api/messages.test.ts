@@ -3,8 +3,7 @@ import { oauthOutcomeMessage } from './messages'
 
 // #522: the reauth_stale sentence by what is known about the account's password.
 describe('oauthOutcomeMessage for a failed re-authentication', () => {
-  const first =
-    'The provider did not confirm that you signed in again in the last 5 minutes, so nothing was changed.'
+  const first = 'Nothing changed: the provider did not confirm a sign-in in the last 5 minutes.'
 
   it('shows only what failed while the password status is still loading', () => {
     expect(oauthOutcomeMessage('reauth_stale')).toBe(first)
@@ -17,15 +16,15 @@ describe('oauthOutcomeMessage for a failed re-authentication', () => {
 
   it('explains how to set a password when it has none', () => {
     const text = oauthOutcomeMessage('reauth_stale', false)
-    expect(text.startsWith(first)).toBe(true)
-    expect(text).toContain('"Forgot your password?"')
+    expect(text.startsWith('Nothing changed: the sign-in was not recent.')).toBe(true)
+    expect(text).toContain('“Forgot your password?”')
     expect(text).not.toContain('Use your password instead')
   })
 
   it('gives both ways when the status could not be read', () => {
     const text = oauthOutcomeMessage('reauth_stale', null)
-    expect(text).toContain('Use your password instead, if you have one.')
-    expect(text).toContain('"Forgot your password?"')
+    expect(text).toContain('Use your password, or set one')
+    expect(text).toContain('“Forgot your password?”')
   })
 
   it('leaves the other outcomes as they were', () => {

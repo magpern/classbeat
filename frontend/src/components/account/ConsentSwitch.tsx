@@ -4,6 +4,7 @@ import { useGuard } from '../../auth/prompts'
 import { useT } from '../../i18n/I18n'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
+import { Details } from '../ui/details'
 import { Switch } from '../ui/switch'
 
 /**
@@ -58,6 +59,9 @@ export function ConsentSwitch({ status, onChanged }: { status: SpotifyStatus; on
       {confirming ? (
         <div className="notice" role="group" aria-label={t('consent.confirmRevoke')}>
           <p>{t('consent.revokeText')}</p>
+          <Details>
+            <p className="m-0">{t('consent.revokeDetails')}</p>
+          </Details>
           <div className="flex flex-wrap gap-2">
             <Button
               disabled={action.busy}

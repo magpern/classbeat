@@ -166,11 +166,11 @@ export async function cancelJob(page: Page, id: string): Promise<void> {
 export async function enrollTotp(page: Page): Promise<string> {
   await page.goto('/admin')
   await expect(page.getByRole('heading', { name: 'Set up two-factor' })).toBeVisible()
-  await page.getByRole('button', { name: 'Set up an authenticator app' }).click()
+  await page.getByRole('button', { name: 'Set up authenticator' }).click()
   const secret = (await page.locator('code').first().textContent())!.trim()
   await page.getByLabel('Code from the app').fill(await nextTotp(secret))
   await page.getByRole('button', { name: 'Turn on two-factor' }).click()
-  await page.getByRole('button', { name: 'I have saved them' }).click()
+  await page.getByRole('button', { name: 'Codes saved' }).click()
   await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toBeVisible()
   return secret
 }

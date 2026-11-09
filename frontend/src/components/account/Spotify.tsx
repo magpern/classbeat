@@ -16,6 +16,7 @@ import { t as translate } from '../../i18n/t'
 import { goToProvider } from '../../lib/navigation'
 import { useQuery } from '../../router/Router'
 import { Notice, useAction } from '../forms'
+import { Details } from '../ui/details'
 import { ConsentSwitch } from './ConsentSwitch'
 import { SpotifyWizard } from './SpotifyWizard'
 
@@ -160,6 +161,10 @@ export function SpotifyConnection({ onStatus }: { onStatus?: (status: SpotifySta
       {connected && !changing && dialog === 'change' ? (
         <div className="notice" role="group" aria-label={t('spot.changeConfirm')}>
           <p>{t('spot.changeText')}</p>
+          <Details>
+            <p className="m-0">{t('spot.changeDeleted')}</p>
+            <p className="m-0">{t('spot.changeAccount')}</p>
+          </Details>
           <div className="flex flex-wrap gap-2">
             <button
               className="button"
@@ -186,6 +191,11 @@ export function SpotifyConnection({ onStatus }: { onStatus?: (status: SpotifySta
       {dialog === 'disconnect' ? (
         <div className="notice" role="group" aria-label={t('spot.disconnectConfirm')}>
           <p>{t('spot.disconnectText')}</p>
+          <Details>
+            <p className="m-0">{t('spot.disconnectDeleted')}</p>
+            <p className="m-0">{t('spot.disconnectKept')}</p>
+            <p className="m-0">{t('spot.disconnectRevoke')}</p>
+          </Details>
           <div className="flex flex-wrap gap-2">
             <button
               className="button"

@@ -46,12 +46,12 @@ test('the wizard shows the callback address and refuses a Client ID that is not 
   const dialog = spotifyDialog(page)
 
   await expect(dialog.getByTestId('spotify-callback-url')).toHaveText(CALLBACK)
-  await expect(dialog.getByText(/never needs the app.s Client Secret/)).toBeVisible()
+  await expect(dialog.getByText(/We never ask for the Client Secret/)).toBeVisible()
   await expect(page.getByLabel(/secret/i)).toHaveCount(0) // no field for a Client Secret
 
   await dialog.getByLabel('Spotify Client ID').fill('not-a-client-id')
   await dialog.getByRole('button', { name: 'Connect Spotify' }).click()
-  await expect(dialog.getByText(/does not look like a Spotify Client ID/)).toBeVisible()
+  await expect(dialog.getByText(/That is not a Client ID/)).toBeVisible()
   expect(fakeState().requests).toEqual([]) // blocked in the page: nothing was sent anywhere
   await expect(page.getByTestId('spotify-status')).toHaveText('Not connected')
 })
@@ -125,20 +125,20 @@ test('connect, allow the working playlist, revoke, then disconnect', async ({ pa
   await expect(page.getByTestId('spotify-consent-state')).toHaveText('You have not allowed it yet.')
   await expect(page.getByTestId('spotify-consent-text')).not.toBeEmpty()
   await page.getByRole('switch', { name: 'Allow the working playlist' }).click()
-  await expect(page.getByText(/classbeat may use the working playlist/)).toBeVisible()
+  await expect(page.getByText(/We may use the working playlist/)).toBeVisible()
   await expect(page.getByTestId('spotify-consent-state')).toHaveText('You have allowed the working playlist.')
   await page.reload()
   await expect(page.getByTestId('spotify-consent-state')).toHaveText('You have allowed the working playlist.')
 
   await page.getByRole('switch', { name: 'Allow the working playlist' }).click()
   await expect(page.getByRole('group', { name: 'Confirm revoke' })).toBeVisible()
-  await page.getByRole('button', { name: 'Yes, revoke my consent' }).click()
+  await page.getByRole('button', { name: 'Revoke consent' }).click()
   await expect(page.getByTestId('spotify-consent-state')).toHaveText('You have not allowed it yet.')
 
   // Disconnect: the dialog says what is deleted and what stays; afterwards no Spotify request.
   const before = fakeState().requests.length
   await page.getByRole('button', { name: 'Disconnect Spotify' }).click()
-  await expect(page.getByRole('group', { name: 'Confirm disconnect' })).toContainText('Playlists already in your Spotify stay there')
+  await expect(page.getByRole('group', { name: 'Confirm disconnect' })).toContainText('playlists already in your Spotify stay')
   await page.getByRole('button', { name: 'Yes, disconnect Spotify' }).click()
   await expect(page.getByText(/Spotify is disconnected/)).toBeVisible()
   await expect(page.getByTestId('spotify-status')).toHaveText('Not connected')
@@ -204,10 +204,10 @@ test('another Spotify account for the same user needs a confirmed switch', async
   await spotifyDialog(page).getByRole('button', { name: /^Connect Spotify/ }).click()
   await expect(page.getByText(/This is a different Spotify account than before/)).toBeVisible()
   await expect(page.getByTestId('spotify-status')).toHaveText('Connected') // the old connection stays
-  await expect(page.getByRole('button', { name: 'Confirm and switch account' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Switch account' })).toBeVisible()
 
   await page.getByLabel('Spotify Client ID').fill(CLIENT_B)
-  await page.getByRole('button', { name: 'Confirm and switch account' }).click()
+  await page.getByRole('button', { name: 'Switch account' }).click()
   await expect(page.getByText('Spotify is connected.')).toBeVisible()
   const me = fakeState().requests.filter((r) => r.path === '/v1/me')
   expect(me.map((r) => r.token_user)).toEqual([USER_A, USER_B, USER_B])

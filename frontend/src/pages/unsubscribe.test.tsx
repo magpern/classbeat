@@ -11,7 +11,7 @@ describe('unsubscribe page', () => {
     renderAt('/unsubscribe#token=cat-token&all=all-token')
     expect(window.location.hash).toBe('')
     expect(api.to('POST', '/api/mail/unsubscribe/confirm')).toHaveLength(0)
-    fireEvent.click(screen.getByRole('button', { name: 'Stop all optional email' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stop optional email' }))
     expect(await screen.findByText(/no longer send you optional email/)).toBeInTheDocument()
     expect(api.to('POST', '/api/mail/unsubscribe/confirm')[0]?.body).toEqual({
       token: 'all-token',
@@ -28,7 +28,7 @@ describe('unsubscribe page', () => {
       'POST /api/mail/unsubscribe/confirm': { status: 'ok' },
     })
     renderAt('/unsubscribe#token=cat-token&all=all-token')
-    fireEvent.click(screen.getByRole('button', { name: 'Stop this kind of email' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stop these emails' }))
     expect(await screen.findByText(/send you this kind of email/)).toBeInTheDocument()
     expect(api.to('POST', '/api/mail/unsubscribe/confirm')[0]?.body).toEqual({
       token: 'cat-token',
@@ -40,7 +40,7 @@ describe('unsubscribe page', () => {
       'POST /api/mail/unsubscribe/confirm': reason(400, 'link_invalid'),
     })
     renderAt('/unsubscribe#token=bad')
-    fireEvent.click(screen.getByRole('button', { name: 'Stop this kind of email' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stop these emails' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/no longer valid/)
   })
 
@@ -82,9 +82,10 @@ describe('account email section', () => {
       unsubscribed_all: false,
       opted_out: ['welcome'],
     })
-    const copy = screen.getByText(/always sent/)
-    expect(copy).toHaveTextContent('Sign-in, password reset and confirmation links are always sent.')
-    expect(copy).toHaveTextContent(/Account activity notices include security notices/)
-    expect(copy).not.toHaveTextContent(/security alerts/)
+    const copy = screen.getByText(/always arrive/)
+    expect(copy).toHaveTextContent('Sign-in, reset and confirmation links always arrive.')
+    const note = screen.getByText(/Account activity notices include security warnings/)
+    expect(note).toHaveTextContent(/Switched off, you get no such email/)
+    expect(note).not.toHaveTextContent(/security alerts/)
   })
 })

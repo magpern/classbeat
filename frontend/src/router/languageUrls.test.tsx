@@ -127,7 +127,7 @@ describe('an unprefixed URL', () => {
       'POST /api/mail/unsubscribe/confirm': { status: 'ok' },
     })
     open('/unsubscribe#token=cat&all=allt')
-    fireEvent.click(await screen.findByRole('button', { name: 'Stop this kind of email' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop these emails' }))
     await waitFor(() => {
       expect(api.to('POST', '/api/mail/unsubscribe/confirm')[0]?.body).toEqual({ token: 'cat' })
     })

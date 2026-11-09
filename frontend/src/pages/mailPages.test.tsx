@@ -94,8 +94,8 @@ describe('provider email page', () => {
     type('Email', 'ann@example.test')
     fireEvent.click(await screen.findByRole('button', { name: 'Send confirmation link' }))
 
-    expect(await screen.findByText(/a second try would not send anything/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Start the provider sign-in again/ })).toHaveAttribute(
+    expect(await screen.findByText(/Nothing more can be sent from this page/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Sign in again' })).toHaveAttribute(
       'href',
       '/en/signin',
     )

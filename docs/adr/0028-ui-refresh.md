@@ -74,13 +74,15 @@ it is, one line (what it is for, or "Connected" and the account) and one button,
   screen, so ADR 0024 §7 stands and the phone dialog shows the password form only. A line that the
   password is not kept.
 - **Spotify:** the three setup steps (create the app, add the redirect URI, paste the Client ID)
-  and Continue to Spotify. The `/account/spotify` page stays reachable for the working-playlist
-  consent and "Change Client ID".
+  and Continue to Spotify. The `/account/spotify` page now opens this Spotify dialog on the
+  Connections tab; the working-playlist consent and "Change Client ID" are in the dialog.
 - **Swedebeat:** email and password, with the existing "signed in on another device" step.
 
-The consent switch for the working playlist and the long disconnect texts move into the
-Disconnect confirmation and a "Details" disclosure. All existing security behaviour stays: step-up
-after the recent-sign-in window, rate limits, no password stored, no secret in the browser.
+The consent switch for the working playlist stays in the Spotify dialog (issue #852, PR #856); only
+its text is shortened. The long disconnect and revoke texts move into a "Details" disclosure in
+their confirmations, split into short parts (what is deleted, what stays, what Spotify keeps). All
+existing security behaviour stays: step-up after the recent-sign-in window, rate limits, no password
+stored, no secret in the browser.
 
 ### 4. Sign-in
 

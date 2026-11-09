@@ -66,6 +66,8 @@ export function DeleteAccount({ email }: { email: string }) {
           <DialogContent aria-describedby="delete-account-description">
             <DialogTitle>{t('delete.title')}</DialogTitle>
             <DialogDescription id="delete-account-description">{t('delete.text')}</DialogDescription>
+            <p className="m-0">{t('delete.also')}</p>
+            <p className="m-0">{t('delete.stays')}</p>
             <form onSubmit={submit}>
               <Field
                 label={t('delete.emailLabel')}
