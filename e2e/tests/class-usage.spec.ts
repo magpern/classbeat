@@ -111,9 +111,9 @@ test('usage is the sum of the jobs, saving adds none and deleting the class keep
   // Delete class is in the header's ··· menu.
   await page.getByRole('button', { name: 'More actions' }).click()
   await page.getByRole('menuitem', { name: 'Delete class' }).click()
-  await page.getByRole('button', { name: 'Yes, delete this class' }).click()
+  await page.getByRole('button', { name: 'Yes, delete' }).click()
   await expect(page.getByRole('heading', { name: 'Class deleted' })).toBeVisible()
-  await expect(page.getByText('The 1 workout classbeat saved to your MOWL account stays there')).toBeVisible()
+  await expect(page.getByText('The 1 workout we saved to your MOWL account stays there')).toBeVisible()
   expect((await page.request.get(`/api/classes/${id}`)).status()).toBe(404)
   expect(await apiUsage(page)).toEqual(usage)
   await expectAccountPage(page, usage)

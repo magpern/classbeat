@@ -51,7 +51,7 @@ test('pattern notes: shown, dismissed, shown again, and axe clean', async ({ pag
   await expect(page.getByTestId('pattern-note').first()).toBeHidden() // collapsed
   await block.locator('summary').click()
   await expect(page.getByTestId('pattern-note')).toHaveCount(2)
-  await expect(page.getByTestId('notes-current-rules')).toHaveText('Notes use the current rules')
+  await expect(page.getByTestId('notes-current-rules')).toHaveText('Notes follow current rules')
   await expect(page.getByRole('alert')).toHaveCount(0)
 
   const findings = await audit(page, 'class page with pattern notes', block.locator('summary'))

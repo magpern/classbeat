@@ -168,7 +168,7 @@ export async function reviseByChat(page: Page, script: ModelScript, request: str
   useModelScript(script)
   await page.getByLabel('What should change?').fill(request)
   await page.getByRole('button', { name: 'Change it', exact: true }).click()
-  await expect(page.getByText(`classbeat changed it, version ${version}`)).toBeVisible(LONG)
+  await expect(page.getByText(`Changed, version ${version}`)).toBeVisible(LONG)
 }
 
 export const savePanel = (page: Page): Locator => page.getByTestId('class-header')

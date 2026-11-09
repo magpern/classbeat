@@ -448,7 +448,7 @@ describe('account page', () => {
     const dialog = await screen.findByRole('dialog')
     type('Authenticator or recovery code', '123456')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }))
-    expect(await screen.findByText(/confirmation link is on its way/)).toBeInTheDocument()
+    expect(await screen.findByText(/we sent a confirmation link there/)).toBeInTheDocument()
     expect(api.to('POST', '/api/auth/mfa/stepup')[0]?.body).toEqual({ code: '123456' })
   })
 
