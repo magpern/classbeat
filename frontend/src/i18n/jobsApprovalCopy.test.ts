@@ -7,8 +7,8 @@ import type { Catalogue, CatalogueKey } from './en'
 // ADR 0028 section 2 for song approval, jobs, errors and New class: button 1 to 3 words,
 // label at most 4, heading at most 8, helper at most 12, error at most 20, any other text at most 25;
 // "classbeat" is never the subject of an app-screen sentence. In en, sv and da.
-// Not covered here: class.* and the songs.* texts of the class screens (classSongsCopy.test.ts),
-// the sign-in reasons error.reason.* (account area), and the sentence.* texts, whose English the
+// Not covered here: class.* and the songs.start.*, songs.failure.*, songs.uncertain.* texts of the
+// class screens (classSongsCopy.test.ts), the sign-in reasons error.reason.* (account area), and the sentence.* texts, whose English the
 // backend sends (sentences.test.ts pins it to the server text).
 
 const words = (text: string) => text.split(/\s+/).filter((w) => w !== '').length
@@ -86,7 +86,6 @@ const HELPERS: readonly CatalogueKey[] = [
 
 /** Errors and what-happened lines: at most 20 words. */
 const ERROR_PREFIXES = [
-  'songs.start.',
   'songs.approve.',
   'songs.outcome.',
   'job.revise.',
@@ -98,30 +97,22 @@ const ERROR_PREFIXES = [
   'error.',
 ] as const
 
-/** Failure details sit under their title: songs.failure.<code>.detail and job.failure.<code>.detail. */
-const isFailureDetail = (key: string) => /^(songs|job)\.failure\..*\.detail$/.test(key)
+/** Failure details sit under their title: job.failure.<code>.detail. */
+const isFailureDetail = (key: string) => /^job\.failure\..*\.detail$/.test(key)
 
 /** Headings and progress lines: at most 8 words. */
 const isHeading = (key: string) =>
   /(\.title|Title)$/.test(key) || /^(job\.(stage|step)|songs\.stage)\./.test(key) || key === 'songs.approval.heading'
 
 /** Texts the class screens' pass (classSongsCopy.test.ts) owns, so this guard leaves them alone. */
-const OTHER_PASS: readonly string[] = [
-  'songs.change.intro',
-  'songs.failure.rate_limited.title',
-  'songs.failure.upstream_unavailable.detail',
-  'songs.failure.scope_mismatch.title',
-  'songs.failure.account_changed.title',
-  'songs.ended.expiredApproved',
-  'songs.ended.expiredSongs',
-  'songs.start.receipt_invalid',
-]
+const OTHER_PASS_PREFIXES = ['songs.start.', 'songs.failure.', 'songs.uncertain.'] as const
+const OTHER_PASS: readonly string[] = ['songs.change.intro', 'songs.ended.expiredApproved', 'songs.ended.expiredSongs']
 
 const inScope = (key: string) =>
   /^(songs|job|newclass|music|error)\./.test(key) &&
   !key.startsWith('error.reason.') &&
   !key.startsWith('sentence.') &&
-  !key.startsWith('songs.uncertain.') &&
+  !OTHER_PASS_PREFIXES.some((p) => key.startsWith(p)) &&
   !OTHER_PASS.includes(key)
 
 const SCOPE_KEYS = (Object.keys(en) as CatalogueKey[]).filter(inScope)
@@ -149,11 +140,11 @@ describe('song approval, job, error and New class copy', () => {
   it('is not checked against an empty or stale set of keys', () => {
     // A renamed or removed key must fail here instead of silently dropping out of the guard.
     for (const key of [...BUTTONS, ...LABELS, ...HELPERS]) expect(en[key], key).toBeTypeOf('string')
-    expect(SCOPE_KEYS.length).toBeGreaterThan(400)
+    expect(SCOPE_KEYS.length).toBeGreaterThan(300)
     for (const prefix of ['songs.', 'job.', 'newclass.', 'music.', 'error.']) {
       expect(SCOPE_KEYS.some((k) => k.startsWith(prefix)), prefix).toBe(true)
     }
-    expect(SCOPE_KEYS.filter((k) => limitOf(k) === 20).length).toBeGreaterThan(120)
+    expect(SCOPE_KEYS.filter((k) => limitOf(k) === 20).length).toBeGreaterThan(80)
     expect(SCOPE_KEYS.some((k) => k.startsWith('class.'))).toBe(false)
     expect(SCOPE_KEYS.some((k) => k.startsWith('error.reason.'))).toBe(false)
     expect(SCOPE_KEYS.some((k) => k.startsWith('sentence.'))).toBe(false)
@@ -183,7 +174,7 @@ describe('song approval, job, error and New class copy', () => {
     }
   })
 
-  it('keeps what the shortened texts promise: nothing written, nothing changed, working playlist forgotten', () => {
+  it('keeps the "nothing written", "nothing changed" and "not designed" wording of a sample of the shortened texts', () => {
     const must: [CatalogueKey, RegExp, RegExp, RegExp][] = [
       ['songs.outcome.nothing', /Nothing was written/, /Inget skrevs/, /Intet blev skrevet/],
       ['songs.approve.expired', /Nothing was written/, /Inget skrevs/, /Intet blev skrevet/],
