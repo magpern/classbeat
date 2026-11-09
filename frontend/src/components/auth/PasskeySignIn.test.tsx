@@ -63,7 +63,7 @@ describe('passkey sign-in', () => {
     )
     renderAt('/signin')
     fireEvent.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }))
-    expect(await screen.findByRole('heading', { name: 'Your account' })).toBeInTheDocument()
+    expect(await screen.findByTestId('account-email')).toBeInTheDocument()
     expect(window.location.pathname).toBe('/en/account')
     expect(browser.get.mock.calls[0]?.[0]).not.toHaveProperty('mediation')
     expect(api.to('POST', '/api/auth/passkeys/signin/finish')[0]?.body).toEqual({ credential: credential().toJSON?.() })
@@ -121,7 +121,7 @@ describe('passkey sign-in', () => {
       expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
     })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-    expect(await screen.findByRole('heading', { name: 'Your account' })).toBeInTheDocument()
+    expect(await screen.findByTestId('account-email')).toBeInTheDocument()
     expect(screen.queryByText(/Signed in with your phone or security key/)).toBeNull()
   })
 
@@ -193,7 +193,7 @@ describe('passkey autofill', () => {
       signedIn,
     )
     renderAt('/signin')
-    expect(await screen.findByRole('heading', { name: 'Your account' })).toBeInTheDocument()
+    expect(await screen.findByTestId('account-email')).toBeInTheDocument()
   })
 
   it('starts nothing where the browser has no conditional mediation', async () => {

@@ -1757,7 +1757,6 @@ const sv: Catalogue = {
   'account.tab.security': 'Inloggning och säkerhet',
   'account.tab.data': 'Dina data',
   'account.tab.appearance': 'Utseende',
-  'account.heading': 'Ditt konto',
   'account.tabs': 'Konto',
   'account.usageDetails': 'Visa användningsdetaljer',
   'account.email': 'E-post',

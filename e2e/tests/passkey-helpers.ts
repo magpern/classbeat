@@ -109,7 +109,7 @@ export async function signInWithPasskey(page: Page): Promise<void> {
   const button = page.getByRole('button', { name: 'Sign in with a passkey' })
   await expect(button).toBeVisible()
   await button.click({ timeout: 5_000 }).catch(() => undefined)
-  await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
+  await expect(page.getByTestId('account-email')).toBeVisible()
 }
 
 /** Another browser context for a second user, with its own virtual authenticator. */

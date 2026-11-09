@@ -103,18 +103,35 @@ describe('account tabs', () => {
     expect(screen.getByText(/sign-in method is linked/)).toBeInTheDocument()
   })
 
-  it.each([390, 1440])('lay out at %i px with the profile header and every tab reachable', async (width) => {
+  it.each([390, 1440])('lay out at %i px with the identity header and every tab reachable', async (width) => {
     setWidth(width)
     fakeApi(base)
     renderAt('/account')
-    expect(await screen.findByRole('heading', { name: 'Your account' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'ann' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.queryByText('Your account')).toBeNull()
     expect(screen.getByTestId('account-email')).toHaveTextContent('ann@example.test')
-    expect(screen.getByText('ann', { selector: 'p' })).toBeInTheDocument()
-    expect(screen.getByLabelText('New email address')).toBeInTheDocument()
+    // Changing the address is not part of the header: it sits in Sign-in and security.
+    expect(screen.queryByLabelText('New email address')).toBeNull()
     const list = screen.getByRole('tablist', { name: 'Account' })
     // The tab list scrolls sideways on a phone instead of wrapping or widening the page.
     expect(list).toHaveClass('overflow-x-auto')
     for (const tab of within(list).getAllByRole('tab')) expect(tab).toHaveClass('whitespace-nowrap')
+  })
+})
+
+describe('change email', () => {
+  it('lives in Sign-in and security, outside the header', async () => {
+    fakeApi(base)
+    renderAt('/account#security')
+    const form = (await screen.findByLabelText('New email address')).closest('section')
+    expect(form).not.toBeNull()
+    const section = within(form as HTMLElement)
+    expect(section.getByRole('heading', { level: 2, name: 'Email address' })).toBeInTheDocument()
+    expect(section.getByRole('button', { name: 'Change email' })).toBeInTheDocument()
+    const header = screen.getByRole('heading', { level: 1 }).closest('header')
+    expect(header).not.toBeNull()
+    expect(within(header as HTMLElement).queryByLabelText('New email address')).toBeNull()
   })
 })
 

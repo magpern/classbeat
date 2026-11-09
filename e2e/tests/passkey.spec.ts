@@ -98,7 +98,7 @@ test('a removed passkey no longer signs in, and the password still does', async 
   const answer = await finished
   expect(answer === null ? 'cancelled' : answer.status()).not.toBe(200)
   await expect(button).toBeEnabled()
-  await expect(page.getByRole('heading', { name: 'Your account' })).toHaveCount(0)
+  await expect(page.getByTestId('account-email')).toHaveCount(0)
 
   await signInThroughUi(page, email)
 })

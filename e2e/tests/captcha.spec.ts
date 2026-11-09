@@ -63,7 +63,7 @@ test('sign-in waits for the check, and a refused check is reset and passes the s
 
   await passCaptcha(page)
   await submit.click()
-  await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
+  await expect(page.getByTestId('account-email')).toBeVisible()
   expect(sent).toHaveLength(2)
   expect(sent[0]).toMatch(/^fake-pass-[0-9a-f]{24}$/)
   expect(sent[1]).toMatch(/^fake-pass-[0-9a-f]{24}$/)
@@ -87,7 +87,7 @@ test('a wrong password spends the token too: the next try needs a new check', as
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
   await passCaptcha(page)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
+  await expect(page.getByTestId('account-email')).toBeVisible()
   expect(sent).toHaveLength(2)
   expect(new Set(sent).size).toBe(2)
 })

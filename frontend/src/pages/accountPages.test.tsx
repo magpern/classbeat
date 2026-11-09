@@ -37,7 +37,7 @@ describe('sign-in page', () => {
       expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
     })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-    expect(await screen.findByRole('heading', { name: 'Your account' })).toBeInTheDocument()
+    expect(await screen.findByTestId('account-email')).toBeInTheDocument()
     expect(window.location.pathname).toBe('/en/account')
     expect(api.to('POST', '/api/auth/login')[0]?.body).toEqual({
       email: 'ann@example.test',
