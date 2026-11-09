@@ -32,6 +32,11 @@
   --color-zone-5: var(--cb-zone-5);
   --color-zone-6: var(--cb-zone-6);
   --color-zone-7: var(--cb-zone-7);
+  --color-google-bg: var(--cb-google-bg);
+  --color-google-line: var(--cb-google-line);
+  --color-google-text: var(--cb-google-text);
+  --color-microsoft-bg: var(--cb-microsoft-bg);
+  --color-microsoft-text: var(--cb-microsoft-text);
   --color-stage: var(--cb-stage);
   --color-stage-grid: var(--cb-stage-grid);
   --color-stage-text: var(--cb-stage-text);
