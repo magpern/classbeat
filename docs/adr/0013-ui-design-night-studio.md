@@ -106,7 +106,8 @@ editor and the studio screen:
 A dark stage in both themes also keeps the yellow zone legible, since yellow on white would fail
 the 3:1 rule for graphics.
 
-**Type.** Inter (UI, body, numbers with `tabular-nums`) and Archivo 700/800 (titles). Both are
+**Type.** Inter (UI, body, numbers with `tabular-nums`) and Archivo (titles; since ADR 0028 the
+variable font at a wide `font-stretch`, no longer the static 700/800). Both are
 bundled with `@fontsource` (SIL OFL) and served by us, never from a font CDN. Scale: 60/46/40 titles,
 30/24/20 sections, 17/16/15 body, 13/12 labels.
 
@@ -280,9 +281,9 @@ TSS, FTP, RPM and zone numbers stay, because MOWL users know them.
 - **Tailwind CSS v4.** `tokens.css` stays the one source of colour, spacing and type: Tailwind's
   `@theme` maps to its variables, and nothing else defines a colour.
 - **Radix UI primitives**, in shadcn/ui-style components copied into `src/components/ui/` (code
-  we own): Button, Card, Chip and ToggleGroup, Dialog, DropdownMenu, Tabs, Switch, Tooltip, Toast
+  we own): Button, Card, Chip and SegmentedControl (ADR 0028; it replaced ToggleGroup), Dialog, DropdownMenu, Tabs, Switch, Tooltip, Toast
   (`sonner`), Progress, Select.
-- **Libraries:** `lucide-react`; `@fontsource-variable/inter` and `@fontsource/archivo`.
+- **Libraries:** `lucide-react`; `@fontsource-variable/inter` and `@fontsource-variable/archivo` (ADR 0028).
 - **Dialog under `style-src 'self'` (amended by #331).** Radix's modal mode locks the page scroll
   with an injected `<style>`, which the policy refuses (a console error per open, no lock). The
   CSP is not loosened (no nonce, no `'unsafe-inline'`). `Dialog` runs Radix non-modal and adds the

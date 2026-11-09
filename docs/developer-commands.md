@@ -452,7 +452,9 @@ npm run build        # typecheck, then Vite writes frontend/dist
   variables, so utilities are `bg-surface`, `text-muted`, `border-line`, `bg-brand` and so on. Reduced motion
   turns animations and transitions off there.
 - Components: shadcn/ui-style wrappers on Radix primitives in `src/components/ui/` (Button, Card, Chip and
-  ChipButton, ToggleGroup, Dialog, DropdownMenu, Tabs, Switch, Tooltip, Toast with `sonner`, Progress, Select),
+  ChipButton, Dialog, DropdownMenu, Tabs, Switch, Tooltip, Toast with `sonner`, Progress, Select), and the
+  four shared controls of ADR 0028 section 2: `SegmentedControl` (radio group, one of a few options; replaces
+  `ToggleGroup`), `Stepper`, `ListRow` and `StickyActionBar` (right column on a desktop, bottom bar on a phone),
   merged with `cn()` from `src/lib/cn.ts`. Icons are `lucide-react`. New UI uses these, not new hand-written CSS.
 - Theme: `src/theme/theme.ts` and `ThemeSwitch` (Dark default, Light, Same as device) keep the choice in
   `localStorage` (try/catch, the page works without it); `public/theme-init.js` applies it before first paint.
@@ -479,8 +481,10 @@ npm run build        # typecheck, then Vite writes frontend/dist
   `error_message` for a code it has no key for. A new code needs its `en.ts` entry and a regenerated
   `backend/tests/fixtures/sentence_codes.json` (`sentence_cases.as_json()`); the backend and `src/i18n/sentences.test.ts`
   both check it. `design/rules/rationales.py` stays English.
-- Fonts are bundled (`@fontsource-variable/inter`, `@fontsource/archivo` 700 and 800, SIL OFL) and served from
-  our origin; nothing is requested from a third-party host at runtime (`src/no-third-party-hosts.test.ts`
+- Fonts are bundled (`@fontsource-variable/inter`, `@fontsource-variable/archivo` with its width axis
+  (`wdth.css`), SIL OFL) and served from our origin; titles use `font-display` (family `Archivo Variable`), which
+  sets `font-stretch` to `--cb-font-stretch-display` (118%, ADR 0028 section 1.1; `font-stretch-normal` on an
+  element undoes it); nothing is requested from a third-party host at runtime (`src/no-third-party-hosts.test.ts`
   guards the sources), with **one allowed exception**: album and playlist covers from Spotify's image hosts
   `https://i.scdn.co`, `https://mosaic.scdn.co`, `https://image-cdn-ak.spotifycdn.com` and
   `https://image-cdn-fa.spotifycdn.com` (ADR 0013 §9 and its amendment of 2026-11-03), named and shown only
