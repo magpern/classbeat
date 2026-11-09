@@ -118,7 +118,7 @@ test('a save whose answer is lost is found by Check again', async ({ page }) => 
     page.getByText('We could not tell whether MOWL took it. Decide in the box below.'),
   ).toBeVisible(LONG)
   const box = undecided(page)
-  await expect(box.getByRole('heading', { name: 'We could not tell if your workout was saved' })).toBeVisible()
+  await expect(box.getByRole('heading', { name: 'We could not confirm your workout was saved' })).toBeVisible()
   await expect(savedState(page)).toHaveText('Not saved to MOWL yet.')
   expect(saveState()).toMatchObject({ writes: LAST_WRITE, programs: [1] }) // sent once, never again
 
@@ -147,7 +147,7 @@ test('a second workout is made only when the user decides the first was not save
   await box.getByRole('button', { name: 'Do it anyway' }).click()
   await expect(box.getByRole('group', { name: 'Confirm' })).toContainText('MOWL may get a second copy')
   expect(saveState()).toMatchObject({ writes: LAST_WRITE, programs: [1] })
-  await box.getByRole('button', { name: 'Yes, it was not saved' }).click()
+  await box.getByRole('button', { name: 'Yes, not saved' }).click()
   await expect(savePanel(page).getByText('Understood. You can save again;')).toBeVisible()
   await expect(box).toHaveCount(0)
   expect(saveState()).toMatchObject({ writes: LAST_WRITE, programs: [1] })
@@ -171,7 +171,7 @@ test('an update left partly done stays undecided until the user overwrites', asy
   saveArm('5:drop')
   await confirmWrite(page, 'Update workout', 'Update workout')
   const box = undecided(page)
-  await expect(box.getByRole('heading', { name: 'We could not tell if your workout was updated' })).toBeVisible(LONG)
+  await expect(box.getByRole('heading', { name: 'We could not confirm your workout was updated' })).toBeVisible(LONG)
   await expect(savedState(page)).toHaveText(
     'Saved to MOWL as version 1. Version 2 has unsaved changes.',
   )
@@ -188,7 +188,7 @@ test('an update left partly done stays undecided until the user overwrites', asy
   // Do it anyway: the user decides it did not happen; the next update overwrites.
   await box.getByRole('button', { name: 'Do it anyway' }).click()
   await expect(box.getByRole('group', { name: 'Confirm' })).toContainText('the next update replaces it')
-  await box.getByRole('button', { name: 'Yes, it was not updated' }).click()
+  await box.getByRole('button', { name: 'Yes, not updated' }).click()
   await expect(savePanel(page).getByText('Understood. The next update replaces your MOWL copy with this version.')).toBeVisible()
   saveArm('')
   await savePanel(page).getByRole('button', { name: 'Update again' }).click()

@@ -91,7 +91,7 @@ test('an attach MOWL did not answer clearly is left to the user, who then decide
 
   // MOWL applied the attach but answered with an error: classbeat does not try again on its own.
   await expect(
-    page.getByRole('heading', { name: 'classbeat could not tell whether your playlist was added' }),
+    page.getByRole('heading', { name: 'We could not confirm the playlist was added' }),
   ).toBeVisible(LONG)
   const failed = await getJob(page, first)
   expect(failed.state).toBe('failed')
@@ -100,7 +100,7 @@ test('an attach MOWL did not answer clearly is left to the user, who then decide
 
   // Check again cannot find out (MOWL has no read for it), and sends nothing.
   await page.getByRole('button', { name: 'Check again' }).click()
-  await expect(page.getByText('classbeat still cannot tell whether the playlist was added.')).toBeVisible()
+  await expect(page.getByText('We still cannot tell whether the playlist was added.')).toBeVisible()
   expect(fakeMowl('state', PLAYLISTS.flaky.id).attaches).toBe(1)
   expect(page.url()).toContain(first)
 
@@ -109,7 +109,7 @@ test('an attach MOWL did not answer clearly is left to the user, who then decide
   const confirm = page.getByRole('group', { name: 'Confirm' })
   await expect(confirm).toBeVisible()
   expect(fakeMowl('state', PLAYLISTS.flaky.id).attaches).toBe(1)
-  await confirm.getByRole('button', { name: 'Yes, add it again' }).click()
+  await confirm.getByRole('button', { name: 'Add it again' }).click()
   await expect(page.getByText(/The next design adds the playlist to your MOWL music again/)).toBeVisible()
 
   await page.getByRole('button', { name: 'Design again' }).click()

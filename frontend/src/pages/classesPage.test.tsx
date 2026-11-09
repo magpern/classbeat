@@ -34,7 +34,7 @@ describe('My classes', () => {
     const first = await screen.findByRole('link', { name: 'Hills <img src=x onerror=alert(1)>' })
     expect(first).toHaveAttribute('href', `/en/classes/${CLASS_ID}`)
     expect(document.querySelector('main img')).toBeNull()
-    expect(screen.getByText('Version 1, not saved to MOWL')).toBeInTheDocument()
+    expect(screen.getByText('Version 1, not saved')).toBeInTheDocument()
     expect(screen.getByText('Being designed')).toBeInTheDocument()
   })
 
@@ -77,13 +77,13 @@ describe('My classes', () => {
     expect(screen.getByRole('link', { name: 'Other' })).toBeInTheDocument()
   })
 
-  it('shows saved state and "changes not in MOWL yet"', async () => {
+  it('shows saved state and "unsaved changes"', async () => {
     renderAtWith([
       classBody({ saved: SAVED }),
       classBody({ id: SECOND, title: 'Other', saved: { ...SAVED, latest_up_to_date: false } }),
     ])
-    expect(await screen.findByText('Version 1 saved to MOWL')).toBeInTheDocument()
-    expect(screen.getByText('Version 1 has changes not in MOWL yet')).toBeInTheDocument()
+    expect(await screen.findByText('Version 1 in MOWL')).toBeInTheDocument()
+    expect(screen.getByText('Version 1, unsaved changes')).toBeInTheDocument()
   })
 
   it('filters with All, Saved to MOWL and Drafts, and searches by title on the client', async () => {

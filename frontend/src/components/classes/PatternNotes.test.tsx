@@ -48,7 +48,7 @@ describe('PatternNotes', () => {
     expect(screen.getByText('Worth a look.')).toBeInTheDocument()
     expect(screen.getByText('Good to know.')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(screen.queryByText('Notes use the current rules')).toBeNull()
+    expect(screen.queryByText('Notes follow current rules')).toBeNull()
   })
 
   it('shows at most five notes and skips rule ids it has no copy for', () => {
@@ -75,7 +75,7 @@ describe('PatternNotes', () => {
 
   it('shows the muted line when the notes use the current rules', () => {
     show([WARMUP], true)
-    expect(screen.getByTestId('notes-current-rules')).toHaveTextContent('Notes use the current rules')
+    expect(screen.getByTestId('notes-current-rules')).toHaveTextContent('Notes follow current rules')
   })
 
   it('dismisses at once, moves focus to Show again, and undoes', async () => {

@@ -475,6 +475,8 @@ npm run build        # typecheck, then Vite writes frontend/dist
   `ClassList` (`src/components/classes/ClassRow.tsx`). The Landing page (`LandingPage.tsx`) has the title, one line,
   one "Join the beta" button (Sign in stays in the header), the example class and three steps.
   `src/i18n/homeLandingCopy.test.ts` pins the ADR 0028 length limits of those strings in en, sv and da.
+  `src/i18n/classSongsCopy.test.ts` does the same for the class and song screens (`class.*` but the mirrored
+  `class.rule.*`, `songs.*`, `cred.email.*`): fixed keys by kind, errors at 20 words, everything at 25.
 - Theme: `src/theme/theme.ts` and `ThemeSwitch` (Dark default, Light, Same as device) keep the choice in
   `localStorage` (try/catch, the page works without it); `public/theme-init.js` applies it before first paint.
 - Languages (ADR 0023, ML1): `src/i18n/` holds `locales.json` (the manifest, `["en"]`), `en.ts` (source catalogue),
