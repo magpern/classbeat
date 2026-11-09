@@ -26,6 +26,12 @@
   --cb-scrim: rgb(0 0 0 / 0.6);
   --cb-paper: #ffffff;
 
+  /* Imagery (issue 854): how much of --cb-bg lies over a photo. The hero scrim keeps the text
+     readable whatever the photo (tokens test: worst-case contrast); the dim darkens a light photo
+     on a dark page. Strengths, not colours: imagery.css mixes them with --cb-bg. */
+  --cb-hero-scrim: 0.88;
+  --cb-image-dim: 0.5;
+
   /* Effort zones 1 (recovery) to 7: the same in both themes. Zones 5 to 7 share one red. */
   --cb-zone-1: #8e99a8;
   --cb-zone-2: #3f9ce8;
@@ -127,6 +133,8 @@
   --cb-bad: #b32d24;
   --cb-bad-soft: #fbe0dd;
   --cb-scrim: rgb(20 22 30 / 0.5);
+  --cb-hero-scrim: 0.94;
+  --cb-image-dim: 0;
 }
 
 @media (prefers-color-scheme: light) {
@@ -147,5 +155,7 @@
     --cb-bad: #b32d24;
     --cb-bad-soft: #fbe0dd;
     --cb-scrim: rgb(20 22 30 / 0.5);
+    --cb-hero-scrim: 0.94;
+    --cb-image-dim: 0;
   }
 }

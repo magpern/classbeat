@@ -3,6 +3,7 @@
 // they stay as written in every language; the labels around them are catalogue keys.
 
 import type { CatalogueKey } from '../../i18n/en'
+import type { SlotId } from '../imagery/imageSlots'
 
 /** Intervals as [zone, seconds]: a warm-up, two climbs, a sprint set, a cool-down (about 30 min). */
 export const EXAMPLE_PROFILE: [number, number][] = [
@@ -44,8 +45,8 @@ export const EXAMPLE_SONGS: readonly ExampleSong[] = [
   { title: 'Sample Song Five', artist: 'Example Artist E', part: 'landing.example.part.coolDown', bpm: 88, length: '3:50' },
 ]
 
-export const STEPS: readonly { title: CatalogueKey; text: CatalogueKey }[] = [
-  { title: 'landing.how.describe.title', text: 'landing.how.describe.text' },
-  { title: 'landing.how.approve.title', text: 'landing.how.approve.text' },
-  { title: 'landing.how.save.title', text: 'landing.how.save.text' },
+export const STEPS: readonly { title: CatalogueKey; text: CatalogueKey; image: SlotId }[] = [
+  { title: 'landing.how.describe.title', text: 'landing.how.describe.text', image: 'stepDescribe' },
+  { title: 'landing.how.approve.title', text: 'landing.how.approve.text', image: 'stepApprove' },
+  { title: 'landing.how.save.title', text: 'landing.how.save.text', image: 'stepSave' },
 ]

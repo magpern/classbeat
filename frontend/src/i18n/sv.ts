@@ -41,6 +41,9 @@ const sv: Catalogue = {
   'landing.how.approve.text': 'Byt ut låtar som inte passar.',
   'landing.how.save.title': 'Spara i MOWL',
   'landing.how.save.text': 'Klart att köra, i ditt konto.',
+  'landing.img.describe': 'En instruktör skriver ett klassupplägg i ett block',
+  'landing.img.approve': 'Händer som väljer låtar i en mobil',
+  'landing.img.save': 'En mobil monterad på en motionscykel',
 
   // Sign in, sign up and the pages behind the mail links.
   'auth.signIn': 'Logga in',

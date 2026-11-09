@@ -534,6 +534,49 @@ npm run build        # typecheck, then Vite writes frontend/dist
 - Passkey UI (#777, ADR 0019 W6): `src/auth/webauthn.ts` (browser calls, feature detection, the `signal*` hints), `passkeyCeremony.ts` (start, browser, finish), `components/account/Passkeys.tsx` (account card), `components/auth/PasskeySignIn.tsx` with `usePasskeyAutofill.ts` (button and conditional mediation, restarted only while the page is visible), `PasskeyReauth.tsx` (re-authentication prompt) and `components/shell/PhoneSignInNotice.tsx` (shown when the client reported `authenticatorAttachment` exactly `cross-platform`; kept in sessionStorage). The public `GET /api/auth/session` carries `passkeys` (the flag) so the anonymous sign-in page knows whether to offer a passkey; `GET /api/auth/events` items carry `passkey` (true when `detail.method` is `passkey`). Tests use `src/test/passkeyMock.ts` (a fake `navigator.credentials`); `src/auth/passkeyCsp.test.ts` scans the files for inline style and script. axe runs in the e2e suite (W7, `e2e/tests/passkey-a11y.spec.ts`), not under vitest.
 - CI runs the same commands in the `frontend` job, then `check:bundle`.
 
+### Images
+
+Pictures (issue 854) are drawn from `frontend/src/components/imagery/imageSlots.ts`, a typed list of
+slots (`hero`, `stepDescribe`, `stepApprove`, `stepSave`, `authPanel`); `SlotPicture` turns a slot
+into a `<picture>` (AVIF, then WebP, then JPEG; a phone crop under `PHONE_MEDIA`; `width` and
+`height` set; the hero `eager` with `fetchpriority="high"`, everything else `lazy`). The files live
+in `frontend/public/img/` as `<set>-<width>.avif|webp|jpg`; the server answers `/img/*` with their
+real media types and the CSP stays `img-src 'self'`.
+
+- **Add or replace a picture:** encode the files (below), put all three formats of every width in
+  `public/img/`, and list the set in `SLOTS` (`set('name', [w, h], ...)`, smallest first, one aspect
+  ratio). A slot with no set is simply not drawn, and the step row shows pictures only when all
+  three steps have one in the current theme. `imageSlots.test.ts` checks that every listed file
+  exists with the size the manifest says, that nothing in `public/img/` is unlisted, that a phone
+  crop weighs 150 KB or less and that the alt keys exist in en, sv and da. The alt text is a
+  catalogue key (`landing.img.*`, short); `alt: null` marks a decorative picture (empty alt,
+  hidden from assistive technology).
+- **Themes:** a slot has a picture per theme (`sets.dark`, `sets.light`). With only a light picture,
+  `onDark: 'dim'` shows it on the dark page under a dim of the page colour (`--cb-image-dim`) and
+  `'hide'` shows nothing. The hero text sits on a scrim of the page colour (`--cb-hero-scrim`);
+  `styles/heroScrim.test.ts` checks the text contrast over the worst photo in both themes, so
+  change a scrim strength only together with that test. No colour literals: the scrim and the dim
+  are `color-mix` of `--cb-bg`.
+- **Encode** (ffmpeg with `libaom-av1` and `libwebp`; source decoded to PNG first). For each width
+  `W` (wide sources: 960 and 1600; a 3:2 card: 480 and 768; a phone crop 4:5: 480 and 752):
+
+  ```bash
+  vf="scale=W:-2:flags=lanczos,format=yuv420p"        # a crop first for the phone hero:
+                                                      # vf="crop=752:940:X:0,$vf" (X: the subject in frame)
+  ffmpeg -y -i src.png -vf "$vf" -c:v libaom-av1 -crf 34 -b:v 0 -cpu-used 3 -still-picture 1 name-W.avif
+  ffmpeg -y -i src.png -vf "$vf" -c:v libwebp -quality 72 -compression_level 6 name-W.webp
+  ffmpeg -y -i src.png -vf "$vf" -c:v mjpeg -q:v 6 -huffman optimal -pix_fmt yuvj420p name-W.jpg
+  ```
+
+  A photo with fine detail may want a lower `-crf` or `-q:v`; look at the result before keeping it.
+  A source narrower than the widest rendition is not upscaled: list the widths it supports only.
+- **Link preview:** `public/img/og-share.jpg` (1200 x 630, JPEG, under 150 KB). The server adds
+  `og:image` (absolute, from `public_base_url`), its width and height and
+  `twitter:card=summary_large_image` to the public pages only (`classbeat.spa`, next to canonical
+  and hreflang, which it leaves as ADR 0027 has them); `tests/test_web_og_image.py` and
+  `e2e/tests/lang-head.spec.ts` pin it.
+- Review a new picture for stray letters, logos, odd bikes and recognisable faces before shipping it.
+
 ### Adding a language
 
 How to add a language (a two-letter code, here `nb`). The route prefix, `hreflang` and the sitemap follow the

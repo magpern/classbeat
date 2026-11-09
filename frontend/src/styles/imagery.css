@@ -1,0 +1,116 @@
+/*
+ * Imagery (issue 854): the Landing hero, the how-it-works pictures and the sign-in panel.
+ * Colours come from tokens only: a scrim or dim is --cb-bg at the strength a token gives
+ * (--cb-hero-scrim, --cb-image-dim), so both themes follow the tokens. The phone breakpoint is
+ * PHONE_MEDIA in components/imagery/imageSlots.ts (a test keeps the two equal).
+ */
+
+/* A picture box: the picture covers it. */
+.slot {
+  position: relative;
+  overflow: hidden;
+}
+.slot picture {
+  display: block;
+  height: 100%;
+}
+.slot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.slot--fill {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+}
+.slot--fill img {
+  object-position: right 15%;
+}
+.slot--3x2 {
+  aspect-ratio: 3 / 2;
+}
+
+/* A light picture on the dark page sits under a dim of the page colour. */
+.slot--dim::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--cb-bg) calc(var(--cb-image-dim) * 100%), transparent);
+}
+
+/*
+ * The hero: a photo behind the title, a scrim of the page colour in front of it. The scrim is solid
+ * under the text column (60% of the width) and fades out towards the subject on the right; on a
+ * phone the text sits at the bottom and the scrim rises from there. The text column is no wider
+ * than the solid part, so the text never leaves it (the scrim test reads these numbers).
+ */
+.hero {
+  --hero-solid: color-mix(in srgb, var(--cb-bg) calc(var(--cb-hero-scrim) * 100%), transparent);
+  --hero-clear: color-mix(in srgb, var(--cb-bg) 0%, transparent);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--cb-line);
+  border-radius: var(--cb-radius-lg);
+  background: var(--cb-surface);
+  min-height: 24rem;
+}
+.hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(to right, var(--hero-solid) 0%, var(--hero-solid) 60%, var(--hero-clear) 92%);
+}
+.hero__text {
+  position: relative;
+  max-width: min(34rem, 60%);
+  padding: var(--cb-space-7) var(--cb-space-6);
+}
+
+@media (max-width: 40rem) {
+  .hero {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 32rem;
+  }
+  .hero::after {
+    background: linear-gradient(to top, var(--hero-solid) 0%, var(--hero-solid) 58%, var(--hero-clear) 100%);
+  }
+  .hero__text {
+    max-width: none;
+    padding: var(--cb-space-6) var(--cb-space-4) var(--cb-space-5);
+  }
+}
+
+/* The sign-in panel: desktop only (the page is a card alone on a phone and a tablet). */
+.auth-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--cb-space-6);
+}
+.auth-panel {
+  display: none;
+}
+@media (min-width: 64rem) {
+  .auth-split--panel {
+    grid-template-columns: minmax(0, 28rem) minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .auth-panel {
+    display: block;
+    position: relative;
+    min-height: 32rem;
+    border-radius: var(--cb-radius-lg);
+    overflow: hidden;
+  }
+}
+.slot--fill-panel {
+  position: absolute;
+  inset: 0;
+}

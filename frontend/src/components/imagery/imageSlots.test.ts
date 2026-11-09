@@ -1,0 +1,176 @@
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { en } from '../../i18n/en'
+import da from '../../i18n/da'
+import sv from '../../i18n/sv'
+import {
+  FORMATS,
+  PHONE_MEDIA,
+  SLOTS,
+  filesOf,
+  fileUrl,
+  largest,
+  resolveSlot,
+  srcSet,
+  type ImageSet,
+  type SlotId,
+} from './imageSlots'
+
+const publicDir = join(import.meta.dirname, '..', '..', '..', 'public')
+const imgDir = join(publicDir, 'img')
+const css = readFileSync(join(import.meta.dirname, '..', '..', 'styles', 'imagery.css'), 'utf8')
+
+/** The pixel size a file says it has: JPEG start-of-frame, WebP (VP8, VP8L, VP8X), AVIF `ispe`. */
+function sizeOf(path: string): [number, number] {
+  const b = readFileSync(path)
+  if (path.endsWith('.jpg')) {
+    let pos = 2
+    while (pos + 9 < b.length) {
+      const marker = b[pos + 1] ?? 0
+      if (marker >= 0xc0 && marker <= 0xc2) return [b.readUInt16BE(pos + 7), b.readUInt16BE(pos + 5)]
+      pos += 2 + b.readUInt16BE(pos + 2)
+    }
+  } else if (path.endsWith('.webp')) {
+    const kind = b.toString('ascii', 12, 16)
+    if (kind === 'VP8 ') return [b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff]
+    if (kind === 'VP8X') return [b.readUIntLE(24, 3) + 1, b.readUIntLE(27, 3) + 1]
+    if (kind === 'VP8L') {
+      const bits = b.readUInt32LE(21)
+      return [(bits & 0x3fff) + 1, ((bits >> 14) & 0x3fff) + 1]
+    }
+  } else if (path.endsWith('.avif')) {
+    const at = b.indexOf('ispe', 0, 'ascii')
+    if (at > 0) return [b.readUInt32BE(at + 8), b.readUInt32BE(at + 12)]
+  }
+  throw new Error(`cannot read the size of ${path}`)
+}
+
+const diskPath = (url: string) => join(publicDir, ...url.split('/'))
+
+const everySet = (): { slot: SlotId; role: string; set: ImageSet }[] =>
+  (Object.keys(SLOTS) as SlotId[]).flatMap((slot) => {
+    const s = SLOTS[slot]
+    return [
+      ...Object.entries(s.sets).map(([theme, set]) => ({ slot, role: `${theme}`, set })),
+      ...Object.entries(s.phone ?? {}).map(([theme, set]) => ({ slot, role: `${theme} phone`, set })),
+    ]
+  })
+
+describe('the slot manifest', () => {
+  it('lists the seven pictures of the first round (hero 4, steps 2, sign-in panel 1)', () => {
+    expect(everySet().length).toBe(7)
+  })
+
+  it.each(everySet().map((e) => [`${e.slot} ${e.role}`, e.set] as const))(
+    '%s: every file exists, in all three formats, at the size the manifest says',
+    (_name, set) => {
+      expect(set.sizes.length).toBeGreaterThanOrEqual(2)
+      for (const [width, height] of set.sizes) {
+        for (const { ext } of FORMATS) {
+          const path = diskPath(fileUrl(set, width, ext))
+          expect(statSync(path).size, path).toBeGreaterThan(0)
+          expect(sizeOf(path), path).toEqual([width, height])
+        }
+      }
+    },
+  )
+
+  it('sizes run from the smallest to the largest and keep one aspect ratio', () => {
+    for (const { set } of everySet()) {
+      const widths = set.sizes.map(([w]) => w)
+      expect(widths).toEqual([...widths].sort((a, b) => a - b))
+      const ratios = set.sizes.map(([w, h]) => Math.round((w / h) * 100) / 100)
+      expect(new Set(ratios).size, set.name).toBe(1)
+    }
+  })
+
+  it('every file in public/img belongs to a set (or is the link preview)', () => {
+    const listed = new Set(everySet().flatMap(({ set }) => filesOf(set).map((url) => url.split('/').pop())))
+    listed.add('og-share.jpg')
+    const onDisk = readdirSync(imgDir)
+    expect(onDisk.filter((f) => !listed.has(f))).toEqual([])
+    expect([...listed].filter((f) => !onDisk.includes(f as string))).toEqual([])
+  })
+
+  it('a phone crop is a smaller picture than the wide one and weighs 150 KB or less', () => {
+    for (const slot of Object.values(SLOTS)) {
+      for (const [theme, phone] of Object.entries(slot.phone ?? {})) {
+        const wide = slot.sets[theme as 'dark' | 'light']
+        expect(wide, theme).toBeDefined()
+        expect(largest(phone)[0]).toBeLessThan(largest(wide as ImageSet)[0])
+        // what a phone downloads: the best format at the largest phone width
+        const best = statSync(diskPath(fileUrl(phone, largest(phone)[0], 'avif'))).size
+        expect(best).toBeLessThanOrEqual(150 * 1024)
+      }
+    }
+  })
+
+  it('the link preview is 1200 x 630 and weighs 150 KB or less', () => {
+    const path = join(imgDir, 'og-share.jpg')
+    expect(sizeOf(path)).toEqual([1200, 630])
+    expect(statSync(path).size).toBeLessThanOrEqual(150 * 1024)
+  })
+
+  it('the phone breakpoint is the one imagery.css uses', () => {
+    const queries = [...css.matchAll(/@media \((max-width: [^)]+)\)/g)].map((m) => `(${m[1] ?? ''})`)
+    expect(queries).toContain(PHONE_MEDIA)
+  })
+})
+
+describe('alt text', () => {
+  const keys = Object.values(SLOTS).flatMap((s) => (s.alt === null ? [] : [s.alt]))
+
+  it('a slot with a description has its key in every language, short and not empty', () => {
+    expect(keys).toEqual(['landing.img.describe', 'landing.img.approve', 'landing.img.save'])
+    for (const catalogue of [en, sv, da] as Record<string, unknown>[]) {
+      for (const key of keys) {
+        const text = catalogue[key]
+        expect(typeof text, key).toBe('string')
+        expect((text as string).length, key).toBeGreaterThan(5)
+        expect((text as string).length, key).toBeLessThanOrEqual(80)
+      }
+    }
+  })
+
+  it('the hero and the sign-in panel are decorative', () => {
+    expect(SLOTS.hero.alt).toBeNull()
+    expect(SLOTS.authPanel.alt).toBeNull()
+  })
+})
+
+describe('resolveSlot', () => {
+  it('gives a theme its own picture', () => {
+    expect(resolveSlot('hero', 'dark')?.set.name).toBe('hero-dark')
+    expect(resolveSlot('hero', 'light')?.set.name).toBe('hero-light')
+    expect(resolveSlot('hero', 'dark')?.dimmed).toBe(false)
+    expect(resolveSlot('hero', 'dark')?.phone?.name).toBe('hero-dark-phone')
+  })
+
+  it('shows a light-only picture under the dim on dark, undimmed on light', () => {
+    expect(resolveSlot('stepDescribe', 'light')).toMatchObject({ dimmed: false })
+    expect(resolveSlot('stepDescribe', 'dark')).toMatchObject({ dimmed: true })
+    expect(resolveSlot('authPanel', 'dark')?.set.name).toBe('auth-panel-light')
+  })
+
+  it('shows nothing for a slot without files, or with `hide` and no picture of its own', () => {
+    expect(resolveSlot('stepSave', 'light')).toBeNull()
+    expect(resolveSlot('stepSave', 'dark')).toBeNull()
+    const hidden = { ...SLOTS.stepDescribe, onDark: 'hide' as const }
+    const saved = SLOTS.stepDescribe
+    SLOTS.stepDescribe = hidden
+    try {
+      expect(resolveSlot('stepDescribe', 'dark')).toBeNull()
+    } finally {
+      SLOTS.stepDescribe = saved
+    }
+  })
+
+  it('builds the urls and the srcset from the set', () => {
+    const set = { name: 'x', sizes: [[10, 5], [20, 10]] as const }
+    expect(fileUrl(set, 10, 'avif')).toBe('/img/x-10.avif')
+    expect(srcSet(set, 'webp')).toBe('/img/x-10.webp 10w, /img/x-20.webp 20w')
+    expect(largest(set)).toEqual([20, 10])
+    expect(filesOf(set)).toHaveLength(6)
+  })
+})
