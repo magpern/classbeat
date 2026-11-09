@@ -2,14 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { currentReasonText, isStale } from '../api/classMessages'
 import { getRevision, pickCurrent, type RevisionSummary } from '../api/classes'
 import { getSongList, type Song } from '../api/songs'
-import { classStatus } from '../lib/classCards'
-import { Chip } from '../components/ui/chip'
-import { Button } from '../components/ui/button'
 import { DeleteClass } from '../components/classes/DeleteClass'
-import { SavePanel } from '../components/classes/SavePanel'
+import { ClassHeader } from '../components/classes/ClassHeader'
+import { UncertainWrite } from '../components/classes/UncertainWrite'
+import { useSaveFlow } from '../components/classes/useSaveFlow'
 import { BeatOnePanel } from '../components/classes/BeatOnePanel'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu'
-import { Ellipsis } from 'lucide-react'
 import { RevisionView } from '../components/classes/RevisionView'
 import { SwedebeatSection } from '../components/swedebeat/SwedebeatSection'
 import { SideColumn } from '../components/classes/SideColumn'
@@ -17,7 +14,6 @@ import { Card, Notice, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { useClassData, useRevision, type ClassData } from '../hooks/useClassData'
 import { contentHash } from '../lib/canonical'
-import { DuplicateClass } from '../components/classes/DuplicateClass'
 import { Link } from '../router/Router'
 import { Trans, useT } from '../i18n/I18n'
 
@@ -94,6 +90,7 @@ function ClassBody({
   const [chosen, setChosen] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const pick = useAction()
+  const save = useSaveFlow(summary, reload)
   // A chosen version that is gone after a reload falls back to the current one.
   const viewingId =
     chosen !== null && revisions.some((r) => r.id === chosen) ? chosen : summary.currentRevisionId
@@ -160,60 +157,19 @@ function ClassBody({
       <p className="m-0">
         <Link to="/classes">{t('class.list.title')}</Link>
       </p>
-      <header className="flex flex-wrap items-center gap-3">
-        <h1 className="m-0 font-display text-3xl font-extrabold">{summary.title}</h1>
-        <Chip tone={classStatus(summary).tone}>{classStatus(summary).label}</Chip>
-        {summary.sport === 'running' ? <Chip data-testid="sport">{t('class.page.running')}</Chip> : null}
-        {summary.soundless ? <Chip data-testid="soundless">{t('class.page.noMusic')}</Chip> : null}
-        <div className="ml-auto flex items-center gap-2">
-          {canChangeSongs ? (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                goTo('change-songs')
-              }}
-            >
-              {t('class.page.changeSongs')}
-            </Button>
-          ) : null}
-          <DuplicateClass
-            classId={classId}
-            title={summary.title}
-            revisionId={viewingId}
-            versionNumber={viewing?.number ?? null}
-          />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" aria-label={t('class.page.moreActions')}>
-                <Ellipsis aria-hidden="true" size={18} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              // Delete class moves focus to its confirmation card; the menu must not take it back.
-              onCloseAutoFocus={(event) => {
-                if (deleting) event.preventDefault()
-              }}
-            >
-              <DropdownMenuItem
-                onSelect={() => {
-                  goTo('versions')
-                }}
-              >
-                {t('class.versions')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  setDeleting(true)
-                }}
-              >
-                {t('class.page.deleteClass')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
-      <SavePanel summary={summary} onReload={reload} />
+      <ClassHeader
+        summary={summary}
+        flow={save}
+        viewingId={viewingId}
+        versionNumber={viewing?.number ?? null}
+        canChangeSongs={canChangeSongs}
+        deleting={deleting}
+        onGoTo={goTo}
+        onDelete={() => {
+          setDeleting(true)
+        }}
+      />
+      <UncertainWrite classId={summary.id} version={save.version} onDecided={save.decided} onChanged={reload} />
       <DeleteClass
         summary={summary}
         open={deleting}

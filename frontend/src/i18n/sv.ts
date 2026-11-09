@@ -366,14 +366,10 @@ const sv: Catalogue = {
   'class.change.text': 'Namn, beskrivning eller instruktioner ändrades.',
 
   // Save, Update and the undecided write (ADR 0007 sections 5 to 8 and 12).
-  'class.saveReason.write_unresolved':
-    'En tidigare sparning eller uppdatering av det här passet i MOWL är fortfarande oavgjord. Avgör den först med Kontrollera igen eller Gör det ändå i rutan nedan och försök sedan igen.',
-  'class.saveReason.call_may_be_running':
-    'classbeat kanske fortfarande skriver det här passet till MOWL. Vänta några minuter och försök sedan igen.',
-  'class.saveReason.hash_mismatch':
-    'Den versionen är inte den som den här sidan visade: den ändrades någon annanstans. Sidan har laddats om.',
-  'class.saveReason.class_busy':
-    'Det här passet är upptaget med en annan uppgift, kanske från en annan flik. Sidan har laddats om. Vänta tills uppgiften är klar och försök sedan igen.',
+  'class.saveReason.write_unresolved': 'En tidigare sparning eller uppdatering är fortfarande oavgjord. Avgör den i rutan nedan och försök igen.',
+  'class.saveReason.call_may_be_running': 'En skrivning till MOWL kanske fortfarande pågår. Vänta några minuter och försök igen.',
+  'class.saveReason.hash_mismatch': 'Den här versionen ändrades någon annanstans. Sidan har laddats om.',
+  'class.saveReason.class_busy': 'Det här passet är upptaget, kanske i en annan flik. Sidan har laddats om. Försök igen när det är klart.',
   'class.saveReason.not_connected':
     'MOWL är inte anslutet. Anslut det på din kontosida och försök sedan igen.',
   'class.saveReason.music_unlinked':
@@ -385,10 +381,8 @@ const sv: Catalogue = {
     'Den begäran har redan skickats med annat innehåll. Ladda om sidan och försök igen.',
   'class.saveFailure.upstream_unavailable':
     'Det gick inte att nå MOWL. Inget skrevs. Försök igen om några minuter.',
-  'class.saveFailure.rate_limited':
-    'MOWL bad classbeat att sakta ner. Inget skrevs. Vänta några minuter och försök igen.',
-  'class.saveFailure.lease_lost':
-    'Arbetet avbröts för många gånger. Om classbeat inte kunde avgöra om något nådde MOWL står det i listan nedan så att du kan avgöra det. Annars skrevs inget; försök igen.',
+  'class.saveFailure.rate_limited': 'MOWL bad oss sakta ner. Inget skrevs. Vänta några minuter och försök igen.',
+  'class.saveFailure.lease_lost': 'Arbetet avbröts för många gånger. Allt oavgjort står nedan; annars skrevs inget. Försök igen.',
   'class.saveFailure.not_connected':
     'MOWL är inte anslutet. Anslut det på din kontosida och försök sedan igen.',
   'class.saveFailure.needs_reconnect':
@@ -401,46 +395,32 @@ const sv: Catalogue = {
     'En annan uppgift av dig använde fortfarande MOWL. Inget skrevs. Försök igen om en stund.',
   'class.saveFailure.music_unlinked':
     'Musiken i den här versionen finns inte i ditt anslutna MOWL-konto. Ändra den och spara den nya versionen.',
-  'class.saveFailure.program_changed':
-    'Det här träningspasset ändrades i MOWL efter att classbeat sparade det. Inget skrevs.',
+  'class.saveFailure.program_changed': 'Det här träningspasset ändrades i MOWL efter att du sparade det. Inget skrevs.',
   'class.saveFailure.program_missing':
     'Det här träningspasset finns inte längre i ditt MOWL-konto. Inget skrevs.',
-  'class.saveFailure.program_other_sport':
-    'Det här träningspasset i MOWL är för en annan sport än det här passet, så classbeat ersatte det inte. Inget skrevs.',
+  'class.saveFailure.program_other_sport': 'Det här träningspasset i MOWL är för en annan sport, så det ersattes inte. Inget skrevs.',
   'class.saveFailure.internal': 'Något gick fel hos oss. Försök igen senare.',
   'class.saveFailure.default':
     'Jobbet blev inte klart. Titta i rutan nedan efter något som är oavgjort och försök sedan igen.',
-  'class.uncertain.save.1':
-    'classbeat bad MOWL att lägga till det här passet som ett nytt träningspass och fick inget tydligt svar.',
-  'class.uncertain.save.2':
-    'Träningspasset kan finnas i ditt MOWL-konto, helt eller bara delvis, eller så finns det inte alls. classbeat försöker inte igen av sig själv, så att du inte av misstag får två kopior.',
-  'class.uncertain.update.1':
-    'classbeat bad MOWL att uppdatera träningspasset som sparades tidigare och fick inget tydligt svar.',
-  'class.uncertain.update.2':
-    'Din MOWL-kopia kan vara oförändrad, uppdaterad eller bara delvis uppdaterad. MOWL kan också ha skapat ett nytt, tomt träningspass med samma namn under Mina träningspass; om du hittar ett är det ditt eget privata träningspass och du kan radera det i MOWL. classbeat försöker inte igen av sig själv.',
-  'class.warning.duplicate':
-    'Gör det ändå betyder att du avgör att träningspasset inte sparades. Om det ändå sparades kan det här lägga till ett andra träningspass i ditt MOWL-konto; du kan radera extra kopior i MOWL-appen.',
-  'class.warning.overwrite':
-    'Gör det ändå betyder att du avgör att uppdateringen inte skedde. Din MOWL-kopia kan vara delvis uppdaterad; nästa uppdatering ersätter den med den här versionen.',
-  'class.outcome.save.found':
-    'classbeat hittade träningspasset i ditt MOWL-konto och noterade det som sparat.',
-  'class.outcome.save.nothing':
-    'classbeat kontrollerade och träningspasset var inte sparat. Du kan spara det igen nu.',
-  'class.outcome.save.still_unsure': 'classbeat kan fortfarande inte avgöra om träningspasset sparades.',
-  'class.outcome.save.decided':
-    'Uppfattat. Du kan spara det igen nu; om det ändå sparades får du två kopior i MOWL.',
-  'class.outcome.update.found': 'classbeat såg att ditt MOWL-träningspass var uppdaterat och noterade det.',
-  'class.outcome.update.nothing':
-    'classbeat kontrollerade och ditt MOWL-träningspass är oförändrat. Du kan uppdatera det igen nu.',
-  'class.outcome.update.still_unsure':
-    'classbeat kan fortfarande inte avgöra om träningspasset uppdaterades.',
+  'class.uncertain.save.1': 'Vi bad MOWL lägga till passet som ett nytt träningspass och fick inget tydligt svar.',
+  'class.uncertain.save.2': 'Det kan finnas i ditt MOWL-konto, helt eller delvis, eller inte alls. Vi försöker inte igen själva, så du inte får en kopia av misstag.',
+  'class.uncertain.update.1': 'Vi bad MOWL uppdatera träningspasset du sparade tidigare och fick inget tydligt svar.',
+  'class.uncertain.update.2': 'Din MOWL-kopia kan vara oförändrad eller delvis uppdaterad. Ett tomt träningspass med samma namn kan också finnas under Mina träningspass; du kan radera det.',
+  'class.warning.duplicate': 'Gör det ändå: du avgör att det inte sparades. Om det gjorde det kan MOWL få en andra kopia; radera extra kopior i MOWL-appen.',
+  'class.warning.overwrite': 'Gör det ändå: du avgör att uppdateringen inte skedde. Din MOWL-kopia kan vara delvis uppdaterad; nästa uppdatering ersätter den.',
+  'class.outcome.save.found': 'Vi hittade träningspasset i MOWL och markerade det som sparat.',
+  'class.outcome.save.nothing': 'Vi kontrollerade: det sparades inte. Du kan spara igen.',
+  'class.outcome.save.still_unsure': 'Vi kan fortfarande inte avgöra om det sparades.',
+  'class.outcome.save.decided': 'Uppfattat. Du kan spara igen; om det ändå sparades får du två kopior i MOWL.',
+  'class.outcome.update.found': 'Vi såg att ditt träningspass i MOWL var uppdaterat och noterade det.',
+  'class.outcome.update.nothing': 'Vi kontrollerade: ditt träningspass i MOWL är oförändrat. Du kan uppdatera igen.',
+  'class.outcome.update.still_unsure': 'Vi kan fortfarande inte avgöra om det uppdaterades.',
   'class.outcome.update.decided':
     'Uppfattat. Nästa uppdatering ersätter din MOWL-kopia med den här versionen.',
-  'class.saved': 'Sparat. Träningspasset finns i ditt MOWL-konto, privat.',
-  'class.savedSoundless': 'Sparat utan musik. Träningspasset finns i ditt MOWL-konto, privat.',
-  'class.updated': 'Uppdaterat. Ditt MOWL-träningspass motsvarar nu den här versionen.',
-  'class.updatedUnverified':
-    'Uppdateringen gick igenom, men classbeat kunde inte bekräfta att MOWL nu stämmer överens (det kan fortfarande ha en spellista som du lade till i appen). Kontrollera träningspasset i MOWL-appen.',
+  'class.saved': 'Sparat i MOWL som ett privat träningspass.',
+  'class.savedSoundless': 'Sparat i MOWL utan musik, som ett privat träningspass.',
+  'class.updated': 'Uppdaterat. MOWL motsvarar nu den här versionen.',
+  'class.updatedUnverified': 'Uppdaterat, men vi kunde inte bekräfta att MOWL stämmer. Kontrollera träningspasset i MOWL-appen.',
 
   // Pattern notes (ADR 0017 section 4); the sentences mirror the backend's rationales.
   'class.rule.warmup_short':
@@ -559,7 +539,7 @@ const sv: Catalogue = {
   'class.page.back': 'Tillbaka till version {number}',
   'class.page.loadingVersion': 'Laddar versionen',
   'class.page.versionFailed': 'Den här versionen kunde inte laddas. Ladda om sidan och försök igen.',
-  'class.side.label': 'Spara, ändra och versioner',
+  'class.side.label': 'Ändra och versioner',
   'class.songStrip.label': 'Låtar',
   'class.songStrip.title': '{title}, {bpm} BPM',
 
@@ -773,50 +753,36 @@ const sv: Catalogue = {
   'class.save.runUpdate': 'Uppdaterar i MOWL:',
   'class.save.stop': 'Stoppa',
   'class.save.checking': 'Uppdaterat. Kontrollerar vad MOWL behöll…',
-  'class.save.uncertain':
-    'classbeat kunde inte avgöra om MOWL tog emot det. Läs rutan nedan och avgör sedan.',
-  'class.save.updateAnyway': 'Uppdatera ändå (ersätter dina ändringar i MOWL)',
-  'class.save.stopped': 'Det här stoppades innan något skrevs, eller så listar classbeat det nedan.',
-  'class.save.detachedLine':
-    'Det här passet sparades tidigare i en tidigare MOWL-anslutning. Det träningspasset är inte längre kopplat, så det kan inte uppdateras. Spara lägger till ett nytt i ditt nuvarande MOWL-konto.',
+  'class.save.uncertain': 'Vi kunde inte avgöra om MOWL tog emot det. Avgör i rutan nedan.',
+  'class.save.updateAnyway': 'Uppdatera ändå',
+  'class.save.stopped': 'Stoppades innan något skrevs, eller så finns det i listan nedan.',
+  'class.save.detachedLine': 'Sparades tidigare via en gammal MOWL-anslutning och kan inte uppdateras. Spara lägger till ett nytt träningspass.',
   'class.save.notSaved': 'Inte sparat i MOWL ännu.',
-  'class.save.upToDate': 'Sparat i MOWL som version {saved}. Det är aktuellt.',
-  'class.save.behind':
-    'Sparat i MOWL som version {saved}. Den aktuella versionen ({current}) har ändringar som inte är sparade ännu.',
-  'class.save.detachedOther':
-    'Ett annat träningspass sparades tidigare i en tidigare MOWL-anslutning och är inte längre kopplat.',
-  'class.save.noVersion': 'Det finns ingen version att spara ännu.',
-  'class.save.lost':
-    'classbeat kan inte längre läsa den uppgiften, så det kan inte avgöra hur den slutade. Raden ovan visar vad MOWL har för det här passet nu; kontrollera den innan du försöker igen.',
+  'class.save.upToDate': 'Sparat i MOWL som version {saved}. Aktuellt.',
+  'class.save.behind': 'Sparat i MOWL som version {saved}. Version {current} har osparade ändringar.',
+  'class.save.detachedOther': 'Ett annat träningspass sparades via en gammal MOWL-anslutning och är inte längre kopplat.',
+  'class.save.noVersion': 'Ingen version att spara ännu.',
+  'class.save.lost': 'Vi kan inte längre läsa uppgiften. Raden ovan visar vad MOWL har; kontrollera den innan du försöker igen.',
   'class.save.again': 'Spara igen',
-  'class.save.asNew': 'Spara som ett nytt träningspass',
+  'class.save.asNew': 'Spara som ny',
   'class.save.updateAgain': 'Uppdatera igen',
-  'class.save.update': 'Uppdatera sparat träningspass',
-  'class.save.confirmSave':
-    'classbeat lägger till version {number} av det här passet i ditt MOWL-konto som ett nytt träningspass. Det är privat: bara du kan se det.',
-  'class.save.confirmSaveSoundless':
-    'classbeat lägger till version {number} av det här passet i ditt MOWL-konto som ett nytt träningspass utan musik. Det är privat: bara du kan se det.',
-  'class.save.confirmSaveMore':
-    'Ett nytt träningspass läggs till; det du sparade tidigare blir kvar som det är.',
-  'class.save.confirmUpdate':
-    'classbeat läser först träningspasset i ditt MOWL-konto. Om du har ändrat det i MOWL efter att classbeat sparade det stannar classbeat och skriver ingenting. Annars ersätter det träningspasset med version {number}. Det förblir privat, i ditt MOWL-konto.',
-  'class.save.confirmUpdateSoundless':
-    'classbeat läser först träningspasset i ditt MOWL-konto. Om du har ändrat det i MOWL efter att classbeat sparade det stannar classbeat och skriver ingenting. Annars ersätter det träningspasset med version {number}, utan musik. Det förblir privat, i ditt MOWL-konto.',
+  'class.save.update': 'Uppdatera träningspass',
+  'class.save.confirmSave': 'Version {number} läggs till i ditt MOWL-konto som ett nytt träningspass. Bara du kan se det.',
+  'class.save.confirmSaveSoundless': 'Version {number} läggs till i ditt MOWL-konto som ett nytt träningspass utan musik. Bara du kan se det.',
+  'class.save.confirmSaveMore': 'Det tidigare träningspasset blir kvar som det är.',
+  'class.save.confirmUpdate': 'Vi läser först träningspasset i MOWL. Har du ändrat det där skrivs inget. Annars ersätts det av version {number}. Det förblir privat.',
+  'class.save.confirmUpdateSoundless': 'Vi läser först träningspasset i MOWL. Har du ändrat det där skrivs inget. Annars ersätts det av version {number}, utan musik. Det förblir privat.',
   'class.save.overwriteTitle': 'Uppdatera ändå?',
-  'class.save.overwriteText':
-    'Det här ersätter träningspasset i ditt MOWL-konto med version {number}, inklusive alla ändringar du gjort i det i MOWL, eller vad en skrivning som inte blev klar lämnade där. Det går inte att ångra. Träningspasset förblir privat.',
+  'class.save.overwriteText': 'Version {number} ersätter träningspasset i MOWL, även dina ändringar där. Det går inte att ångra. Det förblir privat.',
   'class.save.updateButton': 'Uppdatera träningspass',
   'class.save.replace': 'Ja, ersätt det',
-  'class.save.updateUnavailable':
-    'Det går inte att uppdatera det sparade träningspasset ännu. Spara lägger i stället till ett nytt träningspass.',
+  'class.save.updateUnavailable': 'Uppdatering är inte tillgänglig ännu. Spara lägger till ett nytt träningspass.',
 
   // Undecided writes and the undecided playlist attach (ADR 0005 section 7, ADR 0007 section 8).
-  'class.write.title.save': 'classbeat kunde inte avgöra om ditt träningspass sparades',
-  'class.write.title.update': 'classbeat kunde inte avgöra om ditt träningspass uppdaterades',
-  'class.write.waiting':
-    'classbeat kanske fortfarande skickar det här till MOWL, så Kontrollera igen och Gör det ändå väntar till {time}.',
-  'class.write.running':
-    'classbeat kanske fortfarande skriver till MOWL, så det går inte att avgöra ännu. Vänta några minuter.',
+  'class.write.title.save': 'Vi kunde inte avgöra om ditt träningspass sparades',
+  'class.write.title.update': 'Vi kunde inte avgöra om ditt träningspass uppdaterades',
+  'class.write.waiting': 'Vi kanske fortfarande skickar det här till MOWL, så Kontrollera igen och Gör det ändå väntar till {time}.',
+  'class.write.running': 'Vi kanske fortfarande skriver till MOWL, så det går inte att avgöra ännu. Vänta några minuter.',
   'class.write.settled': 'Det var redan avgjort. Listan har uppdaterats.',
   'class.write.notSaved': 'Ja, det sparades inte',
   'class.write.notUpdated': 'Ja, det uppdaterades inte',

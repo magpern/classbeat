@@ -12,7 +12,8 @@ import {
 import { clock } from '../../lib/workout'
 import { Button } from '../ui/button'
 import { Chip, ChipButton } from '../ui/chip'
-import { RevisionsPanel } from './RevisionsPanel'
+import { ListRow } from '../ui/list-row'
+import { RevisionsPanel, VERSION_LIST, VERSION_ROW } from './RevisionsPanel'
 import { TssValue } from './TssValue'
 import { dateTime } from '../../i18n/format'
 import { Trans, useT } from '../../i18n/I18n'
@@ -162,71 +163,81 @@ export function HistoryPanel({
           {t('class.history.unreadable', { count: history.unreadable })}
         </p>
       ) : null}
-      <ol className="rows revisions" aria-label={t('class.history.list')}>
+      <ol className={VERSION_LIST} aria-label={t('class.history.list')}>
         {ordered.map((r) => {
           const summary = revisions.find((s) => s.id === r.id)
           const tss = r.tss
           return (
-            <li key={r.id} aria-current={r.id === viewingId ? 'true' : undefined} data-testid="history-entry">
-              <span className="flex min-w-0 flex-col gap-1">
-                <span className="flex flex-wrap items-center gap-2">
-                  <strong>{t('class.version', { number: r.number })}</strong>
+            <ListRow
+              key={r.id}
+              aria-current={r.id === viewingId ? 'true' : undefined}
+              data-testid="history-entry"
+              className={VERSION_ROW}
+              title={<span>{t('class.version', { number: r.number })}</span>}
+              badge={
+                <>
                   {r.isCurrent ? <Chip tone="ok">{t('class.current')}</Chip> : null}
                   {r.saved === 'live' ? <Chip>{t('class.history.savedMowl')}</Chip> : null}
                   {r.saved === 'detached' ? <Chip>{t('class.history.savedEarlier')}</Chip> : null}
                   {r.fromSongs ? <Chip>{t('class.history.fromSongs')}</Chip> : null}
-                </span>
-                <span className="break-words">{askedFor(r)}</span>
-                <span className="muted">
-                  {clock(r.totalSec)}
-                  {tss !== null ? (
-                    <>
-                      ,{' '}
-                      <Trans
-                        id="class.history.tss"
-                        slots={{ value: <TssValue value={tss} approximate={r.tssApproximate} /> }}
-                      />
-                    </>
-                  ) : null}
-                  {r.parentNumber !== null ? `, ${t('class.fromVersion', { number: r.parentNumber })}` : ''}
-                  {when(r.createdAt) ? `, ${when(r.createdAt)}` : ''}
-                </span>
-              </span>
-              <span className="flex flex-wrap gap-2">
-                <ChipButton
-                  pressed={chosen.includes(r.id)}
-                  aria-label={t('class.history.compareAria', { number: r.number })}
-                  onClick={() => {
-                    toggle(r.id)
-                  }}
-                >
-                  {t('class.history.compare')}
-                </ChipButton>
-                <Button
-                  variant="secondary"
-                  aria-label={t(r.id === viewingId ? 'class.viewingVersionAria' : 'class.viewVersionAria', {
-                    number: r.number,
-                  })}
-                  disabled={r.id === viewingId}
-                  onClick={() => {
-                    onView(r.id)
-                  }}
-                >
-                  {r.id === viewingId ? t('class.viewing') : t('class.view')}
-                </Button>
-                {r.isCurrent || summary === undefined ? null : (
-                  <Button
-                    aria-label={t('class.useVersionAria', { number: r.number })}
-                    disabled={busy}
+                </>
+              }
+              description={
+                <>
+                  <span className="block break-words text-text">{askedFor(r)}</span>
+                  <span className="block">
+                    {clock(r.totalSec)}
+                    {tss !== null ? (
+                      <>
+                        ,{' '}
+                        <Trans
+                          id="class.history.tss"
+                          slots={{ value: <TssValue value={tss} approximate={r.tssApproximate} /> }}
+                        />
+                      </>
+                    ) : null}
+                    {r.parentNumber !== null ? `, ${t('class.fromVersion', { number: r.parentNumber })}` : ''}
+                    {when(r.createdAt) ? `, ${when(r.createdAt)}` : ''}
+                  </span>
+                </>
+              }
+              action={
+                <span className="flex flex-wrap gap-2">
+                  <ChipButton
+                    pressed={chosen.includes(r.id)}
+                    aria-label={t('class.history.compareAria', { number: r.number })}
                     onClick={() => {
-                      onUse(summary)
+                      toggle(r.id)
                     }}
                   >
-                    {t('class.useThisVersion')}
+                    {t('class.history.compare')}
+                  </ChipButton>
+                  <Button
+                    variant="secondary"
+                    aria-label={t(r.id === viewingId ? 'class.viewingVersionAria' : 'class.viewVersionAria', {
+                      number: r.number,
+                    })}
+                    disabled={r.id === viewingId}
+                    onClick={() => {
+                      onView(r.id)
+                    }}
+                  >
+                    {r.id === viewingId ? t('class.viewing') : t('class.view')}
                   </Button>
-                )}
-              </span>
-            </li>
+                  {r.isCurrent || summary === undefined ? null : (
+                    <Button
+                      aria-label={t('class.useVersionAria', { number: r.number })}
+                      disabled={busy}
+                      onClick={() => {
+                        onUse(summary)
+                      }}
+                    >
+                      {t('class.useThisVersion')}
+                    </Button>
+                  )}
+                </span>
+              }
+            />
           )
         })}
       </ol>
