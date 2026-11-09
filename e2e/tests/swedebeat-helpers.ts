@@ -89,7 +89,7 @@ export async function useSwedebeat(page: Page): Promise<void> {
   const session = (await (await page.request.get('/api/auth/session')).json()) as { csrf_token: string }
   const answer = await page.request.put('/api/connections/swedebeat/preference', {
     data: { uses_swedebeat: true },
-    headers: { 'X-CSRF-Token': session.csrf_token },
+    headers: { 'X-CSRF-Token': session.csrf_token, Origin: new URL(page.url()).origin },
   })
   expect(answer.ok()).toBe(true)
 }
