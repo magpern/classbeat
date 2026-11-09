@@ -150,7 +150,7 @@ test('a Spotify class: correct, apply, revise, save, change and update', async (
   const fourth = await applyFixes(page, id, 4)
   const v4 = await seconds(page, id, fourth.current_revision_id)
   if (JSON.stringify(v4) !== JSON.stringify(programSeconds(saved!))) {
-    await expect(savedState(page)).toContainText('has changes that are not saved yet')
+    await expect(savedState(page)).toContainText('has unsaved changes')
   }
   await confirmWrite(page, /^Update workout/, 'Update workout')
   await expect(page.getByText('Updated. MOWL now matches this version.')).toBeVisible(LONG)

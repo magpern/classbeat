@@ -112,7 +112,7 @@ describe('HistoryPanel', () => {
     api.getHistory.mockResolvedValue(HISTORY)
     show()
     const rows = await screen.findAllByTestId('history-entry')
-    expect(rows.map((r) => within(r).getByText(/^Version \d$/).firstChild?.textContent)).toEqual([
+    expect(rows.map((r) => within(r).getByText(/^Version \d$/).textContent)).toEqual([
       'Version 3',
       'Version 2',
       'Version 1',

@@ -67,8 +67,8 @@ test('design, change, pick an older version, save, change and update', async ({ 
   // Save version 1: the page says what is written, the click is the approval.
   await savePanel(page).getByRole('button', { name: 'Save to MOWL' }).click()
   const group = savePanel(page).getByRole('group', { name: 'Confirm' })
-  await expect(group).toContainText('version 1')
-  await expect(group).toContainText('It is private')
+  await expect(group).toContainText('Version 1')
+  await expect(group).toContainText('Only you can see it')
   await group.getByRole('button', { name: 'Save to MOWL', exact: true }).click()
   await expect(page.getByText('Saved to MOWL as a private workout.')).toBeVisible(LONG)
   await expect(savedState(page)).toHaveText('Saved to MOWL as version 1. Up to date.')
@@ -80,7 +80,7 @@ test('design, change, pick an older version, save, change and update', async ({ 
   // Version 3 by chat from version 1, then Update replaces the saved program in place.
   await reviseByChat(page, 'revise_second', 'Ease the warm-up a little more.', 3)
   await expect(savedState(page)).toHaveText(
-    'Saved to MOWL as version 1. The current version (3) has changes that are not saved yet.',
+    'Saved to MOWL as version 1. Version 3 has unsaved changes.',
   )
   await confirmWrite(page, 'Update workout', 'Update workout')
   await expect(page.getByText('Updated. MOWL now matches this version.')).toBeVisible(LONG)
@@ -148,7 +148,7 @@ test('a second workout is made only when the user decides the first was not save
   await expect(box.getByRole('group', { name: 'Confirm' })).toContainText('MOWL may get a second copy')
   expect(saveState()).toMatchObject({ writes: LAST_WRITE, programs: [1] })
   await box.getByRole('button', { name: 'Yes, it was not saved' }).click()
-  await expect(savePanel(page).getByText('Understood. You can save it again now;')).toBeVisible()
+  await expect(savePanel(page).getByText('Understood. You can save again;')).toBeVisible()
   await expect(box).toHaveCount(0)
   expect(saveState()).toMatchObject({ writes: LAST_WRITE, programs: [1] })
 
@@ -173,7 +173,7 @@ test('an update left partly done stays undecided until the user overwrites', asy
   const box = undecided(page)
   await expect(box.getByRole('heading', { name: 'We could not tell if your workout was updated' })).toBeVisible(LONG)
   await expect(savedState(page)).toHaveText(
-    'Saved to MOWL as version 1. The current version (2) has changes that are not saved yet.',
+    'Saved to MOWL as version 1. Version 2 has unsaved changes.',
   )
   const partial = savePrograms()
   expect(partial).toHaveLength(1)

@@ -173,7 +173,7 @@ export function HistoryPanel({
               aria-current={r.id === viewingId ? 'true' : undefined}
               data-testid="history-entry"
               className={VERSION_ROW}
-              title={t('class.version', { number: r.number })}
+              title={<span>{t('class.version', { number: r.number })}</span>}
               badge={
                 <>
                   {r.isCurrent ? <Chip tone="ok">{t('class.current')}</Chip> : null}

@@ -43,7 +43,7 @@ export function RevisionsPanel({
             key={r.id}
             aria-current={r.id === viewingId ? 'true' : undefined}
             className={VERSION_ROW}
-            title={t('class.version', { number: r.number })}
+            title={<span>{t('class.version', { number: r.number })}</span>}
             badge={r.isCurrent ? <span className="tag">{t('class.current')}</span> : null}
             description={
               <>

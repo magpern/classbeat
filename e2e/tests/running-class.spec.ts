@@ -118,7 +118,7 @@ test('design a running class, save it, change it and update the same program', a
   await reviseByChat(page, 'running_revise', 'Make the first jog easier.', 2)
   await expect(page.getByTestId('sport')).toHaveText('Running')
   await expect(savedState(page)).toHaveText(
-    'Saved to MOWL as version 1. The current version (2) has changes that are not saved yet.',
+    'Saved to MOWL as version 1. Version 2 has unsaved changes.',
   )
   await confirmWrite(page, 'Update workout', 'Update workout')
   await expect(page.getByText('Updated. MOWL now matches this version.')).toBeVisible(LONG)
@@ -157,7 +157,7 @@ test('a running class is not updated onto a program of another sport', async ({ 
   expect(after[0]).toMatchObject({ program_id: program.program_id, name: program.name, activity_type: 0 })
   expect(zonesOf(after[0]!)).toEqual(zonesOf(program))
   await expect(savedState(page)).toHaveText(
-    'Saved to MOWL as version 1. The current version (2) has changes that are not saved yet.',
+    'Saved to MOWL as version 1. Version 2 has unsaved changes.',
   )
 })
 

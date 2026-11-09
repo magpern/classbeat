@@ -166,7 +166,7 @@ test('design with no music, change it, save it and update the same program', asy
   // fake reads -1 back as written, so classbeat can verify it: the claim is only that fake's.
   await reviseByChat(page, 'soundless_revise_second', 'Ease the second step.', 3)
   await expect(savedState(page)).toHaveText(
-    'Saved to MOWL as version 2. The current version (3) has changes that are not saved yet.',
+    'Saved to MOWL as version 2. Version 3 has unsaved changes.',
   )
   await confirmWrite(page, 'Update workout', 'Update workout')
   await expect(page.getByText('Updated. MOWL now matches this version.')).toBeVisible(LONG)
