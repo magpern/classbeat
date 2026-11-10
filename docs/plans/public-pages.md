@@ -107,9 +107,11 @@ The GitHub issues carry the same criteria.
   without exactly one `<h1>`, on any `style=`, or if a published sv/da body equals the English one.
   A key on `untranslated.json` doesn't fail the build, so ADR 0023's English-only feature PRs stay
   possible on published pages.
-- `fetch` throws during prerender. A guard test fails if `publicSite/` or the chart components import
-  runtime code from an API client module; the pure `api/draftTypes` is allowed. The shell is outside
-  this guard: it calls the API only from effects and event handlers, which don't run in prerender.
+- `fetch` throws during prerender. A guard test fails if `publicSite/`, `components/landing/`, the page
+  modules of listed paths or the chart components import runtime code from an API client module; the
+  pure `api/draftTypes` is allowed. The shell is outside this guard: it calls the API only from effects
+  and event handlers, which don't run in prerender.
+- The prerender records the catalogue keys each page rendered, for PP8's translation check.
 - `main.tsx` awaits the catalogue when `#root` has children.
 - `react-dom/server` is not in the client bundle; `check:bundle` passes.
 
@@ -124,7 +126,8 @@ The GitHub issues carry the same criteria.
 - `scripts/ci-changes.sh` treats `publicPaths.json` and the example fixture as backend changes.
 - `lang-head`, `lang-axe` and `test_web_language` read the list. An e2e CSP-violation watcher runs on
   every public URL.
-- `/help` is added to `draft`, so it is prerendered until PP8 publishes it.
+- `/help` is added to `draft`, so it is prerendered until PP8 publishes it. It keeps the footer link
+  it already has, and the tests that pin that link stay as they are.
 - **Navigation.** A unit table covers the decision function, including the signed-in Home exception.
   `linkGuard` keeps the document-load call in that one function.
 - **Metadata e2e, in en, sv and da.** Clicking public → public, public → language switch, public →
@@ -142,9 +145,9 @@ The GitHub issues carry the same criteria.
 - Landing's "We pick the songs", its form-era How it works copy and the link-preview descriptions are
   corrected to the same standard.
 - CTA band reads "Join the beta" with one line saying sign-up is by invitation. No waitlist.
-- Nav links in `SignedOutHeader` outside the session gate, and footer links, with their labels. Each
-  link renders only when its path is in `published`, so PP8 adds no strings and these stay hidden
-  until then.
+- New nav links in `SignedOutHeader` outside the session gate, and new footer links, with their
+  labels. Each new link renders only when its path is in `published`, so PP8 adds no strings and these
+  stay hidden until then. The existing Privacy, Terms and Help footer links don't change.
 - Corrections to existing published pages go on `untranslated.json` until PP7, per ADR 0023 §8.
 - Word-limit test extended, with a long-form allowance for body text.
 
@@ -185,8 +188,10 @@ matrix.
 **PP8.** The only PR that makes new pages public. It adds no strings.
 - Moves the eight paths from `draft` to `published`, which makes PP4's nav and footer links appear.
   No page is orphaned.
-- `untranslated.json` holds no key rendered by a page in `published` at this PR's head, so every page
-  goes live in all three languages. If later PRs added keys, a catch-up translation PR comes first.
+- `npm run check:published-translations` compares the keys the prerender recorded for each published
+  page with `untranslated.json` and reports none at this PR's head, so every page goes live fully
+  translated. It runs on demand, and the Reviewer re-runs it. It is not a CI step, so English-only
+  feature PRs stay possible afterwards. If later PRs added keys, a catch-up translation PR comes first.
 - e2e: all 33 URLs in raw HTML, `sitemap.xml` and reciprocal hreflang; axe at 390 and 1440 px in both
   themes; language switch keeps the page; every link resolves.
 - Status and "Waiting for the owner" updated. Closes #755.

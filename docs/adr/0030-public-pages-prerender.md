@@ -5,7 +5,8 @@ implemented**: the work is planned in milestone PP and deferred until the owner 
 The plan and the PR split are in [docs/plans/public-pages.md](../plans/public-pages.md).
 
 Amends: [ADR 0027](0027-language-prefixed-urls.md) §6 (the fixed list of three public pages, and head
-tags without a body) and §3 only as far as its remark on server-side rendering;
+tags without a body), §3 only as far as its remark on server-side rendering, and §8 (`Link` and
+`navigate` do a full page load at public-page boundaries);
 [ADR 0001](0001-stack-and-layout.md) (build-time HTML from the one frontend).
 Related: [ADR 0013](0013-ui-design-night-studio.md) (CSP, tokens), [ADR 0023](0023-multilingual.md)
 (translation gate), [ADR 0028](0028-ui-refresh.md) (copy rules),
@@ -45,7 +46,8 @@ Vitest, pytest and e2e all read it. It has two lists:
   change English on a published page and list the key, and a catch-up translation PR empties the list
   before a release.
 - `draft`: the same prerendered body and takeover, but `noindex`, no canonical or hreflang, not in
-  the sitemap, not linked. Real pages can then be tested on the real serving path before publication.
+  the sitemap, and no new links to it. `/help` keeps the footer link it already has. Real pages can
+  then be tested on the real serving path before publication.
 
 **3. One source of copy.** Title and description move from `spa_preview.COPY` into catalogue keys,
 verbatim, so the translation guard covers them and Python holds no copy.
@@ -87,8 +89,8 @@ before release**, with this ADR amended. The order to try: fix the specific caus
 variants of an image with CSS hiding the wrong one; `hydrateRoot` on public routes.
 
 **8. Boundaries.** URLs stay language-neutral with English slugs (ADR 0027 §1). No structured data in
-the first release. No analytics: Search Console only. Page content and the chart components import no
-runtime code from an API client module (the pure `api/draftTypes` is allowed), the prerender makes no
+the first release. No analytics: Search Console only. The page modules of listed paths, their content
+components and the chart components import no runtime code from an API client module (the pure `api/draftTypes` is allowed), the prerender makes no
 network call, and fixtures are synthetic, scanned for identifiers and real song names.
 
 ## Alternatives
