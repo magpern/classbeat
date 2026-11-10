@@ -12,11 +12,12 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from agentfake import analysed, brief, good_draft
 from classbeat.agent import DesignContext, design_stage
+from classbeat.agent.brief import Brief
 from classbeat.agent.design import SYSTEM_PROMPT, check
 from classbeat.agent.dispatcher import MAX_INPUT_BYTES, MAX_RESULT_BYTES, dispatch
 from classbeat.agent.model_input import MusicData, music_map
 from classbeat.agent.provider import ToolCall
-from classbeat.agent.schemas import Brief, Game, Interval, WorkoutDraft, clean_text
+from classbeat.agent.schemas import Game, Interval, WorkoutDraft, clean_text
 from classbeat.agent.stage import Stage, Tool, ToolAnswer, ToolError
 
 

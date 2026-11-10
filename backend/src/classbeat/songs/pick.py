@@ -45,6 +45,7 @@ from sqlalchemy import text
 
 from classbeat.agent import (
     AgentConfig,
+    Brief,
     ChooseContext,
     ChosenList,
     JobStageHost,
@@ -61,7 +62,7 @@ from classbeat.agent import choose_songs as choose_module
 from classbeat.agent import pick_pool as pool_module
 from classbeat.agent.limits import Limits
 from classbeat.agent.provider import ModelProvider
-from classbeat.agent.schemas import SONG_SCHEMA_VERSION, Brief
+from classbeat.agent.schemas import SONG_SCHEMA_VERSION
 from classbeat.agent.songs import KeptSong, analysed_pool
 from classbeat.connections import OpenConnection, hold
 from classbeat.crypto.keks import KeyRing

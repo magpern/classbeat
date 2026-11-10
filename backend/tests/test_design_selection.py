@@ -8,7 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from classbeat.agent import model_input
-from classbeat.agent.schemas import Brief
+from classbeat.agent.brief import Brief
 from classbeat.design import kind as design_kind
 from classbeat.design import revision
 from classbeat.design.rules import enums as E

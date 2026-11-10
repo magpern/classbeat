@@ -17,7 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from classbeat.agent.schemas import Brief
+from classbeat.agent.brief import Brief
 from classbeat.classes.selection import stored_approval
 from classbeat.connections import ConnectionFailure, open_connection, run_library_call
 from classbeat.context import UserContext, require_context

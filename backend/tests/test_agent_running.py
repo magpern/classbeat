@@ -24,6 +24,7 @@ from pydantic import ValidationError
 from agentfake import analysed, brief, good_draft, script
 from classbeat.agent import DesignContext, design_stage
 from classbeat.agent import model_input as cycling_input
+from classbeat.agent.brief import Brief
 from classbeat.agent.design import SYSTEM_PROMPT as CYCLING_DESIGN_PROMPT
 from classbeat.agent.design import check
 from classbeat.agent.dispatcher import dispatch
@@ -43,7 +44,6 @@ from classbeat.agent.running import (
 )
 from classbeat.agent.running_input import running_brief_for_model
 from classbeat.agent.schemas import (
-    Brief,
     DraftInput,
     ReviseInput,
     RunningDraft,

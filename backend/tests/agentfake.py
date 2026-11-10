@@ -18,11 +18,11 @@ import pytest
 from mowl import api, library
 from mowl.credentials import Credentials
 
+from classbeat.agent.brief import Brief
 from classbeat.agent.loop import AgentConfig, Counters, RunInfo
 from classbeat.agent.model_input import MusicData
 from classbeat.agent.provider import ModelProvider
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
-from classbeat.agent.schemas import Brief
 from classbeat.jobs import JobFailure
 from classbeat.jobs.run import JobRun
 from classbeat.models.jobs import GroupModel

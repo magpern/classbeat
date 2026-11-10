@@ -23,6 +23,7 @@ from typing import Any, Final
 from mowl.workout import mmss
 
 from classbeat.agent import model_input, running_input
+from classbeat.agent.brief import Brief
 from classbeat.agent.design import (
     GET_MUSIC_DESCRIPTION,
     PREVIEW_DESCRIPTION,
@@ -38,7 +39,6 @@ from classbeat.agent.guidance import Guidance, rules_result
 from classbeat.agent.model_input import MusicData
 from classbeat.agent.schemas import (
     AnyDraft,
-    Brief,
     DraftInput,
     MusicInput,
     ReviseInput,

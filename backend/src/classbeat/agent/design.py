@@ -24,10 +24,11 @@ from mowl import music, sync, workout
 from mowl.workout import mmss
 
 from classbeat.agent import mix_input, model_input, running_input
+from classbeat.agent.brief import Brief
 from classbeat.agent.game_prompt import games_section
 from classbeat.agent.guidance import Guidance, rules_result
 from classbeat.agent.model_input import MusicData
-from classbeat.agent.schemas import Brief, DraftInput, MusicInput, RunningDraft, WorkoutDraft
+from classbeat.agent.schemas import DraftInput, MusicInput, RunningDraft, WorkoutDraft
 from classbeat.agent.stage import Stage, Tool, ToolAnswer, ToolError
 from classbeat.plan_gates import PlanGates, draft_problems
 

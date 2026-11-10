@@ -16,8 +16,8 @@ import pytest
 
 from cataloguefake import PLANTED_KEY, PLANTED_REFERENCE, PLANTED_URL, CatalogueFake
 from classbeat import connections, swedebeat_match
+from classbeat.agent.brief import Brief
 from classbeat.agent.providers.fake import FakeProvider
-from classbeat.agent.schemas import Brief
 from classbeat.egress import swedebeat_cloud_test_client
 from classbeat.flags import effective as flag_effective
 from classbeat.songs.revise import pick_brief

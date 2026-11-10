@@ -16,6 +16,7 @@ The agent never gets a write tool, a network client or credentials: the backend 
 stage needs before it runs and writes only around it, through ``classbeat.jobs``.
 """
 
+from classbeat.agent.brief import Brief
 from classbeat.agent.choose_songs import ChooseContext, ChosenList, choose_stage
 from classbeat.agent.design import DesignContext, DesignResult, design_stage
 from classbeat.agent.loop import AgentConfig, StageOutcome, run_stage
@@ -23,7 +24,7 @@ from classbeat.agent.model_input import MusicData
 from classbeat.agent.pick_pool import PoolContext, PoolResult, pool_stage
 from classbeat.agent.records import JobStageHost, Provenance, provenance
 from classbeat.agent.registry import SearchRegistry
-from classbeat.agent.schemas import Brief, WorkoutDraft
+from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.songs import PickPlan
 
 __all__ = [

@@ -55,7 +55,8 @@ from mowl import workout
 
 from authtools import ORIGIN, Env
 from classbeat import saving
-from classbeat.agent.schemas import Brief, RunningDraft, WorkoutDraft
+from classbeat.agent.brief import Brief
+from classbeat.agent.schemas import RunningDraft, WorkoutDraft
 from classbeat.design.revision import canonical
 from classbeat.egress import WORKER_ALLOWLIST, build_allowlist_opener
 from classbeat.jobs import KindRegistry, queue

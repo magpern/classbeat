@@ -10,7 +10,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from classbeat.agent.schemas import Brief
+from classbeat.agent.brief import Brief
 from classbeat.design.rules import MAX_HITS, default_registry, evaluate
 from classbeat.design.sport_rules import select_profile_for
 

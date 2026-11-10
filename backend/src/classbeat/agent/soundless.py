@@ -29,6 +29,7 @@ from mowl import workout
 from mowl.workout import mmss
 
 from classbeat.agent import soundless_input
+from classbeat.agent.brief import Brief
 from classbeat.agent.design import (
     FINAL_TOOL,
     STAGE,
@@ -40,7 +41,6 @@ from classbeat.agent.game_prompt import games_section
 from classbeat.agent.revise import ReviseResult
 from classbeat.agent.schemas import (
     AnyDraft,
-    Brief,
     SoundlessDraft,
     SoundlessDraftInput,
     SoundlessReviseInput,

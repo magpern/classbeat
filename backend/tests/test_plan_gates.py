@@ -14,12 +14,13 @@ from pydantic import ValidationError
 
 from agentfake import analysed, brief, good_draft, script
 from classbeat.agent import DesignContext, design_stage
+from classbeat.agent.brief import Brief
 from classbeat.agent.dispatcher import dispatch
 from classbeat.agent.model_input import MusicData
 from classbeat.agent.provider import ToolCall
 from classbeat.agent.revise import ReviseContext, revise_stage
 from classbeat.agent.running import design_stage_for, revise_stage_for
-from classbeat.agent.schemas import Brief, RunningDraft, WorkoutDraft
+from classbeat.agent.schemas import RunningDraft, WorkoutDraft
 from classbeat.agent.stage import Stage
 from classbeat.jobs.credits import QuotaRefused
 from classbeat.plan_gates import PlanGates, draft_problems, max_draft_seconds

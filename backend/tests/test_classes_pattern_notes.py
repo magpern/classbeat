@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from classbeat.agent.schemas import Brief
+from classbeat.agent.brief import Brief
 from classbeat.classes import pattern_notes
 from classbeat.design.rules import Registry, default_registry
 from classbeat.design.rules import profile as profile_module

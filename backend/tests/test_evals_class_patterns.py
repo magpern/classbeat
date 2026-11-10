@@ -15,8 +15,9 @@ import pytest
 
 from agentfake import CONFIG
 from classbeat.agent import DesignContext
+from classbeat.agent.brief import Brief
 from classbeat.agent.design import check
-from classbeat.agent.schemas import Brief, WorkoutDraft
+from classbeat.agent.schemas import WorkoutDraft
 from classbeat.design.guidance import rule_set_for
 from classbeat.design.rules import default_registry, evaluate
 from classbeat.design.selection import select_profile_for_brief

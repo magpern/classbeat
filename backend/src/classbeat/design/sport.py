@@ -47,7 +47,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.agent.schemas import Brief
+from classbeat.agent.brief import Brief
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.design.music_kind import fake_covers
