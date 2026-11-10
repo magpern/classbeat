@@ -35,3 +35,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0027](0027-language-prefixed-urls.md) | Language-prefixed URLs `/en`, `/sv`, `/da` for the whole site: client redirect from old URLs, server head tags and sitemap, admin unprefixed (#719) | Accepted |
 | [0028](0028-ui-refresh.md) | UI refresh: calmer screens, shorter copy, Connections as rows and dialogs, Swedebeat always listed, MOWL QR on by default (MX) | Accepted |
 | [0029](0029-ai-first-class-design.md) | AI-first class design: free-text start and interpret stage, four MOWL games (Ghost Target removed), explicit vs assumed, web-side hand-off (MA) | Accepted |
+| [0030](0030-public-pages-prerender.md) | Public pages: build-time prerender, `published` and `draft` paths, `createRoot` takeover with a release gate, document navigation at public boundaries (PP, #755) | Accepted, not implemented |
