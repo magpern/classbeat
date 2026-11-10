@@ -5,6 +5,8 @@ import { Link } from '../router/Router'
 export const COOKIE_NOTICE_KEY = 'cb-cookie-notice'
 
 function alreadyDismissed(): boolean {
+  // The build-time prerender has no window and no visitor: it renders no notice.
+  if (typeof window === 'undefined') return true
   try {
     return window.localStorage.getItem(COOKIE_NOTICE_KEY) === '1'
   } catch {

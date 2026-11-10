@@ -1,4 +1,4 @@
-import type { DraftInterval, DraftSegment } from '../api/jobs'
+import type { DraftInterval, DraftSegment } from '../api/draftTypes'
 import type { CatalogueKey } from '../i18n/en'
 import { t } from '../i18n/t'
 

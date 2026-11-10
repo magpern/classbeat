@@ -8,6 +8,7 @@ import {
   jobId,
   startDesign,
 } from './design-helpers'
+import { THEMES, setTheme } from './mu-helpers'
 
 // M3a T1 (ADR 0006 section 8): a class drafted from a MOWL playlist, end to end, with the fake
 // MOWL (e2e/fake-mowl) and the FakeProvider replaying backend/tests/agent_scripts/
@@ -35,6 +36,29 @@ test('a class is drafted from a MOWL playlist', async ({ page }) => {
   await expect(page.getByText('Draft 1, 30:00 in total')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Warm-up' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Sprints' })).toBeVisible()
+
+  // PP1 (ADR 0030): zone colours come from classes, not `style`, in both themes. A bar is filled by
+  // its zone's gradient, whose first stop is the zone colour; the same colour as the token says.
+  for (const theme of THEMES) {
+    await setTheme(page, theme)
+    const bar = await page.locator('[data-testid="profile"] rect[data-bar]').first().evaluate((rect) => {
+      const zone = rect.getAttribute('data-zone')
+      const gradient = document.querySelector(rect.getAttribute('fill')?.slice(4, -1) ?? '')
+      const probe = document.createElement('div')
+      probe.style.color = `var(--cb-zone-${zone ?? ''})`
+      document.body.append(probe)
+      const expected = getComputedStyle(probe).color
+      probe.remove()
+      const stop = gradient?.querySelector('stop')
+      return {
+        expected,
+        stop: stop ? getComputedStyle(stop).stopColor : null,
+        styled: document.querySelectorAll('[data-testid="profile"] [style]').length,
+      }
+    })
+    expect(bar.stop, theme).toBe(bar.expected)
+    expect(bar.styled, theme).toBe(0)
+  }
 
   const job = await getJob(page, id)
   expect(job.state).toBe('completed')

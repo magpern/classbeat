@@ -1,4 +1,4 @@
-import type { DraftSegment } from '../api/jobs'
+import type { DraftSegment } from '../api/draftTypes'
 
 // Numbers shown for a draft, computed from the stored content (never from model text). TSS uses
 // the weights of the `mowl` library (`workout.TSS_WEIGHT`) and its formula; the backend's own
