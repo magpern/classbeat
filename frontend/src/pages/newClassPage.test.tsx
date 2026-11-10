@@ -38,7 +38,7 @@ async function fill(name = 'Tuesday climb') {
 describe('the new-class form', () => {
   it('sends the brief, the playlist and the own connection id, with an idempotency key and CSRF', async () => {
     const api = fakeApi({ ...READY, ...CREATED })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await fill()
     fireEvent.click(screen.getByRole('radio', { name: 'Other' }))
     fireEvent.change(screen.getByLabelText('Length in minutes'), { target: { value: '60' } })
@@ -77,7 +77,7 @@ describe('the new-class form', () => {
 
   it('refuses a brief over 4096 bytes before sending, counting bytes and not characters', async () => {
     const api = fakeApi({ ...READY, ...CREATED })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await fill()
     // 2000 characters (the field's limit), but 4000 bytes of text plus the rest of the brief: over the limit.
     fireEvent.change(screen.getByLabelText('Anything else?'), { target: { value: 'å'.repeat(2000) } })
@@ -94,7 +94,7 @@ describe('the new-class form', () => {
 
   it('says the playlist is added to the MOWL music, and shows playlist names as text', async () => {
     fakeApi(READY)
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await fill()
     expect(screen.getByText(/Added to your MOWL music, private to you/)).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Hills <script>x</script>' })).toBeInTheDocument()
@@ -103,7 +103,7 @@ describe('the new-class form', () => {
 
   it('has one shared radio group per choice and the create button in the sticky bar, with no inline styles', async () => {
     fakeApi(READY)
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     const form = screen.getByRole('form', { name: 'New class' })
     const groups = within(form).getAllByRole('radiogroup')
@@ -128,7 +128,7 @@ describe('the new-class form', () => {
       [`GET /api/jobs/${JOB_ID}`]: jobBody('running'),
       [`GET /api/jobs/${JOB_ID}/events`]: openStream,
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await fill()
     const submit = screen.getByRole('button', { name: 'Design my class' })
     fireEvent.click(submit)
@@ -150,7 +150,7 @@ describe('the new-class form', () => {
 
   it('checks the fields before sending anything', async () => {
     const api = fakeApi(READY)
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Give the class a name')
@@ -169,7 +169,7 @@ describe('the new-class form', () => {
     ['busy', 429, 'already have designs running'],
   ])('explains the refusal %s in words', async (why, status, text) => {
     fakeApi({ ...READY, 'POST /api/jobs': reason(status, why) })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await fill()
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(text)
@@ -185,7 +185,7 @@ describe('the new-class form', () => {
           409,
         ),
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await fill()
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -195,7 +195,7 @@ describe('the new-class form', () => {
 
   it('words busy with the limit of the plan', async () => {
     fakeApi({ ...READY, 'POST /api/jobs': () => json({ detail: { reason: 'busy', limit: 2 } }, 429) })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await fill()
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('allows 2 designs at a time')
@@ -203,7 +203,7 @@ describe('the new-class form', () => {
 
   it('asks the user to connect MOWL first', async () => {
     fakeApi({ ...SESSION_ROUTES })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     expect(await screen.findByRole('link', { name: 'Connect MOWL' })).toHaveAttribute('href', '/en/account')
     expect(screen.queryByLabelText('Class name')).toBeNull()
   })
@@ -213,7 +213,7 @@ describe('the new-class form', () => {
       ...SESSION_ROUTES,
       'GET /api/connections': { connections: [{ ...MOWL, status: 'needs_reconnect' }] },
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     expect(await screen.findByRole('link', { name: 'Connect MOWL again' })).toBeInTheDocument()
   })
 
@@ -226,7 +226,7 @@ describe('the new-class form', () => {
         return tries === 1 ? reason(503, 'upstream_unavailable') : READY['GET /api/music/mowl-playlists']
       },
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     expect(await screen.findByRole('alert')).toHaveTextContent('MOWL could not be reached')
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByLabelText('Class name')).toBeInTheDocument()
@@ -234,13 +234,13 @@ describe('the new-class form', () => {
 
   it('says so when MOWL lists no playlists', async () => {
     fakeApi({ ...READY, 'GET /api/music/mowl-playlists': { playlists: [] } })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     expect(await screen.findByRole('heading', { name: 'No playlists found' })).toBeInTheDocument()
   })
 
   it('has segmented controls, one per choice, and steppers that stop at their limits', async () => {
     fakeApi(READY)
-    renderAt('/classes/new?length=60&climbs=10')
+    renderAt('/classes/new/advanced?length=60&climbs=10')
     await screen.findByLabelText('Class name')
     expect(screen.getByRole('radio', { name: '60 min' })).toBeChecked()
     expect(screen.getByRole('radio', { name: '30 min' })).not.toBeChecked()
@@ -272,7 +272,7 @@ describe('the new-class form', () => {
   ] as const
   it.each(LENGTH_CHIPS)('sends the brief of the %s option', async (label, minutes) => {
     const api = fakeApi({ ...READY, ...CREATED })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await fill()
     fireEvent.click(screen.getByRole('radio', { name: label }))
     expect(screen.queryByLabelText('Length in minutes')).toBeNull()
@@ -296,7 +296,7 @@ describe('the new-class form', () => {
   ] as const
   it.each(STYLE_CHIPS)('sends the style of the %s chip', async (label, value) => {
     const api = fakeApi({ ...READY, ...CREATED })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await fill()
     fireEvent.click(screen.getByRole('button', { name: label }))
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
@@ -309,7 +309,7 @@ describe('the new-class form', () => {
 
   it('lists the playlists as radio tiles in one group and prefills from a preset', async () => {
     fakeApi(READY)
-    renderAt('/classes/new?intensity=hard')
+    renderAt('/classes/new/advanced?intensity=hard')
     await screen.findByLabelText('Class name')
     const group = screen.getByRole('radiogroup', { name: 'Playlist' })
     expect(group.querySelectorAll('input[type="radio"]')).toHaveLength(2)
@@ -327,7 +327,7 @@ describe('the new-class form', () => {
         classes_held: 1, period_end: '2026-11-01T00:00:00Z', cost_share: 0, features: [], trial: null,
       },
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     expect(await screen.findByText('Uses 1 of your 2 classes left this month')).toBeInTheDocument()
   })
 
@@ -341,7 +341,7 @@ describe('the new-class form', () => {
 
     it('disables lengths over the cap and says what the plan allows', async () => {
       fakeApi({ ...READY, 'GET /api/account/plan': plan(45, { games: true, races: true, ftp_tests: true }) })
-      renderAt('/classes/new')
+      renderAt('/classes/new/advanced')
       expect(await screen.findByText('Your plan allows classes of up to 45 minutes.')).toBeInTheDocument()
       expect(screen.getByRole('radio', { name: '45 min' })).toBeEnabled()
       expect(screen.getByRole('radio', { name: '60 min' })).toBeDisabled()
@@ -356,7 +356,7 @@ describe('the new-class form', () => {
         ...CREATED,
         'GET /api/account/plan': plan(45, { games: true, races: true, ftp_tests: true }),
       })
-      renderAt('/classes/new')
+      renderAt('/classes/new/advanced')
       await screen.findByText('Your plan allows classes of up to 45 minutes.')
       await fill()
       fireEvent.click(screen.getByRole('radio', { name: 'Other' }))
@@ -372,7 +372,7 @@ describe('the new-class form', () => {
         ...CREATED,
         'GET /api/account/plan': plan(60, { games: false, races: false, ftp_tests: false }),
       })
-      renderAt('/classes/new?races=3')
+      renderAt('/classes/new/advanced?races=3')
       expect(await screen.findByText('Your plan does not include races and FTP tests.')).toBeInTheDocument()
       expect(screen.queryByLabelText('Races')).toBeNull()
       expect(screen.queryByLabelText('FTP test')).toBeNull()
@@ -389,7 +389,7 @@ describe('the new-class form', () => {
 
     it('shows everything and no sentence about games when the plan includes them', async () => {
       fakeApi({ ...READY, 'GET /api/account/plan': plan(180, { games: true, races: true, ftp_tests: true }) })
-      renderAt('/classes/new')
+      renderAt('/classes/new/advanced')
       await screen.findByText('Uses 1 of your 3 classes left this month')
       expect(screen.queryByText(/Your plan allows classes/)).toBeNull()
       expect(screen.getByLabelText('Races')).toBeInTheDocument()
@@ -403,7 +403,7 @@ describe('the new-class form', () => {
 
     it('caps a running class by the plan and sends the running body with no bike fields', async () => {
       const api = fakeApi({ ...RUNNING, ...CREATED, 'GET /api/account/plan': plan(45, NONE) })
-      renderAt('/classes/new')
+      renderAt('/classes/new/advanced')
       await screen.findByText('Your plan allows classes of up to 45 minutes.')
       fireEvent.click(screen.getByRole('radio', { name: 'Running' }))
       // The races / FTP sentence and the controls belong to cycling only.
@@ -434,7 +434,7 @@ describe('the new-class form', () => {
 
     it('keeps the cycling brief on the same plan: no races, no FTP test, the sentence shown', async () => {
       const api = fakeApi({ ...RUNNING, ...CREATED, 'GET /api/account/plan': plan(45, NONE) })
-      renderAt('/classes/new')
+      renderAt('/classes/new/advanced')
       await screen.findByText('Your plan allows classes of up to 45 minutes.')
       expect(screen.getByRole('radio', { name: 'Cycling' })).toBeChecked()
       expect(screen.getByText('Your plan does not include races and FTP tests.')).toBeInTheDocument()
@@ -462,7 +462,7 @@ describe('the new-class form', () => {
         const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
         return path === '/api/account/plan' ? held.then(() => real(input, init)) : real(input, init)
       })
-      renderAt('/classes/new')
+      renderAt('/classes/new/advanced')
       await fill()
       fireEvent.change(screen.getByLabelText('FTP test'), { target: { value: '20' } })
       release()
@@ -481,7 +481,7 @@ describe('the new-class form', () => {
         ...READY,
         'GET /api/account/plan': { ...plan(30, { games: false, races: true, ftp_tests: true }), monthly_price_cents: 990, currency: 'USD' },
       })
-      const { container } = renderAt('/classes/new')
+      const { container } = renderAt('/classes/new/advanced')
       await screen.findByText('Your plan allows classes of up to 30 minutes.')
       expect(container.textContent).not.toMatch(/price|\$|USD|990|9\.90/i)
       expect(api.calls.every((c) => !c.path.startsWith('/api/admin'))).toBe(true)
@@ -491,7 +491,7 @@ describe('the new-class form', () => {
   it('hides the classes line when the plan cannot be read', async () => {
     // The default fake serves a plan; this test fails that read on purpose.
     const api = fakeApi({ ...READY, 'GET /api/account/plan': () => reason(503, 'upstream_unavailable') })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     // The refusal is answered once the request is recorded; nothing can show the line after that.
     await waitFor(() => {
@@ -503,7 +503,7 @@ describe('the new-class form', () => {
 
   it('is for signed-in users only', async () => {
     fakeApi({})
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     expect(await screen.findByRole('heading', { name: 'Sign in first' })).toBeInTheDocument()
   })
 
@@ -515,7 +515,7 @@ describe('the new-class form', () => {
         swedebeat: { enabled: false, available: false },
       },
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     expect(screen.queryByRole('radio', { name: 'Swedebeat mix' })).toBeNull()
     expect(api.to('GET', '/api/music/swedebeat-mixes')).toHaveLength(0)
@@ -529,7 +529,7 @@ describe('the new-class form', () => {
         swedebeat: { enabled: true, available: true, uses_swedebeat: false },
       },
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     expect(screen.queryByRole('radio', { name: 'Swedebeat mix' })).toBeNull()
     expect(api.to('GET', '/api/music/swedebeat-mixes')).toHaveLength(0)
@@ -549,7 +549,7 @@ describe('the new-class form', () => {
       },
       ...CREATED,
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await fill('Mix class')
     fireEvent.click(await screen.findByRole('radio', { name: 'Swedebeat mix' }))
     fireEvent.click(screen.getByRole('radio', { name: /Sunday climb/ }))
@@ -578,7 +578,7 @@ describe('the new-class form', () => {
       'GET /api/music/mowl-playlists': READY['GET /api/music/mowl-playlists'],
       'GET /api/music/swedebeat-mixes': () => reason(503, 'upstream_unavailable'),
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     expect(screen.getByText('MOWL could not be reached. Try again in a few minutes.')).toBeInTheDocument()
     expect(document.body).not.toHaveTextContent('upstream_unavailable')
@@ -595,7 +595,7 @@ describe('the new-class form', () => {
       'GET /api/music/mowl-playlists': { playlists: [] },
       'GET /api/music/swedebeat-mixes': () => reason(503, 'upstream_unavailable'),
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     expect(screen.getByText('MOWL could not be reached. Try again in a few minutes.')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'No playlists found' })).toBeNull()

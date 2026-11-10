@@ -47,7 +47,7 @@ describe('Home', () => {
     const presets = screen.getByRole('list', { name: 'Quick start' })
     const links = within(presets).getAllByRole('link')
     expect(links.map((l) => l.textContent)).toEqual(['45 min hills', '30 min intervals', '60 min endurance'])
-    expect(links[0]).toHaveAttribute('href', '/en/classes/new?length=45&climbs=3&intensity=moderate')
+    expect(links[0]).toHaveAttribute('href', '/en/classes/new/advanced?length=45&climbs=3&intensity=moderate')
   })
 
   it('says so when there are no classes yet', async () => {
@@ -153,7 +153,7 @@ describe('presets', () => {
       'GET /api/connections': { connections: [MOWL] },
       'GET /api/music/mowl-playlists': { playlists: [{ spotify_playlist_id: 'p1', name: 'Mix' }] },
     })
-    renderAt('/classes/new?length=30&sprints=6&intensity=hard')
+    renderAt('/classes/new/advanced?length=30&sprints=6&intensity=hard')
     expect(await screen.findByRole('radio', { name: '30 min' })).toBeChecked()
     expect(screen.getByLabelText('Sprints')).toHaveValue(6)
     expect(screen.getByLabelText('Climbs')).toHaveValue(0)

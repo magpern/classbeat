@@ -10,6 +10,7 @@ import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Card as Panel } from '../ui/card'
 import { UncertainAttach } from '../classes/UncertainAttach'
+import { startAgainPath } from '../../lib/startRequest'
 import { designAgainKey, forgetInput, recallInput, rememberInput } from '../../lib/submittedInput'
 import { Link, useRouter } from '../../router/Router'
 
@@ -21,7 +22,7 @@ function useDesignAgain(job: Job) {
   const input = recallInput(job.id)
   const again = () => {
     if (input === null) {
-      navigate('/classes/new')
+      navigate(startAgainPath(job.classId))
       return
     }
     void action.run(async () => {

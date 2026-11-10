@@ -3,6 +3,7 @@ import { currentReasonText, isStale } from '../api/classMessages'
 import { getRevision, pickCurrent, type RevisionSummary } from '../api/classes'
 import { getSongList, type Song } from '../api/songs'
 import { DeleteClass } from '../components/classes/DeleteClass'
+import { HandoffNotice } from '../components/classes/HandoffNotice'
 import { ClassHeader } from '../components/classes/ClassHeader'
 import { UncertainWrite } from '../components/classes/UncertainWrite'
 import { useSaveFlow } from '../components/classes/useSaveFlow'
@@ -179,7 +180,7 @@ function ClassBody({
         onDeleted={onDeleted}
         onReload={reload}
       />
-      {summary.openJob !== null && summary.openJob.kind !== 'revise_draft' ? (
+      {summary.openJob !== null && summary.openJob.kind !== 'revise_draft' && summary.openJob.kind !== 'interpret_request' ? (
         <Notice>
           {summary.openJob.state === 'waiting_for_approval'
             ? t('class.page.job.waiting')
@@ -215,6 +216,7 @@ function ClassBody({
       {summary.sport === 'running' ? null : <SwedebeatSection summary={summary} onReload={reload} />}
       {pick.error ? <Notice kind="error">{pick.error}</Notice> : null}
 
+      <HandoffNotice summary={summary} reload={reload} />
       {summary.currentRevisionId === null ? (
         <Notice>
           {t('class.page.noVersion')}{' '}

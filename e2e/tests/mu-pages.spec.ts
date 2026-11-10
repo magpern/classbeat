@@ -82,6 +82,9 @@ test('the signed-in pages: home, classes, new class, designing, ready, class', a
   await check('my classes (empty)', page.getByRole('link', { name: 'Design a class' }))
 
   await visit('/classes/new', page.getByRole('button', { name: 'Design my class' }))
+  await check('new class (start)', page.getByRole('form', { name: 'Start a class' }).getByRole('button', { name: 'Design my class' }))
+
+  await visit('/classes/new/advanced', page.getByRole('button', { name: 'Design my class' }))
   const form = page.getByRole('form', { name: 'New class' })
   await check('new class', form.getByRole('button', { name: 'Design my class' }))
 

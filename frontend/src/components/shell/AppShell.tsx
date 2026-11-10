@@ -17,10 +17,10 @@ import { PhoneSignInNotice } from './PhoneSignInNotice'
 
 const JOB_PAGE = /^\/jobs\/[0-9a-fA-F-]{36}$/
 
-/** New class and Designing hide the navigation so nothing distracts mid-task (ADR 0013 section 4). */
+/** New class (the start screen and the advanced form) and Designing hide the navigation so nothing distracts mid-task (ADR 0013 section 4). */
 export function isFocusRoute(pathname: string): boolean {
   const path = pathname.replace(/\/+$/, '') || '/'
-  return path === '/classes/new' || JOB_PAGE.test(path)
+  return path === '/classes/new' || path === '/classes/new/advanced' || JOB_PAGE.test(path)
 }
 
 interface Item {
@@ -44,7 +44,7 @@ function itemsFor(layout: Layout): Item[] {
 function isActive(item: Item, pathname: string): boolean {
   const path = pathname.replace(/\/+$/, '') || '/'
   if (item.to === '/') return path === '/'
-  if (item.to === '/classes') return path === '/classes' || (path.startsWith('/classes/') && path !== '/classes/new')
+  if (item.to === '/classes') return path === '/classes' || (path.startsWith('/classes/') && path !== '/classes/new' && !path.startsWith('/classes/new/'))
   return path === item.to || path.startsWith(`${item.to}/`)
 }
 

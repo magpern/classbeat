@@ -65,7 +65,7 @@ test('listed from the start; Connect turns the preference on, Disconnect turns i
     expect(listed.status()).toBe(404)
     expect(await listed.json()).toEqual({ detail: { reason: 'feature_off' } })
     expect(swedebeatMixState().lists).toBe(0) // no MOWL call
-    await page.goto('/classes/new')
+    await page.goto('/classes/new/advanced')
     const form = page.getByRole('form', { name: 'New class' })
     await expect(form.getByLabel('Class name')).toBeVisible()
     await expect(form.getByRole('radio', { name: 'Swedebeat mix', exact: true })).toHaveCount(0)
@@ -90,7 +90,7 @@ test('listed from the start; Connect turns the preference on, Disconnect turns i
     await page.reload()
     await expect(swedebeatRow(page).getByTestId('swedebeat-status')).toHaveText('Connected') // from the server
     expect(sql(`SELECT uses_swedebeat FROM user_preferences WHERE owner_id = '${owner}'`)).toBe('t')
-    await page.goto('/classes/new')
+    await page.goto('/classes/new/advanced')
     const form = page.getByRole('form', { name: 'New class' })
     await expect(form.getByRole('radio', { name: 'Swedebeat mix', exact: true })).toBeVisible()
     expect(swedebeatMixState().lists).toBeGreaterThan(0)
@@ -116,7 +116,7 @@ test('listed from the start; Connect turns the preference on, Disconnect turns i
     await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible()
     await expect(swedebeatRow(page)).toContainText('Not available right now')
     await expect(swedebeatRow(page).getByRole('button')).toHaveCount(0)
-    await page.goto('/classes/new')
+    await page.goto('/classes/new/advanced')
     await expect(page.getByRole('form', { name: 'New class' }).getByLabel('Class name')).toBeVisible()
     await expect(page.getByRole('radio', { name: 'Swedebeat mix', exact: true })).toHaveCount(0)
     expect(swedebeatMixState().lists).toBe(before)

@@ -54,7 +54,7 @@ describe('playlist covers in the New class picker', () => {
         ],
       },
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByRole('radio', { name: 'Hills' })
     await waitFor(() => {
       expect(tile('Hills').querySelector('img')?.getAttribute('src')).toBe(MOSAIC)
@@ -87,7 +87,7 @@ describe('playlist covers in the New class picker', () => {
         ? pending
         : answered(input, init),
     )
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     // The covers request is still open: every tile has its initials and the form can be used.
     expect(await screen.findByRole('radio', { name: 'Hills' })).toBeInTheDocument()
     expect(within(tile('Hills')).getByText('H')).toBeInTheDocument()
@@ -112,7 +112,7 @@ describe('playlist covers in the New class picker', () => {
         ],
       },
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByRole('radio', { name: 'Hills' })
     await waitFor(() => {
       expect(tile('Hills').querySelector('[data-testid="cover-tile"]')).not.toBeNull()
@@ -126,7 +126,7 @@ describe('playlist covers in the New class picker', () => {
     ['a malformed answer', () => ({ covers: [{ spotify_playlist_id: HILLS }] })],
   ])('shows initials and no error after %s', async (_name, answer) => {
     fakeApi({ ...READY, 'GET /api/music/playlist-covers': answer })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByRole('radio', { name: 'Hills' })
     await waitFor(() => {
       expect(within(tile('Hills')).getByText('H')).toBeInTheDocument()
@@ -142,7 +142,7 @@ describe('playlist covers in the New class picker', () => {
       'GET /api/connections': connectionsBody(false),
       'GET /api/connections/spotify': { ...SPOTIFY, status: 'not_connected' },
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByRole('radio', { name: 'Hills' })
     expect(api.to('GET', '/api/music/playlist-covers')).toHaveLength(0)
     expect(document.querySelectorAll('img')).toHaveLength(0)
@@ -150,7 +150,7 @@ describe('playlist covers in the New class picker', () => {
 
   it('asks once, after the MOWL list, and not when MOWL lists no playlists', async () => {
     const api = fakeApi({ ...READY, 'GET /api/music/mowl-playlists': { playlists: [] } })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     expect(api.to('GET', '/api/music/mowl-playlists')).toHaveLength(1)
     expect(api.to('GET', '/api/music/playlist-covers')).toHaveLength(0)

@@ -19,6 +19,7 @@ import { LandingPage } from './pages/LandingPage'
 import { HelpPage } from './pages/HelpPage'
 import { PrivacyPage } from './pages/PrivacyPage'
 import { MusicPage } from './pages/MusicPage'
+import { AdvancedClassPage } from './pages/AdvancedClassPage'
 import { NewClassPage } from './pages/NewClassPage'
 import { ProviderEmailPage } from './pages/ProviderEmailPage'
 import { ResetPage } from './pages/ResetPage'
@@ -76,6 +77,7 @@ const PAGES: Readonly<Record<string, () => ReactNode>> = {
   '/help': () => <HelpPage />,
   '/classes': () => <ClassesPage />,
   '/classes/new': () => <NewClassPage />,
+  '/classes/new/advanced': () => <AdvancedClassPage />,
   '/music': () => <MusicPage />,
   '/account': () => <AccountPage />,
   // Connections with the Spotify dialog open; Spotify's callback returns here (`?result=`).

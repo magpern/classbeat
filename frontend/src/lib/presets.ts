@@ -1,4 +1,4 @@
-// Home presets prefill /classes/new through query parameters. Only whole numbers in the form
+// Home presets prefill /classes/new/advanced through query parameters. Only whole numbers in the form
 // ranges and the three intensity words are taken; anything else is ignored.
 
 import type { CatalogueKey } from '../i18n/en'
@@ -16,7 +16,7 @@ export const PRESETS: readonly Preset[] = [
 ]
 
 export function presetLink(preset: Preset): string {
-  return `/classes/new?${new URLSearchParams(preset.params).toString()}`
+  return `/classes/new/advanced?${new URLSearchParams(preset.params).toString()}`
 }
 
 export interface FormPreset {
