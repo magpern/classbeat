@@ -3,6 +3,7 @@
 
 from typing import Any
 
+from classbeat.agent.interpretation_record import MAX_ITEMS
 from classbeat.classes.provenance_out import ProvenanceOut
 
 ITEM: dict[str, Any] = {
@@ -35,3 +36,11 @@ def test_a_stored_list_that_does_not_check_is_left_out() -> None:
     bad = {"path": "length_min", "origin": "not_as_asked", "value": 1}  # no reason code
     assert ProvenanceOut.model_validate({"interpretation": [ITEM, bad]}).interpretation is None
     assert ProvenanceOut.model_validate({"interpretation": "nope"}).interpretation is None
+
+
+def test_a_stored_list_over_the_item_cap_is_left_out() -> None:
+    too_many = [ITEM] * (MAX_ITEMS + 1)
+    assert ProvenanceOut.model_validate({"interpretation": too_many}).interpretation is None
+    assert (
+        ProvenanceOut.model_validate({"interpretation": too_many[:-1]}).interpretation is not None
+    )

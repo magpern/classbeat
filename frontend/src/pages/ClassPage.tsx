@@ -8,7 +8,7 @@ import { HandoffStatus } from '../components/classes/HandoffStatus'
 import { HistoryPanel } from '../components/classes/HistoryPanel'
 import { RequestBlock } from '../components/classes/RequestBlock'
 import { Workspace, type WorkspaceTab } from '../components/classes/Workspace'
-import { ChangeSongs } from '../components/songs/ChangeSongs'
+import { CHANGE_SONGS_ID, ChangeSongs } from '../components/songs/ChangeSongs'
 import { useApprovedSongs } from '../hooks/useApprovedSongs'
 import { useHandoff } from '../hooks/useHandoff'
 import { NotCurrent, PlaylistLine } from '../components/classes/ClassNotes'
@@ -122,7 +122,9 @@ function ClassBody({
     const go = () => {
       const target = document.getElementById(id)
       target?.scrollIntoView?.({ block: 'start' })
-      target?.querySelector<HTMLElement>('button, input, textarea, a')?.focus()
+      // A panel that takes focus itself (tabindex -1) is focused; any other, its first control.
+      if (target?.hasAttribute('tabindex') === true) target.focus()
+      else target?.querySelector<HTMLElement>('button, input, textarea, a')?.focus()
     }
     // On a phone the panel may be on the other tab: open it first.
     if (tab === 'class') go()
@@ -160,7 +162,10 @@ function ClassBody({
   // The first message of a class made on the start screen is the request itself (no base version).
   const first = messages.at(0)
   const request = first?.role === 'user' && first.baseRevisionId === null ? first : null
-  const items = (shown.status === 'ready' ? shown.revision.interpretation : null) ?? handoff.items
+  // A revise version keeps the reading of its change request, not of the request above: only a
+  // designed version's reading belongs under it (a revised-only view shows none, by design).
+  const designedRevision = shown.status === 'ready' && shown.revision.origin === 'design_draft'
+  const items = (designedRevision ? shown.revision.interpretation : null) ?? handoff.items
   const job = summary.openJob
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -203,6 +208,9 @@ function ClassBody({
               requestJobId={request?.jobId ?? null}
               onReload={reload}
               onView={setChosen}
+              onChangeSongs={() => {
+                goTo(CHANGE_SONGS_ID)
+              }}
             />
           </>
         }

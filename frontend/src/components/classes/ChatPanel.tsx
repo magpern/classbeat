@@ -21,12 +21,14 @@ function History({
   numbers,
   openJobId,
   onView,
+  onChangeSongs,
   songs,
 }: {
   messages: ClassMessage[]
   numbers: ReadonlyMap<string, number>
   openJobId: string | null
   onView: (revisionId: string) => void
+  onChangeSongs: () => void
   songs: SongsWay
 }) {
   const t = useT()
@@ -53,6 +55,7 @@ function History({
                   message={m}
                   latest={m.seq === latestUnanswered}
                   songs={songs}
+                  onChangeSongs={onChangeSongs}
                 />
               ) : null}
             </li>
@@ -115,6 +118,7 @@ export function ChatPanel({
   requestJobId = null,
   onReload,
   onView,
+  onChangeSongs,
 }: {
   summary: ClassSummary
   revisions: RevisionSummary[]
@@ -125,6 +129,8 @@ export function ChatPanel({
   requestJobId?: string | null
   onReload: () => void
   onView: (revisionId: string) => void
+  /** Opens the Change songs panel on the Class side. */
+  onChangeSongs: () => void
 }) {
   const t = useT()
   const [request, setRequest] = useState('')
@@ -204,6 +210,7 @@ export function ChatPanel({
         numbers={numbers}
         openJobId={running?.id ?? null}
         onView={onView}
+        onChangeSongs={onChangeSongs}
         songs={
           summary.soundless
             ? 'soundless'

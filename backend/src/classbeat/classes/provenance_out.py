@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-from classbeat.agent.interpretation_record import InterpretationItem, InterpretationList
+from classbeat.agent.interpretation_record import MAX_ITEMS, InterpretationItem, InterpretationList
 
 
 class UsageOut(BaseModel):
@@ -43,7 +43,7 @@ class ProvenanceOut(BaseModel):
     @classmethod
     def _readable_or_absent(cls, value: object) -> object:
         """A stored list that no longer checks is left out; it never fails the revision's read."""
-        if not isinstance(value, list):
+        if not isinstance(value, list) or len(cast(list[Any], value)) > MAX_ITEMS:
             return None
         try:
             return [InterpretationItem.model_validate(item) for item in cast(list[Any], value)]

@@ -135,6 +135,38 @@ describe('the class workspace', () => {
     expect(classTab).toHaveFocus()
   })
 
+  it('prefers the reading kept with the version over the class\u2019s hand-off reading', async () => {
+    fakeApi({
+      ...withInterpretation(ITEMS),
+      [INTERPRETATION]: {
+        interpret_job_id: REVISE_JOB,
+        refusal: null,
+        design_job: null,
+        items: [{ path: 'length_min', origin: 'explicit', value: 99 }],
+      },
+    })
+    renderAt(PAGE)
+    expect(await screen.findByText('Length: 45 minutes')).toBeInTheDocument()
+    expect(screen.queryByText('Length: 99 minutes')).toBeNull()
+  })
+
+  it('does not show a revise version\u2019s reading of its change under the original request', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      ...classRoutes({
+        messages: [REQUEST],
+        revisionBodies: {
+          [REV1]: revisionBody(REV1, 2, undefined, {
+            provenance: { origin: 'revise_draft', interpretation: ITEMS },
+          }),
+        },
+      }),
+    })
+    renderAt(PAGE)
+    await screen.findByRole('region', { name: 'Chat' })
+    expect(screen.queryByTestId('interpretation')).toBeNull()
+  })
+
   it('opens on Chat for a class with no version and no design yet', async () => {
     fakeApi({
       ...SESSION_ROUTES,

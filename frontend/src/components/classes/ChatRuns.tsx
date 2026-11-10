@@ -15,7 +15,6 @@ import { useT } from '../../i18n/I18n'
 import { useJobProgress } from '../../hooks/useJobProgress'
 import { Link } from '../../router/Router'
 import { Notice, useAction } from '../forms'
-import { CHANGE_SONGS_ID } from '../songs/ChangeSongs'
 import { Button } from '../ui/button'
 import { UncertainAttach } from './UncertainAttach'
 
@@ -74,9 +73,12 @@ export function Unanswered({
   message,
   latest,
   songs,
+  onChangeSongs,
 }: {
   message: ClassMessage
   latest: boolean
+  /** Opens the Change songs panel (the workspace switches to the Class tab first on a phone). */
+  onChangeSongs: () => void
   /** Where the class's songs stand: Change songs is there, a playlist of the user's own, or a pick not done. */
   songs: SongsWay
 }) {
@@ -136,11 +138,7 @@ export function Unanswered({
         {canChangeSongs ? (
           <Button
             variant="secondary"
-            onClick={() => {
-              const panel = document.getElementById(CHANGE_SONGS_ID)
-              panel?.scrollIntoView({ block: 'start' })
-              panel?.focus()
-            }}
+            onClick={onChangeSongs}
           >
             {t('class.chat.changeSongs')}
           </Button>

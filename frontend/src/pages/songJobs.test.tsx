@@ -511,6 +511,21 @@ describe('a request that only asks for other songs (use_change_songs)', () => {
     expect(panel).toHaveFocus()
   })
 
+  it('on a phone, from the Chat tab, the button opens the Class tab and focuses the panel', async () => {
+    fakeApi(routes({ songs: SONGS }))
+    renderAt(`/classes/${CLASS_ID}`)
+    const outcome = await screen.findByTestId('use-change-songs')
+    fireEvent.click(screen.getByRole('tab', { name: 'Chat' }))
+    expect(screen.getByTestId('ws-class')).toHaveClass('max-lg:hidden')
+    fireEvent.click(within(outcome).getByRole('button', { name: 'Change songs' }))
+    expect(screen.getByRole('tab', { name: 'Class' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('ws-class')).not.toHaveClass('max-lg:hidden')
+    const panel = await screen.findByRole('region', { name: 'Change songs' })
+    await waitFor(() => {
+      expect(panel).toHaveFocus()
+    })
+  })
+
   it('points to a new class when the class uses a playlist of the user’s own', async () => {
     fakeApi(routes({}))
     renderAt(`/classes/${CLASS_ID}`)
