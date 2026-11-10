@@ -20,7 +20,7 @@ from classbeat.classes.dismissals import set_dismissed as set_dismissed  # the r
 from classbeat.classes.selection import belongs_to_draft
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.design.games_policy import RETIRED, has_retired_game
+from classbeat.design.games_policy import RETIRED
 from classbeat.quota.gates import check_stored_draft
 
 Factory = async_sessionmaker[AsyncSession]
