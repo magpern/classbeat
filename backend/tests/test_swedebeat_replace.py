@@ -20,7 +20,7 @@ from classbeat.agent.brief import Brief
 from classbeat.agent.providers.fake import FakeProvider
 from classbeat.egress import swedebeat_cloud_test_client
 from classbeat.flags import effective as flag_effective
-from classbeat.songs.revise import pick_brief
+from classbeat.songs.revise_brief import pick_brief
 from classbeat.songs.song_list import Song, SongListContent
 from classbeat.swedebeat_match import kind as match_kind
 from classbeat.swedebeat_match.config import MatchConfig

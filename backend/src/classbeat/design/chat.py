@@ -73,7 +73,8 @@ _CHAIN = text(
     "AND m.owner_id = :owner_id AND m.class_id = :class_id AND m.role = 'user' "
     "ORDER BY c.depth DESC"
 )
-# The ``provenance.stated`` of the base or its nearest ancestor that has one (#904).
+# The ``provenance.stated`` of the base or its nearest ancestor that has one (#904). The walk stops
+# at the first revision that has one, so at most one row of the chain has a layer.
 _STATED = text(
     "WITH RECURSIVE chain AS ("
     " SELECT r.parent_id, r.provenance -> 'stated' AS stated, 1 AS depth "
@@ -83,7 +84,7 @@ _STATED = text(
     " SELECT p.parent_id, p.provenance -> 'stated', c.depth + 1 "
     " FROM chain c JOIN class_revisions p ON p.id = c.parent_id AND p.owner_id = :owner_id "
     " AND p.class_id = :class_id WHERE c.stated IS NULL AND c.depth < :n) "
-    "SELECT stated FROM chain WHERE stated IS NOT NULL ORDER BY depth LIMIT 1"
+    "SELECT stated FROM chain WHERE stated IS NOT NULL"
 )
 
 _REQUEST = text(
@@ -175,6 +176,15 @@ class BaseForRun:
     dismissed_rules: tuple[str, ...] = ()  # ADR 0017 section 4; ids the user dismissed
 
 
+async def stated_layer(
+    db: AsyncSession, owner_id: UUID, class_id: UUID, base: UUID
+) -> dict[str, Any] | None:
+    """The ``provenance.stated`` of ``base`` or of its nearest ancestor that has one (#904)."""
+    params = {"owner_id": owner_id, "class_id": class_id, "base": base, "n": MAX_STATED_DEPTH}
+    layer = (await db.execute(_STATED, params)).scalar_one_or_none()
+    return layer if isinstance(layer, dict) else None  # pyright: ignore[reportUnknownVariableType]
+
+
 async def load_base(
     db: AsyncSession, owner_id: UUID, job_id: UUID, base: UUID, context: int
 ) -> BaseForRun | None:
@@ -189,9 +199,9 @@ async def load_base(
         return None
     ids = {"owner_id": owner_id, "class_id": row.class_id, "base": base}
     chain = await db.execute(_CHAIN, {**ids, "n": context})
-    layer = (await db.execute(_STATED, {**ids, "n": MAX_STATED_DEPTH})).scalar_one_or_none()
+    layer = await stated_layer(db, owner_id, row.class_id, base)
     brief = row.brief
-    if isinstance(brief, dict) and isinstance(layer, dict):
+    if isinstance(brief, dict) and layer is not None:
         brief = applied(brief, layer)  # pyright: ignore[reportUnknownArgumentType]
     return BaseForRun(
         brief,

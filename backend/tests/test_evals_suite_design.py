@@ -413,6 +413,8 @@ async def test_an_edit_that_changes_nothing_fails(case: Case) -> None:
         # #904: a stated game the base lacks is refused by the stage's gate before any check
         # runs (the recorded script then expects an acceptance it does not get).
         assert "games.0" in case.brief.explicit
+        assert not result.passed  # the careless edit still fails the case
+        assert result.outcome.startswith("error:") or result.outcome == "internal"
         return
     assert ok_of(result)["revision"] is False
 

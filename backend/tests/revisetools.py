@@ -3,6 +3,7 @@ worker side with the fake MOWL and ``FakeProvider``, then revised the same way. 
 built per run from ``scripts`` (the first name, then the next ...), so a retry gets a new one."""
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -11,7 +12,7 @@ from uuid import UUID
 import httpx
 import pytest
 
-from agentfake import CONFIG, FactoryModels, provider
+from agentfake import CONFIG, SCRIPTS, FactoryModels, from_dict, provider
 from classbeat import design
 from classbeat.agent.providers.fake import FakeProvider
 from classbeat.design import DESIGN_DRAFT, REVISE_DRAFT, Runtime
@@ -54,6 +55,39 @@ class ReviseEnv:
     def use(self, *scripts: str) -> None:
         self.scripts[:] = scripts
         design.configure(self.runtime())
+
+    def use_interpreted(self, name: str, reading: dict[str, Any]) -> None:
+        """Every run gets script ``name`` with a ``submit_brief`` of ``reading`` first: a revise of
+        a class with stated values reads its request with the ``interpret`` stage (#904)."""
+        data = json.loads((SCRIPTS / f"{name}.json").read_text("utf-8"))
+        call = {"name": "submit_brief", "input": reading, "expect": {"accepted": True}}
+        data["turns"] = [{"calls": [call]}, *data["turns"]]
+
+        def build() -> FakeProvider:
+            made = from_dict(data)
+            self.providers.append(made)
+            return made
+
+        models = FactoryModels(
+            build, running_covered=self.running_covered, soundless_covered=self.soundless_covered
+        )
+        design.configure(
+            Runtime(
+                keyring=self.denv.ops.keyring,
+                models=models,
+                agent=CONFIG,
+                context_requests=self.context_requests,
+            )
+        )
+
+    def state(self, class_id: UUID, explicit: list[str]) -> None:
+        """Plant ``explicit`` on the class's stored brief: values its instructor stated."""
+        brief = self.sql("SELECT brief FROM classes WHERE id = :c", c=class_id).scalar_one()
+        self.sql(
+            "UPDATE classes SET brief = CAST(:b AS jsonb) WHERE id = :c",
+            b=json.dumps({**brief, "explicit": explicit}),
+            c=class_id,
+        )
 
     @property
     def owner(self) -> UUID:

@@ -243,7 +243,11 @@ The fields are:
   revision records the layered brief's closed part (knobs, games, explicit paths; never text) in
   `provenance.stated`, and `design/chat.load_base` applies the layer nearest the base along its
   `parent_id` chain onto the class's brief. So the next revise and a Change songs start from the
-  layered values, a refit in between keeps them, and picking an older revision picks its values.
+  layered values (Change songs in both of its phases: the pick is sized by the layered length),
+  a refit in between keeps them, and picking an older revision picks its values.
+- **Deferred (#907):** a duplicate copies `classes.brief` but not the layer, so a duplicate of a
+  class whose stated values were revised starts from the first request's stated values. #907
+  fixes it before the MA2 start screen is turned on. Further follow-ups are in #908.
 - Explicit values win over ADR 0017 soft rules.
 
 **Storage**

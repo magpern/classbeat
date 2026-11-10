@@ -408,3 +408,29 @@ async def test_save_refuses_by_the_classs_sport_not_by_the_shape_of_the_content(
     refused = await create(renv, body)
     assert refused.status_code == 409, refused.text
     assert refused.json()["detail"]["reason"] == "invalid_input"
+
+
+async def test_a_running_class_is_revised_against_its_layered_stated_values(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    """#904: a running class that states values reads the request first, and the running revise
+    stage gets the layered brief (here an intensity the request states)."""
+    class_id, _, base = await running_class(renv)
+    renv.state(class_id, ["length_min"])
+    renv.use_interpreted("running_revise", {"intensity": {"value": "hard", "origin": "explicit"}})
+    made = await renv.ask(class_id, base, "Make it hard")
+    assert made.status_code == 201, made.text
+    await renv.run(design.REVISE_KIND)
+    row = renv.denv.ops.row(UUID(made.json()["id"]))
+    assert (row.state, row.error_category) == ("completed", None)
+    told, revised = (s.spec for s in renv.providers[-1].sent[:2])
+    assert (told.stage, revised.stage, revised.system) == (
+        "interpret",
+        "revise",
+        REVISE_SYSTEM_PROMPT,
+    )
+    assert json.loads(told.first_message)["allowed_sports"] == ["running"]
+    assert '"explicit":{"length_min":30,"intensity":"hard"}' in revised.first_message
+    _, second = renv.revisions(class_id)
+    assert second.provenance["stated"]["intensity"] == "hard"
+    assert second.provenance["stated"]["explicit"] == ["length_min", "intensity"]

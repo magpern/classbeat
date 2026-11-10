@@ -212,3 +212,91 @@ async def test_a_class_that_states_nothing_is_revised_without_an_interpret_run(
     assert [r.stage for r in renv.denv.agent_runs(job_id)] == ["revise"]
     _, second = renv.revisions(class_id)
     assert "stated" not in provenance(second)
+
+
+def twenty() -> dict[str, Any]:
+    """The 25 minute draft without its 300 s sprint block."""
+    draft = twenty_five()
+    draft["segments"] = [s for s in draft["segments"] if s["name"] != "Sprints"]
+    return draft
+
+
+async def layered_twice(renv: ReviseEnv) -> tuple[UUID, Any, Any]:
+    """A stated 30 minute class revised to a stated 25, then to a stated 20: (class, the 25
+    revision, the 20 revision)."""
+    class_id, base = await stated_class(renv)
+    use(
+        renv,
+        interpreted({"length_min": {"value": 25, "origin": "explicit"}}),
+        submit(twenty_five(), {"accepted": True}),
+    )
+    await revise(renv, class_id, base, "Make it 25 minutes.")
+    _, at_25 = renv.revisions(class_id)
+    use(
+        renv,
+        interpreted({"length_min": {"value": 20, "origin": "explicit"}}),
+        submit(twenty(), {"accepted": True}),
+    )
+    job_id = await revise(renv, class_id, at_25.id, "Make it 20 minutes.")
+    assert renv.denv.ops.row(job_id).state == "completed"
+    assert refusals(renv, job_id) == []  # checked against 20, not the 25 before it
+    at_20 = renv.revisions(class_id)[2]
+    assert provenance(at_20)["stated"]["length_min"] == 20
+    return class_id, at_25, at_20
+
+
+async def test_a_third_revise_starts_from_the_nearest_layer(renv: ReviseEnv) -> None:
+    class_id, _, at_20 = await layered_twice(renv)
+    providers = use(renv, interpreted({}), submit(easier(twenty()), {"accepted": True}))
+    job_id = await revise(renv, class_id, at_20.id, "Make the start easier.")
+    assert renv.denv.ops.row(job_id).state == "completed"
+    assert refusals(renv, job_id) == []
+    told = json.loads(providers[0].sent[0].spec.first_message)
+    assert told["current"]["length_min"] == 20  # the nearest layer, not 25 or the brief's 30
+    assert provenance(renv.revisions(class_id)[3])["stated"]["length_min"] == 20
+
+
+async def test_a_revise_from_an_older_revision_takes_that_revisions_layer(
+    renv: ReviseEnv,
+) -> None:
+    class_id, at_25, _ = await layered_twice(renv)
+    renv.sql("UPDATE classes SET current_revision_id = :r WHERE id = :c", r=at_25.id, c=class_id)
+    providers = use(renv, interpreted({}), submit(easier(twenty_five()), {"accepted": True}))
+    job_id = await revise(renv, class_id, at_25.id, "Make the start easier.")
+    assert renv.denv.ops.row(job_id).state == "completed"
+    assert refusals(renv, job_id) == []
+    told = json.loads(providers[0].sent[0].spec.first_message)
+    assert told["current"]["length_min"] == 25
+    assert provenance(renv.revisions(class_id)[3])["stated"]["length_min"] == 25
+
+
+async def test_a_revision_without_a_layer_in_between_keeps_the_one_before_it(
+    renv: ReviseEnv,
+) -> None:
+    """A refit (``origin: beat_one``) records no layer: the next revise walks past it."""
+    class_id, _, at_20 = await layered_twice(renv)
+    refit = UUID(int=904)
+    refit_provenance = {
+        "origin": "beat_one",
+        "base_revision_id": str(at_20.id),
+        "map_version": 1,
+        "crossfade_sec": 9.0,
+        "classbeat_version": "t",
+        "mowl_version": "t",
+    }
+    renv.sql(
+        "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
+        "music, provenance, job_id, parent_id) SELECT :id, owner_id, class_id, number + 1, kind, "
+        "content, content_hash, music, CAST(:p AS jsonb), job_id, id FROM class_revisions "
+        "WHERE id = :base",
+        id=refit,
+        p=json.dumps(refit_provenance),
+        base=at_20.id,
+    )
+    renv.sql("UPDATE classes SET current_revision_id = :r WHERE id = :c", r=refit, c=class_id)
+    providers = use(renv, interpreted({}), submit(easier(twenty()), {"accepted": True}))
+    job_id = await revise(renv, class_id, refit, "Make the start easier.")
+    assert renv.denv.ops.row(job_id).state == "completed"
+    assert refusals(renv, job_id) == []
+    told = json.loads(providers[0].sent[0].spec.first_message)
+    assert told["current"]["length_min"] == 20
