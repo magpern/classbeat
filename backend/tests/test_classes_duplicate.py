@@ -20,6 +20,7 @@ from sqlalchemy.engine import Connection
 from classbeat.account.export import build_export
 from classbeat.agent import Provenance
 from classbeat.classes import duplicate as dup
+from classbeat.classes import duplicate_music as dm
 from classbeat.design import music_kind, sport
 from ctx import make_context
 from jobapi import Browser, new_key, owner_lock_key, until_waiting_on_the_owner_lock
@@ -221,12 +222,12 @@ def test_only_the_users_own_music_choice_is_copied() -> None:
     playlist = {"source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST_ID}
     mix = {"source": "mowl_swedebeat_mix", "mix_id": "mix-1"}
     picked = {**playlist, "origin": "song_pick", "class_playlist_id": str(uuid.uuid4())}
-    assert dup.music_source_copy(playlist) == playlist
-    assert dup.music_source_copy(mix) == mix
-    assert dup.music_source_copy(picked) is None
-    assert dup.music_source_copy({**playlist, "spotify_playlist_id": "x/../y"}) is None
-    assert dup.music_source_copy(None) is None
-    assert dup.music_copy({"link_id": LINK, "song_list_id": SONG_LIST}) == {"link_id": LINK}
+    assert dm.music_source_copy(playlist) == playlist
+    assert dm.music_source_copy(mix) == mix
+    assert dm.music_source_copy(picked) is None
+    assert dm.music_source_copy({**playlist, "spotify_playlist_id": "x/../y"}) is None
+    assert dm.music_source_copy(None) is None
+    assert dm.music_copy({"link_id": LINK, "song_list_id": SONG_LIST}) == {"link_id": LINK}
 
 
 def test_a_duplicate_provenance_copies_how_it_was_made_and_no_run_usage_or_cost() -> None:
@@ -837,14 +838,14 @@ def test_only_a_copy_with_music_gets_corrections_and_only_for_its_fingerprint() 
     playlist = {"source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST_ID}
     mix = {"source": "mowl_swedebeat_mix", "mix_id": "mix-1"}
     music = {"source": "mowl_spotify_playlist", "fingerprint": FP}
-    assert dup.corrections_fingerprint(playlist, music) == FP
-    assert dup.corrections_fingerprint(mix, {**music, "source": "mowl_swedebeat_mix"}) == FP
-    assert dup.corrections_fingerprint(None, music) is None  # picked songs: no music source
-    assert dup.corrections_fingerprint(dict(NONE), music) is None  # a soundless copy
-    assert dup.corrections_fingerprint(playlist, dict(NONE)) is None  # soundless revision music
-    assert dup.corrections_fingerprint(playlist, {"source": "mowl_spotify_playlist"}) is None
-    assert dup.corrections_fingerprint(playlist, {**music, "fingerprint": "AB" * 32}) is None
-    assert dup.corrections_fingerprint(playlist, None) is None
+    assert dm.corrections_fingerprint(playlist, music) == FP
+    assert dm.corrections_fingerprint(mix, {**music, "source": "mowl_swedebeat_mix"}) == FP
+    assert dm.corrections_fingerprint(None, music) is None  # picked songs: no music source
+    assert dm.corrections_fingerprint(dict(NONE), music) is None  # a soundless copy
+    assert dm.corrections_fingerprint(playlist, dict(NONE)) is None  # soundless revision music
+    assert dm.corrections_fingerprint(playlist, {"source": "mowl_spotify_playlist"}) is None
+    assert dm.corrections_fingerprint(playlist, {**music, "fingerprint": "AB" * 32}) is None
+    assert dm.corrections_fingerprint(playlist, None) is None
 
 
 async def test_a_copy_gets_the_corrections_for_the_chosen_revisions_music_and_nothing_else(

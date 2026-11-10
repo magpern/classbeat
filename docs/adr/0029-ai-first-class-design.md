@@ -245,9 +245,14 @@ The fields are:
   `parent_id` chain onto the class's brief. So the next revise and a Change songs start from the
   layered values (Change songs in both of its phases: the pick is sized by the layered length),
   a refit in between keeps them, and picking an older revision picks its values.
-- **Deferred (#907):** a duplicate copies `classes.brief` but not the layer, so a duplicate of a
-  class whose stated values were revised starts from the first request's stated values. #907
-  fixes it before the MA2 start screen is turned on. Further follow-ups are in #908.
+- **Duplicate copies the layer (#907).** `classes/duplicate.py` resolves the source revision's
+  nearest stated layer (`chat.stated_layer`, the same walk as `load_base`) and writes it into the
+  duplicate revision's `provenance.stated`. Not into the duplicate's brief: a duplicate keeps
+  `classes.brief` byte for byte (ADR 0007 amendment, part D), the layer lives in one place for
+  every class, and `load_base` and `revise_brief` find it at the copy's revision 1 with no
+  change. A duplicate of a duplicate carries it on again; a source with no layer is copied as
+  before (no `stated` key). The layer is stored as the source stored it. Further follow-ups are
+  in #908.
 - Explicit values win over ADR 0017 soft rules.
 
 **Storage**

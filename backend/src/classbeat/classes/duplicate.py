@@ -33,7 +33,8 @@ every statement scoped by ``owner_id``:
 What is written: the class (title, the brief byte for byte, the music source only as the user's
 own playlist or mix choice, no dismissed rules) and its revision 1 (content and hash copied, no
 parent, no job, the music without the source class's ``song_list_id``, a provenance with
-``origin: "duplicate"`` and ``duplicated_from``, no run, usage or cost). Nothing else of the source
+``origin: "duplicate"`` and ``duplicated_from`` and the source revision's nearest stated layer, if
+any (``stated``; ADR 0029 section 4, #907), no run, usage or cost). Nothing else of the source
 is read or copied: no saved workout, operation, job, message, song list, Swedebeat match or
 hand-off, playlist or usage row. No MOWL, Spotify, Swedebeat or model request is made; ownership
 of the music is re-checked by the paths that use it (revise, Save).
@@ -50,7 +51,6 @@ class on picked songs, which cannot be refitted) or is soundless. At most ``MAX_
 
 import hashlib
 import json
-import re
 import unicodedata
 import uuid
 from dataclasses import dataclass
@@ -67,10 +67,16 @@ from classbeat import auth, quota
 from classbeat.agent.beat_one import MAX_PER_CLASS
 from classbeat.agent.records import Provenance
 from classbeat.classes.duplicate_gates import flag_refusal
+from classbeat.classes.duplicate_music import (
+    HASH,
+    corrections_fingerprint,
+    music_copy,
+    music_source_copy,
+)
 from classbeat.config import Settings
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.design import music_kind
+from classbeat.design import chat
 from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.jobs.credits import QuotaRefused
 from classbeat.jobs.http import IDEMPOTENCY_KEY, canonical_json
@@ -83,11 +89,6 @@ Factory = async_sessionmaker[AsyncSession]
 router = APIRouter(prefix="/api/classes", tags=["classes"])
 
 TITLE_MAX: Final = 100  # the classes_title check of migration 0004
-HASH: Final = re.compile(r"^[0-9a-f]{64}$")
-SPOTIFY_ID: Final = re.compile(r"^[0-9A-Za-z]{22}$")
-MIX_ID: Final = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
-MIX_SOURCE: Final = "mowl_swedebeat_mix"
-PLAYLIST_SOURCE: Final = "mowl_spotify_playlist"
 # The descriptive fields of the source revision's provenance: how the content was made. Run ids,
 # usage, cost and the lineage of the source class are never copied.
 DESCRIPTIVE: Final = (
@@ -194,48 +195,6 @@ def _dict(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}  # pyright: ignore[reportUnknownArgumentType]
 
 
-def music_source_copy(source: Any) -> dict[str, str] | None:
-    """The class's music source as the user's own choice, or ``None``: a class on picked songs
-    (``origin: "song_pick"``) names the source class's playlists and is not copied."""
-    found = _dict(source)
-    if (
-        found.get("source") == PLAYLIST_SOURCE
-        and set(found) == {"source", "spotify_playlist_id"}
-        and isinstance(pid := found.get("spotify_playlist_id"), str)
-        and SPOTIFY_ID.fullmatch(pid)
-    ):
-        return {"source": PLAYLIST_SOURCE, "spotify_playlist_id": pid}
-    if (
-        found.get("source") == MIX_SOURCE
-        and set(found) == {"source", "mix_id"}
-        and isinstance(mix := found.get("mix_id"), str)
-        and MIX_ID.fullmatch(mix)
-    ):
-        return {"source": MIX_SOURCE, "mix_id": mix}
-    if music_kind.is_none(found) and set(found) == {"source"}:
-        return dict(
-            music_kind.NO_MUSIC
-        )  # a soundless class stays soundless (its kind never changes)
-    return None
-
-
-def music_copy(music: Any) -> dict[str, Any]:
-    """The revision's music reference without the source class's song list."""
-    copied = _dict(music)
-    copied.pop("song_list_id", None)
-    return copied
-
-
-def corrections_fingerprint(source: dict[str, str] | None, music: Any) -> str | None:
-    """The fingerprint whose corrections the copy gets, or ``None`` for none: the copy has a
-    music source that is not ``none`` (``source`` is ``music_source_copy``'s answer) and the
-    chosen revision's music is not ``none`` and has a well-formed fingerprint."""
-    if source is None or music_kind.is_none(source) or music_kind.is_none(music):
-        return None
-    found = _dict(music).get("fingerprint")
-    return found if isinstance(found, str) and HASH.fullmatch(found) else None
-
-
 def request_digest(class_id: UUID, revision_id: UUID, content_hash: bytes, title: str) -> str:
     """The SHA-256 (hex) of the canonical request a key stands for."""
     request = {
@@ -255,8 +214,10 @@ def provenance_copy(
     *,
     idempotency_key: str,
     request_hash: str,
+    stated: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The duplicate's provenance (``ValidationError`` when the source's no longer checks)."""
+    """The duplicate's provenance (``ValidationError`` when the source's no longer checks);
+    ``stated`` is the source revision's nearest stated layer (#907), or ``None`` for none."""
     found = _dict(source)
     fields = {k: found[k] for k in DESCRIPTIVE if k in found}
     built = Provenance.model_validate(
@@ -270,13 +231,19 @@ def provenance_copy(
                 "idempotency_key": idempotency_key,
                 "request_hash": request_hash,
             },
+            **({} if stated is None else {"stated": stated}),
             "agent_run_ids": [],
             "usage": ZERO_USAGE,
             "cost_micros": 0,
         },
         strict=False,
     )
-    return built.model_dump(mode="json")
+    out = built.model_dump(mode="json")
+    if stated is not None:
+        out["stated"] = (
+            stated  # as the source stored it (checked above), not with defaults filled in
+        )
+    return out
 
 
 async def duplicate(
@@ -322,6 +289,7 @@ async def duplicate(
             return Outcome(RETIRED)  # ADR 0029 section 3: before the strict ``spec_of`` (a 500)
         if spec_of(row.content, sport) is None or not isinstance(row.content, dict):
             return Outcome("internal")
+        layer = await chat.stated_layer(db, ctx.user_id, class_id, row.id)  # #907
         try:
             provenance = provenance_copy(
                 row.provenance,
@@ -330,6 +298,7 @@ async def duplicate(
                 row.number,
                 idempotency_key=idempotency_key,
                 request_hash=request_hash,
+                stated=layer,
             )
         except ValidationError:
             return Outcome("internal")
