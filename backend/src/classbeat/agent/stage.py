@@ -73,6 +73,8 @@ class Stage:
     final_tool: str
     # More tools that also end the run when they succeed (the revise stage's "other songs" exit).
     also_final: tuple[str, ...] = ()
+    # Told the run's ``max_corrections`` before the first turn (``explicit_input.ExplicitGate``).
+    bind_corrections: Callable[[int], None] | None = None
 
     def __post_init__(self) -> None:
         names = [t.name for t in self.tools]

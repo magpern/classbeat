@@ -18,10 +18,10 @@ from collections.abc import Mapping
 from typing import Any, Final
 
 from classbeat.agent.brief import Brief
-from classbeat.agent.explicit_check import Miss, check_explicit
+from classbeat.agent.explicit_check import MIN_GAME_SEC, Miss, check_explicit
 from classbeat.agent.stage import ToolError
 
-ROUNDS: Final = 2  # refusals before the misses are accepted as Not as asked (budget is 3)
+DEFAULT_CORRECTIONS: Final = 3  # ``Limits.max_corrections`` until the run binds its own
 
 EXPLICIT_WINS: Final = """\
 Stated values: a message may end with a block of what the instructor stated exactly. Every \
@@ -49,26 +49,34 @@ def with_explicit(message: str, brief: Brief) -> str:
     if not brief.explicit and not brief.games:
         return message
     block: dict[str, Any] = {"explicit": stated_values(brief)}
-    loose = [
-        g
-        for n, g in enumerate(brief.model_dump(mode="json", exclude_none=True)["games"])
-        if f"games.{n}" not in brief.explicit
-    ]
+    games = brief.model_dump(mode="json", exclude_none=True).get("games", [])  # omitted if empty
+    loose = [g for n, g in enumerate(games) if f"games.{n}" not in brief.explicit]
     if loose:
         block["also_wanted_games"] = loose
+    if games:
+        block["game_min_sec"] = MIN_GAME_SEC  # a shorter request is held to the floor
     return message + _BLOCK + json.dumps(block, separators=(",", ":"))
 
 
 class ExplicitGate:
-    def __init__(self, brief: Brief) -> None:
+    """Refuses a draft that misses a stated value only while the run has a correction left, so a
+    miss never ends the job ``invalid_output``: the refusal is counted with every other refused
+    final answer (``failed``, see ``agent.design.within_request``) against the run's
+    ``max_corrections`` (bound by the loop through ``Stage.bind_corrections``)."""
+
+    def __init__(self, brief: Brief, max_corrections: int = DEFAULT_CORRECTIONS) -> None:
         self.brief = brief
-        self.refused = 0
+        self.max_corrections = max_corrections
+        self.failed = 0
+
+    def bind(self, max_corrections: int) -> None:
+        self.max_corrections = max_corrections
 
     def review(self, spec: Mapping[str, Any]) -> tuple[Miss, ...]:
-        """No misses when the fitted ``spec`` keeps the stated values; a ``ToolError`` for the
-        first ``ROUNDS`` misses; then the misses, to record as Not as asked."""
+        """No misses when the fitted ``spec`` keeps the stated values; a ``ToolError`` while a
+        correction is left; then the misses, to record as Not as asked."""
         misses = check_explicit(self.brief, spec)
-        if misses and self.refused < ROUNDS:
-            self.refused += 1
+        if misses and self.failed < self.max_corrections:
+            self.failed += 1
             raise ToolError("invalid_draft", [m.sentence for m in misses])
         return tuple(misses)

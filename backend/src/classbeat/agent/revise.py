@@ -206,7 +206,7 @@ def revise_stage(ctx: ReviseContext) -> Stage:
     gate = ExplicitGate(ctx.brief)
 
     def submit_draft(args: ReviseInput) -> ToolAnswer:
-        result = within_request(gate, within_plan(ctx.gates, check(args.draft, ctx.map)))
+        result = within_request(gate, lambda: within_plan(ctx.gates, check(args.draft, ctx.map)))
         return ToolAnswer(
             {
                 "accepted": True,
@@ -251,6 +251,7 @@ def revise_stage(ctx: ReviseContext) -> Stage:
         ),
         final_tool=FINAL_TOOL,
         also_final=tuple(t.name for t in exits),
+        bind_corrections=gate.bind,
     )
 
 

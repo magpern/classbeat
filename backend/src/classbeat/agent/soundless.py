@@ -171,7 +171,7 @@ def soundless_design_stage(ctx: SoundlessContext) -> Stage:
         return ToolAnswer(_summary(result, accepted=False))
 
     def submit_draft(args: SoundlessDraftInput) -> ToolAnswer:
-        result = within_request(gate, within_plan(ctx.gates, check_soundless(args.draft)))
+        result = within_request(gate, lambda: within_plan(ctx.gates, check_soundless(args.draft)))
         return ToolAnswer(_summary(result, accepted=True), output=result)
 
     return Stage(
@@ -184,6 +184,7 @@ def soundless_design_stage(ctx: SoundlessContext) -> Stage:
             Tool(FINAL_TOOL, "compute", SUBMIT_DESCRIPTION, SoundlessDraftInput, submit_draft),
         ),
         final_tool=FINAL_TOOL,
+        bind_corrections=gate.bind,
     )
 
 
@@ -267,7 +268,7 @@ def soundless_revise_stage(ctx: SoundlessReviseContext | SoundlessContext) -> St
         return ToolAnswer(_summary(result, accepted=False))
 
     def submit_draft(args: SoundlessReviseInput) -> ToolAnswer:
-        result = within_request(gate, within_plan(ctx.gates, check_soundless(args.draft)))
+        result = within_request(gate, lambda: within_plan(ctx.gates, check_soundless(args.draft)))
         return ToolAnswer(_summary(result, accepted=True), output=ReviseResult(result, args.note))
 
     return Stage(
@@ -286,4 +287,5 @@ def soundless_revise_stage(ctx: SoundlessReviseContext | SoundlessContext) -> St
             ),
         ),
         final_tool=FINAL_TOOL,
+        bind_corrections=gate.bind,
     )

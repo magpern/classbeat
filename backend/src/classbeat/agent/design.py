@@ -17,6 +17,7 @@ timing always come from here, never from a number the model states.
 """
 
 import copy
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, Final
 
@@ -213,9 +214,15 @@ def within_plan(gates: PlanGates | None, result: DesignResult) -> DesignResult:
     return result
 
 
-def within_request(gate: ExplicitGate, result: DesignResult) -> DesignResult:
-    """``result`` when it keeps the stated values; ``ToolError('invalid_draft')`` for the first
-    misses (a correction round); after that the misses ride on ``unmet`` (Not as asked)."""
+def within_request(gate: ExplicitGate, build: Callable[[], DesignResult]) -> DesignResult:
+    """``build()`` (the checked draft) when it keeps the stated values; ``ToolError(
+    'invalid_draft')`` for the misses while the run has a correction left; after that the misses
+    ride on ``unmet`` (Not as asked). Every refused submission counts against the budget."""
+    try:
+        result = build()
+    except ToolError:
+        gate.failed += 1
+        raise
     misses = gate.review(result.spec)
     return replace(result, unmet=misses) if misses else result
 
@@ -255,7 +262,7 @@ def design_stage(ctx: DesignContext) -> Stage:
         )
 
     def submit_draft(args: DraftInput) -> ToolAnswer:
-        result = within_request(gate, within_plan(ctx.gates, check(args.draft, ctx.map)))
+        result = within_request(gate, lambda: within_plan(ctx.gates, check(args.draft, ctx.map)))
         return ToolAnswer(
             {
                 "accepted": True,
@@ -278,4 +285,5 @@ def design_stage(ctx: DesignContext) -> Stage:
             Tool(FINAL_TOOL, "compute", SUBMIT_DESCRIPTION, DraftInput, submit_draft),
         ),
         final_tool=FINAL_TOOL,
+        bind_corrections=gate.bind,
     )

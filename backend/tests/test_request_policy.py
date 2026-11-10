@@ -46,7 +46,7 @@ def test_an_explicit_value_replaces_an_assumption() -> None:
     [
         ("length_min", 90, rp.Limits(max_class_minutes=60), "cycling", "over_plan_length"),
         ("length_min", 60, rp.Limits(max_class_minutes=60), "cycling", None),
-        ("games.0", {"type": "any"}, rp.Limits(games=False), "cycling", "games_not_in_plan"),
+        ("games.0", {"type": "any"}, rp.Limits(games=False), "cycling", "plan_no_games"),
         ("games.0", {"type": "any"}, rp.Limits(), "running", "game_on_running"),
         ("games.0", {"type": "any", "duration_sec": 5}, rp.Limits(), "cycling", "game_under_10s"),
         ("games.0", {"type": "any", "duration_sec": 10}, rp.Limits(), "cycling", None),

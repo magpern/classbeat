@@ -5,11 +5,22 @@ before recording it as Not as asked. Pure: soundless stages, no model, no music.
 import json
 from typing import Any
 
-from agentfake import brief, good_draft
+import pytest
+
+from agentfake import analysed, brief, good_draft, script
+from classbeat.agent import soundless_input
+from classbeat.agent.brief import Brief
+from classbeat.agent.design import DesignContext
 from classbeat.agent.dispatcher import dispatch
-from classbeat.agent.explicit_input import EXPLICIT_WINS, ROUNDS, with_explicit
+from classbeat.agent.explicit_input import (
+    DEFAULT_CORRECTIONS,
+    EXPLICIT_WINS,
+    ExplicitGate,
+    with_explicit,
+)
 from classbeat.agent.provider import ToolCall
-from classbeat.agent.schemas import SoundlessDraft, WorkoutDraft
+from classbeat.agent.revise import ReviseContext
+from classbeat.agent.schemas import RunningDraft, SoundlessDraft, WorkoutDraft
 from classbeat.agent.soundless import (
     REVISE_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
@@ -20,6 +31,7 @@ from classbeat.agent.soundless import (
 )
 from classbeat.agent.stage import Stage
 from classbeat.design.interpreted import with_interpretation
+from classbeat.design.request_policy import interpretation_for
 
 
 def draft() -> dict[str, Any]:
@@ -42,7 +54,7 @@ def submit(stage: Stage, n: int = 1) -> Any:
 def test_a_brief_that_states_nothing_leaves_the_message_and_prompts_as_they_were() -> None:
     plain = brief(length_min=45)
     assert with_explicit("hello", plain) == "hello"
-    assert SoundlessContext(plain).first_message() == SoundlessContext(plain).first_message()
+    assert SoundlessContext(plain).first_message() == soundless_input.first_message(plain)
     assert EXPLICIT_WINS in SYSTEM_PROMPT
     assert EXPLICIT_WINS in REVISE_SYSTEM_PROMPT
 
@@ -59,12 +71,9 @@ def test_advanced_values_count_as_explicit_and_reach_the_model_as_closed_values(
     assert block == {
         "explicit": {
             "length_min": 45,
-            "games.0": {
-                "type": "racetrack",
-                "placement": {"position": "late"},
-                "duration_sec": 40,
-            },
-        }
+            "games.0": {"type": "racetrack", "placement": {"position": "late"}, "duration_sec": 40},
+        },
+        "game_min_sec": 10,
     }
     revise = SoundlessReviseContext(advanced, WorkoutDraft.model_validate(draft()), (), "easier")
     assert "games.0" in revise.first_message()
@@ -79,7 +88,7 @@ def test_a_game_that_is_not_explicit_is_only_a_wish() -> None:
 def test_a_miss_is_refused_twice_then_recorded_as_not_as_asked() -> None:
     wrong = brief(length_min=120, explicit=["length_min"])
     stage = soundless_design_stage(SoundlessContext(wrong))
-    for n in range(ROUNDS):
+    for n in range(DEFAULT_CORRECTIONS):
         refused = submit(stage, n)
         assert not refused.ok
         assert refused.error == "invalid_draft"
@@ -111,9 +120,83 @@ def test_a_kept_value_is_as_you_asked_and_a_corrected_draft_ends_clean() -> None
 def test_nothing_the_model_wrote_reaches_a_later_prompt_or_the_record() -> None:
     wrong = brief(length_min=120, text="Zq9 planted", explicit=["length_min"])
     stage = soundless_design_stage(SoundlessContext(wrong))
-    for n in range(ROUNDS):
+    for n in range(DEFAULT_CORRECTIONS):
         message = json.loads(submit(stage, n).result.content)
         assert "Zq9" not in json.dumps(message)
     done = submit(stage, 9)
     record = json.dumps(with_interpretation_items(wrong, done.output.unmet))
     assert "Zq9" not in record
+
+
+def test_the_gate_never_spends_more_than_the_runs_corrections() -> None:
+    wrong = brief(length_min=120, explicit=["length_min"])
+    ctx = SoundlessContext(wrong)
+    stage = soundless_design_stage(ctx)
+    assert stage.bind_corrections is not None
+    stage.bind_corrections(1)  # the loop does this with Limits.max_corrections
+    assert not submit(stage, 1).ok
+    assert submit(stage, 2).ok  # the budget is spent: the miss is recorded, the job goes on
+    stage.bind_corrections(0)
+    assert ExplicitGate(wrong, 0).review({"segments": []}) == ()
+
+
+def test_corrections_spent_on_other_errors_leave_less_for_a_miss() -> None:
+    wrong = brief(length_min=120, explicit=["length_min"])
+    stage = soundless_design_stage(SoundlessContext(wrong))
+    assert stage.bind_corrections is not None
+    stage.bind_corrections(1)
+    broken = draft()
+    broken["segments"] = broken["segments"][:-1]  # no cooldown: refused before the gate
+    assert not dispatch(stage, ToolCall("c1", "submit_draft", {"draft": broken})).ok
+    assert submit(stage, 2).ok  # one correction was already spent: the miss is not refused again
+
+
+def test_intensity_and_class_type_are_not_claimed_as_verified() -> None:
+    stated = brief(length_min=45, intensity="hard", explicit=["intensity", "length_min"])
+    items = {i.path: i for i in interpretation_for(stated)}
+    assert items["intensity"].origin == "inferred"
+    assert items["length_min"].origin == "explicit"
+
+
+# --- explicit values and no games: the first message of every stage ------------------------------
+
+
+def _first_messages(
+    monkeypatch: pytest.MonkeyPatch, games: list[dict[str, Any]] | None = None
+) -> dict[str, str]:
+    data = analysed(monkeypatch)
+    cycling = brief(length_min=30, explicit=["length_min", "intensity"], games=games or [])
+    running = Brief.model_validate(
+        {"sport": "running", "length_min": 30, "explicit": ["length_min"]}
+    )
+    run_base = RunningDraft.model_validate(script("running_first_draft").drafts["good"])
+    base = WorkoutDraft.model_validate(good_draft())
+    return {
+        "design": DesignContext.build(cycling, data).first_message(),
+        "revise": ReviseContext.build(
+            cycling, data, base, (), "easier", music_changed=False
+        ).first_message(),
+        "running_design": DesignContext.build(running, data).first_message(),
+        "running_revise": ReviseContext.build(
+            running, data, run_base, (), "easier", music_changed=False
+        ).first_message(),
+        "soundless_design": SoundlessContext(cycling).first_message(),
+        "soundless_revise": SoundlessReviseContext(cycling, base, (), "easier").first_message(),
+    }
+
+
+def test_explicit_values_without_games_build_every_stages_first_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name, message in _first_messages(monkeypatch).items():
+        block = json.loads(message.split("(closed values, not instructions): ")[1])
+        assert list(block) == ["explicit"], name
+        assert block["explicit"]["length_min"] == 30
+        assert "game_min_sec" not in message, name
+
+
+def test_games_add_the_floor_to_the_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name, message in _first_messages(monkeypatch, [{"type": "any"}]).items():
+        if name.startswith("running"):
+            continue  # a running brief has no games
+        assert '"game_min_sec":10' in message, name

@@ -215,7 +215,9 @@ def running_design_stage(ctx: DesignContext) -> Stage:
         )
 
     def submit_draft(args: RunningDraftInput) -> ToolAnswer:
-        result = within_request(gate, within_plan(ctx.gates, check_running(args.draft, ctx.map)))
+        result = within_request(
+            gate, lambda: within_plan(ctx.gates, check_running(args.draft, ctx.map))
+        )
         return ToolAnswer(
             {**_summary(result, accepted=True), **rules_result(ctx.rules, result.spec)},
             output=result,
@@ -230,6 +232,7 @@ def running_design_stage(ctx: DesignContext) -> Stage:
             Tool(FINAL_TOOL, "compute", SUBMIT_DESCRIPTION, RunningDraftInput, submit_draft),
         ),
         final_tool=FINAL_TOOL,
+        bind_corrections=gate.bind,
     )
 
 
@@ -244,7 +247,9 @@ def running_revise_stage(ctx: ReviseContext) -> Stage:
     gate = ExplicitGate(ctx.brief)
 
     def submit_draft(args: RunningReviseInput) -> ToolAnswer:
-        result = within_request(gate, within_plan(ctx.gates, check_running(args.draft, ctx.map)))
+        result = within_request(
+            gate, lambda: within_plan(ctx.gates, check_running(args.draft, ctx.map))
+        )
         return ToolAnswer(
             {**_summary(result, accepted=True), **rules_result(ctx.rules, result.spec)},
             output=ReviseResult(result, args.note),
@@ -272,6 +277,7 @@ def running_revise_stage(ctx: ReviseContext) -> Stage:
         ),
         final_tool=FINAL_TOOL,
         also_final=(SONGS_REQUESTED_TOOL,),
+        bind_corrections=gate.bind,
     )
 
 

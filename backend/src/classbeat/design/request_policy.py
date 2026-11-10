@@ -31,6 +31,9 @@ ALL_SPORTS: Final = ("cycling", "running")
 CYCLING_MUSIC: Final = ("override", "name_match", "pick", "first_playlist", "soundless")
 RUNNING_MUSIC: Final = ("override", "name_match", "first_playlist")
 NEEDS_MOWL_PLAYLIST: Final = "needs_mowl_playlist"
+# Stated, sent to the model, but not checked against the draft (no closed comparison exists):
+# recorded as an assumption, never as "As you asked".
+UNVERIFIED: Final = ("intensity", "class_type")
 _ASSUMED_FIELDS: Final = (
     "length_min",
     "intensity",
@@ -107,7 +110,7 @@ def hard_limit(path: str, value: Any, limits: Limits, sport: str) -> str | None:
         if sport == "running":
             return "game_on_running"
         if not limits.games:
-            return "games_not_in_plan"
+            return "plan_no_games"
         sec = value.get("duration_sec") if isinstance(value, Mapping) else None
         if isinstance(sec, int) and sec < MIN_GAME_SEC:
             return "game_under_10s"
@@ -147,6 +150,8 @@ def interpretation_for(
         value = _value(brief, dumped, path)
         reason = hard_limit(path, value, limits, brief.sport) or missed.get(path)
         origin: Origin = "not_as_asked" if reason else "explicit"
+        if not reason and path in UNVERIFIED:
+            origin = "inferred"
         quote = keep_quote(quotes.get(path), brief.text)
         items.append(_item(path, value, origin, reason, quote))
     stated = set(brief.explicit)
