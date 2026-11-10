@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import { en } from '../../i18n/en'
 import da from '../../i18n/da'
 import sv from '../../i18n/sv'
-import untranslated from '../../i18n/untranslated.json'
 import {
   FORMATS,
   PHONE_MEDIA,
@@ -169,8 +168,7 @@ describe('alt text', () => {
       'class.game.img.overflow',
     ])
     for (const catalogue of [en, sv, da] as Record<string, unknown>[]) {
-      // the game keys are English only until MA6 (ADR 0023 section 8; untranslated.json)
-      for (const key of keys.filter((k) => catalogue === en || !untranslated.includes(k))) {
+      for (const key of keys) {
         const text = catalogue[key]
         expect(typeof text, key).toBe('string')
         expect((text as string).length, key).toBeGreaterThan(5)
