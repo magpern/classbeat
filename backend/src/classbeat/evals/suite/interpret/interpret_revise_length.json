@@ -1,0 +1,46 @@
+{
+ "kind": "interpret",
+ "name": "interpret_revise_length",
+ "about": "A revise that states a new length: only the length is reported, the rest is left out.",
+ "request": "Make it 60 minutes instead, we have the room longer.",
+ "current": {
+  "length_min": 45,
+  "intensity": "hard",
+  "climbs": 2,
+  "sprints": 3,
+  "games": [
+   {
+    "type": "racetrack",
+    "placement": {
+     "relation": "after",
+     "anchor": "climb",
+     "ordinal": 1
+    }
+   }
+  ],
+  "explicit": [
+   "length_min",
+   "climbs",
+   "games.0"
+  ]
+ },
+ "expect": {
+  "values": {
+   "length_min": 60
+  },
+  "origins": {
+   "length_min": "explicit"
+  },
+  "absent": [
+   "intensity",
+   "climbs",
+   "sprints",
+   "races",
+   "ftp_test",
+   "class_type",
+   "sport",
+   "music"
+  ],
+  "games": []
+ }
+}

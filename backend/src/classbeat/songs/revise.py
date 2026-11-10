@@ -23,10 +23,11 @@
     ``account_changed``; ``write_unresolved`` while a final-playlist write of the class is
     undecided. No new message: the resume carries the approved job's ``request_message_id``.
 - **Phase 1** (``mode = "pick"``, until ``AwaitApproval``): ``classbeat.songs.pick`` with the base
-  list's songs outside ``replace`` as ``kept`` (``"all"`` keeps none) and the class's stored brief,
-  whose free text leads with the request (cut to the brief's 2000 characters); the new
-  ``song_list`` (``provenance.origin = "revise_songs"``, parent: the base's list) marks the new
-  songs ``new``. The approval is ``design_with_songs``' (``approve_check``).
+  list's songs outside ``replace`` as ``kept`` (``"all"`` keeps none) and the class's brief as of
+  the base (``revise_brief``: its stated layer applied, #904), whose free text leads with the
+  request (cut to the brief's 2000 characters); the new ``song_list`` (``provenance.origin =
+  "revise_songs"``, parent: the base's list) marks the new songs ``new``. The approval is
+  ``design_with_songs``' (``approve_check``).
   A catalogue replace (ADR 0016 section 6, ``match_revision_id``) uses the server's slots and a
   status-only fact in place of ``replace`` and ``request``. The fact is the only Swedebeat
   material the model sees. After approval the job matches the new list
@@ -77,21 +78,17 @@ from classbeat.songs.config import SongConfig
 from classbeat.songs.inputs import ReviseSongsInput
 from classbeat.songs.phase2 import PHASE_TWO, final_checks, final_music, mark_mowl, music_source
 from classbeat.songs.pick import SeedSpec, run_phase_one, stage_config
+from classbeat.songs.revise_brief import class_brief, pick_brief
 from classbeat.songs.revise_resume import admit_resume
 from classbeat.swedebeat_match import replace as catalogue_replace
 
 KIND: Final = "revise_songs"
 PHASE_ONE: Final = ("pool_search", "pool_write", "pool_analyse", "choose")
 STAGES: Final = PHASE_ONE + tuple(s for s in PHASE_TWO if s != "design") + ("revise",)
-MAX_BRIEF_TEXT: Final = 2000
 
 _BASE_LIST = text(
     "SELECT music ->> 'song_list_id' AS song_list_id FROM class_revisions "
     "WHERE owner_id = :owner_id AND class_id = :class_id AND id = :id AND kind = 'draft'"
-)
-_CLASS_BRIEF = text(
-    "SELECT c.brief FROM jobs j JOIN classes c ON c.owner_id = j.owner_id AND c.id = j.class_id "
-    "WHERE j.id = :job_id AND j.owner_id = :owner_id"
 )
 # The current pointer and the class's music move together, from the base only.
 # A new current draft is a new song list, so a selection approved for the previous list is void.
@@ -203,26 +200,18 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     return Admitted(stored, after_insert)
 
 
-def pick_brief(brief: Brief, request: str) -> Brief:
-    """The brief phase 1 searches with: the request first, then the brief's own text, within the
-    brief's 2000 characters (both are already clean text)."""
-    joined = f"{request}\n\n{brief.text}" if brief.text else request
-    return brief.model_copy(update={"text": joined[:MAX_BRIEF_TEXT].rstrip()})
-
-
 async def _phase_one_plan(run: JobRun, given: ReviseSongsInput) -> tuple[Brief, SeedSpec]:
-    async with run.fenced() as fs:
-        found = (await fs.db.execute(_CLASS_BRIEF, fs.lease.params())).first()
+    owner, base = run.lease.owner_id, given.base_revision_id
+    async with run.fenced() as fs:  # the brief as of the base: its stated layer applied (#904)
+        found = await class_brief(fs.db, owner, run.lease.job_id, base)
         list_id = None
         if found is not None and given.class_id is not None:
-            list_id = await _base_list(
-                fs.db, fs.lease.owner_id, given.class_id, given.base_revision_id
-            )
+            list_id = await _base_list(fs.db, owner, given.class_id, base)
     request = given.catalogue_fact if given.match_revision_id is not None else given.request
-    if found is None or found.brief is None or list_id is None or request is None:
+    if found is None or list_id is None or request is None:
         raise JobFailure("invalid_input")
     try:
-        brief = Brief.model_validate(found.brief)
+        brief = Brief.model_validate(found)
     except ValidationError:
         raise JobFailure("internal") from None
     if given.match_revision_id is not None:

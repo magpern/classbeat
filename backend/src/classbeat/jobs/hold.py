@@ -7,9 +7,11 @@ create transaction, under the owner lock, which it takes first:
 
 - ``before(db)``: after the owner lock, before ``user.create``. A ``Held`` ends the call with that
   refusal and creates nothing (a stored refusal, or a state that is not ready); ``None`` goes on;
-- ``refused(db, reason, counts)``: after ``user.create`` refused (its own reasons, ``admit``'s, a
-  quota refusal or a backstop constraint), with whatever it wrote rolled back to a savepoint. It
-  returns what the caller answers, normally the refusal it stored.
+- ``refused(db, reason, counts)``: after ``user.create`` refused. For a quota refusal or a backstop
+  constraint (an exception) its savepoint is rolled back first, so nothing it wrote is kept; its
+  own reasons and ``admit``'s are returned without an exception after it wrote nothing, and its
+  savepoint is committed as it is. It returns what the caller answers, normally the refusal it
+  stored.
 
 An accepted or repeated creation calls neither again. Nothing here opens a session.
 """

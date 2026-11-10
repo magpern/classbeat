@@ -299,7 +299,7 @@ async def enqueue(
         kind=kind.name,
         input=canonical_json(stored).decode("utf-8"),
         class_id=parsed.class_id,
-        title=None,
+        title=parsed.title,  # a new class's (``interpret_again``); None for every other hand-off
         connection_ids=parsed.connection_ids(),
         idempotency_key=idempotency_key,
         request_hash=hashlib.sha256(canonical_json({"input": stored, "kind": kind.name})).digest(),

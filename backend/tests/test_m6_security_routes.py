@@ -168,6 +168,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/classes/{class_id}/swedebeat-handoff/not-now"): "owned",
     ("GET", "/api/classes/{class_id}/interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/design-from-interpretation"): "owned",
+    ("POST", "/api/classes/{class_id}/interpret-again"): "owned",
     ("DELETE", "/api/classes/{class_id}"): "owned",
     ("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
     ("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
@@ -753,6 +754,8 @@ OWNED_ROUTES = [
     OwnedRoute(
         "POST", "/api/classes/{class_id}/design-from-interpretation", control=frozenset({409})
     ),
+    # #904: the planted class has no stored ``not_connected``, so the owner's call is 409.
+    OwnedRoute("POST", "/api/classes/{class_id}/interpret-again", control=frozenset({409})),
     # ADR 0007 amendment "beat-one corrections": the planted draft has no beat data, so the
     # owner's call is 409 ``no_beat_data``; a foreign class or revision is 404 like an unknown one.
     OwnedRoute("PUT", "/api/classes/{class_id}/beat-one/{song}", _beat_one, frozenset({409})),

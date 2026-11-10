@@ -6,18 +6,25 @@ A ``class_messages`` row is only ever inserted by ``insert_message``, as ``INSER
 from the job's own row with ``j.class_id = :class_id``: the schema's foreign key for ``job_id``
 checks the owner only, so a message could otherwise name a job of another class. No row means
 ``MessageRefused``.
+
+The base's brief is the class's ``classes.brief`` with the stated layer nearest the base along its
+``parent_id`` chain applied (``provenance.stated``, ``agent.stated_layer``, #904), so a revise and
+a Change songs keep what an earlier revise stated.
 """
 
 import json
 import uuid
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Final, Literal
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat.agent.stated_layer import applied
 from classbeat.design.games_policy import has_retired_game
+
+MAX_STATED_DEPTH: Final = 500  # revisions walked up for a stated layer; beyond: the class's brief
 
 _LOCK_CLASS = text(
     "SELECT current_revision_id FROM classes WHERE id = :class_id AND owner_id = :owner_id "
@@ -66,7 +73,19 @@ _CHAIN = text(
     "AND m.owner_id = :owner_id AND m.class_id = :class_id AND m.role = 'user' "
     "ORDER BY c.depth DESC"
 )
-
+# The ``provenance.stated`` of the base or its nearest ancestor that has one (#904). The walk stops
+# at the first revision that has one, so at most one row of the chain has a layer.
+_STATED = text(
+    "WITH RECURSIVE chain AS ("
+    " SELECT r.parent_id, r.provenance -> 'stated' AS stated, 1 AS depth "
+    " FROM class_revisions r WHERE r.id = :base AND r.owner_id = :owner_id "
+    " AND r.class_id = :class_id "
+    " UNION ALL "
+    " SELECT p.parent_id, p.provenance -> 'stated', c.depth + 1 "
+    " FROM chain c JOIN class_revisions p ON p.id = c.parent_id AND p.owner_id = :owner_id "
+    " AND p.class_id = :class_id WHERE c.stated IS NULL AND c.depth < :n) "
+    "SELECT stated FROM chain WHERE stated IS NOT NULL"
+)
 
 _REQUEST = text(
     "SELECT body FROM class_messages WHERE owner_id = :owner_id AND class_id = :class_id "
@@ -157,22 +176,35 @@ class BaseForRun:
     dismissed_rules: tuple[str, ...] = ()  # ADR 0017 section 4; ids the user dismissed
 
 
+async def stated_layer(
+    db: AsyncSession, owner_id: UUID, class_id: UUID, base: UUID
+) -> dict[str, Any] | None:
+    """The ``provenance.stated`` of ``base`` or of its nearest ancestor that has one (#904)."""
+    params = {"owner_id": owner_id, "class_id": class_id, "base": base, "n": MAX_STATED_DEPTH}
+    layer = (await db.execute(_STATED, params)).scalar_one_or_none()
+    return layer if isinstance(layer, dict) else None  # pyright: ignore[reportUnknownVariableType]
+
+
 async def load_base(
     db: AsyncSession, owner_id: UUID, job_id: UUID, base: UUID, context: int
 ) -> BaseForRun | None:
-    """The class's brief and music source and the base revision, read through the job's own
-    class; and the requests along the base's ``parent_id`` chain, oldest first: at most
-    ``context`` revisions up from the base, the base's own request among them."""
+    """The class's brief (with the nearest stated layer applied) and music source and the base
+    revision, read through the job's own class; and the requests along the base's ``parent_id``
+    chain, oldest first: at most ``context`` revisions up from the base, the base's own request
+    among them."""
     row = (
         await db.execute(_BASE_FOR_RUN, {"owner_id": owner_id, "job_id": job_id, "base": base})
     ).first()
     if row is None:
         return None
-    chain = await db.execute(
-        _CHAIN, {"owner_id": owner_id, "class_id": row.class_id, "base": base, "n": context}
-    )
+    ids = {"owner_id": owner_id, "class_id": row.class_id, "base": base}
+    chain = await db.execute(_CHAIN, {**ids, "n": context})
+    layer = await stated_layer(db, owner_id, row.class_id, base)
+    brief = row.brief
+    if isinstance(brief, dict) and layer is not None:
+        brief = applied(brief, layer)  # pyright: ignore[reportUnknownArgumentType]
     return BaseForRun(
-        row.brief,
+        brief,
         row.music_source,
         row.kind,
         row.content,

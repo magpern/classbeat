@@ -22,6 +22,11 @@ the first stored, and answers it. A call after a reopened tab is the same call. 
 music could not be chosen (a running class with no MOWL playlist) stores ``needs_mowl_playlist``
 the same way, under the owner lock, without a create.
 
+Two answers are never stored (#904): a class that already has a revision and no design job of this
+hand-off (designed through ``POST /api/jobs`` with its ``class_id``) is refused ``class_designed``,
+so it never gets a second design and a second credit; and an ``idempotency_mismatch`` when a design
+job of this key exists (an input serialized otherwise by an earlier deploy) answers that job.
+
 Every statement filters on ``owner_id`` as well as running under RLS; another user's class is
 ``not_found`` like an unknown one. Only codes and whole numbers are stored or answered.
 """
@@ -65,6 +70,15 @@ _DESIGN_JOB = text(
     "SELECT id, kind, state FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "
     "AND idempotency_key = :key"
 )
+# A class that already has a revision and no design job of this hand-off (#904): designed some
+# other way (a design job created through ``POST /api/jobs`` with its ``class_id``).
+_DESIGNED = text(
+    "SELECT 1 FROM classes c WHERE c.owner_id = :owner_id AND c.id = :class_id "
+    "AND c.current_revision_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM jobs j "
+    "WHERE j.owner_id = c.owner_id AND j.class_id = c.id AND j.idempotency_key = :key)"
+)
+CLASS_DESIGNED: Final = "class_designed"
+MISMATCH: Final = "idempotency_mismatch"
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,10 +119,16 @@ class _Hold:
         row = await interpretation_row.read(db, self.owner_id, self.class_id, lock=True)
         return row if row is not None and row.job_id == self.job_id else None
 
+    def ids(self) -> dict[str, Any]:
+        key = interpretation_row.handoff_key(self.job_id)
+        return {"owner_id": self.owner_id, "class_id": self.class_id, "key": key}
+
     async def before(self, db: AsyncSession, /) -> Held | None:
         row = await self._row(db)
         if row is None:
             return Held("not_ready")
+        if (await db.execute(_DESIGNED, self.ids())).first() is not None:
+            return Held(CLASS_DESIGNED)  # never a second design and a second credit
         if row.refusal is not None:
             if not self.retry:
                 return Held(row.refusal.reason, dict(row.refusal.counts))
@@ -119,6 +139,10 @@ class _Hold:
     async def refused(
         self, db: AsyncSession, reason: str, counts: Mapping[str, int | str], /
     ) -> Held:
+        if reason == MISMATCH and (await db.execute(_DESIGN_JOB, self.ids())).first():
+            # The design job of this key exists (its input was serialized otherwise, by an
+            # earlier deploy): not a refusal to store; the caller answers that job.
+            return Held(MISMATCH)
         row = await self._row(db)
         code = reason if REASON.match(reason) else "invalid_input"
         refusal = Refusal(reason=code, counts=_counts(counts))
@@ -213,9 +237,21 @@ async def design_from_interpretation(
         consumes_credit=kind.consumes_credit,
         hold=hold,
     )
+    if done.job_id is None and done.reason == MISMATCH:
+        return await _existing(factory, ctx, hold)
     if done.job_id is None:
         return Handoff(reason=done.reason or "invalid_input", counts=dict(done.counts))
     return Handoff(done.job_id, kind.name, done.state, done.created)
+
+
+async def _existing(factory: Factory, ctx: UserContext, hold: _Hold) -> Handoff:
+    """The design job of the hand-off's key, answered as a repeated call's (``idempotency_mismatch``
+    with a job of that key: the job is the answer, nothing is stored)."""
+    async with user_session(factory, ctx) as db:
+        job = (await db.execute(_DESIGN_JOB, hold.ids())).first()
+    if job is None:
+        return Handoff(reason=MISMATCH)
+    return Handoff(job.id, job.kind, job.state)
 
 
 @dataclass(frozen=True, slots=True)

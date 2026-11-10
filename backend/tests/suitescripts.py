@@ -222,6 +222,7 @@ REVISED: dict[str, dict[str, Any]] = {
     "rev_easier_40": dict(total=2400, intensity="moderate", climbs=1, sprints=2),
     "rev_easier_50_to_easy": dict(total=3000, intensity="easy", climbs=1),
     "rev_shorter_45_to_30": dict(total=1800, intensity="moderate", climbs=1, sprints=1),
+    "rev_stated_length_45_to_30": dict(total=1800, intensity="moderate", climbs=1, sprints=1),
     "rev_shorter_75_to_60": dict(total=3600, intensity="hard", climbs=1, sprints=2),
     "rev_climb_to_end_45": dict(total=2700, intensity="moderate", climbs=1, sprints=2),
     "rev_climb_to_start_40": dict(total=2400, intensity="moderate", climbs=1, sprints=2),
@@ -241,6 +242,9 @@ NOTES: dict[str, str] = {
     "rev_game_remove_40": "Took the game out.",
     "rev_game_length_40": "Made the game 90 seconds long.",
     "rev_game_zone_40": "Set the game to zone 5.",
+    "rev_stated_length_45_to_30": "Cut the class to 30 minutes.",
+    "rev_stated_game_type_40": "Changed the game to Fast Lane.",
+    "rev_stated_keep_40": "Set the game to zone 5.",
 }
 
 

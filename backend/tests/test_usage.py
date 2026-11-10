@@ -124,7 +124,7 @@ async def test_a_price_bump_prices_only_later_jobs_and_a_finished_row_is_immutab
     """Two jobs either side of a bump of ``PRICES_VERSION`` (the name the recorder imported): the
     first keeps its version and cost, the second gets the new version, the monthly view adds both
     as stored, and the app role can neither change nor delete a finished row."""
-    from classbeat.agent import records
+    from classbeat.agent import stage_host as records  # the agent_runs writer (#904 split)
 
     ctx = DesignContext.build(brief(), analysed(monkeypatch))
     owner, first = jenv.job()

@@ -23,7 +23,7 @@ from classbeat.agent.records import Provenance
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.soundless import REVISE_SYSTEM_PROMPT
 from classbeat.agent.stage import prompt_version
-from classbeat.design import revise as revise_mod
+from classbeat.design import revise_soundless as revise_mod  # the soundless run (#904 split)
 from classbeat.models import routes as routes_module
 from classbeat.models.versions import all_prompt_versions, running_suite_version
 from designtools import FakeMowlMusic
@@ -393,3 +393,29 @@ async def test_a_music_revise_whose_class_became_soundless_before_the_store_stor
     assert len(renv.revisions(class_id)) == 1
     assert renv.current(class_id) == base
     assert [m.role for m in renv.messages(class_id)] == ["user"]
+
+
+async def test_a_soundless_class_is_revised_against_its_layered_stated_values(
+    renv: ReviseEnv,
+) -> None:
+    """#904: a soundless class that states values reads the request first, and the soundless
+    revise stage gets the layered brief (here an intensity the request states)."""
+    class_id, design_job = await soundless_class(renv)
+    [base] = renv.denv.revisions(design_job)
+    renv.state(class_id, ["length_min"])
+    reading = {"intensity": {"value": "hard", "origin": "explicit"}}
+    renv.use_interpreted("soundless_revise_good", reading)
+    made = await ask(renv, class_id, base.id, "Make it hard.")
+    assert made.status_code == 201, made.text
+    await renv.run(design.REVISE_KIND)
+    row = renv.denv.ops.row(UUID(made.json()["id"]))
+    assert (row.state, row.error_category) == ("completed", None)
+    told, revised = (s.spec for s in renv.providers[-1].sent[:2])
+    assert (told.stage, revised.stage, revised.system) == (
+        "interpret",
+        "revise",
+        REVISE_SYSTEM_PROMPT,
+    )
+    assert '"intensity":"hard"}' in revised.first_message
+    _, second = renv.revisions(class_id)
+    assert second.provenance["stated"]["intensity"] == "hard"

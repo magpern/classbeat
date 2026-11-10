@@ -227,6 +227,27 @@ The fields are:
 - It runs in `design_draft`, so values from the Advanced form count as explicit, and in revise,
   where the explicit list is sent as constraints and the new request's explicit items layer on
   top.
+- **Revise layering (MA1b-4, #904).** A revise of a class whose brief states values runs the
+  `interpret` stage on the revise request first (the same prompt, schema and eval key), told the
+  class's closed values as `current`, so it reports what the class should have after the change,
+  for what the request changes only (a relative "ten minutes longer" becomes the value it leads
+  to; `remove_games` says every game goes). `design/revise_layer_policy.py` (pure) layers that
+  onto the brief: an untouched stated value is kept; a newly stated one replaces the old one of
+  its path; an inferred change releases the path; a value beyond a hard limit is held and
+  recorded Not as asked, as at interpret time; sport and music never change. The reported games
+  are the whole list after the change, and a game equal to a stated one of the base stays stated.
+  The revise stage's stated block and `ExplicitGate` then use the layered brief; a miss after the
+  correction budget is Not as asked. A class that states nothing is revised as before, with no
+  interpret run.
+- **Where the layered values live.** `classes.brief` stays as the first design stored it. The
+  revision records the layered brief's closed part (knobs, games, explicit paths; never text) in
+  `provenance.stated`, and `design/chat.load_base` applies the layer nearest the base along its
+  `parent_id` chain onto the class's brief. So the next revise and a Change songs start from the
+  layered values (Change songs in both of its phases: the pick is sized by the layered length),
+  a refit in between keeps them, and picking an older revision picks its values.
+- **Deferred (#907):** a duplicate copies `classes.brief` but not the layer, so a duplicate of a
+  class whose stated values were revised starts from the first request's stated values. #907
+  fixes it before the MA2 start screen is turned on. Further follow-ups are in #908.
 - Explicit values win over ADR 0017 soft rules.
 
 **Storage**
@@ -235,8 +256,11 @@ The fields are:
   `agent/records.py`.
 - Decision (MA1b-2, #880), the `stated_unchecked` question: no new origin value. The interpret
   stage passes `explicit` or `inferred` through as the model stated it. `check_explicit` checks
-  counts and games only, so a stated `intensity` or `class_type` is never reported as missed;
-  whether the page shows it under **As you asked** is decided in MA1b-3 with the page's catalogue.
+  counts and games only, so a stated `intensity` or `class_type` is never reported as missed.
+- Decision (MA1b-3, #903; recorded here by #904), the outcome of `stated_unchecked`: a stated
+  `intensity` or `class_type` is kept in `Brief.explicit`, so the model is told to keep it, but is
+  recorded as **Assumed** (origin `inferred`), never under **As you asked**, because nothing checks
+  it against the draft (`request_policy.UNVERIFIED`).
 - With no revision (a refused hand-off) they go in a new `classes.interpretation jsonb` column
   with an `octet_length` check.
 - The frontend renders three parts from catalogue keys: **As you asked**, **Not as asked** and

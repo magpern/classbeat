@@ -22,6 +22,7 @@ from revisesongtools import (
     changed_waiting,
     current,
     picked,
+    replace_script,
     resume_change,
     revise_script,
 )
@@ -418,3 +419,38 @@ async def test_a_song_change_applies_the_class_corrections_for_its_new_music(
     assert draft_b.music["beat_one"] == [{"song": s["song"], "beats": 2} for s in songs]
     assert _seconds(draft_b.content) != _seconds(draft_a.content), "the fit moved"
     assert sum(_seconds(draft_b.content)) == sum(_seconds(draft_a.content))
+
+
+async def test_phase_one_picks_for_the_bases_layered_length(
+    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#904: after a revise layered a stated 45 minutes onto the class's 30, a song change sizes
+    its pick by the base's layer (the nearest ``provenance.stated``), as phase two checks it."""
+    from classbeat.agent.songs import PickPlan
+    from classbeat.songs import revise as revise_songs_mod
+
+    rider = await songenv.rider()
+    class_id, base, _ = await picked(songenv, rider)
+    layer = {"length_min": 45, "intensity": "moderate", "climbs": 1, "sprints": 2}
+    songenv.sql(
+        "UPDATE class_revisions SET provenance = provenance || CAST(:s AS jsonb) WHERE id = :r",
+        s=json.dumps({"stated": {**layer, "explicit": ["length_min"]}}),
+        r=base,
+    )
+    seen: list[Any] = []
+    real = revise_songs_mod.run_phase_one
+
+    async def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs["brief"])
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(revise_songs_mod, "run_phase_one", spy)
+    songenv.script = replace_script()
+    answer = await change(rider, class_id, base)
+    assert answer.status_code == 201, answer.text
+    await songenv.run(UUID(answer.json()["id"]))  # the recorded 30 minute pick no longer fits
+    [brief] = seen
+    assert (brief.length_min, brief.explicit) == (45, ["length_min"])
+    assert PickPlan.build(brief).target_sec == 45 * 60
+    stored = songenv.sql("SELECT brief FROM classes WHERE id = :c", c=class_id).scalar_one()
+    assert stored["length_min"] == 30  # the class's own brief is unchanged

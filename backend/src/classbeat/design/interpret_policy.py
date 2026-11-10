@@ -37,7 +37,7 @@ from classbeat.design.interpret_music_policy import Music, MusicOption, choose
 from classbeat.plan_gates import PlanGates
 
 DEFAULT_LENGTH_MIN: Final = 45
-_KNOBS: Final = ("length_min", "intensity", "class_type", "climbs", "sprints", "races", "ftp_test")
+KNOBS: Final = ("length_min", "intensity", "class_type", "climbs", "sprints", "races", "ftp_test")
 _CYCLING_ONLY: Final = ("climbs", "sprints", "races", "ftp_test")
 TITLE_CHARS: Final = 60
 
@@ -68,8 +68,9 @@ def _item(
     )
 
 
-def _held(path: str, value: Any, sport: str, offer: Offer) -> tuple[Any, str | None]:
-    """The value the brief may take (None: left out) and the reason when it is not the one read."""
+def held(path: str, value: Any, sport: str, offer: Offer) -> tuple[Any, str | None]:
+    """The value the brief may take (None: left out) and the reason when it is not the one read
+    (also a revise's, ``revise_layer_policy``)."""
     gates = offer.gates
     limits = request_policy.Limits.from_gates(gates, offer.sports)
     reason = request_policy.hard_limit(path, value, limits, sport)
@@ -143,20 +144,22 @@ def resolve(
     if sport != "cycling":
         fields["sport"] = sport
     explicit = ["sport"] if readings.get("sport") and items[-1].origin == "explicit" else []
-    for path in _KNOBS:
-        held = readings.get(path)
-        if held is None:
+    for path in KNOBS:
+        reading = readings.get(path)
+        if reading is None:
             continue
-        value, reason = _held(path, held.value, sport, offer)
-        quote = keep_quote(held.quote, request)
-        if reason is not None and held.origin == "explicit":
-            items.append(_item(path, "not_as_asked", held.value, reason, quote))
+        value, reason = held(path, reading.value, sport, offer)
+        quote = keep_quote(reading.quote, request)
+        if reason is not None and reading.origin == "explicit":
+            items.append(_item(path, "not_as_asked", reading.value, reason, quote))
         elif value is not None:
-            unchecked = held.origin == "explicit" and path in request_policy.UNVERIFIED
-            items.append(_item(path, "inferred" if unchecked else held.origin, value, None, quote))
+            unchecked = reading.origin == "explicit" and path in request_policy.UNVERIFIED
+            items.append(
+                _item(path, "inferred" if unchecked else reading.origin, value, None, quote)
+            )
         if value is not None:
             fields[path] = value
-            if held.origin == "explicit" and reason is None:
+            if reading.origin == "explicit" and reason is None:
                 explicit.append(path)
     if "length_min" not in fields:
         cap = offer.gates.max_class_minutes if offer.gates is not None else DEFAULT_LENGTH_MIN
@@ -192,7 +195,7 @@ def worst_case_brief(text: str) -> Brief:
         "duration_sec": 600,
     }
     knobs = {"climbs": 10, "sprints": 20, "races": 5, "ftp_test": 20, "class_type": "journey"}
-    explicit = ["sport", *_KNOBS, *(f"games.{n}" for n in range(6))]
+    explicit = ["sport", *KNOBS, *(f"games.{n}" for n in range(6))]
     return Brief.model_validate(
         {
             "length_min": 180,

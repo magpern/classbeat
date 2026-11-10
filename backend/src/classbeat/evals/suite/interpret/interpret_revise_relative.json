@@ -1,0 +1,32 @@
+{
+ "kind": "interpret",
+ "name": "interpret_revise_relative",
+ "about": "A relative revise is reported as the value it leads to; untouched stated values are left out.",
+ "request": "One more sprint, please, and keep everything else.",
+ "current": {
+  "length_min": 45,
+  "climbs": 2,
+  "sprints": 3,
+  "explicit": [
+   "length_min",
+   "climbs",
+   "sprints"
+  ]
+ },
+ "expect": {
+  "values": {
+   "sprints": 4
+  },
+  "absent": [
+   "length_min",
+   "climbs",
+   "races",
+   "ftp_test",
+   "intensity",
+   "class_type",
+   "sport",
+   "music"
+  ],
+  "games": []
+ }
+}

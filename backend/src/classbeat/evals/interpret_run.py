@@ -1,6 +1,7 @@
 """Run one ``interpret`` case (ADR 0029 section 4): the stage on a provider, then its checks.
 
-The stage is given what the case holds, as the app gives it (``InterpretContext``). The result is
+The stage is given what the case holds, as the app gives it (``InterpretContext``; a revise
+case's ``current`` as ``design.revise_stated`` gives it). The result is
 a ``CaseResult`` like a design run's, so the suite's rows, gate and cost rules need nothing new:
 the checks of ``interpret_checks`` plus ``limits`` (turns, tool calls and cost within the run's
 limits). No draft, so no duration or TSS.
@@ -10,6 +11,7 @@ import time
 from collections.abc import Callable
 
 from classbeat.agent.interpret import InterpretContext, InterpretResult, interpret_stage
+from classbeat.agent.interpret_input import current_values
 from classbeat.agent.loop import AgentConfig, run_stage
 from classbeat.agent.provider import ModelProvider
 from classbeat.evals.checks import Check
@@ -26,6 +28,7 @@ def context_for(case: InterpretCase) -> InterpretContext:
         max_class_minutes=case.max_class_minutes,
         games_allowed=case.games_allowed,
         music=tuple(m.named() for m in case.music),
+        current=None if case.current is None else current_values(case.current),
     )
 
 

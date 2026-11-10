@@ -9,15 +9,21 @@ An allowlist, built here and nowhere else, so the interpreter never sees more th
   (``MAX_NAMES`` of them, ``MAX_NAME_CHARS`` characters each). The model answers with a position
   in that list, which ``InterpretedRequest.sanitised`` range-checks.
 
+On a revise (ADR 0029 section 4, #904) the message also holds ``current``: the class's values as
+they stand (``current_values``: the brief's closed numbers and enums and its games, never its text),
+so a relative change ("ten minutes longer") is read as the value it leads to. A message without it
+is byte-identical to before.
+
 Never an id, a title, a token, a URL or a song. A name is the instructor's own text and is passed
 as data in a JSON string, never joined into a sentence of the prompt.
 """
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Final, NamedTuple
 
 from classbeat.agent import games_catalog
+from classbeat.agent.brief import Brief
 from classbeat.agent.interpreted import MAX_NAMES
 from classbeat.agent.schemas import clean_text
 
@@ -50,6 +56,25 @@ def games_list() -> list[dict[str, str]]:
     return [{"type": g.type, "name": g.name, "article": g.article} for g in games_catalog.CATALOG]
 
 
+# The closed values a revise's interpreter is told of the brief; never its text or explicit.
+CURRENT_KEYS: Final = (
+    "length_min",
+    "intensity",
+    "class_type",
+    "climbs",
+    "sprints",
+    "races",
+    "ftp_test",
+    "games",
+)
+
+
+def current_values(brief: Brief) -> dict[str, Any]:
+    """The class's values as they stand: closed numbers, enums and games only."""
+    dumped = brief.model_dump(mode="json", exclude_none=True)
+    return {key: dumped[key] for key in CURRENT_KEYS if key in dumped}
+
+
 def first_message(
     request: str,
     *,
@@ -57,15 +82,15 @@ def first_message(
     max_class_minutes: int | None,
     games_allowed: bool,
     music: Sequence[MusicName],
+    current: Mapping[str, Any] | None = None,
 ) -> str:
-    return json.dumps(
-        {
-            "request": clean_request(request),
-            "allowed_sports": list(sports),
-            "plan_limits": {"max_class_minutes": max_class_minutes, "games": games_allowed},
-            "games": games_list(),
-            "music": music_list(music),
-        },
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
+    body: dict[str, Any] = {
+        "request": clean_request(request),
+        "allowed_sports": list(sports),
+        "plan_limits": {"max_class_minutes": max_class_minutes, "games": games_allowed},
+        "games": games_list(),
+        "music": music_list(music),
+    }
+    if current is not None:
+        body["current"] = {k: current[k] for k in CURRENT_KEYS if k in current}
+    return json.dumps(body, separators=(",", ":"), ensure_ascii=False)

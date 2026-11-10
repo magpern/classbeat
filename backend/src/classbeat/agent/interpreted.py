@@ -10,6 +10,11 @@ numbered list the model was sent and an index outside it is no match.
 
 The placement is one flat object (not a union of two): the providers' strict tool schemas refuse
 a union of object types.
+
+On a change to an existing class (a revise, ``interpret_input``'s ``current``), the same fields
+say what the class should have **after** the change, only for what the request changes; the games
+are then the whole list after the change, and ``remove_games`` says the request removes them all
+(``classbeat.design.revise_layer_policy`` reads it).
 """
 
 from typing import Annotated, Any, Final, Literal, NamedTuple, Self
@@ -159,6 +164,9 @@ class InterpretedRequest(BaseModel):
     games: list[InterpretedGame] = Field(
         default_factory=lambda: list[InterpretedGame](), max_length=MAX_GAMES
     )
+    # A change to a class (``current`` in the message, a revise): the request removes every game.
+    # A closed flag, so "no games reported" (nothing said of them) stays apart from "remove them".
+    remove_games: bool | None = None
 
     def sanitised(self, request: str, names: int) -> Self:
         """A copy that keeps a quote only if it is a substring of ``request`` and a music index
