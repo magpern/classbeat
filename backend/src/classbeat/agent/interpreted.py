@@ -131,7 +131,7 @@ class Reading(NamedTuple):
     quote: str | None
 
 
-_SCALARS: Final = (
+SCALARS: Final = (
     "sport",
     "length_min",
     "intensity",
@@ -164,7 +164,7 @@ class InterpretedRequest(BaseModel):
         """A copy that keeps a quote only if it is a substring of ``request`` and a music index
         only if it points into the ``names`` that were sent."""
         update: dict[str, Any] = {}
-        for field in _SCALARS:
+        for field in SCALARS:
             held: Stated | None = getattr(self, field)
             if held is not None:
                 update[field] = _with_quote(held, request)
@@ -177,7 +177,7 @@ class InterpretedRequest(BaseModel):
         """Every value that was set, in brief order, with the games as ``games.N`` (their closed
         form, as the brief stores them)."""
         out: list[Reading] = []
-        for field in _SCALARS:
+        for field in SCALARS:
             held: Any = getattr(self, field)
             if held is not None:
                 out.append(Reading(field, held.value, held.origin, held.quote))

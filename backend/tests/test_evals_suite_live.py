@@ -347,7 +347,7 @@ def test_it_prints_the_plan_and_ceiling_then_stops_without_max_usd(tmp_path: Pat
     code, out, err, path = suite_run(tmp_path, replays, replays.install, max_usd=None)
     assert code == 2
     assert "LIVE: provider openai, model gpt-6.1-sol, effort high" in out
-    assert "2 design cases and 1 song cases, 3 runs" in out
+    assert "2 design cases, 0 interpret cases and 1 song cases, 3 runs" in out
     assert "estimated cost ceiling for this run: $" in out
     assert "pass --max-usd" in err
     assert (replays.events, path.exists()) == ([], False)
@@ -532,8 +532,8 @@ async def test_a_soundless_run_records_the_soundless_stages_in_its_header_and_it
     versions = doc["prompt_versions"]
     assert {"design", "revise", "running_design", "running_revise"} <= set(versions)
     assert {"soundless_design", "soundless_revise", "pick_pool", "choose_songs"} <= set(versions)
-    assert len(versions) == 8
-    assert len(set(versions.values())) == 8  # every stage has a prompt version of its own
+    assert len(versions) == 9
+    assert len(set(versions.values())) == 9  # every stage has a prompt version of its own
     assert sorted(r["case"] for r in doc["results"]) == ["soundless_45", "soundless_revise_sprints"]
     assert all(r["passed"] and r["category"] != "" for r in doc["results"])
     assert all(c["ok"] for r in doc["results"] for c in r["checks"])

@@ -19,9 +19,11 @@ from classbeat.agent.dispatcher import MAX_RESULT_BYTES
 from classbeat.agent.providers.fake import FakeProvider
 from classbeat.agent.registry import MAX_TEXT
 from classbeat.evals import gate, suite
+from classbeat.evals.interpret_run import run_interpret_case
 from classbeat.evals.pick import PickCase, run_pick_case
 from classbeat.evals.runner import SuiteHeader, run_case, song_suite_row, suite_results, suite_row
 from classbeat.evals.suite import Manifest, SuiteError, load_suite
+from interpretscripts import provider_for_case as interpret_provider
 from pickfake import CHOOSE_LIMITS, POOL_LIMITS
 from pickscripts import provider_for_case as smoke_pick_provider
 from smokescripts import provider_for_case as smoke_design_provider
@@ -385,6 +387,11 @@ async def own_rows(repeat: int) -> list[dict[str, Any]]:
             zone7_tss_margin=MANIFEST.zone7_tss_margin,
         )  # fmt: skip
         rows.append(suite_row(result, MANIFEST.case_index()[name][0]))
+    for name, interpreted in sorted(SUITE.interpret_cases.items()):
+        done = await run_interpret_case(
+            interpreted, interpret_provider(interpreted), CONFIG, repeat=repeat
+        )
+        rows.append(suite_row(done, INDEX[name][0]))
     for name, song in sorted(SUITE.song_cases.items()):
         got, _, _ = await run_pick_case(
             song, any_provider(song), CONFIG, LIMITS, MANIFEST.bpm_bands

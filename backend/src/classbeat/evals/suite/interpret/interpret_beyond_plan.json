@@ -1,0 +1,12 @@
+{
+ "kind": "interpret",
+ "name": "interpret_beyond_plan",
+ "about": "A request past the plan's longest class is reported as asked, not clamped.",
+ "request": "A 150 minute endurance class",
+ "max_class_minutes": 60,
+ "expect": {
+  "values": {
+   "length_min": 150
+  }
+ }
+}

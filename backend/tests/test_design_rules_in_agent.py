@@ -46,6 +46,8 @@ PINNED = {
     # under their own keys.
     "soundless_design": "19f070f1f62b715453650b64380c1dce53fd39c7e3e9791fd9ed433a69da295f",
     "soundless_revise": "8279c4a6a9750c9ff238bbd7db5c915e9b9a8dc44f1b16e7fbbcae502fdfdc7b",
+    # The interpret stage (MA1b-2, #880), under its own key.
+    "interpret": "18f8d2c26763007119260814a39e7c1abd4ff7ad0e390fcd8568359b73267f1f",
 }
 PLANTED = "Zq9 planted brief text"
 PLANTED_STYLE = "Zq9 planted style"

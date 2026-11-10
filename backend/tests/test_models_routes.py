@@ -201,6 +201,9 @@ def test_the_running_prompt_versions_are_those_of_stages_built_from_real_context
     soundless_revise = soundless_revise_stage(
         SoundlessReviseContext(revise_case.brief, revise_case.revise.base, (), "easier")
     )
+    from classbeat.agent.interpret import InterpretContext, interpret_stage
+
+    interpret = interpret_stage(InterpretContext("a hard 45 minute class"))
     assert running_prompt_versions("design") == {
         "design": design.prompt_version,
         "revise": revise.prompt_version,
@@ -208,6 +211,7 @@ def test_the_running_prompt_versions_are_those_of_stages_built_from_real_context
         "running_revise": running_revise.prompt_version,
         "soundless_design": soundless_design.prompt_version,
         "soundless_revise": soundless_revise.prompt_version,
+        "interpret": interpret.prompt_version,
     }
 
 
@@ -942,7 +946,7 @@ async def test_a_result_recorded_before_suite_version_12_does_not_cover_soundles
         True
     ] * 2
     versions = {**running_prompt_versions("design"), **running_prompt_versions("songs")}
-    assert len(versions) == 8
+    assert len(versions) == 9
     assert {"soundless_design", "soundless_revise"} <= set(versions)
     s = worker(app_database_url, kek_dir, "anthropic")
     add_result(admin, age_minutes=2)

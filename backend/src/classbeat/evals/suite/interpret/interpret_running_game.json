@@ -1,0 +1,24 @@
+{
+ "kind": "interpret",
+ "name": "interpret_running_game",
+ "about": "A running request with a game reports both; the policy says Not as asked.",
+ "request": "A 30 minute run with a game in the middle",
+ "sports": [
+  "cycling",
+  "running"
+ ],
+ "expect": {
+  "values": {
+   "sport": "running",
+   "length_min": 30
+  },
+  "games": [
+   {
+    "type": "any",
+    "placement": {
+     "position": "middle"
+    }
+   }
+  ]
+ }
+}

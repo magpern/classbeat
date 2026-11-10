@@ -26,6 +26,7 @@ from classbeat.design.rules import default_registry
 from classbeat.evals import checks, gate, suite
 from classbeat.evals.cases import load_cases
 from classbeat.evals.checks import run_checks, tss_bounds_for
+from classbeat.evals.interpret_run import run_interpret_case
 from classbeat.evals.music import build_music
 from classbeat.evals.pick import PickCaseResult, limits_check, load_pick_cases, run_pick_case
 from classbeat.evals.runner import (
@@ -37,6 +38,7 @@ from classbeat.evals.runner import (
     suite_row,
 )
 from classbeat.evals.suite import Manifest, SuiteError, load_suite, suite_digest
+from interpretscripts import provider_for_case as interpret_provider
 from pickfake import CHOOSE_LIMITS, POOL_LIMITS
 from pickscripts import provider_for_case as pick_provider
 from smokescripts import good_draft
@@ -64,6 +66,7 @@ RELEASED: dict[int, str] = {
     14: "55d9ebfc04db240af025f75f0e7fb4fb7493cb8176a2d8dffe0d0717b300f8e2",
     15: "54ee86ecf15a139d0f4914697b1c37778c3ba8c5f7cef72765d5b8bd202a0cac",
     16: "5ce57d50935c9c0a556492dd35aa47658770c5c2a9f14e14d81f2ea2a9ac5689",
+    17: "f973682f67bf9583b568f75d1e3fc595b69a1488f6a6583b5c24fb98a28141ca",
 }
 
 SUITE = load_suite()
@@ -83,6 +86,7 @@ def parts() -> tuple[dict[str, Any], dict[str, dict[str, Any]], dict[str, str], 
     cases = {
         **{n: c.model_dump(mode="json") for n, c in SUITE.design_cases.items()},
         **{n: c.model_dump(mode="json") for n, c in SUITE.song_cases.items()},
+        **{n: c.model_dump(mode="json") for n, c in SUITE.interpret_cases.items()},
     }
     return data, cases, suite.digest_sources(), suite.check_constants()
 
@@ -180,7 +184,10 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     # set holds the soundless cases of #531 (four of its 30 cases)
     assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10 + 2 + 2 + 10, 8 + 7)
     assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 65, 3 + 15)
-    assert len(index) == 30 + 65 + 3 + 15
+    # #880: eight interpret cases, of their own kind (neither design nor song cases)
+    assert len(SUITE.interpret_cases) == 8
+    assert set(SUITE.interpret_cases) == set(MANIFEST.cases_of("interpret", "design"))
+    assert len(index) == 30 + 65 + 3 + 15 + 8
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)
@@ -342,6 +349,11 @@ async def _real_rows(repeat: int = 0) -> list[dict[str, Any]]:
             zone7_tss_margin=MANIFEST.zone7_tss_margin,
         )
         rows.append(suite_row(result, SUITE.category_of(name)))
+    for name, interpreted in sorted(SUITE.interpret_cases.items()):
+        got = await run_interpret_case(
+            interpreted, interpret_provider(interpreted), CONFIG, repeat=repeat
+        )
+        rows.append(suite_row(got, SUITE.category_of(name)))
     for name, case in sorted(SUITE.song_cases.items()):
         provider = song_provider(case) if case.quality else pick_provider(case)
         if name in ADV_NAMES:
@@ -390,8 +402,10 @@ async def test_the_recorded_smoke_runs_pass_the_gate_in_both_groups() -> None:
     assert set(verdict.groups) == {"design", "songs"}
     for group in verdict.groups.values():
         assert group.status == "passed", json.dumps(group.as_json())[:2500]
-        assert group.runs == 3 * len(
-            SUITE.design_cases if group.group == "design" else SUITE.song_cases
+        assert group.runs == 3 * (
+            len(SUITE.design_cases) + len(SUITE.interpret_cases)
+            if group.group == "design"
+            else len(SUITE.song_cases)
         )
 
 

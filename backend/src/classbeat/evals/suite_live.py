@@ -49,15 +49,12 @@ import logging
 import os
 import sys
 import uuid
-from collections.abc import AsyncIterator, Callable, Iterator
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent import catalog, choose_songs, pick_pool
 from classbeat.agent.limits import Limits
@@ -72,6 +69,7 @@ from classbeat.agent.providers import (
 from classbeat.config import Settings, model_sdk_environment_problems
 from classbeat.egress import install_worker_allowlist
 from classbeat.evals.gate import evaluate
+from classbeat.evals.interpret_run import run_interpret_case
 from classbeat.evals.live import (
     MAX_REPEAT,
     MAX_USD_LIMIT,
@@ -90,6 +88,8 @@ from classbeat.evals.runner import (
     suite_row,
 )
 from classbeat.evals.suite import Group, Suite, load_suite
+from classbeat.evals.suite_session import SessionOpener as SessionOpener
+from classbeat.evals.suite_session import worker_session as worker_session
 from classbeat.models.routes import ModelChoice
 from classbeat.models.store import file_sha256, record_result
 from classbeat.models.versions import all_prompt_versions, running_prompt_versions
@@ -108,8 +108,6 @@ ADAPTERS: Final[dict[type, str]] = {
 }
 
 ProviderFactory = Callable[[Settings, ModelChoice], ModelProvider]
-SessionOpener = Callable[[], AbstractAsyncContextManager[AsyncSession]]
-
 
 WRONG_ADAPTER = "refusing: the built provider is not the chosen provider's adapter"
 
@@ -134,29 +132,6 @@ def provider_kind(provider: ModelProvider) -> str | None:
 def install_choice_allowlist(choice: ModelChoice) -> object:
     """The worker's allowlist with the chosen provider's model host and no other (ADR 0012 §2)."""
     return install_worker_allowlist((choice.provider,))
-
-
-@asynccontextmanager
-async def _worker_session(settings: Settings) -> AsyncIterator[AsyncSession]:
-    from classbeat.db import (
-        create_engine,
-        create_session_factory,
-        system_session,
-        verify_database_role,
-    )
-
-    engine = create_engine(settings)
-    try:
-        await verify_database_role(engine)
-        async with system_session(create_session_factory(engine)) as db:
-            yield db
-    finally:
-        await engine.dispose()
-
-
-def worker_session(settings: Settings) -> SessionOpener:
-    """The worker's database transaction (the app role), opened only when recording."""
-    return lambda: _worker_session(settings)
 
 
 def check_preconditions(
@@ -189,6 +164,7 @@ def run_order(suite: Suite, repeat: int) -> list[Run]:
     order: list[Run] = []
     for index in range(repeat):
         order += [Run("design", name, index) for name in sorted(suite.design_cases)]
+        order += [Run("design", name, index) for name in sorted(suite.interpret_cases)]
         order += [Run("songs", name, index) for name in sorted(suite.song_cases)]
     return order
 
@@ -241,8 +217,8 @@ def plan_text(
         [
             f"classbeat regression suite {suite.manifest.suite_version}, LIVE: provider "
             f"{choice.provider}, model {choice.model}, effort {choice.effort}",
-            f"{len(suite.design_cases)} design cases and {len(suite.song_cases)} song cases, "
-            f"{len(runs)} runs",
+            f"{len(suite.design_cases)} design cases, {len(suite.interpret_cases)} interpret "
+            f"cases and {len(suite.song_cases)} song cases, {len(runs)} runs",
             f"limits per design run: {design.max_turns} turns, {design.max_tool_calls} tool "
             f"calls, {design.max_corrections} corrections, {usd(design.job_cost_micros)} ceiling; "
             f"per song run {usd(budgets.pool.job_cost_micros)}",
@@ -302,6 +278,11 @@ async def _one(
     margin = suite.manifest.zone7_tss_margin
     if run.group == "design":
         config = with_job_ceiling(budgets.design, min(budgets.design.limits.job_cost_micros, left))
+        if run.case in suite.interpret_cases:
+            got = await run_interpret_case(
+                suite.interpret_cases[run.case], provider, config, repeat=run.repeat
+            )
+            return suite_row(got, category), got.cost_micros, got.passed, failed_check_lines(got)
         case = suite.design_cases[run.case]
         result = await run_case(case, provider, config, repeat=run.repeat, zone7_tss_margin=margin)
         lines = failed_check_lines(result)

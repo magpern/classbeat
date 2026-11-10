@@ -1,6 +1,6 @@
 {
- "suite_version": 16,
- "digest": "5ce57d50935c9c0a556492dd35aa47658770c5c2a9f14e14d81f2ea2a9ac5689",
+ "suite_version": 17,
+ "digest": "f973682f67bf9583b568f75d1e3fc595b69a1488f6a6583b5c24fb98a28141ca",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -86,6 +86,13 @@
   },
   "soundless": {
    "design": ["soundless_45", "soundless_30_sprints", "soundless_revise_sprints"]
+  },
+  "interpret": {
+   "design": [
+    "interpret_explicit_kept", "interpret_game_type", "interpret_game_any",
+    "interpret_running_game", "interpret_beyond_plan", "interpret_swedish", "interpret_danish",
+    "interpret_playlist_injection"
+   ]
   },
   "adversarial": {
    "design": [

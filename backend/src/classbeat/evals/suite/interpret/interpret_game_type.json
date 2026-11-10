@@ -1,0 +1,23 @@
+{
+ "kind": "interpret",
+ "name": "interpret_game_type",
+ "about": "A named game with a relative placement and a length.",
+ "request": "A 40 minute class with two climbs and a 30 second Power Pull right after the second climb",
+ "expect": {
+  "values": {
+   "length_min": 40,
+   "climbs": 2
+  },
+  "games": [
+   {
+    "type": "power_pull",
+    "placement": {
+     "relation": "after",
+     "anchor": "climb",
+     "ordinal": 2
+    },
+    "duration_sec": 30
+   }
+  ]
+ }
+}

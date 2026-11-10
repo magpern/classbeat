@@ -233,6 +233,10 @@ The fields are:
 - Items are `{path, origin, reason_code?, value, quote?}`.
 - They are stored in `provenance.interpretation` on design and revise revisions, bounded in
   `agent/records.py`.
+- Decision (MA1b-2, #880), the `stated_unchecked` question: no new origin value. The interpret
+  stage passes `explicit` or `inferred` through as the model stated it. `check_explicit` checks
+  counts and games only, so a stated `intensity` or `class_type` is never reported as missed;
+  whether the page shows it under **As you asked** is decided in MA1b-3 with the page's catalogue.
 - With no revision (a refused hand-off) they go in a new `classes.interpretation jsonb` column
   with an `octet_length` check.
 - The frontend renders three parts from catalogue keys: **As you asked**, **Not as asked** and
