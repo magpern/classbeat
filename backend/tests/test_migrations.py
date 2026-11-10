@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0043_retire_soundless_flag"]
+    assert script.get_heads() == ["0044_class_interpretation"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0043_retire_soundless_flag"]
+        assert applied_revisions(database_url) == ["0044_class_interpretation"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -855,3 +855,47 @@ def test_0043_retires_the_soundless_flag_and_the_downgrade_widens_the_check(
             connection.execute(text("DELETE FROM app_settings"))
         admin.dispose()
         command.downgrade(config, "base")
+
+
+def test_0044_class_interpretation_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MA1b-3 (#881): ``classes.interpretation`` exists at head, NULL by default, bounded at 32768
+    bytes; the downgrade drops it and the upgrade runs again."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+    column = text(
+        "SELECT data_type, is_nullable FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = 'classes' "
+        "AND column_name = 'interpretation'"
+    )
+    owner = uuid.uuid4()
+    try:
+        command.upgrade(config, "head")
+        with admin.connect() as connection:
+            assert tuple(connection.execute(column).one()) == ("jsonb", "YES")
+        with admin.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (id, email, email_normalized, email_verified_at) "
+                    "VALUES (:o, :e, :e, now())"
+                ),
+                {"o": owner, "e": f"m44-{owner.hex[:8]}@example.com"},
+            )
+            connection.execute(
+                text("INSERT INTO classes (owner_id, title) VALUES (:o, 'm44')"), {"o": owner}
+            )
+        with pytest.raises(IntegrityError), admin.begin() as connection:
+            connection.execute(
+                text("UPDATE classes SET interpretation = CAST(:v AS jsonb) WHERE owner_id = :o"),
+                {"v": '{"x": "' + "a" * 32768 + '"}', "o": owner},
+            )
+        command.downgrade(config, "0043_retire_soundless_flag")
+        with admin.connect() as connection:
+            assert connection.execute(column).first() is None
+        command.upgrade(config, "head")
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text("DELETE FROM users WHERE id = :o"), {"o": owner})
+        admin.dispose()

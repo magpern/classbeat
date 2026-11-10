@@ -41,6 +41,7 @@ pytest_plugins = [
     "optools",
     "designtools",
     "revisetools",
+    "interprettools",
     "savetools",
     "updatetools",
     "playlisttools",

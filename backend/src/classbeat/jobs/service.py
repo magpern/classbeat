@@ -23,6 +23,7 @@ from classbeat.db import user_session
 from classbeat.flags import effective as flags
 from classbeat.jobs import user
 from classbeat.jobs.credits import CreditLedger, QuotaRefused
+from classbeat.jobs.hold import CreateHold
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import SONG_KIND_NAMES, Approving, KindRegistry
 
@@ -132,6 +133,48 @@ async def create(
             if name != KEY_UNIQUE or retry:
                 raise
     raise AssertionError("unreachable")  # pragma: no cover
+
+
+async def create_held(
+    factory: Factory,
+    ctx: UserContext,
+    new: user.NewJob,
+    *,
+    limit: int | user.JobLimitPolicy,
+    ledger: CreditLedger,
+    hold: CreateHold,
+) -> CreateResult:
+    """``create`` with the caller's ``hold`` (``classbeat.jobs.hold``) in the same transaction:
+    the owner lock first, then ``hold.before``, then ``user.create`` in a savepoint, and on a
+    refusal ``hold.refused`` once that savepoint is rolled back (a quota refusal and the backstop
+    constraints included), so the refusal it records commits with the read that led to it. The
+    owner lock is held throughout, so the idempotency key cannot race and no retry is needed."""
+    require_context(ctx)
+    async with user_session(factory, ctx) as db:
+        await user.lock_owner(db, ctx)
+        early = await hold.before(db)
+        if early is not None:
+            return CreateResult(False, None, early.reason, dict(early.counts))
+        savepoint = await db.begin_nested()
+        counts: Mapping[str, int | str] = {}
+        try:
+            done = await user.create(db, ctx, new, limit=limit, ledger=ledger)
+        except QuotaRefused as refused:
+            await savepoint.rollback()
+            reason, counts = "quota", refused.detail()
+        except IntegrityError as error:
+            await savepoint.rollback()
+            name = _constraint(error)
+            if name not in (OPEN_PER_CLASS, INPUT_SIZE):
+                raise
+            reason = "class_busy" if name == OPEN_PER_CLASS else "too_large"
+        else:
+            await savepoint.commit()
+            if done.job_id is not None:
+                return CreateResult(done.created, await _view(db, ctx, done.job_id))
+            reason, counts = done.reason or "invalid_input", done.counts
+        held = await hold.refused(db, reason, counts)
+        return CreateResult(False, None, held.reason, dict(held.counts))
 
 
 async def get(factory: Factory, ctx: UserContext, job_id: UUID) -> JobView | None:

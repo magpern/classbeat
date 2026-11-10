@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat.agent.brief import Brief
 from classbeat.classes import match_view, seams, song_views
 from classbeat.classes.dismissals import set_dismissed as set_dismissed  # the routes' name
+from classbeat.classes.kinds import CLASS_SPORT_SQL, SONG_DESIGN_KIND
 from classbeat.classes.selection import belongs_to_draft
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
@@ -44,13 +45,7 @@ SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
         WHERE d.owner_id = c.owner_id AND d.class_id = c.id AND d.detached_at IS NOT NULL
     ) AS detached_count,
     coalesce(pf.profile, '[]'::jsonb) AS profile,
-    -- ADR 0018 section 1: the stored brief's sport, else (a class still in its first design) the
-    -- newest design job's, as ``design.sport`` reads it; anything but 'running' is cycling.
-    CASE WHEN coalesce(c.brief, (SELECT j.input -> 'brief' FROM jobs j
-            WHERE j.owner_id = c.owner_id AND j.class_id = c.id
-                AND j.kind IN ('design_draft', 'design_with_songs')
-            ORDER BY j.created_at DESC LIMIT 1)) ->> 'sport' = 'running'
-        THEN 'running' ELSE 'cycling' END AS sport,
+    {CLASS_SPORT_SQL} AS sport,
     -- ADR 0007 amendment item 10 (#530): only a stored source 'none' is soundless.
     coalesce(c.music_source ->> 'source' = 'none', false) AS soundless,
     CASE WHEN jsonb_typeof(cur.provenance -> 'tss_approximate') = 'boolean'
@@ -123,8 +118,8 @@ _REVISIONS = text(_REVISION_SELECT.format(body=""))
 _REVISION = text(_REVISION_SELECT.format(body=", r.content, r.music, r.provenance"))
 
 _BRIEF = text(
-    "SELECT coalesce(c.brief, (SELECT j.input -> 'brief' FROM jobs j "
-    "WHERE j.owner_id = c.owner_id AND j.class_id = c.id AND j.kind = 'design_with_songs' "
+    "SELECT coalesce(c.brief, (SELECT j.input -> 'brief' FROM jobs j "  # noqa: S608 - constants only
+    f"WHERE j.owner_id = c.owner_id AND j.class_id = c.id AND j.kind = '{SONG_DESIGN_KIND}' "
     "ORDER BY j.created_at DESC LIMIT 1)) FROM classes c "
     "WHERE c.owner_id = :owner_id AND c.id = :class_id"
 )
