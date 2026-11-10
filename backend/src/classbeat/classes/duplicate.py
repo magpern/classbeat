@@ -66,6 +66,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat import auth, quota
 from classbeat.agent.beat_one import MAX_PER_CLASS
 from classbeat.agent.records import Provenance
+from classbeat.agent.stated_layer import StatedLayer
 from classbeat.classes.duplicate_gates import flag_refusal
 from classbeat.classes.duplicate_music import (
     HASH,
@@ -240,9 +241,8 @@ def provenance_copy(
     )
     out = built.model_dump(mode="json")
     if stated is not None:
-        out["stated"] = (
-            stated  # as the source stored it (checked above), not with defaults filled in
-        )
+        StatedLayer.model_validate(stated)  # strictly, before it is copied (ValidationError)
+        out["stated"] = stated  # as the source stored it, not with defaults filled in
     return out
 
 

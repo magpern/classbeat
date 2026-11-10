@@ -1,5 +1,5 @@
 """What a duplicate copies of the source class's music (ADR 0007 amendment of 2026-11-03, part D;
-issue #547; split out of ``classes.duplicate`` by #907; pure).
+issue #547; split out of ``classes.duplicate`` by #907). No database or network access.
 
 Only the user's own playlist or mix choice is copied (a class on picked songs names the source
 class's playlists and is not), the revision's music loses the source class's song list, and the

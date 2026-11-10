@@ -104,3 +104,37 @@ async def test_a_duplicate_of_a_class_without_a_layer_is_as_before(renv: ReviseE
     assert provenance(copied)["origin"] == "duplicate"
     brief = renv.sql("SELECT brief FROM classes WHERE id = :c", c=copy_id).scalar_one()
     assert brief["length_min"] == 30
+
+
+async def test_a_revision_whose_layer_sits_on_its_parent_is_duplicated_with_it(
+    renv: ReviseEnv,
+) -> None:
+    """A refit (``origin: beat_one``) records no layer: the copy walks past it to the 25."""
+    class_id, second = await revised_to_25(renv)
+    refit = UUID(int=907)
+    # A refit keeps how the content was made and records no layer and no interpretation.
+    refit_provenance = {
+        k: v
+        for k, v in provenance(second).items()
+        if k not in ("stated", "interpretation", "duplicated_from")
+    } | {"origin": "beat_one", "base_revision_id": str(second.id)}
+    renv.sql(
+        "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
+        "music, provenance, job_id, parent_id) SELECT :id, owner_id, class_id, number + 1, kind, "
+        "content, content_hash, music, CAST(:p AS jsonb), job_id, id FROM class_revisions "
+        "WHERE id = :base",
+        id=refit,
+        p=json.dumps(refit_provenance),
+        base=second.id,
+    )
+    row = renv.sql("SELECT * FROM class_revisions WHERE id = :r", r=refit).one()
+    assert "stated" not in provenance(row)
+    copy_id = await duplicate(renv, class_id, row)
+    [first] = renv.revisions(copy_id)
+    assert provenance(first)["stated"]["length_min"] == 25
+
+    providers = use(renv, interpreted({}), submit(easier(twenty_five()), {"accepted": True}))
+    job_id = await revise(renv, copy_id, first.id, "Make the start easier.")
+    assert renv.denv.ops.row(job_id).state == "completed"
+    assert refusals(renv, job_id) == []
+    assert json.loads(providers[0].sent[0].spec.first_message)["current"]["length_min"] == 25
