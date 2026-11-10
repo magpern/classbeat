@@ -41,6 +41,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.context import UserContext, require_context
+from classbeat.jobs.class_rows import insert_class
 from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.events import notify_event, validated_payload
 from classbeat.jobs.kinds import Refused
@@ -61,7 +62,6 @@ _CLASS_OPEN = text(
     "SELECT 1 FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "
     "AND state IN ('queued', 'running', 'waiting_for_approval')"
 )
-_NEW_CLASS = text("INSERT INTO classes (id, owner_id, title) VALUES (:id, :owner_id, :title)")
 _NEW_JOB = text(
     "INSERT INTO jobs (id, owner_id, kind, state, class_id, input, idempotency_key, "
     "request_hash, credit_state, next_seq) VALUES (:id, :owner_id, :kind, 'queued', :class_id, "
@@ -232,7 +232,7 @@ async def create(
         stored, after_insert = admitted.input, admitted.after_insert
     if class_id is None:
         class_id = uuid.uuid4()
-        await db.execute(_NEW_CLASS, {**owner, "id": class_id, "title": new.title})
+        await insert_class(db, ctx.user_id, class_id, new.title)
     job_id = uuid.uuid4()
     await db.execute(
         _NEW_JOB,

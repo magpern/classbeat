@@ -17,8 +17,9 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parents[1] / "src" / "classbeat"
 
 ALLOWED: dict[str, set[str]] = {
-    # The jobs API's create transaction: a design job's new class (ADR 0005 section 2).
-    "classes": {"jobs/user.py", "classes/duplicate.py"},
+    # The jobs API's create transaction: a job's new class (ADR 0005 section 2), its SQL in
+    # ``jobs/class_rows.py`` (split out of ``jobs/user.py``, MA1b-3).
+    "classes": {"jobs/class_rows.py", "classes/duplicate.py"},
     "class_revisions": {
         "design/revision.py",  # design_draft and revise_draft, the final fenced store
         "songs/song_list.py",  # the song pick's song list, the final fenced store
