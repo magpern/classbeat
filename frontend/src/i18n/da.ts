@@ -1820,7 +1820,7 @@ const da: Catalogue = {
   'class.game.lengthSec': '{seconds} s',
   'class.game.lengthMin': '{minutes} min',
   'class.game.lengthMinSec': '{minutes} min {seconds} s',
-  'class.game.licence': 'Spil kræver en studio med en kommerciel MOWL-licens. Det kontrolleres ikke her.',
+  'class.game.licence': 'Spil kræver et studie med en kommerciel MOWL-licens. Det kontrolleres ikke her.',
   'class.game.img.racetrack': 'Racetrack: to hold, der kører omgange på en bane',
   'class.game.img.power_pull': 'Power Pull: to hold i tovtrækning på watt pr. kilo',
   'class.game.img.fast_lane': 'Fast Lane: hold, der konkurrerer om den højeste gennemsnitsfart',

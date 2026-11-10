@@ -1940,7 +1940,7 @@ const sv: Catalogue = {
   'interp.reason.count_off': 'Så många fick inte plats i passet.',
   'interp.reason.game_type': 'Det spelet känner vi inte till.',
   'interp.reason.game_missing': 'Spelet utelämnades.',
-  'interp.reason.game_placement': 'Spelet passade inte där du bad om.',
+  'interp.reason.game_placement': 'Spelet passade inte där du bad om det.',
   'interp.reason.game_duration': 'Speltiden passade inte.',
   'interp.reason.needs_mowl_playlist': 'Löppass kräver en spellista från din MOWL-musik.',
   'interp.reason.other': 'Det gick inte att göra som du bad om.',
@@ -1972,8 +1972,8 @@ const sv: Catalogue = {
     'Dina låtar valdes åt dig. Byt låtar ersätter några av dem eller alla, och du godkänner den nya listan först.',
   'music.change.goSongs': 'Gå till Byt låtar',
   'music.change.newDesign':
-    'Den här musiken betyder en ny utformning. Din begäran och det här valet går till startsidan, och det här passet förblir som det är.',
-  'music.change.startAgain': 'Öppna startsidan med den här musiken',
+    'Den här musiken betyder en ny utformning. Din begäran och det här valet går till startskärmen, och det här passet förblir som det är.',
+  'music.change.startAgain': 'Öppna startskärmen med den här musiken',
 }
 
 export default sv
