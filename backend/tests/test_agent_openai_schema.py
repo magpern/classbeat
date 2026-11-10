@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from agentfake import analysed, brief, good_draft
 from classbeat.agent import DesignContext, design_stage
 from classbeat.agent.choose_songs import choose_stage
+from classbeat.agent.interpret import InterpretContext, interpret_stage
 from classbeat.agent.pick_pool import pool_stage
 from classbeat.agent.providers.openai_common import strict_schema, strip_added_nulls, tool_input
 from classbeat.agent.revise import ReviseContext, revise_stage
@@ -29,6 +30,24 @@ SAMPLES: dict[str, list[dict[str, Any]]] = {
     "SearchInput": [{"query": "rock"}, {"query": "rock", "year_from": 1990, "year_to": 2000}],
     "SongPool": [entries((0, "warmup"), (1, "build"))],
     "GetPoolInput": [{}],
+    "InterpretedRequest": [
+        {},
+        {
+            "sport": {"value": "cycling", "origin": "explicit", "quote": "spin"},
+            "length_min": {"value": 45, "origin": "inferred"},
+            "music": {"value": 2, "origin": "explicit"},
+            "games": [
+                {"type": "any", "origin": "explicit"},
+                {
+                    "type": "power_pull",
+                    "origin": "explicit",
+                    "placement": {"relation": "after", "anchor": "climb", "ordinal": 2},
+                    "duration_sec": 30,
+                },
+                {"type": "overflow", "origin": "inferred", "placement": {"position": "late"}},
+            ],
+        },
+    ],
     "SongList": [
         songs(("pool", 0, "warmup"), ("pool", 1, "cooldown")),
         songs(("pool", 0, "warmup"), note="A steady build."),
@@ -52,6 +71,7 @@ def _stages(monkeypatch: pytest.MonkeyPatch) -> list[Stage]:
         revise_stage(revise),
         pool_stage(w.pool),
         choose_stage(w.choose_context(POOL_14)),
+        interpret_stage(InterpretContext("")),
     ]
 
 
@@ -87,6 +107,9 @@ def as_strict_mode_sends(value: Any, node: Mapping[str, Any], root: Mapping[str,
     """What a model in strict mode sends for ``value``: every property present, ``null`` for each
     optional one the input left out (walked along the **original** schema)."""
     node = _resolve(node, root)
+    if value is not None and "anyOf" in node:  # an optional object or list: its non-null branch
+        branch = next(b for b in node["anyOf"] if b.get("type") != "null")
+        return as_strict_mode_sends(value, branch, root)
     if isinstance(value, dict) and "properties" in node:
         out = {
             k: as_strict_mode_sends(v, node["properties"][k], root)
@@ -122,7 +145,13 @@ def _matches_strict(value: Any, node: Mapping[str, Any], root: Mapping[str, Any]
 
 def test_every_tool_of_every_stage_has_samples(monkeypatch: pytest.MonkeyPatch) -> None:
     tools = _tools(monkeypatch)
-    assert {stage.name for stage, _ in tools} == {"design", "revise", "pick_pool", "choose_songs"}
+    assert {stage.name for stage, _ in tools} == {
+        "design",
+        "revise",
+        "pick_pool",
+        "choose_songs",
+        "interpret",
+    }
     missing = sorted({t.input_model.__name__ for _, t in tools} - set(SAMPLES))
     assert missing == []
 

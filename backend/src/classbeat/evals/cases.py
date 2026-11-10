@@ -13,7 +13,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from classbeat.agent.schemas import Brief, BriefText, Game, RunningDraft, WorkoutDraft
+from classbeat.agent.brief import Brief
+from classbeat.agent.schemas import BriefText, Game, RunningDraft, WorkoutDraft
 from classbeat.evals.music import MusicSpec
 
 Range = tuple[float, float]

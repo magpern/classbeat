@@ -17,7 +17,7 @@ The eval suite's running cases (E1, issue #465) run through these paths, so this
 ``evals.suite.RULE_SOURCES``: a change to it is a new suite version.
 """
 
-from classbeat.agent.schemas import Brief
+from classbeat.agent.brief import Brief
 from classbeat.design.guidance import RuleSet, rule_set_for
 from classbeat.design.rules import Profile, default_registry, select_profile
 from classbeat.design.selection import resolve_class_type, select_profile_for_brief

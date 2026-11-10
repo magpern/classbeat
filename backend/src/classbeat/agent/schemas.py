@@ -13,7 +13,7 @@ The brief of the new-class form (``Brief``) is ``classbeat.agent.brief``.
 """
 
 import unicodedata
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import (
     AfterValidator,
@@ -23,21 +23,7 @@ from pydantic import (
     model_validator,
 )
 
-if TYPE_CHECKING:
-    from classbeat.agent.brief import Brief as Brief
-
 STRICT = ConfigDict(extra="forbid", strict=True)
-
-
-def __getattr__(name: str) -> Any:
-    """``Brief`` moved to ``classbeat.agent.brief`` (which imports this module). The files the
-    eval suite's digest covers (``evals.suite.RULE_SOURCES``) still import it from here, because
-    editing them would be a new suite; this lazy alias keeps them unchanged."""
-    if name == "Brief":
-        from classbeat.agent.brief import Brief as brief
-
-        return brief
-    raise AttributeError(name)
 
 
 def clean_text(value: str) -> str:

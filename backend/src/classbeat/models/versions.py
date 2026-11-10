@@ -2,7 +2,8 @@
 
 - ``running_prompt_versions(group)``: the ``prompt_version`` of each stage of the stage group as
   this code builds it (``design``: ``design``, ``revise``, ``running_design`` and
-  ``running_revise``; ``songs``: ``pick_pool`` and ``choose_songs``). A stage's prompt version is
+  ``running_revise``, ``interpret`` (ADR 0029 section 4); ``songs``: ``pick_pool`` and
+  ``choose_songs``). A stage's prompt version is
   the SHA-256 of its system prompt and tool definitions only (``classbeat.agent.stage``), never of
   a job's data, so the stages are built here with placeholder contexts whose fields no definition
   reads
@@ -47,6 +48,7 @@ from typing import Any, Final, cast
 
 from classbeat.agent.choose_songs import ChooseContext, choose_stage
 from classbeat.agent.design import DesignContext, design_stage
+from classbeat.agent.interpret import InterpretContext, interpret_stage
 from classbeat.agent.pick_pool import PoolContext, pool_stage
 from classbeat.agent.revise import ReviseContext, revise_stage
 from classbeat.agent.running import running_design_stage, running_revise_stage
@@ -71,6 +73,7 @@ GROUP_STAGES: Final[dict[str, tuple[str, ...]]] = {
         "running_revise",
         "soundless_design",
         "soundless_revise",
+        "interpret",
     ),
     "songs": ("pick_pool", "choose_songs"),
 }
@@ -91,6 +94,7 @@ def _stages() -> tuple[Stage, ...]:
         revise_stage(cast(ReviseContext, blank)),
         pool_stage(cast(PoolContext, blank)),
         choose_stage(cast(ChooseContext, blank)),
+        interpret_stage(InterpretContext("")),
     )
 
 

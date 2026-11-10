@@ -32,7 +32,8 @@ from typing import Any, Final
 from mowl.workout import mmss
 
 from classbeat.agent import model_input
-from classbeat.agent.schemas import Brief, clean_text
+from classbeat.agent.brief import Brief
+from classbeat.agent.schemas import clean_text
 
 NO_MUSIC: Final = "This class has no music: time every change by the clock and the brief alone."
 FIRST_MESSAGE: Final = (

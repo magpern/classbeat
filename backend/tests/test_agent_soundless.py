@@ -345,5 +345,5 @@ def test_the_soundless_revise_prompt_version_is_its_own_and_in_the_design_group(
     others = [v for k, v in versions.items() if k != "soundless_revise"]
     assert versions["soundless_revise"] not in others
     assert "soundless_revise" in GROUP_STAGES["design"]
-    assert len(GROUP_STAGES["design"]) == 6
+    assert len(GROUP_STAGES["design"]) == 7
     assert REVISE_SYSTEM_PROMPT != SYSTEM_PROMPT

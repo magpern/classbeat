@@ -9,7 +9,7 @@ invents ``hiit`` or ``journey``: those are chosen by the user or not at all.
 from dataclasses import dataclass
 from typing import Literal
 
-from classbeat.agent.schemas import Brief
+from classbeat.agent.brief import Brief
 from classbeat.design.rules import Profile, select_profile
 
 
