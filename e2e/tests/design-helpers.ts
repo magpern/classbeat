@@ -94,6 +94,7 @@ export async function chooseLength(form: Locator, minutes: number): Promise<void
 
 export async function startDesign(page: Page, title: string, playlistName: string): Promise<string> {
   await page.getByRole('link', { name: 'New class' }).click()
+  await page.getByRole('link', { name: /^Advanced/ }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill(title)
   await choosePlaylist(form, playlistName)

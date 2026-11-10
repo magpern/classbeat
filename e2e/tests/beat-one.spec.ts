@@ -196,7 +196,7 @@ test('a Swedebeat mix class: correct one song, apply and save', async ({ page })
   const mowl = connections.connections.find((c) => c.provider === 'mowl')
   seedCachedMix(ownerIdForEmail(email), mowl!.id, CACHED_MIX_ID)
 
-  await page.goto('/classes/new')
+  await page.goto('/classes/new/advanced')
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill('E2E beat one mix')
   await form.getByRole('radio', { name: 'Swedebeat mix', exact: true }).click()

@@ -64,6 +64,7 @@ function expectRunningProgram(program: FakeProgram, script: ModelScript): void {
 test('the new-class form: Running hides the bike-only knobs, Cycling brings them back', async ({ page }) => {
   await signedInWithMowl(page, 'run-form')
   await page.getByRole('link', { name: 'New class' }).click()
+  await page.getByRole('link', { name: /^Advanced/ }).click()
   const form = page.getByRole('form', { name: 'New class' })
   const sport = form.getByRole('radiogroup', { name: 'Sport' })
   await expect(sport.getByRole('radio', { name: 'Cycling' })).toBeChecked()
@@ -166,6 +167,7 @@ test('with the admin switch off the form has no Running control', async ({
 }) => {
   await signedInWithMowl(page, 'run-off')
   await page.getByRole('link', { name: 'New class' }).click()
+  await page.getByRole('link', { name: /^Advanced/ }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await expect(form.getByRole('radio', { name: 'Running', exact: true })).toBeVisible()
 

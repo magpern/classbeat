@@ -50,7 +50,7 @@ test('the picker shows the covers of the pinned shapes and initials for the rest
   const before = fakeState().requests.length
 
   const cover = page.waitForResponse((response) => response.url().endsWith('/api/music/playlist-covers'))
-  const document = await page.goto('/classes/new')
+  const document = await page.goto('/classes/new/advanced')
   const covers = await cover
   expect(covers.status()).toBe(200)
   expect(covers.headers()['cache-control']).toBe('no-store')
@@ -104,7 +104,7 @@ test('without a Spotify connection the picker asks for no covers', async ({ page
   page.on('request', (request) => {
     if (request.url().includes('/api/music/playlist-covers')) asked.push(request.url())
   })
-  await page.goto('/classes/new')
+  await page.goto('/classes/new/advanced')
   await expect(page.getByRole('radio', { name: 'E2E Hill Climb' })).toBeVisible()
   await expect(page.getByRole('radiogroup', { name: 'Playlist' }).locator('img')).toHaveCount(0)
   expect(asked).toEqual([])

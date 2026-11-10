@@ -93,6 +93,7 @@ export async function designAndOpen(page: Page, title: string, playlistName: str
  *  fill it for the recorded running script (30 minutes, one playlist) and start the design. */
 export async function startRunningDesign(page: Page, title: string, playlistName: string): Promise<string> {
   await page.getByRole('link', { name: 'New class' }).click()
+  await page.getByRole('link', { name: /^Advanced/ }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByRole('radio', { name: 'Running', exact: true }).click()
   await form.getByLabel('Class name').fill(title)
@@ -129,6 +130,7 @@ export async function startSoundlessDesign(
   beforeStart: () => void = () => undefined,
 ): Promise<string> {
   await page.getByRole('link', { name: 'New class' }).click()
+  await page.getByRole('link', { name: /^Advanced/ }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByRole('radio', { name: 'No music', exact: true }).click()
   await form.getByLabel('Class name').fill(title)

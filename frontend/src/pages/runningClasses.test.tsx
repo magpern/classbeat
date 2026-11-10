@@ -36,7 +36,7 @@ afterEach(() => {
 describe('the new-class form and running', () => {
   it('has no sport control and no running copy while the flag is off', async () => {
     fakeApi(newClassRoutes({}))
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     expect(screen.queryByRole('radio', { name: 'Running' })).toBeNull()
     expect(screen.queryByText('Sport')).toBeNull()
@@ -46,7 +46,7 @@ describe('the new-class form and running', () => {
 
   it('offers Cycling and Running with Cycling chosen when the flag is on', async () => {
     fakeApi(newClassRoutes({ running_enabled: true }))
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     expect(screen.getByRole('radio', { name: 'Cycling' })).toBeChecked()
     expect(screen.getByRole('radio', { name: 'Running' })).not.toBeChecked()
@@ -60,7 +60,7 @@ describe('the new-class form and running', () => {
         swedebeat: { enabled: false, available: false },
       }),
     )
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Tempo run' } })
     fireEvent.click(screen.getByRole('radio', { name: 'Running' }))
     expect(screen.getByRole('radio', { name: 'Running' })).toBeChecked()
@@ -92,7 +92,7 @@ describe('the new-class form and running', () => {
 
   it('goes back to the cycling form and brief when Cycling is chosen again', async () => {
     const api = fakeApi(newClassRoutes({ running_enabled: true }))
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Back' } })
     fireEvent.click(screen.getByRole('radio', { name: 'Running' }))
     fireEvent.click(screen.getByRole('radio', { name: 'Cycling' }))

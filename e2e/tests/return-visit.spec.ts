@@ -86,7 +86,7 @@ test('a design on a Swedebeat mix that finished while the user was away opens as
   expect(mowl?.id).toBeTruthy()
   seedCachedMix(ownerIdForEmail(email), mowl!.id, CACHED_MIX_ID)
 
-  await page.goto('/classes/new')
+  await page.goto('/classes/new/advanced')
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill('E2E away mix')
   await form.getByRole('radio', { name: 'Swedebeat mix', exact: true }).click()

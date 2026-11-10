@@ -21,6 +21,7 @@ import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
 import { UncertainAttach } from '../classes/UncertainAttach'
 import { PLAYLIST_OPERATIONS, UncertainPlaylist } from './UncertainPlaylist'
+import { startAgainPath } from '../../lib/startRequest'
 
 const isPlaylistWrite = (operation: Operation) => PLAYLIST_OPERATIONS.includes(operation.kind)
 const isOtherWrite = (operation: Operation) => !isPlaylistWrite(operation)
@@ -94,7 +95,7 @@ function usePickAgain(job: Job) {
     void action.run(async () => {
       const kept = recallPick(job.id)
       if (kept === null) {
-        navigate('/classes/new')
+        navigate(startAgainPath(job.classId))
         return
       }
       const ids = await currentConnectionIds()

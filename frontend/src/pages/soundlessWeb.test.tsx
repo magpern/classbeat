@@ -39,7 +39,7 @@ describe('the new-class form and No music', () => {
   it('offers no such choice, and no Music group, while the effective flag is off or absent', async () => {
     for (const connections of [{}, { soundless_enabled: false }]) {
       fakeApi(newClassRoutes(connections))
-      const view = renderAt('/classes/new')
+      const view = renderAt('/classes/new/advanced')
       await screen.findByLabelText('Class name')
       expect(screen.queryByRole('radio', { name: 'No music' })).toBeNull()
       expect(screen.queryByText('Music', { selector: 'span' })).toBeNull()
@@ -50,7 +50,7 @@ describe('the new-class form and No music', () => {
 
   it('offers it, not chosen, with the playlist choice still the default', async () => {
     fakeApi(newClassRoutes({ soundless_enabled: true }))
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     expect(screen.getByRole('radio', { name: 'No music' })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: 'My playlist' })).toBeChecked()
@@ -64,7 +64,7 @@ describe('the new-class form and No music', () => {
         swedebeat: { enabled: true, available: true, uses_swedebeat: true },
       }),
     )
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Silent ride' } })
     // With a playlist the picker and its hint are on the page, so the checks below can fail.
     expect(screen.getByText('Added to your MOWL music, private to you.')).toBeInTheDocument()
@@ -88,7 +88,7 @@ describe('the new-class form and No music', () => {
 
   it('still asks for a playlist when another choice is picked again', async () => {
     const api = fakeApi(newClassRoutes({ soundless_enabled: true }))
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Back' } })
     fireEvent.click(screen.getByRole('radio', { name: 'No music' }))
     fireEvent.click(screen.getByRole('radio', { name: 'My playlist' }))
@@ -99,7 +99,7 @@ describe('the new-class form and No music', () => {
 
   it('shows the form with No music even when MOWL lists no playlists', async () => {
     fakeApi(newClassRoutes({ soundless_enabled: true }, []))
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     expect(await screen.findByLabelText('Class name')).toBeInTheDocument()
     expect(screen.queryByText('No playlists found')).toBeNull()
     expect(screen.getByRole('radio', { name: 'No music' })).toBeInTheDocument()
@@ -107,13 +107,13 @@ describe('the new-class form and No music', () => {
 
   it('keeps the No playlists found card while the flag is off', async () => {
     fakeApi(newClassRoutes({}, []))
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     expect(await screen.findByText('No playlists found')).toBeInTheDocument()
   })
 
   it('is hidden for Running, and a Running class never sends none', async () => {
     const api = fakeApi(newClassRoutes({ soundless_enabled: true, running_enabled: true }))
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Run' } })
     fireEvent.click(screen.getByRole('radio', { name: 'No music' }))
     fireEvent.click(screen.getByRole('radio', { name: 'Running' }))
@@ -140,7 +140,7 @@ describe('the new-class form and No music', () => {
       ['soundless_not_evaluated', 'Classes with no music are not ready for your plan yet. Choose a playlist, or try again later.'],
     ] as const) {
       fakeApi({ ...newClassRoutes({ soundless_enabled: true }), 'POST /api/jobs': () => reason(409, why) })
-      const view = renderAt('/classes/new')
+      const view = renderAt('/classes/new/advanced')
       fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Silent' } })
       fireEvent.click(screen.getByRole('radio', { name: 'No music' }))
       fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
@@ -152,7 +152,7 @@ describe('the new-class form and No music', () => {
 
   it('keeps the Running sentence for feature_off when the form did not ask for No music', async () => {
     fakeApi({ ...newClassRoutes({ soundless_enabled: true }), 'POST /api/jobs': () => reason(409, 'feature_off') })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Mixed' } })
     fireEvent.click(screen.getByRole('radio', { name: 'Tempo' }))
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))

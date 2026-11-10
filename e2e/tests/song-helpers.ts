@@ -24,6 +24,7 @@ export async function readyToPick(page: Page, clientId: string = CLIENT_A): Prom
 export async function startPick(page: Page, title: string, script: ModelScript = 'e2e_pick'): Promise<string> {
   useModelScript(script)
   await page.getByRole('link', { name: 'New class' }).click()
+  await page.getByRole('link', { name: /^Advanced/ }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill(title)
   await form.getByRole('radio', { name: 'Pick for me', exact: true }).click()

@@ -35,7 +35,7 @@ async function signedInWithMowl(page: import('@playwright/test').Page, tag: stri
 }
 
 async function startMixDesign(page: import('@playwright/test').Page, title: string, mixName: string): Promise<string> {
-  await page.goto('/classes/new')
+  await page.goto('/classes/new/advanced')
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill(title)
   await form.getByRole('radio', { name: 'Swedebeat mix', exact: true }).click()
@@ -51,7 +51,7 @@ async function startMixDesign(page: import('@playwright/test').Page, title: stri
 test('lists mixes in the picker and designs on a cached map', async ({ page }) => {
   useModelScript('e2e_swedebeat_mix')
   const email = await signedInWithMowl(page, 'sb-mix-cached')
-  await page.goto('/classes/new')
+  await page.goto('/classes/new/advanced')
   await page.getByRole('radio', { name: 'Swedebeat mix', exact: true }).click()
   await expect(page.getByRole('radio', { name: new RegExp(CACHED_MIX_NAME) })).toBeVisible()
   await expect(page.getByRole('radio', { name: new RegExp(UNCACHED_MIX_NAME) })).toBeVisible()

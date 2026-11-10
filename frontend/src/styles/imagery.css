@@ -140,3 +140,11 @@
   aspect-ratio: 16 / 9;
   border-radius: var(--cb-radius-lg);
 }
+
+/* A MOWL game illustration on a card of the start screen's game ideas (issue 882): the card's width. */
+.slot--game-card {
+  flex: none;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--cb-radius-lg);
+}

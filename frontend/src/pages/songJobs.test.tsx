@@ -263,7 +263,7 @@ describe('the new-class form', () => {
       'GET /api/connections': connectionsBody(false),
       'GET /api/music/mowl-playlists': { playlists: [{ spotify_playlist_id: 'AbCdEfGhIjKlMnOpQrStUv', name: 'Hills' }] },
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     await screen.findByLabelText('Class name')
     expect(screen.queryByRole('radio', { name: 'Pick for me' })).toBeNull()
   })
@@ -275,7 +275,7 @@ describe('the new-class form', () => {
       'GET /api/connections': connectionsBody(false),
       'GET /api/connections/spotify': { ...(READY['GET /api/connections/spotify'] as object), status: 'not_connected' },
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     const pick = await screen.findByRole('radio', { name: 'Pick for me' })
     expect(pick).toBeDisabled()
     expect(screen.getByRole('link', { name: 'Connect Spotify' })).toHaveAttribute('href', '/en/account/spotify')
@@ -287,14 +287,14 @@ describe('the new-class form', () => {
       'GET /api/music/mowl-playlists': ONE,
       'GET /api/connections/spotify': { ...(READY['GET /api/connections/spotify'] as object), pool_consent: false },
     })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     expect(await screen.findByRole('radio', { name: 'Pick for me' })).toBeDisabled()
     expect(screen.getByText(/Allow the working playlist in your Spotify settings first/)).toBeInTheDocument()
   })
 
   it('starts a pick without a playlist, with both own connection ids', async () => {
     const api = fakeApi({ ...READY, 'POST /api/jobs': () => json(NEW_JOB, 201), [`GET /api/jobs/${NEW_JOB.id}`]: NEW_JOB, [`GET /api/jobs/${NEW_JOB.id}/events`]: openStream })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Songs class' } })
     expect(screen.getByLabelText('Playlist')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: 'Pick for me' }))
@@ -317,7 +317,7 @@ describe('the new-class form', () => {
 
   it('words the refusals of a pick', async () => {
     fakeApi({ ...READY, 'POST /api/jobs': () => reason(409, 'pool_busy') })
-    renderAt('/classes/new')
+    renderAt('/classes/new/advanced')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Songs class' } })
     fireEvent.click(screen.getByRole('radio', { name: 'Pick for me' }))
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
