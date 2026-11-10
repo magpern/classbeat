@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat import quota
 from classbeat.context import UserContext
 from classbeat.jobs.credits import CreditLedger
+from classbeat.jobs.hold import CreateHold
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import JobKind
 from classbeat.jobs.user import JobLimitPolicy
@@ -50,6 +51,7 @@ class Enqueued:
     created: bool
     reason: str | None = None
     counts: Mapping[str, int | str] = field(default_factory=dict[str, int | str])
+    state: str | None = None  # the job's state when it was read, in the creating transaction
 
 
 class JobEnqueue(Protocol):
@@ -66,4 +68,5 @@ class JobEnqueue(Protocol):
         ledger: CreditLedger,
         limit: JobLimitPolicy,
         consumes_credit: bool,
+        hold: CreateHold | None = None,
     ) -> Awaitable[Enqueued]: ...

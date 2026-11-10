@@ -50,13 +50,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
 from classbeat.agent.stored_draft import stored_draft
 from classbeat.context import UserContext
 from classbeat.jobs import service
+from classbeat.jobs.bound_admit import INPUT_MAX_BYTES, bound_admit
 from classbeat.jobs.credits import CreditLedger
+from classbeat.jobs.hold import CreateHold
 from classbeat.jobs.http import (
     IDEMPOTENCY_KEY,
     Enqueued,
@@ -66,15 +67,14 @@ from classbeat.jobs.http import (
     job_limit,
 )
 from classbeat.jobs.inputs import JobInput, jsonb_size
-from classbeat.jobs.kinds import KIND_NAME, KINDS, JobKind, KindRegistry, Refused
+from classbeat.jobs.kinds import KIND_NAME, KINDS, JobKind, KindRegistry
 from classbeat.jobs.progress import read_revision
 from classbeat.jobs.sentences import job_sentence_of
-from classbeat.jobs.user import Admission, CreateAdmit, JobLimitPolicy, NewJob
+from classbeat.jobs.user import JobLimitPolicy, NewJob
 from classbeat.usage import job_usage
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
-INPUT_MAX_BYTES = 16384  # jobs.input's check (migration 0004), measured as jsonb prints it
 # A request body of the jobs API is read only up to this (#115 item 8). The app-wide cap
 # (``classbeat.bodylimit``, #351) is equal and answers first; this is the second line.
 BODY_MAX_BYTES = 65536
@@ -215,27 +215,6 @@ async def _body(request: Request) -> bytes:
     return b"".join(chunks)
 
 
-def _bound_admit(
-    kind: JobKind, parsed: BaseModel, *, max_bytes: int = INPUT_MAX_BYTES
-) -> CreateAdmit | None:
-    """The kind's ``admit`` for this input, run by ``user.create`` under the owner lock. What it
-    accepts is validated by the kind's model again and stored in place of the browser's input."""
-    admit = kind.admit
-    if admit is None:
-        return None
-
-    async def run(db: AsyncSession, ctx: UserContext) -> Admission | Refused:
-        result = await admit(db, ctx, parsed)
-        if isinstance(result, Refused):
-            return result
-        stored = kind.admitted_input(parsed, result.fields).model_dump(mode="json")
-        if jsonb_size(stored) > max_bytes:
-            return Refused("too_large")
-        return Admission(canonical_json(stored).decode("utf-8"), result.after_insert)
-
-    return run
-
-
 @router.post(
     "",
     status_code=201,
@@ -283,7 +262,7 @@ async def create_job(
         idempotency_key=idempotency_key,
         request_hash=hashlib.sha256(canonical_json({"kind": kind.name, "input": stored})).digest(),
         consumes_credit=kind.consumes_credit,
-        admit=_bound_admit(kind, parsed),
+        admit=bound_admit(kind, parsed),
     )
     result = await service.create(
         request.app.state.session_factory, ctx, new, limit=limit, ledger=ledger
@@ -306,12 +285,14 @@ async def enqueue(
     ledger: CreditLedger,
     limit: JobLimitPolicy,
     consumes_credit: bool,
+    hold: CreateHold | None = None,
 ) -> Enqueued:
-    """Create one job for the authenticated user through ``service.create``.
+    """Create one job for the authenticated user through ``service.create`` (with ``hold``:
+    ``service.create_held``, the caller's reads and refusal in the same transaction).
 
-    The Swedebeat hand-off routes call this. It is the same owner lock, credit ledger and
-    ``admit`` as ``POST /api/jobs``. ``admit`` refuses a stored input over 65536 bytes, the
-    ceiling the hand-off used; this module's own create uses ``INPUT_MAX_BYTES``.
+    The hand-off routes call this. It is the same owner lock, credit ledger and ``admit`` as
+    ``POST /api/jobs``. ``admit`` refuses a stored input over 65536 bytes, the ceiling the
+    hand-off used; this module's own create uses ``INPUT_MAX_BYTES``.
     """
     stored = parsed.model_dump(mode="json")
     new = NewJob(
@@ -323,12 +304,15 @@ async def enqueue(
         idempotency_key=idempotency_key,
         request_hash=hashlib.sha256(canonical_json({"input": stored, "kind": kind.name})).digest(),
         consumes_credit=consumes_credit,
-        admit=_bound_admit(kind, parsed, max_bytes=65536),
+        admit=bound_admit(kind, parsed, max_bytes=65536),
     )
-    result = await service.create(factory, ctx, new, limit=limit, ledger=ledger)
+    if hold is None:
+        result = await service.create(factory, ctx, new, limit=limit, ledger=ledger)
+    else:
+        result = await service.create_held(factory, ctx, new, limit=limit, ledger=ledger, hold=hold)
     if result.job is None:
         return Enqueued(None, False, result.reason, result.counts)
-    return Enqueued(result.job.id, result.created)
+    return Enqueued(result.job.id, result.created, state=result.job.state)
 
 
 def _job_id(raw: str) -> UUID | None:
