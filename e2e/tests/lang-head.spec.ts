@@ -1,13 +1,14 @@
 import { expect, test } from '@playwright/test'
 import { CODES, WORDS } from './lang-url-helpers'
+import { DRAFT, PUBLISHED } from './public-paths'
 
 // #719 (ADR 0027 section 6): what the server adds to the page for a language-prefixed URL: the
-// `<html lang>`, and for the three public pages a canonical link and hreflang alternates for every
+// `<html lang>`, and for the published public pages a canonical link and hreflang alternates for every
 // enabled language plus x-default. They are read from the raw response (what a crawler that does
 // not run JavaScript sees) and, for lang, again in the browser. The host in the links is
 // `public_base_url`, which is not the test's own origin, so only paths are compared.
 
-const PUBLIC = ['', '/privacy', '/terms']
+const PUBLIC = PUBLISHED
 
 interface Link {
   rel: string
@@ -81,6 +82,22 @@ test.describe('pages that are not for search', () => {
     expect(links(html)).toEqual([])
     expect(html).not.toContain('og:image')
   })
+
+  for (const page of DRAFT) {
+    test(`/sv${page}: a draft page is prerendered but noindex, with no canonical, hreflang or preview`, async ({ request }) => {
+      const html = await (await request.get(`/sv${page}`)).text()
+      expect(html).toMatch(/<html[^>]*\blang="sv"/)
+      expect(html).toContain('name="robots" content="noindex"')
+      expect(links(html)).toEqual([])
+      expect(html).not.toContain('og:title')
+      expect(html.match(/<h1\b/g)).toHaveLength(1)
+    })
+
+    test(`${page} is not in the sitemap`, async ({ request }) => {
+      const xml = await (await request.get('/sitemap.xml')).text()
+      expect(xml).not.toContain(`${page}<`)
+    })
+  }
 
   test('the link-preview image and a picture of the page are served with their types (#854)', async ({ request }) => {
     const preview = await request.get('/img/og-share.jpg')

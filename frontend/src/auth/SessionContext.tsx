@@ -66,6 +66,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
 }
 
+/** Whether a signed-in session is known. Never throws: the router asks, and tests mount it alone. */
+export function useIsAuthenticated(): boolean {
+  return useContext(SessionContext)?.session?.authenticated === true
+}
+
 export function useSession(): SessionValue {
   const value = useContext(SessionContext)
   if (value === null) throw new Error('useSession needs a SessionProvider')

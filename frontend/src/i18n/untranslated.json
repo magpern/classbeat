@@ -141,5 +141,7 @@
   "music.change.here",
   "music.change.goSongs",
   "music.change.newDesign",
-  "music.change.startAgain"
+  "music.change.startAgain",
+  "meta.help.title",
+  "meta.help.description"
 ]

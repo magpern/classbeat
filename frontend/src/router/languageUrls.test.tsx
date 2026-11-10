@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../App'
 import { I18nProvider } from '../i18n/I18n'
 import { LOCALES } from '../i18n/locales'
+import { recordDocumentLoads, restoreDocumentLoads } from '../test/documentLoads'
 import { SIGNED_IN, fakeApi, json } from '../test/fakeApi'
 
 // ADR 0027: the language lives in the URL. These tests open the whole app at a URL, like a browser.
@@ -52,11 +53,16 @@ function setLanguages(languages: string[]) {
   vi.spyOn(window.navigator, 'languages', 'get').mockReturnValue(languages)
 }
 
+let loads: string[] = []
+
 beforeEach(() => {
+  loads = recordDocumentLoads()
   window.localStorage.clear()
   vi.restoreAllMocks()
   document.documentElement.setAttribute('lang', 'en')
 })
+
+afterEach(restoreDocumentLoads)
 
 describe('an unprefixed URL', () => {
   it('shows only the loading state until the session answers, then redirects once', async () => {
@@ -273,10 +279,10 @@ describe('the picker', () => {
     await waitFor(() => {
       expect(where()).toBe('/sv/privacy?a=1#section')
     })
+    // A public page in another language is a real page load, after the choice is saved.
+    expect(loads).toEqual(['/sv/privacy?a=1#section'])
     expect(window.localStorage.getItem('cb-locale')).toBe('sv')
-    await waitFor(() => {
-      expect(document.documentElement.getAttribute('lang')).toBe('sv')
-    })
+    // The new document sets the page's language itself; this one is not remounted.
   })
 })
 

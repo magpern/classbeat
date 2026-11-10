@@ -33,6 +33,9 @@ export const en = {
   'meta.terms.title': 'Terms | classbeat',
   'meta.terms.description':
     'The terms for classbeat: what you can do, what we do and what we do not promise.',
+  'meta.help.title': 'Help and contact | classbeat',
+  'meta.help.description':
+    'Short answers about connecting your accounts, designing a class, plans and limits, and how to reach us.',
 
   // Landing page.
   'landing.badge': 'Private beta',

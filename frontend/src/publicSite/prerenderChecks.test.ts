@@ -43,9 +43,9 @@ describe('translated bodies', () => {
 })
 
 describe('the public paths', () => {
-  it('are the three current pages, published', () => {
+  it('publish the three legal-and-landing pages and keep Help a draft until PP8', () => {
     expect([...PUBLISHED_PATHS]).toEqual(['', '/privacy', '/terms'])
-    expect([...DRAFT_PATHS]).toEqual([])
+    expect([...DRAFT_PATHS]).toEqual(['/help'])
   })
 
   it('each have a title and a description key', () => {
