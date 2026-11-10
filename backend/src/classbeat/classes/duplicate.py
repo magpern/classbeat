@@ -13,9 +13,11 @@ every statement scoped by ``owner_id``:
 1. the source class and the draft are the user's own (a foreign, unknown or malformed id, and a
    revision that is not a draft of that class, are the same 404 ``not_found``); the sent hash must
    be the stored one (409 ``hash_mismatch``), which must still be the SHA-256 of the canonical
-   content, and the content must validate under the class's sport (500 ``internal`` otherwise);
-   a class with no stored brief is 409 ``not_ready``;
-2. a running class is admitted only by ``design.sport.admit_running``, as a running design is
+   content; a draft with a game MOWL no longer offers is 409 ``game_retired`` (ADR 0029); the
+   content must validate under the class's sport (500 ``internal`` otherwise); a class with no
+   stored brief is 409 ``not_ready``;
+2. (``classbeat.classes.duplicate_gates``) a running class is admitted only by
+   ``design.sport.admit_running``, as a running design is
    (``feature_off``, or ``running_not_evaluated`` for the user's uncovered plan; ADR 0018 Amendment
    5, #509), and a class or draft on a Swedebeat mix while ``swedebeat_enabled`` is off (the
    class's current source **or** the chosen revision's music on a mix: the stricter rule, on
@@ -64,12 +66,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat import auth, quota
 from classbeat.agent.beat_one import MAX_PER_CLASS
 from classbeat.agent.records import Provenance
+from classbeat.classes.duplicate_gates import flag_refusal
 from classbeat.config import Settings
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design import music_kind
-from classbeat.design import sport as sport_gate
-from classbeat.flags.effective import swedebeat_enabled
+from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.jobs.credits import QuotaRefused
 from classbeat.jobs.http import IDEMPOTENCY_KEY, canonical_json
 from classbeat.jobs.user import lock_owner
@@ -277,31 +279,6 @@ def provenance_copy(
     return built.model_dump(mode="json")
 
 
-async def _flag_refusal(
-    db: AsyncSession,
-    settings: Settings,
-    ctx: UserContext,
-    sport: str,
-    music_source: Any,
-    music: Any,
-) -> str | None:
-    """The reason a flag refuses this copy, or None (item 2 of the module)."""
-    if music_kind.is_none(music_source) or music_kind.is_none(music):
-        refused = await music_kind.admit_soundless(db, ctx)  # the soundless design's own gate
-        if refused is not None:
-            return refused.reason
-    if sport == "running":
-        refused = await sport_gate.admit_running(db, ctx)  # the running design's own gate (#509)
-        if refused is not None:
-            return refused.reason
-    on_mix = (
-        _dict(music_source).get("source") == MIX_SOURCE or _dict(music).get("source") == MIX_SOURCE
-    )
-    if on_mix and not await swedebeat_enabled(db, settings.swedebeat_enabled):
-        return "feature_off"
-    return None
-
-
 async def duplicate(
     factory: Factory,
     settings: Settings,
@@ -339,12 +316,11 @@ async def duplicate(
         canonical = json.dumps(
             row.content, sort_keys=True, separators=(",", ":"), ensure_ascii=False
         ).encode()
-        if (
-            sport is None
-            or hashlib.sha256(canonical).digest() != stored
-            or spec_of(row.content, sport) is None
-            or not isinstance(row.content, dict)
-        ):
+        if sport is None or hashlib.sha256(canonical).digest() != stored:
+            return Outcome("internal")
+        if has_retired_game(row.content):
+            return Outcome(RETIRED)  # ADR 0029 section 3: before the strict ``spec_of`` (a 500)
+        if spec_of(row.content, sport) is None or not isinstance(row.content, dict):
             return Outcome("internal")
         try:
             provenance = provenance_copy(
@@ -357,7 +333,7 @@ async def duplicate(
             )
         except ValidationError:
             return Outcome("internal")
-        refusal = await _flag_refusal(db, settings, ctx, sport, row.music_source, row.music)
+        refusal = await flag_refusal(db, settings, ctx, sport, row.music_source, row.music)
         if refusal is not None:
             return Outcome(refusal)
         plan, gates = await current_gates(db, ctx)
@@ -435,8 +411,9 @@ async def duplicate_class(
     idempotency_key: Annotated[str | None, Header()] = None,
 ) -> DuplicateOut | JSONResponse:
     """201 with the new class, 200 with the same one for a replayed key. 400 for the header;
-    409 reasons: ``idempotency_mismatch``, ``hash_mismatch``, ``not_ready``, ``feature_off`` and
-    ``quota`` (the jobs API's body: ``quota`` ``classes``, ``length`` or ``feature``, no money)."""
+    409 reasons: ``idempotency_mismatch``, ``hash_mismatch``, ``not_ready``, ``game_retired``,
+    ``feature_off`` and ``quota`` (the jobs API's body: ``quota`` ``classes``, ``length`` or
+    ``feature``, no money)."""
     if idempotency_key is None:
         return _refuse("idempotency_key_missing", 400)
     if not IDEMPOTENCY_KEY.fullmatch(idempotency_key):

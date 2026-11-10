@@ -12,6 +12,8 @@ against the authenticated user and failing closed:
   another class, is ``invalid_input``, never a different answer), and it is a ``draft``;
 - its stored ``content_hash`` equals the approved one (``hash_mismatch``) and the SHA-256 of its
   canonical content recomputed now (``invalid_input``: the row is not what was hashed);
+- no interval names a game MOWL no longer offers (``game_retired``, ADR 0029 section 3), checked
+  on the stored JSON before the strict schema below or the library's ``GAMES`` is reached;
 - the class's sport is the class's stored brief's (ADR 0018 section 1, M8 R1b): absent (every
   class stored before R1a) or ``cycling`` is cycling, ``running`` is running, anything else is
   ``invalid_input``. Never the browser's, a model's or the program's in MOWL;
@@ -41,9 +43,9 @@ kinds check it next to these, ``running_refused``. Likewise the soundless switch
 (``CLASSBEAT_SOUNDLESS_ENABLED`` only, no stored value since #824; no coverage check, Save calls
 no model): ``soundless_refused``, at creation and in ``prepare`` only.
 
-For an Update (``classbeat.saving.update``) also ``saved_target``: the saved row is the user's
-own live row of that class (``invalid_input`` otherwise, section 9: a detached row is never
-written to), and its program id is the only program an Update may write.
+For an Update (``classbeat.saving.update``) also ``targets.saved_target``: the saved row is the
+user's own live row of that class (``invalid_input`` otherwise, section 9: a detached row is
+never written to), and its program id is the only program an Update may write.
 
 The connection checks (``not_connected``) and the unresolved-write rule (``write_unresolved``,
 ``classbeat.operations.orphans``) are made by the callers next to these, in the same transaction.
@@ -65,6 +67,7 @@ from classbeat.agent.schemas import draft_model
 from classbeat.context import UserContext
 from classbeat.design import music_kind
 from classbeat.design import sport as class_sport
+from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.design.revision import (
     MIX_SOURCE,
     MUSIC_SOURCE,
@@ -80,7 +83,6 @@ HEX_SHA256: Final = r"^[0-9a-f]{64}$"
 # The revision's music source -> the source of the link row it names.
 LINK_SOURCES: Final = {MUSIC_SOURCE: SOURCE, MIX_SOURCE: MIX_LINK_SOURCE}
 MAX_PLAYLIST_ID: Final = 2**63 - 1
-MAX_PROGRAM_ID: Final = 2**63 - 1
 # The library's "no music" (``workout.save``'s default ``playlist_id``, sent as ``PlaylistID``):
 # what a soundless class is saved and updated with. Never stored: ``saved_workouts.playlist_id``
 # is NULL for it (its CHECK is ``> 0``).
@@ -141,7 +143,7 @@ class Revision:
 
 @dataclass(frozen=True, slots=True)
 class Refusal:
-    reason: str  # invalid_input, hash_mismatch, music_unlinked
+    reason: str  # invalid_input, hash_mismatch, game_retired, music_unlinked
 
 
 SPORTS: Final = (class_sport.CYCLING, class_sport.RUNNING)
@@ -191,6 +193,8 @@ async def revision(
         return Refusal("hash_mismatch")
     if hashlib.sha256(canonical(row.content)).digest() != stored:
         return Refusal("invalid_input")
+    if has_retired_game(row.content):
+        return Refusal(RETIRED)  # ADR 0029: before the strict schema and ``GAMES`` (``spec_of``)
     spec = spec_of(row.content, sport)
     if spec is None:
         return Refusal("invalid_input")
@@ -267,48 +271,3 @@ async def linked_playlist(
     if not isinstance(playlist_id, int) or not 0 < playlist_id <= MAX_PLAYLIST_ID:
         return None
     return playlist_id
-
-
-# Update's target (ADR 0007 section 7): the user's own **live** saved row **of this class**, and
-# its creating operation, when it still names one, of the same class too (the foreign key is
-# owner-inclusive, not class-inclusive: #156 review). The program id is read only from here.
-_SAVED_TARGET = text(
-    "SELECT s.id, s.program_id, s.state_hash FROM saved_workouts s "
-    "WHERE s.owner_id = :owner_id AND s.id = :saved_workout_id AND s.class_id = :class_id "
-    "AND s.detached_at IS NULL "
-    "AND (s.operation_id IS NULL OR EXISTS (SELECT 1 FROM external_operations o "
-    "WHERE o.owner_id = s.owner_id AND o.id = s.operation_id AND o.class_id = s.class_id))"
-)
-
-
-@dataclass(frozen=True, slots=True)
-class SavedTarget:
-    """The program an Update may write, from the user's own live saved row."""
-
-    saved_workout_id: UUID
-    program_id: int
-    state_hash: bytes | None
-
-
-async def saved_target(
-    db: AsyncSession, ctx: UserContext, class_id: UUID, saved_workout_id: UUID
-) -> SavedTarget | None:
-    """The live saved row ``saved_workout_id`` of the user's class ``class_id``, else None (another
-    user's, another class's, a detached or an unknown row: all the same answer)."""
-    row = (
-        await db.execute(
-            _SAVED_TARGET,
-            {
-                "owner_id": ctx.user_id,
-                "saved_workout_id": saved_workout_id,
-                "class_id": class_id,
-            },
-        )
-    ).first()
-    if row is None:
-        return None
-    program_id = row.program_id
-    if not isinstance(program_id, int) or not 0 < program_id <= MAX_PROGRAM_ID:
-        return None
-    state = None if row.state_hash is None else bytes(row.state_hash)
-    return SavedTarget(row.id, program_id, state)

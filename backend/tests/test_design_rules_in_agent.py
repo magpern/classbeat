@@ -32,9 +32,11 @@ from classbeat.models.versions import all_prompt_versions
 # Pinned on main before P4 (ADR 0017: no tool name, description, schema or system prompt text is
 # edited, so every stage's prompt_version is unchanged). A change to any of them fails this test;
 # if one is intended it is a prompt change with its own smoke run, not part of the rules.
+# ADR 0029 section 3 (MA1a-1): the cycling and soundless design and revise stages changed once,
+# their schema's games narrowed to the four.
 PINNED = {
-    "design": "200aa3e3bdf1c98d0ad132c0f34ec199d893d6d887552e13e994ad39ca9d9618",
-    "revise": "d334e6777b995feb4eaa6908e0a207f6bd6019fc73d6ca7071cbcecc5db6a978",
+    "design": "5bd3213749c40de3882d6a3b0a16fb31abcfbe71d38fff1bc1d7b318de3f3714",
+    "revise": "fae35f3319edbf7c507d2e2461d624e9457e9fe554ed780054c10e6b590bb696",
     "pick_pool": "58d36e6a25155e86a70e88b79c845ccd1501f7f2db4c7d28af9f6f78badb5449",
     "choose_songs": "4fb091519ef4af656c3fc32e424bc1b083db5531a7436e8976dc2e0e60a386db",
     # The running stages (ADR 0018), listed since E1 (#465) under their own keys.
@@ -42,8 +44,8 @@ PINNED = {
     "running_revise": "2e06a0378e08a974fddcce833399553a197f4ba927de678cb04ce6aabfceac6f",
     # The soundless design and revise stages (ADR 0007 amendment of 2026-11-03, #527 and #528),
     # under their own keys.
-    "soundless_design": "52da78f0973b7abd280c87aa74972bf588a85687158fb8ae735e5a49dac3d64a",
-    "soundless_revise": "2ec3f408165649bb6dfd7f8015f4caa8f5fad0c16f169e7d9c33bb3618861fb6",
+    "soundless_design": "52f28bf5b6815f09edc85d98e0973950bb45b498fd39d3cad7d01f31b103dee2",
+    "soundless_revise": "6ec91b4d80a053f0533a4e649febd3ebb1655ee5b38472356a3349413f3912ae",
 }
 PLANTED = "Zq9 planted brief text"
 PLANTED_STYLE = "Zq9 planted style"

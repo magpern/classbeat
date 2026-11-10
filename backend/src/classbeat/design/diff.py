@@ -16,7 +16,7 @@ from typing import Any, Final
 
 from mowl import workout
 
-from classbeat.agent.schemas import stored_draft
+from classbeat.agent.stored_draft import stored_draft
 
 # ``gradient`` is a running interval's only (ADR 0018); a cycling draft never has it.
 FIELDS: Final = ("sec", "zone", "rpm", "standing", "game", "ftp_test", "gradient")

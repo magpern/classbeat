@@ -56,6 +56,34 @@ def test_ftp_tests_games_and_names_without_ids_are_compared() -> None:
     assert mowl_state.matches(spec, by_name, playlist_id=PLAYLIST)
 
 
+@pytest.mark.parametrize(
+    ("game", "game_id"), [("racetrack", 1), ("power_pull", 4), ("fast_lane", 5), ("overflow", 6)]
+)
+def test_each_of_the_four_games_round_trips_with_its_id_and_its_zones_ranges(
+    game: str, game_id: int
+) -> None:
+    # ADR 0029 section 3: the four games, written as ``IntervalGame.IntervalGameID`` with the
+    # zone's heart-rate, FTP, MAP and FTHR ranges of zone set 1, read back and compared.
+    spec = copy.deepcopy(SPEC)
+    spec["segments"][1]["intervals"][2]["game"] = game
+    workout.validate(spec)
+    program = read_back(spec)
+    assert mowl_state.matches(spec, program, playlist_id=PLAYLIST)
+    [interval] = [
+        i for s in program["Segments"] for i in s["Intervals"] if i.get("IntervalGame") is not None
+    ]
+    assert interval["IntervalGame"]["IntervalGameID"] == game_id
+    zone = interval["ScaleCoggan"]
+    keys = ("PulseZone", "FTP", "MAP", "FTHR")
+    ranges = [str(v) for v in workout.ZONES[zone]]
+    assert [interval[f"{k}{end}"] for k in keys for end in ("From", "To")] == ranges
+    other = copy.deepcopy(spec)
+    other["segments"][1]["intervals"][2]["game"] = (
+        "fast_lane" if game != "fast_lane" else "overflow"
+    )
+    assert not mowl_state.matches(other, program, playlist_id=PLAYLIST)
+
+
 def _changed(path: str, value: Any) -> dict[str, Any]:
     program = read_back(SPEC)
     target: Any = program

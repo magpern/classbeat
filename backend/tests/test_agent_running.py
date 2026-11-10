@@ -50,9 +50,9 @@ from classbeat.agent.schemas import (
     RunningDraftInput,
     RunningReviseInput,
     WorkoutDraft,
-    stored_draft,
 )
 from classbeat.agent.stage import Stage
+from classbeat.agent.stored_draft import stored_draft
 from classbeat.design import diff
 from classbeat.design.selection import select_profile_for_brief
 from classbeat.design.sport_rules import rules_for, select_profile_for
@@ -64,9 +64,10 @@ ROOT = Path(__file__).resolve().parents[2]
 RUN = {"sport": "running", "length_min": 30, "intensity": "moderate"}
 # The cycling stages' prompt versions and tool schemas on main before R1a (4838aaf): R1a changes
 # none of them, so every recorded eval result and model route stays valid.
+# ADR 0029 section 3 (MA1a-1): design and revise changed with the schema's four games.
 CYCLING_PROMPT_VERSIONS = {
-    "design": "200aa3e3bdf1c98d0ad132c0f34ec199d893d6d887552e13e994ad39ca9d9618",
-    "revise": "d334e6777b995feb4eaa6908e0a207f6bd6019fc73d6ca7071cbcecc5db6a978",
+    "design": "5bd3213749c40de3882d6a3b0a16fb31abcfbe71d38fff1bc1d7b318de3f3714",
+    "revise": "fae35f3319edbf7c507d2e2461d624e9457e9fe554ed780054c10e6b590bb696",
     "pick_pool": "58d36e6a25155e86a70e88b79c845ccd1501f7f2db4c7d28af9f6f78badb5449",
     "choose_songs": "4fb091519ef4af656c3fc32e424bc1b083db5531a7436e8976dc2e0e60a386db",
 }

@@ -60,8 +60,8 @@ Style = Annotated[str, _bounded(60, required=False), AfterValidator(clean_text)]
 BriefText = Annotated[str, _bounded(2000, required=False), AfterValidator(clean_text)]
 Note = Annotated[str, _bounded(300, required=False), AfterValidator(clean_text)]
 
-# The library's GAMES (a test checks they match).
-Game = Literal["racetrack", "power_pull", "fast_lane", "overflow", "ghost_target"]
+# The four MOWL games (ADR 0029 section 3), a subset of the library's GAMES (a test checks it).
+Game = Literal["racetrack", "power_pull", "fast_lane", "overflow"]
 Rpm = Annotated[list[Annotated[int, Field(ge=0, le=200)]], Field(min_length=2, max_length=2)]
 
 
@@ -230,14 +230,10 @@ AnyDraft = WorkoutDraft | RunningDraft
 
 
 def draft_model(sport: str | None) -> type[WorkoutDraft] | type[RunningDraft]:
-    """The draft schema of a class's sport: ``running``, else cycling (absent is cycling)."""
+    """The **strict** draft schema of a class's sport: ``running``, else cycling (absent is
+    cycling). What is saved or handed to a model; a historical record is read with
+    ``classbeat.agent.stored_draft``."""
     return RunningDraft if sport == "running" else WorkoutDraft
-
-
-def stored_draft(content: Any, sport: str | None) -> AnyDraft:
-    """A stored ``class_revisions.content`` read with its class's sport's schema, never the other
-    one (``ValidationError`` when it does not fit)."""
-    return draft_model(sport).model_validate(content)
 
 
 class DraftInput(BaseModel):

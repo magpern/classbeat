@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat import auth
 from classbeat.agent.design import ZONE7
-from classbeat.agent.schemas import stored_draft
+from classbeat.agent.stored_draft import stored_draft
 from classbeat.classes.service import REVISION_LIMIT, stored_brief
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session

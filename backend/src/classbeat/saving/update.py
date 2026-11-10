@@ -5,7 +5,7 @@ Input ``{class_id, revision_id, content_hash, saved_workout_id, overwrite, mowl_
 (``UpdateWorkoutInput``): ids, a hash and the user's confirmation, never a body, a program or
 playlist id or a name (``extra="forbid"``: an input carrying a program id is refused). **The
 program id is read only from the user's own live ``saved_workouts`` row** of the class, inside
-the transaction that checks it (``approval.saved_target``): never from the browser, a model or
+the transaction that checks it (``targets.saved_target``): never from the browser, a model or
 MOWL's listing. ``overwrite`` is the page's "Update anyway" confirmation; it skips only the
 read-first comparison, never the sport check. ``consumes_credit = False``: no ledger call, no
 model call.
@@ -88,7 +88,7 @@ from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.operations import CallResult, OperationRequest, UncertainAnswer, orphans, perform
 from classbeat.quota.gates import check_stored_draft
-from classbeat.saving import approval, operation, update_operation
+from classbeat.saving import approval, operation, targets, update_operation
 from classbeat.saving.caps import check_write_caps
 from classbeat.saving.kind import (
     JOB_CLASS,
@@ -155,7 +155,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     info = await connections.find_in(db, ctx, parsed.mowl_connection_id)
     if info is None or info.provider != "mowl" or info.status != "connected":
         return Refused("not_connected")
-    if await approval.saved_target(db, ctx, parsed.the_class, parsed.saved_workout_id) is None:
+    if await targets.saved_target(db, ctx, parsed.the_class, parsed.saved_workout_id) is None:
         return Refused("invalid_input")
     if await approval.playlist_for(db, ctx, found) is None:
         return Refused("music_unlinked")
@@ -173,14 +173,14 @@ class Plan:
 
     revision: approval.Revision
     playlist_id: int
-    target: approval.SavedTarget
+    target: targets.SavedTarget
     opened: OpenConnection
     baseline: list[int]
 
 
 async def _approved(
     run: JobRun, given: UpdateWorkoutInput, opened: OpenConnection
-) -> tuple[approval.Revision, int, approval.SavedTarget]:
+) -> tuple[approval.Revision, int, targets.SavedTarget]:
     lease = run.lease
     async with run.fenced() as fs:
         # Its own transaction, so the marking stays when the update is refused below.
@@ -202,9 +202,7 @@ async def _approved(
             raise JobFailure("feature_off")  # switched off since the job was queued
         if approval.soundless_refused(found):
             raise JobFailure("feature_off")  # the worker's soundless switch is off
-        target = await approval.saved_target(
-            fs.db, run.ctx, given.the_class, given.saved_workout_id
-        )
+        target = await targets.saved_target(fs.db, run.ctx, given.the_class, given.saved_workout_id)
         if target is None:
             raise JobFailure("invalid_input")  # detached (a reconnect), gone, or not this class's
         playlist_id = await approval.playlist_for(fs.db, run.ctx, found)
@@ -324,7 +322,7 @@ async def save(run: JobRun, keyring: KeyRing, plan: Plan, read: Read) -> int:
             return False
         # A soundless revision names no link: ``NO_PLAYLIST`` without a read (``playlist_for``).
         playlist_now = await approval.playlist_for(db, run.ctx, revision)
-        target_now = await approval.saved_target(
+        target_now = await targets.saved_target(
             db, run.ctx, revision.class_id, target.saved_workout_id
         )
         if not (

@@ -5,13 +5,13 @@ careless model's draft that breaks that rule. No model, no network, synthetic mu
 
 import copy
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from mowl import workout
 
 from agentfake import CONFIG
-from classbeat.agent.schemas import WorkoutDraft
+from classbeat.agent.schemas import Game, WorkoutDraft
 from classbeat.evals import checks
 from classbeat.evals.cases import Case, MusicSyncExpect
 from classbeat.evals.runner import CaseResult, run_case
@@ -85,7 +85,7 @@ def test_the_cases_cover_lengths_intensities_games_ftp_tests_and_revision_kinds(
     for cat in ("standard", "music_sync", "revisions"):
         assert {c.brief.intensity for c in OWN[cat]} == {"easy", "moderate", "hard"}, cat
     games = {g for c in OWN["games_ftp"] for g in c.expect.games}
-    assert games == set(workout.GAMES)
+    assert games == set(get_args(Game))  # every catalogue game (ADR 0029: not Ghost Target)
     assert {c.brief.ftp_test for c in OWN["games_ftp"]} == {None, 3, 5, 20}
     kinds = {c.expect.revision.kind for c in OWN["revisions"] if c.expect.revision}
     assert kinds == {"more_sprints", "easier", "shorter", "climb_moved"}

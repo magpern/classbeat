@@ -1,5 +1,6 @@
 """The conversation of a class in SQL (ADR 0007 sections 3 and 4): the create-time reads of
-``revise_draft.admit``, the message inserts, and the worker's reads of the base.
+``revise_draft.admit`` (also ``refit_draft``'s and ``revise_songs``'), the message inserts, and
+the worker's reads of the base.
 
 A ``class_messages`` row is only ever inserted by ``insert_message``, as ``INSERT ... SELECT``
 from the job's own row with ``j.class_id = :class_id``: the schema's foreign key for ``job_id``
@@ -16,12 +17,14 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat.design.games_policy import has_retired_game
+
 _LOCK_CLASS = text(
     "SELECT current_revision_id FROM classes WHERE id = :class_id AND owner_id = :owner_id "
     "FOR UPDATE"
 )
 _BASE = text(
-    "SELECT kind, content_hash FROM class_revisions "
+    "SELECT kind, content_hash, content FROM class_revisions "
     "WHERE id = :base AND owner_id = :owner_id AND class_id = :class_id"
 )
 _CHAT_REVISIONS = text(
@@ -86,6 +89,9 @@ class CreateState:
     base_hash: bytes | None
     chat_revisions: int
     requests: int
+    # The base names a game MOWL no longer offers (``games_policy``, ADR 0029 section 3): Refit
+    # and Change songs refuse it ``game_retired``; a chat revision rewrites it in the worker.
+    base_retired: bool = False
 
 
 async def create_state(db: AsyncSession, owner_id: UUID, class_id: UUID, base: UUID) -> CreateState:
@@ -101,6 +107,7 @@ async def create_state(db: AsyncSession, owner_id: UUID, class_id: UUID, base: U
         None if found is None else bytes(found.content_hash),
         (await db.execute(_CHAT_REVISIONS, ids)).scalar_one(),
         (await db.execute(_REQUESTS, ids)).scalar_one(),
+        found is not None and has_retired_game(found.content),
     )
 
 

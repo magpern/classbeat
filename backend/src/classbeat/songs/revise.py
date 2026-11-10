@@ -6,7 +6,8 @@
 - **admit** (the jobs API's create transaction, under the owner lock, the class row locked), each
   refusal writing nothing: ``song_picking_off``; ``invalid_input`` for a soundless class
   (``music_kind.refuse_soundless``, #530); ``invalid_input`` unless the base is a ``draft``
-  of the class; ``stale_base`` unless it is the current revision; ``revision_limit`` (it makes one
+  of the class; ``stale_base`` unless it is the current revision; ``game_retired`` for a base with
+  a game MOWL no longer offers (ADR 0029 section 3); ``revision_limit`` (it makes one
   chat revision, counted with ``revise_draft``'s); the month's model cost cap (409 ``quota``
   ``cost``, ``classbeat.quota.check_cost``); ``not_song_picked`` when the base draft has no
   ``music.song_list_id`` (a class on the user's own playlist keeps ``revise_draft``). Then:
@@ -14,13 +15,13 @@
   - mode ``pick``: ``chat_full``; ``not_connected``, ``consent_missing``, ``pool_busy``
     (``classbeat.songs.admit.pick_checks``); ``write_unresolved`` while a final-playlist write of
     the class is undecided (so phase 1 is not paid for first); ``invalid_input`` unless the base's
-    list still loads
-    and every ``replace`` slot is in it; the user's ``class_messages`` row is inserted with the job.
-  - mode ``resume``: ``not_connected``; the receipt rule of ``design_with_songs``
-    (``receipt_valid``) for a list a ``revise_songs`` job approved (``receipt_invalid``); that job's
-    base must be this base (``stale_base``); ``account_changed``; ``write_unresolved`` while a
-    final-playlist write of the class is undecided. No new message: the resume carries the
-    approved job's ``request_message_id``.
+    list still loads and every ``replace`` slot is in it; the user's ``class_messages`` row is
+    inserted with the job.
+  - mode ``resume`` (``classbeat.songs.revise_resume``): ``not_connected``; the receipt rule of
+    ``design_with_songs`` (``receipt_valid``) for a list a ``revise_songs`` job approved
+    (``receipt_invalid``); that job's base must be this base (``stale_base``);
+    ``account_changed``; ``write_unresolved`` while a final-playlist write of the class is
+    undecided. No new message: the resume carries the approved job's ``request_message_id``.
 - **Phase 1** (``mode = "pick"``, until ``AwaitApproval``): ``classbeat.songs.pick`` with the base
   list's songs outside ``replace`` as ``kept`` (``"all"`` keeps none) and the class's stored brief,
   whose free text leads with the request (cut to the brief's 2000 characters); the new
@@ -54,13 +55,15 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat import connections, quota
-from classbeat.agent import AgentConfig, Brief, JobStageHost, WorkoutDraft, run_stage
+from classbeat import quota
+from classbeat.agent import AgentConfig, Brief, JobStageHost, run_stage
 from classbeat.agent.provider import ModelProvider
 from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
+from classbeat.agent.stored_draft import stored_draft
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import chat, corrections, diff, limits, music_kind, revision
+from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.design.guidance import rule_set_for
 from classbeat.design.kind import current_runtime, group_model
 from classbeat.flags import effective as flags
@@ -74,6 +77,7 @@ from classbeat.songs.config import SongConfig
 from classbeat.songs.inputs import ReviseSongsInput
 from classbeat.songs.phase2 import PHASE_TWO, final_checks, final_music, mark_mowl, music_source
 from classbeat.songs.pick import SeedSpec, run_phase_one, stage_config
+from classbeat.songs.revise_resume import admit_resume
 from classbeat.swedebeat_match import replace as catalogue_replace
 
 KIND: Final = "revise_songs"
@@ -132,6 +136,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         return Refused("invalid_input")  # a foreign or unknown id answers like any other
     if state.current != given.base_revision_id:
         return Refused("stale_base")
+    if state.base_retired:
+        return Refused(RETIRED)  # ADR 0029: a retired game is never revised on new songs
     chat_limits = limits.current()
     allowed = await chat_limits.policy.limit_for(db, ctx, class_id)
     if state.chat_revisions >= allowed:
@@ -142,7 +148,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         return Refused("not_song_picked")
     fields: dict[str, object] = {"base_revision_hash": state.base_hash.hex()}
     if given.mode == "resume":
-        return await _admit_resume(db, ctx, given, class_id, fields)
+        return await admit_resume(db, ctx, given, class_id, fields, KIND)
     if state.requests >= chat_limits.max_requests:
         return Refused("chat_full", {"limit": chat_limits.max_requests, "count": state.requests})
     refused = await song_admit.pick_checks(db, ctx, given.spotify_connection_id)
@@ -195,45 +201,6 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         stored["catalogue_fact"] = catalogue.fact
         stored["swedebeat_connection_id"] = catalogue.connection_id
     return Admitted(stored, after_insert)
-
-
-async def _admit_resume(
-    db: AsyncSession,
-    ctx: UserContext,
-    given: ReviseSongsInput,
-    class_id: UUID,
-    fields: dict[str, object],
-) -> Admitted | Refused:
-    if given.resume is None:  # the input model refuses it already
-        return Refused("receipt_invalid")
-    account = await connections.spotify_account_in(db, ctx, given.spotify_connection_id)
-    if account is None:
-        return Refused("not_connected")
-    found = await song_admit.receipt_valid(
-        db, ctx.user_id, class_id, given.resume.song_list_revision_id, KIND
-    )
-    if found is None:
-        return Refused("receipt_invalid")
-    try:
-        approved = ReviseSongsInput.model_validate(found.approved_input)
-    except ValidationError:
-        return Refused("receipt_invalid")
-    if approved.base_revision_id != given.base_revision_id:
-        return Refused("stale_base")  # the list was made to change another version
-    if approved.request_message_id is None:
-        return Refused("receipt_invalid")
-    if found.stored.account != account:
-        return Refused("account_changed")
-    if await orphans.playlist_unresolved(db, ctx, class_id):
-        return Refused("write_unresolved")
-    copied: dict[str, object] = {"request_message_id": approved.request_message_id}
-    if approved.swedebeat_connection_id is not None:
-        if approved.catalogue_replace is None or approved.catalogue_fact is None:
-            return Refused("receipt_invalid")
-        copied["catalogue_replace"] = approved.catalogue_replace
-        copied["catalogue_fact"] = approved.catalogue_fact
-        copied["swedebeat_connection_id"] = approved.swedebeat_connection_id
-    return Admitted({**fields, **copied})
 
 
 def pick_brief(brief: Brief, request: str) -> Brief:
@@ -300,9 +267,11 @@ async def run_revise_phase_two(
             brief = Brief.model_validate(base.brief)
             if brief.sport != "cycling":
                 raise JobFailure("invalid_input")  # ADR 0018: running has no song picking
-            base_draft = WorkoutDraft.model_validate(base.content)
+            base_draft = stored_draft(base.content, brief.sport)
         except ValidationError:
             raise JobFailure("internal") from None
+        if has_retired_game(base.content):
+            raise JobFailure("invalid_input")  # defence in depth: admit refuses ``game_retired``
         rules = rule_set_for(brief, base.dismissed_rules)
         await corrections.attach(run, step)  # the class's beat-one corrections (ADR 0007)
         ctx = ReviseContext.build(

@@ -1,6 +1,6 @@
 {
- "suite_version": 14,
- "digest": "55d9ebfc04db240af025f75f0e7fb4fb7493cb8176a2d8dffe0d0717b300f8e2",
+ "suite_version": 15,
+ "digest": "54ee86ecf15a139d0f4914697b1c37778c3ba8c5f7cef72765d5b8bd202a0cac",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -43,7 +43,7 @@
   "games_ftp": {
    "design": [
     "ftp_20_60", "ftp_5_45", "races_40",
-    "ftp_20_75", "ftp_3_30", "ftp_5_40_race", "games_fast_lane_ghost_50", "games_overflow_35",
+    "ftp_20_75", "ftp_3_30", "ftp_5_40_race", "games_fast_lane_50", "games_overflow_35",
     "games_power_pull_40", "games_racetrack_45"
    ]
   },

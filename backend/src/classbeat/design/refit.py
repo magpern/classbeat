@@ -11,7 +11,8 @@ Input: ``{class_id, base_revision_id, mowl_connection_id}`` (``RefitDraftInput``
 or ``admit_music``, whose answers follow the soundless gate, so a refit can never reach a music
 step on a class with no music); ``not_changeable`` for a class with no ``music_source`` (a #550
 copy of a class on picked songs); ``invalid_input`` unless the base is a ``draft`` of the class;
-``stale_base`` unless it is the class's current revision; the running gate
+``stale_base`` unless it is the class's current revision; ``game_retired`` for a base with a
+game MOWL no longer offers (ADR 0029 section 3, ``chat.CreateState.base_retired``); the running gate
 (``sport.admit_class``); ``refit_limit`` (``MAX_REFITS`` refit revisions per class);
 ``nothing_pending`` when the corrections for the base's fingerprint already equal its
 ``music.beat_one``; for a class on a Swedebeat mix, its flag and analysis limit
@@ -48,10 +49,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat.agent import Brief, mix_input
 from classbeat.agent.design import DesignResult, check
 from classbeat.agent.running import check_running
-from classbeat.agent.schemas import RunningDraft, stored_draft
+from classbeat.agent.schemas import RunningDraft
 from classbeat.agent.stage import ToolError
+from classbeat.agent.stored_draft import stored_draft
 from classbeat.context import UserContext
 from classbeat.design import chat, mixadmit, music_kind, revision, sport
+from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.design.kind import (
     CLASS_MUSIC_SOURCE,
     NoMusicChoice,
@@ -133,6 +136,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("invalid_input")
     if state.current != parsed.base_revision_id:
         return Refused("stale_base")
+    if state.base_retired:
+        return Refused(RETIRED)  # ADR 0029: a retired game is never fitted or stored again
     running = await sport.admit_class(db, ctx, class_id)  # ADR 0018 (#509): the running gate
     if running is not None:
         return running
@@ -208,6 +213,8 @@ async def run(job_run: JobRun) -> Complete:
         base_music = revision.REVISION_MUSIC.validate_json(json.dumps(row.music))
     except ValidationError:
         raise JobFailure("internal") from None
+    if has_retired_game(row.content):
+        raise JobFailure("invalid_input")  # defence in depth: admit refuses it ``game_retired``
     if music_kind.is_none(row.music_source) or isinstance(music, NoMusicChoice):
         raise JobFailure("invalid_input")  # defence in depth: admit refuses a soundless class
     if brief.sport == sport.RUNNING:

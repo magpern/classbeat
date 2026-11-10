@@ -1,10 +1,10 @@
-"""The class API's transactions: reads, the current-revision pick and the class delete.
+"""The class API's transactions: reads, the current-revision pick and the class delete (the
+dismissed rules: ``classbeat.classes.dismissals``).
 
 One ``user_session`` per call. Reads are fixed-size: a listing is one statement however many
 classes and revisions the user has (no per-class query).
 """
 
-import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final
@@ -16,10 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.agent.schemas import Brief
 from classbeat.classes import match_view, seams, song_views
+from classbeat.classes.dismissals import set_dismissed as set_dismissed  # the routes' name
 from classbeat.classes.selection import belongs_to_draft
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.design.rules.enums import RULE_IDS
+from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.quota.gates import check_stored_draft
 
 Factory = async_sessionmaker[AsyncSession]
@@ -27,13 +28,7 @@ Factory = async_sessionmaker[AsyncSession]
 LIST_LIMIT: Final = 500
 REVISION_LIMIT: Final = 200
 MESSAGE_LIMIT: Final = 500
-MAX_DISMISSED: Final = 32  # also the CHECK of ``classes.dismissed_rules`` (migration 0017)
 OPEN_JOB: Final = "('queued', 'running', 'waiting_for_approval')"
-
-
-def is_rule_id(value: object) -> bool:
-    """A soft-rule id of the closed enum shared with the profile loader (ADR 0017)."""
-    return isinstance(value, str) and value in RULE_IDS
 
 
 _CLASSES = text(f"""
@@ -139,9 +134,6 @@ _MESSAGES = text(
     "FROM class_messages WHERE owner_id = :owner_id AND class_id = :class_id "
     "ORDER BY seq LIMIT :limit"
 )
-_LOCK_DISMISSED = text(
-    "SELECT dismissed_rules FROM classes WHERE id = :class_id AND owner_id = :owner_id FOR UPDATE"
-)
 _LOCK_CLASS = text(
     "SELECT current_revision_id, approved_swedebeat_match_id FROM classes "
     "WHERE id = :class_id AND owner_id = :owner_id FOR UPDATE"
@@ -174,12 +166,6 @@ _KEPT = text(
     "AND detached_at IS NULL"
 )
 _DELETE = text("DELETE FROM classes WHERE id = :class_id AND owner_id = :owner_id")
-
-
-_SET_DISMISSED = text(
-    "UPDATE classes SET dismissed_rules = CAST(:rules AS jsonb) "  # no updated_at: not a reorder
-    "WHERE id = :class_id AND owner_id = :owner_id"
-)
 
 
 def _ids(ctx: UserContext, class_id: UUID | None, **more: Any) -> dict[str, Any]:
@@ -330,7 +316,8 @@ async def pick(
     """ADR 0007 section 2: one transaction, the class row locked, so a pick can't race a store.
 
     ``not_found`` (the class, or a revision that is not a draft of this class), ``hash_mismatch``,
-    ``class_busy`` (an open job). Picking the current revision again writes nothing.
+    ``class_busy`` (an open job), ``game_retired`` (a game MOWL no longer offers). Picking the
+    current revision again writes nothing.
 
     No model runs here, so the draft is checked against the user's **current** plan (#496): an
     older revision with a game, an FTP test or a length the plan does not include now (one made
@@ -354,10 +341,11 @@ async def pick(
             return Outcome()
         if (await db.execute(_OPEN_JOB, _ids(ctx, class_id))).first() is not None:
             return Outcome("class_busy")
-        if isinstance(found.content, dict):  # a draft's JSON object; QuotaRefused rolls back
-            await check_stored_draft(db, ctx, found.content)  # pyright: ignore[reportUnknownArgumentType]
-        else:
+        if not isinstance(found.content, dict):
             return Outcome("not_found")  # never a draft: fail closed
+        if has_retired_game(found.content):
+            return Outcome(RETIRED)  # ADR 0029 section 3: a legacy draft never becomes current
+        await check_stored_draft(db, ctx, found.content)  # pyright: ignore[reportUnknownArgumentType]
         match_id = locked.approved_swedebeat_match_id
         keep = isinstance(match_id, UUID) and await belongs_to_draft(
             db, ctx.user_id, class_id, revision_id, match_id
@@ -393,41 +381,3 @@ async def delete(
         left = (await song_views.playlists_of(db, ctx.user_id, class_id)).all
         await db.execute(_DELETE, _ids(ctx, class_id))
     return Outcome(None, kept, left)
-
-
-@dataclass(frozen=True, slots=True)
-class Dismissed:
-    """``reason`` is ``None`` when the call went through; ``rules`` is the list afterwards."""
-
-    reason: str | None = None
-    rules: tuple[str, ...] = ()
-
-
-async def set_dismissed(
-    factory: Factory, ctx: UserContext, class_id: UUID, rule_id: str, *, dismissed: bool
-) -> Dismissed:
-    """ADR 0017 section 4: dismiss (``dismissed``) or show again one rule of one class.
-
-    ``rule_id`` must be in ``RULE_IDS`` of ``design.rules.enums`` (``invalid_input`` otherwise,
-    checked after the class, so another user's class is ``not_found`` whatever the id). The class
-    row is locked, so two calls cannot lose each other's change.
-    Both are idempotent; the order is the order of dismissal.
-    ``not_found`` (the class, or another user's); ``limit_exceeded`` when a new id would be the
-    33rd."""
-    require_context(ctx)
-    async with user_session(factory, ctx) as db:
-        row = (await db.execute(_LOCK_DISMISSED, _ids(ctx, class_id))).first()
-        if row is None:
-            return Dismissed("not_found")
-        if not is_rule_id(rule_id):
-            return Dismissed("invalid_input")
-        current = [r for r in row.dismissed_rules if isinstance(r, str)]
-        if dismissed and rule_id not in current:
-            current.append(rule_id)
-        elif not dismissed:
-            current = [r for r in current if r != rule_id]
-        if len(current) > MAX_DISMISSED:
-            return Dismissed("limit_exceeded")
-        if current != list(row.dismissed_rules):
-            await db.execute(_SET_DISMISSED, _ids(ctx, class_id, rules=json.dumps(current)))
-    return Dismissed(None, tuple(current))

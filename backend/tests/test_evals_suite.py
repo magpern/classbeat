@@ -62,6 +62,7 @@ RELEASED: dict[int, str] = {
     12: "b106e1e7363d63e38e70c79324892458dd11dbae355fbaa2edd53ce7b5eb1182",
     13: "62e95221f2e7f41f876c4fc67f02412249078b31e48d5af6894e944fa75cf0ac",
     14: "55d9ebfc04db240af025f75f0e7fb4fb7493cb8176a2d8dffe0d0717b300f8e2",
+    15: "54ee86ecf15a139d0f4914697b1c37778c3ba8c5f7cef72765d5b8bd202a0cac",
 }
 
 SUITE = load_suite()
