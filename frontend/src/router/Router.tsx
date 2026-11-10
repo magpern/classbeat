@@ -16,7 +16,7 @@ import { isAdminPath, localize, neutralize, splitPath, withLanguage } from './pa
 
 // A tiny history-API router: the app has a handful of flat routes and no need for a library.
 
-interface Location {
+export interface Location {
   pathname: string
   search: string
 }
@@ -43,11 +43,19 @@ interface RouterValue extends Location {
 const RouterContext = createContext<RouterValue | null>(null)
 
 function readLocation(): Location {
+  if (typeof window === 'undefined') return { pathname: '/', search: '' }
   return { pathname: window.location.pathname, search: window.location.search }
 }
 
-export function RouterProvider({ children }: { children: ReactNode }) {
-  const [location, setLocation] = useState<Location>(readLocation)
+/** `initialLocation` lets the build-time prerender render a page for a path without a window. */
+export function RouterProvider({
+  children,
+  initialLocation,
+}: {
+  children: ReactNode
+  initialLocation?: Location
+}) {
+  const [location, setLocation] = useState<Location>(() => initialLocation ?? readLocation())
   const { locale } = useLocale()
   // The language to prefix with when the URL names none (admin pages).
   const fallback = useRef(locale)

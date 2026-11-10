@@ -1,5 +1,6 @@
 import { useT } from '../../i18n/I18n'
 import { zoneNames, type Bar, zoneCount, zoneSeconds } from '../../lib/profile'
+import { zoneFill } from './zoneClasses'
 import { clock } from '../../lib/workout'
 
 /** "Time in each zone": one row per zone with its name, a bar scaled to the largest zone and the time. */
@@ -17,13 +18,10 @@ export function ZoneTime({ bars, running = false }: { bars: Bar[]; running?: boo
           <li key={name} className="grid grid-cols-[9rem_1fr_3.5rem] items-center gap-3 text-[0.9375rem]">
             <span>{t('class.zone.line', { zone: i + 1, name })}</span>
             <span aria-hidden="true" className="h-3 rounded-full bg-raised">
-              <span
-                className="block h-3 rounded-full"
-                style={{
-                  width: `${String(((seconds[i] ?? 0) / most) * 100)}%`,
-                  background: `var(--cb-zone-${String(i + 1)})`,
-                }}
-              />
+              {/* SVG attributes, not `style`: a percentage width and a rounded end, as the bar was */}
+              <svg width="100%" height="12" className="block">
+                <rect width={`${String(((seconds[i] ?? 0) / most) * 100)}%`} height="12" rx="6" className={zoneFill(i + 1)} />
+              </svg>
             </span>
             <span className="text-right tabular-nums text-muted">{clock(seconds[i] ?? 0)}</span>
           </li>

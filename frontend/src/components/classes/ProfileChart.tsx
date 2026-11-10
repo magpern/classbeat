@@ -5,8 +5,9 @@ import { useT } from '../../i18n/I18n'
 import { cadenceText, flatten, heightShare, inclineText, zoneCount, zoneName, type Bar } from '../../lib/profile'
 import { gameLabel, gameMarkerName } from '../../lib/games'
 import { clock, totalSeconds } from '../../lib/workout'
-import { isRunningDraft, type DraftSegment } from '../../api/jobs'
+import { isRunningDraft, type DraftSegment } from '../../api/draftTypes'
 import { SongStrip } from './SongStrip'
+import { zoneStopBottom, zoneStopTop } from './zoneClasses'
 
 // The class profile on the stage (ADR 0013 section 7): x is time, bar height and colour are the
 // zone, each bar fades from its zone colour to a 60/40 mix with the paper colour, a flame sits
@@ -81,11 +82,8 @@ export function ProfileChart({
           <defs>
             {zones.map((z) => (
               <linearGradient key={z} id={`${id}-z${String(z)}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" style={{ stopColor: `var(--cb-zone-${String(z)})` }} />
-                <stop
-                  offset="1"
-                  style={{ stopColor: `color-mix(in srgb, var(--cb-zone-${String(z)}) 60%, var(--cb-paper))` }}
-                />
+                <stop offset="0" className={zoneStopTop(z)} />
+                <stop offset="1" className={zoneStopBottom(z)} />
               </linearGradient>
             ))}
           </defs>
@@ -93,8 +91,8 @@ export function ProfileChart({
             const y = AXIS_Y - PLOT_H * heightShare(z)
             return (
               <g key={z}>
-                <line x1={LEFT} x2={W} y1={y} y2={y} style={{ stroke: 'var(--cb-stage-grid)' }} strokeWidth={1} />
-                <text x={2} y={y + 4} fontSize={13} style={{ fill: 'var(--cb-stage-muted)' }}>
+                <line x1={LEFT} x2={W} y1={y} y2={y} className="stroke-stage-grid" strokeWidth={1} />
+                <text x={2} y={y + 4} fontSize={13} className="fill-stage-muted">
                   {t('class.zone.short', { zone: z })}
                 </text>
               </g>
@@ -115,7 +113,7 @@ export function ProfileChart({
                   width={w}
                   height={height}
                   fill={`url(#${id}-z${String(bar.zone)})`}
-                  stroke={selected === i ? 'var(--cb-stage-text)' : 'none'}
+                  className={selected === i ? 'stroke-stage-text' : 'stroke-none'}
                   strokeWidth={2}
                   onMouseEnter={() => {
                     setSelected(i)
@@ -132,7 +130,7 @@ export function ProfileChart({
                     y={y - MARKER - 2}
                     width={MARKER}
                     height={MARKER}
-                    style={{ stroke: 'var(--cb-stage-text)' }}
+                    className="stroke-stage-text"
                   />
                 ) : null}
                 {bar.zone === 7 ? (
@@ -143,7 +141,7 @@ export function ProfileChart({
                     y={y - MARKER - 2}
                     width={MARKER}
                     height={MARKER}
-                    style={{ stroke: 'var(--cb-stage-text)' }}
+                    className="stroke-stage-text"
                   />
                 ) : null}
                 {bar.game !== undefined ? (
@@ -156,13 +154,13 @@ export function ProfileChart({
                     y={y - MARKER - 2 - (bar.zone >= 6 ? MARKER + 2 : 0)}
                     width={MARKER}
                     height={MARKER}
-                    style={{ stroke: 'var(--cb-stage-text)' }}
+                    className="stroke-stage-text"
                   />
                 ) : null}
               </g>
             )
           })}
-          <line x1={LEFT} x2={W} y1={AXIS_Y} y2={AXIS_Y} style={{ stroke: 'var(--cb-stage-muted)' }} strokeWidth={1} />
+          <line x1={LEFT} x2={W} y1={AXIS_Y} y2={AXIS_Y} className="stroke-stage-muted" strokeWidth={1} />
           {ticks.map((tick) => (
             <g key={tick}>
               <line
@@ -170,14 +168,14 @@ export function ProfileChart({
                 x2={LEFT + tick * scale}
                 y1={AXIS_Y}
                 y2={AXIS_Y + 4}
-                style={{ stroke: 'var(--cb-stage-muted)' }}
+                className="stroke-stage-muted"
               />
               <text
                 x={LEFT + tick * scale}
                 y={AXIS_Y + 20}
                 fontSize={13}
                 textAnchor="middle"
-                style={{ fill: 'var(--cb-stage-muted)' }}
+                className="fill-stage-muted"
               >
                 {t('class.chart.minutes', { minutes: tick / 60 })}
               </text>

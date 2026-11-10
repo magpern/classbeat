@@ -7,7 +7,7 @@ const SIDEBAR = '(min-width: 1024px)'
 const RAIL = '(min-width: 640px)'
 
 function read(): Layout {
-  if (typeof window.matchMedia !== 'function') return 'phone'
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'phone'
   if (window.matchMedia(SIDEBAR).matches) return 'sidebar'
   return window.matchMedia(RAIL).matches ? 'rail' : 'phone'
 }

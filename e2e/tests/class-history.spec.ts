@@ -2,7 +2,7 @@ import { expect, test } from './helpers'
 import { PLAYLISTS, fakeMowl } from './design-helpers'
 import { useModelScript } from './model-script'
 import { LONG, designAndOpen, reviseByChat, saveArm, signedInWithMowl } from './class-helpers'
-import { audit } from './mu-helpers'
+import { THEMES, audit, setTheme } from './mu-helpers'
 
 // The class history (ADR 0007 amendment of 2026-11-03, part H; issue #546): the timeline of a
 // class's versions, the comparison of two and Make current, on the fakes (the fake MOWL and the
@@ -25,6 +25,29 @@ test.afterAll(() => {
 test('the timeline, a comparison and making an older version current', async ({ page }) => {
   await signedInWithMowl(page, 'history')
   await designAndOpen(page, 'E2E history', PLAYLISTS.draft.name)
+
+  // PP1 (ADR 0030): zone colours come from classes, not `style`, in both themes. A bar is filled by
+  // its zone's gradient, whose first stop is the zone colour the token gives.
+  for (const theme of THEMES) {
+    await setTheme(page, theme)
+    const found = await page.locator('[data-testid="profile"] rect[data-bar]').first().evaluate((rect) => {
+      const gradient = document.querySelector(rect.getAttribute('fill')?.slice(4, -1) ?? '')
+      const probe = document.createElement('div')
+      probe.style.color = `var(--cb-zone-${rect.getAttribute('data-zone') ?? ''})`
+      document.body.append(probe)
+      const expected = getComputedStyle(probe).color
+      probe.remove()
+      const stop = gradient?.querySelector('stop')
+      return {
+        expected,
+        stop: stop ? getComputedStyle(stop).stopColor : null,
+        styled: document.querySelectorAll('[data-testid="profile"] [style]').length,
+      }
+    })
+    expect(found.stop, theme).toBe(found.expected)
+    expect(found.styled, theme).toBe(0)
+  }
+
   await reviseByChat(page, 'revise_good', 'Make the first minutes easier.', 2)
 
   const history = page.locator(HISTORY)

@@ -40,6 +40,8 @@ export function setTheme(choice: ThemeChoice): void {
 
 /** The theme the page shows: `system` is resolved by the device's light or dark preference. */
 export function resolvedTheme(): 'dark' | 'light' {
+  // No document in the build-time prerender: the default theme, as before the saved choice is applied.
+  if (typeof document === 'undefined') return DEFAULT_THEME === 'system' ? 'dark' : DEFAULT_THEME
   const attribute = document.documentElement.getAttribute('data-theme')
   const choice = isThemeChoice(attribute) ? attribute : DEFAULT_THEME
   if (choice !== 'system') return choice
@@ -48,5 +50,5 @@ export function resolvedTheme(): 'dark' | 'light' {
 
 /** The device's light preference, or null where the browser has no media queries. */
 export function lightPreferred(): MediaQueryList | null {
-  return typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: light)') : null
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: light)') : null
 }

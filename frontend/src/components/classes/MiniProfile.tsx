@@ -1,4 +1,5 @@
 import { useT } from '../../i18n/I18n'
+import { zoneFill } from './zoneClasses'
 import { lengthLabel, profileSeconds } from '../../lib/classCards'
 
 /**
@@ -41,7 +42,7 @@ export function MiniProfile({ profile, tall = false }: { profile: [number, numbe
             y={56 - height}
             width={Math.max((sec / total) * 200 - 0.5, 0.5)}
             height={height}
-            style={{ fill: `var(--cb-zone-${String(z)})` }}
+            className={zoneFill(z)}
           />
         )
       })}
