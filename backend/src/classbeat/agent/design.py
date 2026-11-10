@@ -18,7 +18,7 @@ timing always come from here, never from a number the model states.
 
 import copy
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, Final
 
 from mowl import music, sync, workout
@@ -124,6 +124,21 @@ class DesignResult:
     # job records them as Not as asked. Empty for every class that states nothing.
     unmet: tuple[Miss, ...] = ()
 
+    def with_unmet(self, unmet: tuple[Miss, ...]) -> "DesignResult":
+        return DesignResult(
+            self.draft,
+            self.spec,
+            self.timeline,
+            self.quality,
+            self.warnings,
+            self.duration_sec,
+            self.tss,
+            self.tss_approximate,
+            self.map_version,
+            self.crossfade_sec,
+            unmet,
+        )
+
 
 @dataclass(frozen=True)
 class DesignContext:
@@ -224,7 +239,7 @@ def within_request(gate: ExplicitGate, build: Callable[[], DesignResult]) -> Des
         gate.failed += 1
         raise
     misses = gate.review(result.spec)
-    return replace(result, unmet=misses) if misses else result
+    return result.with_unmet(misses) if misses else result
 
 
 def is_running(ctx: object) -> bool:
