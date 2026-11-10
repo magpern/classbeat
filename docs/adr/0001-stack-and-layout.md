@@ -1,6 +1,6 @@
 # ADR 0001: Stack and repository layout
 
-Status: Accepted (Frontend amended in part by ADR 0013, 2026-10-30)
+Status: Accepted (Frontend amended in part by ADR 0013, 2026-10-30; build-time HTML for public pages by ADR 0030, 2026-11-10, deferred)
 
 ## Context
 

@@ -1,5 +1,27 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 19 (2026-11-10, owner decisions: public pages; ADR 0030)
+
+The owner approved and froze the plan on 2026-11-10. **Implementation is deferred:** no PR from PP1
+to PP8 starts without a new explicit instruction from the owner. The design is
+[ADR 0030](adr/0030-public-pages-prerender.md); the frozen plan (revision 2) is
+[docs/plans/public-pages.md](plans/public-pages.md).
+
+- **Milestone PP, Public Pages & SEO** (#755, GitHub milestone 20). Public, indexable pages in
+  `/en`, `/sv` and `/da`: How it works, Features, Examples and four example classes, with `/help`
+  made indexable and no separate FAQ. PRs PP0 to PP8 (#889 to #897), in the plan's dependency order.
+  Opus Reviewer for PP0, PP3, PP4, PP5, PP6 and PP7; Sonnet otherwise. Sonnet drafts public copy and
+  Opus does the editorial and product-accuracy review.
+- **Rendering:** build-time prerender in the frontend stage, the server's pre-built pages carry the
+  body, the client takes over, and navigation at public-page boundaries is a full page load. No Node
+  in the image. App pages stay `noindex`.
+- **Sign-up stays invite-only.** Public CTAs say "Join the beta". No new waitlist.
+- **Publication waits for MA** (MA5 and MA6), a green takeover gate, and the owner's review of the
+  completed pages. Each page is published in English, Swedish and Danish together.
+- **No new analytics system.** Search Console only.
+- **Milestone PG, instructor resources,** is documented in the plan as a future, separate milestone
+  and is not scheduled.
+
 ## Amendment 18 (2026-11-10, owner decisions: AI-first class design and MOWL games; ADR 0029)
 
 The owner's decisions apply now. The design is [ADR 0029](adr/0029-ai-first-class-design.md); the

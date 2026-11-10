@@ -4,6 +4,8 @@ Status: Accepted (Architect's design, 2026-11-07, Opus review of the design PR; 
 decision of 2026-11-07 (issue #719): the site is public at launch, so every language gets its own
 URL. This amends [ADR 0023](0023-multilingual.md) section 2 ("no language in the URL") and the
 non-goal of the same name in [docs/plans/multilingual.md](../plans/multilingual.md).
+Section 6's fixed list of public pages and its head-only pages are amended by
+[ADR 0030](0030-public-pages-prerender.md) once that ADR is implemented (milestone PP, deferred).
 
 Related: [ADR 0003](0003-accounts-and-sessions.md) (sign-in, `return_to`, OAuth callbacks),
 [ADR 0013](0013-ui-design-night-studio.md) (CSP, router), [ADR 0022](0022-account-emails.md) (mail
