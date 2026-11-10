@@ -32,6 +32,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat import auth
 from classbeat.agent.design import ZONE7
 from classbeat.agent.stored_draft import stored_draft
+from classbeat.classes.history_compare import (
+    BeforeAfterOut,
+    CompareOut,
+    GameChangeOut,
+    IntervalsChangeOut,
+    MusicChangeOut,
+    SegmentsChangeOut,
+    WarningsOut,
+)
 from classbeat.classes.service import REVISION_LIMIT, stored_brief
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
@@ -142,46 +151,6 @@ class HistoryOut(BaseModel):
     # Drafts that no longer validate under the class's sport: left out of ``revisions``, so one
     # legacy row never hides the rest of the history and its Make current.
     unreadable: int = 0
-
-
-class WarningsOut(BaseModel):
-    unknown_bpm: int
-    unsure_beat_one: int
-
-
-class SegmentsChangeOut(BaseModel):
-    added: int
-    removed: int
-
-
-class IntervalsChangeOut(BaseModel):
-    added: int
-    removed: int
-    changed: int
-
-
-class BeforeAfterOut(BaseModel):
-    before: float
-    after: float
-
-
-class MusicChangeOut(BaseModel):
-    same_source: bool
-    same_fingerprint: bool
-
-
-class CompareOut(BaseModel):
-    from_id: UUID
-    from_number: int
-    to_id: UUID
-    to_number: int
-    segments: SegmentsChangeOut
-    intervals: IntervalsChangeOut
-    duration_sec: BeforeAfterOut
-    tss: BeforeAfterOut
-    text_changed: bool
-    warnings: dict[Literal["from", "to"], WarningsOut]
-    music: MusicChangeOut
 
 
 def _sport(brief: Any) -> Literal["cycling", "running"]:
@@ -318,6 +287,7 @@ def compare_rows(older: Any, newer: Any, sport: str) -> CompareOut:
         duration_sec=BeforeAfterOut(**change["duration_sec"]),
         tss=BeforeAfterOut(**change["tss"]),
         text_changed=bool(change["text_changed"]),
+        game_changes=[GameChangeOut(**g) for g in change["game_changes"]],
         warnings={"from": _warnings(a), "to": _warnings(b)},
         music=MusicChangeOut(
             same_source=_source_key(a) == _source_key(b),

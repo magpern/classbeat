@@ -1,6 +1,6 @@
 {
- "suite_version": 15,
- "digest": "54ee86ecf15a139d0f4914697b1c37778c3ba8c5f7cef72765d5b8bd202a0cac",
+ "suite_version": 16,
+ "digest": "d1d84d32603e4273db07d343174001d6a4b06e7c4ac2c6b41c02a0e1581a4bc1",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -44,14 +44,17 @@
    "design": [
     "ftp_20_60", "ftp_5_45", "races_40",
     "ftp_20_75", "ftp_3_30", "ftp_5_40_race", "games_fast_lane_50", "games_overflow_35",
-    "games_power_pull_40", "games_racetrack_45"
+    "games_power_pull_40", "games_racetrack_45",
+    "games_any_challenge_40", "games_any_pacing_35", "games_any_team_race_30", "games_margin_30"
    ]
   },
   "revisions": {
    "design": [
     "revise_easier", "revise_more_sprints", "revise_other_songs",
     "rev_climb_to_end_45", "rev_climb_to_start_40", "rev_easier_40", "rev_easier_50_to_easy",
-    "rev_more_sprints_30", "rev_more_sprints_60", "rev_shorter_45_to_30", "rev_shorter_75_to_60"
+    "rev_more_sprints_30", "rev_more_sprints_60", "rev_shorter_45_to_30", "rev_shorter_75_to_60",
+    "rev_game_add_40", "rev_game_replace_40", "rev_game_type_40", "rev_game_remove_40",
+    "rev_game_length_40", "rev_game_zone_40"
    ]
   },
   "song_choice": {

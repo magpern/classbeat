@@ -194,6 +194,15 @@ async def test_compare_reads_a_legacy_revision_on_either_side(mine: Legacy) -> N
         assert got.status_code == 200, got.text
         changed = 0 if older == newer else 1
         assert got.json()["intervals"] == {"added": 0, "removed": 0, "changed": changed}
+        # The compare route words the game change too (issue #878): segment counted from 1.
+        games = (
+            []
+            if older == newer
+            else [{"segment": 2, "before": "ghost_target", "after": "fast_lane"}]
+        )
+        if older == mine.r2 and newer == mine.r1:
+            games = [{"segment": 2, "before": "fast_lane", "after": "ghost_target"}]
+        assert got.json()["game_changes"] == games
 
 
 async def test_the_revision_api_shows_a_legacy_draft_with_its_game(mine: Legacy) -> None:

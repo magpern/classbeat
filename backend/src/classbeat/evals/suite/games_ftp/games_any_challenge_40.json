@@ -1,0 +1,16 @@
+{
+ "name": "games_any_challenge_40",
+ "about": "Moderate 40 minutes; a competitive team challenge names no game type.",
+ "brief": {
+  "length_min": 40,
+  "intensity": "moderate",
+  "text": "Make it a competitive team challenge.",
+  "climbs": 1
+ },
+ "music": {
+  "tracks": 12
+ },
+ "expect": {
+  "game_any": true
+ }
+}

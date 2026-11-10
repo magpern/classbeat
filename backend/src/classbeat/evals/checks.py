@@ -26,8 +26,8 @@ passes when all of them do. They look only at the fitted spec the backend comput
 
 The suite's checks (ADR 0012 section 4), run only for a case whose ``expect`` asks for them:
 
-- ``games``: each game the case lists exactly once, and no other (``workout.validate`` already
-  holds the library's rules for them);
+- ``games``: each game the case lists exactly once, and no other, or (``game_any``) exactly one
+  game of the catalogue (``game_checks``; ``workout.validate`` holds the library's rules);
 - ``ftp_warmup``: the FTP test starts at least ``ftp_warmup_min_sec`` into the class;
 - ``sprints_on_drops``: every sprint (a burst, as above) starts within one bar of a drop, when
   the music has a drop; no sprints at all fails when the brief asked for sprints or races;
@@ -86,6 +86,7 @@ from classbeat.agent.loop import StageOutcome
 from classbeat.design.revision import canonical, fitted_draft
 from classbeat.design.rules import evaluate
 from classbeat.design.sport_rules import select_profile_for
+from classbeat.evals import game_checks
 from classbeat.evals.cases import Case, PatternExpect, Range, RevisionExpect
 
 DURATION_TOLERANCE: Final = 0.05
@@ -495,6 +496,8 @@ def _mains(spec: dict[str, Any]) -> list[dict[str, Any]]:
 def _predicate(
     want: RevisionExpect, spec: dict[str, Any], base: dict[str, Any], tss: float
 ) -> tuple[bool, str]:
+    if want.kind in game_checks.EDITS:
+        return game_checks.edit_result(want, spec, base)
     if want.kind == "more_sprints":
         now, before = len(_bursts(spec)), len(_bursts(base))
         return now >= before + want.by, f"{now} sprints, {before} before, {want.by} more asked"
@@ -543,7 +546,8 @@ def revision_checks(
         )
     )
     now, was = _efforts(spec), _efforts(base)
-    if want.kind in ("more_sprints", "easier"):  # the sprints are what changed or may soften
+    if want.kind in ("more_sprints", "easier") or want.kind in game_checks.EDITS:
+        # the sprints are what changed or may soften (a game's interval may look like one)
         now, was = now[:-1], was[:-1]
     if want.kind == "shorter":  # a shorter class may cut some, but no kind of effort entirely
         kept = all(n > 0 for n, w in zip(now, was, strict=True) if w > 0)
@@ -605,13 +609,9 @@ def suite_checks(case: Case, result: DesignResult, music_map: dict[str, Any] | N
     out: list[Check] = []
     if expect.patterns is not None:
         out += pattern_checks(case, expect.patterns, spec)
-    if expect.games:
-        found = sorted(str(i["game"]) for _, i in _intervals(spec) if i.get("game"))
-        out.append(
-            Check(
-                "games", found == sorted(expect.games), f"games {found} for {sorted(expect.games)}"
-            )
-        )
+    games = game_checks.games_result(expect, spec)
+    if games is not None:
+        out.append(Check("games", *games))
     if expect.ftp_warmup_min_sec is not None:
         starts = [t for t, _, i in _timed(spec) if "ftp_test" in i]
         out.append(

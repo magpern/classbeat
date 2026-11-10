@@ -63,6 +63,7 @@ CATEGORY_GROUPS: Final[dict[str, frozenset[str]]] = {
 DIGEST_SOURCES: Final = (
     "cases.py",
     "checks.py",
+    "game_checks.py",
     "music.py",
     "pick.py",
     "pick_world.py",

@@ -66,8 +66,8 @@ RUN = {"sport": "running", "length_min": 30, "intensity": "moderate"}
 # none of them, so every recorded eval result and model route stays valid.
 # ADR 0029 section 3 (MA1a-1): design and revise changed with the schema's four games.
 CYCLING_PROMPT_VERSIONS = {
-    "design": "5bd3213749c40de3882d6a3b0a16fb31abcfbe71d38fff1bc1d7b318de3f3714",
-    "revise": "fae35f3319edbf7c507d2e2461d624e9457e9fe554ed780054c10e6b590bb696",
+    "design": "088f46a451829cb8a2d95cfbac0652d5067d49ee6856428199013c652d5eddd6",
+    "revise": "d5f34401e48de84cb247929626a92e370c096489fedb25f6eed14a0e03486d14",
     "pick_pool": "58d36e6a25155e86a70e88b79c845ccd1501f7f2db4c7d28af9f6f78badb5449",
     "choose_songs": "4fb091519ef4af656c3fc32e424bc1b083db5531a7436e8976dc2e0e60a386db",
 }

@@ -231,6 +231,7 @@ async def test_compare_says_what_changed_with_booleans_for_the_music(
     assert body["duration_sec"] == {"before": 540, "after": 720}
     assert body["tss"]["after"] > body["tss"]["before"]
     assert body["text_changed"] is True  # the workout's name
+    assert body["game_changes"] == []  # no game in either draft
     assert body["warnings"] == {
         "from": {"unknown_bpm": 0, "unsure_beat_one": 0},
         "to": {"unknown_bpm": 1, "unsure_beat_one": 0},

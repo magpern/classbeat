@@ -38,3 +38,9 @@ def is_retired(game: object) -> bool:
 def has_retired_game(content: object) -> bool:
     """Whether a stored draft (``class_revisions.content``) has an interval with a retired game."""
     return any(is_retired(i.get("game")) for i in _intervals(content))
+
+
+def game_retired(content: object, sport: str = "cycling") -> bool:
+    """Whether a stored draft of a class of ``sport`` is legacy: games are cycling only, so a
+    running draft never is, whatever its JSON holds."""
+    return sport == "cycling" and has_retired_game(content)

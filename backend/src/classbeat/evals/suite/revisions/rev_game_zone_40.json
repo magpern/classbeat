@@ -1,0 +1,268 @@
+{
+  "name": "rev_game_zone_40",
+  "about": "A Fast Lane game moved to another zone.",
+  "brief": {
+    "length_min": 40,
+    "intensity": "moderate",
+    "climbs": 1
+  },
+  "music": {
+    "tracks": 12
+  },
+  "expect": {
+    "revision": {
+      "kind": "game_zone",
+      "zone": 5,
+      "at": 7
+    }
+  },
+  "revise": {
+    "request": "Set the game's zone to 5.",
+    "earlier_requests": [],
+    "base": {
+      "name": "Invented base class",
+      "description": "The class as it stands.",
+      "segments": [
+        {
+          "name": "Warm-up",
+          "kind": "warmup",
+          "intervals": [
+            {
+              "sec": 200,
+              "zone": 2,
+              "rpm": [
+                80,
+                90
+              ],
+              "standing": false,
+              "cue": ""
+            },
+            {
+              "sec": 100,
+              "zone": 3,
+              "rpm": [
+                80,
+                90
+              ],
+              "standing": false,
+              "cue": ""
+            }
+          ]
+        },
+        {
+          "name": "Climb 1",
+          "kind": "main",
+          "intervals": [
+            {
+              "sec": 150,
+              "zone": 4,
+              "rpm": [
+                68,
+                76
+              ],
+              "standing": false,
+              "cue": ""
+            },
+            {
+              "sec": 30,
+              "zone": 5,
+              "rpm": [
+                65,
+                75
+              ],
+              "standing": true,
+              "cue": ""
+            },
+            {
+              "sec": 90,
+              "zone": 4,
+              "rpm": [
+                68,
+                76
+              ],
+              "standing": false,
+              "cue": ""
+            },
+            {
+              "sec": 60,
+              "zone": 1,
+              "rpm": [
+                75,
+                85
+              ],
+              "standing": false,
+              "cue": ""
+            }
+          ]
+        },
+        {
+          "name": "Game 1",
+          "kind": "main",
+          "intervals": [
+            {
+              "sec": 120,
+              "zone": 3,
+              "rpm": [
+                80,
+                90
+              ],
+              "standing": false,
+              "cue": ""
+            },
+            {
+              "sec": 60,
+              "zone": 6,
+              "rpm": [
+                85,
+                95
+              ],
+              "standing": false,
+              "game": "fast_lane",
+              "cue": ""
+            },
+            {
+              "sec": 60,
+              "zone": 1,
+              "rpm": [
+                75,
+                85
+              ],
+              "standing": false,
+              "cue": ""
+            }
+          ]
+        },
+        {
+          "name": "Tempo 1",
+          "kind": "main",
+          "intervals": [
+            {
+              "sec": 210,
+              "zone": 3,
+              "rpm": [
+                80,
+                90
+              ],
+              "standing": false,
+              "cue": ""
+            },
+            {
+              "sec": 90,
+              "zone": 2,
+              "rpm": [
+                80,
+                90
+              ],
+              "standing": false,
+              "cue": ""
+            }
+          ]
+        },
+        {
+          "name": "Tempo 2",
+          "kind": "main",
+          "intervals": [
+            {
+              "sec": 210,
+              "zone": 3,
+              "rpm": [
+                80,
+                90
+              ],
+              "standing": false,
+              "cue": ""
+            },
+            {
+              "sec": 90,
+              "zone": 2,
+              "rpm": [
+                80,
+                90
+              ],
+              "standing": false,
+              "cue": ""
+            }
+          ]
+        },
+        {
+          "name": "Tempo 3",
+          "kind": "main",
+          "intervals": [
+            {
+              "sec": 210,
+              "zone": 3,
+              "rpm": [
+                80,
+                90
+              ],
+              "standing": false,
+              "cue": ""
+            },
+            {
+              "sec": 90,
+              "zone": 2,
+              "rpm": [
+                80,
+                90
+              ],
+              "standing": false,
+              "cue": ""
+            }
+          ]
+        },
+        {
+          "name": "Tempo 4",
+          "kind": "main",
+          "intervals": [
+            {
+              "sec": 270,
+              "zone": 3,
+              "rpm": [
+                80,
+                90
+              ],
+              "standing": false,
+              "cue": ""
+            },
+            {
+              "sec": 90,
+              "zone": 2,
+              "rpm": [
+                80,
+                90
+              ],
+              "standing": false,
+              "cue": ""
+            }
+          ]
+        },
+        {
+          "name": "Cooldown",
+          "kind": "cooldown",
+          "intervals": [
+            {
+              "sec": 150,
+              "zone": 2,
+              "rpm": [
+                80,
+                90
+              ],
+              "standing": false,
+              "cue": ""
+            },
+            {
+              "sec": 120,
+              "zone": 1,
+              "rpm": [
+                70,
+                80
+              ],
+              "standing": false,
+              "cue": ""
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
