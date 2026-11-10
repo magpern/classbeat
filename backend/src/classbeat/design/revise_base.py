@@ -20,6 +20,7 @@ from typing import Any, Final
 from uuid import UUID
 
 from pydantic import ValidationError
+from sqlalchemy import text
 
 from classbeat.agent import Brief
 from classbeat.agent.schemas import AnyDraft, RunningDraft, WorkoutDraft
@@ -37,6 +38,12 @@ from classbeat.jobs import JobFailure, JobRun
 # The change summary's key for what the revision did not do as asked (MA1b-1 moves it to the
 # interpretation record). A list of reason codes only, so the summary stays within its 1024 bytes.
 NOT_AS_ASKED: Final = "not_as_asked"
+# The store's compare-and-set: the new revision becomes current only if the base still is.
+CAS: Final = text(
+    "UPDATE classes c SET current_revision_id = :revision_id, updated_at = now() FROM jobs j "
+    "WHERE j.id = :job_id AND j.owner_id = :owner_id AND c.owner_id = j.owner_id "
+    "AND c.id = j.class_id AND c.current_revision_id = :base RETURNING c.id"
+)
 
 
 @dataclass(frozen=True, slots=True)

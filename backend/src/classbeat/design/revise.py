@@ -18,9 +18,9 @@ It stores the base's hash and inserts the user's ``class_messages`` row with the
 
 A class whose ``music_source`` is ``none`` (a soundless class, ADR 0007 amendment of 2026-11-03;
 #528) is admitted through ``music_kind.admit_class`` (the three-condition gate: ``feature_off`` or
-``soundless_not_evaluated``, before the job row) and runs ``_run_soundless`` instead: no ``music``
-stage, no MOWL or Spotify call, the soundless ``revise`` stage, revision music ``{"source":
-"none"}``, ``music_changed`` never told.
+``soundless_not_evaluated``, before the job row) and runs ``revise_soundless.run_soundless``
+instead: no ``music`` stage, no MOWL or Spotify call, the soundless ``revise`` stage, revision
+music ``{"source": "none"}``, ``music_changed`` never told.
 
 **Pipeline** (stages ``music``, ``revise``), every attempt from the top with a new provider, so a
 retry restarts the stage from its beginning and the final store is the only write:
@@ -32,11 +32,17 @@ retry restarts the stage from its beginning and the final store is the only writ
 2. the music step of ``design_draft`` (``kind.music_step``: the playlist, or the mix after
    ``mixadmit.still_on``); a fingerprint that differs from the base revision's is told to the
    model as a fact;
-3. the ``revise`` stage (``classbeat.agent.revise``) over the brief, the music summary, the base
-   draft and the user's requests along the ``parent_id`` chain. No earlier note or model text;
-   A request that only asks for other songs ends the stage with ``songs_requested`` and the job
-   with ``use_change_songs`` (issue #278): no revision, no assistant message, usage recorded.
-4. the final fenced transaction (``Complete``): the connection guard, the revision (parent = base,
+3. for a brief that states values (``Brief.explicit``; the class's, with the nearest stated layer
+   of the base's chain applied, ``chat.load_base``), the request's stated values layered onto it
+   (``classbeat.design.revise_stated``, #904: the ``interpret`` stage told the class's values,
+   then ``revise_layer_policy``); the revision records the layer in ``provenance.stated`` and the
+   layer's Not as asked items;
+4. the ``revise`` stage (``classbeat.agent.revise``) over the (layered) brief, the music summary,
+   the base draft and the user's requests along the ``parent_id`` chain. No earlier note or
+   model text. A request that only asks for other songs ends the stage with ``songs_requested``
+   and the job with ``use_change_songs`` (issue #278): no revision, no assistant message, usage
+   recorded.
+5. the final fenced transaction (``Complete``): the connection guard, the revision (parent = base,
    provenance ``origin = revise_draft``; the base again is ``invalid_output``), the assistant
    message (the model's note and the backend's change summary), and the compare-and-set of
    ``current_revision_id`` (the new revision becomes current only if the base still is).
@@ -53,7 +59,6 @@ from pydantic import (
     StringConstraints,
     model_validator,
 )
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import quota
@@ -62,19 +67,28 @@ from classbeat.agent.records import JobStageHost
 from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested
 from classbeat.agent.running import revise_stage_for
 from classbeat.agent.schemas import clean_text
-from classbeat.agent.soundless import SoundlessReviseContext, soundless_revise_stage
 from classbeat.context import UserContext
-from classbeat.design import chat, diff, limits, mixadmit, music_kind, revise_base, revision, sport
+from classbeat.design import (
+    chat,
+    diff,
+    limits,
+    mixadmit,
+    music_kind,
+    revise_base,
+    revise_stated,
+    revision,
+    sport,
+)
 from classbeat.design.interpreted import with_interpretation
 from classbeat.design.kind import (
     NoMusicChoice,
-    Runtime,
     SwedebeatMusicChoice,
     current_runtime,
     group_model,
     music_step,
 )
 from classbeat.design.kind_music import has_music_source
+from classbeat.design.revise_soundless import run_soundless
 from classbeat.design.sport_rules import rules_for
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
 from classbeat.jobs.inputs import ModelJobInput
@@ -167,13 +181,6 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     )
 
 
-_CAS = text(
-    "UPDATE classes c SET current_revision_id = :revision_id, updated_at = now() FROM jobs j "
-    "WHERE j.id = :job_id AND j.owner_id = :owner_id AND c.owner_id = j.owner_id "
-    "AND c.id = j.class_id AND c.current_revision_id = :base RETURNING c.id"
-)
-
-
 async def run(job_run: JobRun) -> Complete:
     runtime = current_runtime()
     if runtime is None:
@@ -195,7 +202,7 @@ async def run(job_run: JobRun) -> Complete:
     base, base_hash, brief, music = loaded.row, loaded.base_hash, loaded.brief, loaded.music
     base_draft = loaded.draft  # strict, a retired game already a regular interval (ADR 0029)
     if isinstance(music, NoMusicChoice):
-        return await _run_soundless(job_run, given, loaded, runtime)
+        return await run_soundless(job_run, given, loaded, runtime)
     if brief.sport == sport.RUNNING:
         if isinstance(music, SwedebeatMusicChoice):
             raise JobFailure("internal")  # running v1 has no mix (ADR 0018)
@@ -211,8 +218,11 @@ async def run(job_run: JobRun) -> Complete:
     try:
         # The stored brief only: the request text never reaches the engine (ADR 0017 section 1).
         rules = rules_for(brief, base.dismissed_rules)
+        stated = await revise_stated.layered(  # #904: the request's stated values, layered
+            job_run, model, brief, given.request, given.plan_gates
+        )
         ctx = ReviseContext.build(
-            brief,
+            stated.brief,
             step.data,
             base_draft,
             base.earlier_requests,
@@ -246,7 +256,14 @@ async def run(job_run: JobRun) -> Complete:
             request_message_id=request_message_id,
             rules=rules.provenance() if rules else None,
         )
-        draft = with_interpretation(draft, brief, revised.result.unmet, given.plan_gates)
+        draft = with_interpretation(
+            draft,
+            stated.brief,
+            revised.result.unmet,
+            given.plan_gates,
+            extra=stated.items,
+            stated=bool(brief.explicit),
+        )
         change = revise_base.noted(
             diff.summarize(base.content, draft.content, brief.sport), loaded.retired
         )
@@ -263,7 +280,7 @@ async def run(job_run: JobRun) -> Complete:
                     "owner_id": fs.lease.owner_id,
                     "base": base_id,
                 }
-                await fs.db.execute(_CAS, params)  # no row: kept, but not current
+                await fs.db.execute(revise_base.CAS, params)  # no row: kept, but not current
                 await chat.insert_message(
                     fs.db,
                     owner_id=fs.lease.owner_id,
@@ -288,89 +305,6 @@ async def run(job_run: JobRun) -> Complete:
     finally:
         if not handed_over:
             step.close()
-
-
-async def _run_soundless(
-    job_run: JobRun, given: ReviseDraftInput, loaded: revise_base.RunBase, runtime: Runtime
-) -> Complete:
-    """A revise of a soundless class (#528): no ``music`` stage and no MOWL or Spotify call; the
-    soundless ``revise`` stage over the brief, the base draft and the requests, then the store
-    with a ``NoMusicStep``. The switch and the model's coverage are checked first (the worker's
-    backstop to ``admit``). No ``songs_requested`` exit, no ``music_changed``, no rules section."""
-    if (
-        given.class_id is None
-        or given.request_message_id is None
-        or given.base_revision_hash is None
-    ):
-        raise JobFailure("internal")
-    base, brief, base_draft = loaded.row, loaded.brief, loaded.draft
-    if brief.sport != sport.CYCLING:
-        raise JobFailure("internal")  # the input refuses a running brief with no music
-    class_id, base_id = given.class_id, given.base_revision_id
-    request_message_id, base_hash = (
-        given.request_message_id,
-        bytes.fromhex(given.base_revision_hash),
-    )
-    music_kind.still_on()  # the switch, before anything is called
-    model = await group_model(runtime, job_run, given.route_key, "design")
-    music_kind.require_covered(model)  # a model evaluated for soundless only
-    step = music_kind.NoMusicStep()
-    ctx = SoundlessReviseContext(
-        brief, base_draft, base.earlier_requests, given.request, given.plan_gates
-    )
-    outcome = await run_stage(
-        JobStageHost(job_run),
-        model.provider,
-        soundless_revise_stage(ctx),
-        ctx.first_message(),
-        model.agent,
-    )
-    if not isinstance(outcome.output, ReviseResult):
-        raise JobFailure("internal")
-    revised = outcome.output
-    draft = revision.build(
-        revised.result,
-        outcome,
-        None,
-        step,
-        origin="revise_draft",
-        base_revision_id=base_id,
-        base_hash=base_hash,
-        request_message_id=request_message_id,
-    )
-    draft = with_interpretation(draft, brief, revised.result.unmet, given.plan_gates)
-    change = revise_base.noted(
-        diff.summarize(base.content, draft.content, brief.sport), loaded.retired
-    )
-
-    async def store(fs: FencedSession) -> UUID:
-        """The music kind, the revision, the compare-and-set, the assistant message."""
-        try:
-            await music_kind.check_stored(fs, soundless=True)  # the kind never changes
-            revision_id = await draft.store(fs)
-            params = {
-                "revision_id": revision_id,
-                "job_id": fs.lease.job_id,
-                "owner_id": fs.lease.owner_id,
-                "base": base_id,
-            }
-            await fs.db.execute(_CAS, params)  # no row: kept, but not current
-            await chat.insert_message(
-                fs.db,
-                owner_id=fs.lease.owner_id,
-                class_id=class_id,
-                job_id=fs.lease.job_id,
-                role="assistant",
-                body=revised.note,
-                base_revision_id=base_id,
-                result_revision_id=revision_id,
-                change=change,
-            )
-            return revision_id
-        except chat.MessageRefused:
-            raise JobFailure("internal") from None
-
-    return Complete(store, release=step.close)
 
 
 REVISE_DRAFT: Final = KINDS.register(

@@ -23,7 +23,7 @@ from classbeat.agent.records import Provenance
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.soundless import REVISE_SYSTEM_PROMPT
 from classbeat.agent.stage import prompt_version
-from classbeat.design import revise as revise_mod
+from classbeat.design import revise_soundless as revise_mod  # the soundless run (#904 split)
 from classbeat.models import routes as routes_module
 from classbeat.models.versions import all_prompt_versions, running_suite_version
 from designtools import FakeMowlMusic

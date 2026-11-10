@@ -99,7 +99,7 @@ class Counters:
 
 
 class StageHost(Protocol):
-    """Where a stage run checkpoints and records itself; ``classbeat.agent.records.JobStageHost``
+    """Where a stage run checkpoints and records itself; ``classbeat.agent.stage_host.JobStageHost``
     in the worker (every write fenced)."""
 
     async def checkpoint(self) -> None: ...

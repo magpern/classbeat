@@ -1,0 +1,45 @@
+{
+ "kind": "interpret",
+ "name": "interpret_revise_game_type",
+ "about": "A revise that changes the game's type: the whole game list after the change, placement kept.",
+ "request": "Swap the Racetrack for Fast Lane.",
+ "current": {
+  "length_min": 40,
+  "climbs": 1,
+  "games": [
+   {
+    "type": "racetrack",
+    "placement": {
+     "relation": "after",
+     "anchor": "climb",
+     "ordinal": 1
+    }
+   }
+  ],
+  "explicit": [
+   "length_min",
+   "games.0"
+  ]
+ },
+ "expect": {
+  "absent": [
+   "length_min",
+   "climbs",
+   "sprints",
+   "races",
+   "ftp_test",
+   "sport",
+   "music"
+  ],
+  "games": [
+   {
+    "type": "fast_lane",
+    "placement": {
+     "relation": "after",
+     "anchor": "climb",
+     "ordinal": 1
+    }
+   }
+  ]
+ }
+}

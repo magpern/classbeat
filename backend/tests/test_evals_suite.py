@@ -67,6 +67,7 @@ RELEASED: dict[int, str] = {
     15: "54ee86ecf15a139d0f4914697b1c37778c3ba8c5f7cef72765d5b8bd202a0cac",
     16: "5ce57d50935c9c0a556492dd35aa47658770c5c2a9f14e14d81f2ea2a9ac5689",
     17: "35ceafb410bc8029d2046613429fdfc8043825769fc29ac1d01c1ad9b0b4a68a",
+    18: "fdbf9e421d1723e891d67c6c7cf0f863d9fd334e79b2f17485cca11070e1f8e5",
 }
 
 SUITE = load_suite()
@@ -180,16 +181,17 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     assert set(SUITE.design_cases) == {c.name for c in load_cases()} | DESIGN_OWN
     assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()} | SONG_OWN
     # #206, #208, #209, #399, #465 (two running class_patterns cases) and #388 (two provisional 55
-    # minute ones), #878 (ten game cases: four generic or margin, six revision edits); the smoke
-    # set holds the soundless cases of #531 (four of its 30 cases)
-    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10 + 2 + 2 + 10, 8 + 7)
-    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 65, 3 + 15)
-    # #880: eight interpret cases, of their own kind (neither design nor song cases)
-    assert len(SUITE.interpret_cases) == 8
+    # minute ones), #878 (ten game cases: four generic or margin, six revision edits), #904 (three
+    # revisions of stated values); the smoke set holds the soundless cases of #531 (four of its 30)
+    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10 + 2 + 2 + 10 + 3, 8 + 7)
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 68, 3 + 15)
+    # #880: eight interpret cases, of their own kind (neither design nor song cases); #904: three
+    # revise readings
+    assert len(SUITE.interpret_cases) == 8 + 3
     assert set(SUITE.interpret_cases) == set(MANIFEST.cases_of("interpret", "design")) | {
         "interpret_playlist_injection"
     }  # the injection is judged in adversarial: every run
-    assert len(index) == 30 + 65 + 3 + 15 + 8
+    assert len(index) == 30 + 68 + 3 + 15 + 8 + 3
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)

@@ -12,11 +12,13 @@ page, and only if the instructor wrote them.
 The stage reads nothing (no tool of kind ``read``) and writes nothing. It reports what the
 instructor asked for even where it exceeds the plan's limits: the policy applies the limits and
 records "Not as asked", so a request is never quietly clamped here. ``interpret_input`` builds the
-message it is sent.
+message it is sent. A revise runs the same stage with the class's ``current`` values
+(``classbeat.design.revise_stated``), so one prompt, and one eval key, serves both.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Final
+from typing import Any, Final
 
 from classbeat.agent import interpret_input
 from classbeat.agent.interpreted import InterpretedRequest
@@ -57,6 +59,14 @@ say where: either a position (start, early, middle, late or before_cooldown), or
 or cooldown), for example after the 2nd climb. Add duration_sec only if they \
 give a length. A race is not a game.
 
+A message with "current" holds a change to an existing class whose values are "current". Then \
+report only the fields the request changes, each with the value it should have after the change \
+("ten minutes longer" on a 45-minute class is 55, "one more sprint" on 3 sprints is 4), and leave \
+out every field it leaves as it is. If the request changes, adds or removes a game, report every \
+game the class should have after the change, in order, the unchanged ones as they are in \
+"current"; set remove_games to true only if it removes every game. If it says nothing about \
+games, report none.
+
 The request may be in any language, Swedish and Danish included; the values are the same closed \
 ones.
 """
@@ -80,6 +90,9 @@ class InterpretContext:
     max_class_minutes: int | None = None
     games_allowed: bool = True
     music: tuple[interpret_input.MusicName, ...] = field(default_factory=tuple)
+    # A revise: the class's values as they stand (``interpret_input.current_values``); None for a
+    # new class.
+    current: Mapping[str, Any] | None = None
 
     def first_message(self) -> str:
         return interpret_input.first_message(
@@ -88,6 +101,7 @@ class InterpretContext:
             max_class_minutes=self.max_class_minutes,
             games_allowed=self.games_allowed,
             music=self.music,
+            current=self.current,
         )
 
 

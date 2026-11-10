@@ -42,7 +42,7 @@ OWN: dict[str, list[Case]] = {
     cat: [SUITE.design_cases[n] for n in SUITE.manifest.cases_of(cat, "design") if n not in SMOKE]
     for cat in CATEGORIES
 }
-COUNTS = {"standard": 7, "music_sync": 7, "games_ftp": 11, "revisions": 14}
+COUNTS = {"standard": 7, "music_sync": 7, "games_ftp": 11, "revisions": 17}  # #904: three stated
 ALL = [c for cat in CATEGORIES for c in OWN[cat]]
 BY_NAME = {c.name: c for c in ALL}
 # The checks each category's cases add to the smoke set's.
@@ -409,6 +409,11 @@ async def test_an_edit_that_also_changes_another_interval_fails(case: Case) -> N
 @pytest.mark.parametrize("case", GAME_EDITS, ids=lambda c: c.name)
 async def test_an_edit_that_changes_nothing_fails(case: Case) -> None:
     result = await run(case, case.revise.base.model_dump(mode="json", exclude_none=True))  # type: ignore[union-attr]
+    if case.brief.explicit and result.outcome != "submitted":
+        # #904: a stated game the base lacks is refused by the stage's gate before any check
+        # runs (the recorded script then expects an acceptance it does not get).
+        assert "games.0" in case.brief.explicit
+        return
     assert ok_of(result)["revision"] is False
 
 

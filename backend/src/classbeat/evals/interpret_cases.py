@@ -7,14 +7,16 @@ given them); ``expect`` holds only closed values, never text: the brief path and
 a value must have come from, the paths that must be left unset (the policy's defaults) and the
 games, in order, in the closed form the brief stores. A request beyond the plan (a running class
 with a game) still expects what was *asked*: the policy, not the interpreter, records "Not as
-asked". Pure: no I/O.
+asked". A revise case (#904) also holds ``current``: the class's brief, of which the interpreter
+is told the closed values (``interpret_input.current_values``), and expects only what the request
+changes. Pure: no I/O.
 """
 
 from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-from classbeat.agent.brief import BriefGame, Sport
+from classbeat.agent.brief import Brief, BriefGame, Sport
 from classbeat.agent.interpret_input import MusicName
 from classbeat.agent.interpreted import MAX_NAMES, SCALARS, StatedOrigin
 
@@ -71,6 +73,7 @@ class InterpretCase(BaseModel):
     music: list[MusicEntry] = Field(
         default_factory=lambda: list[MusicEntry](), max_length=MAX_NAMES
     )
+    current: Brief | None = None  # a revise: the class as it stands
     expect: InterpretExpect
 
     @model_validator(mode="after")
