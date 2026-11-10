@@ -59,9 +59,10 @@ from classbeat.agent import (
 )
 from classbeat.agent import choose_songs as choose_module
 from classbeat.agent import pick_pool as pool_module
+from classbeat.agent.brief import Brief
 from classbeat.agent.limits import Limits
 from classbeat.agent.provider import ModelProvider
-from classbeat.agent.schemas import SONG_SCHEMA_VERSION, Brief
+from classbeat.agent.schemas import SONG_SCHEMA_VERSION
 from classbeat.agent.songs import KeptSong, analysed_pool
 from classbeat.connections import OpenConnection, hold
 from classbeat.crypto.keks import KeyRing
@@ -103,19 +104,18 @@ class Seeded:
 def stage_config(agent: AgentConfig, config: SongConfig, *, turns: int, calls: int) -> AgentConfig:
     """The song stages' limits (ADR 0008 section 3): their own turns and tool calls, 3
     corrections, the agent's wall time and turn reserve, and the song kinds' job ceiling."""
-    limits = Limits(
-        max_turns=turns,
-        max_tool_calls=calls,
-        max_corrections=3,
-        stage_seconds=agent.limits.stage_seconds,
-        job_cost_micros=config.cost_micros,
-        turn_output_reserve=agent.limits.turn_output_reserve,
-    )
     return AgentConfig(  # the model, effort and route stay the group's
         model=agent.model,
         effort=agent.effort,
         max_tokens=agent.max_tokens,
-        limits=limits,
+        limits=Limits(
+            max_turns=turns,
+            max_tool_calls=calls,
+            max_corrections=3,
+            stage_seconds=agent.limits.stage_seconds,
+            job_cost_micros=config.cost_micros,
+            turn_output_reserve=agent.limits.turn_output_reserve,
+        ),
         prices=agent.prices,
         route_key=agent.route_key,
         eval_result_id=agent.eval_result_id,

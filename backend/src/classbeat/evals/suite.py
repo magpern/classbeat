@@ -28,38 +28,32 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 from importlib import resources
 from types import ModuleType
-from typing import Any, Final, Literal
+from typing import Any, Final
 
 from mowl import workout
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from classbeat.agent import songs
 from classbeat.evals import checks, music, pick, pick_world, song_checks
 from classbeat.evals.cases import Case
+from classbeat.evals.interpret_cases import InterpretCase
 from classbeat.evals.pick import PickCase
-from classbeat.evals.song_checks import Band
+from classbeat.evals.suite_manifest import (
+    CATEGORY_GROUPS as CATEGORY_GROUPS,  # re-exported: the manifest's names live in suite_manifest
+)
+from classbeat.evals.suite_manifest import (
+    GROUPS as GROUPS,
+)
+from classbeat.evals.suite_manifest import (
+    Group as Group,
+)
+from classbeat.evals.suite_manifest import (
+    Manifest as Manifest,
+)
 
-Group = Literal["design", "songs"]
-GROUPS: Final[tuple[Group, ...]] = ("design", "songs")
-# Roadmap section 11 / ADR 0012 section 4: each category and the stage groups it may hold.
-CATEGORY_GROUPS: Final[dict[str, frozenset[str]]] = {
-    "standard": frozenset({"design"}),
-    "music_sync": frozenset({"design"}),
-    "games_ftp": frozenset({"design"}),
-    "revisions": frozenset({"design"}),
-    "song_choice": frozenset({"songs"}),
-    "missing_music": frozenset({"design", "songs"}),
-    "class_patterns": frozenset({"design"}),
-    "running": frozenset({"design"}),  # ADR 0012 amendment of 2026-11-03 (ADR 0018, issue #465)
-    # ADR 0007 amendment of 2026-11-03 (soundless classes, issue #531); suite version 11
-    "soundless": frozenset({"design"}),
-    "adversarial": frozenset({"design", "songs"}),
-    "cost": frozenset({"design", "songs"}),
-}
 DIGEST_SOURCES: Final = (
     "cases.py",
     "checks.py",
@@ -71,6 +65,12 @@ DIGEST_SOURCES: Final = (
     "song_checks.py",
     "suite.py",
     "gate.py",
+    # The interpret category (issue #880): its case model, checks and runner. Kept out until the
+    # suite held interpret cases, so the earlier digests stayed valid.
+    "interpret_cases.py",
+    "interpret_checks.py",
+    "interpret_run.py",
+    "suite_manifest.py",
 )
 # What the design stage is told besides its prompt (ADR 0017 sections 3 and 5): every module
 # that decides which rules exist, which hits fire, what the section and each hit say, how a
@@ -98,107 +98,21 @@ RULE_SOURCES: Final = (
     # no music (the brief, the timeline of the draft as written, the two first messages). Kept out
     # until the suite held soundless cases, so the earlier digests stayed valid.
     "agent/soundless_input.py",
+    # Interpret (ADR 0029 section 4, issue #880): what the interpreter is sent and may return, and
+    # the explicit-value rules whose closed values it reports. Kept out until the suite held
+    # interpret cases, so the earlier digests stayed valid.
+    "agent/interpret.py",
+    "agent/interpret_input.py",
+    "agent/interpreted.py",
+    "agent/explicit_input.py",
+    "agent/explicit_check.py",
 )
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")
-HEX64: Final = re.compile(r"^[0-9a-f]{64}$")
-CASE_NAME = r"^[a-z0-9_]{1,40}$"
 
 
 class SuiteError(ValueError):
     """The suite cannot be loaded; the message names the rule, never file content."""
-
-
-class GroupRules(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    median_cost_micros: int = Field(ge=0)  # the median cost per class of the group's runs
-    job_ceiling_micros: int = Field(ge=0)  # no run may cost more
-
-    @model_validator(mode="after")
-    def _median_below_ceiling(self) -> "GroupRules":
-        if self.median_cost_micros > self.job_ceiling_micros:
-            raise ValueError("a median cost threshold above its job ceiling says nothing")
-        return self
-
-
-class Rules(BaseModel):
-    """ADR 0012 section 4.3, every rule's parameters (the defaults live in the manifest)."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    repeat: int = Field(ge=1, le=10)  # every case runs at least this many times
-    pass_share: float = Field(gt=0, le=1)  # of the runs of a category not in every_run
-    every_run_categories: list[str]  # every run of these categories passes
-    every_run_checks: list[str] = Field(min_length=1)  # these checks pass in every run
-    # An outcome that is a failed check (a run stopped by a limit failed ``limits``).
-    outcome_checks: dict[str, str]
-    not_run_outcomes: list[str] = Field(min_length=1)  # an outage: counted as not run
-    not_run_share_max: float = Field(ge=0, lt=1)  # above it: ``incomplete``
-
-
-class Manifest(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    suite_version: int = Field(ge=1)
-    digest: str = Field(pattern=HEX64.pattern)
-    rules: Rules
-    groups: dict[Group, GroupRules]
-    zone7_tss_margin: float = Field(ge=0, le=1)  # section 7: widens a zone 7 class's TSS bound
-    # section 4.1: the BPM band of each role (a role with none is not judged)
-    bpm_bands: dict[str, Band] = Field(default_factory=lambda: dict[str, Band]())
-    # category -> stage group -> case names
-    categories: dict[str, dict[Group, list[str]]]
-    # A song case whose right end is a failure category, not a list (``pool_too_small``: too few
-    # usable tracks, nothing stored; ADR 0012 section 4 ``missing_music``). The gate counts such a
-    # run as passed when it ended there and its checks hold; its case file says the same
-    # (``expect.outcome``), and ``load_suite`` refuses a pair that disagrees.
-    expected_outcomes: dict[str, Literal["pool_too_small"]] = Field(
-        default_factory=lambda: dict[str, Literal["pool_too_small"]]()
-    )
-
-    @model_validator(mode="after")
-    def _consistent(self) -> "Manifest":
-        if set(self.groups) != set(GROUPS):
-            raise ValueError("the manifest sets the rules of both stage groups")
-        if set(self.categories) != set(CATEGORY_GROUPS):
-            raise ValueError("the manifest lists exactly the categories of ADR 0012 section 4")
-        seen: set[str] = set()
-        for category, by_group in self.categories.items():
-            if not set(by_group) <= CATEGORY_GROUPS[category]:
-                raise ValueError(f"{category} cannot hold cases of that stage group")
-            for names in by_group.values():
-                for name in names:
-                    if not re.fullmatch(CASE_NAME, name):
-                        raise ValueError(f"{category}: a case name is not a case name")
-                    if name in seen:
-                        raise ValueError(f"{name} is listed twice: a case has one category")
-                    seen.add(name)
-        index = self.case_index()
-        for name in self.expected_outcomes:
-            if name not in index or index[name][1] != "songs":
-                raise ValueError("expected_outcomes names a song case of the manifest")
-        rules = self.rules
-        if not set(rules.every_run_categories) <= set(CATEGORY_GROUPS):
-            raise ValueError("every_run_categories names an unknown category")
-        if set(rules.not_run_outcomes) & ({"submitted"} | set(rules.outcome_checks)):
-            raise ValueError("a not-run outcome cannot also be a result")
-        return self
-
-    def case_index(self) -> dict[str, tuple[str, Group]]:
-        """Each case's category and stage group."""
-        return {
-            name: (category, group)
-            for category, by_group in self.categories.items()
-            for group, names in by_group.items()
-            for name in names
-        }
-
-    def expected_outcome(self, name: str) -> str:
-        return self.expected_outcomes.get(name, "submitted")
-
-    def cases_of(self, category: str, group: Group) -> list[str]:
-        return list(self.categories[category].get(group, []))
 
 
 @dataclass(frozen=True)
@@ -206,6 +120,9 @@ class Suite:
     manifest: Manifest
     design_cases: dict[str, Case]
     song_cases: dict[str, PickCase]
+    interpret_cases: dict[str, InterpretCase] = field(
+        default_factory=lambda: dict[str, InterpretCase]()
+    )
 
     def category_of(self, name: str) -> str:
         return self.manifest.case_index()[name][0]
@@ -294,9 +211,14 @@ def _case_files() -> dict[str, tuple[str, str]]:
     return out
 
 
-def _load_case(name: str, folder: str, text: str) -> Case | PickCase:
+def _load_case(name: str, folder: str, text: str) -> Case | PickCase | InterpretCase:
     data = json.loads(text)
-    model = PickCase if isinstance(data, dict) and "catalogue" in data else Case
+    model: type[Case | PickCase | InterpretCase] = Case
+    if isinstance(data, dict):
+        if "catalogue" in data:
+            model = PickCase
+        elif data.get("kind") == "interpret":
+            model = InterpretCase
     case = model.model_validate_json(text)
     if case.name != name:
         raise SuiteError(f"{folder}/{name}.json: the file is named after its case")
@@ -319,14 +241,21 @@ def load_suite() -> Suite:
     files = _case_files()
     design: dict[str, Case] = {}
     song: dict[str, PickCase] = {}
+    interpret: dict[str, InterpretCase] = {}
     dumped: dict[str, dict[str, Any]] = {}
-    for name, (_, group) in sorted(manifest.case_index().items()):
+    for name, (category, group) in sorted(manifest.case_index().items()):
         if name not in files:
             raise SuiteError(f"the manifest names {name}, which has no case file")
         case = _load_case(name, *files[name])
         if isinstance(case, PickCase) != (group == "songs"):
             raise SuiteError(f"{name} is listed in the {group} group but is not a {group} case")
-        if isinstance(case, PickCase):
+        if category == "interpret" and not isinstance(case, InterpretCase):
+            raise SuiteError(f"{name}: the interpret category holds interpret cases only")
+        if isinstance(case, InterpretCase) and category not in ("interpret", "adversarial"):
+            raise SuiteError(f"{name}: an interpret case is judged in interpret or adversarial")
+        if isinstance(case, InterpretCase):
+            interpret[name] = case
+        elif isinstance(case, PickCase):
             if case.expect.outcome != manifest.expected_outcome(name):
                 raise SuiteError(f"{name}: the case and the manifest expect different outcomes")
             song[name] = case
@@ -339,7 +268,7 @@ def load_suite() -> Suite:
             "the suite changed: bump suite_version in evals/suite/manifest.json, set its digest "
             "to the new one and pin it in tests/test_evals_suite.py"
         )
-    return Suite(manifest, design, song)
+    return Suite(manifest, design, song, interpret)
 
 
 def current_digest() -> str:

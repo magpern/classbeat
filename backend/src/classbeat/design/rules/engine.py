@@ -41,7 +41,7 @@ Timeline = list[tuple[int, int, bool]]
 
 
 class BriefLike(Protocol):
-    """The stored brief fields a rule may be overridden by (``agent.schemas.Brief`` fits)."""
+    """The stored brief fields a rule may be overridden by (``agent.brief.Brief`` fits)."""
 
     @property
     def intensity(self) -> str: ...

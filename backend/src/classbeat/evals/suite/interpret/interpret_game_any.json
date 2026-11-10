@@ -1,0 +1,19 @@
+{
+ "kind": "interpret",
+ "name": "interpret_game_any",
+ "about": "A game with no type named is any, placed by position.",
+ "request": "A 30 minute class with a team game late in the class",
+ "expect": {
+  "values": {
+   "length_min": 30
+  },
+  "games": [
+   {
+    "type": "any",
+    "placement": {
+     "position": "late"
+    }
+   }
+  ]
+ }
+}

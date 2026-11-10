@@ -1,0 +1,21 @@
+{
+ "kind": "interpret",
+ "name": "interpret_danish",
+ "about": "A Danish request gives the same closed values; quotes stay verbatim.",
+ "request": "Et roligt cykelhold på 60 minutter med to sprints",
+ "expect": {
+  "values": {
+   "length_min": 60,
+   "intensity": "easy",
+   "sprints": 2
+  },
+  "origins": {
+   "length_min": "explicit",
+   "sprints": "explicit"
+  },
+  "absent": [
+   "races",
+   "music"
+  ]
+ }
+}

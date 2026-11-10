@@ -411,6 +411,7 @@ def test_cycling_prompt_versions_and_schemas_are_unchanged() -> None:
         "running_revise",
         "soundless_design",  # #527: the soundless stages, also under their own keys
         "soundless_revise",  # #528
+        "interpret",  # MA1b-2 (#880): the interpret stage
     }
     assert "gradient" not in json.dumps(DraftInput.model_json_schema())
     assert "gradient" not in json.dumps(ReviseInput.model_json_schema())

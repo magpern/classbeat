@@ -1,0 +1,25 @@
+{
+ "kind": "interpret",
+ "name": "interpret_explicit_kept",
+ "about": "Stated numbers and enums are kept as explicit; what is not said stays unset.",
+ "request": "A hard 45 minute class with two climbs, three sprints and an FTP test of 20 minutes",
+ "expect": {
+  "values": {
+   "length_min": 45,
+   "intensity": "hard",
+   "climbs": 2,
+   "sprints": 3,
+   "ftp_test": 20
+  },
+  "origins": {
+   "length_min": "explicit",
+   "climbs": "explicit",
+   "sprints": "explicit",
+   "ftp_test": "explicit"
+  },
+  "absent": [
+   "races",
+   "music"
+  ]
+ }
+}

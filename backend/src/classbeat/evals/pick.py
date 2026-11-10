@@ -24,6 +24,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from classbeat.agent import run_stage
+from classbeat.agent.brief import Brief
 from classbeat.agent.choose_songs import STAGE as CHOOSE_STAGE
 from classbeat.agent.choose_songs import ChooseContext, ChosenList, choose_stage
 from classbeat.agent.limits import Limits
@@ -31,7 +32,7 @@ from classbeat.agent.loop import AgentConfig
 from classbeat.agent.pick_pool import PoolContext, PoolResult, pool_stage
 from classbeat.agent.provider import ModelProvider
 from classbeat.agent.registry import MAX_TEXT, SearchRegistry
-from classbeat.agent.schemas import Brief, clean_text
+from classbeat.agent.schemas import clean_text
 from classbeat.agent.songs import (
     PickPlan,
     PoolTrack,
@@ -144,11 +145,8 @@ class PickCaseResult:
 
     @property
     def passed(self) -> bool:
-        return (
-            self.outcome == self.expected_outcome
-            and bool(self.checks)
-            and all(c.ok for c in self.checks)
-        )
+        checked = bool(self.checks) and all(c.ok for c in self.checks)
+        return self.outcome == self.expected_outcome and checked
 
     @property
     def failed_checks(self) -> list[str]:

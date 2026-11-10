@@ -36,7 +36,8 @@ from typing import Any, Final
 from mowl import library, music, quality, spotify
 from mowl.workout import mmss
 
-from classbeat.agent.schemas import Brief, clean_text
+from classbeat.agent.brief import Brief
+from classbeat.agent.schemas import clean_text
 
 MAX_SUMMARY_BYTES: Final = 30 * 1024  # under the 32 KB result cap, with room for the envelope
 MAX_TITLE: Final = 200
@@ -101,10 +102,6 @@ def view_text(value: Any, limit: int = MAX_TITLE) -> str:
     return clean_text(str(value or ""))[:limit]
 
 
-def _title(value: Any) -> str:
-    return view_text(value)
-
-
 def _bpm(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
         return None
@@ -127,8 +124,8 @@ def music_summary(data: MusicData, m: Mapping[str, Any]) -> dict[str, Any]:
     tracks = [
         {
             "index": int(t["track"]) - 1,
-            "title": _title(t.get("title")),
-            "artist": _title(t.get("artist")),
+            "title": view_text(t.get("title")),
+            "artist": view_text(t.get("artist")),
             "bpm": _bpm(t.get("bpm")),
             "from": str(t["from"]),
             "sec": round(float(t["sec"]), 1),
@@ -141,7 +138,7 @@ def music_summary(data: MusicData, m: Mapping[str, Any]) -> dict[str, Any]:
         if e.get("kind") in EVENT_KINDS
     ]
     summary: dict[str, Any] = {
-        "playlist": _title(full.get("playlist")),
+        "playlist": view_text(full.get("playlist")),
         "duration": str(full["duration"]),
         "duration_sec": round(float(full["duration_sec"]), 1),
         "crossfade_sec": float(m.get("crossfade", 0.0)),

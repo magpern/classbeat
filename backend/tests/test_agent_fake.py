@@ -58,6 +58,9 @@ COVERED = {
     "soundless_revise_songs_requested",
     # the revised draft is the base draft again (#470), used by tests/test_soundless_revise.py
     "soundless_revise_unchanged",
+    # the interpret stage's submission (ADR 0029 section 4), used by tests/test_interpret.py and
+    # the e2e specs
+    "e2e_interpret",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")

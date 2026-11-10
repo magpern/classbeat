@@ -1,0 +1,21 @@
+{
+ "kind": "interpret",
+ "name": "interpret_swedish",
+ "about": "A Swedish request gives the same closed values; quotes stay verbatim.",
+ "request": "Ett hårt spinningpass på 45 minuter med tre klättringar",
+ "expect": {
+  "values": {
+   "length_min": 45,
+   "intensity": "hard",
+   "climbs": 3
+  },
+  "origins": {
+   "length_min": "explicit",
+   "climbs": "explicit"
+  },
+  "absent": [
+   "races",
+   "music"
+  ]
+ }
+}
