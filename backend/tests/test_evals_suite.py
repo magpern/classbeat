@@ -66,7 +66,7 @@ RELEASED: dict[int, str] = {
     14: "55d9ebfc04db240af025f75f0e7fb4fb7493cb8176a2d8dffe0d0717b300f8e2",
     15: "54ee86ecf15a139d0f4914697b1c37778c3ba8c5f7cef72765d5b8bd202a0cac",
     16: "5ce57d50935c9c0a556492dd35aa47658770c5c2a9f14e14d81f2ea2a9ac5689",
-    17: "f973682f67bf9583b568f75d1e3fc595b69a1488f6a6583b5c24fb98a28141ca",
+    17: "35ceafb410bc8029d2046613429fdfc8043825769fc29ac1d01c1ad9b0b4a68a",
 }
 
 SUITE = load_suite()
@@ -186,7 +186,9 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 65, 3 + 15)
     # #880: eight interpret cases, of their own kind (neither design nor song cases)
     assert len(SUITE.interpret_cases) == 8
-    assert set(SUITE.interpret_cases) == set(MANIFEST.cases_of("interpret", "design"))
+    assert set(SUITE.interpret_cases) == set(MANIFEST.cases_of("interpret", "design")) | {
+        "interpret_playlist_injection"
+    }  # the injection is judged in adversarial: every run
     assert len(index) == 30 + 65 + 3 + 15 + 8
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
@@ -195,7 +197,7 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
         "adversarial_brief", "adversarial_music", "revise_adversarial_music", "injected_title",
         "adv_brief_requests", "adv_malformed_hits", "adv_malformed_music", "adv_oversized_hits",
         "adv_oversized_music", "adv_pool_requests", "adv_tool_requests", "revise_adv_requests",
-        "run_adversarial", "soundless_adversarial",
+        "run_adversarial", "soundless_adversarial", "interpret_playlist_injection",
     }  # fmt: skip
     assert {n for n, (cat, _) in index.items() if cat == "running"} == {
         "run_interval_30", "run_interval_45", "run_steady_40", "run_incline_35",

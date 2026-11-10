@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from classbeat.agent import catalog
 from classbeat.agent.catalog import CatalogModel
+from classbeat.agent.interpret import InterpretContext, interpret_stage
 from classbeat.agent.providers import (
     AnthropicProvider,
     DeepSeekProvider,
@@ -201,8 +202,6 @@ def test_the_running_prompt_versions_are_those_of_stages_built_from_real_context
     soundless_revise = soundless_revise_stage(
         SoundlessReviseContext(revise_case.brief, revise_case.revise.base, (), "easier")
     )
-    from classbeat.agent.interpret import InterpretContext, interpret_stage
-
     interpret = interpret_stage(InterpretContext("a hard 45 minute class"))
     assert running_prompt_versions("design") == {
         "design": design.prompt_version,

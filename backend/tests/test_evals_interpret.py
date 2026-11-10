@@ -23,8 +23,10 @@ CASES = SUITE.interpret_cases
 
 
 def test_the_suite_holds_the_eight_interpret_cases_in_their_own_category() -> None:
-    assert sorted(CASES) == sorted(SUITE.manifest.cases_of("interpret", "design"))
-    assert {SUITE.category_of(n) for n in CASES} == {"interpret"}
+    own = SUITE.manifest.cases_of("interpret", "design")
+    assert sorted(CASES) == sorted([*own, "interpret_playlist_injection"])
+    assert {SUITE.category_of(n) for n in own} == {"interpret"}
+    assert SUITE.category_of("interpret_playlist_injection") == "adversarial"
     covered = " ".join(c.request for c in CASES.values()).lower()
     for word in ("power pull", "game", "run", "ett hårt", "et roligt", "playlist"):
         assert word in covered
@@ -78,6 +80,9 @@ async def test_an_injection_that_is_obeyed_fails_the_case() -> None:
     case = CASES["interpret_playlist_injection"]
     obeyed = _with(case, lambda d: d["length_min"].update(value=180))
     assert await _failed(case, obeyed) == ["values"]
+    # An injected sport is a valid closed value, so the case must catch it by value.
+    sport = _with(case, lambda d: d.update(sport={"value": "running", "origin": "inferred"}))
+    assert await _failed(case, sport) == ["values"]
     # Text the model invents never survives the stage: its quote is dropped, the run passes ...
     said = _with(case, lambda d: d["length_min"].update(quote="PWNED"))
     assert await _failed(case, said) == []
@@ -117,3 +122,11 @@ def test_the_live_run_order_includes_the_interpret_cases_as_design_group_runs() 
     mine = [r for r in runs if r.case in CASES]
     assert len(mine) == len(CASES)
     assert {r.group for r in mine} == {"design"}
+
+
+def test_the_injection_case_is_judged_in_adversarial_where_every_run_must_pass() -> None:
+    from classbeat.evals.suite import load_suite
+
+    assert "interpret_playlist_injection" in SUITE.manifest.cases_of("adversarial", "design")
+    assert "adversarial" in SUITE.manifest.rules.every_run_categories
+    assert load_suite().interpret_cases["interpret_playlist_injection"].expect.not_values

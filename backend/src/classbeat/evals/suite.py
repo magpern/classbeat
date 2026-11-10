@@ -249,8 +249,10 @@ def load_suite() -> Suite:
         case = _load_case(name, *files[name])
         if isinstance(case, PickCase) != (group == "songs"):
             raise SuiteError(f"{name} is listed in the {group} group but is not a {group} case")
-        if isinstance(case, InterpretCase) != (category == "interpret"):
+        if category == "interpret" and not isinstance(case, InterpretCase):
             raise SuiteError(f"{name}: the interpret category holds interpret cases only")
+        if isinstance(case, InterpretCase) and category not in ("interpret", "adversarial"):
+            raise SuiteError(f"{name}: an interpret case is judged in interpret or adversarial")
         if isinstance(case, InterpretCase):
             interpret[name] = case
         elif isinstance(case, PickCase):

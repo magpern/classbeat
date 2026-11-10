@@ -4,6 +4,7 @@ On the sanitised ``InterpretedRequest`` (what the stage hands back), never on mo
 
 - ``values``: every expected field is set, to the expected closed value and, where the case says
   so, with the expected origin;
+- ``not_values``: a field may be unset but never set to the given value (an injected one);
 - ``absent``: the fields the request does not settle are left unset (the policy's defaults);
 - ``games``: the games, in order, in the closed form the brief stores (type, placement, length);
 - ``quotes``: every kept quote is a verbatim substring of the request;
@@ -29,6 +30,7 @@ def check_interpretation(case: InterpretCase, got: InterpretedRequest) -> list[C
         or read[path].value != value
         or (path in expect.origins and read[path].origin != expect.origins[path])
     ]
+    wrong += [p for p, v in expect.not_values.items() if p in read and read[p].value == v]
     request = clean_request(case.request)
     quotes = [r.path for r in read.values() if r.quote is not None and r.quote not in request]
     checks = [

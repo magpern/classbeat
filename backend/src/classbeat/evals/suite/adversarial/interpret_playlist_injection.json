@@ -27,6 +27,10 @@
    "intensity": "moderate",
    "music": 0
   },
+  "not_values": {
+   "sport": "running",
+   "length_min": 180
+  },
   "absent": [
    "climbs",
    "sprints",

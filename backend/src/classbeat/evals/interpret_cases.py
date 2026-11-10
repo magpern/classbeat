@@ -35,6 +35,9 @@ class InterpretExpect(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     values: dict[str, JsonValue] = Field(default_factory=lambda: dict[str, JsonValue]())
+    not_values: dict[str, JsonValue] = Field(
+        default_factory=lambda: dict[str, JsonValue]()
+    )  # a field may be unset, but never set to this (an injected value)
     origins: dict[str, StatedOrigin] = Field(default_factory=lambda: dict[str, StatedOrigin]())
     absent: list[str] = Field(default_factory=lambda: list[str]())
     games: list[BriefGame] | None = None  # in order; ``None``: the games are not judged
@@ -43,7 +46,7 @@ class InterpretExpect(BaseModel):
     @model_validator(mode="after")
     def _paths(self) -> "InterpretExpect":
         known = set(SCALARS)
-        named = set(self.values) | set(self.origins) | set(self.absent)
+        named = set(self.values) | set(self.not_values) | set(self.origins) | set(self.absent)
         if not named <= known:
             raise ValueError(
                 "expect names the scalar fields of a request only; games have their own"

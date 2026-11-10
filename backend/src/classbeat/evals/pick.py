@@ -145,11 +145,8 @@ class PickCaseResult:
 
     @property
     def passed(self) -> bool:
-        return (
-            self.outcome == self.expected_outcome
-            and bool(self.checks)
-            and all(c.ok for c in self.checks)
-        )
+        checked = bool(self.checks) and all(c.ok for c in self.checks)
+        return self.outcome == self.expected_outcome and checked
 
     @property
     def failed_checks(self) -> list[str]:

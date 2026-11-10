@@ -1,6 +1,6 @@
 {
  "suite_version": 17,
- "digest": "f973682f67bf9583b568f75d1e3fc595b69a1488f6a6583b5c24fb98a28141ca",
+ "digest": "35ceafb410bc8029d2046613429fdfc8043825769fc29ac1d01c1ad9b0b4a68a",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -90,15 +90,15 @@
   "interpret": {
    "design": [
     "interpret_explicit_kept", "interpret_game_type", "interpret_game_any",
-    "interpret_running_game", "interpret_beyond_plan", "interpret_swedish", "interpret_danish",
-    "interpret_playlist_injection"
+    "interpret_running_game", "interpret_beyond_plan", "interpret_swedish", "interpret_danish"
    ]
   },
   "adversarial": {
    "design": [
     "adversarial_brief", "adversarial_music", "revise_adversarial_music",
     "adv_brief_requests", "adv_malformed_music", "adv_oversized_music", "adv_tool_requests",
-    "revise_adv_requests", "run_adversarial", "soundless_adversarial"
+    "revise_adv_requests", "run_adversarial", "soundless_adversarial",
+    "interpret_playlist_injection"
    ],
    "songs": ["injected_title", "adv_malformed_hits", "adv_oversized_hits", "adv_pool_requests"]
   },

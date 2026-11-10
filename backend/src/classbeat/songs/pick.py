@@ -206,11 +206,9 @@ async def run_phase_one(
     if account is None:  # open_spotify refuses it already
         raise JobFailure("not_connected")
     seeded = await _seeded(run, seed)
-    plan = (
-        PickPlan.build(brief, replace=seeded.roles, kept=seeded.kept)
-        if seeded is not None
-        else PickPlan.build(brief)
-    )
+    plan = PickPlan.build(brief)
+    if seeded is not None:
+        plan = PickPlan.build(brief, replace=seeded.roles, kept=seeded.kept)
     pool_config = stage_config(
         agent, config, turns=pool_module.MAX_TURNS, calls=pool_module.MAX_TOOL_CALLS
     )
