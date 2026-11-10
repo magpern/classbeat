@@ -1,0 +1,158 @@
+{
+ "model": "fake-model",
+ "drafts": {
+  "draft": {
+   "name": "Invented long endurance ride",
+   "description": "A 60 minute endurance ride.",
+   "segments": [
+    {
+     "name": "Warm-up",
+     "kind": "warmup",
+     "intervals": [
+      {
+       "sec": 600,
+       "zone": 2,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false
+      },
+      {
+       "sec": 300,
+       "zone": 3,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Endurance one",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 900,
+       "zone": 3,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Easy",
+     "kind": "recovery",
+     "intervals": [
+      {
+       "sec": 120,
+       "zone": 1,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Endurance two",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 900,
+       "zone": 3,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Easy again",
+     "kind": "recovery",
+     "intervals": [
+      {
+       "sec": 120,
+       "zone": 1,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Endurance three",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 480,
+       "zone": 3,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Cooldown",
+     "kind": "cooldown",
+     "intervals": [
+      {
+       "sec": 180,
+       "zone": 1,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "turns": [
+  {
+   "calls": [
+    {
+     "name": "preview_draft",
+     "input": {
+      "draft": {
+       "$draft": "draft"
+      }
+     },
+     "expect": {
+      "ok": true,
+      "duration_sec": 3600
+     }
+    }
+   ]
+  },
+  {
+   "calls": [
+    {
+     "name": "submit_draft",
+     "input": {
+      "draft": {
+       "$draft": "draft"
+      }
+     },
+     "expect": {
+      "accepted": true
+     }
+    }
+   ]
+  }
+ ]
+}

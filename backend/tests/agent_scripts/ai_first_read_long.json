@@ -1,0 +1,22 @@
+{
+ "model": "fake-model",
+ "turns": [
+  {
+   "calls": [
+    {
+     "name": "submit_brief",
+     "input": {
+      "length_min": {
+       "value": 90,
+       "origin": "explicit",
+       "quote": "90 minute"
+      }
+     },
+     "expect": {
+      "accepted": true
+     }
+    }
+   ]
+  }
+ ]
+}

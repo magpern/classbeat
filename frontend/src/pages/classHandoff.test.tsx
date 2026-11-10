@@ -107,6 +107,18 @@ describe('the hand-off from the start screen', () => {
     expect(sessionStorage.getItem(`classbeat.start-request.${NEW_CLASS}`)).toContain('A hilly ride')
   })
 
+  it('offers Interpret again when the hand-off call itself is refused with not_connected', async () => {
+    fakeApi(
+      routes({
+        [INTERPRETATION]: { refusal: null, design_job: null, items: [] },
+        [DESIGN]: () => reason(409, 'not_connected'),
+      }),
+    )
+    renderAt(PAGE)
+    expect(await screen.findByText(/MOWL was not connected/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Interpret again' })).toBeInTheDocument()
+  })
+
   it('says the reading failed when it is not stored, no job runs and the request was kept', async () => {
     sessionStorage.setItem(
       `classbeat.start-request.${CLASS_ID}`,

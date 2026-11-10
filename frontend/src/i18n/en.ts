@@ -593,7 +593,7 @@ export const en = {
   'class.chart.zoneName': 'Zone {zone} {name}',
   'class.chart.range': '{from} to {to}',
 
-  // MOWL games (ADR 0029 section 3, issue 876). English only until MA6; listed in untranslated.json.
+  // MOWL games (ADR 0029 section 3, issue 876). Translated in MA6.
   'class.game.racetrack': 'Racetrack',
   'class.game.power_pull': 'Power Pull',
   'class.game.fast_lane': 'Fast Lane',
@@ -820,7 +820,7 @@ export const en = {
   'newclass.notes': 'Anything else?',
   'newclass.notes.hint': 'Tell us how the class should feel.',
   'newclass.notes.hintNoGames': 'Tell us how it should feel. Games are not in your plan.',
-  // The free-text start screen (ADR 0029, issue 882). English only until MA6; listed in untranslated.json.
+  // The free-text start screen (ADR 0029, issue 882). Translated in MA6.
   'start.formLabel': 'Start a class',
   'start.backToStart': 'Back to the start',
   'start.prompt.label': 'Describe your class',

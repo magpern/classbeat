@@ -61,6 +61,15 @@ COVERED = {
     # the interpret stage's submission (ADR 0029 section 4), used by tests/test_interpret.py and
     # the e2e specs
     "e2e_interpret",
+    # the AI-first done-when suite (e2e/tests/ai-first*.spec.ts): the reading and the design of
+    # a Power Pull request, its revise to Overflow, a generic game and a class beyond the plan
+    "ai_first_read_pull",
+    "ai_first_design_pull",
+    "ai_first_revise_overflow",
+    "ai_first_read_any",
+    "ai_first_design_any",
+    "ai_first_read_long",
+    "ai_first_design_long",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")

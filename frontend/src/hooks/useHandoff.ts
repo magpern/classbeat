@@ -87,6 +87,8 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
             setPhase(recallRequest(classId) === null ? 'idle' : 'failed')
           }
         } else if (error instanceof ApiError && error.status === 409) {
+          // The refusal's own code, so a fresh `not_connected` offers Interpret again at once, as a stored one does.
+          setRefusal(error.reason)
           setPhase('refused')
         } else {
           setPhase('error')

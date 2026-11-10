@@ -702,6 +702,12 @@ class Handler(BaseHTTPRequestHandler):
                             for s in segments
                             for iv in s["intervals"]  # type: ignore[union-attr]
                         ],
+                        # ADR 0029: every interval's `IntervalGameID` (None: no game).
+                        "game_ids": [
+                            (iv.get("IntervalGame") or {}).get("IntervalGameID")
+                            for s in segments
+                            for iv in s["intervals"]  # type: ignore[union-attr]
+                        ],
                     }
                 )
         self.reply(200, {"programs": shown})

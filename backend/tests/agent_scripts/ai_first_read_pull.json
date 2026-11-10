@@ -1,0 +1,40 @@
+{
+ "model": "fake-model",
+ "turns": [
+  {
+   "calls": [
+    {
+     "name": "submit_brief",
+     "input": {
+      "length_min": {
+       "value": 30,
+       "origin": "explicit",
+       "quote": "30 minute"
+      },
+      "climbs": {
+       "value": 2,
+       "origin": "explicit",
+       "quote": "two climbs"
+      },
+      "games": [
+       {
+        "type": "power_pull",
+        "origin": "explicit",
+        "quote": "Power Pull",
+        "placement": {
+         "relation": "after",
+         "anchor": "climb",
+         "ordinal": 2
+        },
+        "duration_sec": 120
+       }
+      ]
+     },
+     "expect": {
+      "accepted": true
+     }
+    }
+   ]
+  }
+ ]
+}

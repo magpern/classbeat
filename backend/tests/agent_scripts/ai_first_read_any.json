@@ -1,0 +1,39 @@
+{
+ "model": "fake-model",
+ "turns": [
+  {
+   "calls": [
+    {
+     "name": "submit_brief",
+     "input": {
+      "length_min": {
+       "value": 30,
+       "origin": "explicit",
+       "quote": "30 minute"
+      },
+      "climbs": {
+       "value": 2,
+       "origin": "explicit",
+       "quote": "two climbs"
+      },
+      "games": [
+       {
+        "type": "any",
+        "origin": "explicit",
+        "quote": "a game",
+        "placement": {
+         "relation": "after",
+         "anchor": "climb",
+         "ordinal": 2
+        }
+       }
+      ]
+     },
+     "expect": {
+      "accepted": true
+     }
+    }
+   ]
+  }
+ ]
+}
