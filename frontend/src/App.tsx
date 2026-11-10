@@ -28,7 +28,7 @@ import { SignUpConfirmPage } from './pages/SignUpConfirmPage'
 import { SignUpPage } from './pages/SignUpPage'
 import { TermsPage } from './pages/TermsPage'
 import { hasUnknownLanguage, isAdminPath } from './router/paths'
-import { Link, RouterProvider, useRouter } from './router/Router'
+import { Link, RouterProvider, useRouter, type Location } from './router/Router'
 
 // The admin area is its own chunk, fetched only for a session whose role is admin or whose
 // account is an admin one with its TOTP check missing or lapsed (`adminPendingMfa`, ADR 0011
@@ -125,9 +125,10 @@ function Routes() {
   )
 }
 
-export function App() {
+/** `initialLocation` is for the build-time prerender, which has no window; the browser reads its own. */
+export function App({ initialLocation }: { initialLocation?: Location }) {
   return (
-    <RouterProvider>
+    <RouterProvider initialLocation={initialLocation}>
       <SessionProvider>
         <AccountLocale />
         <GuardProvider>

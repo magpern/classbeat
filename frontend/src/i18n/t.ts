@@ -32,6 +32,11 @@ export async function loadCatalogue(
   }
 }
 
+/** Whether `t` already has this locale's text (English always does). */
+export function isCatalogueLoaded(locale: Locale): boolean {
+  return locale === DEFAULT_LOCALE || loaded.has(locale)
+}
+
 /** Forgets loaded catalogues (tests). */
 export function resetCatalogues(): void {
   loaded.clear()
@@ -62,8 +67,16 @@ function message(locale: Locale, key: CatalogueKey): { text: Message; locale: Lo
   return { text: en[key], locale: DEFAULT_LOCALE }
 }
 
+let recorder: Set<CatalogueKey> | null = null
+
+/** The build-time prerender collects every key a page renders here (`null` stops it). */
+export function recordKeys(sink: Set<CatalogueKey> | null): void {
+  recorder = sink
+}
+
 /** The text of `key` in `locale`, English when the key is missing there; `{name}` placeholders filled. */
 export function translate(locale: Locale, key: CatalogueKey, params?: Params): string {
+  recorder?.add(key)
   const { text, locale: from } = message(locale, key)
   const chosen =
     typeof text === 'string' ? text : plural(from, typeof params?.count === 'number' ? params.count : 0, text)

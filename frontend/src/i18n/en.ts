@@ -23,6 +23,17 @@ export const en = {
   'common.email': 'Email',
   'common.password': 'Password',
 
+  // Head of the public pages: the <title> and the description (ADR 0030 section 3).
+  'meta.landing.title': 'classbeat | Your class, timed to the music',
+  'meta.landing.description':
+    'Describe the ride and we pick the songs. Design indoor-cycling classes timed to the music and save them to MOWL.',
+  'meta.privacy.title': 'Privacy | classbeat',
+  'meta.privacy.description':
+    'What we keep about you, why we keep it, and how you export or delete it.',
+  'meta.terms.title': 'Terms | classbeat',
+  'meta.terms.description':
+    'The terms for classbeat: what you can do, what we do and what we do not promise.',
+
   // Landing page.
   'landing.badge': 'Private beta',
   'landing.title': 'Your class, timed to the music.',

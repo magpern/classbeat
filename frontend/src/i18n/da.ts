@@ -19,6 +19,17 @@ const da: Catalogue = {
   'common.email': 'Mail',
   'common.password': 'Adgangskode',
 
+  // Head of the public pages: the <title> and the description (ADR 0030 section 3).
+  'meta.landing.title': 'classbeat | Dit hold, i takt med musikken',
+  'meta.landing.description':
+    'Beskriv turen, så vælger vi sangene. Design hold til indendørscykling i takt med musikken og gem dem i MOWL.',
+  'meta.privacy.title': 'Privatliv | classbeat',
+  'meta.privacy.description':
+    'Hvad vi gemmer om dig og hvorfor. Sådan eksporterer eller sletter du det.',
+  'meta.terms.title': 'Vilkår | classbeat',
+  'meta.terms.description':
+    'Vilkårene for classbeat: hvad du må, hvad vi gør, og hvad vi ikke lover.',
+
   // Landing page.
   'landing.badge': 'Privat beta',
   'landing.title': 'Dit hold, i takt med musikken.',

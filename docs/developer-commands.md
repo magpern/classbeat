@@ -436,7 +436,7 @@ npm run dev          # dev server on :5173; proxies /api to http://localhost:800
 npm run lint         # ESLint (typescript-eslint, react-hooks)
 npm run typecheck    # tsc -b, strict
 npm test             # Vitest + Testing Library (jsdom), no network
-npm run build        # typecheck, then Vite writes frontend/dist
+npm run build        # typecheck, Vite writes frontend/dist, then the prerender writes frontend/build/prerender.json
 ```
 
 - Proxy target: set `API_PROXY_TARGET` (shell or `frontend/.env`, git-ignored) to point the dev
@@ -535,6 +535,15 @@ npm run build        # typecheck, then Vite writes frontend/dist
 - Bundle budget (ADR 0013 section 11): `npm run check:bundle` (`scripts/bundle-size.ts`, after `npm run build`)
   gzips the scripts `dist/index.html` loads first (entry and static preloads, not lazy chunks like the admin
   area) and fails above 250 kB (1000 bytes per kB, as Vite reports); `src/bundleSize.test.ts` tests the rules.
+- Public-page prerender (ADR 0030, PP2): `npm run build` ends with `npm run prerender` (a Vite SSR bundle of
+  `src/prerender/prerenderAll.ts` in `frontend/build/ssr`, then `scripts/prerender.ts`), which writes
+  `frontend/build/prerender.json` (`{lang: {path: {title, description, body, keys}}}`, outside `dist`). The paths come
+  from `src/publicSite/publicPaths.json` (`published`, `draft`; "" is the landing page); each path needs its
+  title and description keys in `src/publicSite/pageMeta.ts` and a page module in the guard
+  `src/publicSite/noApiClient.test.ts`. The build fails on a render throw, a body without exactly one `<h1>`, any
+  `style=`, a `fetch` call, or a published sv/da body equal to the English one (a key on `untranslated.json` does
+  not fail it). `check:bundle` also fails if `react-dom/server` is in a shipped script. `src/main.tsx` awaits the
+  catalogue (`src/takeover.ts`) when `#root` has children. Nothing serves `prerender.json` yet (PP3).
 - Passkey UI (#777, ADR 0019 W6): `src/auth/webauthn.ts` (browser calls, feature detection, the `signal*` hints), `passkeyCeremony.ts` (start, browser, finish), `components/account/Passkeys.tsx` (account card), `components/auth/PasskeySignIn.tsx` with `usePasskeyAutofill.ts` (button and conditional mediation, restarted only while the page is visible), `PasskeyReauth.tsx` (re-authentication prompt) and `components/shell/PhoneSignInNotice.tsx` (shown when the client reported `authenticatorAttachment` exactly `cross-platform`; kept in sessionStorage). The public `GET /api/auth/session` carries `passkeys` (the flag) so the anonymous sign-in page knows whether to offer a passkey; `GET /api/auth/events` items carry `passkey` (true when `detail.method` is `passkey`). Tests use `src/test/passkeyMock.ts` (a fake `navigator.credentials`); `src/auth/passkeyCsp.test.ts` scans the files for inline style and script. axe runs in the e2e suite (W7, `e2e/tests/passkey-a11y.spec.ts`), not under vitest.
 - CI runs the same commands in the `frontend` job, then `check:bundle`.
 

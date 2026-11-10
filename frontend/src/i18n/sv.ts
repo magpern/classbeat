@@ -19,6 +19,17 @@ const sv: Catalogue = {
   'common.email': 'E-post',
   'common.password': 'Lösenord',
 
+  // Head of the public pages: the <title> and the description (ADR 0030 section 3).
+  'meta.landing.title': 'classbeat | Ditt pass, i takt med musiken',
+  'meta.landing.description':
+    'Beskriv turen så väljer vi låtarna. Utforma pass för inomhuscykling i takt med musiken och spara dem i MOWL.',
+  'meta.privacy.title': 'Integritet | classbeat',
+  'meta.privacy.description':
+    'Vad vi sparar om dig, varför vi sparar det och hur du exporterar eller raderar det.',
+  'meta.terms.title': 'Villkor | classbeat',
+  'meta.terms.description':
+    'Villkoren för classbeat: vad du får göra, vad vi gör och vad vi inte lovar.',
+
   // Landing page.
   'landing.badge': 'Privat beta',
   'landing.title': 'Ditt pass, i takt med musiken.',
