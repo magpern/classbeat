@@ -577,6 +577,25 @@ export const en = {
   'class.chart.zoneName': 'Zone {zone} {name}',
   'class.chart.range': '{from} to {to}',
 
+  // MOWL games (ADR 0029 section 3, issue 876). English only until MA6; listed in untranslated.json.
+  'class.game.racetrack': 'Racetrack',
+  'class.game.power_pull': 'Power Pull',
+  'class.game.fast_lane': 'Fast Lane',
+  'class.game.overflow': 'Overflow',
+  'class.game.ghost_target': 'Ghost Target (no longer offered)',
+  'class.game.marker': '{game} game, {length}',
+  'class.game.lengthSec': '{seconds} s',
+  'class.game.lengthMin': '{minutes} min',
+  'class.game.lengthMinSec': '{minutes} min {seconds} s',
+  'class.game.licence': 'Games need a studio with a commercial MOWL licence. This is not checked here.',
+  'class.game.img.racetrack': 'Racetrack: two teams racing laps around a track',
+  'class.game.img.power_pull': 'Power Pull: two teams in a tug of war on watts per kilo',
+  'class.game.img.fast_lane': 'Fast Lane: teams racing for the highest average speed',
+  'class.game.img.overflow': 'Overflow: teams filling a gauge by staying in their zones',
+  'class.compare.gameChanged': 'Segment {segment}: {from} to {to}',
+  'class.compare.gameAdded': 'Segment {segment}: {game} added',
+  'class.compare.gameRemoved': 'Segment {segment}: {game} removed',
+
   // Versions and their history.
   'class.revisions.none': 'There is no version yet.',
   // One form on purpose: the English wording is "{count} segments" for every count, so no plural is needed.

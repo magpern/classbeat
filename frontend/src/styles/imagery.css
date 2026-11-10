@@ -133,3 +133,10 @@
   aspect-ratio: 4 / 3;
   border-radius: var(--cb-radius-lg);
 }
+
+/* A MOWL game illustration beside its name on a segment card (issue 876). */
+.slot--game {
+  flex: 0 0 7rem;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--cb-radius-lg);
+}
