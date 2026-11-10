@@ -36,6 +36,7 @@ export function lengthLabel(seconds: number): string {
 export type StatusTone = 'neutral' | 'ok' | 'warn'
 
 export function classStatus(c: ClassSummary): { label: string; tone: StatusTone } {
+  if (c.openJob?.kind === 'interpret_request') return { label: t('class.status.reading'), tone: 'warn' }
   if (c.openJob?.kind === 'design_draft') return { label: t('class.status.designing'), tone: 'warn' }
   if (c.openJob?.kind === 'revise_draft') return { label: t('class.status.changing'), tone: 'warn' }
   if (c.openJob !== null) return { label: t('class.status.busy'), tone: 'warn' }

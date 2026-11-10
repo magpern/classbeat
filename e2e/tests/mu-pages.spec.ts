@@ -119,6 +119,24 @@ test('the signed-in pages: home, classes, new class, designing, ready, class', a
   await expect(page.getByRole('heading', { name: 'MU done-when', level: 1 })).toBeVisible()
   await check('class', page.getByTestId('class-header').getByRole('button').first())
 
+  // The two-panel workspace (MA3): Chat and Class side by side from 1024 px, the same two panels as
+  // tabs below it. A class with a version opens on the Class tab.
+  const chat = page.getByRole('region', { name: 'Chat', exact: true })
+  const work = page.getByRole('region', { name: 'Class', exact: true })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await expect(chat).toBeVisible()
+  await expect(work).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Chat' })).toBeHidden()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(chat).toBeHidden()
+  await expect(work).toBeVisible()
+  await page.getByRole('tab', { name: 'Chat' }).click()
+  await expect(chat).toBeVisible()
+  await expect(work).toBeHidden()
+  await page.getByRole('tab', { name: 'Class', exact: true }).click()
+  await expect(work).toBeVisible()
+  await page.setViewportSize({ width: 1440, height: 900 })
+
   // The same class with two versions: the history list (Compare / View / Use this version for each)
   // is audited by axe here, not only by the Vitest name test (#474, #475).
   try {

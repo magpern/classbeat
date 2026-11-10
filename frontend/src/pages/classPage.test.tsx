@@ -16,7 +16,7 @@ import {
   summaryBody,
 } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
-import { CLASS_ID, SESSION_ROUTES, jobBody, sse } from '../test/jobFixtures'
+import { CLASS_ID, SESSION_ROUTES, jobBody, openStream, sse } from '../test/jobFixtures'
 import { renderAt } from '../test/render'
 
 const PAGE = `/classes/${CLASS_ID}`
@@ -243,7 +243,7 @@ describe('the class page', () => {
     expect(screen.getByLabelText('What should change?')).toBeEnabled()
   })
 
-  it('says a design is running when the open job is the first design', async () => {
+  it('shows a first design that is running in place, not on the job page', async () => {
     fakeApi({
       ...SESSION_ROUTES,
       ...classRoutes({
@@ -254,10 +254,13 @@ describe('the class page', () => {
         },
         revisions: [],
       }),
+      [`GET /api/jobs/${REVISE_JOB}`]: jobBody('running', { id: REVISE_JOB }),
+      [`GET /api/jobs/${REVISE_JOB}/events`]: () => openStream(),
     })
     renderAt(PAGE)
-    expect(await screen.findByText(/This class is being designed/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'See progress' })).toHaveAttribute('href', `/en/jobs/${REVISE_JOB}`)
+    expect(await screen.findByRole('heading', { name: 'Designing your class…' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe(`/en${PAGE}`)
+    expect(screen.queryByRole('link', { name: 'See progress' })).toBeNull()
   })
 
   it.each([

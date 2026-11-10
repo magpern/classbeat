@@ -1,22 +1,30 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { currentReasonText, isStale } from '../api/classMessages'
 import { getRevision, pickCurrent, type RevisionSummary } from '../api/classes'
-import { getSongList, type Song } from '../api/songs'
 import { DeleteClass } from '../components/classes/DeleteClass'
-import { HandoffNotice } from '../components/classes/HandoffNotice'
+import { ChatPanel } from '../components/classes/ChatPanel'
+import { DesignInPlace } from '../components/classes/DesignInPlace'
+import { HandoffStatus } from '../components/classes/HandoffStatus'
+import { HistoryPanel } from '../components/classes/HistoryPanel'
+import { RequestBlock } from '../components/classes/RequestBlock'
+import { Workspace, type WorkspaceTab } from '../components/classes/Workspace'
+import { ChangeSongs } from '../components/songs/ChangeSongs'
+import { useApprovedSongs } from '../hooks/useApprovedSongs'
+import { useHandoff } from '../hooks/useHandoff'
+import { NotCurrent, PlaylistLine } from '../components/classes/ClassNotes'
+import { JobNotice } from '../components/classes/JobNotice'
 import { ClassHeader } from '../components/classes/ClassHeader'
 import { UncertainWrite } from '../components/classes/UncertainWrite'
 import { useSaveFlow } from '../components/classes/useSaveFlow'
 import { BeatOnePanel } from '../components/classes/BeatOnePanel'
 import { RevisionView } from '../components/classes/RevisionView'
 import { SwedebeatSection } from '../components/swedebeat/SwedebeatSection'
-import { SideColumn } from '../components/classes/SideColumn'
 import { Card, Notice, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { useClassData, useRevision, type ClassData } from '../hooks/useClassData'
 import { contentHash } from '../lib/canonical'
 import { Link } from '../router/Router'
-import { Trans, useT } from '../i18n/I18n'
+import { useT } from '../i18n/I18n'
 
 export function ClassPage({ classId }: { classId: string }) {
   return (
@@ -98,35 +106,31 @@ function ClassBody({
   const shown = useRevision(classId, viewingId)
   const busy = summary.openJob !== null
   const [deleting, setDeleting] = useState(false)
+  // Whether the class's history says Change it works (true until it says otherwise).
+  const [canChange, setCanChange] = useState(true)
   // A soundless class has no songs to change (#530).
   const canChangeSongs =
     !summary.soundless && summary.songs.state === 'approved' && summary.songs.revisionId !== null
+  const songs = useApprovedSongs(classId, summary)
+  const handoff = useHandoff(summary, reload)
+  // A design with no version yet is shown in place, not on the job page (MA3).
+  const design =
+    summary.currentRevisionId === null && summary.openJob?.kind === 'design_draft' ? summary.openJob : null
+  const [tab, setTab] = useState<WorkspaceTab>(summary.currentRevisionId === null && design === null ? 'chat' : 'class')
+  const [designed, setDesigned] = useState(false)
   const goTo = (id: string) => {
-    const target = document.getElementById(id)
-    target?.scrollIntoView?.({ block: 'start' })
-    target?.querySelector<HTMLElement>('button, input, textarea, a')?.focus()
-  }
-  // The approved song list, for the strip under the axis; none (hidden) until there is one.
-  const songRevisionId = summary.songs.state === 'approved' ? summary.songs.revisionId : null
-  const [loadedSongs, setLoadedSongs] = useState<{ id: string; songs: Song[] } | null>(null)
-  useEffect(() => {
-    if (songRevisionId === null) return
-    const abort = new AbortController()
-    getSongList(classId, songRevisionId, abort.signal).then(
-      (found) => {
-        if (!abort.signal.aborted) setLoadedSongs({ id: songRevisionId, songs: found.songs })
-      },
-      () => undefined,
-    )
-    return () => {
-      abort.abort()
+    const go = () => {
+      const target = document.getElementById(id)
+      target?.scrollIntoView?.({ block: 'start' })
+      target?.querySelector<HTMLElement>('button, input, textarea, a')?.focus()
     }
-  }, [classId, songRevisionId])
-  const songs = loadedSongs !== null && loadedSongs.id === songRevisionId ? loadedSongs.songs : null
-
-  const reloadWithNotice = useCallback(() => {
-    reload()
-  }, [reload])
+    // On a phone the panel may be on the other tab: open it first.
+    if (tab === 'class') go()
+    else {
+      setTab('class')
+      setTimeout(go, 0)
+    }
+  }
 
   const use = (revision: RevisionSummary) => {
     setNotice(null)
@@ -139,7 +143,7 @@ function ClassBody({
           return pickCurrent(classId, revision.id, await contentHash(full.raw))
         },
         (error) => {
-          if (isStale(error)) reloadWithNotice()
+          if (isStale(error)) reload()
           return currentReasonText(error)
         },
       )
@@ -153,6 +157,11 @@ function ClassBody({
 
   const viewing = revisions.find((r) => r.id === viewingId)
   const answeredBy = messages.find((m) => m.resultRevisionId === viewingId && m.role === 'assistant')
+  // The first message of a class made on the start screen is the request itself (no base version).
+  const first = messages.at(0)
+  const request = first?.role === 'user' && first.baseRevisionId === null ? first : null
+  const items = (shown.status === 'ready' ? shown.revision.interpretation : null) ?? handoff.items
+  const job = summary.openJob
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <p className="m-0">
@@ -180,119 +189,99 @@ function ClassBody({
         onDeleted={onDeleted}
         onReload={reload}
       />
-      {summary.openJob !== null && summary.openJob.kind !== 'revise_draft' && summary.openJob.kind !== 'interpret_request' ? (
-        <Notice>
-          {summary.openJob.state === 'waiting_for_approval'
-            ? t('class.page.job.waiting')
-            : summary.openJob.kind === 'design_draft'
-              ? t('class.page.job.design')
-              : summary.openJob.kind === 'refit_draft'
-                ? t('class.page.job.refit')
-                : t('class.page.job.songs')}{' '}
-          <Link to={`/jobs/${summary.openJob.id}`}>
-            {summary.openJob.state === 'waiting_for_approval'
-              ? t('class.page.job.review')
-              : t('class.page.job.progress')}
-          </Link>
-        </Notice>
-      ) : null}
-      {summary.playlist !== null ? (
-        <p data-testid="playlist">
-          <Trans
-            id="class.page.playlist"
-            slots={{ name: <strong>{summary.playlist.name}</strong> }}
-          />
-          {summary.playlist.link !== null ? (
-            <>
-              {' '}
-              <a href={summary.playlist.link} target="_blank" rel="noopener noreferrer">
-                {t('class.page.openSpotify')}
-              </a>
-            </>
-          ) : null}
-        </p>
-      ) : null}
-      {notice ? <Notice kind="error">{notice}</Notice> : null}
-      {summary.sport === 'running' ? null : <SwedebeatSection summary={summary} onReload={reload} />}
-      {pick.error ? <Notice kind="error">{pick.error}</Notice> : null}
-
-      <HandoffNotice summary={summary} reload={reload} />
-      {summary.currentRevisionId === null ? (
-        <Notice>
-          {t('class.page.noVersion')}{' '}
-          {summary.openJob === null ? (
-            <Link to="/classes/new">{t('class.list.design')}</Link>
-          ) : null}
-        </Notice>
-      ) : null}
-
-      {viewing !== undefined && !viewing.isCurrent ? (
-        <div className="notice" data-kind="info" role="status" data-testid="not-current">
-          <p>
-            {t('class.page.notCurrent', {
-              viewing: viewing.number,
-              current: summary.currentRevisionNumber ?? '?',
-            })}
-          </p>
-          <p>
-            <button
-              type="button"
-              className="button"
-              disabled={pick.busy || busy}
-              onClick={() => {
-                use(viewing)
-              }}
-            >
-              {t('class.useThisVersion')}
-            </button>
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={() => {
-                setChosen(null)
-              }}
-            >
-              {t('class.page.back', { number: summary.currentRevisionNumber ?? '?' })}
-            </button>
-          </p>
-          {busy ? <p className="muted">{t('class.waitRunning')}</p> : null}
-        </div>
-      ) : null}
-
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="flex min-w-0 flex-col gap-3">
-          {shown.status === 'loading' ? <p className="m-0">{t('class.page.loadingVersion')}</p> : null}
-          {shown.status === 'failed' ? (
-            <Notice kind="error">{t('class.page.versionFailed')}</Notice>
-          ) : null}
-          {shown.status === 'ready' ? (
-            <RevisionView
-              revision={shown.revision}
-              musicChanged={!summary.soundless && answeredBy?.change?.musicChanged === true}
-              songs={songs}
-              classId={classId}
-            />
-          ) : null}
-          {summary.beatOne.available && viewingId === summary.currentRevisionId ? (
-            <BeatOnePanel
-              key={summary.beatOne.revisionId ?? 'none'}
+      <Workspace
+        tab={tab}
+        onTab={setTab}
+        chat={
+          <>
+            <RequestBlock request={request} items={items} />
+            <ChatPanel
               summary={summary}
-              busy={busy}
+              revisions={revisions}
+              messages={messages}
+              canChange={canChange}
+              requestJobId={request?.jobId ?? null}
               onReload={reload}
+              onView={setChosen}
             />
-          ) : null}
-        </div>
-        <SideColumn
-          summary={summary}
-          revisions={revisions}
-          messages={messages}
-          viewingId={viewingId}
-          busy={pick.busy || busy}
-          onView={setChosen}
-          onUse={use}
-          reload={reload}
-        />
-      </div>
+          </>
+        }
+        work={
+          <>
+            <p role="status" className="sr-only">
+              {designed && summary.currentRevisionId !== null ? t('ws.ready') : ''}
+            </p>
+            {design !== null ? (
+              <DesignInPlace
+                key={design.id}
+                jobId={design.id}
+                onCompleted={() => {
+                  setDesigned(true)
+                  reload()
+                }}
+              />
+            ) : null}
+            <HandoffStatus classId={classId} handoff={handoff} />
+            {job !== null && design === null && job.kind !== 'revise_draft' && job.kind !== 'interpret_request' ? (
+              <JobNotice job={job} />
+            ) : null}
+            {notice ? <Notice kind="error">{notice}</Notice> : null}
+            {pick.error ? <Notice kind="error">{pick.error}</Notice> : null}
+            {summary.currentRevisionId === null && design === null ? (
+              <Notice>
+                {t('class.page.noVersion')}{' '}
+                {job === null ? <Link to="/classes/new">{t('class.list.design')}</Link> : null}
+              </Notice>
+            ) : null}
+            {viewing !== undefined && !viewing.isCurrent ? (
+              <NotCurrent
+                viewing={viewing.number}
+                current={summary.currentRevisionNumber}
+                busy={busy}
+                working={pick.busy}
+                onUse={() => {
+                  use(viewing)
+                }}
+                onBack={() => {
+                  setChosen(null)
+                }}
+              />
+            ) : null}
+            {shown.status === 'loading' ? <p className="m-0">{t('class.page.loadingVersion')}</p> : null}
+            {shown.status === 'failed' ? <Notice kind="error">{t('class.page.versionFailed')}</Notice> : null}
+            {shown.status === 'ready' ? (
+              <RevisionView
+                revision={shown.revision}
+                musicChanged={!summary.soundless && answeredBy?.change?.musicChanged === true}
+                songs={songs}
+                classId={classId}
+              />
+            ) : null}
+            {summary.beatOne.available && viewingId === summary.currentRevisionId ? (
+              <BeatOnePanel
+                key={summary.beatOne.revisionId ?? 'none'}
+                summary={summary}
+                busy={busy}
+                onReload={reload}
+              />
+            ) : null}
+            {summary.playlist !== null ? <PlaylistLine playlist={summary.playlist} /> : null}
+            {summary.sport === 'running' ? null : <SwedebeatSection summary={summary} onReload={reload} />}
+            <ChangeSongs summary={summary} />
+            <div id="versions" className="scroll-mt-4">
+              <HistoryPanel
+                classId={summary.id}
+                revisions={revisions}
+                viewingId={viewingId}
+                onView={setChosen}
+                onUse={use}
+                onCanChange={setCanChange}
+                busy={pick.busy || busy}
+              />
+            </div>
+          </>
+        }
+      />
     </div>
   )
 }

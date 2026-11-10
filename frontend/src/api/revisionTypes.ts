@@ -1,5 +1,6 @@
 import { count, flag, isObject, object, optionalCount, optionalFlag, optionalText, text, type JsonObject } from './decode'
 import type { DraftContent } from './draftTypes'
+import type { InterpretationItem } from './interpretationItems'
 
 // The revision types of the class API and their decoders (split out of classes.ts, issue 876).
 
@@ -79,6 +80,8 @@ export interface Revision extends RevisionSummary, DraftContent {
   notesUseCurrentRules: boolean
   /** The content exactly as the server sent it: what the version hash is taken over. */
   raw: unknown
+  /** How the request behind this version was read (ADR 0029 section 4); null when none was recorded. */
+  interpretation: InterpretationItem[] | null
 }
 
 /** The backend's change summary of one answer (classbeat.design.diff); every part is optional. */

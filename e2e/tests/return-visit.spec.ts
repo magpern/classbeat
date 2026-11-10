@@ -44,18 +44,19 @@ test('a design in flight is shown as it is on return, and finishes while the use
     await expect(back.getByText('Being designed')).toBeVisible(LONG)
     await back.getByRole('link', { name: 'E2E away ride' }).click()
     await expect(back).toHaveURL(/\/classes\/[0-9a-f-]{36}$/)
-    await expect(back.getByText('This class is being designed.')).toContainText('you can leave this page')
-    await back.getByRole('link', { name: 'See progress' }).click()
-    await expect(back).toHaveURL(new RegExp(`/jobs/${id}$`))
-    // No browser memory of the form is needed: the page says the job's real state.
+    // The first design is shown in place on the class page (MA3), with the job's real state: no
+    // redirect to the job page, and no browser memory of the form is needed.
+    await expect(back.getByRole('heading', { name: 'Designing your class…' })).toBeVisible(LONG)
     await expect(back.getByTestId('progress').getByText('Reading your playlist')).toBeVisible(LONG)
     expect((await getJob(back, id)).state).toBe('running')
 
-    // It finishes while nobody looks.
+    // It finishes while the user watches: the class is read again and the version takes its place.
     fakeMowl('release', PLAYLISTS.slow.id)
     await expect.poll(async () => (await getJob(back, id)).state, LONG).toBe('completed')
+    await expect(back.getByText('Your class is ready to review.')).toBeAttached(LONG)
+    await expect(back.getByRole('heading', { name: 'Designing your class…' })).toHaveCount(0)
 
-    // Back on the class page: the finished class, no "being designed" notice.
+    // Back on the class list and page later: the finished class, no "being designed" notice.
     await back.goto('/classes')
     await expect(back.getByText('Being designed')).toHaveCount(0)
     await back.getByRole('link', { name: 'E2E away ride' }).click()
