@@ -136,7 +136,8 @@ def test_invalid_kinds_are_refused(
 
 
 def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
-    import classbeat.design  # design_draft (D1), revise_draft (R1), refit_draft (BC3)
+    # design_draft (D1), revise_draft (R1), refit_draft (BC3), interpret_request (MA1b-3)
+    import classbeat.design
     import classbeat.saving
     import classbeat.songs  # design_with_songs (SJ1) and revise_songs (SJ3)
     import classbeat.swedebeat_handoff  # swedebeat_verify_mix (B2)
@@ -152,6 +153,7 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     assert KINDS.names() == [
         "design_draft",
         "design_with_songs",
+        "interpret_request",  # ADR 0029 section 5 (MA1b-3)
         "refit_draft",  # ADR 0007 amendment "beat-one corrections" (BC3)
         "revise_draft",
         "revise_songs",
