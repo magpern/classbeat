@@ -9,6 +9,11 @@
   ``{reason, ...counts}`` with the refusal, which is stored and answered again to every call until
   one with ``retry`` tries once more; 409 ``not_ready`` while there is no interpretation yet; 404
   ``not_found``. No ``Idempotency-Key`` header: the key is derived from the interpret job.
+- ``POST .../interpret-again`` (#904, ``classbeat.classes.interpret_again``): after a stored
+  ``not_connected``, a new interpret job from the same request with the current connections, in a
+  new class: 201 ``{job_id, kind, state}``, 200 with the same job for every later call; 409
+  ``not_ready`` unless the stored refusal is ``not_connected``, 409 ``not_connected`` without a
+  MOWL connection, 409 with the jobs API's own refusal; 404 ``not_found``. No body.
 
 The body is a reason code and whole numbers only; another user's class is 404 like an unknown one.
 """
@@ -23,7 +28,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from classbeat import auth
 from classbeat.agent.brief import Brief
 from classbeat.agent.interpretation_record import InterpretationItem
-from classbeat.classes import interpretation
+from classbeat.classes import interpret_again, interpretation
 from classbeat.classes.handoff_routes import job_enqueue
 from classbeat.context import UserContext
 from classbeat.jobs.credits import CreditLedger
@@ -131,6 +136,38 @@ async def design_from_interpretation(
         ctx,
         wanted,
         retry=body.retry,
+        ledger=ledger,
+        limit=limit,
+        enqueue=job_enqueue(),
+    )
+    if done.job_id is None or done.kind is None or done.state is None:
+        return _refuse(done.reason or "invalid_input", dict(done.counts))
+    out = DesignJobOut(job_id=done.job_id, kind=done.kind, state=done.state)
+    if not done.created:
+        return JSONResponse(out.model_dump(mode="json"), status_code=200)
+    return out
+
+
+@router.post(
+    "/{class_id}/interpret-again",
+    status_code=201,
+    response_model=DesignJobOut,
+    responses={200: {"model": DesignJobOut}, 404: {}, 409: {}},
+)
+async def interpret_again_route(
+    class_id: str,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)],
+    ledger: Annotated[CreditLedger, Depends(credit_ledger)],
+    limit: Annotated[JobLimitPolicy, Depends(job_limit)],
+) -> DesignJobOut | JSONResponse:
+    wanted = _uuid(class_id)
+    if wanted is None:
+        return _refuse("not_found")
+    done = await interpret_again.interpret_again(
+        request.app.state.session_factory,
+        ctx,
+        wanted,
         ledger=ledger,
         limit=limit,
         enqueue=job_enqueue(),
