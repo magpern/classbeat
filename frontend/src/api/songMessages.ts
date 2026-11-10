@@ -81,6 +81,7 @@ const START_ERRORS: Record<string, CatalogueKey> = {
   pool_busy: 'songs.start.pool_busy',
   class_busy: 'songs.start.class_busy',
   stale_base: 'songs.start.stale_base',
+  game_retired: 'class.reason.game_retired',
   revision_limit: 'songs.start.revision_limit',
   chat_full: 'songs.start.chat_full',
   not_song_picked: 'songs.start.not_song_picked',

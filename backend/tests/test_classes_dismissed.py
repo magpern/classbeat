@@ -13,8 +13,8 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
 
 from authtools import session_cookie
-from classbeat.classes import service
-from classbeat.classes.service import MAX_DISMISSED
+from classbeat.classes import dismissals
+from classbeat.classes.dismissals import MAX_DISMISSED
 from classbeat.design.rules.enums import RULE_IDS
 from jobapi import Browser
 from jobtools import new_class, new_user
@@ -126,7 +126,7 @@ async def test_an_unknown_rule_id_is_422_and_nothing_is_stored(two: tuple[Rider,
 async def test_the_cap_refuses_a_33rd_id(two: tuple[Rider, Rider], monkeypatch: Any) -> None:
     mine, _ = two
     ids = [f"rule_{i:02d}" for i in range(MAX_DISMISSED)]
-    monkeypatch.setattr(service, "is_rule_id", lambda value: True)  # the enum is below 32
+    monkeypatch.setattr(dismissals, "is_rule_id", lambda value: True)  # the enum is below 32
     for rule in ids:
         assert (await mine.put(rule)).status_code == 200
     assert (await mine.put(ids[0])).status_code == 200  # already there: no growth

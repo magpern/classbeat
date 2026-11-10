@@ -15,5 +15,6 @@
   "class.game.img.overflow",
   "class.compare.gameChanged",
   "class.compare.gameAdded",
-  "class.compare.gameRemoved"
+  "class.compare.gameRemoved",
+  "class.reason.game_retired"
 ]

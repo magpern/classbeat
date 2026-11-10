@@ -25,8 +25,10 @@ stage, no MOWL or Spotify call, the soundless ``revise`` stage, revision music `
 **Pipeline** (stages ``music``, ``revise``), every attempt from the top with a new provider, so a
 retry restarts the stage from its beginning and the final store is the only write:
 
-1. the class's brief, its ``music_source`` and the base (``classbeat.design.chat``, one fenced
-   read; the base's hash is checked against the one ``admit`` stored and against its content);
+1. the class's brief, its ``music_source`` and the base (``classbeat.design.revise_base``, one
+   fenced read; the base's hash is checked against the one ``admit`` stored and against its
+   content). A legacy base's retired game becomes a regular interval before the model sees it,
+   and the change summary records a ``game_retired`` Not as asked item (ADR 0029 section 3);
 2. the music step of ``design_draft`` (``kind.music_step``: the playlist, or the mix after
    ``mixadmit.still_on``); a fingerprint that differs from the base revision's is told to the
    model as a fact;
@@ -40,7 +42,6 @@ retry restarts the stage from its beginning and the final store is the only writ
    ``current_revision_id`` (the new revision becomes current only if the base still is).
 """
 
-import hashlib
 import uuid
 from typing import Annotated, ClassVar, Final, Self
 from uuid import UUID
@@ -50,23 +51,21 @@ from pydantic import (
     BaseModel,
     Field,
     StringConstraints,
-    ValidationError,
     model_validator,
 )
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import quota
-from classbeat.agent import Brief, run_stage
+from classbeat.agent import run_stage
 from classbeat.agent.records import JobStageHost
 from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested
 from classbeat.agent.running import revise_stage_for
-from classbeat.agent.schemas import AnyDraft, clean_text, stored_draft
+from classbeat.agent.schemas import clean_text
 from classbeat.agent.soundless import SoundlessReviseContext, soundless_revise_stage
 from classbeat.context import UserContext
-from classbeat.design import chat, diff, limits, mixadmit, music_kind, revision, sport
+from classbeat.design import chat, diff, limits, mixadmit, music_kind, revise_base, revision, sport
 from classbeat.design.kind import (
-    CLASS_MUSIC_SOURCE,
     NoMusicChoice,
     Runtime,
     SwedebeatMusicChoice,
@@ -198,26 +197,13 @@ async def run(job_run: JobRun) -> Complete:
         raise JobFailure("internal")
     class_id, base_id = given.class_id, given.base_revision_id
     request_message_id = given.request_message_id
-    async with job_run.fenced() as fs:
-        base = await chat.load_base(
-            fs.db, fs.lease.owner_id, fs.lease.job_id, base_id, runtime.context_requests
-        )
-    if base is None or base.kind != "draft" or not base.brief or not base.music_source:
-        raise JobFailure("invalid_input")
-    base_hash = bytes.fromhex(given.base_revision_hash)
-    if (
-        base.content_hash != base_hash
-        or hashlib.sha256(revision.canonical(base.content)).digest() != base_hash
-    ):
-        raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
-    try:
-        brief = Brief.model_validate(base.brief)
-        music = CLASS_MUSIC_SOURCE.validate_python(base.music_source)
-        base_draft = stored_draft(base.content, brief.sport)  # the class's own sport's schema
-    except ValidationError:
-        raise JobFailure("internal") from None
+    loaded = await revise_base.load(
+        job_run, base_id, given.base_revision_hash, runtime.context_requests
+    )
+    base, base_hash, brief, music = loaded.row, loaded.base_hash, loaded.brief, loaded.music
+    base_draft = loaded.draft  # strict, a retired game already a regular interval (ADR 0029)
     if isinstance(music, NoMusicChoice):
-        return await _run_soundless(job_run, given, base, brief, base_draft, runtime)
+        return await _run_soundless(job_run, given, loaded, runtime)
     if brief.sport == sport.RUNNING:
         if isinstance(music, SwedebeatMusicChoice):
             raise JobFailure("internal")  # running v1 has no mix (ADR 0018)
@@ -268,7 +254,9 @@ async def run(job_run: JobRun) -> Complete:
             request_message_id=request_message_id,
             rules=rules.provenance() if rules else None,
         )
-        change = diff.summarize(base.content, draft.content, brief.sport)
+        change = revise_base.noted(
+            diff.summarize(base.content, draft.content, brief.sport), loaded.retired
+        )
 
         async def store(fs: FencedSession) -> UUID:
             """The connection guard, the revision, the compare-and-set, the assistant message."""
@@ -310,12 +298,7 @@ async def run(job_run: JobRun) -> Complete:
 
 
 async def _run_soundless(
-    job_run: JobRun,
-    given: ReviseDraftInput,
-    base: chat.BaseForRun,
-    brief: Brief,
-    base_draft: AnyDraft,
-    runtime: Runtime,
+    job_run: JobRun, given: ReviseDraftInput, loaded: revise_base.RunBase, runtime: Runtime
 ) -> Complete:
     """A revise of a soundless class (#528): no ``music`` stage and no MOWL or Spotify call; the
     soundless ``revise`` stage over the brief, the base draft and the requests, then the store
@@ -327,6 +310,7 @@ async def _run_soundless(
         or given.base_revision_hash is None
     ):
         raise JobFailure("internal")
+    base, brief, base_draft = loaded.row, loaded.brief, loaded.draft
     if brief.sport != sport.CYCLING:
         raise JobFailure("internal")  # the input refuses a running brief with no music
     class_id, base_id = given.class_id, given.base_revision_id
@@ -361,7 +345,9 @@ async def _run_soundless(
         base_hash=base_hash,
         request_message_id=request_message_id,
     )
-    change = diff.summarize(base.content, draft.content, brief.sport)
+    change = revise_base.noted(
+        diff.summarize(base.content, draft.content, brief.sport), loaded.retired
+    )
 
     async def store(fs: FencedSession) -> UUID:
         """The music kind, the revision, the compare-and-set, the assistant message."""

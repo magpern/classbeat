@@ -55,6 +55,7 @@ const REASONS: Record<string, CatalogueKey> = {
   soundless_not_evaluated: 'class.duplicate.reason.soundless_not_evaluated',
   not_changeable: 'class.duplicate.reason.not_changeable',
   hash_mismatch: 'class.duplicate.reason.hash_mismatch',
+  game_retired: 'class.reason.game_retired',
   not_found: 'class.duplicate.reason.not_found',
   invalid_input: 'class.duplicate.reason.invalid_input',
   idempotency_mismatch: 'class.duplicate.reason.idempotency_mismatch',

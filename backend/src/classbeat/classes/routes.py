@@ -29,7 +29,7 @@ from pydantic import ValidationError
 
 from classbeat import auth
 from classbeat.agent.design import ZONE7
-from classbeat.agent.schemas import stored_draft
+from classbeat.agent.stored_draft import stored_draft
 from classbeat.classes import beat_one, match_view, pattern_notes, selection, service, song_views
 from classbeat.classes.schemas import (
     BeatOneIn,
