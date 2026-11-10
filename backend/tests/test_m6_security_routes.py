@@ -166,6 +166,8 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/classes/{class_id}/swedebeat-handoff/override"): "owned",
     ("POST", "/api/classes/{class_id}/swedebeat-handoff/design"): "owned",
     ("POST", "/api/classes/{class_id}/swedebeat-handoff/not-now"): "owned",
+    ("GET", "/api/classes/{class_id}/interpretation"): "owned",
+    ("POST", "/api/classes/{class_id}/design-from-interpretation"): "owned",
     ("DELETE", "/api/classes/{class_id}"): "owned",
     ("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
     ("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
@@ -745,6 +747,12 @@ OWNED_ROUTES = [
     OwnedRoute("DELETE", "/api/classes/{class_id}", control=frozenset({200, 409})),
     OwnedRoute("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),
     OwnedRoute("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),
+    # ADR 0029 section 5: the planted class has no interpretation, so the owner's calls are 409
+    # ``not_ready``; another user's class is 404 like an unknown one.
+    OwnedRoute("GET", "/api/classes/{class_id}/interpretation", control=frozenset({409})),
+    OwnedRoute(
+        "POST", "/api/classes/{class_id}/design-from-interpretation", control=frozenset({409})
+    ),
     # ADR 0007 amendment "beat-one corrections": the planted draft has no beat data, so the
     # owner's call is 409 ``no_beat_data``; a foreign class or revision is 404 like an unknown one.
     OwnedRoute("PUT", "/api/classes/{class_id}/beat-one/{song}", _beat_one, frozenset({409})),

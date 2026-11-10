@@ -30,6 +30,7 @@ from classbeat.classes.duplicate import router as duplicate_router
 from classbeat.classes.handoff_routes import install_job_enqueue
 from classbeat.classes.handoff_routes import router as handoff_router
 from classbeat.classes.history import router as history_router
+from classbeat.classes.interpretation_routes import router as interpretation_router
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
@@ -221,6 +222,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(history_router)
     app.include_router(duplicate_router)
     app.include_router(handoff_router)
+    app.include_router(interpretation_router)
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():
