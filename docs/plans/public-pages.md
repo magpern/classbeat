@@ -5,7 +5,10 @@ plan and the ADR differ, the ADR wins; fix the plan in the PR that changes it.
 
 Revision 2 was approved and frozen by the owner on 2026-11-10 after one Architect review round
 (AMEND on revision 1: two blocking and three minor findings, all folded in) and one correction at
-the final review (numbers in example content). Baseline: `main` at 3121b33.
+the final review (numbers in example content). Baseline: `main` at 3121b33. The fresh Reviewer of the
+planning PR found two errors of fact in the approved text, corrected here by the Architect without
+changing the architecture: the translation gate now applies at publication so ADR 0023's English-only
+path stays open, and a leave confirmation that doesn't exist is no longer assumed.
 
 **Execution boundary.** Implementation is deferred. The milestone and issues below exist so the
 work is ready, and creating them authorizes nothing. No PR from PP1 to PP8 starts without a new
@@ -93,16 +96,20 @@ The GitHub issues carry the same criteria.
 **PP1.** No visible change.
 - `MiniProfile`, `ProfileChart` and `ZoneTime` use static class maps or SVG attributes, with no
   `style` on any rendered element.
-- `isRunningDraft` moves out of `api/jobs` so public code imports no API module at runtime.
+- The chart components import `isRunningDraft` from the pure `api/draftTypes`, not `api/jobs`, so
+  they load no API client.
 - `Router` accepts an initial location; `useLayout`, `resolvedTheme`, `CookieNotice` and
   `SlotPicture` are safe without `window`.
 - Test: e2e computed `fill` of a bar is the zone colour in both themes.
 
 **PP2.**
 - The build writes `prerender.json` for the current three paths. Build fails on a throw, on a page
-  without exactly one `<h1>`, on any `style=`, if a published sv/da body equals the English one, or
-  if a published page has a key on `untranslated.json`.
-- `fetch` throws during prerender. Public code importing an `api/` runtime module fails a guard test.
+  without exactly one `<h1>`, on any `style=`, or if a published sv/da body equals the English one.
+  A key on `untranslated.json` doesn't fail the build, so ADR 0023's English-only feature PRs stay
+  possible on published pages.
+- `fetch` throws during prerender. A guard test fails if `publicSite/` or the chart components import
+  runtime code from an API client module; the pure `api/draftTypes` is allowed. The shell is outside
+  this guard: it calls the API only from effects and event handlers, which don't run in prerender.
 - `main.tsx` awaits the catalogue when `#root` has children.
 - `react-dom/server` is not in the client bundle; `check:bundle` passes.
 
@@ -117,8 +124,9 @@ The GitHub issues carry the same criteria.
 - `scripts/ci-changes.sh` treats `publicPaths.json` and the example fixture as backend changes.
 - `lang-head`, `lang-axe` and `test_web_language` read the list. An e2e CSP-violation watcher runs on
   every public URL.
-- **Navigation.** A unit table covers the decision function, including the signed-in Home exception
-  and the guard running first. `linkGuard` keeps the document-load call in that one function.
+- `/help` is added to `draft`, so it is prerendered until PP8 publishes it.
+- **Navigation.** A unit table covers the decision function, including the signed-in Home exception.
+  `linkGuard` keeps the document-load call in that one function.
 - **Metadata e2e, in en, sv and da.** Clicking public → public, public → language switch, public →
   app page, app page → public, and back and forward. After each step the live `<title>`, description,
   canonical, hreflang set and `og:*` equal those in a raw GET of that URL, each tag appears once, and
@@ -134,6 +142,10 @@ The GitHub issues carry the same criteria.
 - Landing's "We pick the songs", its form-era How it works copy and the link-preview descriptions are
   corrected to the same standard.
 - CTA band reads "Join the beta" with one line saying sign-up is by invitation. No waitlist.
+- Nav links in `SignedOutHeader` outside the session gate, and footer links, with their labels. Each
+  link renders only when its path is in `published`, so PP8 adds no strings and these stay hidden
+  until then.
+- Corrections to existing published pages go on `untranslated.json` until PP7, per ADR 0023 §8.
 - Word-limit test extended, with a long-form allowance for body text.
 
 **PP5.** English only.
@@ -156,20 +168,25 @@ The GitHub issues carry the same criteria.
 
 **PP6.**
 - CTA goes to `/classes/new?example=<slug>`, checked against the fixture list; unknown slugs are ignored.
-- The slug survives sign-in and OAuth via `return_to`. Email sign-up and MOWL connection are covered
-  by a `localStorage` slug with a 24-hour expiry, in try/catch, cleared on use.
+- The slug survives sign-in and OAuth via `return_to`. `RequireAuth` builds `return_to` from the path
+  alone today, so PP6 carries the validated `example` value and nothing else from the query. Email
+  sign-up and MOWL connection are covered by a `localStorage` slug with a 24-hour expiry, in try/catch,
+  cleared on use.
 - It fills the prompt in the page's language and focuses it. Test: the text equals the prompt shown
   on the example page, and no job, class, credit or MOWL write happens until the user submits.
 - `RequireAuth`'s card offers "Join the beta" as well as signing in.
-- Privacy page updated if it enumerates browser storage.
+- The privacy page lists browser storage (`privacy.cookies.p3`), so it gains this entry, on
+  `untranslated.json` until PP7.
 
 **PP7.** Empties `untranslated.json` for PP4 to PP6, per ADR 0023 and the glossary, including chart
 descriptions and metadata. Availability notes keep their English meaning. Turns on the full takeover
 matrix.
 
-**PP8.** The only PR that changes what the public sees.
-- Moves the eight paths from `draft` to `published`, adds nav links in `SignedOutHeader` outside the
-  session gate, and footer and internal links so no page is orphaned.
+**PP8.** The only PR that makes new pages public. It adds no strings.
+- Moves the eight paths from `draft` to `published`, which makes PP4's nav and footer links appear.
+  No page is orphaned.
+- `untranslated.json` holds no key rendered by a page in `published` at this PR's head, so every page
+  goes live in all three languages. If later PRs added keys, a catch-up translation PR comes first.
 - e2e: all 33 URLs in raw HTML, `sitemap.xml` and reciprocal hreflang; axe at 390 and 1440 px in both
   themes; language switch keeps the page; every link resolves.
 - Status and "Waiting for the owner" updated. Closes #755.
@@ -210,7 +227,8 @@ in `docs/status.md`. This is a product check and does not replace the Reviewer's
 - A visitor can go from an example to a pre-filled designer without anything being created.
 - Owner steps: deploy, resubmit the sitemap, check coverage in Search Console.
 
-**Rollback.** Before PP8, the only public change is richer HTML on three pages. After it, moving a
+**Rollback.** Before PP8, the public sees only richer HTML on three existing pages and the copy
+corrections of PP4 and PP6. After it, moving a
 path back to `draft` and releasing makes the page `noindex`. Deployments pin versions.
 
 ## Milestone PG: instructor resources (P1), future and separate

@@ -40,8 +40,10 @@ the `locales.json` precedent. The Dockerfile copies it and `prerender.json` into
 Vitest, pytest and e2e all read it. It has two lists:
 
 - `published`: in every supported language, with canonical, hreflang and a sitemap entry. The build
-  fails if a published page has a key on `untranslated.json`, or a published sv/da body equals the
-  English one.
+  fails if a published sv/da body equals the English one. A page moves here only when no key it
+  renders is on `untranslated.json`. After that, ADR 0023 §8 applies unchanged: a feature PR may
+  change English on a published page and list the key, and a catch-up translation PR empties the list
+  before a release.
 - `draft`: the same prerendered body and takeover, but `noindex`, no canonical or hreflang, not in
   the sitemap, not linked. Real pages can then be tested on the real serving path before publication.
 
@@ -65,13 +67,14 @@ on the gate in item 7.
 - The one exception is an authenticated user moving between Home (`/<lang>`) and app pages, which
   stays client-side so signed-in users never see Landing on each return to Home. No crawler can be
   in that state.
-- The unsaved-changes guard runs first, and query and fragment are kept. The language picker's write
-  finishes before the page load.
+- Query and fragment are kept. The language picker's write finishes before the page load. The app
+  has no leave confirmation today, and this adds none.
 - Back and forward cross the boundary as real document loads too.
 
 **7. Takeover gate.** `e2e/tests/public-takeover.spec.ts` runs against the real image with script
 loading delayed independently of the catalogue chunk, across en, sv, da × dark, light × Landing, How it
-works and an example with a chart × 390 and 1440 px. It requires:
+works and an example with a chart × 390 and 1440 px. This list is a summary; the plan's "Takeover
+gate" has the full checks, and both bind. It requires:
 
 - `#root` is never empty after first paint and never shows a loading card;
 - the `<h1>` holds one value through the transition, with no English on sv/da;
@@ -84,8 +87,9 @@ before release**, with this ADR amended. The order to try: fix the specific caus
 variants of an image with CSS hiding the wrong one; `hydrateRoot` on public routes.
 
 **8. Boundaries.** URLs stay language-neutral with English slugs (ADR 0027 §1). No structured data in
-the first release. No analytics: Search Console only. Public code imports no `api/` module at runtime,
-and fixtures are synthetic, scanned for identifiers and real song names.
+the first release. No analytics: Search Console only. Page content and the chart components import no
+runtime code from an API client module (the pure `api/draftTypes` is allowed), the prerender makes no
+network call, and fixtures are synthetic, scanned for identifiers and real song names.
 
 ## Alternatives
 
