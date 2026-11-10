@@ -74,6 +74,11 @@ export function localeFromPath(pathname: string): Locale | null {
   return code !== null && isLocale(code) ? code : null
 }
 
+/** The language the page starts in: the URL's prefix, else the browser's choice. */
+export function initialLocale(pathname: string): Locale {
+  return localeFromPath(pathname) ?? resolveBrowserLocale()
+}
+
 /**
  * The language to use when the URL names none (ADR 0027 section 3): the account's, the saved
  * choice, the browser's, then English; the first one the server offers. An empty `offered` means

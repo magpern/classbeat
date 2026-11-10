@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { BUDGET_BYTES, checkBundle, firstLoadScripts } from '../scripts/bundle-size.ts'
+import { BUDGET_BYTES, checkBundle, firstLoadScripts, serverRendererIn } from '../scripts/bundle-size.ts'
 
 // The first-load JavaScript budget (ADR 0013 section 11): 250 kB gzip. The check runs on the Vite
 // build in the `frontend` job (`npm run check:bundle`); here its rules run on small fixtures.
@@ -70,5 +70,22 @@ describe('the budget', () => {
 
   it('fails closed when index.html names no bundled script', () => {
     expect(() => checkBundle(dist({}, '<html><body></body></html>'))).toThrow(/no bundled script/)
+  })
+})
+
+describe('react-dom/server', () => {
+  it('is not in any shipped script, a lazy chunk included', () => {
+    const clean = dist({ 'theme-init.js': 1, 'assets/index-abc.js': 1000, 'assets/vendor-def.js': 1000 })
+    expect(serverRendererIn(clean)).toEqual([])
+    expect(checkBundle(clean).serverRenderer).toEqual([])
+  })
+
+  it('fails the check when a script carries the server renderer', () => {
+    const leaked = dist({ 'theme-init.js': 1, 'assets/index-abc.js': 1000, 'assets/vendor-def.js': 1000 })
+    writeFileSync(join(leaked, 'assets', 'Lazy-x.js'), 'e.renderToString=function(){}')
+    expect(serverRendererIn(leaked)).toEqual(['assets/Lazy-x.js'])
+    const report = checkBundle(leaked)
+    expect(report.serverRenderer).toEqual(['assets/Lazy-x.js'])
+    expect(report.ok).toBe(false)
   })
 })

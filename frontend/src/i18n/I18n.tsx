@@ -12,14 +12,14 @@ import type { CatalogueKey } from './en'
 import {
   clearStoredLocale,
   DEFAULT_LOCALE,
+  initialLocale,
   isLocale,
-  localeFromPath,
   resolveBrowserLocale,
   setActiveLocale,
   storeLocale,
   type Locale,
 } from './locales'
-import { loadCatalogue, translate, type Params, type TFunction } from './t'
+import { isCatalogueLoaded, loadCatalogue, translate, type Params, type TFunction } from './t'
 
 interface I18n {
   locale: Locale
@@ -44,10 +44,9 @@ const Context = createContext<I18n>(fallback)
  * and re-renders once it is there; until then, and for any missing key, the text is English.
  */
 export function I18nProvider({ children, initial }: { children: ReactNode; initial?: Locale }) {
-  const [wanted, setWanted] = useState<Locale>(
-    () => initial ?? localeFromPath(window.location.pathname) ?? resolveBrowserLocale(),
-  )
-  const [ready, setReady] = useState<Locale>(DEFAULT_LOCALE)
+  const [wanted, setWanted] = useState<Locale>(() => initial ?? initialLocale(window.location.pathname))
+  // A catalogue loaded beforehand (the takeover and the build-time prerender await it) shows at once.
+  const [ready, setReady] = useState<Locale>(() => (isCatalogueLoaded(wanted) ? wanted : DEFAULT_LOCALE))
 
   useEffect(() => {
     let current = true

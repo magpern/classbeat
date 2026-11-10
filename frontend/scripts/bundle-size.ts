@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join, normalize, sep } from 'node:path'
 import { gzipSync } from 'node:zlib'
 
@@ -26,10 +26,32 @@ export function firstLoadScripts(indexHtml: string): string[] {
   return [...new Set(urls)]
 }
 
+// react-dom/server belongs to the build-time prerender only (ADR 0030 section 1). Its export names
+// survive minification, so any of them in a shipped script means it leaked into the client bundle.
+const SERVER_RENDERER = /renderToString|renderToStaticMarkup|renderToPipeableStream|renderToReadableStream|react-dom\/server/
+
+/** The shipped scripts (paths inside dist) that contain the server renderer. */
+export function serverRendererIn(distDir: string): string[] {
+  const found: string[] = []
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(join(distDir, dir), { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (entry.name.endsWith('.js') && SERVER_RENDERER.test(readFileSync(join(distDir, path), 'utf8'))) {
+        found.push(path.split(sep).join('/'))
+      }
+    }
+  }
+  walk('.')
+  return found
+}
+
 export interface BundleReport {
   files: { path: string; gzipBytes: number }[]
   totalBytes: number
   budgetBytes: number
+  /** Scripts that contain react-dom/server: there must be none. */
+  serverRenderer: string[]
   ok: boolean
 }
 
@@ -45,7 +67,8 @@ export function checkBundle(distDir: string, budgetBytes = BUDGET_BYTES): Bundle
     return { path, gzipBytes: gzipSync(readFileSync(file), { level: 9 }).length }
   })
   const totalBytes = files.reduce((sum, file) => sum + file.gzipBytes, 0)
-  return { files, totalBytes, budgetBytes, ok: totalBytes <= budgetBytes }
+  const serverRenderer = serverRendererIn(distDir)
+  return { files, totalBytes, budgetBytes, serverRenderer, ok: totalBytes <= budgetBytes && serverRenderer.length === 0 }
 }
 
 const kB = (bytes: number) => `${(bytes / 1000).toFixed(1)} kB`
@@ -54,6 +77,10 @@ if (process.argv[1] !== undefined && import.meta.filename === process.argv[1]) {
   const report = checkBundle(process.argv[2] ?? join(import.meta.dirname, '..', 'dist'))
   for (const file of report.files) console.log(`${kB(file.gzipBytes).padStart(10)}  ${file.path}`)
   console.log(`${kB(report.totalBytes).padStart(10)}  first-load JavaScript, gzip (budget ${kB(report.budgetBytes)})`)
+  if (report.serverRenderer.length > 0) {
+    console.error(`react-dom/server is in the client bundle: ${report.serverRenderer.join(', ')}`)
+    process.exit(1)
+  }
   if (!report.ok) {
     console.error(`first-load JavaScript is over the budget by ${kB(report.totalBytes - report.budgetBytes)}`)
     process.exit(1)
