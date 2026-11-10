@@ -20,7 +20,7 @@ import { useAction } from '../forms'
  * Starts a new pick for the class of `job` after stopping the waiting one (ADR 0008 section 5):
  * the two calls are sequential, and a `class_busy` answer to the second waits for the first.
  */
-export function useNewPick(job: Job, list: SongList) {
+export function useNewPick(job: Job, list: SongList, onStarted?: () => void) {
   const { navigate } = useRouter()
   const action = useAction()
   const locked = useRef(false)
@@ -57,7 +57,9 @@ export function useNewPick(job: Job, list: SongList) {
         const created = await startAfterCancel(() => createPickJob(input, actionKey(scope)))
         dropActionKey(scope)
         rememberPick(created.id, input)
-        navigate(`/jobs/${created.id}`)
+        // In the class workspace the new pick shows up on the class itself.
+        if (onStarted) onStarted()
+        else navigate(`/jobs/${created.id}`)
       }, describeStart)
       .finally(() => {
         locked.current = false

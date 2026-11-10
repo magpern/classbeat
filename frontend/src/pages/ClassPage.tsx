@@ -1,14 +1,17 @@
 import { useState } from 'react'
-import { currentReasonText, isStale } from '../api/classMessages'
-import { getRevision, pickCurrent, type RevisionSummary } from '../api/classes'
+import { isSongKind } from '../api/songs'
 import { DeleteClass } from '../components/classes/DeleteClass'
 import { ChatPanel } from '../components/classes/ChatPanel'
+import { ChangeMusic } from '../components/classes/ChangeMusic'
+import { PlannedSongs } from '../components/classes/PlannedSongs'
 import { DesignInPlace } from '../components/classes/DesignInPlace'
 import { HandoffStatus } from '../components/classes/HandoffStatus'
 import { HistoryPanel } from '../components/classes/HistoryPanel'
 import { RequestBlock } from '../components/classes/RequestBlock'
 import { Workspace, type WorkspaceTab } from '../components/classes/Workspace'
 import { CHANGE_SONGS_ID, ChangeSongs } from '../components/songs/ChangeSongs'
+import { useGoToPanel } from '../hooks/useGoToPanel'
+import { useUseRevision } from '../hooks/useUseRevision'
 import { useApprovedSongs } from '../hooks/useApprovedSongs'
 import { useHandoff } from '../hooks/useHandoff'
 import { NotCurrent, PlaylistLine } from '../components/classes/ClassNotes'
@@ -19,10 +22,9 @@ import { useSaveFlow } from '../components/classes/useSaveFlow'
 import { BeatOnePanel } from '../components/classes/BeatOnePanel'
 import { RevisionView } from '../components/classes/RevisionView'
 import { SwedebeatSection } from '../components/swedebeat/SwedebeatSection'
-import { Card, Notice, useAction } from '../components/forms'
+import { Card, Notice } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { useClassData, useRevision, type ClassData } from '../hooks/useClassData'
-import { contentHash } from '../lib/canonical'
 import { Link } from '../router/Router'
 import { useT } from '../i18n/I18n'
 
@@ -97,8 +99,6 @@ function ClassBody({
   const t = useT()
   const { summary, revisions, messages } = data
   const [chosen, setChosen] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const pick = useAction()
   const save = useSaveFlow(summary, reload)
   // A chosen version that is gone after a reload falls back to the current one.
   const viewingId =
@@ -113,49 +113,19 @@ function ClassBody({
     !summary.soundless && summary.songs.state === 'approved' && summary.songs.revisionId !== null
   const songs = useApprovedSongs(classId, summary)
   const handoff = useHandoff(summary, reload)
-  // A design with no version yet is shown in place, not on the job page (MA3).
+  // A design with no version yet is shown in place, not on the job page (MA3), and so is a song
+  // job (MA4): its list waits for approval right here.
   const design =
-    summary.currentRevisionId === null && summary.openJob?.kind === 'design_draft' ? summary.openJob : null
+    (summary.currentRevisionId === null && summary.openJob?.kind === 'design_draft') ||
+    (summary.openJob !== null && isSongKind(summary.openJob.kind))
+      ? summary.openJob
+      : null
   const [tab, setTab] = useState<WorkspaceTab>(summary.currentRevisionId === null && design === null ? 'chat' : 'class')
   const [designed, setDesigned] = useState(false)
-  const goTo = (id: string) => {
-    const go = () => {
-      const target = document.getElementById(id)
-      target?.scrollIntoView?.({ block: 'start' })
-      // A panel that takes focus itself (tabindex -1) is focused; any other, its first control.
-      if (target?.hasAttribute('tabindex') === true) target.focus()
-      else target?.querySelector<HTMLElement>('button, input, textarea, a')?.focus()
-    }
-    // On a phone the panel may be on the other tab: open it first.
-    if (tab === 'class') go()
-    else {
-      setTab('class')
-      setTimeout(go, 0)
-    }
-  }
-
-  const use = (revision: RevisionSummary) => {
-    setNotice(null)
-    void pick
-      .run(
-        async () => {
-          // The hash of the content the server holds for this version: it only goes through if
-          // the revision is the one named (ADR 0007 section 2).
-          const full = await getRevision(classId, revision.id)
-          return pickCurrent(classId, revision.id, await contentHash(full.raw))
-        },
-        (error) => {
-          if (isStale(error)) reload()
-          return currentReasonText(error)
-        },
-      )
-      .then((done) => {
-        if (done !== undefined) {
-          setChosen(null)
-          reload()
-        }
-      })
-  }
+  const goTo = useGoToPanel(tab, setTab)
+  const { use, error: useError, busy: using } = useUseRevision(classId, reload, () => {
+    setChosen(null)
+  })
 
   const viewing = revisions.find((r) => r.id === viewingId)
   const answeredBy = messages.find((m) => m.resultRevisionId === viewingId && m.role === 'assistant')
@@ -223,6 +193,7 @@ function ClassBody({
               <DesignInPlace
                 key={design.id}
                 jobId={design.id}
+                onChanged={reload}
                 onCompleted={() => {
                   setDesigned(true)
                   reload()
@@ -233,8 +204,7 @@ function ClassBody({
             {job !== null && design === null && job.kind !== 'revise_draft' && job.kind !== 'interpret_request' ? (
               <JobNotice job={job} />
             ) : null}
-            {notice ? <Notice kind="error">{notice}</Notice> : null}
-            {pick.error ? <Notice kind="error">{pick.error}</Notice> : null}
+            {useError ? <Notice kind="error">{useError}</Notice> : null}
             {summary.currentRevisionId === null && design === null ? (
               <Notice>
                 {t('class.page.noVersion')}{' '}
@@ -246,7 +216,7 @@ function ClassBody({
                 viewing={viewing.number}
                 current={summary.currentRevisionNumber}
                 busy={busy}
-                working={pick.busy}
+                working={using}
                 onUse={() => {
                   use(viewing)
                 }}
@@ -265,6 +235,7 @@ function ClassBody({
                 classId={classId}
               />
             ) : null}
+            {shown.status === 'ready' ? <PlannedSongs segments={shown.revision.segments} songs={songs} /> : null}
             {summary.beatOne.available && viewingId === summary.currentRevisionId ? (
               <BeatOnePanel
                 key={summary.beatOne.revisionId ?? 'none'}
@@ -275,6 +246,14 @@ function ClassBody({
             ) : null}
             {summary.playlist !== null ? <PlaylistLine playlist={summary.playlist} /> : null}
             {summary.sport === 'running' ? null : <SwedebeatSection summary={summary} onReload={reload} />}
+            <ChangeMusic
+              summary={summary}
+              request={request?.body ?? null}
+              canChangeSongs={canChangeSongs}
+              onChangeSongs={() => {
+                goTo(CHANGE_SONGS_ID)
+              }}
+            />
             <ChangeSongs summary={summary} />
             <div id="versions" className="scroll-mt-4">
               <HistoryPanel
@@ -284,7 +263,7 @@ function ClassBody({
                 onView={setChosen}
                 onUse={use}
                 onCanChange={setCanChange}
-                busy={pick.busy || busy}
+                busy={using || busy}
               />
             </div>
           </>

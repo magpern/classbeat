@@ -131,6 +131,30 @@ test('a pick, one Approve, and a private playlist of exactly the approved songs 
   expect(spotifyWrites()).toHaveLength(after)
 })
 
+test('the class page lists the waiting songs and Approve there finishes the class (MA4)', async ({ page }) => {
+  const id = await waitingPick(page, 'pick-inl', 'E2E inline ride')
+  const classId = (await getJob(page, id)).class_id
+
+  // The same list on the class itself, in the Class panel, with no detour through the job page.
+  await page.goto(`/classes/${classId}`)
+  const inline = page.getByTestId('inline-songs')
+  await expect(inline.getByRole('heading', { name: 'Songs for your class' })).toBeVisible()
+  expect(await listedTitles(page)).toHaveLength(8)
+  // Looking at the list writes nothing: no final playlist exists before the Approve.
+  expect(finalPlaylists()).toEqual([])
+
+  useModelScript('good_first_draft')
+  await inline.getByRole('button', { name: 'Approve songs' }).click()
+  await untilState(page, id, 'completed')
+
+  // The class takes the new version's place without leaving the page: the playlist, the planned
+  // songs of each section and Change songs.
+  await expect(page.getByTestId('playlist')).toContainText('E2E inline ride')
+  await expect(page.getByTestId('planned-songs')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Change songs' })).toBeVisible()
+  expect(finalPlaylists()).toHaveLength(1)
+})
+
 test('a newer pick stops the older list: a stale tab cannot approve it and says why', async ({ page, context }) => {
   const first = await waitingPick(page, 'pick-sup', 'E2E superseded ride')
   const stale = await context.newPage()
