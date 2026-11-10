@@ -15,7 +15,12 @@ export function SaveActions({ flow }: { flow: SaveFlow }) {
   const t = useT()
   if (flow.mode !== null) return null
   return (
-    <div className="flex flex-wrap items-center gap-2 lg:order-last">
+    <div
+      role="group"
+      aria-label={t('ws.saveBar')}
+      // On a phone the same buttons are a bar at the foot of the screen, so Save is in reach on both tabs.
+      className="flex flex-wrap items-center gap-2 max-lg:fixed max-lg:inset-x-0 max-lg:bottom-24 max-lg:z-30 max-lg:justify-center max-lg:border-t max-lg:border-line max-lg:bg-surface max-lg:p-3 lg:order-last"
+    >
       <Button
         disabled={!flow.canWrite}
         onClick={() => {

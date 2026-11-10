@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from classbeat.agent.brief import Brief
+from classbeat.classes.provenance_out import ProvenanceOut
 
 
 class OpenJobOut(BaseModel):
@@ -293,35 +294,6 @@ class RevisionsOut(BaseModel):
 class UnknownBpmOut(BaseModel):
     index: int
     title: str
-
-
-class UsageOut(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    input_tokens: int | None = None
-    output_tokens: int | None = None
-    cache_read_tokens: int | None = None
-    cache_write_tokens: int | None = None
-
-
-class ProvenanceOut(BaseModel):
-    """What a revision records about how it was made, minus the run ids. Unknown keys are
-    dropped, never passed through."""
-
-    model_config = ConfigDict(extra="ignore")
-    origin: str | None = None
-    base_revision_id: UUID | None = None
-    request_message_id: UUID | None = None
-    provider: str | None = None
-    model: str | None = None
-    model_answered: str | None = None
-    effort: str | None = None
-    prompt_version: str | None = None
-    classbeat_version: str | None = None
-    mowl_version: str | None = None
-    map_version: int | None = None
-    crossfade_sec: float | None = None
-    usage: UsageOut | None = None
-    cost_micros: int | None = None
 
 
 class RuleHitOut(BaseModel):

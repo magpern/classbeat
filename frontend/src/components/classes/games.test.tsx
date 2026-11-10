@@ -54,6 +54,7 @@ function revision(segments: DraftSegment[]): Revision {
     ruleHits: [],
     notesUseCurrentRules: false,
     raw: {},
+    interpretation: null,
   }
 }
 
