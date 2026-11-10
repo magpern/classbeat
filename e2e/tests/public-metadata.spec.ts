@@ -74,7 +74,10 @@ for (const code of CODES) {
 
     test('through the footer: Home, public, app and public again, then back', async ({ page }) => {
       await signUpAndIn(page, words)
-      await expect(page).toHaveURL(new RegExp(`/${code}$`))
+      // Signing in lands on the account page; Home is opened as a document, so its head is the server's.
+      await page.goto(`/${code}`)
+      await expect(page.getByRole('main')).toBeVisible()
+      await expectHeadIsServers(page)
 
       await follow(page, code, '/privacy') // Home to public
       await follow(page, code, '/classes') // public to app
