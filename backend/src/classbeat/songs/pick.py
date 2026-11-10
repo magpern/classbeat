@@ -104,19 +104,18 @@ class Seeded:
 def stage_config(agent: AgentConfig, config: SongConfig, *, turns: int, calls: int) -> AgentConfig:
     """The song stages' limits (ADR 0008 section 3): their own turns and tool calls, 3
     corrections, the agent's wall time and turn reserve, and the song kinds' job ceiling."""
-    limits = Limits(
-        max_turns=turns,
-        max_tool_calls=calls,
-        max_corrections=3,
-        stage_seconds=agent.limits.stage_seconds,
-        job_cost_micros=config.cost_micros,
-        turn_output_reserve=agent.limits.turn_output_reserve,
-    )
     return AgentConfig(  # the model, effort and route stay the group's
         model=agent.model,
         effort=agent.effort,
         max_tokens=agent.max_tokens,
-        limits=limits,
+        limits=Limits(
+            max_turns=turns,
+            max_tool_calls=calls,
+            max_corrections=3,
+            stage_seconds=agent.limits.stage_seconds,
+            job_cost_micros=config.cost_micros,
+            turn_output_reserve=agent.limits.turn_output_reserve,
+        ),
         prices=agent.prices,
         route_key=agent.route_key,
         eval_result_id=agent.eval_result_id,
@@ -206,9 +205,11 @@ async def run_phase_one(
     if account is None:  # open_spotify refuses it already
         raise JobFailure("not_connected")
     seeded = await _seeded(run, seed)
-    plan = PickPlan.build(brief)
-    if seeded is not None:
-        plan = PickPlan.build(brief, replace=seeded.roles, kept=seeded.kept)
+    plan = (
+        PickPlan.build(brief, replace=seeded.roles, kept=seeded.kept)
+        if seeded is not None
+        else PickPlan.build(brief)
+    )
     pool_config = stage_config(
         agent, config, turns=pool_module.MAX_TURNS, calls=pool_module.MAX_TOOL_CALLS
     )
