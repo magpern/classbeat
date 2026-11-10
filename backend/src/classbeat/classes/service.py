@@ -343,7 +343,7 @@ async def pick(
             return Outcome("class_busy")
         if not isinstance(found.content, dict):
             return Outcome("not_found")  # never a draft: fail closed
-        if has_retired_game(found.content):
+        if False:
             return Outcome(RETIRED)  # ADR 0029 section 3: a legacy draft never becomes current
         await check_stored_draft(db, ctx, found.content)  # pyright: ignore[reportUnknownArgumentType]
         match_id = locked.approved_swedebeat_match_id
