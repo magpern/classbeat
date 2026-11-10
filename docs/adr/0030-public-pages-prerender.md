@@ -90,7 +90,7 @@ variants of an image with CSS hiding the wrong one; `hydrateRoot` on public rout
 
 **8. Boundaries.** URLs stay language-neutral with English slugs (ADR 0027 §1). No structured data in
 the first release. No analytics: Search Console only. The page modules of listed paths, their content
-components and the chart components import no runtime code from an API client module (the pure `api/draftTypes` is allowed), the prerender makes no
+components and the chart components import no runtime code from an API client module, checked on the files they import directly (the pure `api/draftTypes` is allowed; `SupportLink` and `useSupportAddress` are the one named exemption, like the shell, because they call the API only from an effect and render without an address in the prerender), the prerender makes no
 network call, and fixtures are synthetic, scanned for identifiers and real song names.
 
 ## Alternatives

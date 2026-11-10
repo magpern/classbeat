@@ -108,10 +108,14 @@ The GitHub issues carry the same criteria.
   A key on `untranslated.json` doesn't fail the build, so ADR 0023's English-only feature PRs stay
   possible on published pages.
 - `fetch` throws during prerender. A guard test fails if `publicSite/`, `components/landing/`, the page
-  modules of listed paths or the chart components import runtime code from an API client module; the
-  pure `api/draftTypes` is allowed. The shell is outside this guard: it calls the API only from effects
-  and event handlers, which don't run in prerender.
-- The prerender records the catalogue keys each page rendered, for PP8's translation check.
+  modules of listed paths, their content components or the chart components import runtime code from
+  an API client module. The guard checks the files they import directly; the pure `api/draftTypes` is
+  allowed. The shell, `SupportLink` and `useSupportAddress` are the named exemptions: they call the API
+  only from effects, which don't run in prerender, so Help, Privacy and Terms are prerendered without a
+  support address and the client fills it in after takeover (Help, Privacy and Terms are checked for
+  that in the takeover spec once PP3 lists them).
+- The prerender records the catalogue keys each page rendered into `frontend/build/prerender.json`,
+  and PP8 adds `check:published-translations` that reads them.
 - `main.tsx` awaits the catalogue when `#root` has children.
 - `react-dom/server` is not in the client bundle; `check:bundle` passes.
 
