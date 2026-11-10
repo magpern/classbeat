@@ -3,7 +3,7 @@
 The text is the page's own title and description from the prerender (ADR 0030 section 3), so the
 preview and the ``<title>`` cannot differ. The language is the one the page is served in (the same
 ``code`` as its canonical and hreflang links, which stay as ADR 0027 has them). The copy rules
-(ADR 0028 section 2) are tested on the catalogue: ``frontend/src/publicSite/pageMeta.test.ts``.
+(ADR 0028 section 2) are tested on the catalogue: ``frontend/src/publicSite/metaCopy.test.ts``.
 No database is reached.
 """
 

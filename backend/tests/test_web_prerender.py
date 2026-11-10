@@ -135,10 +135,21 @@ async def test_hostile_hosts_and_paths_give_byte_identical_output(
             assert forwarded.content == plain.content, path
 
 
-def test_a_query_or_a_trailing_slash_selects_the_same_prerendered_page() -> None:
+def test_a_trailing_slash_selects_the_same_prerendered_page() -> None:
     pages = spa.build_pages(INDEX, Settings(), fake_content())
     assert pages.select("sv/privacy/") is pages.public[("sv", "/privacy")]
     assert pages.select("sv/help/") is pages.public[("sv", "/help")]
+
+
+async def test_a_query_string_selects_the_same_prerendered_page(
+    unreachable_database_url: str, static_dir: Path
+) -> None:
+    async with make_client(unreachable_database_url, static_dir=static_dir) as client:
+        for path in ("/sv", "/sv/privacy", "/da/help", "/sv/classes"):
+            plain = await client.get(path)
+            queried = await client.get(f"{path}?x=<b>1</b>&lang=da")
+            assert queried.content == plain.content, path
+            assert "<b>1</b>" not in queried.text, path
 
 
 async def test_injection_adds_no_script_and_leaves_the_csp_alone(

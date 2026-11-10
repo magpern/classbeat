@@ -10,6 +10,12 @@ import { expectHeadIsServers } from './public-head'
 // address, so the specs need no words but the picker's.
 test.setTimeout(180_000)
 
+/** The text of the first h1 of a served page, without markup. */
+function headingOf(html: string): string {
+  const inner = /<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(html)?.[1] ?? ''
+  return inner.replace(/<[^>]*>/g, '').trim()
+}
+
 /** The step: click the visible link to `/<code><path>` and wait for the page. */
 async function follow(page: Page, code: Code, path: string): Promise<void> {
   const target = `/${code}${path}`
@@ -75,8 +81,14 @@ for (const code of CODES) {
     test('through the footer: Home, public, app and public again, then back', async ({ page }) => {
       await signUpAndIn(page, words)
       // Signing in lands on the account page; Home is opened as a document, so its head is the server's.
+      const landing = await (await page.request.get(`/${code}`)).text()
+      const landingHeading = headingOf(landing)
+      expect(landingHeading).not.toBe('')
       await page.goto(`/${code}`)
-      await expect(page.getByRole('main')).toBeVisible()
+      // The server sends Landing's body; once the session answers the client replaces it with Home.
+      await expect(page.getByRole('link', { name: words.design })).toBeVisible()
+      await expect(page.getByRole('heading', { level: 1 })).not.toHaveText(landingHeading)
+      await expect(page.getByRole('heading', { level: 1, name: landingHeading })).toHaveCount(0)
       await expectHeadIsServers(page)
 
       await follow(page, code, '/privacy') // Home to public
