@@ -114,6 +114,7 @@ export function jobId(page: Page): string {
 
 export interface JobView {
   state: string
+  class_id: string
   error_category: string | null
   cancel_requested: boolean
 }

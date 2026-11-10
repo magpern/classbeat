@@ -308,117 +308,17 @@ describe('Ask for changes', () => {
 })
 
 describe('the class page reaches the approval', () => {
-  it('points at the waiting songs', async () => {
+  it('lists the waiting songs on the class itself (MA4), with no detour through the job page', async () => {
     fakeApi({
       ...SESSION_ROUTES,
       ...classRoutes({
         cls: { open_job: { id: JOB_ID, kind: 'design_with_songs', state: 'waiting_for_approval' } },
       }),
+      [`GET ${JOB}`]: waitingJob(),
+      [`GET ${LIST_PATH}`]: listBody(),
     })
     renderAt(`/classes/${CLASS_ID}`)
-    expect(await screen.findByRole('link', { name: 'Review the songs' })).toHaveAttribute('href', `/en/jobs/${JOB_ID}`)
-  })
-})
-
-describe('Ask for changes and the brief', () => {
-  const base = {
-    ...approvalRoutes(),
-    [`POST ${JOB}/cancel`]: jobBody('cancelled', { kind: 'design_with_songs' }),
-    'GET /api/connections': connectionsBody(),
-    'POST /api/jobs': () => json(NEW_JOB, 201),
-  }
-
-  it('falls back to the form kept in this tab when the class has no brief', async () => {
-    const kept = { ...BRIEF, text: 'From the tab', length_min: 60 }
-    window.sessionStorage.setItem(
-      `classbeat.pick-input.${JOB_ID}`,
-      JSON.stringify({ class_id: CLASS_ID, brief: kept, mode: 'pick', mowl_connection_id: 'x', spotify_connection_id: 'y' }),
-    )
-    const api = fakeApi({ ...base, [`GET ${CLASS_PATH}`]: classBody({ brief: null }) })
-    renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
-    await waitFor(() => {
-      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
-    })
-    const input = (api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input
-    expect(input.brief).toEqual(kept)
-  })
-
-  it('prefers the class brief to the form kept in this tab when both are there and differ', async () => {
-    const kept = { ...BRIEF, text: 'From the tab', length_min: 60 }
-    const own = { ...BRIEF, text: 'From the class', length_min: 45 }
-    window.sessionStorage.setItem(
-      `classbeat.pick-input.${JOB_ID}`,
-      JSON.stringify({ class_id: CLASS_ID, brief: kept, mode: 'pick', mowl_connection_id: 'x', spotify_connection_id: 'y' }),
-    )
-    const api = fakeApi({ ...base, [`GET ${CLASS_PATH}`]: classBody({ brief: own }) })
-    renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
-    await waitFor(() => {
-      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
-    })
-    const input = (api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input
-    expect(input.brief).toEqual(own)
-  })
-
-  it('says the songs were stopped when the class cannot be read after the cancel, and a second try goes on', async () => {
-    let reads = 0
-    const api = fakeApi({
-      ...base,
-      [`GET ${CLASS_PATH}`]: () => (++reads === 1 ? reason(500, 'internal') : json(classBody({ brief: BRIEF }))),
-      [`POST ${JOB}/cancel`]: () => reason(409, 'not_waiting'), // already stopped by the first try
-    })
-    renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(/we could not read the class/)
-    expect(api.to('POST', '/api/jobs')).toHaveLength(0)
-    fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
-    await waitFor(() => {
-      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
-    })
-  })
-
-  it('rebuilds the length from the list when there is neither', async () => {
-    const api = fakeApi({ ...base, [`GET ${CLASS_PATH}`]: classBody({ brief: null }) })
-    renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
-    await waitFor(() => {
-      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
-    })
-    const input = (api.to('POST', '/api/jobs')[0]?.body as { input: { brief: { length_min: number } } }).input
-    expect(input.brief.length_min).toBe(10)
-  })
-
-  it('treats a malformed class brief as none', async () => {
-    const api = fakeApi({ ...base, [`GET ${CLASS_PATH}`]: classBody({ brief: { length_min: 'long' } }) })
-    renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
-    await waitFor(() => {
-      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
-    })
-    const input = (api.to('POST', '/api/jobs')[0]?.body as { input: { brief: { intensity: string } } }).input
-    expect(input.brief.intensity).toBe('moderate')
-  })
-
-  it('a double click on Ask for changes is one cancel and one create', async () => {
-    const api = fakeApi({ ...base, [`GET ${CLASS_PATH}`]: classBody({ brief: BRIEF }) })
-    renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
-    const ask = screen.getByRole('button', { name: 'Ask for changes' })
-    // Both clicks land before React re-renders, so only the in-flight guard can stop the second.
-    act(() => {
-      ask.click()
-      ask.click()
-    })
-    await waitFor(() => {
-      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
-    })
-    expect(api.to('POST', `${JOB}/cancel`)).toHaveLength(1)
-    expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    expect(await screen.findByRole('button', { name: 'Approve songs' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Review the songs' })).toBeNull()
   })
 })

@@ -1,57 +1,36 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { type Job } from '../../api/jobs'
 import { approveRefusal, type Refusal } from '../../api/songMessages'
-import { approveSongs, getSongList, PICK_KIND, type SongList } from '../../api/songs'
+import { approveSongs, PICK_KIND, type SongList } from '../../api/songs'
 import { useT } from '../../i18n/I18n'
 import { minutes, whenText } from '../../lib/songs'
 import { Link } from '../../router/Router'
 import { Notice } from '../forms'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
+import { Ended, FinalActions, Heading, PickAgain, RefreshButton } from './ApprovalEnded'
 import { StickyActionBar } from '../ui/sticky-action-bar'
 import { CoverMosaic } from './CoverArt'
 import { SongRows } from './SongRows'
 import { SpotifyAttribution } from './SpotifyAttribution'
 import { useNewPick } from './useNewPick'
+import { useSongList } from './useSongList'
 
-type Load =
-  | { status: 'loading' }
-  | { status: 'failed' }
-  | { status: 'ready'; list: SongList }
-
-function useSongList(job: Job) {
-  const [load, setLoad] = useState<Load>({ status: 'loading' })
-  const [round, setRound] = useState(0)
-  useEffect(() => {
-    if (job.approvalRevisionId === null) return
-    const abort = new AbortController()
-    getSongList(job.classId, job.approvalRevisionId, abort.signal).then(
-      (list) => {
-        if (!abort.signal.aborted) setLoad({ status: 'ready', list })
-      },
-      () => {
-        if (!abort.signal.aborted) setLoad({ status: 'failed' })
-      },
-    )
-    return () => {
-      abort.abort()
-    }
-  }, [job.classId, job.approvalRevisionId, round])
-  const reload = useCallback(() => {
-    setLoad({ status: 'loading' })
-    setRound((n) => n + 1)
-  }, [])
-  // A job without an approval revision has no list to show.
-  return { load: job.approvalRevisionId === null ? ({ status: 'failed' } as Load) : load, reload }
+/** In the class workspace the list is one column under the page's own heading, and a change request stays on the class. */
+export interface EmbeddedApproval {
+  /** The class changed (a new pick was started, a list was replaced): read it again. */
+  onChanged: () => void
 }
 
 export function SongsForApproval({
   job,
   onApproved,
+  embedded,
 }: {
   job: Job
   /** The approval was accepted: the job is queued again and runs its second part. */
   onApproved: (job: Job) => void
+  embedded?: EmbeddedApproval
 }) {
   const t = useT()
   const { load, reload } = useSongList(job)
@@ -71,7 +50,7 @@ export function SongsForApproval({
       </Card>
     )
   }
-  return <Approval job={job} list={load.list} onApproved={onApproved} reload={reload} />
+  return <Approval job={job} list={load.list} onApproved={onApproved} reload={reload} embedded={embedded} />
 }
 
 function Approval({
@@ -79,11 +58,13 @@ function Approval({
   list,
   onApproved,
   reload,
+  embedded,
 }: {
   job: Job
   list: SongList
   onApproved: (job: Job) => void
   reload: () => void
+  embedded: EmbeddedApproval | undefined
 }) {
   const t = useT()
   const [refusal, setRefusal] = useState<Refusal | null>(null)
@@ -94,7 +75,9 @@ function Approval({
   const locked = useRef(false)
   // The notices sit at the top of a long page, the button in the bar: bring a new one into view.
   const notices = useRef<HTMLDivElement>(null)
-  const pick = useNewPick(job, list)
+  const pick = useNewPick(job, list, embedded?.onChanged)
+  // The class page is the place itself: no link back to it, a refresh instead.
+  const classId = embedded === undefined ? job.classId : null
   const isPick = job.kind === PICK_KIND
   const shown = problem ?? pick.action.error
   useEffect(() => {
@@ -143,7 +126,11 @@ function Approval({
   }
   if (list.status === 'superseded') {
     return (
-      <Ended title={t('songs.approval.supersededTitle')} classId={job.classId}>
+      <Ended
+        title={t('songs.approval.supersededTitle')}
+        classId={classId}
+        extra={embedded ? <RefreshButton onClick={embedded.onChanged} /> : null}
+      >
         {t('songs.approval.supersededText')}
       </Ended>
     )
@@ -153,7 +140,7 @@ function Approval({
     return (
       <Ended
         title={expired ? t('songs.approval.expiredTitle') : t('songs.approval.stoppedTitle')}
-        classId={job.classId}
+        classId={classId}
         error={pick.action.error}
         extra={isPick ? <PickAgain pick={pick} /> : null}
       >
@@ -165,8 +152,18 @@ function Approval({
   const final = refusal?.final === true
   const replace = [...marks].sort((a, b) => a - b).map((position) => position - 1)
   const busyNow = busy || pick.action.busy
+  const expiry =
+    list.expiresAt !== null ? (
+      <p className="m-0 min-w-0 text-[0.8125rem] text-muted max-lg:flex-1" data-testid="expiry">
+        {t('songs.approval.expiry', { when: whenText(list.expiresAt) })}
+      </p>
+    ) : null
   return (
-    <section className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]" aria-labelledby="songs-title">
+    <section
+      className={embedded ? 'flex flex-col gap-5' : 'grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]'}
+      aria-labelledby="songs-title"
+      data-testid={embedded ? 'inline-songs' : undefined}
+    >
       <div className="flex min-w-0 flex-col gap-4">
         <div ref={notices} className="flex flex-col gap-4 empty:hidden">
           {problem !== null ? <Notice kind="error">{problem}</Notice> : null}
@@ -178,11 +175,16 @@ function Approval({
           ) : null}
         </div>
         <header className="flex flex-col items-start gap-4 rounded-lg border border-line bg-surface p-4 sm:flex-row sm:items-end sm:p-6">
-          <CoverMosaic songs={list.songs} className="size-40 shrink-0 sm:size-48" />
+          <CoverMosaic songs={list.songs} className={embedded ? 'size-28 shrink-0' : 'size-40 shrink-0 sm:size-48'} />
           <div className="flex min-w-0 flex-col gap-2">
-            <h1 id="songs-title" className="m-0 break-words font-display text-3xl font-extrabold text-text sm:text-4xl">
+            {/* The workspace page has its own h1 (the class title). */}
+            <Heading
+              id="songs-title"
+              as={embedded ? 'h2' : 'h1'}
+              className={`m-0 break-words font-display font-extrabold text-text ${embedded ? 'text-2xl' : 'text-3xl sm:text-4xl'}`}
+            >
               {t('songs.approval.heading')}
-            </h1>
+            </Heading>
             <p className="m-0 text-text">
               {t('songs.approval.summary', {
                 count: list.songs.length,
@@ -205,7 +207,7 @@ function Approval({
         />
         <p className="m-0 text-[0.9375rem] text-muted">{t('songs.approval.privacy')}</p>
         {final ? (
-          <FinalActions refusal={refusal} classId={job.classId} pick={isPick ? pick : null} reload={reload} />
+          <FinalActions refusal={refusal} classId={classId} pick={isPick ? pick : null} reload={reload} />
         ) : isPick ? (
           <div className="flex flex-col gap-2">
             <label htmlFor="change-note" className="text-[0.9375rem] font-medium text-text">
@@ -247,14 +249,18 @@ function Approval({
           </div>
         )}
       </div>
-      {final ? null : (
+      {final ? null : embedded ? (
+        // Not sticky: the workspace has its own bottom bar for saving on a phone.
+        <div className="flex flex-wrap items-center gap-3" role="group" aria-label={t('songs.approval.barLabel')}>
+          <Button disabled={busyNow} onClick={approve}>
+            {t('songs.approval.approve')}
+          </Button>
+          {expiry}
+        </div>
+      ) : (
         <div className="min-w-0 lg:self-stretch">
           <StickyActionBar label={t('songs.approval.barLabel')} className="lg:p-5">
-            {list.expiresAt !== null ? (
-              <p className="m-0 min-w-0 text-[0.8125rem] text-muted max-lg:flex-1" data-testid="expiry">
-                {t('songs.approval.expiry', { when: whenText(list.expiresAt) })}
-              </p>
-            ) : null}
+            {expiry}
             <Button disabled={busyNow} onClick={approve} className="w-full max-lg:w-auto max-lg:shrink-0">
               {t('songs.approval.approve')}
             </Button>
@@ -262,75 +268,5 @@ function Approval({
         </div>
       )}
     </section>
-  )
-}
-
-function FinalActions({
-  refusal,
-  classId,
-  pick,
-  reload,
-}: {
-  refusal: Refusal
-  classId: string
-  pick: ReturnType<typeof useNewPick> | null
-  reload: () => void
-}) {
-  const t = useT()
-  return (
-    <div className="flex flex-wrap gap-3">
-      {refusal.newSongs === true && pick !== null ? <PickAgain pick={pick} /> : null}
-      <Button variant="secondary" onClick={reload}>
-        {t('songs.approval.reload')}
-      </Button>
-      <Button asChild variant="ghost">
-        <Link to={`/classes/${classId}`}>{t('songs.approval.openClass')}</Link>
-      </Button>
-    </div>
-  )
-}
-
-function PickAgain({ pick }: { pick: ReturnType<typeof useNewPick> }) {
-  const t = useT()
-  return (
-    <Button
-      disabled={pick.action.busy}
-      onClick={() => {
-        pick.start(null, '')
-      }}
-    >
-      {t('songs.ended.pickAgain')}
-    </Button>
-  )
-}
-
-function Ended({
-  title,
-  classId,
-  children,
-  extra = null,
-  error = null,
-}: {
-  title: string
-  classId: string
-  children: ReactNode
-  extra?: ReactNode
-  error?: string | null
-}) {
-  const t = useT()
-  return (
-    <Card>
-      <CardTitle>{title}</CardTitle>
-      <div className="flex flex-col gap-3">
-        <p className="m-0 text-text">{children}</p>
-        {error ? <Notice kind="error">{error}</Notice> : null}
-        <div className="flex flex-wrap gap-3">
-          {extra}
-          <Button asChild variant="ghost">
-            <Link to={`/classes/${classId}`}>{t('songs.approval.openClass')}</Link>
-          </Button>
-        </div>
-      </div>
-    </Card>
   )
 }

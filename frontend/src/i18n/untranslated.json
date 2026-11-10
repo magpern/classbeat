@@ -130,5 +130,16 @@
   "ws.region.chat",
   "ws.region.class",
   "ws.ready",
-  "ws.saveBar"
+  "ws.saveBar",
+  "ws.songsStopped",
+  "planned.title",
+  "planned.hint",
+  "planned.range",
+  "music.change.title",
+  "music.change.open",
+  "music.change.wait",
+  "music.change.here",
+  "music.change.goSongs",
+  "music.change.newDesign",
+  "music.change.startAgain"
 ]
