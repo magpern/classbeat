@@ -5,13 +5,15 @@ are in [docs/plans/ai-first-design.md](../plans/ai-first-design.md).
 
 Amends: [ADR 0023](0023-multilingual.md) §7 (the interpreter reads sv and da requests).
 Refines: [ADR 0007](0007-classes-revisions-and-saving.md) (chat and revisions),
+[ADR 0011](0011-tiers-quotas-and-admin.md) (games become a brief field; the gate is unchanged),
 [ADR 0012](0012-eval-suite-and-model-providers.md) (a new gated stage),
 [ADR 0013](0013-ui-design-night-studio.md) (game illustrations),
 [ADR 0028](0028-ui-refresh.md) (New class becomes a prompt; the form moves to Advanced).
 
 ## Context
 
-The owner's proposal (`classbeat-screenshots/classbeat-redesign/CLASSBEAT_REDESIGN_PROPOSAL.md`)
+The owner's proposal (`classbeat-redesign/CLASSBEAT_REDESIGN_PROPOSAL.md` in the
+`magpern/classbeat-screenshots` repository)
 replaces the form-style New class page with one free-text request. A two-panel workspace follows
 it: chat on the left, a live preview on the right. Nothing is saved to MOWL before the user
 explicitly approves it.
@@ -78,7 +80,7 @@ so **the rule stays** and the policy test reads "refused". This is the evidence 
 plan, so no owner question is needed.
 
 **What the code did before this ADR.**
-- Five games: `Game` Literal (`agent/schemas.py:63`) and the library's
+- Five games: `Game` Literal (`agent/schemas.py:64`) and the library's
   `GAMES = {racetrack 1, power_pull 4, fast_lane 5, overflow 6, ghost_target 7}`.
 - Written as `IntervalGame.IntervalGameID` and read back in `mowl_state.py:195`.
 - Games were interchangeable apart from the id: the target is the interval's zone.
@@ -134,7 +136,8 @@ The 10 s rules live in the library alone, which covers both the tool loop
   - Change songs;
   - Duplicate, which goes through the strict `spec_of` and would otherwise answer 500.
 
-  Each refusal happens before `to_spec` or `validate`, which would raise.
+  Each refusal happens before the save path: `mowl_state.py:96`, `interval_body` and `validate`
+  look up `GAMES` and would raise. `to_spec` does not look up `GAMES`.
 - **Revising from a legacy base** turns that interval into a regular interval with the same
   length and zone, and records a Not as asked item `game_retired` before the model sees the
   draft. The model never picks a replacement game.
@@ -179,7 +182,10 @@ The fields are:
 - sport, length, effort and class type;
 - the counts of climbs, sprints and races, and the FTP test;
 - the music choice, as an index;
-- `games: [{type: one of the four | "any", placement?: {position: start | early | middle | late | before_cooldown | after:<hint> | replaces:<hint>}, duration_sec?}]`.
+- `games: [{type: one of the four | "any", placement?: {position: start | early | middle | late | before_cooldown} | {relation: after | replaces | in, anchor: climb | sprint | race | interval | warmup | cooldown, ordinal: 1–20}, duration_sec?}]`.
+  The placement is closed at interpret time: there is no draft yet, so "after climb 2" becomes
+  `{relation: after, anchor: climb, ordinal: 2}`, and no model text goes into the Brief.
+  `check_explicit` maps it onto the draft's segments by kind and order.
 
 **No model text goes back to the model.** This keeps the guard in `agent/revise.py:11-14`.
 - The Brief holds only closed enums and numbers. A placement hint becomes a segment index or a
@@ -187,7 +193,8 @@ The fields are:
 - `quote` and hints are kept only if they are verbatim substrings of `brief.text`, the user's
   own request.
 - Playlist and mix names go through `clean_text`: at most 50 names of 60 characters each, in a
-  numbered data block, and only an index comes back.
+  numbered data block, and only an index comes back. The index is range-checked against the list
+  that was sent; an out-of-range index is treated as no match. `title` is never model input.
 
 **`design/request_policy.py`** (pure)
 1. An explicit value is never replaced by a default.
@@ -204,7 +211,10 @@ The fields are:
 **`Brief`** (moved into `agent/brief.py`)
 - Gains `games` (at most 6) and `explicit` (at most 20 paths).
 - Both are left out of the serialization when empty, so existing briefs stay byte-identical.
-- `games` is cycling-only.
+- `games` is cycling-only. ADR 0011 said "games are not a field of the brief"; now they are. The
+  plan gate is unchanged: `request_policy` drops a game on a plan without games (Not as asked
+  `plan_no_games`), and the admit gate check (`quota/gates.py` `check_brief`) also refuses
+  `Brief.games` with `feature: games`, so a hand-crafted request can't get past it.
 - The worst case fits the 4096-byte cap, checked at admit.
 
 **`check_explicit(brief, draft)`** (pure)
@@ -248,7 +258,9 @@ The fields are:
 - The browser calls the route when the interpret job completes. After a closed tab, the class
   page finds an interpretation with no design job and no revision, and calls it again.
 - **Two concurrent calls admit exactly one design job, use one credit, and both callers get the
-  same job id and state** (owner, 2026-11-10). This is tested with two sessions on Postgres.
+  same job id and state** (owner, 2026-11-10). If the hand-off is refused, both callers get the
+  same stored refusal code and no job or credit exists. This is tested with two sessions on
+  Postgres.
 
 **Other rules**
 - A failed interpret uses no credit.
@@ -267,8 +279,15 @@ The fields are:
   - a running request asking for a game;
   - Swedish and Danish requests.
 - `suite_version` is bumped. The cycling prompt pins change on purpose.
-- Until the owner's live suite run, stale routes are refused, as ADR 0012 §5 intends. That run is
-  listed under "Waiting for the owner"; it does not block implementation.
+- **Stale routes are served, with a warning (ADR 0012 §5, `models/routes.py:376-394`).** Until the
+  owner's live suite run, a route whose prompt versions were not recorded is still used for
+  cycling and is flagged stale. Only `newer_failure` makes a route unusable. Running and soundless
+  classes lose coverage and are refused, as ADR 0012 already describes. MA does not change that
+  rule. An unevaluated `interpret` route is therefore safe by construction rather than by eval:
+  its output passes closed validation (enums, numbers, a range-checked index, and quotes accepted
+  only as substrings of the request; §4), so injected text cannot reach the Brief or a later model
+  call. The eval run is about quality. It is listed under "Waiting for the owner" and does not
+  block implementation.
 
 ### 7. ADR 0023 §7 amendment
 

@@ -11,7 +11,7 @@ the Ghost Target policy).
 ## Context
 
 **What the proposal asks for.** The proposal is
-`classbeat-screenshots/classbeat-redesign/CLASSBEAT_REDESIGN_PROPOSAL.md` (on `main`). It replaces
+`classbeat-redesign/CLASSBEAT_REDESIGN_PROPOSAL.md` (on `main` of `magpern/classbeat-screenshots`). It replaces
 the form-style New class page with one free-text request. The instructor then refines the class in
 a two-panel workspace: a chat on the left and a live preview on the right. Nothing is saved to MOWL
 until the instructor explicitly approves it.
@@ -69,7 +69,7 @@ it becomes a **new milestone, MA**, with a plan document, ADR 0029 and roadmap A
 | The editor's operations: add, replace (keeps the length), change type, remove, change length; for target games, set the intensity (the zone) | Revision-chat operations, one eval case each |
 
 ### What the code does today (verified)
-- **Five games.** `Game` Literal (`agent/schemas.py:63`); the library's
+- **Five games.** `Game` Literal (`agent/schemas.py:64`); the library's
   `GAMES = {racetrack 1, power_pull 4, fast_lane 5, overflow 6, ghost_target 7}`
   (`mowl/workout.py:49`).
 - **Tests and evals pin the set.** `test_agent_tools.py:99` and `test_evals_suite_design.py:87`
@@ -139,7 +139,8 @@ The 10 s rules live only in the library. A test makes sure the library refuses a
   (`classes/service.py:358`), Save (`saving/kind.py:161`), Update (`saving/update.py:165`),
   Refit, Change songs and **Duplicate**. Duplicate validates through the strict `spec_of`
   (`classes/duplicate.py:77,345`) and would otherwise answer 500. The refusal happens before
-  `to_spec`, which would raise in `mowl_state.py:96` and in `validate`.
+  the save path: `mowl_state.py:96`, `interval_body` and `validate` look up `GAMES` and
+  would raise (`to_spec` does not).
 - **Revise from a legacy base:** the parse goes through the stored schema; the interval becomes a
   regular interval with the same length and zone; a `game_retired` Not as asked item is recorded.
   The model never picks a replacement game.
@@ -198,7 +199,10 @@ field is `{value, origin: explicit|inferred, quote?}`. Anything the model leaves
 - sport, length, effort and class type;
 - the counts of climbs, sprints and races, and the FTP test;
 - the music choice, given as a list index;
-- `games: [{type: one of the four | "any", placement?: {position: start|early|middle|late|before_cooldown | after:<hint> | replaces:<hint>}, duration_sec?}]`.
+- `games: [{type: one of the four | "any", placement?: {position: start | early | middle | late | before_cooldown} | {relation: after | replaces | in, anchor: climb | sprint | race | interval | warmup | cooldown, ordinal: 1–20}, duration_sec?}]`.
+  The placement is closed at interpret time: there is no draft yet, so "after climb 2" becomes
+  `{relation: after, anchor: climb, ordinal: 2}`, and no model text goes into the Brief.
+  `check_explicit` maps it onto the draft's segments by kind and order.
 
 **No model text goes back to the model.**
 - The Brief holds only closed enums and numbers. A placement hint is turned into a segment
@@ -206,7 +210,8 @@ field is `{value, origin: explicit|inferred, quote?}`. Anything the model leaves
 - `quote` and the hints are kept only if they are **verbatim substrings of `brief.text`**, which
   is the user's request.
 - Playlist and mix names: `clean_text`, at most 50 names of 60 characters each, in a numbered data
-  block, and only an index comes back.
+  block, and only an index comes back, range-checked against the list sent. `title` is never
+  model input.
 - An adversarial eval case uses a playlist named like an instruction.
 
 **`design/request_policy.py`** (pure)
@@ -279,7 +284,8 @@ field is `{value, origin: explicit|inferred, quote?}`. Anything the model leaves
   - **Concurrency test (owner, 2026-11-10):** two requests to `design-from-interpretation` at
     the same time. Exactly one design job is admitted and exactly one class credit is used, and
     both callers get the same job id and state. The owner lock and the derived idempotency key
-    together guarantee this. The test runs against the Postgres container with two sessions.
+    together guarantee this. If the hand-off is refused, both get the same stored refusal code
+    and no job or credit exists. The test runs against the Postgres container with two sessions.
 - **A failed interpret** uses no credit.
 - **Hard-coded kind lists:** each one gets the new kind, or a test showing it doesn't need it:
   - `classes/service.py:56,132`;
@@ -298,8 +304,10 @@ field is `{value, origin: explicit|inferred, quote?}`. Anything the model leaves
   - a running request with a game;
   - Swedish and Danish requests.
 - `suite_version` bumped. The cycling prompt pins (`test_agent_running.py:68-71`) change on purpose.
-- **Waiting for the owner:** a live suite run before release. Until then, stale routes are refused,
-  as ADR 0012 intends.
+- **Waiting for the owner:** a live suite run before release. Until then a stale cycling route is
+  served with a warning (ADR 0012 §5, `models/routes.py:376-394`), and running and soundless lose
+  coverage. An unevaluated `interpret` route stays safe because its output passes closed
+  validation (ADR 0029 §6).
 - **ADR 0023 §7 amendment:** classes stay English. The interpreter accepts sv and da, and phrases
   added from Ideas use the UI language.
 
@@ -369,7 +377,7 @@ check; MOWL runtime behaviour for teams and the zone 3 fallback; audio features.
 | # | PR | Depends on | Developer / Reviewer |
 |---|---|---|---|
 | MA0 | Plan doc, ADR 0029 (article quoted; A to E; back-to-back evidence; illustration provenance as the owner stated it; the Ghost Target policy; the concurrent hand-off test), Amendment 18, status, milestone and issues | none | Architect / **Opus** |
-| MW1 | mowl-workouts v0.11.0 (Ghost removed, 10 s rules, unknown-id read, back-to-back outcome, changelog) | MA0 | Sonnet / Sonnet |
+| MW1 | mowl-workouts v0.11.0 (Ghost removed, 10 s rules, unknown-id read, back-to-back outcome, changelog) | MA0 | Sonnet / **Opus** (`validate` guards the MOWL save path) |
 | MA1a-1 | Wheel bump, strict `Game` with the four, `stored_draft.py`, read sites, `game_retired` on 6 actions, legacy paths and compatibility tests | MW1 | **Opus / Opus** (adds a refusal to Save and Update: approvals and external writes) |
 | MA1a-2 | `games_catalog`, `games_policy`, prompts, diff wording, evals and `suite_version` | MA1a-1 | Sonnet / **Opus** (prompts, eval gate) |
 | MA1c | Game display, illustrations and slots, frontend type split | MA0 | Sonnet / Sonnet |
