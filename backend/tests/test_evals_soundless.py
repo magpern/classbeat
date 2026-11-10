@@ -111,11 +111,10 @@ async def test_a_soundless_case_runs_the_soundless_stage_and_the_model_sees_no_m
     preamble, _, payload = spec.first_message.partition("{")
     assert "music" not in json.loads("{" + payload)  # the model's input has no music key
     # Everything but the instructor's own words (the injection case's brief text names a playlist).
-    # "track" is a whole word here: the game "racetrack" is not a music track.
-    text = (spec.system + preamble).lower()
-    for word in ("playlist", "get_music", "bpm", "smoke song", "smoke artist", "song"):
+    # The game "racetrack" is not a music track: strip that one word, keep the substring ban.
+    text = re.sub("racetrack", "", (spec.system + preamble), flags=re.IGNORECASE).lower()
+    for word in ("playlist", "get_music", "bpm", "track", "smoke song", "smoke artist", "song"):
         assert word not in text, word
-    assert not re.search(r"\btracks?\b", text)
     assert "no music" in spec.first_message
     assert case.brief.sport == "cycling"
     assert all("track" not in s for seg in result.timeline for s in seg["intervals"])

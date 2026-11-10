@@ -240,7 +240,7 @@ NOTES: dict[str, str] = {
     "rev_game_type_40": "Changed the game to Fast Lane.",
     "rev_game_remove_40": "Took the game out.",
     "rev_game_length_40": "Made the game 90 seconds long.",
-    "rev_game_zone_40": "Set the game to zone 4.",
+    "rev_game_zone_40": "Set the game to zone 5.",
 }
 
 

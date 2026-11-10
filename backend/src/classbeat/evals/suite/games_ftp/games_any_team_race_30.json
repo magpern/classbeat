@@ -1,10 +1,10 @@
 {
  "name": "games_any_team_race_30",
- "about": "Moderate 30 minutes; a short team race at the end names no type.",
+ "about": "Moderate 30 minutes; a short team competition at the end names no type.",
  "brief": {
   "length_min": 30,
   "intensity": "moderate",
-  "text": "Finish with a short team race."
+  "text": "Finish with a short team competition."
  },
  "music": {
   "tracks": 12

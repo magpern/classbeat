@@ -42,5 +42,6 @@ def has_retired_game(content: object) -> bool:
 
 def game_retired(content: object, sport: str = "cycling") -> bool:
     """Whether a stored draft of a class of ``sport`` is legacy: games are cycling only, so a
-    running draft never is, whatever its JSON holds."""
+    running draft never is, whatever its JSON holds. Named by issue #878; the callers still use
+    ``has_retired_game`` and move here when they know the sport."""
     return sport == "cycling" and has_retired_game(content)

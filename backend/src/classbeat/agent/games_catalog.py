@@ -10,7 +10,7 @@ rows. The 10 s rules (G3, G4) live only in the library's ``workout.validate``.
 
 It lives in ``classbeat.agent`` and not in ``classbeat.design``: the prompts use it at import time,
 and importing the ``design`` package from ``agent`` is a cycle (``design.kind`` imports the agent).
-``classbeat.design.games_policy`` uses it from the other side.
+The page and the other games code read it from here too.
 
 ``prompt_lines`` renders the catalogue for the design and revise prompts, so the model sees the
 same four names the strict ``Game`` accepts and nothing else.

@@ -76,9 +76,8 @@ DIGEST_SOURCES: Final = (
 # that decides which rules exist, which hits fire, what the section and each hit say, how a
 # brief picks its profile, and where the section and the hits enter the model's input and tool
 # results. Paths under ``classbeat``; a change to any of them is a new suite. A new module under
-# ``design/rules/`` must be listed here or in the documented exclusions of
-# ``tests/test_evals_class_patterns.py``. The profile files are covered by the digests in
-# ``design/profiles/index.json`` (``profile.load_registry`` refuses a file that differs).
+# ``design/rules/`` must be listed here or excluded in ``tests/test_evals_class_patterns.py``.
+# The profile files are covered by the digests in ``design/profiles/index.json``.
 RULE_SOURCES: Final = (
     "agent/guidance.py",
     "agent/model_input.py",
