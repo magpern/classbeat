@@ -10,9 +10,11 @@ from typing import Any, get_args
 import pytest
 from mowl import workout
 
+import gamescripts
 from agentfake import CONFIG
+from classbeat.agent import games_catalog
 from classbeat.agent.schemas import Game, WorkoutDraft
-from classbeat.evals import checks
+from classbeat.evals import checks, game_checks
 from classbeat.evals.cases import Case, MusicSyncExpect
 from classbeat.evals.runner import CaseResult, run_case
 from classbeat.evals.suite import load_suite
@@ -40,7 +42,7 @@ OWN: dict[str, list[Case]] = {
     cat: [SUITE.design_cases[n] for n in SUITE.manifest.cases_of(cat, "design") if n not in SMOKE]
     for cat in CATEGORIES
 }
-COUNTS = {"standard": 7, "music_sync": 7, "games_ftp": 7, "revisions": 8}
+COUNTS = {"standard": 7, "music_sync": 7, "games_ftp": 11, "revisions": 14}
 ALL = [c for cat in CATEGORIES for c in OWN[cat]]
 BY_NAME = {c.name: c for c in ALL}
 # The checks each category's cases add to the smoke set's.
@@ -85,10 +87,13 @@ def test_the_cases_cover_lengths_intensities_games_ftp_tests_and_revision_kinds(
     for cat in ("standard", "music_sync", "revisions"):
         assert {c.brief.intensity for c in OWN[cat]} == {"easy", "moderate", "hard"}, cat
     games = {g for c in OWN["games_ftp"] for g in c.expect.games}
-    assert games == set(get_args(Game))  # every catalogue game (ADR 0029: not Ghost Target)
+    assert games == set(games_catalog.TYPES)  # every catalogue game (ADR 0029: not Ghost Target)
+    assert set(get_args(Game)) == set(games_catalog.TYPES)
+    edits = {c.expect.revision.game for c in OWN["revisions"] if c.expect.revision}
+    assert {"power_pull", "overflow", "fast_lane"} <= edits  # types the revision cases move to
     assert {c.brief.ftp_test for c in OWN["games_ftp"]} == {None, 3, 5, 20}
     kinds = {c.expect.revision.kind for c in OWN["revisions"] if c.expect.revision}
-    assert kinds == {"more_sprints", "easier", "shorter", "climb_moved"}
+    assert kinds == {"more_sprints", "easier", "shorter", "climb_moved", *game_checks.EDITS}
     assert all(c.revise is not None and c.expect.revision for c in OWN["revisions"])
     assert all(c.expect.music_sync is not None for c in OWN["music_sync"])
     assert sum(c.brief.sprints + c.brief.races > 0 for c in OWN["music_sync"]) == 6
@@ -336,3 +341,101 @@ def test_no_sprints_fail_when_sprints_were_asked_whatever_the_music_holds() -> N
     for m in (with_drop, no_drop):
         assert not checks.sprints_on_drops(none, m, expected=2).ok
         assert checks.sprints_on_drops(none, m, expected=0).ok  # none asked: nothing to place
+
+
+# --- generic game requests (ADR 0029): any one valid type passes, anything else fails -------------
+
+GAME_ANY = [c for c in OWN["games_ftp"] if c.expect.game_any]
+
+
+def _game_draft(case: Case, games: tuple[str, ...]) -> dict[str, Any]:
+    b = case.brief
+    return make_draft(b.length_min * 60, intensity=b.intensity, climbs=b.climbs, games=games)
+
+
+def test_the_generic_requests_are_the_three_of_the_plan() -> None:
+    assert {c.name for c in GAME_ANY} == {
+        "games_any_challenge_40",
+        "games_any_pacing_35",
+        "games_any_team_race_30",
+    }
+    assert all(
+        not c.expect.games
+        and not any(t in (c.brief.text or "").lower() for t in games_catalog.TYPES)
+        for c in GAME_ANY
+    )
+
+
+@pytest.mark.parametrize("game", games_catalog.TYPES)
+@pytest.mark.parametrize("case", GAME_ANY, ids=lambda c: c.name)
+async def test_any_one_catalogue_game_passes_a_generic_request(case: Case, game: str) -> None:
+    result = await run(case, _game_draft(case, (game,)))
+    assert ok_of(result)["games"], [c.detail for c in result.checks]
+    assert result.passed
+
+
+@pytest.mark.parametrize("games", [(), ("racetrack", "overflow")], ids=["none", "two"])
+@pytest.mark.parametrize("case", GAME_ANY, ids=lambda c: c.name)
+async def test_a_generic_request_needs_exactly_one_game(case: Case, games: tuple[str, ...]) -> None:
+    result = await run(case, _game_draft(case, games))
+    assert ok_of(result)["games"] is False
+    assert not result.passed
+
+
+@pytest.mark.parametrize("name", ["turbo_boost", "ghost_target"])
+async def test_an_invented_or_retired_game_never_passes(name: str) -> None:
+    case = GAME_ANY[0]
+    result = await run(case, _game_draft(case, (name,)))
+    assert result.outcome != "submitted" or not result.passed
+    assert not result.passed
+
+
+# --- game edits (the article's editor operations, G11) --------------------------------------------
+
+GAME_EDITS = [c for c in OWN["revisions"] if c.expect.revision.kind in game_checks.EDITS]  # type: ignore[union-attr]
+
+
+def test_each_of_the_articles_operations_has_its_case() -> None:
+    assert {c.expect.revision.kind for c in GAME_EDITS} == game_checks.EDITS  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize("case", GAME_EDITS, ids=lambda c: c.name)
+async def test_an_edit_that_also_changes_another_interval_fails(case: Case) -> None:
+    result = await run(case, gamescripts.broken_edit(case))
+    assert result.outcome == "submitted"
+    assert ok_of(result)["revision"] is False, [c.detail for c in result.checks]
+
+
+@pytest.mark.parametrize("case", GAME_EDITS, ids=lambda c: c.name)
+async def test_an_edit_that_changes_nothing_fails(case: Case) -> None:
+    result = await run(case, case.revise.base.model_dump(mode="json", exclude_none=True))  # type: ignore[union-attr]
+    assert ok_of(result)["revision"] is False
+
+
+async def test_removing_a_game_may_delete_its_interval() -> None:
+    case = BY_NAME["rev_game_remove_40"]
+    draft = gamescripts.edited(case)
+    seg = next(s for s in draft["segments"] if s["name"] == "Game 1")
+    seg["intervals"].pop(1)
+    seg["intervals"][0]["sec"] += 60  # the game's minute goes to the interval before it
+    assert ok_of(await run(case, draft))["revision"]
+
+
+async def test_a_replaced_interval_keeps_its_length() -> None:
+    case = BY_NAME["rev_game_replace_40"]
+    draft = gamescripts.edited(case)
+    tempo = next(s for s in draft["segments"] if s["name"] == "Tempo 1")
+    tempo["intervals"][0]["sec"] -= 40
+    tempo["intervals"][1]["sec"] += 40
+    assert ok_of(await run(case, draft))["revision"] is False
+
+
+async def test_a_game_of_another_type_than_asked_fails() -> None:
+    case = BY_NAME["rev_game_type_40"]
+    draft = gamescripts.edited(case)
+    next(i for s in draft["segments"] for i in s["intervals"] if i.get("game"))["game"] = "overflow"
+    assert ok_of(await run(case, draft))["revision"] is False
+
+
+def test_the_game_cases_hold_no_running_class() -> None:
+    assert all(c.brief.sport == "cycling" for c in GAME_ANY + GAME_EDITS)

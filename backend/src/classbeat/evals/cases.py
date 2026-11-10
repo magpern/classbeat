@@ -37,7 +37,12 @@ class RevisionExpect(BaseModel):
     - ``more_sprints``: at least ``by`` more sprints than the base;
     - ``easier``: a TSS at most 95 % of the base's and no larger share at zone 5 or above;
     - ``shorter``: within 5 % of ``length_min``;
-    - ``climb_moved``: a climb is the first (``climb_at: start``) or last main segment.
+    - ``climb_moved``: a climb is the first (``climb_at: start``) or last main segment;
+    - a game edit (ADR 0029 section 2, G11), ``at`` being the base's interval (counted from 0 over
+      the whole class): ``game_added`` (a ``game`` inserted before ``at``), ``game_replaced``
+      (that interval becomes ``game``, same length and zone), ``game_type`` (its game becomes
+      ``game``), ``game_removed``, ``game_length`` (``sec``) and ``game_zone`` (``zone``). Each
+      changes only that interval (``classbeat.evals.game_checks``).
 
     Everything the request did not touch stays: the length within 5 % of the base's (unless
     ``shorter``), the cooldown within 60 s of the base's, and the other kinds of effort: for
@@ -46,10 +51,25 @@ class RevisionExpect(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    kind: Literal["more_sprints", "easier", "shorter", "climb_moved"]
+    kind: Literal[
+        "more_sprints",
+        "easier",
+        "shorter",
+        "climb_moved",
+        "game_added",
+        "game_replaced",
+        "game_type",
+        "game_removed",
+        "game_length",
+        "game_zone",
+    ]
     by: int = Field(default=1, ge=1, le=10)
     length_min: int | None = Field(default=None, ge=10, le=180)
     climb_at: Literal["start", "end"] | None = None
+    at: int | None = Field(default=None, ge=0, le=1000)
+    game: Game | None = None
+    sec: int | None = Field(default=None, ge=10, le=3600)
+    zone: int | None = Field(default=None, ge=1, le=7)
 
     @model_validator(mode="after")
     def _params(self) -> "RevisionExpect":
@@ -57,6 +77,16 @@ class RevisionExpect(BaseModel):
             raise ValueError("length_min is the asked length of a shorter revision, and only that")
         if (self.kind == "climb_moved") != (self.climb_at is not None):
             raise ValueError("climb_at is where a moved climb goes, and only that")
+        edit = self.kind.startswith("game_")
+        wants = {
+            "at": edit,
+            "game": self.kind in ("game_added", "game_replaced", "game_type"),
+            "sec": self.kind == "game_length",
+            "zone": self.kind == "game_zone",
+        }
+        for name, needed in wants.items():
+            if (getattr(self, name) is not None) != needed:
+                raise ValueError(f"{name} is for the game edits that name it, and only those")
         return self
 
 
@@ -106,6 +136,8 @@ class Expect(BaseModel):
     max_cost_micros: int | None = Field(default=None, ge=0)
     # The suite's own (ADR 0012 section 4); unset, the check is not run (the smoke set's).
     games: list[Game] = Field(default_factory=lambda: list[Game]())  # each exactly once
+    # A request that names no type (ADR 0029): exactly one game, of any type the catalogue offers.
+    game_any: bool = False
     ftp_warmup_min_sec: int | None = Field(default=None, ge=60, le=1800)  # before the FTP test
     music_sync: MusicSyncExpect | None = None
     revision: RevisionExpect | None = None
@@ -178,7 +210,11 @@ class Case(BaseModel):
             raise ValueError("a revise case's base draft is of its brief's sport")
         if self.expect.incline_min_sec is not None and not running:
             raise ValueError("expect.incline_min_sec is for a running case")
-        if running and (self.expect.games or self.expect.ftp_warmup_min_sec is not None):
+        if self.expect.game_any and self.expect.games:
+            raise ValueError("a case names its games or accepts any one, not both")
+        if running and (
+            self.expect.games or self.expect.game_any or self.expect.ftp_warmup_min_sec is not None
+        ):
             raise ValueError("a running case has no games and no FTP test")
         if self.expect.patterns is not None and self.expect.patterns.mode == "follows":
             unusual = b.sprints or b.races or b.ftp_test or b.style or b.text or b.climbs

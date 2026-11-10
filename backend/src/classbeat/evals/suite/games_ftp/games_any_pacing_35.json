@@ -1,0 +1,16 @@
+{
+ "name": "games_any_pacing_35",
+ "about": "Moderate 35 minutes; a game that rewards steady pacing names no type.",
+ "brief": {
+  "length_min": 35,
+  "intensity": "moderate",
+  "text": "I want a game that rewards steady pacing.",
+  "climbs": 1
+ },
+ "music": {
+  "tracks": 12
+ },
+ "expect": {
+  "game_any": true
+ }
+}

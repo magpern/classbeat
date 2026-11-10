@@ -100,7 +100,8 @@ plan, so no owner question is needed.
 - The changelog notes that removing a `GAMES` value breaks CLI and MCP users.
 - classbeat stays on 0.10.0 until MA1a-1.
 
-**Catalogue: `design/games_catalog.py`** (pure)
+**Catalogue: `agent/games_catalog.py`** (pure; not under `design/`: the prompts in `agent/` use it
+at import time and `agent/` cannot import `design/`, a circular import)
 - The four types, each with an i18n key, its MOWL id (looked up from the library's `GAMES`) and
   the G1 sentence.
 - classbeat's own advice, labelled as advice and not MOWL fact:
@@ -154,7 +155,8 @@ The 10 s rules live in the library alone, which covers both the tool loop
 - Running prompts stay free of game words.
 
 **Change summary** (`design/diff.py`): segment index plus type, for example "segment 3: Power Pull
-→ Overflow", so it fits the 1024 bytes of `change`.
+→ Overflow", so it fits the 1024 bytes of `change`. Built as `game_changes: [{segment, before,
+after}]` (at most 8); `segment` is counted from 1, as the page counts segments.
 
 **Display**
 - `DraftInterval.game` on the frontend.

@@ -19,6 +19,7 @@ from typing import Any
 
 from mowl import music
 
+import gamescripts
 import runningscripts
 import soundlessscripts
 from classbeat.agent import DesignContext
@@ -26,6 +27,7 @@ from classbeat.agent.design import check
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.stage import ToolError
+from classbeat.evals import game_checks
 from classbeat.evals.cases import Case
 from classbeat.evals.music import build_music
 from patternscripts import pattern_draft
@@ -73,6 +75,12 @@ def design_draft(case: Case) -> dict[str, Any]:
     b = case.brief
     if case.expect.music_sync is not None:
         return synced_draft(case)
+    if case.name in gamescripts.GENERIC:
+        games = (gamescripts.GENERIC[case.name],)
+    elif case.name == "games_margin_30":
+        return gamescripts.margin_draft(case)
+    else:
+        games = tuple(case.expect.games)
     draft: dict[str, Any] = dict(
         total=b.length_min * 60,
         intensity=b.intensity,
@@ -80,7 +88,7 @@ def design_draft(case: Case) -> dict[str, Any]:
         sprints=b.sprints,
         races=b.races,
         ftp=b.ftp_test,
-        games=tuple(case.expect.games),
+        games=games,
         name=f"Invented {case.name.replace('_', ' ')} class",
     )
     if b.ftp_test:
@@ -227,6 +235,12 @@ NOTES: dict[str, str] = {
     "rev_shorter_75_to_60": "Cut the class to an hour.",
     "rev_climb_to_end_45": "Moved the climb to the end.",
     "rev_climb_to_start_40": "Moved the climb to the start.",
+    "rev_game_add_40": "Added a Power Pull game after the climb.",
+    "rev_game_replace_40": "Made the first Tempo 1 interval an Overflow game.",
+    "rev_game_type_40": "Changed the game to Fast Lane.",
+    "rev_game_remove_40": "Took the game out.",
+    "rev_game_length_40": "Made the game 90 seconds long.",
+    "rev_game_zone_40": "Set the game to zone 5.",
 }
 
 
@@ -241,6 +255,8 @@ def move_climb(draft: dict[str, Any], to: str) -> dict[str, Any]:
 
 
 def revised_draft(case: Case) -> dict[str, Any]:
+    if case.expect.revision is not None and case.expect.revision.kind in game_checks.EDITS:
+        return gamescripts.edited(case)
     draft = make_draft(**REVISED[case.name], name=f"Invented {case.name.replace('_', ' ')}")
     want = case.expect.revision
     if want is not None and want.kind == "climb_moved" and want.climb_at == "end":
