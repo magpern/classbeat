@@ -14,7 +14,7 @@
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any, Final
 
 from classbeat.agent.brief import Brief
@@ -60,23 +60,26 @@ def with_explicit(message: str, brief: Brief) -> str:
 
 class ExplicitGate:
     """Refuses a draft that misses a stated value only while the run has a correction left, so a
-    miss never ends the job ``invalid_output``: the refusal is counted with every other refused
-    final answer (``failed``, see ``agent.design.within_request``) against the run's
-    ``max_corrections`` (bound by the loop through ``Stage.bind_corrections``)."""
+    miss never ends the job ``invalid_output``. The loop binds its own count of refused final
+    answers (every kind: malformed, too large, rule or miss) and ``max_corrections``
+    (``Stage.bind_corrections``); the gate refuses while that count is below the limit, so a
+    refusal here never takes the run past it. Unbound (a unit test), it counts its own refusals."""
 
     def __init__(self, brief: Brief, max_corrections: int = DEFAULT_CORRECTIONS) -> None:
         self.brief = brief
         self.max_corrections = max_corrections
-        self.failed = 0
+        self._own = 0
+        self._used: Callable[[], int] = lambda: self._own
 
-    def bind(self, max_corrections: int) -> None:
+    def bind(self, used: Callable[[], int], max_corrections: int) -> None:
+        self._used = used
         self.max_corrections = max_corrections
 
     def review(self, spec: Mapping[str, Any]) -> tuple[Miss, ...]:
         """No misses when the fitted ``spec`` keeps the stated values; a ``ToolError`` while a
         correction is left; then the misses, to record as Not as asked."""
         misses = check_explicit(self.brief, spec)
-        if misses and self.failed < self.max_corrections:
-            self.failed += 1
+        if misses and self._used() < self.max_corrections:
+            self._own += 1
             raise ToolError("invalid_draft", [m.sentence for m in misses])
         return tuple(misses)

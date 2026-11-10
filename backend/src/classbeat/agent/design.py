@@ -18,7 +18,7 @@ timing always come from here, never from a number the model states.
 
 import copy
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any, Final
 
 from mowl import music, sync, workout
@@ -125,19 +125,8 @@ class DesignResult:
     unmet: tuple[Miss, ...] = ()
 
     def with_unmet(self, unmet: tuple[Miss, ...]) -> "DesignResult":
-        return DesignResult(
-            self.draft,
-            self.spec,
-            self.timeline,
-            self.quality,
-            self.warnings,
-            self.duration_sec,
-            self.tss,
-            self.tss_approximate,
-            self.map_version,
-            self.crossfade_sec,
-            unmet,
-        )
+        kept = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "unmet"}
+        return DesignResult(**kept, unmet=unmet)  # by name: a new field cannot be dropped
 
 
 @dataclass(frozen=True)
@@ -232,12 +221,8 @@ def within_plan(gates: PlanGates | None, result: DesignResult) -> DesignResult:
 def within_request(gate: ExplicitGate, build: Callable[[], DesignResult]) -> DesignResult:
     """``build()`` (the checked draft) when it keeps the stated values; ``ToolError(
     'invalid_draft')`` for the misses while the run has a correction left; after that the misses
-    ride on ``unmet`` (Not as asked). Every refused submission counts against the budget."""
-    try:
-        result = build()
-    except ToolError:
-        gate.failed += 1
-        raise
+    ride on ``unmet`` (Not as asked). The loop counts every refused submission."""
+    result = build()
     misses = gate.review(result.spec)
     return result.with_unmet(misses) if misses else result
 

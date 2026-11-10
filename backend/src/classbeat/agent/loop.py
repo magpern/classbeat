@@ -216,7 +216,7 @@ async def _loop(
 ) -> Any:
     started = clock()
     if stage.bind_corrections is not None:  # a gate that spends the correction budget (ADR 0029)
-        stage.bind_corrections(limits.max_corrections)
+        stage.bind_corrections(lambda: counters.corrections, limits.max_corrections)
     conv = provider.start(spec)
     results: list[ToolResult] = []
     reminder: str | None = None

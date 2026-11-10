@@ -7,6 +7,7 @@ unchanged, so every revision of today is stored byte-identically.
 """
 
 from collections.abc import Iterable
+from dataclasses import fields
 
 from classbeat.agent import interpretation_record
 from classbeat.agent.brief import Brief
@@ -22,10 +23,6 @@ def with_interpretation(
     items = request_policy.interpretation_for(brief, unmet, request_policy.Limits.from_gates(gates))
     if not items:
         return draft
-    return DraftRevision(
-        draft.content,
-        draft.content_hash,
-        draft.music,
-        interpretation_record.attach(draft.provenance, items),
-        draft.parent_id,
-    )
+    kept = {f.name: getattr(draft, f.name) for f in fields(draft) if f.name != "provenance"}
+    provenance = interpretation_record.attach(draft.provenance, items)
+    return DraftRevision(**kept, provenance=provenance)  # by name: a new field cannot be dropped

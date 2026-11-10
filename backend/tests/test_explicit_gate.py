@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from agentfake import analysed, brief, good_draft, script
-from classbeat.agent import soundless_input
+from agentfake import MemoryHost, analysed, brief, from_dict, good_draft, script
+from classbeat.agent import run_stage, soundless_input
 from classbeat.agent.brief import Brief
 from classbeat.agent.design import DesignContext
 from classbeat.agent.dispatcher import dispatch
@@ -18,6 +18,8 @@ from classbeat.agent.explicit_input import (
     ExplicitGate,
     with_explicit,
 )
+from classbeat.agent.limits import Limits
+from classbeat.agent.loop import AgentConfig
 from classbeat.agent.provider import ToolCall
 from classbeat.agent.revise import ReviseContext
 from classbeat.agent.schemas import RunningDraft, SoundlessDraft, WorkoutDraft
@@ -128,15 +130,17 @@ def test_nothing_the_model_wrote_reaches_a_later_prompt_or_the_record() -> None:
     assert "Zq9" not in record
 
 
-def test_the_gate_never_spends_more_than_the_runs_corrections() -> None:
+def test_the_gate_refuses_only_while_the_loops_count_is_below_the_limit() -> None:
     wrong = brief(length_min=120, explicit=["length_min"])
-    ctx = SoundlessContext(wrong)
-    stage = soundless_design_stage(ctx)
+    stage = soundless_design_stage(SoundlessContext(wrong))
     assert stage.bind_corrections is not None
-    stage.bind_corrections(1)  # the loop does this with Limits.max_corrections
+    used = [0]
+    stage.bind_corrections(lambda: used[0], 2)  # what the loop binds: its own counter and limit
     assert not submit(stage, 1).ok
-    assert submit(stage, 2).ok  # the budget is spent: the miss is recorded, the job goes on
-    stage.bind_corrections(0)
+    used[0] = 1  # the loop counted that refusal (and any other one it saw)
+    assert not submit(stage, 2).ok
+    used[0] = 2
+    assert submit(stage, 3).ok  # nothing left: the miss is recorded, the job goes on
     assert ExplicitGate(wrong, 0).review({"segments": []}) == ()
 
 
@@ -144,11 +148,32 @@ def test_corrections_spent_on_other_errors_leave_less_for_a_miss() -> None:
     wrong = brief(length_min=120, explicit=["length_min"])
     stage = soundless_design_stage(SoundlessContext(wrong))
     assert stage.bind_corrections is not None
-    stage.bind_corrections(1)
-    broken = draft()
-    broken["segments"] = broken["segments"][:-1]  # no cooldown: refused before the gate
-    assert not dispatch(stage, ToolCall("c1", "submit_draft", {"draft": broken})).ok
-    assert submit(stage, 2).ok  # one correction was already spent: the miss is not refused again
+    used = [1]  # the loop already refused a malformed final call
+    stage.bind_corrections(lambda: used[0], 1)
+    assert submit(stage, 1).ok  # one correction was already spent: the miss is not refused again
+
+
+async def _run_soundless(
+    wrong: Brief, calls: list[dict[str, Any]], max_corrections: int
+) -> tuple[Any, MemoryHost]:
+    ctx = SoundlessContext(wrong)
+    fake = from_dict({"turns": [{"calls": [c]} for c in calls]})
+    host = MemoryHost()
+    cfg = AgentConfig(model="fake-model", limits=Limits(max_corrections=max_corrections))
+    outcome = await run_stage(host, fake, soundless_design_stage(ctx), ctx.first_message(), cfg)
+    return outcome, host
+
+
+@pytest.mark.parametrize("limit", [1, DEFAULT_CORRECTIONS])
+async def test_a_run_with_a_malformed_final_call_still_ends_submitted_with_the_misses(
+    limit: int,
+) -> None:
+    wrong = brief(length_min=120, explicit=["length_min"])
+    malformed = {"name": "submit_draft", "input": {"draft": {}}}  # refused by the dispatcher
+    missing = {"name": "submit_draft", "input": {"draft": draft()}}
+    outcome, host = await _run_soundless(wrong, [malformed] + [missing] * limit, limit)
+    assert host.outcomes() == ["submitted"]  # never invalid_output
+    assert [(m.path, m.code) for m in outcome.output.unmet] == [("length_min", "length_off")]
 
 
 def test_intensity_and_class_type_are_not_claimed_as_verified() -> None:
