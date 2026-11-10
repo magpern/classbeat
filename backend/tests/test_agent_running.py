@@ -24,6 +24,7 @@ from pydantic import ValidationError
 from agentfake import analysed, brief, good_draft, script
 from classbeat.agent import DesignContext, design_stage
 from classbeat.agent import model_input as cycling_input
+from classbeat.agent.brief import Brief
 from classbeat.agent.design import SYSTEM_PROMPT as CYCLING_DESIGN_PROMPT
 from classbeat.agent.design import check
 from classbeat.agent.dispatcher import dispatch
@@ -43,7 +44,6 @@ from classbeat.agent.running import (
 )
 from classbeat.agent.running_input import running_brief_for_model
 from classbeat.agent.schemas import (
-    Brief,
     DraftInput,
     ReviseInput,
     RunningDraft,
@@ -64,10 +64,11 @@ ROOT = Path(__file__).resolve().parents[2]
 RUN = {"sport": "running", "length_min": 30, "intensity": "moderate"}
 # The cycling stages' prompt versions and tool schemas on main before R1a (4838aaf): R1a changes
 # none of them, so every recorded eval result and model route stays valid.
-# ADR 0029 section 3 (MA1a-1): design and revise changed with the schema's four games.
+# ADR 0029 section 3 (MA1a-1): the schema's four games; section 4 (MA1b-1): the stated-values
+# sentence.
 CYCLING_PROMPT_VERSIONS = {
-    "design": "088f46a451829cb8a2d95cfbac0652d5067d49ee6856428199013c652d5eddd6",
-    "revise": "d5f34401e48de84cb247929626a92e370c096489fedb25f6eed14a0e03486d14",
+    "design": "e49b9d03c38fb9481cf41a096e992fc3e8f3805c8aeb6507dd8be9ccbc402643",
+    "revise": "2d24e280ae51af9792836cf74866ba4899b08bbfa364cfa7801490a57b1c2f0e",
     "pick_pool": "58d36e6a25155e86a70e88b79c845ccd1501f7f2db4c7d28af9f6f78badb5449",
     "choose_songs": "4fb091519ef4af656c3fc32e424bc1b083db5531a7436e8976dc2e0e60a386db",
 }

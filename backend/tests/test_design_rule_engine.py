@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from mowl import workout
 
-from classbeat.agent.schemas import Brief
+from classbeat.agent.brief import Brief
 from classbeat.design.rules import MAX_HITS, RuleHit, evaluate, load_registry
 from classbeat.design.rules import engine as G
 from classbeat.design.rules.enums import RULE_SPECS

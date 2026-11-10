@@ -21,8 +21,9 @@ from typing import Any, Final
 from mowl import spotify
 
 from classbeat.agent import model_input
+from classbeat.agent.brief import Brief
 from classbeat.agent.registry import MAX_TEXT, normalised
-from classbeat.agent.schemas import MAX_POOL, MAX_SONGS, Brief
+from classbeat.agent.schemas import MAX_POOL, MAX_SONGS
 from classbeat.covers import cover_url
 
 SONG_SEC: Final = 240

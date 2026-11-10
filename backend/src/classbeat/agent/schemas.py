@@ -9,24 +9,35 @@ authority on the MOWL app's own rules (cooldown, games, FTP tests, three hours).
 written by the model have their control and format characters removed on validation, so what is
 stored never carries them.
 
-``Brief`` is the brief of the new-class form as the model may see it (section 7): the guided
-options and the user's free text, nothing else.
+The brief of the new-class form (``Brief``) is ``classbeat.agent.brief``.
 """
 
 import unicodedata
-from typing import Annotated, Any, Literal, Self
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
 
 from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
-    SerializerFunctionWrapHandler,
-    model_serializer,
     model_validator,
 )
 
+if TYPE_CHECKING:
+    from classbeat.agent.brief import Brief as Brief
+
 STRICT = ConfigDict(extra="forbid", strict=True)
+
+
+def __getattr__(name: str) -> Any:
+    """``Brief`` moved to ``classbeat.agent.brief`` (which imports this module). The files the
+    eval suite's digest covers (``evals.suite.RULE_SOURCES``) still import it from here, because
+    editing them would be a new suite; this lazy alias keeps them unchanged."""
+    if name == "Brief":
+        from classbeat.agent.brief import Brief as brief
+
+        return brief
+    raise AttributeError(name)
 
 
 def clean_text(value: str) -> str:
@@ -296,72 +307,6 @@ class MusicInput(BaseModel):
     track: int | None = Field(
         default=None, description="A track's index in the music summary, for its sections."
     )
-
-
-Sport = Literal["cycling", "running"]
-SPORTS: tuple[str, ...] = ("cycling", "running")
-# ADR 0018 section 4: the bike-only knobs of the brief. A running brief may not name them (not even
-# at their defaults), and its stored and sized form leaves them out.
-CYCLING_ONLY_BRIEF: tuple[str, ...] = ("climbs", "sprints", "races", "ftp_test")
-
-
-class Brief(BaseModel):
-    """The new-class form's brief (ADR 0006 section 7).
-
-    ``sport`` (ADR 0018 section 1): ``cycling`` or ``running``. A brief without it is cycling (every
-    brief stored before it), and a cycling brief's ``model_dump`` leaves it out, so what the evals,
-    the size guard and every existing reader see of a cycling brief is byte-identical. The class's
-    stored brief writes it explicitly (``stored``). A running brief refuses the bike-only knobs
-    (``CYCLING_ONLY_BRIEF``) and the ``ftp_test`` class type."""
-
-    model_config = STRICT
-
-    sport: Sport = "cycling"
-    length_min: int = Field(ge=10, le=180)
-    intensity: Literal["easy", "moderate", "hard"] = "moderate"
-    climbs: int = Field(default=0, ge=0, le=10)
-    sprints: int = Field(default=0, ge=0, le=20)
-    races: int = Field(default=0, ge=0, le=5)
-    ftp_test: Literal[3, 5, 20] | None = None
-    style: Style = ""
-    text: BriefText = ""
-    # ADR 0017 section 2: the user's own class type; absent = derived (``design.selection``). A
-    # closed set, kept equal to ``design.rules.enums.CLASS_TYPES`` by a test (this module cannot
-    # import it: ``classbeat.design`` imports the agent).
-    class_type: Literal["plain", "interval", "hiit", "journey", "ftp_test"] | None = None
-
-    @model_validator(mode="after")
-    def _running_has_no_bike_knobs(self) -> Self:
-        if self.sport != "running":
-            return self
-        named = sorted(set(CYCLING_ONLY_BRIEF) & self.model_fields_set)
-        if named:
-            raise ValueError(f"a running brief has no {', '.join(named)}")
-        if self.class_type == "ftp_test":
-            raise ValueError("a running brief has no ftp_test class type")
-        return self
-
-    @model_serializer(mode="wrap")
-    def _omit_absent_class_type(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
-        """An absent ``class_type`` is not written, so a stored or sized brief of today is
-        byte-identical (the ``classes.brief`` size guard is unchanged). Nor is ``sport`` of a
-        cycling brief (ADR 0018: absent is cycling); a running brief is written with its sport
-        and without the bike-only knobs, so it validates again as written."""
-        out: dict[str, Any] = handler(self)
-        if out.get("class_type") is None:
-            out.pop("class_type", None)
-        if out.get("sport") == "running":
-            for key in CYCLING_ONLY_BRIEF:
-                out.pop(key, None)
-        else:
-            out.pop("sport", None)
-        return out
-
-    def stored(self) -> dict[str, Any]:
-        """The class's stored brief (``classes.brief``, ADR 0018 section 1): ``model_dump`` with
-        the sport written explicitly, so a new class says what it is. The size guard measures
-        this form."""
-        return {**self.model_dump(mode="json"), "sport": self.sport}
 
 
 # --- song picking (ADR 0008 section 3) ----------------------------------------------------------

@@ -22,7 +22,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from classbeat.agent.schemas import MAX_SONGS, Brief
+from classbeat.agent.brief import Brief
+from classbeat.agent.schemas import MAX_SONGS
 from classbeat.design import revision
 from classbeat.design.revise import Request, Sha256Hex
 from classbeat.jobs.inputs import ModelJobInput, jsonb_size

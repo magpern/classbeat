@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from classbeat.agent.schemas import Brief
+from classbeat.agent.brief import Brief
 
 
 class OpenJobOut(BaseModel):

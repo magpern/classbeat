@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from classbeat.agent.schemas import Brief
+from classbeat.agent.brief import Brief
 from classbeat.classes import match_view, seams, song_views
 from classbeat.classes.dismissals import set_dismissed as set_dismissed  # the routes' name
 from classbeat.classes.selection import belongs_to_draft

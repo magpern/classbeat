@@ -22,11 +22,12 @@ from pydantic import ValidationError
 from agentfake import brief, good_draft
 from authtools import make_settings
 from classbeat.agent import model_input
+from classbeat.agent.brief import Brief
 from classbeat.agent.design import SYSTEM_PROMPT as CYCLING_PROMPT
 from classbeat.agent.dispatcher import dispatch
 from classbeat.agent.provider import ToolCall
 from classbeat.agent.revise import ReviseResult
-from classbeat.agent.schemas import Brief, SoundlessDraft, WorkoutDraft
+from classbeat.agent.schemas import SoundlessDraft, WorkoutDraft
 from classbeat.agent.soundless import (
     REVISE_SYSTEM_PROMPT,
     SYSTEM_PROMPT,

@@ -86,6 +86,8 @@ def check_brief(gates: PlanGates, brief: Mapping[str, Any] | None, plan_id: str)
     ftp = brief.get("ftp_test") is not None or brief.get("class_type") == "ftp_test"
     if not gates.ftp_tests and ftp:
         raise QuotaRefused("feature", feature="ftp_tests", plan=plan_id)
+    if not gates.games and brief.get("games"):
+        raise QuotaRefused("feature", feature="games", plan=plan_id)
 
 
 async def current_gates(db: AsyncSession, ctx: UserContext) -> tuple[Plan, PlanGates]:

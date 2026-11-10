@@ -10,8 +10,9 @@ from uuid import UUID
 import pytest
 
 from classbeat.agent import model_input
+from classbeat.agent.brief import Brief
 from classbeat.agent.providers.fake import FakeProvider
-from classbeat.agent.schemas import Brief, WorkoutDraft
+from classbeat.agent.schemas import WorkoutDraft
 from classbeat.design import guidance
 from classbeat.design.guidance import RuleSet
 from classbeat.design.rules import RATIONALES, default_registry
