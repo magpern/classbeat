@@ -1,6 +1,9 @@
 import { get, post } from './client'
 import { decodeSentence, type SentenceRef } from './sentences'
-import { count, flag, isObject, list, object, optionalText, text, type JsonObject } from './decode'
+import { count, flag, list, object, optionalText, text } from './decode'
+import { decodeDraftContent, decodeUnknownBpm, type DraftSummary } from './draftTypes'
+
+export * from './draftTypes'
 
 // Jobs (ADR 0005 section 2, backend/src/classbeat/jobs/routes.py) and the design_draft kind
 // (ADR 0006 section 3). Server text is data: it is decoded into typed fields and rendered as text.
@@ -127,94 +130,6 @@ export async function cancelJob(id: string): Promise<Job> {
 
 // The draft summary: GET /api/jobs/{id}/revision answers the stored WorkoutDraft and the tracks
 // MOWL had no BPM for. Only what the answer holds is decoded; nothing is computed or added.
-
-export interface DraftInterval {
-  sec: number
-  zone: number
-  /** Cycling only; null for a running interval (it has no cadence). */
-  rpm: [number, number] | 'beat' | null
-  standing: boolean
-  /** Running only (0 flat, 1 incline); null for a cycling interval. */
-  gradient?: number | null
-  cue: string
-}
-
-/** A running draft's intervals carry `gradient` and no cadence (ADR 0018 section 2). */
-export function isRunningDraft(segments: DraftSegment[]): boolean {
-  return segments.some((s) => s.intervals.some((i) => typeof i.gradient === 'number'))
-}
-
-export interface DraftSegment {
-  name: string
-  kind: string
-  intervals: DraftInterval[]
-}
-
-export interface DraftSummary {
-  number: number
-  name: string
-  description: string
-  segments: DraftSegment[]
-  unknownBpm: { index: number; title: string }[]
-}
-
-function decodeInterval(value: unknown): DraftInterval {
-  const item = object(value, 'interval')
-  const rpm = item.rpm
-  if (rpm === undefined && item.gradient !== undefined) {
-    return {
-      sec: count(item, 'sec'),
-      zone: count(item, 'zone'),
-      rpm: null,
-      standing: false,
-      gradient: count(item, 'gradient'),
-      cue: optionalText(item, 'cue') ?? '',
-    }
-  }
-  let decoded: DraftInterval['rpm']
-  if (rpm === 'beat') decoded = 'beat'
-  else if (Array.isArray(rpm) && rpm.length === 2 && rpm.every((n) => typeof n === 'number')) {
-    decoded = [rpm[0] as number, rpm[1] as number]
-  } else throw new Error('Unexpected response from the server (rpm).')
-  return {
-    sec: count(item, 'sec'),
-    zone: count(item, 'zone'),
-    rpm: decoded,
-    standing: flag(item, 'standing'),
-    cue: optionalText(item, 'cue') ?? '',
-  }
-}
-
-function decodeSegment(value: unknown): DraftSegment {
-  const item = object(value, 'segment')
-  return {
-    name: text(item, 'name'),
-    kind: text(item, 'kind'),
-    intervals: list(item, 'intervals').map(decodeInterval),
-  }
-}
-
-export interface DraftContent {
-  name: string
-  description: string
-  segments: DraftSegment[]
-}
-
-export function decodeDraftContent(value: unknown): DraftContent {
-  const content = object(value, 'content')
-  return {
-    name: text(content, 'name'),
-    description: optionalText(content, 'description') ?? '',
-    segments: list(content, 'segments').map(decodeSegment),
-  }
-}
-
-export function decodeUnknownBpm(source: JsonObject): { index: number; title: string }[] {
-  return list(source, 'unknown_bpm').map((entry) => {
-    const item: JsonObject = isObject(entry) ? entry : {}
-    return { index: count(item, 'index'), title: text(item, 'title') }
-  })
-}
 
 export async function getDraftSummary(id: string): Promise<DraftSummary> {
   const body = object(await get(`/api/jobs/${encodeURIComponent(id)}/revision`), 'revision')

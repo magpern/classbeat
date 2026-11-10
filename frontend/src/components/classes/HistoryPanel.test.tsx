@@ -74,6 +74,7 @@ const COMPARISON: Comparison = {
   unsureAfter: 0,
   sameSource: true,
   sameFingerprint: true,
+  gameChanges: [],
 }
 
 const ENTRIES = [

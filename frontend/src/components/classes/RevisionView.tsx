@@ -4,6 +4,8 @@ import { kindLabel, originLabel } from '../../api/classMessages'
 import type { Song } from '../../api/songs'
 import { useT } from '../../i18n/I18n'
 import { tssApproximateNote } from '../../lib/classCards'
+import { GameBadge, GameLicence } from './GameBits'
+import { segmentGames, hasGame } from '../../lib/games'
 import { cadenceText, flatten, inclineText, zoneName } from '../../lib/profile'
 import { clock, segmentSeconds, totalSeconds, tss } from '../../lib/workout'
 import { Card } from '../ui/card'
@@ -44,6 +46,7 @@ export function RevisionView({
   const seconds = totalSeconds(revision.segments)
   const bars = flatten(revision.segments)
   const running = isRunningDraft(revision.segments)
+  const games = !running && hasGame(revision.segments)
   const hardest = bars.length === 0 ? null : Math.max(...bars.map((b) => b.zone))
   return (
     <article className="flex flex-col gap-5" aria-labelledby="revision-title">
@@ -107,6 +110,7 @@ export function RevisionView({
       ) : null}
       <ProfileChart segments={revision.segments} title={revision.name} songs={songs} />
       <ZoneTime bars={bars} running={running} />
+      {games ? <GameLicence /> : null}
       <section aria-labelledby="song-by-song-title" className="flex flex-col gap-4">
         <h3 id="song-by-song-title" className="m-0 font-display text-lg font-bold">
           {t('class.revision.songBySong')}
@@ -120,6 +124,7 @@ export function RevisionView({
                 {clock(segmentSeconds(segment))}
               </span>
             </h4>
+            {games ? segmentGames(segment).map((game) => <GameBadge key={game} game={game} />) : null}
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-left text-[0.9375rem]">
                 <thead>

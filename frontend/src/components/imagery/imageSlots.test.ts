@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { en } from '../../i18n/en'
 import da from '../../i18n/da'
 import sv from '../../i18n/sv'
+import untranslated from '../../i18n/untranslated.json'
 import {
   FORMATS,
   PHONE_MEDIA,
@@ -58,9 +59,9 @@ const everySet = (): { slot: SlotId; role: string; set: ImageSet }[] =>
   })
 
 describe('the slot manifest', () => {
-  it('lists 14 picture sets (hero 4, steps 6, sign-in panel 2, the empty states 2 shared by two slots)', () => {
-    expect(new Set(everySet().map((e) => e.set.name)).size).toBe(14)
-    expect(everySet().length).toBe(16)
+  it('lists 22 picture sets (hero 4, steps 6, sign-in panel 2, the empty states 2 shared by two slots, games 8)', () => {
+    expect(new Set(everySet().map((e) => e.set.name)).size).toBe(22)
+    expect(everySet().length).toBe(24)
     expect(SLOTS.emptyHome.sets).toEqual(SLOTS.emptyClasses.sets)
   })
 
@@ -124,7 +125,7 @@ describe('the slot manifest', () => {
   })
 
   it('a card or empty-state picture weighs 30 KB or less in AVIF and 60 KB or less in JPEG at every width', () => {
-    for (const id of ['stepDescribe', 'stepApprove', 'stepSave', 'emptyHome', 'emptyClasses'] as const) {
+    for (const id of ['stepDescribe', 'stepApprove', 'stepSave', 'emptyHome', 'emptyClasses', 'gameRacetrack', 'gamePowerPull', 'gameFastLane', 'gameOverflow'] as const) {
       for (const set of Object.values(SLOTS[id].sets)) {
         for (const [width] of set.sizes) {
           expect(statSync(diskPath(fileUrl(set, width, 'avif'))).size, `${set.name} ${String(width)} avif`).toBeLessThanOrEqual(30 * 1024)
@@ -158,9 +159,18 @@ describe('alt text', () => {
   const keys = Object.values(SLOTS).flatMap((s) => (s.alt === null ? [] : [s.alt]))
 
   it('a slot with a description has its key in every language, short and not empty', () => {
-    expect(keys).toEqual(['landing.img.describe', 'landing.img.approve', 'landing.img.save'])
+    expect(keys).toEqual([
+      'landing.img.describe',
+      'landing.img.approve',
+      'landing.img.save',
+      'class.game.img.racetrack',
+      'class.game.img.power_pull',
+      'class.game.img.fast_lane',
+      'class.game.img.overflow',
+    ])
     for (const catalogue of [en, sv, da] as Record<string, unknown>[]) {
-      for (const key of keys) {
+      // the game keys are English only until MA6 (ADR 0023 section 8; untranslated.json)
+      for (const key of keys.filter((k) => catalogue === en || !untranslated.includes(k))) {
         const text = catalogue[key]
         expect(typeof text, key).toBe('string')
         expect((text as string).length, key).toBeGreaterThan(5)

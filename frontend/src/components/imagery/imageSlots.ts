@@ -16,6 +16,10 @@ export type SlotId =
   | 'authPanel'
   | 'emptyHome'
   | 'emptyClasses'
+  | 'gameRacetrack'
+  | 'gamePowerPull'
+  | 'gameFastLane'
+  | 'gameOverflow'
 
 /** `[width, height]` in pixels of one rendition. */
 export type Size = readonly [width: number, height: number]
@@ -52,6 +56,8 @@ const set = (name: string, ...sizes: Size[]): ImageSet => ({ name, sizes })
 
 const CARD: [Size, Size] = [[480, 320], [768, 512]]
 const EMPTY: [Size, Size] = [[480, 360], [768, 576]]
+/** The four MOWL game illustrations (ADR 0029 section 3), 16:9, small for a card. */
+const GAME: [Size, Size] = [[240, 135], [480, 270]]
 const PANEL: [Size, Size] = [[480, 600], [960, 1200]]
 /** A picture per theme: `<name>-light` and `<name>-dark`, the same sizes. */
 const both = (name: string, sizes: [Size, Size]) => ({
@@ -92,6 +98,10 @@ export const SLOTS: Record<SlotId, Slot> = {
   // The empty Home and the empty My classes share one calm picture (two slots, one file set per theme).
   emptyHome: { sets: both('empty-home', EMPTY), onDark: 'dim', alt: null },
   emptyClasses: { sets: both('empty-home', EMPTY), onDark: 'dim', alt: null },
+  gameRacetrack: { sets: both('game-racetrack', GAME), onDark: 'dim', alt: 'class.game.img.racetrack' },
+  gamePowerPull: { sets: both('game-power-pull', GAME), onDark: 'dim', alt: 'class.game.img.power_pull' },
+  gameFastLane: { sets: both('game-fast-lane', GAME), onDark: 'dim', alt: 'class.game.img.fast_lane' },
+  gameOverflow: { sets: both('game-overflow', GAME), onDark: 'dim', alt: 'class.game.img.overflow' },
 }
 
 export interface ResolvedSlot {

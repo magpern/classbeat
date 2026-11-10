@@ -540,7 +540,7 @@ npm run build        # typecheck, then Vite writes frontend/dist
 ### Images
 
 Pictures (issue 854) are drawn from `frontend/src/components/imagery/imageSlots.ts`, a typed list of
-slots (`hero`, `stepDescribe`, `stepApprove`, `stepSave`, `authPanel`, `emptyHome`, `emptyClasses`); `SlotPicture` turns a slot
+slots (`hero`, `stepDescribe`, `stepApprove`, `stepSave`, `authPanel`, `emptyHome`, `emptyClasses`, and the four MOWL game slots `gameRacetrack`, `gamePowerPull`, `gameFastLane`, `gameOverflow`: 16:9, 240 and 480 wide, files `game-<type>-<theme>-<width>`); `SlotPicture` turns a slot
 into a `<picture>` (AVIF, then WebP, then JPEG; a phone crop under `PHONE_MEDIA`; `width` and
 `height` set; the hero `eager` with `fetchpriority="high"`, everything else `lazy`). The files live
 in `frontend/public/img/` as `<set>-<width>.avif|webp|jpg`; the server answers `/img/*` with their
