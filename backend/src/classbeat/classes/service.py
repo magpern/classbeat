@@ -20,7 +20,7 @@ from classbeat.classes.dismissals import set_dismissed as set_dismissed  # the r
 from classbeat.classes.selection import belongs_to_draft
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.design.games_policy import RETIRED
+from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.quota.gates import check_stored_draft
 
 Factory = async_sessionmaker[AsyncSession]
@@ -343,7 +343,7 @@ async def pick(
             return Outcome("class_busy")
         if not isinstance(found.content, dict):
             return Outcome("not_found")  # never a draft: fail closed
-        if False:
+        if has_retired_game(found.content):
             return Outcome(RETIRED)  # ADR 0029 section 3: a legacy draft never becomes current
         await check_stored_draft(db, ctx, found.content)  # pyright: ignore[reportUnknownArgumentType]
         match_id = locked.approved_swedebeat_match_id
