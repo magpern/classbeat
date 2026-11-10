@@ -109,6 +109,7 @@ function expectSoundlessProgram(program: FakeProgram, script: ModelScript): void
 test('"No music" is offered with nothing stored, and drops the playlist choice', async ({ page }) => {
   await signedInWithMowl(page, 'sl-form')
   await page.getByRole('link', { name: 'New class' }).click()
+  await page.getByRole('link', { name: /^Advanced/ }).click()
   const form = page.getByRole('form', { name: 'New class' })
   const noMusic = form.getByRole('radio', { name: 'No music', exact: true })
   await expect(noMusic).toBeVisible()
@@ -224,6 +225,7 @@ test('an update MOWL took but classbeat could not confirm does not claim a match
 test('the "No music" form and a soundless class page pass the accessibility audit', async ({ page }) => {
   await signedInWithMowl(page, 'sl-axe')
   await page.getByRole('link', { name: 'New class' }).click()
+  await page.getByRole('link', { name: /^Advanced/ }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByRole('radio', { name: 'No music', exact: true }).click()
   await expect(form.getByText(/play your own music/)).toBeVisible()

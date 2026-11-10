@@ -22,6 +22,7 @@ test('a user without MOWL is sent to connect it, then starts a design from a pla
   await expect(page.getByText('MOWL is connected.')).toBeVisible()
 
   await page.getByRole('link', { name: 'New class' }).click()
+  await page.getByRole('link', { name: /^Advanced/ }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill('E2E climb')
   // Song picking is on in this stack (compose.e2e.yaml) but this user has no Spotify: the choice is
