@@ -1,5 +1,31 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 18 (2026-11-10, owner decisions: AI-first class design and MOWL games; ADR 0029)
+
+The owner's decisions apply now. The design is [ADR 0029](adr/0029-ai-first-class-design.md); the
+frozen plan (revision 7) is [docs/plans/ai-first-design.md](plans/ai-first-design.md).
+
+- **§8 New class** becomes a free-text request ("Describe your class") with starter ideas, a compact
+  source-labelled music picker and "Ideas for your class" (game cards). The guided builder stays as
+  **Advanced** (`/classes/new/advanced`). Defaults first, then refine in the chat; no clarifying
+  questions in v1.
+- **§8 Class** becomes a two-panel workspace: chat (with "As you asked", "Not as asked" and
+  "Assumed") and the live preview; **Approve & save to MOWL** keeps the existing explicit approval.
+- **Explicit instructions win.** A default never silently replaces something the user asked for; an
+  explicit value that cannot be met is shown under "Not as asked" with its reason.
+- **MOWL games:** exactly four cycling games (Racetrack, Power Pull, Fast Lane, Overflow) with the
+  official constraints of MOWL's "How to add a GAME" article (a game ≥ 10 s, the next interval
+  ≥ 10 s). Ghost Target is removed from supported functionality, generation, validation and saving;
+  historical revisions stay readable through a separate compatibility schema and are never turned
+  into another game. No licence check: classbeat states that games need a commercial MOWL licence.
+  Running classes get no games.
+- **Model input:** the request and the user's playlist and mix names (names only; an index comes
+  back) go to a new `interpret` stage, eval-gated under ADR 0012.
+- **Milestone MA, AI-first class design.** PRs MA0, MW1 (`mowl-workouts` v0.11.0), MA1a-1, MA1a-2,
+  MA1b-1 to MA1b-3, MA1c, MA2 to MA6, in the plan's dependency order. Opus Developer for MA1a-1 and
+  MA1b-3; Opus Reviewer for MA0, MA1a-1, MA1a-2, MA1b-1 to MA1b-3 and MA6; Sonnet otherwise. Done
+  when the plan's "Done when" list holds on fakes and a fresh Opus integration review passes.
+
 ## Amendment 17 (2026-11-09, owner decisions: UI refresh; ADR 0028)
 
 The owner's decisions apply now. The design that carries them out is
