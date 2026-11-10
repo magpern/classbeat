@@ -96,11 +96,10 @@ def test_the_design_prompt_has_the_typical_class_guidance() -> None:
 
 
 def test_the_game_names_are_the_four_and_the_library_has_them() -> None:
-    # ADR 0029 section 3: the strict schema offers the four games MOWL offers. The vendored
-    # library (0.10.0) still lists Ghost Target, so the four are a subset of its GAMES until the
-    # wheel bump (MA1a-1b) makes them equal.
+    # ADR 0029 section 3: the strict schema offers exactly the four games the vendored library
+    # (0.11.0, which dropped Ghost Target) lists.
     assert get_args(Game) == ("racetrack", "power_pull", "fast_lane", "overflow")
-    assert set(get_args(Game)) <= set(workout.GAMES)
+    assert set(get_args(Game)) == set(workout.GAMES)
     assert {workout.GAMES[g] for g in get_args(Game)} == {1, 4, 5, 6}
 
 

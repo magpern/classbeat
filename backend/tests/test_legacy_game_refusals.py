@@ -41,7 +41,7 @@ BRIEF: dict[str, Any] = {"length_min": 20, "intensity": "moderate"}
 # A design's provenance as stored (a duplicate copies and validates its descriptive fields).
 PROVENANCE: dict[str, Any] = {
     "provider": "fake", "model": "m", "model_answered": "m", "effort": "medium",
-    "prompt_version": "a" * 64, "classbeat_version": "0.0.0", "mowl_version": "0.10.0",
+    "prompt_version": "a" * 64, "classbeat_version": "0.0.0", "mowl_version": "0.11.0",
     "map_version": 1, "crossfade_sec": 0.0, "agent_run_ids": [str(uuid.uuid4())],
     "usage": {"input_tokens": 5, "output_tokens": 6, "cache_read_tokens": 0,
               "cache_write_tokens": 0},
