@@ -1,1 +1,19 @@
-[]
+[
+  "class.game.racetrack",
+  "class.game.power_pull",
+  "class.game.fast_lane",
+  "class.game.overflow",
+  "class.game.ghost_target",
+  "class.game.marker",
+  "class.game.lengthSec",
+  "class.game.lengthMin",
+  "class.game.lengthMinSec",
+  "class.game.licence",
+  "class.game.img.racetrack",
+  "class.game.img.power_pull",
+  "class.game.img.fast_lane",
+  "class.game.img.overflow",
+  "class.compare.gameChanged",
+  "class.compare.gameAdded",
+  "class.compare.gameRemoved"
+]

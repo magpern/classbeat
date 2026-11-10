@@ -1,8 +1,9 @@
-import { Flame, Zap } from 'lucide-react'
+import { Flame, Gamepad2, Zap } from 'lucide-react'
 import { useId, useState, type KeyboardEvent } from 'react'
 import type { Song } from '../../api/songs'
 import { useT } from '../../i18n/I18n'
 import { cadenceText, flatten, heightShare, inclineText, zoneCount, zoneName, type Bar } from '../../lib/profile'
+import { gameLabel, gameMarkerName } from '../../lib/games'
 import { clock, totalSeconds } from '../../lib/workout'
 import { isRunningDraft, type DraftSegment } from '../../api/jobs'
 import { SongStrip } from './SongStrip'
@@ -17,9 +18,9 @@ const LEFT = 34
 const PLOT_W = W - LEFT
 const TOP = 6
 const PLOT_H = 150
-const AXIS_Y = TOP + PLOT_H
-const H = AXIS_Y + 26
 const MARKER = 18
+/** Extra room on top when a game marker is stacked over a flame or a bolt. */
+const GAME_ROOM = MARKER + 2
 const TICK = 300
 
 export function ProfileChart({
@@ -42,6 +43,8 @@ export function ProfileChart({
   const [selected, setSelected] = useState<number | null>(null)
   if (total <= 0) return null
   const scale = PLOT_W / total
+  const AXIS_Y = TOP + (bars.some((b) => b.game !== undefined && b.zone >= 6) ? GAME_ROOM : 0) + PLOT_H
+  const H = AXIS_Y + 26
   const hardest = Math.max(...bars.map((b) => b.zone))
   const summary = t(running ? 'class.chart.summaryRunning' : 'class.chart.summary', {
     title,
@@ -143,6 +146,19 @@ export function ProfileChart({
                     style={{ stroke: 'var(--cb-stage-text)' }}
                   />
                 ) : null}
+                {bar.game !== undefined ? (
+                  <Gamepad2
+                    data-testid="marker-game"
+                    data-game={bar.game}
+                    role="img"
+                    aria-label={gameMarkerName(bar.game, bar.sec)}
+                    x={x + w / 2 - MARKER / 2}
+                    y={y - MARKER - 2 - (bar.zone >= 6 ? MARKER + 2 : 0)}
+                    width={MARKER}
+                    height={MARKER}
+                    style={{ stroke: 'var(--cb-stage-text)' }}
+                  />
+                ) : null}
               </g>
             )
           })}
@@ -192,6 +208,7 @@ export function ProfileChart({
                 {chosen.standing ? t('class.position.standingLower') : t('class.position.seatedLower')}
               </>
             )}
+            {chosen.game !== undefined ? <>{', '}{gameLabel(chosen.game)}</> : null}
             {chosen.cue ? <>{': '}{chosen.cue}</> : null}
           </>
         )}

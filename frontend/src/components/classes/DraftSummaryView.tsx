@@ -1,6 +1,8 @@
 import { isRunningDraft, type DraftInterval, type DraftSummary } from '../../api/jobs'
 import { kindLabel } from '../../api/classMessages'
 import { useT } from '../../i18n/I18n'
+import { hasGame, segmentGames } from '../../lib/games'
+import { GameBadge, GameLicence } from './GameBits'
 import { inclineText } from '../../lib/profile'
 import type { TFunction } from '../../i18n/t'
 
@@ -25,6 +27,7 @@ export function DraftSummaryView({ draft }: { draft: DraftSummary }) {
     0,
   )
   const running = isRunningDraft(draft.segments)
+  const games = !running && hasGame(draft.segments)
   return (
     <article className="draft" aria-labelledby="draft-title">
       <h2 id="draft-title" className="draft__title">
@@ -46,11 +49,13 @@ export function DraftSummaryView({ draft }: { draft: DraftSummary }) {
           </ul>
         </div>
       ) : null}
+      {games ? <GameLicence /> : null}
       {draft.segments.map((segment, index) => (
         <section key={index} className="draft__segment" aria-label={segment.name}>
           <h3>
             {segment.name} <span className="muted">{kindLabel(segment.kind)}</span>
           </h3>
+          {games ? segmentGames(segment).map((game) => <GameBadge key={game} game={game} />) : null}
           <table className="draft__table">
             <thead>
               <tr>

@@ -1,5 +1,6 @@
 import { ApiError, get } from './client'
 import { count, flag, isObject, list, object, optionalText, text, type JsonObject } from './decode'
+import { decodeGameChanges, gameChangeLines, type GameChange } from './gameChanges'
 import { clock } from '../lib/workout'
 import { decimal, plain } from '../i18n/format'
 import { t } from '../i18n/t'
@@ -129,6 +130,8 @@ export interface Comparison {
   unsureAfter: number
   sameSource: boolean
   sameFingerprint: boolean
+  /** Games added, removed or changed, by segment (absent from older answers: none). */
+  gameChanges: GameChange[]
 }
 
 export async function compareRevisions(
@@ -166,6 +169,7 @@ export async function compareRevisions(
     unsureAfter: count(after, 'unsure_beat_one'),
     sameSource: flag(music, 'same_source'),
     sameFingerprint: flag(music, 'same_fingerprint'),
+    gameChanges: decodeGameChanges(body.game_changes),
   }
 }
 
@@ -221,6 +225,7 @@ export function describeComparison(c: Comparison): string[] {
   } else {
     lines.push(t('class.compare.lengthSame', { length: clock(c.secondsAfter) }))
   }
+  lines.push(...gameChangeLines(c.gameChanges))
   lines.push(
     c.tssBefore === c.tssAfter
       ? t('class.compare.tssSame', { tss: tssText(c.tssAfter) })
