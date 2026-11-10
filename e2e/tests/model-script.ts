@@ -21,6 +21,13 @@ export type ModelScript =
   | 'e2e_swedebeat_mix' // design on a cached Swedebeat mix map (ADR 0016 A6)
   | 'e2e_swedebeat_replace' // the catalogue replace of two songs (ADR 0016 B5)
   | 'e2e_interpret' // the interpret stage's submit_brief (ADR 0029 section 4)
+  | 'ai_first_read_pull' // ai-first.spec.ts: reads "Power Pull after climb 2, 2 minutes"
+  | 'ai_first_design_pull' // its design: 30 minutes on the e2e music, a Power Pull after climb 2
+  | 'ai_first_revise_overflow' // the revise "change it to Overflow": reads it, then the same class with Overflow
+  | 'ai_first_read_any' // reads a generic game after climb 2
+  | 'ai_first_design_any' // its design: a Racetrack after climb 2
+  | 'ai_first_read_long' // reads a 90 minute class (beyond a 60 minute plan)
+  | 'ai_first_design_long' // its design: 60 minutes with no music
 
 export function useModelScript(name: ModelScript): void {
   execFileSync(

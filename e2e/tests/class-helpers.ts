@@ -27,6 +27,8 @@ export interface FakeProgram {
   segment_activity_types?: (number | null)[]
   /** Every interval's incline (`Gradient`): 0 flat, 1 incline for a running program. */
   gradients?: (number | null)[]
+  /** Every interval's `IntervalGameID` (ADR 0029): 1 Racetrack, 4 Power Pull, 5 Fast Lane, 6 Overflow; null for none. */
+  game_ids?: (number | null)[]
 }
 
 /** The zone of every interval of a program, in order. */

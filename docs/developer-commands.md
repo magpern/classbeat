@@ -785,6 +785,17 @@ and `nextTotp` in `helpers.ts`; the session shows an admin as a user until two-f
 reaches it too and reads a 120-track playlist back in order over three pages, A3 at the playlist-read
 level since a pick's final list is one page, it publishes no port).
 
+The AI-first done-when suite (MA5, ADR 0029; helpers in `ai-first-helpers.ts`): `ai-first.spec.ts` (a Power Pull
+after climb 2 is read and designed, revised to Overflow, named in the history and the comparison, and saved only
+through the confirmation with `IntervalGameID` 6 on the fake MOWL; a generic game request ends with one of the
+four games), `ai-first-limits.spec.ts` (a 90 minute request on the 60 minute instructor plan shows under Not as
+asked, a hand-off refused with `not_connected` is shown with Interpret again and costs no credit, the Advanced
+form still designs) and `ai-first-a11y.spec.ts` (the `audit` helper at 390 and 1440 px, light and dark). The
+user is given the instructor plan with `sql` (the free plan has 30 minutes and no games). The worker reads the
+model script anew for every job, so `designFromWords` holds the browser's `design-from-interpretation` call
+(`holdHandoff`) while the spec points the script from the reading (`ai_first_read_*`) to the design
+(`ai_first_design_*`). The fake MOWL's `save-programs` lists each saved interval's `game_ids` (null: no game).
+
 Running is on in the e2e stack only (`CLASSBEAT_RUNNING_ENABLED: "true"` on web and worker in `compose.e2e.yaml`; the
 defaults keep it off). `running-class.spec.ts` (M8 F1, ADR 0018, #466) runs the form with Running chosen (the bike-only
 knobs and song choices are gone, Cycling brings them back), a design with the `running_first_draft` script (the Running
