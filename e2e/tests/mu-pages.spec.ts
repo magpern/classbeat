@@ -201,6 +201,6 @@ test('the admin pages, signed in as an admin with a TOTP code', async () => {
 })
 
 test('every page was audited', () => {
-  // 4 before sign-in, 10 signed-in (two of them running, one with two versions), 5 account tabs, music, Spotify, 7 admin sections.
-  expect(findings.map((f) => f.page)).toHaveLength(28)
+  // 4 before sign-in, 11 signed-in (the start screen, two of them running, one with two versions), 5 account tabs, music, Spotify, 7 admin sections.
+  expect(findings.map((f) => f.page)).toHaveLength(29)
 })
