@@ -65,6 +65,7 @@ from classbeat.agent.schemas import clean_text
 from classbeat.agent.soundless import SoundlessReviseContext, soundless_revise_stage
 from classbeat.context import UserContext
 from classbeat.design import chat, diff, limits, mixadmit, music_kind, revise_base, revision, sport
+from classbeat.design.interpreted import with_interpretation
 from classbeat.design.kind import (
     NoMusicChoice,
     Runtime,
@@ -73,6 +74,7 @@ from classbeat.design.kind import (
     group_model,
     music_step,
 )
+from classbeat.design.kind_music import has_music_source
 from classbeat.design.sport_rules import rules_for
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
 from classbeat.jobs.inputs import ModelJobInput
@@ -112,16 +114,6 @@ class ReviseDraftInput(ModelJobInput):
         return self
 
 
-_MUSIC_SOURCE = text(
-    "SELECT music_source IS NOT NULL FROM classes WHERE owner_id = :owner_id AND id = :class_id"
-)
-
-
-async def _has_music_source(db: AsyncSession, owner_id: UUID, class_id: UUID) -> bool:
-    found = await db.execute(_MUSIC_SOURCE, {"owner_id": owner_id, "class_id": class_id})
-    return bool(found.scalar_one_or_none())
-
-
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
     if not isinstance(parsed, ReviseDraftInput) or parsed.class_id is None:
         raise ValueError("admit gets this kind's input")
@@ -134,7 +126,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     # ADR 0007 amendment of 2026-11-03 (#536, D item 5): a duplicate of a class on picked songs has
     # a brief but no music source of its own. Refused before anything is written (no message, no
     # job); the worker's ``invalid_input`` for a missing source stays as the second line.
-    if not await _has_music_source(db, ctx.user_id, class_id):
+    if not await has_music_source(db, ctx.user_id, class_id):
         return Refused("not_changeable")
     running = await sport.admit_class(db, ctx, class_id)  # ADR 0018 (#509): the running gate
     if running is not None:
@@ -254,6 +246,7 @@ async def run(job_run: JobRun) -> Complete:
             request_message_id=request_message_id,
             rules=rules.provenance() if rules else None,
         )
+        draft = with_interpretation(draft, brief, revised.result.unmet, given.plan_gates)
         change = revise_base.noted(
             diff.summarize(base.content, draft.content, brief.sport), loaded.retired
         )
@@ -345,6 +338,7 @@ async def _run_soundless(
         base_hash=base_hash,
         request_message_id=request_message_id,
     )
+    draft = with_interpretation(draft, brief, revised.result.unmet, given.plan_gates)
     change = revise_base.noted(
         diff.summarize(base.content, draft.content, brief.sport), loaded.retired
     )

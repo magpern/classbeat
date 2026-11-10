@@ -60,7 +60,8 @@ from classbeat.agent.soundless import SoundlessContext, soundless_design_stage
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import corrections, mixadmit, music_kind, revision, sport
+from classbeat.design import corrections, kind_music, mixadmit, music_kind, revision, sport
+from classbeat.design.interpreted import with_interpretation
 from classbeat.design.music import MusicStep, load_music
 from classbeat.design.sport_rules import rules_for
 from classbeat.design.swedebeat_music import swedebeat_step
@@ -239,19 +240,16 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     refused = await sport.admit_brief(db, ctx, parsed.brief, parsed.class_id)
     if refused is not None:
         return refused
-    soundless = isinstance(parsed.music, NoMusicChoice)
-    # #527: the class's music kind never changes; then the soundless gate.
-    refused = await music_kind.admit_music(db, ctx.user_id, soundless, parsed.class_id)
+    refused = await kind_music.admit_music_choice(
+        db,
+        ctx,
+        soundless=isinstance(parsed.music, NoMusicChoice),
+        mix_id=parsed.music.mix_id if isinstance(parsed.music, SwedebeatMusicChoice) else None,
+        class_id=parsed.class_id,
+        mowl_connection_id=parsed.mowl_connection_id,
+    )
     if refused is not None:
         return refused
-    if soundless:
-        refused = await music_kind.admit_soundless(db, ctx)
-        if refused is not None:
-            return refused
-    if isinstance(parsed.music, SwedebeatMusicChoice):
-        refused = await mixadmit.admit_mix(db, ctx, parsed.music.mix_id, parsed.mowl_connection_id)
-        if refused is not None:
-            return refused
     return Admitted()
 
 
@@ -293,6 +291,7 @@ async def run(job_run: JobRun) -> Complete:
             step,
             rules=rules.provenance() if rules else None,
         )
+        draft = with_interpretation(draft, given.brief, outcome.output.unmet, given.plan_gates)
 
         async def store(fs: FencedSession) -> UUID:
             """In the final fenced transaction: the connection guard, then the revision. A
@@ -347,6 +346,7 @@ async def _run_soundless(job_run: JobRun, given: DesignDraftInput, model: GroupM
     if not isinstance(outcome.output, DesignResult):
         raise JobFailure("internal")
     draft = revision.build(outcome.output, outcome, None, step)
+    draft = with_interpretation(draft, given.brief, outcome.output.unmet, given.plan_gates)
 
     async def store(fs: FencedSession) -> UUID:
         """In the final fenced transaction: the revision, the music kind checked, the class's first
