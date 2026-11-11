@@ -11,6 +11,7 @@ const META: Readonly<Record<string, MetaKeys>> = {
   '': { title: 'meta.landing.title', description: 'meta.landing.description' },
   '/privacy': { title: 'meta.privacy.title', description: 'meta.privacy.description' },
   '/terms': { title: 'meta.terms.title', description: 'meta.terms.description' },
+  '/help': { title: 'meta.help.title', description: 'meta.help.description' },
 }
 
 export function metaKeys(path: string): MetaKeys {

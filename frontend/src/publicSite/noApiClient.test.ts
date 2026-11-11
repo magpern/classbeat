@@ -22,6 +22,7 @@ const PAGE_MODULES: Readonly<Record<string, readonly string[]>> = {
   '': ['pages/LandingPage.tsx'],
   '/privacy': ['pages/PrivacyPage.tsx'],
   '/terms': ['pages/TermsPage.tsx'],
+  '/help': ['pages/HelpPage.tsx'],
 }
 
 /** Content components of the pages, and the chart components they draw. */

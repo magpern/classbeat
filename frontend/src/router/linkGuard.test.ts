@@ -73,6 +73,15 @@ describe('the link guard', () => {
     expect(writers).toEqual([...ADDRESS_OWNERS].sort())
   })
 
+  it('starts a page load in one function of the router only (ADR 0030 section 6)', () => {
+    const router = sources['router/Router.tsx'] ?? ''
+    const body = /function loadDocument\([^)]*\): void \{([\s\S]*?)\n\}/.exec(router)?.[1] ?? ''
+    const loads = (text: string) => text.match(/\blocation\s*\.\s*(?:assign|replace)\s*\(/g)?.length ?? 0
+    expect(loads(body)).toBe(2)
+    expect(loads(router)).toBe(2)
+    expect(sources['lib/navigation.ts']).toMatch(/location\.assign/)
+  })
+
   describe('catches what it is meant to', () => {
     const found = (code: string, name = 'pages/X.tsx') => addressProblems(name, code)
 

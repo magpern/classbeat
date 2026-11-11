@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse, HTMLResponse
 
-from classbeat import spa
+from classbeat import locales, spa, spa_content
 from classbeat.config import Settings
 
 # HEAD answers like GET (FastAPI adds no HEAD to a GET route); the server drops the body.
@@ -39,8 +39,13 @@ def add_single_page_app(app: FastAPI, static_dir: Path, settings: Settings) -> N
         index_html: str | None = (root / "index.html").read_text(encoding="utf-8")
     except OSError:
         index_html = None
-    pages = None if index_html is None else spa.build_pages(index_html, settings)
-    sitemap_xml, robots_txt = spa.sitemap(settings), spa.robots(settings)
+    pages = None
+    if index_html is not None:
+        # No manifest, no start: a bad image must not silently serve every public page empty.
+        content = spa_content.load_content(root, locales.offered_locales(settings))
+        pages = spa.build_pages(index_html, settings, content)
+    sitemap_xml = spa.sitemap(settings, spa_content.PUBLISHED)
+    robots_txt = spa.robots(settings)
 
     @app.api_route("/sitemap.xml", methods=_READ, include_in_schema=False)
     async def sitemap_route() -> Response:

@@ -12,8 +12,9 @@ import pytest
 
 from classbeat import locales, spa, spa_preview
 from classbeat.config import Settings
+from spatools import INDEX, fake_content, write_prerender
 from test_web import make_client
-from test_web_language import BASE, INDEX, PUBLIC
+from test_web_language import BASE, PUBLIC
 
 REPO = Path(__file__).resolve().parents[2]
 OG_FILE = REPO / "frontend" / "public" / "img" / "og-share.jpg"
@@ -38,7 +39,7 @@ def jpeg_size(data: bytes) -> tuple[int, int]:
 
 
 def test_a_public_page_names_the_absolute_image_its_size_and_the_large_card() -> None:
-    pages = spa.build_pages(INDEX, Settings())
+    pages = spa.build_pages(INDEX, Settings(), fake_content())
     for code in OFFERED:
         for page in PUBLIC:
             tags = [
@@ -53,13 +54,15 @@ def test_a_public_page_names_the_absolute_image_its_size_and_the_large_card() ->
 
 
 def test_the_image_url_comes_from_public_base_url() -> None:
-    pages = spa.build_pages(INDEX, Settings(public_base_url="https://classbeat.example.test/"))
+    pages = spa.build_pages(
+        INDEX, Settings(public_base_url="https://classbeat.example.test/"), fake_content()
+    )
     html = pages.public[("sv", "")]
     assert ("og:image", "https://classbeat.example.test/img/og-share.jpg") in og_tags(html)
 
 
 def test_pages_that_are_not_public_carry_no_preview_tags() -> None:
-    pages = spa.build_pages(INDEX, Settings())
+    pages = spa.build_pages(INDEX, Settings(), fake_content())
     for html in (pages.plain_noindex, *pages.by_lang_noindex.values()):
         assert og_tags(html) == []
 
@@ -89,6 +92,7 @@ async def test_the_picture_files_are_served_with_their_own_type(
     root = tmp_path / "dist"
     (root / "img").mkdir(parents=True)
     (root / "index.html").write_text(INDEX, encoding="utf-8")
+    write_prerender(tmp_path)
     (root / "img" / name).write_bytes(b"\x00")
     async with make_client(unreachable_database_url, static_dir=root) as client:
         response = await client.get(f"/img/{name}")
@@ -106,6 +110,7 @@ async def test_the_picture_types_do_not_depend_on_the_platforms_table(
     root = tmp_path / "dist"
     (root / "img").mkdir(parents=True)
     (root / "index.html").write_text(INDEX, encoding="utf-8")
+    write_prerender(tmp_path)
     for name in ("a-480.avif", "a-480.webp", "a-480.jpg"):
         (root / "img" / name).write_bytes(b"\x00")
     async with make_client(unreachable_database_url, static_dir=root) as client:
@@ -125,6 +130,7 @@ async def test_the_pictures_are_cached_for_a_day_and_nothing_else_in_the_app_is(
     root = tmp_path / "dist"
     (root / "img").mkdir(parents=True)
     (root / "index.html").write_text(INDEX, encoding="utf-8")
+    write_prerender(tmp_path)
     (root / "img" / "a-480.webp").write_bytes(b"\x00")
     (root / "app.js").write_text("1", encoding="utf-8")
     async with make_client(unreachable_database_url, static_dir=root) as client:

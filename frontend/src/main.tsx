@@ -19,14 +19,19 @@ applyTheme(readTheme())
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Missing #root element in index.html')
+const rootElement: HTMLElement = root
 
 // A prerendered page is replaced with createRoot, not hydrated, once its catalogue is there.
-void awaitCatalogue(root, window.location.pathname).then(() => {
-  createRoot(root).render(
+// If waiting fails for any reason the app still starts, in English, rather than leaving the
+// prerendered page without a client.
+function start() {
+  createRoot(rootElement).render(
     <StrictMode>
       <I18nProvider>
         <App />
       </I18nProvider>
     </StrictMode>,
   )
-})
+}
+
+awaitCatalogue(root, window.location.pathname).then(start, start)

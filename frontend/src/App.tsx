@@ -128,8 +128,8 @@ function Routes() {
 /** `initialLocation` is for the build-time prerender, which has no window; the browser reads its own. */
 export function App({ initialLocation }: { initialLocation?: Location }) {
   return (
-    <RouterProvider initialLocation={initialLocation}>
-      <SessionProvider>
+    <SessionProvider>
+      <RouterProvider initialLocation={initialLocation}>
         <AccountLocale />
         <GuardProvider>
           <Banner />
@@ -138,7 +138,7 @@ export function App({ initialLocation }: { initialLocation?: Location }) {
           </AppShell>
           <CookieNotice />
         </GuardProvider>
-      </SessionProvider>
-    </RouterProvider>
+      </RouterProvider>
+    </SessionProvider>
   )
 }

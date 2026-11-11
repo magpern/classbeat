@@ -1,13 +1,14 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
 import { CODES, WORDS } from './lang-url-helpers'
+import { LISTED } from './public-paths'
 
 // #719: the language-prefixed pages at 390 px (a phone), in each language, with axe's WCAG 2.2 AA
 // rules, and no sideways scroll. The pages are the ones a visitor and a crawler see before signing
 // in; the signed-in pages are audited by the ML7 and MU specs under their own prefix.
 test.use({ viewport: { width: 390, height: 844 } })
 
-const PAGES = ['', '/privacy', '/terms', '/signin', '/signup']
+const PAGES = [...LISTED, '/signin', '/signup']
 
 for (const code of CODES) {
   test.describe(WORDS[code].name, () => {

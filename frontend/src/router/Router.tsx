@@ -10,8 +10,10 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react'
+import { useIsAuthenticated } from '../auth/SessionContext'
 import { useLocale } from '../i18n/I18n'
 import { localeFromPath, type Locale } from '../i18n/locales'
+import { needsDocumentLoad } from './documentNavigation'
 import { isAdminPath, localize, neutralize, splitPath, withLanguage } from './paths'
 
 // A tiny history-API router: the app has a handful of flat routes and no need for a library.
@@ -34,13 +36,30 @@ interface RouterValue extends Location {
   lang: Locale | null
   /** The path without the prefix and the trailing slash: what routes match and `return_to` carries. */
   path: string
-  /** Takes a language-neutral target; the prefix is added here (ADR 0027 section 8). */
+  /**
+   * Takes a language-neutral target; the prefix is added here (ADR 0027 section 8). A move into or
+   * out of a public page is a real page load, so the server writes the head (ADR 0030 section 6).
+   */
   navigate: (to: string, options?: NavigateOptions) => void
   /** The same page in another language, keeping search and fragment. Writes nothing. */
   switchLanguage: (lang: Locale) => void
 }
 
 const RouterContext = createContext<RouterValue | null>(null)
+
+/** The one place a real page load is started (ADR 0030 section 6); `linkGuard` pins that. */
+function loadDocument(target: string, replace: boolean): void {
+  if (replace) window.location.replace(target)
+  else window.location.assign(target)
+}
+
+type DocumentLoader = (target: string, replace: boolean) => void
+let loader: DocumentLoader = loadDocument
+
+/** Test seam: jsdom cannot load a page, so a test swaps this in and passes `null` to restore. */
+export function setDocumentLoader(replacement: DocumentLoader | null): void {
+  loader = replacement ?? loadDocument
+}
 
 function readLocation(): Location {
   if (typeof window === 'undefined') return { pathname: '/', search: '' }
@@ -62,6 +81,12 @@ export function RouterProvider({
   useEffect(() => {
     fallback.current = locale
   }, [locale])
+  // Read at the moment of a move, so `navigate` keeps one identity as the session changes.
+  const signedIn = useIsAuthenticated()
+  const authenticated = useRef(signedIn)
+  useEffect(() => {
+    authenticated.current = signedIn
+  }, [signedIn])
 
   useEffect(() => {
     const onPop = () => {
@@ -75,6 +100,12 @@ export function RouterProvider({
 
   const navigate = useCallback((to: string, options?: NavigateOptions) => {
     const target = localize(to, options?.lang ?? localeFromPath(window.location.pathname) ?? fallback.current)
+    // Back and forward need nothing here: an entry across a boundary is another document, which
+    // the browser loads itself; popstate only fires inside one document.
+    if (needsDocumentLoad(window.location.pathname, target, authenticated.current)) {
+      loader(target, options?.replace === true)
+      return
+    }
     if (options?.replace) window.history.replaceState(null, '', target)
     else window.history.pushState(null, '', target)
     setLocation(readLocation())

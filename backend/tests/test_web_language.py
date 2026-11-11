@@ -5,19 +5,16 @@ from pathlib import Path
 
 import pytest
 
-from classbeat import locales, spa
+from classbeat import locales, spa, spa_content
 from classbeat.config import Settings
+from spatools import INDEX, fake_content, write_prerender
 from test_web import make_client
 
 REPO = Path(__file__).resolve().parents[2]
 BASE = "http://127.0.0.1:8000"  # Settings' default public_base_url
-INDEX = (
-    '<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n'
-    '    <title>classbeat</title>\n    <script src="/locale-init.js"></script>\n  </head>\n'
-    '  <body><div id="root"></div><script type="module" src="/assets/app.js"></script></body>\n'
-    "</html>\n"
-)
-PUBLIC = ("", "/privacy", "/terms")
+# Read from the one list the build and the server share (ADR 0030 section 2).
+PUBLIC = spa_content.PUBLISHED
+DRAFT = spa_content.DRAFT
 # Every language the default settings offer (manifest and default `locales`): the head tags and
 # the sitemap list these, so a new language is checked without editing a list here.
 OFFERED = locales.offered_locales(Settings(_env_file=None))  # pyright: ignore[reportCallIssue]
@@ -29,6 +26,7 @@ def static_dir(tmp_path: Path) -> Path:
     (root / "assets").mkdir(parents=True)
     (root / "index.html").write_text(INDEX, encoding="utf-8")
     (root / "assets" / "app.js").write_text("console.log('app');", encoding="utf-8")
+    write_prerender(tmp_path)
     return root
 
 
@@ -47,7 +45,7 @@ def canonical(html: str) -> list[str]:
 
 
 def all_pages(settings: Settings) -> set[str]:
-    pages = spa.build_pages(INDEX, settings)
+    pages = spa.build_pages(INDEX, settings, fake_content())
     return {pages.plain_noindex, *pages.by_lang_noindex.values(), *pages.public.values()}
 
 
@@ -116,7 +114,7 @@ def test_the_real_index_html_can_take_the_injection() -> None:
     index = (REPO / "frontend" / "index.html").read_text(encoding="utf-8")
     assert len(re.findall(r'<html lang="[^"]*"', index)) == 1
     assert index.count("</head>") == 1
-    page = spa.build_pages(index, Settings()).public[("sv", "/privacy")]
+    page = spa.build_pages(index, Settings(), fake_content()).public[("sv", "/privacy")]
     assert lang_of(page) == "sv"
     assert canonical(page) == [f"{BASE}/sv/privacy"]
 
@@ -287,17 +285,18 @@ async def test_the_urls_come_from_public_base_url_only(
 def test_every_built_string_is_escaped() -> None:
     # model_construct skips the origin validator: the point is that the builders escape anyway
     hostile = Settings.model_construct(public_base_url='https://x.test/"><script>alert(1)</script>')
-    pages = spa.build_pages(INDEX, hostile)
-    for html in {*pages.public.values()}:
+    pages = spa.build_pages(INDEX, hostile, fake_content())
+    for (_, page), html in pages.public.items():
         assert "<script>alert" not in html
-        assert "&quot;&gt;&lt;script&gt;" in html
-    sitemap = spa.sitemap(hostile)
+        if page in PUBLIC:  # a draft page has no URL in its head
+            assert "&quot;&gt;&lt;script&gt;" in html
+    sitemap = spa.sitemap(hostile, PUBLIC)
     assert "<script>" not in sitemap
     assert "&quot;&gt;&lt;script&gt;" in sitemap
 
 
 def test_the_page_is_selected_by_comparison_with_the_known_lists_only() -> None:
-    pages = spa.build_pages(INDEX, Settings())
+    pages = spa.build_pages(INDEX, Settings(), fake_content())
     assert pages.select("sv/privacy") is pages.public[("sv", "/privacy")]
     assert pages.select("sv/privacy/") is pages.public[("sv", "/privacy")]
     assert pages.select("sv") is pages.public[("sv", "")]

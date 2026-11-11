@@ -15,6 +15,9 @@ from classbeat.config import Settings
 from classbeat.db import DatabaseRoleError
 from classbeat.web import create_app
 from dbtools import migrated
+from spatools import INDEX, write_prerender
+
+NOINDEX_TAG = '<meta name="robots" content="noindex">\n'
 
 
 def make_app(database_url: str, **overrides: object) -> FastAPI:
@@ -51,7 +54,8 @@ async def down_client(unreachable_database_url: str) -> AsyncIterator[httpx.Asyn
 def static_dir(tmp_path: Path) -> Path:
     root = tmp_path / "dist"
     (root / "assets").mkdir(parents=True)
-    (root / "index.html").write_text("<!doctype html><title>classbeat</title>", encoding="utf-8")
+    (root / "index.html").write_text(INDEX, encoding="utf-8")
+    write_prerender(tmp_path)
     (root / "assets" / "app.js").write_text("console.log('app');", encoding="utf-8")
     (tmp_path / "secret.txt").write_text("outside the static dir", encoding="utf-8")
     return root
@@ -148,7 +152,8 @@ async def test_serves_static_files_and_the_spa_fallback(
         for path in ("/", "/classes/42", "/assets/missing.js", "/index.html"):
             page = await client.get(path)
             assert page.status_code == 200, path
-            assert page.text == index, path
+            # the app shell: the page as built, plus the head tag that keeps it out of search
+            assert page.text.replace(NOINDEX_TAG, "") == index, path
             assert page.headers["content-type"].startswith("text/html"), path
 
 
@@ -189,7 +194,7 @@ async def test_static_files_cannot_escape_the_static_dir(
         for path in ("/%2e%2e/secret.txt", "/..%2fsecret.txt", "/assets/..%2f..%2fsecret.txt"):
             response = await client.get(path)
             assert "outside the static dir" not in response.text, path
-            assert response.text == index, path
+            assert response.text.replace(NOINDEX_TAG, "") == index, path
 
 
 async def test_a_missing_static_dir_is_logged_and_ignored(

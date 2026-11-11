@@ -161,6 +161,11 @@ changes "ci-shards script"  pull_request      "scripts/ci-shards.sh"            
 changes "test script"       pull_request      "scripts/test-ci-gate.sh"             "true true true true true"
 changes ".gitattributes"    pull_request      ".gitattributes"                      "true true true true true"
 changes "unrelated script"  pull_request      "scripts/other.sh"                    "false false false false false"
+# The public-page path list and the example fixture are read by backend tests (ADR 0030).
+changes "public paths"      pull_request      "frontend/src/publicSite/publicPaths.json" "true true true true false"
+changes "example fixture"   pull_request      "frontend/src/publicSite/examples.json"    "true true true true false"
+changes "other frontend"    pull_request      "frontend/src/publicSite/pageMeta.ts"      "false true true true false"
+changes "path list lookalike" pull_request    "docs/frontend/src/publicSite/publicPaths.json" "false false false false false"
 # A push to main (and any event that is not a pull request or merge group) runs everything, even
 # for a change a pull request would skip.
 changes "push, docs only"   push              "README.md docs/x.md"                 "true true true true true"
