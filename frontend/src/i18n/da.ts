@@ -45,7 +45,6 @@ const da: Catalogue = {
   'landing.how.title': 'Sådan virker det',
   'landing.how.describe.title': 'Beskriv',
   'landing.img.describe': 'En instruktør skriver et holdoplæg i en notesbog',
-  'landing.img.approve': 'En mobil, der viser et hold, som bliver justeret',
   'landing.img.save': 'En mobil monteret på en motionscykel',
 
   // Sign in, sign up and the pages behind the mail links.
