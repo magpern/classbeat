@@ -373,16 +373,16 @@ test('6. a replayed checkout and a replayed change are no-ops', async ({ browser
 })
 
 test('7. song picking and the connections are the same on every plan; the job records its route', async () => {
-  // Song picking is no plan feature: the entitlement features a plan shows are the same on Free,
-  // Individual and Professional (none, until the owner grants song picking on its own), and the
+  // Song picking is no plan feature: none of Free, Individual and Professional lists it among the
+  // entitlement features (until the owner grants song picking on its own), and the
   // routes the jobs above recorded are the plan ids (steps 2 and 3).
   const features = [
     (await planOf(free.page)).features,
     (await planOf(tester.page)).features,
     (await planOf(adminPage)).features,
   ]
-  expect(features[0]).toEqual(features[1])
-  expect(features[1]).toEqual(features[2])
+  // The tester's list carries its own `billing_test` grant; song picking is on none of them.
+  for (const list of features) expect(list).not.toContain('song_picking')
   for (const user of [free, tester]) {
     const connections = await user.page.request.get('/api/connections')
     expect(connections.status()).toBe(200)
