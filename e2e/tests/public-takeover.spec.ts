@@ -27,20 +27,32 @@ interface Seen {
   loadingCard: number
   h1Values: string[]
   shifts: number
+  shiftSources: string[]
   violations: string[]
 }
 
 /** Runs before any page script: records what the person could see go wrong. */
 function observe(): void {
-  const seen: Seen = { emptyRoot: 0, loadingCard: 0, h1Values: [], shifts: 0, violations: [] }
+  const seen: Seen = { emptyRoot: 0, loadingCard: 0, h1Values: [], shifts: 0, shiftSources: [], violations: [] }
   ;(window as unknown as { __seen: Seen }).__seen = seen
   document.addEventListener('securitypolicyviolation', (e) => {
     seen.violations.push(`${e.violatedDirective} ${e.blockedURI}`)
   })
   try {
     new PerformanceObserver((list) => {
-      for (const entry of list.getEntries() as unknown as { value: number; hadRecentInput: boolean }[]) {
-        if (!entry.hadRecentInput) seen.shifts += entry.value
+      for (const entry of list.getEntries() as unknown as {
+        value: number
+        hadRecentInput: boolean
+        sources?: { node: Element | null }[]
+      }[]) {
+        if (entry.hadRecentInput) continue
+        seen.shifts += entry.value
+        // Name what moved, so a failure says where to look.
+        const names = (entry.sources ?? []).map((s) => {
+          const n = s.node
+          return n ? `${n.tagName.toLowerCase()}${n.id ? `#${n.id}` : ''}.${String(n.getAttribute?.('class') ?? '').slice(0, 40)}` : '?'
+        })
+        seen.shiftSources.push(`${entry.value.toFixed(4)} ${names.join(' | ')}`)
       }
     }).observe({ type: 'layout-shift', buffered: true })
   } catch {
@@ -159,12 +171,12 @@ for (const theme of THEMES) {
           const coloursAfter = await zoneColours(page)
           const record = await seen(page)
 
-          expect(record.emptyRoot, '#root was empty after the first paint').toBe(0)
-          expect(record.loadingCard, 'a loading card showed').toBe(0)
+          expect.soft(record.emptyRoot, '#root was empty after the first paint').toBe(0)
+          expect.soft(record.loadingCard, 'a loading card showed').toBe(0)
           expect(new Set(record.h1Values).size, `the h1 held ${JSON.stringify(record.h1Values)}`).toBe(1)
           expect(await page.locator('#root h1').textContent()).toBe(h1Before)
-          expect(record.violations, 'a CSP violation').toEqual([])
-          expect(record.shifts).toBeLessThan(SHIFT_LIMIT)
+          expect.soft(record.violations, 'a CSP violation').toEqual([])
+          expect.soft(record.shifts, `layout shifts: ${JSON.stringify(record.shiftSources)}`).toBeLessThan(SHIFT_LIMIT)
 
           for (const key of ['h1', 'chart'] as const) {
             const a = before[key]
@@ -180,7 +192,7 @@ for (const theme of THEMES) {
           // No request for the other theme's imagery, and the images shown match the theme.
           const other = theme === 'dark' ? 'light' : 'dark'
           const wrong = requested.filter((u) => new RegExp(`/img/[^?]*-${other}-`).test(u))
-          expect(wrong, `the ${other} theme's images were requested`).toEqual([])
+          expect.soft(wrong, `the ${other} theme's images were requested`).toEqual([])
           const shown = await page.evaluate(() =>
             [...document.querySelectorAll('#root img')].map((i) => (i as HTMLImageElement).currentSrc),
           )
