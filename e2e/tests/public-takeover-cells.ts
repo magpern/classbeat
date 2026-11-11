@@ -14,8 +14,8 @@ import { DIFF_LIMIT, compare, englishHeading, englishLeaks, noteDifference, shoo
 // Cost: one navigation per cell, a fresh context per cell (the theme, the stored state and the
 // viewport differ), and `parallel` mode so the cells can be split over shards (one worker per shard,
 // the fakes are shared state). Playwright shards contiguously by test order, and spec files run in
-// file-name order, so one language's cells are one spec file (public-takeover-<lang>.spec.ts, named
-// to sort into different shards; see the note in each) and the 54 cells do not land on one shard.
+// file-name order, so one language's cells are one spec file (lang-da-takeover.spec.ts, lang-sv-takeover.spec.ts and
+// public-takeover-en.spec.ts, named to sort into different shards; see the note in each) and the 54 cells do not land on one shard.
 
 const BOX_TOLERANCE = 2
 const SHIFT_LIMIT = 0.05
