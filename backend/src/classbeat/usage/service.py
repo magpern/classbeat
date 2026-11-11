@@ -29,8 +29,12 @@ NOTES: Final = ("estimate_at_list_prices", "sdk_retries", "lost_lease_turn", "fa
 DESIGN_KIND: Final = KIND
 REVISE_KIND: Final = "revise_draft"
 
+# A deleted job's runs are told apart by run id, except an ``interpret`` run: it always runs
+# inside a ``revise_draft`` job beside that job's ``revise`` run (ADR 0029 section 4), so it
+# is not a job of its own when its job is gone and deleting a class does not change the usage.
+_IDENT = "coalesce(job_id, CASE WHEN stage = 'interpret' THEN NULL ELSE id END)"
 _SUMS = (
-    "count(*) AS runs, count(DISTINCT coalesce(job_id, id)) AS jobs, "
+    f"count(*) AS runs, count(DISTINCT {_IDENT}) AS jobs, "
     "coalesce(sum(input_tokens), 0) AS input_tokens, "
     "coalesce(sum(output_tokens), 0) AS output_tokens, "
     "coalesce(sum(cache_read_tokens), 0) AS cache_read_tokens, "
@@ -50,7 +54,8 @@ _SUBMITTED = text(
     "SELECT r.job_kind, count(DISTINCT coalesce(r.job_id, r.id)) AS n FROM agent_runs r "  # noqa: S608
     "LEFT JOIN jobs j ON j.id = r.job_id AND j.owner_id = r.owner_id "
     "WHERE r.owner_id = :owner_id AND r.started_at >= :start AND r.started_at < :end "
-    "AND r.outcome = 'submitted' AND (j.state = 'completed' OR r.job_id IS NULL) "
+    "AND r.stage <> 'interpret' AND r.outcome = 'submitted' "
+    "AND (j.state = 'completed' OR r.job_id IS NULL) "
     f"AND r.job_kind IN ('{DESIGN_KIND}', '{REVISE_KIND}') GROUP BY r.job_kind"
 )
 
