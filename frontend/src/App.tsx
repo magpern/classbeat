@@ -23,7 +23,6 @@ import { HowItWorksPage } from './pages/HowItWorksPage'
 import { FeaturesPage } from './pages/FeaturesPage'
 import { PrivacyPage } from './pages/PrivacyPage'
 import { MusicPage } from './pages/MusicPage'
-import { AdvancedClassPage } from './pages/AdvancedClassPage'
 import { NewClassPage } from './pages/NewClassPage'
 import { ProviderEmailPage } from './pages/ProviderEmailPage'
 import { ResetPage } from './pages/ResetPage'
@@ -40,6 +39,25 @@ import { Link, RouterProvider, useRouter, type Location } from './router/Router'
 // section 6); the server's answer decides what it shows, and the chunk's gate shows the code
 // prompt. Any other account never fetches it.
 const AdminPage = lazy(() => import('./pages/AdminPage'))
+
+// The form with every setting is a signed-in page of its own, kept out of the first load (ADR 0013
+// section 11, the 250 kB budget).
+const AdvancedClassPage = lazy(() => import('./pages/AdvancedClassPage'))
+
+function Advanced() {
+  const t = useT()
+  return (
+    <Suspense
+      fallback={
+        <Card title={t('newclass.title')}>
+          <p>{t('common.loading')}</p>
+        </Card>
+      }
+    >
+      <AdvancedClassPage />
+    </Suspense>
+  )
+}
 
 function Admin() {
   const t = useT()
@@ -87,7 +105,7 @@ const PAGES: Readonly<Record<string, () => ReactNode>> = {
   '/features': () => <FeaturesPage />,
   '/classes': () => <ClassesPage />,
   '/classes/new': () => <NewClassPage />,
-  '/classes/new/advanced': () => <AdvancedClassPage />,
+  '/classes/new/advanced': () => <Advanced />,
   '/music': () => <MusicPage />,
   '/account': () => <AccountPage />,
   // Connections with the Spotify dialog open; Spotify's callback returns here (`?result=`).

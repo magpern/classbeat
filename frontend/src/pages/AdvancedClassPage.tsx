@@ -31,3 +31,5 @@ export function AdvancedClassPage() {
     </RequireAuth>
   )
 }
+
+export default AdvancedClassPage
