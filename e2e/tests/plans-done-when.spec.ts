@@ -383,6 +383,9 @@ test('7. song picking and the connections are the same on every plan; the job re
   ]
   // The tester's list carries its own `billing_test` grant; song picking is on none of them.
   for (const list of features) expect(list).not.toContain('song_picking')
+  const rest = features.map((list) => list.filter((f) => f !== 'billing_test'))
+  expect(rest[0]).toEqual(rest[1])
+  expect(rest[1]).toEqual(rest[2])
   for (const user of [free, tester]) {
     const connections = await user.page.request.get('/api/connections')
     expect(connections.status()).toBe(200)
