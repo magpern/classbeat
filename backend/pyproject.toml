@@ -7,12 +7,12 @@ dependencies = [
     "alembic>=1.14",
     "anthropic==0.125.0",
     "argon2-cffi==25.1.0",
-    "authlib==1.9.1",
+    "authlib==1.9.5",
     "certifi>=2026.10.23",  # imported by classbeat.egress: the model transport's trust store
     "cryptography==50.0.2",
     "fastapi>=0.138",  # fastapi.routing.iter_route_contexts (the admin router guard)
     "httpx==0.28.1",
-    "joserfc==1.7.7",
+    "joserfc==1.8.0",
     # The domain library (ADR 0001): v0.11.0 built from its tag WITHOUT the bundled Swedebeat app
     # key (scripts/build-mowl-wheel.sh; threat model, accepted risks). Pinned by uv.lock's hash.
     "mowl-workouts==0.11.0",
