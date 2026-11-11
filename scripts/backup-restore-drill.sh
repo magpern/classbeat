@@ -351,7 +351,11 @@ use "$src"
 
 # Authentic but not a classbeat backup (signed with the real key): the validator refuses these.
 step "2c. validation: signed archives with objects classbeat does not have"
-pgimg="$(docker compose config --images | grep -m1 '^postgres:')"
+# Read all of compose's output first: `| grep -m1` closes the pipe early, and under pipefail the
+# compose plugin's SIGPIPE surfaced as a silent exit 255 now and then (CI run 43005185813).
+images="$(docker compose config --images)"
+pgimg="$(grep -m1 '^postgres:' <<< "$images")"
+[ -n "$pgimg" ] || fail "no postgres image in the compose config"
 scratch="$(docker run -d --rm --network none -e POSTGRES_HOST_AUTH_METHOD=trust "$pgimg")"
 for _ in $(seq 1 60); do docker exec "$scratch" pg_isready -q -h 127.0.0.1 -U postgres && break; sleep 1; done
 evil() { # evil <name> <expected text in the refusal> <sql run as the superuser in a fresh database classbeat>
