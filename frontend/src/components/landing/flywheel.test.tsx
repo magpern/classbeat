@@ -42,6 +42,18 @@ describe('the motion stylesheets', () => {
     expect(calm).not.toMatch(/animation-timeline/)
   })
 
+  it('moves text and never fades or recolours it: only pictures change opacity', () => {
+    // A block can rest half-way through its entrance (at the bottom edge of the screen, or in the
+    // first frames of a list), so these keyframes must leave contrast alone. The others belong to
+    // pictures: the playhead and veil, the dot, the flywheel, the burst.
+    const all = ['motion.css', 'motion-app.css', 'motion-feedback.css'].map(css).join('\n')
+    for (const name of ['reveal-in', 'card-arrive', 'badge-fill', 'row-in', 'notice-pop', 'check-pop', 'chart-in', 'draw-in']) {
+      const body = new RegExp(`@keyframes ${name} \\{([\\s\\S]*?)\\n\\}`).exec(all)?.[1]
+      expect(body, name).toBeDefined()
+      expect(body, name).not.toMatch(/opacity|(^|[^-])color:|filter/)
+    }
+  })
+
   it('motion.css uses scroll-driven animations only where the browser has them', () => {
     const sheet = css('motion.css').replace(/\/\*[\s\S]*?\*\//g, '')
     const before = sheet.slice(0, sheet.indexOf('@supports (animation-timeline: view())'))

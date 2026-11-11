@@ -132,9 +132,10 @@ skeletons and short transitions, and is turned off under `prefers-reduced-motion
 > 3. **Reduced motion still wins.** Under `prefers-reduced-motion: reduce` nothing moves. The
 >    hero flywheel is then a still picture: its wave is paused at its phase, which needs the one
 >    exception to the stylesheet-wide rule in `tailwind.css` (`flywheel.css` says why).
-> 4. **In the app, entrances move and never fade text**, so contrast holds at every moment. The
->    page cross-fade is the browser's view transition, which fades pictures of the page, not the
->    page.
+> 4. **Text is moved, never faded or recoloured**, on every page: a block can rest half-way
+>    through its entrance (at the bottom edge of the screen), and its contrast must hold there.
+>    Only pictures change opacity. The page cross-fade is the browser's view transition, which
+>    fades pictures of the page, not the page.
 > 5. **Tokens only**, as everywhere: no colour literal, no `style` attribute in prerendered
 >    markup, no new dependency for motion.
 >
