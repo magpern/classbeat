@@ -380,10 +380,16 @@ if command -v yq > /dev/null; then
   done
   if grep -v '^[[:space:]]*#' "$wf" | grep -q 'job-total'; then report FAIL "e2e: the workflow uses strategy.job-total"; else report ok "e2e: no strategy.job-total"; fi
   # shellcheck disable=SC2016  # literal GitHub expression, not shell
-  if [ "$(yq -r '.jobs.e2e.steps[] | select(.uses // "" | test("upload-artifact")) | .with.name' "$wf")" = 'playwright-report-${{ matrix.shard }}' ]; then
+  if [ "$(yq -r '.jobs.e2e.steps[] | select(.name == "Upload the report") | .with.name' "$wf")" = 'playwright-report-${{ matrix.shard }}' ]; then
     report ok "e2e: the report artifact name is per shard"
   else
     report FAIL "e2e: the report artifact name is not per shard"
+  fi
+  # shellcheck disable=SC2016  # literal GitHub expression, not shell
+  if [ "$(yq -r '.jobs.e2e.steps[] | select(.name == "Upload the takeover screenshots") | .with.name' "$wf")" = 'takeover-screenshots-${{ matrix.shard }}' ]; then
+    report ok "e2e: the takeover screenshots artifact name is per shard"
+  else
+    report FAIL "e2e: the takeover screenshots artifact name is not per shard"
   fi
   # shellcheck disable=SC2016  # literal GitHub expressions, not shell
   if [ "$(e2e_step 'Run the tests (shard ${{ matrix.shard }})' '.run')" != "" ] \
