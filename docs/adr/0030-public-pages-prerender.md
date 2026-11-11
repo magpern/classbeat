@@ -123,3 +123,29 @@ network call, and fixtures are synthetic, scanned for identifiers and real song 
 ## Questions for the owner
 
 None. The decisions are recorded as D1 to D6 in the plan.
+
+## Amendment 2026-11-11: the full gate (PP7, #896)
+
+- **Matrix.** `public-takeover.spec.ts` runs en, sv and da × Landing, How it works and
+  `/examples/hill-challenge` × 390 and 1440 px × three visits (dark with a stored theme, light with a
+  stored theme, dark on a first visit; the default is dark whatever the system prefers, so there is no
+  light first visit): 54 cells, each with its own context and one navigation. They run in Playwright's
+  `parallel` mode so the shards split them. `GATE_LANGUAGES` (`public-takeover-matrix.ts`) names the
+  languages whose cells run; sv and da stay skipped until the PP4 to PP6 translation is on `main`.
+- **English on sv and da.** The prerendered and the taken-over page hold no prose block (an element's
+  own text, `aria-label` or `alt` of at least three words) that is word for word the English page's,
+  and the `<h1>` differs from the English one. Drawings and the part names and cues of an example's
+  table are not scanned: they are English on purpose (`examples.notes.english`).
+- **Screenshots.** Full-page before and after, with the image slots and the header's account area
+  masked (the prerender writes the invisible placeholder, the client the real controls), compared in
+  the run in a browser canvas: pixels differing by more than 16 per channel may not exceed 0.5% of the
+  page, and the page may not change size. Starting values, like the others. CI uploads them as
+  `takeover-screenshots-<shard>` from every run.
+- **CSP.** The `securitypolicyviolation` event and Chromium's console messages both fail a cell.
+- **No-JS visitors (decision, parked in #927).** The prerender keeps both themes' pictures, `lazy`,
+  and the style sheet hides the wrong one. With scripting on, a hidden lazy picture is never fetched,
+  so the "no request for the other theme's image" check holds for every visitor who runs the page. A
+  browser with scripting off ignores `lazy` and fetches both themes' pictures (one extra file per
+  slot). Accepted: the static HTML cannot know the saved theme, an eager hero would make every
+  light-theme visitor fetch both, and `media="(scripting: enabled)"` would leave the hero blank for
+  light-theme visitors before takeover. Nobody sees a regression; a no-JS visitor pays some bytes.

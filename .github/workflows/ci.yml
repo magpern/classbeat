@@ -885,6 +885,17 @@ jobs:
           done
           [ "$checked" -gt 0 ] || { echo "::error::no secret files were checked"; exit 1; }
 
+      # The takeover gate's before and after screenshots (public-takeover.spec.ts), kept from every
+      # run, green or not: the pairs are what the final visual review looks at (ADR 0030).
+      - name: Upload the takeover screenshots
+        if: always() && needs.changes.outputs.playwright == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: takeover-screenshots-${{ matrix.shard }}
+          path: e2e/takeover-shots/
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload the report
         if: failure() && needs.changes.outputs.playwright == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
