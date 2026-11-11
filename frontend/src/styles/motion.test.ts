@@ -79,6 +79,9 @@ describe('what an entrance may change', () => {
     const chart = readFileSync(join(import.meta.dirname, '../components/classes/ProfileChart.tsx'), 'utf8')
     expect(chart.match(/profile-plot/g)).toHaveLength(1)
     expect(chart).toMatch(/<svg viewBox=[^>]*className="profile-plot /)
+    // The example page asks for it by wrapping its chart.
+    const page = readFileSync(join(import.meta.dirname, '../pages/ExamplePage.tsx'), 'utf8')
+    expect(page).toMatch(/<div className="draw-in-plot">\s*<ProfileChart /)
     expect(rule?.[0]).toContain('animation-timeline: view();')
     expect(rule?.[0]).toContain('animation-range: entry 0% entry 100%;')
     // No other scroll-driven keyframes clip anything.
@@ -88,8 +91,8 @@ describe('what an entrance may change', () => {
   it('measures only the steps of How it works from a line inside the screen, and they hide nothing', () => {
     // An inset timeline ends an entrance before its block is fully on screen or, here, starts it
     // late: a block can rest part-way through it for good. So whatever uses one may only move or
-    // grow; it may never hide, clip or fade, not even a picture.
-    const sheet = css('motion.css')
+    // grow; it may never hide, clip or fade, not even a picture. Checked on every sheet.
+    const sheet = all
     const inset = [...sheet.matchAll(/([^{}]*)\{[^{}]*animation: ([\w-]+)[^{}]*animation-timeline: view\([^)]+\)[^{}]*\}/g)]
     expect(inset.map((m) => m[1]?.trim())).toEqual(['.fill-step__badge', '.fill-step__card', '.fill-step:not(:last-child)::after'])
     for (const [, , name] of inset) {
