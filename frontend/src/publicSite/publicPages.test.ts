@@ -28,10 +28,14 @@ describe('the song-picking scan', () => {
       'classbeat chooses songs that fit.',
       'Let us pick the songs',
       'The songs we choose go into a playlist.',
+      'Songs are chosen when you design a real class.',
+      'The songs picked for you.',
+      'Selected songs go to Spotify.',
     ]) {
       expect(mentionsSongPicking(s), s).toBe(true)
     }
     expect(mentionsSongPicking('Design to your own playlist from MOWL.')).toBe(false)
+    expect(mentionsSongPicking('This example has no music. It shows the shape of a class only.')).toBe(false)
   })
 
   it('wants one sentence naming Spotify, the Client ID and the plan', () => {
@@ -89,7 +93,8 @@ describe('the claim table', () => {
 
 describe('the new pages are drafts', () => {
   it('lists How it works and Features as drafts, not published', () => {
-    expect([...DRAFT_PATHS]).toEqual(['/help', '/how-it-works', '/features'])
+    expect([...DRAFT_PATHS].slice(0, 3)).toEqual(['/help', '/how-it-works', '/features'])
+    expect([...DRAFT_PATHS].slice(3).every((path) => path.startsWith('/examples'))).toBe(true)
   })
 })
 

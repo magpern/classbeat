@@ -1,4 +1,13 @@
 {
   "published": ["", "/privacy", "/terms"],
-  "draft": ["/help", "/how-it-works", "/features"]
+  "draft": [
+    "/help",
+    "/how-it-works",
+    "/features",
+    "/examples",
+    "/examples/hill-challenge",
+    "/examples/90s-dance-intervals",
+    "/examples/endurance-ride",
+    "/examples/running-intervals"
+  ]
 }

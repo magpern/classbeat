@@ -3,6 +3,7 @@
 // named `{name}` placeholders, or plural forms chosen by the `count` parameter.
 // No markup in a string: links and emphasis are slots of `Trans`.
 
+import { examplesEn } from './examples.en'
 import { helpEn } from './help.en'
 import { legalEn } from './legal.en'
 import { publicEn } from './public.en'
@@ -11,6 +12,7 @@ export const en = {
   ...legalEn,
   ...helpEn,
   ...publicEn,
+  ...examplesEn,
   'language.label': 'Language',
   'language.follow': 'Follow this browser',
   'language.help': 'This site and email language. “Follow this browser” means English email.',
