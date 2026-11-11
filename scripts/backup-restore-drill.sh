@@ -354,7 +354,7 @@ step "2c. validation: signed archives with objects classbeat does not have"
 # Read all of compose's output first: `| grep -m1` closes the pipe early, and under pipefail the
 # compose plugin's SIGPIPE surfaced as a silent exit 255 now and then (CI run 43005185813).
 images="$(docker compose config --images)"
-pgimg="$(grep -m1 '^postgres:' <<< "$images")"
+pgimg="$(grep -m1 '^postgres:' <<< "$images" || true)" # no match must reach the message below, not end the script
 [ -n "$pgimg" ] || fail "no postgres image in the compose config"
 scratch="$(docker run -d --rm --network none -e POSTGRES_HOST_AUTH_METHOD=trust "$pgimg")"
 for _ in $(seq 1 60); do docker exec "$scratch" pg_isready -q -h 127.0.0.1 -U postgres && break; sleep 1; done
