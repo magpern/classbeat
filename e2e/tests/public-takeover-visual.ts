@@ -120,11 +120,12 @@ export function noteDifference(name: string, d: Difference): void {
 /**
  * The text blocks of `#root`: each element's own text and its `aria-label` and `alt`, whitespace
  * collapsed. The contents of drawings are skipped (an svg's own label is read), and so are the part names and cues of an example's table,
- * which are English on purpose (the page says so: `examples.notes.english`), and Landing's sample songs. Runs in the browser,
+ * which are English on purpose (the page says so: `examples.notes.english`), and the title, artist, BPM and length of Landing's sample
+ * songs (listed in the list's `data-fixture-text`; its translated labels are still read). Runs in the browser,
  * on the live page or, with `html`, on the English page's served HTML.
  */
-// Fixture data that is English on purpose: an example's part names and cues, and Landing's sample songs.
-const FIXTURE_DATA = '[data-testid="example-table"] tbody, [data-testid="landing-example-songs"]'
+// Fixture data that is English on purpose: an example's part names and cues.
+const FIXTURE_DATA = '[data-testid="example-table"] tbody'
 
 async function blocks(page: Page, html: string | null): Promise<string[]> {
   return page.evaluate(({ source, fixture }) => {
@@ -135,12 +136,17 @@ async function blocks(page: Page, html: string | null): Promise<string[]> {
     const norm = (s: string | null) => (s ?? '').replace(/\s+/g, ' ').trim()
     for (const el of root.querySelectorAll('*')) {
       if (el.parentElement?.closest('svg') || el.closest(fixture)) continue
+      // Fixture words inside translated text (a sample song's title and artist) are cut out, the rest is read.
+      const own = (el.closest('[data-fixture-text]')?.getAttribute('data-fixture-text') ?? '').split('|').filter(Boolean)
       out.push(
         norm(
-          [...el.childNodes]
-            .filter((n) => n.nodeType === Node.TEXT_NODE)
-            .map((n) => n.textContent)
-            .join(' '),
+          own.reduce(
+            (text, word) => text.split(word).join(' '),
+            [...el.childNodes]
+              .filter((n) => n.nodeType === Node.TEXT_NODE)
+              .map((n) => n.textContent)
+              .join(' '),
+          ),
         ),
         norm(el.getAttribute('aria-label')),
         norm(el.getAttribute('alt')),

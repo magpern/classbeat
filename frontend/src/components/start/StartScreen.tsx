@@ -34,6 +34,9 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
   const kept = useMemo(() => (from === null ? null : recallRequest(from)), [from])
   const action = useAction()
   const { allowed } = usePlanAllowance()
+  // A request kept for `from` (the revise hand-off) wins over an example: then the example is not used, so it
+  // is neither removed nor given focus, and stays kept for a day like any slug the start screen has not used.
+  const usedExample = kept === null ? example : null
   const [request, setRequest] = useState(kept?.request ?? (example === null ? '' : t(exampleKey(example, 'prompt'))))
   const [musicKey, setMusicKey] = useState<string | null>(kept?.music ?? null)
   const [sport, setSport] = useState<Sport>(source.runningEnabled && kept?.sport === 'running' ? 'running' : 'cycling')
@@ -54,10 +57,10 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
   // fills a field: nothing is sent until the instructor presses the button.
   const promptRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
-    if (example === null) return
+    if (usedExample === null) return
     forgetExample()
     promptRef.current?.focus()
-  }, [example])
+  }, [usedExample])
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
   const spotify = source.songs.kind === 'ready' ? source.songs.spotifyConnectionId : undefined
 

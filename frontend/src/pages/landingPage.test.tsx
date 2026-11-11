@@ -29,6 +29,16 @@ describe('Landing', () => {
     expect(songs[0]).toHaveTextContent('96 BPM')
   })
 
+  it('names only the sample songs\' own data for the e2e English-text check, never a translated string', async () => {
+    fakeApi({})
+    renderAt('/')
+    const list = await screen.findByRole('list', { name: 'Songs of the example class' })
+    const fixture = (list.getAttribute('data-fixture-text') ?? '').split('|')
+    for (const song of EXAMPLE_SONGS) expect(fixture).toEqual(expect.arrayContaining([song.title, song.artist, String(song.bpm), song.length]))
+    expect(fixture).toHaveLength(EXAMPLE_SONGS.length * 4)
+    expect(fixture.join('|')).not.toMatch(/Warm-up|BPM|Songs of the example class/)
+  })
+
   it('shows the three steps', async () => {
     fakeApi({})
     renderAt('/')
