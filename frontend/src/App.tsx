@@ -19,6 +19,8 @@ import { LandingPage } from './pages/LandingPage'
 import { HelpPage } from './pages/HelpPage'
 import { ExamplePage } from './pages/ExamplePage'
 import { ExamplesPage } from './pages/ExamplesPage'
+import { HowItWorksPage } from './pages/HowItWorksPage'
+import { FeaturesPage } from './pages/FeaturesPage'
 import { PrivacyPage } from './pages/PrivacyPage'
 import { MusicPage } from './pages/MusicPage'
 import { AdvancedClassPage } from './pages/AdvancedClassPage'
@@ -81,6 +83,8 @@ const PAGES: Readonly<Record<string, () => ReactNode>> = {
   '/examples': () => <ExamplesPage />,
   // One page per fixture entry; a slug that is not in the fixture is not a route.
   ...Object.fromEntries(EXAMPLES.map((example) => [`/examples/${example.slug}`, () => <ExamplePage example={example} />])),
+  '/how-it-works': () => <HowItWorksPage />,
+  '/features': () => <FeaturesPage />,
   '/classes': () => <ClassesPage />,
   '/classes/new': () => <NewClassPage />,
   '/classes/new/advanced': () => <AdvancedClassPage />,

@@ -12,6 +12,8 @@ const META: Readonly<Record<string, MetaKeys>> = {
   '': { title: 'meta.landing.title', description: 'meta.landing.description' },
   '/privacy': { title: 'meta.privacy.title', description: 'meta.privacy.description' },
   '/terms': { title: 'meta.terms.title', description: 'meta.terms.description' },
+  '/how-it-works': { title: 'meta.howItWorks.title', description: 'meta.howItWorks.description' },
+  '/features': { title: 'meta.features.title', description: 'meta.features.description' },
   '/help': { title: 'meta.help.title', description: 'meta.help.description' },
   '/examples': { title: 'meta.examples.title', description: 'meta.examples.description' },
   ...Object.fromEntries(EXAMPLE_SLUGS.map((slug) => [`/examples/${slug}`, exampleMetaKeys(slug)])),

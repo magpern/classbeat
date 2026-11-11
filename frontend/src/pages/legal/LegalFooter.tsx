@@ -1,8 +1,9 @@
 import { useT } from '../../i18n/I18n'
+import { visibleSiteLinks } from '../../publicSite/siteLinks'
 import { Link } from '../../router/Router'
 
 /** Privacy and Terms links at the foot of every page, signed in or out. */
-export function LegalFooter() {
+export function LegalFooter({ published }: { published?: readonly string[] }) {
   const t = useT()
   return (
     <nav
@@ -18,6 +19,11 @@ export function LegalFooter() {
       <Link to="/help" className="inline-flex min-h-11 items-center">
         {t('help.link')}
       </Link>{' '}
+      {visibleSiteLinks(published).map((link) => (
+        <Link key={link.path} to={link.path} className="inline-flex min-h-11 items-center">
+          {t(link.label)}
+        </Link>
+      ))}
     </nav>
   )
 }

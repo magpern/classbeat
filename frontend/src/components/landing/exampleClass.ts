@@ -47,6 +47,6 @@ export const EXAMPLE_SONGS: readonly ExampleSong[] = [
 
 export const STEPS: readonly { title: CatalogueKey; text: CatalogueKey; image: SlotId }[] = [
   { title: 'landing.how.describe.title', text: 'landing.how.describe.text', image: 'stepDescribe' },
-  { title: 'landing.how.approve.title', text: 'landing.how.approve.text', image: 'stepApprove' },
+  { title: 'landing.how.refine.title', text: 'landing.how.refine.text', image: 'stepApprove' },
   { title: 'landing.how.save.title', text: 'landing.how.save.text', image: 'stepSave' },
 ]

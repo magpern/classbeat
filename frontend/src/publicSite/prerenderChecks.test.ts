@@ -47,6 +47,8 @@ describe('the public paths', () => {
     expect([...PUBLISHED_PATHS]).toEqual(['', '/privacy', '/terms'])
     expect([...DRAFT_PATHS]).toEqual([
       '/help',
+      '/how-it-works',
+      '/features',
       '/examples',
       '/examples/hill-challenge',
       '/examples/90s-dance-intervals',

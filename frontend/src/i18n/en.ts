@@ -6,10 +6,12 @@
 import { examplesEn } from './examples.en'
 import { helpEn } from './help.en'
 import { legalEn } from './legal.en'
+import { publicEn } from './public.en'
 
 export const en = {
   ...legalEn,
   ...helpEn,
+  ...publicEn,
   ...examplesEn,
   'language.label': 'Language',
   'language.follow': 'Follow this browser',
@@ -28,7 +30,7 @@ export const en = {
   // Head of the public pages: the <title> and the description (ADR 0030 section 3).
   'meta.landing.title': 'classbeat | Your class, timed to the music',
   'meta.landing.description':
-    'Describe the ride and we pick the songs. Design indoor-cycling classes timed to the music and save them to MOWL.',
+    'Describe an indoor-cycling class in your own words. We design it, you refine it, and it reaches MOWL only when you approve.',
   'meta.privacy.title': 'Privacy | classbeat',
   'meta.privacy.description':
     'What we keep about you, why we keep it, and how you export or delete it.',
@@ -42,7 +44,7 @@ export const en = {
   // Landing page.
   'landing.badge': 'Private beta',
   'landing.title': 'Your class, timed to the music.',
-  'landing.lead': 'Describe the ride. We pick the songs.',
+  'landing.lead': 'Describe the ride. We design the class, and you refine it.',
   'landing.signUp': 'Join the beta',
   'landing.example.title': 'An example class',
   'landing.example.note': 'A made-up 30-minute ride. The songs are placeholders.',
@@ -56,13 +58,13 @@ export const en = {
   'landing.example.part.coolDown': 'Cool-down',
   'landing.how.title': 'How it works',
   'landing.how.describe.title': 'Describe',
-  'landing.how.describe.text': 'Pick the length, effort and music.',
-  'landing.how.approve.title': 'Approve songs',
-  'landing.how.approve.text': 'Swap any song that does not fit.',
-  'landing.how.save.title': 'Save to MOWL',
-  'landing.how.save.text': 'Ready to teach, in your account.',
+  'landing.how.describe.text': 'Say it your way. We fill in what you leave out.',
+  'landing.how.refine.title': 'Refine',
+  'landing.how.refine.text': 'See the class drawn and change it by chatting.',
+  'landing.how.save.title': 'Approve and save',
+  'landing.how.save.text': 'It becomes a private MOWL workout only when you approve.',
   'landing.img.describe': 'An instructor writing a class plan on a notepad',
-  'landing.img.approve': 'Hands choosing songs on a phone',
+  'landing.img.approve': 'Hands holding a phone next to an indoor bike',
   'landing.img.save': 'A phone mounted on an indoor bike',
 
   // Sign in, sign up and the pages behind the mail links.
