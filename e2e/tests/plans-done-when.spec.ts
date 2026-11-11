@@ -315,7 +315,7 @@ test('4. downgrade and cancel change nothing until the period ends; then Free, a
 
 test('5. an admin is Professional with no entitlement', async () => {
   const plan = await planOf(adminPage)
-  expect(plan).toMatchObject({ plan: 'pro', source: null })
+  expect(plan).toMatchObject({ plan: 'pro', source: 'admin' }) // 'admin' = derived from the role, not an entitlement row (checked next)
   const me = (await (await adminPage.request.get('/api/auth/session')).json()) as { user: { id: string } }
   expect(sql(`SELECT count(*) FROM entitlements WHERE owner_id = '${me.user.id}'`)).toBe('0')
   // The plan gives usage limits only: the role grants no song picking feature.
