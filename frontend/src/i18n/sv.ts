@@ -21,8 +21,6 @@ const sv: Catalogue = {
 
   // Head of the public pages: the <title> and the description (ADR 0030 section 3).
   'meta.landing.title': 'classbeat | Ditt pass, i takt med musiken',
-  'meta.landing.description':
-    'Beskriv turen så väljer vi låtarna. Utforma pass för inomhuscykling i takt med musiken och spara dem i MOWL.',
   'meta.privacy.title': 'Integritet | classbeat',
   'meta.privacy.description':
     'Vad vi sparar om dig, varför vi sparar det och hur du exporterar eller raderar det.',
@@ -33,7 +31,6 @@ const sv: Catalogue = {
   // Landing page.
   'landing.badge': 'Privat beta',
   'landing.title': 'Ditt pass, i takt med musiken.',
-  'landing.lead': 'Beskriv turen. Vi väljer låtarna.',
   'landing.signUp': 'Prova betan',
   'landing.example.title': 'Ett exempelpass',
   'landing.example.note': 'En påhittad tur på 30 minuter. Låtarna är platshållare.',
@@ -47,13 +44,7 @@ const sv: Catalogue = {
   'landing.example.part.coolDown': 'Nedvarvning',
   'landing.how.title': 'Så fungerar det',
   'landing.how.describe.title': 'Beskriv',
-  'landing.how.describe.text': 'Välj längd, ansträngning och musik.',
-  'landing.how.approve.title': 'Godkänn låtar',
-  'landing.how.approve.text': 'Byt ut låtar som inte passar.',
-  'landing.how.save.title': 'Spara i MOWL',
-  'landing.how.save.text': 'Redo att leda, i ditt konto.',
   'landing.img.describe': 'En instruktör skriver ett klassupplägg i ett block',
-  'landing.img.approve': 'Händer som väljer låtar i en mobil',
   'landing.img.save': 'En mobil monterad på en motionscykel',
 
   // Sign in, sign up and the pages behind the mail links.

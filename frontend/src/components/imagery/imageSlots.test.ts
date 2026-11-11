@@ -1,3 +1,4 @@
+import untranslated from '../../i18n/untranslated.json'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -168,7 +169,8 @@ describe('alt text', () => {
       'class.game.img.overflow',
     ])
     for (const catalogue of [en, sv, da] as Record<string, unknown>[]) {
-      for (const key of keys) {
+      // A key on untranslated.json shows the English text until PP7 (ADR 0023 section 8).
+      for (const key of keys.filter((k) => catalogue === en || !untranslated.includes(k))) {
         const text = catalogue[key]
         expect(typeof text, key).toBe('string')
         expect((text as string).length, key).toBeGreaterThan(5)

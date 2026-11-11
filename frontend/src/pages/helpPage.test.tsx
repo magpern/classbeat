@@ -1,4 +1,5 @@
 import { screen, within } from '@testing-library/react'
+import untranslated from '../i18n/untranslated.json'
 import { describe, expect, it } from 'vitest'
 import { en } from '../i18n/en'
 import { helpDa } from '../i18n/help.da'
@@ -55,15 +56,17 @@ describe('help catalogue keys', () => {
     ['da', helpDa],
   ] as [string, Record<string, string>][])(
     '%s has every key the page uses and nothing else',
-    (_c, catalogue) => {
-      for (const key of helpKeys()) expect(typeof catalogue[key]).toBe('string')
-      expect(Object.keys(catalogue).sort()).toEqual(Object.keys(helpEn).sort())
+    (lang, catalogue) => {
+      // A key on untranslated.json shows the English text until PP7 (ADR 0023 section 8).
+      const translated = Object.keys(helpEn).filter((key) => lang === 'en' || !untranslated.includes(key))
+      for (const key of helpKeys().filter((k) => translated.includes(k))) expect(typeof catalogue[key]).toBe('string')
+      expect(Object.keys(catalogue).sort()).toEqual(translated.sort())
     },
   )
 
   it('keeps the same placeholders in every language', () => {
     for (const catalogue of [helpSv, helpDa] as Record<string, string>[])
       for (const [key, value] of Object.entries(helpEn))
-        expect(slots(catalogue[key] ?? '')).toBe(slots(value))
+        if (catalogue[key] !== undefined) expect(slots(catalogue[key])).toBe(slots(value))
   })
 })

@@ -22,7 +22,7 @@ const LIMITS: readonly [CatalogueKey, number][] = [
   ['landing.lead', 12],
   ['landing.example.note', 12],
   ['landing.how.describe.text', 12],
-  ['landing.how.approve.text', 12],
+  ['landing.how.refine.text', 12],
   ['landing.how.save.text', 12],
   ['home.loadFailed', 20],
   ['home.empty', 20],

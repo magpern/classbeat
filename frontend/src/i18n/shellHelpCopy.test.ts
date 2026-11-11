@@ -118,6 +118,7 @@ const NAMES_IN_ANSWER: readonly [CatalogueKey, readonly CatalogueKey[]][] = [
   ['help.connect.spotify.a', ['account.tab.connections', 'conn.connect']],
   ['help.connect.swedebeat.a', ['account.tab.connections', 'conn.connect']],
   ['help.design.how.a', []],
+  ['help.design.songs.a', []],
   ['help.design.saved.a', ['class.save.title']],
   ['help.design.change.a', ['songs.change.title', 'class.useThisVersion', 'class.save.title']],
   ['help.plan.limits.a', ['account.tab.plan']],
