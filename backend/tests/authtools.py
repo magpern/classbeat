@@ -31,6 +31,10 @@ def make_settings(database_url: str, **overrides: object) -> Settings:
         "database_url": database_url,
         "app_secret_key": APP_SECRET,
         "public_base_url": ORIGIN,
+        # M7a-2 (ADR 0031) made 3 the default; these suites were written for the old 2 (with the
+        # seeds of migration 0007, see ``dbtools.truncate_auth``) and keep it. The default itself
+        # is pinned in ``test_plans_m7_numbers.py``.
+        "jobs_per_user": 2,
         **overrides,
     }
     return Settings(**values)  # pyright: ignore[reportArgumentType]

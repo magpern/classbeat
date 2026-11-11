@@ -270,7 +270,7 @@ and maintenance, so at most 50), `CLASSBEAT_WORKER_POLL_SECONDS` (2; the claim p
 `LISTEN jobs_queued`), `CLASSBEAT_WORKER_MAINTENANCE_SECONDS` (30; reap, expire, settle),
 `CLASSBEAT_WORKER_SHUTDOWN_WAIT_SECONDS` (25, inside compose's `stop_grace_period: 30s`),
 `CLASSBEAT_APPROVAL_TTL_HOURS` (168), `CLASSBEAT_JOB_BUSY_REQUEUE_LIMIT` (5 `operation_busy`
-requeues per phase without an attempt), `CLASSBEAT_JOBS_PER_USER` (2 queued or running jobs;
+requeues per phase without an attempt), `CLASSBEAT_JOBS_PER_USER` (3 queued or running jobs, the upper bound of every plan: Free 1, Individual 2, Professional 3;
 the jobs API answers 429 above it) and `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY` (1, 1 to 16; #574: running
 jobs that may analyse a Swedebeat mix, across every worker). Keep it below
 `CLASSBEAT_WORKER_CONCURRENCY` summed over all workers, or analyses can take every worker slot

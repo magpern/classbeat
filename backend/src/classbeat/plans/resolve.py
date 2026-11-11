@@ -9,13 +9,22 @@ An entitlement is **active** when ``revoked_at IS NULL``, ``starts_at <= now()``
 is NULL or later than ``now()`` (the transaction's time). The effective plan is the
 highest-ranked plan named by an active entitlement, ``free`` when none; the effective features are
 that plan's features plus every active entitlement's. Overlapping entitlements don't add up.
+
+**Admins (ADR 0031 section 2).** A user whose *stored* ``users.role`` is ``admin`` resolves to the
+highest-ranked plan, entitlements or not. The role is read by ``classbeat.auth.stored_admin`` with
+the caller's session in the caller's transaction (guard 8: this package never queries ``users``);
+it is ``False`` for a disabled or missing user. The plan sets usage limits only: an admin's
+features are still the plan's plus the entitlements', so the role grants no ``song_picking`` or
+``billing_test``.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat import auth
 from classbeat.context import UserContext, require_context
 from classbeat.plans.tables import FREE
 
@@ -23,13 +32,17 @@ _ACTIVE = (
     "e.owner_id = :owner_id AND e.revoked_at IS NULL AND e.starts_at <= now() "
     "AND (e.ends_at IS NULL OR e.ends_at > now())"
 )
-_PLAN = text(
-    "SELECT id, name, rank, classes_per_month, revisions_per_class, concurrent_jobs, "  # noqa: S608
+PLAN_SELECT = (  # every column but the prices (migration 0030)
+    "SELECT id, name, rank, classes_per_month, revisions_per_class, concurrent_jobs, "
     "monthly_cost_micros, route_key, features, max_class_minutes, games_allowed, races_allowed, "
-    "ftp_tests_allowed, saves_per_hour, saves_per_day FROM plans WHERE id = coalesce(("
+    "ftp_tests_allowed, saves_per_hour, saves_per_day FROM plans"
+)
+_PLAN = text(
+    f"{PLAN_SELECT} WHERE id = coalesce(("  # noqa: S608
     "SELECT p.id FROM entitlements e JOIN plans p ON p.id = e.plan_id "
     f"WHERE {_ACTIVE} ORDER BY p.rank DESC LIMIT 1), :free)"
 )
+_TOP_PLAN = text(f"{PLAN_SELECT} WHERE id = (SELECT id FROM plans ORDER BY rank DESC LIMIT 1)")  # noqa: S608
 _FEATURES = text(
     f"SELECT DISTINCT f FROM entitlements e, unnest(e.features) AS f WHERE {_ACTIVE}"  # noqa: S608
 )
@@ -59,12 +72,26 @@ class Plan:
     saves_per_day: int | None = None
 
 
-async def effective_plan(db: AsyncSession, ctx: UserContext) -> Plan:
-    """The user's effective plan; ``free`` when no active entitlement names a plan."""
+async def resolve_plan(db: AsyncSession, ctx: UserContext) -> tuple[Plan, bool]:
+    """The effective plan and whether it comes from the stored ``admin`` role."""
     ctx = require_context(ctx)
+    admin = await auth.stored_admin(db, ctx.user_id)
+    statement, params = (
+        (_TOP_PLAN, {}) if admin else (_PLAN, {"owner_id": ctx.user_id, "free": FREE})
+    )
     row = (
-        await db.execute(_PLAN, {"owner_id": ctx.user_id, "free": FREE})
+        await db.execute(statement, params)
     ).one()  # no row means the ``free`` seed is missing: fail loudly, never a default
+    return plan_from_row(row), admin
+
+
+async def effective_plan(db: AsyncSession, ctx: UserContext) -> Plan:
+    """The user's effective plan: the top plan for a stored admin, else the highest-ranked active
+    entitlement's, ``free`` when none names a plan."""
+    return (await resolve_plan(db, ctx))[0]
+
+
+def plan_from_row(row: Any) -> Plan:
     return Plan(
         id=row.id,
         name=row.name,

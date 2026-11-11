@@ -17,6 +17,7 @@ from sqlalchemy.engine import Connection, make_url
 
 from adminviews import audit, reason, stepped_admin
 from authtools import Env, running_env
+from classbeat import auth
 from classbeat.admin.routes import admin_area_routes, gate_problems
 from dbtools import migration_module
 from flows import Browser
@@ -886,11 +887,20 @@ def gates_row(conn: Connection, plan_id: str) -> Any:
     ).one()
 
 
+async def free_account(env: Env) -> Browser:
+    """A signed-in ordinary account on ``free`` (an admin is on the top plan since ADR 0031)."""
+    issued = await env.login(await env.user("plain-free@example.com"))
+    browser = Browser(env)
+    browser.cookies[auth.SESSION_COOKIE] = issued.token
+    return browser
+
+
 async def test_length_gates_and_prices_are_stored_audited_and_apply_on_the_next_request(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
     actor = await stepped_admin(env, make_actor)
-    before = (await actor.get(ACCOUNT_PLAN)).json()  # the admin is on free too
+    plain = await free_account(env)
+    before = (await plain.get(ACCOUNT_PLAN)).json()
     assert before["limits"]["max_class_minutes"] == 30
     assert before["gates"] == {"games": False, "races": True, "ftp_tests": True}
     edit = {
@@ -915,11 +925,11 @@ async def test_length_gates_and_prices_are_stored_audited_and_apply_on_the_next_
     assert audited.outcome == "ok"
     assert given(audited.params) == edit
     # The next request reads the new values; the account route never shows a price.
-    after = (await actor.get(ACCOUNT_PLAN)).json()
+    after = (await plain.get(ACCOUNT_PLAN)).json()
     assert after["limits"]["max_class_minutes"] == 45
     assert after["gates"] == {"games": True, "races": True, "ftp_tests": False}
     account_text, public_text = (
-        (await actor.get(ACCOUNT_PLAN)).text,
+        (await plain.get(ACCOUNT_PLAN)).text,
         (await Browser(env).get(PUBLIC)).text,
     )
     for word in PRICE_WORDS:

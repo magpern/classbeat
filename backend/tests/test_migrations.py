@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0044_class_interpretation"]
+    assert script.get_heads() == ["0045_plan_names_and_numbers"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0044_class_interpretation"]
+        assert applied_revisions(database_url) == ["0045_plan_names_and_numbers"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -899,3 +899,42 @@ def test_0044_class_interpretation_up_and_down(
         with admin.begin() as connection:
             connection.execute(text("DELETE FROM users WHERE id = :o"), {"o": owner})
         admin.dispose()
+
+
+def test_0045_plan_names_and_numbers_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#947 (ADR 0031 section 1): after the upgrade the three rows hold exactly the M7a names,
+    numbers and gates; the downgrade restores the values of 0007 and 0026; ids, ranks and route
+    keys are not touched either way."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+    select = text(
+        "SELECT id, rank, route_key, name, classes_per_month, revisions_per_class, "
+        "concurrent_jobs, max_class_minutes, games_allowed, ftp_tests_allowed, races_allowed "
+        "FROM plans ORDER BY rank"
+    )
+
+    def rows() -> list[tuple[Any, ...]]:
+        with admin.connect() as connection:
+            return [tuple(r) for r in connection.execute(select)]
+
+    try:
+        command.upgrade(config, "head")
+        assert rows() == [
+            ("free", 0, "free", "Free", 3, 3, 1, 30, False, False, True),
+            ("instructor", 10, "instructor", "Individual", 9, 10, 2, 75, True, True, True),
+            ("pro", 20, "pro", "Professional", 30, 20, 3, 180, True, True, True),
+        ]
+        command.downgrade(config, "0044_class_interpretation")
+        assert rows() == [
+            ("free", 0, "free", "Free", 3, 3, 1, 30, False, True, True),
+            ("instructor", 10, "instructor", "Instructor", 30, 10, 2, 60, True, True, True),
+            ("pro", 20, "pro", "Pro", 100, 25, 3, 90, True, True, True),
+        ]
+        command.upgrade(config, "head")
+        assert rows()[1][3] == "Individual"
+    finally:
+        admin.dispose()
+        command.downgrade(config, "base")

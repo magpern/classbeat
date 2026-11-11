@@ -195,7 +195,7 @@ async def test_the_account_plan_shows_the_limits_under_the_bounds(
     owner = new_user(admin)
     test_plan(owner, classes_per_month=500, concurrent_jobs=16, revisions_per_class=200)
     plant_run(admin, owner, 1_000_000)
-    bounds = Bounds(classes_per_month_max=50, monthly_cost_micros_max=2_000_000)
+    bounds = Bounds(classes_per_month_max=50, monthly_cost_micros_max=2_000_000, jobs_per_user=2)
     found = await account_plan(factory, make_context(owner), bounds=bounds, trial_days_max=30)
     assert (found.limits.classes_per_month, found.limits.concurrent_jobs) == (50, 2)
     assert (found.limits.revisions_per_class, found.cost_share) == (25, 0.5)

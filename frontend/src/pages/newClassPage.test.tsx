@@ -322,7 +322,7 @@ describe('the new-class form', () => {
     fakeApi({
       ...READY,
       'GET /api/account/plan': {
-        plan: 'free', name: 'Free', source: null, ends_at: null,
+        plan: 'free', name: 'Free', quality: 'standard', source: null, ends_at: null,
         limits: { classes_per_month: 3, revisions_per_class: 5, concurrent_jobs: 1, max_class_minutes: 60 },
         gates: { games: true, races: true, ftp_tests: true },
         classes_held: 1, period_end: '2026-11-01T00:00:00Z', cost_share: 0, features: [], trial: null,
@@ -334,7 +334,7 @@ describe('the new-class form', () => {
 
   describe('the plan limits (#496)', () => {
     const plan = (maxMinutes: number, gates: { games: boolean; races: boolean; ftp_tests: boolean }) => ({
-      plan: 'free', name: 'Free', source: null, ends_at: null,
+      plan: 'free', name: 'Free', quality: 'standard', source: null, ends_at: null,
       limits: { classes_per_month: 3, revisions_per_class: 5, concurrent_jobs: 1, max_class_minutes: maxMinutes },
       gates,
       classes_held: 0, period_end: '2026-11-01T00:00:00Z', cost_share: 0, features: [], trial: null,

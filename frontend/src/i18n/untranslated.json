@@ -1,1 +1,8 @@
-[]
+[
+  "plan.name.free",
+  "plan.name.instructor",
+  "plan.name.pro",
+  "plan.quality.standard",
+  "plan.quality.better",
+  "plan.quality.best"
+]

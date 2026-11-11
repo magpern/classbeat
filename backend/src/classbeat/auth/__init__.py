@@ -87,7 +87,7 @@ if TYPE_CHECKING:
         wipe_mail,
         wipe_user,
     )
-    from classbeat.auth.owners import active_email, owner_active
+    from classbeat.auth.owners import active_email, owner_active, stored_admin
     from classbeat.auth.passwords import (
         PasswordHashBusy,
         PasswordHasher,
@@ -257,6 +257,7 @@ __all__ = [
     "set_session_cookie",
     "spotify_start_buckets",
     "start_session",
+    "stored_admin",
     "swedebeat_mixes_buckets",
     "token_hash",
     "totp_rows_by_key",

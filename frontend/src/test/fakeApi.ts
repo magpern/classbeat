@@ -32,6 +32,7 @@ export const USAGE_NONE = {
 export const PLAN_FREE = {
   plan: 'free',
   name: 'Free',
+  quality: 'standard',
   source: null,
   ends_at: null,
   limits: { classes_per_month: 3, revisions_per_class: 10, concurrent_jobs: 1, max_class_minutes: 180 },
