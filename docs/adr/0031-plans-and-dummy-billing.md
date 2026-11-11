@@ -119,7 +119,8 @@ before anything is stored (409 `quota`, with the upgrade prompt), never trimmed.
 `effective_plan` returns the highest-ranked plan (`pro` today; the admin cannot add plans, there is
 no `INSERT` grant) when the user's **stored** `users.role` is `admin`. Guard 8 stays as it is: the
 role is read by a new reader in `classbeat.auth.owners`, `stored_admin(db, user_id) -> bool`
-(`SELECT role = 'admin' FROM users WHERE id = :id AND disabled_at IS NULL`), which
+(`SELECT role = 'admin' FROM users WHERE id = :id AND disabled_at IS NULL`; **no row, a disabled
+or missing user, returns `False`**, never an error and never `True`), which
 `effective_plan` calls with the caller's session, in the caller's transaction, before its plan
 query. No entitlement row, nothing to expire; a demoted admin is back on their entitlements at the
 next plan read. The stored role and not the session's MFA-checked role: the plan only sets usage
@@ -175,9 +176,9 @@ One module, `classbeat.billing.writer.apply(event)`, is the only code that creat
     `anchor_day smallint` (CHECK 1 to 31, §5), `period_start`, `period_end`, `basis_minor bigint`
     and `basis_currency` (the full monthly price of `plan_id` charged for this period, §5),
     `next_plan_id NULL` (a scheduled downgrade), `cancel_at_end`, `status` (`active`, `ended`),
-    `last_event_at`, `updated_at`. Maint `INSERT, SELECT, UPDATE` of the state columns. The app role
-    has `SELECT` on every column except `basis_minor` and `basis_currency` (Account → Plan and the
-    export).
+    `last_event_at`, `created_at`, `updated_at`. Maint `INSERT, SELECT, UPDATE` of the state
+    columns. The app role has `SELECT` on every column except `basis_minor` and `basis_currency`
+    (Account → Plan and the export; exact list under "Export and retention").
   - `billing_log`, owned (cascades with the account): `action` (a code list: `checkout`,
     `change`, `prices`), `outcome` (`ok`, `refused`, `error`), `reason NULL`, `request_id`,
     `created_at`; no IP, no amount. Maint `INSERT, SELECT`; app `SELECT` (export). Refusals are
@@ -191,8 +192,23 @@ One module, `classbeat.billing.writer.apply(event)`, is the only code that creat
     recorded event, lasts at most one period and carries no feature (song picking can never come
     with a plan).
 - **Export and retention:** `subscriptions`, `billing_events` and `billing_log` are `Section`s of
-  the export (`billing_events` and `subscriptions` with the price columns in `omit`); the export's
-  `NOT_INCLUDED` gains "The amounts charged: they are with the payment provider (the test provider
+  the export. `omit` cannot drop the price columns: `classbeat.account.export._read` selects
+  `to_jsonb(t)` (the whole row) and removes the omitted keys afterwards, which fails with
+  "permission denied" for a column the app role cannot read. So `Section` gains an optional
+  **`columns`** tuple: when set, `_read` selects exactly those columns (`jsonb_build_object` of
+  `t.<column>`, names validated by the registry's identifier rule) and never the whole row.
+  `billing_events` and `subscriptions` must use it, with these lists:
+  - `billing_events`: `id, provider, event_id, kind, plan_id, period_start, period_end, outcome,
+    created_at`;
+  - `subscriptions`: `id, provider, plan_id, anchor_day, period_start, period_end, next_plan_id,
+    cancel_at_end, status, last_event_at, created_at, updated_at`.
+
+  The app role's column grants on these tables are exactly these lists plus `owner_id` (guard 2
+  lists them as it lists `plans`). `tests/test_account_export_registry.py` gains a check, against
+  the live grants, that every column a `columns` section names is one the app role may `SELECT`,
+  and that a table where the app role lacks `SELECT` on some column has a `columns` list (so a
+  whole-row read of it can never be registered). `billing_log` has no price and is read whole. The
+  export's `NOT_INCLUDED` gains "The amounts charged: they are with the payment provider (the test provider
   charges nothing)." All three go with the account (guard 10: cascade, nothing `RETAINED`).
   `admin_audit` changes nothing: a fast-forward's row has an operator as actor and the tester as
   target, nulled on deletion as today.
@@ -301,7 +317,9 @@ after a short month: an anchor of 31 gives 31 Jan → 28 or 29 Feb → 31 Mar �
 
 ### 7. Prices: the read path
 
-Prices are read **only through `billing_session` on maint** (`classbeat.billing.prices`), for a
+Prices are read **only on maint**: `classbeat.billing.prices` opens no session; it reads with the
+session it is given, which is the `billing_session` the billing routes opened (the only caller
+allowed, §3) or, for the writer during a fast-forward, the admin's `admin_session`. It reads for a
 caller who may buy (§6), to show the offer and to compute a quote; `apply` re-computes the quote
 from the stored subscription and the current prices and refuses an `upgraded` or `started` event
 whose amount differs (`amount_mismatch`). `0030_plan_price_privilege` and guard 2 stay unchanged:
