@@ -10,6 +10,22 @@
   position: relative;
   overflow: hidden;
 }
+/*
+ * The prerender writes both themes' pictures (data-for); the saved theme decides which one shows.
+ * A hidden lazy image is not requested, so the other theme's files are never fetched.
+ */
+:root[data-theme='light'] .slot[data-for='dark'],
+:root:not([data-theme='light']) .slot[data-for='light'] {
+  display: none;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme='system'] .slot[data-for='dark'] {
+    display: none;
+  }
+  :root[data-theme='system'] .slot[data-for='light'] {
+    display: block;
+  }
+}
 .slot picture {
   display: block;
   height: 100%;
