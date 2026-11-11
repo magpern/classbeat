@@ -64,6 +64,13 @@ describe('measures', () => {
     expect(measures('Fem omgångar med 30 sekunder, sedan sex sprintar').counts).toHaveLength(2)
   })
 
+  it('counts Danish stigning and stigninger as climbs', () => {
+    expect(measures('Tre stigninger i zone 3 og 4').counts).toEqual([{ noun: 'climbs', n: 3 }])
+    expect(measures('2 stigninger og en kort stigning').counts).toEqual([{ noun: 'climbs', n: 2 }])
+    expect(measures('Fire stigninger på fem minutter').counts).toEqual([{ noun: 'climbs', n: 4 }])
+    expect(measures('Fire stigninger på fem minutter').minutes).toEqual([5])
+  })
+
   it('does not take a decade for a measurement', () => {
     expect(measures('A 90s party ride')).toMatchObject({ minutes: [], seconds: [], counts: [] })
   })

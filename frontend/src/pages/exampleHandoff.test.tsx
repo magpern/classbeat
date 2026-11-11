@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { translate } from '../i18n/t'
+import { rememberExample } from '../lib/exampleHandoff'
+import { rememberRequest } from '../lib/startRequest'
 import { EXAMPLES, exampleKey } from '../publicSite/examples'
 import { SIGNED_IN, fakeApi, json } from '../test/fakeApi'
 import { SESSION_ROUTES, jobBody } from '../test/jobFixtures'
@@ -80,6 +82,18 @@ describe('the start screen from an example link', () => {
     await waitFor(() => {
       expect(window.localStorage.getItem(KEY)).toBeNull()
     })
+  })
+
+  it('keeps the slug and the focus where they are when a kept request for `from` wins', async () => {
+    const classId = '11111111-2222-3333-4444-555555555555'
+    rememberRequest(classId, { request: 'My own words', music: null, sport: 'cycling' })
+    rememberExample(SLUG)
+    fakeApi(READY)
+    renderAt(`/classes/new?from=${classId}`)
+    expect(await prompt()).toHaveValue('My own words')
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(await prompt()).not.toHaveFocus()
+    expect(window.localStorage.getItem(KEY)).toContain(SLUG)
   })
 
   it('ignores an unknown slug and any other query value', async () => {

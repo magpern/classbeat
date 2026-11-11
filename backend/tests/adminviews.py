@@ -115,16 +115,17 @@ def new_run(
     model: str = "fake-model",
     tokens: int = 10,
     last_month: bool = False,
+    stage: str = "design",
 ) -> None:
     started = LAST_MONTH_RUN if last_month else "now()"
     conn.execute(
         text(
             "INSERT INTO agent_runs (owner_id, job_id, stage, attempt, provider, model, effort, "  # noqa: S608
             "prompt_version, input_tokens, output_tokens, cost_micros, job_kind, price_version, "
-            f"started_at) VALUES (:o, :j, 'design', 1, 'fake', :m, 'medium', 'v1', :t, :t, :c, "
+            f"started_at) VALUES (:o, :j, :s, 1, 'fake', :m, 'medium', 'v1', :t, :t, :c, "
             f":k, '2026-10-29', {started})"
         ),
-        {"o": owner, "j": job, "m": model, "t": tokens, "c": cost, "k": kind},
+        {"o": owner, "j": job, "s": stage, "m": model, "t": tokens, "c": cost, "k": kind},
     )
 
 

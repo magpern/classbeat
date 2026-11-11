@@ -5,6 +5,10 @@ import { EXAMPLE_PROFILE, EXAMPLE_SONGS, type ExampleSong } from '../components/
 import { useT } from '../i18n/I18n'
 import { ListRow } from '../components/ui/list-row'
 
+// The sample songs' own words (title, artist, BPM, length) are English on purpose. The e2e check for
+// English text on sv and da cuts exactly these out of the list and still reads every translated string.
+const FIXTURE_TEXT = EXAMPLE_SONGS.flatMap((s) => [s.title, s.artist, String(s.bpm), s.length]).join('|')
+
 /** The page for visitors who are not signed in (ADR 0013 section 5). */
 export function LandingPage() {
   const t = useT()
@@ -24,6 +28,7 @@ export function LandingPage() {
             className="m-0 flex list-none flex-col divide-y divide-line p-0"
             aria-label={t('landing.example.songs')}
             data-testid="landing-example-songs"
+            data-fixture-text={FIXTURE_TEXT}
           >
             {EXAMPLE_SONGS.map((song, i) => (
               <ListRow

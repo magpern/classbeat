@@ -7,6 +7,7 @@ import { useT } from '../../i18n/I18n'
 import type { CatalogueKey } from '../../i18n/en'
 import { useLayout, type Layout } from '../../hooks/useLayout'
 import { cn } from '../../lib/cn'
+import { forgetExample } from '../../lib/exampleHandoff'
 import { Link, useRouter } from '../../router/Router'
 import { useAction } from '../forms'
 import { AvatarMenu } from './AvatarMenu'
@@ -160,6 +161,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const signOut = () => {
     void action.run(async () => {
       await logout()
+      // A kept example slug belongs to the browser, not the account: the next person must not inherit it.
+      forgetExample()
       await refresh()
       navigate('/signin')
     })

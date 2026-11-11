@@ -159,6 +159,24 @@ async def test_the_totals_equal_the_planted_runs_and_ledger_rows_of_two_users(
     assert params == {"month": month}
 
 
+async def test_a_deleted_revises_interpret_run_is_no_job_of_its_own(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    """The admin ``jobs`` figure uses the same identity as the user view (``usage.service.IDENT``):
+    after a class is deleted (``job_id`` NULL) a revise that stated values counts once, its
+    ``interpret`` run being no job; an ``interpret_request`` run is one, and so is a design run."""
+    actor = await stepped_admin(env, make_actor)
+    a = await env.user("ann@example.com")
+    new_run(superuser, a, None, "revise_draft", 100, stage="interpret")
+    new_run(superuser, a, None, "revise_draft", 200, stage="revise")
+    new_run(superuser, a, None, "interpret_request", 50, stage="interpret")
+    new_run(superuser, a, None, "design_draft", 400)
+    body = (await actor.get(USAGE)).json()
+    assert (body["totals"]["runs"], body["totals"]["jobs"]) == (4, 3)
+    jobs = {k["job_kind"]: k["sums"]["jobs"] for k in body["by_kind_model"]}
+    assert jobs == {"revise_draft": 1, "interpret_request": 1, "design_draft": 1}
+
+
 async def test_another_month_shows_only_its_own_runs(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:

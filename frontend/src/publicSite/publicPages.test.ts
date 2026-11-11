@@ -39,6 +39,41 @@ describe('the song-picking scan', () => {
     for (const s of ['Låt oss välja låtarna.', 'Låtarna vi väljer åt dig.', 'Lad os vælge sangene.', 'De sange, vi vælger.']) {
       expect(mentionsSongPicking(s), s).toBe(true)
     }
+  })
+
+  // Gaps found in the review of PP7 (#908): each form below is a way to say it that the first patterns missed.
+  it.each([
+    ['sv', 'Valt av classbeat: låtarna i passet.'],
+    ['sv', 'Låten är vald åt dig.'],
+    ['sv', 'Utvalda låtar hamnar i spellistan.'],
+    ['sv', 'Vi väljer sång efter sång.'],
+    ['sv', 'Sånger väljs när du utformar passet.'],
+    ['sv', 'Utvalda sånger går till Spotify.'],
+    ['sv', 'Vi plockar sångerna åt dig.'],
+    ['da', 'Vi vælger sangen til dig.'],
+    ['da', 'Sangen er valgt til dig.'],
+    ['da', 'Udvalgte sange kommer på playlisten.'],
+    ['da', 'Vi udvælger numrene til dig.'],
+    ['da', 'Numrene vælges, når du designer holdet.'],
+    ['da', 'Vi plukker sangene til dig.'],
+    ['da', 'Sangene plukkes ud til dig.'],
+  ])('finds a %s statement: %s', (_lang, sentence) => {
+    expect(mentionsSongPicking(sentence)).toBe(true)
+  })
+
+  it.each([
+    'Sången är kort.',
+    'Det valda passet är 30 minuter.',
+    'Vi vælger et hold på 30 minutter.',
+    'Nummeret står i listen.',
+    'Plukke blomster i haven.',
+  ])('leaves alone a sentence that picks no songs: %s', (sentence) => {
+    expect(mentionsSongPicking(sentence)).toBe(false)
+  })
+
+  it('reads the Danish stem pluk with one k as well as plukk', () => {
+    expect(mentionsSongPicking('Pluk sangene ud til holdet.')).toBe(true)
+    expect(mentionsSongPicking('Vi plukker sangene.')).toBe(true)
     expect(mentionsSongPicking('Utforma till din egen spellista från MOWL.')).toBe(false)
     expect(mentionsSongPicking('Design til din egen playliste fra MOWL.')).toBe(false)
     expect(mentionsSongPicking('Design to your own playlist from MOWL.')).toBe(false)
