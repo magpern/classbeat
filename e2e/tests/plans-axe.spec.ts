@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import type { Page } from '@playwright/test'
-import { expect, signUpThroughUi, test, uniqueEmail } from './helpers'
+import { expect, signInThroughUi, signUpThroughUi, test, uniqueEmail } from './helpers'
 
 // M7a-5 (#950): the Pricing page (a draft, so it is prerendered but not listed) and Account, Plan,
 // at 1440 and 390 px with axe's WCAG 2.2 AA rules and no sideways scroll. A signed-in account that
@@ -48,7 +48,9 @@ for (const size of SIZES) {
     })
 
     test('Account, Plan shows what each plan includes and no price to a non-tester', async ({ page }) => {
-      await signUpThroughUi(page, uniqueEmail('plans'))
+      const email = uniqueEmail('plans')
+      await signUpThroughUi(page, email)
+      await signInThroughUi(page, email)
       await page.goto('/account#plan')
       const options = page.getByTestId('plan-options')
       await expect(options).toBeVisible()

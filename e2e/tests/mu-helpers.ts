@@ -42,6 +42,12 @@ export async function stackContext(browser: Browser, baseURL: string): Promise<B
 export function watchConsole(page: Page): string[] {
   const seen: string[] = []
   page.on('console', (message) => {
+    // A caller who may not buy gets 403 `billing_closed` from GET /api/account/billing on the Plan tab
+    // (ADR 0031: that answer is how the page learns plans are not open). The browser logs every failed
+    // request; this one, and only this one, is expected.
+    const closedBilling =
+      /status of 403/.test(message.text()) && message.location().url.endsWith('/api/account/billing')
+    if (closedBilling) return
     if (message.type() === 'error' || /Content Security Policy|Refused to/.test(message.text())) {
       seen.push(`${message.type()}: ${message.text()}`)
     }
