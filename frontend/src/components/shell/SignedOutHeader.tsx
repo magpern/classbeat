@@ -11,7 +11,10 @@ export function SignedOutHeader({ ready, offered }: { ready: boolean; offered: r
     <header className="border-b border-line bg-surface">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
         <BrandLink />
-        <SiteLinksNav className="flex flex-wrap gap-x-4" />
+        {/* On a phone the links take their own row under the brand and the account controls, so the
+            placeholder's width (the language picker's real width differs by language) cannot change
+            how the row above wraps when the real nav arrives. */}
+        <SiteLinksNav className="order-last flex basis-full flex-wrap gap-x-4 sm:order-none sm:basis-auto" />
         {ready ? (
           <nav aria-label={t('shell.nav.account')} className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <LanguagePicker offered={offered} />

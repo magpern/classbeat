@@ -31,8 +31,11 @@ export function observe(): void {
         seen.shifts += entry.value
         // Name what moved, so a failure says where to look.
         const names = (entry.sources ?? []).map((s) => {
+          // A moved node can be a text node (no tagName, id or class), so read every part defensively.
           const n = s.node
-          return n ? `${n.tagName.toLowerCase()}${n.id ? `#${n.id}` : ''}.${String(n.getAttribute?.('class') ?? '').slice(0, 40)}` : '?'
+          if (!n) return '?'
+          const tag = (n.tagName ?? n.nodeName ?? '?').toLowerCase()
+          return `${tag}${n.id ? `#${n.id}` : ''}.${String(n.getAttribute?.('class') ?? '').slice(0, 40)}`
         })
         seen.shiftSources.push(`${entry.value.toFixed(4)} ${names.join(' | ')}`)
       }
