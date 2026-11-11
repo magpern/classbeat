@@ -160,3 +160,14 @@ None. The decisions are recorded as D1 to D6 in the plan.
   slot). Accepted: the static HTML cannot know the saved theme, an eager hero would make every
   light-theme visitor fetch both, and `media="(scripting: enabled)"` would leave the hero blank for
   light-theme visitors before takeover in browsers without that media feature. Nobody sees a regression; a no-JS visitor pays some bytes.
+
+## Amendment: the Pricing page (M7a-5, #950)
+
+`/pricing` is the first `draft` path: prerendered and taken over, `noindex`, linked from nowhere and
+absent from the sitemap, until the owner opens plans and moves it to `published`. The prerender holds
+words only, no price (ADR 0031: prices are readable only by a tester or an admin). The page module
+imports no API client. One component it renders, `components/plans/PricingPlans.tsx`, reads the plan
+limits from `GET /api/plans` in an effect after takeover, so it is a second named exemption in
+`noApiClient.test.ts` next to `SupportLink`. The prerender writes a dash for each limit, so filling
+the numbers in does not move the layout. The takeover matrix (`public-takeover-matrix.ts`) does not
+list the page yet; `lang-axe`, `public-csp` and `plans-axe.spec.ts` cover it.

@@ -1,4 +1,5 @@
 import { PlanNudge } from '../plans/PlanNudge'
+import { PlanOffers } from '../plans/PlanOffers'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { getPlan, redeemCode, startTrial, type Plan as PlanData } from '../../api/plan'
 import { accountPlanError, dayText, periodMonth, sourceText } from '../../api/planMessages'
@@ -123,6 +124,7 @@ export function Plan() {
           {t('plan.budgetText', { percent, day: dayText(plan.periodEnd) ?? t('plan.firstFallback') })}
         </p>
       </div>
+      <PlanOffers plan={plan} onChanged={refresh} />
       {done !== null ? <Notice kind="success">{done}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <form onSubmit={redeem}>

@@ -8,7 +8,6 @@ import { Card } from './components/forms'
 import { RequireAuth } from './components/RequireAuth'
 import { AppShell } from './components/shell/AppShell'
 import { useT } from './i18n/I18n'
-import { AccountPage } from './pages/AccountPage'
 import { ClassPage } from './pages/ClassPage'
 import { ClassesPage } from './pages/ClassesPage'
 import { EmailChangePage } from './pages/EmailChangePage'
@@ -21,6 +20,7 @@ import { ExamplePage } from './pages/ExamplePage'
 import { ExamplesPage } from './pages/ExamplesPage'
 import { HowItWorksPage } from './pages/HowItWorksPage'
 import { FeaturesPage } from './pages/FeaturesPage'
+import { PricingPage } from './pages/PricingPage'
 import { PrivacyPage } from './pages/PrivacyPage'
 import { MusicPage } from './pages/MusicPage'
 import { NewClassPage } from './pages/NewClassPage'
@@ -38,6 +38,7 @@ import { Link, RouterProvider, useRouter, type Location } from './router/Router'
 // account is an admin one with its TOTP check missing or lapsed (`adminPendingMfa`, ADR 0011
 // section 6); the server's answer decides what it shows, and the chunk's gate shows the code
 // prompt. Any other account never fetches it.
+const AccountPageChunk = lazy(() => import('./pages/AccountPage').then((m) => ({ default: m.AccountPage })))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 // The Advanced form is fetched only on its own route.
 const AdvancedClassPage = lazy(() => import('./pages/AdvancedClassPage'))
@@ -47,6 +48,15 @@ function Advanced() {
   return (
     <Suspense fallback={<p>{t('common.loading')}</p>}>
       <AdvancedClassPage />
+    </Suspense>
+  )
+}
+
+function Account() {
+  const t = useT()
+  return (
+    <Suspense fallback={<p>{t('common.loading')}</p>}>
+      <AccountPageChunk />
     </Suspense>
   )
 }
@@ -95,13 +105,14 @@ const PAGES: Readonly<Record<string, () => ReactNode>> = {
   ...Object.fromEntries(EXAMPLES.map((example) => [`/examples/${example.slug}`, () => <ExamplePage example={example} />])),
   '/how-it-works': () => <HowItWorksPage />,
   '/features': () => <FeaturesPage />,
+  '/pricing': () => <PricingPage />,
   '/classes': () => <ClassesPage />,
   '/classes/new': () => <NewClassPage />,
   '/classes/new/advanced': () => <Advanced />,
   '/music': () => <MusicPage />,
-  '/account': () => <AccountPage />,
+  '/account': () => <Account />,
   // Connections with the Spotify dialog open; Spotify's callback returns here (`?result=`).
-  '/account/spotify': () => <AccountPage />,
+  '/account/spotify': () => <Account />,
 }
 
 /** Every path pattern the app answers, for the guard that keeps two-letter first segments free. */

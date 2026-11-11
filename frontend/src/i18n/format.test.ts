@@ -94,3 +94,12 @@ describe('format (English)', () => {
     expect(duration(3725)).toBe('62:05')
   })
 })
+
+describe('money', () => {
+  it('formats an integer in the minor unit with its currency', async () => {
+    const { money } = await import('./format')
+    expect(money(900, 'USD')).toBe('$9.00')
+    expect(money(1234, 'USD')).toBe('$12.34')
+    expect(money(0, 'USD')).toBe('$0.00')
+  })
+})

@@ -86,7 +86,7 @@ export const SIGNED_IN = {
  * Stubs `fetch` with a table of `"METHOD /path"` handlers. A handler returns a Response or any
  * JSON value (answered 200); a missing route fails the test loudly. `/api/auth/session`
  * defaults to anonymous, `/api/connections` and `/api/external-operations` to none, `/api/connections/spotify` to
- * 404 `feature_off` and
+ * 404 `feature_off`, `/api/account/billing` to 403 `billing_closed` and
  * `/api/mail/preferences` to everything on, `/api/usage` to an empty month, `/api/music/playlist-covers` and
  * `/api/auth/events` to none.
  */
@@ -101,6 +101,8 @@ export function fakeApi(routes: Record<string, Handler | object | string>) {
     'GET /api/usage': USAGE_NONE,
     'GET /api/account/plan': PLAN_FREE,
     'GET /api/plans': PLAN_CATALOGUE,
+    // Most callers may not buy: 403 `billing_closed`, so the Plan screen shows no price.
+    'GET /api/account/billing': () => json({ detail: { reason: 'billing_closed' } }, 403),
     'GET /api/settings/public': { banner: null, signup_mode: 'invite', support_address: 'support@classbeat.eu' },
     'GET /api/music/playlist-covers': { covers: [] },
     'GET /api/mail/preferences': { unsubscribed_all: false, opted_out: [] },

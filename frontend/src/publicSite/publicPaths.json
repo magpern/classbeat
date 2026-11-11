@@ -12,5 +12,7 @@
     "/examples/endurance-ride",
     "/examples/running-intervals"
   ],
-  "draft": []
+  "draft": [
+    "/pricing"
+  ]
 }

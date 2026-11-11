@@ -143,6 +143,7 @@ const SOURCES: Record<string, CatalogueKey> = {
   code: 'plan.source.code',
   trial: 'plan.source.trial',
   subscription: 'plan.source.subscription',
+  admin: 'plan.source.admin',
 }
 
 export function sourceText(source: string | null): string | null {
