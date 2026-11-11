@@ -23,8 +23,8 @@ and links the issues.
 - The work splits in two so most of it can be built now without any provider or real money:
   - **M7a (buildable on fakes, billing off):** tiers, limits, upgrade prompts, pricing and
     plan menu, dummy provider, upgrade, downgrade and proration, admin tester access.
-  - **M7b (gated):** real Paddle, public sign-up, legal pages, abuse controls, and the commercial
-    song-picking route that roadmap A1 to A5 and the provider agreements require.
+  - **M7b (gated):** real Paddle, public sign-up, legal pages, abuse controls, and the extra
+    song-picking arrangement that roadmap A1 to A5 and the provider agreements require for paying subscribers.
 
 ## Tiers (numbers are placeholders; the admin edits them, ADR 0011)
 
@@ -150,8 +150,8 @@ with its own plan. Nothing in M7a builds it.
 
 ## M7b: gated, not scheduled
 Real Paddle (merchant of record: VAT, invoices, card data never ours), open sign-up with abuse
-and cost controls, owner-approved legal pages and sub-processor list, the commercial
-song-picking route, and provider agreements. These are as in revision 0 and keep the roadmap
+and cost controls, owner-approved legal pages and sub-processor list, the extra
+song-picking arrangement the provider agreements require for paying subscribers, and provider agreements. These are as in revision 0 and keep the roadmap
 gate: A1 to A5 for every subscriber, agreements signed. M7b starts only on a new instruction.
 
 ## PR split (M7a)
