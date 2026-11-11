@@ -1,8 +1,9 @@
 """The account plan API (ADR 0011 sections 2 and 9). Signed in; the POSTs pass the CSRF and
 origin checks of ``classbeat.auth`` (a middleware, so no route can forget them).
 
-- ``GET /api/account/plan``: the plan, its source and end, limits (with the longest class,
-  #496), the feature gates, classes held and the period's end, cost as a share of the cap,
+- ``GET /api/account/plan``: the plan, its quality word (ADR 0031 section 8), its source (an
+  entitlement's, or ``admin`` for a stored admin, section 2) and end, limits (with the longest
+  class, #496), the feature gates, classes held and the period's end, cost as a share of the cap,
   features, and the trial on offer (``null`` when none).
 - ``POST /api/account/redeem {code}``: 10 attempts per user and 30 per IP and hour (ADR 0003
   section 9, reserved before anything else, every attempt counts); 400 ``code_invalid`` for
@@ -23,24 +24,12 @@ from classbeat import auth
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.plans.account import account_plan
+from classbeat.plans.models import GatesOut, LimitsOut
 from classbeat.plans.redeem import redeem_code
 from classbeat.plans.trial import start_trial
 from classbeat.quota.bounds import Bounds
 
 router = APIRouter(prefix="/api/account", tags=["plan"])
-
-
-class LimitsOut(BaseModel):
-    classes_per_month: int
-    revisions_per_class: int
-    concurrent_jobs: int
-    max_class_minutes: int
-
-
-class GatesOut(BaseModel):
-    games: bool
-    races: bool
-    ftp_tests: bool
 
 
 class TrialOut(BaseModel):
@@ -51,6 +40,7 @@ class TrialOut(BaseModel):
 class PlanOut(BaseModel):
     plan: str
     name: str
+    quality: str
     source: str | None
     ends_at: datetime | None
     limits: LimitsOut
@@ -90,6 +80,7 @@ async def get_plan(
     return PlanOut(
         plan=found.plan_id,
         name=found.plan_name,
+        quality=found.quality,
         source=found.source,
         ends_at=found.ends_at,
         limits=LimitsOut(

@@ -37,7 +37,7 @@ class JobSettings(BaseSettings):
     # operation_busy requeues per phase that cost no attempt; after that each one counts (#86).
     job_busy_requeue_limit: int = Field(default=5, ge=0, le=100)
     # Queued and running jobs per user; creation and approval above it are 429 (ADR 0005 s. 2).
-    jobs_per_user: int = Field(default=2, ge=1, le=100)
+    jobs_per_user: int = Field(default=3, ge=1, le=100)
     # Revising a class by chat (ADR 0007 section 4): chat revisions a class may have (the first
     # design is not counted), user requests stored per class, and how many earlier requests
     # along the revision chain go back to the model.

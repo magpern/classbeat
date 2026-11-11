@@ -29,3 +29,18 @@ async def active_email(db: AsyncSession, user_id: UUID) -> str | None:
             select(users.c.email).where(users.c.id == user_id, users.c.disabled_at.is_(None))
         )
     ).scalar_one_or_none()
+
+
+async def stored_admin(db: AsyncSession, user_id: UUID) -> bool:
+    """Whether the stored ``users.role`` of an existing, enabled user is ``admin``; ``False`` for
+    no row (a disabled or missing user), never an error and never ``True`` then. For the plan
+    resolver (ADR 0031 section 2): the plan sets usage limits and grants no authority, so the
+    stored role is enough and no session or MFA state is needed (the worker has none). ``db`` is
+    the caller's session, read in the caller's transaction, so a demotion applies on the next
+    statement."""
+    role = (
+        await db.execute(
+            select(users.c.role).where(users.c.id == user_id, users.c.disabled_at.is_(None))
+        )
+    ).scalar_one_or_none()
+    return role == "admin"

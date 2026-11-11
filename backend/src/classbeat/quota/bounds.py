@@ -34,7 +34,7 @@ from classbeat.plans.resolve import Plan
 
 DEFAULT_CLASSES_MAX: Final = 200
 DEFAULT_COST_MAX: Final = 300_000_000
-DEFAULT_JOBS: Final = 2
+DEFAULT_JOBS: Final = 3
 DEFAULT_REVISIONS: Final = 25
 DEFAULT_CLASS_MINUTES: Final = 180
 DEFAULT_SAVES_PER_HOUR: Final = 30

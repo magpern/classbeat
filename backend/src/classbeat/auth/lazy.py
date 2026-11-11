@@ -81,6 +81,7 @@ EXPORTS: dict[str, str] = {
     "swedebeat_mixes_buckets": "ratelimit",
     "owner_active": "owners",
     "active_email": "owners",
+    "stored_admin": "owners",
     "WipeEvent": "operator",
     "mark_wipe_mailed": "operator",
     "pending_wipe_mails": "operator",

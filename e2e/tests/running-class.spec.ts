@@ -1,5 +1,6 @@
 import { expect, test } from './helpers'
 import { PLAYLISTS, fakeMowl } from './design-helpers'
+import { instructorWithMowl } from './ai-first-helpers'
 import { savedShape, useModelScript, type ModelScript } from './model-script'
 import {
   DRAFT_PLAYLIST_MOWL_ID,
@@ -62,7 +63,8 @@ function expectRunningProgram(program: FakeProgram, script: ModelScript): void {
 }
 
 test('the new-class form: Running hides the bike-only knobs, Cycling brings them back', async ({ page }) => {
-  await signedInWithMowl(page, 'run-form')
+  // The Individual plan: the Free plan has no FTP tests (M7a-2), and this test shows the knob.
+  await instructorWithMowl(page, 'run-form')
   await page.getByRole('link', { name: 'New class' }).click()
   await page.getByRole('link', { name: /^Advanced/ }).click()
   const form = page.getByRole('form', { name: 'New class' })

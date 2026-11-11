@@ -52,6 +52,7 @@ from classbeat.jobs.hub import EventHub
 from classbeat.jobs.routes import enqueue as enqueue_job
 from classbeat.jobs.routes import router as jobs_router
 from classbeat.operations.routes import router as operations_router
+from classbeat.plans.catalogue_routes import router as catalogue_router
 from classbeat.plans.routes import router as plans_router
 from classbeat.playlists.runtime import playlists_runtime
 from classbeat.quota import PlanRevisionPolicy
@@ -212,6 +213,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(usage_router)
     app.include_router(plans_router)
+    app.include_router(catalogue_router)
     app.include_router(account_router)
     app.include_router(settings_router)
     app.include_router(operations_router)

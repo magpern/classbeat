@@ -76,6 +76,7 @@ READ_ONLY = {
     ("GET", "/api/health"): "liveness",
     ("GET", "/api/ready"): "readiness",
     ("GET", "/api/settings/public"): "public settings",
+    ("GET", "/api/plans"): "lists the plans, their limits and quality (no price)",
     ("GET", "/oauth/spotify/callback"): (
         "acts only for a signed-in user (the flow row is bound to the session); without one it "
         "only redirects"

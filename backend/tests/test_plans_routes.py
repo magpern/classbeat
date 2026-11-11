@@ -88,6 +88,7 @@ async def test_a_new_account_is_on_free_with_its_limits(admin: Connection, brows
     assert body == {
         "plan": "free",
         "name": "Free",
+        "quality": "standard",
         "source": None,
         "ends_at": None,
         "limits": {
