@@ -122,6 +122,15 @@ listed key that is already translated or no longer exists. A catch-up translatio
 the Orchestrator opens one when it is not empty, at the latest before a release. ML6 and ML7 merge
 with empty lists.
 
+> **Amendment, 2026-11-11 (from the review of #960; owner).** One exception: a feature PR may
+> shorten an existing Swedish or Danish string **by deletion only**, when it deletes the same
+> sentence or clause from the English string and leaves every remaining word as it was reviewed.
+> Nothing is translated, so nothing new needs the Opus review; the PR's Reviewer reads what is left
+> and checks that it still says what the English now says. If what is left would need a single
+> word changed, reordered or re-inflected to read correctly, the exception does not apply: the PR
+> changes English only and the key goes on the untranslated list, as above. #960 used this for
+> `landing.example.note` before the rule said so.
+
 **9. Security.** The locale is an allowlisted code everywhere (`Any` plus the offered-set allowlist in API models, so an unknown value is ignored and never echoed in a 422; format
 `CHECK ^[a-z]{2}$` on columns, unknown values dropped, never echoed) and never builds a path, import
 specifier, SQL, header name or prompt. `Accept-Language` parsing is bounded (256 bytes, 8 entries).

@@ -78,7 +78,7 @@ export function ProfileChart({
         className="rounded-lg bg-stage p-3 text-stage-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         data-testid="profile"
       >
-        <svg viewBox={`0 0 ${String(W)} ${String(H)}`} role="img" aria-label={summary} className="block h-auto w-full">
+        <svg viewBox={`0 0 ${String(W)} ${String(H)}`} role="img" aria-label={summary} className="profile-plot block h-auto w-full">
           <defs>
             {zones.map((z) => (
               <linearGradient key={z} id={`${id}-z${String(z)}`} x1="0" y1="0" x2="0" y2="1">

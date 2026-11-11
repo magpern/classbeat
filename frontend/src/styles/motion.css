@@ -150,9 +150,10 @@
     }
     /* A chart's plot is drawn from left to right while it enters the screen: complete as soon as
        the plot is fully on screen, so a chart at rest in view is never clipped. Only the picture
-       is clipped, never a caption. */
+       is clipped, never a caption, and only the plot itself (ProfileChart's `profile-plot`), not
+       an icon inside it. */
     svg.draw-in,
-    .draw-in-plot svg {
+    .draw-in-plot .profile-plot {
       animation: draw-in linear both;
       animation-timeline: view();
       animation-range: entry 0% entry 100%;

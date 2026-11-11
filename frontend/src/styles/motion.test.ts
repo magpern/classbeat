@@ -74,11 +74,31 @@ describe('what an entrance may change', () => {
     const sheet = css('motion.css')
     // On scroll, a clip belongs to an <svg> and ends when the picture has fully entered the screen.
     const rule = /([^{}]*)\{[^{}]*animation: draw-in[^{}]*\}/.exec(sheet)
-    expect(rule?.[1]?.trim().split(/,\s*/)).toEqual(['svg.draw-in', '.draw-in-plot svg'])
+    expect(rule?.[1]?.trim().split(/,\s*/)).toEqual(['svg.draw-in', '.draw-in-plot .profile-plot'])
+    // The plot is ProfileChart's outer <svg>, named so that no icon inside it is drawn in too.
+    const chart = readFileSync(join(import.meta.dirname, '../components/classes/ProfileChart.tsx'), 'utf8')
+    expect(chart.match(/profile-plot/g)).toHaveLength(1)
+    expect(chart).toMatch(/<svg viewBox=[^>]*className="profile-plot /)
     expect(rule?.[0]).toContain('animation-timeline: view();')
     expect(rule?.[0]).toContain('animation-range: entry 0% entry 100%;')
     // No other scroll-driven keyframes clip anything.
     for (const name of ['reveal-in', 'card-arrive', 'badge-fill', 'rail-fill']) expect(keyframes(sheet, name), name).not.toMatch(/clip-path/)
+  })
+
+  it('measures only the steps of How it works from a line inside the screen, and they hide nothing', () => {
+    // An inset timeline ends an entrance before its block is fully on screen or, here, starts it
+    // late: a block can rest part-way through it for good. So whatever uses one may only move or
+    // grow; it may never hide, clip or fade, not even a picture.
+    const sheet = css('motion.css')
+    const inset = [...sheet.matchAll(/([^{}]*)\{[^{}]*animation: ([\w-]+)[^{}]*animation-timeline: view\([^)]+\)[^{}]*\}/g)]
+    expect(inset.map((m) => m[1]?.trim())).toEqual(['.fill-step__badge', '.fill-step__card', '.fill-step:not(:last-child)::after'])
+    for (const [, , name] of inset) {
+      const body = keyframes(sheet, name ?? '')
+      expect(body, name).toBeDefined()
+      expect(body, name).not.toMatch(/opacity|clip-path|visibility|display|filter/)
+    }
+    // The rail's fill starts at nothing, which is why it lies over a rail that is always drawn.
+    expect(sheet).toMatch(/\.fill-step:not\(:last-child\)::before,\s*\.fill-step:not\(:last-child\)::after \{[^}]*background: var\(--cb-line\);/)
   })
 
   it('lights a card under its text, not over it', () => {
