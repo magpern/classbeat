@@ -1,6 +1,7 @@
 import { useCallback, useId, useRef, useState, type InputHTMLAttributes, type ReactNode, type Ref } from 'react'
 import { errorMessage } from '../api/messages'
 import { PromptCancelled } from '../auth/prompts'
+import { isUpgradeRefusal } from '../lib/planUpgrade'
 
 interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> {
   label: string
@@ -73,6 +74,8 @@ export function Section({ title, children }: { title: string; children: ReactNod
 interface Action {
   busy: boolean
   error: string | null
+  /** The last failure is a plan limit that a bigger plan would lift: show the upgrade link under it. */
+  upgrade: boolean
   clear: () => void
   /**
    * Runs `task`; resolves to its value, or `undefined` after an error or a cancelled prompt.
@@ -85,6 +88,7 @@ interface Action {
 export function useAction(): Action {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [upgrade, setUpgrade] = useState(false)
   const latest = useRef(0)
 
   const run = useCallback(
@@ -95,11 +99,13 @@ export function useAction(): Action {
       const mine = ++latest.current
       setBusy(true)
       setError(null)
+      setUpgrade(false)
       try {
         return await task()
       } catch (caught) {
         if (mine === latest.current && !(caught instanceof PromptCancelled)) {
           setError(describe(caught))
+          setUpgrade(isUpgradeRefusal(caught))
         }
         return undefined
       } finally {
@@ -111,6 +117,7 @@ export function useAction(): Action {
 
   const clear = useCallback(() => {
     setError(null)
+    setUpgrade(false)
   }, [])
-  return { busy, error, clear, run }
+  return { busy, error, upgrade, clear, run }
 }

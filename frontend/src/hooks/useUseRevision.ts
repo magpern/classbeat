@@ -27,5 +27,5 @@ export function useUseRevision(classId: string, reload: () => void, onDone: () =
         }
       })
   }
-  return { use, error: pick.error, busy: pick.busy }
+  return { use, error: pick.error, upgrade: pick.upgrade, busy: pick.busy }
 }

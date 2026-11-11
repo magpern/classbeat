@@ -5,6 +5,7 @@ import { ChatPanel } from '../components/classes/ChatPanel'
 import { ChangeMusic } from '../components/classes/ChangeMusic'
 import { PlannedSongs } from '../components/classes/PlannedSongs'
 import { DesignInPlace } from '../components/classes/DesignInPlace'
+import { UpgradeLink } from '../components/plans/UpgradeLink'
 import { HandoffStatus } from '../components/classes/HandoffStatus'
 import { HistoryPanel } from '../components/classes/HistoryPanel'
 import { RequestBlock } from '../components/classes/RequestBlock'
@@ -123,7 +124,7 @@ function ClassBody({
   const [tab, setTab] = useState<WorkspaceTab>(summary.currentRevisionId === null && design === null ? 'chat' : 'class')
   const [designed, setDesigned] = useState(false)
   const goTo = useGoToPanel(tab, setTab)
-  const { use, error: useError, busy: using } = useUseRevision(classId, reload, () => {
+  const { use, error: useError, upgrade: useUpgrade, busy: using } = useUseRevision(classId, reload, () => {
     setChosen(null)
   })
 
@@ -205,6 +206,7 @@ function ClassBody({
               <JobNotice job={job} />
             ) : null}
             {useError ? <Notice kind="error">{useError}</Notice> : null}
+            {useUpgrade ? <UpgradeLink /> : null}
             {summary.currentRevisionId === null && design === null ? (
               <Notice>
                 {t('class.page.noVersion')}{' '}

@@ -265,6 +265,30 @@ describe('Save', () => {
     expect(alert).not.toHaveTextContent(/Choose a shorter length|Take that (part )?out and try again/)
   })
 
+  it.each(QUOTA_REFUSALS)('offers the upgrade link only where a bigger plan would lift the %s refusal', async (kind, detail) => {
+    start(
+      { saved: UNSAVED },
+      { 'POST /api/jobs': () => json({ detail: { reason: 'quota', ...detail } }, 409) },
+    )
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Save to MOWL' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Save to MOWL' }))
+    await screen.findByRole('alert')
+    expect(screen.queryByTestId('upgrade') !== null).toBe(['classes', 'length'].includes(kind))
+  })
+
+  it.each(QUOTA_REFUSALS)('offers the same on an Update (%s)', async (kind, detail) => {
+    start(
+      { saved: saved() },
+      { 'POST /api/jobs': () => json({ detail: { reason: 'quota', ...detail } }, 409) },
+    )
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Update workout' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Update workout' }))
+    await screen.findByRole('alert')
+    expect(screen.queryByTestId('upgrade') !== null).toBe(['classes', 'length'].includes(kind))
+  })
+
   it.each(QUOTA_REFUSALS)('words the %s plan refusal of an Update the same way', async (_kind, detail, sentence) => {
     start(
       { saved: saved() },
