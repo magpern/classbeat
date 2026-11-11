@@ -15,7 +15,7 @@ from classbeat import locales, spa, spa_content
 from classbeat.config import Settings
 from spatools import INDEX, fake_content, fake_manifest, fake_text, write_prerender
 from test_web import make_app, make_client
-from test_web_language import BASE, DRAFT, HOSTILE_PATHS, OFFERED, PUBLIC, canonical
+from test_web_language import BASE, HOSTILE_PATHS, OFFERED, PUBLIC, canonical
 
 REPO = Path(__file__).resolve().parents[2]
 NOINDEX = '<meta name="robots" content="noindex">'
@@ -84,12 +84,16 @@ async def test_app_pages_keep_an_empty_root_the_default_head_and_noindex(
 
 
 async def test_a_draft_page_has_the_body_and_title_but_is_noindex_and_unlisted(
-    unreachable_database_url: str, static_dir: Path
+    unreachable_database_url: str, static_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert DRAFT, "publicPaths.json lists /help as a draft until PP8"
+    # PP8 published every path, so the shipped list has no draft: move /terms to draft for this test
+    drafted = "/terms"
+    assert drafted in PUBLIC
+    monkeypatch.setattr(spa_content, "PUBLISHED", tuple(p for p in PUBLIC if p != drafted))
+    monkeypatch.setattr(spa_content, "DRAFT", (drafted,))
     async with make_client(unreachable_database_url, static_dir=static_dir) as client:
         sitemap = (await client.get("/sitemap.xml")).text
-        for page in DRAFT:
+        for page in (drafted,):
             assert page not in sitemap
             for code in OFFERED:
                 html = (await client.get(f"/{code}{page}")).text

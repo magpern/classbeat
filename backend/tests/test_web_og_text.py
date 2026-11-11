@@ -16,7 +16,7 @@ import pytest
 from classbeat import locales, spa, spa_preview
 from classbeat.config import Settings
 from spatools import INDEX, fake_content, fake_text
-from test_web_language import BASE, DRAFT, OFFERED, PUBLIC, alternates, canonical
+from test_web_language import BASE, OFFERED, PUBLIC, alternates, canonical
 
 LOCALE = {"en": "en_US", "sv": "sv_SE", "da": "da_DK"}
 
@@ -47,11 +47,16 @@ def test_a_published_page_previews_its_own_title_and_description(code: str, page
 
 
 def test_pages_that_are_not_published_carry_no_title_description_or_locale_tags() -> None:
-    pages = spa.build_pages(INDEX, Settings(), fake_content())
+    # PP8 published every path, so the shipped list has no draft: draft /terms for this test
+    drafted = "/terms"
+    content = replace(
+        fake_content(), published=tuple(p for p in PUBLIC if p != drafted), draft=(drafted,)
+    )
+    pages = spa.build_pages(INDEX, Settings(), content)
     for page_html in (pages.plain_noindex, *pages.by_lang_noindex.values()):
         assert preview(page_html) == {}
     for code in OFFERED:
-        for page in DRAFT:
+        for page in (drafted,):
             assert preview(pages.public[(code, page)]) == {}
 
 

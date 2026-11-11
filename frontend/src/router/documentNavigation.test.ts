@@ -8,7 +8,7 @@ const CASES: readonly [string, string, boolean, boolean][] = [
   ['/en/privacy', '/en/terms', false, true],
   ['/en/privacy', '/sv/privacy', false, true],
   ['/en', '/sv', false, true],
-  // a draft page counts as public
+  // Help is a public page
   ['/en', '/en/help', false, true],
   ['/en/help', '/en/classes', false, true],
   // public to app and app to public

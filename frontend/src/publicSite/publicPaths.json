@@ -1,6 +1,8 @@
 {
-  "published": ["", "/privacy", "/terms"],
-  "draft": [
+  "published": [
+    "",
+    "/privacy",
+    "/terms",
     "/help",
     "/how-it-works",
     "/features",
@@ -9,5 +11,6 @@
     "/examples/90s-dance-intervals",
     "/examples/endurance-ride",
     "/examples/running-intervals"
-  ]
+  ],
+  "draft": []
 }

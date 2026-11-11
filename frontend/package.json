@@ -14,7 +14,8 @@
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "check:bundle": "node scripts/bundle-size.ts"
+    "check:bundle": "node scripts/bundle-size.ts",
+    "check:published-translations": "node scripts/published-translations.ts"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "5.3.0",

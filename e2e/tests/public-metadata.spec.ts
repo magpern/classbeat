@@ -37,12 +37,12 @@ for (const code of CODES) {
   test.describe(`${words.name}, signed out`, () => {
     test.use({ locale: code })
 
-    test('public to public, language switch, public to draft, to app and back to public', async ({ page }) => {
+    test('public to public, language switch, to app and back to public', async ({ page }) => {
       await page.goto(`/${code}`)
       await settled(page)
       await follow(page, code, '/privacy')
       await follow(page, code, '/terms')
-      await follow(page, code, '/help') // a draft page: prerendered and noindex
+      await follow(page, code, '/help')
 
       await page.getByLabel(words.language).selectOption(other)
       await page.waitForURL((url) => url.pathname === `/${other}/help`)
@@ -94,7 +94,7 @@ for (const code of CODES) {
       await follow(page, code, '/privacy') // Home to public
       await follow(page, code, '/classes') // public to app
       await follow(page, code, '/terms') // app to public
-      await follow(page, code, '/help') // public to draft
+      await follow(page, code, '/help')
 
       await page.goBack()
       await page.waitForURL((url) => url.pathname === `/${code}/terms`)

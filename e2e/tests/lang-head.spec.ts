@@ -54,6 +54,18 @@ for (const code of CODES) {
         })
       })
 
+      test(`${path}: the raw HTML holds one heading in the language of the page (PP8)`, async ({ request }) => {
+        const html = await (await request.get(path)).text()
+        expect(html.match(/<h1\b/g)).toHaveLength(1)
+        expect(html.match(/<title>/g)).toHaveLength(1)
+        const h1 = (text: string) => /<h1\b[^>]*>([\s\S]*?)<\/h1>/.exec(text)?.[1]?.replace(/<[^>]*>/g, '').trim() ?? ''
+        expect(h1(html)).not.toBe('')
+        if (code !== 'en') {
+          const english = await (await request.get(`/en${page}`)).text()
+          expect(h1(html), 'the heading differs from the English one').not.toBe(h1(english))
+        }
+      })
+
       test(`${path}: the link preview names the image, its size and the large card (#854)`, async ({ request }) => {
         const html = await (await request.get(path)).text()
         const og = (key: string) => new RegExp(`<meta (?:property|name)="${key}" content="([^"]*)">`).exec(html)?.[1]
@@ -83,6 +95,18 @@ test.describe('pages that are not for search', () => {
     expect(html).not.toContain('og:image')
   })
 
+  for (const code of CODES) {
+    for (const page of ['/signin', '/signup', '/classes']) {
+      test(`/${code}${page}: an app page stays noindex, with no canonical or hreflang (PP8)`, async ({ request }) => {
+        const html = await (await request.get(`/${code}${page}`)).text()
+        expect(html).toContain('name="robots" content="noindex"')
+        expect(links(html)).toEqual([])
+        expect(html).not.toContain('og:title')
+      })
+    }
+  }
+
+  // PP8 published every path, so `draft` is empty; the loop keeps the checks for the next draft page.
   for (const page of DRAFT) {
     test(`/sv${page}: a draft page is prerendered but noindex, with no canonical, hreflang or preview`, async ({ request }) => {
       const html = await (await request.get(`/sv${page}`)).text()

@@ -543,7 +543,12 @@ npm run build        # typecheck, Vite writes frontend/dist, then the prerender 
   `src/publicSite/noApiClient.test.ts`. The build fails on a render throw, a body without exactly one `<h1>`, any
   `style=`, a `fetch` call, or a published sv/da body equal to the English one (a key on `untranslated.json` does
   not fail it). `check:bundle` also fails if `react-dom/server` is in a shipped script. `src/main.tsx` awaits the
-  catalogue (`src/takeover.ts`) when `#root` has children. Nothing serves `prerender.json` yet (PP3).
+  catalogue (`src/takeover.ts`) when `#root` has children. The server serves it (PP3).
+  `npm run check:published-translations` (PP8, #897; run `npm run prerender` first) reads the keys the prerender
+  recorded for every published page in sv and da and fails if one is on `src/i18n/untranslated.json`. It is on
+  demand, not a CI step, so English-only feature PRs stay possible; the Reviewer of a PR that publishes a page
+  re-runs it, and a catch-up translation PR comes first if later PRs added keys (`src/publishedTranslations.test.ts`
+  tests its rules). Since PP8 all eleven paths are `published` and `draft` is empty; the draft mechanism stays.
 - Passkey UI (#777, ADR 0019 W6): `src/auth/webauthn.ts` (browser calls, feature detection, the `signal*` hints), `passkeyCeremony.ts` (start, browser, finish), `components/account/Passkeys.tsx` (account card), `components/auth/PasskeySignIn.tsx` with `usePasskeyAutofill.ts` (button and conditional mediation, restarted only while the page is visible), `PasskeyReauth.tsx` (re-authentication prompt) and `components/shell/PhoneSignInNotice.tsx` (shown when the client reported `authenticatorAttachment` exactly `cross-platform`; kept in sessionStorage). The public `GET /api/auth/session` carries `passkeys` (the flag) so the anonymous sign-in page knows whether to offer a passkey; `GET /api/auth/events` items carry `passkey` (true when `detail.method` is `passkey`). Tests use `src/test/passkeyMock.ts` (a fake `navigator.credentials`); `src/auth/passkeyCsp.test.ts` scans the files for inline style and script. axe runs in the e2e suite (W7, `e2e/tests/passkey-a11y.spec.ts`), not under vitest.
 - CI runs the same commands in the `frontend` job, then `check:bundle`.
 
