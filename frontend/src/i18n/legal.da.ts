@@ -94,6 +94,8 @@ export const legalDa: Catalogue = {
     'Vi gemmer også nogle få ting i selve browseren, ingen af dem til sporing. Dit sprog (cb-locale) sendes også til os, når du tilmelder dig eller skifter sprog, og gemmes som kontoens sprog. Dit lyse eller mørke tema gemmes som cb-theme, og cb-cookie-notice husker, at du har lukket cookiemeddelelsen. Mens du arbejder i en fane, gemmes formularen, du lige har sendt, kun i den fane, så du kan starte forfra uden at skrive den to gange (classbeat.design-input.*, classbeat.pick-input.* og classbeat.design-again-key.*); den er væk, når du lukker fanen.',
   'privacy.cookies.p4':
     'Sikkerhedstjekket kører i en ramme fra challenges.cloudflare.com og kan bruge cookies eller lokal lagring dér, kun til tjekket; classbeat sætter ingen til det.',
+  'privacy.cookies.p5':
+    'Når du åbner linket til et eksempelhold (Lav et hold som dette), gemmer vi eksemplets korte navn (classbeat.example) i din browser i op til 24 timer. På den måde kan anmodningen stadig udfyldes, efter at du har logget ind, oprettet dig eller tilsluttet MOWL. Den fjernes, så snart holdskærmen har brugt den.',
 
   'privacy.retention.title': 'Hvor længe vi gemmer det',
   'privacy.retention.li1':

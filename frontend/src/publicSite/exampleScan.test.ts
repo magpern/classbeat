@@ -66,7 +66,7 @@ describe('prerendered pages', () => {
     const pages = await prerenderAll()
     for (const lang of ['sv', 'da']) {
       const body = pages[lang]?.['/examples/hill-challenge']?.body ?? ''
-      expect(body).toMatch(/English/)
+      expect(body).toMatch(/English|engelska|engelsk/)
     }
   })
 })

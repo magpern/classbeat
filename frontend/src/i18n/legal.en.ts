@@ -94,6 +94,8 @@ export const legalEn = {
     'We also keep a few things in your browser itself, none of them for tracking. Your language (cb-locale) is also sent to us when you sign up or change it, and kept as your account language. Your light or dark theme is kept as cb-theme, and cb-cookie-notice remembers that you have dismissed the cookie notice. While you work in a tab, the form you just sent is kept in that tab only, so that you can start again without typing it twice (classbeat.design-input.*, classbeat.pick-input.* and classbeat.design-again-key.*); it is gone when you close the tab.',
   'privacy.cookies.p4':
     'The security check runs in a frame from challenges.cloudflare.com and may use cookies or local storage there for the check only; classbeat sets none for it.',
+  'privacy.cookies.p5':
+    'When you open the link of an example class (Create a class like this), we keep the short name of that example (classbeat.example) in your browser for up to 24 hours. That way the request can still be filled in after you sign in, join or connect MOWL. It is removed as soon as the class screen has used it.',
 
   'privacy.retention.title': 'How long we keep it',
   'privacy.retention.li1':

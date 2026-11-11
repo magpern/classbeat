@@ -1,5 +1,5 @@
 import { screen, within } from '@testing-library/react'
-import untranslated from '../i18n/untranslated.json'
+import untranslatedList from '../i18n/untranslated.json'
 import { describe, expect, it } from 'vitest'
 import { en } from '../i18n/en'
 import { helpDa } from '../i18n/help.da'
@@ -8,6 +8,9 @@ import { helpSv } from '../i18n/help.sv'
 import { fakeApi, json } from '../test/fakeApi'
 import { renderAt } from '../test/render'
 import { helpKeys } from './help/structure'
+
+// Typed on purpose: an empty JSON array would otherwise be `never[]`.
+const untranslated: string[] = untranslatedList
 
 describe('help page', () => {
   it('renders signed out with the configured support address', async () => {

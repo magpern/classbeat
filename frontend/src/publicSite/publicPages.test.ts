@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import da from '../i18n/da'
 import { en, type CatalogueKey } from '../i18n/en'
+import sv from '../i18n/sv'
 import { resetCatalogues } from '../i18n/t'
 import { renderPage } from '../prerender/renderPage'
 import { CLASS_LABEL, FEATURE_GROUPS, type Claim } from './claims'
@@ -34,6 +36,11 @@ describe('the song-picking scan', () => {
     ]) {
       expect(mentionsSongPicking(s), s).toBe(true)
     }
+    for (const s of ['Låt oss välja låtarna.', 'Låtarna vi väljer åt dig.', 'Lad os vælge sangene.', 'De sange, vi vælger.']) {
+      expect(mentionsSongPicking(s), s).toBe(true)
+    }
+    expect(mentionsSongPicking('Utforma till din egen spellista från MOWL.')).toBe(false)
+    expect(mentionsSongPicking('Design til din egen playliste fra MOWL.')).toBe(false)
     expect(mentionsSongPicking('Design to your own playlist from MOWL.')).toBe(false)
     expect(mentionsSongPicking('This example has no music. It shows the shape of a class only.')).toBe(false)
   })
@@ -137,6 +144,25 @@ describe('the rendered public pages', () => {
     for (const path of LISTED_PATHS) {
       const { body } = await renderPage('en', path)
       expect(body, path || '/').not.toMatch(/href="\/en\/(how-it-works|features)"/)
+    }
+  })
+})
+
+describe.each([['sv', sv], ['da', da]] as const)('the %s public pages (PP7)', (lang, catalogue) => {
+  it('has every claim note and keeps the Spotify, Client ID and plan note on song-picking claims', () => {
+    for (const claim of CLAIMS) {
+      const note = catalogue[claim.note]
+      if (typeof note !== 'string') throw new Error(`${claim.id} note must be plain text`)
+      if (claim.songPicking === true) expect(hasSongPickingNote(note), claim.id).toBe(true)
+      if (/default off/i.test(claim.evidence)) expect(note, claim.id).toMatch(/aktiver/)
+    }
+  })
+
+  it('makes no song-picking statement without the note, on any public page', async () => {
+    for (const path of [...LISTED_PATHS, ...DRAFT_PATHS]) {
+      const page = await renderPage(lang, path)
+      const visible = `${page.title}. ${page.description}. ${textOf(page.body)}`
+      if (mentionsSongPicking(visible)) expect(hasSongPickingNote(visible), `${lang} ${path || '/'}`).toBe(true)
     }
   })
 })

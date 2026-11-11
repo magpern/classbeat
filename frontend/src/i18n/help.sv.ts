@@ -22,6 +22,9 @@ export const helpSv: Catalogue = {
   'help.design.how.q': 'Hur utformas ett pass?',
   'help.design.how.a':
     'Du beskriver längd, ansträngning och musik: din egen spellista, låtar som vi väljer åt dig, en Swedebeat-mix eller ingen musik. En AI-assistent föreslår intervaller, ansträngningsnivåer och instruktioner. Om du bad om låtar föreslår den också en låtlista som kontrolleras mot MOWL:s tempo och längd. Det kan ta några minuter, och du kan lämna sidan under tiden. Resultatet är ett förslag, så kontrollera passet innan du håller det.',
+  'help.design.songs.q': 'Vad krävs för att välja låtar?',
+  'help.design.songs.a':
+    'En Spotify-anslutning med ditt eget Client ID, och låtval i din plan. Tillgängligt när vi har aktiverat funktionen. Tills dess kan du fortfarande utforma ett pass till en spellista från din MOWL-musik.',
   'help.design.saved.q': 'Vad sparas, och när?',
   'help.design.saved.a':
     'Assistenten föreslår bara. När du godkänner en låtlista skapar vi en privat spellista med de låtarna i din Spotify och lägger till den i din MOWL-musik. Själva passet hamnar i ditt MOWL-konto, privat, först när du trycker på Spara i MOWL på passet. Godkänner du inte en lista i tid skrivs ingenting till din Spotify.',

@@ -1,10 +1,14 @@
 import type { Catalogue } from './en'
 import { helpSv } from './help.sv'
+import { examplesSv } from './examples.sv'
 import { legalSv } from './legal.sv'
+import { publicSv } from './public.sv'
 
 const sv: Catalogue = {
   ...legalSv,
   ...helpSv,
+  ...publicSv,
+  ...examplesSv,
   'language.label': 'Språk',
   'language.follow': 'Följ den här webbläsaren',
   'language.help': 'Språk för sidan och mejlen. ”Följ den här webbläsaren” ger engelska mejl.',
@@ -27,10 +31,16 @@ const sv: Catalogue = {
   'meta.terms.title': 'Villkor | classbeat',
   'meta.terms.description':
     'Villkoren för classbeat: vad du får göra, vad vi gör och vad vi inte lovar.',
+  'meta.landing.description':
+    'Beskriv ett pass i inomhuscykling med egna ord. Vi utformar det, du finslipar det, och det når MOWL först när du godkänner det.',
+  'meta.help.title': 'Hjälp och kontakt | classbeat',
+  'meta.help.description':
+    'Korta svar om att ansluta dina konton, utforma ett pass, planer och gränser, och hur du når oss.',
 
   // Landing page.
   'landing.badge': 'Privat beta',
   'landing.title': 'Ditt pass, i takt med musiken.',
+  'landing.lead': 'Beskriv turen. Vi utformar passet, och du finslipar det.',
   'landing.signUp': 'Prova betan',
   'landing.example.title': 'Ett exempelpass',
   'landing.example.note': 'En påhittad tur på 30 minuter. Låtarna är platshållare.',
@@ -44,7 +54,13 @@ const sv: Catalogue = {
   'landing.example.part.coolDown': 'Nedvarvning',
   'landing.how.title': 'Så fungerar det',
   'landing.how.describe.title': 'Beskriv',
+  'landing.how.describe.text': 'Säg det på ditt sätt. Vi fyller i det du utelämnar.',
+  'landing.how.refine.title': 'Finslipa',
+  'landing.how.refine.text': 'Se passet ritas upp och ändra det genom att chatta.',
+  'landing.how.save.title': 'Godkänn och spara',
+  'landing.how.save.text': 'Det blir ett privat MOWL-träningspass först när du godkänner.',
   'landing.img.describe': 'En instruktör skriver ett klassupplägg i ett block',
+  'landing.img.approve': 'Händer som håller en mobil bredvid en motionscykel',
   'landing.img.save': 'En mobil monterad på en motionscykel',
 
   // Sign in, sign up and the pages behind the mail links.
