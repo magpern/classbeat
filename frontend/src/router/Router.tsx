@@ -15,6 +15,7 @@ import { useLocale } from '../i18n/I18n'
 import { localeFromPath, type Locale } from '../i18n/locales'
 import { needsDocumentLoad } from './documentNavigation'
 import { isAdminPath, localize, neutralize, splitPath, withLanguage } from './paths'
+import { withViewTransition } from './viewTransition'
 
 // A tiny history-API router: the app has a handful of flat routes and no need for a library.
 
@@ -161,7 +162,9 @@ export function Link({ to, onClick, children, ...rest }: LinkProps) {
       return
     }
     event.preventDefault()
-    navigate(to)
+    withViewTransition(() => {
+      navigate(to)
+    })
   }
   return (
     <a {...rest} href={localize(to, lang ?? locale)} onClick={handle}>

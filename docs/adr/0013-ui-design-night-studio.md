@@ -115,6 +115,32 @@ bundled with `@fontsource` (SIL OFL) and served by us, never from a font CDN. Sc
 art (§3). Targets are at least 44 px. Focus rings are visible. Motion is limited to progress
 skeletons and short transitions, and is turned off under `prefers-reduced-motion`.
 
+> **Amendment, 2026-11-11 (issue #956; owner request: the public pages and the app should feel
+> alive, with moving parts).** Motion is no longer limited to skeletons and short transitions. The
+> pages may move (a flywheel in the Landing hero, blocks that rise in on scroll, steps and charts
+> that fill, a profile that plays, rows that slide in, a busy mark, a burst on a saved class, a
+> cross-fade between pages) under these rules:
+>
+> 1. **Public pages move in CSS only.** No script sets a motion state on a prerendered page
+>    (ADR 0030): the prerendered page and the live page are the same markup under the same rules,
+>    so the takeover gate compares equal pictures, and a visitor without script gets the motion
+>    too. Scroll effects use scroll-driven animations (`animation-timeline: view()`) inside
+>    `@supports`; a browser without them shows the page at rest. The pointer's light on a card is
+>    the one script, and it changes nothing until the pointer moves.
+> 2. **Nothing is hidden waiting for motion.** Every block is readable at rest; an effect that
+>    cannot finish (no script, no support, the end of the page) leaves it readable.
+> 3. **Reduced motion still wins.** Under `prefers-reduced-motion: reduce` nothing moves. The
+>    hero flywheel is then a still picture: its wave is paused at its phase, which needs the one
+>    exception to the stylesheet-wide rule in `tailwind.css` (`flywheel.css` says why).
+> 4. **In the app, entrances move and never fade text**, so contrast holds at every moment. The
+>    page cross-fade is the browser's view transition, which fades pictures of the page, not the
+>    page.
+> 5. **Tokens only**, as everywhere: no colour literal, no `style` attribute in prerendered
+>    markup, no new dependency for motion.
+>
+> The stylesheets are `motion.css` (shared and public), `flywheel.css`, `motion-app.css` and
+> `motion-feedback.css`.
+
 **Icons.** `lucide-react`, 2 px stroke. The logo stays classbeat's own: a rounded violet tile with
 four bars.
 

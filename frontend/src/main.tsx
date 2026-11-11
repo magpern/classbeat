@@ -15,6 +15,7 @@ import './styles/captcha.css'
 import './styles/classes.css'
 import './styles/motion.css'
 import './styles/motion-app.css'
+import './styles/motion-feedback.css'
 import './styles/flywheel.css'
 
 // theme-init.js sets the theme before first paint; this keeps it if that script was blocked.

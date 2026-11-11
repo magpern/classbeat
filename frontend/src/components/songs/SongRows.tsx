@@ -5,7 +5,7 @@ import { Chip, ChipButton } from '../ui/chip'
 import { ListRow } from '../ui/list-row'
 import { CoverArt } from './CoverArt'
 
-const LIST = 'm-0 flex list-none flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface p-0'
+const LIST = 'song-list m-0 flex list-none flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface p-0'
 // On a phone the action drops under the text, so a long title keeps the whole width of the row.
 const ROW = 'gap-3 px-4 max-sm:flex-wrap sm:gap-4 sm:px-5'
 
