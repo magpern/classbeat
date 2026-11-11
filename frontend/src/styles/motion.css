@@ -1,0 +1,165 @@
+/*
+ * Motion for the Landing page: reveal on scroll, card glow, the hero's beat field, the self-drawing
+ * profile. Colour comes from tokens only. Every moving rule is switched off under
+ * prefers-reduced-motion (the last block), and the hidden states below exist only once a script
+ * has set data-reveal / data-live, so the prerender and a visitor without script see everything.
+ */
+
+:root {
+  --cb-ease: cubic-bezier(0.2, 0.7, 0.1, 1);
+}
+
+/* The hero's flywheel: behind the scrim (imagery.css), so the text column stays clean. */
+.beat-field {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* A pulsing dot in the badge. */
+.pulse-dot {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse-dot 2.3s ease-out infinite;
+}
+@keyframes pulse-dot {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 0.6rem transparent;
+  }
+}
+
+/* A card that lifts on hover and is lit by the pointer (useSpotlight sets --mx and --my). */
+.glow-card {
+  position: relative;
+  transition:
+    transform 0.3s var(--cb-ease),
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+.glow-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(
+    16rem circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in srgb, var(--cb-brand) 20%, transparent),
+    transparent 70%
+  );
+}
+@media (hover: hover) {
+  .glow-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--cb-brand) 55%, var(--cb-line));
+    box-shadow: 0 18px 40px -24px color-mix(in srgb, var(--cb-brand) 70%, transparent);
+  }
+  .glow-card:hover::before {
+    opacity: 1;
+  }
+}
+
+/* The class profile draws itself: bars rise one after another, then a playhead sweeps across and
+   lights each bar as it passes. 14 s a loop, started when the chart scrolls into view. */
+.mini-bar {
+  transition: transform 0.7s var(--cb-ease) calc(var(--i, 0) * 40ms);
+}
+.mini-playhead {
+  display: none;
+}
+.mini-sweep[data-live='true']:not([data-reveal='hidden']) .mini-bar {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  opacity: 0.55;
+  animation: mini-lit 14s linear infinite;
+  animation-delay: calc(0.9s + var(--s, 0) * 14s);
+}
+.mini-sweep[data-live='true']:not([data-reveal='hidden']) .mini-playhead {
+  display: block;
+  stroke: var(--cb-stage-text);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.8;
+  animation: mini-sweep 14s linear 0.9s infinite;
+}
+.mini-sweep[data-reveal='hidden'] .mini-bar {
+  transform: scaleY(0);
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+@keyframes mini-lit {
+  0% {
+    opacity: 1;
+  }
+  45%,
+  100% {
+    opacity: 0.55;
+  }
+}
+@keyframes mini-sweep {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(200px);
+  }
+}
+
+/* Reveal on scroll (useReveal): a block below the first screen starts hidden and rises in. */
+[data-reveal] {
+  transition:
+    opacity 0.9s var(--cb-ease),
+    transform 0.9s var(--cb-ease),
+    filter 0.9s var(--cb-ease);
+  transition-delay: var(--reveal-delay, 0s);
+}
+[data-reveal='hidden'] {
+  opacity: 0;
+  transform: translateY(1.75rem);
+  filter: blur(4px);
+}
+[data-reveal='in'] {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: none;
+  }
+  .glow-card:hover {
+    transform: none;
+  }
+  .mini-bar,
+  .mini-sweep[data-live='true'] .mini-bar,
+  .mini-sweep[data-reveal='hidden'] .mini-bar {
+    opacity: 1;
+    transform: none;
+    animation: none;
+    transition: none;
+  }
+  .mini-sweep[data-live='true'] .mini-playhead {
+    display: none;
+  }
+  .pulse-dot {
+    animation: none;
+  }
+}
