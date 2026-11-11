@@ -187,7 +187,7 @@ async def test_other_pages_are_noindex_and_the_unprefixed_language_is_untouched(
             ("/da/signin", "da"),
             ("/en/admin", "en"),
             ("/sv/privacy/extra", "sv"),
-            ("/sv/help", "sv"),
+            ("/sv/signup", "sv"),
             ("/", "en"),
             ("/classes", "en"),
             ("/privacy", "en"),
@@ -338,7 +338,7 @@ async def test_the_sitemap_follows_the_enabled_languages(
 ) -> None:
     async with make_client(unreachable_database_url, static_dir=static_dir, locales="en") as client:
         xml = (await client.get("/sitemap.xml")).text
-        assert xml.count("<url>") == 3
+        assert xml.count("<url>") == len(PUBLIC)
         assert "/sv" not in xml
         assert "/da" not in xml
 

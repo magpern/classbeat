@@ -43,9 +43,11 @@ describe('translated bodies', () => {
 })
 
 describe('the public paths', () => {
-  it('publish the three legal-and-landing pages and keep Help and the examples drafts until PP8', () => {
-    expect([...PUBLISHED_PATHS]).toEqual(['', '/privacy', '/terms'])
-    expect([...DRAFT_PATHS]).toEqual([
+  it('publish all eleven public pages and keep no draft (PP8)', () => {
+    expect([...PUBLISHED_PATHS]).toEqual([
+      '',
+      '/privacy',
+      '/terms',
       '/help',
       '/how-it-works',
       '/features',
@@ -55,6 +57,7 @@ describe('the public paths', () => {
       '/examples/endurance-ride',
       '/examples/running-intervals',
     ])
+    expect([...DRAFT_PATHS]).toEqual([])
   })
 
   it('each have a title and a description key', () => {

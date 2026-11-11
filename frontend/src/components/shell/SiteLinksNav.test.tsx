@@ -17,11 +17,22 @@ function html(node: React.ReactNode): string {
 }
 
 describe('the links to the new pages', () => {
+  const LEGAL = ['', '/privacy', '/terms']
+
   it('are hidden while their paths are not published', () => {
-    expect(visibleSiteLinks()).toEqual([])
-    expect(visibleSiteLinks(['', '/privacy', '/terms'])).toEqual([])
-    expect(html(<SiteLinksNav />)).toBe('')
-    expect(html(<LegalFooter />)).not.toMatch(/how-it-works|features/)
+    expect(visibleSiteLinks(LEGAL)).toEqual([])
+    expect(html(<SiteLinksNav published={LEGAL} />)).toBe('')
+    expect(html(<LegalFooter published={LEGAL} />)).not.toMatch(/how-it-works|features|examples/)
+  })
+
+  it('show all three links, in the plan order, now that the pages are published (PP8)', () => {
+    expect(visibleSiteLinks().map((l) => l.path)).toEqual(['/how-it-works', '/examples', '/features'])
+    const header = html(<SiteLinksNav />)
+    const footer = html(<LegalFooter />)
+    for (const path of ['/how-it-works', '/examples', '/features']) {
+      expect(header).toContain(`href="/en${path}"`)
+      expect(footer).toContain(`href="/en${path}"`)
+    }
   })
 
   it('show one link per published path, in the header and the footer', () => {

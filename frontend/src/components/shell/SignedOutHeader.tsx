@@ -11,7 +11,9 @@ export function SignedOutHeader({ ready, offered }: { ready: boolean; offered: r
     <header className="border-b border-line bg-surface">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
         <BrandLink />
-        <SiteLinksNav className="flex flex-wrap gap-x-4" />
+        {/* From sm up only: on a phone the footer carries these links, so the header row (brand and
+            account controls) is the one it always was and cannot shift when the nav arrives (takeover gate). */}
+        <SiteLinksNav className="hidden flex-wrap gap-x-4 sm:flex" />
         {ready ? (
           <nav aria-label={t('shell.nav.account')} className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <LanguagePicker offered={offered} />

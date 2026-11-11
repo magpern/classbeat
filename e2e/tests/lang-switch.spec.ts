@@ -1,11 +1,13 @@
 import { expect, test } from '@playwright/test'
 import { CODES, WORDS, whereWithHash, type Code } from './lang-url-helpers'
+import { PUBLISHED } from './public-paths'
 
 // #719 (ADR 0027 section 2): the picker is the one writer of the language, and it goes to the same
 // page under the new prefix, keeping the query and the fragment. Signed out here; the picker saves
 // `cb-locale` only. Every language switches to every other.
 
-const PAGES = ['/privacy', '/terms', '/signin?return_to=%2Fclasses#top']
+// every published page except Landing (PP8, #897), then an app page with a query and a fragment
+const PAGES = [...PUBLISHED.filter((page) => page !== ''), '/signin?return_to=%2Fclasses#top']
 
 for (const from of CODES) {
   for (const to of CODES.filter((code) => code !== from)) {

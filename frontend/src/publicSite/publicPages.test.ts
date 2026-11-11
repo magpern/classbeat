@@ -6,7 +6,7 @@ import { resetCatalogues } from '../i18n/t'
 import { renderPage } from '../prerender/renderPage'
 import { CLASS_LABEL, FEATURE_GROUPS, type Claim } from './claims'
 import { CONNECTIONS, STEPS } from './howItWorks'
-import { DRAFT_PATHS, LISTED_PATHS } from './publicPaths'
+import { DRAFT_PATHS, LISTED_PATHS, PUBLISHED_PATHS } from './publicPaths'
 import { hasSongPickingNote, mentionsSongPicking, textOf } from './songPickingScan'
 
 // PP4 (#893): the claim table is data, every claim has a class and a visible note, and no public page
@@ -98,10 +98,12 @@ describe('the claim table', () => {
   })
 })
 
-describe('the new pages are drafts', () => {
-  it('lists How it works and Features as drafts, not published', () => {
-    expect([...DRAFT_PATHS].slice(0, 3)).toEqual(['/help', '/how-it-works', '/features'])
-    expect([...DRAFT_PATHS].slice(3).every((path) => path.startsWith('/examples'))).toBe(true)
+describe('the new pages are published (PP8)', () => {
+  it('lists Help, How it works, Features and the examples as published, with no draft left', () => {
+    expect([...PUBLISHED_PATHS].slice(3, 7)).toEqual(['/help', '/how-it-works', '/features', '/examples'])
+    expect([...PUBLISHED_PATHS].slice(7).every((path) => path.startsWith('/examples/'))).toBe(true)
+    expect(PUBLISHED_PATHS).toHaveLength(11)
+    expect([...DRAFT_PATHS]).toEqual([])
   })
 })
 
@@ -140,11 +142,16 @@ describe('the rendered public pages', () => {
     expect(page.body.match(/<h1[ >]/g)).toHaveLength(1)
   })
 
-  it('does not link the draft pages from any page while they are drafts', async () => {
+  it('links How it works, Examples and Features from every page, and leaves no page orphaned', async () => {
+    const linked = new Set<string>()
     for (const path of LISTED_PATHS) {
       const { body } = await renderPage('en', path)
-      expect(body, path || '/').not.toMatch(/href="\/en\/(how-it-works|features)"/)
+      for (const target of ['/how-it-works', '/examples', '/features']) {
+        expect(body, `${path || '/'} links ${target}`).toContain(`href="/en${target}"`)
+      }
+      for (const [, href] of body.matchAll(/href="\/en([^"#?]*)"/g)) linked.add(href ?? '')
     }
+    for (const path of LISTED_PATHS) expect(linked.has(path), `${path || '/'} is linked from a public page`).toBe(true)
   })
 })
 

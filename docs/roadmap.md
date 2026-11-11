@@ -2,8 +2,9 @@
 
 ## Amendment 19 (2026-11-10, owner decisions: public pages; ADR 0030)
 
-The owner approved and froze the plan on 2026-11-10. **Implementation is deferred:** no PR from PP1
-to PP8 starts without a new explicit instruction from the owner. The design is
+The owner approved and froze the plan on 2026-11-10. Implementation was deferred until the owner's
+instruction of 2026-11-11 to finish all development as fast as possible (deploy excluded); PP1 to PP7
+are merged and PP8 (publication) is in review, held for the owner's final visual review. The design is
 [ADR 0030](adr/0030-public-pages-prerender.md); the frozen plan (revision 2) is
 [docs/plans/public-pages.md](plans/public-pages.md).
 

@@ -1,10 +1,11 @@
 # ADR 0030: Public pages: build-time prerender, client takeover and document navigation (#755)
 
 Status: Accepted (owner approved the frozen plan on 2026-11-10, roadmap Amendment 19). The work is
-in milestone PP: PP1 to PP5 are merged: the prerender and the takeover (PP1, PP2), the server
+in milestone PP: PP1 to PP7 are merged: the prerender and the takeover (PP1, PP2), the server
 injection, the one path list and document navigation (PP3, #892), How it works and Features (PP4,
-#893) and the examples with the takeover spec (PP5, #894), all as drafts (noindex, nothing public).
-PP6 to PP8 are not started; publication (PP8) also waits for the sv/da translation (PP7).
+#893), the examples with the takeover spec (PP5, #894), Create a class like this (PP6) and the sv/da
+translation (PP7). PP8 (#897) moves the eight draft paths to `published`; it is held for the owner's
+final visual review, and nothing is public until a release carrying it is deployed.
 The plan and the PR split are in [docs/plans/public-pages.md](../plans/public-pages.md).
 
 Amends: [ADR 0027](0027-language-prefixed-urls.md) §6 (the fixed list of three public pages, and head
