@@ -62,7 +62,7 @@ export function ExamplePage({ example }: { example: Example }) {
           {t('examples.class.title')}
         </h2>
         <p className="m-0 text-muted">{t('examples.class.lead')}</p>
-        <div className="draw-in">
+        <div className="draw-in-plot">
           <ProfileChart segments={example.segments} title={title} songs={null} />
         </div>
         <ExampleTable segments={example.segments} title={title} running={running} />

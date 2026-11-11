@@ -1,7 +1,7 @@
 /*
- * Feedback in the app: the busy mark and good news. Like motion-app.css these never fade text;
- * tailwind.css switches the animations off under prefers-reduced-motion. `bar-beat` is
- * motion-app.css's.
+ * Feedback in the app: the busy mark and good news. Like motion-app.css these never fade text and
+ * start every animation under `prefers-reduced-motion: no-preference` (the block at the end).
+ * `bar-beat` is motion-app.css's.
  */
 
 /* Busy: three bars beat beside the text that says what is being done (BeatBars). */
@@ -19,22 +19,12 @@
   border-radius: 1.5px;
   background: var(--cb-brand);
   transform-origin: 50% 100%;
-  animation: bar-beat 0.9s ease-in-out infinite;
-}
-.beat-bars span:nth-child(2) {
-  animation-delay: -0.3s;
-}
-.beat-bars span:nth-child(3) {
-  animation-delay: -0.6s;
 }
 
 /* Good news (Cheer): the notice pops and zone-coloured bits fly out once. At rest the bits are
    invisible, so nothing is drawn under reduced motion or after the burst. */
 .cheer {
   position: relative;
-}
-.cheer > .notice {
-  animation: notice-pop 0.45s var(--cb-ease);
 }
 .cheer__bits {
   position: absolute;
@@ -48,7 +38,6 @@
   height: 0.75rem;
   border-radius: 2px;
   opacity: 0;
-  animation: cheer 1.1s var(--cb-ease) 0.1s;
 }
 .cheer__bits span:nth-child(1) {
   --x: -2.6rem;
@@ -109,6 +98,24 @@
   --y: -0.6rem;
   --r: -60deg;
   background: var(--cb-zone-4);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .beat-bars span {
+    animation: bar-beat 0.9s ease-in-out infinite;
+  }
+  .beat-bars span:nth-child(2) {
+    animation-delay: -0.3s;
+  }
+  .beat-bars span:nth-child(3) {
+    animation-delay: -0.6s;
+  }
+  .cheer > .notice {
+    animation: notice-pop 0.45s var(--cb-ease);
+  }
+  .cheer__bits span {
+    animation: cheer 1.1s var(--cb-ease) 0.1s;
+  }
 }
 
 @keyframes notice-pop {

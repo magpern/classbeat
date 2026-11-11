@@ -9,7 +9,10 @@
  * moves sits under `prefers-reduced-motion: no-preference`.
  *
  * Text is moved, never faded or recoloured: a block that rests half-way through its entrance (at
- * the bottom edge of the screen) must keep its full contrast. Only pictures change opacity.
+ * the bottom edge of the screen) must keep its full contrast. Only pictures change opacity or are
+ * clipped, and a block that is fully on screen is fully shown: an entrance ends at `entry 100%`.
+ * The steps of How it works are the one effect measured from a line inside the screen, and they
+ * hide nothing.
  */
 
 :root {
@@ -26,9 +29,11 @@
   background: currentColor;
 }
 
-/* A card that lifts on hover and is lit by the pointer (useSpotlight sets --mx and --my). */
+/* A card that lifts on hover and is lit by the pointer (useSpotlight sets --mx and --my). The
+   light lies over the card's background and under its content, so text keeps its contrast. */
 .glow-card {
   position: relative;
+  isolation: isolate;
   transition:
     transform 0.3s var(--cb-ease),
     border-color 0.3s ease,
@@ -38,7 +43,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: -1;
   border-radius: inherit;
   pointer-events: none;
   opacity: 0;
@@ -143,10 +148,13 @@
     .reveal-row > .reveal:nth-child(3) {
       --rise: 5.5rem;
     }
-    /* A chart is drawn from left to right as it comes up the screen. */
-    .draw-in {
+    /* A chart's plot is drawn from left to right while it enters the screen: complete as soon as
+       the plot is fully on screen, so a chart at rest in view is never clipped. Only the picture
+       is clipped, never a caption. */
+    svg.draw-in,
+    .draw-in-plot svg {
       animation: draw-in linear both;
-      animation-timeline: view(block 0% 15%);
+      animation-timeline: view();
       animation-range: entry 0% entry 100%;
     }
     /* The steps fill as they cross a line 65% down the screen: the number grows a halo, the card
