@@ -8,8 +8,9 @@ import { sql } from './song-helpers'
 
 export const LONG = { timeout: 90_000 }
 
-/** A signed-in user with MOWL connected on the instructor plan (60 minutes, games allowed). The
- *  free plan has no games and 30 minutes, so the suite's requests need the plan above it. */
+/** A signed-in user with MOWL connected on the instructor plan (Individual: 75 minutes, games and FTP
+ *  tests allowed). The free plan has no games, no FTP tests and 30 minutes, so the suite's requests
+ *  need the plan above it. */
 export async function instructorWithMowl(page: Page, tag: string): Promise<void> {
   await signedInWithMowl(page, tag)
   const me = (await (await page.request.get('/api/auth/session')).json()) as { user?: { id?: string } }
@@ -55,12 +56,13 @@ export async function pickMusic(page: Page, title: string): Promise<void> {
 /**
  * Start a class from words: read with `reading`, then design with `design`. Returns once the
  * workspace shows the finished class. `afterReading` runs between the two, with the hand-off held.
+ * `withinPlan`: the request is over the plan, so the page asks first and this chooses "Design within my plan".
  */
 export async function designFromWords(
   page: Page,
   request: string,
   scripts: { reading: ModelScript; design: ModelScript },
-  options: { music?: string; afterReading?: () => Promise<void> | void } = {},
+  options: { music?: string; afterReading?: () => Promise<void> | void; withinPlan?: boolean } = {},
 ): Promise<string> {
   useModelScript(scripts.reading)
   const held = await holdHandoff(page)
@@ -72,5 +74,7 @@ export async function designFromWords(
   await options.afterReading?.()
   useModelScript(scripts.design)
   held.release()
+  // A request over the plan waits for a choice before the design job starts (M7a-4).
+  if (options.withinPlan === true) await page.getByRole('button', { name: 'Design within my plan' }).click()
   return page.url()
 }

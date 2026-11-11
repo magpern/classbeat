@@ -16,7 +16,7 @@ import {
   stepUp,
 } from './m5-helpers'
 
-// M5 T1 (#228, ADR 0011 sections 6 and 10): an admin with TOTP grants Instructor and the user's
+// M5 T1 (#228, ADR 0011 sections 6 and 10): an admin with TOTP grants Individual and the user's
 // limit rises at once; the admin refunds a committed credit; both are in the audit log; a redeem
 // code raises a second user's limit. Fakes only (the fake MOWL, the FakeProvider).
 test.setTimeout(420_000)
@@ -35,7 +35,7 @@ test('an admin grants a plan, refunds a credit, and a code raises another limit'
   await expectClasses(user.page, 3, FREE.classes)
   expect((await createDesign(user.context, user.connectionId)).status).toBe(409)
 
-  // The admin finds the user and grants Instructor (thirty classes, two jobs at a time).
+  // The admin finds the user and grants Individual (nine classes, two jobs at a time).
   const page = admin.page
   await page.goto('/admin/users')
   await page.getByLabel('Email starts with').fill(user.email.split('@')[0]!)
@@ -44,7 +44,7 @@ test('an admin grants a plan, refunds a credit, and a code raises another limit'
   await expect(page.getByTestId('admin-user-plan')).toContainText('Plan: Free')
   await page.getByRole('form', { name: 'Grant' }).getByRole('button', { name: 'Grant' }).click()
   await stepUp(page, secret)
-  await expect(page.getByTestId('admin-user-plan')).toContainText('Plan: Instructor')
+  await expect(page.getByTestId('admin-user-plan')).toContainText('Plan: Individual')
 
   // At once: the user's page shows the new limit and two creates start together.
   await expectClasses(user.page, 3, INSTRUCTOR.classes)
@@ -100,7 +100,7 @@ test('an admin grants a plan, refunds a credit, and a code raises another limit'
   await other.page.getByLabel('Redeem a code').fill(code)
   await other.page.getByRole('button', { name: 'Redeem', exact: true }).click()
   await expect(other.page.getByText('The code is redeemed.')).toBeVisible()
-  await expect(other.page.getByTestId('plan-name')).toContainText('Instructor')
+  await expect(other.page.getByTestId('plan-name')).toContainText('Individual')
   await expectClasses(other.page, 0, INSTRUCTOR.classes)
 
   for (const u of [admin, user, other]) await u.context.close()

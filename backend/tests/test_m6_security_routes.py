@@ -132,6 +132,8 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/jobs/{job_id}/approve"): "owned",
     ("GET", "/api/usage"): "session",
     ("GET", "/api/account/plan"): "session",
+    # ADR 0031 (M7a-2): the plan catalogue, anonymous and read-only, with no price.
+    ("GET", "/api/plans"): "public",
     ("POST", "/api/account/redeem"): "session",
     ("POST", "/api/account/trial"): "session",
     ("GET", "/api/mail/preferences"): "session",

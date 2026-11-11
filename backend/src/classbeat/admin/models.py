@@ -39,6 +39,7 @@ from classbeat.agent import catalog
 from classbeat.config import Settings
 from classbeat.models import routes as model_routes
 from classbeat.models.routes import RouteRefused
+from classbeat.plans.quality_model import quality_for
 
 router = admin_router()
 
@@ -68,6 +69,7 @@ class PlanRouteOut(Out):
     name: str
     rank: int
     route_key: str
+    quality: str  # the word users see for this plan (ADR 0031 section 8)
 
 
 class ResultOut(Out):
@@ -182,7 +184,13 @@ async def read_models(request: Request, actor: AdminActor) -> ModelsOut:
         plans = (await session.execute(_PLANS)).all()
         return ModelsOut(
             plans=[
-                PlanRouteOut(id=p.id, name=p.name, rank=p.rank, route_key=p.route_key)
+                PlanRouteOut(
+                    id=p.id,
+                    name=p.name,
+                    rank=p.rank,
+                    route_key=p.route_key,
+                    quality=quality_for(p.id),
+                )
                 for p in plans
             ],
             routes=[_route(v) for v in await model_routes.list_routes(session)],

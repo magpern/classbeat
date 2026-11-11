@@ -1,5 +1,5 @@
 import { get, post } from './client'
-import { count, flag, isObject, object, optionalText, strings, text } from './decode'
+import { count, flag, isObject, object, optionalText, strings, text, type JsonObject } from './decode'
 
 // The account plan API (ADR 0011 section 9, backend/src/classbeat/plans/routes.py) and the public
 // settings. Server text is data: it is decoded into typed fields and rendered as text only.
@@ -24,9 +24,13 @@ export interface TrialOffer {
   days: number
 }
 
+/** What the plan's model route is called to users (ADR 0031 section 8); never a model name. */
+export type Quality = 'standard' | 'better' | 'best'
+
 export interface Plan {
   plan: string
   name: string
+  quality: Quality
   /** `grant`, `code`, `trial` or `subscription`; null for the free plan without an entitlement. */
   source: string | null
   endsAt: string | null
@@ -40,6 +44,12 @@ export interface Plan {
   trial: TrialOffer | null
 }
 
+function decodeQuality(item: JsonObject): Quality {
+  const word = text(item, 'quality')
+  if (word === 'standard' || word === 'better' || word === 'best') return word
+  throw new Error('quality: unexpected value')
+}
+
 export function decodePlan(value: unknown): Plan {
   const item = object(value, 'plan')
   const limits = object(item.limits, 'limits')
@@ -49,6 +59,7 @@ export function decodePlan(value: unknown): Plan {
   return {
     plan: text(item, 'plan'),
     name: text(item, 'name'),
+    quality: decodeQuality(item),
     source: optionalText(item, 'source'),
     endsAt: optionalText(item, 'ends_at'),
     limits: {
@@ -112,4 +123,43 @@ export function decodeSupportAddress(value: unknown): string | null {
 
 export async function getSupportAddress(signal?: AbortSignal): Promise<string | null> {
   return decodeSupportAddress(await get('/api/settings/public', signal))
+}
+
+/** One row of the public catalogue (`GET /api/plans`): no price, works signed out. */
+export interface CataloguePlan {
+  id: string
+  name: string
+  rank: number
+  quality: Quality
+  limits: Limits
+  gates: Gates
+}
+
+export function decodeCataloguePlan(value: unknown): CataloguePlan {
+  const item = object(value, 'plan')
+  const limits = object(item.limits, 'limits')
+  const gates = object(item.gates, 'gates')
+  return {
+    id: text(item, 'id'),
+    name: text(item, 'name'),
+    rank: count(item, 'rank'),
+    quality: decodeQuality(item),
+    limits: {
+      classesPerMonth: count(limits, 'classes_per_month'),
+      revisionsPerClass: count(limits, 'revisions_per_class'),
+      concurrentJobs: count(limits, 'concurrent_jobs'),
+      maxClassMinutes: count(limits, 'max_class_minutes'),
+    },
+    gates: {
+      games: flag(gates, 'games'),
+      races: flag(gates, 'races'),
+      ftpTests: flag(gates, 'ftp_tests'),
+    },
+  }
+}
+
+export async function getPlanCatalogue(signal?: AbortSignal): Promise<CataloguePlan[]> {
+  const body = object(await get('/api/plans', signal), 'plans')
+  if (!Array.isArray(body.plans)) throw new Error('plans: expected a list')
+  return body.plans.map(decodeCataloguePlan)
 }

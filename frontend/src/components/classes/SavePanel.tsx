@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useT } from '../../i18n/I18n'
 import { Notice } from '../forms'
+import { UpgradeLink } from '../plans/UpgradeLink'
 import { Button } from '../ui/button'
 import { ConfirmButtons, Outcome, WriteRun } from './SaveProgress'
 import type { SaveFlow } from './useSaveFlow'
@@ -83,6 +84,7 @@ export function SaveNotices({ flow }: { flow: SaveFlow }) {
         />
       ) : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
+      {action.upgrade ? <UpgradeLink /> : null}
       {flow.lost ? <Notice>{t('class.save.lost')}</Notice> : null}
       {flow.run ? (
         <WriteRun

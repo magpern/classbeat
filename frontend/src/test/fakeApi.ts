@@ -32,6 +32,7 @@ export const USAGE_NONE = {
 export const PLAN_FREE = {
   plan: 'free',
   name: 'Free',
+  quality: 'standard',
   source: null,
   ends_at: null,
   limits: { classes_per_month: 3, revisions_per_class: 10, concurrent_jobs: 1, max_class_minutes: 180 },
@@ -41,6 +42,35 @@ export const PLAN_FREE = {
   cost_share: 0.25,
   features: [],
   trial: null,
+}
+
+export const PLAN_CATALOGUE = {
+  plans: [
+    {
+      id: 'free',
+      name: 'Free',
+      rank: 0,
+      quality: 'standard',
+      limits: { classes_per_month: 3, revisions_per_class: 3, concurrent_jobs: 1, max_class_minutes: 30 },
+      gates: { games: false, races: true, ftp_tests: false },
+    },
+    {
+      id: 'instructor',
+      name: 'Individual',
+      rank: 1,
+      quality: 'better',
+      limits: { classes_per_month: 9, revisions_per_class: 10, concurrent_jobs: 2, max_class_minutes: 75 },
+      gates: { games: true, races: true, ftp_tests: true },
+    },
+    {
+      id: 'pro',
+      name: 'Professional',
+      rank: 2,
+      quality: 'best',
+      limits: { classes_per_month: 30, revisions_per_class: 20, concurrent_jobs: 3, max_class_minutes: 180 },
+      gates: { games: true, races: true, ftp_tests: true },
+    },
+  ],
 }
 
 const ANONYMOUS = { authenticated: false, csrf_token: 'csrf-anon' }
@@ -70,6 +100,7 @@ export function fakeApi(routes: Record<string, Handler | object | string>) {
     'GET /api/external-operations': { operations: [] },
     'GET /api/usage': USAGE_NONE,
     'GET /api/account/plan': PLAN_FREE,
+    'GET /api/plans': PLAN_CATALOGUE,
     'GET /api/settings/public': { banner: null, signup_mode: 'invite', support_address: 'support@classbeat.eu' },
     'GET /api/music/playlist-covers': { covers: [] },
     'GET /api/mail/preferences': { unsubscribed_all: false, opted_out: [] },

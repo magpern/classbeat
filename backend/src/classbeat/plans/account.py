@@ -6,7 +6,8 @@ One read-only ``user_session`` (row security answers for the user; every stateme
 month's model cost as a share of the plan's cap (never a dollar figure), the effective features
 and whether a trial is available.
 
-**Source and end.** Among the active entitlements naming the effective plan, the one that lasts
+**Source and end.** For a stored admin the source is ``admin`` and there is no end (ADR 0031
+section 2). Otherwise, among the active entitlements naming the effective plan, the one that lasts
 longest (no end first, then the latest end); ``None`` for ``free`` without an entitlement.
 Overlapping entitlements don't add up, so that end is when the plan stops applying, unless a
 lower-ranked one takes over.
@@ -31,7 +32,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.context import UserContext
 from classbeat.db import user_session
-from classbeat.plans.resolve import effective_features, effective_plan
+from classbeat.plans.quality_model import Quality, quality_for
+from classbeat.plans.resolve import effective_features, resolve_plan
 from classbeat.plans.trial import TrialOffer, had_trial, trial_offer
 from classbeat.quota.bounds import Bounds, effective
 
@@ -76,6 +78,7 @@ class Gates:
 class AccountPlan:
     plan_id: str
     plan_name: str
+    quality: Quality
     source: str | None
     ends_at: datetime | None
     limits: Limits
@@ -97,9 +100,14 @@ def cost_share(cost_micros: int, cap_micros: int) -> float:
 async def _account_plan(
     db: AsyncSession, ctx: UserContext, *, bounds: Bounds, trial_days_max: int
 ) -> AccountPlan:
-    plan = await effective_plan(db, ctx)
+    plan, admin = await resolve_plan(db, ctx)
     features = await effective_features(db, ctx)
-    source = (await db.execute(_SOURCE, {"o": ctx.user_id, "p": plan.id})).one_or_none()
+    # A stored admin's plan is the role's, not an entitlement's: source ``admin``, no end.
+    source = (
+        None
+        if admin
+        else (await db.execute(_SOURCE, {"o": ctx.user_id, "p": plan.id})).one_or_none()
+    )
     span = (await db.execute(_BOUNDS)).one()
     held = (await db.execute(_HELD, {"o": ctx.user_id})).scalar_one()
     cost = (
@@ -110,7 +118,8 @@ async def _account_plan(
     return AccountPlan(
         plan_id=plan.id,
         plan_name=plan.name,
-        source=None if source is None else source.source,
+        quality=quality_for(plan.id),
+        source="admin" if admin else (None if source is None else source.source),
         ends_at=None if source is None else source.ends_at,
         limits=Limits(
             classes_per_month=limits.classes_per_month,
