@@ -5,6 +5,10 @@ import { LanguagePicker } from '../LanguagePicker'
 import { BrandLink } from './BrandLink'
 import { SiteLinksNav } from './SiteLinksNav'
 
+// The buttons' horizontal padding, shared with the placeholder so its width cannot drift from theirs.
+const SIGN_IN_PADDING = 'px-4'
+const SIGN_UP_PADDING = 'px-5'
+
 export function SignedOutHeader({ ready, offered }: { ready: boolean; offered: readonly string[] }) {
   const t = useT()
   return (
@@ -19,13 +23,13 @@ export function SignedOutHeader({ ready, offered }: { ready: boolean; offered: r
             <LanguagePicker offered={offered} />
             <Link
               to="/signin"
-              className="inline-flex min-h-11 items-center rounded-full px-4 font-medium text-text no-underline hover:bg-raised"
+              className={`inline-flex min-h-11 items-center rounded-full ${SIGN_IN_PADDING} font-medium text-text no-underline hover:bg-raised`}
             >
               {t('auth.signIn')}
             </Link>
             <Link
               to="/signup"
-              className="inline-flex min-h-11 items-center rounded-full bg-brand px-5 font-medium text-on-brand no-underline hover:opacity-90"
+              className={`inline-flex min-h-11 items-center rounded-full bg-brand ${SIGN_UP_PADDING} font-medium text-on-brand no-underline hover:opacity-90`}
             >
               {t('shell.signUp')}
             </Link>
@@ -51,8 +55,8 @@ function NavPlaceholder() {
   return (
     <div aria-hidden="true" data-testid="nav-placeholder" className="ml-auto flex flex-wrap items-center justify-end gap-2">
       {LOCALES.length > 1 ? <span className="inline-block h-11 w-[6.5rem] rounded-md" /> : null}
-      <span className="invisible inline-flex min-h-11 items-center px-4 font-medium">{t('auth.signIn')}</span>
-      <span className="invisible inline-flex min-h-11 items-center px-5 font-medium">{t('shell.signUp')}</span>
+      <span className={`invisible inline-flex min-h-11 items-center ${SIGN_IN_PADDING} font-medium`}>{t('auth.signIn')}</span>
+      <span className={`invisible inline-flex min-h-11 items-center ${SIGN_UP_PADDING} font-medium`}>{t('shell.signUp')}</span>
     </div>
   )
 }

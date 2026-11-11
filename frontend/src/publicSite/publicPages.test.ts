@@ -149,7 +149,10 @@ describe('the rendered public pages', () => {
       for (const target of ['/how-it-works', '/examples', '/features']) {
         expect(body, `${path || '/'} links ${target}`).toContain(`href="/en${target}"`)
       }
-      for (const [, href] of body.matchAll(/href="\/en([^"#?]*)"/g)) linked.add(href ?? '')
+      // A page linking to itself (its own nav entry) does not count as linked from another page.
+      for (const [, href] of body.matchAll(/href="\/en([^"#?]*)"/g)) {
+        if ((href ?? '') !== path) linked.add(href ?? '')
+      }
     }
     for (const path of LISTED_PATHS) expect(linked.has(path), `${path || '/'} is linked from a public page`).toBe(true)
   })

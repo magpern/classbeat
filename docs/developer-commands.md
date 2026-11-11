@@ -862,7 +862,7 @@ The e2e stack trusts the docker network as proxy so each test presents its own `
 address (separate rate limits). Sign-up is limited to 5 per IP and hour: use `down -v` between full
 runs of a stack that is not given per-test addresses.
 
-CI runs the same in the `e2e` job, in 3 shards (`playwright test --shard=K/N`; when the playwright filter is true: UI, e2e, compose or Docker files) and each shard uploads `playwright-report-K` only on failure.
+CI runs the same in the `e2e` job, in 3 shards (`playwright test --shard=K/N`; when the playwright filter is true: UI, e2e, compose or Docker files) and each shard uploads `playwright-report-K` only on failure. Shards are contiguous in spec-file-name order, so the takeover gate is one spec file per language (`lang-da-takeover`, `lang-sv-takeover`, `public-takeover-en`) to land 18 cells on each shard; after adding specs, check with `npx playwright test --list --shard=K/N` from `e2e/`.
 
 ### CI: what runs, and when
 

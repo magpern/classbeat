@@ -3,7 +3,7 @@ import { CODES } from './lang-url-helpers'
 import { PUBLISHED } from './public-paths'
 
 // PP8 (#897): every link a public page carries in its raw HTML (what a crawler follows) resolves, and
-// no published page is left without a link to it from another public page.
+// no published page is left without a link to it from another public page (a link to itself does not count).
 
 /** The internal `<a href>` targets of a served page, without fragment or query. */
 function internalLinks(html: string): string[] {
@@ -25,7 +25,8 @@ for (const code of CODES) {
       expect(response.status(), `/${code}${page}`).toBe(200)
       for (const href of internalLinks(await response.text())) {
         targets.add(href)
-        linked.add(href)
+        // A page linking to itself (its own nav entry) does not make it reachable from another page.
+        if (href !== `/${code}${page}`) linked.add(href)
       }
     }
     for (const href of targets) {
