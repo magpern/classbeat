@@ -25,7 +25,7 @@ This is a draft. It creates no issue and authorizes no work.
 
 `x` is the free allowance. The owner's ratio is 1 : 3 : 10; the placeholder `x` is 3.
 
-| Plan | Classes per month | Longest class | Games, races, FTP tests | Quality | Revisions per class | Jobs at once |
+| Plan | Classes per month | Longest class | Games, FTP tests | Quality | Revisions per class | Jobs at once |
 |---|---|---|---|---|---|---|
 | Free | x (3) | 30 min | no | Standard | 3 | 1 |
 | Individual | 3x (9) | 75 min | yes | Better | 10 | 2 |
@@ -40,9 +40,10 @@ picking, the Spotify and Swedebeat connections, running classes, history, export
   has not passed the eval suite. So Free's Standard route must pass the same evals as the others,
   and a plan with no route falls back to ADR 0012's bootstrap choice. The plan screen says Better
   and Best give "more careful designs", and no claim is made about a specific model.
-- **Races, FTP tests and games** are Individual and up. This answers the "no ???": races and FTP
-  tests are now gated on Free too (ADR 0011 already has the three gates; M7a-0 changes the seed
-  and the amendment).
+- **Games and FTP tests** are Individual and up. **Races stay on every plan:** a race here is a
+  short hard burst (15 to 35 s in zone 6 or 7, ADR 0029), a sprint-style effort, not a MOWL game
+  (owner, 2026-11-11). ADR 0011 already has the three gates; M7a-0 turns `ftp_tests_allowed` off
+  for Free (games are already off there) and leaves `races_allowed` on.
 - **Considered and not limited:** song picking (owner: unaffected), history length, number of
   saved classes, export (a legal right), connections. Add one later only if cost data asks for it.
 - **Admins are Professional automatically.** The plan resolver treats `users.role = admin` as the
@@ -145,7 +146,7 @@ gate: A1 to A5 for every subscriber, agreements signed. M7b starts only on a new
 M7a-1, M7a-2 and M7a-4 can run in parallel. Each PR follows CLAUDE.md rules 1 to 3.
 
 ## Done when (M7a)
-1. A Free user cannot start a class over 30 minutes or with a game, race or FTP test: they are told why before
+1. A Free user cannot start a class over 30 minutes or with a game or FTP test: they are told why before
    anything runs, and offered Individual.
 2. A tester buys Individual with the dummy provider: 75-minute classes, games and 9 classes a
    month work at once; the plan screen shows the period end.
@@ -163,7 +164,7 @@ M7a-1, M7a-2 and M7a-4 can run in parallel. Each PR follows CLAUDE.md rules 1 to
 ## Waiting for the owner
 Not blocking M7a drafting. Decisions that shape it, with the plan's default so nothing stalls:
 1. Go for M7a-0 (this plan is a draft).
-2. Free also loses races and FTP tests, not only games (default: yes, per your note).
+2. Free has no games and no FTP tests; races stay (decided).
 3. Ids stay, names change (default: yes).
 4. Standard, Better and Best are the only user-facing quality words; the admin picks the models
    (default: yes; no model is named anywhere users see).
