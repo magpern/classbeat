@@ -68,7 +68,17 @@ function observe(): void {
     const root = document.getElementById('root')
     if (!root) return
     if (painted && root.firstElementChild === null) seen.emptyRoot++
-    if (painted && /^\s*Loading\s*$/.test(root.textContent ?? '')) seen.loadingCard++
+    // The loading card is a paragraph under a card title (`common.loading`), never the whole root's
+    // text, so look for any element whose own text is just that word. It counts at once, painted or not.
+    const loading = [...root.querySelectorAll('*')].some(
+      (el) =>
+        [...el.childNodes]
+          .filter((n) => n.nodeType === Node.TEXT_NODE)
+          .map((n) => n.textContent ?? '')
+          .join('')
+          .trim() === 'Loading',
+    )
+    if (loading) seen.loadingCard++
     const h1 = root.querySelector('h1')?.textContent?.trim()
     if (h1 && seen.h1Values.at(-1) !== h1) seen.h1Values.push(h1)
   }
@@ -130,6 +140,8 @@ for (const theme of THEMES) {
 
           const requested: string[] = []
           page.on('request', (r) => requested.push(r.url()))
+          const pageErrors: string[] = []
+          page.on('pageerror', (e) => pageErrors.push(e.message))
 
           // Hold the scripts: the entry first, then the other chunks (the catalogue among them).
           let release: () => void = () => undefined
@@ -161,10 +173,16 @@ for (const theme of THEMES) {
             expect(coloursBefore.every((c) => c !== '' && c !== 'rgb(0, 0, 0)')).toBe(true)
           }
 
+          // Mark the prerendered heading: `createRoot` replaces the tree, so the marker must be gone
+          // afterwards and the node detached. If the client never mounts, both checks fail.
+          const prerenderedH1 = await page.locator('#root h1').elementHandle()
+          await prerenderedH1?.evaluate((el) => el.setAttribute('data-prerendered', '1'))
+
           release()
           await page.waitForLoadState('networkidle')
-          // The app has taken over once a client-only part of the shell exists.
           await expect(page.locator('#root h1')).toHaveCount(1)
+          await expect(page.locator('#root h1[data-prerendered]'), 'the client did not replace the prerendered heading').toHaveCount(0)
+          expect(await prerenderedH1?.evaluate((el) => el.isConnected), 'the prerendered heading is still attached').toBe(false)
           await page.waitForTimeout(500)
 
           const after = await boxes(page)
@@ -176,6 +194,7 @@ for (const theme of THEMES) {
           expect(new Set(record.h1Values).size, `the h1 held ${JSON.stringify(record.h1Values)}`).toBe(1)
           expect(await page.locator('#root h1').textContent()).toBe(h1Before)
           expect.soft(record.violations, 'a CSP violation').toEqual([])
+          expect(pageErrors, 'an uncaught error on the page').toEqual([])
           expect.soft(record.shifts, `layout shifts: ${JSON.stringify(record.shiftSources)}`).toBeLessThan(SHIFT_LIMIT)
 
           for (const key of ['h1', 'chart'] as const) {

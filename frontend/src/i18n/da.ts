@@ -508,12 +508,10 @@ const da: Catalogue = {
   'class.page.changeSongs': 'Skift sange',
   'class.page.moreActions': 'Flere handlinger',
   'class.page.deleteClass': 'Slet hold',
-  'class.page.job.waiting': 'Sangene venter på din godkendelse.',
   'class.page.job.design':
     'Dette hold bliver designet. Det kan tage et par minutter, og du kan forlade siden.',
   'class.page.job.refit': 'Dine tidsrettelser bliver anvendt.',
   'class.page.job.songs': 'Der arbejdes på sangene på dette hold.',
-  'class.page.job.review': 'Gennemgå sangene',
   'class.page.job.progress': 'Se forløbet',
   'class.page.playlist': 'Din Spotify-playliste: {name}',
   'class.page.openSpotify': 'Åbn i Spotify',
