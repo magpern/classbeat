@@ -1,8 +1,7 @@
 /*
- * Feedback in the app: the busy mark, good news, and the cross-fade between pages. Like
- * motion-app.css these never fade text; tailwind.css switches the animations off under
- * prefers-reduced-motion (the page cross-fade is skipped in router/viewTransition.ts).
- * `bar-beat` is motion-app.css's.
+ * Feedback in the app: the busy mark and good news. Like motion-app.css these never fade text;
+ * tailwind.css switches the animations off under prefers-reduced-motion. `bar-beat` is
+ * motion-app.css's.
  */
 
 /* Busy: three bars beat beside the text that says what is being done (BeatBars). */
@@ -110,12 +109,6 @@
   --y: -0.6rem;
   --r: -60deg;
   background: var(--cb-zone-4);
-}
-
-/* A clicked link cross-fades to its page (router/viewTransition.ts). */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 0.2s;
 }
 
 @keyframes notice-pop {
