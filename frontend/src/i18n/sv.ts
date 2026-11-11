@@ -516,12 +516,10 @@ const sv: Catalogue = {
   'class.page.changeSongs': 'Byt låtar',
   'class.page.moreActions': 'Fler åtgärder',
   'class.page.deleteClass': 'Radera pass',
-  'class.page.job.waiting': 'Låtarna väntar på ditt godkännande.',
   'class.page.job.design':
     'Det här passet håller på att utformas. Det kan ta några minuter, och du kan lämna sidan.',
   'class.page.job.refit': 'Dina tidskorrigeringar tillämpas.',
   'class.page.job.songs': 'Det arbetas med låtarna i det här passet.',
-  'class.page.job.review': 'Granska låtarna',
   'class.page.job.progress': 'Se förloppet',
   'class.page.playlist': 'Din Spotify-spellista: {name}',
   'class.page.openSpotify': 'Öppna i Spotify',

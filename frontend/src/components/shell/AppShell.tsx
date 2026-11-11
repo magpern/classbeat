@@ -9,13 +9,11 @@ import { useLayout, type Layout } from '../../hooks/useLayout'
 import { cn } from '../../lib/cn'
 import { Link, useRouter } from '../../router/Router'
 import { useAction } from '../forms'
-import { LOCALES } from '../../i18n/locales'
-import { LanguagePicker } from '../LanguagePicker'
-import { Logo } from '../Logo'
 import { AvatarMenu } from './AvatarMenu'
 import { ClassesThisMonth } from './ClassesThisMonth'
 import { PhoneSignInNotice } from './PhoneSignInNotice'
-import { SiteLinksNav } from './SiteLinksNav'
+import { BrandLink } from './BrandLink'
+import { SignedOutHeader } from './SignedOutHeader'
 
 const JOB_PAGE = /^\/jobs\/[0-9a-fA-F-]{36}$/
 
@@ -100,63 +98,6 @@ function PrimaryNav({ layout, pathname }: { layout: Layout; pathname: string }) 
         <NavLink key={item.to} item={item} layout={layout} pathname={pathname} />
       ))}
     </nav>
-  )
-}
-
-function BrandLink({ compact }: { compact?: boolean }) {
-  const t = useT()
-  return (
-    <Link to="/" className="inline-flex min-h-11 items-center gap-3 text-text no-underline" aria-label={t('shell.brandHome')}>
-      <Logo />
-      {compact ? null : <span className="font-display text-xl font-extrabold tracking-tight">classbeat</span>}
-    </Link>
-  )
-}
-
-function SignedOutHeader({ ready, offered }: { ready: boolean; offered: readonly string[] }) {
-  const t = useT()
-  return (
-    <header className="border-b border-line bg-surface">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
-        <BrandLink />
-        <SiteLinksNav className="flex flex-wrap gap-x-4" />
-        {ready ? (
-          <nav aria-label={t('shell.nav.account')} className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <LanguagePicker offered={offered} />
-            <Link
-              to="/signin"
-              className="inline-flex min-h-11 items-center rounded-full px-4 font-medium text-text no-underline hover:bg-raised"
-            >
-              {t('auth.signIn')}
-            </Link>
-            <Link
-              to="/signup"
-              className="inline-flex min-h-11 items-center rounded-full bg-brand px-5 font-medium text-on-brand no-underline hover:opacity-90"
-            >
-              {t('shell.signUp')}
-            </Link>
-          </nav>
-        ) : (
-          <NavPlaceholder />
-        )}
-      </div>
-    </header>
-  )
-}
-
-/**
- * The signed-out nav's room while the session loads, which is also how the prerender writes it
- * (ADR 0030): the same row of controls at the same height, with no text and no link, so the page
- * below does not move when the real nav arrives (the takeover gate). A signed-in person never sees
- * sign-in links flash. The widths are those of the controls in English.
- */
-function NavPlaceholder() {
-  return (
-    <div aria-hidden="true" data-testid="nav-placeholder" className="ml-auto flex flex-wrap items-center justify-end gap-2">
-      {LOCALES.length > 1 ? <span className="inline-block h-11 w-[6.5rem] rounded-md" /> : null}
-      <span className="inline-block h-11 w-[5.25rem] rounded-full" />
-      <span className="inline-block h-11 w-[6.25rem] rounded-full" />
-    </div>
   )
 }
 
