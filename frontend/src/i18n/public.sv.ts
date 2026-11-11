@@ -108,4 +108,20 @@ export const publicSv: Catalogue = {
   'feat.data.text': 'Exportera dina data eller radera ditt konto från din kontosida.',
   'feat.languages.title': 'Använd det på ditt språk',
   'feat.languages.text': 'Webbplatsen finns på engelska, svenska och danska. Passen skrivs på engelska.',
+  'meta.pricing.title': 'Planer | classbeat',
+  'meta.pricing.description':
+    'Vad varje classbeat-plan innehåller: pass i månaden, passlängd, spel, FTP-test och utformningskvalitet. Planerna är inte öppna än.',
+  'pricing.title': 'Planer',
+  'pricing.lead': 'Tre planer, från en liten gratisdel till många pass. Planerna är inte öppna för köp än.',
+  'pricing.plans.title': 'Vad varje plan innehåller',
+  'pricing.free.blurb': 'Prova classbeat med en liten kvot varje månad.',
+  'pricing.instructor.blurb': 'För instruktörer som håller pass varje vecka.',
+  'pricing.pro.blurb': 'För instruktörer som utformar många pass.',
+  'pricing.quality.note': 'Better och Best ger mer omsorgsfullt utformade pass.',
+  'pricing.same.title': 'Samma på varje plan',
+  'pricing.same.races': 'Race, de korta, hårda ansträngningarna.',
+  'pricing.same.classes': 'Att hålla pass, din passhistorik samt export och radering av dina data.',
+  'pricing.same.connections': 'Dina anslutningar till MOWL, Spotify och Swedebeat.',
+  'pricing.same.songs':
+    'Låtvalet är detsamma på varje plan och kräver en Spotify-anslutning med ditt eget Client ID när vi slår på det.',
 }
