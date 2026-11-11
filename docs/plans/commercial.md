@@ -25,20 +25,32 @@ This is a draft. It creates no issue and authorizes no work.
 
 `x` is the free allowance. The owner's ratio is 1 : 3 : 10; the placeholder `x` is 3.
 
-| Plan | Classes per month | Longest class | Games and the rest | Revisions per class |
-|---|---|---|---|---|
-| Free | x (3) | 30 min | no games, no races or FTP tests | as M5 (3) |
-| Individual | 3x (9) | 75 min | everything | as M5 for Instructor (10) |
-| Professional | 10x (30) | no plan limit (the global cap of 180 minutes in ADR 0011 stays) | everything, as Individual | as Individual |
+| Plan | Classes per month | Longest class | Games, races, FTP tests | Quality | Revisions per class | Jobs at once |
+|---|---|---|---|---|---|---|
+| Free | x (3) | 30 min | no | Standard | 3 | 1 |
+| Individual | 3x (9) | 75 min | yes | Better | 10 | 2 |
+| Professional | 10x (30) | no plan limit (the global 180-minute cap of ADR 0011 stays) | yes | Best | 20 | 3 |
 
+All numbers are placeholders the admin edits. Everything else is the same on every plan: song
+picking, the Spotify and Swedebeat connections, running classes, history, export and delete.
+
+- **Quality** is the model route per plan, which M5 and ADR 0012 already provide (`plans.route_key`,
+  one route per plan and stage group). Users see only **Standard, Better, Best**, never a model
+  name; the admin maps each to a model and effort through `set_route`, which refuses a model that
+  has not passed the eval suite. So Free's Standard route must pass the same evals as the others,
+  and a plan with no route falls back to ADR 0012's bootstrap choice. The plan screen says Better
+  and Best give "more careful designs", and no claim is made about a specific model.
+- **Races, FTP tests and games** are Individual and up. This answers the "no ???": races and FTP
+  tests are now gated on Free too (ADR 0011 already has the three gates; M7a-0 changes the seed
+  and the amendment).
+- **Considered and not limited:** song picking (owner: unaffected), history length, number of
+  saved classes, export (a legal right), connections. Add one later only if cost data asks for it.
 - **Admins are Professional automatically.** The plan resolver treats `users.role = admin` as the
   highest rank, with no entitlement row and nothing to expire. It is checked in the same
   transaction as today's plan read, so a demoted admin loses it at once.
 - **Names:** the plan's display name changes. The ids (`free`, `instructor`, `pro`) stay, because
   they key model routes, eval results and entitlements. A rename of the ids is optional later and
   needs its own migration; ADR 0031 records the choice (recommended: names only).
-- **Free's "no ???"** from the owner's note: races and FTP tests stay allowed on every plan today
-  (ADR 0011 seeds). The owner decides whether Free loses them; the plan assumes it does not.
 - **Song picking:** M7-0 checks whether the `song_picking` feature code gates it per plan today
   and, if so, makes it part of every plan. The class allowance is the only meter.
 
@@ -74,7 +86,9 @@ or FTP test with `feature`. M7a adds the **graceful front end**:
   to the minor unit, and the period end does not move. The class count already used this period
   stays used, and the new limits apply from now.
 - **Expiry without renewal:** the account returns to Free. A program already saved in MOWL is
-  never touched, and stored drafts are checked against the current plan as ADR 0011 already says.
+  never touched. Nothing needs grandfathering: no one has created classes yet (owner, 2026-11-11),
+  and ADR 0011's rule that a stored draft is checked against the **current** plan at Make current,
+  Save and Update already covers any later case.
 - Annual plans, coupons and trials stay as M5 has them (codes, trials, admin grants are separate
   entitlement sources and keep working; the highest rank wins, ADR 0011).
 
@@ -100,6 +114,15 @@ role writing arbitrary entitlements) that takes a provider event, is idempotent 
 and sets plan, start and end. It is the same writer Paddle will use in M7b. Security-critical
 (entitlements and external events): Opus Developer and Opus Reviewer.
 
+## Later: importing a workout from MOWL (note from the owner, not in M7a)
+Classbeat should one day import an existing MOWL workout. The rule is fixed now so the later
+design does not change it: **an imported workout goes through the same plan gates as a generated
+one** (length, games, races, FTP tests; ADR 0011's `check_stored_draft`). If it does not comply
+with the user's plan it is **rejected before anything is stored**, with the reason and an upgrade
+prompt, never trimmed or edited silently. Import itself needs a read path from MOWL that does not
+exist today (the library has no import; `mowl-workouts` would grow one) and is its own milestone
+with its own plan. Nothing in M7a builds it.
+
 ## M7b: gated, not scheduled
 Real Paddle (merchant of record: VAT, invoices, card data never ours), open sign-up with abuse
 and cost controls, owner-approved legal pages and sub-processor list, the commercial
@@ -122,7 +145,7 @@ gate: A1 to A5 for every subscriber, agreements signed. M7b starts only on a new
 M7a-1, M7a-2 and M7a-4 can run in parallel. Each PR follows CLAUDE.md rules 1 to 3.
 
 ## Done when (M7a)
-1. A Free user cannot start a class over 30 minutes or with a game: they are told why before
+1. A Free user cannot start a class over 30 minutes or with a game, race or FTP test: they are told why before
    anything runs, and offered Individual.
 2. A tester buys Individual with the dummy provider: 75-minute classes, games and 9 classes a
    month work at once; the plan screen shows the period end.
@@ -133,13 +156,16 @@ M7a-1, M7a-2 and M7a-4 can run in parallel. Each PR follows CLAUDE.md rules 1 to
 5. An admin is Professional with no entitlement; an ordinary user cannot reach the dummy flow
    while billing is off.
 6. A replayed or out-of-order provider event changes nothing.
-7. Song picking and the Spotify and Swedebeat connections behave the same on every plan.
+7. Song picking and the Spotify and Swedebeat connections behave the same on every plan; the
+   quality level follows the plan (the job records which route it used).
 8. e2e and axe pass at 1440 and 390 px; the strings exist in en, sv and da.
 
 ## Waiting for the owner
 Not blocking M7a drafting. Decisions that shape it, with the plan's default so nothing stalls:
 1. Go for M7a-0 (this plan is a draft).
-2. Free keeps races and FTP tests (default: yes).
+2. Free also loses races and FTP tests, not only games (default: yes, per your note).
 3. Ids stay, names change (default: yes).
-4. Real prices (placeholders until you set them in the admin).
+4. Standard, Better and Best are the only user-facing quality words; the admin picks the models
+   (default: yes; no model is named anywhere users see).
+5. Real prices (placeholders until you set them in the admin).
 Everything about real Paddle, sign-up, legal text and provider agreements stays M7b.
