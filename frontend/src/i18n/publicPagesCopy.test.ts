@@ -20,6 +20,7 @@ const LONG_FORM: readonly CatalogueKey[] = [
   'how.step.generate.text',
   'how.step.refine.text',
   'how.step.save.text',
+  'how.connect.spotify.text',
 ]
 
 const KEYS = Object.keys(publicEn) as (keyof typeof publicEn)[]

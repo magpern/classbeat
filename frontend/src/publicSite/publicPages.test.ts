@@ -71,6 +71,13 @@ describe('the claim table', () => {
     }
   })
 
+  it('says a switched-off feature is available once we switch it on', () => {
+    // A claim resting on a switch that defaults to off must say so in its note (review of PP4, #893).
+    const switched = CLAIMS.filter((c) => /default off/i.test(c.evidence))
+    expect(switched.map((c) => c.id)).toEqual(expect.arrayContaining(['songs', 'swedebeat', 'noMusic', 'running']))
+    for (const claim of switched) expect(text(claim.note), claim.id).toMatch(/switch it on/)
+  })
+
   it('marks a claim whose own text says classbeat picks songs', () => {
     for (const claim of CLAIMS) {
       if (mentionsSongPicking(`${text(claim.title)}. ${text(claim.text)}`)) {

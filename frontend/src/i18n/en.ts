@@ -62,7 +62,7 @@ export const en = {
   'landing.how.save.title': 'Approve and save',
   'landing.how.save.text': 'It becomes a private MOWL workout only when you approve.',
   'landing.img.describe': 'An instructor writing a class plan on a notepad',
-  'landing.img.approve': 'Hands choosing songs on a phone',
+  'landing.img.approve': 'A phone showing a class being refined',
   'landing.img.save': 'A phone mounted on an indoor bike',
 
   // Sign in, sign up and the pages behind the mail links.

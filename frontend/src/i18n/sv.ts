@@ -45,7 +45,7 @@ const sv: Catalogue = {
   'landing.how.title': 'Så fungerar det',
   'landing.how.describe.title': 'Beskriv',
   'landing.img.describe': 'En instruktör skriver ett klassupplägg i ett block',
-  'landing.img.approve': 'Händer som väljer låtar i en mobil',
+  'landing.img.approve': 'En mobil som visar ett pass som justeras',
   'landing.img.save': 'En mobil monterad på en motionscykel',
 
   // Sign in, sign up and the pages behind the mail links.

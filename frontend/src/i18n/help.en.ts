@@ -25,7 +25,7 @@ export const helpEn = {
     'You describe the length, the effort and the music: your own playlist, songs we pick for you, a Swedebeat mix, or no music. An AI assistant proposes the intervals, efforts and cues. If you asked for songs, it also proposes a song list checked against MOWL’s tempo and length. Designing can take a few minutes, and you can leave the page meanwhile. The result is a suggestion, so check a class before you teach it.',
   'help.design.songs.q': 'What does picking songs need?',
   'help.design.songs.a':
-    'A Spotify connection with your own Client ID, and song picking on your plan. Without them you can still design a class to a playlist from your MOWL music.',
+    'A Spotify connection with your own Client ID, and song picking on your plan. Available once we switch it on. Until then you can still design a class to a playlist from your MOWL music.',
   'help.design.saved.q': 'What is saved, and when?',
   'help.design.saved.a':
     'The assistant only proposes. When you approve a song list, we create a private playlist with those songs in your Spotify and add it to your MOWL music. The workout itself goes to your MOWL account, private, only when you press Save to MOWL on the class. If you do not approve a list in time, nothing is written to your Spotify.',

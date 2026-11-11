@@ -20,7 +20,7 @@ export const publicEn = {
   'claims.class.gated': 'Depends on plan or switch',
   'claims.note.available': 'Included with your account.',
   'claims.note.mowl': 'Needs your MOWL account connected.',
-  'claims.note.songPicking': 'Needs a Spotify connection with your own Client ID, and song picking on your plan.',
+  'claims.note.songPicking': 'Needs a Spotify connection with your own Client ID, and song picking on your plan. Available once we switch it on.',
   'claims.note.swedebeat': 'Needs your Swedebeat account connected. Available once we switch it on.',
   'claims.note.games':
     'Needs a plan that includes games. MOWL games need a commercial MOWL licence, which we do not check.',
@@ -46,10 +46,10 @@ export const publicEn = {
   'how.connect.title': 'What you connect',
   'how.connect.lead': 'You connect accounts on your account page. We never keep your MOWL or Swedebeat password.',
   'how.connect.mowl.name': 'MOWL',
-  'how.connect.mowl.text': 'Required. We read your profile and music from it, and save your classes to it.',
+  'how.connect.mowl.text': 'Required. We read your music from it, and save your classes to it.',
   'how.connect.spotify.name': 'Spotify',
   'how.connect.spotify.text':
-    'Optional. Only if you want us to pick songs for you. You make a Spotify app of your own, so its limits are yours.',
+    'Optional. Only if you want us to pick songs for you. You make a Spotify app of your own, so its limits are yours. Its owner needs Spotify Premium.',
   'how.connect.swedebeat.name': 'Swedebeat',
   'how.connect.swedebeat.text': 'Optional. Only if you teach with Swedebeat, to design a class to one of your mixes.',
 
