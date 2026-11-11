@@ -70,7 +70,7 @@ export async function disconnectMowl(page: Page): Promise<void> {
 }
 
 /** Fill the new-class form for the brief the recorded model script was written for (30 minutes,
- *  moderate, one climb, two sprints) and start the design. Returns the job's id. */
+ *  moderate, one climb, one sprint) and start the design. Returns the job's id. */
 /** Pick a playlist tile by clicking its visible label. The input itself is a 1px sr-only box, and a
  *  forced click on it skips the stability wait: the plan hint that arrives after the form moves the
  *  tiles, so the click landed elsewhere and the radio stayed unchecked. */
@@ -100,7 +100,7 @@ export async function startDesign(page: Page, title: string, playlistName: strin
   await choosePlaylist(form, playlistName)
   await chooseLength(form, 30)
   await form.getByLabel('Climbs', { exact: true }).fill(climbs)
-  await form.getByLabel('Sprints', { exact: true }).fill('2')
+  await form.getByLabel('Sprints', { exact: true }).fill('1')
   await form.getByRole('button', { name: 'Design my class' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
   return jobId(page)

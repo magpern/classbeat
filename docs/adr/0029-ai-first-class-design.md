@@ -229,7 +229,7 @@ The fields are:
   as asked item is recorded.
 - It runs in `design_draft`, so values from the Advanced form count as explicit: the form sends
   `explicit` for every value it submits that `check_explicit` can verify (`length_min`, `climbs`,
-  `sprints`, `races`, and `ftp_test` when set; a running class `length_min` only), because the
+  `sprints`, `races` when above 0, and `ftp_test` when set; a running class `length_min` only; a count of 0 is "none asked"), because the
   instructor sees and submits each one (#924, `frontend/src/components/newclass/formModel.ts`).
   It runs in revise too,
   where the explicit list is sent as constraints and the new request's explicit items layer on

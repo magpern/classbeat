@@ -52,16 +52,16 @@ export interface FormValues {
 }
 
 /**
- * Every value the form submits is one the instructor sees and chose, so it counts as stated (ADR 0029
- * section 4): the draft is held to it and a miss is reported under Not as asked. Races only when the
- * plan offers them and `ftp_test` only when a test is set; a running class has no bike knobs.
- * Intensity is left out: nothing checks it against the draft.
+ * Every value the form submits is one the instructor chose, so it counts as stated (ADR 0029 section
+ * 4): the draft is held to it and a miss is reported under Not as asked. A count of 0 is "none
+ * asked", not a stated value, and `ftp_test` is stated only when a test is set; a running class has
+ * no bike knobs. Intensity is left out: nothing checks it against the draft.
  */
-export function explicitPaths(running: boolean, racesOn: boolean, ftpTest: Brief['ftp_test']): ExplicitPath[] {
+export function explicitPaths(running: boolean, counts: Pick<Brief, 'climbs' | 'sprints' | 'races' | 'ftp_test'>): ExplicitPath[] {
   if (running) return ['length_min']
-  const paths: ExplicitPath[] = ['length_min', 'climbs', 'sprints']
-  if (racesOn) paths.push('races')
-  if (ftpTest !== null) paths.push('ftp_test')
+  const paths: ExplicitPath[] = ['length_min']
+  for (const path of ['climbs', 'sprints', 'races'] as const) if (counts[path] > 0) paths.push(path)
+  if (counts.ftp_test !== null) paths.push('ftp_test')
   return paths
 }
 
@@ -95,7 +95,7 @@ export function validateForm(t: TFunction, v: FormValues): { problem: string } |
         intensity: v.intensity,
         style: v.style,
         text: v.notes,
-        explicit: explicitPaths(true, false, null),
+        explicit: explicitPaths(true, { climbs: 0, sprints: 0, races: 0, ftp_test: null }),
       }
     : (() => {
         const ftp_test = v.ftp === '' || !v.ftpOn ? null : (Number(v.ftp) as 3 | 5 | 20)
@@ -105,7 +105,7 @@ export function validateForm(t: TFunction, v: FormValues): { problem: string } |
           ftp_test,
           style: v.style,
           text: v.notes,
-          explicit: explicitPaths(false, v.racesOn, ftp_test),
+          explicit: explicitPaths(false, { ...parts, ftp_test }),
         }
       })()
   // The limit is in bytes (the brief is stored as jsonb), not characters.

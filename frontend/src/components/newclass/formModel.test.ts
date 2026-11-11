@@ -56,6 +56,7 @@ describe('validateForm', () => {
     }
     expect(paths({ ftp: '' })).toEqual(['length_min', 'climbs', 'sprints', 'races'])
     expect(paths({ racesOn: false, ftpOn: false, ftp: '3' })).toEqual(['length_min', 'climbs', 'sprints'])
+    expect(paths({ climbs: '0', sprints: '0', races: '0' })).toEqual(['length_min'])
     expect(paths({ running: true })).toEqual(['length_min'])
   })
 

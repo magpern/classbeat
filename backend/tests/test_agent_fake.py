@@ -70,6 +70,7 @@ COVERED = {
     "ai_first_design_any",
     "ai_first_read_long",
     "ai_first_design_long",
+    "form_climbs_missed",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")

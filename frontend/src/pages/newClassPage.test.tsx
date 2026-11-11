@@ -65,7 +65,7 @@ describe('the new-class form', () => {
           ftp_test: 20,
           style: 'hills',
           text: 'No standing please',
-          explicit: ['length_min', 'climbs', 'sprints', 'races', 'ftp_test'],
+          explicit: ['length_min', 'climbs', 'ftp_test'],
         },
         music: { source: 'mowl_spotify_playlist', spotify_playlist_id: PLAYLIST_ID },
         mowl_connection_id: CONNECTION_ID,

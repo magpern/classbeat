@@ -29,7 +29,7 @@ FORM_BRIEF: dict[str, Any] = {
     "ftp_test": None,
     "style": "",
     "text": "",
-    "explicit": ["length_min", "climbs", "sprints", "races"],
+    "explicit": ["length_min", "climbs", "sprints"],  # a count of 0 states nothing
 }
 
 
