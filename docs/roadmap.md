@@ -1,5 +1,39 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 20 (2026-11-11, owner decisions: M7a plans and dummy billing; ADR 0031)
+
+The owner said "go, implement M7" on 2026-11-11. That authorizes **M7a only**. The design is
+[ADR 0031](adr/0031-plans-and-dummy-billing.md); the plan (revision 2) is
+[docs/plans/commercial.md](plans/commercial.md). Where it differs, this amendment wins over §9,
+the M7 row and Amendment 7.
+
+- **M7 splits in two.** **M7a, "Plans and billing (dummy)"** (GitHub milestone 21, umbrella
+  #945, PRs M7a-1 to M7a-7 = #946 to #952), built on fakes with billing off. **M7b** (real Paddle,
+  public sign-up, legal pages, abuse controls, the commercial song-picking route, provider
+  agreements) keeps the M7 row's gate (A1 to A5 for every subscriber, agreements signed) and is
+  **not authorized**: no issue, no branch, no schedule until a new instruction.
+- **§9 tiers** are replaced by: Free / Individual / Professional (ids `free` / `instructor` /
+  `pro` stay); classes per month 3 / 9 / 30 (`x = 3`, ratio 1 : 3 : 10); longest class 30 / 75 /
+  180 minutes (Professional has no plan limit, the global 180-minute cap stays); games and FTP
+  tests Individual and up; races on every plan; revisions 3 / 10 / 20; jobs at once 1 / 2 / 3;
+  quality Standard / Better / Best through ADR 0012's per-plan model routes, no model named to
+  users. All numbers are placeholders the admin edits. Song picking, the Spotify and Swedebeat
+  connections and running classes are the same on every plan. Admins are Professional
+  automatically (role check, no entitlement row). §9's priority queue, multi-week series, annual
+  prices and Club are not in M7a.
+- **Billing rules:** monthly only; no refunds; downgrade and cancel at period end; upgrade at once,
+  paying `(new − old) × days_left / days_in_period` (ADR 0031 §5), period end unchanged, used
+  classes stay used. `CLASSBEAT_BILLING_ENABLED` stays false (refused as true in M7a). A Dummy
+  provider is usable by admins and by users with an admin-granted, expiring `billing_test`
+  feature, with an admin fast-forward of a period.
+- **Amendment 7 / ADR 0011 read with ADR 0031:** `subscription` gets its writer (on the audited
+  maint path, never the app role); the price table stays unreadable by the app role (migration
+  0030), prices are read only on the maint path for a caller who may buy.
+- **Imported MOWL workouts** (future, not built) pass the same plan gates and are refused with an
+  upgrade prompt, never trimmed.
+- **Reviewers:** Opus for M7a-0, M7a-1 (money arithmetic), M7a-2, M7a-3 and M7a-6 (translation);
+  Opus Developers for M7a-2 and M7a-3; Sonnet otherwise.
+
 ## Amendment 19 (2026-11-10, owner decisions: public pages; ADR 0030)
 
 The owner approved and froze the plan on 2026-11-10. Implementation was deferred until the owner's
