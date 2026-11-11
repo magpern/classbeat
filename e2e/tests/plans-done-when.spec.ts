@@ -301,7 +301,7 @@ test('4. downgrade and cancel change nothing until the period ends; then Free, a
   await expect(page.getByTestId('plan-subscription')).toContainText('After that you are on Free.')
   expect((await planOf(page)).plan).toBe('instructor')
   expect((await billingOf(page)).subscription).toMatchObject({ plan: 'instructor', cancel_at_end: true })
-  expect(await fastForward(tester)).toMatchObject({ outcome: 'ended', plan: 'free' })
+  expect(await fastForward(tester)).toMatchObject({ outcome: 'ended' }) // its `plan` is the plan that ended; the plan screen below shows Free
   expect(await planOf(page)).toMatchObject({ plan: 'free', source: null })
   await page.reload()
   await expect(page.getByTestId('plan-name')).toContainText('Free')
