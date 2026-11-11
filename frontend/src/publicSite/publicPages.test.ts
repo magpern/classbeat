@@ -134,11 +134,11 @@ describe('the claim table', () => {
 })
 
 describe('the new pages are published (PP8)', () => {
-  it('lists Help, How it works, Features and the examples as published, with no draft left', () => {
+  it('lists Help, How it works, Features and the examples as published, with only Plans left as a draft', () => {
     expect([...PUBLISHED_PATHS].slice(3, 7)).toEqual(['/help', '/how-it-works', '/features', '/examples'])
     expect([...PUBLISHED_PATHS].slice(7).every((path) => path.startsWith('/examples/'))).toBe(true)
     expect(PUBLISHED_PATHS).toHaveLength(11)
-    expect([...DRAFT_PATHS]).toEqual([])
+    expect([...DRAFT_PATHS]).toEqual(['/pricing'])
   })
 })
 
@@ -177,7 +177,7 @@ describe('the rendered public pages', () => {
     expect(page.body.match(/<h1[ >]/g)).toHaveLength(1)
   })
 
-  it('links How it works, Examples and Features from every page, and leaves no page orphaned', async () => {
+  it('links How it works, Examples and Features from every page, and leaves no published page orphaned', async () => {
     const linked = new Set<string>()
     for (const path of LISTED_PATHS) {
       const { body } = await renderPage('en', path)
@@ -189,7 +189,9 @@ describe('the rendered public pages', () => {
         if ((href ?? '') !== path) linked.add(href ?? '')
       }
     }
-    for (const path of LISTED_PATHS) expect(linked.has(path), `${path || '/'} is linked from a public page`).toBe(true)
+    // A draft is prerendered and taken over, but no page links to it (ADR 0030 section 2).
+    for (const path of PUBLISHED_PATHS) expect(linked.has(path), `${path || '/'} is linked from a public page`).toBe(true)
+    for (const path of DRAFT_PATHS) expect(linked.has(path), `${path} is not linked`).toBe(false)
   })
 })
 

@@ -1,4 +1,4 @@
-// Copy of the public pages How it works and Features, and of their links (PP4, #893). Long-form body
+// Copy of the public pages How it works, Features and Plans (a draft), and of their links (PP4, #893). Long-form body
 // text lives here, like legal.en.ts and help.en.ts. Every claim is mapped to a shipped route, flag or
 // plan limit in `publicSite/claims.ts`; the Reviewer checks the wording against that table. The pages
 // are drafts until PP8. Swedish and Danish are in public.sv.ts and public.da.ts (PP7).
@@ -10,6 +10,10 @@ export const publicEn = {
   'meta.features.title': 'Features | classbeat',
   'meta.features.description':
     'What classbeat does for indoor-cycling instructors, and what each feature needs: a connection, your plan or a switch.',
+
+  'meta.pricing.title': 'Plans | classbeat',
+  'meta.pricing.description':
+    'What each classbeat plan includes: classes per month, class length, games, FTP tests and design quality. Plans are not open yet.',
 
   'pub.nav.label': 'Pages',
   'pub.nav.features': 'Features',
@@ -100,4 +104,18 @@ export const publicEn = {
   'feat.data.text': 'Export your data, or delete your account, from your account page.',
   'feat.languages.title': 'Use it in your language',
   'feat.languages.text': 'The site speaks English, Swedish and Danish. The classes are written in English.',
+
+  'pricing.title': 'Plans',
+  'pricing.lead': 'Three plans, from a small free allowance to a lot of classes. Plans are not open for purchase yet.',
+  'pricing.plans.title': 'What each plan includes',
+  'pricing.free.blurb': 'Try classbeat with a small allowance every month.',
+  'pricing.instructor.blurb': 'For instructors who teach every week.',
+  'pricing.pro.blurb': 'For instructors who design a lot of classes.',
+  'pricing.quality.note': 'Better and Best give more careful designs.',
+  'pricing.same.title': 'The same on every plan',
+  'pricing.same.races': 'Races, the short hard bursts of effort.',
+  'pricing.same.classes': 'Running classes, your class history, and export and delete of your data.',
+  'pricing.same.connections': 'Your MOWL, Spotify and Swedebeat connections.',
+  'pricing.same.songs':
+    'Song picking is the same on every plan, and needs a Spotify connection with your own Client ID once we switch it on.',
 } as const

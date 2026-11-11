@@ -21,6 +21,7 @@ import { ExamplePage } from './pages/ExamplePage'
 import { ExamplesPage } from './pages/ExamplesPage'
 import { HowItWorksPage } from './pages/HowItWorksPage'
 import { FeaturesPage } from './pages/FeaturesPage'
+import { PricingPage } from './pages/PricingPage'
 import { PrivacyPage } from './pages/PrivacyPage'
 import { MusicPage } from './pages/MusicPage'
 import { NewClassPage } from './pages/NewClassPage'
@@ -95,6 +96,7 @@ const PAGES: Readonly<Record<string, () => ReactNode>> = {
   ...Object.fromEntries(EXAMPLES.map((example) => [`/examples/${example.slug}`, () => <ExamplePage example={example} />])),
   '/how-it-works': () => <HowItWorksPage />,
   '/features': () => <FeaturesPage />,
+  '/pricing': () => <PricingPage />,
   '/classes': () => <ClassesPage />,
   '/classes/new': () => <NewClassPage />,
   '/classes/new/advanced': () => <Advanced />,

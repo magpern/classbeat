@@ -94,6 +94,18 @@ export function usd(dollars: number): string {
   return numberFormat({ style: 'currency', currency: 'USD', useGrouping: false }).format(dollars)
 }
 
+/** An amount in a currency's minor unit as money ("$9.00"), with that currency's own decimals. */
+export function money(minor: number, currency: string): string {
+  try {
+    const format = numberFormat({ style: 'currency', currency })
+    const digits = format.resolvedOptions().maximumFractionDigits ?? 2
+    return format.format(minor / 10 ** digits)
+  } catch {
+    // An unknown currency code: show the amount and the code as given rather than nothing.
+    return `${integer(minor)} ${currency}`
+  }
+}
+
 /** Micro-dollars as USD for a person: "under $0.01" for a fraction of a cent. */
 export function usdMicros(micros: number): string {
   if (micros <= 0) return usd(0)

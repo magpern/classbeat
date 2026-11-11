@@ -10,7 +10,9 @@ import { LISTED_PATHS } from './publicPaths'
 // Named exemptions, not scanned: the shell (components/shell), `SupportLink` and `useSupportAddress`
 // (components/SupportLink.tsx). They call the API only from effects, which do not run in the
 // prerender, so Help, Privacy and Terms render without a support address and the client fills it in
-// after takeover.
+// after takeover. A second one, `components/plans/PricingPlans.tsx` (the Plans page, #950), reads the
+// public plan catalogue from an effect the same way: the prerender holds its words and dashes, and the
+// numbers arrive after takeover.
 
 const srcDir = join(import.meta.dirname, '..')
 
@@ -25,6 +27,7 @@ const PAGE_MODULES: Readonly<Record<string, readonly string[]>> = {
   '/help': ['pages/HelpPage.tsx'],
   '/how-it-works': ['pages/HowItWorksPage.tsx'],
   '/features': ['pages/FeaturesPage.tsx'],
+  '/pricing': ['pages/PricingPage.tsx'],
   '/examples': ['pages/ExamplesPage.tsx'],
   '/examples/hill-challenge': ['pages/ExamplePage.tsx'],
   '/examples/90s-dance-intervals': ['pages/ExamplePage.tsx'],
