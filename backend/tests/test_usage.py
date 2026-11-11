@@ -339,6 +339,25 @@ async def test_deleting_a_class_does_not_change_usage_of_a_revise_with_an_interp
     assert (await alice.get("/api/usage")).json() == before
 
 
+async def test_deleting_an_interpret_request_class_does_not_change_usage(
+    jenv: JobsEnv, browsers: Any
+) -> None:
+    """An ``interpret_request`` job is a single ``interpret`` run: it stays a job once its class
+    (and so its job) is deleted, unlike the interpret run beside a revise."""
+    alice: Browser = await browsers()
+    created = (await alice.create()).json()
+    job_id = UUID(created["id"])
+    plant(jenv, alice.user_id, job_id, kind="interpret_request", stage="interpret")
+    complete(jenv, job_id)
+    before = (await alice.get("/api/usage")).json()
+    assert before["total"]["jobs"] == 1
+    assert [(r["job_kind"], r["jobs"]) for r in before["by_kind_model"]] == [
+        ("interpret_request", 1)
+    ]
+    jenv.sql("DELETE FROM classes WHERE id = :c", c=UUID(created["class_id"]))
+    assert (await alice.get("/api/usage")).json() == before
+
+
 async def test_the_owner_filter_holds_without_rls(
     jenv: JobsEnv, browsers: Any, database_url: str
 ) -> None:
