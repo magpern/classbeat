@@ -6,6 +6,8 @@ export interface LegalSection {
   parts: readonly string[]
   /** The controller placeholder box goes right after this section's first paragraph. */
   controller?: boolean
+  /** Parts shown after `parts` that sv and da do not have yet (ADR 0023 section 8): English until the translation PR moves them. */
+  englishOnly?: readonly string[]
 }
 
 export const PRIVACY: readonly LegalSection[] = [
@@ -14,7 +16,7 @@ export const PRIVACY: readonly LegalSection[] = [
   { id: 'basis', parts: ['p1', 'li1', 'li2', 'li3'] },
   { id: 'model', parts: ['p1', 'p2'] },
   { id: 'processors', parts: ['p1', 'li1', 'li2', 'li3', 'li4', 'li5', 'li6', 'li7', 'p2'] },
-  { id: 'cookies', parts: ['p1', 'li1', 'li2', 'li3', 'li4', 'li5', 'p2', 'p3', 'p4'] },
+  { id: 'cookies', parts: ['p1', 'li1', 'li2', 'li3', 'li4', 'li5', 'p2', 'p3', 'p4'], englishOnly: ['p5'] },
   { id: 'retention', parts: ['li1', 'li2', 'li3', 'li4', 'li5', 'li6', 'li7', 'p1', 'p2'] },
   { id: 'rights', parts: ['p1', 'p2', 'p3'] },
   { id: 'changes', parts: ['p1'] },

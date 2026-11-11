@@ -77,7 +77,7 @@ export function LegalDoc({ doc, sections }: { doc: 'privacy' | 'terms'; sections
           )
           items = []
         }
-        section.parts.forEach((part, index) => {
+        [...section.parts, ...(section.englishOnly ?? [])].forEach((part, index) => {
           if (part.startsWith('li')) {
             items.push(part)
             return

@@ -39,20 +39,23 @@ export const TextInput = forwardRef<HTMLInputElement, Props<InputHTMLAttributes<
   },
 )
 
-export function TextArea({ label, hint, className, ...area }: Props<TextareaHTMLAttributes<HTMLTextAreaElement>>) {
-  const id = useId()
-  return (
-    <Labelled id={id} label={label} hint={hint}>
-      <textarea
-        id={id}
-        rows={4}
-        aria-describedby={hint ? `${id}-hint` : undefined}
-        className={cn(CONTROL, 'py-2', className)}
-        {...area}
-      />
-    </Labelled>
-  )
-}
+export const TextArea = forwardRef<HTMLTextAreaElement, Props<TextareaHTMLAttributes<HTMLTextAreaElement>>>(
+  function TextArea({ label, hint, className, ...area }, ref) {
+    const id = useId()
+    return (
+      <Labelled id={id} label={label} hint={hint}>
+        <textarea
+          ref={ref}
+          id={id}
+          rows={4}
+          aria-describedby={hint ? `${id}-hint` : undefined}
+          className={cn(CONTROL, 'py-2', className)}
+          {...area}
+        />
+      </Labelled>
+    )
+  },
+)
 
 export function SelectInput({ label, hint, className, children, ...select }: Props<SelectHTMLAttributes<HTMLSelectElement>>) {
   const id = useId()

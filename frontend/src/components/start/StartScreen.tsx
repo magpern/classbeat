@@ -1,6 +1,8 @@
-import { useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createInterpretJob, type InterpretInput } from '../../api/interpret'
 import { useT } from '../../i18n/I18n'
+import { forgetExample } from '../../lib/exampleHandoff'
+import { exampleKey, type ExampleSlug } from '../../publicSite/examples'
 import { newIdempotencyKey } from '../../lib/submittedInput'
 import { addPhrase, MAX_REQUEST, recallRequest, rememberRequest } from '../../lib/startRequest'
 import { Link, useQuery, useRouter } from '../../router/Router'
@@ -25,14 +27,14 @@ type Sport = 'cycling' | 'running'
  * design. Nothing here is required but the words; the music, the sport and the ideas only help
  * the reading. The advanced form (every setting) is one link away.
  */
-export function StartScreen({ source }: { source: ReadySource }) {
+export function StartScreen({ source, example = null }: { source: ReadySource; example?: ExampleSlug | null }) {
   const t = useT()
   const { navigate } = useRouter()
   const from = useQuery().get('from')
   const kept = useMemo(() => (from === null ? null : recallRequest(from)), [from])
   const action = useAction()
   const { allowed } = usePlanAllowance()
-  const [request, setRequest] = useState(kept?.request ?? '')
+  const [request, setRequest] = useState(kept?.request ?? (example === null ? '' : t(exampleKey(example, 'prompt'))))
   const [musicKey, setMusicKey] = useState<string | null>(kept?.music ?? null)
   const [sport, setSport] = useState<Sport>(source.runningEnabled && kept?.sport === 'running' ? 'running' : 'cycling')
   const [problem, setProblem] = useState<string | null>(null)
@@ -48,6 +50,14 @@ export function StartScreen({ source }: { source: ReadySource }) {
   // A choice that the sport no longer offers falls back to "classbeat chooses".
   const chosen = rows.find((r) => r.key === musicKey) ?? null
   // One key per distinct request: a repeated click or a retry after a lost answer returns the same job.
+  // "Create a class like this" (PP6): the example's own words fill the prompt, which takes focus. This only
+  // fills a field: nothing is sent until the instructor presses the button.
+  const promptRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    if (example === null) return
+    forgetExample()
+    promptRef.current?.focus()
+  }, [example])
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
   const spotify = source.songs.kind === 'ready' ? source.songs.spotifyConnectionId : undefined
 
@@ -90,6 +100,7 @@ export function StartScreen({ source }: { source: ReadySource }) {
       {shown ? <Notice kind="error">{shown}</Notice> : null}
       <Card className="flex flex-col gap-4">
         <TextArea
+          ref={promptRef}
           label={t('start.prompt.label')}
           hint={t('start.prompt.hint')}
           placeholder={t('start.prompt.placeholder')}
