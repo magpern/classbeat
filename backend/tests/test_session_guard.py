@@ -47,6 +47,7 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
         "classbeat.plans.account",
         "classbeat.plans.redeem",
         "classbeat.plans.trial",
+        "classbeat.billing.routes",
     )
 
 

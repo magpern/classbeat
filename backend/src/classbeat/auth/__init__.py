@@ -87,7 +87,12 @@ if TYPE_CHECKING:
         wipe_mail,
         wipe_user,
     )
-    from classbeat.auth.owners import active_email, owner_active, stored_admin
+    from classbeat.auth.owners import (
+        active_email,
+        lock_owner_row,
+        owner_active,
+        stored_admin,
+    )
     from classbeat.auth.passwords import (
         PasswordHashBusy,
         PasswordHasher,
@@ -218,6 +223,7 @@ __all__ = [
     "issue_unsubscribe_token",
     "list_invites",
     "list_sessions",
+    "lock_owner_row",
     "mail_handoff_context",
     "mail_prefs_for_email",
     "make_reset_link_sender",

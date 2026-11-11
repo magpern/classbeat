@@ -157,6 +157,14 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         "code_redemptions": _entry("", "", "account"),
         "credit_ledger": _entry("", "plan_id state reason", "account"),
         "quota_periods": _entry("", "", "account"),
+        # ADR 0031 section 3 (M7a, migration 0046): the subscription, the provider's events and
+        # the user's billing log. Codes, plan ids and timestamps; nothing provider-derived in the
+        # Spotify sense, and the Dummy ``event_id`` is a digest. All go with the account.
+        "billing_events": _entry("", "provider event_id kind plan_id currency outcome", "account"),
+        "subscriptions": _entry(
+            "", "provider plan_id basis_currency next_plan_id status", "account"
+        ),
+        "billing_log": _entry("", "action outcome reason request_id", "account"),
     }
 )
 

@@ -191,7 +191,7 @@ async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
         read_only=ReadOnlyOut(
             agent_job_cost_micros=settings.agent_job_cost_micros,
             song_job_cost_micros=settings.song_job_cost_micros,
-            billing_enabled=False,  # M7: no billing code exists (ADR 0011 section 8)
+            billing_enabled=settings.billing_enabled,  # always false in M7a (config refuses true)
         ),
     )
 

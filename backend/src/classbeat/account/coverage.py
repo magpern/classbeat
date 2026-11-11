@@ -19,11 +19,12 @@ CASCADE = "c"
 SET_NULL = "n"
 
 _OWNED = (
-    "agent_runs beat_one_corrections class_messages class_playlists class_revisions classes "
+    "agent_runs beat_one_corrections billing_events billing_log class_messages class_playlists "
+    "class_revisions classes "
     "code_redemptions connections credit_ledger entitlements external_operations job_events jobs "
     "mail_handoff mowl_playlist_links quota_periods saved_workouts spotify_oauth_flows "
-    "spotify_pool security_log swedebeat_analyses swedebeat_mix_maps swedebeat_handoffs "
-    "user_preferences"
+    "spotify_pool security_log subscriptions swedebeat_analyses swedebeat_mix_maps "
+    "swedebeat_handoffs user_preferences"
 )
 _ACCOUNT = (
     "auth_events auth_tokens identities known_devices mfa_recovery_codes mfa_totp "

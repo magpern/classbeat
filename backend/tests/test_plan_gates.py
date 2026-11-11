@@ -251,6 +251,10 @@ PRICE_MODULES = frozenset(
         SRC / "admin" / "plan_rules.py",  # split out of settings.py (#762)
         SRC / "admin" / "settings_models.py",
         SRC / "admin" / "audit.py",
+        # The one reader of a monthly price for a quote (ADR 0031 section 7, #948): opens no
+        # session, reads with the maint session of ``billing_session`` or ``admin_session`` it is
+        # given. ``test_billing_architecture`` pins who may import it.
+        SRC / "billing" / "prices.py",
     }
 )
 _NAMES_PLANS = re.compile(r"\b(from|join|update|into|table)\s+(public\.)?plans\b", re.IGNORECASE)

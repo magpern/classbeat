@@ -188,7 +188,7 @@ One module, `classbeat.billing.writer.apply(event)`, is the only code that creat
     trigger order; M7a-3 runs the account-delete test with a subscription). CHECK
     `source <> 'subscription' OR (billing_event_id IS NOT NULL AND plan_id IS NOT NULL AND
     cardinality(features) = 0 AND ends_at IS NOT NULL AND ends_at <= starts_at + interval
-    '32 days')`, and a unique index on `billing_event_id`, so every paid row traces to exactly one
+    '32 days')`, and a unique index on `(owner_id, billing_event_id)`, so every paid row traces to exactly one
     recorded event, lasts at most one period and carries no feature (song picking can never come
     with a plan).
 - **Export and retention:** `subscriptions`, `billing_events` and `billing_log` are `Section`s of
@@ -239,13 +239,15 @@ One module, `classbeat.billing.writer.apply(event)`, is the only code that creat
 
 ### 4. `BillingProvider` and Dummy
 
-`classbeat.billing.provider` defines a Protocol: `checkout(quote) -> Checkout` and
-`schedule_change(subscription, next_plan | cancel) -> Event`, both returning provider-neutral
-events for `apply`. The provider never decides plans, periods or amounts: those come from the pure
-policy (§5). No refund method exists. **Dummy** (`classbeat.billing.dummy`) completes a checkout
-synchronously in the same request: the event id is derived from the user id and the request's
-`Idempotency-Key` (a retried click is a duplicate event), the amount is the quote. Paddle (M7b)
-implements the same Protocol behind its verified webhook.
+`classbeat.billing.provider` defines a Protocol with two async methods, as shipped in M7a-3:
+`checkout(quote: Quote, *, owner_id, idempotency_key) -> Started | Upgraded` and
+`schedule_change(quote: Quote, *, owner_id, idempotency_key) -> ChangeScheduled`, both returning
+provider-neutral events for `apply`. The provider never decides plans, periods or amounts: those
+come from the pure policy (§5). No refund method exists. **Dummy** (`classbeat.billing.dummy`)
+completes a checkout synchronously in the same request: the event id is `dummy_` plus a truncated
+SHA-256 of the owner, the action and the request's `Idempotency-Key` (a retried click is a
+duplicate event; nothing of the key itself is stored or exported), the amount is the quote. Paddle
+(M7b) implements the same Protocol behind its verified webhook.
 
 `CLASSBEAT_BILLING_ENABLED` (new, default `false`) is the public switch. In M7a, settings
 validation **refuses `true`** (no real provider exists), so production cannot turn billing on by

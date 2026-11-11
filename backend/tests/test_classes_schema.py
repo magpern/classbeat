@@ -642,6 +642,18 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
         extra = {"job_id": job_id, "plan_id": "free", "state": "committed"}
         insert(admin, table, owner_id=owner, period=date.today().replace(day=1),
                **(extra if table == "credit_ledger" else {}))  # fmt: skip
+    # ADR 0031 (migration 0046, #948): a Dummy subscription, its event and a billing log row.
+    event_id = f"dummy_{uuid.uuid4().hex}"
+    insert(admin, "billing_events", owner_id=owner, provider="dummy", event_id=event_id,
+           kind="started", plan_id="instructor", period_start=datetime.now(UTC),
+           period_end=datetime.now(UTC) + timedelta(days=30), amount_minor=0, currency="USD",
+           outcome="applied")  # fmt: skip
+    insert(admin, "subscriptions", owner_id=owner, provider="dummy", plan_id="instructor",
+           anchor_day=1, period_start=datetime.now(UTC),
+           period_end=datetime.now(UTC) + timedelta(days=30), basis_minor=0,
+           basis_currency="USD", status="active", last_event_at=datetime.now(UTC))  # fmt: skip
+    insert(admin, "billing_log", owner_id=owner, action="checkout", outcome="ok",
+           request_id="req-schema")  # fmt: skip
     tables = sorted(RETENTION)
     planted = {t for t in tables if count(admin, t) > 0}
     assert planted == set(tables) - {"connections"}

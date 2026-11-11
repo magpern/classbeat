@@ -5,7 +5,7 @@ import json
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
@@ -86,6 +86,36 @@ def grant(conn: Connection, owner: UUID, plan: str | None, **columns: Any) -> No
     names = ", ".join(values)
     params = ", ".join(f":{k}" for k in values)
     conn.execute(text(f"INSERT INTO entitlements ({names}) VALUES ({params})"), values)  # noqa: S608
+
+
+def subscription_event(
+    conn: Connection, owner: UUID, plan: str, period_start: datetime, period_end: datetime,
+    *, kind: str = "started", event_id: str | None = None,
+) -> UUID:  # fmt: skip
+    """A `billing_events` row as the writer would insert it (`classbeat_maint`; Dummy provider)."""
+    values = {
+        "o": owner, "e": event_id or f"dummy_{uuid4().hex}", "k": kind, "p": plan,
+        "s": period_start, "end": period_end,
+    }  # fmt: skip
+    return conn.execute(
+        text(
+            "INSERT INTO billing_events (owner_id, provider, event_id, kind, plan_id, "
+            "period_start, period_end, amount_minor, currency, outcome) VALUES "
+            "(:o, 'dummy', :e, :k, :p, :s, :end, 0, 'USD', 'applied') RETURNING id"
+        ),
+        values,
+    ).scalar_one()
+
+
+def subscription(
+    conn: Connection, owner: UUID, plan: str, *, starts_at: datetime, ends_at: datetime
+) -> None:
+    """A subscription entitlement with the event the CHECK demands (at most 32 days)."""
+    event = subscription_event(conn, owner, plan, starts_at, ends_at)
+    grant(
+        conn, owner, plan, source="subscription", starts_at=starts_at, ends_at=ends_at,
+        billing_event_id=event,
+    )  # fmt: skip
 
 
 def about(moment: str | datetime, days: float, slack: float = 120) -> bool:

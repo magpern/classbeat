@@ -100,6 +100,25 @@ class Person:
             u=u,
         )
         self.sql("INSERT INTO swedebeat_analyses (owner_id) VALUES (:u)", u=u)
+        # ADR 0031 (#948): a Dummy subscription, its event and the user's billing log row.
+        self.sql(
+            "INSERT INTO billing_events (owner_id, provider, event_id, kind, plan_id, "
+            "period_start, period_end, amount_minor, currency, outcome) VALUES (:u, 'dummy', "
+            "'dummy_' || gen_random_uuid()::text, 'started', 'instructor', now(), "
+            "now() + interval '30 days', 0, 'USD', 'applied')",
+            u=u,
+        )
+        self.sql(
+            "INSERT INTO subscriptions (owner_id, provider, plan_id, anchor_day, period_start, "
+            "period_end, basis_minor, basis_currency, status, last_event_at) VALUES (:u, 'dummy', "
+            "'instructor', 1, now(), now() + interval '30 days', 0, 'USD', 'active', now())",
+            u=u,
+        )
+        self.sql(
+            "INSERT INTO billing_log (owner_id, action, outcome, request_id) "
+            "VALUES (:u, 'checkout', 'ok', 'req-gdpr')",
+            u=u,
+        )
         # ME5 (#656): a "class ready" mail on its way, for one of the user's jobs.
         self.sql(
             "INSERT INTO mail_handoff (owner_id, kind, job_id, params) "

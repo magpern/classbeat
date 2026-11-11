@@ -11,6 +11,9 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+# Unique keys without owner_id that are global on purpose (ADR 0031 section 3): a replayed provider
+# event is a no-op under any owner. (table, key columns).
+GLOBAL_UNIQUE = {("billing_events", ("provider", "event_id"))}
 # What Postgres 17 stores for the policy of classbeat.db.rls (pg_policies renders it).
 EXPECTED_EXPRESSION = (
     "(owner_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::uuid)"
@@ -221,6 +224,8 @@ def _check_owned(
                 bad(f"primary key must be (id), is {keys}")
         elif keys == ["owner_id", "id"]:
             found_owner_id_unique = True
+        elif (name, tuple(keys)) in GLOBAL_UNIQUE:
+            continue
         elif "owner_id" not in keys:
             bad(f"unique index {index['name']} {keys} does not include owner_id")
     if not any(i["indisprimary"] for i in table_indexes):

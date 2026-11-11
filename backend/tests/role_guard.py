@@ -65,6 +65,12 @@ RESTRICTED_APP_PRIVILEGES = {
     # TRUNCATE, also after 10-roles.sql runs again); ``model_routes`` keeps full DML (deleting a
     # route disables a model) and, like every table, no TRUNCATE.
     "model_eval_results": {"SELECT", "INSERT"},
+    # ADR 0031 section 3 (#948): read only, for the export; the writes are the maint role's.
+    # ``billing_events`` and ``subscriptions`` are per column, without the prices
+    # (``COLUMN_PRIVILEGES`` below).
+    "billing_events": set(),
+    "subscriptions": set(),
+    "billing_log": {"SELECT"},
 }
 # Every column of ``plans`` the app role may read: all but the prices and their currency
 # (migration 0030, #510, ADR 0011 amendment 2026-11-04). The database refuses a price to the app,
@@ -81,11 +87,32 @@ APP_PLAN_COLUMNS = frozenset(
         "saves_per_hour", "saves_per_day",
     }
 )  # fmt: skip
+# ADR 0031 section 3: the new price columns, unreadable to the app role like ``plans``' (the
+# export reads the other columns by name, ``Section.columns``).
+BILLING_PRICE_COLUMNS = {
+    "billing_events": frozenset({"amount_minor", "currency"}),
+    "subscriptions": frozenset({"basis_minor", "basis_currency"}),
+}
+APP_BILLING_COLUMNS = {
+    "billing_events": frozenset(
+        {"id", "owner_id", "provider", "event_id", "kind", "plan_id", "period_start",
+         "period_end", "outcome", "created_at"}
+    ),
+    "subscriptions": frozenset(
+        {"id", "owner_id", "provider", "plan_id", "anchor_day", "period_start", "period_end",
+         "next_plan_id", "cancel_at_end", "status", "last_event_at", "created_at", "updated_at"}
+    ),
+}  # fmt: skip
 # The only column-level privileges in public, exactly: (table, column) -> {(grantee, privilege)}.
 # ``redeem_codes.redeemed_count`` is what a redeem increments (ADR 0011 section 2).
 COLUMN_PRIVILEGES = {
     ("redeem_codes", "redeemed_count"): {(APP, "UPDATE")},
     **{("plans", column): {(APP, "SELECT")} for column in APP_PLAN_COLUMNS},
+    **{
+        (table, column): {(APP, "SELECT")}
+        for table, columns in APP_BILLING_COLUMNS.items()
+        for column in columns
+    },
 }
 SEQUENCE_PRIVILEGES = {"USAGE", "SELECT"}
 # Built-in languages that PUBLIC may use (Postgres' own default).
@@ -311,17 +338,20 @@ def check_roles(conn: Connection) -> list[str]:
         f"are {found_columns}",
     )
     # What the app role can actually read, however it got it (a table-level grant, PUBLIC, a
-    # membership): no price column of plans (#510).
-    readable_prices = conn.execute(
-        text(
-            "SELECT a.attname FROM pg_attribute a "
-            "WHERE a.attrelid = to_regclass('public.plans') AND a.attname = ANY(:prices) "
-            "AND NOT a.attisdropped AND has_column_privilege(:app, a.attrelid, a.attnum, 'SELECT')"
-        ),
-        {"prices": sorted(PLAN_PRICE_COLUMNS), "app": APP},
-    ).scalars()
-    for column in readable_prices:
-        problems.append(f"plans.{column}: classbeat_app can read a price column")
+    # membership): no price column of plans (#510), billing_events or subscriptions (#948).
+    price_columns = {"plans": PLAN_PRICE_COLUMNS, **BILLING_PRICE_COLUMNS}
+    for table, prices in price_columns.items():
+        readable_prices = conn.execute(
+            text(
+                "SELECT a.attname FROM pg_attribute a "
+                "WHERE a.attrelid = to_regclass(:table) AND a.attname = ANY(:prices) "
+                "AND NOT a.attisdropped "
+                "AND has_column_privilege(:app, a.attrelid, a.attnum, 'SELECT')"
+            ),
+            {"table": f"public.{table}", "prices": sorted(prices), "app": APP},
+        ).scalars()
+        for column in readable_prices:
+            problems.append(f"{table}.{column}: classbeat_app can read a price column")
 
     # Functions (in public, and user-made ones anywhere): PUBLIC may call none; classbeat_app
     # only the queue's SECURITY DEFINER functions owned by classbeat_queue (ADR 0005 section 3;

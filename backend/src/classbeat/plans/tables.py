@@ -19,6 +19,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     MetaData,
+    SmallInteger,
     Table,
     Text,
     text,
@@ -27,8 +28,10 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 metadata = MetaData()
 
-# ADR 0011 section 7: the feature codes of M5.
+# ADR 0011 section 7: the feature codes of M5. ADR 0031 section 6: ``billing_test`` is granted by
+# an admin only (``GRANT_FEATURES``), never by a redeem code, a plan or a trial (``FEATURES``).
 FEATURES = frozenset({"song_picking"})
+GRANT_FEATURES = frozenset({"song_picking", "billing_test"})
 SOURCES = ("grant", "code", "trial", "subscription")
 LEDGER_STATES = ("reserved", "committed", "released", "refunded")
 LEDGER_REASONS = ("failed", "cancelled", "expired", "admin_refund")
@@ -138,6 +141,8 @@ entitlements = Table(
     _ts("revoked_at"),
     _uuid("revoked_by"),
     _ts("created_at", nullable=False, default_now=True),
+    # Migration 0046 (ADR 0031 section 3): the event behind a ``subscription`` row.
+    _uuid("billing_event_id"),
 )
 
 code_redemptions = Table(
@@ -200,4 +205,56 @@ admin_audit = Table(
     Column("reason", Text),
     Column("request_id", Text, nullable=False),
     Column("ip_hash", LargeBinary, nullable=False),
+)
+
+# Migration 0046 (ADR 0031 section 3): owned. The app role reads them for the export, without the
+# price columns (``basis_minor``, ``basis_currency``, ``amount_minor``, ``currency``); the writer
+# on the maint engine (``classbeat.billing.writer``) is the only code that writes them.
+billing_events = Table(
+    "billing_events",
+    metadata,
+    _id(),
+    _owner(),
+    Column("provider", Text, nullable=False),
+    Column("event_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("plan_id", Text, ForeignKey("plans.id")),
+    _ts("period_start", nullable=False),
+    _ts("period_end", nullable=False),
+    Column("amount_minor", BigInteger, nullable=False, server_default=text("0")),
+    Column("currency", Text),
+    Column("outcome", Text, nullable=False),
+    _ts("created_at", nullable=False, default_now=True),
+)
+
+subscriptions = Table(
+    "subscriptions",
+    metadata,
+    _id(),
+    _owner(),
+    Column("provider", Text, nullable=False),
+    Column("plan_id", Text, ForeignKey("plans.id"), nullable=False),
+    Column("anchor_day", SmallInteger, nullable=False),
+    _ts("period_start", nullable=False),
+    _ts("period_end", nullable=False),
+    Column("basis_minor", BigInteger, nullable=False),
+    Column("basis_currency", Text, nullable=False),
+    Column("next_plan_id", Text, ForeignKey("plans.id")),
+    Column("cancel_at_end", Boolean, nullable=False, server_default=text("false")),
+    Column("status", Text, nullable=False, server_default="active"),
+    _ts("last_event_at", nullable=False, default_now=True),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("updated_at", nullable=False, default_now=True),
+)
+
+billing_log = Table(
+    "billing_log",
+    metadata,
+    _id(),
+    _owner(),
+    Column("action", Text, nullable=False),
+    Column("outcome", Text, nullable=False),
+    Column("reason", Text),
+    Column("request_id", Text, nullable=False),
+    _ts("created_at", nullable=False, default_now=True),
 )

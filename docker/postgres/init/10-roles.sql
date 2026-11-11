@@ -142,6 +142,21 @@ SELECT format('GRANT SELECT (%s) ON TABLE public.plans TO classbeat_app',
                             'games_allowed', 'races_allowed', 'ftp_tests_allowed',
                             'saves_per_hour', 'saves_per_day'])
 HAVING count(*) > 0 \gexec
+-- Billing (migration 0046_billing, ADR 0031 section 3): the same lists as its APP_GRANTS, never
+-- a price column (billing_events.amount_minor and currency, subscriptions.basis_minor and
+-- basis_currency), so a whole-row read fails as the app role (guard 2).
+SELECT 'REVOKE ALL ON TABLE public.billing_events FROM classbeat_app',
+       'GRANT SELECT (id, owner_id, provider, event_id, kind, plan_id, period_start, period_end, '
+       'outcome, created_at) ON TABLE public.billing_events TO classbeat_app'
+ WHERE to_regclass('public.billing_events') IS NOT NULL \gexec
+SELECT 'REVOKE ALL ON TABLE public.subscriptions FROM classbeat_app',
+       'GRANT SELECT (id, owner_id, provider, plan_id, anchor_day, period_start, period_end, '
+       'next_plan_id, cancel_at_end, status, last_event_at, created_at, updated_at) '
+       'ON TABLE public.subscriptions TO classbeat_app'
+ WHERE to_regclass('public.subscriptions') IS NOT NULL \gexec
+SELECT 'REVOKE ALL ON TABLE public.billing_log FROM classbeat_app',
+       'GRANT SELECT ON TABLE public.billing_log TO classbeat_app'
+ WHERE to_regclass('public.billing_log') IS NOT NULL \gexec
 SELECT 'REVOKE ALL ON TABLE public.app_settings FROM classbeat_app',
        'GRANT SELECT ON TABLE public.app_settings TO classbeat_app'
  WHERE to_regclass('public.app_settings') IS NOT NULL \gexec

@@ -31,23 +31,32 @@ statements live in ``classbeat.auth`` and the connection status in ``classbeat.c
 (guards 8 and 4).
 """
 
-from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Query, Request, Response
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
 from classbeat.admin.audit import Target
-from classbeat.admin.audit_text import NoteText, UserQuery, bounded_text
+from classbeat.admin.audit_text import UserQuery
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
+from classbeat.admin.users_models import (
+    ConnectionOut,
+    DeleteIn,
+    DisabledOut,
+    EntitlementOut,
+    GrantIn,
+    LedgerOut,
+    PlanOut,
+    UserDetail,
+    UserOut,
+    UserPage,
+)
 from classbeat.connections import connection_statuses
 from classbeat.emailnorm import normalize_email
-from classbeat.plans.tables import FEATURES
 from classbeat.quota.bounds import Bounds, effective_classes
 
 router = admin_router()
@@ -98,6 +107,7 @@ _LEDGER = text(
 )
 _PLAN_EXISTS = text("SELECT 1 FROM plans WHERE id = :p")
 _IN_FUTURE = text("SELECT CAST(:e AS timestamptz) > now()")
+_WITHIN_TESTER_PERIOD = text("SELECT CAST(:e AS timestamptz) <= now() + interval '90 days'")
 _GRANT = text(
     "INSERT INTO entitlements (owner_id, plan_id, features, source, ends_at, granted_by, note) "  # noqa: S608
     "VALUES (:o, :p, :f, 'grant', :e, :by, :note) "
@@ -109,107 +119,6 @@ _REVOKE = text(
     f"RETURNING {_ENTITLEMENT_COLUMNS}"
 )
 _REVOKED_AT = text("SELECT revoked_at FROM entitlements WHERE id = :e AND owner_id = :o")
-
-
-class Out(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-
-class PlanOut(Out):
-    id: str
-    name: str
-    source: str | None  # None: free without an entitlement
-    ends_at: datetime | None
-
-
-class UserOut(Out):
-    id: UUID
-    email: str
-    created_at: datetime
-    role: str
-    disabled_at: datetime | None
-    plan: PlanOut
-    features: list[str]
-    classes_held: int
-    classes_limit: int
-    cost_micros: int
-
-
-class UserPage(Out):
-    users: list[UserOut]
-    next_offset: int | None
-
-
-class EntitlementOut(Out):
-    id: UUID
-    plan_id: str | None
-    features: list[str]
-    source: str
-    starts_at: datetime
-    ends_at: datetime | None
-    granted_by: UUID | None
-    note: str | None
-    revoked_at: datetime | None
-    revoked_by: UUID | None
-    created_at: datetime
-    active: bool
-
-
-class LedgerOut(Out):
-    id: UUID
-    job_id: UUID | None
-    period: str
-    plan_id: str
-    state: str
-    reason: str | None
-    settled_at: datetime | None
-    refunded_by: UUID | None
-    created_at: datetime
-
-
-class ConnectionOut(Out):
-    provider: str
-    status: str
-    last_error: str | None
-    connected_at: datetime | None
-    last_used_at: datetime | None
-
-
-class UserDetail(UserOut):
-    entitlements: list[EntitlementOut]
-    ledger: list[LedgerOut]
-    connections: list[ConnectionOut]
-
-
-class DisabledOut(Out):
-    id: UUID
-    disabled_at: datetime | None
-    sessions_revoked: int
-
-
-class In(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class GrantIn(In):
-    plan_id: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,30}$")] | None = None
-    features: Annotated[list[str], Field(max_length=len(FEATURES))] = []
-    ends_at: AwareDatetime | None = None
-    # No control character (``entitlements.note`` refuses a NUL, which was a 500) and no format
-    # character (bidi, zero-width): the note is shown to admins again (#227).
-    note: NoteText | None = None
-
-    @model_validator(mode="after")
-    def _grants_something(self) -> "GrantIn":
-        if self.plan_id is None and not self.features:
-            raise ValueError("a grant names a plan or a feature")
-        if not set(self.features) <= FEATURES or len(set(self.features)) != len(self.features):
-            raise ValueError("features are distinct codes of the feature list")
-        return self
-
-
-class DeleteIn(In):
-    email: Annotated[str, StringConstraints(min_length=1, max_length=320), bounded_text(3840)]
 
 
 def _db(request: Request) -> AdminDb:
@@ -359,6 +268,12 @@ async def grant_entitlement(
             and not (await session.execute(_IN_FUTURE, {"e": body.ends_at})).scalar_one()
         ):
             raise AdminRefused("ends_in_past", 422)
+        if "billing_test" in body.features and (
+            body.ends_at is None
+            or not (await session.execute(_WITHIN_TESTER_PERIOD, {"e": body.ends_at})).scalar_one()
+        ):
+            # ADR 0031 section 6: a tester grant has an end, at most 90 days out.
+            raise AdminRefused("billing_test_period", 422)
         row = (
             await session.execute(
                 _GRANT,

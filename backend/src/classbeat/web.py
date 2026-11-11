@@ -24,7 +24,11 @@ from classbeat import (
 from classbeat.account import erase
 from classbeat.account.routes import router as account_router
 from classbeat.admin import routes as admin_routes
+from classbeat.admin.billing import router as admin_billing_router
 from classbeat.admin.db import AdminDb
+from classbeat.billing.errors import BillingRefused
+from classbeat.billing.routes import refusal_response as billing_refusal
+from classbeat.billing.routes import router as billing_router
 from classbeat.bodylimit import BodyLimit
 from classbeat.classes.duplicate import router as duplicate_router
 from classbeat.classes.handoff_routes import install_job_enqueue
@@ -213,6 +217,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(usage_router)
     app.include_router(plans_router)
+    app.include_router(billing_router)
+    app.include_router(admin_billing_router)  # /api/admin/billing (M7a #948)
+    app.add_exception_handler(BillingRefused, billing_refusal)
     app.include_router(catalogue_router)
     app.include_router(account_router)
     app.include_router(settings_router)

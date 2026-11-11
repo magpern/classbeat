@@ -158,6 +158,25 @@ GRANT SELECT (id, created_at, actor_id, actor_email, action, target_user_id, tar
   ON public.admin_audit TO classbeat_maint;
 GRANT INSERT ON public.admin_audit TO classbeat_maint;
 
+-- Billing (ADR 0031 section 3, #948): the subscription writer. Maint reads the price columns
+-- (the app role never does) and inserts events, log rows and the subscription state; an event row
+-- and a log row are never updated; an entitlement's only update stays revoked_at (above).
+GRANT SELECT (id, owner_id, provider, plan_id, anchor_day, period_start, period_end,
+              basis_minor, basis_currency, next_plan_id, cancel_at_end, status, last_event_at,
+              created_at, updated_at)
+  ON public.subscriptions TO classbeat_maint;
+GRANT INSERT, UPDATE (provider, plan_id, anchor_day, period_start, period_end, basis_minor,
+                      basis_currency, next_plan_id, cancel_at_end, status, last_event_at,
+                      updated_at)
+  ON public.subscriptions TO classbeat_maint;
+GRANT SELECT (id, owner_id, provider, event_id, kind, plan_id, period_start, period_end,
+              amount_minor, currency, outcome, created_at)
+  ON public.billing_events TO classbeat_maint;
+GRANT INSERT ON public.billing_events TO classbeat_maint;
+GRANT SELECT (id, owner_id, action, outcome, reason, request_id, created_at)
+  ON public.billing_log TO classbeat_maint;
+GRANT INSERT ON public.billing_log TO classbeat_maint;
+
 -- Status only (ADR 0011 section 6): which connections exist and how they are, never their
 -- public data (the Spotify Client ID), ciphertexts, nonces or wrapped keys.
 GRANT SELECT (id, owner_id, provider, status, last_error, connected_at, updated_at, last_used_at)

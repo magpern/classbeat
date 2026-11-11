@@ -26,15 +26,21 @@ class Section:
     table: str
     order: str  # a fixed ORDER BY list, so the file is the same twice
     omit: frozenset[str]
+    # Non-empty: the section reads exactly these columns, for a table whose app grant is a column
+    # list (the price columns of ``billing_events`` and ``subscriptions``, ADR 0031 section 3);
+    # ``omit`` then stays empty. ``test_account_export_registry`` checks each is SELECTable.
+    columns: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        names = (self.key, self.table, *self.omit)
+        names = (self.key, self.table, *self.omit, *self.columns)
         if not all(_IDENT.match(name) for name in names) or not _ORDER.match(self.order):
             raise ValueError(f"unsafe name in the export registry: {self.table}")
 
 
-def _section(table: str, order: str = "created_at, id", omit: str = "") -> Section:
-    return Section(table, table, order, frozenset(omit.split()))
+def _section(
+    table: str, order: str = "created_at, id", omit: str = "", columns: str = ""
+) -> Section:
+    return Section(table, table, order, frozenset(omit.split()), tuple(columns.split()))
 
 
 SECTIONS: tuple[Section, ...] = (
@@ -61,6 +67,19 @@ SECTIONS: tuple[Section, ...] = (
     ),
     _section("agent_runs", "started_at, id", "eval_result_id"),
     _section("entitlements", omit="granted_by revoked_by"),
+    # ADR 0031 section 3 (#948): the app role cannot read the amount or the currency, so these
+    # two list their columns. The Dummy ``event_id`` is a digest: nothing of an idempotency key.
+    _section(
+        "billing_events",
+        columns="id owner_id provider event_id kind plan_id period_start period_end outcome "
+        "created_at",
+    ),
+    _section(
+        "subscriptions",
+        columns="id owner_id provider plan_id anchor_day period_start period_end next_plan_id "
+        "cancel_at_end status last_event_at created_at updated_at",
+    ),
+    _section("billing_log"),
     _section("code_redemptions"),
     _section("credit_ledger", omit="refunded_by"),
     _section("quota_periods", "period, id"),
