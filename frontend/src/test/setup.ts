@@ -33,9 +33,6 @@ for (const [name, fn] of Object.entries(elementShims)) {
 }
 if (!('ResizeObserver' in window)) Object.defineProperty(window, 'ResizeObserver', { value: ResizeObserverStub })
 
-// jsdom draws no canvas: getContext would only log "not implemented" (the hero's BeatField).
-HTMLCanvasElement.prototype.getContext = () => null
-
 // jsdom has no matchMedia (sonner reads it).
 if (!('matchMedia' in window)) {
   Object.defineProperty(window, 'matchMedia', {

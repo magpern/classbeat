@@ -27,7 +27,7 @@ export function HomePage() {
           <li key={preset.label}>
             <Link
               to={presetLink(preset)}
-              className="inline-flex min-h-11 items-center rounded-full border border-line bg-raised px-4 font-medium text-text no-underline hover:bg-line"
+              className="chip-lift inline-flex min-h-11 items-center rounded-full border border-line bg-raised px-4 font-medium text-text no-underline hover:bg-line"
             >
               {t(preset.label)}
             </Link>

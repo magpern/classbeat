@@ -1,25 +1,19 @@
 /*
- * Motion for the Landing page: reveal on scroll, card glow, the hero's beat field, the self-drawing
- * profile. Colour comes from tokens only. Every moving rule is switched off under
- * prefers-reduced-motion (the last block), and the hidden states below exist only once a script
- * has set data-reveal / data-live, so the prerender and a visitor without script see everything.
+ * Motion shared by the public pages and the app: card glow, reveal on scroll, the steps that fill,
+ * the class profile that plays. Colour comes from tokens only.
+ *
+ * Rule for the public pages: motion is CSS, never a state a script sets. The prerendered page and
+ * the live page then look the same at every scroll position (the takeover gate compares them), and
+ * a visitor without script gets the motion too. Scroll effects use scroll-driven animations
+ * (`animation-timeline: view()`); a browser without them shows everything at once. Everything that
+ * moves sits under `prefers-reduced-motion: no-preference`.
  */
 
 :root {
   --cb-ease: cubic-bezier(0.2, 0.7, 0.1, 1);
 }
 
-/* The hero's flywheel: behind the scrim (imagery.css), so the text column stays clean. */
-.beat-field {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-/* A pulsing dot in the badge. */
+/* A dot in the beta badge; it pulses below. */
 .pulse-dot {
   display: inline-block;
   width: 0.45rem;
@@ -27,16 +21,6 @@
   margin-right: 0.5rem;
   border-radius: 50%;
   background: currentColor;
-  animation: pulse-dot 2.3s ease-out infinite;
-}
-@keyframes pulse-dot {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
-  }
-  70%,
-  100% {
-    box-shadow: 0 0 0 0.6rem transparent;
-  }
 }
 
 /* A card that lifts on hover and is lit by the pointer (useSpotlight sets --mx and --my). */
@@ -64,7 +48,6 @@
 }
 @media (hover: hover) {
   .glow-card:hover {
-    transform: translateY(-3px);
     border-color: color-mix(in srgb, var(--cb-brand) 55%, var(--cb-line));
     box-shadow: 0 18px 40px -24px color-mix(in srgb, var(--cb-brand) 70%, transparent);
   }
@@ -73,93 +56,181 @@
   }
 }
 
-/* The class profile draws itself: bars rise one after another, then a playhead sweeps across and
-   lights each bar as it passes. 14 s a loop, started when the chart scrolls into view. */
-.mini-bar {
-  transition: transform 0.7s var(--cb-ease) calc(var(--i, 0) * 40ms);
+/* The steps of How it works: a rail joins the numbers. Below, rail and numbers fill on scroll. */
+.fill-step {
+  position: relative;
 }
+.fill-step:not(:last-child)::before,
+.fill-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: calc(1.125rem - 1px); /* the middle of the 2.25rem number */
+  top: 3.5rem; /* under this number: 1rem above it, 2.25rem tall, 0.25rem clear */
+  bottom: -1.75rem; /* down to the next number: the 1rem gap, its 1rem top margin, 0.25rem clear */
+  width: 2px;
+  border-radius: 1px;
+  background: var(--cb-line);
+}
+.fill-step:not(:last-child)::after {
+  background: var(--cb-brand);
+  transform-origin: top;
+}
+.fill-step__card {
+  border-color: color-mix(in srgb, var(--cb-brand) 35%, var(--cb-line));
+}
+
+/* The playhead and the veil over what is still to come (MiniProfile); shown only when they move. */
+.mini-veil,
 .mini-playhead {
   display: none;
+  opacity: 0;
 }
-.mini-sweep[data-live='true']:not([data-reveal='hidden']) .mini-bar {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  opacity: 0.55;
-  animation: mini-lit 14s linear infinite;
-  animation-delay: calc(0.9s + var(--s, 0) * 14s);
+.mini-veil {
+  fill: var(--cb-stage);
 }
-.mini-sweep[data-live='true']:not([data-reveal='hidden']) .mini-playhead {
-  display: block;
+.mini-playhead {
   stroke: var(--cb-stage-text);
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
-  opacity: 0.8;
-  animation: mini-sweep 14s linear 0.9s infinite;
 }
-.mini-sweep[data-reveal='hidden'] .mini-bar {
-  transform: scaleY(0);
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
+
+@media (prefers-reduced-motion: no-preference) {
+  .pulse-dot {
+    animation: pulse-dot 2.3s ease-out infinite;
+  }
+  @media (hover: hover) {
+    .glow-card:hover {
+      transform: translateY(-3px);
+    }
+  }
+
+  /* The profile plays: all the time on the Landing, under the pointer on a card or a row. */
+  .mini-profile--play .mini-veil {
+    display: block;
+    animation: mini-veil 14s linear infinite;
+  }
+  .mini-profile--play .mini-playhead {
+    display: block;
+    animation: mini-head 14s linear infinite;
+  }
+  @media (hover: hover) {
+    :is(.glow-card, .class-row):hover .mini-profile--hover .mini-veil {
+      display: block;
+      animation: mini-veil 4s linear infinite;
+    }
+    :is(.glow-card, .class-row):hover .mini-profile--hover .mini-playhead {
+      display: block;
+      animation: mini-head 4s linear infinite;
+    }
+  }
+
+  @supports (animation-timeline: view()) {
+    /* A block rises in while it enters the screen. `translate`, so a hover `transform` still works. */
+    .reveal {
+      animation: reveal-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 100%;
+    }
+    .reveal-row > .reveal:nth-child(2) {
+      --rise: 3.5rem;
+    }
+    .reveal-row > .reveal:nth-child(3) {
+      --rise: 5rem;
+    }
+    /* A chart is drawn from left to right as it comes up the screen. */
+    .draw-in {
+      animation: draw-in linear both;
+      animation-timeline: view(block 0% 15%);
+      animation-range: entry 0% entry 100%;
+    }
+    /* The steps fill as they cross a line 65% down the screen: number, card, then the rail on. */
+    .fill-step__badge {
+      animation: badge-fill linear both;
+      animation-timeline: view(block 0% 35%);
+      animation-range: entry 0% entry 100%;
+    }
+    .fill-step__card {
+      animation: card-arrive linear both;
+      animation-timeline: view(block 0% 35%);
+      animation-range: entry 0% entry 70%;
+    }
+    .fill-step:not(:last-child)::after {
+      animation: rail-fill linear both;
+      animation-timeline: view(block 0% 35%);
+      animation-range: entry 0% entry 100%;
+    }
+  }
 }
-@keyframes mini-lit {
+
+@keyframes pulse-dot {
   0% {
-    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
   }
-  45%,
+  70%,
   100% {
-    opacity: 0.55;
+    box-shadow: 0 0 0 0.6rem transparent;
   }
 }
-@keyframes mini-sweep {
-  from {
+@keyframes mini-veil {
+  0% {
     transform: translateX(0);
+    opacity: 0;
+  }
+  4% {
+    opacity: 0.5;
   }
   to {
     transform: translateX(200px);
+    opacity: 0.5;
   }
 }
-
-/* Reveal on scroll (useReveal): a block below the first screen starts hidden and rises in. */
-[data-reveal] {
-  transition:
-    opacity 0.9s var(--cb-ease),
-    transform 0.9s var(--cb-ease),
-    filter 0.9s var(--cb-ease);
-  transition-delay: var(--reveal-delay, 0s);
+@keyframes mini-head {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  4%,
+  96% {
+    opacity: 0.85;
+  }
+  to {
+    transform: translateX(200px);
+    opacity: 0;
+  }
 }
-[data-reveal='hidden'] {
-  opacity: 0;
-  transform: translateY(1.75rem);
-  filter: blur(4px);
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    translate: 0 var(--rise, 2rem);
+  }
 }
-[data-reveal='in'] {
-  opacity: 1;
-  transform: none;
-  filter: none;
+@keyframes draw-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  [data-reveal] {
-    opacity: 1;
-    transform: none;
-    filter: none;
-    transition: none;
+@keyframes badge-fill {
+  from {
+    background-color: var(--cb-surface);
+    color: var(--cb-muted);
+    box-shadow: inset 0 0 0 2px var(--cb-line);
+    scale: 0.8;
   }
-  .glow-card:hover {
-    transform: none;
+  to {
+    box-shadow: inset 0 0 0 2px var(--cb-brand);
   }
-  .mini-bar,
-  .mini-sweep[data-live='true'] .mini-bar,
-  .mini-sweep[data-reveal='hidden'] .mini-bar {
-    opacity: 1;
-    transform: none;
-    animation: none;
-    transition: none;
+}
+@keyframes card-arrive {
+  from {
+    border-color: var(--cb-line);
+    translate: 0.75rem 0;
   }
-  .mini-sweep[data-live='true'] .mini-playhead {
-    display: none;
-  }
-  .pulse-dot {
-    animation: none;
+}
+@keyframes rail-fill {
+  from {
+    transform: scaleY(0);
   }
 }

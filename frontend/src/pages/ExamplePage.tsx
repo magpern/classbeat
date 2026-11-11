@@ -52,7 +52,7 @@ export function ExamplePage({ example }: { example: Example }) {
           {t('examples.request.title')}
         </h2>
         <p className="m-0 text-muted">{t('examples.request.lead')}</p>
-        <blockquote className="m-0 rounded-lg border border-line bg-raised p-4 text-lg" data-testid="example-prompt">
+        <blockquote className="reveal m-0 rounded-lg border border-line bg-raised p-4 text-lg" data-testid="example-prompt">
           {t(exampleKey(slug, 'prompt'))}
         </blockquote>
       </section>
@@ -62,11 +62,13 @@ export function ExamplePage({ example }: { example: Example }) {
           {t('examples.class.title')}
         </h2>
         <p className="m-0 text-muted">{t('examples.class.lead')}</p>
-        <ProfileChart segments={example.segments} title={title} songs={null} />
+        <div className="draw-in">
+          <ProfileChart segments={example.segments} title={title} songs={null} />
+        </div>
         <ExampleTable segments={example.segments} title={title} running={running} />
       </section>
 
-      <section aria-labelledby="example-cta" className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-5">
+      <section aria-labelledby="example-cta" className="reveal glow-card flex flex-col gap-3 rounded-lg border border-line bg-surface p-5">
         <h2 id="example-cta" className="m-0 font-display text-2xl font-bold">
           {t('examples.cta.title')}
         </h2>

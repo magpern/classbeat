@@ -1,11 +1,12 @@
 import { LegalFooter } from '../../pages/legal/LegalFooter'
 import { Home, Library, Music, Plus, User, type LucideIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { logout } from '../../api/auth'
 import { useSession } from '../../auth/SessionContext'
 import { useT } from '../../i18n/I18n'
 import type { CatalogueKey } from '../../i18n/en'
 import { useLayout, type Layout } from '../../hooks/useLayout'
+import { useSpotlight } from '../../hooks/useSpotlight'
 import { cn } from '../../lib/cn'
 import { forgetExample } from '../../lib/exampleHandoff'
 import { Link, useRouter } from '../../router/Router'
@@ -117,8 +118,10 @@ interface FrameProps {
  * strips its token once and must not be mounted again.
  */
 function Frame({ rootClass, top, mainClass, alert, bottom, children }: FrameProps) {
+  const root = useRef<HTMLDivElement>(null)
+  useSpotlight(root) // the pointer's light on every `.glow-card` (motion.css)
   return (
-    <div className={rootClass}>
+    <div ref={root} className={rootClass}>
       {top}
       <main className={mainClass}>
         <div className="mx-auto max-w-5xl">

@@ -1,9 +1,6 @@
-import { useRef } from 'react'
 import { MiniProfile } from '../components/classes/MiniProfile'
 import { HowItWorks } from '../components/landing/HowItWorks'
 import { LandingHero } from '../components/landing/LandingHero'
-import { Reveal } from '../components/landing/Reveal'
-import { useSpotlight } from '../hooks/useSpotlight'
 import { EXAMPLE_PROFILE, EXAMPLE_SONGS, type ExampleSong } from '../components/landing/exampleClass'
 import { useT } from '../i18n/I18n'
 import { ListRow } from '../components/ui/list-row'
@@ -15,20 +12,18 @@ const FIXTURE_TEXT = EXAMPLE_SONGS.flatMap((s) => [s.title, s.artist, String(s.b
 /** The page for visitors who are not signed in (ADR 0013 section 5). */
 export function LandingPage() {
   const t = useT()
-  const page = useRef<HTMLDivElement>(null)
-  useSpotlight(page)
   const stats = (song: ExampleSong) => t('landing.example.songStats', { bpm: song.bpm, length: song.length })
   return (
-    <div ref={page} className="flex flex-col gap-12">
+    <div className="flex flex-col gap-12">
       <LandingHero />
 
-      <Reveal as="section" aria-labelledby="example-title" className="flex flex-col gap-4">
+      <section aria-labelledby="example-title" className="reveal flex flex-col gap-4">
         <h2 id="example-title" className="m-0 font-display text-2xl font-bold">
           {t('landing.example.title')}
         </h2>
         <p className="m-0 text-muted">{t('landing.example.note')}</p>
         <div className="glow-card flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
-          <MiniProfile profile={EXAMPLE_PROFILE} tall animate />
+          <MiniProfile profile={EXAMPLE_PROFILE} tall motion="play" />
           <ol
             className="m-0 flex list-none flex-col divide-y divide-line p-0"
             aria-label={t('landing.example.songs')}
@@ -56,7 +51,7 @@ export function LandingPage() {
             ))}
           </ol>
         </div>
-      </Reveal>
+      </section>
 
       <HowItWorks />
     </div>

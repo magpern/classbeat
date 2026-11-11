@@ -47,7 +47,7 @@ export const en = {
   'landing.lead': 'Describe the ride. We design the class, and you refine it.',
   'landing.signUp': 'Join the beta',
   'landing.example.title': 'An example class',
-  'landing.example.note': 'A made-up 30-minute ride. The songs are placeholders.',
+  'landing.example.note': 'A made-up 30-minute ride.',
   'landing.example.songs': 'Songs of the example class',
   'landing.example.songMeta': '{artist} · {part}',
   'landing.example.songStats': '{bpm} BPM · {length}',

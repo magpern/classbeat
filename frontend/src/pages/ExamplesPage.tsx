@@ -12,7 +12,7 @@ export function ExamplesPage() {
         <p className="m-0 text-lg">{t('examples.lead')}</p>
         <p className="m-0 text-muted">{t('examples.note')}</p>
       </header>
-      <ul className="m-0 grid list-none gap-4 p-0 sm:grid-cols-2" aria-label={t('examples.list')}>
+      <ul className="reveal-row m-0 grid list-none gap-4 p-0 sm:grid-cols-2" aria-label={t('examples.list')}>
         {EXAMPLES.map((example) => (
           <ExampleCard key={example.slug} example={example} />
         ))}

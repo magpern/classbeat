@@ -28,9 +28,9 @@ export function DesigningSteps({ steps, current }: { steps: readonly Step[]; cur
             className={`flex items-center gap-3 text-[0.9375rem] ${now ? 'font-medium text-text' : 'text-muted'}`}
           >
             {done ? (
-              <Check aria-hidden="true" size={18} className="shrink-0 text-ok" />
+              <Check aria-hidden="true" size={18} className="check-pop shrink-0 text-ok" />
             ) : now ? (
-              <Loader aria-hidden="true" size={18} className="shrink-0 text-brand" />
+              <Loader aria-hidden="true" size={18} className="shrink-0 text-brand motion-safe:animate-[spin_2.4s_linear_infinite]" />
             ) : (
               <Circle aria-hidden="true" size={18} className="shrink-0" />
             )}

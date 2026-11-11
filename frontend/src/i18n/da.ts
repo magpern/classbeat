@@ -43,7 +43,7 @@ const da: Catalogue = {
   'landing.lead': 'Beskriv turen. Vi designer holdet, og du finjusterer det.',
   'landing.signUp': 'Deltag i betaen',
   'landing.example.title': 'Et eksempelhold',
-  'landing.example.note': 'En opdigtet tur på 30 minutter. Sangene er pladsholdere.',
+  'landing.example.note': 'En opdigtet tur på 30 minutter.',
   'landing.example.songs': 'Sangene på eksempelholdet',
   'landing.example.songMeta': '{artist} · {part}',
   'landing.example.songStats': '{bpm} BPM · {length}',
