@@ -72,6 +72,14 @@ describe('a caller who may not buy', () => {
     expect(within(options).queryByRole('button')).toBeNull()
   })
 
+  it('says so when the plan list cannot be loaded, instead of loading forever', async () => {
+    fakeApi({ ...ACCOUNT, 'GET /api/plans': () => reason(503, 'unavailable') })
+    const options = await openPlan()
+    await within(options).findByText('The plan options could not be loaded.')
+    expect(within(options).queryByText('Loading')).toBeNull()
+    expect(within(options).queryByRole('button')).toBeNull()
+  })
+
   it('shows the source of an admin account', async () => {
     fakeApi({ ...ACCOUNT, 'GET /api/account/plan': { ...PLAN_FREE, plan: 'pro', name: 'Professional', source: 'admin' } })
     renderAt('/account#plan')
@@ -106,7 +114,7 @@ describe('a tester or an admin', () => {
     fireEvent.click(await within(options).findByRole('button', { name: 'Buy Individual' }))
     const confirm = await screen.findByTestId('offer-confirm')
     expect(within(confirm).getByTestId('confirm-text').textContent).toBe(
-      'Pay $9.00 now for one month of Individual. It renews every month until you cancel.',
+      'Pay $9.00 now for one month of Individual.',
     )
     expect(confirm.textContent).toContain('test payment (Dummy)')
     fireEvent.click(within(confirm).getByRole('button', { name: 'Confirm' }))
@@ -115,7 +123,7 @@ describe('a tester or an admin', () => {
     expect(call?.body).toEqual({ plan: 'instructor', expected_amount_minor: 900 })
     expect(call?.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
     expect(call?.headers.get('X-CSRF-Token')).toBeTruthy()
-    expect((await screen.findByTestId('plan-subscription')).textContent).toBe('Subscription: Individual, renewing on 15 December.')
+    expect((await screen.findByTestId('plan-subscription')).textContent).toBe('Subscription: Individual, paid until 15 December.')
     expect(screen.queryByTestId('offer-confirm')).toBeNull()
   })
 

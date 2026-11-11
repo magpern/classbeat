@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client'
 import type { Plan } from '../../api/plan'
 import { dayText } from '../../api/planMessages'
 import { useBilling } from '../../hooks/useBilling'
-import { useCatalogue } from '../../hooks/usePlanView'
+import { useCatalogueResult } from '../../hooks/usePlanView'
 import { useT } from '../../i18n/I18n'
 import { ACTION_LABEL, canCancel, doneKey, stillOffered, type Choice, type ChoiceKind } from '../../lib/billingChoice'
 import { newIdempotencyKey } from '../../lib/submittedInput'
@@ -22,7 +22,7 @@ import { PlanCard } from './PlanCard'
  */
 export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => void }) {
   const t = useT()
-  const catalogue = useCatalogue()
+  const { catalogue, failed: catalogueFailed } = useCatalogueResult()
   const { state, reload, replace } = useBilling()
   const action = useAction()
   const [choice, setChoice] = useState<Choice | null>(null)
@@ -74,14 +74,16 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
       })
   }
 
-  if (catalogue === null || state.status === 'loading') return <p>{t('common.loading')}</p>
+  const loading = !catalogueFailed && (catalogue === null || state.status === 'loading')
   const open = choice !== null && billing !== null && stillOffered(billing, choice) ? choice : null
   return (
     <div className="flex flex-col gap-3" data-testid="plan-options">
       <h3 className="m-0 font-display text-lg font-bold">{t('plan.options.title')}</h3>
-      {state.status === 'closed' ? <Notice>{t('plan.options.closed')}</Notice> : null}
-      {state.status === 'failed' ? <Notice kind="error">{t('plan.billing.loadFailed')}</Notice> : null}
-      {billing !== null ? <Notice>{t('plan.options.testing')}</Notice> : null}
+      {loading ? <p className="m-0">{t('common.loading')}</p> : null}
+      {catalogueFailed ? <Notice kind="error">{t('plan.billing.loadFailed')}</Notice> : null}
+      {!loading && state.status === 'closed' ? <Notice>{t('plan.options.closed')}</Notice> : null}
+      {!loading && !catalogueFailed && state.status === 'failed' ? <Notice kind="error">{t('plan.billing.loadFailed')}</Notice> : null}
+      {!loading && billing !== null ? <Notice>{t('plan.options.testing')}</Notice> : null}
       {sub !== null && sub.status === 'active' ? (
         <p className="m-0" data-testid="plan-subscription">
           {t(sub.cancelAtEnd ? 'plan.sub.cancels' : sub.nextPlan !== null ? 'plan.sub.downgrades' : 'plan.sub.renews', {
@@ -108,7 +110,7 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
         />
       )}
       <ul className="m-0 flex list-none flex-col gap-4 p-0">
-        {catalogue.map((cat) => (
+        {(loading ? [] : (catalogue ?? [])).map((cat) => (
           <PlanCard
             key={cat.id}
             plan={cat}
@@ -122,7 +124,7 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
           />
         ))}
       </ul>
-      {billing !== null && canCancel(sub) && open === null ? (
+      {!loading && billing !== null && canCancel(sub) && open === null ? (
         <p className="m-0">
           <Button
             variant="secondary"

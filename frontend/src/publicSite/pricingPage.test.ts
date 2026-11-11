@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { resetCatalogues } from '../i18n/t'
 import { renderPage } from '../prerender/renderPage'
@@ -60,5 +62,15 @@ describe('the Plans page prerender', () => {
     const visible = `${page.title}. ${page.description}. ${textOf(page.body)}`
     expect(mentionsSongPicking(visible)).toBe(true)
     expect(hasSongPickingNote(visible)).toBe(true)
+  })
+})
+
+describe('the Plans page modules', () => {
+  it('import no API client of their own: the numbers come through the catalogue hook after takeover', () => {
+    for (const file of ['components/plans/PricingPlans.tsx', 'components/plans/PlanFacts.tsx', 'pages/PricingPage.tsx']) {
+      const source = readFileSync(join(import.meta.dirname, '..', file), 'utf8')
+      const apiImports = source.split('\n').filter((l) => /^import (?!type ).* from '[^']*\/api\//.test(l))
+      expect(apiImports, file).toEqual([])
+    }
   })
 })

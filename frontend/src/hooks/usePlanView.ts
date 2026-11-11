@@ -3,20 +3,28 @@ import { getPlan, getPlanCatalogue, type CataloguePlan, type Plan } from '../api
 
 /** The public catalogue alone (null while unknown or after a failed call). */
 export function useCatalogue(): CataloguePlan[] | null {
+  return useCatalogueResult().catalogue
+}
+
+/** The catalogue, and whether its call failed (so a screen can say so instead of loading forever). */
+export function useCatalogueResult(): { catalogue: CataloguePlan[] | null; failed: boolean } {
   const [catalogue, setCatalogue] = useState<CataloguePlan[] | null>(null)
+  const [failed, setFailed] = useState(false)
   useEffect(() => {
     const abort = new AbortController()
     getPlanCatalogue(abort.signal).then(
       (found) => {
         if (!abort.signal.aborted) setCatalogue(found)
       },
-      () => undefined,
+      () => {
+        if (!abort.signal.aborted) setFailed(true)
+      },
     )
     return () => {
       abort.abort()
     }
   }, [])
-  return catalogue
+  return { catalogue, failed }
 }
 
 export interface PlanView {
