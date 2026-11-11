@@ -28,7 +28,7 @@ for (const lang of ALL_LANGUAGES) {
       for (const { theme, stored } of VISITS) {
         const visit = stored ? 'stored' : 'first visit'
         test(`/${lang}${path} (${theme}, ${visit}, ${size.name}px): takeover is quiet`, async ({ browser, baseURL }) => {
-          test.skip(!GATE_LANGUAGES.includes(lang), `${lang} waits for the sv/da translation: see GATE_LANGUAGES in public-takeover-matrix.ts`)
+          test.skip(!GATE_LANGUAGES.includes(lang), `${lang} is not in GATE_LANGUAGES in public-takeover-matrix.ts`)
           const origin = new URL(baseURL ?? 'http://127.0.0.1:8000').origin
           const context = await browser.newContext({
             locale: lang,
