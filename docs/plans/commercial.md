@@ -96,7 +96,9 @@ or FTP test with `feature`. M7a adds the **graceful front end**:
 - **Upgrade (Individual → Professional):** takes effect at once. The user pays the **difference
   for the rest of the period**: `(price_new − price_old) × days_left / days_in_period`, rounded
   half-up to the minor unit, with days counted in UTC dates and the upgrade day counted as a day
-  left (ADR 0031 §5), and the period end does not move. The class count already used stays used
+  left (ADR 0031 §5), and the period end does not move. `price_old` is the price actually paid for
+  this period (stored on the subscription); if the new price is not higher, the upgrade still
+  applies and costs 0. The class count already used stays used
   (the quota period stays the UTC calendar month), and the new limits apply from now.
 - The introduction price is not used in M7a (it stays admin-only data; M7b decides).
 - **Expiry without renewal:** the account returns to Free. A program already saved in MOWL is
@@ -128,9 +130,12 @@ or FTP test with `feature`. M7a adds the **graceful front end**:
 
 ### 5. Entitlement writer
 `subscription` finally gets a writer: `classbeat.billing.writer.apply`, in `web` on the audited
-maint path (`billing_session` next to `admin_session`), never the app role. It takes a provider
-event, is idempotent on `(provider, event_id)`, refuses out-of-order events, and inserts one
-entitlement row per paid period, each traced to its event by a database check (ADR 0031 §3). It is
+maint path, never the app role: a user's own checkout runs in `billing_session` (audited in an
+owned `billing_log`, so testers never become actors of the operator log), an admin's fast-forward in
+`admin_session`. It takes a provider event, is idempotent on `(provider, event_id)`, refuses
+out-of-order events, and inserts one entitlement row per paid period, each traced to its event by
+a database check (ADR 0031 §3). The export includes subscriptions, billing events and the billing
+log without any amount; the app role reads no price, paid or listed. It is
 the same writer Paddle will use in M7b. Security-critical (entitlements and external events):
 Opus Developer and Opus Reviewer.
 
