@@ -108,4 +108,21 @@ export const publicDa: Catalogue = {
   'feat.data.text': 'Eksportér dine data, eller slet din konto, fra din kontoside.',
   'feat.languages.title': 'Brug det på dit sprog',
   'feat.languages.text': 'Siden findes på engelsk, svensk og dansk. Holdene skrives på engelsk.',
+  'meta.pricing.title': 'Planer | classbeat',
+  'meta.pricing.description':
+    'Hvad hver classbeat-plan indeholder: hold om måneden, holdlængde, spil, FTP-test og designkvalitet. Planerne er ikke åbne endnu.',
+  'pricing.title': 'Planer',
+  'pricing.lead':
+    'Tre planer, fra en lille gratis kvote til mange hold. Planerne er ikke åbne for køb endnu.',
+  'pricing.plans.title': 'Hvad hver plan indeholder',
+  'pricing.free.blurb': 'Prøv classbeat med en lille kvote hver måned.',
+  'pricing.instructor.blurb': 'Til undervisere, der holder hold hver uge.',
+  'pricing.pro.blurb': 'Til undervisere, der designer mange hold.',
+  'pricing.quality.note': 'Better og Best giver mere omhyggelige designs.',
+  'pricing.same.title': 'Det samme på alle planer',
+  'pricing.same.races': 'Race, de korte, hårde indsatser.',
+  'pricing.same.classes': 'At køre hold, din holdhistorik samt eksport og sletning af dine data.',
+  'pricing.same.connections': 'Dine forbindelser til MOWL, Spotify og Swedebeat.',
+  'pricing.same.songs':
+    'Sangvalget er det samme på alle planer og kræver en Spotify-forbindelse med dit eget Client ID, når vi tænder for det.',
 }

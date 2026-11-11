@@ -61,6 +61,10 @@ everywhere; a change here changes both places in the same PR. ADR 0023 has the d
 | a precaution | försiktighetsåtgärd | forholdsregel | Same word as in the ML6 mails. |
 | race (Spotify/MOWL term) | race | race | Loan word. |
 | beat | beat (invariant plural) | beat (invariant plural) | Loan word. |
+| plan names | Free, Individual, Professional | Free, Individual, Professional | Kept in English in both languages, as the product names (M7a, ADR 0031). "plan" is "plan" (sv) and "plan" (da). |
+| design quality words | Standard, Better, Best | Standard, Better, Best | Kept in English; never a model name. |
+| subscription | prenumeration | abonnement | Copy never promises renewal: when a period ends the user is on Free unless a change was scheduled. |
+| test payment (Dummy provider) | testbetalning | testbetaling | No real money moves. No price, currency or model name in any catalogue string. |
 
 ## Decisions and open notes
 
