@@ -28,8 +28,26 @@ interface Props {
  * Decorative slots get an empty alt and are hidden from assistive technology.
  */
 export function SlotPicture({ slot, sizes, priority = false, className }: Props) {
-  const t = useT()
   const theme = useResolvedTheme()
+  // The build-time prerender does not know the saved theme, and the browser starts fetching images
+  // before any script runs. So it writes both themes' pictures, lazy, and the style sheet shows the
+  // one `data-theme` names: a hidden lazy image is never requested, so no wrong-theme file is.
+  if (typeof document === 'undefined') {
+    return (
+      <>
+        {THEMES.map((each) => (
+          <Picture key={each} slot={slot} theme={each} sizes={sizes} priority={priority} className={className} forTheme={each} />
+        ))}
+      </>
+    )
+  }
+  return <Picture slot={slot} theme={theme} sizes={sizes} priority={priority} className={className} />
+}
+
+const THEMES = ['dark', 'light'] as const
+
+function Picture({ slot, theme, sizes, priority, className, forTheme }: Props & { theme: 'dark' | 'light'; forTheme?: 'dark' | 'light' }) {
+  const t = useT()
   const found = resolveSlot(slot, theme)
   if (!found) return null
   const { set, phone, dimmed, alt } = found
@@ -39,7 +57,7 @@ export function SlotPicture({ slot, sizes, priority = false, className }: Props)
       <source key={`${media ?? 'wide'}-${ext}`} media={media} type={type} srcSet={srcSet(from, ext)} sizes={sizes} />
     ))
   return (
-    <div className={cn('slot', dimmed && 'slot--dim', className)} data-slot={slot}>
+    <div className={cn('slot', dimmed && 'slot--dim', className)} data-slot={slot} data-for={forTheme}>
       <picture>
         {phone ? sources(phone, PHONE_MEDIA) : null}
         {sources(set)}
@@ -49,7 +67,7 @@ export function SlotPicture({ slot, sizes, priority = false, className }: Props)
           height={height}
           alt={alt === null ? '' : t(alt)}
           aria-hidden={alt === null ? true : undefined}
-          loading={priority ? 'eager' : 'lazy'}
+          loading={priority && forTheme === undefined ? 'eager' : 'lazy'}
           fetchPriority={priority ? 'high' : 'auto'}
           decoding="async"
         />
