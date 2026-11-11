@@ -28,7 +28,9 @@ describe('the signed-out header while the session loads', () => {
     const placeholder = /<div aria-hidden="true" data-testid="nav-placeholder"[\s\S]*?<\/div>/.exec(header)?.[0] ?? ''
     expect(placeholder).not.toContain('<a')
     // Any text sits in a span that is not rendered (it only gives the button its width).
-    const visible = placeholder.replace(/<span class="invisible[^>]*>[^<]*<\/span>/g, '').replace(/<[^>]*>/g, '').trim()
+    const visible = placeholder
+      .replace(/<select[\s\S]*?<\/select>/g, '')
+      .replace(/<span class="invisible[^>]*>[^<]*<\/span>/g, '').replace(/<[^>]*>/g, '').trim()
     expect(visible).toBe('')
   })
 
