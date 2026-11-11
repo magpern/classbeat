@@ -133,12 +133,12 @@ None. The decisions are recorded as D1 to D6 in the plan.
   `parallel` mode, which lets shards split them; Playwright shards contiguously by test order, so
   today they land together on one shard (about 5 minutes more than the others, more once sv and da
   run). Rebalancing is a follow-up. `GATE_LANGUAGES` (`public-takeover-matrix.ts`) names the
-  languages whose cells run; sv and da stay skipped until the PP4 to PP6 translation is on `main`.
+  languages whose cells run; it is all three since the sv/da translation (PP4 to PP6) merged.
 - **English on sv and da.** The prerendered and the taken-over page hold no prose block (an element's
   own text, `aria-label` or `alt` of at least three words and ten characters) that is word for word the English page's,
   and the `<h1>` differs from the English one. The reference is the English page's prerendered HTML,
-  so English that only the client renders is not in it; expect to tune the check when sv and da first
-  run. Drawings and the part names and cues of an example's
+  so English that only the client renders is not in it; the check
+  was run against the built prerender of all pages before it was turned on. The contents of drawings (an svg's own label is read), Landing's sample songs and the part names and cues of an example's
   table are not scanned: they are English on purpose (`examples.notes.english`).
 - **Screenshots.** Full-page before and after, compared in the run in a browser canvas. Left out of
   the comparison, and nothing else: the pictures inside the image slots (hidden through the CSSOM

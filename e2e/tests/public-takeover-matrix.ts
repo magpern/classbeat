@@ -7,12 +7,10 @@ export const ALL_LANGUAGES = ['en', 'sv', 'da'] as const
 export type GateLanguage = (typeof ALL_LANGUAGES)[number]
 
 /**
- * The languages whose cells run. sv and da cells exist in the spec but stay skipped until the sv/da
- * translation of PP4 to PP6 (#896, branch 896-pp7-translate) is on `main`: their "no English text"
- * check cannot pass before it. Setting this to `ALL_LANGUAGES` turns the full matrix on; nothing
- * else in the gate changes.
+ * The languages whose cells run: all of them since the sv/da translation of PP4 to PP6 (#896) is on
+ * `main`. Narrowing it skips the other languages' cells with a reason; nothing else in the gate changes.
  */
-export const GATE_LANGUAGES: readonly GateLanguage[] = ['en']
+export const GATE_LANGUAGES: readonly GateLanguage[] = ALL_LANGUAGES
 
 export const THEMES = ['dark', 'light'] as const
 export const SIZES = [

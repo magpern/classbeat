@@ -119,19 +119,22 @@ export function noteDifference(name: string, d: Difference): void {
 
 /**
  * The text blocks of `#root`: each element's own text and its `aria-label` and `alt`, whitespace
- * collapsed. Drawings are skipped, and so are the part names and cues of an example's table,
- * which are English on purpose (the page says so: `examples.notes.english`). Runs in the browser,
+ * collapsed. The contents of drawings are skipped (an svg's own label is read), and so are the part names and cues of an example's table,
+ * which are English on purpose (the page says so: `examples.notes.english`), and Landing's sample songs. Runs in the browser,
  * on the live page or, with `html`, on the English page's served HTML.
  */
+// Fixture data that is English on purpose: an example's part names and cues, and Landing's sample songs.
+const FIXTURE_DATA = '[data-testid="example-table"] tbody, [data-testid="landing-example-songs"]'
+
 async function blocks(page: Page, html: string | null): Promise<string[]> {
-  return page.evaluate((source) => {
+  return page.evaluate(({ source, fixture }) => {
     const doc = source === null ? document : new DOMParser().parseFromString(source, 'text/html')
     const root = doc.getElementById('root')
     if (!root) return []
     const out: string[] = []
     const norm = (s: string | null) => (s ?? '').replace(/\s+/g, ' ').trim()
     for (const el of root.querySelectorAll('*')) {
-      if (el.closest('svg') || el.closest('[data-testid="example-table"] tbody')) continue
+      if (el.parentElement?.closest('svg') || el.closest(fixture)) continue
       out.push(
         norm(
           [...el.childNodes]
@@ -144,7 +147,7 @@ async function blocks(page: Page, html: string | null): Promise<string[]> {
       )
     }
     return out.filter(Boolean)
-  }, html)
+  }, { source: html, fixture: FIXTURE_DATA })
 }
 
 /** A block of at least three words and ten characters: a label or a sentence, not a brand or a number. */
