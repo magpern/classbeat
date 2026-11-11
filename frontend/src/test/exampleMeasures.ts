@@ -23,7 +23,7 @@ const num = (s: string) => (/^\d+$/.test(s) ? Number(s) : (WORDS[s.toLowerCase()
 const all = (re: RegExp, text: string) => [...text.matchAll(re)]
 
 const NOUNS: Record<CountNoun, string> = {
-  climbs: String.raw`(?:climbs?|backar|backe|bakker|bakke)`,
+  climbs: String.raw`(?:climbs?|backar|backe|bakker|bakke|klättring(?:ar)?|stigning(?:er)?)`,
   sprints: String.raw`(?:sprints?|sprintar|sprinter)`,
   repeats: String.raw`(?:rounds?|omgång(?:ar)?|runder?|intervals?|intervaller|intervaler|repeats?|gentagelser|upprepningar)`,
 }

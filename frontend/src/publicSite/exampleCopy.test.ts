@@ -59,6 +59,9 @@ describe('measures', () => {
     })
     expect(measures('Zones 3 and 4, then zone 5').zones).toEqual([3, 4, 5])
     expect(measures('30 minuter pass i zon 2').minutes).toEqual([30])
+    expect(measures('Tre klättringar i zon 3 och 4').counts).toEqual([{ noun: 'climbs', n: 3 }])
+    expect(measures('Tre stigninger i zone 3 og 4').zones).toEqual([3, 4])
+    expect(measures('Fem omgångar med 30 sekunder, sedan sex sprintar').counts).toHaveLength(2)
   })
 
   it('does not take a decade for a measurement', () => {

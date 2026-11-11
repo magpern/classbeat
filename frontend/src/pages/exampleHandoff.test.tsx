@@ -48,7 +48,10 @@ describe('the start screen from an example link', () => {
     renderAt(`/classes/new?example=${SLUG}`)
     const field = await prompt()
     expect(field).toHaveValue(PROMPT)
-    expect(field).toHaveFocus()
+    // The screen can mount again while the sources load, so look the field up afresh until it has focus.
+    await waitFor(async () => {
+      expect(await prompt()).toHaveFocus()
+    })
     // The same words as the example page shows.
     cleanup()
     renderAt(`/examples/${SLUG}`)

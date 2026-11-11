@@ -5,8 +5,15 @@
 // Passive and past forms count too: "songs are chosen", "songs picked", "selected songs".
 const PICKS = /(?:pick|choos|chos|select)\w*\b[^.!?]{0,30}\bsongs?\b|\bsongs?\b[^.!?]{0,30}\b(?:pick|choos|chos|select)\w*/i
 
+// Swedish and Danish (PP7): the verb stems välj/väl-/plock- and vælg/udvælg/valgt, next to låt- and sang-.
+// Letters are matched with Unicode lookarounds because \b does not treat å, ä, ö or æ, ø as letters.
+const SV_PICKS =
+  /(?<!\p{L})(?:välj|väl[jt]|valde|valda|plock)\p{L}*[^.!?]{0,30}(?<!\p{L})låt(?:ar|arna|en|ens)?(?!\p{L})|(?<!\p{L})låt(?:ar|arna|en)?(?!\p{L})[^.!?]{0,30}(?<!\p{L})(?:välj|väl[jt]|valde|valda|plock)\p{L}*/iu
+const DA_PICKS =
+  /(?<!\p{L})(?:vælg|udvælg|valg|plukk)\p{L}*[^.!?]{0,30}(?<!\p{L})sang(?:e|ene)?(?!\p{L})|(?<!\p{L})sang(?:e|ene)?(?!\p{L})[^.!?]{0,30}(?<!\p{L})(?:vælg|udvælg|valg|plukk)\p{L}*/iu
+
 export function mentionsSongPicking(text: string): boolean {
-  return PICKS.test(text)
+  return PICKS.test(text) || SV_PICKS.test(text) || DA_PICKS.test(text)
 }
 
 /** One sentence that names Spotify, the Client ID and the plan. */
