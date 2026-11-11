@@ -92,14 +92,14 @@ export async function chooseLength(form: Locator, minutes: number): Promise<void
   await form.getByLabel('Length in minutes').fill(String(minutes))
 }
 
-export async function startDesign(page: Page, title: string, playlistName: string): Promise<string> {
+export async function startDesign(page: Page, title: string, playlistName: string, climbs = '1'): Promise<string> {
   await page.getByRole('link', { name: 'New class' }).click()
   await page.getByRole('link', { name: /^Advanced/ }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill(title)
   await choosePlaylist(form, playlistName)
   await chooseLength(form, 30)
-  await form.getByLabel('Climbs', { exact: true }).fill('1')
+  await form.getByLabel('Climbs', { exact: true }).fill(climbs)
   await form.getByLabel('Sprints', { exact: true }).fill('2')
   await form.getByRole('button', { name: 'Design my class' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)

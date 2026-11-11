@@ -84,16 +84,13 @@ def legacy() -> dict[str, Any]:
 @pytest.mark.parametrize("name", games_catalog.TYPES)
 def test_a_current_game_is_not_retired(name: str) -> None:
     content = spec_with(game(30, name), {"sec": 60, "zone": 2})
-    assert not games_policy.game_retired(content)
-    assert not games_policy.game_retired(content, "cycling")
+    assert not games_policy.has_retired_game(content)
 
 
-def test_a_legacy_game_is_retired_in_a_cycling_class_only() -> None:
-    assert games_policy.game_retired(legacy())
-    assert games_policy.game_retired(legacy(), "cycling")
-    assert not games_policy.game_retired(legacy(), "running")  # running has no games
+def test_a_legacy_game_is_retired() -> None:
+    assert games_policy.has_retired_game(legacy())
 
 
 @pytest.mark.parametrize("content", [None, {}, [], {"segments": "x"}, {"segments": [1, {}]}])
 def test_malformed_content_is_not_retired(content: object) -> None:
-    assert not games_policy.game_retired(content)
+    assert not games_policy.has_retired_game(content)
