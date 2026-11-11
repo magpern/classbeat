@@ -66,6 +66,18 @@ export function ExamplePage({ example }: { example: Example }) {
         <ExampleTable segments={example.segments} title={title} running={running} />
       </section>
 
+      <section aria-labelledby="example-cta" className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-5">
+        <h2 id="example-cta" className="m-0 font-display text-2xl font-bold">
+          {t('examples.cta.title')}
+        </h2>
+        <p className="m-0">{t('examples.cta.text')}</p>
+        <p className="m-0">
+          <Link className="button" to={`/classes/new?example=${slug}`}>
+            {t('examples.cta.button')}
+          </Link>
+        </p>
+      </section>
+
       <section aria-labelledby="example-notes" className="flex flex-col gap-2">
         <h2 id="example-notes" className="m-0 font-display text-2xl font-bold">
           {t('examples.notes.title')}

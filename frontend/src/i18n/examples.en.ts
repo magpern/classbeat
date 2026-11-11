@@ -50,6 +50,13 @@ export const examplesEn = {
   'examples.col.setting': 'Setting',
   'examples.col.cue': 'Cue',
   'examples.col.total': 'Total',
+  // Privacy page entry for the hand-off (PP6). The page lists it as an English-only part (`pages/legal/structure.ts`),
+  // not in legal.en.ts, whose sv and da copies must be complete; PP7 translates it (ADR 0023 section 8).
+  'privacy.cookies.p5':
+    'If you open an example class and then have to sign in, join or connect MOWL first, we keep the short name of that example (classbeat.example) in your browser for up to 24 hours, so that the class screen can fill in its request afterwards. It is removed as soon as it is used.',
+  'examples.cta.title': 'Make a class like this',
+  'examples.cta.text': 'Open the designer with this request already written. You can change it before you send it, and nothing is made until you do. Sign-up is by invitation.',
+  'examples.cta.button': 'Create a class like this',
   'examples.notes.title': 'Good to know',
   'examples.notes.music': 'This example has no music. It shows the shape of a class only.',
   'examples.notes.english': 'Part names and cues are in English. Classes we design are in English whichever language you use the site in.',

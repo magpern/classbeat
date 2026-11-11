@@ -152,5 +152,9 @@
   "examples.running-intervals.prompt",
   "examples.running-intervals.goal1",
   "examples.running-intervals.goal2",
-  "examples.running-intervals.goal3"
+  "examples.running-intervals.goal3",
+  "examples.cta.title",
+  "examples.cta.text",
+  "examples.cta.button",
+  "privacy.cookies.p5"
 ]
