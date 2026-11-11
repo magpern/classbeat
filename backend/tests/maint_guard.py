@@ -105,6 +105,13 @@ _COLUMNS = {
     "model_routes": "route_key stage_group provider model effort eval_result_id gate_passed "
     "set_at set_by",
     "security_log": "owner_id session_id ip_hash status at",
+    # ADR 0031 section 3 (#948): maint reads the prices the app role cannot.
+    "subscriptions": "id owner_id provider plan_id anchor_day period_start period_end "
+    "basis_minor basis_currency next_plan_id cancel_at_end status last_event_at created_at "
+    "updated_at",
+    "billing_events": "id owner_id provider event_id kind plan_id period_start period_end "
+    "amount_minor currency outcome created_at",
+    "billing_log": "id owner_id action outcome reason request_id created_at",
 }
 READABLE: dict[str, frozenset[str]] = {t: frozenset(c.split()) for t, c in _COLUMNS.items()}
 _UPDATES = {
@@ -117,6 +124,8 @@ _UPDATES = {
     "redeem_codes": "disabled_at",
     "entitlements": "revoked_at revoked_by",
     "credit_ledger": "state reason settled_at refunded_by",
+    "subscriptions": "provider plan_id anchor_day period_start period_end basis_minor "
+    "basis_currency next_plan_id cancel_at_end status last_event_at updated_at",
 }
 # (table, privilege) -> the columns (column grants) or {"*"} (a table-level grant).
 EXPECTED: dict[tuple[str, str], frozenset[str]] = {
@@ -130,6 +139,10 @@ EXPECTED: dict[tuple[str, str], frozenset[str]] = {
     ("app_settings", "INSERT"): frozenset({"*"}),
     ("app_settings", "UPDATE"): frozenset({"*"}),
     ("admin_audit", "INSERT"): frozenset({"*"}),
+    # ADR 0031 section 3: events and log rows are only ever added.
+    ("subscriptions", "INSERT"): frozenset({"*"}),
+    ("billing_events", "INSERT"): frozenset({"*"}),
+    ("billing_log", "INSERT"): frozenset({"*"}),
     # AD5 #223: the routes are written whole; the results are never writable (no entry).
     ("model_routes", "INSERT"): frozenset({"*"}),
     ("model_routes", "UPDATE"): frozenset({"*"}),

@@ -24,7 +24,7 @@ from classbeat.db import user_session
 from classbeat.plans.resolve import effective_plan
 from ctx import make_context
 from jobapi import Browser
-from plantools import grant, plant_code, set_trial
+from plantools import about, grant, plant_code, set_trial, subscription
 
 
 @pytest.fixture
@@ -247,9 +247,9 @@ async def test_t89_the_rank_decides_whatever_the_source_and_revocation_applies_n
     code, _ = plant_code(admin, plan="instructor", days=30)
     assert (await alice.post(REDEEM, {"code": code})).status_code == 200
     grant(admin, alice.user_id, "pro", ends_at=later("1 day"), features=["song_picking"])
-    grant(admin, alice.user_id, "instructor", source="subscription")
-    grant(admin, alice.user_id, None, source="subscription", starts_at=later("1 hour"),
-          features=["song_picking"])  # fmt: skip
+    # A subscription row ends within 32 days and carries no feature (migration 0046).
+    subscription(admin, alice.user_id, "instructor", starts_at=later("-1 hour"),
+                 ends_at=later("31 days"))  # fmt: skip
     body = (await alice.get(PLAN)).json()
     assert (body["plan"], body["source"], body["features"]) == ("pro", "grant", ["song_picking"])
 
@@ -262,10 +262,11 @@ async def test_t89_the_rank_decides_whatever_the_source_and_revocation_applies_n
     body = (await alice.get(PLAN)).json()
     assert (body["plan"], body["source"], body["ends_at"], body["features"]) == (
         "instructor",
-        "subscription",  # of the Instructor ones, the one without an end
-        None,
-        [],  # the subscription row with the feature has not started
+        "subscription",  # of the Instructor ones, the one that lasts longest (31 days)
+        body["ends_at"],
+        [],
     )
+    assert about(body["ends_at"], 31)
     assert body["limits"]["classes_per_month"] == 30
 
     # An ended subscription stops too; the code (30 days) outlasts the trial (14).

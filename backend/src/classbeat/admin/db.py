@@ -39,7 +39,7 @@ from uuid import UUID
 
 from sqlalchemy import event, text
 from sqlalchemy.engine import URL
-from sqlalchemy.exc import DataError, DisconnectionError, IntegrityError, OperationalError
+from sqlalchemy.exc import DataError, IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -48,50 +48,36 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from classbeat.admin.audit import RefusalLimiter, Target, checked_params
+from classbeat.admin.maint_role import (
+    MAINT_ROLE as MAINT_ROLE,  # re-exported: the tests import it from here
+)
+from classbeat.admin.maint_role import (
+    ROLE_QUERY,
+    MaintRoleError,
+    check_checkout,
+    check_connection,
+    raise_if_wrong,
+)
+from classbeat.billing.errors import ACTIONS as BILLING_ACTIONS
+from classbeat.billing.errors import BillingRefused
 from classbeat.config import Settings
 from classbeat.db import TransactionGuard
 from classbeat.db.engine import CONNECT_TIMEOUT_SECONDS, discard_session_state
-from classbeat.db.role_check import (
-    EXPECTED_ROLE_SETTINGS,
-    is_authentication_failure,
-)
+from classbeat.db.role_check import is_authentication_failure
 
 logger = logging.getLogger(__name__)
 
-MAINT_ROLE: Final = "classbeat_maint"
 POOL_SIZE: Final = 2
-# The app role's three timeouts plus the read-only default (ADR 0011 section 5).
-EXPECTED_MAINT_SETTINGS: Final = {**EXPECTED_ROLE_SETTINGS, "default_transaction_read_only": "on"}
-
-ROLE_QUERY: Final = """
-SELECT current_user::text, r.rolsuper, r.rolbypassrls, r.rolcreatedb, r.rolcreaterole,
-       r.rolreplication, r.rolinherit, r.rolcanlogin,
-       (SELECT count(*) FROM pg_catalog.pg_auth_members m WHERE r.oid IN (m.member, m.roleid)),
-       ARRAY(SELECT s.setdatabase::text || ':' || c FROM pg_catalog.pg_db_role_setting s,
-                    unnest(s.setconfig) c WHERE s.setrole = r.oid ORDER BY 1),
-       EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.relowner = r.oid)
-         OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspowner = r.oid)
-         OR EXISTS (SELECT 1 FROM pg_catalog.pg_database d WHERE d.datdba = r.oid)
-         OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p WHERE p.proowner = r.oid)
-  FROM pg_catalog.pg_roles r WHERE r.rolname = current_user
-"""
-CHECKOUT_QUERY: Final = """
-SELECT current_setting('default_transaction_read_only'), current_setting('transaction_read_only'),
-       ARRAY(SELECT name || '=' || setting FROM pg_catalog.pg_settings WHERE name IN
-             ('statement_timeout', 'lock_timeout', 'idle_in_transaction_session_timeout')
-             ORDER BY 1)
-"""
-EXPECTED_TIMEOUTS_MS: Final = [
-    "idle_in_transaction_session_timeout=60000",
-    "lock_timeout=5000",
-    "statement_timeout=30000",
-]
 
 # The audit row's target user does not exist: the action answers 404 ``not_found`` (#218).
 TARGET_USER_FK: Final = "admin_audit_target_user_id_fkey"
 
 _READ_WRITE = text("SET TRANSACTION READ WRITE")
 _READ_ONLY = text("SET TRANSACTION READ ONLY")
+_INSERT_BILLING_LOG = text(
+    "INSERT INTO billing_log (owner_id, action, outcome, reason, request_id) "
+    "VALUES (:owner_id, :action, :outcome, :reason, :request_id)"
+)
 _INSERT_AUDIT = text(
     "INSERT INTO admin_audit (actor_id, actor_email, action, target_user_id, target_kind, "
     "target_id, params, outcome, reason, request_id, ip_hash) VALUES (:actor_id, :actor_email, "
@@ -100,9 +86,15 @@ _INSERT_AUDIT = text(
 )
 
 
-class MaintRoleError(RuntimeError):
-    """The admin database role is not exactly ``classbeat_maint`` as ADR 0011 section 5 sets it.
-    Never contains credentials."""
+class Buyer:
+    """Who buys, for the billing log (ADR 0031 section 3): the user's id and the request's id.
+    Never an ``Actor``: ``admin_audit`` keeps only operators as actors. Built only by the billing
+    routes' dependency (``classbeat.billing.routes``; an AST guard checks it)."""
+
+    __slots__ = ("request_id", "user_id")
+
+    def __init__(self, user_id: UUID, request_id: str) -> None:
+        self.user_id, self.request_id = user_id, request_id
 
 
 class AdminRefused(Exception):
@@ -132,79 +124,6 @@ class Actor:
         self.request_id, self.ip_hash = request_id, ip_hash
 
 
-def role_problems(row: Any) -> list[str]:
-    """Problems for one ``ROLE_QUERY`` row; empty when the role is exactly classbeat_maint."""
-    if row is None:
-        return ["the connected role does not exist in pg_roles"]
-    (
-        user,
-        superuser,
-        bypass,
-        createdb,
-        createrole,
-        replication,
-        inherit,
-        login,
-        members,
-        settings,
-        owns,
-    ) = row
-    found: list[str] = []
-    if user != MAINT_ROLE:
-        found.append(f"connected as another role than {MAINT_ROLE}")
-    if superuser:
-        found.append("is a superuser")
-    if not bypass:
-        found.append("lacks BYPASSRLS")
-    if createdb or createrole or replication:
-        found.append("may create databases or roles or replicate")
-    if inherit:
-        found.append("inherits")
-    if not login:
-        found.append("cannot log in")
-    if members:
-        found.append("is a member of a role or has members")
-    expected = sorted(f"0:{k}={v}" for k, v in EXPECTED_MAINT_SETTINGS.items())
-    if sorted(settings) != expected:
-        found.append("has role settings other than the three timeouts and the read-only default")
-    if owns:
-        found.append("owns a relation, schema, database or function")
-    return found
-
-
-def _raise_if_wrong(row: Any) -> None:
-    found = role_problems(row)
-    if found:
-        raise MaintRoleError(
-            "the admin database role " + "; it ".join(found) + " (ADR 0011 section 5)"
-        )
-
-
-def check_checkout(dbapi_connection: Any) -> None:
-    """A pooled maint connection as the role defaults leave it, or ``DisconnectionError`` (the
-    pool then opens a fresh one). Runs in its own transaction and rolls it back."""
-    cursor = dbapi_connection.cursor()
-    try:
-        cursor.execute(CHECKOUT_QUERY)
-        default_ro, current_ro, timeouts = cursor.fetchone()
-    finally:
-        cursor.close()
-    dbapi_connection.rollback()
-    if default_ro != "on" or current_ro != "on" or list(timeouts) != EXPECTED_TIMEOUTS_MS:
-        raise DisconnectionError("a pooled admin connection carries state from an earlier use")
-
-
-def _check_connection(dbapi_connection: Any) -> None:
-    cursor = dbapi_connection.cursor()
-    try:
-        cursor.execute(ROLE_QUERY)
-        row = cursor.fetchone()
-    finally:
-        cursor.close()
-    dbapi_connection.rollback()
-    _raise_if_wrong(row)
-
-
 def create_maint_engine(url: URL) -> AsyncEngine:
     """The maint engine: lazy, 2 connections, no overflow, checked on connect and checkout,
     reset with ``DISCARD ALL`` on check-in (``classbeat.db.engine.discard_session_state``)."""
@@ -221,7 +140,7 @@ def create_maint_engine(url: URL) -> AsyncEngine:
 
     @event.listens_for(engine.sync_engine, "connect")
     def on_connect(dbapi_connection: Any, _record: object) -> None:
-        _check_connection(dbapi_connection)
+        check_connection(dbapi_connection)
 
     @event.listens_for(engine.sync_engine, "checkout")
     def on_checkout(dbapi_connection: Any, _record: object, _proxy: object) -> None:
@@ -262,7 +181,7 @@ class AdminDb:
                 ) from None
             logger.debug("database unreachable at startup; the admin role is checked later")
             return
-        _raise_if_wrong(row)
+        raise_if_wrong(row)
 
     async def dispose(self) -> None:
         await self._maint_engine.dispose()
@@ -402,3 +321,56 @@ async def audit_refusal(
         logger.error("admin refusal row not written", extra={"error_type": type(exc).__name__})
         return False
     return True
+
+
+def _log_row(buyer: Buyer, action: str, outcome: str, reason: str | None) -> dict[str, Any]:
+    return {
+        "owner_id": buyer.user_id,
+        "action": action,
+        "outcome": outcome,
+        "reason": reason,
+        "request_id": buyer.request_id,
+    }
+
+
+async def _record_billing_failure(db: AdminDb, buyer: Buyer, action: str, exc: Exception) -> None:
+    """The ``refused`` or ``error`` row of a failed billing action, in its own short transaction."""
+    outcome, reason = (
+        ("refused", exc.reason) if isinstance(exc, BillingRefused) else ("error", None)
+    )
+    try:
+        async with db._maint_factory() as session, session.begin():  # pyright: ignore[reportPrivateUsage]
+            await session.execute(_READ_WRITE)
+            await session.execute(_INSERT_BILLING_LOG, _log_row(buyer, action, outcome, reason))
+    except Exception as failure:  # the original exception matters more
+        logger.error("billing log row not written", extra={"error_type": type(failure).__name__})
+
+
+@asynccontextmanager
+async def billing_session(
+    db: AdminDb, buyer: Buyer, action: str, *, write: bool = False
+) -> AsyncIterator[AsyncSession]:
+    """One logged transaction on the maint engine for a user's own billing action (ADR 0031
+    section 3). Like ``admin_session``, but the first statement inserts a ``billing_log`` row and
+    never an ``admin_audit`` row; a read then switches to ``READ ONLY``. Called only from
+    ``classbeat.billing.routes`` (an AST guard checks it), after the caller's access check."""
+    if action not in BILLING_ACTIONS:
+        raise ValueError(f"unknown billing action: {action}")
+    try:
+        async with db._maint_factory() as session:  # pyright: ignore[reportPrivateUsage]
+            await session.begin()
+            guard = TransactionGuard(session)
+            try:
+                await session.execute(_READ_WRITE)
+                await session.execute(_INSERT_BILLING_LOG, _log_row(buyer, action, "ok", None))
+                if not write:
+                    await session.execute(_READ_ONLY)
+                yield session
+            except BaseException:
+                await guard.finish(ok=False)
+                raise
+            else:
+                await guard.finish(ok=True)
+    except Exception as exc:
+        await _record_billing_failure(db, buyer, action, exc)
+        raise

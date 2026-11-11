@@ -48,6 +48,17 @@ class FeatureSettings(BaseSettings):
     passkeys: bool = False
     webauthn_rp_id: str | None = None
 
+    # ADR 0031 section 6 (#948): the environment's billing switch. Off, and `true` is refused
+    # while no real provider exists (M7b): only the Dummy provider runs, for admins and testers.
+    billing_enabled: bool = False
+
+    @field_validator("billing_enabled")
+    @classmethod
+    def _refuse_billing_on(cls, value: bool) -> bool:
+        if value:
+            raise ValueError("billing_enabled cannot be true: there is no real billing provider")
+        return value
+
     @field_validator("turnstile_site_key")
     @classmethod
     def _check_turnstile_site_key(cls, value: str | None) -> str | None:

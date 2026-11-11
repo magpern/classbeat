@@ -48,6 +48,7 @@ pytest_plugins = [
     "songtools",
     "plantools",
     "admintools",
+    "billingtools",
 ]  # + jobs core, jobs API, external operations
 
 if sys.platform == "win32":

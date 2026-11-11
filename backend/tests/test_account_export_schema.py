@@ -137,3 +137,25 @@ def test_the_check_can_fail(admin: Connection) -> None:
         admin.execute(text("DROP TABLE gdpr_system_probe"))
         admin.execute(text("ALTER TABLE users DROP COLUMN api_token"))
         admin.execute(text("ALTER TABLE sessions DROP COLUMN note"))
+
+
+def test_the_export_sections_read_only_columns_the_app_role_can_select(admin: Connection) -> None:
+    """#948: a section of a table whose app grant is a column list (the price columns of
+    ``billing_events`` and ``subscriptions``) names its columns, every one SELECTable by the app
+    role, and a table with a column the app role cannot read has such a list."""
+    from classbeat.account.registry import SECTIONS
+
+    live = columns(admin)
+    for section in SECTIONS:
+        names = live[section.table]
+        selectable = {
+            name
+            for name in names
+            if admin.execute(
+                text("SELECT has_column_privilege('classbeat_app', :t, :c, 'SELECT')"),
+                {"t": section.table, "c": name},
+            ).scalar_one()
+        }
+        assert set(section.columns) <= selectable, section.table
+        if selectable != set(names):
+            assert section.columns, f"{section.table} has an unreadable column but no `columns`"

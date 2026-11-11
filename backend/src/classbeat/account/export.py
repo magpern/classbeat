@@ -28,6 +28,7 @@ NOT_INCLUDED = [
     "Tokens, keys and Client IDs of your MOWL, Spotify and Swedebeat connections: only status.",
     "Internal bookkeeping (request hashes, idempotency keys, lease and worker fields).",
     "What an operator did to your account (the admin audit log); ask the operator for it.",
+    "The amounts charged: they are with the payment provider (the test provider charges nothing).",
     "Workouts saved to MOWL and playlists made in your Spotify: they are yours, in those services.",
 ]
 
@@ -39,8 +40,13 @@ _COUNT_HANDOFFS = text("SELECT count(*) FROM swedebeat_handoffs WHERE owner_id =
 def _read(section: Section) -> Any:
     # Table, key and columns come from the fixed registry (validated when it is built); only the
     # owner is a parameter.
+    if section.columns:  # a column grant: read exactly the granted columns, never ``to_jsonb(t)``
+        pairs = ", ".join(f"'{name}', t.{name}" for name in section.columns)
+        shape = f"jsonb_build_object({pairs}) - CAST(:omit AS text[])"
+    else:
+        shape = "to_jsonb(t) - CAST(:omit AS text[])"
     return text(
-        f"SELECT to_jsonb(t) - CAST(:omit AS text[]) AS row FROM {section.table} t "  # noqa: S608
+        f"SELECT {shape} AS row FROM {section.table} t "  # noqa: S608
         f"WHERE t.owner_id = :owner_id ORDER BY {section.order}"
     )
 
