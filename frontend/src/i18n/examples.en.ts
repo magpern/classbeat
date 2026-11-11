@@ -13,7 +13,7 @@ export const examplesEn = {
     'A made-up 45 minute ride with three climbs and a hard finish, shown as a request, a chart and a table.',
   'meta.example.90s-dance-intervals.title': '90s dance ride, 30 minutes | classbeat',
   'meta.example.90s-dance-intervals.description':
-    'A made-up 30 minute interval ride with dance-length efforts and six sprints, shown as a chart and a table.',
+    'A made-up 30 minute interval ride with short, hard efforts and six sprints, shown as a chart and a table.',
   'meta.example.endurance-ride.title': 'Endurance ride, 60 minutes | classbeat',
   'meta.example.endurance-ride.description':
     'A made-up easy 60 minute endurance ride, mostly in zone 2, shown as a chart and a table.',
@@ -51,7 +51,7 @@ export const examplesEn = {
   'examples.col.cue': 'Cue',
   'examples.col.total': 'Total',
   'examples.notes.title': 'Good to know',
-  'examples.notes.music': 'This class has no music. Songs are chosen when you design a real class.',
+  'examples.notes.music': 'This example has no music. It shows the shape of a class only.',
   'examples.notes.english': 'Part names and cues are in English. Classes we design are in English whichever language you use the site in.',
   'examples.notes.running':
     'Running classes use a playlist already in your MOWL music. They are switched on per plan, so they may not be available to you yet.',

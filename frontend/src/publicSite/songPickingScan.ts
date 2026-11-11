@@ -2,7 +2,8 @@
 // (PP4, #893). A song-picking statement needs a Spotify connection with the user's own Client ID and
 // access through the plan, so no public page may make one without saying so. Pure.
 
-const PICKS = /(?:pick|choos)\w*\b[^.!?]{0,30}\bsongs?\b|\bsongs?\b[^.!?]{0,30}\b(?:pick|choos)\w*/i
+// Passive and past forms count too: "songs are chosen", "songs picked", "selected songs".
+const PICKS = /(?:pick|choos|chos|select)\w*\b[^.!?]{0,30}\bsongs?\b|\bsongs?\b[^.!?]{0,30}\b(?:pick|choos|chos|select)\w*/i
 
 export function mentionsSongPicking(text: string): boolean {
   return PICKS.test(text)

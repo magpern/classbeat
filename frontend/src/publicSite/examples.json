@@ -94,24 +94,24 @@
           "kind": "warmup",
           "intervals": [
             {"sec": 120, "zone": 1, "rpm": [80, 90], "standing": false, "cue": "Easy spin, shake it out"},
-            {"sec": 150, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Find the beat"},
+            {"sec": 150, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Settle into the pedalling"},
             {"sec": 210, "zone": 3, "rpm": [90, 100], "standing": false, "cue": "Pick up the pace"}
           ]
         },
         {
-          "name": "Chorus intervals",
+          "name": "Dance intervals",
           "kind": "main",
           "intervals": [
-            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Up with the chorus"},
-            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Back to the verse"},
-            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Up with the chorus"},
-            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Back to the verse"},
-            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Up with the chorus"},
-            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Back to the verse"},
-            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Up with the chorus"},
-            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Back to the verse"},
-            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Up with the chorus"},
-            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Back to the verse"}
+            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Pick it up"},
+            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Ease back"},
+            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Pick it up"},
+            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Ease back"},
+            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Pick it up"},
+            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Ease back"},
+            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Pick it up"},
+            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Ease back"},
+            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Pick it up"},
+            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Ease back"}
           ]
         },
         {
@@ -150,7 +150,7 @@
           ]
         },
         {
-          "name": "Last chorus",
+          "name": "Last round",
           "kind": "main",
           "intervals": [
             {"sec": 60, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Take it up"},
