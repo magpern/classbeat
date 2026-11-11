@@ -6,7 +6,9 @@ re-priced. A run that never finished (a crash) counts with whatever it recorded.
 
 A deleted class takes its job with it (``agent_runs.job_id`` becomes NULL), so a row without a
 job counts as a job of its own: the ``jobs`` figure can then be higher than the real count when
-a deleted job had several attempts. Classes designed and revisions count completed jobs: a job that
+a deleted job had several attempts; the ``interpret`` run of a ``revise_draft`` job is the
+exception (``IDENT``: it is no job of its own, so a stated class's revise counts once before and
+after its class is deleted). Classes designed and revisions count completed jobs: a job that
 still exists must be ``completed`` and have a run with outcome ``submitted`` in the month (a job
 cancelled or failed after the stage submitted does not count). A deleted job (``job_id`` NULL)
 can no longer be checked and its identity is gone, so each of its ``submitted`` runs stands in
@@ -29,8 +31,19 @@ NOTES: Final = ("estimate_at_list_prices", "sdk_retries", "lost_lease_turn", "fa
 DESIGN_KIND: Final = KIND
 REVISE_KIND: Final = "revise_draft"
 
+# A deleted job's runs are told apart by run id, except the ``interpret`` run of a
+# ``revise_draft`` job: it runs beside that job's ``revise`` run (ADR 0029 section 4), so it is
+# not a job of its own when its job is gone and deleting a class does not change the usage. An
+# ``interpret_request`` job is a single ``interpret`` run and keeps counting as a job. Residue,
+# accepted: a ``revise_draft`` job that failed during ``interpret`` has no ``revise`` run, so it
+# goes from 1 job to 0 when its class is deleted.
+IDENT: Final = (
+    "coalesce({a}job_id, CASE WHEN {a}stage = 'interpret' AND {a}job_kind = 'revise_draft' "
+    "THEN NULL ELSE {a}id END)"
+)
+_IDENT = IDENT.format(a="")
 _SUMS = (
-    "count(*) AS runs, count(DISTINCT coalesce(job_id, id)) AS jobs, "
+    f"count(*) AS runs, count(DISTINCT {_IDENT}) AS jobs, "
     "coalesce(sum(input_tokens), 0) AS input_tokens, "
     "coalesce(sum(output_tokens), 0) AS output_tokens, "
     "coalesce(sum(cache_read_tokens), 0) AS cache_read_tokens, "
@@ -50,7 +63,8 @@ _SUBMITTED = text(
     "SELECT r.job_kind, count(DISTINCT coalesce(r.job_id, r.id)) AS n FROM agent_runs r "  # noqa: S608
     "LEFT JOIN jobs j ON j.id = r.job_id AND j.owner_id = r.owner_id "
     "WHERE r.owner_id = :owner_id AND r.started_at >= :start AND r.started_at < :end "
-    "AND r.outcome = 'submitted' AND (j.state = 'completed' OR r.job_id IS NULL) "
+    "AND (r.stage <> 'interpret' OR r.job_kind <> 'revise_draft') AND r.outcome = 'submitted' "
+    "AND (j.state = 'completed' OR r.job_id IS NULL) "
     f"AND r.job_kind IN ('{DESIGN_KIND}', '{REVISE_KIND}') GROUP BY r.job_kind"
 )
 

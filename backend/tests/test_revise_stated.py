@@ -300,3 +300,16 @@ async def test_a_revision_without_a_layer_in_between_keeps_the_one_before_it(
     assert refusals(renv, job_id) == []
     told = json.loads(providers[0].sent[0].spec.first_message)
     assert told["current"]["length_min"] == 20
+
+
+async def test_a_recorded_revise_script_serves_a_stated_class_and_an_unstated_one(
+    renv: ReviseEnv,
+) -> None:
+    """The recorded revise scripts carry an ``interpret`` turn for the revise of a class that states
+    values (every class made on the Advanced form, #924) that a class stating none skips."""
+    class_id, base = await stated_class(renv)
+    renv.use("revise_good")
+    job_id = await revise(renv, class_id, base, "Make the first minutes easier.")
+    row = renv.denv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("completed", None)
+    assert [r.stage for r in renv.denv.agent_runs(job_id)] == ["interpret", "revise"]

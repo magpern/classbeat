@@ -47,7 +47,7 @@ from classbeat.admin.audit import Target
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.agent.prices import DEFAULT_PRICES, PRICES_VERSION, Price
-from classbeat.usage.service import current_month, month_bounds
+from classbeat.usage.service import IDENT, current_month, month_bounds
 
 router = admin_router()
 
@@ -58,8 +58,9 @@ MONTH_PATTERN: Final = r"^\d{4}-\d{2}$"
 
 _HELD = "(l.state = 'committed' OR (l.state = 'reserved' AND l.job_id IS NOT NULL))"
 _WINDOW = "r.started_at >= :start AND r.started_at < :end"
+_IDENT = IDENT.format(a="r.")
 _SUMS = (
-    "count(*) AS runs, count(DISTINCT coalesce(r.job_id, r.id)) AS jobs, "
+    f"count(*) AS runs, count(DISTINCT {_IDENT}) AS jobs, "
     "coalesce(sum(r.input_tokens), 0) AS input_tokens, "
     "coalesce(sum(r.output_tokens), 0) AS output_tokens, "
     "coalesce(sum(r.cache_read_tokens), 0) AS cache_read_tokens, "

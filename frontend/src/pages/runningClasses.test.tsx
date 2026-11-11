@@ -83,7 +83,7 @@ describe('the new-class form and running', () => {
       kind: 'design_draft',
       input: {
         title: 'Tempo run',
-        brief: { sport: 'running', length_min: 30, intensity: 'hard', style: '', text: '' },
+        brief: { sport: 'running', length_min: 30, intensity: 'hard', style: '', text: '', explicit: ['length_min'] },
         music: { source: 'mowl_spotify_playlist', spotify_playlist_id: PLAYLIST_ID },
         mowl_connection_id: MOWL_CONNECTION,
       },

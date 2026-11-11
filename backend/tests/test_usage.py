@@ -68,15 +68,16 @@ def plant(
     outcome: str | None = "submitted",
     started: datetime | None = None,
     attempt: int = 1,
+    stage: str = "design",
 ) -> None:
     jenv.sql(
         "INSERT INTO agent_runs (owner_id, job_id, job_kind, price_version, stage, attempt, "
         "provider, model, effort, prompt_version, input_tokens, output_tokens, "
         "cache_read_tokens, cache_write_tokens, cost_micros, outcome, started_at, finished_at) "
-        "VALUES (:o, :j, :k, 'v', 'design', :a, 'fake', :m, 'medium', 'x', :i, :out, :cr, :cw, "
+        "VALUES (:o, :j, :k, 'v', :st, :a, 'fake', :m, 'medium', 'x', :i, :out, :cr, :cw, "
         ":c, :oc, :s, CASE WHEN CAST(:oc AS text) IS NULL THEN NULL ELSE now() END)",
-        o=owner, j=job_id, k=kind, a=attempt, m=model, i=tokens[0], out=tokens[1], cr=tokens[2],
-        cw=tokens[3], c=cost, oc=outcome, s=started or datetime.now(UTC),
+        o=owner, j=job_id, k=kind, st=stage, a=attempt, m=model, i=tokens[0], out=tokens[1],
+        cr=tokens[2], cw=tokens[3], c=cost, oc=outcome, s=started or datetime.now(UTC),
     )  # fmt: skip
 
 
@@ -317,6 +318,44 @@ async def test_a_deleted_completed_job_still_counts(jenv: JobsEnv, browsers: Any
     complete(jenv, job_id)
     jenv.sql("DELETE FROM classes WHERE id = :c", c=UUID(created["class_id"]))
     assert (await alice.get("/api/usage")).json()["classes_designed"] == 1
+
+
+async def test_deleting_a_class_does_not_change_usage_of_a_revise_with_an_interpret_run(
+    jenv: JobsEnv, browsers: Any
+) -> None:
+    """A revise of a class with stated values has an ``interpret`` run and a ``revise`` run (ADR
+    0029 section 4): one job, one revision, before and after its job is deleted."""
+    alice: Browser = await browsers()
+    created = (await alice.create()).json()
+    job_id = UUID(created["id"])
+    for stage in ("interpret", "revise"):
+        plant(jenv, alice.user_id, job_id, kind="revise_draft", stage=stage)
+    complete(jenv, job_id)
+    before = (await alice.get("/api/usage")).json()
+    assert before["revisions"] == 1
+    assert before["total"]["runs"] == 2
+    assert before["total"]["jobs"] == 1
+    jenv.sql("DELETE FROM classes WHERE id = :c", c=UUID(created["class_id"]))
+    assert (await alice.get("/api/usage")).json() == before
+
+
+async def test_deleting_an_interpret_request_class_does_not_change_usage(
+    jenv: JobsEnv, browsers: Any
+) -> None:
+    """An ``interpret_request`` job is a single ``interpret`` run: it stays a job once its class
+    (and so its job) is deleted, unlike the interpret run beside a revise."""
+    alice: Browser = await browsers()
+    created = (await alice.create()).json()
+    job_id = UUID(created["id"])
+    plant(jenv, alice.user_id, job_id, kind="interpret_request", stage="interpret")
+    complete(jenv, job_id)
+    before = (await alice.get("/api/usage")).json()
+    assert before["total"]["jobs"] == 1
+    assert [(r["job_kind"], r["jobs"]) for r in before["by_kind_model"]] == [
+        ("interpret_request", 1)
+    ]
+    jenv.sql("DELETE FROM classes WHERE id = :c", c=UUID(created["class_id"]))
+    assert (await alice.get("/api/usage")).json() == before
 
 
 async def test_the_owner_filter_holds_without_rls(

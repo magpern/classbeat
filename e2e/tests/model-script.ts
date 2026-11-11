@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 
 export type ModelScript =
   | 'good_first_draft'
+  | 'form_climbs_missed' // the good draft (one climb) submitted until the correction budget is spent
   | 'revise_good'
   | 'revise_second'
   | 'revise_description'

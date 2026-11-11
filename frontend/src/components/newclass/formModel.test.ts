@@ -40,13 +40,24 @@ describe('validateForm', () => {
   it('builds the cycling brief with the FTP test as a number', () => {
     const r = validateForm(tt, { ...BASE, ftp: '20', style: 'Pop', notes: 'hi' })
     expect(r).toEqual({
-      brief: { length_min: 45, climbs: 3, sprints: 2, races: 1, intensity: 'moderate', ftp_test: 20, style: 'Pop', text: 'hi' },
+      brief: { length_min: 45, climbs: 3, sprints: 2, races: 1, intensity: 'moderate', ftp_test: 20, style: 'Pop', text: 'hi', explicit: ['length_min', 'climbs', 'sprints', 'races', 'ftp_test'] },
     })
   })
 
   it('builds a running brief with none of the bike fields', () => {
     const r = validateForm(tt, { ...BASE, running: true, climbs: '', ftp: '5' })
-    expect(r).toEqual({ brief: { sport: 'running', length_min: 45, intensity: 'moderate', style: '', text: '' } })
+    expect(r).toEqual({ brief: { sport: 'running', length_min: 45, intensity: 'moderate', style: '', text: '', explicit: ['length_min'] } })
+  })
+
+  it('states only the values the form really offers as explicit', () => {
+    const paths = (v: Partial<FormValues>) => {
+      const r = validateForm(tt, { ...BASE, ...v })
+      return 'brief' in r ? r.brief.explicit : null
+    }
+    expect(paths({ ftp: '' })).toEqual(['length_min', 'climbs', 'sprints', 'races'])
+    expect(paths({ racesOn: false, ftpOn: false, ftp: '3' })).toEqual(['length_min', 'climbs', 'sprints'])
+    expect(paths({ climbs: '0', sprints: '0', races: '0' })).toEqual(['length_min'])
+    expect(paths({ running: true })).toEqual(['length_min'])
   })
 
   it('zeroes races and the FTP test when the plan leaves them out', () => {

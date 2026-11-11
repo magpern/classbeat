@@ -1,5 +1,5 @@
 import { expect, test } from './helpers'
-import { PLAYLISTS, disconnectMowl, fakeMowl } from './design-helpers'
+import { PLAYLISTS, disconnectMowl, fakeMowl, getJob, startDesign } from './design-helpers'
 import { designAndOpen, saveArm, savePrograms, saveState } from './class-helpers'
 import { heldOf } from './m5-helpers'
 import { LONG, designFromWords, holdHandoff, instructorWithMowl, pickMusic, say } from './ai-first-helpers'
@@ -65,5 +65,22 @@ test('the Advanced form still designs a class with its explicit values', async (
   await instructorWithMowl(page, 'aiadvanced')
   await designAndOpen(page, 'E2E advanced', PLAYLISTS.draft.name)
   await expect(page.getByText('30:00', { exact: true }).first()).toBeVisible()
+  expect(saveState().writes).toBe(0)
+})
+
+test('a climb count chosen in the Advanced form is enforced and reported under Not as asked', async ({ page }) => {
+  test.setTimeout(240_000)
+  await instructorWithMowl(page, 'aiformmiss')
+  // The recorded model only ever drafts one climb: five asked on the form cannot be kept, so the
+  // form's value (sent as explicit) is checked, refused three times and then reported.
+  useModelScript('form_climbs_missed')
+  const id = await startDesign(page, 'E2E form miss', PLAYLISTS.draft.name, '5')
+  await expect(page.getByRole('heading', { name: 'Your class is ready' })).toBeVisible(LONG)
+  expect((await getJob(page, id)).state).toBe('completed')
+  await page.goto('/classes')
+  await page.getByRole('link', { name: 'E2E form miss' }).click()
+  const notAsked = page.getByTestId('interpretation').getByRole('region', { name: 'Not as asked' })
+  await expect(notAsked.getByText(/Climbs/)).toBeVisible()
+  await expect(notAsked.getByText('That many did not fit the class.')).toBeVisible()
   expect(saveState().writes).toBe(0)
 })
