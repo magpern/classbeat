@@ -202,7 +202,7 @@ matrix.
 
 ### Takeover gate (blocks PP8)
 
-`e2e/tests/public-takeover.spec.ts` runs against the real image with script loading delayed
+`e2e/tests/public-takeover-cells.ts` (one spec file per language, see ADR 0030) runs against the real image with script loading delayed
 independently of the catalogue chunk.
 
 Matrix: en, sv, da × dark, light × Landing, How it works, an example with a chart × 390 and 1440 px.

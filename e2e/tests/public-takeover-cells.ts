@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { ALL_LANGUAGES, GATE_LANGUAGES, PAGES, SIZES, VISITS, pageName } from './public-takeover-matrix'
+import { GATE_LANGUAGES, PAGES, SIZES, VISITS, pageName, type GateLanguage } from './public-takeover-matrix'
 import { boxes, observe, seen, zoneColours } from './public-takeover-observe'
 import { DIFF_LIMIT, compare, englishHeading, englishLeaks, noteDifference, shoot } from './public-takeover-visual'
 
@@ -12,17 +12,19 @@ import { DIFF_LIMIT, compare, englishHeading, englishLeaks, noteDifference, shoo
 // catalogue, a little later), so the prerendered page is measured before takeover and again after.
 //
 // Cost: one navigation per cell, a fresh context per cell (the theme, the stored state and the
-// viewport differ), and `parallel` mode so the cells can be split over shards (Playwright shards by
-// test order, so they mostly stay together; one worker per shard, the fakes are shared state).
+// viewport differ), and `parallel` mode so the cells can be split over shards (one worker per shard,
+// the fakes are shared state). Playwright shards contiguously by test order, and spec files run in
+// file-name order, so one language's cells are one spec file (public-takeover-<lang>.spec.ts, named
+// to sort into different shards; see the note in each) and the 54 cells do not land on one shard.
 
 const BOX_TOLERANCE = 2
 const SHIFT_LIMIT = 0.05
 const ENTRY_HOLD_MS = 600
 const CHUNK_HOLD_MS = 300
 
-test.describe.configure({ mode: 'parallel' })
-
-for (const lang of ALL_LANGUAGES) {
+/** Defines the 18 cells of one language: Landing, How it works and an example x two sizes x three visits. */
+export function defineTakeoverCells(lang: GateLanguage): void {
+  test.describe.configure({ mode: 'parallel' })
   for (const path of PAGES) {
     for (const size of SIZES) {
       for (const { theme, stored } of VISITS) {

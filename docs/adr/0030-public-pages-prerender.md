@@ -77,7 +77,7 @@ on the gate in item 7.
   has no leave confirmation today, and this adds none.
 - Back and forward cross the boundary as real document loads too.
 
-**7. Takeover gate.** `e2e/tests/public-takeover.spec.ts` runs against the real image with script
+**7. Takeover gate.** `e2e/tests/public-takeover-cells.ts` (one spec file per language) runs against the real image with script
 loading delayed independently of the catalogue chunk, across en, sv, da × dark, light × Landing, How it
 works and an example with a chart × 390 and 1440 px. This list is a summary; the plan's "Takeover
 gate" has the full checks, and both bind. It requires:
@@ -127,13 +127,17 @@ None. The decisions are recorded as D1 to D6 in the plan.
 
 ## Amendment 2026-11-11: the full gate (PP7, #896)
 
-- **Matrix.** `public-takeover.spec.ts` runs en, sv and da × Landing, How it works and
+- **Matrix.** The takeover cells run en, sv and da × Landing, How it works and
   `/examples/hill-challenge` × 390 and 1440 px × three visits (dark with a stored theme, light with a
   stored theme, dark on a first visit; the default is dark whatever the system prefers, so there is no
   light first visit): 54 cells, each with its own context and one navigation. They run in Playwright's
-  `parallel` mode, which lets shards split them; Playwright shards contiguously by test order, so
-  today they land together on one shard (about 5 minutes more than the others, more once sv and da
-  run). Rebalancing is a follow-up. `GATE_LANGUAGES` (`public-takeover-matrix.ts`) names the
+  `parallel` mode, which lets shards split them. Playwright shards contiguously by test order and
+  runs spec files in file-name order, so in one file the 54 cells landed together on one shard. They
+  are now one spec file per language (`lang-da-takeover.spec.ts`, `lang-sv-takeover.spec.ts`,
+  `public-takeover-en.spec.ts`, each calling `defineTakeoverCells` in `public-takeover-cells.ts`),
+  named so that the three sort into different shards of the 3-shard run: 18 cells on each. A new
+  spec file, or a different shard count, can shift that; check with
+  `npx playwright test --list --shard=K/N` from `e2e/`. `GATE_LANGUAGES` (`public-takeover-matrix.ts`) names the
   languages whose cells run; it is all three since the sv/da translation (PP4 to PP6) merged.
 - **English on sv and da.** The prerendered and the taken-over page hold no prose block (an element's
   own text, `aria-label` or `alt` of at least three words and ten characters) that is word for word the English page's,
