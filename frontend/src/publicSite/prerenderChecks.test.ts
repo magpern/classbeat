@@ -43,9 +43,16 @@ describe('translated bodies', () => {
 })
 
 describe('the public paths', () => {
-  it('publish the three legal-and-landing pages and keep Help a draft until PP8', () => {
+  it('publish the three legal-and-landing pages and keep Help and the examples drafts until PP8', () => {
     expect([...PUBLISHED_PATHS]).toEqual(['', '/privacy', '/terms'])
-    expect([...DRAFT_PATHS]).toEqual(['/help'])
+    expect([...DRAFT_PATHS]).toEqual([
+      '/help',
+      '/examples',
+      '/examples/hill-challenge',
+      '/examples/90s-dance-intervals',
+      '/examples/endurance-ride',
+      '/examples/running-intervals',
+    ])
   })
 
   it('each have a title and a description key', () => {

@@ -1,0 +1,297 @@
+{
+  "version": 1,
+  "examples": [
+    {
+      "slug": "hill-challenge",
+      "sport": "cycling",
+      "brief": {"length_min": 45, "intensity": "moderate", "climbs": 3},
+      "segments": [
+        {
+          "name": "Warm-up",
+          "kind": "warmup",
+          "intervals": [
+            {"sec": 120, "zone": 1, "rpm": [80, 90], "standing": false, "cue": "Easy spin, loosen the legs"},
+            {"sec": 180, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Build the cadence"},
+            {"sec": 240, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Steady, find a rhythm"}
+          ]
+        },
+        {
+          "name": "Climb 1",
+          "kind": "main",
+          "intervals": [
+            {"sec": 120, "zone": 3, "rpm": [65, 75], "standing": false, "cue": "Add resistance, stay seated"},
+            {"sec": 180, "zone": 4, "rpm": [60, 70], "standing": false, "cue": "Hold it, breathe low"}
+          ]
+        },
+        {
+          "name": "Recovery 1",
+          "kind": "recovery",
+          "intervals": [
+            {"sec": 60, "zone": 3, "rpm": [80, 90], "standing": false, "cue": "Ease the load"},
+            {"sec": 120, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Spin out the legs"}
+          ]
+        },
+        {
+          "name": "Climb 2",
+          "kind": "main",
+          "intervals": [
+            {"sec": 90, "zone": 3, "rpm": [65, 75], "standing": false, "cue": "Back on the hill"},
+            {"sec": 300, "zone": 4, "rpm": [60, 70], "standing": false, "cue": "Steady and strong"},
+            {"sec": 60, "zone": 4, "rpm": [55, 65], "standing": true, "cue": "Stand and push"}
+          ]
+        },
+        {
+          "name": "Recovery 2",
+          "kind": "recovery",
+          "intervals": [
+            {"sec": 60, "zone": 3, "rpm": [80, 90], "standing": false, "cue": "Ease the load"},
+            {"sec": 60, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Seated, recover"}
+          ]
+        },
+        {
+          "name": "Climb 3",
+          "kind": "main",
+          "intervals": [
+            {"sec": 90, "zone": 3, "rpm": [65, 75], "standing": false, "cue": "The last hill"},
+            {"sec": 300, "zone": 4, "rpm": [60, 70], "standing": false, "cue": "Stay with it"},
+            {"sec": 60, "zone": 4, "rpm": [55, 65], "standing": true, "cue": "Stand for the top"},
+            {"sec": 60, "zone": 4, "rpm": [60, 70], "standing": false, "cue": "Sit and finish the climb"}
+          ]
+        },
+        {
+          "name": "Recovery 3",
+          "kind": "recovery",
+          "intervals": [
+            {"sec": 60, "zone": 3, "rpm": [80, 90], "standing": false, "cue": "Ease the load"},
+            {"sec": 60, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Breathe and recover"}
+          ]
+        },
+        {
+          "name": "Hard finish",
+          "kind": "main",
+          "intervals": [
+            {"sec": 60, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Bring the legs back"},
+            {"sec": 240, "zone": 4, "rpm": [80, 90], "standing": false, "cue": "Strong and smooth to the end"}
+          ]
+        },
+        {
+          "name": "Cool-down",
+          "kind": "cooldown",
+          "intervals": [
+            {"sec": 90, "zone": 2, "rpm": [75, 85], "standing": false, "cue": "Easy spin"},
+            {"sec": 90, "zone": 1, "rpm": [70, 80], "standing": false, "cue": "Slow it right down"}
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "90s-dance-intervals",
+      "sport": "cycling",
+      "brief": {"length_min": 30, "intensity": "moderate", "sprints": 6},
+      "segments": [
+        {
+          "name": "Warm-up",
+          "kind": "warmup",
+          "intervals": [
+            {"sec": 120, "zone": 1, "rpm": [80, 90], "standing": false, "cue": "Easy spin, shake it out"},
+            {"sec": 150, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Find the beat"},
+            {"sec": 210, "zone": 3, "rpm": [90, 100], "standing": false, "cue": "Pick up the pace"}
+          ]
+        },
+        {
+          "name": "Chorus intervals",
+          "kind": "main",
+          "intervals": [
+            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Up with the chorus"},
+            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Back to the verse"},
+            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Up with the chorus"},
+            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Back to the verse"},
+            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Up with the chorus"},
+            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Back to the verse"},
+            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Up with the chorus"},
+            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Back to the verse"},
+            {"sec": 30, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Up with the chorus"},
+            {"sec": 30, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Back to the verse"}
+          ]
+        },
+        {
+          "name": "Breather",
+          "kind": "recovery",
+          "intervals": [
+            {"sec": 90, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Sip and spin"},
+            {"sec": 60, "zone": 3, "rpm": [90, 100], "standing": false, "cue": "Build again"}
+          ]
+        },
+        {
+          "name": "Sprint set",
+          "kind": "main",
+          "intervals": [
+            {"sec": 60, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Get ready to go"},
+            {"sec": 20, "zone": 6, "rpm": [100, 110], "standing": true, "cue": "Sprint"},
+            {"sec": 40, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Sit and breathe"},
+            {"sec": 20, "zone": 6, "rpm": [100, 110], "standing": true, "cue": "Sprint"},
+            {"sec": 40, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Sit and breathe"},
+            {"sec": 20, "zone": 6, "rpm": [100, 110], "standing": true, "cue": "Sprint"},
+            {"sec": 40, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Sit and breathe"},
+            {"sec": 20, "zone": 6, "rpm": [100, 110], "standing": true, "cue": "Sprint"},
+            {"sec": 40, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Sit and breathe"},
+            {"sec": 20, "zone": 6, "rpm": [100, 110], "standing": true, "cue": "Sprint"},
+            {"sec": 40, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Sit and breathe"},
+            {"sec": 20, "zone": 6, "rpm": [100, 110], "standing": true, "cue": "Sprint"},
+            {"sec": 40, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Sit and breathe"}
+          ]
+        },
+        {
+          "name": "Second breather",
+          "kind": "recovery",
+          "intervals": [
+            {"sec": 60, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Settle the legs"},
+            {"sec": 60, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Easy spin"}
+          ]
+        },
+        {
+          "name": "Last chorus",
+          "kind": "main",
+          "intervals": [
+            {"sec": 60, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Take it up"},
+            {"sec": 60, "zone": 5, "rpm": [90, 100], "standing": false, "cue": "Everything you have"},
+            {"sec": 60, "zone": 4, "rpm": [90, 100], "standing": false, "cue": "Keep it moving"}
+          ]
+        },
+        {
+          "name": "Cool-down",
+          "kind": "cooldown",
+          "intervals": [
+            {"sec": 90, "zone": 2, "rpm": [80, 90], "standing": false, "cue": "Easy spin"},
+            {"sec": 60, "zone": 1, "rpm": [70, 80], "standing": false, "cue": "Slow it right down"}
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "endurance-ride",
+      "sport": "cycling",
+      "brief": {"length_min": 60, "intensity": "easy"},
+      "segments": [
+        {
+          "name": "Warm-up",
+          "kind": "warmup",
+          "intervals": [
+            {"sec": 120, "zone": 1, "rpm": [80, 90], "standing": false, "cue": "Easy spin"},
+            {"sec": 180, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Settle into your rhythm"},
+            {"sec": 180, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Smooth pedal strokes"}
+          ]
+        },
+        {
+          "name": "Steady block 1",
+          "kind": "main",
+          "intervals": [
+            {"sec": 600, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Steady and relaxed"},
+            {"sec": 180, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "A little firmer"}
+          ]
+        },
+        {
+          "name": "Easy spin 1",
+          "kind": "recovery",
+          "intervals": [
+            {"sec": 120, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Back to easy"}
+          ]
+        },
+        {
+          "name": "Steady block 2",
+          "kind": "main",
+          "intervals": [
+            {"sec": 600, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Breathe through the nose"},
+            {"sec": 180, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Lift the effort a notch"}
+          ]
+        },
+        {
+          "name": "Easy spin 2",
+          "kind": "recovery",
+          "intervals": [
+            {"sec": 120, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Settle again"}
+          ]
+        },
+        {
+          "name": "Steady block 3",
+          "kind": "main",
+          "intervals": [
+            {"sec": 600, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Keep it even"},
+            {"sec": 240, "zone": 3, "rpm": [85, 95], "standing": false, "cue": "Hold the firmer effort"}
+          ]
+        },
+        {
+          "name": "Easy spin 3",
+          "kind": "recovery",
+          "intervals": [
+            {"sec": 120, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Easy again"}
+          ]
+        },
+        {
+          "name": "Final block",
+          "kind": "main",
+          "intervals": [
+            {"sec": 120, "zone": 2, "rpm": [85, 95], "standing": false, "cue": "Stay smooth to the end"}
+          ]
+        },
+        {
+          "name": "Cool-down",
+          "kind": "cooldown",
+          "intervals": [
+            {"sec": 120, "zone": 2, "rpm": [75, 85], "standing": false, "cue": "Ease off"},
+            {"sec": 120, "zone": 1, "rpm": [70, 80], "standing": false, "cue": "Slow it right down"}
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "running-intervals",
+      "sport": "running",
+      "brief": {"length_min": 30, "intensity": "moderate", "class_type": "interval"},
+      "segments": [
+        {
+          "name": "Warm-up",
+          "kind": "warmup",
+          "intervals": [
+            {"sec": 180, "zone": 1, "gradient": 0, "cue": "Easy jog"},
+            {"sec": 180, "zone": 2, "gradient": 0, "cue": "Settle into a steady pace"},
+            {"sec": 180, "zone": 3, "gradient": 0, "cue": "Pick up the pace"}
+          ]
+        },
+        {
+          "name": "Incline intervals",
+          "kind": "main",
+          "intervals": [
+            {"sec": 120, "zone": 4, "gradient": 1, "cue": "Raise the incline, hold the effort"},
+            {"sec": 60, "zone": 2, "gradient": 0, "cue": "Back to flat, jog it out"},
+            {"sec": 120, "zone": 4, "gradient": 1, "cue": "Raise the incline, hold the effort"},
+            {"sec": 60, "zone": 2, "gradient": 0, "cue": "Back to flat, jog it out"},
+            {"sec": 120, "zone": 4, "gradient": 1, "cue": "Raise the incline, hold the effort"},
+            {"sec": 60, "zone": 2, "gradient": 0, "cue": "Back to flat, jog it out"},
+            {"sec": 120, "zone": 4, "gradient": 1, "cue": "Raise the incline, hold the effort"},
+            {"sec": 60, "zone": 2, "gradient": 0, "cue": "Back to flat, jog it out"},
+            {"sec": 120, "zone": 4, "gradient": 1, "cue": "Raise the incline, hold the effort"},
+            {"sec": 60, "zone": 2, "gradient": 0, "cue": "Back to flat, jog it out"}
+          ]
+        },
+        {
+          "name": "Final push",
+          "kind": "main",
+          "intervals": [
+            {"sec": 60, "zone": 4, "gradient": 1, "cue": "Incline up, stay strong"},
+            {"sec": 60, "zone": 5, "gradient": 1, "cue": "Everything you have"},
+            {"sec": 120, "zone": 3, "gradient": 0, "cue": "Flat again, settle your breathing"}
+          ]
+        },
+        {
+          "name": "Cool-down",
+          "kind": "cooldown",
+          "intervals": [
+            {"sec": 60, "zone": 2, "gradient": 0, "cue": "Easy jog"},
+            {"sec": 60, "zone": 1, "gradient": 0, "cue": "Walk it out"}
+          ]
+        }
+      ]
+    }
+  ]
+}

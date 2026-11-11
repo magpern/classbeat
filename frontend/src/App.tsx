@@ -17,6 +17,8 @@ import { JobPage } from './pages/JobPage'
 import { HomePage } from './pages/HomePage'
 import { LandingPage } from './pages/LandingPage'
 import { HelpPage } from './pages/HelpPage'
+import { ExamplePage } from './pages/ExamplePage'
+import { ExamplesPage } from './pages/ExamplesPage'
 import { PrivacyPage } from './pages/PrivacyPage'
 import { MusicPage } from './pages/MusicPage'
 import { AdvancedClassPage } from './pages/AdvancedClassPage'
@@ -27,6 +29,7 @@ import { SignInPage } from './pages/SignInPage'
 import { SignUpConfirmPage } from './pages/SignUpConfirmPage'
 import { SignUpPage } from './pages/SignUpPage'
 import { TermsPage } from './pages/TermsPage'
+import { EXAMPLES } from './publicSite/examples'
 import { hasUnknownLanguage, isAdminPath } from './router/paths'
 import { Link, RouterProvider, useRouter, type Location } from './router/Router'
 
@@ -75,6 +78,9 @@ const PAGES: Readonly<Record<string, () => ReactNode>> = {
   '/privacy': () => <PrivacyPage />,
   '/terms': () => <TermsPage />,
   '/help': () => <HelpPage />,
+  '/examples': () => <ExamplesPage />,
+  // One page per fixture entry; a slug that is not in the fixture is not a route.
+  ...Object.fromEntries(EXAMPLES.map((example) => [`/examples/${example.slug}`, () => <ExamplePage example={example} />])),
   '/classes': () => <ClassesPage />,
   '/classes/new': () => <NewClassPage />,
   '/classes/new/advanced': () => <AdvancedClassPage />,

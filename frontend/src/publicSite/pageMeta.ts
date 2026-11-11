@@ -1,4 +1,5 @@
 import type { CatalogueKey } from '../i18n/en'
+import { EXAMPLE_SLUGS, exampleMetaKeys } from './examples'
 
 export interface MetaKeys {
   title: CatalogueKey
@@ -12,6 +13,8 @@ const META: Readonly<Record<string, MetaKeys>> = {
   '/privacy': { title: 'meta.privacy.title', description: 'meta.privacy.description' },
   '/terms': { title: 'meta.terms.title', description: 'meta.terms.description' },
   '/help': { title: 'meta.help.title', description: 'meta.help.description' },
+  '/examples': { title: 'meta.examples.title', description: 'meta.examples.description' },
+  ...Object.fromEntries(EXAMPLE_SLUGS.map((slug) => [`/examples/${slug}`, exampleMetaKeys(slug)])),
 }
 
 export function metaKeys(path: string): MetaKeys {
