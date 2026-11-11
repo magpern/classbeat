@@ -3,7 +3,7 @@ import type { ButtonHTMLAttributes } from 'react'
 import { cn } from '../../lib/cn'
 
 const variants = {
-  primary: 'bg-brand text-on-brand hover:opacity-90',
+  primary: 'bg-brand text-on-brand hover:opacity-90 hover:shadow-[0_8px_22px_-10px_var(--cb-brand)]',
   secondary: 'bg-raised text-text hover:bg-line',
   ghost: 'bg-transparent text-text hover:bg-raised',
   danger: 'bg-bad text-on-brand hover:opacity-90',
@@ -23,7 +23,7 @@ export function Button({ variant = 'primary', asChild = false, className, type, 
     <Comp
       {...(asChild ? {} : { type: type ?? 'button' })}
       className={cn(
-        'inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-full border-0 px-5 text-[0.9375rem] font-medium no-underline transition-colors duration-150',
+        'inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-full border-0 px-5 text-[0.9375rem] font-medium no-underline transition-[color,background-color,opacity,scale,box-shadow] duration-150 active:scale-[0.97]',
         'disabled:cursor-not-allowed disabled:opacity-50',
         variants[variant],
         className,

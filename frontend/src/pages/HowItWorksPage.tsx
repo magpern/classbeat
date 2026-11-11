@@ -20,14 +20,14 @@ export function HowItWorksPage() {
         </h2>
         <ol className="m-0 flex list-none flex-col gap-4 p-0">
           {STEPS.map((step, i) => (
-            <li key={step.id} className="flex gap-4 rounded-lg border border-line bg-surface p-5">
+            <li key={step.id} className="fill-step flex gap-4">
               <span
                 aria-hidden="true"
-                className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-brand font-display font-bold text-on-brand"
+                className="fill-step__badge mt-4 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-brand font-display font-bold text-on-brand"
               >
                 {String(i + 1)}
               </span>
-              <div className="flex flex-col gap-1">
+              <div className="fill-step__card glow-card flex min-w-0 flex-1 flex-col gap-1 rounded-lg border border-line bg-surface p-5">
                 <h3 className="m-0 font-display text-lg font-bold">{t(step.title)}</h3>
                 <p className="m-0">{t(step.text)}</p>
               </div>
@@ -42,7 +42,7 @@ export function HowItWorksPage() {
         <p className="m-0">{t('how.connect.lead')}</p>
         <ul className="m-0 flex list-none flex-col gap-4 p-0">
           {CONNECTIONS.map((row) => (
-            <li key={row.id} className="flex flex-col gap-1 rounded-lg border border-line bg-surface p-5">
+            <li key={row.id} className="reveal glow-card flex flex-col gap-1 rounded-lg border border-line bg-surface p-5">
               <h3 className="m-0 font-display text-lg font-bold">{t(row.name)}</h3>
               <p className="m-0">{t(row.text)}</p>
               <AvailabilityNote claim={row} />

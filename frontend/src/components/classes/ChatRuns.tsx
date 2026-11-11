@@ -15,6 +15,7 @@ import { useT } from '../../i18n/I18n'
 import { useJobProgress } from '../../hooks/useJobProgress'
 import { Link } from '../../router/Router'
 import { Notice, useAction } from '../forms'
+import { BeatBars } from '../ui/beat-bars'
 import { Button } from '../ui/button'
 import { UncertainAttach } from './UncertainAttach'
 
@@ -50,9 +51,15 @@ export function ReviseRun({ jobId, onFinished }: { jobId: string; onFinished: ()
       ) : progress.retry !== null ? (
         <p>{retryLabel(progress.retry)}</p>
       ) : job === null || (job.state === 'queued' && progress.stage === null) ? (
-        <p>{t('class.runWaiting')}</p>
+        <p>
+          <BeatBars />
+          {t('class.runWaiting')}
+        </p>
       ) : (
-        <p>{stageLabel(progress.stage ?? job.stage)}…</p>
+        <p>
+          <BeatBars />
+          {stageLabel(progress.stage ?? job.stage)}…
+        </p>
       )}
       {progress.operation === 'pending' ? <p>{t('class.chat.addingPlaylist')}</p> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}

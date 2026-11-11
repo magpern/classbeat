@@ -1,4 +1,5 @@
 import { useT } from '../../i18n/I18n'
+import { cn } from '../../lib/cn'
 import { zoneFill } from './zoneClasses'
 import { lengthLabel, profileSeconds } from '../../lib/classCards'
 
@@ -6,7 +7,19 @@ import { lengthLabel, profileSeconds } from '../../lib/classCards'
  * A small class profile on the stage (ADR 0013 sections 2 and 7): x is time, bar height and colour
  * are the zone. A sketch only: the full chart with axes and markers is the class page's.
  */
-export function MiniProfile({ profile, tall = false }: { profile: [number, number][]; tall?: boolean }) {
+export function MiniProfile({
+  profile,
+  tall = false,
+  motion,
+}: {
+  profile: [number, number][]
+  tall?: boolean
+  /**
+   * How the profile moves (motion.css, CSS only): `play` draws it in on scroll and runs a playhead
+   * across it all the time; `hover` runs the playhead while the pointer is on its card or row.
+   */
+  motion?: 'play' | 'hover'
+}) {
   const t = useT() // renders again when the language changes: the length is looked up on each render
   const total = profileSeconds(profile)
   const bars = profile.filter(([, sec]) => sec > 0)
@@ -30,7 +43,12 @@ export function MiniProfile({ profile, tall = false }: { profile: [number, numbe
       aria-label={label}
       viewBox="0 0 200 56"
       preserveAspectRatio="none"
-      className={`block w-full rounded-md bg-stage ${tall ? 'h-40' : 'h-14'}`}
+      className={cn(
+        'block w-full rounded-md bg-stage',
+        tall ? 'h-40' : 'h-14',
+        motion === 'play' && 'mini-profile--play draw-in',
+        motion === 'hover' && 'mini-profile--hover',
+      )}
     >
       {bars.map(([zone, sec], i) => {
         const z = Math.min(Math.max(zone, 1), 7)
@@ -46,6 +64,13 @@ export function MiniProfile({ profile, tall = false }: { profile: [number, numbe
           />
         )
       })}
+      {motion ? (
+        <>
+          {/* a path, not a rect: every rect of a profile is a bar */}
+          <path className="mini-veil" d="M0 0H200V56H0Z" />
+          <line className="mini-playhead" x1="0" x2="0" y1="0" y2="56" />
+        </>
+      ) : null}
     </svg>
   )
 }

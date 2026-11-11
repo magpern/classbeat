@@ -17,13 +17,13 @@ export function LandingPage() {
     <div className="flex flex-col gap-12">
       <LandingHero />
 
-      <section aria-labelledby="example-title" className="flex flex-col gap-4">
+      <section aria-labelledby="example-title" className="reveal flex flex-col gap-4">
         <h2 id="example-title" className="m-0 font-display text-2xl font-bold">
           {t('landing.example.title')}
         </h2>
         <p className="m-0 text-muted">{t('landing.example.note')}</p>
-        <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
-          <MiniProfile profile={EXAMPLE_PROFILE} tall />
+        <div className="glow-card flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
+          <MiniProfile profile={EXAMPLE_PROFILE} tall motion="play" />
           <ol
             className="m-0 flex list-none flex-col divide-y divide-line p-0"
             aria-label={t('landing.example.songs')}

@@ -1,0 +1,249 @@
+/*
+ * Motion shared by the public pages and the app: card glow, reveal on scroll, the steps that fill,
+ * the class profile that plays. Colour comes from tokens only.
+ *
+ * Rule for the public pages: motion is CSS, never a state a script sets. The prerendered page and
+ * the live page then look the same at every scroll position (the takeover gate compares them), and
+ * a visitor without script gets the motion too. Scroll effects use scroll-driven animations
+ * (`animation-timeline: view()`); a browser without them shows everything at once. Everything that
+ * moves sits under `prefers-reduced-motion: no-preference`.
+ *
+ * Text is moved, never faded or recoloured: a block that rests half-way through its entrance (at
+ * the bottom edge of the screen) must keep its full contrast. Only pictures change opacity or are
+ * clipped, and a block that is fully on screen is fully shown: an entrance ends at `entry 100%`.
+ * The steps of How it works are the one effect measured from a line inside the screen, and they
+ * hide nothing.
+ */
+
+:root {
+  --cb-ease: cubic-bezier(0.2, 0.7, 0.1, 1);
+}
+
+/* A dot in the beta badge; it pulses below. */
+.pulse-dot {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* A card that lifts on hover and is lit by the pointer (useSpotlight sets --mx and --my). The
+   light lies over the card's background and under its content, so text keeps its contrast. */
+.glow-card {
+  position: relative;
+  isolation: isolate;
+  transition:
+    transform 0.3s var(--cb-ease),
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+.glow-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(
+    16rem circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in srgb, var(--cb-brand) 20%, transparent),
+    transparent 70%
+  );
+}
+@media (hover: hover) {
+  .glow-card:hover {
+    border-color: color-mix(in srgb, var(--cb-brand) 55%, var(--cb-line));
+    box-shadow: 0 18px 40px -24px color-mix(in srgb, var(--cb-brand) 70%, transparent);
+  }
+  .glow-card:hover::before {
+    opacity: 1;
+  }
+}
+
+/* The steps of How it works: a rail joins the numbers. Below, rail and numbers fill on scroll. */
+.fill-step {
+  position: relative;
+}
+.fill-step:not(:last-child)::before,
+.fill-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: calc(1.125rem - 1px); /* the middle of the 2.25rem number */
+  top: 3.5rem; /* under this number: 1rem above it, 2.25rem tall, 0.25rem clear */
+  bottom: -1.75rem; /* down to the next number: the 1rem gap, its 1rem top margin, 0.25rem clear */
+  width: 2px;
+  border-radius: 1px;
+  background: var(--cb-line);
+}
+.fill-step:not(:last-child)::after {
+  background: var(--cb-brand);
+  transform-origin: top;
+}
+.fill-step__badge {
+  box-shadow: 0 0 0 0.35rem color-mix(in srgb, var(--cb-brand) 22%, transparent);
+}
+.fill-step__card {
+  border-color: color-mix(in srgb, var(--cb-brand) 35%, var(--cb-line));
+}
+
+/* The playhead and the veil over what is still to come (MiniProfile); shown only when they move. */
+.mini-veil,
+.mini-playhead {
+  display: none;
+  opacity: 0;
+}
+.mini-veil {
+  fill: var(--cb-stage);
+}
+.mini-playhead {
+  stroke: var(--cb-stage-text);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pulse-dot {
+    animation: pulse-dot 2.3s ease-out infinite;
+  }
+  @media (hover: hover) {
+    .glow-card:hover {
+      transform: translateY(-3px);
+    }
+  }
+
+  /* The profile plays: all the time on the Landing, under the pointer on a card or a row. */
+  .mini-profile--play .mini-veil {
+    display: block;
+    animation: mini-veil 14s linear infinite;
+  }
+  .mini-profile--play .mini-playhead {
+    display: block;
+    animation: mini-head 14s linear infinite;
+  }
+  @media (hover: hover) {
+    :is(.glow-card, .class-row):hover .mini-profile--hover .mini-veil {
+      display: block;
+      animation: mini-veil 4s linear infinite;
+    }
+    :is(.glow-card, .class-row):hover .mini-profile--hover .mini-playhead {
+      display: block;
+      animation: mini-head 4s linear infinite;
+    }
+  }
+
+  @supports (animation-timeline: view()) {
+    /* A block rises in while it enters the screen. `translate`, so a hover `transform` still works. */
+    .reveal {
+      animation: reveal-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 100%;
+    }
+    .reveal-row > .reveal:nth-child(2) {
+      --rise: 4rem;
+    }
+    .reveal-row > .reveal:nth-child(3) {
+      --rise: 5.5rem;
+    }
+    /* A chart's plot is drawn from left to right while it enters the screen: complete as soon as
+       the plot is fully on screen, so a chart at rest in view is never clipped. Only the picture
+       is clipped, never a caption. */
+    svg.draw-in,
+    .draw-in-plot svg {
+      animation: draw-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 100%;
+    }
+    /* The steps fill as they cross a line 65% down the screen: the number grows a halo, the card
+       slides in, then the rail runs on to the next number. */
+    .fill-step__badge {
+      animation: badge-fill linear both;
+      animation-timeline: view(block 0% 35%);
+      animation-range: entry 0% entry 100%;
+    }
+    .fill-step__card {
+      animation: card-arrive linear both;
+      animation-timeline: view(block 0% 35%);
+      animation-range: entry 0% entry 70%;
+    }
+    .fill-step:not(:last-child)::after {
+      animation: rail-fill linear both;
+      animation-timeline: view(block 0% 35%);
+      animation-range: entry 0% entry 100%;
+    }
+  }
+}
+
+@keyframes pulse-dot {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 0.6rem transparent;
+  }
+}
+@keyframes mini-veil {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  4% {
+    opacity: 0.5;
+  }
+  to {
+    transform: translateX(200px);
+    opacity: 0.5;
+  }
+}
+@keyframes mini-head {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  4%,
+  96% {
+    opacity: 0.85;
+  }
+  to {
+    transform: translateX(200px);
+    opacity: 0;
+  }
+}
+@keyframes reveal-in {
+  from {
+    translate: 0 var(--rise, 2.5rem);
+    scale: 0.96;
+  }
+}
+@keyframes draw-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+@keyframes badge-fill {
+  from {
+    scale: 0.55;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--cb-brand) 0%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 0.35rem color-mix(in srgb, var(--cb-brand) 22%, transparent);
+  }
+}
+@keyframes card-arrive {
+  from {
+    border-color: var(--cb-line);
+    translate: 0.75rem 0;
+  }
+}
+@keyframes rail-fill {
+  from {
+    transform: scaleY(0);
+  }
+}

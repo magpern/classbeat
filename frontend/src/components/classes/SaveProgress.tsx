@@ -6,7 +6,9 @@ import { useT } from '../../i18n/I18n'
 import { useJobProgress } from '../../hooks/useJobProgress'
 import { Link } from '../../router/Router'
 import { Notice, useAction } from '../forms'
+import { BeatBars } from '../ui/beat-bars'
 import { Button } from '../ui/button'
+import { Cheer } from '../ui/cheer'
 import type { Finished } from './useSaveFlow'
 
 /** The live progress of the class's running save or update, from the job's events. */
@@ -56,6 +58,7 @@ export function WriteRun({
         <p>{t('class.runWaiting')}</p>
       ) : (
         <p>
+          <BeatBars />
           {kind === 'save' ? t('class.save.runSave') : t('class.save.runUpdate')}{' '}
           {stageLabel(progress.stage ?? job.stage)}…
         </p>
@@ -88,7 +91,13 @@ export function Outcome({
   const t = useT()
   const { job, kind } = done
   if (job.state === 'completed') {
-    if (kind === 'save') return <Notice kind="success">{savedText(soundless)}</Notice>
+    if (kind === 'save') {
+      return (
+        <Cheer>
+          <Notice kind="success">{savedText(soundless)}</Notice>
+        </Cheer>
+      )
+    }
     if (done.verified === 'checking') return <Notice>{t('class.save.checking')}</Notice>
     return <Notice kind={done.verified ? 'success' : 'info'}>{updatedText(done.verified)}</Notice>
   }

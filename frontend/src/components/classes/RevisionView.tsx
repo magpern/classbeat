@@ -108,7 +108,9 @@ export function RevisionView({
           </ul>
         </div>
       ) : null}
-      <ProfileChart segments={revision.segments} title={revision.name} songs={songs} />
+      <div className="chart-in">
+        <ProfileChart segments={revision.segments} title={revision.name} songs={songs} />
+      </div>
       <ZoneTime bars={bars} running={running} />
       {games ? <GameLicence /> : null}
       <section aria-labelledby="song-by-song-title" className="flex flex-col gap-4">

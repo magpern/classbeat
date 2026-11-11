@@ -11,7 +11,7 @@ import { TssValue } from './TssValue'
 /** The list of classes (Home and My classes): one bordered block of rows. */
 export function ClassList({ children }: { children: ReactNode }) {
   return (
-    <ul className="m-0 flex list-none flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface p-0">
+    <ul className="class-list m-0 flex list-none flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface p-0">
       {children}
     </ul>
   )
@@ -28,10 +28,10 @@ export function ClassRow({ cls, actions }: { cls: ClassSummary; actions?: ReactN
   return (
     <ListRow
       // On a phone the text column keeps at least 10rem and the action drops to its own line.
-      className="flex-wrap sm:flex-nowrap [&>div:nth-child(2)]:min-w-40 [&>div:nth-child(2)]:basis-40"
+      className="class-row flex-wrap sm:flex-nowrap [&>div:nth-child(2)]:min-w-40 [&>div:nth-child(2)]:basis-40"
       leading={
         <div className="w-24 shrink-0 sm:w-36">
-          <MiniProfile profile={cls.profile} />
+          <MiniProfile profile={cls.profile} motion="hover" />
         </div>
       }
       title={

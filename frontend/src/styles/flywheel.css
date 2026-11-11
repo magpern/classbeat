@@ -1,0 +1,214 @@
+/*
+ * The hero's flywheel (components/landing/Flywheel.tsx). Motion in CSS only, so the prerendered
+ * page and the live page are the same picture (the takeover gate compares them). Colour from tokens.
+ *
+ * Each bar runs two animations: a slow wave (height and zone colour; its phase --d depends on the
+ * bar's place, which makes four lobes travel round the ring) and a kick on every beat (the `scale`
+ * property, so the two multiply). Under reduced motion the wave is paused at its phase: one still
+ * frame of the same picture.
+ */
+.flywheel {
+  --fw-beat: 0.5s; /* 120 BPM */
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  left: 76%;
+  height: 126%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  overflow: visible;
+  pointer-events: none;
+}
+@media (max-width: 40rem) {
+  .flywheel {
+    top: 25%;
+    left: 50%;
+    width: 92%;
+    height: auto;
+  }
+}
+.flywheel__ring {
+  fill: none;
+  stroke: var(--cb-brand);
+  stroke-width: 1;
+  opacity: 0.45;
+}
+.flywheel__ring,
+.flywheel__bars,
+.flywheel__marker {
+  transform-origin: 150px 150px;
+}
+.flywheel__marker {
+  fill: var(--cb-brand);
+  stroke: var(--cb-brand);
+}
+.flywheel__marker path {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.flywheel__marker circle {
+  stroke: none;
+}
+.flywheel__bars rect {
+  fill: var(--cb-zone-3);
+  opacity: 0.85;
+  transform-box: fill-box;
+  transform-origin: 50% 100%; /* the end on the ring */
+  animation: fw-wave 4.8s ease-in-out var(--d, 0s) infinite alternate paused;
+}
+.flywheel__bars > g:nth-child(24n + 1) rect {
+  --d: -0.4s;
+}
+.flywheel__bars > g:nth-child(24n + 2) rect {
+  --d: -0.8s;
+}
+.flywheel__bars > g:nth-child(24n + 3) rect {
+  --d: -1.2s;
+}
+.flywheel__bars > g:nth-child(24n + 4) rect {
+  --d: -1.6s;
+}
+.flywheel__bars > g:nth-child(24n + 5) rect {
+  --d: -2.0s;
+}
+.flywheel__bars > g:nth-child(24n + 6) rect {
+  --d: -2.4s;
+}
+.flywheel__bars > g:nth-child(24n + 7) rect {
+  --d: -2.8s;
+}
+.flywheel__bars > g:nth-child(24n + 8) rect {
+  --d: -3.2s;
+}
+.flywheel__bars > g:nth-child(24n + 9) rect {
+  --d: -3.6s;
+}
+.flywheel__bars > g:nth-child(24n + 10) rect {
+  --d: -4.0s;
+}
+.flywheel__bars > g:nth-child(24n + 11) rect {
+  --d: -4.4s;
+}
+.flywheel__bars > g:nth-child(24n + 12) rect {
+  --d: -4.8s;
+}
+.flywheel__bars > g:nth-child(24n + 13) rect {
+  --d: -5.2s;
+}
+.flywheel__bars > g:nth-child(24n + 14) rect {
+  --d: -5.6s;
+}
+.flywheel__bars > g:nth-child(24n + 15) rect {
+  --d: -6.0s;
+}
+.flywheel__bars > g:nth-child(24n + 16) rect {
+  --d: -6.4s;
+}
+.flywheel__bars > g:nth-child(24n + 17) rect {
+  --d: -6.8s;
+}
+.flywheel__bars > g:nth-child(24n + 18) rect {
+  --d: -7.2s;
+}
+.flywheel__bars > g:nth-child(24n + 19) rect {
+  --d: -7.6s;
+}
+.flywheel__bars > g:nth-child(24n + 20) rect {
+  --d: -8.0s;
+}
+.flywheel__bars > g:nth-child(24n + 21) rect {
+  --d: -8.4s;
+}
+.flywheel__bars > g:nth-child(24n + 22) rect {
+  --d: -8.8s;
+}
+.flywheel__bars > g:nth-child(24n + 23) rect {
+  --d: -9.2s;
+}
+.flywheel__bars > g:nth-child(5n + 1) rect {
+  --kick: 1.42;
+}
+.flywheel__bars > g:nth-child(5n + 3) rect {
+  --kick: 1.16;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .flywheel__glow {
+    animation: fw-glow var(--fw-beat) ease-out infinite;
+  }
+  .flywheel__ring {
+    animation: fw-ring var(--fw-beat) ease-out infinite;
+  }
+  .flywheel__bars {
+    animation: fw-turn 160s linear infinite;
+  }
+  .flywheel__marker {
+    animation: fw-turn calc(var(--fw-beat) * 8) linear infinite; /* half a turn every four beats */
+  }
+  .flywheel__bars rect {
+    animation:
+      fw-wave 4.8s ease-in-out var(--d, 0s) infinite alternate,
+      fw-kick var(--fw-beat) cubic-bezier(0.1, 0.6, 0.3, 1) infinite;
+  }
+}
+/* tailwind.css stops every animation under reduced motion; the wave must keep its length to stay
+   paused at its phase (a still frame), so these two win over that rule. */
+@media (prefers-reduced-motion: reduce) {
+  .flywheel__bars rect {
+    animation-duration: 4.8s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
+@keyframes fw-wave {
+  0% {
+    transform: scaleY(0.14);
+    fill: var(--cb-zone-1);
+  }
+  28% {
+    transform: scaleY(0.36);
+    fill: var(--cb-zone-2);
+  }
+  55% {
+    transform: scaleY(0.58);
+    fill: var(--cb-zone-3);
+  }
+  82% {
+    transform: scaleY(0.8);
+    fill: var(--cb-zone-4);
+  }
+  100% {
+    transform: scaleY(0.96);
+    fill: var(--cb-zone-5);
+  }
+}
+@keyframes fw-kick {
+  from {
+    scale: 1 var(--kick, 1.28);
+  }
+  to {
+    scale: 1 1;
+  }
+}
+@keyframes fw-glow {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.6;
+  }
+}
+@keyframes fw-ring {
+  from {
+    scale: 1.04;
+  }
+  to {
+    scale: 1;
+  }
+}
+@keyframes fw-turn {
+  to {
+    rotate: 360deg;
+  }
+}

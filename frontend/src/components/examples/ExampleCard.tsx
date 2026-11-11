@@ -8,8 +8,8 @@ export function ExampleCard({ example }: { example: Example }) {
   const t = useT()
   const id = `example-${example.slug}`
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4" data-example={example.slug}>
-      <MiniProfile profile={exampleProfile(example)} />
+    <li className="reveal glow-card flex flex-col gap-3 rounded-lg border border-line bg-surface p-4" data-example={example.slug}>
+      <MiniProfile profile={exampleProfile(example)} motion="hover" />
       <h2 id={id} className="m-0 font-display text-xl font-bold">
         <Link to={`/examples/${example.slug}`} className="text-text underline-offset-4 hover:underline">
           {t(exampleKey(example.slug, 'title'))}

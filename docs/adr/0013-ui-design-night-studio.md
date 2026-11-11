@@ -115,6 +115,45 @@ bundled with `@fontsource` (SIL OFL) and served by us, never from a font CDN. Sc
 art (§3). Targets are at least 44 px. Focus rings are visible. Motion is limited to progress
 skeletons and short transitions, and is turned off under `prefers-reduced-motion`.
 
+> **Amendment, 2026-11-11 (issue #956; owner request: the public pages and the app should feel
+> alive, with moving parts).** Motion is no longer limited to skeletons and short transitions. The
+> pages may move (a flywheel in the Landing hero, blocks that rise in on scroll, steps and charts
+> that fill, a profile that plays, rows that slide in, a busy mark, a burst on a saved class)
+> under these rules:
+>
+> 1. **Public pages move in CSS only.** No script sets a motion state on a prerendered page
+>    (ADR 0030): the prerendered page and the live page are the same markup under the same rules,
+>    so the takeover gate compares equal pictures, and a visitor without script gets the motion
+>    too. Scroll effects use scroll-driven animations (`animation-timeline: view()`) inside
+>    `@supports`; a browser without them shows the page at rest. The pointer's light on a card is
+>    the one script, and it changes nothing until the pointer moves.
+> 2. **Nothing on screen is hidden waiting for motion.** A block that is fully on screen is fully
+>    shown: an entrance plays only while its block enters the screen and ends when it has
+>    (`entry 100%`). Only a picture is ever clipped (a chart's plot being drawn in), never text or
+>    a caption. An effect that cannot run (no script, no support) leaves the page at rest, complete.
+>    The steps of How it works are the one effect measured from a line inside the screen; they
+>    hide nothing.
+> 3. **Reduced motion still wins.** Under `prefers-reduced-motion: reduce` nothing moves: every
+>    motion sheet starts its animations under `prefers-reduced-motion: no-preference`, so no
+>    delay and no scroll timeline is left for the stylesheet-wide rule to miss. The
+>    hero flywheel is then a still picture: its wave is paused at its phase, which needs the one
+>    exception to the stylesheet-wide rule in `tailwind.css` (`flywheel.css` says why).
+> 4. **Text is moved, never faded or recoloured**, on every page: a block can rest half-way
+>    through its entrance (at the bottom edge of the screen), and its contrast must hold there.
+>    Only pictures change opacity. The pointer's light on a card lies under its content.
+> 5. **Tokens only**, as everywhere: no colour literal, no `style` attribute in prerendered
+>    markup, no new dependency for motion.
+>
+> 6. **Motion never changes behaviour.** A cross-fade between pages through the browser's view
+>    transition was tried and dropped: it moves a link's navigation out of the click (the address
+>    and the page change a frame later) and the page takes no input while it fades, which the
+>    e2e suite caught as three failures. Navigation stays synchronous.
+>
+> The stylesheets are `motion.css` (shared and public), `flywheel.css`, `motion-app.css` and
+> `motion-feedback.css`; `styles/motion.test.ts` checks rules 1 to 4 on them. The shared button's
+> press feedback and the logo's beat under the pointer apply on every page, the sign-in, account
+> and admin pages included; no other motion was added to those pages.
+
 **Icons.** `lucide-react`, 2 px stroke. The logo stays classbeat's own: a rounded violet tile with
 four bars.
 

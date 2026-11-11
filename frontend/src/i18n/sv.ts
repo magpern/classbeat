@@ -43,7 +43,7 @@ const sv: Catalogue = {
   'landing.lead': 'Beskriv turen. Vi utformar passet, och du finslipar det.',
   'landing.signUp': 'Prova betan',
   'landing.example.title': 'Ett exempelpass',
-  'landing.example.note': 'En påhittad tur på 30 minuter. Låtarna är platshållare.',
+  'landing.example.note': 'En påhittad tur på 30 minuter.',
   'landing.example.songs': 'Låtarna i exempelpasset',
   'landing.example.songMeta': '{artist} · {part}',
   'landing.example.songStats': '{bpm} BPM · {length}',

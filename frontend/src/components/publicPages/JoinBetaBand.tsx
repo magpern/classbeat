@@ -8,7 +8,7 @@ export function JoinBetaBand() {
   return (
     <section
       aria-labelledby="join-beta"
-      className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"
+      className="reveal glow-card flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"
     >
       <h2 id="join-beta" className="m-0 font-display text-2xl font-bold">
         {t('landing.signUp')}

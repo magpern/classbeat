@@ -17,9 +17,9 @@ export function HowItWorks() {
       <h2 id="steps-title" className="m-0 font-display text-2xl font-bold">
         {t('landing.how.title')}
       </h2>
-      <ol className="m-0 grid list-none grid-cols-1 gap-4 p-0 md:grid-cols-3">
+      <ol className="reveal-row m-0 grid list-none grid-cols-1 gap-4 p-0 md:grid-cols-3">
         {STEPS.map((step, i) => (
-          <li key={step.title} className="overflow-hidden rounded-lg border border-line bg-surface">
+          <li key={step.title} className="reveal glow-card overflow-hidden rounded-lg border border-line bg-surface">
             {withPictures && resolveSlot(step.image, theme) ? (
               <SlotPicture slot={step.image} sizes="(min-width: 48rem) 22rem, 100vw" className="slot--3x2" />
             ) : null}
