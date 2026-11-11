@@ -97,13 +97,18 @@ async function postDesign(who: Who, brief: Record<string, unknown>): Promise<{ s
   return { status: answer.status(), body: (await answer.json()) as Record<string, any> }
 }
 
-/** Design a plain class on the recorded model, wait for it, and return the route its runs used. */
+/**
+ * Design a plain class on the recorded model, wait for it, and return the route the app stored on
+ * the job at admission (`jobs.input.route_key`, a server field: the plan's route). `agent_runs.route_key`
+ * is only written when an admin has set a model route for it (with the bootstrap model it is null), so
+ * the job's own record is what follows the plan here.
+ */
 async function routeOfADesign(who: Who): Promise<string[]> {
   useModelScript('good_first_draft')
   const made = await createDesign(who.context, who.connectionId)
   expect(made.status).toBe(201)
   expect(await endedAs(who.page, made.body.id!)).toBe('completed')
-  const routes = sql(`SELECT DISTINCT route_key FROM agent_runs WHERE job_id = '${made.body.id}' AND route_key IS NOT NULL`)
+  const routes = sql(`SELECT DISTINCT input->>'route_key' FROM jobs WHERE id = '${made.body.id}'`)
   return routes.split('\n').filter((line) => line !== '')
 }
 
