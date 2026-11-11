@@ -123,3 +123,35 @@ network call, and fixtures are synthetic, scanned for identifiers and real song 
 ## Questions for the owner
 
 None. The decisions are recorded as D1 to D6 in the plan.
+
+## Amendment 2026-11-11: the full gate (PP7, #896)
+
+- **Matrix.** `public-takeover.spec.ts` runs en, sv and da × Landing, How it works and
+  `/examples/hill-challenge` × 390 and 1440 px × three visits (dark with a stored theme, light with a
+  stored theme, dark on a first visit; the default is dark whatever the system prefers, so there is no
+  light first visit): 54 cells, each with its own context and one navigation. They run in Playwright's
+  `parallel` mode, which lets shards split them; Playwright shards contiguously by test order, so
+  today they land together on one shard (about 5 minutes more than the others, more once sv and da
+  run). Rebalancing is a follow-up. `GATE_LANGUAGES` (`public-takeover-matrix.ts`) names the
+  languages whose cells run; it is all three since the sv/da translation (PP4 to PP6) merged.
+- **English on sv and da.** The prerendered and the taken-over page hold no prose block (an element's
+  own text, `aria-label` or `alt` of at least three words and ten characters) that is word for word the English page's,
+  and the `<h1>` differs from the English one. The reference is the English page's prerendered HTML,
+  so English that only the client renders is not in it; the check
+  was run against the built prerender of all pages before it was turned on. The contents of drawings (an svg's own label is read), Landing's sample songs and the part names and cues of an example's
+  table are not scanned: they are English on purpose (`examples.notes.english`).
+- **Screenshots.** Full-page before and after, compared in the run in a browser canvas. Left out of
+  the comparison, and nothing else: the pictures inside the image slots (hidden through the CSSOM
+  before each shot, so text drawn over a slot, such as the Landing hero's heading, lead and button, is
+  compared) and the header's account navigation (the prerender writes the invisible placeholder, the
+  client the real controls). Pixels differing by more than 16 per channel may not exceed 0.05% of the
+  page, and the page may not change size. Starting values, like the others. CI uploads them as
+  `takeover-screenshots-<shard>` from every run.
+- **CSP.** The `securitypolicyviolation` event and Chromium's console messages both fail a cell.
+- **No-JS visitors (decision, parked in #927).** The prerender keeps both themes' pictures, `lazy`,
+  and the style sheet hides the wrong one. With scripting on, a hidden lazy picture is never fetched,
+  so the "no request for the other theme's image" check holds for every visitor who runs the page. A
+  browser with scripting off ignores `lazy` and fetches both themes' pictures (one extra file per
+  slot). Accepted: the static HTML cannot know the saved theme, an eager hero would make every
+  light-theme visitor fetch both, and `media="(scripting: enabled)"` would leave the hero blank for
+  light-theme visitors before takeover in browsers without that media feature. Nobody sees a regression; a no-JS visitor pays some bytes.

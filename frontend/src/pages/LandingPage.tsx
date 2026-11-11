@@ -23,6 +23,7 @@ export function LandingPage() {
           <ol
             className="m-0 flex list-none flex-col divide-y divide-line p-0"
             aria-label={t('landing.example.songs')}
+            data-testid="landing-example-songs"
           >
             {EXAMPLE_SONGS.map((song, i) => (
               <ListRow

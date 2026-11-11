@@ -26,6 +26,7 @@ node_modules/
 frontend/dist/
 playwright-report/
 test-results/
+e2e/takeover-shots/
 blob-report/
 
 # Editors and OS
