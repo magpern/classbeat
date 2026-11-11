@@ -55,11 +55,34 @@ describe('SlotPicture in the browser', () => {
 
 describe('the style sheet', () => {
   const css = readFileSync(join(process.cwd(), 'src/styles/imagery.css'), 'utf8')
-  it('hides the other theme\'s prerendered picture, for a saved theme and for system', () => {
-    expect(css).toContain(":root[data-theme='light'] .slot[data-for='dark']")
-    expect(css).toContain(":root:not([data-theme='light']) .slot[data-for='light']")
-    expect(css).toContain("@media (prefers-color-scheme: light)")
-    expect(css).toContain(":root[data-theme='system'] .slot[data-for='dark']")
-    expect(css).toContain(":root[data-theme='system'] .slot[data-for='light']")
+
+  /** The declarations of every rule with this selector, with the media condition it sits in (or ''). */
+  function rulesFor(selector: string): { media: string; display: string }[] {
+    const style = document.createElement('style')
+    style.textContent = css
+    document.head.append(style)
+    const found: { media: string; display: string }[] = []
+    const visit = (rules: CSSRuleList, media: string) => {
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSMediaRule) visit(rule.cssRules, rule.conditionText)
+        else if (rule instanceof CSSStyleRule && rule.selectorText.split(',').map((x) => x.trim()).includes(selector)) {
+          found.push({ media, display: rule.style.getPropertyValue('display') })
+        }
+      }
+    }
+    if (style.sheet) visit(style.sheet.cssRules, '')
+    style.remove()
+    return found
+  }
+
+  it('hides the other theme\'s prerendered picture for a saved theme', () => {
+    expect(rulesFor(":root[data-theme='light'] .slot[data-for='dark']")).toEqual([{ media: '', display: 'none' }])
+    expect(rulesFor(":root:not([data-theme='light']) .slot[data-for='light']")).toEqual([{ media: '', display: 'none' }])
+  })
+
+  it('under system, follows the device: light shows light and hides dark', () => {
+    const light = { media: '(prefers-color-scheme: light)' }
+    expect(rulesFor(":root[data-theme='system'] .slot[data-for='dark']")).toEqual([{ ...light, display: 'none' }])
+    expect(rulesFor(":root[data-theme='system'] .slot[data-for='light']")).toEqual([{ ...light, display: 'block' }])
   })
 })

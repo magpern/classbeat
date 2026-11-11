@@ -37,7 +37,7 @@ export function forgetExample(): void {
   }
 }
 
-/** The kept slug, or null when there is none, it is older than 24 hours or it is not an example (an expired entry is removed). */
+/** The kept slug, or null when there is none, it is older than 24 hours or it is not an example (it only reads: the caller removes an expired entry with `forgetExample`). */
 export function recallExample(now = Date.now()): ExampleSlug | null {
   try {
     const raw = window.localStorage.getItem(KEY)
@@ -46,7 +46,6 @@ export function recallExample(now = Date.now()): ExampleSlug | null {
     const slug = typeof kept?.slug === 'string' ? validExample(kept.slug) : null
     const at = typeof kept?.at === 'number' ? kept.at : Number.NaN
     if (slug !== null && now - at >= 0 && now - at < EXAMPLE_TTL_MS) return slug
-    forgetExample()
     return null
   } catch {
     return null

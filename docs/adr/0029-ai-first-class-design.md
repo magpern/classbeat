@@ -141,7 +141,10 @@ The 10 s rules live in the library alone, which covers both the tool loop
   look up `GAMES` and would raise. `to_spec` does not look up `GAMES`.
 - **Revising from a legacy base** turns that interval into a regular interval with the same
   length and zone, and records a Not as asked item `game_retired` before the model sees the
-  draft. The model never picks a replacement game.
+  draft. The model never picks a replacement game. As built, the note is stored in the revision's
+  change summary (`not_as_asked: ["game_retired"]`, `design/revise_base.noted`), not in
+  `provenance.interpretation`, and the page does not show it as a Not as asked item: the compare
+  line "Ghost Target (no longer offered) removed" is what the instructor sees.
 - One compatibility test per path.
 
 **Prompts** (`design.py`, `revise.py`, `soundless.py`)
@@ -224,7 +227,11 @@ The fields are:
   set tolerance.
 - A miss is a tool error inside the existing correction budget. If the draft still misses, a Not
   as asked item is recorded.
-- It runs in `design_draft`, so values from the Advanced form count as explicit, and in revise,
+- It runs in `design_draft`, so values from the Advanced form count as explicit: the form sends
+  `explicit` for every value it submits that `check_explicit` can verify (`length_min`, `climbs`,
+  `sprints`, `races` when above 0, and `ftp_test` when set; a running class `length_min` only; a count of 0 is "none asked"), because the
+  instructor sees and submits each one (#924, `frontend/src/components/newclass/formModel.ts`).
+  It runs in revise too,
   where the explicit list is sent as constraints and the new request's explicit items layer on
   top.
 - **Revise layering (MA1b-4, #904).** A revise of a class whose brief states values runs the

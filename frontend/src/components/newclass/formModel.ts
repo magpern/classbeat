@@ -1,5 +1,5 @@
 import type { TFunction } from '../../i18n/t'
-import type { Brief, RunningBrief } from '../../api/jobs'
+import type { Brief, ExplicitPath, RunningBrief } from '../../api/jobs'
 import { briefBytes, MAX_BRIEF_BYTES } from '../../lib/brief'
 import type { Music } from '../songs/MusicChoice'
 
@@ -51,6 +51,20 @@ export interface FormValues {
   maxMinutes: number | null
 }
 
+/**
+ * Every value the form submits is one the instructor chose, so it counts as stated (ADR 0029 section
+ * 4): the draft is held to it and a miss is reported under Not as asked. A count of 0 is "none
+ * asked", not a stated value, and `ftp_test` is stated only when a test is set; a running class has
+ * no bike knobs. Intensity is left out: nothing checks it against the draft.
+ */
+export function explicitPaths(running: boolean, counts: Pick<Brief, 'climbs' | 'sprints' | 'races' | 'ftp_test'>): ExplicitPath[] {
+  if (running) return ['length_min']
+  const paths: ExplicitPath[] = ['length_min']
+  for (const path of ['climbs', 'sprints', 'races'] as const) if (counts[path] > 0) paths.push(path)
+  if (counts.ftp_test !== null) paths.push('ftp_test')
+  return paths
+}
+
 /** The first problem with the form as a sentence, or the brief to design from. */
 export function validateForm(t: TFunction, v: FormValues): { problem: string } | { brief: Brief | RunningBrief } {
   const { running, noMusic } = v
@@ -75,14 +89,25 @@ export function validateForm(t: TFunction, v: FormValues): { problem: string } |
   if (problem !== null) return { problem }
   // A running brief names its sport and has none of the bike-only knobs (the backend refuses them).
   const brief: Brief | RunningBrief = running
-    ? { sport: 'running', length_min: parts.length_min, intensity: v.intensity, style: v.style, text: v.notes }
-    : {
-        ...parts,
+    ? {
+        sport: 'running',
+        length_min: parts.length_min,
         intensity: v.intensity,
-        ftp_test: v.ftp === '' || !v.ftpOn ? null : (Number(v.ftp) as 3 | 5 | 20),
         style: v.style,
         text: v.notes,
+        explicit: explicitPaths(true, { climbs: 0, sprints: 0, races: 0, ftp_test: null }),
       }
+    : (() => {
+        const ftp_test = v.ftp === '' || !v.ftpOn ? null : (Number(v.ftp) as 3 | 5 | 20)
+        return {
+          ...parts,
+          intensity: v.intensity,
+          ftp_test,
+          style: v.style,
+          text: v.notes,
+          explicit: explicitPaths(false, { ...parts, ftp_test }),
+        }
+      })()
   // The limit is in bytes (the brief is stored as jsonb), not characters.
   if (briefBytes(brief) > MAX_BRIEF_BYTES) return { problem: t('newclass.invalid.briefTooLong') }
   return { brief }

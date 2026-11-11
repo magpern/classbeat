@@ -86,7 +86,12 @@ export interface Brief {
   ftp_test: 3 | 5 | 20 | null
   style: string
   text: string
+  /** The values the instructor stated, by backend path (ADR 0029 section 4); left out when empty. */
+  explicit?: ExplicitPath[]
 }
+
+/** The paths of `Brief.explicit` the Advanced form sends (backend `agent/brief.py` `EXPLICIT_PATH`). */
+export type ExplicitPath = 'length_min' | 'climbs' | 'sprints' | 'races' | 'ftp_test'
 
 /**
  * The brief of a running class (ADR 0018 section 1): no climbs, sprints, races or FTP test, which
@@ -98,6 +103,7 @@ export interface RunningBrief {
   intensity: 'easy' | 'moderate' | 'hard'
   style: string
   text: string
+  explicit?: ExplicitPath[]
 }
 
 /** What `POST /api/jobs` takes for `design_draft`: a new class by title, or an existing one. */

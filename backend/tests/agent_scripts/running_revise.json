@@ -81,6 +81,18 @@
  },
  "turns": [
   {
+   "only_in": "interpret",
+   "calls": [
+    {
+     "name": "submit_brief",
+     "input": {},
+     "expect": {
+      "accepted": true
+     }
+    }
+   ]
+  },
+  {
    "calls": [
     {
      "name": "get_music",

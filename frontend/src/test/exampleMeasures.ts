@@ -71,7 +71,6 @@ export function truth(example: Example): Truth {
     const seen = new Map<string, number>()
     for (const i of segment.intervals) {
       seconds.add(i.sec)
-      if (i.sec % 60 === 0) minutes.add(i.sec / 60)
       const key = `${String(i.zone)}/${String(i.sec)}`
       seen.set(key, (seen.get(key) ?? 0) + 1)
     }

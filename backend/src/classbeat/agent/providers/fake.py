@@ -111,6 +111,9 @@ class FakeTurn(BaseModel):
     ) = None
     usage: FakeUsage = Field(default_factory=FakeUsage)
     text: str = ""
+    # A turn for one stage only: a run of any other stage skips it when it starts (a revise of a
+    # class that states values first runs the ``interpret`` stage; one that states none does not).
+    only_in: str | None = None
 
     @model_validator(mode="after")
     def _exactly_one(self) -> "FakeTurn":
@@ -179,6 +182,12 @@ class FakeProvider:
     def start(self, spec: StageSpec) -> "FakeConversation":
         self.sent.append(Sent(spec))
         self._pending = []  # a new run: the old run's last results are never sent
+        while (
+            self.cursor < len(self.script.turns)
+            and (only := self.script.turns[self.cursor].only_in) is not None
+            and only != spec.stage
+        ):
+            self.cursor += 1
         return FakeConversation(self, self.sent[-1])
 
     def _resolve(self, value: Any) -> Any:

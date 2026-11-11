@@ -437,8 +437,9 @@ before release (ADR 0012 §5).
 - **Backend** (targeted `uv run pytest`, ruff, pyright):
   - `test_games_catalog.py`;
   - `test_games_policy.py` (one row per ADR table row, plus "the library refuses 9 s");
-  - `test_stored_draft.py` (each read site; `game_retired` at each of the 6 refusals; the revise
-    rewrite);
+  - `test_legacy_game_reads.py` (each read site), `test_legacy_game_refusals.py` (`game_retired`
+    at each of the 6 refusals) and `test_revise_legacy_base.py` (the revise rewrite), which split
+    the first plan's `test_stored_draft.py`;
   - `test_request_policy.py`, `test_check_explicit.py` and `test_interpret.py` (fake provider,
     injection);
   - `interpret_request` admit, worker and credit tests, plus the `design-from-interpretation`

@@ -65,6 +65,7 @@ describe('the new-class form', () => {
           ftp_test: 20,
           style: 'hills',
           text: 'No standing please',
+          explicit: ['length_min', 'climbs', 'ftp_test'],
         },
         music: { source: 'mowl_spotify_playlist', spotify_playlist_id: PLAYLIST_ID },
         mowl_connection_id: CONNECTION_ID,
@@ -427,7 +428,7 @@ describe('the new-class form', () => {
         expect(api.to('POST', '/api/jobs')).toHaveLength(1)
       })
       const brief = (api.to('POST', '/api/jobs')[0]?.body as { input: { brief: Record<string, unknown> } }).input.brief
-      expect(Object.keys(brief).sort()).toEqual(['intensity', 'length_min', 'sport', 'style', 'text'])
+      expect(Object.keys(brief).sort()).toEqual(['explicit', 'intensity', 'length_min', 'sport', 'style', 'text'])
       expect(brief.sport).toBe('running')
       expect(brief.length_min).toBe(40)
     })

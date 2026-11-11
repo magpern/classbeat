@@ -53,7 +53,7 @@ export const examplesEn = {
   // Privacy page entry for the hand-off (PP6). The page lists it as an English-only part (`pages/legal/structure.ts`),
   // not in legal.en.ts, whose sv and da copies must be complete; PP7 translates it (ADR 0023 section 8).
   'privacy.cookies.p5':
-    'If you open an example class and then have to sign in, join or connect MOWL first, we keep the short name of that example (classbeat.example) in your browser for up to 24 hours, so that the class screen can fill in its request afterwards. It is removed as soon as it is used.',
+    'When you open the link of an example class (Create a class like this), we keep the short name of that example (classbeat.example) in your browser for up to 24 hours. That way the request can still be filled in after you sign in, join or connect MOWL. It is removed as soon as the class screen has used it.',
   'examples.cta.title': 'Make a class like this',
   'examples.cta.text': 'Open the designer with this request already written. You can change it before you send it, and nothing is made until you do. Sign-up is by invitation.',
   'examples.cta.button': 'Create a class like this',

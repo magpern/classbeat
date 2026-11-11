@@ -31,6 +31,22 @@ describe('example copy agrees with the class', () => {
   }
 })
 
+describe('disagreements', () => {
+  it('does not take an interval\'s length for a stretch of the class in minutes', () => {
+    let checked = 0
+    for (const example of EXAMPLES) {
+      const stretches = new Set([example.segments.reduce((sum, s) => sum + s.intervals.reduce((a, i) => a + i.sec, 0), 0) / 60])
+      for (const s of example.segments) stretches.add(s.intervals.reduce((a, i) => a + i.sec, 0) / 60)
+      for (const i of example.segments.flatMap((s) => s.intervals)) {
+        if (i.sec % 60 !== 0 || stretches.has(i.sec / 60)) continue
+        checked++
+        expect(disagreements(`${String(i.sec / 60)} minutes of work`, example)).toHaveLength(1)
+      }
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
+})
+
 describe('measures', () => {
   it('reads minutes, seconds, counts and zones', () => {
     expect(measures('A 45 minute ride with three climbs')).toMatchObject({ minutes: [45], counts: [{ noun: 'climbs', n: 3 }] })

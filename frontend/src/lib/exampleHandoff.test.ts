@@ -29,11 +29,12 @@ describe('returnToWithExample', () => {
 })
 
 describe('the kept slug', () => {
-  it('is recalled for 24 hours and then dropped and removed', () => {
+  it('is recalled for 24 hours and then dropped', () => {
     rememberExample('hill-challenge', 1000)
     expect(recallExample(1000 + EXAMPLE_TTL_MS - 1)).toBe('hill-challenge')
     expect(recallExample(1000 + EXAMPLE_TTL_MS)).toBeNull()
-    expect(window.localStorage.getItem('classbeat.example')).toBeNull()
+    // Reading never writes; the page removes the expired entry itself.
+    expect(window.localStorage.getItem('classbeat.example')).not.toBeNull()
   })
   it('is gone after forgetExample', () => {
     rememberExample('hill-challenge')

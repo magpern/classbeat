@@ -32,4 +32,5 @@ export function AdvancedClassPage() {
   )
 }
 
+// A default export so the route can load it as its own chunk (the first-load budget, ADR 0013 section 11).
 export default AdvancedClassPage

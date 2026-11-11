@@ -39,21 +39,13 @@ import { Link, RouterProvider, useRouter, type Location } from './router/Router'
 // section 6); the server's answer decides what it shows, and the chunk's gate shows the code
 // prompt. Any other account never fetches it.
 const AdminPage = lazy(() => import('./pages/AdminPage'))
-
-// The form with every setting is a signed-in page of its own, kept out of the first load (ADR 0013
-// section 11, the 250 kB budget).
+// The Advanced form is fetched only on its own route.
 const AdvancedClassPage = lazy(() => import('./pages/AdvancedClassPage'))
 
 function Advanced() {
   const t = useT()
   return (
-    <Suspense
-      fallback={
-        <Card title={t('newclass.title')}>
-          <p>{t('common.loading')}</p>
-        </Card>
-      }
-    >
+    <Suspense fallback={<p>{t('common.loading')}</p>}>
       <AdvancedClassPage />
     </Suspense>
   )

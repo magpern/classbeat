@@ -19,7 +19,7 @@ export async function readyToPick(page: Page, clientId: string = CLIENT_A): Prom
   await expect(spotifyDialog(page)).toHaveCount(0)
 }
 
-/** Fill the new-class form for a song pick (30 minutes, one climb, two sprints) and start it.
+/** Fill the new-class form for a song pick (30 minutes, one climb, one sprint) and start it.
  *  Returns the job's id. The model script for phase 1 is chosen first. */
 export async function startPick(page: Page, title: string, script: ModelScript = 'e2e_pick'): Promise<string> {
   useModelScript(script)
@@ -30,7 +30,7 @@ export async function startPick(page: Page, title: string, script: ModelScript =
   await form.getByRole('radio', { name: 'Pick for me', exact: true }).click()
   await chooseLength(form, 30)
   await form.getByLabel('Climbs', { exact: true }).fill('1')
-  await form.getByLabel('Sprints', { exact: true }).fill('2')
+  await form.getByLabel('Sprints', { exact: true }).fill('1')
   await form.getByRole('button', { name: 'Design my class' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
   return jobId(page)
