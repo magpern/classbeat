@@ -549,6 +549,9 @@ npm run build        # typecheck, Vite writes frontend/dist, then the prerender 
   demand, not a CI step, so English-only feature PRs stay possible; the Reviewer of a PR that publishes a page
   re-runs it, and a catch-up translation PR comes first if later PRs added keys (`src/publishedTranslations.test.ts`
   tests its rules). Since PP8 all eleven paths are `published` and `draft` is empty; the draft mechanism stays.
+  The build also puts `<link rel="preload" as="font">` for the Latin Inter and Archivo files into `index.html`
+  (`frontend/scripts/fontPreload.ts`): without it the fonts arrive after the first paint and their swap re-wraps
+  the text, a layout shift the takeover gate measured as 0.057 on `/sv/examples/hill-challenge` (#935).
 - Passkey UI (#777, ADR 0019 W6): `src/auth/webauthn.ts` (browser calls, feature detection, the `signal*` hints), `passkeyCeremony.ts` (start, browser, finish), `components/account/Passkeys.tsx` (account card), `components/auth/PasskeySignIn.tsx` with `usePasskeyAutofill.ts` (button and conditional mediation, restarted only while the page is visible), `PasskeyReauth.tsx` (re-authentication prompt) and `components/shell/PhoneSignInNotice.tsx` (shown when the client reported `authenticatorAttachment` exactly `cross-platform`; kept in sessionStorage). The public `GET /api/auth/session` carries `passkeys` (the flag) so the anonymous sign-in page knows whether to offer a passkey; `GET /api/auth/events` items carry `passkey` (true when `detail.method` is `passkey`). Tests use `src/test/passkeyMock.ts` (a fake `navigator.credentials`); `src/auth/passkeyCsp.test.ts` scans the files for inline style and script. axe runs in the e2e suite (W7, `e2e/tests/passkey-a11y.spec.ts`), not under vitest.
 - CI runs the same commands in the `frontend` job, then `check:bundle`.
 
