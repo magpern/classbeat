@@ -11,30 +11,55 @@ export const SHOT_DIR = path.resolve(import.meta.dirname, '..', 'takeover-shots'
 
 /** Per-channel difference (0 to 255) under which two pixels count as the same. */
 const CHANNEL_TOLERANCE = 16
-/** The share of pixels that may differ once the masked parts are painted over. */
-export const DIFF_LIMIT = 0.005
+/** The share of pixels that may differ (0.05%; the en pairs measured 0.000% with the old 0.5% limit). */
+export const DIFF_LIMIT = 0.0005
 
 /**
- * What is hidden from the comparison because it legitimately differs between the prerendered page
- * and the taken-over one: the image slots (the prerender holds both themes' pictures, the client
- * one) and the header's account area (the prerender writes an invisible placeholder of the same
- * size, the client the language picker and the two links once the session answers).
+ * What is left out of the comparison because it legitimately differs between the prerendered page
+ * and the taken-over one: the pictures in the image slots (the prerender holds both themes'
+ * pictures, the client one) and the header's account area (the prerender writes an invisible
+ * placeholder of the same size, the client the language picker and the two links once the session
+ * answers). Text drawn over a slot, such as the Landing hero's heading, lead and button, is compared.
  */
-export function masks(page: Page) {
-  return [page.locator('[data-slot]'), page.locator('[data-testid="nav-placeholder"]'), page.locator('header nav[aria-label]')]
+function accountArea(page: Page) {
+  return [page.locator('[data-testid="nav-placeholder"]'), page.locator('header nav:has(a[href$="/signin"])')]
 }
 
-/** One screenshot of the whole page, masked, saved under SHOT_DIR; the PNG bytes come back. */
+/** Hides every slot picture through the CSSOM (the CSP allows it) and returns the way back. */
+async function hidePictures(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const img of document.querySelectorAll<HTMLImageElement>('[data-slot] img')) {
+      img.dataset.cbWas = img.style.visibility
+      img.style.visibility = 'hidden'
+    }
+  })
+}
+
+async function showPictures(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const img of document.querySelectorAll<HTMLImageElement>('[data-slot] img')) {
+      img.style.visibility = img.dataset.cbWas ?? ''
+      delete img.dataset.cbWas
+    }
+  })
+}
+
+/** One screenshot of the whole page, pictures hidden and the account area masked, saved under SHOT_DIR. */
 export async function shoot(page: Page, name: string): Promise<Buffer> {
   mkdirSync(SHOT_DIR, { recursive: true })
-  return page.screenshot({
-    path: path.join(SHOT_DIR, `${name}.png`),
-    fullPage: true,
-    animations: 'disabled',
-    caret: 'hide',
-    scale: 'css',
-    mask: masks(page),
-  })
+  await hidePictures(page)
+  try {
+    return await page.screenshot({
+      path: path.join(SHOT_DIR, `${name}.png`),
+      fullPage: true,
+      animations: 'disabled',
+      caret: 'hide',
+      scale: 'css',
+      mask: accountArea(page),
+    })
+  } finally {
+    await showPictures(page)
+  }
 }
 
 export interface Difference {
@@ -122,8 +147,8 @@ async function blocks(page: Page, html: string | null): Promise<string[]> {
   }, html)
 }
 
-/** A block long enough to be a sentence or a label of several words, not a brand or a number. */
-const isProse = (s: string) => s.length >= 15 && s.split(' ').length >= 3
+/** A block of at least three words and ten characters: a label or a sentence, not a brand or a number. */
+const isProse = (s: string) => s.length >= 10 && s.split(' ').length >= 3
 
 const english = new Map<string, Promise<Set<string>>>()
 
@@ -135,6 +160,8 @@ function englishProse(context: BrowserContext, scratch: Page, pagePath: string):
       .get(`/en${pagePath}`)
       .then((r) => r.text())
       .then(async (html) => new Set((await blocks(scratch, html)).filter(isProse)))
+    // A failed fetch must not stay cached for the rest of the worker.
+    found.catch(() => english.delete(pagePath))
     english.set(pagePath, found)
   }
   return found
@@ -164,6 +191,7 @@ export function englishHeading(context: BrowserContext, scratch: Page, pagePath:
           html,
         ),
       )
+    found.catch(() => headings.delete(pagePath))
     headings.set(pagePath, found)
   }
   return found

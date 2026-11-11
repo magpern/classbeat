@@ -12,8 +12,8 @@ import { DIFF_LIMIT, compare, englishHeading, englishLeaks, noteDifference, shoo
 // catalogue, a little later), so the prerendered page is measured before takeover and again after.
 //
 // Cost: one navigation per cell, a fresh context per cell (the theme, the stored state and the
-// viewport differ), and `parallel` mode so Playwright's shards split the cells instead of putting the
-// whole file in one shard (the run is still one worker per shard: the fakes are shared state).
+// viewport differ), and `parallel` mode so the cells can be split over shards (Playwright shards by
+// test order, so they mostly stay together; one worker per shard, the fakes are shared state).
 
 const BOX_TOLERANCE = 2
 const SHIFT_LIMIT = 0.05
@@ -92,10 +92,13 @@ for (const lang of ALL_LANGUAGES) {
 
           // English text: a scratch page parses the English page; the prerendered page must hold none
           // of its prose on sv/da, and its heading must differ.
-          const scratch = await context.newPage()
-          const leaksBefore = lang === 'en' ? [] : await englishLeaks(context, scratch, page, path)
-          if (lang !== 'en') expect.soft(h1Before?.trim(), 'the prerendered h1 is the English one').not.toBe(await englishHeading(context, scratch, path))
-          await scratch.close()
+          let leaksBefore: string[] = []
+          if (lang !== 'en') {
+            const scratch = await context.newPage()
+            leaksBefore = await englishLeaks(context, scratch, page, path)
+            expect.soft(h1Before?.trim(), 'the prerendered h1 is the English one').not.toBe(await englishHeading(context, scratch, path))
+            await scratch.close()
+          }
 
           const shot = `${lang}-${pageName(path)}-${theme}-${stored ? 'stored' : 'first'}-${size.name}`
           const shotBefore = await shoot(page, `${shot}-before`)
