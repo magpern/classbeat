@@ -23,10 +23,12 @@ const PAGE_MODULES: Readonly<Record<string, readonly string[]>> = {
   '/privacy': ['pages/PrivacyPage.tsx'],
   '/terms': ['pages/TermsPage.tsx'],
   '/help': ['pages/HelpPage.tsx'],
+  '/how-it-works': ['pages/HowItWorksPage.tsx'],
+  '/features': ['pages/FeaturesPage.tsx'],
 }
 
 /** Content components of the pages, and the chart components they draw. */
-const CONTENT_DIRS = ['publicSite', 'components/landing', 'pages/legal']
+const CONTENT_DIRS = ['publicSite', 'components/landing', 'components/publicPages', 'pages/legal']
 const CHART_FILES = [
   'components/classes/MiniProfile.tsx',
   'components/classes/ProfileChart.tsx',

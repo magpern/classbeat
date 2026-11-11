@@ -21,8 +21,6 @@ const da: Catalogue = {
 
   // Head of the public pages: the <title> and the description (ADR 0030 section 3).
   'meta.landing.title': 'classbeat | Dit hold, i takt med musikken',
-  'meta.landing.description':
-    'Beskriv turen, så vælger vi sangene. Design hold til indendørscykling i takt med musikken og gem dem i MOWL.',
   'meta.privacy.title': 'Privatliv | classbeat',
   'meta.privacy.description':
     'Hvad vi gemmer om dig og hvorfor. Sådan eksporterer eller sletter du det.',
@@ -33,7 +31,6 @@ const da: Catalogue = {
   // Landing page.
   'landing.badge': 'Privat beta',
   'landing.title': 'Dit hold, i takt med musikken.',
-  'landing.lead': 'Beskriv turen. Vi vælger sangene.',
   'landing.signUp': 'Deltag i betaen',
   'landing.example.title': 'Et eksempelhold',
   'landing.example.note': 'En opdigtet tur på 30 minutter. Sangene er pladsholdere.',
@@ -47,11 +44,6 @@ const da: Catalogue = {
   'landing.example.part.coolDown': 'Nedkøling',
   'landing.how.title': 'Sådan virker det',
   'landing.how.describe.title': 'Beskriv',
-  'landing.how.describe.text': 'Vælg længde, indsats og musik.',
-  'landing.how.approve.title': 'Godkend sange',
-  'landing.how.approve.text': 'Skift de sange ud, der ikke passer.',
-  'landing.how.save.title': 'Gem i MOWL',
-  'landing.how.save.text': 'Klar til at undervise, på din konto.',
   'landing.img.describe': 'En instruktør skriver et holdoplæg i en notesbog',
   'landing.img.approve': 'Hænder der vælger sange på en mobil',
   'landing.img.save': 'En mobil monteret på en motionscykel',

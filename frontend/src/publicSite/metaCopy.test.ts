@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import da from '../i18n/da'
 import { en, type CatalogueKey, type Message } from '../i18n/en'
+import untranslated from '../i18n/untranslated.json'
 import sv from '../i18n/sv'
 import { metaKeys } from './pageMeta'
 import { LISTED_PATHS } from './publicPaths'
@@ -32,6 +33,8 @@ describe.each(Object.keys(LANGUAGES))('the page copy in %s', (lang) => {
   })
 
   it('the landing description uses the language\'s own word for indoor cycling', () => {
+    // A description on untranslated.json shows the English text until PP7 (ADR 0023 section 8).
+    if (lang !== 'en' && untranslated.includes(metaKeys('').description)) return
     const word = { en: 'indoor-cycling', sv: 'inomhuscykling', da: 'indendørscykling' }[lang]
     expect(text(lang, metaKeys('').description)).toContain(word)
   })

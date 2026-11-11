@@ -17,6 +17,8 @@ import { JobPage } from './pages/JobPage'
 import { HomePage } from './pages/HomePage'
 import { LandingPage } from './pages/LandingPage'
 import { HelpPage } from './pages/HelpPage'
+import { HowItWorksPage } from './pages/HowItWorksPage'
+import { FeaturesPage } from './pages/FeaturesPage'
 import { PrivacyPage } from './pages/PrivacyPage'
 import { MusicPage } from './pages/MusicPage'
 import { AdvancedClassPage } from './pages/AdvancedClassPage'
@@ -75,6 +77,8 @@ const PAGES: Readonly<Record<string, () => ReactNode>> = {
   '/privacy': () => <PrivacyPage />,
   '/terms': () => <TermsPage />,
   '/help': () => <HelpPage />,
+  '/how-it-works': () => <HowItWorksPage />,
+  '/features': () => <FeaturesPage />,
   '/classes': () => <ClassesPage />,
   '/classes/new': () => <NewClassPage />,
   '/classes/new/advanced': () => <AdvancedClassPage />,

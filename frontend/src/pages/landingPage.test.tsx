@@ -35,8 +35,8 @@ describe('Landing', () => {
     const steps = within(await screen.findByRole('region', { name: 'How it works' })).getAllByRole('listitem')
     expect(steps.map((s) => within(s).getByRole('heading').textContent)).toEqual([
       'Describe',
-      'Approve songs',
-      'Save to MOWL',
+      'Refine',
+      'Approve and save',
     ])
   })
 

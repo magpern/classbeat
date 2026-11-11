@@ -9,7 +9,7 @@ export interface HelpTopic {
 // Keys are `help.<topic>.<question>.q` and `.a`, and `help.<topic>.title` (issue #650).
 export const HELP_TOPICS: readonly HelpTopic[] = [
   { id: 'connect', questions: ['mowl', 'spotify', 'swedebeat'] },
-  { id: 'design', questions: ['how', 'saved', 'change'] },
+  { id: 'design', questions: ['how', 'songs', 'saved', 'change'] },
   { id: 'plan', questions: ['limits', 'code'] },
   { id: 'signin', questions: ['reset', 'methods', 'twofactor', 'devices'] },
   { id: 'data', questions: ['export', 'delete'] },

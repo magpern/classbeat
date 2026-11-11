@@ -14,6 +14,7 @@ import { Logo } from '../Logo'
 import { AvatarMenu } from './AvatarMenu'
 import { ClassesThisMonth } from './ClassesThisMonth'
 import { PhoneSignInNotice } from './PhoneSignInNotice'
+import { SiteLinksNav } from './SiteLinksNav'
 
 const JOB_PAGE = /^\/jobs\/[0-9a-fA-F-]{36}$/
 
@@ -117,6 +118,7 @@ function SignedOutHeader({ ready, offered }: { ready: boolean; offered: readonly
     <header className="border-b border-line bg-surface">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
         <BrandLink />
+        <SiteLinksNav className="flex flex-wrap gap-x-4" />
         {ready ? (
           <nav aria-label={t('shell.nav.account')} className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <LanguagePicker offered={offered} />
