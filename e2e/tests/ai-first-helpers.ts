@@ -8,8 +8,9 @@ import { sql } from './song-helpers'
 
 export const LONG = { timeout: 90_000 }
 
-/** A signed-in user with MOWL connected on the instructor plan (60 minutes, games allowed). The
- *  free plan has no games and 30 minutes, so the suite's requests need the plan above it. */
+/** A signed-in user with MOWL connected on the instructor plan (Individual: 75 minutes, games and FTP
+ *  tests allowed). The free plan has no games, no FTP tests and 30 minutes, so the suite's requests
+ *  need the plan above it. */
 export async function instructorWithMowl(page: Page, tag: string): Promise<void> {
   await signedInWithMowl(page, tag)
   const me = (await (await page.request.get('/api/auth/session')).json()) as { user?: { id?: string } }
