@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import da from '../i18n/da'
 import { en, type CatalogueKey, type Message } from '../i18n/en'
-import untranslated from '../i18n/untranslated.json'
+import untranslatedList from '../i18n/untranslated.json'
 import sv from '../i18n/sv'
 import { metaKeys } from './pageMeta'
 import { LISTED_PATHS } from './publicPaths'
+
+// Typed on purpose: an empty JSON array would otherwise be `never[]`.
+const untranslated: string[] = untranslatedList
 
 // The title and description of each public page (ADR 0028 section 2, ADR 0030 section 3). The server
 // puts them in the head verbatim, so the length rules are checked here, on the catalogue keys.

@@ -1,10 +1,14 @@
 import type { Catalogue } from './en'
 import { helpDa } from './help.da'
+import { examplesDa } from './examples.da'
 import { legalDa } from './legal.da'
+import { publicDa } from './public.da'
 
 const da: Catalogue = {
   ...legalDa,
   ...helpDa,
+  ...publicDa,
+  ...examplesDa,
   'language.label': 'Sprog',
   'language.follow': 'Følg denne browser',
   'language.help': 'Sprog for siden og mails. »Følg denne browser« giver mails på engelsk.',
@@ -27,10 +31,16 @@ const da: Catalogue = {
   'meta.terms.title': 'Vilkår | classbeat',
   'meta.terms.description':
     'Vilkårene for classbeat: hvad du må, hvad vi gør, og hvad vi ikke lover.',
+  'meta.landing.description':
+    'Beskriv et hold i indendørscykling med dine egne ord. Vi designer det, du finjusterer det, og det når først MOWL, når du godkender det.',
+  'meta.help.title': 'Hjælp og kontakt | classbeat',
+  'meta.help.description':
+    'Korte svar om at tilslutte dine konti, designe et hold, planer og grænser, og hvordan du kontakter os.',
 
   // Landing page.
   'landing.badge': 'Privat beta',
   'landing.title': 'Dit hold, i takt med musikken.',
+  'landing.lead': 'Beskriv turen. Vi designer holdet, og du finjusterer det.',
   'landing.signUp': 'Deltag i betaen',
   'landing.example.title': 'Et eksempelhold',
   'landing.example.note': 'En opdigtet tur på 30 minutter. Sangene er pladsholdere.',
@@ -44,7 +54,13 @@ const da: Catalogue = {
   'landing.example.part.coolDown': 'Nedkøling',
   'landing.how.title': 'Sådan virker det',
   'landing.how.describe.title': 'Beskriv',
+  'landing.how.describe.text': 'Sig det på din måde. Vi udfylder det, du udelader.',
+  'landing.how.refine.title': 'Finjuster',
+  'landing.how.refine.text': 'Se holdet blive tegnet, og ændr det ved at chatte.',
+  'landing.how.save.title': 'Godkend og gem',
+  'landing.how.save.text': 'Det bliver et privat MOWL-træningspas først, når du godkender.',
   'landing.img.describe': 'En instruktør skriver et holdoplæg i en notesbog',
+  'landing.img.approve': 'Hænder der holder en mobil ved siden af en motionscykel',
   'landing.img.save': 'En mobil monteret på en motionscykel',
 
   // Sign in, sign up and the pages behind the mail links.

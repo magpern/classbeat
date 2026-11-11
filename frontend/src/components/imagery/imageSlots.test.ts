@@ -1,4 +1,4 @@
-import untranslated from '../../i18n/untranslated.json'
+import untranslatedList from '../../i18n/untranslated.json'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -17,6 +17,9 @@ import {
   type ImageSet,
   type SlotId,
 } from './imageSlots'
+
+// Typed on purpose: an empty JSON array would otherwise be `never[]`.
+const untranslated: string[] = untranslatedList
 
 const publicDir = join(import.meta.dirname, '..', '..', '..', 'public')
 const imgDir = join(publicDir, 'img')

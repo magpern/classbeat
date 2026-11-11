@@ -94,6 +94,8 @@ export const legalSv: Catalogue = {
     'Vi sparar också några saker i själva webbläsaren, ingen av dem för spårning. Ditt språk (cb-locale) skickas också till oss när du registrerar dig eller byter språk, och sparas som kontots språk. Ditt ljusa eller mörka tema sparas som cb-theme, och cb-cookie-notice kommer ihåg att du har stängt kakmeddelandet. Medan du arbetar i en flik sparas formuläret du just skickade bara i den fliken, så att du kan börja om utan att skriva det två gånger (classbeat.design-input.*, classbeat.pick-input.* och classbeat.design-again-key.*); det är borta när du stänger fliken.',
   'privacy.cookies.p4':
     'Säkerhetskontrollen körs i en ram från challenges.cloudflare.com och kan använda cookies eller lokal lagring där, bara för kontrollen; classbeat sätter inga för den.',
+  'privacy.cookies.p5':
+    'När du öppnar länken till ett exempelpass (Skapa ett pass som det här) sparar vi exemplets korta namn (classbeat.example) i din webbläsare i högst 24 timmar. På så sätt kan begäran fyllas i även efter att du har loggat in, registrerat dig eller anslutit MOWL. Den tas bort så fort passskärmen har använt den.',
 
   'privacy.retention.title': 'Hur länge vi sparar det',
   'privacy.retention.li1':

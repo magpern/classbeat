@@ -23,6 +23,9 @@ export const helpDa: Catalogue = {
   'help.design.how.q': 'Hvordan laves et hold?',
   'help.design.how.a':
     'Du beskriver længde, anstrengelse og musik: din egen playliste, sange som vi vælger til dig, et Swedebeat-mix eller ingen musik. En AI-assistent foreslår intervaller, anstrengelsesniveauer og instruktioner. Hvis du bad om sange, foreslår den også en sangliste, der kontrolleres mod MOWL’s tempo og længde. Det kan tage nogle minutter, og du kan forlade siden imens. Resultatet er et forslag, så tjek holdet, før du underviser.',
+  'help.design.songs.q': 'Hvad kræves for at vælge sange?',
+  'help.design.songs.a':
+    'En Spotify-forbindelse med dit eget Client ID og sangvalg i din plan. Tilgængeligt, når vi har aktiveret funktionen. Indtil da kan du stadig designe et hold til en playliste fra din MOWL-musik.',
   'help.design.saved.q': 'Hvad bliver gemt, og hvornår?',
   'help.design.saved.a':
     'Assistenten foreslår kun. Når du godkender en sangliste, opretter vi en privat playliste med de sange i din Spotify og tilføjer den til din MOWL-musik. Selve holdet kommer først på din MOWL-konto, privat, når du trykker på Gem i MOWL på holdet. Godkender du ikke en liste i tide, bliver der ikke skrevet noget til din Spotify.',

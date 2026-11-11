@@ -1,7 +1,7 @@
 // Copy of the public pages How it works and Features, and of their links (PP4, #893). Long-form body
 // text lives here, like legal.en.ts and help.en.ts. Every claim is mapped to a shipped route, flag or
 // plan limit in `publicSite/claims.ts`; the Reviewer checks the wording against that table. The pages
-// are drafts until PP8. Swedish and Danish come in PP7, so these keys are on untranslated.json.
+// are drafts until PP8. Swedish and Danish are in public.sv.ts and public.da.ts (PP7).
 
 export const publicEn = {
   'meta.howItWorks.title': 'How it works | classbeat',
