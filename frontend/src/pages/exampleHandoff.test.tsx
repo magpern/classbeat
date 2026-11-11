@@ -184,7 +184,10 @@ describe('the example survives what the link cannot carry', () => {
     renderAt('/classes/new')
     expect(await prompt()).toHaveValue(PROMPT)
     expect(writes(api)).toEqual([])
-    expect(window.localStorage.getItem(KEY)).toBeNull()
+    // The start screen removes the slug in an effect after it rendered the prompt.
+    await waitFor(() => {
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+    })
   })
 
   it('missing MOWL connection: the slug is kept through the connect step and used afterwards', async () => {
