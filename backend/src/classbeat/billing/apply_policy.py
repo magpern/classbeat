@@ -24,7 +24,7 @@ Rules, in this order:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 
 from classbeat.billing.periods import as_utc, period_end
@@ -52,6 +52,11 @@ class State:
     status: str = "active"
     next_plan_id: str | None = None
     cancel_at_end: bool = False
+
+
+def _evolve(state: State, **changes: object) -> State:
+    """A copy of `state` with `changes` (a plain constructor call, not `dataclasses.replace`)."""
+    return State(**{**vars(state), **changes})  # pyright: ignore[reportArgumentType]
 
 
 @dataclass(frozen=True)
@@ -160,7 +165,7 @@ def _renewed(
     anchor = as_utc(event.period_start).day if reset_anchor else state.anchor_day
     if as_utc(event.period_end) != period_end(event.period_start, anchor):
         return Refused("period_mismatch")
-    new = replace(
+    new = _evolve(
         state, plan_id=event.plan_id, period_start=as_utc(event.period_start),
         period_end=as_utc(event.period_end), anchor_day=anchor, basis_minor=expected.basis_minor,
         basis_currency=event.currency, next_plan_id=None, cancel_at_end=False,
@@ -175,7 +180,7 @@ def _upgraded(state: State, event: Upgraded, expected: Expected | None) -> Decis
         return Refused("period_mismatch")
     if not _paid(event, expected) or expected is None:
         return Refused("amount_mismatch")
-    new = replace(
+    new = _evolve(
         state, plan_id=event.plan_id, basis_minor=expected.basis_minor,
         basis_currency=event.currency, next_plan_id=None, cancel_at_end=False,
     )  # fmt: skip
@@ -188,11 +193,11 @@ def _scheduled_or_ended(state: State, event: ChangeScheduled | Ended) -> Decisio
     ) != as_utc(state.period_end):
         return Refused("out_of_order")
     if isinstance(event, Ended):
-        return Applied(replace(state, status="ended"), None)
+        return Applied(_evolve(state, status="ended"), None)
     if event.next_plan_id is not None and (
         event.cancel_at_end or event.next_plan_id == state.plan_id
     ):
         # Never a scheduled plan and a cancel together (the CHECK refuses it as well).
         return Refused("invalid_change")
-    new = replace(state, next_plan_id=event.next_plan_id, cancel_at_end=event.cancel_at_end)
+    new = _evolve(state, next_plan_id=event.next_plan_id, cancel_at_end=event.cancel_at_end)
     return Applied(new, None)

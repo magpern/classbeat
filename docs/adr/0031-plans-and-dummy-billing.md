@@ -188,7 +188,7 @@ One module, `classbeat.billing.writer.apply(event)`, is the only code that creat
     trigger order; M7a-3 runs the account-delete test with a subscription). CHECK
     `source <> 'subscription' OR (billing_event_id IS NOT NULL AND plan_id IS NOT NULL AND
     cardinality(features) = 0 AND ends_at IS NOT NULL AND ends_at <= starts_at + interval
-    '32 days')`, and a unique index on `billing_event_id`, so every paid row traces to exactly one
+    '32 days')`, and a unique index on `(owner_id, billing_event_id)`, so every paid row traces to exactly one
     recorded event, lasts at most one period and carries no feature (song picking can never come
     with a plan).
 - **Export and retention:** `subscriptions`, `billing_events` and `billing_log` are `Section`s of

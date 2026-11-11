@@ -111,6 +111,34 @@ async def test_an_expired_or_revoked_tester_grant_does_not_open_billing(
     assert (await actor.get(BILLING)).status_code == 403
 
 
+async def test_the_write_transaction_checks_who_may_buy_again(
+    env: Env,
+    make_actor: Any,
+    superuser: Connection,
+    priced: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The gate said yes on the app role; the grant is gone by the time the maint transaction
+    runs, so the in-transaction recheck (`_recheck`) refuses and nothing is written."""
+    from classbeat.billing import routes
+
+    actor = await make_tester(env, make_actor, superuser)
+    real = routes.may_buy
+    calls = 0
+
+    async def flips(*args: Any, **kwargs: Any) -> bool:
+        nonlocal calls
+        calls += 1
+        return True if calls == 1 else await real(*args, **kwargs)
+
+    monkeypatch.setattr(routes, "may_buy", flips)
+    superuser.execute(text("UPDATE entitlements SET revoked_at = now()"))
+    response = await buy(actor, "instructor", 1000)
+    assert (response.status_code, reason(response)) == (403, "billing_closed")
+    assert calls == 2
+    assert count(superuser, "billing_events") == 0
+
+
 async def test_a_tester_and_an_admin_can_buy_while_billing_is_off(
     env: Env, make_actor: Any, superuser: Connection, priced: None
 ) -> None:

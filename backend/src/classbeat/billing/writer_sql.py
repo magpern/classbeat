@@ -11,11 +11,10 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat import auth
 from classbeat.billing.apply_policy import Grant, State
 from classbeat.billing.provider import BillingEvent
 
-# Serializes billing writes per owner: the row is only locked, never changed.
-_LOCK = text("SELECT id FROM users WHERE id = :o FOR UPDATE")
 _STATE = text(
     "SELECT provider, plan_id, period_start, period_end, anchor_day, basis_minor, "
     "basis_currency, status, next_plan_id, cancel_at_end FROM subscriptions WHERE owner_id = :o"
@@ -45,7 +44,9 @@ _UPSERT = text(
 
 
 async def lock_owner(session: AsyncSession, owner_id: UUID) -> None:
-    await session.execute(_LOCK, {"o": owner_id})
+    """Serialize this owner's billing writes (the lock lives in `classbeat.auth`, guard 8; an
+    advisory lock is not allowed on the admin path, ADR 0011 section 5)."""
+    await auth.lock_owner_row(session, owner_id)
 
 
 async def load_state(session: AsyncSession, owner_id: UUID) -> State | None:

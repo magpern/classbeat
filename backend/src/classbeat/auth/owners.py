@@ -44,3 +44,12 @@ async def stored_admin(db: AsyncSession, user_id: UUID) -> bool:
         )
     ).scalar_one_or_none()
     return role == "admin"
+
+
+async def lock_owner_row(db: AsyncSession, user_id: UUID) -> None:
+    """Lock the user's row for the rest of the transaction without changing it, so one owner's
+    billing writes (ADR 0031 section 3) run one after the other. `FOR NO KEY UPDATE` does not
+    block the foreign keys of the owner's other rows. ``db`` is the maint role's session."""
+    await db.execute(
+        select(users.c.id).where(users.c.id == user_id).with_for_update(key_share=True)
+    )

@@ -67,6 +67,8 @@ ALLOWED_MODULES = (
     "classbeat.plans.account",
     "classbeat.plans.redeem",
     "classbeat.plans.trial",
+    # The buyer's own "may buy" read on the app role, before the maint write (ADR 0031, #948).
+    "classbeat.billing.routes",
 )
 NAMES = frozenset({"user_session", "_owned_session"})
 SESSION_MODULE = "classbeat.db.session"
