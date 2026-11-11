@@ -60,7 +60,7 @@ function observe(): void {
     const h1 = root.querySelector('h1')?.textContent?.trim()
     if (h1 && seen.h1Values.at(-1) !== h1) seen.h1Values.push(h1)
   }
-  new MutationObserver(look).observe(document.documentElement, { childList: true, subtree: true, characterData: true })
+  new MutationObserver(look).observe(document, { childList: true, subtree: true, characterData: true })
   document.addEventListener('DOMContentLoaded', look)
 }
 
