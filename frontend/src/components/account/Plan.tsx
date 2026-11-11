@@ -1,3 +1,4 @@
+import { PlanNudge } from '../plans/PlanNudge'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { getPlan, redeemCode, startTrial, type Plan as PlanData } from '../../api/plan'
 import { accountPlanError, dayText, periodMonth, sourceText } from '../../api/planMessages'
@@ -115,6 +116,7 @@ export function Plan() {
         />
       </p>
       <p data-testid="plan-classes">{classesLine(plan)}</p>
+      <PlanNudge trigger="account" plan={plan} />
       <div>
         <Progress value={percent} aria-label={t('plan.budgetLabel')} data-testid="plan-cost-bar" />
         <p className="muted">

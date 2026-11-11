@@ -14,14 +14,14 @@ test.beforeEach(() => {
   saveArm('', true)
 })
 
-test('a 90 minute request on a 60 minute plan shows its length under Not as asked', async ({ page }) => {
+test('a 90 minute request over the plan waits for a choice, then shows its length under Not as asked', async ({ page }) => {
   test.setTimeout(240_000)
   await instructorWithMowl(page, 'ailong')
   await designFromWords(
     page,
     'A 90 minute ride with two climbs.',
     { reading: 'ai_first_read_long', design: 'ai_first_design_long' },
-    { music: 'No music' },
+    { music: 'No music', withinPlan: true },
   )
   const reading = page.getByTestId('interpretation')
   await expect(page.getByRole('heading', { name: /Invented/ })).toBeVisible(LONG)

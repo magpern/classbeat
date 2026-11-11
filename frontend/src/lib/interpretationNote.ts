@@ -68,6 +68,7 @@ export const REASONS: Record<string, CatalogueKey> = {
   over_plan_length: 'interp.reason.over_plan_length',
   game_on_running: 'interp.reason.game_on_running',
   plan_no_games: 'interp.reason.plan_no_games',
+  plan_no_ftp_tests: 'interp.reason.plan_no_ftp_tests',
   game_under_10s: 'interp.reason.game_under_10s',
   length_off: 'interp.reason.length_off',
   ftp_missing: 'interp.reason.ftp_missing',

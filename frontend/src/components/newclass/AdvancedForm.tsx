@@ -9,6 +9,8 @@ import { MusicChoice, type Music, type SongsAvailability, type SwedebeatMixAvail
 import { MixTiles } from './MixTiles'
 import { Choice } from './Choice'
 import { createError } from './createError'
+import { PlanNudge } from '../plans/PlanNudge'
+import { UpgradeLink } from '../plans/UpgradeLink'
 import { leftOut, validateForm, whole } from './formModel'
 import { TextArea, TextInput } from './inputs'
 import { LengthChoice } from './LengthChoice'
@@ -70,7 +72,7 @@ export function AdvancedForm({
   const [problem, setProblem] = useState<string | null>(null)
   // The notices sit at the top of a long form, the button in the bar: bring a new one into view.
   const notices = useRef<HTMLDivElement>(null)
-  const { classesLeft, allowed } = usePlanAllowance()
+  const { classesLeft, allowed, plan } = usePlanAllowance()
   const shown = problem ?? action.error
   useEffect(() => {
     if (shown !== null) notices.current?.scrollIntoView({ block: 'nearest' })
@@ -188,6 +190,8 @@ export function AdvancedForm({
         <div ref={notices} className="flex flex-col gap-5 empty:hidden">
           {problem ? <Notice kind="error">{problem}</Notice> : null}
           {action.error ? <Notice kind="error">{action.error}</Notice> : null}
+          {action.upgrade ? <UpgradeLink /> : null}
+          <PlanNudge trigger="low" plan={plan} />
         </div>
         <Card className={section}>
           <CardTitle className="mb-0">{t('newclass.basics')}</CardTitle>

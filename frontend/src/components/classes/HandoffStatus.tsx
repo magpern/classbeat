@@ -5,6 +5,7 @@ import { recallRequest, rememberRequest, startAgainPath } from '../../lib/startR
 import { Link, useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
+import { PlanChoice } from '../plans/PlanChoice'
 
 /**
  * What the hand-off of a free-text class says in the class panel (MA3; the hand-off itself is
@@ -20,6 +21,7 @@ export function HandoffStatus({ classId, handoff }: { classId: string; handoff: 
   const { phase, refusal, retry } = handoff
   const sad = phase === 'refused' || phase === 'failed' || phase === 'error'
   if (phase === 'idle') return null
+  if (phase === 'choose' && handoff.held !== null) return <PlanChoice need={handoff.held} onWithin={handoff.designWithinPlan} />
   if (!sad) {
     return <Notice>{phase === 'reading' ? t('start.handoff.waiting') : t('start.handoff.starting')}</Notice>
   }

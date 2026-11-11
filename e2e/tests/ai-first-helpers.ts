@@ -56,12 +56,13 @@ export async function pickMusic(page: Page, title: string): Promise<void> {
 /**
  * Start a class from words: read with `reading`, then design with `design`. Returns once the
  * workspace shows the finished class. `afterReading` runs between the two, with the hand-off held.
+ * `withinPlan`: the request is over the plan, so the page asks first and this chooses "Design within my plan".
  */
 export async function designFromWords(
   page: Page,
   request: string,
   scripts: { reading: ModelScript; design: ModelScript },
-  options: { music?: string; afterReading?: () => Promise<void> | void } = {},
+  options: { music?: string; afterReading?: () => Promise<void> | void; withinPlan?: boolean } = {},
 ): Promise<string> {
   useModelScript(scripts.reading)
   const held = await holdHandoff(page)
@@ -73,5 +74,7 @@ export async function designFromWords(
   await options.afterReading?.()
   useModelScript(scripts.design)
   held.release()
+  // A request over the plan waits for a choice before the design job starts (M7a-4).
+  if (options.withinPlan === true) await page.getByRole('button', { name: 'Design within my plan' }).click()
   return page.url()
 }

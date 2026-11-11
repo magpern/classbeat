@@ -208,6 +208,25 @@ describe('the class page', () => {
     expect(screen.queryByText(/Choose a shorter length/)).toBeNull()
   })
 
+  it.each([
+    [{ quota: 'length', limit: 60 }, true],
+    [{ quota: 'classes', limit: 3, used: 3, period_end: '2026-11-01T00:00:00Z' }, true],
+    [{ quota: 'cost', period_end: '2026-11-01T00:00:00Z' }, false],
+  ])('a Make current refused by the plan (%j) shows the upgrade link: %s', async (detail, link) => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      ...classRoutes({
+        revisions: TWO_REVISIONS,
+        revisionBodies: { [REV2]: revisionBody(REV2, 2, CONTENT_V2) },
+      }),
+      [`POST ${CLASS_PATH}/current`]: () => json({ detail: { reason: 'quota', ...detail } }, 409),
+    })
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Use this version 2' }))
+    await screen.findByRole('alert')
+    expect(screen.queryByTestId('upgrade') !== null).toBe(link)
+  })
+
   it('shows the live progress of a running change and reloads when it ends', async () => {
     let jobReads = 0
     let classReads = 0
@@ -396,6 +415,24 @@ describe('asking for a change', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Change it' }))
     expect(await screen.findByText(sentence)).toBeInTheDocument()
     expect(screen.queryByText(code)).toBeNull()
+  })
+
+  it.each([
+    [{ quota: 'length', limit: 30 }, true],
+    [{ quota: 'feature', feature: 'games' }, true],
+    [{ quota: 'saves', limit: 30, window: 'hour' }, false],
+  ])('a revise refused by the plan (%j) shows the upgrade link: %s', async (detail, link) => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      ...classRoutes(),
+      'GET /api/connections': MOWL,
+      'POST /api/jobs': () => json({ detail: { reason: 'quota', ...detail } }, 409),
+    })
+    renderAt(PAGE)
+    fireEvent.change(await screen.findByLabelText('What should change?'), { target: { value: 'Much longer' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Change it' }))
+    await screen.findByRole('alert')
+    expect(screen.queryByTestId('upgrade') !== null).toBe(link)
   })
 
   it('does not send when MOWL is not connected', async () => {

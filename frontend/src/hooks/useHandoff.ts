@@ -3,9 +3,10 @@ import { ApiError } from '../api/client'
 import type { ClassSummary } from '../api/classes'
 import { designFromInterpretation, getInterpretation } from '../api/interpret'
 import type { InterpretationItem } from '../api/interpretationItems'
+import { heldNeed, type Need } from '../lib/planUpgrade'
 import { recallRequest } from '../lib/startRequest'
 
-export type HandoffPhase = 'idle' | 'reading' | 'starting' | 'refused' | 'failed' | 'error'
+export type HandoffPhase = 'idle' | 'reading' | 'choose' | 'starting' | 'refused' | 'failed' | 'error'
 
 export interface Handoff {
   phase: HandoffPhase
@@ -15,6 +16,10 @@ export interface Handoff {
   interpretJobId: string | null
   /** The stored refusal's reason code (`not_connected`, say); null when none or not coded. */
   refusal: string | null
+  /** Set in phase `choose`: what the reading asked for that the plan does not allow. */
+  held: Need | null
+  /** "Design within my plan": sends the design hand-off the reading held back. */
+  designWithinPlan: () => void
   /** Asks again, after an `error`. */
   retry: () => void
 }
@@ -41,6 +46,9 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
   const [interpretJobId, setInterpretJobId] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [round, setRound] = useState(0)
+  const [held, setHeld] = useState<Need | null>(null)
+  // Set when the instructor chose "design within my plan": the hand-off is then sent as usual.
+  const chose = useRef(false)
   // Read inside the polling loop: the page reloads the class while it waits, and the loop must not restart.
   const stillReading = useRef(interpreting)
   const reloadRef = useRef(reload)
@@ -66,6 +74,10 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
         } else if (found.refusal !== null) {
           setRefusal(found.refusal)
           setPhase('refused')
+        } else if (!chose.current && heldNeed(found.items) !== null) {
+          // Over the plan: nothing is sent (the design job takes the class credit) until the instructor chooses.
+          setHeld(heldNeed(found.items))
+          setPhase('choose')
         } else {
           setPhase('starting')
           await designFromInterpretation(classId)
@@ -106,5 +118,10 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
     setPhase('reading')
     setRound((n) => n + 1)
   }, [])
-  return { phase: active ? phase : 'idle', items, interpretJobId, refusal, retry }
+  const designWithinPlan = useCallback(() => {
+    chose.current = true
+    setPhase('starting')
+    setRound((n) => n + 1)
+  }, [])
+  return { phase: active ? phase : 'idle', items, interpretJobId, refusal, held, designWithinPlan, retry }
 }

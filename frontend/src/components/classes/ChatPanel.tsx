@@ -7,6 +7,7 @@ import { createReviseJob, isTerminal } from '../../api/jobs'
 import { useT } from '../../i18n/I18n'
 import { newIdempotencyKey } from '../../lib/submittedInput'
 import { Notice, useAction } from '../forms'
+import { UpgradeLink } from '../plans/UpgradeLink'
 import { ReviseRun, Unanswered, type SongsWay } from './ChatRuns'
 
 export const MAX_REQUEST_CHARS = 2000
@@ -230,6 +231,7 @@ export function ChatPanel({
       <form onSubmit={submit} noValidate aria-label={t('class.chat.form')}>
         {problem ? <Notice kind="error">{problem}</Notice> : null}
         {action.error ? <Notice kind="error">{action.error}</Notice> : null}
+        {action.upgrade ? <UpgradeLink /> : null}
         <div className="field">
           <label htmlFor="change-request">{t('class.chat.label')}</label>
           <textarea

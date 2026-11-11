@@ -4,5 +4,21 @@
   "plan.name.pro",
   "plan.quality.standard",
   "plan.quality.better",
-  "plan.quality.best"
+  "plan.quality.best",
+  "plan.upgrade.link",
+  "plan.choice.title",
+  "plan.choice.body",
+  "plan.choice.length",
+  "plan.choice.lengthMax",
+  "plan.choice.games",
+  "plan.choice.ftp",
+  "plan.choice.lowest",
+  "plan.choice.within",
+  "plan.choice.see",
+  "plan.nudge.label",
+  "plan.nudge.body",
+  "plan.nudge.link",
+  "plan.nudge.dismiss",
+  "start.planLength",
+  "interp.reason.plan_no_ftp_tests"
 ]

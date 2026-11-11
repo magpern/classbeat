@@ -39,7 +39,7 @@ test('the start screen, a designed class with a game and a request beyond the pl
     page,
     'A 90 minute ride with two climbs.',
     { reading: 'ai_first_read_long', design: 'ai_first_design_long' },
-    { music: 'No music' },
+    { music: 'No music', withinPlan: true },
   )
   await expect(page.getByTestId('interpretation').getByText('Not as asked')).toBeVisible(LONG)
   await expect(page.getByRole('heading', { name: /Invented/ })).toBeVisible(LONG)
