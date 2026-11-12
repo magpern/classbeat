@@ -2,19 +2,12 @@ import { PlanNudge } from '../plans/PlanNudge'
 import { PlanOffers } from '../plans/PlanOffers'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { getPlan, redeemCode, startTrial, type Plan as PlanData } from '../../api/plan'
-import { accountPlanError, dayText, periodMonth, sourceText } from '../../api/planMessages'
+import { accountPlanError, dayText, sourceText } from '../../api/planMessages'
 import type { CatalogueKey } from '../../i18n/en'
 import { Trans, useT } from '../../i18n/I18n'
-import { t as translate } from '../../i18n/t'
 import { Field, Notice, Section, useAction } from '../forms'
 import { Progress } from '../ui/progress'
-
-/** "3 of 30 classes in October": the figure the account page shows. */
-export function classesLine(plan: PlanData): string {
-  const month = periodMonth(plan.periodEnd) ?? translate('plan.thisMonth')
-  const limit = plan.limits.classesPerMonth
-  return translate('plan.classesLine', { count: limit, held: plan.classesHeld, month })
-}
+import { classesLine } from './classesLine'
 
 function planLineKey(source: string | null, end: string | null): CatalogueKey {
   if (source !== null) return end !== null ? 'plan.lineSourceEnd' : 'plan.lineSource'

@@ -24,10 +24,10 @@ export function CheckoutStatus({ status, onAgain, onDismiss }: { status: Status;
         <Notice>{t('plan.checkout.slow')}</Notice>
         <p className="m-0 flex flex-wrap gap-3">
           <Button variant="secondary" onClick={onAgain}>
-            {t('plan.checkout.again')}
+            {t('class.checkAgain')}
           </Button>
           <Button variant="ghost" onClick={onDismiss}>
-            {t('plan.checkout.dismiss')}
+            {t('dialog.close')}
           </Button>
         </p>
       </div>
@@ -39,7 +39,7 @@ export function CheckoutStatus({ status, onAgain, onDismiss }: { status: Status;
         <Notice kind="error">{t('plan.checkout.failed')}</Notice>
         <p className="m-0">
           <Button variant="ghost" onClick={onDismiss}>
-            {t('plan.checkout.dismiss')}
+            {t('dialog.close')}
           </Button>
         </p>
       </div>

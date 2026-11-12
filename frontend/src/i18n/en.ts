@@ -1489,8 +1489,6 @@ export const en = {
   'plan.checkout.waiting': 'Waiting for confirmation. Your plan changes as soon as the payment is confirmed.',
   'plan.checkout.slow': 'Still waiting for the payment to be confirmed. Your plan updates by itself once it is. Check again, or refresh later.',
   'plan.checkout.failed': 'The payment did not go through, so nothing was charged. Your plan is unchanged.',
-  'plan.checkout.again': 'Check again',
-  'plan.checkout.dismiss': 'Close',
   'start.planLength': 'Your plan allows classes of up to {minutes} minutes.',
   'interp.reason.plan_no_ftp_tests': 'Your plan does not include FTP tests.',
   'plan.name.free': 'Free',
