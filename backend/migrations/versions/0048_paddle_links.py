@@ -13,8 +13,11 @@ Create Date: 2026-11-12
   ``(provider, checkout_ref)`` and ``(provider, subscription_ref)`` (global on purpose: a Paddle
   id selects one link whoever asks, the RLS guard lists both). ``customer_ref`` is **not** unique
   per row: Paddle keeps one customer per buyer, so a returning buyer's second checkout has a
-  second link with the same customer id; the webhook refuses a customer id that another user's
-  link holds (``customer_conflict``), so a customer id maps to at most one user.
+  second link with the same customer id.
+- ``billing_customers`` (owned, forced row security, cascades with the account): one row per
+  ``(provider, customer_ref)`` (a unique key, global on purpose), inserted in the first
+  payment's transaction, so a customer id maps to at most one user even when two first payments
+  race: the second waits for the first and is refused (``customer_conflict``).
   ``activated_at`` is when the link's first payment applied (the newest is the owner's current
   Paddle subscription); ``changed_at`` is when its scheduled change last changed (Paddle's
   ``occurred_at``, or classbeat's own change time), so an older ``subscription.updated``
@@ -63,6 +66,19 @@ BILLING_LINKS = f"""
         CONSTRAINT billing_links_owner_id_id_key UNIQUE (owner_id, id)
     )"""
 
+CUSTOMERS = f"""
+    CREATE TABLE public.billing_customers (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        provider text NOT NULL
+            CONSTRAINT billing_customers_provider CHECK (provider IN ('fake_paddle', 'paddle')),
+        customer_ref text NOT NULL CONSTRAINT billing_customers_customer_ref
+            CHECK ({REF.format("customer_ref")}),
+        owner_id uuid NOT NULL REFERENCES public.users (id) ON DELETE CASCADE,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT billing_customers_customer_key UNIQUE (provider, customer_ref),
+        CONSTRAINT billing_customers_owner_id_id_key UNIQUE (owner_id, id)
+    )"""
+
 REFUSALS = """
     CREATE TABLE public.billing_webhook_refusals (
         provider text NOT NULL CONSTRAINT billing_webhook_refusals_provider
@@ -103,12 +119,17 @@ def upgrade() -> None:
     enable_owner_rls("billing_links")
     op.execute("REVOKE ALL ON TABLE public.billing_links FROM classbeat_app")
     op.execute("GRANT SELECT ON TABLE public.billing_links TO classbeat_app")
+    op.execute(CUSTOMERS)
+    enable_owner_rls("billing_customers")
+    op.execute("REVOKE ALL ON TABLE public.billing_customers FROM classbeat_app")
+    op.execute("GRANT SELECT ON TABLE public.billing_customers TO classbeat_app")
     op.execute(REFUSALS)
     op.execute("REVOKE ALL ON TABLE public.billing_webhook_refusals FROM classbeat_app")
 
 
 def downgrade() -> None:
     op.execute("DROP TABLE public.billing_webhook_refusals")
+    op.execute("DROP TABLE public.billing_customers")
     op.execute("DROP TABLE public.billing_links")
     # The older schema knows only Dummy and the three user actions: drop what it cannot hold
     # (an event of a Paddle provider goes with the entitlement rows that trace to it).

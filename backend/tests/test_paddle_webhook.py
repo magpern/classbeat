@@ -278,18 +278,69 @@ async def test_a_signed_malformed_body_is_422_and_an_ignored_type_200(env: Env) 
 async def test_a_second_customer_claim_is_refused(
     env: Env, tester: Any, superuser: Connection
 ) -> None:
-    """A customer id maps to at most one user: another user's link already holds it."""
+    """A customer id maps to at most one user: another user already holds it."""
     paddle(env).pay(await checkout(env, tester))
     _, paid = paddle(env).outbox
     customer = json.loads(paid.body)["data"]["customer_id"]
     other = await env.user("other@example.com")
     superuser.execute(text(
-        "INSERT INTO billing_links (owner_id, provider, checkout_ref, customer_ref) "
-        "VALUES (:o, 'fake_paddle', 'txn_other', :c)"
+        "INSERT INTO billing_customers (owner_id, provider, customer_ref) "
+        "VALUES (:o, 'fake_paddle', :c)"
     ), {"o": other, "c": customer})  # fmt: skip
     response = await post(env, paid)
     assert (response.status_code, reason_of(response)) == (422, "customer_conflict")
     assert sub(superuser, tester.user_id) is None
+    held = superuser.execute(text("SELECT owner_id FROM billing_customers")).scalars().all()
+    assert held == [other]
+
+
+async def test_two_first_payments_racing_for_one_customer_leave_one_owner(
+    env: Env, tester: Any, superuser: Connection, maint: Any
+) -> None:
+    """Two maint sessions claim the same customer for two owners at once: the unique key makes
+    the second wait for the first and lose, whatever the timing (no check-then-insert gap)."""
+    from classbeat.billing import links_sql
+
+    other = await env.user("other@example.com")
+    async with maint() as first, maint() as second:
+        await first.execute(text("SET TRANSACTION READ WRITE"))
+        await second.execute(text("SET TRANSACTION READ WRITE"))
+        assert await links_sql.claim_customer(first, "fake_paddle", "ctm_race", tester.user_id)
+        racing = asyncio.create_task(
+            links_sql.claim_customer(second, "fake_paddle", "ctm_race", other)
+        )
+        await asyncio.sleep(0.5)
+        assert not racing.done()  # blocked on the first transaction's row
+        await first.commit()
+        assert await asyncio.wait_for(racing, 10) is False
+        await second.rollback()
+    held = superuser.execute(text("SELECT owner_id FROM billing_customers")).scalars().all()
+    assert held == [tester.user_id]
+
+
+async def test_a_subscription_update_before_the_first_payment_is_409_then_lands(
+    env: Env, tester: Any, superuser: Connection
+) -> None:
+    """Paddle may send `subscription.updated` before `transaction.completed`: the buyer's checkout
+    is still waiting, so it is 409 (retried), not 422; it lands once the payment has."""
+    sub_ref = paddle(env).pay(await checkout(env, tester))
+    early = paddle(env)._subscription(paddle(env).subscriptions[sub_ref])  # pyright: ignore[reportPrivateUsage]
+    response = await post(env, early)
+    assert (response.status_code, reason_of(response)) == (409, "payment_pending")
+    assert refusals(superuser) == []  # not counted: a retry can land
+    assert await paddle(env).deliver(poster(env), hold={early.event_id}) == [200, 200]
+    landed = await post(env, early)
+    assert (landed.status_code, landed.json()["outcome"]) == (200, "ignored")
+
+
+async def test_a_subscription_update_with_no_checkout_at_all_is_422(
+    env: Env, tester: Any, superuser: Connection
+) -> None:
+    sub_ref = await bought(env, tester)  # everything linked and activated: nothing is pending
+    stray = paddle(env)._subscription(paddle(env).subscriptions[sub_ref])  # pyright: ignore[reportPrivateUsage]
+    response = await post(env, stray, edit=lambda d: d["data"].update(id="sub_unknown"))
+    assert (response.status_code, reason_of(response)) == (422, "no_link")
+    assert refusals(superuser) == [(stray.event_id, "no_link")]
 
 
 # --- 409: out of order, retried until the gap is filled -----------------------------------------

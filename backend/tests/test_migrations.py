@@ -157,6 +157,7 @@ JOBS = [
     "billing_log",
     # M7b-prep (0048_paddle_links, ADR 0032 section 3).
     "billing_links",
+    "billing_customers",
     "billing_webhook_refusals",
     # ADR 0033 (0047_invite_requests).
     "invite_requests",

@@ -657,6 +657,8 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     # ADR 0032 (migration 0048, #973): a Paddle checkout's link.
     insert(admin, "billing_links", owner_id=owner, provider="fake_paddle",
            checkout_ref="txn_schema", customer_ref="ctm_schema")  # fmt: skip
+    insert(admin, "billing_customers", owner_id=owner, provider="fake_paddle",
+           customer_ref="ctm_schema")  # fmt: skip
     tables = sorted(RETENTION)
     planted = {t for t in tables if count(admin, t) > 0}
     assert planted == set(tables) - {"connections"}

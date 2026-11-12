@@ -116,6 +116,7 @@ _COLUMNS = {
     "billing_links": "id owner_id provider checkout_ref customer_ref subscription_ref "
     "activated_at changed_at created_at updated_at",
     "billing_webhook_refusals": "provider event_id reason created_at",
+    "billing_customers": "id provider customer_ref owner_id created_at",
     # ADR 0033 (#985): the requests the admin decides on.
     "invite_requests": "id email email_normalized heard_from instructor locale state plan_id "
     "grant_days invite_id decided_by decided_at created_at",
@@ -154,6 +155,7 @@ EXPECTED: dict[tuple[str, str], frozenset[str]] = {
     ("billing_log", "INSERT"): frozenset({"*"}),
     ("billing_links", "INSERT"): frozenset({"*"}),
     ("billing_webhook_refusals", "INSERT"): frozenset({"*"}),
+    ("billing_customers", "INSERT"): frozenset({"*"}),
     # AD5 #223: the routes are written whole; the results are never writable (no entry).
     ("model_routes", "INSERT"): frozenset({"*"}),
     ("model_routes", "UPDATE"): frozenset({"*"}),

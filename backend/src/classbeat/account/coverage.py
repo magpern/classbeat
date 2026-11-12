@@ -19,7 +19,8 @@ CASCADE = "c"
 SET_NULL = "n"
 
 _OWNED = (
-    "agent_runs beat_one_corrections billing_events billing_links billing_log class_messages "
+    "agent_runs beat_one_corrections billing_customers billing_events billing_links billing_log "
+    "class_messages "
     "class_playlists class_revisions classes "
     "code_redemptions connections credit_ledger entitlements external_operations job_events jobs "
     "mail_handoff mowl_playlist_links quota_periods saved_workouts spotify_oauth_flows "

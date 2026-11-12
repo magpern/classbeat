@@ -18,6 +18,8 @@ GLOBAL_UNIQUE = {
     # ADR 0032 section 3: a Paddle id selects one link, whoever asks.
     ("billing_links", ("provider", "checkout_ref")),
     ("billing_links", ("provider", "subscription_ref")),
+    # ... and a Paddle customer id maps to one owner (a race between two owners loses one).
+    ("billing_customers", ("provider", "customer_ref")),
 }
 # What Postgres 17 stores for the policy of classbeat.db.rls (pg_policies renders it).
 EXPECTED_EXPRESSION = (

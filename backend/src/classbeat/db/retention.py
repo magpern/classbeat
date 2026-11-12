@@ -170,6 +170,7 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         "billing_links": _entry(
             "checkout_ref customer_ref subscription_ref", "provider", "account"
         ),
+        "billing_customers": _entry("customer_ref", "provider", "account"),
     }
 )
 

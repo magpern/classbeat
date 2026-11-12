@@ -73,6 +73,7 @@ RESTRICTED_APP_PRIVILEGES = {
     "billing_log": {"SELECT"},
     # ADR 0032 section 3 (#973): read only, for the export; the webhook writes on maint.
     "billing_links": {"SELECT"},
+    "billing_customers": {"SELECT"},
     # ADR 0033 (#985): the public form inserts, the purge deletes; the app reads only the columns
     # of ``APP_INVITE_REQUEST_COLUMNS`` (never the address or the text).
     "invite_requests": {"INSERT", "DELETE"},

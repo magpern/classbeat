@@ -186,12 +186,16 @@ GRANT INSERT ON public.billing_log TO classbeat_maint;
 -- Paddle on fakes (ADR 0032 section 3, #973): the webhook resolves a notification's user only
 -- through billing_links, by the Paddle ids a checkout stored (they are ids, not credentials), and
 -- records the link's subscription, customer and change times; the checkout route inserts the
--- link. A refused notification is counted once per event id (the reason is a fixed code).
+-- link. A Paddle customer id maps to one owner (billing_customers, claimed by the first payment's
+-- transaction). A refused notification is counted once per event id (the reason is a fixed code).
 GRANT SELECT (id, owner_id, provider, checkout_ref, customer_ref, subscription_ref, activated_at,
               changed_at, created_at, updated_at)
   ON public.billing_links TO classbeat_maint;
 GRANT INSERT, UPDATE (customer_ref, subscription_ref, activated_at, changed_at, updated_at)
   ON public.billing_links TO classbeat_maint;
+GRANT SELECT (id, provider, customer_ref, owner_id, created_at)
+  ON public.billing_customers TO classbeat_maint;
+GRANT INSERT ON public.billing_customers TO classbeat_maint;
 GRANT SELECT (provider, event_id, reason, created_at)
   ON public.billing_webhook_refusals TO classbeat_maint;
 GRANT INSERT ON public.billing_webhook_refusals TO classbeat_maint;

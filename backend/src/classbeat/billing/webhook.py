@@ -12,7 +12,9 @@ one 422). Then, under the per-process semaphore of 1 (503 when busy, `webhook_ga
 
 1. a read-only maint transaction (`webhook_lookup`, no log row): a replay of an event already
    stored is 200; otherwise the `billing_links` row the signed transaction or subscription id
-   selects, or 422 `no_link`;
+   selects. Without one, a subscription notification whose buyer still has a checkout waiting
+   for its first payment is 409 `payment_pending` (Paddle retries until the payment lands);
+   anything else is 422 `no_link`;
 2. one logged write transaction for the link's owner (`webhook_session`): lock the owner, look
    the event up again, check the link is the owner's current subscription (`paddle_links`), map
    it against the stored state and the policy's prices, and hand the event to the writer. A first
@@ -129,7 +131,7 @@ async def _write(
 ) -> JSONResponse:  # fmt: skip
     event, owner = mapped.event, found.owner_id
     if isinstance(event, Started):
-        if r.customer_ref is not None and await links_sql.customer_taken(
+        if r.customer_ref is not None and not await links_sql.claim_customer(
             session, provider, r.customer_ref, owner
         ):
             raise BillingRefused("customer_conflict", 422)  # a customer maps to one user
@@ -154,6 +156,13 @@ async def _process(
         if await writer_sql.event_seen(session, provider, n.event_id):
             return _answer(200, "duplicate")
         found = await links_sql.find(session, provider, r)
+        early = (
+            found is None
+            and n.event_type.startswith("subscription.")
+            and await links_sql.payment_pending(session, provider, r.customer_ref, r.custom_owner)
+        )
+    if early:
+        return _answer(409, "refused", "payment_pending")  # before the first payment: retried
     if found is None:
         return await _refused(db, provider, n.event_id, "no_link", 422)
     rid = getattr(request.state, "request_id", None) or secrets.token_hex(16)

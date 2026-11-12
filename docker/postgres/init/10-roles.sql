@@ -162,6 +162,9 @@ SELECT 'REVOKE ALL ON TABLE public.billing_log FROM classbeat_app',
 SELECT 'REVOKE ALL ON TABLE public.billing_links FROM classbeat_app',
        'GRANT SELECT ON TABLE public.billing_links TO classbeat_app'
  WHERE to_regclass('public.billing_links') IS NOT NULL \gexec
+SELECT 'REVOKE ALL ON TABLE public.billing_customers FROM classbeat_app',
+       'GRANT SELECT ON TABLE public.billing_customers TO classbeat_app'
+ WHERE to_regclass('public.billing_customers') IS NOT NULL \gexec
 SELECT 'REVOKE ALL ON TABLE public.billing_webhook_refusals FROM classbeat_app'
  WHERE to_regclass('public.billing_webhook_refusals') IS NOT NULL \gexec
 SELECT 'REVOKE ALL ON TABLE public.app_settings FROM classbeat_app',

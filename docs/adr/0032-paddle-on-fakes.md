@@ -49,13 +49,22 @@ tested now, with the last step left for later and gated by an environment flag.
      are only cross-checked. The protection is the signature plus our own link made at checkout:
      a signed id we never linked selects nothing (refused, `no_link`). Our own user id inside a
      payload is never used to choose a row. *(Amended in PB-2, #973.)*
+   - **Before the first payment.** Paddle may send `subscription.updated` (or another
+     subscription notification) before the `transaction.completed` that activates the link, so
+     no link has the subscription id yet. When the buyer, named by the stored customer id or the
+     `custom_data` cross-check value, still has a checkout link waiting for its first payment,
+     the answer is **409** `payment_pending` (transient, not counted: Paddle retries until the
+     payment lands). This read decides only 409 against 422 and selects no row for a write. A
+     notification with no matching link and no waiting checkout is **422** `no_link`.
    - **Which subscription.** A returning buyer has one link per checkout, all with the same
      Paddle customer id; the newest activated link is the owner's **current** subscription. A
      `subscription.updated` or `subscription.canceled` of another (older) subscription is
      acknowledged and ignored (`other_subscription`: a cancel of a different subscription never
      ends the current one), and a paid transaction of one is refused (422). A customer id maps
-     to **at most one user**: a first payment whose customer id another user's link holds is
-     refused (`customer_conflict`).
+     to **at most one user**, enforced by the database: `billing_customers` has one row per
+     `(provider, customer_ref)` (a unique key) naming its owner, inserted in the first payment's
+     transaction, so two first payments racing for one customer cannot both win; the loser is
+     refused (`customer_conflict`, 422).
    - **Order of work.** Read the **raw** body (under a small body cap, with an anonymous rate
      limit), verify the signature and the window **before** parsing **and before any database
      access** (a bad signature never touches the database), then resolve the user, map, and call
@@ -82,7 +91,7 @@ tested now, with the last step left for later and gated by an environment flag.
      `stale_change`. It only ever moves forward. The first payment stores the subscription and
      customer ids on the link (`activated_at`), so renewals and upgrades find it.
    - **Answers (Paddle retries on non-2xx).** Applied, duplicate, ignored type and `stale`: 200.
-     `out_of_order` (the writer recorded nothing, so a retry may succeed): 409, so Paddle retries
+     `out_of_order` (the writer recorded nothing, so a retry may succeed) and `payment_pending`: 409, so Paddle retries
      and the event lands once the gap is filled. A refusal that no retry can fix
      (`amount_mismatch`, `period_mismatch`, `plan_mismatch`, `cancelled`, `provider_conflict`, no
      link): 422 with a reason code, counted **once per `event_id`** in
@@ -100,7 +109,7 @@ tested now, with the last step left for later and gated by an environment flag.
    then needs the Paddle secrets. With the flag off, only admins and `billing_test` holders reach
    the flow, with Dummy or the fake, exactly as in ADR 0031.
 5. **Storage.** PB-2's migration adds `paddle` and `fake_paddle` to the provider CHECKs of
-   `billing_events` and `subscriptions` (migration 0046 allows only `dummy`), adds `billing_links` (unique on `(provider, checkout_ref)` and `(provider, subscription_ref)`; **not** on the customer id, which Paddle keeps per buyer across checkouts: a customer id maps to at most one user, checked by the webhook, section 3; a notification whose subscription id disagrees with its link is refused) and `billing_webhook_refusals`,
+   `billing_events` and `subscriptions` (migration 0046 allows only `dummy`), adds `billing_links` (unique on `(provider, checkout_ref)` and `(provider, subscription_ref)`; **not** on the customer id, which Paddle keeps per buyer across checkouts: a customer id maps to at most one user through `billing_customers`, unique on `(provider, customer_ref)`, section 3; a notification whose subscription id disagrees with its link is refused) and `billing_webhook_refusals`,
    and events from the fake are stored as `fake_paddle`, never as `paddle`, so a fake can never be
    mistaken for a paid subscription. A `Started` from a Paddle provider for a user whose stored
    subscription is a Dummy one ends the Dummy subscription, revokes its entitlement rows as ADR 0031 §6 requires, and starts the new one (a `fake_paddle` `Started` replaces a Dummy subscription the same way); it is the only
@@ -136,5 +145,8 @@ tested now, with the last step left for later and gated by an environment flag.
 - Real Paddle later needs: a Paddle account and keys (secrets), a webhook URL, price ids, the
   `PaddleHttpClient` PR, a sandbox run, and flipping the flags. Runbook: M7b-prep-6.
 - The writer, plans and UI do not change when the real client arrives.
+- Carry-over for the real client (PB-6 runbook, #977): the routes call the `PaddleClient`
+  inside their maint transaction (harmless for the in-memory fake); a real HTTP client must not
+  hold a maint connection (2 per process) across a network call.
 - Security-critical parts (signature, webhook route, config gates): Opus Developer and Opus
   Reviewer.

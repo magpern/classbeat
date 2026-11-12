@@ -125,6 +125,11 @@ class Person:
             "VALUES (:u, 'fake_paddle', 'txn_' || replace(gen_random_uuid()::text, '-', ''))",
             u=u,
         )
+        self.sql(
+            "INSERT INTO billing_customers (owner_id, provider, customer_ref) "
+            "VALUES (:u, 'fake_paddle', 'ctm_' || replace(gen_random_uuid()::text, '-', ''))",
+            u=u,
+        )
         # ME5 (#656): a "class ready" mail on its way, for one of the user's jobs.
         self.sql(
             "INSERT INTO mail_handoff (owner_id, kind, job_id, params) "
