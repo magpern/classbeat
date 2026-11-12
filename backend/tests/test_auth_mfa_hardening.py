@@ -186,9 +186,13 @@ async def test_concurrent_failures_send_exactly_one_failure_mail(
 # --- limits and rotation --------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("frozen_rate_windows")
 async def test_mfa_is_limited_per_account_across_ips_and_per_ip_across_accounts(
     env: Env,
 ) -> None:
+    # The windows are fixed (5 minutes per IP, an hour per account) and keyed off the database
+    # clock: a boundary inside the 21 attempts restarts the count and the 21st is let through
+    # (#1010, as #588). Pinned here, so the test counts the limit and not the clock.
     limiter = env.app.state.limiter
     account = str(uuid.uuid4())
     for n in range(20):
