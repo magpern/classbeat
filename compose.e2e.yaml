@@ -239,6 +239,59 @@ services:
       timeout: 5s
       retries: 20
 
+  # ADR 0032 (PB-6, #977): a third web, the same image and database, with `fake_paddle` as the
+  # billing provider, for e2e/tests/paddle-done-when.spec.ts only (E2E_PADDLE_BASE_URL). The main
+  # web keeps the Dummy provider (plans-done-when.spec.ts). Billing stays off (testers and admins
+  # buy), so it is not a prod-like switch. The webhook secret is the PUBLIC TEST value in
+  # e2e/fake-paddle/webhook-secret.txt (the spec signs its own notifications with it); a real
+  # secret never goes here. It mounts paddle_webhook_secret (web only; the worker refuses to start
+  # with it, CI checks it is on this service alone) and database_maint_password (the billing
+  # routes and the webhook write on the maint role), plus the three every web starts with. No
+  # model key, no Swedebeat key, no OAuth or Turnstile secret (the fake needs none).
+  web-paddle:
+    profiles: [e2e]
+    image: ${COMPOSE_PROJECT_NAME:-classbeat}:local
+    pull_policy: never
+    restart: "no"
+    environment:
+      CLASSBEAT_ENVIRONMENT: dev
+      CLASSBEAT_DATABASE_URL: postgresql+psycopg://classbeat_app@db:5432/classbeat
+      CLASSBEAT_MAINT_DATABASE_URL: postgresql+psycopg://classbeat_maint@db:5432/classbeat
+      # The fake checkout page is on this origin (the plan screen follows only its own origin).
+      CLASSBEAT_PUBLIC_BASE_URL: http://127.0.0.1:${WEB_PADDLE_PORT:-8002}
+      CLASSBEAT_BILLING_PROVIDER: fake_paddle
+      CLASSBEAT_SONG_PICKING: "false"
+      CLASSBEAT_SMTP_HOST: mailpit
+      CLASSBEAT_SMTP_PORT: "1025"
+      CLASSBEAT_SMTP_TLS: none
+      CLASSBEAT_SMTP_SENDER: classbeat@classbeat.test
+      CLASSBEAT_CONNECTION_KEK_ID: ${CONNECTION_KEK_ID:-kek-1}
+      CLASSBEAT_DEEPSEEK_ENABLED: "false"
+      CLASSBEAT_TURNSTILE_ENABLED: "true"
+      CLASSBEAT_TURNSTILE_FAKE: "true"
+      # Each E2E test presents its own client address in X-Forwarded-For (own rate limits).
+      CLASSBEAT_TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8
+    secrets:
+      - database_password
+      - app_secret_key
+      - connection_kek
+      - database_maint_password
+      - paddle_webhook_secret
+    ports:
+      - "127.0.0.1:${WEB_PADDLE_PORT:-8002}:8000"
+    depends_on:
+      db-functions:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=3)"
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
   # The worker drafts classes against the same fake MOWL, with the FakeProvider replaying a
   # recorded script (ADR 0006 section 8): no model API and no real MOWL is ever contacted. The
   # worker's own outbound allowlist (ADR 0006 section 9) still applies; it lets api.mowl.com
@@ -286,6 +339,9 @@ secrets:
     file: ./e2e/fake-oidc/client-secret.txt
   oauth_microsoft_client_secret:
     file: ./e2e/fake-oidc/client-secret.txt
+  # PB-6: the PUBLIC test signing secret of the fake Paddle webhook; web-paddle only.
+  paddle_webhook_secret:
+    file: ./e2e/fake-paddle/webhook-secret.txt
 
 volumes:
   oidc-ca:

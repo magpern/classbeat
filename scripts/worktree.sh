@@ -14,9 +14,9 @@ SECRETS=(postgres_password database_owner_password database_password database_ma
 
 die() { echo "worktree.sh: $*" >&2; exit 1; }
 
-MAX_ISSUE=9999
+MAX_ISSUE=5535  # the highest port base is 60000 + issue, and a port is at most 65535
 
-# Digits, no leading zero, 1..MAX_ISSUE (ports are 20000/30000/40000/50000 + issue).
+# Digits, no leading zero, 1..MAX_ISSUE (ports are 20000/30000/40000/50000/60000 + issue).
 check_issue() {
   case "$1" in
     ""|0*|*[!0-9]*) die "issue must be a number without leading zeros" ;;
@@ -51,6 +51,7 @@ cmd_init() {
         -e "s/^COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=classbeat-$issue/" \
         -e "s/^WEB_PORT=.*/WEB_PORT=$((20000 + issue))/" \
         -e "s/^WEB_PASSKEYS_PORT=.*/WEB_PASSKEYS_PORT=$((50000 + issue))/" \
+        -e "s/^WEB_PADDLE_PORT=.*/WEB_PADDLE_PORT=$((60000 + issue))/" \
         -e "s/^DB_PORT=.*/DB_PORT=$((30000 + issue))/" \
         -e "s/^MAILPIT_PORT=.*/MAILPIT_PORT=$((40000 + issue))/" .env
     fi

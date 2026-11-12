@@ -22,8 +22,11 @@ one 422). Then, under the per-process semaphore of 1 (503 when busy, `webhook_ga
    newer `subscription.updated` that changes nothing) stores its time on the link.
 
 **Answers** (Paddle retries anything but 2xx): applied, duplicate, ignored and stale: 200;
-`out_of_order` (nothing recorded, a retry can land): 409; any other refusal: 422 with its reason
-code, counted once per event id (`record_webhook_refusal`); a bad or missing signature: 401.
+`out_of_order` (nothing recorded, a retry can land) and `payment_pending` (a checkout under
+`links_sql.PENDING_HOURS` old still waits for its payment): 409, neither counted; any other
+refusal: 422 with its reason code, counted once per event id (`record_webhook_refusal`); a bad or
+missing signature: 401. Over 429 (rate limit), 413 (body) and 503 (busy, no database) Paddle also
+retries.
 
 **Never logged:** the body, the headers, the secret, any id from the payload. A log line names
 the status and a fixed reason code only.

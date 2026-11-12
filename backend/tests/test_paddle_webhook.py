@@ -18,7 +18,8 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, make_url
 
 from authtools import Env, running_env
-from classbeat.billing import webhook
+from classbeat.admin.db import webhook_session
+from classbeat.billing import links_sql, webhook
 from classbeat.billing.fake_paddle import Delivery, FakePaddleClient
 from classbeat.billing.paddle_signature import HEADER, sign
 from classbeat.billing.webhook_gate import WebhookLimiter
@@ -177,7 +178,9 @@ async def test_a_bad_signature_is_401_and_touches_no_database(
     for expected, kwargs in cases.items():
         response = await post(env, paid, **kwargs)
         assert (response.status_code, response.json()["reason"]) == (401, expected)
-    future = await post(env, paid, ts=now + 301)
+    # Well past the window: a slow runner may have moved the server's clock a second on (the exact
+    # five minute edge is pinned in test_paddle_signature.py).
+    future = await post(env, paid, ts=now + 330)
     assert future.status_code == 401
     tampered = await post(env, paid, header=sign(paid.body, SECRET, ts=now),
                           edit=lambda d: d["data"].update(origin="api"))  # fmt: skip
@@ -333,6 +336,49 @@ async def test_a_subscription_update_before_the_first_payment_is_409_then_lands(
     assert (landed.status_code, landed.json()["outcome"]) == (200, "ignored")
 
 
+def test_a_pending_checkout_expires_after_24_hours() -> None:
+    assert links_sql.PENDING_HOURS == 24  # ADR 0032 section 3: the pinned value
+
+
+async def test_a_checkout_older_than_a_day_no_longer_waits_so_the_notice_is_a_counted_422(
+    env: Env, tester: Any, superuser: Connection
+) -> None:
+    """An abandoned checkout must not make an unlinked subscription notice 409 forever."""
+    sub_ref = paddle(env).pay(await checkout(env, tester))
+    early = paddle(env)._subscription(paddle(env).subscriptions[sub_ref])  # pyright: ignore[reportPrivateUsage]
+
+    def age(hours: int) -> None:
+        superuser.execute(
+            text("UPDATE billing_links SET created_at = now() - make_interval(hours => :h) "
+                 "WHERE owner_id = :o"),
+            {"h": hours, "o": tester.user_id},
+        )  # fmt: skip
+
+    age(links_sql.PENDING_HOURS - 1)  # still inside the day: Paddle retries
+    response = await post(env, early)
+    assert (response.status_code, reason_of(response)) == (409, "payment_pending")
+    assert refusals(superuser) == []
+    age(links_sql.PENDING_HOURS + 1)  # abandoned: the notice has no link and is counted once
+    for _ in range(2):
+        response = await post(env, early)
+        assert (response.status_code, reason_of(response)) == (422, "no_link")
+    assert refusals(superuser) == [(early.event_id, "no_link")]
+
+
+async def test_a_late_payment_still_lands_on_a_checkout_older_than_a_day(
+    env: Env, tester: Any, superuser: Connection
+) -> None:
+    """Expiry only ends the 409 wait: the paid transaction is found by its own checkout id."""
+    ref = await checkout(env, tester)
+    superuser.execute(
+        text("UPDATE billing_links SET created_at = now() - interval '3 days' WHERE owner_id = :o"),
+        {"o": tester.user_id},
+    )
+    paddle(env).pay(ref)
+    assert await paddle(env).deliver(poster(env)) == [200, 200]
+    assert sub(superuser, tester.user_id).status == "active"
+
+
 async def test_a_subscription_update_with_no_checkout_at_all_is_422(
     env: Env, tester: Any, superuser: Connection
 ) -> None:
@@ -449,6 +495,27 @@ async def test_a_newer_paddle_resume_applies_and_stores_its_time(
     assert not sub(superuser, tester.user_id).cancel_at_end
     ((*_, changed_at),) = link(superuser, tester.user_id)
     assert changed_at.isoformat().startswith(later[:19])
+
+
+async def test_a_links_change_time_only_moves_forward(
+    env: Env, tester: Any, superuser: Connection
+) -> None:
+    await bought(env, tester)
+    first = datetime(2031, 5, 10, 12, tzinfo=UTC)
+    stamps = [first, first - timedelta(days=1), first + timedelta(days=1), first]
+    seen: list[datetime] = []
+    async with webhook_session(env.app.state.admin_db, tester.user_id, "r" * 32) as session:
+        row = await links_sql.current(session, tester.user_id, "fake_paddle")
+        assert row is not None
+        now = datetime.now(UTC)
+        for at in stamps:
+            await links_sql.changed(session, row, at, now)  # `row` is stale, the SQL decides
+            seen.append(
+                (await session.execute(
+                    text("SELECT changed_at FROM billing_links WHERE id = :i"), {"i": row.id}
+                )).scalar_one()
+            )  # fmt: skip
+    assert seen == [first, first, first + timedelta(days=1), first + timedelta(days=1)]
 
 
 # --- upgrade and downgrade through Paddle ---------------------------------------------------------

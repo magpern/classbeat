@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Final
 from uuid import UUID
 
 from sqlalchemy import text
@@ -42,10 +42,13 @@ _CLAIM = text(
     "ON CONFLICT (provider, customer_ref) DO NOTHING"
 )
 _CUSTOMER = text("SELECT owner_id FROM billing_customers WHERE provider = :p AND customer_ref = :c")
-# A first payment still on its way: the owner has a checkout link not yet activated.
+# A first payment still on its way: the owner has a checkout link not yet activated and made
+# within `PENDING_HOURS`. An abandoned checkout stops counting, so a subscription notification
+# with no link turns from 409 (retried for days) into a counted 422.
+PENDING_HOURS: Final = 24
 _PENDING = text(
     "SELECT 1 FROM billing_links WHERE owner_id = :o AND provider = :p "
-    "AND activated_at IS NULL LIMIT 1"
+    "AND activated_at IS NULL AND created_at > now() - make_interval(hours => :h) LIMIT 1"
 )
 _SUBSCRIPTION_TAKEN = text(
     "SELECT 1 FROM billing_links WHERE provider = :p AND subscription_ref = :s AND id <> :id "
@@ -113,7 +116,8 @@ async def payment_pending(
     session: AsyncSession, provider: str, customer_ref: str | None, custom_owner: str | None
 ) -> bool:
     """Whether a subscription notification with no link yet may belong to a first payment still
-    on its way (ADR 0032 section 3: 409, Paddle retries). Read only: the candidate owner is the
+    on its way (ADR 0032 section 3: 409, Paddle retries) because its checkout is less than
+    `PENDING_HOURS` old. Read only: the candidate owner is the
     customer's (`billing_customers`) or the `custom_data` cross-check value, and it decides
     nothing but 409 against 422; no row is chosen for a write."""
     owner: UUID | None = None
@@ -127,7 +131,8 @@ async def payment_pending(
             return False
     if owner is None:
         return False
-    return (await session.execute(_PENDING, {"o": owner, "p": provider})).first() is not None
+    params = {"o": owner, "p": provider, "h": PENDING_HOURS}
+    return (await session.execute(_PENDING, params)).first() is not None
 
 
 async def subscription_taken(

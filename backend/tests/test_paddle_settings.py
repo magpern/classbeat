@@ -123,6 +123,30 @@ def test_the_limit_counts_per_network_and_for_the_process() -> None:
     assert limiter.allow("a", now=60)  # a new window
 
 
+def test_a_full_network_table_does_not_reset_the_process_total(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("classbeat.billing.webhook_gate.TRACKED", 3)
+    limiter = WebhookLimiter(per_ip=10, total=6)
+    # Three networks fill the table; the fourth clears it (not the total), then two more are
+    # allowed and the seventh request of the window is refused whichever network it comes from.
+    assert [limiter.allow(n, now=0) for n in ("a", "b", "c")] == [True] * 3
+    assert len(limiter._counts) == 3  # pyright: ignore[reportPrivateUsage]
+    assert limiter.allow("d", now=0)
+    assert len(limiter._counts) == 1  # the table was cleared, so its memory stays bounded
+    assert [limiter.allow(n, now=0) for n in ("e", "f")] == [True] * 2
+    assert not limiter.allow("g", now=0)
+    assert not limiter.allow("a", now=0)
+    assert limiter.allow("a", now=60)  # a new window starts both counts again
+
+
+def test_a_known_network_never_clears_the_full_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("classbeat.billing.webhook_gate.TRACKED", 2)
+    limiter = WebhookLimiter(per_ip=2, total=100)
+    assert [limiter.allow(n, now=0) for n in ("a", "b", "a")] == [True, True, True]
+    assert not limiter.allow("a", now=0)  # its own count survived the full table
+
+
 def test_the_semaphore_never_waits() -> None:
     busy = Busy()
     assert busy.take()

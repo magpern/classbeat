@@ -6,7 +6,9 @@ All in memory, per process, on purpose: the classbeat rate limits live in Postgr
 
 - **Rate limit:** a fixed window per client network (`auth.bucket_ip`: an IPv4 address, an IPv6
   /64), `PER_IP` requests a minute, and `TOTAL` a minute for the process; above either, 429 and
-  Paddle retries. At most `TRACKED` networks are remembered (the table is cleared when full).
+  Paddle retries. At most `TRACKED` networks are remembered: a full table is cleared when a new
+  network arrives, and only the table: the process-wide count (`_all`) is its own and runs to the
+  end of the window, so many networks cannot reset it.
 - **Body cap:** `MAX_BODY` bytes, counted as the body streams in (a lying or missing
   `Content-Length` is not believed); over it, 413. Paddle's notifications are a few KiB.
 - **Busy:** one webhook's database work at a time per process (`Busy`), because the maint pool
@@ -40,8 +42,10 @@ class WebhookLimiter:
 
     def allow(self, network: str, *, now: float | None = None) -> bool:
         window = int((time.monotonic() if now is None else now) // WINDOW_S)
-        if window != self._window or len(self._counts) >= TRACKED:
+        if window != self._window:
             self._window, self._counts, self._all = window, {}, 0
+        elif network not in self._counts and len(self._counts) >= TRACKED:
+            self._counts = {}  # the per-network table only: `_all` keeps counting
         self._all += 1
         count = self._counts.get(network, 0) + 1
         self._counts[network] = count

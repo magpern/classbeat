@@ -262,8 +262,13 @@ def test_the_e2e_stack_turns_on_the_fake_on_web_only() -> None:
     assert passkeys["CLASSBEAT_TURNSTILE_ENABLED"] == "true"
     assert passkeys["CLASSBEAT_TURNSTILE_FAKE"] == "true"
     assert "CLASSBEAT_TURNSTILE_SITE_KEY" not in passkeys
+    # web-paddle (PB-6, #977): the same web image on 127.0.0.1 with the fake Paddle, the same fake.
+    paddle = services["web-paddle"]["environment"]
+    assert paddle["CLASSBEAT_TURNSTILE_ENABLED"] == "true"
+    assert paddle["CLASSBEAT_TURNSTILE_FAKE"] == "true"
+    assert "CLASSBEAT_TURNSTILE_SITE_KEY" not in paddle
     for service, spec in services.items():
-        if service not in ("web", "web-passkeys"):
+        if service not in ("web", "web-passkeys", "web-paddle"):
             assert not any(
                 k.startswith("CLASSBEAT_TURNSTILE_") for k in spec.get("environment", {})
             )

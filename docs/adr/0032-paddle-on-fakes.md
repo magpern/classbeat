@@ -148,5 +148,9 @@ tested now, with the last step left for later and gated by an environment flag.
 - Carry-over for the real client (PB-6 runbook, #977): the routes call the `PaddleClient`
   inside their maint transaction (harmless for the in-memory fake); a real HTTP client must not
   hold a maint connection (2 per process) across a network call.
+  The runbook [paddle-live.md](../runbooks/paddle-live.md) (PB-6) lists this and the other
+  carry-overs (the checkout host allowlist, the sandbox checks of the mapping) for milestone 23.
+- A checkout that never gets its payment expires after 24 h (`links_sql.PENDING_HOURS`): a
+  subscription notice for it then answers a counted 422 `no_link` instead of 409 `payment_pending`.
 - Security-critical parts (signature, webhook route, config gates): Opus Developer and Opus
   Reviewer.
