@@ -625,6 +625,9 @@ Fixed windows are counted in `rate_limits` with one upsert per check. There is n
 - **Reserve first:** every attempt first takes a slot with
   `INSERT … ON CONFLICT DO UPDATE SET count = rate_limits.count + 1 RETURNING count`, and is
   refused above the limit before any password check runs, so parallel attempts can't overshoot.
+  The reserve is its own implicit (autocommit) transaction (#998): Postgres commits it before it
+  answers, so no row lock outlives the statement, whatever the request does next. A lock timeout
+  on it in the general limit is 503 `busy` with `Retry-After: 2`; the request is not served.
 - **Release on success,** so only failures stay counted:
   - The success deletes its own (account, IP) bucket.
   - It decrements, by one, the exact per-account and per-IP rows it reserved (the same

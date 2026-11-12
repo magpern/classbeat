@@ -14,6 +14,7 @@ from classbeat.db.session import (
     TransactionGuard,
     TransactionOwnedError,
     system_session,
+    system_statement,
     user_session,
 )
 from classbeat.db.tables import SYSTEM_TABLES
@@ -32,6 +33,7 @@ __all__ = [
     "event_loop_factory",
     "queue_verified",
     "system_session",
+    "system_statement",
     "user_session",
     "verify_database_role",
 ]

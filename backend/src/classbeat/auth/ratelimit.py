@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.keys import Keys, hmac_digest
 from classbeat.auth.tables import rate_limits
-from classbeat.db import system_session
+from classbeat.db import system_session, system_statement
 
 if TYPE_CHECKING:
     from classbeat.config import Settings
@@ -239,9 +239,8 @@ class RateLimiter:
                 ).label("retry_after"),
             )
         )
-        # Its own transaction, committed at once: the next attempt sees this slot taken.
-        async with system_session(self._factory) as session:
-            row = (await session.execute(statement)).one()
+        # Committed by Postgres before it answers (#998): the next attempt sees the slot taken.
+        [row] = await system_statement(self._factory, statement)
         slot = Slot(bucket_hash, row.window_start, bucket.on_success)
         return slot, row.hits <= bucket.limit.max_count, max(int(row.retry_after), 1)
 
@@ -258,10 +257,10 @@ class RateLimiter:
         return attempt
 
     async def begin_together(self, buckets: Sequence[Bucket]) -> Attempt:
-        """``begin`` in one statement and one transaction: a slot in every bucket, refused if
-        any is over its limit (the slots stay taken). For the general limit, which runs on every
-        signed-in request (``api_buckets``). The rows are written in bucket-hash order, so two
-        requests that share a bucket (the client address) lock their rows in the same order."""
+        """``begin`` in one statement, its own implicit transaction (#998: no row lock outlives
+        it): a slot in every bucket, refused if any is over its limit (the slots stay taken). For
+        the general limit, which runs on every signed-in request (``api_buckets``). The rows are
+        written in bucket-hash order, so two requests that share a bucket lock them in one order."""
         rows: dict[bytes, Bucket] = {}
         for bucket in buckets:
             rows.setdefault(self.bucket_hash(bucket.limit, bucket.value), bucket)
@@ -292,9 +291,7 @@ class RateLimiter:
                 func.clock_timestamp().label("now"),
             )
         )
-        async with system_session(self._factory) as session:
-            found = (await session.execute(statement)).all()
-        for row in found:
+        for row in await system_statement(self._factory, statement):
             bucket = rows[bytes(row.bucket_hash)]
             attempt.slots.append(Slot(bytes(row.bucket_hash), row.window_start, bucket.on_success))
             if row.hits > bucket.limit.max_count:
@@ -321,8 +318,7 @@ class RateLimiter:
             .values(bucket_hash=self.cooldown_hash(value), window_start=ends, count=0)
             .on_conflict_do_nothing()
         )
-        async with system_session(self._factory) as session:
-            await session.execute(statement)
+        await system_statement(self._factory, statement)
         return seconds
 
     async def cooling_down(self, value: str) -> bool:

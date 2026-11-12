@@ -14,14 +14,16 @@ it raise (a new transaction would run without the setting). What this does and d
   not enforced here.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, NoReturn
 
-from sqlalchemy import event, text
+from sqlalchemy import Row, Table, event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.sql.dml import UpdateBase
 
 from classbeat.context import UserContext, require_context
+from classbeat.db.tables import SYSTEM_TABLES
 
 SET_USER = text("SELECT set_config('app.user_id', :user_id, true)")
 
@@ -103,3 +105,23 @@ async def system_session(
     """One transaction with no user: system tables only; owned tables return no rows."""
     async with _owned_session(sessionmaker, "") as session:
         yield session
+
+
+async def system_statement(
+    sessionmaker: async_sessionmaker[AsyncSession], statement: UpdateBase
+) -> Sequence[Row[Any]]:
+    """One write to a system table as its own implicit transaction (autocommit), with no user;
+    returns its ``RETURNING`` rows. Postgres commits it before it answers, so a row lock it takes
+    ends with the statement: no await, stalled event loop or cancelled task after it can hold it
+    (#998: the limiter's upsert runs on every signed-in request). The statement is atomic on its
+    own; anything that needs more than one statement uses ``system_session``."""
+    table = getattr(statement, "table", None)
+    if not isinstance(table, Table) or table.name not in SYSTEM_TABLES:
+        raise ValueError("system_statement writes one system table only")
+    async with sessionmaker() as session:
+        # No ``app.user_id`` is set (it is transaction-local and the pool's reset discards it),
+        # so owned tables would return no rows, as in ``system_session``. The pool's reset
+        # (``discard_session_state``) turns autocommit off again on check-in.
+        connection = await session.connection(execution_options={"isolation_level": "AUTOCOMMIT"})
+        result = await connection.execute(statement)
+        return result.all() if result.returns_rows else []
