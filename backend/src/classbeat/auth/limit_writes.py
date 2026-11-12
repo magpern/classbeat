@@ -4,8 +4,11 @@ Each write is its own implicit transaction (``db.system_statement``): Postgres c
 answers, so no bucket row lock outlives the statement, whatever happens to the coroutine after it
 (an await, a stalled event loop, a cancelled request). A write that still waits past the role's
 ``lock_timeout`` (another holder, a slow disk) is ``LimitBusy``: the 503 ``busy`` answer with a
-short ``Retry-After``, never a pass. A reserve that times out has taken no slot and the request is
-refused; a release that times out gives nothing back, so its slots stay counted.
+short ``Retry-After``, never a pass. The bucket whose reserve timed out took no slot; the buckets
+reserved before it in the same ``begin`` keep theirs, and the request is refused. A release that
+times out gives back neither that slot nor any after it, so they stay counted. The cover read's
+cooldown write (``RateLimiter.start_cooldown``) calls ``system_statement`` directly: its caller
+answers ``{covers: []}`` on any database error.
 """
 
 import logging

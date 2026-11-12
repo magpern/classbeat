@@ -18,24 +18,12 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, NoReturn
 
-from sqlalchemy import (
-    CTE,
-    ColumnClause,
-    Delete,
-    Insert,
-    Row,
-    TableClause,
-    TextClause,
-    Update,
-    event,
-    text,
-)
+from sqlalchemy import Row, event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.sql import visitors
 from sqlalchemy.sql.dml import UpdateBase
 
 from classbeat.context import UserContext, require_context
-from classbeat.db.tables import SYSTEM_TABLES
+from classbeat.db.statement_policy import check_system_write
 
 SET_USER = text("SELECT set_config('app.user_id', :user_id, true)")
 
@@ -119,45 +107,17 @@ async def system_session(
         yield session
 
 
-def _system_only(statement: object) -> None:
-    """Raise ``ValueError`` unless ``statement`` is one ``INSERT``, ``UPDATE`` or ``DELETE`` that
-    touches system tables only (#1006). Refused: ``INSERT ... FROM SELECT``, any CTE (so no
-    data-modifying one), any other DML inside it, and opaque SQL (``text()``, a literal column).
-    Every table it names, anywhere (its target, subqueries, ``ON CONFLICT``, ``RETURNING``, a
-    column of another table that would make an implicit ``FROM``), must be in ``SYSTEM_TABLES``
-    with no schema. SQL functions it calls are not inspected: RLS and the role's grants bound
-    those."""
-    if not isinstance(statement, Insert | Update | Delete) or (
-        isinstance(statement, Insert) and statement.select is not None
-    ):
-        raise ValueError("system_statement writes one system table only")
-    pending: list[Any] = [statement]
-    while pending:
-        for element in visitors.iterate(pending.pop()):
-            if isinstance(element, CTE | TextClause) or (
-                isinstance(element, UpdateBase) and element is not statement
-            ):
-                raise ValueError("system_statement writes one system table only")
-            if isinstance(element, TableClause):
-                if element.schema is not None or element.name not in SYSTEM_TABLES:
-                    raise ValueError("system_statement writes one system table only")
-            elif isinstance(element, ColumnClause):
-                if element.is_literal:
-                    raise ValueError("system_statement writes one system table only")
-                if element.table is not None:
-                    pending.append(element.table)
-
-
 async def system_statement(
     sessionmaker: async_sessionmaker[AsyncSession], statement: UpdateBase
 ) -> Sequence[Row[Any]]:
-    """One write that touches system tables only (``_system_only`` says exactly what is
-    refused), run as its own implicit transaction (autocommit) with no user; returns its
-    ``RETURNING`` rows. Postgres commits it before it answers, so a row lock it takes ends with
-    the statement: no await, stalled event loop or cancelled task after it can hold it (#998:
-    the limiter's upsert runs on every signed-in request). The statement is atomic on its own;
-    anything that needs more than one statement uses ``system_session``."""
-    _system_only(statement)
+    """One write to a system table, on the allowlist of ``statement_policy`` (anything else is
+    a ``ValueError`` before the database is reached), run as its own implicit transaction
+    (autocommit) with no user; returns its ``RETURNING`` rows. Postgres commits it before it
+    answers, so a row lock it takes ends with the statement: no await, stalled event loop or
+    cancelled task after it can hold it (#998: the limiter's upsert runs on every signed-in
+    request). The statement is atomic on its own; anything that needs more than one statement
+    uses ``system_session``."""
+    check_system_write(statement)
     async with sessionmaker() as session:
         # No ``app.user_id`` is set (it is transaction-local and the pool's reset discards it),
         # so owned tables would return no rows, as in ``system_session``. The pool's reset
