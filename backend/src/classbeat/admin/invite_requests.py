@@ -14,8 +14,10 @@ one ``admin_audit`` row per call through ``admin_session`` on ``classbeat_maint`
 - ``POST /invite-requests/{request_id}/decline``: 409 ``already_decided`` for a decided request.
 - ``POST /invite-requests/decline`` ``{ids}`` (at most ``DECLINE_MAX``, #989): each request is
   declined as the single route does, in its own audited transaction, so there is one
-  ``invite_request.decline`` row per request; one that is gone or decided meanwhile is skipped
-  (``skipped``, its ``refused`` row) and does not undo the others.
+  ``invite_request.decline`` row per declined request; one that is gone or decided meanwhile is
+  skipped (``skipped``) without a row of its own and does not undo the others. The skips of one
+  call share one ``invite_request.decline_skipped`` row (``refused``, ``SKIPPED_REASON``, params
+  only their count, #994), so stale ids neither lose rows to the refusal limiter nor spend it.
 
 The list carries ``pending``, the size of the whole pending queue, so the screen shows it against
 ``PENDING_CAP`` from one page instead of fetching them all.
@@ -35,8 +37,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
 from classbeat.admin.audit import Target
-from classbeat.admin.db import Actor, AdminDb, AdminRefused, admin_session
+from classbeat.admin.db import Actor, AdminDb, AdminRefused, admin_session, audit_refusal
 from classbeat.admin.invite_request_models import (
+    SKIPPED_REASON,
     ApproveIn,
     Declined,
     DeclineIn,
@@ -48,6 +51,7 @@ from classbeat.admin.invite_request_models import (
     RequestPage,
     State,
 )
+from classbeat.admin.principals import AdminSkipped
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.emails import live
 from classbeat.mail import Mailer
@@ -117,12 +121,14 @@ async def _out(session: AsyncSession, rows: list[Any]) -> list[RequestOut]:
     ]
 
 
-async def _pending(session: AsyncSession, request_id: UUID) -> Any:
+async def _pending(
+    session: AsyncSession, request_id: UUID, refused: type[AdminRefused] = AdminRefused
+) -> Any:
     row = (await session.execute(_LOCK, {"i": request_id})).one_or_none()
     if row is None:
-        raise AdminRefused("not_found", 404)
+        raise refused("not_found", 404)
     if row.state != "pending":
-        raise AdminRefused("already_decided", 409)
+        raise refused("already_decided", 409)
     return row
 
 
@@ -215,7 +221,9 @@ async def approve_request(
     return Issued(code=code, request=out, email=email)
 
 
-async def _decline(db: AdminDb, actor: Actor, request_id: UUID) -> RequestOut:
+async def _decline(
+    db: AdminDb, actor: Actor, request_id: UUID, refused: type[AdminRefused] = AdminRefused
+) -> RequestOut:
     async with admin_session(
         db,
         actor,
@@ -223,7 +231,7 @@ async def _decline(db: AdminDb, actor: Actor, request_id: UUID) -> RequestOut:
         write=True,
         target=Target(kind="invite_request", id=str(request_id)),
     ) as session:
-        await _pending(session, request_id)
+        await _pending(session, request_id, refused)
         values = {"state": "declined", "p": None, "d": None, "inv": None}
         row = (
             await session.execute(_DECIDE, {**values, "by": actor.user_id, "i": request_id})
@@ -244,13 +252,20 @@ async def decline_requests(request: Request, actor: AdminActor, body: DeclineIn)
     skipped: list[UUID] = []
     for request_id in dict.fromkeys(body.ids):  # a repeated id is declined once
         try:
-            await _decline(db, actor, request_id)
-        except AdminRefused as exc:
-            if exc.reason not in ("not_found", "already_decided"):
-                raise
+            await _decline(db, actor, request_id, AdminSkipped)  # a skip writes no row itself
+        except AdminSkipped:
             skipped.append(request_id)
         else:
             declined.append(request_id)
+    if skipped:  # one summary row for the call, one slot of the refusal limiter: a count, no ids
+        await audit_refusal(
+            db,
+            actor,
+            "invite_request.decline_skipped",
+            SKIPPED_REASON,
+            target=Target(kind="invite_request"),
+            params={"skipped": len(skipped)},
+        )
     return Declined(declined=declined, skipped=skipped)
 
 

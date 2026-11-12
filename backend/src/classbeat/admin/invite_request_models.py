@@ -35,12 +35,22 @@ class ApproveParams(Params):
     send_email: bool
 
 
-ACTIONS["invite_request.list"] = ListParams
-ACTIONS["invite_request.approve"] = ApproveParams
-ACTIONS["invite_request.decline"] = NoParams  # one row per request, the bulk decline's too
-
 # The bulk decline's bound (#989): one request, at most this many audited transactions.
 DECLINE_MAX = 100
+# The reason of the bulk decline's one summary ``refused`` row (#994).
+SKIPPED_REASON = "already_decided_or_missing"
+
+
+class SkippedParams(Params):
+    """How many listed requests the bulk decline skipped: a count, never their ids."""
+
+    skipped: Annotated[int, Field(ge=1, le=DECLINE_MAX)]
+
+
+ACTIONS["invite_request.list"] = ListParams
+ACTIONS["invite_request.approve"] = ApproveParams
+ACTIONS["invite_request.decline"] = NoParams  # one row per declined request, the bulk's too
+ACTIONS["invite_request.decline_skipped"] = SkippedParams  # one row per bulk request (#994)
 
 
 class ApproveIn(BaseModel):
@@ -106,7 +116,7 @@ class RequestPage(Out):
 
 class Declined(Out):
     declined: list[UUID]
-    skipped: list[UUID]  # gone, or decided meanwhile (each has its ``refused`` audit row)
+    skipped: list[UUID]  # gone, or decided meanwhile (counted in one ``refused`` row, #994)
 
 
 class Issued(Out):

@@ -7,7 +7,8 @@ two confirmations racing for one invite give one account and one entitlement; an
 leaves ``app.user_id`` cleared for the rest of the sign-up transaction. #989: the provider
 hand-off (an unverified or missing email, ``oauth_handoff``) grants the tier too; the setting is
 cleared even when the redeem steps raise; and a refusal they raise (``AlreadyRedeemed``,
-``TermsRefused``) rolls the sign-up back as ``invite_invalid``, never a 500.
+``TermsRefused``) rolls the sign-up back as ``invite_invalid``, never a 500, on every path (the
+hand-off too, #994).
 """
 
 import asyncio
@@ -242,6 +243,28 @@ async def test_a_refusal_of_the_redeem_steps_refuses_a_password_sign_up_whole(
     assert superuser.execute(text("SELECT count(*) FROM users")).scalar_one() == 0
     assert superuser.execute(text("SELECT count(*) FROM pending_signups")).scalar_one() == 1
     assert superuser.execute(text("SELECT used_at FROM invites")).scalar_one() is None
+
+
+@REFUSALS
+async def test_a_refusal_of_the_redeem_steps_refuses_a_hand_off_sign_up_whole(
+    oenv: Env,
+    fake: FakeProviders,
+    smtp: SmtpFake,
+    superuser: Connection,
+    monkeypatch: pytest.MonkeyPatch,
+    refusal: Any,
+) -> None:
+    """The hand-off's confirmation (#994): ``invite_invalid``, and nothing of the sign-up stays."""
+    code, _ = tier_invite(superuser)
+    monkeypatch.setattr(invite_tier, "take", refusal)
+    response = await hand_off_and_confirm(oenv, fake, smtp, code)
+    assert (response.status_code, reason(response)) == (409, "invite_invalid")
+    for table in ("users", "identities", "code_redemptions"):
+        assert superuser.execute(text(f"SELECT count(*) FROM {table}")).scalar_one() == 0, table  # noqa: S608
+    assert superuser.execute(text("SELECT count(*) FROM pending_signups")).scalar_one() == 1
+    assert superuser.execute(text("SELECT used_at FROM invites")).scalar_one() is None
+    assert superuser.execute(text("SELECT redeemed_count FROM redeem_codes")).scalar_one() == 0
+    assert entitlements(superuser) == []
 
 
 async def test_the_user_setting_is_cleared_when_the_redeem_steps_raise(

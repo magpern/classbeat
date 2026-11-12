@@ -27,8 +27,10 @@ POST /{id}/approve {plan_id?: str, grant_days?: 1..366, expires_days?: 1..30 (14
   404 not_found | 409 already_decided | 422 unknown_plan or a bad body (plan_id and grant_days together)
 POST /{id}/decline
   200 Request | 404 not_found | 409 already_decided
-POST /decline {ids: [uuid], 1..100}   (#989; one audited transaction and audit row per request)
+POST /decline {ids: [uuid], 1..100}   (#989; one audited transaction and audit row per declined request)
   200 {declined: [uuid], skipped: [uuid]}   (skipped: gone or decided meanwhile) | 422 a bad body
+  (#994: the skips of one call share one refused `invite_request.decline_skipped` row,
+   reason already_decided_or_missing, params {skipped: <count>}, never the ids)
 
 Request = {id, email, heard_from, instructor, locale, has_account, state, plan_id, grant_days,
            invite: {id, state: active|used|expired} | null,

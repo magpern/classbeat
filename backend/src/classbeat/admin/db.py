@@ -23,8 +23,8 @@ after a write and refuses the way back (``transaction read-write mode must be se
 query``), so nothing the read path does can write, and the audit row commits with it. A write
 yields read-write; its audit row commits or rolls back with the action. When the body raises,
 the transaction rolls back (the ``ok`` row with it) and one row with ``outcome = 'refused'``
-(``AdminRefused``) or ``'error'`` is written in its own short transaction. The caller cannot
-commit or roll back the session.
+(``AdminRefused``; none for ``AdminSkipped``, whose caller writes one summary row) or ``'error'``
+is written in its own short transaction. The caller cannot commit or roll back the session.
 
 **An unknown target user.** The audit row is the first statement, so a ``target`` naming a user
 that does not exist fails its foreign key there: ``admin_session`` then raises ``AdminRefused``
@@ -62,8 +62,8 @@ from classbeat.admin.principals import (  # re-exported: callers import them fro
     Actor as Actor,
 )
 from classbeat.admin.principals import AdminRefused as AdminRefused
+from classbeat.admin.principals import AdminSkipped, audit_row, log_row
 from classbeat.admin.principals import Buyer as Buyer
-from classbeat.admin.principals import audit_row, log_row
 from classbeat.billing.errors import ACTIONS as BILLING_ACTIONS
 from classbeat.billing.errors import BillingRefused
 from classbeat.config import Settings
@@ -186,8 +186,8 @@ async def _record_failure(
 ) -> None:
     if isinstance(exc, AdminRefused):
         exc.audited = True  # this session's refusal: the handler must not add a second row
-        if not db.limiter.allow(actor.user_id):
-            return
+        if isinstance(exc, AdminSkipped) or not db.limiter.allow(actor.user_id):
+            return  # a skip is its caller's summary row (#994); beyond the limit, a log count
         outcome, reason = "refused", exc.reason
     else:
         outcome, reason = "error", "internal"

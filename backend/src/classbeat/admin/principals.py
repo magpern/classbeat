@@ -37,6 +37,12 @@ class AdminRefused(Exception):
         self.audited = False
 
 
+class AdminSkipped(AdminRefused):
+    """A refusal its caller records itself, once for many (the bulk decline's summary row, #994):
+    ``admin_session`` rolls back as for any refusal but writes no ``refused`` row and spends none
+    of the refusal limiter's budget. Raise it only where the caller writes that summary row."""
+
+
 class Actor:
     """Who acts, for the audit row: the admin's id and email (at the time), the request's id and
     an HMAC of its IP address. Built only by the admin gate (``classbeat.admin.routes``)."""

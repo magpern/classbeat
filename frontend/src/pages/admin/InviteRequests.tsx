@@ -54,7 +54,7 @@ export function InviteRequests() {
   const [issued, setIssued] = useState<Issued | null>(null)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   const [confirming, setConfirming] = useState<InviteRequest[] | null>(null)
-  const [note, setNote] = useState<string | null>(null)
+  const [note, setNote] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
   const list = useRequests(state, offset)
 
   const refresh = () => {
@@ -77,10 +77,12 @@ export function InviteRequests() {
       .then((done) => {
         if (done !== undefined) {
           const skipped = done.skipped.length
-          setNote(
-            `Declined ${requestsWord(done.declined.length)}.` +
+          setNote({
+            kind: 'success',
+            text:
+              `Declined ${requestsWord(done.declined.length)}.` +
               (skipped > 0 ? ` ${requestsWord(skipped)} had been decided already.` : ''),
-          )
+          })
         }
       })
       .then(refresh)
@@ -111,7 +113,12 @@ export function InviteRequests() {
           onCancel={() => {
             setApproving(null)
           }}
-          onStale={refresh}
+          onStale={(words) => {
+            // Decided meanwhile (#994): close the form, say so here and show the current queue.
+            setApproving(null)
+            setNote({ kind: 'error', text: words })
+            refresh()
+          }}
           onIssued={(made) => {
             setApproving(null)
             setIssued(made)
@@ -141,7 +148,7 @@ export function InviteRequests() {
               : null}
           </p>
         ) : null}
-        {note !== null ? <Notice kind="success">{note}</Notice> : null}
+        {note !== null ? <Notice kind={note.kind}>{note.text}</Notice> : null}
         {action.error !== null ? <Notice kind="error">{action.error}</Notice> : null}
         {list.error !== null ? <Notice kind="error">{list.error}</Notice> : null}
         {confirming !== null ? (
@@ -207,6 +214,7 @@ export function InviteRequests() {
             }}
             onApprove={(request) => {
               setConfirming(null)
+              setNote(null)
               setApproving(request)
             }}
             onDecline={(request) => {
@@ -219,6 +227,7 @@ export function InviteRequests() {
           nextOffset={list.next}
           setOffset={(n) => {
             setSelected(new Set())
+            setConfirming(null) // a confirmation names requests of the page it was asked on (#994)
             setOffset(n)
           }}
         />
