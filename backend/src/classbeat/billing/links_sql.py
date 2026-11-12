@@ -1,4 +1,4 @@
-"""The `billing_links` statements (ADR 0032 section 3, migration 0047). Every one runs on the
+"""The `billing_links` statements (ADR 0032 section 3, migration 0048). Every one runs on the
 maint role's session (the app role only reads the table, for the export) and every write names
 `owner_id` (guard 8).
 

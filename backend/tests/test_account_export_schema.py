@@ -31,6 +31,8 @@ OTHER_SYSTEM_TABLES = {
     "plans": "the same tiers for every user",
     "redeem_codes": "multi-use plan codes (hash only); the user's redemptions are exported",
     "app_settings": "operator settings, not per user",
+    "invite_requests": "requests from people with no account yet (ADR 0033); purged after the "
+    "decision",
     "admin_audit": "operator-only log (ADR 0014 section 2 and 5)",
     "model_eval_results": "recorded eval suite runs, not per user",
     "model_routes": "which model each route uses, not per user",

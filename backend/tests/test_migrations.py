@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0047_paddle_links"]
+    assert script.get_heads() == ["0048_paddle_links"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0047_paddle_links"]
+        assert applied_revisions(database_url) == ["0048_paddle_links"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -155,9 +155,11 @@ JOBS = [
     "billing_events",
     "subscriptions",
     "billing_log",
-    # M7b-prep (0047_paddle_links, ADR 0032 section 3).
+    # M7b-prep (0048_paddle_links, ADR 0032 section 3).
     "billing_links",
     "billing_webhook_refusals",
+    # ADR 0033 (0047_invite_requests).
+    "invite_requests",
     # M3c (0009_models).
     "model_eval_results",
     "model_routes",

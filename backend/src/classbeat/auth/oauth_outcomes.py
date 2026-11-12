@@ -14,11 +14,10 @@ from dataclasses import dataclass
 from datetime import timedelta
 from uuid import UUID
 
-from sqlalchemy import delete, func, insert, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.auth.accounts import create_user, find_user, grant_admin_if_listed, use_invite
+from classbeat.auth.accounts import find_user, grant_admin_if_listed
 from classbeat.auth.anomaly import client_mark
 from classbeat.auth.devices import remember_device
 from classbeat.auth.events import record_event
@@ -26,6 +25,7 @@ from classbeat.auth.keys import Keys, token_hash
 from classbeat.auth.oauth_client import ProviderIdentity
 from classbeat.auth.oauth_providers import GOOGLE
 from classbeat.auth.oauth_store import Flow, add_identity, identity_owner
+from classbeat.auth.provider_account import Refused, create_provider_account
 from classbeat.auth.sessions import (
     IssuedSession,
     SessionGone,
@@ -33,7 +33,7 @@ from classbeat.auth.sessions import (
     rotate_session,
     start_session,
 )
-from classbeat.auth.tables import identities, invites, pending_signups
+from classbeat.auth.tables import invites, pending_signups
 from classbeat.auth.userlock import lock_user, session_alive
 from classbeat.config import Settings
 from classbeat.emails.notices import Notice, happened
@@ -74,12 +74,6 @@ class Outcome:
     # Why a non-ok outcome happened, for the operator's log line (#522): a fixed word, never a
     # code, state, nonce, token or email.
     why: str = ""
-
-
-class Refused(Exception):
-    def __init__(self, code: str) -> None:
-        super().__init__(code)
-        self.code = code
 
 
 def _fail(code: str, why: str = "") -> Outcome:
@@ -287,47 +281,6 @@ async def _session_for(db: AsyncSession, req: Request, user_id: UUID) -> Outcome
         db, "sign_in", user_id=user_id, ip=req.ip, detail={"provider": req.flow.provider}
     )
     return Outcome("ok", issued=issued, device_token=device, next="signed_in")
-
-
-async def consume_invite(db: AsyncSession, invite_id: UUID | None) -> None:
-    """The conditional ``UPDATE`` of a provider sign-up. An invite the flow or hand-off carried
-    is consumed whatever the sign-up mode is by then, so it cannot be used again. Raises
-    ``Refused('invite_invalid')`` when the invite is gone; the caller's savepoint rolls
-    everything back."""
-    if invite_id is None:
-        return
-    if not await use_invite(db, invite_id):
-        raise Refused("invite_invalid")
-
-
-async def create_provider_account(
-    db: AsyncSession,
-    settings: Settings,
-    *,
-    invite_id: UUID | None,
-    email: str,
-    provider: str,
-    subject: str,
-    locale: str | None = None,
-) -> UUID:
-    """One savepoint: consume the invite, create the user (verified) and the identity.
-    Raises ``Refused`` with ``invite_invalid`` or ``account_exists``; nothing is left behind."""
-    try:
-        async with db.begin_nested():
-            await consume_invite(db, invite_id)
-            user_id = await create_user(db, email, locale=locale)
-            await db.execute(
-                insert(identities).values(
-                    user_id=user_id, provider=provider, subject=subject, email_at_link=email
-                )
-            )
-            if invite_id is not None:
-                await db.execute(
-                    update(invites).where(invites.c.id == invite_id).values(used_by=user_id)
-                )
-    except IntegrityError:
-        raise Refused("account_exists") from None  # never chained: DETAIL holds the address
-    return user_id
 
 
 async def _create_account(db: AsyncSession, req: Request, email: str) -> Outcome:

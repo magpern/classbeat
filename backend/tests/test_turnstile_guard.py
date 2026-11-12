@@ -27,6 +27,7 @@ TURNSTILE: dict[tuple[str, str], str] = {
     ("POST", "/api/auth/signup"): "signup",
     ("POST", "/api/auth/oauth/pending/email"): "signup_email",
     ("POST", "/api/auth/password/reset/request"): "reset",
+    ("POST", "/api/auth/invite-request"): "invite_request",  # ADR 0033 (#985)
 }
 # (method, path) -> why it needs no Turnstile token (ADR 0025 section 1).
 EXEMPT: dict[tuple[str, str], str] = {

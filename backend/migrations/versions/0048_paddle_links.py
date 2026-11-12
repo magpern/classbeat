@@ -1,8 +1,8 @@
 """Paddle on fakes: the provider CHECKs, ``billing_links`` and the webhook's refusals (#973,
 ADR 0032 sections 3 and 5)
 
-Revision ID: 0047_paddle_links
-Revises: 0046_billing
+Revision ID: 0048_paddle_links
+Revises: 0047_invite_requests
 Create Date: 2026-11-12
 
 - ``billing_events.provider`` and ``subscriptions.provider`` take ``fake_paddle`` and ``paddle``
@@ -34,8 +34,8 @@ from alembic import op
 
 from classbeat.db.rls import enable_owner_rls
 
-revision: str = "0047_paddle_links"
-down_revision: str | Sequence[str] | None = "0046_billing"
+revision: str = "0048_paddle_links"
+down_revision: str | Sequence[str] | None = "0047_invite_requests"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

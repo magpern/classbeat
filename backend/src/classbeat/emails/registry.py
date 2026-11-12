@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from classbeat.emails import kinds, passkey_kinds
+from classbeat.emails import invite_kinds, kinds, passkey_kinds
 from classbeat.emails.kinds import Builder
 
 
@@ -78,6 +78,8 @@ _ALL = (
         {"providers": ("mowl", "spotify", "swedebeat"), "reset_token": "SAMPLE"},
     ),
     _essential("email_changed", kinds.email_changed, _WHEN),
+    # ADR 0033 (#985): the code an admin issued for an invite request, when they chose to mail it.
+    _essential("invite_code", invite_kinds.invite_code, {"code": "SAMPLE", "days": 14}),
     _activity("totp_enrolled", kinds.totp_enrolled, _WHEN),
     _activity("mfa_failures", kinds.mfa_failures, _WHEN),
     _activity("identity_linked", kinds.identity_linked, {"provider": "github", **_WHEN}),

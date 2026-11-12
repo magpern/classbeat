@@ -116,6 +116,9 @@ _COLUMNS = {
     "billing_links": "id owner_id provider checkout_ref customer_ref subscription_ref "
     "activated_at changed_at created_at updated_at",
     "billing_webhook_refusals": "provider event_id reason created_at",
+    # ADR 0033 (#985): the requests the admin decides on.
+    "invite_requests": "id email email_normalized heard_from instructor locale state plan_id "
+    "grant_days invite_id decided_by decided_at created_at",
 }
 READABLE: dict[str, frozenset[str]] = {t: frozenset(c.split()) for t, c in _COLUMNS.items()}
 _UPDATES = {
@@ -126,6 +129,7 @@ _UPDATES = {
     "monthly_price_cents intro_price_cents intro_price_until currency "
     "saves_per_hour saves_per_day updated_at updated_by",
     "redeem_codes": "disabled_at",
+    "invite_requests": "state plan_id grant_days invite_id decided_by decided_at",
     "entitlements": "revoked_at revoked_by",
     "credit_ledger": "state reason settled_at refunded_by",
     "subscriptions": "provider plan_id anchor_day period_start period_end basis_minor "

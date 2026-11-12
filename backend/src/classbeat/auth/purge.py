@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth import securitylog
 from classbeat.auth.deps import purge_contexts
+from classbeat.auth.invite_request_purge import purge_invite_requests
 from classbeat.auth.tables import (
     auth_events,
     auth_tokens,
@@ -54,7 +55,8 @@ async def purge_expired(
     - ``known_devices``: unused for 90 days;
     - ``auth_events``: older than 30 days;
     - ``spotify_oauth_flows``: expired or used (an owned table: per user, in their own session);
-    - ``security_log``: older than ``security_log_days`` (7; owned, per user likewise; #632).
+    - ``security_log``: older than ``security_log_days`` (7; owned, per user likewise; #632);
+    - ``invite_requests``: decided 30 days ago, or pending for 90 days (ADR 0033).
     """
     idle = timedelta(days=settings.session_idle_days)
     now = func.now()
@@ -96,6 +98,7 @@ async def purge_expired(
         )
         counts["sessions_ip_cleared"] = int(cleared.rowcount or 0)  # pyright: ignore[reportAttributeAccessIssue]
         contexts = await purge_contexts(db)
+    counts["invite_requests"] = await purge_invite_requests(factory)
     counts["spotify_oauth_flows"] = await _purge_spotify_flows(factory, contexts)
     counts["swedebeat_handoffs"] = await _purge_handoffs(factory, contexts)
     counts["security_log"] = await _purge_security_log(

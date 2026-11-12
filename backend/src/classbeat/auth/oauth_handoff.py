@@ -24,7 +24,7 @@ from classbeat.auth.deps import request_ip
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import EmailAddress, factory, mailer, reserve
 from classbeat.auth.keys import new_token, token_hash
-from classbeat.auth.oauth_outcomes import Refused, create_provider_account
+from classbeat.auth.provider_account import Refused, create_provider_account
 from classbeat.auth.ratelimit import SIGNUP_ADDRESS, SIGNUP_IP, Bucket, password_buckets
 from classbeat.auth.tables import pending_signups
 from classbeat.db import system_session

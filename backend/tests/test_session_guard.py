@@ -207,3 +207,10 @@ def test_the_plan_services_are_reached_only_from_their_routes() -> None:
         "classbeat.plans.account",
     }
     assert importers("classbeat.plans.routes") == {"classbeat.web"}
+    # ADR 0033: the redeem steps open no session; the redeem route runs them in the user's
+    # session, the invite's tier in the sign-up's transaction (``app.user_id`` set to the new
+    # account). Nothing else may reach them.
+    assert importers("classbeat.plans.redeem_steps") == {
+        "classbeat.plans.redeem",
+        "classbeat.auth.invite_tier",
+    }
