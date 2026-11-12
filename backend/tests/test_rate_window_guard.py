@@ -5,9 +5,10 @@ restarts the count and the request that should be refused is let through (#995, 
 a test uses ``frozen_rate_windows`` (or ``freeze_rate_windows``, or a fixture of its own that
 patches ``ratelimit._window_start``).
 
-The rule is static and deliberately simple: a test function that mentions the status 429 is
-"counting" and must be pinned, by ``pytestmark``, ``usefixtures``, a parameter,
-or a parameter that is a fixture of the same file that patches ``_window_start``. It is an
+The rule is static and deliberately simple: a test function (or a method of a top-level
+class) that mentions the status 429 is "counting" and must be
+pinned, by ``pytestmark`` (the last assignment counts), ``usefixtures``, a parameter, or a
+parameter that is a fixture of the same file that patches ``_window_start``. It is an
 allowlist: a file that is not about our fixed-window limiter is listed in ``EXEMPT`` with the
 reason, so a new file that asserts a 429 fails here until its author decides. Limits: a 429 in a
 helper (not in a test function) is not seen, and a limit-counting test that never mentions
@@ -80,10 +81,9 @@ def _counts(func: ast.AST) -> bool:
 def unpinned_counting_tests(source: str) -> list[str]:
     """Names of the test functions in ``source`` that count to a limit without a window pin."""
     tree = ast.parse(source)
-    marks = [
-        n.value for n in tree.body if isinstance(n, ast.Assign) and _is_pytestmark(n) and n.value
-    ]
-    pinned = set(PINS) if _names(marks) & PINS else set()
+    # The last module-level ``pytestmark`` wins, as at runtime: a later reassignment unpins.
+    marks = [n.value for n in tree.body if isinstance(n, ast.Assign) and _is_pytestmark(n)]
+    pinned = set(PINS) if marks and _names([marks[-1]]) & PINS else set()
     own = {  # fixtures of this file that patch the window themselves
         fn.name
         for fn in ast.walk(tree)
@@ -91,9 +91,7 @@ def unpinned_counting_tests(source: str) -> list[str]:
         and "_window_start" in ast.unparse(fn)
     }
     bad = []
-    for fn in tree.body:
-        if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
-            continue
+    for fn in _test_functions(tree):
         if not fn.name.startswith("test") or not _counts(fn):
             continue
         params = {a.arg for a in fn.args.posonlyargs + fn.args.args + fn.args.kwonlyargs}
@@ -101,6 +99,15 @@ def unpinned_counting_tests(source: str) -> list[str]:
         if not (pinned or here & (PINS | own)):
             bad.append(fn.name)
     return bad
+
+
+def _test_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Top-level functions and the methods of top-level classes (``class TestX``)."""
+    found: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+    for node in tree.body:
+        members = node.body if isinstance(node, ast.ClassDef) else [node]
+        found += [m for m in members if isinstance(m, ast.FunctionDef | ast.AsyncFunctionDef)]
+    return found
 
 
 def _is_pytestmark(node: ast.Assign) -> bool:
@@ -145,3 +152,11 @@ def test_the_scan_sees_what_it_should() -> None:
     )
     assert unpinned_counting_tests(own) == []
     assert unpinned_counting_tests(own.replace("(one_minute)", "()")) == ["test_x"]
+    method = "class TestX:\n    def test_x(self):\n        assert code == 429\n"
+    assert unpinned_counting_tests(method) == ["test_x"]
+    assert unpinned_counting_tests(method.replace("(self)", "(self, frozen_rate_windows)")) == []
+    # the last pytestmark wins: a reassignment after the pin unpins, one before it does not
+    pin = 'pytestmark = [pytest.mark.usefixtures("frozen_rate_windows")]\n'
+    body = "def test_x():\n    429\n"
+    assert unpinned_counting_tests(pin + "pytestmark = []\n" + body) == ["test_x"]
+    assert unpinned_counting_tests("pytestmark = []\n" + pin + body) == []

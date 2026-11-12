@@ -80,23 +80,30 @@ def test_the_bulk_decline_passes_it_to_decline_and_catches_it_itself() -> None:
     handlers = [h for h in ast.walk(bulk) if isinstance(h, ast.ExceptHandler) and h.type in nodes]
     assert len(handlers) == 1
     assert len(nodes) == 2  # the argument and the except, nothing else
-    (guarded,) = [
+    guards = [
         t for t in ast.walk(bulk)
         if isinstance(t, ast.Try) and handlers[0] in t.handlers
     ]  # fmt: skip
-    assert calls[0] in {n for s in guarded.body for n in ast.walk(s)}
-    # The summary row is written in a finally that wraps the decline loop itself (the `for` around
-    # the `_decline` call), so a later id's error keeps the earlier skips' row. A `finally` around
-    # one `_decline` call, or an unrelated one, does not count.
-    (loop,) = [
+    assert len(guards) == 1, f"expected one try with the AdminSkipped handler, found {len(guards)}"
+    assert calls[0] in {n for s in guards[0].body for n in ast.walk(s)}
+    # The summary row is written in a finally that wraps the decline loop itself (the `for` or
+    # `async for` around the `_decline` call), so a later id's error keeps the earlier skips' row.
+    # A `finally` around one `_decline` call, or an unrelated one, does not count; nor does a `try`
+    # around the loop that has only `except` handlers.
+    loops = [
         n for n in ast.walk(bulk)
-        if isinstance(n, ast.For) and calls[0] in set(ast.walk(n))
+        if isinstance(n, ast.For | ast.AsyncFor) and calls[0] in set(ast.walk(n))
     ]  # fmt: skip
+    assert len(loops) == 1, f"expected one loop around the _decline call, found {len(loops)}"
     wrapping = [
         t for t in ast.walk(bulk)
-        if isinstance(t, ast.Try) and loop in {n for s in t.body for n in ast.walk(s)}
+        if isinstance(t, ast.Try)
+        and t.finalbody
+        and loops[0] in {n for s in t.body for n in ast.walk(s)}
     ]  # fmt: skip
-    assert len(wrapping) == 1
+    assert len(wrapping) == 1, (
+        f"expected one try/finally around the decline loop, found {len(wrapping)}"
+    )
     finals = [n for s in wrapping[0].finalbody for n in ast.walk(s)]
     summary = [
         n for n in finals if isinstance(n, ast.Call) and ast.unparse(n.func) == "audit_refusal"
