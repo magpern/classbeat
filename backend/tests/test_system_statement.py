@@ -18,6 +18,7 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool
 from classbeat.auth.tables import rate_limits
 from classbeat.config import Settings
 from classbeat.db import create_engine, create_session_factory, system_statement, user_session
+from classbeat.db import session as session_module
 from classbeat.db.tables import SYSTEM_TABLES
 from ctx import make_context
 
@@ -88,7 +89,11 @@ async def test_the_connection_comes_back_in_transaction_mode(one_connection: Ses
         assert (await session.execute(found)).first() is None
 
 
-async def test_it_leaves_no_user_setting(one_connection: Sessions) -> None:
+async def test_it_leaves_no_user_setting(
+    one_connection: Sessions, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ``current_setting`` is not on the statement allowlist; this test only reads the setting.
+    monkeypatch.setattr(session_module, "check_system_write", lambda _: None)
     async with user_session(one_connection, make_context()):
         pass
     statement = (

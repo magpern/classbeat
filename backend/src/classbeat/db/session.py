@@ -18,12 +18,12 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, NoReturn
 
-from sqlalchemy import Row, Table, event, text
+from sqlalchemy import Row, event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.dml import UpdateBase
 
 from classbeat.context import UserContext, require_context
-from classbeat.db.tables import SYSTEM_TABLES
+from classbeat.db.statement_policy import check_system_write
 
 SET_USER = text("SELECT set_config('app.user_id', :user_id, true)")
 
@@ -110,14 +110,14 @@ async def system_session(
 async def system_statement(
     sessionmaker: async_sessionmaker[AsyncSession], statement: UpdateBase
 ) -> Sequence[Row[Any]]:
-    """One write to a system table as its own implicit transaction (autocommit), with no user;
-    returns its ``RETURNING`` rows. Postgres commits it before it answers, so a row lock it takes
-    ends with the statement: no await, stalled event loop or cancelled task after it can hold it
-    (#998: the limiter's upsert runs on every signed-in request). The statement is atomic on its
-    own; anything that needs more than one statement uses ``system_session``."""
-    table = getattr(statement, "table", None)
-    if not isinstance(table, Table) or table.name not in SYSTEM_TABLES:
-        raise ValueError("system_statement writes one system table only")
+    """One write to a system table, on the allowlist of ``statement_policy`` (anything else is
+    a ``ValueError`` before the database is reached), run as its own implicit transaction
+    (autocommit) with no user; returns its ``RETURNING`` rows. Postgres commits it before it
+    answers, so a row lock it takes ends with the statement: no await, stalled event loop or
+    cancelled task after it can hold it (#998: the limiter's upsert runs on every signed-in
+    request). The statement is atomic on its own; anything that needs more than one statement
+    uses ``system_session``."""
+    check_system_write(statement)
     async with sessionmaker() as session:
         # No ``app.user_id`` is set (it is transaction-local and the pool's reset discards it),
         # so owned tables would return no rows, as in ``system_session``. The pool's reset

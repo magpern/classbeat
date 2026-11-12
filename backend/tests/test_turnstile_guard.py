@@ -147,5 +147,12 @@ def test_each_turnstile_route_calls_the_check_with_its_own_action_first() -> Non
         for line in before:
             assert not any(
                 word in line
-                for word in ("system_session", "reserve(", "hasher", "cookies", "mailer")
+                for word in (
+                    "system_session",
+                    "system_statement",
+                    "reserve(",
+                    "hasher",
+                    "cookies",
+                    "mailer",
+                )
             ), (key, line)
