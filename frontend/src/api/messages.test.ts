@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { oauthOutcomeMessage } from './messages'
+import { ApiError } from './client'
+import { errorMessage, oauthOutcomeMessage } from './messages'
 
 // #522: the reauth_stale sentence by what is known about the account's password.
 describe('oauthOutcomeMessage for a failed re-authentication', () => {
@@ -60,5 +61,27 @@ describe('oauthOutcomeMessage for a new provider account on the sign-in screen (
     const text = oauthOutcomeMessage('no_account', undefined, 'google')
     expect(text).not.toMatch(/invite code|below/i)
     expect(text).not.toBe(oauthOutcomeMessage('invite_required'))
+  })
+})
+
+// #1004: a 503 "busy" (rate-limiter lock timeout, Retry-After) is a calm message, not the server-fault one.
+describe('errorMessage for a busy service', () => {
+  const busy = 'The service is busy. Try again in a moment.'
+  const server = 'Something went wrong on the server. Try again in a moment.'
+
+  it('words 503 with reason busy', () => {
+    expect(errorMessage(new ApiError(503, 'busy', 2, null))).toBe(busy)
+    expect(errorMessage(new ApiError(503, 'busy', null, null))).toBe(busy)
+  })
+
+  it('words a 503 with Retry-After and no worded reason', () => {
+    expect(errorMessage(new ApiError(503, null, 2, null))).toBe(busy)
+    expect(errorMessage(new ApiError(503, 'something_new', 2, null))).toBe(busy)
+  })
+
+  it('keeps a worded reason and the generic server message otherwise', () => {
+    expect(errorMessage(new ApiError(503, 'passkey_busy', 2, null))).toContain('Passkey sign-in is busy')
+    expect(errorMessage(new ApiError(503, null, null, null))).toBe(server)
+    expect(errorMessage(new ApiError(500, null, 2, null))).toBe(server)
   })
 })

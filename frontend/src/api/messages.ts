@@ -111,6 +111,11 @@ function waitText(seconds: number): string {
     : t('error.waitSeconds', { count: Math.ceil(seconds) })
 }
 
+function isBusy(error: ApiError): boolean {
+  if (error.reason === 'busy') return true
+  return error.retryAfter !== null && (error.reason === null || reasonKey(error.reason) === undefined)
+}
+
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 429) {
@@ -118,6 +123,9 @@ export function errorMessage(error: unknown): string {
         ? t('error.tooMany')
         : t('error.tooManyWait', { wait: waitText(error.retryAfter) })
     }
+    // #1004: the rate limiter's lock timeout answers 503 `busy` with Retry-After. A 503 that carries
+    // Retry-After and no worded reason is the same calm "busy" case, not a server fault. No retry loop.
+    if (error.status === 503 && isBusy(error)) return t('error.busy')
     const key = error.reason === null ? undefined : reasonKey(error.reason)
     if (key !== undefined) return t(key)
     if (error.status === 422) return t('error.fields')

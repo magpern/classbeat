@@ -224,6 +224,7 @@ export const en = {
   'error.waitSeconds': { one: '{count} seconds', other: '{count} seconds' },
   'error.fields': 'Check the fields and try again.',
   'error.server': 'Something went wrong on the server. Try again in a moment.',
+  'error.busy': 'The service is busy. Try again in a moment.',
   'error.network': 'The server could not be reached. Check your connection.',
   'error.generic': 'That did not work. Try again.',
 

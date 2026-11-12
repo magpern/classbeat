@@ -111,6 +111,9 @@ describe('request an invite form', () => {
     [reason(503, 'captcha_unavailable'), en['error.reason.captcha_unavailable']],
     [json({}, 429, { 'Retry-After': '120' }), 'Too many attempts. Try again in 2 minutes.'],
     [json({}, 429), en['error.tooMany']],
+    // #1004: the rate limiter's 503 busy answer, with or without a reason code.
+    [json({ detail: { reason: 'busy' } }, 503, { 'Retry-After': '2' }), en['error.busy']],
+    [json({}, 503, { 'Retry-After': '2' }), en['error.busy']],
   ])('words a refusal in plain language (%#)', async (answer, text) => {
     fakeApi({
       'GET /api/settings/public': PUBLIC_INVITE,

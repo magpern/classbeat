@@ -111,5 +111,6 @@
   "plan.checkout.redirecting",
   "plan.checkout.waiting",
   "plan.checkout.slow",
-  "plan.checkout.failed"
+  "plan.checkout.failed",
+  "error.busy"
 ]
