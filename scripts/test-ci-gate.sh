@@ -371,9 +371,10 @@ if command -v yq > /dev/null; then
   done
   for step in "Start the stack" "Check /api/ready and /" "Check the containers run as non-root" \
     "Check no secret value is in docker inspect" "Check postgres_password is mounted on db and db-functions only" \
-    "Check database_maint_password is mounted on db-functions and web only" \
+    "Check database_maint_password is mounted on db-functions, web and web-paddle only" \
+    "Check the Paddle webhook secret is mounted on web-paddle only" \
     "Check the OAuth client secrets are mounted on web only" "Check the model keys are mounted on the worker only" \
-    "Check no secret value is in the web, worker and web-passkeys logs"; do
+    "Check no secret value is in the web, worker, web-passkeys and web-paddle logs"; do
     found="$(e2e_step "$step" '.name')"
     cond="$(e2e_step "$step" '.if // ""')"
     if [ "$found" = "$step" ] && [ -z "$cond" ]; then report ok "e2e: '$step' runs in every shard"; else report FAIL "e2e: '$step' is missing or has if '$cond'"; fi
