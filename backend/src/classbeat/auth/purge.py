@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth import securitylog
 from classbeat.auth.deps import purge_contexts
-from classbeat.auth.invite_request_routes import purge_invite_requests
+from classbeat.auth.invite_request_purge import purge_invite_requests
 from classbeat.auth.tables import (
     auth_events,
     auth_tokens,

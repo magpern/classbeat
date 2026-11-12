@@ -11,31 +11,25 @@ has an account all look the same. Nothing here reads ``users``: whether an addre
 is the admin's to see, never the visitor's. No log line names the address or the text, and no mail
 is sent (the code goes out only when an admin issues one).
 
-``purge_invite_requests`` is the hourly purge's (``classbeat.auth.purge``).
+The hourly purge of these rows is ``classbeat.auth.invite_request_purge`` (the worker imports no
+web route).
 """
 
 import logging
-from datetime import timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Request
 from pydantic import AfterValidator, BaseModel, Field, StrictBool
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.auth import locale as account_locale
 from classbeat.auth.captcha import require_captcha
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.deps import request_ip
 from classbeat.auth.flowtools import EmailAddress, factory, reserve
-from classbeat.auth.invite_request_policy import (
-    DECIDED_RETENTION_DAYS,
-    HEARD_FROM_MAX,
-    PENDING_CAP,
-    PENDING_RETENTION_DAYS,
-    clean_heard_from,
-)
+from classbeat.auth.invite_request_policy import HEARD_FROM_MAX, PENDING_CAP, clean_heard_from
 from classbeat.auth.ratelimit import Bucket, Limit
 from classbeat.auth.signup_routes import refuse
 from classbeat.db import system_session
@@ -57,10 +51,6 @@ _INSERT = text(
     "WHERE (SELECT count(*) FROM invite_requests WHERE state = 'pending') < :cap"
 )
 _ONE_OPEN = "invite_requests_one_open"
-_PURGE = text(
-    "DELETE FROM invite_requests WHERE (state <> 'pending' AND decided_at < now() - :decided) "
-    "OR (state = 'pending' AND created_at < now() - :pending)"
-)
 
 
 class InviteRequestIn(BaseModel):
@@ -119,16 +109,3 @@ async def request_invite(body: InviteRequestIn, request: Request) -> Received:
             },
         )
     return Received()
-
-
-async def purge_invite_requests(sessions: async_sessionmaker[AsyncSession]) -> int:
-    """Delete decided requests 30 days after the decision and pending ones after 90 days."""
-    async with system_session(sessions) as db:
-        result = await db.execute(
-            _PURGE,
-            {
-                "decided": timedelta(days=DECIDED_RETENTION_DAYS),
-                "pending": timedelta(days=PENDING_RETENTION_DAYS),
-            },
-        )
-    return int(result.rowcount or 0)  # pyright: ignore[reportAttributeAccessIssue]
