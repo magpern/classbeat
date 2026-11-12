@@ -365,7 +365,10 @@ export async function disableCode(id: string): Promise<RedeemCode> {
 
 const ADMIN_REASONS: Record<string, string> = {
   forbidden: 'Your account is not an admin account.',
-  not_found: 'That no longer exists. Reload the list.',
+  not_found: 'That no longer exists.',
+  // Admin pages are English-only and reload themselves, so this is not the shared catalogue's
+  // "Reload the list." text (`error.reason.already_decided`).
+  already_decided: 'That request was decided already. The list shows the current queue.',
   target_is_admin: 'Admins cannot be disabled or deleted here. Use the command line.',
   email_mismatch: 'The email you typed does not match this account.',
   already_revoked: 'That entitlement was already revoked.',

@@ -2,7 +2,11 @@
 database. ``admin_session`` writes no ``refused`` row for an ``AdminSkipped``, so one raised
 anywhere else would silence a real refusal row. Today the bulk decline is the only user: it passes
 the class to ``_decline``, whose ``_pending`` raises it, catches it itself and writes one summary
-row for the call. An allowlist, so a new use fails here until a reviewer has looked at it."""
+row for the call. An allowlist, so a new use fails here until a reviewer has looked at it.
+
+Limit: a static check sees only names that are spelled out. A lookup that never spells the name
+(string concatenation, ``vars``, ``__subclasses__``) is outside any static check; a reviewer has to
+catch it."""
 
 import ast
 
@@ -81,9 +85,19 @@ def test_the_bulk_decline_passes_it_to_decline_and_catches_it_itself() -> None:
         if isinstance(t, ast.Try) and handlers[0] in t.handlers
     ]  # fmt: skip
     assert calls[0] in {n for s in guarded.body for n in ast.walk(s)}
-    # The summary row is written in a finally, so a later error keeps the earlier skips' row.
-    finals = [n for t in ast.walk(bulk) if isinstance(t, ast.Try) for s in t.finalbody
-              for n in ast.walk(s)]  # fmt: skip
+    # The summary row is written in a finally that wraps the decline loop itself (the `for` around
+    # the `_decline` call), so a later id's error keeps the earlier skips' row. A `finally` around
+    # one `_decline` call, or an unrelated one, does not count.
+    (loop,) = [
+        n for n in ast.walk(bulk)
+        if isinstance(n, ast.For) and calls[0] in set(ast.walk(n))
+    ]  # fmt: skip
+    wrapping = [
+        t for t in ast.walk(bulk)
+        if isinstance(t, ast.Try) and loop in {n for s in t.body for n in ast.walk(s)}
+    ]  # fmt: skip
+    assert len(wrapping) == 1
+    finals = [n for s in wrapping[0].finalbody for n in ast.walk(s)]
     summary = [
         n for n in finals if isinstance(n, ast.Call) and ast.unparse(n.func) == "audit_refusal"
     ]

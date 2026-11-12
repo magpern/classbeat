@@ -343,6 +343,21 @@ describe('admin invite requests', () => {
     expect(api.to('POST', `${BASE}/decline`)).toHaveLength(0)
   })
 
+  it('says a single decline of an already-decided request was decided, without "Reload the list"', async () => {
+    const api = adminApi({ [`POST ${BASE}/${A}/decline`]: () => reason(409, 'already_decided') })
+    renderAt('/admin/invite-requests')
+    const row = (await screen.findByText('ann.rider@example.test')).closest('tr')!
+    fireEvent.click(within(row).getByRole('button', { name: 'Decline' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Confirm the decline' })).getByRole('button', { name: 'Yes, decline' }))
+    expect(
+      await screen.findByText('That request was decided already. The list shows the current queue.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Reload the list/)).toBeNull()
+    await waitFor(() => {
+      expect(api.to('GET', PENDING)).toHaveLength(2) // the page reloaded itself
+    })
+  })
+
   it('declines the selected requests in one call after asking, and says which were decided already', async () => {
     const C = 'aaaaaaaa-0000-0000-0000-000000000003'
     let declined = false
