@@ -700,7 +700,7 @@ docker compose down -v                   # stop and delete the volume
 
 Every worktree gets its own project name, volume and ports (web `20000+<issue>`, Postgres
 `30000+<issue>`, Mailpit UI `40000+<issue>`, the e2e `web-passkeys` `50000+<issue>`, the e2e `web-paddle` `60000+<issue>`; issue numbers
-1-9999), disjoint from the defaults of the main checkout (8000, 55432, 8025, 8001, 8002), so stacks never collide:
+1-5535), disjoint from the defaults of the main checkout (8000, 55432, 8025, 8001, 8002), so stacks never collide:
 
 ```bash
 scripts/worktree.sh new 7 some-slug      # ../classbeat-wt/7-some-slug on branch 7-some-slug, then init

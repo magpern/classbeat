@@ -23,7 +23,7 @@ import {
 } from './paddle-helpers'
 import { sql } from './song-helpers'
 
-// PB-6 (#977, ADR 0032, docs/plans/paddle.md "Done when", items 1 to 5), on the compose stack with the
+// PB-6 (#977, ADR 0032, docs/plans/paddle-on-fakes.md "Done when", items 1 to 5), on the compose stack with the
 // fake Paddle (`web-paddle`, CLASSBEAT_BILLING_PROVIDER=fake_paddle; billing stays off, so a tester buys).
 // Pay and Decline are the fake's hosted page, driven through the UI, and its own signed events reach the
 // webhook in process. The notifications the fake keeps to itself (a renewal, an upgrade's charge) and the
@@ -184,7 +184,8 @@ test('6. an upgrade waits for its notification, and the plan changes when it lan
   const now = new Date(Math.floor(Date.now() / 1000) * 1000)
   const amount = prorated(PRICE.pro - PRICE.instructor, before, now)
   const quoted = (await billingOf(page)).offers.find((o) => o.plan === 'pro')
-  expect([amount, prorated(PRICE.pro - PRICE.instructor, before, new Date())]).toContain(quoted?.charge_minor ?? amount)
+  expect(quoted, 'the Professional offer').toBeDefined()
+  expect([amount, prorated(PRICE.pro - PRICE.instructor, before, new Date())]).toContain(quoted!.charge_minor)
   const upgrade = paid(who, { plan: 'pro', amount, origin: 'subscription_update', start: now, end: new Date(before.period_end) })
   expect(await post(request, upgrade.body)).toMatchObject({ status: 200, outcome: 'applied' })
 

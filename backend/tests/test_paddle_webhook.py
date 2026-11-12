@@ -336,6 +336,10 @@ async def test_a_subscription_update_before_the_first_payment_is_409_then_lands(
     assert (landed.status_code, landed.json()["outcome"]) == (200, "ignored")
 
 
+def test_a_pending_checkout_expires_after_24_hours() -> None:
+    assert links_sql.PENDING_HOURS == 24  # ADR 0032 section 3: the pinned value
+
+
 async def test_a_checkout_older_than_a_day_no_longer_waits_so_the_notice_is_a_counted_422(
     env: Env, tester: Any, superuser: Connection
 ) -> None:

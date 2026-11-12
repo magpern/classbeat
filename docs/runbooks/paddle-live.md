@@ -13,7 +13,7 @@ This page names no secret value. Every key is a file under `secrets/`, mounted l
 ## 1. What the owner does (nothing here is done by an agent)
 
 1. **Paddle account.** Open a Paddle Billing account and its **sandbox** (a separate login). Finish
-   the seller verification for the live account only when the sandbox run (section 4) has passed.
+   the seller verification for the live account only when the sandbox run (section 3) has passed.
 2. **Products and prices.** Create one product and a monthly price per paid plan (Individual and
    Professional) in the sandbox, with the amounts the admin set under Plans. The prices are **net of
    tax** (Paddle adds and remits it). Write the price ids down; they are settings (section 3).
@@ -21,16 +21,25 @@ This page names no secret value. Every key is a file under `secrets/`, mounted l
    `secrets/` (milestone 23 names the file and the setting that reads it). It is never put in `.env`, a URL, a log or a chat.
 4. **Webhook destination.** In Paddle, Developer tools, Notifications: add a destination at
    `https://<domain>/api/billing/paddle/webhook`, subscribed to `transaction.completed`,
-   `transaction.payment_failed`, `subscription.updated`, `subscription.canceled`, `subscription.created`
-   (the last four are acknowledged; only the first and the cancel/update ones change a plan) and the
-   adjustment events (acknowledged and ignored until the refund policy is decided).
+   `transaction.payment_failed`, `subscription.created`, `subscription.updated`, `subscription.canceled`
+   and the adjustment events. `transaction.completed` (a start, a renewal or an upgrade's charge),
+   `subscription.updated` (a scheduled cancel or its resume) and `subscription.canceled` (the end) change
+   a plan; `transaction.payment_failed` and `subscription.created` are acknowledged and ignored, and so
+   are the adjustment events until the refund policy is decided.
 5. **Webhook secret.** Paddle shows the destination's secret key once. Save it as
    `secrets/paddle_webhook_secret` (one secret per line, at most four, so a rotation can hold the old and
-   the new). It is mounted on `web` only; the worker refuses to start when it can read it.
-6. **Settings** (from `.env`, see `compose.prod.yaml`): the two price ids (and the client-side token if
-   the real checkout needs it), once milestone 23 has added them. They are ids, not secrets.
+   the new). It is to be mounted on `web` only (the worker refuses to start when it can read it), but
+   **not wired yet**: see "Production wiring" in section 2.
+6. **Settings:** the two price ids (and the client-side token if the real checkout needs it), once
+   milestone 23 has added them. They are ids, not secrets.
 
 ## 2. What must be built first (milestone 23, in this order)
+
+**Production wiring does not exist today.** `compose.prod.yaml` has no `paddle_webhook_secret` secret or
+mount and passes neither `CLASSBEAT_BILLING_PROVIDER` nor `CLASSBEAT_BILLING_ENABLED` to `web`, and the
+`scripts/check-prod-compose-*` checks name none of them. Only the e2e stack (`compose.e2e.yaml`,
+`web-paddle`, a public test secret) has them. Editing the deployment's `.env` changes nothing until the
+last item below is built.
 
 Each is its own PR with its own review. None exists yet.
 
@@ -52,6 +61,10 @@ Each is its own PR with its own review. None exists yet.
    plan, and the catalogue (`paddle_catalog.py`) maps both ways. A real id and a placeholder id must
    never collide: the placeholder is cut to 64 characters, so two long plan ids with the same first
    32 bytes would map to one price. A test pins that the catalogue refuses a duplicate id.
+5. **Production compose wiring** (the prerequisite of section 4): the `paddle_webhook_secret` secret
+   file mounted on `web` only, the two billing variables (and the price-id settings) passed through to
+   `web`, and the matching `scripts/check-prod-compose-*` allow-list rules, with a worker-must-not-hold
+   rule like the one for `database_maint_password`. It is a secret-mounting change: Opus review.
 
 ## 3. The sandbox checks (do them before the live account)
 
@@ -80,10 +93,13 @@ leaves the plan as it was; and that no log line holds a body, a signature or a k
 
 Only when sections 1 to 3 are done and the sandbox run passed:
 
+Prerequisite: the production compose wiring of section 2, item 5, is built, reviewed and released.
+Without it, setting the variables below does nothing.
+
 1. Put the live account's key, webhook secret and price ids in place (the same steps, the live dashboard).
-2. Set `CLASSBEAT_BILLING_PROVIDER=paddle` and `CLASSBEAT_BILLING_ENABLED=true` in the deployment's
-   `.env`, then deploy (owner only; [vps-deploy.md](vps-deploy.md)). `paddle` with billing enabled is
-   what settings validation accepts only once the real client exists.
+2. Set `CLASSBEAT_BILLING_PROVIDER=paddle` and `CLASSBEAT_BILLING_ENABLED=true` where the wiring says
+   (the deployment's `.env`), then deploy (owner only; [vps-deploy.md](vps-deploy.md)). Settings
+   validation accepts `paddle` with billing enabled only once the real client exists.
 3. Buy once yourself with a real card on the cheapest plan, confirm the plan changes when the signed
    notification lands, then cancel and read the refund policy you chose (below) before refunding by hand.
 4. The legal pages (terms, privacy, refunds, sub-processors) are drafts. Publish them, replacing the

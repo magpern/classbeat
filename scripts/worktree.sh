@@ -14,7 +14,7 @@ SECRETS=(postgres_password database_owner_password database_password database_ma
 
 die() { echo "worktree.sh: $*" >&2; exit 1; }
 
-MAX_ISSUE=9999
+MAX_ISSUE=5535  # the highest port base is 60000 + issue, and a port is at most 65535
 
 # Digits, no leading zero, 1..MAX_ISSUE (ports are 20000/30000/40000/50000/60000 + issue).
 check_issue() {
