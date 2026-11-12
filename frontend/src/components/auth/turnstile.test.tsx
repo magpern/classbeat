@@ -45,11 +45,14 @@ function stubTurnstile() {
 
 /** Plays the script's arrival: defines `window.turnstile`, then fires the load event. */
 async function loadScript(api: TurnstileApi) {
-  const [script] = scripts()
-  expect(script).toBeDefined()
+  // The group renders before the effect that adds api.js has run, so wait for the element.
+  await waitFor(() => {
+    expect(scripts()).toHaveLength(1)
+  })
+  const script = scripts()[0]!
   window.turnstile = api
   await act(async () => {
-    script!.dispatchEvent(new Event('load'))
+    script.dispatchEvent(new Event('load'))
     await Promise.resolve()
   })
 }
@@ -404,7 +407,10 @@ describe('Cloudflare Turnstile (captcha.site_key)', () => {
 
     fireEvent.click(screen.getByRole('link', { name: 'Back to sign in' }))
     await screen.findByRole('heading', { name: 'Sign in' })
-    expect(scripts()).toHaveLength(1)
+    // The new form adds api.js in an effect, after its heading shows.
+    await waitFor(() => {
+      expect(scripts()).toHaveLength(1)
+    })
   })
 
   it('renders again in the new theme when the theme changes', async () => {
