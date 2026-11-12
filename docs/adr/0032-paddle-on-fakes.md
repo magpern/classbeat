@@ -27,7 +27,7 @@ tested now, with the last step left for later and gated by an environment flag.
      (`Started` for the first payment, `Renewed` for a recurring one, `Upgraded` for the
      proration charge of a plan change, by the transaction's `origin` and our stored state);
      `subscription.updated` maps to `ChangeScheduled` (scheduled change, cancel or resume);
-     `subscription.canceled` and a final `past_due` end map to `Ended`. `subscription.created`,
+     `subscription.canceled` alone maps to `Ended`. `ChangeScheduled` is emitted only when the scheduled change differs from the stored one (`subscription.updated` fires on every change). `subscription.created`,
      `subscription.activated` and every other type are acknowledged and ignored. The neutral
      `event_id` is Paddle's own notification `event_id` (`evt_...`), which stays the same across
      Paddle's retries.
@@ -47,15 +47,27 @@ tested now, with the last step left for later and gated by an environment flag.
      transaction, subscription or customer id), and `custom_data` is at most a cross-check. No link
      means refused. Our own user id inside a payload is never used.
    - **Order of work.** Read the **raw** body (under a small body cap, with an anonymous rate
-     limit), verify the signature and the window **before** parsing, resolve the user, map, then
-     call the existing writer on the owner's `billing_session` (the path a user's own checkout
-     uses, ADR 0031 §5), never an admin or maint session. PB-2 checks that this works for an
-     unauthenticated route and reports if it cannot, rather than widening a role.
+     limit), verify the signature and the window **before** parsing **and before any database
+     access** (a bad signature never touches the database), then resolve the user, map, and call
+     the existing writer.
+   - **Which database role.** `billing_session` runs on the **maint** role (`classbeat_maint`,
+     `BYPASSRLS`, ADR 0031 §5) and the writer needs it to insert entitlements. The webhook cannot
+     use the app role, so it **does** use the maint role without a user session; the safeguards
+     are: only a signature-verified, link-resolved, policy-checked event reaches it, and nothing
+     in the payload chooses a row. It gets its own entry point, `webhook_session` in
+     `admin/db.py`, a sibling of `billing_session` that takes a link-resolved `owner_id` and logs
+     a `billing_log` row with a new action `webhook`; guard tests allow it only from
+     `classbeat.billing.webhook` (the existing guard for `billing_session` stays unchanged). The
+     link lookup is a read-only maint transaction on `billing_links` before the user is known,
+     and writes no log row. The maint pool (2 connections, shared with admins and testers) is
+     protected by a process-wide semaphore of 1 for webhook work and by the rate limit; a
+     delivery that finds it busy answers 503 so Paddle retries. PB-2 proves it with a burst test.
    - **Answers (Paddle retries on non-2xx).** Applied, duplicate, ignored type and `stale`: 200.
      `out_of_order` (the writer recorded nothing, so a retry may succeed): 409, so Paddle retries
      and the event lands once the gap is filled. A refusal that no retry can fix
      (`amount_mismatch`, `period_mismatch`, `plan_mismatch`, `cancelled`, `provider_conflict`, no
-     link): 422 with a reason code, counted and shown to admins. Bad or missing signature: 401.
+     link): 422 with a reason code, counted **once per `event_id`** (Paddle's retries of the same
+     event do not inflate the count) and shown to admins. Bad or missing signature: 401.
    - **Never** logs the body, the header or the secret. The secret comes from a secret file
      (`*_FILE`), not from an environment value. The route is exempted from the CSRF and origin
      checks by an explicit allowlist entry with a test, and exists only when the provider is
@@ -67,10 +79,10 @@ tested now, with the last step left for later and gated by an environment flag.
    then needs the Paddle secrets. With the flag off, only admins and `billing_test` holders reach
    the flow, with Dummy or the fake, exactly as in ADR 0031.
 5. **Storage.** PB-2's migration adds `paddle` and `fake_paddle` to the provider CHECKs of
-   `billing_events` and `subscriptions` (migration 0046 allows only `dummy`), adds `billing_links`,
+   `billing_events` and `subscriptions` (migration 0046 allows only `dummy`), adds `billing_links` (unique on `(provider, checkout_ref)`, `(provider, subscription_ref)` and `(provider, customer_ref)` where set; a notification whose subscription id disagrees with its link is refused),
    and events from the fake are stored as `fake_paddle`, never as `paddle`, so a fake can never be
    mistaken for a paid subscription. A `Started` from a Paddle provider for a user whose stored
-   subscription is a Dummy one ends the Dummy subscription and starts the new one; it is the only
+   subscription is a Dummy one ends the Dummy subscription, revokes its entitlement rows as ADR 0031 §6 requires, and starts the new one (a `fake_paddle` `Started` replaces a Dummy subscription the same way); it is the only
    provider replacement the writer allows (`apply_policy` rule 2 otherwise stays).
 6. **Proration.** The fake and the writer use ADR 0031 §5 amounts (the writer recomputes and
    refuses a mismatch). Paddle must be configured to charge the same upgrade amount; the runbook
