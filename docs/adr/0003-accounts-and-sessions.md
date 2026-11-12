@@ -821,7 +821,8 @@ mark with the stored one, in the transaction that touches `last_seen_at`. When e
 The SSE stream's periodic check (`session_probe`) resolves without a request and compares nothing.
 A request whose peer address is unknown (`client_ip` gives `unknown`: uvicorn has no peer for a
 connection the client reset before it was accepted, an aborted fetch, #926) is not compared with
-the stored mark and stores none, and it runs without `reauth_at`, `mfa_at` and `stepup_at` itself.
+the stored mark and stores no mark (it still touches `last_seen_at`), and it runs without
+`reauth_at`, `mfa_at` and `stepup_at` itself.
 Binding the server to a unix socket would make every request peerless, so production stays on TCP.
 A notice mail is not sent yet; it waits for outgoing mail beyond the security notices (#352).
 

@@ -25,7 +25,7 @@ from authtools import ORIGIN, Env, running_env
 from classbeat import auth
 from classbeat.auth import sessions as sessions_module
 from classbeat.auth.anomaly import EVENT_KIND, agent_family, client_mark
-from classbeat.auth.deps import require_recent_auth
+from classbeat.auth.deps import require_recent_auth, require_stepup
 from classbeat.auth.export import account_export
 from classbeat.auth.keys import Keys, hmac_digest
 from classbeat.context import UserContext
@@ -35,6 +35,8 @@ pytestmark = pytest.mark.usefixtures("frozen_rate_windows")  # #588: no window e
 
 SRC = Path(__file__).resolve().parent.parent / "src" / "classbeat"
 GUARDED = "/api/test/guarded"
+STEPUP = "/api/test/stepup"
+ADMIN = "/api/admin/whoami"
 SECRET = b"s" * 32
 
 CHROME_WINDOWS = (
@@ -403,6 +405,51 @@ async def test_a_request_without_a_peer_address_is_no_move_and_proves_nothing(en
     assert await events(env) == []
     # The browser's next request, with its address, still has the sign-in's recent auth.
     assert await client.guarded() == 200
+
+
+async def test_a_peerless_request_has_no_admin_role_and_no_step_up(env: Env) -> None:
+    """The withheld MFA and step-up times are what keep a peerless request (which writes no event)
+    from blind admin or step-up writes: an admin with confirmed TOTP, a recent ``mfa_at`` and a
+    recent ``stepup_at`` gets ``mfa_required`` and ``stepup_required`` on it, and the browser's
+    next request with its address still passes both."""
+
+    @env.app.get(STEPUP)
+    async def stepup(  # pyright: ignore[reportUnusedFunction]
+        ctx: Annotated[UserContext, Depends(require_stepup)],
+    ) -> dict[str, bool]:
+        return {"ok": True}
+
+    keys = env.app.state.keys
+    user_id = await env.user("admin@example.com", role="admin")
+    await env.run(
+        "INSERT INTO mfa_totp (user_id, secret_ciphertext, nonce, key_id, confirmed_at) "
+        "VALUES (:u, 'cipher', 'nonce', 'app-v1', now())",
+        u=user_id,
+    )
+    issued = await env.login(user_id, mfa=True, mark=client_mark(keys, HOME, CHROME_WINDOWS))
+    await env.run("UPDATE sessions SET stepup_at = now()")
+    client = Client(env)
+    client.cookies[auth.SESSION_COOKIE] = issued.token
+    assert (await client.get(ADMIN)).status_code == 200
+    assert (await client.get(STEPUP)).status_code == 200
+    for path, reason in ((ADMIN, "mfa_required"), (STEPUP, "stepup_required")):
+        refused = await _peerless(env, client, path)
+        assert (refused.status_code, refused.json()) == (403, {"detail": {"reason": reason}})
+    assert (await client.get(ADMIN)).status_code == 200
+    assert (await client.get(STEPUP)).status_code == 200
+    assert await client.guarded() == 200  # recent auth and the step-up TOTP asks for
+    row = await session_row(env)
+    assert row.mfa_at is not None
+    assert row.stepup_at is not None
+    assert await events(env) == []
+
+
+async def test_a_forwarded_unknown_is_not_a_peerless_request(env: Env) -> None:
+    """Only a missing peer is peerless: ``X-Forwarded-For: unknown`` from the trusted proxy ends
+    the walk at the proxy's own address, which is compared like any other (here: a move)."""
+    client = await sign_in(env)
+    assert await client.move(ip="unknown").guarded() == 403
+    assert len(await events(env)) == 1
 
 
 async def test_a_session_without_a_mark_does_not_adopt_a_peerless_requests(env: Env) -> None:
