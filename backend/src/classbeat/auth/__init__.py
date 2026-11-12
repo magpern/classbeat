@@ -47,6 +47,7 @@ if TYPE_CHECKING:
         account_states,
         addresses_with_accounts,
         invite_states,
+        unused_tier_invites,
     )
     from classbeat.auth.clientip import bucket_ip, client_ip
     from classbeat.auth.cookies import (
@@ -277,6 +278,7 @@ __all__ = [
     "swedebeat_mixes_buckets",
     "token_hash",
     "totp_rows_by_key",
+    "unused_tier_invites",
     "vacuum_wiped_tables",
     "wipe_mail",
     "wipe_user",

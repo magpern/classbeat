@@ -56,15 +56,15 @@ function plan(id: string, name: string, rank: number, limits: [number, number, n
 }
 
 function view(
-  overrides: { songPicking?: string; swedebeat?: string; trialDays?: number; signupStored?: string | null; signupNote?: string; banner?: { text: string; level: string } | null } = {},
+  overrides: { songPicking?: string; swedebeat?: string; trialDays?: number; signupStored?: string | null; signupNote?: string; signupEffective?: string; tierInvites?: number; banner?: { text: string; level: string } | null } = {},
 ) {
   const stored = overrides.signupStored ?? null
   return {
     flags: [
       flagRow('signup_mode', {
         source: stored === 'closed' ? 'database' : 'environment',
-        effective: stored ?? 'invite',
-        environment: 'invite',
+        effective: overrides.signupEffective ?? stored ?? 'invite',
+        environment: overrides.signupEffective ?? 'invite',
         stored,
         environment_note: overrides.signupNote ?? null,
         updated_at: stored === null ? null : '2026-10-31T09:00:00Z',
@@ -105,6 +105,8 @@ function view(
       agent_job_cost_micros: 1_500_000,
       song_job_cost_micros: 3_000_000,
       billing_enabled: false,
+      mail_configured: false,
+      unused_tier_invites: overrides.tierInvites ?? 0,
     },
   }
 }
@@ -139,6 +141,35 @@ describe('admin settings', () => {
     renderAt('/admin/settings')
     await screen.findByLabelText('Sign-up mode')
     expect(screen.queryByText(REASONS.signupHeld)).toBeNull()
+  })
+
+  it.each([
+    ['closed', 'closed', undefined, 'While sign-up is closed, nobody can use them.'],
+    ['open', null, 'open', 'While sign-up is open, a new account may start without the tier its invite promised.'],
+  ])(
+    'warns while sign-up is %s and invites issued with a tier are unused (#989)',
+    async (_mode, stored, effective, effect) => {
+      adminApi({
+        [`GET ${SETTINGS}`]: view({ signupStored: stored, signupEffective: effective, tierInvites: 3 }),
+      })
+      renderAt('/admin/settings')
+      const warning = await screen.findByTestId('tier-invites-warning')
+      expect(warning).toHaveTextContent('3 invites issued with a tier are still unused.')
+      expect(warning).toHaveTextContent(effect)
+      expect(within(card('Sign-up')).getByTestId('tier-invites-warning')).toBe(warning)
+    },
+  )
+
+  it('does not warn about tier invites while sign-up is invite-only, or when there are none', async () => {
+    adminApi({ [`GET ${SETTINGS}`]: view({ tierInvites: 2 }) })
+    const { unmount } = renderAt('/admin/settings')
+    await screen.findByLabelText('Sign-up mode')
+    expect(screen.queryByTestId('tier-invites-warning')).toBeNull()
+    unmount()
+    adminApi({ [`GET ${SETTINGS}`]: view({ signupStored: 'closed', tierInvites: 0 }) })
+    renderAt('/admin/settings')
+    await screen.findByLabelText('Sign-up mode')
+    expect(screen.queryByTestId('tier-invites-warning')).toBeNull()
   })
 
   it('shows what the environment forbids as disabled, with the reason', async () => {

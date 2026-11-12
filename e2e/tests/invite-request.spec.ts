@@ -28,8 +28,9 @@ test('a request becomes an invite with a tier, and the new account has that tier
   await expect(row).toContainText('a friend at the studio')
   await expect(page.getByTestId('queue-state')).toContainText('of 1000')
 
-  // Decline one: it moves to the Declined tab.
+  // Decline one, after confirming (#989): it moves to the Declined tab.
   await page.getByRole('row').filter({ hasText: declined }).getByRole('button', { name: 'Decline' }).click()
+  await page.getByRole('group', { name: 'Confirm the decline' }).getByRole('button', { name: 'Yes, decline' }).click()
   await stepUp(page, secret)
   await expect(page.getByRole('row').filter({ hasText: declined })).toHaveCount(0)
   await page.getByRole('radio', { name: 'Declined' }).click()
@@ -51,7 +52,7 @@ test('a request becomes an invite with a tier, and the new account has that tier
   await panel.getByRole('button', { name: 'Done' }).click()
   await expect(page.getByTestId('one-time-code')).toHaveCount(0)
   await page.getByRole('radio', { name: 'Issued' }).click()
-  await expect(page.getByRole('row').filter({ hasText: email })).toContainText('instructor for 30 days')
+  await expect(page.getByRole('row').filter({ hasText: email })).toContainText('Individual for 30 days') // the plan's name (#989)
   await page.reload()
   await expect(page.locator('body')).not.toContainText(code)
 

@@ -153,4 +153,50 @@ describe('request an invite form', () => {
       ).captcha_token,
     ).toMatch(/^fake-pass-/)
   })
+
+  it('runs the security check again after a refused request, and sends a new token', async () => {
+    let refused = false
+    const api = fakeApi({
+      'GET /api/auth/session': {
+        authenticated: false,
+        csrf_token: 'a',
+        captcha: { fake: true },
+      },
+      'GET /api/settings/public': PUBLIC_INVITE,
+      [REQUEST]: () => {
+        if (refused) return json({ status: 'received' }, 202)
+        refused = true
+        return reason(429, 'rate_limited')
+      },
+    })
+    renderAt('/signup?request=invite')
+    await fill()
+    const submit = screen.getByRole('button', {
+      name: en['inviteRequest.submit'],
+    })
+    fireEvent.click(await screen.findByTestId('captcha-fake'))
+    await waitFor(() => {
+      expect(submit).toBeEnabled()
+    })
+    fireEvent.click(submit)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // The spent token is dropped: the submit waits for a new check.
+    await waitFor(() => {
+      expect(submit).toBeDisabled()
+    })
+    expect(screen.getByTestId('captcha-fake')).not.toBeChecked()
+    fireEvent.click(screen.getByTestId('captcha-fake'))
+    await waitFor(() => {
+      expect(submit).toBeEnabled()
+    })
+    fireEvent.click(submit)
+    await screen.findByText(en['inviteRequest.sent'])
+    const tokens = api
+      .to('POST', '/api/auth/invite-request')
+      .map((call) => (call.body as { captcha_token: string }).captcha_token)
+    expect(tokens).toHaveLength(2)
+    expect(tokens[0]).toMatch(/^fake-pass-/)
+    expect(tokens[1]).toMatch(/^fake-pass-/)
+    expect(tokens[1]).not.toBe(tokens[0])
+  })
 })

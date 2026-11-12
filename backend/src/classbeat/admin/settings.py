@@ -9,7 +9,8 @@ read only.
 - ``GET /settings``: every flag key with its effective value and where it comes from
   (``environment`` or ``database``), the value stored and whether it validates, the environment's
   own value; the plans with their limits; the environment's upper bounds; the read-only settings
-  (per-job ceilings and billing, shown off).
+  (per-job ceilings and billing, shown off; whether mail is configured, a boolean and never an
+  SMTP detail; how many invites issued with a tier are unused, #989).
 - ``PUT /settings/{key}`` ``{value}``: stores a flag through ``classbeat.flags`` validation. The
   database can tighten the environment, never loosen it, so ``open`` sign-up is refused
   (422 ``environment_only``), as is any value that does not validate (422 ``invalid_value``), a
@@ -55,6 +56,12 @@ from classbeat.admin.db import AdminRefused, admin_session
 from classbeat.admin.plan_rules import bounds
 from classbeat.admin.plans import all_plans, plan_out
 from classbeat.admin.routes import AdminActor, admin_router, require_admin_db
+from classbeat.admin.settings_checks import (
+    check_running_evaluated,
+    check_trial_plan,
+    covered,
+    trial_plan_refusal,
+)
 from classbeat.admin.settings_models import (
     BoundsOut,
     FlagOut,
@@ -65,14 +72,10 @@ from classbeat.admin.settings_models import (
 )
 from classbeat.admin.settings_trial import effective_trial
 from classbeat.config import Settings
-from classbeat.db import system_session
-from classbeat.design.music_kind import fake_covers
 from classbeat.emails.dispatch import DEFAULT_SENDER_NAME
 from classbeat.emails.live import config_from, kind_switches
 from classbeat.flags import core
 from classbeat.flags.effective import environment_signup_held, environment_signup_mode
-from classbeat.models.routes import Variant, every_plan_covers
-from classbeat.plans.entitle import TRIAL_MAX_PLAN, plan_ranks
 
 router = admin_router()
 
@@ -92,7 +95,6 @@ _CLEAR = text(
     "UPDATE app_settings SET value = 'null'::jsonb, updated_at = now(), updated_by = :by "
     "WHERE key = :k AND value <> 'null'::jsonb RETURNING key"
 )
-_RANKS = text("SELECT id, rank FROM plans WHERE id = ANY(:ids)")
 
 KeyPath = Annotated[str, Path(pattern=r"^[a-z][a-z_]{0,39}$")]
 
@@ -167,7 +169,7 @@ async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
     people = [r.updated_by for r in (*rows.values(), *plans) if r.updated_by is not None]
     emails = await auth.account_emails(session, people)
     ranks = {p.id: p.rank for p in plans}
-    running = await _covered(session, settings, "running")
+    running = await covered(session, settings, "running")
     return SettingsOut(
         flags=[_flag(k, settings, rows.get(k), ranks, emails, running) for k in core.KEYS],
         plans=[plan_out(p, emails) for p in plans],
@@ -181,6 +183,8 @@ async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
             agent_job_cost_micros=settings.agent_job_cost_micros,
             song_job_cost_micros=settings.song_job_cost_micros,
             billing_enabled=settings.billing_enabled,  # always false in M7a (config refuses true)
+            mail_configured=settings.smtp_host is not None,  # as ``Mailer.configured``
+            unused_tier_invites=await auth.unused_tier_invites(session),
         ),
     )
 
@@ -271,7 +275,7 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
     if key == "trial" and refusal is None:
         # Read before the audited transaction (plans is a system table), so a refusal row for a
         # plan that does not exist records only the reason, never the string the admin typed.
-        refusal = await _trial_plan_refusal(request, canonical["plan"])
+        refusal = await trial_plan_refusal(request, canonical["plan"])
         if refusal == "unknown_plan":
             params = {"key": key}
     async with admin_session(
@@ -285,9 +289,9 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
         if refusal is not None:
             raise AdminRefused(refusal, 422)
         if key == "trial":
-            await _check_trial_plan(session, canonical["plan"])
+            await check_trial_plan(session, canonical["plan"])
         if key == "running_enabled" and canonical == "on":
-            await _check_running_evaluated(session, settings)
+            await check_running_evaluated(session, settings)
         await session.execute(_UPSERT, {"k": key, "v": json.dumps(canonical), "by": actor.user_id})
         return await _flag_view(session, settings, key)
 
@@ -296,39 +300,6 @@ def _stored_bytes(value: Any) -> int:
     """The bytes ``value::text`` takes in ``app_settings`` (the ``app_settings_value`` check):
     UTF-8, as jsonb prints it (a space after each colon and comma)."""
     return len(json.dumps(value, ensure_ascii=False, separators=(", ", ": ")).encode())
-
-
-async def _trial_plan_refusal(request: Request, plan: str) -> str | None:
-    async with system_session(request.app.state.session_factory) as db:
-        ranks = await plan_ranks(db, plan, TRIAL_MAX_PLAN)
-    if plan not in ranks:
-        return "unknown_plan"
-    return "plan_above_instructor" if ranks[plan] > ranks[TRIAL_MAX_PLAN] else None
-
-
-async def _check_trial_plan(session: AsyncSession, plan: str) -> None:
-    """The trial's plan exists and ranks at most ``instructor`` (ADR 0011 section 4)."""
-    ranks = {
-        r.id: r.rank for r in (await session.execute(_RANKS, {"ids": [plan, TRIAL_MAX_PLAN]})).all()
-    }
-    if plan not in ranks:
-        raise AdminRefused("unknown_plan", 422)
-    if ranks[plan] > ranks[TRIAL_MAX_PLAN]:
-        raise AdminRefused("plan_above_instructor", 422)
-
-
-async def _covered(session: AsyncSession, settings: Settings, variant: Variant) -> bool:
-    """Whether every plan's jobs would design ``variant`` classes on a model that covers them now:
-    the web's own ``fake`` outside prod, or a covering ``design`` route for every ``route_key``."""
-    return fake_covers(settings) or await every_plan_covers(session, variant)
-
-
-async def _check_running_evaluated(session: AsyncSession, settings: Settings) -> None:
-    """``running_enabled`` is stored ``on`` only with coverage (#465). The effective flag checks
-    it again on every read (#509), so a plan added or a route cleared later still turns it off;
-    ``CLASSBEAT_RUNNING_ENABLED`` stays the kill switch, and the worker checks each job again."""
-    if not await _covered(session, settings, "running"):
-        raise AdminRefused("running_not_evaluated", 422)
 
 
 @router.delete(f"{SETTINGS}/{{key}}", response_model=FlagOut)

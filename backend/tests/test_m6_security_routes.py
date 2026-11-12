@@ -207,6 +207,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/admin/invite-requests"): "admin",
     ("POST", "/api/admin/invite-requests/{request_id}/approve"): "admin",
     ("POST", "/api/admin/invite-requests/{request_id}/decline"): "admin",
+    ("POST", "/api/admin/invite-requests/decline"): "admin",  # the bulk decline (#989)
     ("GET", "/api/admin/settings"): "admin",
     ("PUT", "/api/admin/settings/{key}"): "admin",
     ("GET", "/api/admin/mail"): "admin",

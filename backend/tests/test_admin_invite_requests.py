@@ -100,6 +100,7 @@ def routes_for(request_id: object) -> list[tuple[str, str, Any]]:
         ("GET", PATH, None),
         ("POST", f"{PATH}/{request_id}/approve", TIER),
         ("POST", f"{PATH}/{request_id}/decline", None),
+        ("POST", f"{PATH}/decline", {"ids": [str(request_id)]}),  # the bulk decline (#989)
     ]
 
 
@@ -113,7 +114,12 @@ async def send(actor: Any, method: str, path: str, body: Any = None) -> Any:
 async def test_the_router_guard_covers_the_routes(env: Env) -> None:
     assert gate_problems(env.app.routes) == []
     paths = {path for path, _ in admin_area_routes(env.app.routes)}
-    assert {PATH, f"{PATH}/{{request_id}}/approve", f"{PATH}/{{request_id}}/decline"} <= paths
+    assert {
+        PATH,
+        f"{PATH}/{{request_id}}/approve",
+        f"{PATH}/{{request_id}}/decline",
+        f"{PATH}/decline",
+    } <= paths
 
 
 async def test_a_non_admin_gets_403_and_nothing_changes(
@@ -146,7 +152,7 @@ async def test_mfa_and_stepup_are_required_and_audited(
         assert response.headers["cache-control"] == "no-store"
     assert [a[:3] for a in audit(superuser)] == [
         ("admin.request", "refused", "mfa_required")
-    ] * 3 + [("admin.request", "refused", "stepup_required")] * 2
+    ] * 4 + [("admin.request", "refused", "stepup_required")] * 3
     assert superuser.execute(text("SELECT state FROM invite_requests")).scalar_one() == "pending"
 
 

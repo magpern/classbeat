@@ -21,12 +21,14 @@ Admin (`/api/admin/invite-requests`, step-up for the POSTs, `no-store`):
 
 ```
 GET ?state=pending|issued|declined&offset=0&limit=50
-  200 {requests: [Request], next_offset: int | null}
+  200 {requests: [Request], next_offset: int | null, pending: int}   (pending: the whole queue, #989)
 POST /{id}/approve {plan_id?: str, grant_days?: 1..366, expires_days?: 1..30 (14), send_email?: bool}
   201 {code: str, request: Request, email: "queued" | "mail_off" | "not_requested"}
   404 not_found | 409 already_decided | 422 unknown_plan or a bad body (plan_id and grant_days together)
 POST /{id}/decline
   200 Request | 404 not_found | 409 already_decided
+POST /decline {ids: [uuid], 1..100}   (#989; one audited transaction and audit row per request)
+  200 {declined: [uuid], skipped: [uuid]}   (skipped: gone or decided meanwhile) | 422 a bad body
 
 Request = {id, email, heard_from, instructor, locale, has_account, state, plan_id, grant_days,
            invite: {id, state: active|used|expired} | null,
