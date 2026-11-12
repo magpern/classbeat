@@ -22,8 +22,9 @@ it names what the class should have after the change, for what the request chang
   clears them; otherwise the reported list is the whole list after the change. A reported game is
   stated if the request states it, or if it equals a game the base stated (an untouched stated
   game stays one). A stated game of the base that the reported list leaves out, when no new
-  reported game replaces it and the request did not remove the games, is Not as asked
-  (``game_missing``, the base's game as the value). A game is held as at interpret time (dropped
+  reported game (one matching no game of the base) replaces it and the request did not remove the
+  games, is Not as asked (``game_missing``, the base's game as the value, numbered after the
+  reported games). A game is held as at interpret time (dropped
   on a running class or a plan without games, held to MOWL's 10 s floor, never swapped), with Not
   as asked for a stated one.
 
@@ -70,7 +71,12 @@ def _games(
     limits = request_policy.Limits.from_gates(gates, (base.sport,))
     games: list[BriefGame] = []
     paths: list[str] = []
-    new = 0  # reported games that are not a stated game of the base
+    unstated = {
+        n: g.model_dump(mode="json", exclude_none=True)
+        for n, g in enumerate(base.games)
+        if n not in unmatched
+    }
+    new = 0  # reported games that match no game of the base at all: they replace a dropped one
     for n, wanted in enumerate(read.games):
         game = wanted.brief_game()
         value = game.model_dump(mode="json", exclude_none=True)
@@ -78,7 +84,12 @@ def _games(
         kept = match is not None
         if match is not None:
             del unmatched[match]  # each stated game of the base keeps one reported game
-        new += not kept
+        else:
+            other = next((i for i, v in unstated.items() if v == value), None)
+            if other is None:
+                new += 1
+            else:
+                del unstated[other]  # an unstated base game is no replacement either
         asked = wanted.origin == "explicit" or kept
         reason = request_policy.hard_limit(f"games.{n}", value, limits, base.sport)
         if reason in ("game_on_running", "plan_no_games"):
@@ -92,15 +103,19 @@ def _games(
         if asked:
             paths.append(f"games.{len(games)}")
         games.append(game)
-    _omitted(unmatched, new, out)
+    if not read.remove_games:
+        _omitted(unmatched, new, len(read.games), out)
     return games, paths
 
 
-def _omitted(unmatched: dict[int, Any], replacing: int, out: list[InterpretationItem]) -> None:
+def _omitted(
+    unmatched: dict[int, Any], replacing: int, reported: int, out: list[InterpretationItem]
+) -> None:
     """The stated games the reported list dropped: a new reported game replaces one in order
-    (a type change), the rest were left out and say so."""
-    for n in list(unmatched)[replacing:]:
-        out.append(_not_as_asked(f"games.{n}", unmatched[n], "game_missing"))
+    (a type change), the rest were left out and say so. They are numbered after the reported
+    games, so no two items name the same ``games.N``."""
+    for k, n in enumerate(list(unmatched)[replacing:]):
+        out.append(_not_as_asked(f"games.{reported + k}", unmatched[n], "game_missing"))
 
 
 def _ordered(paths: Sequence[str]) -> list[str]:

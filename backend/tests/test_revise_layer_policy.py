@@ -142,6 +142,28 @@ def test_a_stated_game_the_reported_list_leaves_out_is_not_as_asked() -> None:
     }
 
 
+def test_an_unstated_base_game_reported_alone_is_no_replacement_for_a_stated_one() -> None:
+    overflow = {"type": "overflow", "placement": {"position": "late"}}
+    mixed = Brief.model_validate(
+        {**BASE.model_dump(mode="json"), "games": [RACETRACK, overflow]},
+    )
+    done = layer(mixed, read(games=[{**overflow, "origin": "inferred"}]), gates())
+    assert [(i.path, i.reason_code) for i in done.items] == [("games.1", "game_missing")]
+    assert isinstance(done.items[0].value, dict) and done.items[0].value["type"] == "racetrack"
+
+
+def test_removing_games_with_a_list_records_no_missing_game() -> None:
+    fast = {**RACETRACK, "type": "fast_lane", "origin": "explicit"}
+    done = layer(BASE, read(games=[fast], remove_games=True), gates())
+    assert done.items == ()
+
+
+def test_an_echoed_value_of_an_unstated_path_becomes_stated_when_explicit() -> None:
+    base = BASE.model_copy(update={"explicit": ["length_min"]})
+    done = layer(base, read(intensity={"value": "hard", "origin": "explicit"}), gates())
+    assert "intensity" in done.brief.explicit
+
+
 def test_a_replaced_or_removed_game_is_not_an_omission() -> None:
     fast = {**RACETRACK, "type": "fast_lane", "origin": "explicit"}
     assert layer(BASE, read(games=[fast]), gates()).items == ()

@@ -31,16 +31,19 @@ interface StoredDraft {
   segments: { name: string; kind: string; intervals: StoredInterval[] }[]
 }
 
-/** The stored draft of each version of the class, oldest first (what the Compare view reads). */
-async function storedDrafts(page: Page): Promise<StoredDraft[]> {
+/** The stored draft of each version of the class by its version number (what Compare reads). */
+async function storedDrafts(page: Page): Promise<Map<number, StoredDraft>> {
   const id = classId(page)
   const list = (await (await page.request.get(`/api/classes/${id}/revisions`)).json()) as {
     revisions: { id: string; number: number }[]
   }
-  const ids = [...list.revisions].sort((x, y) => x.number - y.number).map((r) => r.id)
-  return Promise.all(
-    ids.map(async (rev) => ((await (await page.request.get(`/api/classes/${id}/revisions/${rev}`)).json()) as { content: StoredDraft }).content),
+  const drafts = await Promise.all(
+    list.revisions.map(async (r) => {
+      const body = (await (await page.request.get(`/api/classes/${id}/revisions/${r.id}`)).json()) as { content: StoredDraft }
+      return [r.number, body.content] as const
+    }),
   )
+  return new Map(drafts)
 }
 
 /** Every field of every interval, the games aside. */
@@ -107,15 +110,20 @@ test('a Power Pull after climb 2 is read, designed, changed to Overflow and save
   expect(games.filter((g) => g !== null)).toEqual([GAME_ID_OVERFLOW])
   // The neighbouring intervals are those of the first version: the same lengths, zones, rpm, cues and
   // names (every field, not the zones alone). Only the game differs: Overflow where the Power Pull was.
-  const [first, second] = await storedDrafts(page)
-  expect(withoutGames(second!)).toEqual(withoutGames(first!))
-  const was = gamesOf(first!)
-  const now = gamesOf(second!)
+  const versions = await storedDrafts(page)
+  expect(versions.size).toBe(2)
+  const first = versions.get(1)!
+  const second = versions.get(2)!
+  expect(withoutGames(second)).toEqual(withoutGames(first))
+  // The zones are those of the designed class, spelled out as well as compared field by field.
+  expect(second.segments.flatMap((s) => s.intervals.map((i) => i.zone as number))).toEqual([2, 3, 4, 5, 1, 4, 5, 4, 2, 3, 1])
+  const was = gamesOf(first)
+  const now = gamesOf(second)
   expect(was.filter((g) => g !== null)).toEqual(['power_pull'])
   expect(now).toEqual(was.map((g) => (g === null ? null : 'overflow')))
   // What MOWL holds has the second version's lengths and zones.
   expect(saved[0]!.intervals.map((i) => i[1])).toEqual(
-    second!.segments.flatMap((s) => s.intervals.map((i) => i.zone as number)),
+    second.segments.flatMap((s) => s.intervals.map((i) => i.zone as number)),
   )
 })
 

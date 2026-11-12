@@ -242,7 +242,7 @@ The fields are:
   onto the brief: an untouched stated value is kept; a newly stated one replaces the old one of
   its path; an inferred change releases the path; a value beyond a hard limit is held and
   recorded Not as asked, as at interpret time; sport and music never change. The reported games
-  are the whole list after the change, and a game equal to a stated one of the base stays stated. An inferred reading that repeats the base's value changes nothing (the path stays stated). A stated game of the base that the reported list leaves out, with no new game replacing it and no `remove_games`, is recorded Not as asked (`game_missing`) and dropped (#908).
+  are the whole list after the change, and a game equal to a stated one of the base stays stated. An inferred reading that repeats the base's value changes nothing (the path stays stated). A stated game of the base that the reported list leaves out, with no new game (one matching no game of the base) replacing it and no `remove_games`, is recorded Not as asked (`game_missing`, numbered after the reported games) and dropped (#908).
   The revise stage's stated block and `ExplicitGate` then use the layered brief; a miss after the
   correction budget is Not as asked. A class that states nothing is revised as before, with no
   interpret run.
