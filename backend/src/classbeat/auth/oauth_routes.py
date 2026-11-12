@@ -144,7 +144,7 @@ async def start(
     settings = request.app.state.settings
     if body.purpose == "sign_up" and body.invite_code:
         async with system_session(factory(request)) as db:
-            invite_mode = await flags.signup_mode(db, settings.signup_mode) == "invite"
+            invite_mode = await flags.signup_mode(db, settings) == "invite"
             if invite_mode:
                 invite_id = await valid_invite(db, body.invite_code)
         if invite_mode and invite_id is None:

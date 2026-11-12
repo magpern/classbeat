@@ -57,7 +57,7 @@ describe('the public paths', () => {
       '/examples/endurance-ride',
       '/examples/running-intervals',
     ])
-    expect([...DRAFT_PATHS]).toEqual(['/pricing'])
+    expect([...DRAFT_PATHS]).toEqual(['/pricing', '/terms-draft', '/privacy-draft', '/refunds', '/sub-processors'])
   })
 
   it('each have a title and a description key', () => {

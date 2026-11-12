@@ -1,0 +1,27 @@
+{
+  "event_id": "evt_01hv8xa8a8a8a8a8a8a8a8a8a8",
+  "event_type": "adjustment.created",
+  "occurred_at": "2026-02-12T09:00:00Z",
+  "notification_id": "ntf_01hv8z9q8w7e6r5t4y3u2i1o0p",
+  "data": {
+    "id": "adj_01hv8xc1c1c1c1c1c1c1c1c1c1",
+    "action": "refund",
+    "transaction_id": "txn_01hv8xb1b1b1b1b1b1b1b1b1b1",
+    "subscription_id": "sub_01hv8x2a3b4c5d6e7f8g9h0j1k",
+    "customer_id": "ctm_01hv8x0c1d2e3f4g5h6j7k8m9n",
+    "reason": "error",
+    "currency_code": "USD",
+    "status": "pending_approval",
+    "items": [],
+    "totals": {
+      "subtotal": "1000",
+      "tax": "250",
+      "total": "1250",
+      "fee": "0",
+      "earnings": "0",
+      "currency_code": "USD"
+    },
+    "created_at": "2026-02-12T09:00:00Z",
+    "updated_at": "2026-02-12T09:00:00Z"
+  }
+}

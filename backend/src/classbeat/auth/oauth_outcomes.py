@@ -254,7 +254,7 @@ async def _sign_in(db: AsyncSession, req: Request) -> Outcome:
         # The sign-in screen (#617): a new identity has no account, whatever the sign-up mode
         # or invite. Nothing is created, linked or handed off; only a sign-up flow may create.
         return _fail("no_account")
-    mode = await flags.signup_mode(db, settings.signup_mode)  # stricter of env and database
+    mode = await flags.signup_mode(db, settings)  # stricter of env and database
     gated = mode != "open"
     if mode == "closed" or (gated and req.flow.invite_id is None):
         return _fail("invite_required")

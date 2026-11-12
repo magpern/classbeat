@@ -56,7 +56,7 @@ function plan(id: string, name: string, rank: number, limits: [number, number, n
 }
 
 function view(
-  overrides: { songPicking?: string; swedebeat?: string; trialDays?: number; signupStored?: string | null; banner?: { text: string; level: string } | null } = {},
+  overrides: { songPicking?: string; swedebeat?: string; trialDays?: number; signupStored?: string | null; signupNote?: string; banner?: { text: string; level: string } | null } = {},
 ) {
   const stored = overrides.signupStored ?? null
   return {
@@ -66,6 +66,7 @@ function view(
         effective: stored ?? 'invite',
         environment: 'invite',
         stored,
+        environment_note: overrides.signupNote ?? null,
         updated_at: stored === null ? null : '2026-10-31T09:00:00Z',
         updated_by: stored === null ? null : ANN,
       }),
@@ -127,6 +128,19 @@ async function enterStepUpCode() {
 }
 
 describe('admin settings', () => {
+  it('says why public sign-up is held at invite while Turnstile is off', async () => {
+    adminApi({ [`GET ${SETTINGS}`]: view({ signupNote: 'turnstile_off' }) })
+    renderAt('/admin/settings')
+    expect(await screen.findByText(REASONS.signupHeld)).toBeInTheDocument()
+  })
+
+  it('shows no held reason without a note', async () => {
+    adminApi({ [`GET ${SETTINGS}`]: view() })
+    renderAt('/admin/settings')
+    await screen.findByLabelText('Sign-up mode')
+    expect(screen.queryByText(REASONS.signupHeld)).toBeNull()
+  })
+
   it('shows what the environment forbids as disabled, with the reason', async () => {
     adminApi({ [`GET ${SETTINGS}`]: view({ songPicking: 'off', swedebeat: 'off', trialDays: 0 }) })
     renderAt('/admin/settings')

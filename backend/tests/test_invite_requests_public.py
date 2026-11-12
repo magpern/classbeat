@@ -133,11 +133,19 @@ async def test_requests_are_limited_per_address_and_per_ip(env: Env) -> None:
     assert (await ask(env, email="x9@example.com", ip="203.0.113.7")).status_code == 429
 
 
-@pytest.mark.parametrize("mode", ["closed", "open"])
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"signup_mode": "closed"},
+        # Public sign-up (ADR 0032 section 7) is the only way to ``open``: no invite is needed.
+        {"public_signup": True},
+        {"public_signup": True, "signup_mode": "open"},
+    ],
+)
 async def test_only_the_invite_mode_takes_requests(
-    clean_auth: None, app_database_url: str, superuser: Connection, mode: str
+    clean_auth: None, app_database_url: str, superuser: Connection, settings: dict[str, Any]
 ) -> None:
-    async with running_env(app_database_url, signup_mode=mode) as env:
+    async with running_env(app_database_url, **settings) as env:
         response = await ask(env)
     assert (response.status_code, reason(response)) == (403, "requests_closed")
     assert requests(superuser) == []

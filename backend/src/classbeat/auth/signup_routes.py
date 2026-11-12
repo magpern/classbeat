@@ -105,7 +105,7 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
         [Bucket(SIGNUP_ADDRESS, normalized), Bucket(SIGNUP_IP, bucket_ip(request_ip(request)))],
     )
     async with system_session(factory(request)) as db:
-        mode = await flags.signup_mode(db, settings.signup_mode)  # stricter of env and database
+        mode = await flags.signup_mode(db, settings)  # stricter of env and database
     if mode == "closed":
         raise refuse(403, "signups_closed")
     invite_id = None
@@ -177,7 +177,7 @@ async def confirm_sign_up(
         await reserve(request, [Bucket(SIGN_IN_IP, bucket_ip(ip))])
         raise refuse(400, "invalid_token")
     async with system_session(factory(request)) as db:
-        if await flags.signup_mode(db, request.app.state.settings.signup_mode) == "closed":
+        if await flags.signup_mode(db, request.app.state.settings) == "closed":
             raise refuse(403, "signups_closed")
     if row.provider is not None:
         await confirm_provider_signup(request, response, background, digest, row)

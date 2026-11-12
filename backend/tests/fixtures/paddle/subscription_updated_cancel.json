@@ -1,0 +1,68 @@
+{
+  "event_id": "evt_01hv8xa4a4a4a4a4a4a4a4a4a4",
+  "event_type": "subscription.updated",
+  "occurred_at": "2026-02-10T09:00:00Z",
+  "notification_id": "ntf_01hv8y9q8w7e6r5t4y3u2i1o0p",
+  "data": {
+    "id": "sub_01hv8x2a3b4c5d6e7f8g9h0j1k",
+    "status": "active",
+    "customer_id": "ctm_01hv8x0c1d2e3f4g5h6j7k8m9n",
+    "address_id": "add_01hv8x0p1q2r3s4t5v6w7x8y9z",
+    "business_id": null,
+    "currency_code": "USD",
+    "created_at": "2026-01-31T10:00:04Z",
+    "updated_at": "2026-02-10T09:00:00Z",
+    "started_at": "2026-01-31T10:00:00Z",
+    "first_billed_at": "2026-01-31T10:00:00Z",
+    "next_billed_at": "2026-02-28T10:00:00Z",
+    "paused_at": null,
+    "canceled_at": null,
+    "discount": null,
+    "collection_mode": "automatic",
+    "billing_details": null,
+    "current_billing_period": {
+      "starts_at": "2026-01-31T10:00:00Z",
+      "ends_at": "2026-02-28T10:00:00Z"
+    },
+    "billing_cycle": {
+      "interval": "month",
+      "frequency": 1
+    },
+    "scheduled_change": {
+      "action": "cancel",
+      "effective_at": "2026-02-28T10:00:00Z",
+      "resume_at": null
+    },
+    "items": [
+      {
+        "status": "active",
+        "quantity": 1,
+        "recurring": true,
+        "created_at": "2026-01-31T10:00:04Z",
+        "updated_at": "2026-02-10T09:00:00Z",
+        "previous_billed_at": "2026-01-31T10:00:00Z",
+        "next_billed_at": "2026-02-28T10:00:00Z",
+        "trial_dates": null,
+        "price": {
+          "id": "pri_01hv8wzaaaaaaaaaaaaaaaaaaa",
+          "product_id": "pro_01hv8wz9y8x7w6v5t4s3r2q1p0",
+          "description": "Monthly",
+          "billing_cycle": {
+            "interval": "month",
+            "frequency": 1
+          },
+          "trial_period": null,
+          "tax_mode": "account_setting",
+          "unit_price": {
+            "amount": "1000",
+            "currency_code": "USD"
+          },
+          "status": "active"
+        }
+      }
+    ],
+    "custom_data": {
+      "classbeat_owner_id": "7d3c1f0e-5b9a-4c2d-8e6f-1a2b3c4d5e6f"
+    }
+  }
+}

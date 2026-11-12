@@ -57,7 +57,7 @@ async def test_public_settings_hold_the_banner_and_the_effective_mode_and_nothin
     clean_auth: None, app_database_url: str, database_url: str
 ) -> None:
     banner = {"text": "Maintenance <b>tonight</b>", "level": "warning"}
-    async with running_env(app_database_url, signup_mode="open") as env:
+    async with running_env(app_database_url, public_signup=True) as env:
         with stored(database_url):
             response = await Browser(env).get(PUBLIC)  # no session, no stored row
             assert response.status_code == 200
@@ -135,7 +135,9 @@ async def test_the_public_mode_is_the_stricter_of_the_environment_and_the_databa
     effective: str,
 ) -> None:
     rows = {} if database is None else {"signup_mode": database}
-    async with running_env(app_database_url, signup_mode=environment) as env:
+    async with running_env(
+        app_database_url, signup_mode=environment, public_signup=environment == "open"
+    ) as env:
         with stored(database_url, **rows):
             assert (await Browser(env).get(PUBLIC)).json()["signup_mode"] == effective
 
@@ -147,7 +149,9 @@ async def test_the_database_at_closed_refuses_password_sign_ups(
     clean_auth: None, app_database_url: str, database_url: str
 ) -> None:
     for environment in ("invite", "open"):
-        async with running_env(app_database_url, signup_mode=environment) as env:
+        async with running_env(
+            app_database_url, signup_mode=environment, public_signup=environment == "open"
+        ) as env:
             code = await invite(env)
             with stored(database_url, signup_mode="closed"):
                 response = await sign_up(env, code)
@@ -161,7 +165,7 @@ async def test_the_database_at_invite_tightens_an_open_environment(
 ) -> None:
     async with running_env(
         app_database_url,
-        signup_mode="open",
+        public_signup=True,
         smtp_host="127.0.0.1",
         smtp_port=smtp.port,
         smtp_tls="none",
@@ -194,6 +198,7 @@ async def test_the_database_at_closed_refuses_oauth_sign_ups_even_with_an_invite
         async with running_env(
             app_database_url,
             signup_mode=environment,
+            public_signup=environment == "open",
             oauth_google_client_id=CLIENT_IDS["google"],
             oauth_google_client_secret=fake.secret,
         ) as env:
@@ -215,7 +220,7 @@ async def test_the_database_at_invite_tightens_an_open_environment_for_oauth(
     fake = FakeProviders(CLIENT_IDS)
     async with running_env(
         app_database_url,
-        signup_mode="open",
+        public_signup=True,
         oauth_google_client_id=CLIENT_IDS["google"],
         oauth_google_client_secret=fake.secret,
     ) as env:
@@ -305,7 +310,7 @@ async def test_a_hand_off_that_carried_an_invite_consumes_it_whatever_the_mode_i
     clean_auth: None, app_database_url: str, database_url: str, smtp: SmtpFake
 ) -> None:
     fake = FakeProviders(CLIENT_IDS)
-    async with provider_env(app_database_url, fake, smtp, signup_mode="open") as env:
+    async with provider_env(app_database_url, fake, smtp, public_signup=True) as env:
         env.app.state.oauth.transport = fake.transport
         code = await invite(env)
         with stored(database_url, signup_mode="invite"):  # the effective mode is invite

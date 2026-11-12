@@ -215,6 +215,10 @@ its order after that check.
 - **Invite gate:** sign-up is invite-only while `CLASSBEAT_SIGNUP_MODE=invite` (the default;
   `closed` and `open` also exist). The invite is checked first, and a bad invite gets its own
   error.
+  *Amendment 2026-11-12 (#976, [ADR 0032](0032-paddle-on-fakes.md) §9):* sign-up opens only with
+  `CLASSBEAT_PUBLIC_SIGNUP=true` (default false); `CLASSBEAT_SIGNUP_MODE=open` alone is refused at
+  start-up, `closed` still wins, and in prod the mode stays `invite` while Turnstile is off
+  (`classbeat.flags.signup_policy`).
 - **Response:** with a valid invite, both branches hash the password, answer "check your inbox"
   and send one mail after the response:
   - **New email:** a `pending_signups` row is stored, and the mail holds a confirmation link

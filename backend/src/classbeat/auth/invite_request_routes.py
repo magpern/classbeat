@@ -96,7 +96,7 @@ async def request_invite(body: InviteRequestIn, request: Request) -> Received:
     )
     settings = request.app.state.settings
     async with system_session(factory(request)) as db:
-        if await flags.signup_mode(db, settings.signup_mode) != "invite":
+        if await flags.signup_mode(db, settings) != "invite":
             raise refuse(403, "requests_closed")
         await _store(
             db,

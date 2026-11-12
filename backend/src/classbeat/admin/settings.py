@@ -63,13 +63,14 @@ from classbeat.admin.settings_models import (
     SettingIn,
     SettingsOut,
 )
+from classbeat.admin.settings_trial import effective_trial
 from classbeat.config import Settings
 from classbeat.db import system_session
 from classbeat.design.music_kind import fake_covers
 from classbeat.emails.dispatch import DEFAULT_SENDER_NAME
 from classbeat.emails.live import config_from, kind_switches
 from classbeat.flags import core
-from classbeat.flags.core import FlagRefused
+from classbeat.flags.effective import environment_signup_held, environment_signup_mode
 from classbeat.models.routes import Variant, every_plan_covers
 from classbeat.plans.entitle import TRIAL_MAX_PLAN, plan_ranks
 
@@ -105,7 +106,7 @@ def _stored_valid(key: str, value: Any) -> bool:
         return True
     try:
         core.validate_for_write(key, value, trial_days_max=10**9, mail_kinds=kind_switches())
-    except FlagRefused:
+    except core.FlagRefused:
         return False
     return True
 
@@ -118,10 +119,11 @@ def _flag(
     emails: dict[UUID, str],
     running_covered: bool = False,
 ) -> FlagOut:
-    stored = None if row is None else row.value
+    stored, note = None if row is None else row.value, None
     if key == "signup_mode":
-        environment: Any = settings.signup_mode
-        effective: Any = core.stricter_signup(settings.signup_mode, stored)
+        note = environment_signup_held(settings)  # the flag on, held at invite: say why
+        environment: Any = environment_signup_mode(settings)
+        effective: Any = core.stricter_signup(environment, stored)
         source = "database" if effective != environment else "environment"
     elif key == "song_picking":
         environment = "on" if settings.song_picking else "off"
@@ -139,7 +141,7 @@ def _flag(
     elif key == "trial":
         environment = {"plan": None, "days": 0}
         trial = core.trial_setting(stored)
-        effective = _effective_trial(trial, settings, ranks)
+        effective = effective_trial(trial, settings, ranks)
         source = "database" if effective is not None else "environment"
     else:  # banner
         environment = None
@@ -153,23 +155,10 @@ def _flag(
         environment=environment,
         stored=stored,
         stored_valid=_stored_valid(key, stored),
+        environment_note=note,
         updated_at=None if row is None else row.updated_at,
         updated_by=None if row is None else _person(row.updated_by, emails),
     )
-
-
-def _effective_trial(
-    trial: core.TrialSetting | None, settings: Settings, ranks: dict[str, int]
-) -> dict[str, Any] | None:
-    """What a trial started now would be, as ``classbeat.plans.trial`` clamps it: the days to
-    ``CLASSBEAT_TRIAL_DAYS_MAX``, the plan to at most ``instructor``; ``None`` when off."""
-    if trial is None:
-        return None
-    days = min(trial.days, settings.trial_days_max)
-    if days <= 0 or trial.plan not in ranks or TRIAL_MAX_PLAN not in ranks:
-        return None
-    plan = TRIAL_MAX_PLAN if ranks[trial.plan] > ranks[TRIAL_MAX_PLAN] else trial.plan
-    return {"plan": plan, "days": days}
 
 
 async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
@@ -276,7 +265,7 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
         )
         if _stored_bytes(canonical) > MAX_VALUE_BYTES:
             refusal = "invalid_value"
-    except FlagRefused as exc:
+    except core.FlagRefused as exc:
         refusal = exc.reason
     params: dict[str, Any] = {"key": key} if refusal is not None else _set_params(key, canonical)
     if key == "trial" and refusal is None:

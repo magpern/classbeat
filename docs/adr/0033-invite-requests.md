@@ -63,8 +63,10 @@ unoffered one is ignored), `captcha_token`. Order, as sign-up's (ADR 0025 sectio
 2. **Turnstile**, action `invite_request` (the guard test's `TURNSTILE` table).
 3. Buckets, every request counts: **3 per normalized address and hour, 5 per IP (IPv6 /64) and
    hour** (`invite-request` limits; the mechanism keeps windows of at most an hour).
-4. The effective sign-up mode (environment and database, stricter wins): anything but `invite`
-   is 403 `requests_closed` (the mode is public anyway, `GET /api/settings/public`).
+4. The effective sign-up mode (`flags.effective.signup_mode`: the environment's mode from
+   `CLASSBEAT_PUBLIC_SIGNUP` and `CLASSBEAT_SIGNUP_MODE`, ADR 0032 section 7, and the database,
+   stricter wins): anything but `invite` (public sign-up open, or closed) is 403
+   `requests_closed` (the mode is public anyway, `GET /api/settings/public`).
 5. Store, unless the address has a pending request (the unique index) or `PENDING_CAP` (1000)
    requests are pending (a warning line with the count, never the address).
 

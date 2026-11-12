@@ -30,6 +30,9 @@ class FlagOut(Out):
     environment: Any
     stored: Any  # the row's value, None when there is none
     stored_valid: bool
+    # Why the environment's value is not what its settings ask for (``turnstile_off``: public
+    # sign-up is on but held at ``invite`` in prod while Turnstile is off); ``None`` otherwise.
+    environment_note: str | None = None
     updated_at: datetime | None
     updated_by: PersonOut | None
 
