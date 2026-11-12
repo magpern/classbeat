@@ -41,8 +41,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.admin.db import AdminDb, record_webhook_refusal, webhook_lookup, webhook_session
-from classbeat.auth import bucket_ip
-from classbeat.auth.deps import request_ip
+from classbeat.auth import bucket_ip, request_ip
 from classbeat.billing import links_sql, writer, writer_sql
 from classbeat.billing.apply_policy import Applied, Duplicate
 from classbeat.billing.errors import BillingRefused
