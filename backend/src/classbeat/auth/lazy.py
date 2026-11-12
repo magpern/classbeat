@@ -82,6 +82,7 @@ EXPORTS: dict[str, str] = {
     "owner_active": "owners",
     "active_email": "owners",
     "stored_admin": "owners",
+    "stored_admins": "owners",
     "lock_owner_row": "owners",
     "WipeEvent": "operator",
     "mark_wipe_mailed": "operator",

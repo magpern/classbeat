@@ -92,6 +92,7 @@ if TYPE_CHECKING:
         lock_owner_row,
         owner_active,
         stored_admin,
+        stored_admins,
     )
     from classbeat.auth.passwords import (
         PasswordHashBusy,
@@ -264,6 +265,7 @@ __all__ = [
     "spotify_start_buckets",
     "start_session",
     "stored_admin",
+    "stored_admins",
     "swedebeat_mixes_buckets",
     "token_hash",
     "totp_rows_by_key",
