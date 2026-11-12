@@ -149,7 +149,8 @@ def test_an_unstated_base_game_reported_alone_is_no_replacement_for_a_stated_one
     )
     done = layer(mixed, read(games=[{**overflow, "origin": "inferred"}]), gates())
     assert [(i.path, i.reason_code) for i in done.items] == [("games.1", "game_missing")]
-    assert isinstance(done.items[0].value, dict) and done.items[0].value["type"] == "racetrack"
+    assert isinstance(done.items[0].value, dict)
+    assert done.items[0].value["type"] == "racetrack"
 
 
 def test_removing_games_with_a_list_records_no_missing_game() -> None:
