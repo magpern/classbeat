@@ -934,7 +934,15 @@ jobs:
       - name: Logs on failure
         if: failure() && env.LOGS_LEAK != '1'
         working-directory: .
-        run: docker compose ps -a && docker compose logs --no-color --tail 100
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --tail 100
+          # The tail above is only the last minutes. A 5xx or an error from earlier in the run (a flaky
+          # spec's one 500) is in the full logs: print just those lines, by class and status (#995).
+          echo "::group::5xx responses and errors from the whole run"
+          docker compose logs --no-color web worker web-passkeys web-paddle db \
+            | grep -E '"status": 5[0-9][0-9]|"level": "(ERROR|CRITICAL)"|database error|ERROR:|Traceback' | tail -60 || true
+          echo "::endgroup::"
 
       - name: Stop the stack
         if: always()
