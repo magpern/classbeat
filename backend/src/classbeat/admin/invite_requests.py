@@ -260,7 +260,9 @@ async def decline_requests(request: Request, actor: AdminActor, body: DeclineIn)
                 declined.append(request_id)
     finally:  # also when a later id fails: the skips counted so far still get their row (#999)
         if skipped:  # one summary row, one slot of the refusal limiter: a count, no ids
-            await audit_refusal(  # never raises, so the original error is kept
+            # Its own write errors are caught inside; `checked_params` and `limiter.allow` run
+            # before that `try` and can still raise, though neither fails for this fixed input.
+            await audit_refusal(
                 db,
                 actor,
                 "invite_request.decline_skipped",
