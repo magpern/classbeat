@@ -16,11 +16,12 @@ from types import SimpleNamespace
 from typing import Annotated, Any
 from uuid import UUID
 
+import httpx
 import pytest
 from fastapi import Depends
 from sqlalchemy import text
 
-from authtools import Env, running_env
+from authtools import ORIGIN, Env, running_env
 from classbeat import auth
 from classbeat.auth import sessions as sessions_module
 from classbeat.auth.anomaly import EVENT_KIND, agent_family, client_mark
@@ -363,6 +364,58 @@ async def test_a_request_that_lost_the_race_still_runs_without_recent_auth_and_w
         assert len(await events(env)) == 1
     stored = (await session_row(env)).seen_ip_hash
     assert bytes(stored) == client_mark(keys, "192.0.2.99", None).ip_hash
+
+
+async def _peerless(env: Env, client: Client, path: str) -> httpx.Response:
+    """``client``'s request on a connection whose peer address is unknown (``scope["client"]``
+    is ``None``): what uvicorn hands the app when the client reset the connection before uvicorn
+    accepted it, its ``getpeername()`` failing while the request bytes are still buffered (an
+    aborted fetch, #926)."""
+
+    async def app(scope: Any, receive: Any, send: Any) -> None:
+        await env.app({**scope, "client": None}, receive, send)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url=ORIGIN) as raw:
+        return await raw.get(path, headers=client._cookie_header())  # pyright: ignore[reportPrivateUsage]
+
+
+async def test_a_request_without_a_peer_address_is_no_move_and_proves_nothing(env: Env) -> None:
+    """#926: right after a sign-in, an aborted request of the same browser reached the app without
+    a peer address, so its client address was ``unknown``: compared with the sign-in's mark it was
+    a move, which cleared ``reauth_at`` and made the next request's ``POST /api/connections/mowl``
+    a 403 ``reauth_required``. Such a request is not compared (it has no network to compare) and
+    leaves the session as it was, but it runs without the recent authentication, MFA and step-up
+    times itself (fail closed: the session's network was not seen)."""
+    client = await sign_in(env)
+    before = await session_row(env)
+    assert await client.guarded() == 200
+    peerless = await _peerless(env, client, "/api/auth/session")
+    assert peerless.status_code == 200
+    assert peerless.json()["authenticated"] is True
+    assert peerless.json()["session"]["recent_auth"] is False
+    guarded = await _peerless(env, client, GUARDED)
+    assert (guarded.status_code, guarded.json()["detail"]) == (403, {"reason": "reauth_required"})
+    after = await session_row(env)
+    assert bytes(after.seen_ip_hash) == bytes(before.seen_ip_hash)
+    assert (after.seen_agent, after.reauth_at) == (before.seen_agent, before.reauth_at)
+    assert after.location_changed_at is None
+    assert await events(env) == []
+    # The browser's next request, with its address, still has the sign-in's recent auth.
+    assert await client.guarded() == 200
+
+
+async def test_a_session_without_a_mark_does_not_adopt_a_peerless_requests(env: Env) -> None:
+    """The silent adoption of a first mark (sessions from before migration 0033) waits for a
+    request with an address: a mark of ``unknown`` would make every later request a move."""
+    issued = await env.login(await env.user())
+    client = Client(env, ip=MOBILE, agent=SAFARI_IPHONE)
+    client.cookies[auth.SESSION_COOKIE] = issued.token
+    assert (await _peerless(env, client, GUARDED)).status_code == 403
+    assert (await session_row(env)).seen_ip_hash is None
+    assert await client.guarded() == 200
+    assert (await session_row(env)).seen_agent == "safari/ios"
+    assert await events(env) == []
 
 
 async def test_a_rotation_stores_the_rotating_requests_mark(env: Env) -> None:

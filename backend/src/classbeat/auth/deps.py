@@ -6,6 +6,7 @@ neither clears the cookie (the token may have just been rotated). A known sessio
 expired, idle or belongs to a disabled user is deleted and the cookie is cleared.
 """
 
+from dataclasses import replace
 from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID
 
@@ -15,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat import connections
 from classbeat.auth.anomaly import ClientMark, client_mark
-from classbeat.auth.clientip import client_ip
+from classbeat.auth.clientip import UNKNOWN_ADDRESS, client_ip
 from classbeat.auth.cookies import DEVICE_COOKIE, SESSION_COOKIE
 from classbeat.auth.sessions import Resolution, SessionInfo, resolve_session
 from classbeat.auth.tables import users
@@ -37,13 +38,22 @@ async def resolve_request(request: Request) -> Resolution:
         resolution = Resolution("anonymous")  # no database access without a cookie
     else:
         ip = request_ip(request)
+        # #926: without a peer address (uvicorn's ``getpeername()`` failed: the client reset the
+        # connection, an aborted fetch, before it was accepted, yet its request is still read)
+        # there is no network to compare. Its mark would be ``unknown``'s, a move that clears the
+        # times the browser's next requests still need, so nothing is compared or stored and only
+        # this request runs without them (fail closed).
+        peerless = ip == UNKNOWN_ADDRESS
         resolution = await resolve_session(
             request.app.state.session_factory,
             request.app.state.settings,
             token,
-            request_client_mark(request, ip),
+            None if peerless else request_client_mark(request, ip),
             ip=ip,
         )
+        if peerless and resolution.info is not None:
+            unproven = replace(resolution.info, reauth_at=None, mfa_at=None, stepup_at=None)
+            resolution = Resolution(resolution.outcome, unproven)
     if resolution.outcome == "refused":
         request.state.clear_session_cookie = True
     setattr(request.state, _RESOLUTION, resolution)
