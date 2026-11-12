@@ -21,7 +21,7 @@ PB-1 to PB-2, PB-4 and PB-5 run in parallel.
 
 ## Done when
 1. A tester buys a plan through the fake Paddle: checkout, signed webhook, plan active.
-2. A replayed, duplicated, delayed or reordered webhook changes nothing beyond the first valid one.
+2. A replayed or duplicated webhook changes nothing beyond the first valid one; a delayed or reordered valid event is answered 409 until the earlier one lands, then applies exactly once.
 3. A bad signature, an old timestamp and a price that disagrees with the policy are refused with
    no write and no secret in any log.
 4. A failed payment leaves the plan unchanged and says so.
