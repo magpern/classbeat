@@ -44,8 +44,9 @@ async def create_provider_account(
     locale: str | None = None,
 ) -> UUID:
     """One savepoint: consume the invite, create the user (verified) and the identity, grant
-    the invite's tier. Raises ``Refused`` with ``invite_invalid`` (the invite or its tier's code
-    is gone) or ``account_exists``; nothing is left behind."""
+    the invite's tier. Raises ``Refused`` with ``invite_invalid`` (the invite is gone, or its tier
+    cannot be granted: ``grant_invite_tier`` is ``False``, never an exception, #989) or
+    ``account_exists``; nothing is left behind."""
     try:
         async with db.begin_nested():
             await consume_invite(db, invite_id)

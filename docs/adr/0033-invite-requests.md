@@ -91,6 +91,13 @@ rendered as HTML, and never reaches a model, a log line or an audit row.
   request becomes `issued`. Answer 201 `{code, request, email}`: the code is in this response
   only, as with `POST /invites`.
 - `POST /{id}/decline` (`invite_request.decline`, no params): 409 `already_decided` once decided.
+- *Amendment of 2026-11-12 (#989).* The list answer also carries `pending`, the size of the whole
+  pending queue, so the screen shows it against the cap from one page. `POST /decline`
+  `{ids}` (1 to 100 ids, nothing else) declines each request as `POST /{id}/decline` does, in its
+  own audited transaction: one `invite_request.decline` row per request, its id as the target, no
+  params. A request that is gone or decided meanwhile is skipped (its `refused` row says why) and
+  does not undo the others; the answer is `{declined, skipped}`. This answers the pending cap
+  filled by someone who can solve Turnstile (finding 5 of the #987 review).
 
 ### 4. One code, the tier granted through the redeem path
 
@@ -121,6 +128,15 @@ pending row kept. An account never exists without the tier its invite promised, 
 granted once (the invite is consumed once and the code has one use). A plain approve (no plan)
 is an ordinary invite. In `open` mode the invite field is not read, so no tier applies; requests
 are not taken in that mode.
+
+*Amendment of 2026-11-12 (#989).* A refusal the redeem steps raise (`AlreadyRedeemed`,
+`TermsRefused`) is a refusal too: the steps run in a savepoint, so the grant answers `False` and
+the sign-up rolls back as `invite_invalid` instead of failing with a 500, and `app.user_id` is
+cleared in a `finally`. Because a mode change would leave issued tier invites unhonoured without
+a word, `GET /api/admin/settings` reports `read_only.unused_tier_invites` (issued with a plan,
+neither used nor expired) and the Settings view warns while the effective sign-up mode is not
+`invite` and that count is above zero. It also reports `read_only.mail_configured` (a boolean,
+never an SMTP detail), so the approve form offers to email the code only when mail can go out.
 
 ### 5. Delivery
 

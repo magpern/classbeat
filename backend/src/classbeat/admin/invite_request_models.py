@@ -37,7 +37,10 @@ class ApproveParams(Params):
 
 ACTIONS["invite_request.list"] = ListParams
 ACTIONS["invite_request.approve"] = ApproveParams
-ACTIONS["invite_request.decline"] = NoParams
+ACTIONS["invite_request.decline"] = NoParams  # one row per request, the bulk decline's too
+
+# The bulk decline's bound (#989): one request, at most this many audited transactions.
+DECLINE_MAX = 100
 
 
 class ApproveIn(BaseModel):
@@ -55,6 +58,14 @@ class ApproveIn(BaseModel):
         if (self.plan_id is None) != (self.grant_days is None):
             raise ValueError("a tier names a plan and its grant_days")
         return self
+
+
+class DeclineIn(BaseModel):
+    """The requests to decline: ids only, never an address or text."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    ids: Annotated[list[UUID], Field(min_length=1, max_length=DECLINE_MAX)]
 
 
 class Out(BaseModel):
@@ -90,6 +101,12 @@ class RequestOut(Out):
 class RequestPage(Out):
     requests: list[RequestOut]
     next_offset: int | None
+    pending: int  # the whole pending queue, counted by the server whatever the page (#989)
+
+
+class Declined(Out):
+    declined: list[UUID]
+    skipped: list[UUID]  # gone, or decided meanwhile (each has its ``refused`` audit row)
 
 
 class Issued(Out):

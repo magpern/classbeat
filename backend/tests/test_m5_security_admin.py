@@ -59,6 +59,10 @@ BODIES: dict[tuple[str, str], dict[str, Any]] = {
         "plan_id": "pro",
         "grant_days": 30,
     },
+    # #989: the bulk decline (an id that is no request: skipped, so the fuzz declines nothing).
+    ("POST", "/api/admin/invite-requests/decline"): {
+        "ids": ["00000000-0000-4000-8000-000000000989"]
+    },
     # AD4 (#314): a flag write (the banner, path value ``key``) and a plan's limits (``plan_id``).
     ("PUT", "/api/admin/settings/{key}"): {"value": {"text": "Fuzz banner", "level": "info"}},
     ("PATCH", "/api/admin/plans/{plan_id}"): {"classes_per_month": 10},
@@ -354,6 +358,7 @@ async def test_every_string_input_of_every_admin_route_is_refused_and_audited_on
         "POST /api/admin/redeem-codes/{code_id}/disable path:code_id",
         "POST /api/admin/invite-requests/{request_id}/approve path:request_id",
         "POST /api/admin/invite-requests/{request_id}/approve body:plan_id",
+        "POST /api/admin/invite-requests/decline body:ids",
         "PUT /api/admin/settings/{key} path:key",
         "PUT /api/admin/settings/{key} body:value",
         "DELETE /api/admin/settings/{key} path:key",

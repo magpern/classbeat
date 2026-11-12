@@ -36,6 +36,7 @@ EXPORTS: dict[str, str] = {
     "account_states": "admin_lookup",
     "addresses_with_accounts": "admin_lookup",
     "invite_states": "admin_lookup",
+    "unused_tier_invites": "admin_lookup",
     "bucket_ip": "clientip",
     "client_ip": "clientip",
     "CSRF_COOKIE": "cookies",

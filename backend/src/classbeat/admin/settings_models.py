@@ -79,6 +79,8 @@ class ReadOnlyOut(Out):
     agent_job_cost_micros: int
     song_job_cost_micros: int
     billing_enabled: bool
+    mail_configured: bool  # ``CLASSBEAT_SMTP_HOST`` is set; no SMTP detail ever (#989)
+    unused_tier_invites: int  # issued with a tier, neither used nor expired (ADR 0033, #989)
 
 
 class SettingsOut(Out):

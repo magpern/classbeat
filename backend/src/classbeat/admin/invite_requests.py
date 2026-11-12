@@ -12,6 +12,13 @@ one ``admin_audit`` row per call through ``admin_session`` on ``classbeat_maint`
   only. With ``send_email`` and mail configured, the ``invite_code`` mail goes to the requester
   after the commit (``email: "queued"``); mail off sends nothing (``"mail_off"``).
 - ``POST /invite-requests/{request_id}/decline``: 409 ``already_decided`` for a decided request.
+- ``POST /invite-requests/decline`` ``{ids}`` (at most ``DECLINE_MAX``, #989): each request is
+  declined as the single route does, in its own audited transaction, so there is one
+  ``invite_request.decline`` row per request; one that is gone or decided meanwhile is skipped
+  (``skipped``, its ``refused`` row) and does not undo the others.
+
+The list carries ``pending``, the size of the whole pending queue, so the screen shows it against
+``PENDING_CAP`` from one page instead of fetching them all.
 
 The code and the address are never logged or put in an audit row; the redeem code's label is a
 fixed text, so the Codes list shows these codes without naming anyone.
@@ -28,9 +35,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
 from classbeat.admin.audit import Target
-from classbeat.admin.db import AdminDb, AdminRefused, admin_session
+from classbeat.admin.db import Actor, AdminDb, AdminRefused, admin_session
 from classbeat.admin.invite_request_models import (
     ApproveIn,
+    Declined,
+    DeclineIn,
     Delivery,
     InviteOut,
     Issued,
@@ -59,6 +68,7 @@ _LIST = text(
     "WHERE (CAST(:state AS text) IS NULL OR state = :state) "
     "ORDER BY created_at DESC, id OFFSET :offset LIMIT :limit"
 )
+_PENDING = text("SELECT count(*) FROM invite_requests WHERE state = 'pending'")
 _LOCK = text(f"SELECT {_COLUMNS} FROM invite_requests WHERE id = :i FOR UPDATE")  # noqa: S608
 _DECIDE = text(
     "UPDATE invite_requests SET state = :state, plan_id = :p, grant_days = :d, "  # noqa: S608
@@ -134,7 +144,9 @@ async def list_requests(
             await session.execute(_LIST, {"state": state, "offset": offset, "limit": limit + 1})
         ).all()
         page = await _out(session, list(rows[:limit]))
-    return RequestPage(requests=page, next_offset=offset + limit if len(rows) > limit else None)
+        pending = (await session.execute(_PENDING)).scalar_one()
+    following = offset + limit if len(rows) > limit else None
+    return RequestPage(requests=page, next_offset=following, pending=pending)
 
 
 @router.post(f"{PATH}/{{request_id}}/approve", status_code=201, response_model=Issued)
@@ -203,10 +215,9 @@ async def approve_request(
     return Issued(code=code, request=out, email=email)
 
 
-@router.post(f"{PATH}/{{request_id}}/decline", response_model=RequestOut)
-async def decline_request(request: Request, actor: AdminActor, request_id: UUID) -> RequestOut:
+async def _decline(db: AdminDb, actor: Actor, request_id: UUID) -> RequestOut:
     async with admin_session(
-        _db(request),
+        db,
         actor,
         "invite_request.decline",
         write=True,
@@ -219,6 +230,28 @@ async def decline_request(request: Request, actor: AdminActor, request_id: UUID)
         ).one()
         (out,) = await _out(session, [row])
     return out
+
+
+@router.post(f"{PATH}/{{request_id}}/decline", response_model=RequestOut)
+async def decline_request(request: Request, actor: AdminActor, request_id: UUID) -> RequestOut:
+    return await _decline(_db(request), actor, request_id)
+
+
+@router.post(f"{PATH}/decline", response_model=Declined)
+async def decline_requests(request: Request, actor: AdminActor, body: DeclineIn) -> Declined:
+    db = _db(request)
+    declined: list[UUID] = []
+    skipped: list[UUID] = []
+    for request_id in dict.fromkeys(body.ids):  # a repeated id is declined once
+        try:
+            await _decline(db, actor, request_id)
+        except AdminRefused as exc:
+            if exc.reason not in ("not_found", "already_decided"):
+                raise
+            skipped.append(request_id)
+        else:
+            declined.append(request_id)
+    return Declined(declined=declined, skipped=skipped)
 
 
 async def _mail_code(app: Any, recipient: str, code: str, days: int, locale: str | None) -> None:

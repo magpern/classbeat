@@ -9,6 +9,8 @@ and ``classbeat.admin.jobs`` call ``account_emails`` with the session they hold:
 ``addresses_with_accounts`` and ``invite_states`` are the invite requests' (ADR 0033): which
 requested addresses already have an account (``users.email_normalized``) and what became of the
 invites issued for them (``invites.used_at`` and ``expires_at``, never the code's hash).
+``unused_tier_invites`` counts the issued ones with a tier that can still be used, for the
+Settings view's warning when sign-up leaves invite mode (#989).
 """
 
 from collections.abc import Collection
@@ -16,12 +18,19 @@ from datetime import datetime
 from typing import NamedTuple
 from uuid import UUID
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.auth.tables import invites, users
 
 MAX_IDS = 1000
+
+# Through the request (``invite_requests.plan_id``): maint cannot read ``redeem_codes.invite_id``.
+_UNUSED_TIER_INVITES = text(
+    "SELECT count(*) FROM invite_requests r JOIN invites i ON i.id = r.invite_id "
+    "WHERE r.state = 'issued' AND r.plan_id IS NOT NULL AND i.used_at IS NULL "
+    "AND i.expires_at > now()"
+)
 
 
 async def account_emails(db: AsyncSession, ids: Collection[UUID]) -> dict[UUID, str]:
@@ -86,3 +95,8 @@ async def invite_states(db: AsyncSession, ids: Collection[UUID]) -> dict[UUID, s
     )
     rows = await db.execute(select(invites.c.id, state).where(invites.c.id.in_(wanted)))
     return {row[0]: row[1] for row in rows.all()}
+
+
+async def unused_tier_invites(db: AsyncSession) -> int:
+    """How many invites issued with a tier (ADR 0033) are neither used nor expired."""
+    return (await db.execute(_UNUSED_TIER_INVITES)).scalar_one()
