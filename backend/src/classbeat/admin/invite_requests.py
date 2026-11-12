@@ -250,22 +250,24 @@ async def decline_requests(request: Request, actor: AdminActor, body: DeclineIn)
     db = _db(request)
     declined: list[UUID] = []
     skipped: list[UUID] = []
-    for request_id in dict.fromkeys(body.ids):  # a repeated id is declined once
-        try:
-            await _decline(db, actor, request_id, AdminSkipped)  # a skip writes no row itself
-        except AdminSkipped:
-            skipped.append(request_id)
-        else:
-            declined.append(request_id)
-    if skipped:  # one summary row for the call, one slot of the refusal limiter: a count, no ids
-        await audit_refusal(
-            db,
-            actor,
-            "invite_request.decline_skipped",
-            SKIPPED_REASON,
-            target=Target(kind="invite_request"),
-            params={"skipped": len(skipped)},
-        )
+    try:
+        for request_id in dict.fromkeys(body.ids):  # a repeated id is declined once
+            try:
+                await _decline(db, actor, request_id, AdminSkipped)  # a skip writes no row itself
+            except AdminSkipped:
+                skipped.append(request_id)
+            else:
+                declined.append(request_id)
+    finally:  # also when a later id fails: the skips counted so far still get their row (#999)
+        if skipped:  # one summary row, one slot of the refusal limiter: a count, no ids
+            await audit_refusal(  # never raises, so the original error is kept
+                db,
+                actor,
+                "invite_request.decline_skipped",
+                SKIPPED_REASON,
+                target=Target(kind="invite_request"),
+                params={"skipped": len(skipped)},
+            )
     return Declined(declined=declined, skipped=skipped)
 
 

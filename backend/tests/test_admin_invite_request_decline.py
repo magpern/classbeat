@@ -6,7 +6,8 @@ The bulk decline declines each listed pending request in its own audited transac
 one that is gone or decided meanwhile without undoing the others, records the skips of one call in
 one ``invite_request.decline_skipped`` row (a count, no ids, #994) that spends one slot of the
 refusal limiter however many ids were stale, and refuses an empty, oversized or foreign body
-whole. The list counts the whole pending queue whatever its filter and page.
+whole. A database error on a later id keeps the summary row of the skips before it (#999).
+The list counts the whole pending queue whatever its filter and page.
 Settings says whether mail is configured (a boolean) and how many invites issued with a tier are
 still unused. The gate on the bulk route is in ``test_admin_invite_requests.py``.
 """
@@ -17,8 +18,10 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import OperationalError
 
 from authtools import Env
+from classbeat.admin import invite_requests
 from test_admin_invite_requests import (
     PATH,
     TIER,
@@ -213,3 +216,28 @@ async def test_settings_says_when_mail_is_not_configured(
     read_only = (await actor.get("/api/admin/settings")).json()["read_only"]
     assert read_only["mail_configured"] is False
     assert not any("smtp" in key or "host" in key for key in read_only)  # never an SMTP detail
+
+
+async def test_a_later_database_error_keeps_the_summary_row_of_the_earlier_skips(
+    env: Env, make_actor: Any, superuser: Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An id that fails with a database error after a skip: the call fails, its decline gets its
+    ``error`` row, and the skip counted before it still gets its summary row (#999)."""
+    actor = await stepped_admin(env, make_actor)
+    gone = uuid.uuid4()
+    broken, later = add_request(superuser, "broken@example.com"), add_request(superuser)
+    real = invite_requests._pending  # pyright: ignore[reportPrivateUsage]
+
+    async def failing(session: Any, request_id: uuid.UUID, *args: Any) -> Any:
+        if request_id == broken:
+            raise OperationalError("SELECT", {}, Exception("connection lost"))
+        return await real(session, request_id, *args)
+
+    monkeypatch.setattr(invite_requests, "_pending", failing)
+    response = await actor.post(BULK, {"ids": [str(gone), str(broken), str(later)]})
+    assert response.status_code == 500
+    assert skipped_rows(superuser) == [
+        ("refused", "already_decided_or_missing", "invite_request", None, {"skipped": 1})
+    ]
+    assert decline_rows(superuser) == [("error", "internal", str(broken), {})]
+    assert states(superuser) == {broken: "pending", later: "pending"}  # the loop stopped there
