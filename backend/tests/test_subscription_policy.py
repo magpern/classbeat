@@ -1,6 +1,6 @@
 """Table-driven tests of the pure subscription policy (ADR 0031 section 5)."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -76,8 +76,11 @@ def test_naive_datetimes_are_refused() -> None:
 
 
 def test_other_zones_are_read_as_utc() -> None:
-    plus2 = datetime(2025, 1, 31, 1, 0, tzinfo=UTC).astimezone(UTC)
-    assert sp.period_end(plus2, 31).tzinfo == UTC
+    # 1 Feb 01:00 at +02:00 is 31 Jan 23:00 UTC: the month and day come from the UTC reading.
+    plus2 = datetime(2025, 2, 1, 1, 0, tzinfo=timezone(timedelta(hours=2)))
+    end = sp.period_end(plus2, 31)
+    assert end == at(2025, 2, 28, 23)
+    assert end.utcoffset() == timedelta(0)
 
 
 @pytest.mark.parametrize(

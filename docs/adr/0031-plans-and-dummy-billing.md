@@ -8,8 +8,8 @@ authorized.
 The owner said "go, implement M7" on 2026-11-11 for **M7a only**: three plans, quality levels,
 limits with upgrade prompts, a pricing page and plan menu, a dummy billing provider, the
 subscription writer, upgrade, downgrade and proration rules, tester access and admins on the top
-plan. Real Paddle, public sign-up, legal pages, the commercial song-picking route and provider
-agreements are **M7b** and keep roadmap §9's gate (A1 to A5 for every subscriber, agreements
+plan. Real Paddle, public sign-up, legal pages, the extra song-picking arrangement the provider
+agreements require for paying subscribers, and the provider agreements themselves are **M7b** and keep roadmap §9's gate (A1 to A5 for every subscriber, agreements
 signed). Plan: [docs/plans/commercial.md](../plans/commercial.md) (revision 2).
 
 What M5 and later built, and this ADR relies on (checked on `main` at 955ff5b):

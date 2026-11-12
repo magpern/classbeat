@@ -84,16 +84,32 @@ def quote_buy(offer: Offer, now: datetime) -> Quote | Refusal:
     price, currency = priced
     start = as_utc(now)
     return Quote(
-        "buy", offer.plan_id, price, currency, start, period_end(start, start.day),
-        start.day, price, None, False,
-    )  # fmt: skip
+        kind="buy",
+        plan_id=offer.plan_id,
+        amount_minor=price,
+        currency=currency,
+        period_start=start,
+        period_end=period_end(start, start.day),
+        anchor_day=start.day,
+        basis_minor=price,
+        next_plan_id=None,
+        cancel_at_end=False,
+    )
 
 
 def _unchanged(kind: QuoteKind, cur: Current, *, next_plan_id: str | None, cancel: bool) -> Quote:
     return Quote(
-        kind, cur.plan_id, 0, cur.basis_currency, cur.period_start, cur.period_end,
-        cur.anchor_day, cur.basis_minor, next_plan_id, cancel,
-    )  # fmt: skip
+        kind=kind,
+        plan_id=cur.plan_id,
+        amount_minor=0,
+        currency=cur.basis_currency,
+        period_start=cur.period_start,
+        period_end=cur.period_end,
+        anchor_day=cur.anchor_day,
+        basis_minor=cur.basis_minor,
+        next_plan_id=next_plan_id,
+        cancel_at_end=cancel,
+    )
 
 
 def quote_upgrade(cur: Current, offer: Offer, now: datetime) -> Quote | Refusal:
@@ -115,9 +131,17 @@ def quote_upgrade(cur: Current, offer: Offer, now: datetime) -> Quote | Refusal:
         days_in_period(cur.period_start, cur.period_end),
     )
     return Quote(
-        "upgrade", offer.plan_id, amount, currency, cur.period_start, cur.period_end,
-        cur.anchor_day, price, None, False,
-    )  # fmt: skip
+        kind="upgrade",
+        plan_id=offer.plan_id,
+        amount_minor=amount,
+        currency=currency,
+        period_start=cur.period_start,
+        period_end=cur.period_end,
+        anchor_day=cur.anchor_day,
+        basis_minor=price,
+        next_plan_id=None,
+        cancel_at_end=False,
+    )
 
 
 def quote_downgrade(cur: Current, offer: Offer) -> Quote | Refusal:

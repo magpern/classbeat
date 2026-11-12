@@ -22,7 +22,7 @@ export const legalDa: Catalogue = {
 
   'privacy.title': 'Privatlivspolitik',
   'privacy.lead':
-    'classbeat er en privat beta for undervisere i indendørscykling. Her står, hvad vi gemmer om dig, hvorfor, hvor længe, og hvad du selv kan gøre.',
+    'classbeat er en privat beta for instruktører i indendørscykling. Her står, hvad vi gemmer om dig, hvorfor, hvor længe, og hvad du selv kan gøre.',
 
   'privacy.who.title': 'Hvem vi er',
   'privacy.who.p1':
@@ -132,7 +132,7 @@ export const legalDa: Catalogue = {
 
   'terms.service.title': 'Tjenesten',
   'terms.service.p1':
-    'classbeat hjælper undervisere i indendørscykling med at udforme hold ved hjælp af en AI-assistent og, når du godkender, gemme dem i din MOWL-konto og oprette afspilningslister på din Spotify-konto. Det er en beta kun for inviterede, som den er, og den kan ændres eller ophøre.',
+    'classbeat hjælper instruktører i indendørscykling med at udforme hold ved hjælp af en AI-assistent og, når du godkender, gemme dem i din MOWL-konto og oprette afspilningslister på din Spotify-konto. Det er en beta kun for inviterede, som den er, og den kan ændres eller ophøre.',
   'terms.service.p2':
     'classbeat er ikke lavet af eller tilknyttet MOWL, Spotify eller Swedebeat. Din brug af de tjenester sker efter deres egne vilkår.',
 

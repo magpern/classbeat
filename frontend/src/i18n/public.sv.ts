@@ -112,7 +112,7 @@ export const publicSv: Catalogue = {
   'meta.pricing.description':
     'Vad varje classbeat-plan innehåller: pass i månaden, passlängd, spel, FTP-test och utformningskvalitet. Planerna är inte öppna än.',
   'pricing.title': 'Planer',
-  'pricing.lead': 'Tre planer, från en liten gratisdel till många pass. Planerna är inte öppna för köp än.',
+  'pricing.lead': 'Tre planer, från en liten gratiskvot till många pass. Planerna är inte öppna för köp än.',
   'pricing.plans.title': 'Vad varje plan innehåller',
   'pricing.free.blurb': 'Prova classbeat med en liten kvot varje månad.',
   'pricing.instructor.blurb': 'För instruktörer som håller pass varje vecka.',

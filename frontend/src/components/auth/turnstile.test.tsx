@@ -195,11 +195,17 @@ describe('the fake stand-in (captcha.fake)', () => {
     renderAt('/reset')
     type('Email', 'ann@example.test')
     fireEvent.click(await screen.findByRole('checkbox', { name: 'I am a person (test check)' }))
+    // The token arrives through state: submit only once the button shows it is enabled.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Send reset link' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'The security check is not reachable right now. Try again in a minute.',
     )
-    expect(screen.getByRole('button', { name: 'Send reset link' })).toBeDisabled()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Send reset link' })).toBeDisabled()
+    })
   })
 
   it.each([
@@ -276,11 +282,16 @@ describe('Cloudflare Turnstile (captcha.site_key)', () => {
     })
     renderAt('/signin')
     await screen.findByRole('group', { name: 'Security check' })
-    expect(scripts().map((s) => s.src)).toEqual([SCRIPT])
+    // The group can show before the effect that adds api.js has run (#911, #787).
+    await waitFor(() => {
+      expect(scripts().map((s) => s.src)).toEqual([SCRIPT])
+    })
     expect(scripts()[0]?.parentElement).toBe(document.head)
     await loadScript(turnstile.api)
 
-    expect(turnstile.api.render).toHaveBeenCalledTimes(1)
+    await waitFor(() => {
+      expect(turnstile.api.render).toHaveBeenCalledTimes(1)
+    })
     expect(turnstile.last()).toMatchObject({
       sitekey: SITE_KEY,
       action: 'signin',
@@ -302,7 +313,9 @@ describe('Cloudflare Turnstile (captcha.site_key)', () => {
     act(() => {
       turnstile.last().callback('cf-token-1')
     })
-    expect(submit).toBeEnabled()
+    await waitFor(() => {
+      expect(submit).toBeEnabled()
+    })
     fireEvent.click(submit)
     expect(await screen.findByRole('alert')).toHaveTextContent('The security check did not pass.')
     expect(api.to('POST', '/api/auth/login')[0]?.body).toEqual({
@@ -310,14 +323,16 @@ describe('Cloudflare Turnstile (captcha.site_key)', () => {
       password: 'correct horse battery',
       captcha_token: 'cf-token-1',
     })
-    expect(turnstile.api.reset).toHaveBeenCalledWith('w1')
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeDisabled()
+    await waitFor(() => {
+      expect(turnstile.api.reset).toHaveBeenCalledWith('w1')
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeDisabled()
+    })
 
     // Leaving the form removes the widget; coming back renders again without a second script.
     fireEvent.click(screen.getByRole('link', { name: 'Forgot your password?' }))
     await screen.findByRole('heading', { name: 'Reset your password' })
-    expect(turnstile.api.remove).toHaveBeenCalledWith('w1')
     await waitFor(() => {
+      expect(turnstile.api.remove).toHaveBeenCalledWith('w1')
       expect(turnstile.last().action).toBe('reset')
     })
     expect(scripts()).toHaveLength(1)
