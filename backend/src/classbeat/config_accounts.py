@@ -38,7 +38,7 @@ class AccountSettings(BaseSettings):
     # secret file ``connection_kek`` (read by ``classbeat.crypto.keks``, never the environment);
     # retired keys are ``connection_kek_<id>``.
     connection_kek_id: str = "kek-1"
-    # ADR 0032 section 7: the one switch that opens sign-up to the public (off by default). On, the
+    # ADR 0032 section 9: the one switch that opens sign-up to the public (off by default). On, the
     # environment's mode is ``open`` unless ``signup_mode`` is ``closed``; the database can still
     # tighten it, and in prod it stays ``invite`` while Turnstile is off (``flags.signup_policy``).
     # Declared before ``signup_mode``, whose validator reads it.

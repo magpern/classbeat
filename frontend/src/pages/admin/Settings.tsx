@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { adminError, dollars } from '../../api/admin'
 import {
   asBanner,
@@ -21,18 +21,9 @@ import { BannerForm } from './BannerForm'
 import { PlanLimits } from './PlanLimits'
 import { isReason, useAdminWrite, useMfaRequired } from './StepUp'
 import { SectionTitle, when } from './Table'
+import { REASONS, Reason } from './settingsReasons'
 
-// Why the environment forbids a choice: shown next to the disabled control.
-export const REASONS = {
-  openSignup: 'Open sign-up can only be set on the server (CLASSBEAT_PUBLIC_SIGNUP).',
-  songPickingOff:
-    'Song picking is switched off on the server (CLASSBEAT_SONG_PICKING). This setting has no effect until the server switches it on.',
-  trialsOff: 'Trials are switched off on the server (CLASSBEAT_TRIAL_DAYS_MAX is 0).',
-  trialPlan: 'A trial cannot be of a plan above Instructor.',
-  billing: 'Billing does not exist yet. It comes with a later milestone and cannot be switched on here.',
-  swedebeatOff:
-    'Swedebeat is switched off on the server (CLASSBEAT_SWEDEBEAT_ENABLED). This setting has no effect until the server switches it on.',
-}
+export { REASONS } from './settingsReasons'
 
 const TRIAL_MAX_PLAN = 'instructor'
 
@@ -47,15 +38,6 @@ function describe(key: string, value: unknown): string {
     return banner === null ? 'not valid' : `${banner.level}: ${banner.text}`
   }
   return asText(value) ?? 'not valid'
-}
-
-/** A disabled control's reason, tied to it with `aria-describedby`. */
-function Reason({ id, children }: { id: string; children: ReactNode }) {
-  return (
-    <p id={id} className="m-0 text-[0.9375rem] text-muted">
-      {children}
-    </p>
-  )
 }
 
 /**
@@ -192,6 +174,7 @@ function SignupForm({ item, busy, onSave }: { item: Flag; busy: boolean; onSave:
         Save
       </Button>
       <Reason id="reason-open-signup">{REASONS.openSignup}</Reason>
+      {item.environmentNote === 'turnstile_off' ? <Reason id="reason-signup-held">{REASONS.signupHeld}</Reason> : null}
     </form>
   )
 }

@@ -1,6 +1,6 @@
 # Sign-up and cost controls (PB-5, #976)
 
-Design: [ADR 0032](../adr/0032-paddle-on-fakes.md) §7. This is the report the ADR asks for (what
+Design: [ADR 0032](../adr/0032-paddle-on-fakes.md) §9. This is the report the ADR asks for (what
 already protects sign-up and model cost, checked against `main` at `a8d0577`) and what PB-5 changed.
 Public sign-up stays **off**: opening it is the owner's step (M7b-real).
 

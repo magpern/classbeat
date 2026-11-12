@@ -35,6 +35,8 @@ export interface Flag {
   /** The stored value; null when there is none (or it was cleared). */
   stored: unknown
   storedValid: boolean
+  /** Why the environment's value differs from what its settings ask (`turnstile_off`); null otherwise. */
+  environmentNote: string | null
   updatedAt: string | null
   updatedBy: Person | null
 }
@@ -109,6 +111,7 @@ export function decodeFlag(value: unknown): Flag {
     environment: item.environment ?? null,
     stored: item.stored ?? null,
     storedValid: flag(item, 'stored_valid'),
+    environmentNote: optionalText(item, 'environment_note'),
     updatedAt: optionalText(item, 'updated_at'),
     updatedBy: decodePerson(item.updated_by),
   }
