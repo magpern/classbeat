@@ -48,9 +48,9 @@ function route(overrides: Record<string, unknown> = {}) {
 function view(routes: unknown[] = [route()]) {
   return {
     plans: [
-      { id: 'free', name: 'Free', rank: 0, route_key: 'free', quality: 'Standard' },
-      { id: 'instructor', name: 'Instructor', rank: 1, route_key: 'instructor', quality: 'Better' },
-      { id: 'pro', name: 'Pro', rank: 2, route_key: 'pro', quality: 'Best' },
+      { id: 'free', name: 'Free', rank: 0, route_key: 'free', quality: 'standard' },
+      { id: 'instructor', name: 'Instructor', rank: 1, route_key: 'instructor', quality: 'better' },
+      { id: 'pro', name: 'Pro', rank: 2, route_key: 'pro', quality: 'best' },
     ],
     routes,
     results: [RESULT],

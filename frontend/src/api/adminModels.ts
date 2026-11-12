@@ -17,7 +17,7 @@ export interface ModelPlan {
   name: string
   rank: number
   routeKey: string
-  /** The word users see for the plan: Standard, Better or Best. */
+  /** The word users see for the plan: Standard, Better or Best (the API sends it in lower case). */
   quality: string
 }
 
@@ -49,6 +49,8 @@ export interface ModelsView {
   catalog: CatalogEntry[]
 }
 
+const QUALITY_WORDS: Record<string, string> = { standard: 'Standard', better: 'Better', best: 'Best' }
+
 function decodePlan(value: unknown): ModelPlan {
   const item = object(value, 'plan')
   return {
@@ -56,7 +58,7 @@ function decodePlan(value: unknown): ModelPlan {
     name: text(item, 'name'),
     rank: count(item, 'rank'),
     routeKey: text(item, 'route_key'),
-    quality: text(item, 'quality'),
+    quality: QUALITY_WORDS[text(item, 'quality')] ?? text(item, 'quality'),
   }
 }
 
