@@ -12,10 +12,12 @@ const OUT = { authenticated: false } as unknown as SessionState
 
 function defer() {
   let resolve!: (value: SessionState) => void
-  const promise = new Promise<SessionState>((r) => {
+  let reject!: (reason: Error) => void
+  const promise = new Promise<SessionState>((r, j) => {
     resolve = r
+    reject = j
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 const held: { refresh: () => Promise<SessionState | null> } = { refresh: () => Promise.resolve(null) }
@@ -137,7 +139,7 @@ describe('overlapping session reads', () => {
     expect(screen.getByTestId('state').textContent).toBe('false')
   })
 
-  it('shows the error of the newest read, and a mount read that fails late does not', async () => {
+  it('shows the error of the newest read, and a mount read that answers late does not replace it', async () => {
     const mount = defer()
     getSession.mockReturnValueOnce(mount.promise)
     render(
@@ -155,6 +157,26 @@ describe('overlapping session reads', () => {
       await mount.promise
     })
     expect(screen.getByTestId('state').textContent).toBe('error')
+  })
+
+  it('does not show an error for a mount read that fails after a newer read answered', async () => {
+    const mount = defer()
+    getSession.mockReturnValueOnce(mount.promise)
+    render(
+      <SessionProvider>
+        <Probe />
+      </SessionProvider>,
+    )
+    getSession.mockResolvedValueOnce(OUT)
+    await act(async () => {
+      await held.refresh()
+    })
+    expect(screen.getByTestId('state').textContent).toBe('false')
+    await act(async () => {
+      mount.reject(new Error('late')) // older than the refresh: its failure is ignored (#999)
+      await mount.promise.catch(() => undefined)
+    })
+    expect(screen.getByTestId('state').textContent).toBe('false')
   })
 
   it('still applies a read that nothing newer overtook', async () => {

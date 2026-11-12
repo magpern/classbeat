@@ -15,6 +15,7 @@ const PENDING = `${BASE}?state=pending&offset=0&limit=50`
 const ISSUED = `${BASE}?state=issued&offset=0&limit=50`
 const DECLINED = `${BASE}?state=declined&offset=0&limit=50`
 const CODE = 'INV1TE7C0DE5H0WN0NCE'
+const STALE_WORDS = 'That request was decided meanwhile. The list now shows the current queue.'
 const STEPUP_CODE = '424242'
 const A = 'aaaaaaaa-0000-0000-0000-000000000001'
 const B = 'aaaaaaaa-0000-0000-0000-000000000002'
@@ -284,7 +285,7 @@ describe('admin invite requests', () => {
 
   it.each([
     ['unknown_plan', 422, 'There is no such plan.'],
-    ['already_decided', 409, 'That request was decided already. Reload the list.'],
+    ['already_decided', 409, STALE_WORDS],
   ])('shows %s in words and keeps no code', async (why, status, text) => {
     adminApi({ [`POST ${BASE}/${A}/approve`]: () => reason(status, why) })
     renderAt('/admin/invite-requests')
@@ -400,7 +401,8 @@ describe('admin invite requests', () => {
     const form = await approveFirst()
     expect(api.to('GET', PENDING)).toHaveLength(1)
     fireEvent.click(within(form).getByRole('button', { name: 'Approve and create code' }))
-    expect(await screen.findByText('That request was decided already. Reload the list.')).toBeInTheDocument()
+    expect(await screen.findByText(STALE_WORDS)).toBeInTheDocument()
+    expect(screen.queryByText(/Reload the list/)).toBeNull() // it reloads itself (#999)
     await waitFor(() => {
       expect(api.to('GET', PENDING)).toHaveLength(2)
     })
@@ -409,7 +411,7 @@ describe('admin invite requests', () => {
     expect(screen.queryByTestId('one-time-code')).toBeNull()
     expect(api.to('POST', `${BASE}/${A}/approve`)).toHaveLength(1)
     await approveFirst()
-    expect(screen.queryByText('That request was decided already. Reload the list.')).toBeNull()
+    expect(screen.queryByText(STALE_WORDS)).toBeNull()
   })
 
   it('drops an open decline confirmation when the page changes', async () => {
