@@ -198,6 +198,7 @@ def test_the_peer_is_the_client_unless_it_is_a_trusted_proxy() -> None:
     assert client_ip("203.0.113.9", ["1.1.1.1"], PROXY) == "203.0.113.9"  # header ignored
     assert client_ip("203.0.113.9", ["1.1.1.1"], []) == "203.0.113.9"
     assert client_ip(None, [], PROXY) == "unknown"
+    assert client_ip("10.0.0.1", ["unknown"], PROXY) == "10.0.0.1"  # ends the walk: not peerless
 
 
 def test_behind_a_trusted_proxy_the_rightmost_untrusted_entry_wins() -> None:

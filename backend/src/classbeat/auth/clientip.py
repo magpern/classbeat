@@ -6,6 +6,8 @@ from collections.abc import Sequence
 type Address = ipaddress.IPv4Address | ipaddress.IPv6Address
 type Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 
+UNKNOWN_ADDRESS = "unknown"  # ``client_ip`` of a request without a usable peer address
+
 
 def parse_address(value: str | None) -> Address | None:
     """Parse ``value``; an IPv4-mapped IPv6 address (``::ffff:a.b.c.d``) becomes the IPv4 one."""
@@ -27,7 +29,7 @@ def _trusted(address: Address, proxies: Sequence[Network]) -> bool:
 def client_ip(
     peer: str | None, forwarded_for: Sequence[str], trusted_proxies: Sequence[Network]
 ) -> str:
-    """The client's address, as text (``"unknown"`` if there is none).
+    """The client's address, as text (``UNKNOWN_ADDRESS`` if there is none).
 
     It is the peer, unless the peer is a trusted proxy: then it is the right-most
     ``X-Forwarded-For`` entry that is not itself a trusted proxy. An entry that is not an IP
@@ -35,7 +37,7 @@ def client_ip(
     """
     peer_address = parse_address(peer)
     if peer_address is None:
-        return "unknown"
+        return UNKNOWN_ADDRESS
     if not _trusted(peer_address, trusted_proxies):
         return str(peer_address)
     entries = [item.strip() for header in forwarded_for for item in header.split(",")]
