@@ -42,7 +42,7 @@ class Current:
     cancel_at_end: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Quote:
     """What a change does: the charge now and the state it leaves (the writer stores it)."""
 
