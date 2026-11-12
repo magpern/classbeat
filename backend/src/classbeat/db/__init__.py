@@ -17,6 +17,7 @@ from classbeat.db.session import (
     system_statement,
     user_session,
 )
+from classbeat.db.system_write_tables import register_system_write_table
 from classbeat.db.tables import SYSTEM_TABLES
 
 __all__ = [
@@ -32,6 +33,7 @@ __all__ = [
     "create_session_factory",
     "event_loop_factory",
     "queue_verified",
+    "register_system_write_table",
     "system_session",
     "system_statement",
     "user_session",

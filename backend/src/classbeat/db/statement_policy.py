@@ -2,13 +2,17 @@
 
 ``check_system_write`` accepts one ``INSERT`` (the Postgres one, with or without its ``ON
 CONFLICT`` clause), ``UPDATE`` or ``DELETE`` whose target is a ``Table`` in ``SYSTEM_TABLES`` with
-no schema, and refuses everything else. Its clauses (single-row and multi-row ``VALUES`` row by row
-and value by value, ``SET``, ``WHERE``, ``RETURNING``, and the ``ON CONFLICT`` target columns and
-``DO UPDATE SET``) may hold only these elements:
+no schema and is the very object registered under its name (``system_write_tables``: a copy with
+the same name is refused), and refuses everything else. Every column of the target must have a type
+in ``_BIND_TYPES`` and no Python-side ``default`` or ``onupdate`` (#1013). Its clauses (single-row
+and multi-row ``VALUES`` row by row and value by value, ``SET``, ``WHERE``, ``RETURNING``, and the
+``ON CONFLICT`` target columns and ``DO UPDATE SET``) may hold only these elements:
 
 - bind parameters (data, never SQL) of the built-in types in ``_BIND_TYPES`` exactly (a custom
-  type, such as a ``TypeDecorator``, can rewrite its bind into SQL), and plain Python values the
-  statement has not wrapped yet;
+  type, such as a ``TypeDecorator``, can rewrite its bind into SQL, or a column into SQL in
+  ``RETURNING``), and plain Python values the statement has not wrapped yet. A plain value binds
+  as ``NullType`` and is compiled with the type of the column it is set to; that is safe because
+  every column of the target has a type on the same list;
 - columns of the target table itself (no other table, alias, ``column()`` or literal column);
 - labels, groupings, function argument lists, ``AND``;
 - the comparison and arithmetic operators in ``_OPERATORS``;
@@ -25,7 +29,7 @@ construct, a self-referencing one too. Pure: no I/O.
 """
 
 import operator
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -186,12 +190,20 @@ def _on_conflict(clause: object, target: Table) -> list[object]:
     return _assignments(conflict.update_values_to_set, target)
 
 
-def check_system_write(statement: object) -> None:
-    """Raise ``ValueError`` unless ``statement`` is on the allowlist of this module's docstring."""
+def _plain_column(column: Column[Any]) -> bool:
+    """A listed type (it renders no SQL of its own) and no default or onupdate SQLAlchemy adds."""
+    return type(column.type) in _BIND_TYPES and column.default is None and column.onupdate is None
+
+
+def check_system_write(statement: object, tables: Mapping[str, Table]) -> None:
+    """Raise ``ValueError`` unless ``statement`` is on the allowlist of this module's docstring;
+    ``tables`` are the registered system tables by name (``system_write_tables()``)."""
     if type(statement) not in (Insert, Update, Delete):
         raise _refuse()
     target: Any = getattr(statement, "table", None)
     if type(target) is not Table or target.schema is not None or target.name not in SYSTEM_TABLES:
+        raise _refuse()
+    if tables.get(target.name) is not target or not all(map(_plain_column, target.columns)):
         raise _refuse()
     roots: list[object] = []
     for name, _ in type(statement)._traverse_internals:  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]

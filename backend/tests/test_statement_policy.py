@@ -9,7 +9,7 @@ every statement the rate limiter sends today, captured from a real run.
 """
 
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime
 
 import pytest
@@ -40,7 +40,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.sql.dml import UpdateBase
 from sqlalchemy.sql.elements import BindParameter, ColumnElement, Grouping, Label
+from sqlalchemy.sql.sqltypes import NullType
 from sqlalchemy.types import TypeDecorator
 
 from authtools import Env, running_env
@@ -48,6 +50,7 @@ from classbeat.auth import ratelimit
 from classbeat.auth.tables import rate_limits, sessions
 from classbeat.db import session as session_module
 from classbeat.db.statement_policy import REFUSED, check_system_write
+from classbeat.db.system_write_tables import system_write_tables
 
 W = datetime(2026, 1, 1, tzinfo=UTC)
 L = rate_limits.c
@@ -59,13 +62,52 @@ OTHER_COUNT = Table("other", MetaData(), Column("count", Integer)).c.count
 
 
 class RendersSql(TypeDecorator[int]):
-    """A custom type whose bind is SQL, not data: ``count = (SELECT n FROM classes)``."""
+    """A custom type whose bind and column are SQL, not data: ``count = (SELECT n FROM classes)``
+    and ``RETURNING (SELECT n FROM classes) AS count``."""
 
     impl = Integer
     cache_ok = True
 
     def bind_expression(self, bindparam: BindParameter[int]) -> ColumnElement[int]:
         return literal_column("(SELECT n FROM classes)", Integer)
+
+    def column_expression(self, column: ColumnElement[int]) -> ColumnElement[int]:
+        return literal_column("(SELECT n FROM classes)", Integer)
+
+
+def _copy(count: Column[int]) -> Table:
+    """A table named ``rate_limits`` with the real keys and the given ``count`` column."""
+    keys = (Column("bucket_hash", LargeBinary, primary_key=True), Column("window_start", DateTime))
+    return Table("rate_limits", MetaData(), *keys, count)
+
+
+# B1 of the review of #1014: a copy of the system table whose column type renders SQL. A plain
+# value binds as NullType and is compiled with the column's type, which the bind check never sees.
+FAKE = _copy(Column("count", RendersSql()))
+# The same copy with plain types: only the identity check (the registered object) refuses it.
+PLAIN_COPY = _copy(Column("count", Integer))
+DEFAULTS = _copy(Column("count", Integer, default=literal_column("(SELECT n FROM classes)")))
+ONUPDATE = _copy(Column("count", Integer, onupdate=literal_column("(SELECT n FROM classes)")))
+
+
+def _check(statement: object, tables: dict[str, Table] | None = None) -> None:
+    """The check with the registered tables (``limit_writes`` registers ``rate_limits``)."""
+    check_system_write(statement, system_write_tables() if tables is None else tables)
+
+
+def _through_the_target(target: Table) -> dict[str, UpdateBase]:
+    """Each clause that compiles a plain value or a column with the target column's type."""
+    row = {**ROW, "count": 1}
+    keys = [target.c.bucket_hash, target.c.window_start]
+    return {
+        "update set": update(target).values(count=1),
+        "insert values": insert(target).values(row),
+        "on conflict set": insert(target)
+        .values(row)
+        .on_conflict_do_update(index_elements=keys, set_={"count": 2}),
+        "returning": delete(target).returning(target.c.count),
+        "where": delete(target).where(target.c.count == 1),
+    }
 
 
 class IntegerSubclass(Integer):
@@ -200,6 +242,8 @@ def _refused() -> dict[str, object]:
             count=bindparam("c", 1, type_=IntegerSubclass())
         ),
         "bind of an unlisted type": update(rate_limits).values(count=literal(1, postgresql.MONEY)),
+        **{f"copy of the table, {k}": v for k, v in _through_the_target(FAKE).items()},
+        **{f"plain copy, {k}": v for k, v in _through_the_target(PLAIN_COPY).items()},
         "a select": select(L.count),
         "text statement": text("DELETE FROM sessions"),
     }
@@ -208,13 +252,37 @@ def _refused() -> dict[str, object]:
 @pytest.mark.parametrize("name", sorted(_refused()))
 def test_it_refuses_everything_off_the_allowlist(name: str) -> None:
     with pytest.raises(ValueError, match=REFUSED):
-        check_system_write(_refused()[name])
+        _check(_refused()[name])
+
+
+@pytest.mark.parametrize(
+    ("table", "clause"),
+    [(t, c) for t in ("FAKE", "DEFAULTS", "ONUPDATE") for c in _through_the_target(FAKE)],
+)
+def test_a_column_that_renders_sql_is_refused_on_the_registered_table(
+    table: str, clause: str
+) -> None:
+    """(b) on its own: the copy *is* the registered table here, as if the identity check were
+    bypassed, and its column's type, default or onupdate still refuses every clause."""
+    target: Table = globals()[table]
+    with pytest.raises(ValueError, match=REFUSED):
+        _check(_through_the_target(target)[clause], {"rate_limits": target})
+
+
+def test_the_probes_of_the_copy_render_sql() -> None:
+    """The premise of B1: without the checks these statements carry an owned subquery."""
+    dialect = postgresql.dialect()
+    for clause in ("update set", "insert values", "on conflict set", "returning"):
+        rendered = str(_through_the_target(FAKE)[clause].compile(dialect=dialect))
+        assert "SELECT n FROM classes" in rendered, clause
+    assert "SELECT n FROM classes" in str(insert(DEFAULTS).values(ROW).compile(dialect=dialect))
+    assert "SELECT n FROM classes" in str(update(ONUPDATE).values(bucket_hash=b"x").compile())
 
 
 def test_it_allows_bind_parameters_and_the_upsert() -> None:
-    check_system_write(update(rate_limits).values(count=bindparam("c")))
-    check_system_write(update(rate_limits).values(count=literal(1)))
-    check_system_write(
+    _check(update(rate_limits).values(count=bindparam("c")))
+    _check(update(rate_limits).values(count=literal(1)))
+    _check(
         insert(rate_limits)
         .values([{**ROW, "count": 1}, {**ROW, "count": 2}])
         .on_conflict_do_update(index_elements=UPSERT_KEYS, set_={"count": L.count + 1})
@@ -223,8 +291,10 @@ def test_it_allows_bind_parameters_and_the_upsert() -> None:
 
 
 def test_it_allows_each_listed_bind_type() -> None:
-    for value, type_ in ((1, Integer), (1.5, Float), (b"x", LargeBinary), (W, DateTime(True))):
-        check_system_write(update(rate_limits).where(L.count == literal(value, type_)))
+    listed = ((1, Integer), (1.5, Float), (b"x", LargeBinary), (W, DateTime(True)), (1, NullType))
+    for value, type_ in listed:
+        _check(update(rate_limits).where(L.count == literal(value, type_)))
+    _check(update(rate_limits).where(L.count == bindparam("c")))  # NullType, no value yet
 
 
 def test_a_bind_type_that_renders_sql_is_refused() -> None:
@@ -233,7 +303,7 @@ def test_a_bind_type_that_renders_sql_is_refused() -> None:
     statement = update(rate_limits).values(count=bindparam("c", 1, type_=RendersSql()))
     assert "SELECT n FROM classes" in str(statement.compile(dialect=postgresql.dialect()))
     with pytest.raises(ValueError, match=REFUSED):
-        check_system_write(statement)
+        _check(statement)
 
 
 def _finishes(statement: object) -> None:
@@ -242,7 +312,7 @@ def _finishes(statement: object) -> None:
 
     def check() -> None:
         try:
-            check_system_write(statement)
+            _check(statement)
             outcome.append("allowed")
         except ValueError:
             outcome.append("refused")
@@ -280,8 +350,8 @@ async def test_every_limiter_statement_is_accepted(
     seen: list[str] = []
     real = session_module.check_system_write
 
-    def record(statement: object) -> None:
-        real(statement)
+    def record(statement: object, tables: Mapping[str, Table]) -> None:
+        real(statement, tables)
         seen.append(type(statement).__name__)
 
     monkeypatch.setattr(session_module, "check_system_write", record)

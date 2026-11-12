@@ -93,7 +93,7 @@ async def test_it_leaves_no_user_setting(
     one_connection: Sessions, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # ``current_setting`` is not on the statement allowlist; this test only reads the setting.
-    monkeypatch.setattr(session_module, "check_system_write", lambda _: None)
+    monkeypatch.setattr(session_module, "check_system_write", lambda *_: None)
     async with user_session(one_connection, make_context()):
         pass
     statement = (
