@@ -39,7 +39,7 @@ test('a request becomes an invite with a tier, and the new account has that tier
   // Approve the other with a tier; the code is shown once.
   await row.getByRole('button', { name: 'Approve' }).click()
   const form = page.getByRole('form', { name: 'Approve this request' })
-  await expect(form.getByRole('option', { name: 'Instructor' })).toBeAttached()
+  await expect(form.getByRole('option', { name: 'Individual' })).toBeAttached()
   await form.getByLabel('Tier').selectOption('instructor')
   await form.getByLabel('Days the tier lasts').fill('30')
   await form.getByRole('button', { name: 'Approve and create code' }).click()
