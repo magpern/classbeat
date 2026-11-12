@@ -2,11 +2,17 @@
 
 ``check_system_write`` accepts one ``INSERT`` (the Postgres one, with or without its ``ON
 CONFLICT`` clause), ``UPDATE`` or ``DELETE`` whose target is a ``Table`` in ``SYSTEM_TABLES`` with
-no schema, and refuses everything else. Its clauses (single-row and multi-row ``VALUES`` row by row
-and value by value, ``SET``, ``WHERE``, ``RETURNING``, and the ``ON CONFLICT`` target columns and
-``DO UPDATE SET``) may hold only these elements:
+no schema and is the very object registered under its name (``system_write_tables``: a copy with
+the same name is refused), and refuses everything else. Every column of the target must have a type
+in ``_BIND_TYPES`` and no Python-side ``default`` or ``onupdate`` (#1013). Its clauses (single-row
+and multi-row ``VALUES`` row by row and value by value, ``SET``, ``WHERE``, ``RETURNING``, and the
+``ON CONFLICT`` target columns and ``DO UPDATE SET``) may hold only these elements:
 
-- bind parameters (data, never SQL), and plain Python values the statement has not wrapped yet;
+- bind parameters (data, never SQL) of the built-in types in ``_BIND_TYPES`` exactly (a custom
+  type, such as a ``TypeDecorator``, can rewrite its bind into SQL, or a column into SQL in
+  ``RETURNING``), and plain Python values the statement has not wrapped yet. A plain value binds
+  as ``NullType`` and is compiled with the type of the column it is set to; that is safe because
+  every column of the target has a type on the same list;
 - columns of the target table itself (no other table, alias, ``column()`` or literal column);
 - labels, groupings, function argument lists, ``AND``;
 - the comparison and arithmetic operators in ``_OPERATORS``;
@@ -23,7 +29,7 @@ construct, a self-referencing one too. Pure: no I/O.
 """
 
 import operator
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -32,11 +38,15 @@ from sqlalchemy import (
     BooleanClauseList,
     ClauseList,
     Column,
+    DateTime,
     Delete,
     Extract,
+    Float,
     Function,
     Grouping,
+    Integer,
     Label,
+    LargeBinary,
     Table,
     Update,
 )
@@ -44,6 +54,7 @@ from sqlalchemy.dialects.postgresql import Insert
 from sqlalchemy.dialects.postgresql.dml import OnConflictDoNothing, OnConflictDoUpdate
 from sqlalchemy.sql import functions, operators
 from sqlalchemy.sql.elements import BinaryExpression, ClauseElement
+from sqlalchemy.sql.sqltypes import NullType
 
 from classbeat.db.tables import SYSTEM_TABLES
 
@@ -65,8 +76,14 @@ _OPERATORS = frozenset(
     | {operator.add, operator.sub, operator.mul, operator.truediv}
 )
 _DATA = (int, float, bytes, str, datetime, bool, type(None))
+# The bind types the limiter's statements use, matched exactly: none of them has a bind expression,
+# so its value is sent as a parameter. A subclass (a ``TypeDecorator`` too) may render SQL instead.
+_BIND_TYPES = frozenset({NullType, Integer, Float, LargeBinary, DateTime})
 _CLAUSES = frozenset({"_values", "_multi_values", "_where_criteria", "_returning"})
-# Flags with no SQL of their own (a boolean or options of the CTEs, which must be absent).
+# Parts that hold no SQL of their own: booleans, the options of the independent CTEs (which must
+# be absent), and ``dialect_options``, the statement's own dialect keyword arguments: the Postgres
+# dialect accepts none on DML (a ``postgresql_*`` one is an ``ArgumentError``), and it renders no
+# other dialect's (such as ``with_dialect_options(mysql_limit=1)``).
 _FLAGS = frozenset(
     {
         "_inline",
@@ -88,7 +105,7 @@ def _children(element: object, target: Table) -> Iterable[object]:
     if isinstance(element, ClauseElement):
         kind = type(element)
         if kind is BindParameter:
-            if isinstance(element.value, ClauseElement):  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+            if type(element.type) not in _BIND_TYPES or isinstance(element.value, ClauseElement):  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownArgumentType]
                 raise _refuse()
             return ()
         if kind is Column:
@@ -173,12 +190,20 @@ def _on_conflict(clause: object, target: Table) -> list[object]:
     return _assignments(conflict.update_values_to_set, target)
 
 
-def check_system_write(statement: object) -> None:
-    """Raise ``ValueError`` unless ``statement`` is on the allowlist of this module's docstring."""
+def _plain_column(column: Column[Any]) -> bool:
+    """A listed type (it renders no SQL of its own) and no default or onupdate SQLAlchemy adds."""
+    return type(column.type) in _BIND_TYPES and column.default is None and column.onupdate is None
+
+
+def check_system_write(statement: object, tables: Mapping[str, Table]) -> None:
+    """Raise ``ValueError`` unless ``statement`` is on the allowlist of this module's docstring;
+    ``tables`` are the registered system tables by name (``system_write_tables()``)."""
     if type(statement) not in (Insert, Update, Delete):
         raise _refuse()
     target: Any = getattr(statement, "table", None)
     if type(target) is not Table or target.schema is not None or target.name not in SYSTEM_TABLES:
+        raise _refuse()
+    if tables.get(target.name) is not target or not all(map(_plain_column, target.columns)):
         raise _refuse()
     roots: list[object] = []
     for name, _ in type(statement)._traverse_internals:  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]

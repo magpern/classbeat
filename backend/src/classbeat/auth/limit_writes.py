@@ -22,12 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.dml import UpdateBase
 
 from classbeat.auth.tables import rate_limits
-from classbeat.db import system_statement
+from classbeat.db import register_system_write_table, system_statement
 from classbeat.log import describe_database_error
 
 LOCK_NOT_AVAILABLE = "55P03"  # SQLSTATE of a lock_timeout
 
 errors = logging.getLogger("classbeat.auth.setup")
+register_system_write_table(rate_limits)  # the one object system_statement may write (#1013)
 
 
 class LimitBusy(Exception):

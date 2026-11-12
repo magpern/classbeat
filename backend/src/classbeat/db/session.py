@@ -24,6 +24,7 @@ from sqlalchemy.sql.dml import UpdateBase
 
 from classbeat.context import UserContext, require_context
 from classbeat.db.statement_policy import check_system_write
+from classbeat.db.system_write_tables import system_write_tables
 
 SET_USER = text("SELECT set_config('app.user_id', :user_id, true)")
 
@@ -117,7 +118,7 @@ async def system_statement(
     cancelled task after it can hold it (#998: the limiter's upsert runs on every signed-in
     request). The statement is atomic on its own; anything that needs more than one statement
     uses ``system_session``."""
-    check_system_write(statement)
+    check_system_write(statement, system_write_tables())
     async with sessionmaker() as session:
         # No ``app.user_id`` is set (it is transaction-local and the pool's reset discards it),
         # so owned tables would return no rows, as in ``system_session``. The pool's reset
