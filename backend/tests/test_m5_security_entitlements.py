@@ -2,7 +2,7 @@
 
 - T89: the app role cannot give a user a plan by direct SQL, through the real ``user_session``:
   no ``grant`` or ``subscription`` row, no change to an entitlement, a code's terms, a plan or a
-  setting. Only ``classbeat.plans.redeem`` and ``classbeat.plans.trial`` call
+  setting. Only ``classbeat.plans.redeem_steps`` and ``classbeat.plans.trial`` call
   ``add_entitlement`` (an import guard, from the #252 review).
 - T89: precedence. The rank decides, whatever the source (``subscription``, ``grant``, ``code``,
   ``trial``); a revoked, ended or not yet started entitlement stops applying on the user's next
@@ -140,7 +140,9 @@ class _Calls(ast.NodeVisitor):
 
 ENTITLING = {
     "classbeat.plans.entitle": "where it is defined",
-    "classbeat.plans.redeem": "a code's entitlement (PL1)",
+    # A code's entitlement (PL1): the redeem steps, shared by the redeem route
+    # (``classbeat.plans.redeem``, which no longer names it) and an invite's tier (ADR 0033).
+    "classbeat.plans.redeem_steps": "a code's entitlement (PL1, ADR 0033)",
     "classbeat.plans.trial": "a trial's entitlement (PL1); it also imports plan_ranks",
 }
 

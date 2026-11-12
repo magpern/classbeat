@@ -4,9 +4,10 @@ An invite issued from an invite request with a plan has one single-use redeem co
 (``redeem_codes.invite_id``; nobody knows the code's text). Every path that consumes an invite and
 creates the account (the password confirmation in ``signup_routes`` and both provider paths
 through ``provider_account``) calls ``grant_invite_tier`` in the same transaction, right after the
-user row exists. It redeems that code for the new account through the one redeem path
-(``classbeat.plans.redeem``: the conditional count, ``add_entitlement`` with ``source = 'code'``,
-the ``code_redemptions`` row), so there is no second way to write an entitlement.
+user row exists. It redeems that code for the new account through the steps of the one redeem
+path (``classbeat.plans.redeem_steps``, shared with ``POST /api/account/redeem``: the conditional
+count, ``add_entitlement`` with ``source = 'code'``, the ``code_redemptions`` row), so there is no
+second way to write an entitlement.
 
 The two owned tables need ``app.user_id``: it is set to the new account for those statements and
 cleared again (``''``, as ``system_session`` starts), both transaction-local. A refusal (the code
@@ -21,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.auth.deps import invite_tier_context
 from classbeat.db.session import SET_USER
-from classbeat.plans.redeem import Redeemed, invite_code, redeem_for_invite
+from classbeat.plans.redeem_steps import Redeemed, invite_code, take
 
 
 async def grant_invite_tier(db: AsyncSession, invite_id: UUID | None, user_id: UUID) -> bool:
@@ -33,6 +34,6 @@ async def grant_invite_tier(db: AsyncSession, invite_id: UUID | None, user_id: U
     if code_id is None:
         return True
     await db.execute(SET_USER, {"user_id": str(user_id)})
-    result = await redeem_for_invite(db, invite_tier_context(user_id), code_id)
+    result = await take(db, invite_tier_context(user_id), code_id)
     await db.execute(SET_USER, {"user_id": ""})
     return isinstance(result, Redeemed)

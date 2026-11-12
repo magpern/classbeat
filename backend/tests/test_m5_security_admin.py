@@ -12,7 +12,7 @@
 A route added later has no valid request in ``BODIES`` or its path values in
 ``target_with_entitlement`` until its PR adds them: the tests then fail and name it, so the fuzz
 cannot silently skip a route. AD3's usage, jobs and refund routes, AD2's invites and redeem
-codes and AD4's settings and plan limits (#314) are covered.
+codes, AD4's settings and plan limits (#314) and ADR 0033's invite requests are covered.
 
 Threats covered: T90, T92, T95.
 """
@@ -53,6 +53,11 @@ BODIES: dict[tuple[str, str], dict[str, Any]] = {
         "grant_days": 30,
         "max_redemptions": 5,
         "expires_at": "2999-01-01T00:00:00+00:00",
+    },
+    # ADR 0033 (#985): approve an invite request with a tier.
+    ("POST", "/api/admin/invite-requests/{request_id}/approve"): {
+        "plan_id": "pro",
+        "grant_days": 30,
     },
     # AD4 (#314): a flag write (the banner, path value ``key``) and a plan's limits (``plan_id``).
     ("PUT", "/api/admin/settings/{key}"): {"value": {"text": "Fuzz banner", "level": "info"}},
@@ -197,12 +202,20 @@ async def target_with_entitlement(env: Env, conn: Connection) -> dict[str, str]:
         ),
         {"h": secrets.token_bytes(32)},
     ).scalar_one()
+    # ADR 0033 (#985): a pending invite request, so its approve and decline reach a real row.
+    request = conn.execute(
+        text(
+            "INSERT INTO invite_requests (email, email_normalized, heard_from, instructor) "
+            "VALUES ('asker@example.com', 'asker@example.com', 'Fuzz', true) RETURNING id"
+        )
+    ).scalar_one()
     return {
         "user_id": str(target),
         "entitlement_id": str(entitlement),
         "ledger_id": str(ledger),
         "invite_id": str(invite),
         "code_id": str(code),
+        "request_id": str(request),
         **FIXED_VALUES,
     }
 
@@ -216,7 +229,8 @@ async def test_every_admin_route_refuses_a_non_admin_and_audits_the_admin_refusa
     """Threats: T90, T92."""
     values = {"user_id": str(uuid.uuid4()), "entitlement_id": str(uuid.uuid4()),
               "ledger_id": str(uuid.uuid4()), "invite_id": str(uuid.uuid4()),
-              "code_id": str(uuid.uuid4()), **FIXED_VALUES}  # fmt: skip
+              "code_id": str(uuid.uuid4()), "request_id": str(uuid.uuid4()),
+              **FIXED_VALUES}  # fmt: skip
     plain = await env.user("plain@example.com")
     plain_actor = await make_actor(plain, mfa=True)
     await env.run("UPDATE sessions SET stepup_at = now() WHERE user_id = :u", u=plain)
@@ -338,6 +352,8 @@ async def test_every_string_input_of_every_admin_route_is_refused_and_audited_on
         "GET /api/admin/redeem-codes query:offset",
         "POST /api/admin/redeem-codes body:label",
         "POST /api/admin/redeem-codes/{code_id}/disable path:code_id",
+        "POST /api/admin/invite-requests/{request_id}/approve path:request_id",
+        "POST /api/admin/invite-requests/{request_id}/approve body:plan_id",
         "PUT /api/admin/settings/{key} path:key",
         "PUT /api/admin/settings/{key} body:value",
         "DELETE /api/admin/settings/{key} path:key",

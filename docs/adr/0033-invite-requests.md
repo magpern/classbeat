@@ -101,11 +101,19 @@ transaction (all three paths: `signup_routes._create_account` and
 `auth.invite_tier.grant_invite_tier` looks up the code tied to the invite (`FOR UPDATE`), sets
 `app.user_id` to the new account for those statements (transaction-local, through a bare context
 `auth.deps.invite_tier_context`, named only there, `test_user_context_guard.py`), and runs the
-redeem path's own steps 2 to 4 (`plans.redeem.redeem_for_invite`): the guarded count update, the
+redeem path's own steps 2 to 4 (`plans.redeem_steps.take`): the guarded count update, the
 entitlement through `add_entitlement` (`source = 'code'`, `ends_at = now() + grant_days`), the
 `code_redemptions` row. Then `app.user_id` is cleared again. **There is no second entitlement
 writer**, and the database's own checks (the restrictive insert policy, `redeem_codes_guard`)
 apply as to any redeem.
+
+**Where the shared steps live.** Steps 2 to 4 moved out of `plans.redeem` into
+`plans.redeem_steps`, which opens no session and is the one module that calls `add_entitlement`
+for a code (the T89 import guard lists it in place of `plans.redeem`). `plans.redeem` keeps the
+hash lookup and the `user_session` of `POST /api/account/redeem` and is still imported only by
+the plan routes (the session guard). `plans.redeem_steps` may be imported only by `plans.redeem`
+and `auth.invite_tier` (`test_session_guard.py`). The sign-up path never imports a module that
+opens a user session.
 
 If the code can no longer be redeemed (an admin disabled it, or it expired with its invite), the
 sign-up is refused as `invite_invalid` and rolls back whole: no account, the invite unused, the
