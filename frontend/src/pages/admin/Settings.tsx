@@ -24,7 +24,7 @@ import { SectionTitle, when } from './Table'
 
 // Why the environment forbids a choice: shown next to the disabled control.
 export const REASONS = {
-  openSignup: 'Open sign-up can only be set on the server (CLASSBEAT_SIGNUP_MODE).',
+  openSignup: 'Open sign-up can only be set on the server (CLASSBEAT_PUBLIC_SIGNUP).',
   songPickingOff:
     'Song picking is switched off on the server (CLASSBEAT_SONG_PICKING). This setting has no effect until the server switches it on.',
   trialsOff: 'Trials are switched off on the server (CLASSBEAT_TRIAL_DAYS_MAX is 0).',

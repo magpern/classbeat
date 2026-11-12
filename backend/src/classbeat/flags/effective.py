@@ -5,7 +5,7 @@
 the admin area writes it as ``classbeat_maint``).
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat.context import UserContext
 from classbeat.flags import core
 from classbeat.flags.core import Banner, SignupMode, SongPicking, TrialSetting
+from classbeat.flags.signup_policy import environment_mode
+
+if TYPE_CHECKING:
+    from classbeat.config import Settings
 
 _ALL = text("SELECT key, value FROM app_settings")
 _ONE = text("SELECT value FROM app_settings WHERE key = :key")
@@ -38,9 +42,20 @@ async def mail_kinds_disabled(db: AsyncSession, can_disable: frozenset[str]) -> 
     return core.mail_kinds_disabled_setting(await _stored(db, "mail_kinds_disabled"), can_disable)
 
 
-async def signup_mode(db: AsyncSession, environment: SignupMode) -> SignupMode:
-    """The stricter of ``CLASSBEAT_SIGNUP_MODE`` and the stored ``signup_mode``."""
-    return core.stricter_signup(environment, await _stored(db, "signup_mode"))
+def environment_signup_mode(settings: "Settings") -> SignupMode:
+    """The environment's mode: ``CLASSBEAT_PUBLIC_SIGNUP`` and ``CLASSBEAT_SIGNUP_MODE``, in prod
+    with Turnstile's state (``classbeat.flags.signup_policy``). The only reader of those fields."""
+    return environment_mode(
+        signup_mode=settings.signup_mode,
+        public_signup=settings.public_signup,
+        turnstile_enabled=settings.turnstile_enabled,
+        environment=settings.environment,
+    )
+
+
+async def signup_mode(db: AsyncSession, settings: "Settings") -> SignupMode:
+    """The stricter of the environment's mode and the stored ``signup_mode``."""
+    return core.stricter_signup(environment_signup_mode(settings), await _stored(db, "signup_mode"))
 
 
 async def song_picking(db: AsyncSession, environment_on: bool) -> SongPicking:

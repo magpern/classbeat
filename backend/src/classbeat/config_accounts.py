@@ -38,7 +38,13 @@ class AccountSettings(BaseSettings):
     # secret file ``connection_kek`` (read by ``classbeat.crypto.keks``, never the environment);
     # retired keys are ``connection_kek_<id>``.
     connection_kek_id: str = "kek-1"
-    # Who may create an account (section 5): ``invite`` (default), ``closed`` or ``open``.
+    # ADR 0032 section 7: the one switch that opens sign-up to the public (off by default). On, the
+    # environment's mode is ``open`` unless ``signup_mode`` is ``closed``; the database can still
+    # tighten it, and in prod it stays ``invite`` while Turnstile is off (``flags.signup_policy``).
+    # Declared before ``signup_mode``, whose validator reads it.
+    public_signup: bool = False
+    # Who may create an account (section 5): ``invite`` (default) or ``closed``; ``open`` is
+    # accepted only together with ``public_signup`` (the flag, not this, opens sign-up).
     signup_mode: Literal["invite", "closed", "open"] = "invite"
     # The languages the operator enables, comma-separated bare codes (ADR 0023 section 1). ``en`` is
     # always on; a language is offered when it is enabled and in the supported manifest.
@@ -49,6 +55,13 @@ class AccountSettings(BaseSettings):
     def _check_connection_kek_id(cls, value: str) -> str:
         if CONNECTION_KEK_ID.fullmatch(value) is None:
             raise ValueError("connection_kek_id must match ^kek-[a-z0-9-]{1,28}$")
+        return value
+
+    @field_validator("signup_mode")
+    @classmethod
+    def _open_needs_public_signup(cls, value: str, info: ValidationInfo) -> str:
+        if value == "open" and info.data.get("public_signup") is not True:
+            raise ValueError("signup_mode=open needs CLASSBEAT_PUBLIC_SIGNUP=true")
         return value
 
     @field_validator("public_base_url")

@@ -43,7 +43,7 @@ async def env(app_database_url: str, maint_database_url: str) -> AsyncIterator[E
         app_database_url,
         maint_database_url=url.set(password=None).render_as_string(hide_password=False),
         database_maint_password=url.password,
-        signup_mode="open",
+        public_signup=True,
         song_picking=True,
         swedebeat_enabled=True,
         classes_per_month_max=CLASSES_MAX,

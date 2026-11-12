@@ -69,7 +69,7 @@ from classbeat.design.music_kind import fake_covers
 from classbeat.emails.dispatch import DEFAULT_SENDER_NAME
 from classbeat.emails.live import config_from, kind_switches
 from classbeat.flags import core
-from classbeat.flags.core import FlagRefused
+from classbeat.flags.effective import environment_signup_mode
 from classbeat.models.routes import Variant, every_plan_covers
 from classbeat.plans.entitle import TRIAL_MAX_PLAN, plan_ranks
 
@@ -105,7 +105,7 @@ def _stored_valid(key: str, value: Any) -> bool:
         return True
     try:
         core.validate_for_write(key, value, trial_days_max=10**9, mail_kinds=kind_switches())
-    except FlagRefused:
+    except core.FlagRefused:
         return False
     return True
 
@@ -120,8 +120,8 @@ def _flag(
 ) -> FlagOut:
     stored = None if row is None else row.value
     if key == "signup_mode":
-        environment: Any = settings.signup_mode
-        effective: Any = core.stricter_signup(settings.signup_mode, stored)
+        environment: Any = environment_signup_mode(settings)
+        effective: Any = core.stricter_signup(environment, stored)
         source = "database" if effective != environment else "environment"
     elif key == "song_picking":
         environment = "on" if settings.song_picking else "off"
@@ -276,7 +276,7 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
         )
         if _stored_bytes(canonical) > MAX_VALUE_BYTES:
             refusal = "invalid_value"
-    except FlagRefused as exc:
+    except core.FlagRefused as exc:
         refusal = exc.reason
     params: dict[str, Any] = {"key": key} if refusal is not None else _set_params(key, canonical)
     if key == "trial" and refusal is None:
