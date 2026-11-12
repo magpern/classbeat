@@ -42,7 +42,12 @@ OWN: dict[str, list[Case]] = {
     cat: [SUITE.design_cases[n] for n in SUITE.manifest.cases_of(cat, "design") if n not in SMOKE]
     for cat in CATEGORIES
 }
-COUNTS = {"standard": 7, "music_sync": 7, "games_ftp": 11, "revisions": 17}  # #904: three stated
+COUNTS = {
+    "standard": 7,
+    "music_sync": 7,
+    "games_ftp": 11,
+    "revisions": 18,
+}  # #904: three stated, #908: one chained
 ALL = [c for cat in CATEGORIES for c in OWN[cat]]
 BY_NAME = {c.name: c for c in ALL}
 # The checks each category's cases add to the smoke set's.

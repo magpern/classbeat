@@ -7,6 +7,7 @@ On the sanitised ``InterpretedRequest`` (what the stage hands back), never on mo
 - ``not_values``: a field may be unset but never set to the given value (an injected one);
 - ``absent``: the fields the request does not settle are left unset (the policy's defaults);
 - ``games``: the games, in order, in the closed form the brief stores (type, placement, length);
+- ``remove_games``: a revise that takes out every game says so (and reports no games);
 - ``quotes``: every kept quote is a verbatim substring of the request;
 - ``forbidden_text``: none of the case's strings is anywhere in what came back.
 """
@@ -42,6 +43,10 @@ def check_interpretation(case: InterpretCase, got: InterpretedRequest) -> list[C
         asked = [g.model_dump(mode="json", exclude_none=True) for g in expect.games]
         made = [g.brief_game().model_dump(mode="json", exclude_none=True) for g in got.games]
         checks.append(Check("games", asked == made, f"{len(made)} games of {len(asked)} expected"))
+    if expect.remove_games:
+        checks.append(
+            Check("remove_games", got.remove_games is True, "removal of every game: said or not")
+        )
     text = json.dumps(got.model_dump(mode="json"), ensure_ascii=False).lower()
     found = [t for t in expect.forbidden_text if t.lower() in text]
     checks.append(Check("forbidden_text", not found, f"{len(found)} forbidden strings found"))

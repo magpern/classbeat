@@ -33,18 +33,24 @@ from classbeat.plan_gates import PlanGates
 JOB_STAGE = "revise"
 
 
-async def layered(
-    job_run: JobRun, model: GroupModel, brief: Brief, request: str, gates: PlanGates | None
-) -> Layered:
-    if not brief.explicit:
-        return Layered(brief)
-    ctx = InterpretContext(
+def context_for(brief: Brief, request: str, gates: PlanGates | None) -> InterpretContext:
+    """What the interpreter is told of a revise: the request, the class's own sport, the plan's
+    limits and the class's closed values as ``current`` (the suite's chained cases use it too)."""
+    return InterpretContext(
         request,
         sports=(brief.sport,),
         max_class_minutes=None if gates is None else gates.max_class_minutes,
         games_allowed=True if gates is None else gates.games,
         current=current_values(brief),
     )
+
+
+async def layered(
+    job_run: JobRun, model: GroupModel, brief: Brief, request: str, gates: PlanGates | None
+) -> Layered:
+    if not brief.explicit:
+        return Layered(brief)
+    ctx = context_for(brief, request, gates)
     outcome = await run_stage(
         JobStageHost(job_run, JOB_STAGE),
         model.provider,

@@ -62,6 +62,11 @@ DIGEST_SOURCES: Final = (
     "pick.py",
     "pick_world.py",
     "runner.py",
+    # #908: the results types and formats split out of the runner, and the chained revise case's
+    # interpret step. Kept out until the suite held a chained case, so the earlier digests
+    # stayed valid.
+    "results.py",
+    "revise_chain.py",
     "song_checks.py",
     "suite.py",
     "gate.py",
@@ -106,6 +111,11 @@ RULE_SOURCES: Final = (
     "agent/interpreted.py",
     "agent/explicit_input.py",
     "agent/explicit_check.py",
+    # Revise layering (#904, #908): what the interpreter is told of a revise and how its reading
+    # is layered onto the class's values; the chained case runs both. Kept out until the suite
+    # held a chained case, so the earlier digests stayed valid.
+    "design/revise_stated.py",
+    "design/revise_layer_policy.py",
 )
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")

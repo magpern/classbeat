@@ -66,6 +66,20 @@ def test_an_inferred_change_of_a_stated_value_releases_it() -> None:
     assert done.brief.explicit == ["climbs", "games.0"]
 
 
+def test_an_inferred_value_that_repeats_the_stated_one_keeps_it_stated() -> None:
+    echoed = read(
+        length_min={"value": 45, "origin": "inferred"}, climbs={"value": 2, "origin": "inferred"}
+    )
+    done = layer(BASE, echoed, gates())
+    assert done.brief.explicit == ["length_min", "climbs", "games.0"]
+    assert (done.brief.length_min, done.brief.climbs, done.items) == (45, 2, ())
+
+
+def test_an_explicit_value_that_repeats_the_stated_one_stays_stated() -> None:
+    done = layer(BASE, read(length_min={"value": 45, "origin": "explicit"}), gates())
+    assert done.brief.explicit == ["length_min", "climbs", "games.0"]
+
+
 def test_a_new_stated_value_joins_the_list() -> None:
     done = layer(BASE, read(sprints={"value": 4, "origin": "explicit"}), gates())
     assert done.brief.explicit == ["length_min", "climbs", "sprints", "games.0"]
@@ -109,6 +123,52 @@ def test_an_untouched_stated_game_stays_stated_when_another_is_added() -> None:
     done = layer(BASE, read(games=games), gates())
     assert len(done.brief.games) == 2
     assert done.brief.explicit[-2:] == ["games.0", "games.1"]
+
+
+def test_a_stated_game_the_reported_list_leaves_out_is_not_as_asked() -> None:
+    two = BASE.model_copy(
+        update={
+            "games": [*BASE.games, BASE.games[0].model_copy(update={"type": "overflow"})],
+            "explicit": ["length_min", "games.0", "games.1"],
+        }
+    )
+    done = layer(two, read(games=[{**RACETRACK, "origin": "inferred"}]), gates())
+    assert len(done.brief.games) == 1
+    assert done.brief.explicit == ["length_min", "games.0"]
+    assert [(i.path, i.reason_code) for i in done.items] == [("games.1", "game_missing")]
+    assert done.items[0].value == {
+        "type": "overflow",
+        **{k: v for k, v in RACETRACK.items() if k != "type"},
+    }
+
+
+def test_an_unstated_base_game_reported_alone_is_no_replacement_for_a_stated_one() -> None:
+    overflow = {"type": "overflow", "placement": {"position": "late"}}
+    mixed = Brief.model_validate(
+        {**BASE.model_dump(mode="json"), "games": [RACETRACK, overflow]},
+    )
+    done = layer(mixed, read(games=[{**overflow, "origin": "inferred"}]), gates())
+    assert [(i.path, i.reason_code) for i in done.items] == [("games.1", "game_missing")]
+    assert isinstance(done.items[0].value, dict)
+    assert done.items[0].value["type"] == "racetrack"
+
+
+def test_removing_games_with_a_list_records_no_missing_game() -> None:
+    fast = {**RACETRACK, "type": "fast_lane", "origin": "explicit"}
+    done = layer(BASE, read(games=[fast], remove_games=True), gates())
+    assert done.items == ()
+
+
+def test_an_echoed_value_of_an_unstated_path_becomes_stated_when_explicit() -> None:
+    base = BASE.model_copy(update={"explicit": ["length_min"]})
+    done = layer(base, read(intensity={"value": "hard", "origin": "explicit"}), gates())
+    assert "intensity" in done.brief.explicit
+
+
+def test_a_replaced_or_removed_game_is_not_an_omission() -> None:
+    fast = {**RACETRACK, "type": "fast_lane", "origin": "explicit"}
+    assert layer(BASE, read(games=[fast]), gates()).items == ()
+    assert layer(BASE, read(remove_games=True), gates()).items == ()
 
 
 def test_removing_every_game_clears_the_games_and_their_paths() -> None:

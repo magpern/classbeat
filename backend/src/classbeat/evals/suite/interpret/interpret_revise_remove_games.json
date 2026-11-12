@@ -1,0 +1,44 @@
+{
+ "kind": "interpret",
+ "name": "interpret_revise_remove_games",
+ "about": "A revise that takes out every game: remove_games, no games reported, nothing else changed.",
+ "request": "Take out every game.",
+ "current": {
+  "length_min": 40,
+  "climbs": 1,
+  "games": [
+   {
+    "type": "racetrack",
+    "placement": {
+     "relation": "after",
+     "anchor": "climb",
+     "ordinal": 1
+    }
+   },
+   {
+    "type": "overflow",
+    "placement": {
+     "position": "late"
+    }
+   }
+  ],
+  "explicit": [
+   "length_min",
+   "games.0",
+   "games.1"
+  ]
+ },
+ "expect": {
+  "absent": [
+   "length_min",
+   "climbs",
+   "sprints",
+   "races",
+   "ftp_test",
+   "sport",
+   "music"
+  ],
+  "games": [],
+  "remove_games": true
+ }
+}

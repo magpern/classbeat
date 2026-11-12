@@ -43,7 +43,14 @@ class InterpretExpect(BaseModel):
     origins: dict[str, StatedOrigin] = Field(default_factory=lambda: dict[str, StatedOrigin]())
     absent: list[str] = Field(default_factory=lambda: list[str]())
     games: list[BriefGame] | None = None  # in order; ``None``: the games are not judged
+    remove_games: bool = False  # a revise that takes out every game says so (#908)
     forbidden_text: list[str] = Field(default_factory=lambda: list[str]())  # case-insensitive
+
+    @model_validator(mode="after")
+    def _removal_leaves_no_games(self) -> "InterpretExpect":
+        if self.remove_games and self.games:
+            raise ValueError("a request that removes every game reports none")
+        return self
 
     @model_validator(mode="after")
     def _paths(self) -> "InterpretExpect":

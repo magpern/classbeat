@@ -25,6 +25,8 @@ def submission(case: InterpretCase) -> dict[str, Any]:
         games.append(item)
     if games:
         out["games"] = games
+    if e.remove_games:
+        out["remove_games"] = True
     return out
 
 
