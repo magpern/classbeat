@@ -48,10 +48,13 @@ Public sign-up stays **off**: opening it is the owner's step (M7b-real).
     the flag is **refused at start-up**;
   - on: the environment's mode is `open`, unless `CLASSBEAT_SIGNUP_MODE=closed` (the brake wins);
   - on, in prod with `CLASSBEAT_TURNSTILE_ENABLED=false`: `invite`, so the degrade keeps sign-in
-    and invited sign-up working and anonymous account creation stops;
+    and invited sign-up working and anonymous account creation stops; the web logs one warning at
+    start-up and the admin Settings view names the reason (`environment_note: turnstile_off`);
   - the database can still tighten it (`invite`, `closed`), never open it, as before.
 - Every reader (password and provider sign-up and confirmation, `/api/settings/public`, the admin
-  Settings view) asks the same function; a test pins that nothing else reads the two fields.
+  Settings view) asks the same function; an AST scan pins that nothing else reads the two fields
+  (any variable name, `getattr` and `attrgetter` included). ADR 0003 §5 and ADR 0011 §7 carry
+  dated amendment notes.
 - Nothing was loosened: the invite gate, the brake on confirmation, Turnstile, the rate limits
   and all caps are unchanged.
 
