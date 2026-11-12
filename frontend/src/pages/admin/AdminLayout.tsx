@@ -33,6 +33,7 @@ const SECTIONS = [
   { to: '/admin/audit', label: 'Audit log' },
   { to: '/admin/settings', label: 'Settings' },
   { to: '/admin/mail', label: 'Mail' },
+  { to: '/admin/models', label: 'Models' },
 ] as const
 
 function AdminNav() {
