@@ -297,6 +297,7 @@ def test_the_digest_sources_include_every_rule_source() -> None:
         "design/sport_rules.py", "agent/running_input.py", "agent/soundless_input.py",
         "agent/interpreted.py", "agent/interpret.py", "agent/interpret_input.py",
         "agent/explicit_input.py", "agent/explicit_check.py",
+        "design/revise_stated.py", "design/revise_layer_policy.py",
     }  # fmt: skip
 
 

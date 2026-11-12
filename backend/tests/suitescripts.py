@@ -24,6 +24,7 @@ import runningscripts
 import soundlessscripts
 from classbeat.agent import DesignContext
 from classbeat.agent.design import check
+from classbeat.agent.interpret import FINAL_TOOL
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.stage import ToolError
@@ -223,6 +224,7 @@ REVISED: dict[str, dict[str, Any]] = {
     "rev_easier_50_to_easy": dict(total=3000, intensity="easy", climbs=1),
     "rev_shorter_45_to_30": dict(total=1800, intensity="moderate", climbs=1, sprints=1),
     "rev_stated_length_45_to_30": dict(total=1800, intensity="moderate", climbs=1, sprints=1),
+    "rev_chain_length_45_to_30": dict(total=1800, intensity="moderate", climbs=1, sprints=1),
     "rev_shorter_75_to_60": dict(total=3600, intensity="hard", climbs=1, sprints=2),
     "rev_climb_to_end_45": dict(total=2700, intensity="moderate", climbs=1, sprints=2),
     "rev_climb_to_start_40": dict(total=2400, intensity="moderate", climbs=1, sprints=2),
@@ -243,6 +245,7 @@ NOTES: dict[str, str] = {
     "rev_game_length_40": "Made the game 90 seconds long.",
     "rev_game_zone_40": "Set the game to zone 5.",
     "rev_stated_length_45_to_30": "Cut the class to 30 minutes.",
+    "rev_chain_length_45_to_30": "Cut the class to 30 minutes.",
     "rev_stated_game_type_40": "Changed the game to Fast Lane.",
     "rev_stated_keep_40": "Set the game to zone 5.",
 }
@@ -295,8 +298,13 @@ def revise_script(case: Case, draft: dict[str, Any]) -> FakeScript:
         _usage(10000, 300, 5000),
         expect={"accepted": True},
     )
+    turns = [read, preview, submit]
+    if case.revise is not None and case.revise.interpret:  # a chained case reads the request first
+        want = case.expect.revision
+        reading = {"length_min": {"value": want.length_min if want else None, "origin": "explicit"}}
+        turns.insert(0, _turn(FINAL_TOOL, reading, _usage(900, 120), expect={"accepted": True}))
     return FakeScript.model_validate(
-        {"model": "fake-model", "drafts": {"revised": draft}, "turns": [read, preview, submit]}
+        {"model": "fake-model", "drafts": {"revised": draft}, "turns": turns}
     )
 
 

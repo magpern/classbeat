@@ -163,6 +163,11 @@ class ReviseSpec(BaseModel):
     # "songs_requested" (issue #278): the request only asks for other songs, so the stage ends
     # with songs_requested and no draft; the case passes only if it does.
     outcome: Literal["draft", "songs_requested"] = "draft"
+    # A chained case (#908): the request is read by the interpret stage first, told the brief's
+    # values, and the revise stage gets the brief layered with that reading
+    # (``evals.revise_chain``), as a revise job of a class that states values does. The case's
+    # ``brief`` is the class before the request; the checks run against the layered brief.
+    interpret: bool = False
 
 
 class Case(BaseModel):
@@ -207,6 +212,13 @@ class Case(BaseModel):
             raise ValueError("expect.patterns is for a design case")
         b = self.brief
         running = b.sport == "running"
+        revise = self.revise
+        if revise is not None and revise.interpret:
+            ok = not running and bool(b.explicit) and not self.soundless
+            if not (ok and revise.outcome == "draft"):
+                raise ValueError(
+                    "a chained case revises a cycling class with music that states values"
+                )
         if self.revise is not None and isinstance(self.revise.base, RunningDraft) != running:
             raise ValueError("a revise case's base draft is of its brief's sport")
         if self.expect.incline_min_sec is not None and not running:
