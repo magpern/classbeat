@@ -886,7 +886,7 @@ jobs:
       # file (M6, #339; the in-process version over all fake flows is
       # backend/tests/test_m6_security_logs.py). The public test secret of web-paddle is scanned too.
       - name: Check no secret value is in the web, worker, web-passkeys, web-paddle and db logs
-        if: always() && needs.changes.outputs.playwright == 'true'
+        if: always()
         working-directory: .
         run: |
           set -euo pipefail
