@@ -9,6 +9,8 @@ export type OfferAction = 'buy' | 'upgrade' | 'downgrade' | 'resume'
 
 export interface Subscription {
   plan: string
+  /** Who bills it: `dummy`, or a Paddle provider whose signed notification starts and changes it (ADR 0032). */
+  provider: string
   status: string
   periodStart: string
   periodEnd: string
@@ -33,6 +35,8 @@ export interface Offer {
 export interface Billing {
   subscription: Subscription | null
   offers: Offer[]
+  /** A Paddle buy: the hosted page to pay on. The plan changes when the signed notification lands. */
+  checkoutUrl: string | null
 }
 
 const ACTIONS: readonly string[] = ['buy', 'upgrade', 'downgrade', 'resume']
@@ -55,6 +59,7 @@ function decodeSubscription(value: unknown): Subscription {
   const item = object(value, 'subscription')
   return {
     plan: text(item, 'plan'),
+    provider: text(item, 'provider'),
     status: text(item, 'status'),
     periodStart: text(item, 'period_start'),
     periodEnd: text(item, 'period_end'),
@@ -69,6 +74,7 @@ export function decodeBilling(value: unknown): Billing {
   return {
     subscription: sub === null || sub === undefined ? null : decodeSubscription(sub),
     offers: list(body, 'offers').map(decodeOffer),
+    checkoutUrl: optionalText(body, 'checkout_url'),
   }
 }
 

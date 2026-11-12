@@ -34,6 +34,7 @@ const NONE = billing(null, [
 
 const subscription = (extra: Record<string, unknown> = {}) => ({
   plan: 'instructor',
+  provider: 'dummy',
   status: 'active',
   period_start: '2026-11-15T00:00:00Z',
   period_end: '2026-12-15T00:00:00Z',

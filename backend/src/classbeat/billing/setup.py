@@ -3,7 +3,8 @@
 With `billing_provider = dummy` (the default) nothing is mounted: there is no webhook route and
 no client. With `fake_paddle` (refused in prod by the settings) the app gets the in-memory
 `FakePaddleClient`, signing with the same secret the webhook verifies, the webhook's gate and the
-route. `paddle` is refused by the settings until the real client exists, so it never gets here;
+route and the fake hosted checkout page (`billing.fake_checkout`). `paddle` is refused by the
+settings until the real client exists, so it never gets here;
 should it, nothing is mounted (no client means no route).
 """
 
@@ -11,6 +12,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from classbeat.billing import fake_checkout
 from classbeat.billing.fake_paddle import FakePaddleClient
 from classbeat.billing.webhook import router
 from classbeat.billing.webhook_gate import WebhookGate
@@ -25,3 +27,4 @@ def install(app: FastAPI, settings: Settings) -> None:
     app.state.paddle_client = FakePaddleClient(secret=keys[0], base_url=settings.public_base_url)
     app.state.paddle_webhook = WebhookGate()
     app.include_router(router)
+    app.include_router(fake_checkout.router)  # the fake hosted page and its two buttons (PB-3)

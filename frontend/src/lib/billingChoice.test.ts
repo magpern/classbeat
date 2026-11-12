@@ -4,6 +4,7 @@ import { canCancel, confirmKey, doneKey, offerKind, scheduled, stillOffered } fr
 
 const sub = (extra: Partial<Subscription> = {}): Subscription => ({
   plan: 'instructor',
+  provider: 'dummy',
   status: 'active',
   periodStart: '2026-11-15T00:00:00Z',
   periodEnd: '2026-12-15T00:00:00Z',
@@ -46,7 +47,7 @@ describe('billingChoice', () => {
   })
 
   it('checks a choice against a refreshed answer', () => {
-    const b: Billing = { subscription: sub(), offers: [offer()] }
+    const b: Billing = { subscription: sub(), offers: [offer()], checkoutUrl: null }
     expect(stillOffered(b, { kind: 'upgrade', plan: 'pro' })).toBe(true)
     expect(stillOffered(b, { kind: 'buy', plan: 'pro' })).toBe(false)
     expect(stillOffered(b, { kind: 'upgrade', plan: 'instructor' })).toBe(false)

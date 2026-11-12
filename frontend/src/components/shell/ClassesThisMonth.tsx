@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getPlan, type Plan } from '../../api/plan'
 import { useT } from '../../i18n/I18n'
-import { classesLine } from '../account/Plan'
+import { classesLine } from '../account/classesLine'
 import { Progress } from '../ui/progress'
 
 function share(plan: Plan): number {
