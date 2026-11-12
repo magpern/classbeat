@@ -1,5 +1,18 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 21 (2026-11-12, owner: "go ahead with the fake Paddle and the rest"; ADR 0032)
+
+The owner authorized building everything of M7b that needs no real provider, with the live
+connection left for later behind an environment flag. Design: [ADR 0032](adr/0032-paddle-on-fakes.md);
+plan: [docs/plans/paddle-on-fakes.md](plans/paddle-on-fakes.md) (GitHub milestone "M7b-prep",
+PB-0 to PB-6). **In scope:** pure Paddle signature and event mapping, `PaddleProvider` over a
+`PaddleClient` with a fake, the webhook route, provider and sign-up flags, legal page drafts,
+sign-up and cost controls, an e2e on the fake, a runbook. **Still the owner's, not authorized:**
+Paddle account, keys and the real HTTP client, real prices, publishing legal text, switching
+`CLASSBEAT_BILLING_ENABLED` or public sign-up on, provider agreements, and the extra song-picking
+arrangement. The M7 row's gate (A1 to A5 for every subscriber, agreements signed) is unchanged
+for going live. Amendment 20's "M7b: no issue, no branch" is replaced by this for the scope above.
+
 ## Amendment 20 (2026-11-11, owner decisions: M7a plans and dummy billing; ADR 0031)
 
 The owner said "go, implement M7" on 2026-11-11. That authorizes **M7a only**. The design is
