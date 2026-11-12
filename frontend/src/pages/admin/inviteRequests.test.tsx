@@ -6,7 +6,8 @@ import { renderAt } from '../../test/render'
 // ADR 0033, PB-8 (#986): the admin Invite requests screen on the real response shapes of
 // backend/src/classbeat/admin/invite_requests.py; #989: one page at a time with the server's
 // pending count, confirmation before a decline, the bulk decline, the mail toggle only when mail
-// is configured, a reload after a stale approve and the plan names in the Issued tab.
+// is configured, a reload after a stale approve and the plan names in the Issued tab; #994: a
+// stale approve closes its form, and a page change drops an open decline confirmation.
 
 const ADMIN = { ...SIGNED_IN, user: { ...SIGNED_IN.user, role: 'admin' } }
 const BASE = '/api/admin/invite-requests'
@@ -393,7 +394,7 @@ describe('admin invite requests', () => {
     expect(api.to('POST', `${BASE}/${A}/approve`)[0]?.body).toEqual({ expires_days: 14, send_email: false })
   })
 
-  it('reloads the queue when the request was decided meanwhile', async () => {
+  it('closes the form and reloads the queue when the request was decided meanwhile', async () => {
     const api = adminApi({ [`POST ${BASE}/${A}/approve`]: () => reason(409, 'already_decided') })
     renderAt('/admin/invite-requests')
     const form = await approveFirst()
@@ -403,6 +404,35 @@ describe('admin invite requests', () => {
     await waitFor(() => {
       expect(api.to('GET', PENDING)).toHaveLength(2)
     })
+    // #994: nothing is left to approve, so the form is gone; the words stay until the next approve.
+    expect(screen.queryByRole('form', { name: 'Approve this request' })).toBeNull()
+    expect(screen.queryByTestId('one-time-code')).toBeNull()
+    expect(api.to('POST', `${BASE}/${A}/approve`)).toHaveLength(1)
+    await approveFirst()
+    expect(screen.queryByText('That request was decided already. Reload the list.')).toBeNull()
+  })
+
+  it('drops an open decline confirmation when the page changes', async () => {
+    const api = adminApi({
+      [`GET ${PENDING}`]: { requests: [request(A, 'ann.rider@example.test')], next_offset: 50, pending: 2 },
+      [`GET ${BASE}?state=pending&offset=50&limit=50`]: {
+        requests: [request(B, 'bo@example.test')],
+        next_offset: null,
+        pending: 2,
+      },
+    })
+    renderAt('/admin/invite-requests')
+    const row = (await screen.findByText('ann.rider@example.test')).closest('tr')!
+    fireEvent.click(within(row).getByRole('button', { name: 'Decline' }))
+    expect(screen.getByRole('group', { name: 'Confirm the decline' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Older' }))
+    expect(await screen.findByText('bo@example.test')).toBeInTheDocument()
+    // #994: the confirmation named a request of the other page, so it cannot be confirmed here.
+    expect(screen.queryByRole('group', { name: 'Confirm the decline' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Newest' }))
+    expect(await screen.findByText('ann.rider@example.test')).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Confirm the decline' })).toBeNull()
+    expect(api.calls.filter((c) => c.method === 'POST')).toHaveLength(0)
   })
 
   it('shows the issued and declined tabs with the decision and the plan by name', async () => {

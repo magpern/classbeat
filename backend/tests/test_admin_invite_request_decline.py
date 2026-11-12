@@ -2,9 +2,11 @@
 #989), end to end against the database, and the two facts the screen reads from Settings.
 
 The bulk decline declines each listed pending request in its own audited transaction (one
-``invite_request.decline`` row per request, its id as the target and no params), skips one that
-is gone or decided meanwhile without undoing the others, and refuses an empty, oversized or
-foreign body whole. The list counts the whole pending queue whatever its filter and page.
+``invite_request.decline`` row per declined request, its id as the target and no params), skips
+one that is gone or decided meanwhile without undoing the others, records the skips of one call in
+one ``invite_request.decline_skipped`` row (a count, no ids, #994) that spends one slot of the
+refusal limiter however many ids were stale, and refuses an empty, oversized or foreign body
+whole. The list counts the whole pending queue whatever its filter and page.
 Settings says whether mail is configured (a boolean) and how many invites issued with a tier are
 still unused. The gate on the bulk route is in ``test_admin_invite_requests.py``.
 """
@@ -32,6 +34,18 @@ BULK = f"{PATH}/decline"
 
 def states(conn: Connection) -> dict[uuid.UUID, str]:
     return {r.id: r.state for r in conn.execute(text("SELECT id, state FROM invite_requests"))}
+
+
+def skipped_rows(conn: Connection) -> list[tuple[str, str | None, str | None, str | None, Any]]:
+    return [
+        (r.outcome, r.reason, r.target_kind, r.target_id, r.params)
+        for r in conn.execute(
+            text(
+                "SELECT outcome, reason, target_kind, target_id, params FROM admin_audit "
+                "WHERE action = 'invite_request.decline_skipped' ORDER BY created_at, id"
+            )
+        )
+    ]
 
 
 def decline_rows(conn: Connection) -> list[tuple[str, str | None, str | None, Any]]:
@@ -75,16 +89,57 @@ async def test_the_bulk_decline_declines_each_pending_request_with_its_own_audit
         text("SELECT DISTINCT decided_by FROM invite_requests WHERE state = 'declined'")
     ).all()
     assert [r[0] for r in decided_by] == [actor.user_id]
-    # One row per request, the repeated id once; the stale ones say why; no address, no text.
+    # One row per declined request, the repeated id once; the stale ones share one summary row
+    # with their count only (no id); no address, no text anywhere.
     assert decline_rows(superuser) == [
         ("ok", None, str(decided), {}),
         ("ok", None, str(one), {}),
-        ("refused", "already_decided", str(decided), {}),
-        ("refused", "not_found", str(gone), {}),
         ("ok", None, str(two), {}),
     ]
+    summary = [("refused", "already_decided_or_missing", "invite_request", None, {"skipped": 2})]
+    assert skipped_rows(superuser) == summary
     logged = superuser.execute(text("SELECT params::text FROM admin_audit")).scalars().all()
-    assert not any("example.com" in p for p in logged)
+    assert not any("example.com" in p or str(gone) in p or str(decided) in p for p in logged)
+
+
+async def test_a_bulk_decline_with_many_stale_ids_writes_one_row_and_spends_one_refusal_slot(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    """More stale ids than the limiter's 20 per admin: one summary row, nothing lost, and the
+    admin's refusal budget is still there for the next refusal (#994)."""
+    actor = await stepped_admin(env, make_actor)
+    limiter = env.app.state.admin_db.limiter
+    pending = add_request(superuser)
+    stale = [str(uuid.uuid4()) for _ in range(limiter.per_admin + 10)]
+    response = await actor.post(BULK, {"ids": [*stale, str(pending)]})
+    assert response.status_code == 200, response.text
+    assert response.json() == {"declined": [str(pending)], "skipped": stale}
+    assert decline_rows(superuser) == [("ok", None, str(pending), {})]
+    summary = (
+        "refused",
+        "already_decided_or_missing",
+        "invite_request",
+        None,
+        {"skipped": len(stale)},
+    )
+    assert skipped_rows(superuser) == [summary]
+    assert limiter._counts[actor.user_id] == 1  # pyright: ignore[reportPrivateUsage]
+    # A second such call is one more row, and a single refusal is still audited after both.
+    assert (await actor.post(BULK, {"ids": stale})).status_code == 200
+    assert len(skipped_rows(superuser)) == 2
+    assert (await actor.post(f"{PATH}/{pending}/decline")).status_code == 409
+    assert decline_rows(superuser)[-1] == ("refused", "already_decided", str(pending), {})
+
+
+async def test_a_bulk_decline_with_nothing_stale_writes_no_summary_row(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    ids = [add_request(superuser, f"f{n}@example.com") for n in range(2)]
+    response = await actor.post(BULK, {"ids": [str(i) for i in ids]})
+    assert response.json()["skipped"] == []
+    assert skipped_rows(superuser) == []
+    assert [row[0] for row in decline_rows(superuser)] == ["ok", "ok"]
 
 
 async def test_the_bulk_decline_refuses_a_bad_body_whole(
@@ -106,6 +161,7 @@ async def test_the_bulk_decline_refuses_a_bad_body_whole(
     many = [str(uuid.uuid4()) for _ in range(99)] + [str(request_id)]
     answer = (await actor.post(BULK, {"ids": many})).json()
     assert (answer["declined"], len(answer["skipped"])) == ([str(request_id)], 99)
+    assert [row[-1] for row in skipped_rows(superuser)] == [{"skipped": 99}]
 
 
 async def test_the_list_counts_the_whole_pending_queue_on_every_page_and_filter(

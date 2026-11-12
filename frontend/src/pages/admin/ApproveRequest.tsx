@@ -11,7 +11,8 @@ import { isReason, useAdminWrite } from './StepUp'
  * Approve one request (ADR 0033 section 3): pick the tier the new account starts with (or none),
  * how long the invite lasts and whether to mail the code. The plan list is the one Settings uses,
  * and so is `mailConfigured` (#989): with mail off the toggle is not offered at all. A 409
- * `already_decided` (another admin decided it meanwhile) shows its words and reloads the list.
+ * `already_decided` (another admin decided it meanwhile) hands its words to `onStale`, which
+ * closes this form and reloads the list (#994): there is nothing left to approve.
  */
 export function ApproveRequest({
   request,
@@ -28,7 +29,8 @@ export function ApproveRequest({
   plansError: string | null
   mailConfigured: boolean
   onIssued: (issued: Issued) => void
-  onStale: () => void
+  /** The request was decided meanwhile; `words` say so. */
+  onStale: (words: string) => void
   onCancel: () => void
 }) {
   const write = useAdminWrite()
@@ -59,8 +61,9 @@ export function ApproveRequest({
       try {
         return await write(() => approveInviteRequest(request.id, input))
       } catch (caught) {
-        if (isReason(caught, 409, 'already_decided')) onStale()
-        throw caught
+        if (!isReason(caught, 409, 'already_decided')) throw caught
+        onStale(adminError(caught))
+        return undefined
       }
     }
     void action

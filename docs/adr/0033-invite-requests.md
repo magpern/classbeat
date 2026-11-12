@@ -95,9 +95,16 @@ rendered as HTML, and never reaches a model, a log line or an audit row.
   pending queue, so the screen shows it against the cap from one page. `POST /decline`
   `{ids}` (1 to 100 ids, nothing else) declines each request as `POST /{id}/decline` does, in its
   own audited transaction: one `invite_request.decline` row per request, its id as the target, no
-  params. A request that is gone or decided meanwhile is skipped (its `refused` row says why) and
-  does not undo the others; the answer is `{declined, skipped}`. This answers the pending cap
-  filled by someone who can solve Turnstile (finding 5 of the #987 review).
+  params. A request that is gone or decided meanwhile is skipped and does not undo the others;
+  the answer is `{declined, skipped}`. This answers the pending cap filled by someone who can
+  solve Turnstile (finding 5 of the #987 review).
+- *Amendment of 2026-11-12 (#994).* A skipped request has no audit row of its own: its
+  transaction rolls back as for a refusal (`AdminSkipped`, which `admin_session` does not record),
+  and the skips of one call share **one** `invite_request.decline_skipped` row (`refused`, reason
+  `already_decided_or_missing`, params `{skipped: <count>}`, no ids, no address, no text), written
+  only when something was skipped. A row per stale id went through the refusal limiter (20 per
+  admin, 100 a minute, ADR 0011 section 6), so a call with many stale ids lost rows and spent the
+  admin's refusal budget; the summary row spends one slot per call.
 
 ### 4. One code, the tier granted through the redeem path
 
