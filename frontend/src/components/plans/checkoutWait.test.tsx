@@ -91,7 +91,11 @@ describe('the return from the hosted page', () => {
     expect(api.to('GET', '/api/account/billing').length).toBeGreaterThanOrEqual(3)
     expect(window.location.search).not.toContain('checkout=') // a reload does not wait again
     expect(sessionStorage.getItem('classbeat.checkout.pending')).toBeNull()
-    expect((await screen.findByTestId('plan-name')).textContent).toContain('Your plan: Individual')
+    // The done note shows at once; the plan line follows when the plan is read again (`onChanged`), so wait
+    // for that read instead of asserting on the element the moment it exists.
+    await waitFor(() => {
+      expect(screen.getByTestId('plan-name').textContent).toContain('Your plan: Individual')
+    })
   })
 
   it('stops after the limit with a calm "still waiting", and can look again', async () => {

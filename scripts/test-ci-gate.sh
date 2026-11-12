@@ -373,12 +373,19 @@ if command -v yq > /dev/null; then
     "Check no secret value is in docker inspect" "Check postgres_password is mounted on db and db-functions only" \
     "Check database_maint_password is mounted on db-functions, web and web-paddle only" \
     "Check the Paddle webhook secret is mounted on web-paddle only" \
-    "Check the OAuth client secrets are mounted on web only" "Check the model keys are mounted on the worker only" \
-    "Check no secret value is in the web, worker, web-passkeys and web-paddle logs"; do
+    "Check the OAuth client secrets are mounted on web only" "Check the model keys are mounted on the worker only"; do
     found="$(e2e_step "$step" '.name')"
     cond="$(e2e_step "$step" '.if // ""')"
     if [ "$found" = "$step" ] && [ -z "$cond" ]; then report ok "e2e: '$step' runs in every shard"; else report FAIL "e2e: '$step' is missing or has if '$cond'"; fi
   done
+  # The log scan also runs after failed tests (the failure-log step prints logs), so its condition is
+  # always(), not none (#995).
+  leak_step="Check no secret value is in the web, worker, web-passkeys, web-paddle and db logs"
+  if [ "$(e2e_step "$leak_step" '.name')" = "$leak_step" ] && [ "$(e2e_step "$leak_step" '.if // ""')" = "always()" ]; then
+    report ok "e2e: '$leak_step' runs in every shard, also after a failure"
+  else
+    report FAIL "e2e: '$leak_step' is missing or its if is not always()"
+  fi
   if grep -v '^[[:space:]]*#' "$wf" | grep -q 'job-total'; then report FAIL "e2e: the workflow uses strategy.job-total"; else report ok "e2e: no strategy.job-total"; fi
   # shellcheck disable=SC2016  # literal GitHub expression, not shell
   if [ "$(yq -r '.jobs.e2e.steps[] | select(.name == "Upload the report") | .with.name' "$wf")" = 'playwright-report-${{ matrix.shard }}' ]; then

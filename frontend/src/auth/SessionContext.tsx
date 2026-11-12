@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -31,30 +32,39 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('loading')
   const [session, setSession] = useState<SessionState | null>(null)
 
+  // Reads can overlap (the first read on mount, one after sign-in, one after sign-out) and answer out of
+  // order. Only the read that started last may set the state: an older answer that arrives late would
+  // bring a signed-out browser back to a signed-in view (the account menu staying after Sign out).
+  const started = useRef(0)
+
   const refresh = useCallback(async () => {
+    const mine = ++started.current
     try {
       const next = await getSession()
-      if (!next.authenticated) signedOut()
-      setSession(next)
-      setStatus('ready')
+      if (mine === started.current) {
+        if (!next.authenticated) signedOut()
+        setSession(next)
+        setStatus('ready')
+      }
       return next
     } catch {
-      setStatus('error')
+      if (mine === started.current) setStatus('error')
       return null
     }
   }, [])
 
   useEffect(() => {
     let current = true
+    const mine = ++started.current
     getSession().then(
       (next) => {
-        if (!current) return
+        if (!current || mine !== started.current) return
         if (!next.authenticated) signedOut()
         setSession(next)
         setStatus('ready')
       },
       () => {
-        if (current) setStatus('error')
+        if (current && mine === started.current) setStatus('error')
       },
     )
     return () => {
