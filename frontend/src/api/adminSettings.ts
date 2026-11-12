@@ -83,6 +83,10 @@ export interface ReadOnly {
   agentJobCostMicros: number
   songJobCostMicros: number
   billingEnabled: boolean
+  /** Whether the server can send mail (a boolean only, never an SMTP detail). */
+  mailConfigured: boolean
+  /** Invites issued with a tier (ADR 0033) that are neither used nor expired. */
+  unusedTierInvites: number
 }
 
 export interface SettingsView {
@@ -164,6 +168,8 @@ export async function getSettings(signal?: AbortSignal): Promise<SettingsView> {
       agentJobCostMicros: count(readOnly, 'agent_job_cost_micros'),
       songJobCostMicros: count(readOnly, 'song_job_cost_micros'),
       billingEnabled: flag(readOnly, 'billing_enabled'),
+      mailConfigured: flag(readOnly, 'mail_configured'),
+      unusedTierInvites: count(readOnly, 'unused_tier_invites'),
     },
   }
 }

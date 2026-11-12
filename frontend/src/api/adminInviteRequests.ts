@@ -1,15 +1,19 @@
 import { get, post } from './client'
-import { flag, list, object, optionalText, text, optionalCount, type JsonObject } from './decode'
+import { count, flag, list, object, optionalText, strings, text, optionalCount, type JsonObject } from './decode'
 
 // The admin Invite requests screen (ADR 0033; backend/src/classbeat/admin/invite_requests.py,
 // PB-7 #985). Every route is behind the admin gate and the POSTs need a step-up. `heard_from` is
 // free text from a stranger: it is only ever rendered as text. The approve answer carries the
-// invite code once; the caller shows it and drops it.
+// invite code once; the caller shows it and drops it. The list counts the whole pending queue
+// (`pending`), so the screen reads one page at a time (#989).
 
 const BASE = '/api/admin/invite-requests'
 
 /** The pending queue's bound on the server (`PENDING_CAP`, invite_request_policy.py). */
 export const PENDING_CAP = 1000
+
+/** The bulk decline's bound on the server (`DECLINE_MAX`, invite_request_models.py). */
+export const DECLINE_MAX = 100
 
 export type RequestState = 'pending' | 'issued' | 'declined'
 
@@ -62,6 +66,8 @@ function decodeRequest(value: unknown): InviteRequest {
 export interface RequestPage {
   requests: InviteRequest[]
   nextOffset: number | null
+  /** The whole pending queue, counted by the server whatever the page and filter. */
+  pending: number
 }
 
 export async function listInviteRequests(
@@ -76,6 +82,7 @@ export async function listInviteRequests(
   return {
     requests: list(body, 'requests').map(decodeRequest),
     nextOffset: typeof next === 'number' ? next : null,
+    pending: count(body, 'pending'),
   }
 }
 
@@ -109,15 +116,14 @@ export async function declineInviteRequest(id: string): Promise<InviteRequest> {
   return decodeRequest(await post(`${BASE}/${encodeURIComponent(id)}/decline`))
 }
 
-/** Every pending request (the queue is bounded by `PENDING_CAP`), so the screen can count them. */
-export async function listAllPending(signal?: AbortSignal): Promise<InviteRequest[]> {
-  const all: InviteRequest[] = []
-  let offset: number | null = 0
-  // The server caps an admin page at 100 and the queue at 1000: ten pages, plus one for safety.
-  for (let round = 0; offset !== null && round < 11; round++) {
-    const page: RequestPage = await listInviteRequests('pending', offset, 100, signal)
-    all.push(...page.requests)
-    offset = page.nextOffset
-  }
-  return all
+export interface Declined {
+  declined: string[]
+  /** Gone, or decided meanwhile. */
+  skipped: string[]
+}
+
+/** Declines up to `DECLINE_MAX` requests at once (one audited transaction each on the server). */
+export async function declineInviteRequests(ids: string[]): Promise<Declined> {
+  const answer = object(await post(`${BASE}/decline`, { ids }), 'declined')
+  return { declined: strings(answer, 'declined'), skipped: strings(answer, 'skipped') }
 }

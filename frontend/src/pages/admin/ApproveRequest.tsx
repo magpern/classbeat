@@ -1,53 +1,42 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { adminError } from '../../api/admin'
 import { approveInviteRequest, type InviteRequest, type Issued } from '../../api/adminInviteRequests'
-import { getSettings, type Plan } from '../../api/adminSettings'
+import type { Plan } from '../../api/adminSettings'
 import { SelectField } from '../../components/classes/fields'
 import { Field, Notice, Section, useAction } from '../../components/forms'
 import { Button } from '../../components/ui/button'
-import { isReason, useAdminWrite, useMfaRequired } from './StepUp'
+import { isReason, useAdminWrite } from './StepUp'
 
 /**
  * Approve one request (ADR 0033 section 3): pick the tier the new account starts with (or none),
- * how long the invite lasts and whether to mail the code. The plan list is the one Settings uses.
- * The server cannot tell this page whether mail is set up, so the toggle is always offered and
- * `mail_off` is explained after the fact by the caller.
+ * how long the invite lasts and whether to mail the code. The plan list is the one Settings uses,
+ * and so is `mailConfigured` (#989): with mail off the toggle is not offered at all. A 409
+ * `already_decided` (another admin decided it meanwhile) shows its words and reloads the list.
  */
 export function ApproveRequest({
   request,
+  plans,
+  plansError,
+  mailConfigured,
   onIssued,
+  onStale,
   onCancel,
 }: {
   request: InviteRequest
+  /** Lowest rank first; null while loading. */
+  plans: Plan[] | null
+  plansError: string | null
+  mailConfigured: boolean
   onIssued: (issued: Issued) => void
+  onStale: () => void
   onCancel: () => void
 }) {
   const write = useAdminWrite()
-  const onMfaRequired = useMfaRequired()
   const action = useAction()
-  const [plans, setPlans] = useState<Plan[] | null>(null)
-  const [plansError, setPlansError] = useState<string | null>(null)
   const [planId, setPlanId] = useState('')
   const [grantDays, setGrantDays] = useState('30')
   const [expiresDays, setExpiresDays] = useState('14')
   const [sendEmail, setSendEmail] = useState(false)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    getSettings(controller.signal).then(
-      (view) => {
-        setPlans([...view.plans].sort((a, b) => a.rank - b.rank))
-      },
-      (caught: unknown) => {
-        if (controller.signal.aborted) return
-        if (isReason(caught, 403, 'mfa_required')) onMfaRequired()
-        else setPlansError(adminError(caught))
-      },
-    )
-    return () => {
-      controller.abort()
-    }
-  }, [onMfaRequired])
 
   const grant = Number(grantDays)
   const expires = Number(expiresDays)
@@ -64,10 +53,18 @@ export function ApproveRequest({
       planId: planId === '' ? null : planId,
       grantDays: grant,
       expiresDays: expires,
-      sendEmail,
+      sendEmail: mailConfigured && sendEmail,
+    }
+    const approve = async () => {
+      try {
+        return await write(() => approveInviteRequest(request.id, input))
+      } catch (caught) {
+        if (isReason(caught, 409, 'already_decided')) onStale()
+        throw caught
+      }
     }
     void action
-      .run(() => write(() => approveInviteRequest(request.id, input)), adminError)
+      .run(approve, adminError)
       .then((issued) => {
         if (issued !== undefined) onIssued(issued)
       })
@@ -115,16 +112,22 @@ export function ApproveRequest({
             setExpiresDays(e.target.value)
           }}
         />
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={sendEmail}
-            onChange={(e) => {
-              setSendEmail(e.target.checked)
-            }}
-          />
-          Email the code to the requester
-        </label>
+        {mailConfigured ? (
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={sendEmail}
+              onChange={(e) => {
+                setSendEmail(e.target.checked)
+              }}
+            />
+            Email the code to the requester
+          </label>
+        ) : (
+          <p className="m-0 text-muted" data-testid="mail-off">
+            Mail is not set up on the server, so send the code to the requester yourself.
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           <Button type="submit" disabled={action.busy || !valid}>
             Approve and create code

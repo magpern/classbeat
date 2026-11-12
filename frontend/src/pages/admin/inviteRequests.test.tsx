@@ -4,11 +4,13 @@ import { SIGNED_IN, fakeApi, json, reason } from '../../test/fakeApi'
 import { renderAt } from '../../test/render'
 
 // ADR 0033, PB-8 (#986): the admin Invite requests screen on the real response shapes of
-// backend/src/classbeat/admin/invite_requests.py.
+// backend/src/classbeat/admin/invite_requests.py; #989: one page at a time with the server's
+// pending count, confirmation before a decline, the bulk decline, the mail toggle only when mail
+// is configured, a reload after a stale approve and the plan names in the Issued tab.
 
 const ADMIN = { ...SIGNED_IN, user: { ...SIGNED_IN.user, role: 'admin' } }
 const BASE = '/api/admin/invite-requests'
-const PENDING = `${BASE}?state=pending&offset=0&limit=100`
+const PENDING = `${BASE}?state=pending&offset=0&limit=50`
 const ISSUED = `${BASE}?state=issued&offset=0&limit=50`
 const DECLINED = `${BASE}?state=declined&offset=0&limit=50`
 const CODE = 'INV1TE7C0DE5H0WN0NCE'
@@ -77,6 +79,8 @@ const SETTINGS = {
     agent_job_cost_micros: 1,
     song_job_cost_micros: 1,
     billing_enabled: false,
+    mail_configured: true,
+    unused_tier_invites: 0,
   },
 }
 
@@ -88,9 +92,10 @@ function adminApi(routes: Record<string, unknown> = {}) {
     [`GET ${PENDING}`]: {
       requests: [request(A, 'ann.rider@example.test'), request(B, 'bo@example.test', { has_account: true })],
       next_offset: null,
+      pending: 2,
     },
-    [`GET ${ISSUED}`]: { requests: [], next_offset: null },
-    [`GET ${DECLINED}`]: { requests: [], next_offset: null },
+    [`GET ${ISSUED}`]: { requests: [], next_offset: null, pending: 2 },
+    [`GET ${DECLINED}`]: { requests: [], next_offset: null, pending: 2 },
     ...(routes as Record<string, object>),
   })
 }
@@ -123,45 +128,32 @@ describe('admin invite requests', () => {
     expect(screen.getByText('Has an account')).toBeInTheDocument()
   })
 
-  it('pages through the whole queue to count it', async () => {
-    const first = Array.from({ length: 100 }, (_, i) =>
+  it('reads one page and takes the pending count from the server', async () => {
+    const first = Array.from({ length: 50 }, (_, i) =>
       request(`aaaaaaaa-0000-0000-0000-${String(i).padStart(12, '0')}`, `p${String(i)}@example.test`),
     )
     const api = adminApi({
-      [`GET ${PENDING}`]: { requests: first, next_offset: 100 },
-      [`GET ${BASE}?state=pending&offset=100&limit=100`]: {
+      [`GET ${PENDING}`]: { requests: first, next_offset: 50, pending: 731 },
+      [`GET ${BASE}?state=pending&offset=50&limit=50`]: {
         requests: [request(B, 'last@example.test')],
         next_offset: null,
+        pending: 731,
       },
     })
     renderAt('/admin/invite-requests')
+    expect(await screen.findByText('p0@example.test')).toBeInTheDocument()
+    expect(screen.getByTestId('queue-state')).toHaveTextContent('Pending: 731 of 1000.')
+    expect(screen.queryByText('last@example.test')).toBeNull()
+    expect(api.calls.filter((c) => c.path.startsWith(`${BASE}?state=pending`))).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Older' }))
     expect(await screen.findByText('last@example.test')).toBeInTheDocument()
-    expect(screen.getByTestId('queue-state')).toHaveTextContent('Pending: 101 of 1000.')
+    expect(screen.queryByText('p0@example.test')).toBeNull()
     expect(api.calls.filter((c) => c.path.startsWith(`${BASE}?state=pending`))).toHaveLength(2)
   })
 
   it('says so when the queue is full', async () => {
     adminApi({
-      [`GET ${PENDING}`]: {
-        requests: Array.from({ length: 100 }, (_, i) =>
-          request(`aaaaaaaa-0000-0000-0000-${String(i).padStart(12, '0')}`, `p${String(i)}@example.test`),
-        ),
-        next_offset: 100,
-      },
-      ...Object.fromEntries(
-        Array.from({ length: 9 }, (_, n) => [
-          `GET ${BASE}?state=pending&offset=${String((n + 1) * 100)}&limit=100`,
-          {
-            requests: Array.from({ length: 100 }, (_, i) =>
-              request(
-                `bbbbbbbb-${String(n)}000-0000-0000-${String(i).padStart(12, '0')}`,
-                `q${String(n)}-${String(i)}@example.test`,
-              ),
-            ),
-            next_offset: n === 8 ? null : (n + 2) * 100,
-          },
-        ]),
-      ),
+      [`GET ${PENDING}`]: { requests: [request(A, 'ann.rider@example.test')], next_offset: 50, pending: 1000 },
     })
     renderAt('/admin/invite-requests')
     expect(await screen.findByText(/The queue is full/)).toBeInTheDocument()
@@ -312,7 +304,7 @@ describe('admin invite requests', () => {
     expect(api.to('POST', `${BASE}/${A}/approve`)).toHaveLength(0)
   })
 
-  it('declines after a step-up and reloads the queue', async () => {
+  it('asks before a decline, then declines and reloads the queue', async () => {
     let declined = false
     const api = adminApi({
       [`GET ${PENDING}`]: () =>
@@ -321,6 +313,7 @@ describe('admin invite requests', () => {
             ? [request(B, 'bo@example.test')]
             : [request(A, 'ann.rider@example.test'), request(B, 'bo@example.test')],
           next_offset: null,
+          pending: declined ? 1 : 2,
         }),
       [`POST ${BASE}/${A}/decline`]: () => {
         declined = true
@@ -330,14 +323,89 @@ describe('admin invite requests', () => {
     renderAt('/admin/invite-requests')
     const row = (await screen.findByText('ann.rider@example.test')).closest('tr')!
     fireEvent.click(within(row).getByRole('button', { name: 'Decline' }))
+    // Nothing is sent until the admin confirms; Keep sends nothing.
+    let confirm = screen.getByRole('group', { name: 'Confirm the decline' })
+    expect(confirm).toHaveTextContent('Decline the request from ann.rider@example.test? This cannot be undone.')
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Keep' }))
+    expect(screen.queryByRole('group', { name: 'Confirm the decline' })).toBeNull()
+    expect(api.to('POST', `${BASE}/${A}/decline`)).toHaveLength(0)
+    fireEvent.click(within(row).getByRole('button', { name: 'Decline' }))
+    confirm = screen.getByRole('group', { name: 'Confirm the decline' })
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Yes, decline' }))
     await waitFor(() => {
       expect(screen.queryByText('ann.rider@example.test')).toBeNull()
     })
     expect(screen.getByTestId('queue-state')).toHaveTextContent('Pending: 1 of 1000.')
+    expect(screen.getByText('Declined 1 request.')).toBeInTheDocument()
     expect(api.to('POST', `${BASE}/${A}/decline`)).toHaveLength(1)
+    expect(api.to('POST', `${BASE}/decline`)).toHaveLength(0)
   })
 
-  it('shows the issued and declined tabs with the decision', async () => {
+  it('declines the selected requests in one call after asking, and says which were decided already', async () => {
+    const C = 'aaaaaaaa-0000-0000-0000-000000000003'
+    let declined = false
+    const api = adminApi({
+      [`GET ${PENDING}`]: () =>
+        json({
+          requests: declined
+            ? [request(C, 'cy@example.test')]
+            : [request(A, 'ann.rider@example.test'), request(B, 'bo@example.test'), request(C, 'cy@example.test')],
+          next_offset: null,
+          pending: declined ? 1 : 3,
+        }),
+      [`POST ${BASE}/decline`]: () => {
+        declined = true
+        return { declined: [A], skipped: [B] }
+      },
+    })
+    renderAt('/admin/invite-requests')
+    await screen.findByText('ann.rider@example.test')
+    expect(screen.queryByRole('button', { name: /Decline selected/ })).toBeNull()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select every request on this page' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select cy@example.test' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Decline selected (2)' }))
+    const confirm = screen.getByRole('group', { name: 'Confirm the decline' })
+    expect(confirm).toHaveTextContent('Decline 2 requests? This cannot be undone.')
+    expect(api.to('POST', `${BASE}/decline`)).toHaveLength(0)
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Yes, decline' }))
+    expect(await screen.findByText('Declined 1 request. 1 request had been decided already.')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('ann.rider@example.test')).toBeNull()
+    })
+    expect(api.to('POST', `${BASE}/decline`)[0]?.body).toEqual({ ids: [A, B] })
+    // The selection is cleared with the reload.
+    expect(screen.getByRole('checkbox', { name: 'Select cy@example.test' })).not.toBeChecked()
+    expect(screen.queryByRole('button', { name: /Decline selected/ })).toBeNull()
+  })
+
+  it('offers no email toggle when mail is not configured, and sends none', async () => {
+    const api = adminApi({
+      'GET /api/admin/settings': { ...SETTINGS, read_only: { ...SETTINGS.read_only, mail_configured: false } },
+      [`POST ${BASE}/${A}/approve`]: () =>
+        json({ code: CODE, request: request(A, 'ann.rider@example.test', { state: 'issued' }), email: 'not_requested' }, 201),
+    })
+    renderAt('/admin/invite-requests')
+    const form = await approveFirst()
+    expect(await within(form).findByTestId('mail-off')).toHaveTextContent('Mail is not set up on the server')
+    expect(within(form).queryByLabelText('Email the code to the requester')).toBeNull()
+    fireEvent.click(within(form).getByRole('button', { name: 'Approve and create code' }))
+    await screen.findByTestId('one-time-code')
+    expect(api.to('POST', `${BASE}/${A}/approve`)[0]?.body).toEqual({ expires_days: 14, send_email: false })
+  })
+
+  it('reloads the queue when the request was decided meanwhile', async () => {
+    const api = adminApi({ [`POST ${BASE}/${A}/approve`]: () => reason(409, 'already_decided') })
+    renderAt('/admin/invite-requests')
+    const form = await approveFirst()
+    expect(api.to('GET', PENDING)).toHaveLength(1)
+    fireEvent.click(within(form).getByRole('button', { name: 'Approve and create code' }))
+    expect(await screen.findByText('That request was decided already. Reload the list.')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(api.to('GET', PENDING)).toHaveLength(2)
+    })
+  })
+
+  it('shows the issued and declined tabs with the decision and the plan by name', async () => {
     adminApi({
       [`GET ${ISSUED}`]: {
         requests: [
@@ -349,19 +417,29 @@ describe('admin invite requests', () => {
             decided_by: { id: 'u1', email: 'ann@example.test' },
             decided_at: '2026-11-11T10:00:00Z',
           }),
+          request(B, 'gone@example.test', {
+            state: 'issued',
+            plan_id: 'retired',
+            grant_days: 7,
+            decided_by: null,
+            decided_at: '2026-11-11T10:00:00Z',
+          }),
         ],
         next_offset: null,
+        pending: 2,
       },
-      [`GET ${DECLINED}`]: { requests: [], next_offset: null },
     })
     renderAt('/admin/invite-requests')
     await screen.findByText('ann.rider@example.test')
     fireEvent.click(screen.getByRole('radio', { name: 'Issued' }))
     const row = (await screen.findByText('issued@example.test')).closest('tr')!
-    expect(row).toHaveTextContent('pro for 30 days')
+    expect(row).toHaveTextContent('Pro for 30 days')
     expect(row).toHaveTextContent('used')
     expect(row).toHaveTextContent('ann@example.test')
+    // A plan that is no longer listed keeps its id.
+    expect(screen.getByText('gone@example.test').closest('tr')).toHaveTextContent('retired for 7 days')
     expect(within(row).queryByRole('button', { name: 'Approve' })).toBeNull()
+    expect(within(row).queryByRole('checkbox')).toBeNull()
     expect(screen.queryByTestId('queue-state')).toBeNull()
     fireEvent.click(screen.getByRole('radio', { name: 'Declined' }))
     expect(await screen.findByText('No declined requests.')).toBeInTheDocument()

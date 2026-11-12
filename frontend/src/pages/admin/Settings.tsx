@@ -18,6 +18,7 @@ import { Button } from '../../components/ui/button'
 import { Chip } from '../../components/ui/chip'
 import { Switch } from '../../components/ui/switch'
 import { BannerForm } from './BannerForm'
+import { SignupForm, SongForm, SwedebeatForm } from './FlagForms'
 import { PlanLimits } from './PlanLimits'
 import { isReason, useAdminWrite, useMfaRequired } from './StepUp'
 import { SectionTitle, when } from './Table'
@@ -134,7 +135,7 @@ function FlagCard({ item, view, onChanged }: { item: Flag; view: SettingsView; o
         </p>
       ) : null}
       {action.error !== null ? <Notice kind="error">{action.error}</Notice> : null}
-      {key === 'signup_mode' ? <SignupForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
+      {key === 'signup_mode' ? <SignupForm item={item} unusedTierInvites={view.readOnly.unusedTierInvites} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
       {key === 'song_picking' ? <SongForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
       {key === 'swedebeat_enabled' ? <SwedebeatForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
       {key === 'trial' ? <TrialForm item={item} view={view} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
@@ -152,89 +153,6 @@ function FlagCard({ item, view, onChanged }: { item: Flag; view: SettingsView; o
         </Button>
       ) : null}
     </Section>
-  )
-}
-
-function SignupForm({ item, busy, onSave }: { item: Flag; busy: boolean; onSave: (v: string) => void }) {
-  const [mode, setMode] = useState(asText(item.stored) ?? 'invite')
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    onSave(mode)
-  }
-  return (
-    <form onSubmit={submit} aria-label="Change the sign-up mode" className="flex flex-wrap items-end gap-2">
-      <SelectField label="Sign-up mode" value={mode} aria-describedby="reason-open-signup" onChange={(e) => { setMode(e.target.value) }}>
-        <option value="invite">Invite only</option>
-        <option value="closed">Closed</option>
-        <option value="open" disabled>
-          Open (server only)
-        </option>
-      </SelectField>
-      <Button type="submit" disabled={busy}>
-        Save
-      </Button>
-      <Reason id="reason-open-signup">{REASONS.openSignup}</Reason>
-      {item.environmentNote === 'turnstile_off' ? <Reason id="reason-signup-held">{REASONS.signupHeld}</Reason> : null}
-    </form>
-  )
-}
-
-function SongForm({ item, busy, onSave }: { item: Flag; busy: boolean; onSave: (v: string) => void }) {
-  const [value, setValue] = useState(asText(item.stored) ?? 'granted')
-  const forbidden = item.environment === 'off'
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    onSave(value)
-  }
-  return (
-    <form onSubmit={submit} aria-label="Change song picking" className="flex flex-wrap items-end gap-2">
-      <SelectField
-        label="Song picking for"
-        value={value}
-        disabled={forbidden}
-        aria-describedby={forbidden ? 'reason-song-picking' : undefined}
-        onChange={(e) => {
-          setValue(e.target.value)
-        }}
-      >
-        <option value="off">Nobody</option>
-        <option value="granted">Users granted the feature</option>
-        <option value="on">Everyone</option>
-      </SelectField>
-      <Button type="submit" disabled={busy || forbidden}>
-        Save
-      </Button>
-      {forbidden ? <Reason id="reason-song-picking">{REASONS.songPickingOff}</Reason> : null}
-    </form>
-  )
-}
-
-function SwedebeatForm({ item, busy, onSave }: { item: Flag; busy: boolean; onSave: (v: string) => void }) {
-  const [value, setValue] = useState(asText(item.stored) ?? 'on')
-  const forbidden = item.environment === 'off'
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    onSave(value)
-  }
-  return (
-    <form onSubmit={submit} aria-label="Change Swedebeat" className="flex flex-wrap items-end gap-2">
-      <SelectField
-        label="Swedebeat sign-in for"
-        value={value}
-        disabled={forbidden}
-        aria-describedby={forbidden ? 'reason-swedebeat' : undefined}
-        onChange={(e) => {
-          setValue(e.target.value)
-        }}
-      >
-        <option value="off">Nobody</option>
-        <option value="on">Everyone</option>
-      </SelectField>
-      <Button type="submit" disabled={busy || forbidden}>
-        Save
-      </Button>
-      {forbidden ? <Reason id="reason-swedebeat">{REASONS.swedebeatOff}</Reason> : null}
-    </form>
   )
 }
 
