@@ -384,6 +384,19 @@ def test_mail_handoff_context_is_reached_only_by_the_class_ready_mail() -> None:
     ]
 
 
+def test_invite_tier_context_is_reached_only_by_the_invite_tier() -> None:
+    """``auth.invite_tier_context`` builds a bare context for the account a sign-up transaction
+    just created, to redeem its invite's code for it in that transaction (ADR 0033, #985). Only
+    its definition and ``classbeat.auth.invite_tier`` may name it; it is not exported from
+    ``classbeat.auth``."""
+    users = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in (SRC / "classbeat").rglob("*.py")
+        if "invite_tier_context" in path.read_text("utf-8")
+    )
+    assert users == ["classbeat/auth/deps.py", "classbeat/auth/invite_tier.py"]
+
+
 # ``classbeat.jobs.issuer.owner_context`` builds a bare context for any UUID (#109 item 6). Only the
 # runner (the account-disabled failure and the shutdown hand-back) and the credit settle use it.
 OWNER_CONTEXT_USERS = {

@@ -50,7 +50,7 @@ def parse(html: str) -> Links:
 
 
 def test_the_registry_holds_the_existing_kinds_and_the_new_notices() -> None:
-    assert len(REGISTRY) == 21
+    assert len(REGISTRY) == 22
     assert {k.id for k in KINDS if k.category is Category.WELCOME} == {"welcome"}
     assert {k.id for k in KINDS if k.category is Category.ACCOUNT_ACTIVITY} == {
         "totp_enrolled",
@@ -75,6 +75,7 @@ def test_the_registry_holds_the_existing_kinds_and_the_new_notices() -> None:
         "email_change_taken",
         "connections_wiped",
         "email_changed",
+        "invite_code",  # ADR 0033, #985: the code an admin issued for an invite request
     }
     # ME5 (#656): the one "class ready" kind, optional, switchable by the admin and the user.
     [ready] = [k for k in KINDS if k.category is Category.CLASS_READY]
@@ -157,6 +158,7 @@ SUBJECTS = {
     "email_change_confirm": "Confirm your new classbeat email address",
     "email_change_taken": "A classbeat account already uses this address",
     "email_changed": "Your classbeat email address was changed",
+    "invite_code": "Your classbeat invite code",
     "totp_enrolled": "Two-factor authentication was set up on your classbeat account",
     "mfa_failures": "Failed two-factor attempts on your classbeat account",
     "identity_linked": "A sign-in method was added to your classbeat account",

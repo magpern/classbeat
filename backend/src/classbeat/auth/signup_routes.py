@@ -27,6 +27,7 @@ from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.deps import request_ip
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import EmailAddress, factory, mailer, reserve
+from classbeat.auth.invite_tier import grant_invite_tier
 from classbeat.auth.keys import new_token, token_hash
 from classbeat.auth.oauth_handoff import confirm_provider_signup
 from classbeat.auth.passwords import PasswordRuleError, normalize_password
@@ -201,8 +202,8 @@ async def confirm_sign_up(
 
 
 async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> str:
-    """One transaction: consume the pending row, consume the invite, create the user. Returns
-    the new account's address."""
+    """One transaction: consume the pending row, consume the invite, create the user, grant the
+    invite's tier (ADR 0033). Returns the new account's address."""
     pending = (
         await db.execute(
             delete(pending_signups)
@@ -236,6 +237,8 @@ async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> str:
         await db.execute(
             update(invites).where(invites.c.id == pending.invite_id).values(used_by=created)
         )
+    if not await grant_invite_tier(db, pending.invite_id, created):  # ADR 0033: its tier, or none
+        raise _Refused(409, "invite_invalid")  # its code is gone: rolls back, the pending row stays
     await db.execute(
         delete(pending_signups).where(
             pending_signups.c.email_normalized == pending.email_normalized

@@ -37,3 +37,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0029](0029-ai-first-class-design.md) | AI-first class design: free-text start and interpret stage, four MOWL games (Ghost Target removed), explicit vs assumed, web-side hand-off (MA) | Accepted |
 | [0030](0030-public-pages-prerender.md) | Public pages: build-time prerender, `published` and `draft` paths, `createRoot` takeover with a release gate, document navigation at public boundaries (PP, #755) | Accepted, not implemented |
 | [0031](0031-plans-and-dummy-billing.md) | Plans and billing with a dummy provider: Free / Individual / Professional, admins Professional, subscription writer on the audited maint path, proration, `billing_test` testers, prices on maint only (M7a, #945) | Accepted |
+| [0033](0033-invite-requests.md) | Invite requests and invite codes that carry a tier: a public request form, the admin decides, one code granted through the redeem path at sign-up (PB-7, #985) | Accepted |

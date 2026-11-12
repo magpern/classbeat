@@ -128,7 +128,7 @@ reaches owned rows, as ADR 0002 §4 asks of data migrations: per owner with `app
 `invites` is **reused unchanged**: the admin area creates and lists invites with the CLI's code and
 hashing (ADR 0003 §7); an invite still only lets someone sign up. Giving a tester a plan is a grant
 after sign-up or a redeem code, so M5 does not touch the sign-up transaction (M1, security-critical)
-and an invite never carries authority beyond an account.
+and an invite never carries authority beyond an account. *(Amended 2026-11-12 by ADR 0033: an invite issued from an invite request may carry a tier, as a single-use redeem code tied to it and redeemed through the redeem path inside the sign-up transaction.)*
 
 Retention (guard 10, ADR 0007 §11): `entitlements`, `code_redemptions`, `credit_ledger` and
 `quota_periods` go with the account; `admin_audit` keeps `actor_email` and a nulled target after an

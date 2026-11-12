@@ -1,11 +1,11 @@
 """Cloudflare Turnstile on the anonymous auth forms (ADR 0025).
 
-Four routes call ``require_captcha`` as their first step after the body's shape (section 2):
-sign-in (action ``signin``), sign-up (``signup``), the provider-email step (``signup_email``) and
-the reset request (``reset``). It reserves the per-IP captcha bucket, refuses a missing, overlong or
-non-ASCII token without a network call, and asks the verifier on ``app.state.captcha``. Nothing
-about an account is read, counted, hashed, mailed or started before it passes, so its answer does
-not depend on whether an account exists.
+Five routes call ``require_captcha`` first after the body's shape (section 2): sign-in (action
+``signin``), sign-up (``signup``), the provider-email step (``signup_email``), the reset request
+(``reset``) and the invite request (``invite_request``, ADR 0033). It reserves the per-IP bucket,
+refuses a missing, overlong or non-ASCII token without a network call, and asks the verifier on
+``app.state.captcha``. Nothing about an account is read, counted, hashed, mailed or started before
+it passes, so its answer does not depend on whether an account exists.
 
 Answers (section 3): any failed check is 400 ``captcha_failed``; Cloudflare unreachable, slow, a
 non-2xx, an unreadable answer, ``internal-error``, a misconfiguration on our side, or all 16
@@ -41,7 +41,7 @@ from classbeat.egress import OutboundBlocked, turnstile_async_client
 
 logger = logging.getLogger(__name__)
 
-CaptchaAction = Literal["signin", "signup", "signup_email", "reset"]
+CaptchaAction = Literal["signin", "signup", "signup_email", "reset", "invite_request"]
 
 SITEVERIFY_URL: Final = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 TOKEN_MAX: Final = 2048  # Cloudflare's own limit on a token

@@ -126,6 +126,13 @@ GRANT SELECT (id, label, plan_id, features, grant_days, max_redemptions, redeeme
               expires_at, disabled_at, created_by, created_at)
   ON public.redeem_codes TO classbeat_maint;
 GRANT INSERT, UPDATE (disabled_at) ON public.redeem_codes TO classbeat_maint;
+-- Invite requests (ADR 0033, #985): read in full and decided (issued with a plan, or declined);
+-- the app role inserts and purges them. Never deleted by maint.
+GRANT SELECT (id, email, email_normalized, heard_from, instructor, locale, state, plan_id,
+              grant_days, invite_id, decided_by, decided_at, created_at)
+  ON public.invite_requests TO classbeat_maint;
+GRANT UPDATE (state, plan_id, grant_days, invite_id, decided_by, decided_at)
+  ON public.invite_requests TO classbeat_maint;
 GRANT SELECT (id, owner_id, plan_id, features, source, starts_at, ends_at, code_id, granted_by,
               note, revoked_at, revoked_by, created_at)
   ON public.entitlements TO classbeat_maint;

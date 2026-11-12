@@ -42,6 +42,7 @@ USER_REFERENCES: Mapping[tuple[str, str], str] = MappingProxyType(
         ("plans", "updated_by"): SET_NULL,
         ("redeem_codes", "created_by"): SET_NULL,
         ("entitlements", "granted_by"): SET_NULL,
+        ("invite_requests", "decided_by"): SET_NULL,
         # The admin audit log is append-only (ADR 0011 section 5); see ``RETAINED``.
         ("admin_audit", "actor_id"): SET_NULL,
         ("admin_audit", "target_user_id"): SET_NULL,

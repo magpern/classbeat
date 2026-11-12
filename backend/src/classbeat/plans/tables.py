@@ -123,6 +123,8 @@ redeem_codes = Table(
     _ts("disabled_at"),
     _uuid("created_by"),
     _ts("created_at", nullable=False, default_now=True),
+    # ADR 0033 (migration 0047): the invite whose tier this single-use code is; NULL for a code.
+    _uuid("invite_id"),
 )
 
 entitlements = Table(

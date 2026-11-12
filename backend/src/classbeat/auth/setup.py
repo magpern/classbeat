@@ -14,6 +14,7 @@ from classbeat.auth.admin_routes import router as admin_router
 from classbeat.auth.captcha import build_verifier
 from classbeat.auth.email_routes import router as email_router
 from classbeat.auth.identity_routes import router as identity_router
+from classbeat.auth.invite_request_routes import router as invite_request_router
 from classbeat.auth.keys import Keys
 from classbeat.auth.locale_routes import router as locale_router
 from classbeat.auth.mail_routes import router as mail_router
@@ -59,7 +60,7 @@ SECRET_INPUT_PATHS = (
 def install(app: FastAPI) -> None:
     """Routes, the Origin/CSRF middleware and the 429 and 503 handlers."""
     app.include_router(router)
-    for flow in (signup_router, signin_router, reset_router, email_router):
+    for flow in (signup_router, invite_request_router, signin_router, reset_router, email_router):
         app.include_router(flow)
     app.include_router(mfa_router)
     app.include_router(mail_router)

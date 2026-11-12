@@ -238,6 +238,17 @@ CATALOGUE: dict[S, str] = {
         "dem igen på din kontosida."
     ),
     S.PASSKEY_MFA_RESET_WARN: "Om du inte bad om detta, säg till oss direkt.",
+    S.SUBJECT_INVITE_CODE: "Din inbjudningskod till classbeat",
+    S.INVITE_HEADING: "Du är inbjuden till classbeat",
+    S.INVITE_PRE: "Här är din inbjudningskod till classbeat.",
+    S.INVITE_BODY: (
+        "Tack för att du frågade. Använd den här inbjudningskoden när du skapar ditt konto:"
+    ),
+    S.INVITE_BUTTON: "Skapa ditt konto",
+    S.INVITE_NOTE: (
+        "Koden fungerar en gång och slutar gälla om {days} dagar. Om du inte bad om en inbjudan "
+        "kan du bortse från det här mejlet."
+    ),
 }
 
 MONTHS = (

@@ -158,6 +158,13 @@ class S(Enum):
     PASSKEY_MFA_RESET_NOTE = auto()
     PWCHANGED_PASSKEYS = auto()
     PASSKEY_MFA_RESET_WARN = auto()
+    # ADR 0033 (#985): the invite code an admin issued for an invite request.
+    SUBJECT_INVITE_CODE = auto()
+    INVITE_HEADING = auto()
+    INVITE_PRE = auto()
+    INVITE_BODY = auto()
+    INVITE_BUTTON = auto()
+    INVITE_NOTE = auto()
 
 
 CATALOGUE: dict[S, str] = {
@@ -379,6 +386,15 @@ CATALOGUE: dict[S, str] = {
         "your account page."
     ),
     S.PASSKEY_MFA_RESET_WARN: "If you did not ask for this, tell us right away.",
+    S.SUBJECT_INVITE_CODE: "Your classbeat invite code",
+    S.INVITE_HEADING: "You're invited to classbeat",
+    S.INVITE_PRE: "Your invite code for classbeat is here.",
+    S.INVITE_BODY: "Thanks for asking. Use this invite code when you create your account:",
+    S.INVITE_BUTTON: "Create your account",
+    S.INVITE_NOTE: (
+        "The code works once and expires in {days} days. If you did not ask for an invite, "
+        "ignore this mail."
+    ),
 }
 
 

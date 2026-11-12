@@ -41,7 +41,13 @@ if TYPE_CHECKING:
         find_accounts,
         get_account,
     )
-    from classbeat.auth.admin_lookup import AccountState, account_emails, account_states
+    from classbeat.auth.admin_lookup import (
+        AccountState,
+        account_emails,
+        account_states,
+        addresses_with_accounts,
+        invite_states,
+    )
     from classbeat.auth.clientip import bucket_ip, client_ip
     from classbeat.auth.cookies import (
         CSRF_COOKIE,
@@ -189,6 +195,7 @@ __all__ = [
     "account_export",
     "account_states",
     "active_email",
+    "addresses_with_accounts",
     "admin_buckets",
     "admin_mail_test_buckets",
     "attach_state",
@@ -220,6 +227,7 @@ __all__ = [
     "grant_admin_if_listed",
     "hmac_digest",
     "install",
+    "invite_states",
     "is_known_device",
     "issue_unsubscribe_token",
     "list_invites",
