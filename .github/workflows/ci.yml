@@ -885,11 +885,12 @@ jobs:
       # picks, saves, the admin area, passkeys): none of their logs may hold the value of a secret
       # file (M6, #339; the in-process version over all fake flows is
       # backend/tests/test_m6_security_logs.py). The public test secret of web-paddle is scanned too.
-      - name: Check no secret value is in the web, worker, web-passkeys and web-paddle logs
+      - name: Check no secret value is in the web, worker, web-passkeys, web-paddle and db logs
+        if: always() && needs.changes.outputs.playwright == 'true'
         working-directory: .
         run: |
           set -euo pipefail
-          docker compose logs --no-color web worker web-passkeys web-paddle > "$RUNNER_TEMP/stack.log"
+          docker compose logs --no-color web worker web-passkeys web-paddle db > "$RUNNER_TEMP/stack.log"
           [ -s "$RUNNER_TEMP/stack.log" ] || { echo "::error::no web, worker, web-passkeys or web-paddle logs"; exit 1; }
           checked=0
           for f in secrets/* e2e/fake-paddle/webhook-secret.txt; do
@@ -939,6 +940,8 @@ jobs:
           docker compose logs --no-color --tail 100
           # The tail above is only the last minutes. A 5xx or an error from earlier in the run (a flaky
           # spec's one 500) is in the full logs: print just those lines, by class and status (#995).
+          # Postgres DETAIL: and STATEMENT: lines are left out on purpose: they carry row values and
+          # bound parameters. Do not widen this pattern to match them.
           echo "::group::5xx responses and errors from the whole run"
           docker compose logs --no-color web worker web-passkeys web-paddle db \
             | grep -E '"status": 5[0-9][0-9]|"level": "(ERROR|CRITICAL)"|database error|ERROR:|Traceback' | tail -60 || true
