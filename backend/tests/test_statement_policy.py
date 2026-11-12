@@ -3,8 +3,9 @@
 Refused: anything but one ``INSERT``, ``UPDATE`` or ``DELETE`` on a system table built from that
 table's own columns, bind parameters and the listed functions and operators. The probes below are
 the review's of #1009 (multi-row ``VALUES``, prefixes, hints, a ``values()`` construct that made the
-earlier blocklist walk loop forever) and the earlier blocklist's own cases. Accepted: every
-statement the rate limiter sends today, captured from a real run.
+earlier blocklist walk loop forever), the earlier blocklist's own cases, and those of #1013 (a
+bind whose value or type is SQL, SET or VALUES keys that are not the target's columns). Accepted:
+every statement the rate limiter sends today, captured from a real run.
 """
 
 import threading
@@ -14,7 +15,10 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import (
     Column,
+    DateTime,
+    Float,
     Integer,
+    LargeBinary,
     MetaData,
     Table,
     bindparam,
@@ -28,13 +32,16 @@ from sqlalchemy import (
     select,
     table,
     text,
+    true,
     tuple_,
     union,
     update,
     values,
 )
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.sql.elements import Grouping, Label
+from sqlalchemy.sql.elements import BindParameter, ColumnElement, Grouping, Label
+from sqlalchemy.types import TypeDecorator
 
 from authtools import Env, running_env
 from classbeat.auth import ratelimit
@@ -47,6 +54,22 @@ L = rate_limits.c
 OWNED = Table("classes", MetaData(), Column("n", Integer))
 ROW = {"bucket_hash": b"x", "window_start": W}
 UPSERT_KEYS = [L.bucket_hash, L.window_start]
+# Another table's column named like the target's: it renders as ``count`` in SET, but is not it.
+OTHER_COUNT = Table("other", MetaData(), Column("count", Integer)).c.count
+
+
+class RendersSql(TypeDecorator[int]):
+    """A custom type whose bind is SQL, not data: ``count = (SELECT n FROM classes)``."""
+
+    impl = Integer
+    cache_ok = True
+
+    def bind_expression(self, bindparam: BindParameter[int]) -> ColumnElement[int]:
+        return literal_column("(SELECT n FROM classes)", Integer)
+
+
+class IntegerSubclass(Integer):
+    """A subclass of a listed type: refused too, the types are matched exactly."""
 
 
 def _refused() -> dict[str, object]:
@@ -142,9 +165,41 @@ def _refused() -> dict[str, object]:
         "on conflict, owned column": insert(rate_limits)
         .values(**ROW, count=1)
         .on_conflict_do_nothing(index_elements=[OWNED.c.n]),
+        "on conflict, set another table's column": insert(rate_limits)
+        .values(**ROW, count=1)
+        .on_conflict_do_update(index_elements=UPSERT_KEYS, set_={OTHER_COUNT: 1}),
+        "on conflict, set a name that is no column": insert(rate_limits)
+        .values(**ROW, count=1)
+        .on_conflict_do_update(index_elements=UPSERT_KEYS, set_={"nope": 1}),
         "on conflict constraint": insert(rate_limits)
         .values(**ROW, count=1)
         .on_conflict_do_nothing(constraint="rate_limits_pkey"),
+        # SET and VALUES keys: the target's own columns only (#1013), the values being plain.
+        "set another table's column": update(rate_limits).values({OTHER_COUNT: 1}),
+        "set a bare column() of the same name": update(rate_limits).values({column("count"): 1}),
+        "set a name that is no column": update(rate_limits).values(nope=1),
+        "values, another table's column": insert(rate_limits).values({**ROW, OTHER_COUNT: 1}),
+        "multi values, a name that is no column": insert(rate_limits).values(
+            [{**ROW, "count": 1}, {**ROW, "nope": 1}]
+        ),
+        # Bind parameters (#1013): data of a listed type, never SQL as their value or type.
+        "bind whose value is a subquery": update(rate_limits).values(
+            count=bindparam("c", value=select(OWNED.c.n).scalar_subquery(), type_=Integer)
+        ),
+        "bind whose value is text": update(rate_limits).values(
+            count=bindparam("c", value=text("1"))
+        ),
+        "bind whose value is SQL, in where": delete(rate_limits).where(
+            L.count == bindparam("c", value=true(), type_=Integer)
+        ),
+        "bind of a type decorator": update(rate_limits).values(count=literal(1, RendersSql())),
+        "bind of a type decorator, in returning": insert(rate_limits)
+        .values(**ROW, count=0)
+        .returning(bindparam("c", 1, type_=RendersSql())),
+        "bind of an allowed type's subclass": update(rate_limits).values(
+            count=bindparam("c", 1, type_=IntegerSubclass())
+        ),
+        "bind of an unlisted type": update(rate_limits).values(count=literal(1, postgresql.MONEY)),
         "a select": select(L.count),
         "text statement": text("DELETE FROM sessions"),
     }
@@ -165,6 +220,20 @@ def test_it_allows_bind_parameters_and_the_upsert() -> None:
         .on_conflict_do_update(index_elements=UPSERT_KEYS, set_={"count": L.count + 1})
         .returning(L.count.label("hits"), func.clock_timestamp().label("now"))
     )
+
+
+def test_it_allows_each_listed_bind_type() -> None:
+    for value, type_ in ((1, Integer), (1.5, Float), (b"x", LargeBinary), (W, DateTime(True))):
+        check_system_write(update(rate_limits).where(L.count == literal(value, type_)))
+
+
+def test_a_bind_type_that_renders_sql_is_refused() -> None:
+    """The premise (the bind compiles to a subquery of an owned table, not to a parameter), then
+    the refusal (#1013, N2 of the review of #1009)."""
+    statement = update(rate_limits).values(count=bindparam("c", 1, type_=RendersSql()))
+    assert "SELECT n FROM classes" in str(statement.compile(dialect=postgresql.dialect()))
+    with pytest.raises(ValueError, match=REFUSED):
+        check_system_write(statement)
 
 
 def _finishes(statement: object) -> None:

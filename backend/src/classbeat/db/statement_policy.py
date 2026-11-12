@@ -6,7 +6,9 @@ no schema, and refuses everything else. Its clauses (single-row and multi-row ``
 and value by value, ``SET``, ``WHERE``, ``RETURNING``, and the ``ON CONFLICT`` target columns and
 ``DO UPDATE SET``) may hold only these elements:
 
-- bind parameters (data, never SQL), and plain Python values the statement has not wrapped yet;
+- bind parameters (data, never SQL) of the built-in types in ``_BIND_TYPES`` exactly (a custom
+  type, such as a ``TypeDecorator``, can rewrite its bind into SQL), and plain Python values the
+  statement has not wrapped yet;
 - columns of the target table itself (no other table, alias, ``column()`` or literal column);
 - labels, groupings, function argument lists, ``AND``;
 - the comparison and arithmetic operators in ``_OPERATORS``;
@@ -32,11 +34,15 @@ from sqlalchemy import (
     BooleanClauseList,
     ClauseList,
     Column,
+    DateTime,
     Delete,
     Extract,
+    Float,
     Function,
     Grouping,
+    Integer,
     Label,
+    LargeBinary,
     Table,
     Update,
 )
@@ -44,6 +50,7 @@ from sqlalchemy.dialects.postgresql import Insert
 from sqlalchemy.dialects.postgresql.dml import OnConflictDoNothing, OnConflictDoUpdate
 from sqlalchemy.sql import functions, operators
 from sqlalchemy.sql.elements import BinaryExpression, ClauseElement
+from sqlalchemy.sql.sqltypes import NullType
 
 from classbeat.db.tables import SYSTEM_TABLES
 
@@ -65,8 +72,14 @@ _OPERATORS = frozenset(
     | {operator.add, operator.sub, operator.mul, operator.truediv}
 )
 _DATA = (int, float, bytes, str, datetime, bool, type(None))
+# The bind types the limiter's statements use, matched exactly: none of them has a bind expression,
+# so its value is sent as a parameter. A subclass (a ``TypeDecorator`` too) may render SQL instead.
+_BIND_TYPES = frozenset({NullType, Integer, Float, LargeBinary, DateTime})
 _CLAUSES = frozenset({"_values", "_multi_values", "_where_criteria", "_returning"})
-# Flags with no SQL of their own (a boolean or options of the CTEs, which must be absent).
+# Parts that hold no SQL of their own: booleans, the options of the independent CTEs (which must
+# be absent), and ``dialect_options``, the statement's own dialect keyword arguments: the Postgres
+# dialect accepts none on DML (a ``postgresql_*`` one is an ``ArgumentError``), and it renders no
+# other dialect's (such as ``with_dialect_options(mysql_limit=1)``).
 _FLAGS = frozenset(
     {
         "_inline",
@@ -88,7 +101,7 @@ def _children(element: object, target: Table) -> Iterable[object]:
     if isinstance(element, ClauseElement):
         kind = type(element)
         if kind is BindParameter:
-            if isinstance(element.value, ClauseElement):  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+            if type(element.type) not in _BIND_TYPES or isinstance(element.value, ClauseElement):  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownArgumentType]
                 raise _refuse()
             return ()
         if kind is Column:
