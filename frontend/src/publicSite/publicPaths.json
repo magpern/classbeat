@@ -13,6 +13,10 @@
     "/examples/running-intervals"
   ],
   "draft": [
-    "/pricing"
+    "/pricing",
+    "/terms-draft",
+    "/privacy-draft",
+    "/refunds",
+    "/sub-processors"
   ]
 }
