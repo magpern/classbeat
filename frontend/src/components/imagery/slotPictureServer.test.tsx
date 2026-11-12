@@ -65,7 +65,10 @@ describe('the style sheet', () => {
     const visit = (rules: CSSRuleList, media: string) => {
       for (const rule of Array.from(rules)) {
         if (rule instanceof CSSMediaRule) visit(rule.cssRules, rule.conditionText)
-        else if (rule instanceof CSSStyleRule && rule.selectorText.split(',').map((x) => x.trim()).includes(selector)) {
+        else if (
+          rule instanceof CSSStyleRule &&
+          rule.selectorText.split(',').map((x) => x.trim().replaceAll('"', "'")).includes(selector)
+        ) {
           found.push({ media, display: rule.style.getPropertyValue('display') })
         }
       }
