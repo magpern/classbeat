@@ -178,7 +178,9 @@ async def test_a_bad_signature_is_401_and_touches_no_database(
     for expected, kwargs in cases.items():
         response = await post(env, paid, **kwargs)
         assert (response.status_code, response.json()["reason"]) == (401, expected)
-    future = await post(env, paid, ts=now + 301)
+    # Well past the window: a slow runner may have moved the server's clock a second on (the exact
+    # five minute edge is pinned in test_paddle_signature.py).
+    future = await post(env, paid, ts=now + 330)
     assert future.status_code == 401
     tampered = await post(env, paid, header=sign(paid.body, SECRET, ts=now),
                           edit=lambda d: d["data"].update(origin="api"))  # fmt: skip

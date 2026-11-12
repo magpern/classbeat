@@ -42,7 +42,7 @@ _SCRIPT: Final = """\
 const ref = document.body.dataset.ref;
 const buttons = document.querySelectorAll('button[data-outcome]');
 const note = document.getElementById('note');
-const back = { pay: '/account?checkout=return', fail: '/account?checkout=failed' };
+const back = { pay: '/account?checkout=return#plan', fail: '/account?checkout=failed#plan' };
 const enable = (on) => buttons.forEach((b) => { b.disabled = !on; });
 async function act(outcome) {
   enable(false);
