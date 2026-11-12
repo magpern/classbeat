@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { DEFAULT_LOCALE, setActiveLocale } from '../i18n/locales'
+import { loadCatalogue, resetCatalogues } from '../i18n/t'
 import { ApiError } from './client'
 import { errorMessage, oauthOutcomeMessage } from './messages'
 
@@ -64,9 +66,9 @@ describe('oauthOutcomeMessage for a new provider account on the sign-in screen (
   })
 })
 
-// #1004: a 503 "busy" (rate-limiter lock timeout, Retry-After) is a calm message, not the server-fault one.
+// #1004: a 503 "busy" (rate-limiter lock timeout, Retry-After) uses the calm, translated busy text, not the server-fault one.
 describe('errorMessage for a busy service', () => {
-  const busy = 'The service is busy. Try again in a moment.'
+  const busy = 'The server is busy. Try again in a few seconds.'
   const server = 'Something went wrong on the server. Try again in a moment.'
 
   it('words 503 with reason busy', () => {
@@ -77,6 +79,23 @@ describe('errorMessage for a busy service', () => {
   it('words a 503 with Retry-After and no worded reason', () => {
     expect(errorMessage(new ApiError(503, null, 2, null))).toBe(busy)
     expect(errorMessage(new ApiError(503, 'something_new', 2, null))).toBe(busy)
+  })
+
+  describe('in sv', () => {
+    beforeAll(async () => {
+      await loadCatalogue('sv')
+      setActiveLocale('sv')
+    })
+    afterAll(() => {
+      setActiveLocale(DEFAULT_LOCALE)
+      resetCatalogues()
+    })
+
+    it('uses the translated text', () => {
+      const text = 'Servern är upptagen. Försök igen om några sekunder.'
+      expect(errorMessage(new ApiError(503, 'busy', 2, null))).toBe(text)
+      expect(errorMessage(new ApiError(503, null, 2, null))).toBe(text)
+    })
   })
 
   it('keeps a worded reason and the generic server message otherwise', () => {
