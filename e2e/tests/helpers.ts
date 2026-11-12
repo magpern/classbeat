@@ -58,10 +58,15 @@ export function captchaToken(): string {
   return `fake-pass-${randomUUID()}`
 }
 
-/** Sign up with an invite, confirm by the mailed link and type the password again. */
-export async function signUpThroughUi(page: Page, email: string, password = PASSWORD): Promise<void> {
+/** Sign up with an invite (a fresh CLI one unless `invite` is given), confirm by the mailed link and type the password again. */
+export async function signUpThroughUi(
+  page: Page,
+  email: string,
+  password = PASSWORD,
+  invite?: string,
+): Promise<void> {
   await page.goto('/signup')
-  await page.getByLabel('Invite code').fill(createInvite())
+  await page.getByLabel('Invite code').fill(invite ?? createInvite())
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByLabel('Password', { exact: true }).fill(password)
   await passCaptcha(page)

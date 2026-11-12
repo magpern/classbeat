@@ -96,5 +96,16 @@
   "draft.subprocessors.payments.title",
   "draft.subprocessors.payments.p1",
   "draft.subprocessors.update.title",
-  "draft.subprocessors.update.p1"
+  "draft.subprocessors.update.p1",
+  "inviteRequest.link",
+  "inviteRequest.title",
+  "inviteRequest.lead",
+  "inviteRequest.heardFrom",
+  "inviteRequest.instructor",
+  "inviteRequest.yes",
+  "inviteRequest.no",
+  "inviteRequest.submit",
+  "inviteRequest.sent",
+  "inviteRequest.back",
+  "inviteRequest.chooseInstructor"
 ]

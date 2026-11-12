@@ -16,14 +16,11 @@ import { Field, Notice, Section, useAction } from '../../components/forms'
 import { Button } from '../../components/ui/button'
 import { Chip } from '../../components/ui/chip'
 import { dayOf, endOfDay, FEATURES, PLANS } from './format'
+import { OneTimeCode, type Shown } from './OneTimeCode'
+import { Pager } from './Pager'
 import { isReason, useAdminWrite, useMfaRequired } from './StepUp'
 
 const CELL = 'border-b border-line py-2 pr-4'
-
-interface Shown {
-  what: 'invite' | 'redeem code'
-  code: string
-}
 
 function person(value: Person | null, none: string): string {
   if (value === null) return none
@@ -60,40 +57,6 @@ export function Codes() {
         setShown({ what: 'redeem code', code })
       }} />
     </div>
-  )
-}
-
-function OneTimeCode({ shown, onDone }: { shown: Shown; onDone: () => void }) {
-  const [copied, setCopied] = useState<boolean | null>(null)
-  const copy = () => {
-    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
-    if (clipboard === undefined) {
-      setCopied(false)
-      return
-    }
-    clipboard.writeText(shown.code).then(
-      () => {
-        setCopied(true)
-      },
-      () => {
-        setCopied(false)
-      },
-    )
-  }
-  return (
-    <section aria-label="New code" className="rounded-lg border border-brand bg-surface p-5" data-testid="one-time-code">
-      <h2 className="m-0 mb-2 font-display text-xl font-bold">Your new {shown.what}</h2>
-      <p className="m-0 mb-3 text-muted">Copy it now. It is shown only this once and cannot be shown again.</p>
-      <p className="m-0 mb-3 font-mono text-lg break-all select-all">{shown.code}</p>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={copy}>Copy</Button>
-        <Button variant="secondary" onClick={onDone}>
-          Done
-        </Button>
-        {copied === true ? <span role="status">Copied.</span> : null}
-        {copied === false ? <span role="status">Copy it by hand: the browser did not allow copying.</span> : null}
-      </div>
-    </section>
   )
 }
 
@@ -134,33 +97,6 @@ const loadInvites = (offset: number, signal: AbortSignal) =>
   listInvites(offset, signal).then((page) => ({ items: page.invites, nextOffset: page.nextOffset }))
 const loadCodes = (offset: number, signal: AbortSignal) =>
   listCodes(offset, signal).then((page) => ({ items: page.codes, nextOffset: page.nextOffset }))
-
-function Pager({ offset, nextOffset, setOffset }: { offset: number; nextOffset: number | null; setOffset: (n: number) => void }) {
-  return (
-    <div className="mt-2 flex gap-2">
-      {offset > 0 ? (
-        <Button
-          variant="secondary"
-          onClick={() => {
-            setOffset(0)
-          }}
-        >
-          Newest
-        </Button>
-      ) : null}
-      {nextOffset !== null ? (
-        <Button
-          variant="secondary"
-          onClick={() => {
-            setOffset(nextOffset)
-          }}
-        >
-          Older
-        </Button>
-      ) : null}
-    </div>
-  )
-}
 
 function Invites({ onCreated }: { onCreated: (code: string) => void }) {
   const write = useAdminWrite()

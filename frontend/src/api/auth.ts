@@ -1,9 +1,9 @@
 import { resolveBrowserLocale } from '../i18n/locales'
 import { clearSubmittedInputs } from '../lib/submittedInput'
+import { captchaField, decodeCaptcha, type CaptchaConfig } from './captcha'
 import { del, fetchSessionJson, get, post } from './client'
 import {
   count,
-  DecodeError,
   flag,
   list,
   object,
@@ -12,6 +12,8 @@ import {
   text,
   type JsonObject,
 } from './decode'
+
+export type { CaptchaAction, CaptchaConfig } from './captcha'
 
 // Endpoints of ADR 0003 (backend/src/classbeat/auth/*_routes.py). Every answer is decoded
 // and checked here, so pages only see typed values.
@@ -44,29 +46,6 @@ export interface SessionState {
   captcha: CaptchaConfig | null
   /** CLASSBEAT_PASSKEYS (ADR 0019 section 1): whether the sign-in page offers passkeys. */
   passkeys: boolean
-}
-
-/**
- * `turnstile`: Cloudflare's widget with the public site key. `fake`: the e2e stack's local
- * stand-in (`CLASSBEAT_TURNSTILE_FAKE`, refused in prod by the server), which loads nothing.
- */
-export type CaptchaConfig = { kind: 'turnstile'; siteKey: string } | { kind: 'fake' }
-
-/** The routes' `action` (ADR 0025 section 1): a token solved for one form passes no other. */
-export type CaptchaAction = 'signin' | 'signup' | 'signup_email' | 'reset'
-
-function decodeCaptcha(value: unknown): CaptchaConfig | null {
-  if (value === undefined || value === null) return null
-  const captcha = object(value, 'captcha')
-  if (captcha.fake === true) return { kind: 'fake' }
-  const siteKey = text(captcha, 'site_key')
-  if (siteKey === '') throw new DecodeError('site_key')
-  return { kind: 'turnstile', siteKey }
-}
-
-/** The token as the protected routes read it; no field at all while Turnstile is off. */
-function captchaField(token: string | null | undefined): { captcha_token?: string } {
-  return token ? { captcha_token: token } : {}
 }
 
 export async function getSession(signal?: AbortSignal): Promise<SessionState> {

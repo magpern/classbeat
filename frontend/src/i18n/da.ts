@@ -193,6 +193,9 @@ const da: Catalogue = {
   'error.reason.reauth_use_password': 'Din konto har en adgangskode, så bekræft med din adgangskode.',
   'error.reason.forbidden': 'Din konto må ikke gøre det.',
   'error.reason.busy': 'Serveren er optaget. Prøv igen om nogle sekunder.',
+  'error.reason.requests_closed': 'Anmodninger om invitation er lukket lige nu.',
+  'error.reason.already_decided': 'Den anmodning er allerede afgjort. Genindlæs listen.',
+  'error.reason.unknown_plan': 'Den plan findes ikke.',
   'error.reason.captcha_failed': 'Sikkerhedstjekket blev ikke godkendt. Prøv igen.',
   'error.reason.captcha_unavailable': 'Sikkerhedstjekket kan ikke nås lige nu. Prøv igen om et minut.',
   // ADR 0025 section 11: the Turnstile check on the sign-in, sign-up, provider-email and reset forms.
