@@ -35,14 +35,16 @@ export function withoutReturn(search: string): string {
 }
 
 /**
- * Where to send the browser: the server's address when it is http(s), else null. The server's text is data,
- * and `javascript:` or `data:` must never be navigated to.
+ * Where to send the browser: the server's address when it is on our own origin, else null. The server's
+ * text is data: `javascript:` or `data:`, another host, a protocol-relative `//host/...` and a different
+ * scheme or port must never be navigated to. The fake Paddle page is ours. A real Paddle host goes on an
+ * explicit allowlist in M7b-real, not into this check.
  */
 export function safeCheckoutUrl(value: string | null, base: string): string | null {
   if (value === null) return null
   try {
     const url = new URL(value, base)
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null
+    return url.origin === new URL(base).origin ? url.href : null
   } catch {
     return null
   }

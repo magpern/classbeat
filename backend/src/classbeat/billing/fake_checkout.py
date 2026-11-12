@@ -156,16 +156,22 @@ async def complete(
     found = client.checkout_of(ref) if _REF.fullmatch(ref) else None
     if found is None or found.owner_id != ctx.user_id:
         raise HTTPException(status_code=404)  # unknown, already paid, or another buyer's
+    before = len(client.outbox)
     if outcome == "pay":
         client.pay(ref)
     else:
         client.fail(ref)
+    # Only this checkout's own notifications: another buyer's stuck one must not fail this answer.
+    mine = {delivery.event_id for delivery in client.outbox[before:]}
     post = _signed_post(request)
+    left = len(mine)
     for _ in range(_ROUNDS):
-        await client.deliver(post)
-        if not client.outbox:
+        order = [i for i, d in enumerate(client.outbox) if d.event_id in mine]
+        left = len(order)
+        if not order:
             break
-    left = len(client.outbox)
+        await client.deliver(post, order=order)
+        left = sum(1 for d in client.outbox if d.event_id in mine)
     status = 200 if left == 0 else 502
     return JSONResponse({"outcome": outcome, "undelivered": left}, status_code=status,
                         headers=_NO_STORE)  # fmt: skip

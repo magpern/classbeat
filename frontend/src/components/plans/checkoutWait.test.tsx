@@ -57,11 +57,11 @@ describe('a buy that answers a hosted page', () => {
     expect(screen.queryByText(/Done\. Your plan/)).toBeNull() // nothing is bought until the notification lands
   })
 
-  it('never goes to an address that is not http or https', async () => {
+  it('never goes to an address that is not on our own origin', async () => {
     fakeApi({
       ...ACCOUNT,
       'GET /api/account/billing': { can_buy: true, subscription: null, offers: BUY },
-      'POST /api/account/billing/checkout': { can_buy: true, subscription: null, offers: BUY, checkout_url: 'javascript:alert(1)' },
+      'POST /api/account/billing/checkout': { can_buy: true, subscription: null, offers: BUY, checkout_url: 'https://pay.test/c/1' },
     })
     renderAt('/account#plan')
     fireEvent.click(await screen.findByRole('button', { name: 'Buy Individual' }))

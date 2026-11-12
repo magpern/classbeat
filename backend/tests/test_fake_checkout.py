@@ -10,7 +10,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, make_url
 
-from authtools import Env, running_env
+from authtools import ORIGIN, Env, running_env, session_cookie
+from classbeat.billing.fake_paddle import Delivery
 from test_billing_routes import make_tester, sub
 from test_paddle_webhook import (  # noqa: F401 - the fixtures: env, tester
     BILLING,
@@ -114,6 +115,36 @@ async def test_an_outcome_other_than_pay_or_fail_is_refused(
     assert paddle(env).checkout_of(ref) is not None
 
 
+async def test_pay_and_fail_need_the_csrf_token_of_the_session(
+    env: Env, tester: Any, priced: None
+) -> None:
+    ref = await checkout(env, tester)
+    for outcome in ("pay", "fail"):
+        answer = await env.client.post(
+            ACTION.format(ref=ref, outcome=outcome),
+            headers={"Origin": ORIGIN} | session_cookie(tester.token),
+        )
+        assert answer.status_code == 403
+        assert answer.json()["detail"]["reason"] == "csrf_token_missing"
+    env.client.cookies.clear()
+    assert paddle(env).checkout_of(ref) is not None  # nothing was paid or declined
+    assert paddle(env).outbox == []
+
+
+async def test_only_this_checkouts_events_are_delivered(
+    env: Env, tester: Any, superuser: Connection, priced: None
+) -> None:
+    """Another buyer's notification that cannot be delivered stays queued and never turns this
+    buyer's answer into a failure."""
+    stuck = Delivery("evt_" + "0" * 26, "transaction.completed", b"{}")
+    paddle(env).outbox.append(stuck)
+    ref = await checkout(env, tester)
+    answer = await act(tester, ref, "pay")
+    assert (answer.status_code, answer.json()) == (200, {"outcome": "pay", "undelivered": 0})
+    assert sub(superuser, tester.user_id).plan_id == "instructor"
+    assert paddle(env).outbox == [stuck]  # not ours: untouched
+
+
 # --- never outside the fake ---------------------------------------------------------------------
 
 
@@ -135,6 +166,18 @@ async def test_with_the_dummy_provider_nothing_of_it_is_mounted(dummy_env: Env) 
     assert [path for path in mounted if "fake" in path] == []  # no page, script or action
     for path in (f"/fake-paddle/checkout/{ref}", "/fake-paddle/checkout.js"):
         assert (await dummy_env.client.get(path)).status_code == 404, path
+
+
+async def test_a_provider_other_than_fake_paddle_refuses_every_handler(
+    env: Env, tester: Any, priced: None
+) -> None:
+    ref = await checkout(env, tester)
+    update = {"billing_provider": "dummy"}
+    env.app.state.settings = env.app.state.settings.model_copy(update=update)
+    for path in (f"/fake-paddle/checkout/{ref}", "/fake-paddle/checkout.js"):
+        assert (await tester.get(path)).status_code == 404, path
+    assert (await act(tester, ref, "pay")).status_code == 404
+    assert paddle(env).checkout_of(ref) is not None  # nothing was paid
 
 
 async def test_in_prod_every_handler_refuses_even_if_it_were_mounted(

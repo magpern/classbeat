@@ -1,6 +1,17 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Billing, Subscription } from '../api/billing'
-import { deferred, forget, landed, recall, remember, returnOf, safeCheckoutUrl, withoutReturn } from './checkoutWait'
+import {
+  deferred,
+  forget,
+  GIVE_UP_MS,
+  landed,
+  POLL_MS,
+  recall,
+  remember,
+  returnOf,
+  safeCheckoutUrl,
+  withoutReturn,
+} from './checkoutWait'
 
 const sub = (extra: Partial<Subscription> = {}): Subscription => ({
   plan: 'instructor',
@@ -35,12 +46,39 @@ describe('the return address', () => {
 })
 
 describe('where the browser may be sent', () => {
-  it('follows http and https, nothing else', () => {
-    expect(safeCheckoutUrl('https://pay.test/c/1', 'http://x.test/')).toBe('https://pay.test/c/1')
-    expect(safeCheckoutUrl('/fake-paddle/checkout/txn_1', 'http://x.test/en/account')).toBe('http://x.test/fake-paddle/checkout/txn_1')
-    expect(safeCheckoutUrl('javascript:alert(1)', 'http://x.test/')).toBeNull()
-    expect(safeCheckoutUrl('data:text/html,hi', 'http://x.test/')).toBeNull()
-    expect(safeCheckoutUrl(null, 'http://x.test/')).toBeNull()
+  const base = 'http://x.test/en/account'
+
+  it('follows an address on our own origin', () => {
+    expect(safeCheckoutUrl('/fake-paddle/checkout/txn_1', base)).toBe('http://x.test/fake-paddle/checkout/txn_1')
+    expect(safeCheckoutUrl('http://x.test/fake-paddle/checkout/txn_1', base)).toBe(
+      'http://x.test/fake-paddle/checkout/txn_1',
+    )
+  })
+
+  it('refuses another host, however it is written', () => {
+    expect(safeCheckoutUrl('https://pay.test/c/1', base)).toBeNull()
+    expect(safeCheckoutUrl('//evil.test/c/1', base)).toBeNull()
+    expect(safeCheckoutUrl('http://evil.test/c/1', base)).toBeNull()
+    expect(safeCheckoutUrl('http://x.test.evil.test/c/1', base)).toBeNull()
+    expect(safeCheckoutUrl('http://x.test@evil.test/c/1', base)).toBeNull()
+  })
+
+  it('refuses another scheme or port on our own host', () => {
+    expect(safeCheckoutUrl('https://x.test/c/1', base)).toBeNull()
+    expect(safeCheckoutUrl('http://x.test:8080/c/1', base)).toBeNull()
+  })
+
+  it('refuses scripts, data and nothing', () => {
+    expect(safeCheckoutUrl('javascript:alert(1)', base)).toBeNull()
+    expect(safeCheckoutUrl('data:text/html,hi', base)).toBeNull()
+    expect(safeCheckoutUrl(null, base)).toBeNull()
+  })
+})
+
+describe('how long the wait lasts', () => {
+  it('looks every 2 seconds and gives up after 2 minutes', () => {
+    expect(POLL_MS).toBe(2_000)
+    expect(GIVE_UP_MS).toBe(120_000)
   })
 })
 
