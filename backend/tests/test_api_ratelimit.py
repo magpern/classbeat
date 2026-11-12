@@ -14,7 +14,6 @@ import itertools
 import logging
 import time
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -362,11 +361,10 @@ def test_the_general_limit_writes_its_rows_in_bucket_hash_order(
     buckets can come in, so it does not depend on two requests happening to collide."""
     recorder = _Recorder()
 
-    @asynccontextmanager
-    async def fake_session(_: object) -> AsyncIterator[_Recorder]:
-        yield recorder
+    async def fake_statement(_: object, statement: Any) -> list[Any]:
+        return (await recorder.execute(statement)).all()
 
-    monkeypatch.setattr(ratelimit, "system_session", fake_session)
+    monkeypatch.setattr(ratelimit, "system_statement", fake_statement)
     keys = Keys.from_secret(b"k" * 32)
     limiter = ratelimit.RateLimiter(None, keys)  # type: ignore[arg-type]
     settings = Settings.model_construct(**{k: f.default for k, f in Settings.model_fields.items()})

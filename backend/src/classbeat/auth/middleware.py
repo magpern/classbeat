@@ -10,7 +10,8 @@ because this is a middleware no route can forget them.
 
 Section 9, amendment of 2026-11-05 (#577): every signed-in ``/api`` request takes a slot in the
 general limit's buckets (``ratelimit.api_buckets``) before CSRF and before the route runs, so
-no route can forget it either; above a limit it is 429 ``rate_limited`` with ``Retry-After``.
+no route can forget it either; above a limit it is 429 ``rate_limited`` with ``Retry-After``. A
+lock timeout on its rows (#998) is 503 ``busy`` with a short ``Retry-After``; the route never runs.
 Anonymous requests have the limits of their own routes (sign-in, sign-up, mail, OAuth).
 
 Section 10: the access log replaces uvicorn's. It records method, path, status and time, never
@@ -55,6 +56,10 @@ SIGNED_PATHS = frozenset({"/api/billing/paddle/webhook"})
 CSRF_EXEMPT_PATHS = frozenset(
     {"/api/mail/unsubscribe", "/api/mail/unsubscribe/confirm", *SIGNED_PATHS}
 )
+LOCK_NOT_AVAILABLE = "55P03"  # SQLSTATE of a lock_timeout
+# #998: a lock timeout in the general limit is 503 with this Retry-After: short, as the wait
+# that timed out was the role's 5 s lock_timeout on a row that is normally held for milliseconds.
+LIMIT_BUSY_RETRY_AFTER = 2
 
 
 def csrf_token_for_session(keys: Keys, session_id: object) -> str:
@@ -100,6 +105,20 @@ def rate_limited_response(retry_after: int) -> JSONResponse:
     )
 
 
+class LimitBusy(Exception):
+    """The general limit's upsert hit the role's lock timeout (SQLSTATE 55P03, #998)."""
+
+
+def limit_busy_response() -> JSONResponse:
+    """The 503 of a lock timeout in the general limit: the request was neither counted nor
+    served (never fail open), and the client may try again shortly."""
+    return JSONResponse(
+        {"detail": {"reason": "busy"}},
+        status_code=503,
+        headers={"Retry-After": str(LIMIT_BUSY_RETRY_AFTER)},
+    )
+
+
 def database_error_response(exc: DBAPIError) -> JSONResponse:
     """The 500 of a database error, logged by class and SQLSTATE only: the message carries row
     values (emails, hashes). ``auth.setup``'s handler of ``DBAPIError`` answers the same."""
@@ -123,15 +142,21 @@ async def check_api_limit(request: Request) -> int | None:
     if info is None:
         return None
     limiter: RateLimiter = request.app.state.limiter
-    attempt = await limiter.begin_together(
-        api_buckets(
-            request.app.state.settings,
-            str(info.user_id),
-            request_ip(request),
-            request.method,
-            request.url.path,
+    try:
+        attempt = await limiter.begin_together(
+            api_buckets(
+                request.app.state.settings,
+                str(info.user_id),
+                request_ip(request),
+                request.method,
+                request.url.path,
+            )
         )
-    )
+    except DBAPIError as exc:
+        if getattr(exc.orig, "sqlstate", None) != LOCK_NOT_AVAILABLE:
+            raise
+        errors.warning("general limit busy: %s", describe_database_error(exc))
+        raise LimitBusy from None
     mark_counted(request)
     return None if attempt.allowed else attempt.retry_after
 
@@ -141,6 +166,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         started = time.perf_counter()
         try:
             response = await self._checks(request)
+        except LimitBusy:
+            response = limit_busy_response()
         except DBAPIError as exc:
             response = database_error_response(exc)
         if response is None:
