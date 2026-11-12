@@ -17,6 +17,8 @@ from classbeat.plans import codes
 from jobapi import Browser
 from plantools import about, plant_code, redeemed_count
 
+pytestmark = pytest.mark.usefixtures("frozen_rate_windows")  # #1012
+
 
 @pytest.fixture
 def users_plan() -> None:

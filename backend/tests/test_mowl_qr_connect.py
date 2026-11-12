@@ -24,7 +24,7 @@ from mowlqrfake import KEY, MQTT_PASSWORD, PNG, QR_TOKEN, TICKET_ID, FakeBroker,
 QR = "/api/connections/mowl/qr"
 USER = "user@example.com"
 SECRETS = (KEY, MQTT_PASSWORD, QR_TOKEN)
-pytestmark = pytest.mark.usefixtures("mowl_api")
+pytestmark = pytest.mark.usefixtures("mowl_api", "frozen_rate_windows")  # #1012
 
 
 @pytest.fixture

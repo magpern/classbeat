@@ -21,6 +21,8 @@ from authtools import ORIGIN, Env, running_env
 from classbeat.auth import invite_request_routes
 from flows import Browser, reason
 
+pytestmark = pytest.mark.usefixtures("frozen_rate_windows")  # #1012
+
 PATH = "/api/auth/invite-request"
 EMAIL = "Rider.One@Example.com"
 HEARD = "A friend at the gym told me about classbeat"

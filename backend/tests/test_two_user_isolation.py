@@ -35,7 +35,7 @@ CONNECT = "/api/connections/mowl"
 USES = 4  # library calls per user through ``connections.use``, and route reads per user
 TIMEOUT = 60  # seconds for the whole scenario: a user failing early must not hang the other
 BAD_ATTEMPTS = 2  # wrong-password connects per user (their own rate-limit slots)
-pytestmark = pytest.mark.usefixtures("two_mowl")
+pytestmark = pytest.mark.usefixtures("two_mowl", "frozen_rate_windows")  # #1012
 
 
 class Everything(logging.Handler):

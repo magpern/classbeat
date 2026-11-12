@@ -30,6 +30,7 @@ async def counts(env: Env) -> list[int]:
         return [row[0] for row in rows.all()]
 
 
+@pytest.mark.usefixtures("frozen_rate_windows")  # #1012: counts to the limit, not the window
 async def test_parallel_attempts_do_not_overshoot_the_limit(env: Env) -> None:
     attempts = await asyncio.gather(
         *(limiter(env).begin([Bucket(TEST_LIMIT, "victim|1.2.3.4")]) for _ in range(40))
@@ -40,6 +41,7 @@ async def test_parallel_attempts_do_not_overshoot_the_limit(env: Env) -> None:
     assert await counts(env) == [40]  # a refused attempt keeps its slot
 
 
+@pytest.mark.usefixtures("frozen_rate_windows")  # #1012: counts to the limit, not the window
 async def test_the_limit_trips_and_a_new_window_resets_it(env: Env) -> None:
     bucket = Bucket(TEST_LIMIT, "someone")
     for _ in range(5):
@@ -49,6 +51,7 @@ async def test_the_limit_trips_and_a_new_window_resets_it(env: Env) -> None:
     assert (await limiter(env).begin([bucket])).allowed  # a fresh window starts at 1
 
 
+@pytest.mark.usefixtures("frozen_rate_windows")  # #1012: counts to the limit, not the window
 async def test_success_deletes_the_pair_bucket_and_decrements_the_others(env: Env) -> None:
     buckets = auth.password_buckets("a@example.com", "203.0.113.7", known_device=False)
     for _ in range(3):  # three earlier failures from the pair, the account and the IP
@@ -85,6 +88,7 @@ async def test_decrement_never_goes_below_zero(env: Env) -> None:
     assert await counts(env) == [0]
 
 
+@pytest.mark.usefixtures("frozen_rate_windows")  # #1012: counts to the limit, not the window
 async def test_a_known_device_reserves_no_per_account_slot(env: Env) -> None:
     unknown = auth.password_buckets("a@example.com", "203.0.113.7", known_device=False)
     known = auth.password_buckets("a@example.com", "203.0.113.7", known_device=True)
@@ -131,6 +135,7 @@ def test_the_ipv6_48_bucket_key() -> None:
         assert bucket_ip48(no_48) is None, no_48
 
 
+@pytest.mark.usefixtures("frozen_rate_windows")  # #1012: counts to the limit, not the window
 async def test_ipv6_addresses_share_a_bucket_per_64(env: Env) -> None:
     same = [
         "2001:db8:1:2::1",
@@ -196,6 +201,7 @@ async def test_trusted_proxies_are_read_from_the_settings(app_database_url: str)
     assert auth.request_ip(request) == "198.51.100.77"  # pyright: ignore[reportArgumentType]
 
 
+@pytest.mark.usefixtures("frozen_rate_windows")  # #1012: the guard sees the 429
 async def test_a_tripped_limit_is_a_429_with_retry_after(env: Env) -> None:
     @env.app.get("/api/test/limited")
     async def limited() -> None:  # pyright: ignore[reportUnusedFunction]

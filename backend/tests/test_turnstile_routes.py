@@ -24,6 +24,8 @@ from classbeat.auth.ratelimit import CAPTCHA_IP
 from flows import PASSWORD, Browser, reason, user_with_password
 from test_turnstile_guard import TURNSTILE
 
+pytestmark = pytest.mark.usefixtures("frozen_rate_windows")  # #1012
+
 EMAIL = "user@example.com"
 CLIENT_IP = "127.0.0.1"  # the ASGI test client's peer; no trusted proxy
 
