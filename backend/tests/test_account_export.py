@@ -15,7 +15,7 @@ from ctx import make_context
 from jobapi import session_cookie
 from songtools import SongEnv
 
-pytestmark = pytest.mark.usefixtures("songenv")
+pytestmark = pytest.mark.usefixtures("songenv", "frozen_rate_windows")  # #1012
 
 URL = "/api/account/export"
 # Names of columns that hold a secret, a hash or an internal handle: none may appear as a key.

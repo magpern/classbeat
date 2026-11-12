@@ -20,6 +20,8 @@ from classbeat.emails.registry import REGISTRY, Category, switchable_categories
 from mfatools import make_actor as make_actor
 from smtpfake import Received, SmtpFake
 
+pytestmark = pytest.mark.usefixtures("frozen_rate_windows")  # #1012
+
 SECRET = b"s" * 48
 KEYS = Keys.from_secret(SECRET)
 NOW = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)

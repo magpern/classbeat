@@ -47,10 +47,13 @@ TESTS = Path(__file__).resolve().parent
 ANALYSE = json.dumps({"note": "analyse"})
 
 
-async def until(check: Callable[[], bool], seconds: float = 30) -> None:
+async def until(
+    check: Callable[[], bool], seconds: float = 30, why: Callable[[], str] | None = None
+) -> None:
+    """Poll ``check``; on a timeout the message says what was waited on (``why``, #1012)."""
     deadline = time.monotonic() + seconds
     while not check():
-        assert time.monotonic() < deadline, "timed out"
+        assert time.monotonic() < deadline, f"timed out: {why()}" if why else "timed out"
         await asyncio.sleep(0.05)
 
 
@@ -127,6 +130,19 @@ def waits_for_slot(env: JobsEnv, job_id: Any) -> bool:
     return row.state == "queued" and row.analysis_slot
 
 
+def waiting_report(env: JobsEnv, jobs: list[Any]) -> Callable[[], str]:
+    """For a timed-out wait: each waiting job's state, slot flag and leasing worker (#1012)."""
+
+    def report() -> str:
+        rows = [env.row(j) for j in jobs]
+        return "; ".join(
+            f"{r.id}: state={r.state} analysis_slot={r.analysis_slot} leased_by={r.leased_by}"
+            for r in rows
+        )
+
+    return report
+
+
 def slot_rows(env: JobsEnv) -> int:
     return env.sql(
         "SELECT count(*) FROM jobs WHERE state = 'running' AND analysis_slot"
@@ -169,7 +185,8 @@ async def test_two_workers_keep_the_cap_and_a_killed_workers_job_is_reaped_and_f
                         all(jenv.row(j).state == "completed" for j in designs)
                         and all(waits_for_slot(jenv, j) for j in waiting)
                     )
-                )
+                ),
+                why=waiting_report(jenv, waiting),
             )
             # A holds the only slot: B ran every design job and none of the analyses, and no
             # waiting analysis was claimed with a slot (one claim without, one requeue for it).

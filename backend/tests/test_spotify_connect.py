@@ -24,6 +24,8 @@ from spotifycore import SCOPES, challenge_of
 from spotifyfake import CLIENT_A, CLIENT_B, USER_A, USER_B
 from spotifytools import CALLBACK_URL, CONSENT, START, STATUS, Spot
 
+pytestmark = pytest.mark.usefixtures("frozen_rate_windows")  # #1012
+
 
 def query_of(url: str) -> dict[str, str]:
     return {k: v[0] for k, v in parse_qs(urlsplit(url).query).items()}

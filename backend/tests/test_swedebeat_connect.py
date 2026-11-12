@@ -23,7 +23,7 @@ from swedebeatcore import FakeSwedebeat
 from swedebeatfake import EMAIL, EMAIL_B, PASSWORD, PASSWORD_B
 
 CONNECT = "/api/connections/swedebeat"
-pytestmark = pytest.mark.usefixtures("swedebeat_api")
+pytestmark = pytest.mark.usefixtures("swedebeat_api", "frozen_rate_windows")  # #1012
 USER = "user@example.com"
 
 

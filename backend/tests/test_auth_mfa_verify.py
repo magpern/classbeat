@@ -10,6 +10,8 @@ from classbeat.auth import totp
 from classbeat.auth.notices import notify_mfa_failures, notify_totp_enrolled
 from mfatools import FakeNotifier, admin_with_totp, step_of
 
+pytestmark = pytest.mark.usefixtures("frozen_rate_windows")  # #1012
+
 VERIFY = "/api/auth/mfa/verify"
 STEPUP = "/api/auth/mfa/stepup"
 

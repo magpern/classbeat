@@ -31,7 +31,9 @@ from preftools import use_swedebeat
 from swedebeatcore import FakeSwedebeat
 from swedebeatfake import EMAIL, PASSWORD
 
-pytestmark = [pytest.mark.usefixtures("jenv", "mowl_api", "swedebeat_api")]
+pytestmark = [
+    pytest.mark.usefixtures("jenv", "mowl_api", "swedebeat_api", "frozen_rate_windows")
+]  # #1012
 
 PREFERENCE = "/api/connections/swedebeat/preference"
 CONNECT = "/api/connections/swedebeat"

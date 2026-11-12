@@ -10,6 +10,8 @@ from classbeat import auth
 from flows import PASSWORD, Browser, age_reauth, only_user_id, reason, signed_in, user_with_password
 from smtpfake import SmtpFake
 
+pytestmark = pytest.mark.usefixtures("frozen_rate_windows")  # #1012
+
 EMAIL = "user@example.com"
 NEW = "a brand new passphrase"
 

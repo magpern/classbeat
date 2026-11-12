@@ -1,8 +1,12 @@
 """Password sign-in and re-authentication (ADR 0003 sections 3, 5, 6, 9)."""
 
+import pytest
+
 from authtools import ADMIN_EMAIL, Env, running_env
 from classbeat import auth
 from flows import PASSWORD, Browser, age_reauth, reason, signed_in, user_with_password
+
+pytestmark = pytest.mark.usefixtures("frozen_rate_windows")  # #1012
 
 EMAIL = "user@example.com"
 

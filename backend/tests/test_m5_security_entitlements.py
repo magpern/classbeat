@@ -26,6 +26,8 @@ from ctx import make_context
 from jobapi import Browser
 from plantools import about, grant, plant_code, set_trial, subscription
 
+pytestmark = pytest.mark.usefixtures("frozen_rate_windows")  # #1012
+
 
 @pytest.fixture
 def users_plan() -> None:
