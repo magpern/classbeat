@@ -4,8 +4,10 @@
 Worker A is a real second process (``tests/drill_worker.py``: its own interpreter, engine, pool
 and worker id); worker B is a ``Worker`` in this process. With a global cap of one analysis:
 
-- while A holds the only analysis slot, B runs every design job and claims none of the waiting
-  analyses (the cap is counted in the database, across workers);
+- while A holds the only analysis slot, B runs every design job and none of the waiting analyses:
+  a waiting analysis is claimed once without a slot, stops before analysing and goes back to the
+  queue asking for one (#574), and is never claimed with one (the cap is counted in the database,
+  across workers);
 - A is killed with ``SIGKILL`` while holding the slot: nothing is handed back; its lease runs out,
   B's reaper requeues the job under a new token (fencing the dead holder: a write under A's token
   is refused) and B finishes it and the waiting analyses, one at a time;
@@ -119,6 +121,12 @@ def start_worker_a(env: JobsEnv) -> subprocess.Popen[str]:
     )
 
 
+def waits_for_slot(env: JobsEnv, job_id: Any) -> bool:
+    """The job's first pass, without a slot, has ended: it is back in the queue asking for one."""
+    row = env.row(job_id)
+    return row.state == "queued" and row.analysis_slot
+
+
 def slot_rows(env: JobsEnv) -> int:
     return env.sql(
         "SELECT count(*) FROM jobs WHERE state = 'running' AND analysis_slot"
@@ -152,9 +160,29 @@ async def test_two_workers_keep_the_cap_and_a_killed_workers_job_is_reaped_and_f
             assert b.id != a_id
             waiting = [jenv.job(input=ANALYSE)[1] for _ in range(3)]
             designs = [jenv.job()[1] for _ in range(3)]
-            await until(sample(lambda: all(jenv.row(j).state == "completed" for j in designs)))
-            # A holds the only slot: B ran every design job and none of the analyses.
+            # Wait on the state, not on time: the design jobs done and every waiting analysis
+            # back in the queue asking for a slot. Its first claim has none and stops it before
+            # it analyses (#574); that pass may still be running when the designs are done.
+            await until(
+                sample(
+                    lambda: (
+                        all(jenv.row(j).state == "completed" for j in designs)
+                        and all(waits_for_slot(jenv, j) for j in waiting)
+                    )
+                )
+            )
+            # A holds the only slot: B ran every design job and none of the analyses, and no
+            # waiting analysis was claimed with a slot (one claim without, one requeue for it).
             assert [jenv.row(j).state for j in waiting] == ["queued"] * 3
+            assert not set(waiting) & set(kind.runs)
+            for job_id in waiting:
+                passes = [
+                    (k, p) for _, k, p, _ in jenv.events(job_id) if k in {"claimed", "requeued"}
+                ]
+                assert [(k, p.get("analysis_slot"), p.get("reason")) for k, p in passes] == [
+                    ("claimed", False, None),
+                    ("requeued", None, "analysis_slot"),
+                ]
             assert jenv.row(held).leased_by == a_id
 
             process.send_signal(signal.SIGKILL)  # docker kill: no hand-back, no last write
