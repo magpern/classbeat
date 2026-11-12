@@ -47,21 +47,22 @@ class Rejected:
     reason: Reason
 
 
-def _parse(header: str) -> tuple[int, list[str]] | None:
-    """`(ts, [h1, ...])`, or `None` for anything that is not exactly one `ts` and 1 to
-    `MAX_SIGNATURES` well-formed `h1` and nothing else (ADR 0032: an unknown key is refused)."""
+def _parse(header: str) -> tuple[str, list[str]] | None:
+    """`(ts text, [h1, ...])`, or `None` for anything that is not exactly one `ts` and 1 to
+    `MAX_SIGNATURES` lowercase-hex `h1` and nothing else: no unknown key, no whitespace, no
+    empty part (ADR 0032 section 1: the header is parsed strictly)."""
     if len(header) > MAX_HEADER_CHARS:
         return None
     stamps: list[str] = []
     signatures: list[str] = []
     for part in header.split(";"):
-        key, sep, value = part.strip().partition("=")
+        key, sep, value = part.partition("=")
         if not sep:
             return None
         if key == "ts":
             stamps.append(value)
         elif key == "h1":
-            signatures.append(value.lower())
+            signatures.append(value)
         else:
             return None
     if len(stamps) != 1 or not _TS.fullmatch(stamps[0]):
@@ -70,11 +71,12 @@ def _parse(header: str) -> tuple[int, list[str]] | None:
         return None
     if not all(_H1.fullmatch(s) for s in signatures):
         return None
-    return int(stamps[0]), signatures
+    return stamps[0], signatures
 
 
-def _digest(secret: str, ts: int, body: bytes) -> str:
-    return hmac.new(secret.encode(), str(ts).encode() + b":" + body, hashlib.sha256).hexdigest()
+def _digest(secret: str, ts: str, body: bytes) -> str:
+    """Over the `ts` text as received, so the message checked is the one that was signed."""
+    return hmac.new(secret.encode(), ts.encode() + b":" + body, hashlib.sha256).hexdigest()
 
 
 def _check_secrets(secrets: Sequence[str]) -> None:
@@ -100,12 +102,13 @@ def verify(
     parsed = _parse(header)
     if parsed is None:
         return Rejected("malformed")
-    ts, signatures = parsed
+    ts_text, signatures = parsed
+    ts = int(ts_text)
     if abs(now - ts) > window_s:
         return Rejected("outside_window")
     matched = False
     for secret in secrets:
-        expected = _digest(secret, ts, body)
+        expected = _digest(secret, ts_text, body)
         for signature in signatures:
             # No early exit: every pair is compared, so timing does not say which one matched.
             matched |= hmac.compare_digest(expected, signature)
@@ -115,4 +118,4 @@ def verify(
 def sign(body: bytes, secret: str, *, ts: int) -> str:
     """The header Paddle would send for `body` at `ts` (for the fake client and the tests)."""
     _check_secrets([secret])
-    return f"ts={ts};h1={_digest(secret, ts, body)}"
+    return f"ts={ts};h1={_digest(secret, str(ts), body)}"

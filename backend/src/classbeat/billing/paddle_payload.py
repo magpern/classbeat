@@ -13,10 +13,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Final
-from uuid import UUID
 
 # Paddle ids are a short type prefix and 26 lowercase base32 characters (`txn_01h04v...`).
 _ID: Final = re.compile(r"[a-z]{2,5}_[a-z0-9]{1,64}")
+_EVENT_ID: Final = re.compile(r"evt_[A-Za-z0-9]{1,64}")  # Paddle's notification event id
 _MINOR: Final = re.compile(r"[0-9]{1,15}")
 _CURRENCY: Final = re.compile(r"[A-Z]{3}")
 
@@ -38,7 +38,7 @@ class Period:
 def load(body: bytes) -> Json:
     try:
         value = json.loads(body)
-    except (UnicodeDecodeError, ValueError):
+    except (ValueError, RecursionError):  # UnicodeDecodeError is a ValueError
         raise PayloadError("malformed") from None
     if not isinstance(value, dict):
         raise PayloadError("malformed")
@@ -66,6 +66,17 @@ def text(parent: Json, key: str) -> str:
 def ident(parent: Json, key: str) -> str:
     value = text(parent, key)
     if not _ID.fullmatch(value):
+        raise PayloadError("malformed")
+    return value
+
+
+def opt_ident(parent: Json, key: str) -> str | None:
+    return None if parent.get(key) is None else ident(parent, key)
+
+
+def event_id(parent: Json, key: str) -> str:
+    value = text(parent, key)
+    if not _EVENT_ID.fullmatch(value):
         raise PayloadError("malformed")
     return value
 
@@ -119,13 +130,16 @@ def single_item(data: Json) -> Json:
     return item
 
 
-def owner(data: Json, key: str) -> UUID:
-    """The classbeat user id our checkout put into `custom_data`."""
+def custom_value(data: Json, key: str) -> str | None:
+    """A `custom_data` string, for a cross-check only: never an identity on its own."""
     custom = data.get("custom_data")
-    value = custom.get(key) if isinstance(custom, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-    if not isinstance(value, str):
-        raise PayloadError("owner_missing")
-    try:
-        return UUID(value)
-    except ValueError:
-        raise PayloadError("owner_missing") from None
+    if custom is None:
+        return None
+    if not isinstance(custom, dict):
+        raise PayloadError("malformed")
+    value = custom.get(key)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) > 200:
+        raise PayloadError("link_mismatch")
+    return value

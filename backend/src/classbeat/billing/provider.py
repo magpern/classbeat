@@ -49,11 +49,15 @@ class Upgraded(_Paid):
 
 @dataclass(frozen=True, kw_only=True)
 class ChangeScheduled(_Event):
-    """A downgrade (`next_plan_id`), a cancel (`cancel_at_end`) or a resume (both clear)."""
+    """A downgrade (`next_plan_id`), a cancel (`cancel_at_end`) or a resume (both clear).
+
+    `occurred_at` is when a pushing provider (Paddle) made the change, so a reordered delivery
+    can be told from a newer one (ADR 0032); `None` for a change classbeat records itself."""
 
     kind: Literal["change_scheduled"] = "change_scheduled"
     next_plan_id: str | None = None
     cancel_at_end: bool = False
+    occurred_at: datetime | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -23,7 +23,7 @@ OTHER = "test-webhook-secret-two"
 TS = 1_780_000_000
 
 
-def h1(secret: str, ts: int = TS, body: bytes = BODY) -> str:
+def h1(secret: str, ts: int | str = TS, body: bytes = BODY) -> str:
     """Computed independently of the module, from Paddle's documented scheme."""
     return hmac.new(secret.encode(), f"{ts}:".encode() + body, hashlib.sha256).hexdigest()
 
@@ -45,8 +45,12 @@ def test_window_is_five_minutes() -> None:
     [
         (f"ts={TS};h1={GOOD}", Verified(TS)),
         (f"h1={GOOD};ts={TS}", Verified(TS)),  # order of the parts does not matter
-        (f"ts={TS}; h1={GOOD}", Verified(TS)),  # spaces around a part are allowed
-        (f"ts={TS};h1={GOOD.upper()}", Verified(TS)),  # hex case does not matter
+        (f"ts=0{TS};h1={h1(SECRET, f'0{TS}')}", Verified(TS)),  # signed over the text received
+        (f"ts=0{TS};h1={GOOD}", Rejected("mismatch")),  # not over the number it parses to
+        (f"ts={TS}; h1={GOOD}", Rejected("malformed")),  # strict: no whitespace
+        (f" ts={TS};h1={GOOD}", Rejected("malformed")),
+        (f"ts={TS};h1={GOOD} ", Rejected("malformed")),
+        (f"ts={TS};h1={GOOD.upper()}", Rejected("malformed")),  # strict: lowercase hex only
         (f"ts={TS};h1={WRONG};h1={GOOD}", Verified(TS)),  # rotation: any h1 may match
         (f"ts={TS};h1={GOOD};h1={WRONG}", Verified(TS)),
         (None, Rejected("missing")),

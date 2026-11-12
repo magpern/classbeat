@@ -75,6 +75,7 @@ def test_the_pure_billing_modules_import_no_io() -> None:
     pure = {
         "apply_policy", "choices", "fast_forward", "subscription_policy", "periods", "provider",
         "paddle_signature", "paddle_payload", "paddle_types", "paddle_paid", "paddle_events",
+        "paddle_subscription",
     }  # fmt: skip
     for name in pure:
         for node in ast.walk(modules()[f"classbeat.billing.{name}"]):
@@ -96,7 +97,8 @@ PADDLE_IMPORTS = {
     "__future__", "collections.abc", "dataclasses", "datetime", "hashlib", "hmac", "json", "re",
     "typing", "uuid", "classbeat.billing", "classbeat.billing.apply_policy",
     "classbeat.billing.paddle_paid", "classbeat.billing.paddle_payload",
-    "classbeat.billing.paddle_types", "classbeat.billing.periods", "classbeat.billing.provider",
+    "classbeat.billing.paddle_subscription", "classbeat.billing.paddle_types",
+    "classbeat.billing.periods", "classbeat.billing.provider",
     "classbeat.billing.subscription_policy",
 }  # fmt: skip
 
@@ -104,7 +106,7 @@ PADDLE_IMPORTS = {
 def test_the_paddle_layer_imports_only_its_allowlist() -> None:
     """ADR 0032 section 1: signature and mapping are pure; a new import is reviewed here first."""
     found = [name for name in modules() if name.startswith("classbeat.billing.paddle_")]
-    assert len(found) == 5
+    assert len(found) == 6
     for name in found:
         for node in ast.walk(modules()[name]):
             if isinstance(node, ast.ImportFrom):
