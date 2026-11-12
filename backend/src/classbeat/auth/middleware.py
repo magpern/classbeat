@@ -35,6 +35,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from classbeat.auth.cookies import CSRF_COOKIE, SESSION_COOKIE, clear_session_cookie
 from classbeat.auth.deps import request_ip, resolve_request
 from classbeat.auth.keys import Keys, hmac_digest
+from classbeat.auth.limit_writes import LimitBusy, is_lock_timeout
 from classbeat.auth.ratelimit import RateLimiter, api_buckets, api_limited
 from classbeat.auth.securitylog import entry_for, mark_counted, record
 from classbeat.config import Settings
@@ -56,7 +57,6 @@ SIGNED_PATHS = frozenset({"/api/billing/paddle/webhook"})
 CSRF_EXEMPT_PATHS = frozenset(
     {"/api/mail/unsubscribe", "/api/mail/unsubscribe/confirm", *SIGNED_PATHS}
 )
-LOCK_NOT_AVAILABLE = "55P03"  # SQLSTATE of a lock_timeout
 # #998: a lock timeout in the general limit is 503 with this Retry-After: short, as the wait
 # that timed out was the role's 5 s lock_timeout on a row that is normally held for milliseconds.
 LIMIT_BUSY_RETRY_AFTER = 2
@@ -105,13 +105,10 @@ def rate_limited_response(retry_after: int) -> JSONResponse:
     )
 
 
-class LimitBusy(Exception):
-    """The general limit's upsert hit the role's lock timeout (SQLSTATE 55P03, #998)."""
-
-
 def limit_busy_response() -> JSONResponse:
-    """The 503 of a lock timeout in the general limit: the request was neither counted nor
-    served (never fail open), and the client may try again shortly."""
+    """The 503 of a lock timeout in a limiter write (``LimitBusy``): the request was not served
+    past it (never fail open), and the client may try again shortly. ``auth.setup``'s handler of
+    ``LimitBusy`` (a reserve or a release in a route, #1006) answers the same."""
     return JSONResponse(
         {"detail": {"reason": "busy"}},
         status_code=503,
@@ -153,7 +150,7 @@ async def check_api_limit(request: Request) -> int | None:
             )
         )
     except DBAPIError as exc:
-        if getattr(exc.orig, "sqlstate", None) != LOCK_NOT_AVAILABLE:
+        if not is_lock_timeout(exc):
             raise
         errors.warning("general limit busy: %s", describe_database_error(exc))
         raise LimitBusy from None

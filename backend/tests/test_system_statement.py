@@ -10,12 +10,25 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import Column, Integer, MetaData, Table, select, text
+from sqlalchemy import (
+    Column,
+    Integer,
+    MetaData,
+    Table,
+    column,
+    delete,
+    func,
+    literal_column,
+    select,
+    table,
+    text,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 
-from classbeat.auth.tables import rate_limits
+from classbeat.auth.tables import rate_limits, sessions
 from classbeat.config import Settings
 from classbeat.db import create_engine, create_session_factory, system_statement, user_session
 from classbeat.db.tables import SYSTEM_TABLES
@@ -94,7 +107,7 @@ async def test_it_leaves_no_user_setting(one_connection: Sessions) -> None:
     statement = (
         insert(rate_limits)
         .values(bucket_hash=b"f", window_start=WINDOW, count=0)
-        .returning(text("current_setting('app.user_id', true) AS who"))
+        .returning(func.current_setting("app.user_id", True).label("who"))
     )
     [row] = await system_statement(one_connection, statement)
     assert row.who in (None, "")
@@ -111,3 +124,75 @@ def test_it_refuses_an_owned_table(owned: str) -> None:
 def test_it_refuses_a_statement_with_no_table() -> None:
     with pytest.raises(ValueError, match="system table only"):
         asyncio.run(system_statement(None, text("DELETE FROM sessions")))  # type: ignore[arg-type]
+
+
+OWNED = Table("classes", MetaData(), Column("n", Integer))
+LIMITS = rate_limits.c
+
+
+def _refused() -> dict[str, object]:
+    """#1006: statements whose target is a system table but that touch more than system tables,
+    or that could: each one must be refused before it reaches the database."""
+    taken = delete(OWNED).returning(OWNED.c.n).cte("taken")
+    row = {"bucket_hash": b"x", "window_start": WINDOW}
+    return {
+        "insert from select": insert(rate_limits).from_select(["count"], select(LIMITS.count)),
+        "data-modifying cte": update(rate_limits)
+        .where(LIMITS.count.in_(select(taken.c.n)))
+        .values(count=1),
+        "independent cte": update(rate_limits).values(count=1).add_cte(taken),
+        "read-only cte": update(rate_limits)
+        .where(LIMITS.count.in_(select(select(LIMITS.count).cte("c"))))
+        .values(count=1),
+        "owned table in values": insert(rate_limits).values(
+            **row, count=select(OWNED.c.n).scalar_subquery()
+        ),
+        "owned table in on conflict": insert(rate_limits)
+        .values(**row, count=1)
+        .on_conflict_do_update(
+            index_elements=[LIMITS.bucket_hash, LIMITS.window_start],
+            set_={"count": select(OWNED.c.n).scalar_subquery()},
+        ),
+        "owned column (implicit FROM)": update(rate_limits)
+        .where(LIMITS.count == OWNED.c.n)
+        .values(count=1),
+        "owned column of an alias": update(rate_limits)
+        .where(LIMITS.count == OWNED.alias("o").c.n)
+        .values(count=1),
+        "owned table in returning": insert(rate_limits)
+        .values(**row, count=0)
+        .returning(select(OWNED.c.n).scalar_subquery()),
+        "text in returning": insert(rate_limits).values(**row, count=0).returning(text("1")),
+        "literal column": insert(rate_limits)
+        .values(**row, count=0)
+        .returning(literal_column("(SELECT n FROM classes)")),
+        "text in where": delete(rate_limits).where(text("true")),
+        "lightweight owned table": update(table("classes", column("n"))).values(n=1),
+        "system name in another schema": update(
+            Table("rate_limits", MetaData(), Column("count", Integer), schema="other")
+        ).values(count=1),
+        "a select": select(LIMITS.count),
+    }
+
+
+@pytest.mark.parametrize("name", sorted(_refused()))
+def test_it_refuses_a_statement_that_touches_more_than_system_tables(name: str) -> None:
+    statement = _refused()[name]
+    with pytest.raises(ValueError, match="system table only"):
+        asyncio.run(system_statement(None, statement))  # type: ignore[arg-type]
+
+
+async def test_it_allows_subqueries_on_system_tables(one_connection: Sessions) -> None:
+    """Every table checked, not just refused outright: a write that reads another system table
+    runs (and still sees no user's rows)."""
+    statement = (
+        insert(rate_limits)
+        .values(
+            bucket_hash=b"g",
+            window_start=WINDOW,
+            count=select(func.count(sessions.c.id)).scalar_subquery(),  # not count(*): literal SQL
+        )
+        .returning(LIMITS.count)
+    )
+    [row] = await system_statement(one_connection, statement)
+    assert row.count == 0
