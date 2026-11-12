@@ -1,6 +1,6 @@
 # ADR 0017: Class patterns as soft rules (#388)
 
-Status: Proposed (issue #388; the owner's request of 2026-11-01 is its premise).
+Status: Accepted, 2026-11-12 (issue #388; the owner's request of 2026-11-01 is its premise). Accepted on the owner's standing instruction of 2026-11-12 (finish development, no sign-off requests) because every slice P1 to P9 of section 8 and the CI drift test (#412) are merged; see the status table (MQ).
 
 Related: [ADR 0006](0006-agent-runs.md) (the agent loop, `model_input`, provenance, `prompt_version`),
 [ADR 0007](0007-classes-revisions-and-saving.md) (classes and revisions),
