@@ -10,9 +10,11 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.flags import core
 from classbeat.flags.core import Banner, SignupMode, SongPicking, TrialSetting
+from classbeat.flags.signup_policy import HeldReason, environment_mode, held_reason
 
 _ALL = text("SELECT key, value FROM app_settings")
 _ONE = text("SELECT value FROM app_settings WHERE key = :key")
@@ -38,9 +40,30 @@ async def mail_kinds_disabled(db: AsyncSession, can_disable: frozenset[str]) -> 
     return core.mail_kinds_disabled_setting(await _stored(db, "mail_kinds_disabled"), can_disable)
 
 
-async def signup_mode(db: AsyncSession, environment: SignupMode) -> SignupMode:
-    """The stricter of ``CLASSBEAT_SIGNUP_MODE`` and the stored ``signup_mode``."""
-    return core.stricter_signup(environment, await _stored(db, "signup_mode"))
+def _signup_fields(settings: Settings) -> dict[str, Any]:
+    """The only reader of ``public_signup`` and ``signup_mode`` (tests/test_signup_policy.py)."""
+    return {
+        "signup_mode": settings.signup_mode,
+        "public_signup": settings.public_signup,
+        "turnstile_enabled": settings.turnstile_enabled,
+        "environment": settings.environment,
+    }
+
+
+def environment_signup_mode(settings: Settings) -> SignupMode:
+    """The environment's mode: ``CLASSBEAT_PUBLIC_SIGNUP`` and ``CLASSBEAT_SIGNUP_MODE``, in prod
+    with Turnstile's state (``classbeat.flags.signup_policy``)."""
+    return environment_mode(**_signup_fields(settings))
+
+
+def environment_signup_held(settings: Settings) -> HeldReason | None:
+    """Why the flag is on and the environment's mode is still ``invite``, or ``None``."""
+    return held_reason(**_signup_fields(settings))
+
+
+async def signup_mode(db: AsyncSession, settings: Settings) -> SignupMode:
+    """The stricter of the environment's mode and the stored ``signup_mode``."""
+    return core.stricter_signup(environment_signup_mode(settings), await _stored(db, "signup_mode"))
 
 
 async def song_picking(db: AsyncSession, environment_on: bool) -> SongPicking:

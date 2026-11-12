@@ -166,6 +166,7 @@ async def test_a_sign_up_without_a_valid_invite_creates_nothing(
     async with running_env(
         app_database_url,
         signup_mode=mode,
+        public_signup=mode == "open",
         oauth_google_client_id=CLIENT_IDS["google"],
         oauth_google_client_secret=fake.secret,
     ) as env:
@@ -194,6 +195,7 @@ async def test_a_new_identity_on_the_sign_in_screen_has_no_account_and_creates_n
     async with running_env(
         app_database_url,
         signup_mode=mode,
+        public_signup=mode == "open",
         oauth_google_client_id=CLIENT_IDS["google"],
         oauth_google_client_secret=fake.secret,
         oauth_github_client_id=CLIENT_IDS["github"],
@@ -422,7 +424,7 @@ async def test_admin_emails_grant_at_oauth_sign_in(
 ) -> None:
     async with running_env(
         app_database_url,
-        signup_mode="open",
+        public_signup=True,
         admin_emails="G@example.com",
         oauth_google_client_id="google-client",
         oauth_google_client_secret=fake.secret,

@@ -26,7 +26,7 @@ async def public_settings(request: Request, response: Response) -> PublicOut:
     response.headers["Cache-Control"] = "no-store"
     async with system_session(request.app.state.session_factory) as db:
         shown = await effective.banner(db)
-        mode = await effective.signup_mode(db, request.app.state.settings.signup_mode)
+        mode = await effective.signup_mode(db, request.app.state.settings)
         configured = request.app.state.settings.mail_support_address
         support = await effective.mail_support_address(db, configured)
     return PublicOut(

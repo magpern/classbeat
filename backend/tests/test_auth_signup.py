@@ -85,7 +85,7 @@ async def test_open_signups_need_no_invite(
 ) -> None:
     async with running_env(
         app_database_url,
-        signup_mode="open",
+        public_signup=True,
         smtp_host="127.0.0.1",
         smtp_port=smtp.port,
         smtp_tls="none",

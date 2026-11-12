@@ -40,6 +40,7 @@ from classbeat.auth.routes import router
 from classbeat.auth.signin_routes import router as signin_router
 from classbeat.auth.signup_routes import router as signup_router
 from classbeat.config import Settings
+from classbeat.flags.effective import environment_signup_held
 from classbeat.mail import Mailer
 
 logger = logging.getLogger(__name__)
@@ -131,6 +132,10 @@ def attach_state(
         logger.error(
             "Turnstile is off (CLASSBEAT_TURNSTILE_ENABLED is false): sign-in, sign-up and reset "
             "requests are not checked for automation"
+        )
+    if environment_signup_held(settings) == "turnstile_off":  # ADR 0032 section 9
+        logger.warning(
+            "public sign-up is held at invite (CLASSBEAT_PUBLIC_SIGNUP is true, Turnstile is off)"
         )
     # httpx logs each request URL at INFO; the OAuth ones are not worth a log line.
     for noisy in ("httpx", "httpcore"):
