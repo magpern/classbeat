@@ -5,11 +5,13 @@
 
 import { examplesEn } from './examples.en'
 import { helpEn } from './help.en'
+import { legalDraftEn } from './legalDraft.en'
 import { legalEn } from './legal.en'
 import { publicEn } from './public.en'
 
 export const en = {
   ...legalEn,
+  ...legalDraftEn,
   ...helpEn,
   ...publicEn,
   ...examplesEn,
