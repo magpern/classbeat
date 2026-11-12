@@ -71,6 +71,9 @@ RESTRICTED_APP_PRIVILEGES = {
     "billing_events": set(),
     "subscriptions": set(),
     "billing_log": {"SELECT"},
+    # ADR 0033 (#985): the public form inserts, the purge deletes; the app reads only the columns
+    # of ``APP_INVITE_REQUEST_COLUMNS`` (never the address or the text).
+    "invite_requests": {"INSERT", "DELETE"},
 }
 # Every column of ``plans`` the app role may read: all but the prices and their currency
 # (migration 0030, #510, ADR 0011 amendment 2026-11-04). The database refuses a price to the app,
@@ -103,6 +106,7 @@ APP_BILLING_COLUMNS = {
          "next_plan_id", "cancel_at_end", "status", "last_event_at", "created_at", "updated_at"}
     ),
 }  # fmt: skip
+APP_INVITE_REQUEST_COLUMNS = frozenset({"id", "state", "created_at", "decided_at"})
 # The only column-level privileges in public, exactly: (table, column) -> {(grantee, privilege)}.
 # ``redeem_codes.redeemed_count`` is what a redeem increments (ADR 0011 section 2).
 COLUMN_PRIVILEGES = {
@@ -113,6 +117,7 @@ COLUMN_PRIVILEGES = {
         for table, columns in APP_BILLING_COLUMNS.items()
         for column in columns
     },
+    **{("invite_requests", column): {(APP, "SELECT")} for column in APP_INVITE_REQUEST_COLUMNS},
 }
 SEQUENCE_PRIVILEGES = {"USAGE", "SELECT"}
 # Built-in languages that PUBLIC may use (Postgres' own default).

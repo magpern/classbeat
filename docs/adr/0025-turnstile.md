@@ -63,6 +63,7 @@ turnstile`, commit of 2026-11-07; the docs site itself was not reachable from th
 | `POST /api/auth/signup` | **Yes**, action `signup` | Sends mail to any address; invite-code probing; hashing load |
 | `POST /api/auth/oauth/pending/email` (provider-email step) | **Yes**, action `signup_email` | Sends mail to any address the client names |
 | `POST /api/auth/password/reset/request` | **Yes**, action `reset` | The main mail-flooding route (T24) and the reset-bucket exhaustion of T3 |
+| `POST /api/auth/invite-request` (ADR 0033, added 2026-11-12) | **Yes**, action `invite_request` | Stores what any visitor types; the per-address and per-IP buckets alone would let a script fill the queue |
 | `POST /api/auth/oauth/{p}/start` (`sign_in`, `sign_up`) | No | Touches no account or mailbox: it stores a 10-minute flow row, per-IP limited; the provider's own sign-in is the human check; an invite code is 16 random bytes, so the start is no useful oracle. The mail-sending step after it is covered (`pending/email`) |
 | `POST /api/auth/signup/confirm`, `password/reset/info`, `password/reset/complete`, `email/confirm` | No | The 32-byte mailed token is the proof; a second check adds friction and nothing else |
 | Signed-in routes (`reauth`, MFA verify and step-up, `email/change`, `password/change`, link and reauth starts) | No | The session already passed Turnstile at sign-in; out of scope (#721) |

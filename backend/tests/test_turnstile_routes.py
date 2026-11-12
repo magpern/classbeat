@@ -1,4 +1,4 @@
-"""Turnstile on the four anonymous auth routes (ADR 0025 sections 1 to 6), against the database.
+"""Turnstile on the five anonymous auth routes (ADR 0025 sections 1 to 6), against the database.
 
 With Turnstile on, each route checks the token first after the body's shape: a recording verifier
 and a spy session factory show the verifier runs before the route's first database session (the
@@ -78,6 +78,8 @@ def body_for(path: str, token: object = None, **extra: object) -> dict[str, obje
         base["password"] = PASSWORD
     elif path == "/api/auth/signup":
         base.update(password=PASSWORD, invite_code="not-an-invite")
+    elif path == "/api/auth/invite-request":  # ADR 0033 (#985)
+        base.update(instructor=True, heard_from="a friend")
     if token is not None:
         base["captcha_token"] = token
     base.update(extra)

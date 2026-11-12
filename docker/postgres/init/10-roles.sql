@@ -175,6 +175,13 @@ SELECT 'REVOKE ALL ON TABLE public.credit_ledger FROM classbeat_app',
 SELECT 'REVOKE ALL ON TABLE public.quota_periods FROM classbeat_app',
        'GRANT SELECT, INSERT, UPDATE ON TABLE public.quota_periods TO classbeat_app'
  WHERE to_regclass('public.quota_periods') IS NOT NULL \gexec
+-- Invite requests (migration 0047_invite_requests, ADR 0033): insert and delete, and only the
+-- columns the pending count and the purge read (never the address or the text; guard 2).
+SELECT 'REVOKE ALL ON TABLE public.invite_requests FROM classbeat_app',
+       'GRANT INSERT, DELETE ON TABLE public.invite_requests TO classbeat_app',
+       'GRANT SELECT (id, state, created_at, decided_at) ON TABLE public.invite_requests '
+       'TO classbeat_app'
+ WHERE to_regclass('public.invite_requests') IS NOT NULL \gexec
 -- The audit log: no privilege at all for the app (append-only through classbeat_maint).
 SELECT 'REVOKE ALL ON TABLE public.admin_audit FROM classbeat_app'
  WHERE to_regclass('public.admin_audit') IS NOT NULL \gexec

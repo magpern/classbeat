@@ -5,6 +5,10 @@ Guard 8 keeps every statement on the account tables in this package, so ``classb
 and ``classbeat.admin.jobs`` call ``account_emails`` with the session they hold: the audited
 ``admin_session`` on ``classbeat_maint``, whose column grants allow reading ``users.id`` and
 ``users.email``. Nothing here opens a session or reads anything else of an account.
+
+``addresses_with_accounts`` and ``invite_states`` are the invite requests' (ADR 0033): which
+requested addresses already have an account (``users.email_normalized``) and what became of the
+invites issued for them (``invites.used_at`` and ``expires_at``, never the code's hash).
 """
 
 from collections.abc import Collection
@@ -12,10 +16,10 @@ from datetime import datetime
 from typing import NamedTuple
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.auth.tables import users
+from classbeat.auth.tables import invites, users
 
 MAX_IDS = 1000
 
@@ -53,3 +57,32 @@ async def account_states(db: AsyncSession, ids: Collection[UUID]) -> dict[UUID, 
         )
     )
     return {r.id: AccountState(r.email, r.role, r.disabled_at) for r in rows.all()}
+
+
+async def addresses_with_accounts(db: AsyncSession, normalized: Collection[str]) -> set[str]:
+    """Those of the normalized addresses ``normalized`` that are accounts (at most ``MAX_IDS``)."""
+    wanted = sorted(set(normalized))
+    if not wanted:
+        return set()
+    if len(wanted) > MAX_IDS:
+        raise ValueError(f"at most {MAX_IDS} addresses per lookup")
+    rows = await db.execute(
+        select(users.c.email_normalized).where(users.c.email_normalized.in_(wanted))
+    )
+    return set(rows.scalars().all())
+
+
+async def invite_states(db: AsyncSession, ids: Collection[UUID]) -> dict[UUID, str]:
+    """``{invite id: active, used or expired}`` for those of ``ids`` that are invites."""
+    wanted = sorted(set(ids))
+    if not wanted:
+        return {}
+    if len(wanted) > MAX_IDS:
+        raise ValueError(f"at most {MAX_IDS} invites per lookup")
+    state = case(
+        (invites.c.used_at.is_not(None), "used"),
+        (invites.c.expires_at <= func.now(), "expired"),
+        else_="active",
+    )
+    rows = await db.execute(select(invites.c.id, state).where(invites.c.id.in_(wanted)))
+    return {row[0]: row[1] for row in rows.all()}

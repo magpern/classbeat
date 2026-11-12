@@ -33,6 +33,9 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "plans": "the tiers and their limits, the same for every user; read-only for the app, "
         "without the price columns (migration 0030)",
         "redeem_codes": "multi-use plan codes (hash only), looked up by hash before redeeming",
+        # ADR 0033 (#985): asked for before any account exists; only classbeat_maint reads them.
+        "invite_requests": "invite requests from people without an account, purged after the "
+        "decision",
         "app_settings": "the database flags and settings (ADR 0011 section 7), not per user",
         "admin_audit": "append-only admin audit log; keeps nulled ids after an account goes",
         # ADR 0012 section 5 (M3c): no user data, global like connection_keks.

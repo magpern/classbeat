@@ -113,6 +113,15 @@ def mail_handoff_context(user_id: UUID) -> UserContext:
     return UserContext(user_id=user_id, role="user", issuer=issuer_token())
 
 
+def invite_tier_context(user_id: UUID) -> UserContext:
+    """For the tier of an invite only (``classbeat.auth.invite_tier``; ADR 0033): a bare context
+    (role ``user``, no connections) of the account the sign-up transaction just created, to redeem
+    the invite's code for it in that transaction (``entitlements`` and ``code_redemptions`` are
+    owned and row security is forced). Nothing else may name it
+    (``tests/test_user_context_guard.py``)."""
+    return UserContext(user_id=user_id, role="user", issuer=issuer_token())
+
+
 def cached_session(request: Request) -> SessionInfo | None:
     """The session this request already resolved, or ``None``; never resolves (no database)."""
     cached: Resolution | None = getattr(request.state, _RESOLUTION, None)
