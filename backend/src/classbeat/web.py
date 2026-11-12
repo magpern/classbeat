@@ -30,6 +30,7 @@ from classbeat.admin.invite_requests import router as admin_invite_requests_rout
 from classbeat.billing.errors import BillingRefused
 from classbeat.billing.routes import refusal_response as billing_refusal
 from classbeat.billing.routes import router as billing_router
+from classbeat.billing.setup import install as install_paddle
 from classbeat.bodylimit import BodyLimit
 from classbeat.classes.duplicate import router as duplicate_router
 from classbeat.classes.handoff_routes import install_job_enqueue
@@ -219,6 +220,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(usage_router)
     app.include_router(plans_router)
     app.include_router(billing_router)
+    install_paddle(app, settings)  # the webhook, only for a Paddle provider (ADR 0032, #973)
     app.include_router(admin_billing_router)  # /api/admin/billing (M7a #948)
     app.include_router(admin_invite_requests_router)  # /api/admin/invite-requests (ADR 0033)
     app.add_exception_handler(BillingRefused, billing_refusal)

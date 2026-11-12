@@ -42,8 +42,11 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "model_eval_results": "recorded eval suite runs per model and stage group; append-only "
         "for the app, one writer in classbeat.models.store",
         "model_routes": "which model each route_key uses per stage group, only at a recorded pass",
+        # ADR 0032 section 3 (#973): a refused notification may name no user; maint only.
+        "billing_webhook_refusals": "refused payment-provider notifications, one per event id, "
+        "before any user is known; written and read only through classbeat_maint",
     }
 )
 # System tables the app role must have no privilege on at all (the rest get DML, or the narrower
 # set guard 2 lists). ``admin_audit`` is written only through classbeat_maint (ADR 0011 s. 5).
-NO_APP_ACCESS = frozenset({"alembic_version", "admin_audit"})
+NO_APP_ACCESS = frozenset({"alembic_version", "admin_audit", "billing_webhook_refusals"})

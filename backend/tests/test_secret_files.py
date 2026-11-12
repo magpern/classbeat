@@ -53,6 +53,7 @@ def test_the_optional_secrets_are_exactly_these() -> None:
         "oauth_github_client_secret",
         "oauth_google_client_secret",
         "oauth_microsoft_client_secret",
+        "paddle_webhook_secret",
         "smtp_password",
         "swedebeat_app",
         "turnstile_secret_key",

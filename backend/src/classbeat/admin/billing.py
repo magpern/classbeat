@@ -1,7 +1,8 @@
 """The admin's billing area (ADR 0031 section 6): the Dummy subscriptions and the fast-forward.
 
 - ``GET /api/admin/billing``: the Dummy provider's subscriptions, under their own heading (a real
-  provider's would be listed apart, M7b); logged as ``billing.list``.
+  provider's would be listed apart, M7b), and the Paddle webhook's refused notifications counted
+  by reason, each event once (ADR 0032 section 3); logged as ``billing.list``.
 - ``POST /api/admin/users/{user_id}/billing/fast-forward``: ends the user's current Dummy period
   now (step-up like every admin write) and renews, applies the scheduled plan or ends it; logged
   as ``billing.fast_forward`` with one ``admin_audit`` row. Refused for a subscription of another
@@ -48,6 +49,10 @@ _LIST = text(
     "SELECT owner_id, plan_id, status, period_start, period_end, next_plan_id, cancel_at_end "
     "FROM subscriptions WHERE provider = :p ORDER BY period_end, owner_id LIMIT 200"
 )
+_REFUSALS = text(
+    "SELECT provider, reason, count(*) AS n FROM billing_webhook_refusals "
+    "GROUP BY provider, reason ORDER BY provider, reason"
+)
 _REVOKE_RUNNING = text(
     "UPDATE entitlements SET revoked_at = :now, revoked_by = :by WHERE owner_id = :o "
     "AND source = 'subscription' AND revoked_at IS NULL AND ends_at > :now"
@@ -68,9 +73,16 @@ class SubscriptionRow(BaseModel):
     cancel_at_end: bool
 
 
+class RefusalCount(BaseModel):
+    provider: str
+    reason: str
+    events: int
+
+
 class DummyListOut(BaseModel):
     provider: str
     subscriptions: list[SubscriptionRow]
+    webhook_refusals: list[RefusalCount] = []
 
 
 class FastForwardOut(BaseModel):
@@ -84,7 +96,10 @@ class FastForwardOut(BaseModel):
 async def list_dummy(request: Request, actor: AdminActor) -> DummyListOut:
     async with admin_session(require_admin_db(request), actor, "billing.list") as session:
         rows = (await session.execute(_LIST, {"p": PROVIDER})).all()
+        refused = (await session.execute(_REFUSALS)).all()
+    counts = [RefusalCount(provider=r.provider, reason=r.reason, events=r.n) for r in refused]
     return DummyListOut(
+        webhook_refusals=counts,
         provider=PROVIDER,
         subscriptions=[
             SubscriptionRow(

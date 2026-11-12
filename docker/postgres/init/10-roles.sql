@@ -157,6 +157,16 @@ SELECT 'REVOKE ALL ON TABLE public.subscriptions FROM classbeat_app',
 SELECT 'REVOKE ALL ON TABLE public.billing_log FROM classbeat_app',
        'GRANT SELECT ON TABLE public.billing_log TO classbeat_app'
  WHERE to_regclass('public.billing_log') IS NOT NULL \gexec
+-- Paddle on fakes (migration 0048_paddle_links, ADR 0032 section 3): the links are read for the
+-- export only (the webhook writes them on the maint role); the webhook's refusals are not the app's.
+SELECT 'REVOKE ALL ON TABLE public.billing_links FROM classbeat_app',
+       'GRANT SELECT ON TABLE public.billing_links TO classbeat_app'
+ WHERE to_regclass('public.billing_links') IS NOT NULL \gexec
+SELECT 'REVOKE ALL ON TABLE public.billing_customers FROM classbeat_app',
+       'GRANT SELECT ON TABLE public.billing_customers TO classbeat_app'
+ WHERE to_regclass('public.billing_customers') IS NOT NULL \gexec
+SELECT 'REVOKE ALL ON TABLE public.billing_webhook_refusals FROM classbeat_app'
+ WHERE to_regclass('public.billing_webhook_refusals') IS NOT NULL \gexec
 SELECT 'REVOKE ALL ON TABLE public.app_settings FROM classbeat_app',
        'GRANT SELECT ON TABLE public.app_settings TO classbeat_app'
  WHERE to_regclass('public.app_settings') IS NOT NULL \gexec

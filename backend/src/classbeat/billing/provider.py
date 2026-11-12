@@ -51,8 +51,9 @@ class Upgraded(_Paid):
 class ChangeScheduled(_Event):
     """A downgrade (`next_plan_id`), a cancel (`cancel_at_end`) or a resume (both clear).
 
-    `occurred_at` is when a pushing provider (Paddle) made the change, so a reordered delivery
-    can be told from a newer one (ADR 0032); `None` for a change classbeat records itself."""
+    `occurred_at` is when the change was made: Paddle's time for a notification, the request's
+    for a change classbeat records itself under a Paddle provider (so a reordered delivery can be
+    told from a newer one, ADR 0032); `None` for Dummy."""
 
     kind: Literal["change_scheduled"] = "change_scheduled"
     next_plan_id: str | None = None
@@ -70,9 +71,13 @@ BillingEvent = Started | Renewed | Upgraded | ChangeScheduled | Ended
 
 @dataclass(frozen=True)
 class Checkout:
-    """The outcome of a checkout: for Dummy, the completed event; a real provider may defer."""
+    """The outcome of a checkout: for Dummy, the completed event. A pushing provider (Paddle,
+    ADR 0032) defers: no event, and for a `buy` the hosted page's `url` and the transaction
+    (`checkout_ref`) the route links to the buyer before they pay."""
 
     event: BillingEvent | None
+    url: str | None = None
+    checkout_ref: str | None = None
 
 
 class BillingProvider(Protocol):

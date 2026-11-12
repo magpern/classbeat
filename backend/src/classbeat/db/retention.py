@@ -165,6 +165,12 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
             "", "provider plan_id basis_currency next_plan_id status", "account"
         ),
         "billing_log": _entry("", "action outcome reason request_id", "account"),
+        # ADR 0032 section 3 (#973): the Paddle ids a checkout stored (the provider's own ids of
+        # the user's purchase, not Spotify-derived); they go with the account.
+        "billing_links": _entry(
+            "checkout_ref customer_ref subscription_ref", "provider", "account"
+        ),
+        "billing_customers": _entry("customer_ref", "provider", "account"),
     }
 )
 

@@ -30,6 +30,11 @@ _GRANT = text(
     "INSERT INTO entitlements (owner_id, plan_id, features, source, starts_at, ends_at, "
     "billing_event_id) VALUES (:o, :plan, CAST('{}' AS text[]), 'subscription', :s, :end, :ev)"
 )
+# `revoked_by` stays NULL: no operator revoked them, the user's own Paddle checkout did.
+_REVOKE_RUNNING = text(
+    "UPDATE entitlements SET revoked_at = :now WHERE owner_id = :o "
+    "AND source = 'subscription' AND revoked_at IS NULL AND ends_at > :now"
+)
 _UPSERT = text(
     "INSERT INTO subscriptions (owner_id, provider, plan_id, anchor_day, period_start, "
     "period_end, basis_minor, basis_currency, next_plan_id, cancel_at_end, status, "
@@ -102,3 +107,9 @@ async def store_state(session: AsyncSession, owner_id: UUID, state: State, now: 
          "c": state.basis_currency, "next": state.next_plan_id, "cancel": state.cancel_at_end,
          "st": state.status, "now": now},
     )  # fmt: skip
+
+
+async def revoke_running(session: AsyncSession, owner_id: UUID, now: datetime) -> None:
+    """End every subscription entitlement of `owner_id` still running at `now` (a replaced Dummy
+    period: after an upgrade that is two rows)."""
+    await session.execute(_REVOKE_RUNNING, {"o": owner_id, "now": now})

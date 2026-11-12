@@ -9,6 +9,7 @@ from classbeat import design, playlists, quota, saving, songs, swedebeat_handoff
 from classbeat.config import (
     ModelProviderRefused,
     Settings,
+    check_worker_has_no_paddle_secret,
     check_worker_has_no_swedebeat_app,
     check_worker_has_no_turnstile_secret,
     check_worker_model_provider,
@@ -88,6 +89,7 @@ def main() -> int:
         check_worker_model_provider(settings)
         check_worker_has_no_swedebeat_app(settings)
         check_worker_has_no_turnstile_secret(settings)  # web only (ADR 0025 section 7)
+        check_worker_has_no_paddle_secret(settings)  # web only (ADR 0032 section 3)
     except ModelProviderRefused as refused:
         logger.error("worker refused to start", extra={"reason": str(refused)})
         return 2

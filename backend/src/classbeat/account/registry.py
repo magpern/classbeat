@@ -80,6 +80,9 @@ SECTIONS: tuple[Section, ...] = (
         "cancel_at_end status last_event_at created_at updated_at",
     ),
     _section("billing_log"),
+    # ADR 0032 section 3 (#973): the payment provider's ids of the user's own checkouts.
+    _section("billing_links"),
+    _section("billing_customers"),
     _section("code_redemptions"),
     _section("credit_ledger", omit="refunded_by"),
     _section("quota_periods", "period, id"),

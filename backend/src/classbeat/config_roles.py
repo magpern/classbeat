@@ -95,6 +95,15 @@ def check_worker_has_no_turnstile_secret(settings: "Settings") -> None:
         )
 
 
+def check_worker_has_no_paddle_secret(settings: "Settings") -> None:
+    """The Paddle webhook secret is the web app's only (ADR 0032 section 3, #973): the worker
+    verifies no notification, so a readable ``paddle_webhook_secret`` file refuses its start."""
+    if settings.paddle_webhook_secret is not None:
+        raise ModelProviderRefused(
+            "the worker must not see the paddle_webhook_secret secret file (web only)"
+        )
+
+
 def check_web_has_no_model_key(settings: "Settings") -> None:
     """The web app never calls a model, so it never holds a model key (ADR 0006 §9, ADR 0012
     §2): any readable model key file refuses the start."""

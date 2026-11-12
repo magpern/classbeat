@@ -13,7 +13,14 @@ from sqlalchemy.engine import Connection
 
 # Unique keys without owner_id that are global on purpose (ADR 0031 section 3): a replayed provider
 # event is a no-op under any owner. (table, key columns).
-GLOBAL_UNIQUE = {("billing_events", ("provider", "event_id"))}
+GLOBAL_UNIQUE = {
+    ("billing_events", ("provider", "event_id")),
+    # ADR 0032 section 3: a Paddle id selects one link, whoever asks.
+    ("billing_links", ("provider", "checkout_ref")),
+    ("billing_links", ("provider", "subscription_ref")),
+    # ... and a Paddle customer id maps to one owner (a race between two owners loses one).
+    ("billing_customers", ("provider", "customer_ref")),
+}
 # What Postgres 17 stores for the policy of classbeat.db.rls (pg_policies renders it).
 EXPECTED_EXPRESSION = (
     "(owner_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::uuid)"

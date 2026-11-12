@@ -58,6 +58,12 @@ from classbeat.admin.maint_role import (
     check_connection,
     raise_if_wrong,
 )
+from classbeat.admin.principals import (  # re-exported: callers import them from here
+    Actor as Actor,
+)
+from classbeat.admin.principals import AdminRefused as AdminRefused
+from classbeat.admin.principals import Buyer as Buyer
+from classbeat.admin.principals import audit_row, log_row
 from classbeat.billing.errors import ACTIONS as BILLING_ACTIONS
 from classbeat.billing.errors import BillingRefused
 from classbeat.config import Settings
@@ -78,50 +84,16 @@ _INSERT_BILLING_LOG = text(
     "INSERT INTO billing_log (owner_id, action, outcome, reason, request_id) "
     "VALUES (:owner_id, :action, :outcome, :reason, :request_id)"
 )
+_INSERT_REFUSAL = text(
+    "INSERT INTO billing_webhook_refusals (provider, event_id, reason) VALUES (:p, :e, :r) "
+    "ON CONFLICT (provider, event_id) DO NOTHING"
+)
 _INSERT_AUDIT = text(
     "INSERT INTO admin_audit (actor_id, actor_email, action, target_user_id, target_kind, "
     "target_id, params, outcome, reason, request_id, ip_hash) VALUES (:actor_id, :actor_email, "
     ":action, :target_user_id, :target_kind, :target_id, CAST(:params AS jsonb), :outcome, "
     ":reason, :request_id, :ip_hash)"
 )
-
-
-class Buyer:
-    """Who buys, for the billing log (ADR 0031 section 3): the user's id and the request's id.
-    Never an ``Actor``: ``admin_audit`` keeps only operators as actors. Built only by the billing
-    routes' dependency (``classbeat.billing.routes``; an AST guard checks it)."""
-
-    __slots__ = ("request_id", "user_id")
-
-    def __init__(self, user_id: UUID, request_id: str) -> None:
-        self.user_id, self.request_id = user_id, request_id
-
-
-class AdminRefused(Exception):
-    """An admin action refused for a reason the admin may see (409 ``target_is_admin``, ...):
-    ``admin_session`` records it as ``outcome = 'refused'`` and re-raises it. One raised outside
-    an ``admin_session`` (an input check before it, ``period_invalid``) is recorded by the
-    admin area's handler instead (``classbeat.admin.routes.install``); ``audited`` tells them
-    apart, so no refusal gets two rows."""
-
-    def __init__(self, reason: str, status: int = 409) -> None:
-        super().__init__(reason)
-        self.reason = reason
-        self.status = status
-        self.audited = False
-
-
-class Actor:
-    """Who acts, for the audit row: the admin's id and email (at the time), the request's id and
-    an HMAC of its IP address. Built only by the admin gate (``classbeat.admin.routes``)."""
-
-    __slots__ = ("email", "ip_hash", "request_id", "user_id")
-
-    def __init__(self, user_id: UUID, email: str, request_id: str, ip_hash: bytes) -> None:
-        if len(ip_hash) != 32:
-            raise ValueError("ip_hash must be 32 bytes")
-        self.user_id, self.email = user_id, email
-        self.request_id, self.ip_hash = request_id, ip_hash
 
 
 def create_maint_engine(url: URL) -> AsyncEngine:
@@ -200,31 +172,13 @@ class AdminDb:
         async with self._maint_factory() as session, session.begin():
             await session.execute(_READ_WRITE)
             await session.execute(
-                _INSERT_AUDIT, _row(actor, action, target or Target(), params, outcome, reason)
+                _INSERT_AUDIT, audit_row(actor, action, target or Target(), params, outcome, reason)
             )
 
 
 def _constraint(exc: IntegrityError) -> str | None:
     diag = getattr(exc.orig, "diag", None)
     return getattr(diag, "constraint_name", None)
-
-
-def _row(
-    actor: Actor, action: str, target: Target, params: str, outcome: str, reason: str | None
-) -> dict[str, Any]:
-    return {
-        "actor_id": actor.user_id,
-        "actor_email": actor.email,
-        "action": action,
-        "target_user_id": target.user_id,
-        "target_kind": target.kind,
-        "target_id": target.id,
-        "params": params,
-        "outcome": outcome,
-        "reason": reason,
-        "request_id": actor.request_id,
-        "ip_hash": actor.ip_hash,
-    }
 
 
 async def _record_failure(
@@ -279,7 +233,7 @@ async def admin_session(
                 await session.execute(_READ_WRITE)
                 try:
                     await session.execute(
-                        _INSERT_AUDIT, _row(actor, action, target, encoded, "ok", None)
+                        _INSERT_AUDIT, audit_row(actor, action, target, encoded, "ok", None)
                     )
                 except IntegrityError as exc:
                     if target.user_id is None or _constraint(exc) != TARGET_USER_FK:
@@ -323,16 +277,6 @@ async def audit_refusal(
     return True
 
 
-def _log_row(buyer: Buyer, action: str, outcome: str, reason: str | None) -> dict[str, Any]:
-    return {
-        "owner_id": buyer.user_id,
-        "action": action,
-        "outcome": outcome,
-        "reason": reason,
-        "request_id": buyer.request_id,
-    }
-
-
 async def _record_billing_failure(db: AdminDb, buyer: Buyer, action: str, exc: Exception) -> None:
     """The ``refused`` or ``error`` row of a failed billing action, in its own short transaction."""
     outcome, reason = (
@@ -341,28 +285,24 @@ async def _record_billing_failure(db: AdminDb, buyer: Buyer, action: str, exc: E
     try:
         async with db._maint_factory() as session, session.begin():  # pyright: ignore[reportPrivateUsage]
             await session.execute(_READ_WRITE)
-            await session.execute(_INSERT_BILLING_LOG, _log_row(buyer, action, outcome, reason))
+            await session.execute(_INSERT_BILLING_LOG, log_row(buyer, action, outcome, reason))
     except Exception as failure:  # the original exception matters more
         logger.error("billing log row not written", extra={"error_type": type(failure).__name__})
 
 
 @asynccontextmanager
-async def billing_session(
-    db: AdminDb, buyer: Buyer, action: str, *, write: bool = False
+async def _logged(
+    db: AdminDb, buyer: Buyer, action: str, *, write: bool
 ) -> AsyncIterator[AsyncSession]:
-    """One logged transaction on the maint engine for a user's own billing action (ADR 0031
-    section 3). Like ``admin_session``, but the first statement inserts a ``billing_log`` row and
-    never an ``admin_audit`` row; a read then switches to ``READ ONLY``. Called only from
-    ``classbeat.billing.routes`` (an AST guard checks it), after the caller's access check."""
-    if action not in BILLING_ACTIONS:
-        raise ValueError(f"unknown billing action: {action}")
+    """A maint transaction whose first statement is its ``billing_log`` row (a read then switches
+    to ``READ ONLY``); a failure leaves a ``refused`` or ``error`` row of its own."""
     try:
         async with db._maint_factory() as session:  # pyright: ignore[reportPrivateUsage]
             await session.begin()
             guard = TransactionGuard(session)
             try:
                 await session.execute(_READ_WRITE)
-                await session.execute(_INSERT_BILLING_LOG, _log_row(buyer, action, "ok", None))
+                await session.execute(_INSERT_BILLING_LOG, log_row(buyer, action, "ok", None))
                 if not write:
                     await session.execute(_READ_ONLY)
                 yield session
@@ -374,3 +314,52 @@ async def billing_session(
     except Exception as exc:
         await _record_billing_failure(db, buyer, action, exc)
         raise
+
+
+@asynccontextmanager
+async def billing_session(
+    db: AdminDb, buyer: Buyer, action: str, *, write: bool = False
+) -> AsyncIterator[AsyncSession]:
+    """One logged transaction on the maint engine for a user's own billing action (ADR 0031
+    section 3): like ``admin_session``, but its row is ``billing_log``, never ``admin_audit``.
+    Called only from ``classbeat.billing.routes`` (an AST guard), after its access check."""
+    if action not in BILLING_ACTIONS:
+        raise ValueError(f"unknown billing action: {action}")
+    async with _logged(db, buyer, action, write=write) as session:
+        yield session
+
+
+@asynccontextmanager
+async def webhook_lookup(db: AdminDb) -> AsyncIterator[AsyncSession]:
+    """The webhook's read-only maint transaction before any user is known (ADR 0032 section 3):
+    the link lookup only, no log row. Called only from ``classbeat.billing.webhook``."""
+    async with db._maint_factory() as session:  # pyright: ignore[reportPrivateUsage]
+        await session.begin()
+        guard = TransactionGuard(session)
+        try:
+            await session.execute(_READ_ONLY)
+            yield session
+        finally:
+            await guard.finish(ok=False)  # nothing to keep: a read is rolled back
+
+
+@asynccontextmanager
+async def webhook_session(
+    db: AdminDb, owner_id: UUID, request_id: str
+) -> AsyncIterator[AsyncSession]:
+    """One logged write transaction for a signature-verified, link-resolved notification of
+    ``owner_id`` (ADR 0032 section 3): ``billing_session``'s sibling with the action ``webhook``.
+    Called only from ``classbeat.billing.webhook`` (an AST guard checks it)."""
+    async with _logged(db, Buyer(owner_id, request_id), "webhook", write=True) as session:
+        yield session
+
+
+async def record_webhook_refusal(db: AdminDb, provider: str, event_id: str, reason: str) -> None:
+    """Count a refused notification once per ``(provider, event_id)``, in its own short
+    transaction (Paddle's retries add nothing). Never raises: the answer matters more."""
+    try:
+        async with db._maint_factory() as session, session.begin():  # pyright: ignore[reportPrivateUsage]
+            await session.execute(_READ_WRITE)
+            await session.execute(_INSERT_REFUSAL, {"p": provider, "e": event_id, "r": reason})
+    except Exception as failure:
+        logger.error("webhook refusal not counted", extra={"error_type": type(failure).__name__})

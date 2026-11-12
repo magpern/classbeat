@@ -26,3 +26,14 @@ def swedebeat_app_keys(value: SecretStr) -> dict[str, str] | None:
     except UnicodeEncodeError:
         return None
     return {"key": key, "iv": iv} if sized else None
+
+
+def check_app(value: SecretStr | None) -> SecretStr | None:
+    """The ``swedebeat_app`` validator (moved from ``classbeat.config``, #973): ``None`` for the
+    empty placeholder (no key on this server), else the value if it parses."""
+    if value is None or not value.get_secret_value().strip():
+        return None
+    if swedebeat_app_keys(value) is None:
+        # The message names the file, never its content.
+        raise ValueError("swedebeat_app must be JSON with a 32-character key and a 16-character iv")
+    return value

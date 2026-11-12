@@ -37,6 +37,7 @@ MODEL_VALIDATORS = (
     "_check_turnstile",
     "_plain_smtp_only_locally",
     "_check_smtp_ca_file",
+    "_check_billing",
     "_spotify_needs_a_loopback_address",
     "_check_passkeys",
     "_prod_needs_https",

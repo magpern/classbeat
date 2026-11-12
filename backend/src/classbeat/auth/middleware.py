@@ -47,7 +47,14 @@ SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 # no Origin and no CSRF token, and the signed token in the request, not a cookie, is the
 # credential, so there is nothing for a forged request to ride on. Exact paths; both are limited per
 # IP in the route. Anything else under ``/api/mail`` keeps the checks.
-CSRF_EXEMPT_PATHS = frozenset({"/api/mail/unsubscribe", "/api/mail/unsubscribe/confirm"})
+# The Paddle webhook (ADR 0032 section 3, #973): Paddle's server sends no Origin, token or cookie;
+# the signature over the raw body is the credential (``billing.webhook``). It must not reach the
+# database before that check, so it is also kept out of the general limit (which looks a session
+# cookie up): its own in-memory limit counts it (``billing.webhook_gate``). Exact path.
+SIGNED_PATHS = frozenset({"/api/billing/paddle/webhook"})
+CSRF_EXEMPT_PATHS = frozenset(
+    {"/api/mail/unsubscribe", "/api/mail/unsubscribe/confirm", *SIGNED_PATHS}
+)
 
 
 def csrf_token_for_session(keys: Keys, session_id: object) -> str:
@@ -110,6 +117,8 @@ async def check_api_limit(request: Request) -> int | None:
     the limiter exempts is never logged (#632, ADR 0003 amendment "the security log")."""
     if not api_limited(request.url.path):
         return None
+    if request.url.path in SIGNED_PATHS:
+        return None  # a signed webhook: never a session lookup before its signature
     info = (await resolve_request(request)).info
     if info is None:
         return None

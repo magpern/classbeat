@@ -112,6 +112,11 @@ _COLUMNS = {
     "billing_events": "id owner_id provider event_id kind plan_id period_start period_end "
     "amount_minor currency outcome created_at",
     "billing_log": "id owner_id action outcome reason request_id created_at",
+    # ADR 0032 section 3 (#973): the webhook resolves a user by the Paddle ids of the link.
+    "billing_links": "id owner_id provider checkout_ref customer_ref subscription_ref "
+    "activated_at changed_at created_at updated_at",
+    "billing_webhook_refusals": "provider event_id reason created_at",
+    "billing_customers": "id provider customer_ref owner_id created_at",
     # ADR 0033 (#985): the requests the admin decides on.
     "invite_requests": "id email email_normalized heard_from instructor locale state plan_id "
     "grant_days invite_id decided_by decided_at created_at",
@@ -130,6 +135,7 @@ _UPDATES = {
     "credit_ledger": "state reason settled_at refunded_by",
     "subscriptions": "provider plan_id anchor_day period_start period_end basis_minor "
     "basis_currency next_plan_id cancel_at_end status last_event_at updated_at",
+    "billing_links": "customer_ref subscription_ref activated_at changed_at updated_at",
 }
 # (table, privilege) -> the columns (column grants) or {"*"} (a table-level grant).
 EXPECTED: dict[tuple[str, str], frozenset[str]] = {
@@ -147,6 +153,9 @@ EXPECTED: dict[tuple[str, str], frozenset[str]] = {
     ("subscriptions", "INSERT"): frozenset({"*"}),
     ("billing_events", "INSERT"): frozenset({"*"}),
     ("billing_log", "INSERT"): frozenset({"*"}),
+    ("billing_links", "INSERT"): frozenset({"*"}),
+    ("billing_webhook_refusals", "INSERT"): frozenset({"*"}),
+    ("billing_customers", "INSERT"): frozenset({"*"}),
     # AD5 #223: the routes are written whole; the results are never writable (no entry).
     ("model_routes", "INSERT"): frozenset({"*"}),
     ("model_routes", "UPDATE"): frozenset({"*"}),
