@@ -28,6 +28,10 @@ const PAGE_MODULES: Readonly<Record<string, readonly string[]>> = {
   '/how-it-works': ['pages/HowItWorksPage.tsx'],
   '/features': ['pages/FeaturesPage.tsx'],
   '/pricing': ['pages/PricingPage.tsx'],
+  '/terms-draft': ['pages/LegalDraftPages.tsx'],
+  '/privacy-draft': ['pages/LegalDraftPages.tsx'],
+  '/refunds': ['pages/LegalDraftPages.tsx'],
+  '/sub-processors': ['pages/LegalDraftPages.tsx'],
   '/examples': ['pages/ExamplesPage.tsx'],
   '/examples/hill-challenge': ['pages/ExamplePage.tsx'],
   '/examples/90s-dance-intervals': ['pages/ExamplePage.tsx'],
@@ -36,7 +40,7 @@ const PAGE_MODULES: Readonly<Record<string, readonly string[]>> = {
 }
 
 /** Content components of the pages, and the chart components they draw. */
-const CONTENT_DIRS = ['publicSite', 'components/landing', 'components/publicPages', 'components/examples', 'pages/legal']
+const CONTENT_DIRS = ['publicSite', 'components/landing', 'components/publicPages', 'components/examples', 'pages/legal', 'pages/legalDraft']
 const CHART_FILES = [
   'components/classes/MiniProfile.tsx',
   'components/classes/ProfileChart.tsx',

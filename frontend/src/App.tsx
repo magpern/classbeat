@@ -21,6 +21,7 @@ import { ExamplesPage } from './pages/ExamplesPage'
 import { HowItWorksPage } from './pages/HowItWorksPage'
 import { FeaturesPage } from './pages/FeaturesPage'
 import { PricingPage } from './pages/PricingPage'
+import { PrivacyDraftPage, RefundsDraftPage, SubProcessorsDraftPage, TermsDraftPage } from './pages/LegalDraftPages'
 import { PrivacyPage } from './pages/PrivacyPage'
 import { MusicPage } from './pages/MusicPage'
 import { NewClassPage } from './pages/NewClassPage'
@@ -106,6 +107,11 @@ const PAGES: Readonly<Record<string, () => ReactNode>> = {
   '/how-it-works': () => <HowItWorksPage />,
   '/features': () => <FeaturesPage />,
   '/pricing': () => <PricingPage />,
+  // Draft legal pages (PB-4, #975): routed and prerendered, not published, not linked.
+  '/terms-draft': () => <TermsDraftPage />,
+  '/privacy-draft': () => <PrivacyDraftPage />,
+  '/refunds': () => <RefundsDraftPage />,
+  '/sub-processors': () => <SubProcessorsDraftPage />,
   '/classes': () => <ClassesPage />,
   '/classes/new': () => <NewClassPage />,
   '/classes/new/advanced': () => <Advanced />,

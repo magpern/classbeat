@@ -138,7 +138,7 @@ describe('the new pages are published (PP8)', () => {
     expect([...PUBLISHED_PATHS].slice(3, 7)).toEqual(['/help', '/how-it-works', '/features', '/examples'])
     expect([...PUBLISHED_PATHS].slice(7).every((path) => path.startsWith('/examples/'))).toBe(true)
     expect(PUBLISHED_PATHS).toHaveLength(11)
-    expect([...DRAFT_PATHS]).toEqual(['/pricing'])
+    expect([...DRAFT_PATHS]).toEqual(['/pricing', '/terms-draft', '/privacy-draft', '/refunds', '/sub-processors'])
   })
 })
 
