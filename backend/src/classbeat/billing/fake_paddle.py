@@ -31,7 +31,7 @@ from classbeat.billing.paddle_types import OWNER_KEY
 from classbeat.billing.periods import days_in_period, days_left, period_end
 from classbeat.billing.subscription_policy import upgrade_amount
 
-CHECKOUT_PATH: Final = "/fake-paddle/checkout"  # the hosted page (PB-3 serves it)
+CHECKOUT_PATH: Final = "/fake-paddle/checkout"  # the hosted page (`billing.fake_checkout`)
 
 Post = Callable[[bytes, str], Awaitable[int]]  # (body, Paddle-Signature) -> HTTP status
 
@@ -178,6 +178,10 @@ class FakePaddleClient:
         self._subscription(sub)
 
     # --- Paddle's side of the lifecycle --------------------------------------------------------
+
+    def checkout_of(self, checkout_ref: str) -> CheckoutRequest | None:
+        """The checkout still waiting for its first payment (a failed one stays), else `None`."""
+        return self._checkouts.get(checkout_ref)
 
     def pay(self, checkout_ref: str) -> str:
         """The buyer pays on the hosted page: a subscription starts now. Its id."""

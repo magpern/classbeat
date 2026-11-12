@@ -107,5 +107,11 @@
   "inviteRequest.submit",
   "inviteRequest.sent",
   "inviteRequest.back",
-  "inviteRequest.chooseInstructor"
+  "inviteRequest.chooseInstructor",
+  "plan.checkout.redirecting",
+  "plan.checkout.waiting",
+  "plan.checkout.slow",
+  "plan.checkout.failed",
+  "plan.checkout.again",
+  "plan.checkout.dismiss"
 ]

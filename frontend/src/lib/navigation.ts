@@ -1,4 +1,4 @@
-/** Sends the whole browser to a provider's authorization page. Only http(s) URLs. */
+/** Sends the whole browser to a provider's authorization page or hosted checkout. Only http(s) URLs. */
 export function goToProvider(url: string): void {
   const parsed = new URL(url)
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {

@@ -5,12 +5,16 @@ import { ApiError } from '../../api/client'
 import type { Plan } from '../../api/plan'
 import { dayText } from '../../api/planMessages'
 import { useBilling } from '../../hooks/useBilling'
+import { useCheckoutWait } from '../../hooks/useCheckoutWait'
 import { useCatalogueResult } from '../../hooks/usePlanView'
 import { useT } from '../../i18n/I18n'
 import { ACTION_LABEL, canCancel, doneKey, stillOffered, type Choice, type ChoiceKind } from '../../lib/billingChoice'
+import { deferred, safeCheckoutUrl } from '../../lib/checkoutWait'
+import { goToProvider } from '../../lib/navigation'
 import { newIdempotencyKey } from '../../lib/submittedInput'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
+import { CheckoutStatus } from './CheckoutStatus'
 import { OfferConfirm } from './OfferConfirm'
 import { PlanCard } from './PlanCard'
 
@@ -35,9 +39,17 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
   const nameOf = (id: string) => catalogue?.find((p) => p.id === id)?.name ?? billing?.offers.find((o) => o.plan === id)?.name ?? id
   const offerOf = (id: string) => billing?.offers.find((o) => o.plan === id) ?? null
 
+  // A Paddle checkout completes when the signed notification lands, not when the server answers (ADR 0032 section 7).
+  const wait = useCheckoutWait(reload, (paid) => {
+    setDone(t(doneKey(paid.kind), { name: nameOf(paid.plan) }))
+    onChanged()
+  })
+  const away = wait.status === 'redirecting' || wait.status === 'waiting'
+
   const choose = (kind: ChoiceKind, id: string) => {
     action.clear()
     setDone(null)
+    if (wait.status === 'failed' || wait.status === 'slow') wait.dismiss()
     attempt.current = null
     setChoice({ kind, plan: id })
   }
@@ -67,6 +79,22 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
       }, billingError)
       .then((next) => {
         if (next === undefined) return
+        if (chosen.kind === 'buy' || chosen.kind === 'upgrade') {
+          const paying = { plan: chosen.plan, kind: chosen.kind }
+          const url = safeCheckoutUrl(next.checkoutUrl, window.location.href)
+          if (url !== null) {
+            setChoice(null)
+            wait.leave(paying)
+            goToProvider(url)
+            return
+          }
+          if (deferred(next, paying)) {
+            replace(next)
+            setChoice(null)
+            wait.begin(paying)
+            return
+          }
+        }
         replace(next)
         setChoice(null)
         setDone(t(doneKey(chosen.kind), { name: nameOf(chosen.plan) }))
@@ -94,6 +122,7 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
         </p>
       ) : null}
       {done !== null ? <Notice kind="success">{done}</Notice> : null}
+      <CheckoutStatus status={wait.status} onAgain={wait.again} onDismiss={wait.dismiss} />
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {open === null ? null : (
         <OfferConfirm
@@ -101,7 +130,7 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
           offer={offerOf(open.plan)}
           name={nameOf(open.kind === 'cancel' ? (sub?.plan ?? '') : open.plan)}
           sub={sub}
-          busy={action.busy}
+          busy={action.busy || away}
           onConfirm={confirm}
           onBack={() => {
             setChoice(null)
@@ -117,7 +146,7 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
             current={cat.id === plan.plan}
             offer={offerOf(cat.id)}
             sub={sub}
-            busy={action.busy}
+            busy={action.busy || away}
             onChoose={(kind) => {
               choose(kind, cat.id)
             }}
@@ -128,7 +157,7 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
         <p className="m-0">
           <Button
             variant="secondary"
-            disabled={action.busy}
+            disabled={action.busy || away}
             onClick={() => {
               choose('cancel', 'free')
             }}
