@@ -15,7 +15,6 @@ import math
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import replace
 from typing import Any
 
 from classbeat.agent import DesignContext, DesignResult, run_stage
@@ -47,7 +46,7 @@ from classbeat.evals.results import song_suite_row as song_suite_row
 from classbeat.evals.results import suite_results as suite_results
 from classbeat.evals.results import suite_results_json as suite_results_json
 from classbeat.evals.results import suite_row as suite_row
-from classbeat.evals.revise_chain import ReadFailed, counted, read_revision
+from classbeat.evals.revise_chain import ReadFailed, read_revision, with_interpret_spend
 from classbeat.jobs.errors import JobFailure
 
 
@@ -113,7 +112,7 @@ async def run_case(
         )  # fmt: skip
     layered = case.model_copy(update={"brief": read.brief})
     done = await _run_stage(layered, provider, config, repeat, clock, zone7_tss_margin)
-    return replace(counted(done, read.spent), wall_sec=clock() - started)
+    return with_interpret_spend(done, read.spent).with_fields(wall_sec=clock() - started)
 
 
 async def _run_stage(

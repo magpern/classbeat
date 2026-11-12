@@ -17,7 +17,7 @@ per run of a case the format-1 row plus its ``category`` (``suite_row``) or a so
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -59,6 +59,10 @@ class CaseResult:
     changes_on_music: str = ""  # "x of y" interval starts on the music, as quality.report says
     timeline: list[dict[str, Any]] = field(default_factory=lambda: list[dict[str, Any]]())
     tss_approximate: bool = False  # a zone 7 interval: its TSS weight is a guess (ADR 0012 s. 7)
+
+    def with_fields(self, **changes: Any) -> "CaseResult":
+        """A copy with ``changes`` applied (built field by field, not ``dataclasses.replace``)."""
+        return CaseResult(**{f.name: getattr(self, f.name) for f in fields(self)} | changes)
 
     @property
     def passed(self) -> bool:

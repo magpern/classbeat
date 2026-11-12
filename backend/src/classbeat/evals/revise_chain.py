@@ -5,10 +5,10 @@ and layers what it read onto the brief (``design.revise_stated``). A case with
 ``ReviseSpec.interpret`` does the same, on the case's brief as the base, so the reading and the
 layering are gated together with the revise it leads to (the interpret cases and the stated
 revisions are gated apart). ``read_revision`` returns the layered brief and what the interpret
-run spent; ``counted`` adds that to the revise run's result, so a case's cost is both runs.
+run spent; ``with_interpret_spend`` adds that to the revise run's result: a case costs both runs.
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Protocol
 
 from classbeat.agent.brief import Brief
@@ -60,10 +60,9 @@ async def read_revision(
     return Reading(layer(case.brief, done.output.request, None).brief, host.counters)
 
 
-def counted(result: CaseResult, spent: Counters) -> CaseResult:
+def with_interpret_spend(result: CaseResult, spent: Counters) -> CaseResult:
     """``result`` with the interpret run's spend added to the revise run's."""
-    return replace(
-        result,
+    return result.with_fields(
         turns=result.turns + spent.turns,
         tool_calls=result.tool_calls + spent.tool_calls,
         cost_micros=result.cost_micros + spent.cost_micros,
