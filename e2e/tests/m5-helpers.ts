@@ -8,7 +8,7 @@ import { PASSWORD, nextTotp, passCaptcha, signInThroughUi, signUpThroughUi, uniq
 
 export const LONG = { timeout: 60_000 }
 
-/** What the plan limits of the seeded plans are (migration 0007). */
+/** What the plan limits of the seeded plans are (migration 0045). */
 export const FREE = { classes: 3, concurrent: 1 }
 export const INSTRUCTOR = { classes: 9, concurrent: 2 }
 

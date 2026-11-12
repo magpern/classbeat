@@ -1989,7 +1989,7 @@ const sv: Catalogue = {
   'plan.choice.title': 'En del av din begäran ligger över din plan.',
   'plan.choice.body': 'Inget har utformats än, så inget pass har räknats av.',
   'plan.choice.length': 'Passet är längre än din plan tillåter.',
-  'plan.choice.lengthMax': 'Passet är längre än din plan tillåter, som är {minutes} minuter.',
+  'plan.choice.lengthMax': 'Passet är längre än din plan tillåter, vilket är {minutes} minuter.',
   'plan.choice.games': 'Din plan inkluderar inte spel.',
   'plan.choice.ftp': 'Din plan inkluderar inte FTP-test.',
   'plan.choice.lowest': '{name} tillåter allt detta.',
@@ -2034,7 +2034,7 @@ const sv: Catalogue = {
     'Betala {amount} nu för att gå över till {name}: mellanskillnaden för resten av den här perioden. Din period slutar fortfarande {end}.',
   'plan.confirm.upgradeFree': 'Gå över till {name} nu utan kostnad. Din period slutar fortfarande {end}.',
   'plan.confirm.downgrade':
-    'Byt till {name} den {end}. Inget debiteras, och du behåller din nuvarande plan till dess. Pengar som redan betalats återbetalas inte.',
+    'Byt till {name} {end}. Inget debiteras, och du behåller din nuvarande plan till dess. Pengar som redan betalats återbetalas inte.',
   'plan.confirm.cancel':
     'Din prenumeration slutar {end}, och därefter har du Free. Inget debiteras. Pengar som redan betalats återbetalas inte.',
   'plan.confirm.resume': 'Behåll {name}: ändringen du schemalade tas bort. Inget debiteras.',

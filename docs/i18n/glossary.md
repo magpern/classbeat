@@ -25,6 +25,7 @@ everywhere; a change here changes both places in the same PR. ADR 0023 has the d
 
 | English | Swedish | Danish | Note |
 |---|---|---|---|
+| instructor | instruktör | instruktør | The person who teaches classes. Never "lärare", "lærer" or "underviser" as a noun. |
 | class | pass | hold | The thing an instructor teaches and classbeat designs. |
 | workout (a MOWL workout) | träningspass | træningspas | Only where MOWL's own object is meant. |
 | zone | zon | zone | Effort zone. |

@@ -100,7 +100,11 @@ export async function addPasskey(page: Page, label: string): Promise<void> {
 export async function signOut(page: Page, email: string): Promise<void> {
   await page.getByRole('button', { name: email }).click()
   await page.getByRole('menuitem', { name: 'Sign out' }).click()
+  // The sign-in heading alone can show before the sign-out request has finished; the account menu
+  // is gone only once the session is cleared, so the next navigation does not race the request.
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+  await expect(page.getByRole('button', { name: email })).toHaveCount(0)
+  await page.waitForLoadState('networkidle')
 }
 
 /** Username-less sign-in from the sign-in page: the button, or the autofill ceremony if it came first. */

@@ -1977,7 +1977,7 @@ const da: Catalogue = {
   'plan.choice.title': 'En del af din anmodning ligger over din plan.',
   'plan.choice.body': 'Intet er designet endnu, så der er ikke brugt noget hold.',
   'plan.choice.length': 'Holdet er længere, end din plan tillader.',
-  'plan.choice.lengthMax': 'Holdet er længere, end din plan tillader, som er {minutes} minutter.',
+  'plan.choice.lengthMax': 'Holdet er længere, end din plan tillader, hvilket er {minutes} minutter.',
   'plan.choice.games': 'Din plan omfatter ikke spil.',
   'plan.choice.ftp': 'Din plan omfatter ikke FTP-test.',
   'plan.choice.lowest': '{name} tillader alt dette.',
@@ -2022,7 +2022,7 @@ const da: Catalogue = {
     'Betal {amount} nu for at skifte til {name}: forskellen for resten af denne periode. Din periode slutter stadig {end}.',
   'plan.confirm.upgradeFree': 'Skift til {name} nu uden beregning. Din periode slutter stadig {end}.',
   'plan.confirm.downgrade':
-    'Skift til {name} den {end}. Der trækkes ingenting, og du beholder din nuværende plan indtil da. Penge, der allerede er betalt, refunderes ikke.',
+    'Skift til {name} {end}. Der trækkes ingenting, og du beholder din nuværende plan indtil da. Penge, der allerede er betalt, refunderes ikke.',
   'plan.confirm.cancel':
     'Dit abonnement slutter {end}, og derefter har du Free. Der trækkes ingenting. Penge, der allerede er betalt, refunderes ikke.',
   'plan.confirm.resume': 'Behold {name}: den ændring, du har planlagt, fjernes. Der trækkes ingenting.',
