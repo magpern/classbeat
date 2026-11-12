@@ -626,8 +626,17 @@ Fixed windows are counted in `rate_limits` with one upsert per check. There is n
   `INSERT … ON CONFLICT DO UPDATE SET count = rate_limits.count + 1 RETURNING count`, and is
   refused above the limit before any password check runs, so parallel attempts can't overshoot.
   The reserve is its own implicit (autocommit) transaction (#998): Postgres commits it before it
-  answers, so no row lock outlives the statement, whatever the request does next. A lock timeout
-  on it in the general limit is 503 `busy` with `Retry-After: 2`; the request is not served.
+  answers, so no row lock outlives the statement, whatever the request does next. So is every
+  release below, one statement per row (#1006). A lock timeout on a reserve or a release is 503
+  `busy` with `Retry-After: 2`, and the request is not served past it. The bucket that timed out
+  took no slot, but in `begin` the buckets reserved before it keep theirs (the general limit's
+  one statement takes all or none); a release that timed out gave back neither that slot nor any
+  after it, so they stay counted. A release drops each slot before its write, so a cancelled
+  one gives back fewer slots, never more. (The cover
+  read's cooldown write is not a reserve: any database error there is its `{covers: []}`.)
+  Every such statement passes an allowlist before it is sent (`db.statement_policy`): one
+  `INSERT`, `UPDATE` or `DELETE` on one system table, its own columns, bind parameters and a
+  short list of functions and operators; no subquery, CTE, `text()`, prefix or hint.
 - **Release on success,** so only failures stay counted:
   - The success deletes its own (account, IP) bucket.
   - It decrements, by one, the exact per-account and per-IP rows it reserved (the same

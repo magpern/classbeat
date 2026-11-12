@@ -16,12 +16,14 @@ from classbeat.auth.email_routes import router as email_router
 from classbeat.auth.identity_routes import router as identity_router
 from classbeat.auth.invite_request_routes import router as invite_request_router
 from classbeat.auth.keys import Keys
+from classbeat.auth.limit_writes import LimitBusy
 from classbeat.auth.locale_routes import router as locale_router
 from classbeat.auth.mail_routes import router as mail_router
 from classbeat.auth.mfa_routes import router as mfa_router
 from classbeat.auth.middleware import (
     AuthMiddleware,
     database_error_response,
+    limit_busy_response,
     rate_limited_response,
 )
 from classbeat.auth.notices import register_security_notifier
@@ -84,6 +86,10 @@ def install(app: FastAPI) -> None:
     @app.exception_handler(RateLimited)
     async def rate_limited(_: Request, exc: Exception) -> JSONResponse:
         return rate_limited_response(exc.retry_after if isinstance(exc, RateLimited) else 60)
+
+    @app.exception_handler(LimitBusy)
+    async def limit_busy(_: Request, __: Exception) -> JSONResponse:
+        return limit_busy_response()  # a lock timeout in a route's reserve or release (#1006)
 
     @app.exception_handler(DBAPIError)
     async def database_error(_: Request, exc: Exception) -> JSONResponse:

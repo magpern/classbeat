@@ -3,7 +3,8 @@
 Every attempt first takes a slot in each of its buckets with one atomic upsert, each in its own
 committed transaction, and is refused above the limit before any password check runs, so
 parallel attempts cannot overshoot. Sign-in, re-auth and MFA limits count failures only: the
-success releases what it reserved (``Attempt.succeed``) and never touches a newer window.
+success releases what it reserved (``Attempt.succeed``) and never touches a newer window. Every
+write is one statement (``limit_writes``); a lock timeout in one is ``LimitBusy``, the 503.
 Bucket keys are an HMAC of ``(action, scope, value, window)``: no email or IP in the clear.
 """
 
@@ -13,12 +14,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
-from sqlalchemy import Float, and_, delete, exists, func, literal, select, update
+from sqlalchemy import Float, and_, exists, func, literal, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.keys import Keys, hmac_digest
+from classbeat.auth.limit_writes import forget, give_back, limit_statement
 from classbeat.auth.tables import rate_limits
 from classbeat.db import system_session, system_statement
 
@@ -157,27 +159,15 @@ class Attempt:
 
     async def succeed(self) -> None:
         """Release a successful attempt: delete the buckets marked ``delete`` (all their
-        windows) and decrement, by one, the exact rows reserved (the same ``window_start``)."""
-        if self._factory is None or not self.slots:
-            return
-        async with system_session(self._factory) as session:
-            for slot in self.slots:
-                if slot.on_success == "delete":
-                    await session.execute(
-                        delete(rate_limits).where(rate_limits.c.bucket_hash == slot.bucket_hash)
-                    )
-                else:
-                    await session.execute(
-                        update(rate_limits)
-                        .where(
-                            and_(
-                                rate_limits.c.bucket_hash == slot.bucket_hash,
-                                rate_limits.c.window_start == slot.window_start,
-                            )
-                        )
-                        .values(count=func.greatest(rate_limits.c.count - 1, 0))
-                    )
-        self.slots = []
+        windows) and decrement, by one, the exact rows reserved (the same ``window_start``). One
+        statement per slot, each committed at once (#1006). A slot leaves ``slots`` before its
+        write, so a cancelled or failed call never gives one back twice (only fewer)."""
+        while self._factory is not None and self.slots:
+            slot = self.slots.pop(0)
+            if slot.on_success == "delete":
+                await limit_statement(self._factory, forget(slot.bucket_hash))
+            else:
+                await limit_statement(self._factory, give_back(slot.bucket_hash, slot.window_start))
 
 
 def _window_start(window: int) -> Any:
@@ -192,23 +182,13 @@ class RateLimiter:
         self._keys = keys
 
     async def release(self, buckets: Sequence[Bucket]) -> None:
-        """Give back one slot of each bucket in its current window (never below zero): a
-        success that completes in another request than the one that reserved (the Spotify
-        callback releases its start's slot)."""
-        async with system_session(self._factory) as session:
-            for bucket in buckets:
-                bucket_hash = self.bucket_hash(bucket.limit, bucket.value)
-                await session.execute(
-                    update(rate_limits)
-                    .where(
-                        and_(
-                            rate_limits.c.bucket_hash == bucket_hash,
-                            rate_limits.c.window_start
-                            == _window_start(bucket.limit.window_seconds),
-                        )
-                    )
-                    .values(count=func.greatest(rate_limits.c.count - 1, 0))
-                )
+        """Give back one slot of each bucket in its current window (never below zero), one
+        statement each (#1006): a success that completes in another request than the one that
+        reserved (the Spotify callback releases its start's slot)."""
+        for bucket in buckets:
+            bucket_hash = self.bucket_hash(bucket.limit, bucket.value)
+            started = _window_start(bucket.limit.window_seconds)
+            await limit_statement(self._factory, give_back(bucket_hash, started))
 
     def bucket_hash(self, limit: Limit, value: str) -> bytes:
         return hmac_digest(
@@ -240,7 +220,7 @@ class RateLimiter:
             )
         )
         # Committed by Postgres before it answers (#998): the next attempt sees the slot taken.
-        [row] = await system_statement(self._factory, statement)
+        [row] = await limit_statement(self._factory, statement)
         slot = Slot(bucket_hash, row.window_start, bucket.on_success)
         return slot, row.hits <= bucket.limit.max_count, max(int(row.retry_after), 1)
 
