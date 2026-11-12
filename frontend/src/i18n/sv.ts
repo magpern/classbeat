@@ -191,6 +191,9 @@ const sv: Catalogue = {
   'error.reason.reauth_use_password': 'Ditt konto har ett lösenord, så bekräfta med ditt lösenord.',
   'error.reason.forbidden': 'Ditt konto får inte göra det.',
   'error.reason.busy': 'Servern är upptagen. Försök igen om några sekunder.',
+  'error.reason.requests_closed': 'Förfrågningar om inbjudan är stängda just nu.',
+  'error.reason.already_decided': 'Den förfrågan har redan avgjorts. Ladda om listan.',
+  'error.reason.unknown_plan': 'Den planen finns inte.',
   'error.reason.captcha_failed': 'Säkerhetskontrollen gick inte igenom. Försök igen.',
   'error.reason.captcha_unavailable': 'Säkerhetskontrollen går inte att nå just nu. Försök igen om en minut.',
   // ADR 0025 section 11: the Turnstile check on the sign-in, sign-up, provider-email and reset forms.

@@ -27,6 +27,7 @@ export function AdminForbidden() {
 const SECTIONS = [
   { to: '/admin/users', label: 'Users' },
   { to: '/admin/codes', label: 'Codes' },
+  { to: '/admin/invite-requests', label: 'Invite requests' },
   { to: '/admin/usage', label: 'Usage' },
   { to: '/admin/jobs', label: 'Jobs' },
   { to: '/admin/abuse', label: 'Abuse' },

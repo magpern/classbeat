@@ -26,6 +26,8 @@ interface Props {
    * the browser has WebAuthn. Adds the button, and the `webauthn` autofill token to the email field.
    */
   onPasskeySignedIn?: (outcome: SignInOutcome) => Promise<void>
+  /** Sign-up while sign-up is invite-only (ADR 0033): where the "Request an invite" link goes. */
+  inviteRequestTo?: string | null
   /** The email and password path; throws on failure, which is shown in plain language. */
   onSubmit: (values: {
     email: string
@@ -56,7 +58,7 @@ const COPY = {
  * server lists (`oauth_visible_providers`); none listed means no buttons and no divider.
  * Sign up carries the beta invite code once, for both ways of creating the account.
  */
-export function AuthScreen({ mode, returnTo, notice, noticeLink, onPasskeySignedIn, onSubmit }: Props) {
+export function AuthScreen({ mode, returnTo, notice, noticeLink, onPasskeySignedIn, inviteRequestTo, onSubmit }: Props) {
   const t = useT()
   const copy = COPY[mode]
   const [providers, setProviders] = useState<string[]>([])
@@ -138,6 +140,11 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onPasskeySigned
               if (e.target.value.trim() !== '') setInviteMissing(false)
             }}
           />
+        ) : null}
+        {mode === 'signup' && inviteRequestTo ? (
+          <p className="card__links">
+            <Link to={inviteRequestTo}>{t('inviteRequest.link')}</Link>
+          </p>
         ) : null}
         {providers.length > 0 || onPasskeySignedIn ? (
           <>

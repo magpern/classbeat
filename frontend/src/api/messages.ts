@@ -26,6 +26,10 @@ const REASON_CODES = [
   'reauth_use_password',
   'forbidden',
   'busy',
+  // ADR 0033: invite requests (the public form and the admin screen).
+  'requests_closed',
+  'already_decided',
+  'unknown_plan',
   // ADR 0025 section 3: the Turnstile check of sign-in, sign-up, reset and the provider-email step.
   'captcha_failed',
   'captcha_unavailable',

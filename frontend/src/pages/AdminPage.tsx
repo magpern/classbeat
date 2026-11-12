@@ -3,6 +3,7 @@ import { Abuse } from './admin/Abuse'
 import { AdminLayout } from './admin/AdminLayout'
 import { Audit } from './admin/Audit'
 import { Codes } from './admin/Codes'
+import { InviteRequests } from './admin/InviteRequests'
 import { Jobs } from './admin/Jobs'
 import { Mail } from './admin/Mail'
 import { Models } from './admin/Models'
@@ -24,6 +25,7 @@ export function AdminPage() {
   if (user?.[1] !== undefined) page = <UserDetail key={user[1]} userId={user[1]} />
   else if (path === '/admin' || path === '/admin/users') page = <Users />
   else if (path === '/admin/codes') page = <Codes />
+  else if (path === '/admin/invite-requests') page = <InviteRequests />
   else if (path === '/admin/usage') page = <Usage />
   else if (path === '/admin/jobs') page = <Jobs />
   else if (path === '/admin/abuse') page = <Abuse />
