@@ -2,6 +2,7 @@
 ``classbeat.jobs`` and ``classbeat.emails.handoff`` ask here, because only ``classbeat.auth``
 touches the account tables (guard 8)."""
 
+from collections.abc import Collection
 from uuid import UUID
 
 from sqlalchemy import select
@@ -44,6 +45,23 @@ async def stored_admin(db: AsyncSession, user_id: UUID) -> bool:
         )
     ).scalar_one_or_none()
     return role == "admin"
+
+
+async def stored_admins(db: AsyncSession, user_ids: Collection[UUID]) -> frozenset[UUID]:
+    """The ids among ``user_ids`` for which ``stored_admin`` answers ``True`` (an existing,
+    enabled user whose stored role is ``admin``), in one statement whatever their number. For the
+    admin area's Users list, which shows each user's plan as the resolver does (ADR 0031
+    section 2) without a lookup per row. ``db`` is the caller's session."""
+    if not user_ids:
+        return frozenset()
+    rows = await db.execute(
+        select(users.c.id).where(
+            users.c.id.in_(list(user_ids)),
+            users.c.role == "admin",
+            users.c.disabled_at.is_(None),
+        )
+    )
+    return frozenset(rows.scalars().all())
 
 
 async def lock_owner_row(db: AsyncSession, user_id: UUID) -> None:
