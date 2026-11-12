@@ -57,8 +57,6 @@ EXEMPT: dict[str, str] = {
     "test_swedebeat_media_fetch.py": PROVIDER,
     "test_turnstile_verify.py": PROVIDER,
 }
-# PR #1011 pins these two; delete this set (and its two uses) when it merges.
-PENDING_1011 = frozenset({"test_auth_mfa_hardening.py", "test_two_workers.py"})
 
 
 def _names(nodes: list[ast.expr]) -> set[str]:
@@ -112,7 +110,7 @@ def _is_pytestmark(node: ast.Assign) -> bool:
 def test_every_counting_test_pins_the_rate_windows() -> None:
     found = {}
     for path in sorted(TESTS.glob("test_*.py")):
-        if path.name in EXEMPT or path.name in PENDING_1011:
+        if path.name in EXEMPT:
             continue
         bad = unpinned_counting_tests(path.read_text("utf-8"))
         if bad:

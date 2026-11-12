@@ -41,6 +41,29 @@ async def test_parallel_attempts_do_not_overshoot_the_limit(env: Env) -> None:
     assert await counts(env) == [40]  # a refused attempt keeps its slot
 
 
+async def test_the_real_window_start_is_the_current_aligned_window(env: Env) -> None:
+    """#1012: the one test that runs ``ratelimit._window_start`` unpinned (the others freeze it,
+    #588): it is the start of the window the database clock is in, a multiple of the length."""
+    from sqlalchemy import Float, cast, func, literal, select
+
+    from classbeat.auth import ratelimit
+
+    for window in (60, 300, 600, 900, 3600):
+        async with env.db() as db:
+            row = (
+                await db.execute(
+                    select(
+                        func.extract("epoch", ratelimit._window_start(window)),  # pyright: ignore[reportPrivateUsage]
+                        func.extract("epoch", func.clock_timestamp()),
+                        cast(literal(window), Float),
+                    )
+                )
+            ).one()
+        start, now, length = (float(v) for v in row)
+        assert start % length == 0, window
+        assert start <= now < start + length, window
+
+
 @pytest.mark.usefixtures("frozen_rate_windows")  # #1012: counts to the limit, not the window
 async def test_the_limit_trips_and_a_new_window_resets_it(env: Env) -> None:
     bucket = Bucket(TEST_LIMIT, "someone")
