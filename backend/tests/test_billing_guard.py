@@ -54,10 +54,42 @@ def test_actor_is_built_only_by_the_admin_gate() -> None:
     assert callers("Actor") - {"classbeat.admin.db"} == {"classbeat.admin.routes"}
 
 
-def test_the_writer_is_imported_only_by_its_two_callers() -> None:
-    allowed = {"classbeat.billing.routes", "classbeat.admin.billing"}
+def test_webhook_sessions_are_opened_only_by_the_webhook() -> None:
+    """ADR 0032 section 3 (#973): the maint role without a user session, for a signature-verified
+    notification only; the `billing_session` guard above stays as it was."""
+    for function in ("webhook_session", "webhook_lookup", "record_webhook_refusal"):
+        assert callers(function) - {"classbeat.admin.db"} == {"classbeat.billing.webhook"}, function
+
+
+def test_the_webhook_writes_its_log_rows_with_the_webhook_action_only() -> None:
+    tree = modules()["classbeat.admin.db"]
+    webhook = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "webhook_session"
+    )  # fmt: skip
+    literals = {c.value for c in ast.walk(webhook) if isinstance(c, ast.Constant)}
+    assert "webhook" in literals
+    assert not literals & {"checkout", "change", "prices"}
+
+
+def test_the_writer_is_imported_only_by_its_three_callers() -> None:
+    allowed = {"classbeat.billing.routes", "classbeat.admin.billing", "classbeat.billing.webhook"}
     assert importers("classbeat.billing.writer") == allowed
-    assert importers("classbeat.billing.writer_sql") <= {"classbeat.billing.writer"} | allowed
+    sql_users = {"classbeat.billing.writer", "classbeat.billing.views"} | allowed
+    assert importers("classbeat.billing.writer_sql") <= sql_users
+
+
+def test_the_link_statements_are_imported_only_by_the_paddle_paths() -> None:
+    assert importers("classbeat.billing.links_sql") == {
+        "classbeat.billing.hosted", "classbeat.billing.webhook"
+    }  # fmt: skip
+
+
+def test_the_fake_paddle_client_is_built_only_at_setup() -> None:
+    """The fake is mounted only by `billing.setup` (which the settings gate keeps out of prod)."""
+    assert callers("FakePaddleClient") - {"classbeat.billing.fake_paddle"} == {
+        "classbeat.billing.setup"
+    }
 
 
 def test_the_price_reader_opens_no_session() -> None:
@@ -75,7 +107,8 @@ def test_the_pure_billing_modules_import_no_io() -> None:
     pure = {
         "apply_policy", "choices", "fast_forward", "subscription_policy", "periods", "provider",
         "paddle_signature", "paddle_payload", "paddle_types", "paddle_paid", "paddle_events",
-        "paddle_subscription",
+        "paddle_subscription", "paddle_client", "paddle_provider", "paddle_catalog",
+        "paddle_links",
     }  # fmt: skip
     for name in pure:
         for node in ast.walk(modules()[f"classbeat.billing.{name}"]):
@@ -99,14 +132,21 @@ PADDLE_IMPORTS = {
     "classbeat.billing.paddle_paid", "classbeat.billing.paddle_payload",
     "classbeat.billing.paddle_subscription", "classbeat.billing.paddle_types",
     "classbeat.billing.periods", "classbeat.billing.provider",
-    "classbeat.billing.subscription_policy",
+    "classbeat.billing.subscription_policy", "classbeat.billing.paddle_client",
+}  # fmt: skip
+PADDLE_MODULES = {
+    f"classbeat.billing.paddle_{name}"
+    for name in (
+        "signature", "payload", "types", "paid", "events", "subscription", "client", "provider",
+        "catalog", "links",
+    )
 }  # fmt: skip
 
 
 def test_the_paddle_layer_imports_only_its_allowlist() -> None:
     """ADR 0032 section 1: signature and mapping are pure; a new import is reviewed here first."""
     found = [name for name in modules() if name.startswith("classbeat.billing.paddle_")]
-    assert len(found) == 6
+    assert set(found) == PADDLE_MODULES
     for name in found:
         for node in ast.walk(modules()[name]):
             if isinstance(node, ast.ImportFrom):

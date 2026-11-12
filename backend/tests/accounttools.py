@@ -119,6 +119,12 @@ class Person:
             "VALUES (:u, 'checkout', 'ok', 'req-gdpr')",
             u=u,
         )
+        # ADR 0032 (#973): a Paddle checkout's link.
+        self.sql(
+            "INSERT INTO billing_links (owner_id, provider, checkout_ref) "
+            "VALUES (:u, 'fake_paddle', 'txn_' || replace(gen_random_uuid()::text, '-', ''))",
+            u=u,
+        )
         # ME5 (#656): a "class ready" mail on its way, for one of the user's jobs.
         self.sql(
             "INSERT INTO mail_handoff (owner_id, kind, job_id, params) "

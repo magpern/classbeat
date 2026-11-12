@@ -13,8 +13,11 @@ One call is one event in the caller's write transaction:
    for the same id), then the subscription entitlement and the stored state in the same
    transaction, so an event and its effect land together or not at all.
 
-The caller (`billing.routes`, `admin.billing`) passes the transaction's `now`; nothing here
-reads a clock.
+A Paddle provider's `started` that replaces an active Dummy subscription first revokes the Dummy
+period's running entitlement rows (ADR 0031 section 6, ADR 0032 section 5).
+
+The callers (`billing.routes`, `admin.billing`, `billing.webhook`) pass the transaction's `now`;
+nothing here reads a clock.
 """
 
 from __future__ import annotations
@@ -91,6 +94,8 @@ async def apply(
     if event_row is None:
         return Duplicate()  # another request stored the same event id first
     if isinstance(decision, Applied):
+        if decision.revoke_running:  # a Paddle start replaces a Dummy one (ADR 0032 section 5)
+            await sql.revoke_running(session, owner_id, now)
         if decision.grant is not None:
             await sql.insert_grant(session, owner_id, decision.grant, event_row)
         await sql.store_state(session, owner_id, decision.state, now)

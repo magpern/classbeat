@@ -34,6 +34,7 @@ OTHER_SYSTEM_TABLES = {
     "admin_audit": "operator-only log (ADR 0014 section 2 and 5)",
     "model_eval_results": "recorded eval suite runs, not per user",
     "model_routes": "which model each route uses, not per user",
+    "billing_webhook_refusals": "refused provider notifications; no user (ADR 0032 section 3)",
 }
 
 

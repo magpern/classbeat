@@ -5,7 +5,6 @@ here; the non-secret field groups are pure mixins in ``config_accounts``, ``conf
 ``config_jobs``, ``config_agent`` and ``config_features`` (#812).
 """
 
-import ssl
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -20,8 +19,10 @@ from classbeat.config_accounts import (  # noqa: F401 (re-exported from classbea
     AccountSettings,
 )
 from classbeat.config_agent import AgentSettings
+from classbeat.config_billing import check_secret as check_paddle_secret
+from classbeat.config_billing import check_settings as check_billing_settings
 from classbeat.config_features import FeatureSettings
-from classbeat.config_hosts import _is_local_host, check_prod_trusted_proxies
+from classbeat.config_hosts import check_prod_trusted_proxies
 from classbeat.config_jobs import JobSettings
 from classbeat.config_mail import (  # noqa: F401 (re-exported from classbeat.config)
     SUPPORT_ADDRESS,
@@ -34,6 +35,7 @@ from classbeat.config_roles import (  # noqa: F401 (re-exported from classbeat.c
     MODEL_SDK_REFUSED_PREFIXES,
     ModelProviderRefused,
     check_web_has_no_model_key,
+    check_worker_has_no_paddle_secret,
     check_worker_has_no_swedebeat_app,
     check_worker_has_no_turnstile_secret,
     check_worker_model_provider,
@@ -48,6 +50,9 @@ from classbeat.config_secrets import (  # noqa: F401 (re-exported from classbeat
     read_files,
     secrets_dir,
 )
+from classbeat.config_smtp import check_ca_file as check_smtp_ca_file
+from classbeat.config_smtp import check_plain_smtp
+from classbeat.config_swedebeat import check_app as check_swedebeat_app
 from classbeat.config_swedebeat import swedebeat_app_keys
 from classbeat.config_turnstile import (  # noqa: F401 (re-exported from classbeat.config)
     TURNSTILE_DUMMY_KEY,
@@ -72,6 +77,7 @@ SECRET_FILE_FIELDS = (
     "deepseek_api_key",
     "swedebeat_app",
     "turnstile_secret_key",
+    "paddle_webhook_secret",
 )
 # Secret files the app runs without (the feature is off): an unreadable one is not set, with a
 # warning naming the field (#511). Every other secret file that exists but cannot be read is fatal.
@@ -83,6 +89,7 @@ OPTIONAL_SECRET_FILE_FIELDS = frozenset(
         "oauth_microsoft_client_secret",
         "swedebeat_app",
         "turnstile_secret_key",
+        "paddle_webhook_secret",
     }
 )
 # Read by the SQL init scripts too, with the same bytes (tests/test_roles_script.py): kept exact.
@@ -187,6 +194,9 @@ class Settings(
     # ADR 0025 (#721): Turnstile's secret key file (web only, never the environment), needed when
     # ``turnstile_enabled`` is on and ``turnstile_fake`` is off (``config_features``).
     turnstile_secret_key: SecretStr | None = None
+    # ADR 0032 section 3 (#973): the Paddle webhook's signing secrets, one per line (a rotation),
+    # file only, web only; needed for a Paddle ``billing_provider`` (``config_billing``).
+    paddle_webhook_secret: SecretStr | None = None
     swedebeat_app_file: Path = Path("/app/swedebeat_app.json")
 
     @classmethod
@@ -247,19 +257,17 @@ class Settings(
     @field_validator("swedebeat_app")
     @classmethod
     def _check_swedebeat_app(cls, value: SecretStr | None) -> SecretStr | None:
-        if value is None or not value.get_secret_value().strip():
-            return None  # the empty placeholder: no key on this server
-        if swedebeat_app_keys(value) is None:
-            # The message names the file, never its content.
-            raise ValueError(
-                "swedebeat_app must be JSON with a 32-character key and a 16-character iv"
-            )
-        return value
+        return check_swedebeat_app(value)  # the empty placeholder becomes None
 
     @field_validator("turnstile_secret_key")
     @classmethod
     def _check_turnstile_secret_key(cls, value: SecretStr | None) -> SecretStr | None:
         return check_turnstile_secret_key(value)  # the empty placeholder becomes None
+
+    @field_validator("paddle_webhook_secret")
+    @classmethod
+    def _check_paddle_webhook_secret(cls, value: SecretStr | None) -> SecretStr | None:
+        return check_paddle_secret(value)  # the empty placeholder becomes None
 
     @model_validator(mode="after")
     def _check_turnstile(self) -> "Settings":
@@ -290,28 +298,17 @@ class Settings(
 
     @model_validator(mode="after")
     def _plain_smtp_only_locally(self) -> "Settings":
-        if (
-            self.smtp_tls == "none"
-            and self.smtp_host is not None
-            and not _is_local_host(self.smtp_host)
-        ):
-            raise ValueError(
-                "smtp_tls=none is only allowed for a loopback host or the mailpit service"
-            )
+        check_plain_smtp(self)
         return self
 
     @model_validator(mode="after")
     def _check_smtp_ca_file(self) -> "Settings":
-        path = self.smtp_ca_file
-        if path is None:
-            return self
-        if self.smtp_tls == "none":
-            raise ValueError("smtp_ca_file cannot be combined with smtp_tls=none")
-        try:
-            ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT).load_verify_locations(cafile=str(path))
-        except (OSError, ssl.SSLError):
-            # The path and the OS error text stay out of the message.
-            raise ValueError("smtp_ca_file must be a readable PEM certificate file") from None
+        check_smtp_ca_file(self)
+        return self
+
+    @model_validator(mode="after")
+    def _check_billing(self) -> "Settings":
+        check_billing_settings(self)  # ADR 0032 section 4: no fake in prod, signed or nothing
         return self
 
     @model_validator(mode="after")

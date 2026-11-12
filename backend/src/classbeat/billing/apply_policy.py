@@ -10,7 +10,9 @@ Rules, in this order:
 
 1. A seen event is a `Duplicate`: nothing changes, under any owner.
 2. A provider other than the active subscription's is refused (`provider_conflict`): a Dummy
-   `started` never lands on a non-Dummy subscription.
+   `started` never lands on a non-Dummy subscription. The one exception (ADR 0032 section 5): a
+   Paddle provider's `started` replaces an active Dummy subscription, and the writer revokes the
+   Dummy period's running entitlement rows (`Applied.revoke_running`).
 3. An event that begins before the stored period is `Ignored` (`stale`) and recorded.
 4. An event that does not fit the stored period (a `renewed` that does not start at its end, a
    change or end for another period, anything on no subscription) is refused (`out_of_order`):
@@ -26,6 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Final
 
 from classbeat.billing.periods import as_utc, period_end
 from classbeat.billing.provider import (
@@ -36,6 +39,10 @@ from classbeat.billing.provider import (
     Started,
     Upgraded,
 )
+
+# ADR 0032 section 5: the only provider replacement the writer allows.
+REPLACED: Final = "dummy"
+REPLACERS: Final = frozenset({"paddle", "fake_paddle"})
 
 
 @dataclass(frozen=True)
@@ -96,6 +103,7 @@ class Refused:
 class Applied:
     state: State
     grant: Grant | None
+    revoke_running: bool = False  # a replaced Dummy period's rows end now (ADR 0031 section 6)
 
 
 Decision = Duplicate | Ignored | Refused | Applied
@@ -114,7 +122,12 @@ def decide(
     if seen:
         return Duplicate()
     active = state is not None and state.status == "active"
-    if state is not None and active and state.provider != event.provider:
+    if (
+        state is not None
+        and active
+        and state.provider != event.provider
+        and not _replaces(state, event)
+    ):
         return Refused("provider_conflict")
     if state is not None and as_utc(event.period_start) < as_utc(state.period_start):
         return Ignored()
@@ -129,6 +142,10 @@ def decide(
     return _scheduled_or_ended(state, event)
 
 
+def _replaces(state: State, event: BillingEvent) -> bool:
+    return isinstance(event, Started) and state.provider == REPLACED and event.provider in REPLACERS
+
+
 def _paid(event: Started | Renewed | Upgraded, expected: Expected | None) -> bool:
     return (
         expected is not None
@@ -138,7 +155,8 @@ def _paid(event: Started | Renewed | Upgraded, expected: Expected | None) -> boo
 
 
 def _started(state: State | None, event: Started, expected: Expected | None) -> Decision:
-    if state is not None and state.status == "active":
+    replaces = state is not None and state.status == "active" and _replaces(state, event)
+    if state is not None and state.status == "active" and not replaces:
         return Refused("already_active")
     if not _paid(event, expected) or expected is None:
         return Refused("amount_mismatch")
@@ -148,7 +166,7 @@ def _started(state: State | None, event: Started, expected: Expected | None) -> 
         event.provider, event.plan_id, as_utc(event.period_start), as_utc(event.period_end),
         event.anchor_day, expected.basis_minor, event.currency,
     )  # fmt: skip
-    return Applied(new, Grant(event.plan_id, new.period_start, new.period_end))
+    return Applied(new, Grant(event.plan_id, new.period_start, new.period_end), replaces)
 
 
 def _renewed(

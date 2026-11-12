@@ -71,6 +71,8 @@ RESTRICTED_APP_PRIVILEGES = {
     "billing_events": set(),
     "subscriptions": set(),
     "billing_log": {"SELECT"},
+    # ADR 0032 section 3 (#973): read only, for the export; the webhook writes on maint.
+    "billing_links": {"SELECT"},
 }
 # Every column of ``plans`` the app role may read: all but the prices and their currency
 # (migration 0030, #510, ADR 0011 amendment 2026-11-04). The database refuses a price to the app,

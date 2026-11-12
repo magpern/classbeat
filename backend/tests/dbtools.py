@@ -121,6 +121,11 @@ def truncate_auth(admin_url: str) -> None:
                 connection.execute(text("UPDATE plans SET route_key = id"))
                 # ... and migration 0026's class length caps and game gates (#496).
                 connection.execute(text(migration_module("plan_gates").SEED))
+            # ADR 0032 (#973): the webhook's refusals name no user, so no cascade empties them.
+            if connection.execute(
+                text("SELECT to_regclass('public.billing_webhook_refusals')")
+            ).scalar_one():
+                connection.execute(text("TRUNCATE billing_webhook_refusals"))
     finally:
         engine.dispose()
 

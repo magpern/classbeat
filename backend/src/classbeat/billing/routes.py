@@ -8,6 +8,13 @@ origin checks of ``classbeat.auth``.
 - ``POST /api/account/billing/change {plan}`` (a plan id, ``free`` for a cancel, the current plan
   to resume): a downgrade, a cancel or a resume, scheduled for the period end.
 
+**Which provider** (ADR 0032 section 4): a checkout uses ``billing_provider``. Dummy completes it
+at once. A Paddle provider (``fake_paddle``; ``paddle`` is refused until its client exists) links
+a hosted checkout to the buyer (``billing.hosted``) and answers its ``checkout_url``, or asks
+Paddle for an upgrade; the signed notification completes either (``billing.webhook``). Over an
+active Dummy subscription a Paddle checkout is a ``buy`` that replaces it. A change goes through
+the stored subscription's own provider.
+
 **Who.** Only a stored admin or an active tester (``billing.access``). Every other caller gets
 403 ``billing_closed`` on the app role's session, before any maint connection, log row or price
 exists, and sees no price. The check runs again on the maint session inside the write transaction.
@@ -31,14 +38,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
 from classbeat.admin.db import AdminDb, Buyer, billing_session
-from classbeat.billing import writer, writer_sql
+from classbeat.billing import hosted, writer, writer_sql
 from classbeat.billing.access import may_buy
-from classbeat.billing.apply_policy import State
 from classbeat.billing.choices import FREE_PLAN, change_quote, checkout_quote
 from classbeat.billing.dummy import PROVIDER, DummyProvider, event_id
 from classbeat.billing.errors import BillingRefused
+from classbeat.billing.paddle_provider import change_event_id
 from classbeat.billing.prices import PlanPrice, read_prices
 from classbeat.billing.subscription_policy import Quote, Refusal
+from classbeat.billing.views import NO_STORE, BillingOut, as_seen_by, rank_of, snapshot
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.db import user_session
@@ -47,31 +55,6 @@ router = APIRouter(prefix="/api/account/billing", tags=["billing"])
 
 _NOW = text("SELECT now()")
 _KEY = re.compile(r"^[A-Za-z0-9_.:-]{8,64}$")
-
-
-class SubscriptionOut(BaseModel):
-    plan: str
-    status: str
-    period_start: datetime
-    period_end: datetime
-    next_plan: str | None
-    cancel_at_end: bool
-
-
-class OfferOut(BaseModel):
-    plan: str
-    name: str
-    price_minor: int | None
-    currency: str | None
-    action: str | None  # buy, upgrade, downgrade, resume or None when it cannot be chosen
-    charge_minor: int | None  # what choosing it charges now (0 for a downgrade or a resume)
-    reason: str | None
-
-
-class BillingOut(BaseModel):
-    can_buy: bool
-    subscription: SubscriptionOut | None
-    offers: list[OfferOut]
 
 
 class CheckoutIn(BaseModel):
@@ -83,11 +66,8 @@ class ChangeIn(BaseModel):
     plan: str = Field(min_length=1, max_length=64)
 
 
-_NO_STORE = {"Cache-Control": "no-store"}
-
-
 def _refusal(reason: str, status: int) -> JSONResponse:
-    return JSONResponse({"detail": {"reason": reason}}, status_code=status, headers=_NO_STORE)
+    return JSONResponse({"detail": {"reason": reason}}, status_code=status, headers=NO_STORE)
 
 
 async def _gate(
@@ -106,55 +86,8 @@ async def _gate(
     return db, Buyer(ctx.user_id, str(rid))
 
 
-def _view(state: State | None) -> SubscriptionOut | None:
-    if state is None:
-        return None
-    return SubscriptionOut(
-        plan=state.plan_id, status=state.status, period_start=state.period_start,
-        period_end=state.period_end, next_plan=state.next_plan_id,
-        cancel_at_end=state.cancel_at_end,
-    )  # fmt: skip
-
-
-def _offers(state: State | None, prices: dict[str, PlanPrice], now: datetime) -> list[OfferOut]:
-    rank = (
-        prices[state.plan_id].offer.rank if state is not None and state.plan_id in prices else None
-    )
-    active = state is not None and state.status == "active"
-    out: list[OfferOut] = []
-    for plan in prices.values():
-        offer = plan.offer
-        if plan.offer.plan_id == FREE_PLAN:
-            continue
-        higher = not active or (rank is not None and offer.rank > rank)
-        quote = (
-            checkout_quote(state, rank, offer, now)
-            if higher
-            else change_quote(state, rank, offer, now)
-        )
-        if isinstance(quote, Quote):
-            action, charge, reason = quote.kind, quote.amount_minor, None
-        else:
-            action, charge = None, None
-            reason = quote.reason if isinstance(quote, Refusal) else quote
-        out.append(
-            OfferOut(
-                plan=offer.plan_id, name=plan.name, price_minor=offer.price_minor,
-                currency=offer.currency, action=action, charge_minor=charge, reason=reason,
-            )
-        )  # fmt: skip
-    return out
-
-
 async def _now(session: AsyncSession) -> datetime:
     return (await session.execute(_NOW)).scalar_one()
-
-
-async def _snapshot(session: AsyncSession, uid: UUID, now: datetime) -> JSONResponse:
-    state = await writer_sql.load_state(session, uid)
-    prices = await read_prices(session)
-    body = BillingOut(can_buy=True, subscription=_view(state), offers=_offers(state, prices, now))
-    return JSONResponse(body.model_dump(mode="json"), headers=_NO_STORE)
 
 
 async def _recheck(session: AsyncSession, buyer: Buyer, settings: Settings) -> None:
@@ -169,6 +102,31 @@ def _key(value: str | None) -> str:
     return value
 
 
+async def _checkout_quote(
+    session: AsyncSession, uid: UUID, body: CheckoutIn, now: datetime, provider: str
+) -> tuple[Quote, dict[str, PlanPrice]]:
+    stored = await writer_sql.load_state(session, uid)
+    if (
+        stored is not None
+        and stored.status == "active"
+        and stored.provider not in (provider, "dummy")
+    ):
+        raise BillingRefused("provider_conflict")  # a Paddle subscription changes through Paddle
+    state = as_seen_by(stored, provider)
+    prices = await read_prices(session)
+    plan = prices.get(body.plan)
+    if plan is None or plan.offer.plan_id == FREE_PLAN:
+        raise BillingRefused("unknown_plan", 422)
+    quote = checkout_quote(state, rank_of(state, prices), plan.offer, now)
+    if isinstance(quote, Refusal):
+        raise BillingRefused(quote.reason)
+    if isinstance(quote, str):
+        raise BillingRefused(quote)
+    if quote.amount_minor != body.expected_amount_minor:
+        raise BillingRefused("quote_changed")
+    return quote, prices
+
+
 @router.get("", response_model=BillingOut)
 async def get_billing(
     request: Request,
@@ -179,7 +137,7 @@ async def get_billing(
     async with billing_session(db, buyer, "prices") as session:
         await _recheck(session, buyer, settings)
         now = await _now(session)
-        return await _snapshot(session, buyer.user_id, now)
+        return await snapshot(session, buyer.user_id, now, provider=settings.billing_provider)
 
 
 @router.post("/checkout", response_model=BillingOut)
@@ -189,32 +147,26 @@ async def checkout(
     gate: Annotated[tuple[AdminDb, Buyer], Depends(_gate)],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> Any:
+    """Dummy completes at once; a Paddle provider links a hosted checkout (or asks Paddle for the
+    upgrade) and the signed notification completes it (`billing.webhook`)."""
     db, buyer = gate
     key = _key(idempotency_key)
     settings: Settings = request.app.state.settings
-    uid: UUID = buyer.user_id
+    provider, uid, url = settings.billing_provider, buyer.user_id, None
     async with billing_session(db, buyer, "checkout", write=True) as session:
         await _recheck(session, buyer, settings)
         now = await _now(session)
-        ident = event_id(uid, "checkout", key)
-        if not await writer_sql.event_seen(session, PROVIDER, ident):
-            state = await writer_sql.load_state(session, uid)
-            prices = await read_prices(session)
-            plan = prices.get(body.plan)
-            if plan is None or plan.offer.plan_id == FREE_PLAN:
-                raise BillingRefused("unknown_plan", 422)
-            rank = prices[state.plan_id].offer.rank if state and state.plan_id in prices else None
-            quote = checkout_quote(state, rank, plan.offer, now)
-            if isinstance(quote, Refusal):
-                raise BillingRefused(quote.reason)
-            if isinstance(quote, str):
-                raise BillingRefused(quote)
-            if quote.amount_minor != body.expected_amount_minor:
-                raise BillingRefused("quote_changed")
+        if provider != PROVIDER:
+            quote, prices = await _checkout_quote(session, uid, body, now, provider)
+            url = await hosted.checkout(
+                request.app.state, session, uid, provider, quote, key, now, prices
+            )
+        elif not await writer_sql.event_seen(session, PROVIDER, event_id(uid, "checkout", key)):
+            quote, _ = await _checkout_quote(session, uid, body, now, provider)
             made = await DummyProvider(now).checkout(quote, owner_id=uid, idempotency_key=key)
             if made.event is not None:
                 await writer.apply(session, uid, made.event, now=now)
-        return await _snapshot(session, uid, now)
+        return await snapshot(session, uid, now, provider=provider, url=url)
 
 
 @router.post("/change", response_model=BillingOut)
@@ -224,6 +176,7 @@ async def change(
     gate: Annotated[tuple[AdminDb, Buyer], Depends(_gate)],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> Any:
+    """Through the stored subscription's own provider: Dummy, or Paddle (told first)."""
     db, buyer = gate
     key = _key(idempotency_key)
     settings: Settings = request.app.state.settings
@@ -231,11 +184,11 @@ async def change(
     async with billing_session(db, buyer, "change", write=True) as session:
         await _recheck(session, buyer, settings)
         now = await _now(session)
-        ident = event_id(uid, "change", key)
-        if not await writer_sql.event_seen(session, PROVIDER, ident):
-            state = await writer_sql.load_state(session, uid)
+        state = await writer_sql.load_state(session, uid)
+        held = PROVIDER if state is None else state.provider
+        ident = event_id(uid, "change", key) if held == PROVIDER else change_event_id(uid, key)
+        if not await writer_sql.event_seen(session, held, ident):
             prices = await read_prices(session)
-            rank = prices[state.plan_id].offer.rank if state and state.plan_id in prices else None
             # Free is a cancel, never a downgrade quote (ADR 0031 section 5).
             target = None
             if body.plan != FREE_PLAN:
@@ -243,16 +196,22 @@ async def change(
                 if found is None:
                     raise BillingRefused("unknown_plan", 422)
                 target = found.offer
-            quote = change_quote(state, rank, target, now)
+            quote = change_quote(state, rank_of(state, prices), target, now)
             if isinstance(quote, Refusal):
                 raise BillingRefused(quote.reason)
             if isinstance(quote, str):
                 raise BillingRefused(quote)
-            event = await DummyProvider(now).schedule_change(
-                quote, owner_id=uid, idempotency_key=key
-            )
-            await writer.apply(session, uid, event, now=now)
-        return await _snapshot(session, uid, now)
+            if held == PROVIDER:
+                event = await DummyProvider(now).schedule_change(
+                    quote, owner_id=uid, idempotency_key=key
+                )
+                await writer.apply(session, uid, event, now=now)
+            else:
+                args = (request.app.state, session, uid, held, quote, key, now, prices)
+                event, current = await hosted.change(*args)
+                await writer.apply(session, uid, event, now=now)
+                await hosted.record_change(session, event, current, now)
+        return await snapshot(session, uid, now, provider=settings.billing_provider)
 
 
 async def refusal_response(_request: Request, exc: Exception) -> Response:

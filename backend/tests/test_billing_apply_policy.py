@@ -68,6 +68,34 @@ def test_a_dummy_started_is_refused_while_a_real_provider_subscription_is_active
     assert decide(paddle, renewed(), seen=False, expected=PAID) == Refused("provider_conflict")
 
 
+@pytest.mark.parametrize("provider", ["paddle", "fake_paddle"])
+def test_a_paddle_start_replaces_an_active_dummy_and_revokes_its_rows(provider: str) -> None:
+    """ADR 0032 section 5: the only provider replacement the writer allows."""
+    done = decide(STATE, started(provider=provider), seen=False, expected=PAID)
+    assert isinstance(done, Applied)
+    assert done.revoke_running
+    assert done.state.provider == provider
+    assert decide(None, started(provider=provider), seen=False, expected=PAID) == Applied(
+        State(provider, "instructor", T0, END, 31, 1000, "USD"),
+        done.grant,
+    )
+
+
+@pytest.mark.parametrize(
+    ("stored", "incoming"),
+    [("paddle", "fake_paddle"), ("fake_paddle", "paddle"), ("fake_paddle", "dummy")],
+)
+def test_no_other_provider_replacement_is_allowed(stored: str, incoming: str) -> None:
+    state = replace(STATE, provider=stored)
+    found = decide(state, started(provider=incoming), seen=False, expected=PAID)
+    assert found == Refused("provider_conflict")
+
+
+def test_a_paddle_renewal_never_lands_on_a_dummy_subscription() -> None:
+    found = decide(STATE, renewed(provider="fake_paddle"), seen=False, expected=PAID)
+    assert found == Refused("provider_conflict")
+
+
 def test_an_event_before_the_stored_period_is_ignored_as_stale() -> None:
     later = replace(STATE, period_start=END, period_end=period_end(END, 31))
     assert decide(later, started(), seen=False, expected=PAID) == Ignored()

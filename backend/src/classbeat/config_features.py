@@ -8,6 +8,8 @@ A ``BaseSettings`` (not a plain ``BaseModel``) only so its ``model_config`` type
 ``Settings``'; the mixin adds no config of its own and declares no ``SecretStr`` field.
 """
 
+from typing import Literal
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
@@ -51,6 +53,19 @@ class FeatureSettings(BaseSettings):
     # ADR 0031 section 6 (#948): the environment's billing switch. Off, and `true` is refused
     # while no real provider exists (M7b): only the Dummy provider runs, for admins and testers.
     billing_enabled: bool = False
+    # ADR 0032 section 4 (#973): which provider a checkout uses. ``fake_paddle`` (test and compose
+    # only, refused in prod) runs the Paddle flow over ``billing.fake_paddle``; ``paddle`` is
+    # refused until the real HTTP client exists (M7b-real, the owner's step).
+    billing_provider: Literal["dummy", "fake_paddle", "paddle"] = "dummy"
+
+    @field_validator("billing_provider")
+    @classmethod
+    def _refuse_real_paddle(cls, value: str) -> str:
+        if value == "paddle":
+            raise ValueError(
+                "billing_provider cannot be paddle: the real Paddle client is not written yet"
+            )
+        return value
 
     @field_validator("billing_enabled")
     @classmethod
