@@ -2,6 +2,7 @@ import { expect, test } from './helpers'
 import {
   addAuthenticator,
   addPasskey,
+  holdPasskeys,
   passkeyUse,
   sessionSecondsLeft,
   signInWithPasskey,
@@ -18,10 +19,12 @@ const DAY = 86_400
 const NOTICE = 'Signed in with your phone or security key; sign out when you are done.'
 
 test('a roaming passkey signs in for at most 24 hours and shows the notice', async ({ page }) => {
-  await addAuthenticator(page, 'usb')
+  const authenticator = await addAuthenticator(page, 'usb')
   const email = await userOnSecurityTab(page, 'pk-phone')
   await addPasskey(page, 'Security key')
+  const giveBack = await holdPasskeys(authenticator)
   await signOut(page, email)
+  await giveBack()
 
   await signInWithPasskey(page)
   await expect(page.getByText(NOTICE)).toBeVisible()
@@ -29,15 +32,18 @@ test('a roaming passkey signs in for at most 24 hours and shows the notice', asy
   expect(left).toBeLessThanOrEqual(DAY)
   expect(left).toBeGreaterThan(DAY - 600)
 
+  await holdPasskeys(authenticator)
   await signOut(page, email)
   await expect(page.getByText(NOTICE)).toHaveCount(0)
 })
 
 test('a platform passkey keeps the normal session length and shows no notice', async ({ page }) => {
-  await addAuthenticator(page, 'internal')
+  const authenticator = await addAuthenticator(page, 'internal')
   const email = await userOnSecurityTab(page, 'pk-platform')
   await addPasskey(page, 'This laptop')
+  const giveBack = await holdPasskeys(authenticator)
   await signOut(page, email)
+  await giveBack()
 
   await signInWithPasskey(page)
   await expect(page.getByText(NOTICE)).toHaveCount(0)
