@@ -18,7 +18,7 @@ import pytest
 from agentfake import CONFIG, analysed, brief
 from classbeat.agent import choose_songs, design, model_input, revise, running, section_energy
 from classbeat.agent.mix_input import track_detail as mix_track_detail
-from classbeat.agent.songs import PickPlan, PoolTrack, analysed_pool, pool_view
+from classbeat.agent.songs import KeptSong, PickPlan, PoolTrack, analysed_pool, pool_view
 from classbeat.evals import song_checks
 from classbeat.evals.pick import run_pick_case
 from classbeat.evals.suite import load_suite
@@ -255,6 +255,52 @@ def test_the_get_pool_answer_has_exactly_the_pinned_top_level_keys(
     if "sections_omitted_from_track" in truncated:
         assert type(truncated["sections_omitted_from_track"]) is int
         assert 0 <= truncated["sections_omitted_from_track"] < shown
+
+
+def test_the_replace_mode_answer_adds_only_the_kept_songs_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kept = KeptSong(0, "K" * 22, "kept title", "kept artist", "warmup", 100.0, 240)
+    plan = PickPlan.build(brief(), replace=["climb"], kept=[kept])
+    tracks = [dataclasses.replace(t, sections=SPANS8) for t in pool_of(monkeypatch)[:1]]
+    out = choose_songs.ChooseContext.build(plan, tracks, 0).pool_answer()
+    assert set(out) == TOP_KEYS | {"kept_songs"}
+    assert len(out["kept_songs"]) == 1
+    assert "sections" not in out["kept_songs"][0]  # a kept song shows no spans
+
+
+def fitted(shown: int, limit_tracks: int) -> dict[str, Any]:
+    """``fit_pool_answer`` on ``shown`` tracks, the first without spans, cut to ``limit_tracks``
+    whole tracks (the limit is that answer's size with both added keys: the cut lands there)."""
+
+    def answer(count: int) -> dict[str, Any]:
+        views = [{"index": i, "title": "t" * 200} for i in range(count)]
+        for v in views[1:]:  # track 0 has no spans: the stripping stops at track 1
+            v["sections"] = [[0, 30, 0.5]] * 8
+        return {"tracks": views, "omitted_no_bpm": 0}
+
+    target = answer(limit_tracks)
+    for v in target["tracks"][1:]:
+        v.pop("sections")
+    target["sections_omitted_from_track"] = 1  # present while the cut is measured
+    target["truncated"] = {"tracks_shown": limit_tracks, "tracks_total": shown}
+    limit = len(json.dumps(target, ensure_ascii=False, separators=(",", ":")).encode())
+    out = answer(shown)
+    section_energy.fit_pool_answer(out, limit, shown)
+    return out
+
+
+def test_a_stale_sections_omitted_key_is_dropped_when_its_track_was_cut() -> None:
+    out = fitted(shown=4, limit_tracks=1)  # the key would name track 1, which is gone
+    assert len(out["tracks"]) == 1
+    assert out["truncated"] == {"tracks_shown": 1, "tracks_total": 4}
+    assert "sections_omitted_from_track" not in out
+
+
+def test_the_sections_omitted_key_stays_when_its_track_was_not_cut() -> None:
+    out = fitted(shown=4, limit_tracks=2)  # track 1 is the last one shown: index 1 < 2 tracks
+    assert len(out["tracks"]) == 2
+    assert out["sections_omitted_from_track"] == 1
 
 
 def test_a_pool_that_fits_keeps_every_span(monkeypatch: pytest.MonkeyPatch) -> None:

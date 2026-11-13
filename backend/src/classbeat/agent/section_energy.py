@@ -75,8 +75,9 @@ def pool_sections(
 def fit_pool_answer(out: dict[str, Any], limit: int, total: int) -> None:
     """Cut ``get_pool``'s answer in place to ``limit`` bytes: the ``sections`` of the last tracks
     go first (``sections_omitted_from_track`` is the index of the first track that lost them),
-    then whole tracks from the end (``truncated``). The only keys this adds, both ints, are
-    pinned by ``tests/test_section_energy.py``."""
+    then whole tracks from the end (``truncated``). The only keys this adds are
+    ``sections_omitted_from_track`` (an int) and ``truncated`` (an object with ``tracks_shown``
+    and ``tracks_total``), pinned by ``tests/test_section_energy.py``."""
     views: list[dict[str, Any]] = out["tracks"]
 
     def size() -> int:
