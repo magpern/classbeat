@@ -72,6 +72,24 @@ export async function heldCredentials(authenticator: VirtualAuthenticator): Prom
   return credentials.length
 }
 
+/**
+ * Takes the device's passkeys out for a sign-out and returns a function that puts them back. The
+ * sign-in page the sign-out shows runs the autofill ceremony at once, and a virtual authenticator
+ * answers it on its own (automatic presence), so with a passkey still held the user is signed
+ * straight back in within a few tens of milliseconds and `signOut` may never see the sign-in page.
+ * The server keeps the passkeys; only the device forgets them until `giveBack`.
+ */
+export async function holdPasskeys(authenticator: VirtualAuthenticator): Promise<() => Promise<void>> {
+  const { client, id: authenticatorId } = authenticator
+  const { credentials } = await client.send('WebAuthn.getCredentials', { authenticatorId })
+  await client.send('WebAuthn.clearCredentials', { authenticatorId })
+  return async () => {
+    for (const credential of credentials) {
+      await client.send('WebAuthn.addCredential', { authenticatorId, credential })
+    }
+  }
+}
+
 /** A new user with a password, signed in by it, on the security tab of the account page. */
 export async function userOnSecurityTab(page: Page, tag: string): Promise<string> {
   const email = uniqueEmail(tag)
@@ -97,6 +115,7 @@ export async function addPasskey(page: Page, label: string): Promise<void> {
   await expect(page.getByRole('button', { name: `Remove ${label}` })).toBeVisible()
 }
 
+/** Signs out from the account menu. A device that still holds a passkey signs straight back in: see `holdPasskeys`. */
 export async function signOut(page: Page, email: string): Promise<void> {
   await page.getByRole('button', { name: email }).click()
   await page.getByRole('menuitem', { name: 'Sign out' }).click()

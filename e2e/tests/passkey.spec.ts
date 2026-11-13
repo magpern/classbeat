@@ -5,6 +5,7 @@ import {
   addPasskey,
   ageReauth,
   heldCredentials,
+  holdPasskeys,
   openSecurityTab,
   passkeyLabels,
   passkeyUse,
@@ -29,7 +30,9 @@ test('register a passkey, sign out and sign in with it, no password typed', asyn
   expect(passkeyLabels(email)).toEqual(['Work laptop'])
   await expect(page.getByText('This device only')).toBeVisible()
 
+  const giveBack = await holdPasskeys(authenticator)
   await signOut(page, email)
+  await giveBack()
   await signInWithPasskey(page)
   await expect(page.getByRole('button', { name: email })).toBeVisible()
   // a platform passkey is the user's own device: no shared-computer notice
@@ -104,16 +107,20 @@ test('a removed passkey no longer signs in, and the password still does', async 
 })
 
 test('two users each sign in with their own passkey', async ({ page, browser }) => {
-  await addAuthenticator(page)
+  const authenticator = await addAuthenticator(page)
   const first = await userOnSecurityTab(page, 'pk-two-a')
   await addPasskey(page, 'First phone')
+  const giveBackFirst = await holdPasskeys(authenticator)
   await signOut(page, first)
 
   const other = await secondUser(browser)
   try {
     const second = await userOnSecurityTab(other.page, 'pk-two-b')
     await addPasskey(other.page, 'Second phone')
+    const giveBackSecond = await holdPasskeys(other.authenticator)
     await signOut(other.page, second)
+    await giveBackFirst()
+    await giveBackSecond()
 
     await signInWithPasskey(page)
     await expect(page.getByRole('button', { name: first })).toBeVisible()
