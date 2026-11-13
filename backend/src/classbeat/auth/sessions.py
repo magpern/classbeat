@@ -6,21 +6,24 @@ same transaction as its other writes. All times are the database's ``now()``.
 
 Each session also keeps its client mark (``anomaly.ClientMark``; ADR 0003 amendment of
 2026-11-05, #632): set at sign-in and on every rotation, compared on every request that resolves
-it with a mark. A different mark is recorded, clears the recent authentication, MFA and step-up
-times and flags the session as seen from a new location; it never signs the session out.
+it with a mark (``session_marks``). A different mark is recorded, clears the recent
+authentication, MFA and step-up times and flags the session as seen from a new location; it never
+signs the session out. A ``Peerless`` request (no peer address, #926, #1023) compares and stores
+no mark and proves nothing: it resolves without those times, a sign-in from it starts without
+them and a rotation from it keeps the row as it was.
 """
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import case, delete, func, insert, or_, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from classbeat.auth.anomaly import EVENT_INTERVAL, EVENT_KIND, ClientMark
-from classbeat.auth.events import record_event
+from classbeat.auth.anomaly import ClientMark, Peerless, RequestMark
 from classbeat.auth.keys import new_token, token_hash
+from classbeat.auth.session_marks import compare_mark
 from classbeat.auth.tables import mfa_totp, sessions, users
 from classbeat.config import Settings
 from classbeat.db import system_session
@@ -113,13 +116,18 @@ async def resolve_session(
     factory: async_sessionmaker[AsyncSession],
     settings: Settings,
     token: str | None,
-    mark: ClientMark | None = None,
+    mark: RequestMark | None = None,
     *,
     ip: str | None = None,
 ) -> Resolution:
     """ADR 0003 section 2, steps 2 to 4, and with ``mark`` (the request's client mark; ``ip`` its
     address, for the event) the comparison of the amendment of 2026-11-05 (#632). Without a mark
-    (the SSE stream's periodic check) nothing is compared."""
+    (the SSE stream's periodic check) nothing is compared.
+
+    #926: a ``Peerless`` request (uvicorn's ``getpeername()`` failed: the client reset the
+    connection, an aborted fetch, yet its request is still read) has no network to compare. A mark
+    of ``unknown`` would be a move that clears the times the browser's next requests still need,
+    so nothing is compared or stored, and only this request runs without them (fail closed)."""
     if not token:
         return Resolution("anonymous")
     async with system_session(factory) as db:
@@ -164,7 +172,8 @@ async def resolve_session(
             .where(sessions.c.id == row.id, sessions.c.last_seen_at < func.now() - TOUCH_INTERVAL)
             .values(last_seen_at=func.now())
         )
-        moved = mark is not None and await _compare_mark(db, row, mark, ip)
+        moved = isinstance(mark, ClientMark) and await compare_mark(db, row, mark, ip)
+    unproven = moved or isinstance(mark, Peerless)
     return Resolution(
         "ok",
         SessionInfo(
@@ -177,88 +186,14 @@ async def resolve_session(
             expires_at=row.expires_at,
             # A move clears them for this request too, even when a parallel request's update
             # won the race and this one changed nothing.
-            reauth_at=None if moved else row.reauth_at,
-            mfa_at=None if moved else row.mfa_at,
-            stepup_at=None if moved else row.stepup_at,
+            reauth_at=None if unproven else row.reauth_at,
+            mfa_at=None if unproven else row.mfa_at,
+            stepup_at=None if unproven else row.stepup_at,
             now=row.now,
             totp_enabled=row.totp_enabled,
             locale=row.locale,
         ),
     )
-
-
-def _differs(stored_hash: bytes | None, stored_agent: str | None, mark: ClientMark) -> bool:
-    return (stored_hash is not None and bytes(stored_hash) != mark.ip_hash) or (
-        stored_agent is not None and stored_agent != mark.agent
-    )
-
-
-async def _compare_mark(db: AsyncSession, row: Any, mark: ClientMark, ip: str | None) -> bool:
-    """Compare the request's mark with the session's (#632). Returns whether it moved.
-
-    No stored mark (a session from before migration 0033): adopt this one silently. A different
-    one: store it, clear ``reauth_at``, ``mfa_at`` and ``stepup_at``, set ``location_changed_at``,
-    and write a ``session_location_changed`` event when ``location_event_at`` (the last event) is
-    unset or at least ``EVENT_INTERVAL`` old. That choice is made inside the conditional update,
-    on the locked row: of parallel moves (with the same or different marks) only one sets
-    ``location_event_at`` and writes the event, and moves that keep coming less than a minute
-    apart still write one event a minute (the interval runs from the last event, not the last
-    move). Never a sign-out.
-    """
-    if row.seen_ip_hash is None or row.seen_agent is None:
-        await db.execute(
-            update(sessions)
-            .where(
-                sessions.c.id == row.id,
-                or_(sessions.c.seen_ip_hash.is_(None), sessions.c.seen_agent.is_(None)),
-            )
-            .values(seen_ip_hash=mark.ip_hash, seen_agent=mark.agent)
-        )
-        return False
-    if not _differs(row.seen_ip_hash, row.seen_agent, mark):
-        return False
-    due = or_(
-        sessions.c.location_event_at.is_(None),
-        sessions.c.location_event_at <= func.now() - EVENT_INTERVAL,
-    )
-    changed = (
-        await db.execute(
-            update(sessions)
-            .where(
-                sessions.c.id == row.id,
-                or_(
-                    sessions.c.seen_ip_hash.is_distinct_from(mark.ip_hash),
-                    sessions.c.seen_agent.is_distinct_from(mark.agent),
-                ),
-            )
-            .values(
-                seen_ip_hash=mark.ip_hash,
-                seen_agent=mark.agent,
-                location_changed_at=func.now(),
-                location_event_at=case((due, func.now()), else_=sessions.c.location_event_at),
-                reauth_at=None,
-                mfa_at=None,
-                stepup_at=None,
-            )
-            # RETURNING sees the new row: the event is this transaction's when it stamped its
-            # own ``now()`` (a parallel winner's update holds an earlier transaction's time).
-            .returning((sessions.c.location_event_at == func.now()).label("recorded"))
-        )
-    ).first()
-    if changed is not None and changed.recorded:
-        await record_event(
-            db,
-            EVENT_KIND,
-            user_id=row.user_id,
-            ip=ip,
-            detail={
-                "session_id": str(row.id),
-                "ip_changed": bytes(row.seen_ip_hash) != mark.ip_hash,
-                "agent_changed": row.seen_agent != mark.agent,
-                "agent": mark.agent,
-            },
-        )
-    return True
 
 
 async def start_session(
@@ -270,7 +205,7 @@ async def start_session(
     ip: str | None,
     replacing_token: str | None = None,
     mfa: bool = False,
-    mark: ClientMark | None,
+    mark: RequestMark | None,
 ) -> IssuedSession:
     """Sign-in: a new token in a new row, with the browser's old session (if any) deleted.
 
@@ -279,6 +214,10 @@ async def start_session(
     its absolute limit) and its ``mfa_at`` and ``stepup_at``; otherwise it starts clean. ``mark``
     is the signing-in request's client mark (#632); every route passes it
     (``tests/test_session_anomaly.py`` checks), ``None`` only in tests.
+
+    A ``Peerless`` sign-in (#1023) stores no mark and no address, and no ``reauth_at``,
+    ``mfa_at`` or ``stepup_at``, inherited or new: the row's first request with an address adopts
+    its mark silently (``session_marks``), so a time stored here would hold on any network.
     """
     inherited = None
     if replacing_token:
@@ -312,6 +251,8 @@ async def start_session(
         ):
             inherited = old
     same_user = inherited is not None  # only this user's own, still valid session passes on
+    marked = mark if isinstance(mark, ClientMark) else None
+    proved = not isinstance(mark, Peerless)
     token = new_token()
     now = func.now()
     row = (
@@ -323,15 +264,17 @@ async def start_session(
                 expires_at=inherited.expires_at
                 if same_user and inherited
                 else now + timedelta(days=settings.session_absolute_days),
-                reauth_at=now,
-                mfa_at=func.now()
+                reauth_at=now if proved else None,
+                mfa_at=None
+                if not proved
+                else func.now()
                 if mfa
                 else (inherited.mfa_at if same_user and inherited else None),
-                stepup_at=inherited.stepup_at if same_user and inherited else None,
+                stepup_at=inherited.stepup_at if proved and same_user and inherited else None,
                 user_agent=_truncate(user_agent),
-                ip=ip,
-                seen_ip_hash=mark.ip_hash if mark else None,
-                seen_agent=mark.agent if mark else None,
+                ip=ip if proved else None,
+                seen_ip_hash=marked.ip_hash if marked else None,
+                seen_agent=marked.agent if marked else None,
             )
             .returning(sessions.c.id, sessions.c.expires_at, _remaining())
         )
@@ -352,14 +295,16 @@ async def rotate_session(
     stepup: bool = False,
     user_agent: str | None = None,
     ip: str | None = None,
-    mark: ClientMark | None,
+    mark: RequestMark | None,
 ) -> IssuedSession:
     """After MFA verification or re-authentication: a new token in a new row, the old row
     deleted, ``expires_at`` unchanged, ``mfa_at``, ``reauth_at`` and ``stepup_at`` carried over
     unless this rotation sets them. No grace period: the old token is dead at once.
 
     The rotating request proved the user again, so the new row takes its client ``mark`` and no
-    longer counts as seen from a new location (#632). Without a mark the old one is kept."""
+    longer counts as seen from a new location (#632). Without a mark the old one is kept. A
+    ``Peerless`` rotation (#1023) keeps the old row's mark, address, ``User-Agent``, flag and times
+    and sets none of ``reauth``, ``mfa`` or ``stepup``: the old mark would vouch for them."""
     old = (
         await db.execute(
             delete(sessions)
@@ -381,6 +326,9 @@ async def rotate_session(
     ).first()
     if old is None:
         raise SessionGone
+    peerless = isinstance(mark, Peerless)
+    marked = mark if isinstance(mark, ClientMark) else None
+    reauth, mfa, stepup = (False, False, False) if peerless else (reauth, mfa, stepup)
     proved = reauth or mfa or stepup
     token = new_token()
     row = (
@@ -394,11 +342,11 @@ async def rotate_session(
                 reauth_at=func.now() if reauth else old.reauth_at,
                 mfa_at=func.now() if mfa else old.mfa_at,
                 stepup_at=func.now() if stepup else old.stepup_at,
-                user_agent=_truncate(user_agent) or old.user_agent,
-                ip=ip or old.ip,
-                seen_ip_hash=mark.ip_hash if mark else old.seen_ip_hash,
-                seen_agent=mark.agent if mark else old.seen_agent,
-                location_changed_at=None if proved and mark else old.location_changed_at,
+                user_agent=old.user_agent if peerless else _truncate(user_agent) or old.user_agent,
+                ip=old.ip if peerless else ip or old.ip,
+                seen_ip_hash=marked.ip_hash if marked else old.seen_ip_hash,
+                seen_agent=marked.agent if marked else old.seen_agent,
+                location_changed_at=None if proved and marked else old.location_changed_at,
                 location_event_at=old.location_event_at,  # the event interval runs on
             )
             .returning(sessions.c.id, sessions.c.expires_at, _remaining())

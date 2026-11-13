@@ -22,7 +22,7 @@ Why ``NO KEY UPDATE`` and not ``FOR UPDATE`` (#639 review): two ``NO KEY UPDATE`
 which is all the ordering above needs, but neither blocks the ``FOR KEY SHARE`` that the foreign
 key check of any insert referencing ``users`` takes. ``FOR UPDATE`` would: the session middleware
 locks a session row and then inserts an ``auth_events`` row for its user (a new network or
-browser, ``sessions._compare_mark``), while a reset or rotation holding the user lock waits for
+browser, ``session_marks.compare_mark``), while a reset or rotation holding the user lock waits for
 that session row, which is a deadlock.
 """
 

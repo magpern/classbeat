@@ -19,8 +19,7 @@ import pytest
 from sqlalchemy import text
 
 from authtools import ORIGIN, Env, running_env
-from classbeat.auth import reset_routes, signin_routes, totp
-from classbeat.auth import sessions as sessions_module
+from classbeat.auth import reset_routes, session_marks, signin_routes, totp
 from classbeat.auth.anomaly import EVENT_KIND
 from flows import PASSWORD, Browser, reason, signed_in, user_with_password
 from mfatools import admin_with_totp, step_of
@@ -323,7 +322,7 @@ def park_location_event(monkeypatch: pytest.MonkeyPatch):
     """Park the middleware between its session ``UPDATE`` (the row stays locked) and its
     ``auth_events`` insert, whose foreign key takes ``FOR KEY SHARE`` on the user row."""
     inside, release = asyncio.Event(), asyncio.Event()
-    original = sessions_module.record_event
+    original = session_marks.record_event
 
     async def wrapper(db: Any, kind: str, **kwargs: Any) -> None:
         if kind == EVENT_KIND:
@@ -331,7 +330,7 @@ def park_location_event(monkeypatch: pytest.MonkeyPatch):
             await release.wait()
         await original(db, kind, **kwargs)
 
-    monkeypatch.setattr(sessions_module, "record_event", wrapper)
+    monkeypatch.setattr(session_marks, "record_event", wrapper)
     return inside, release
 
 
