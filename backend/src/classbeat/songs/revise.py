@@ -28,6 +28,11 @@
   request (cut to the brief's 2000 characters); the new ``song_list`` (``provenance.origin =
   "revise_songs"``, parent: the base's list) marks the new songs ``new``. The approval is
   ``design_with_songs``' (``approve_check``).
+  A class that states values first has the request read by the ``interpret`` stage and layered
+  (``revise_reading``, ``revise_layer_policy``, as a design revise does, #1023): the pick is sized
+  by the layered brief and the closed reading is kept in the list's ``provenance.reading`` (never
+  the request's words), so phase 2 and a resume layer the same reading with no second run. The
+  run is the job's own, under the song job's cost ceiling, and a catalogue replace skips it.
   A catalogue replace (ADR 0016 section 6, ``match_revision_id``) uses the server's slots and a
   status-only fact in place of ``replace`` and ``request``. The fact is the only Swedebeat
   material the model sees. After approval the job matches the new list
@@ -36,18 +41,17 @@
 - **Phase 2** (approved, or ``mode = "resume"``): ``classbeat.songs.phase2.final_music`` (prepare,
   which also requires the base to be still current before any Spotify write, a **new** final
   playlist with the full list, fill, attach, music); then the ``revise`` stage
-  (ADR 0007 section 3) on the base draft, the new music, the requests along the parent chain and
-  the request, told the songs changed; the final transaction: ``final_checks``, the draft
-  revision (parent: the base, ``music.song_list_id``), the compare-and-set of
-  ``current_revision_id`` **and** ``music_source`` (the new final playlist) from the base, the
-  final playlist's MOWL id and the assistant message (a class whose ``music_source`` is ``none``
-  rolls it back ``invalid_input``, ``music_kind.check_stored``). If the base is no longer
-  current the revision is kept, not current, and the class's music is unchanged. The earlier
+  (ADR 0007 section 3, ``revise_phase2``) on the base draft, the new music, the requests along the
+  parent chain and the request, told the songs changed; the final transaction:
+  ``final_checks``, the draft revision (parent: the base, ``music.song_list_id``), the
+  compare-and-set of ``current_revision_id`` **and** ``music_source`` (the new final playlist)
+  from the base, the final playlist's MOWL id and the assistant message (a class whose
+  ``music_source`` is ``none`` rolls it back ``invalid_input``, ``music_kind.check_stored``). If
+  the base is no longer current the revision is kept, not current, and the class's music is
+  unchanged. The earlier
   ``class_playlists`` row and its playlist are never touched (history).
 """
 
-import hashlib
-import json
 import uuid
 from typing import Final
 from uuid import UUID
@@ -57,47 +61,32 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import quota
-from classbeat.agent import AgentConfig, Brief, JobStageHost, run_stage
-from classbeat.agent.provider import ModelProvider
-from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
-from classbeat.agent.stored_draft import stored_draft
+from classbeat.agent import Brief
 from classbeat.context import UserContext
-from classbeat.crypto.keks import KeyRing
-from classbeat.design import chat, corrections, diff, limits, music_kind, revision
-from classbeat.design.games_policy import RETIRED, has_retired_game
-from classbeat.design.guidance import rule_set_for
+from classbeat.design import chat, limits, music_kind
+from classbeat.design.games_policy import RETIRED
 from classbeat.design.kind import current_runtime, group_model
 from classbeat.flags import effective as flags
-from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, Outcome
+from classbeat.jobs import KINDS, JobFailure, JobKind, JobRun, Outcome
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.operations import orphans
 from classbeat.quota.route import with_plan, with_plan_run
 from classbeat.songs import admit as song_admit
-from classbeat.songs import config, song_list
-from classbeat.songs.config import SongConfig
+from classbeat.songs import config, revise_phase2, revise_reading, song_list
 from classbeat.songs.inputs import ReviseSongsInput
-from classbeat.songs.phase2 import PHASE_TWO, final_checks, final_music, mark_mowl, music_source
-from classbeat.songs.pick import SeedSpec, run_phase_one, stage_config
+from classbeat.songs.phase2 import PHASE_TWO
+from classbeat.songs.pick import SeedSpec, run_phase_one
 from classbeat.songs.revise_brief import class_brief, pick_brief
 from classbeat.songs.revise_resume import admit_resume
 from classbeat.swedebeat_match import replace as catalogue_replace
 
-KIND: Final = "revise_songs"
+KIND: Final = revise_phase2.ORIGIN
 PHASE_ONE: Final = ("pool_search", "pool_write", "pool_analyse", "choose")
 STAGES: Final = PHASE_ONE + tuple(s for s in PHASE_TWO if s != "design") + ("revise",)
 
 _BASE_LIST = text(
     "SELECT music ->> 'song_list_id' AS song_list_id FROM class_revisions "
     "WHERE owner_id = :owner_id AND class_id = :class_id AND id = :id AND kind = 'draft'"
-)
-# The current pointer and the class's music move together, from the base only.
-# A new current draft is a new song list, so a selection approved for the previous list is void.
-_CAS = text(
-    "UPDATE classes c SET current_revision_id = :revision_id, "
-    "music_source = CAST(:music_source AS jsonb), approved_swedebeat_match_id = NULL, "
-    "updated_at = now() FROM jobs j "
-    "WHERE j.id = :job_id AND j.owner_id = :owner_id AND c.owner_id = j.owner_id "
-    "AND c.id = j.class_id AND c.current_revision_id = :base RETURNING c.id"
 )
 
 
@@ -200,7 +189,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     return Admitted(stored, after_insert)
 
 
-async def _phase_one_plan(run: JobRun, given: ReviseSongsInput) -> tuple[Brief, SeedSpec]:
+async def _phase_one_plan(run: JobRun, given: ReviseSongsInput) -> tuple[Brief, str, SeedSpec]:
     owner, base = run.lease.owner_id, given.base_revision_id
     async with run.fenced() as fs:  # the brief as of the base: its stated layer applied (#904)
         found = await class_brief(fs.db, owner, run.lease.job_id, base)
@@ -220,122 +209,7 @@ async def _phase_one_plan(run: JobRun, given: ReviseSongsInput) -> tuple[Brief, 
         slots: tuple[int, ...] | None = tuple(given.catalogue_replace)
     else:
         slots = None if given.replace == "all" or given.replace is None else tuple(given.replace)
-    return pick_brief(brief, request), SeedSpec(list_id, slots)
-
-
-async def run_revise_phase_two(
-    run: JobRun,
-    given: ReviseSongsInput,
-    *,
-    keyring: KeyRing,
-    provider: ModelProvider,
-    agent: AgentConfig,
-    config: SongConfig,
-    context_requests: int,
-) -> Complete:
-    if given.base_revision_hash is None or given.request_message_id is None:
-        raise JobFailure("internal")
-    base_id, message_id = given.base_revision_id, given.request_message_id
-    base_hash = bytes.fromhex(given.base_revision_hash)
-    p, final, step = await final_music(run, keyring, given, config, base_revision_id=base_id)
-    handed_over = False  # the outcome's ``release`` closes the step from then on
-    try:
-        async with run.fenced() as fs:
-            base = await chat.load_base(
-                fs.db, fs.lease.owner_id, fs.lease.job_id, base_id, context_requests
-            )
-            request = await chat.request_body(fs.db, fs.lease.owner_id, p.class_id, message_id)
-        if base is None or base.kind != "draft" or not base.brief or request is None:
-            raise JobFailure("invalid_input")
-        if (
-            base.content_hash != base_hash
-            or hashlib.sha256(revision.canonical(base.content)).digest() != base_hash
-        ):
-            raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
-        try:
-            brief = Brief.model_validate(base.brief)
-            if brief.sport != "cycling":
-                raise JobFailure("invalid_input")  # ADR 0018: running has no song picking
-            base_draft = stored_draft(base.content, brief.sport)
-        except ValidationError:
-            raise JobFailure("internal") from None
-        if has_retired_game(base.content):
-            raise JobFailure("invalid_input")  # defence in depth: admit refuses ``game_retired``
-        rules = rule_set_for(brief, base.dismissed_rules)
-        await corrections.attach(run, step)  # the class's beat-one corrections (ADR 0007)
-        ctx = ReviseContext.build(
-            brief,
-            step.data,
-            base_draft,
-            base.earlier_requests,
-            request,
-            music_changed=True,
-            songs_changed=True,
-            rules=rules,
-            gates=given.plan_gates,  # the plan's gates at creation (#496)
-        )
-        stage = stage_config(
-            agent, config, turns=agent.limits.max_turns, calls=agent.limits.max_tool_calls
-        )
-        outcome = await run_stage(
-            JobStageHost(run), provider, revise_stage(ctx), ctx.first_message(), stage
-        )
-        if not isinstance(outcome.output, ReviseResult):
-            raise JobFailure("internal")
-        revised = outcome.output
-        draft = revision.build(
-            revised.result,
-            outcome,
-            ctx.map,
-            step,
-            origin=KIND,
-            base_revision_id=base_id,
-            base_hash=base_hash,
-            request_message_id=message_id,
-            song_list_id=p.revision_id,
-            rules=rules.provenance() if rules else None,
-        )
-        change = diff.summarize(base.content, draft.content)
-        mowl_playlist_id = step.data.playlist_id
-        source = json.dumps(music_source(final), sort_keys=True, ensure_ascii=False)
-
-        async def store(fs: FencedSession) -> UUID:
-            """``final_checks``, the revision, the compare-and-set, the MOWL id, the message."""
-            await final_checks(fs, p, final, step)
-            revision_id = await draft.store(fs)
-            # Never over a ``none`` source (#530): checked before the compare-and-set writes it.
-            await music_kind.check_stored(fs, soundless=False)
-            params = {
-                "revision_id": revision_id,
-                "music_source": source,
-                "job_id": fs.lease.job_id,
-                "owner_id": fs.lease.owner_id,
-                "base": base_id,
-            }
-            await fs.db.execute(_CAS, params)  # no row: kept, but not current
-            await mark_mowl(fs, p, final, mowl_playlist_id)
-            try:
-                await chat.insert_message(
-                    fs.db,
-                    owner_id=fs.lease.owner_id,
-                    class_id=p.class_id,
-                    job_id=fs.lease.job_id,
-                    role="assistant",
-                    body=revised.note,
-                    base_revision_id=base_id,
-                    result_revision_id=revision_id,
-                    change=change,
-                )
-            except chat.MessageRefused:
-                raise JobFailure("internal") from None
-            return revision_id
-
-        complete = Complete(store, release=step.close)
-        handed_over = True
-        return complete
-    finally:
-        if not handed_over:
-            step.close()
+    return brief, request, SeedSpec(list_id, slots)
 
 
 async def run(job_run: JobRun) -> Outcome:
@@ -357,7 +231,7 @@ async def run(job_run: JobRun) -> Outcome:
             await catalogue_replace.rematch(job_run, given.swedebeat_connection_id, named)
         # Phase 2 revises the draft (the ``design`` group), before any Spotify or MOWL call.
         model = await group_model(runtime, job_run, given.route_key, "design")
-        return await run_revise_phase_two(
+        return await revise_phase2.run_revise_phase_two(
             job_run,
             given,
             keyring=runtime.keyring,
@@ -366,13 +240,17 @@ async def run(job_run: JobRun) -> Outcome:
             config=songs,
             context_requests=runtime.context_requests,
         )
-    brief, seed = await _phase_one_plan(job_run, given)
+    brief, request, seed = await _phase_one_plan(job_run, given)
+    # #1023: a request that states values is read first, as a revise reads it; the pick is sized
+    # by the layered brief and the list keeps the reading for phase 2.
+    stated, kept = await revise_reading.phase_one(job_run, runtime, given, songs, brief, request)
     model = await group_model(runtime, job_run, given.route_key, "songs")  # phase 1: songs
     return await run_phase_one(
         job_run,
         given,
-        brief=brief,
+        brief=pick_brief(stated.brief, request),
         seed=seed,
+        extra_provenance=kept,
         origin=KIND,
         keyring=runtime.keyring,
         provider=model.provider,

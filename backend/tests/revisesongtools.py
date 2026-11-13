@@ -20,15 +20,24 @@ SCRIPTS = Path(__file__).parent / "agent_scripts"
 _KEPT_REST = [(2, "recovery"), (3, "sprint"), (4, "sprint"), (5, "recovery"), (6, "cooldown")]
 
 
-def replace_script(slot_two: int = 0) -> dict[str, Any]:
+def reading_turn(reading: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The ``interpret`` stage's turn: a class that states values reads the request first (#1023);
+    the other stages skip it (``only_in``)."""
+    call = {"name": "submit_brief", "input": reading or {}, "expect": {"accepted": True}}
+    return {"only_in": "interpret", "calls": [call]}
+
+
+def replace_script(slot_two: int = 0, reading: dict[str, Any] | None = None) -> dict[str, Any]:
     """Phase 1 of a change of slot 2: ``beta`` finds tracks 10 to 19 (refs 0 to 9; 10 to 12 are
-    kept songs, so the pool is refs 3 to 8), and pool ref ``slot_two`` takes the slot."""
+    kept songs, so the pool is refs 3 to 8), and pool ref ``slot_two`` takes the slot. The
+    interpret turn (``reading``, by default none) is for a class that states values."""
     pool = entries(
         (3, "climb"), (4, "climb"), (5, "climb"), (6, "build"), (7, "build"), (8, "climb")
     )
     return {
         "model": "fake-model",
         "turns": [
+            reading_turn(reading),
             turn(call("search_tracks", {"query": "beta"}, expect={"ok": True})),
             turn(call("submit_pool", pool, expect={"accepted": True})),
             *choose_turns(
@@ -110,3 +119,23 @@ async def changed_approved(
     assert answer.status_code == 200, answer.text
     songenv.script = revise_script()
     return job_id, list_id
+
+
+async def stated(songenv: Any, rider: Any) -> tuple[Any, Any]:
+    """A class on picked songs whose brief states its length: (class id, its draft)."""
+    class_id, base, _ = await picked(songenv, rider)
+    songenv.sql(
+        "UPDATE classes SET brief = brief || CAST(:s AS jsonb) WHERE id = :c",
+        s=json.dumps({"explicit": ["length_min"]}),
+        c=class_id,
+    )
+    return class_id, base
+
+
+def runs(songenv: Any, *job_ids: Any) -> list[str]:
+    """The agent stages of the jobs' runs, oldest first."""
+    rows = songenv.sql(
+        "SELECT stage FROM agent_runs WHERE job_id = ANY(:ids) ORDER BY started_at",
+        ids=list(job_ids),
+    ).all()
+    return [r.stage for r in rows]

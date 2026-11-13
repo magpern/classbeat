@@ -1,0 +1,35 @@
+{
+ "kind": "interpret",
+ "name": "interpret_revise_songs_length",
+ "about": "A Change songs request that states a length: it is read as any revise is, only the length is reported.",
+ "request": "Faster songs, and make it 60 minutes.",
+ "current": {
+  "length_min": 45,
+  "intensity": "hard",
+  "climbs": 2,
+  "sprints": 3,
+  "explicit": [
+   "length_min",
+   "climbs"
+  ]
+ },
+ "expect": {
+  "values": {
+   "length_min": 60
+  },
+  "origins": {
+   "length_min": "explicit"
+  },
+  "absent": [
+   "intensity",
+   "climbs",
+   "sprints",
+   "races",
+   "ftp_test",
+   "class_type",
+   "sport",
+   "music"
+  ],
+  "games": []
+ }
+}

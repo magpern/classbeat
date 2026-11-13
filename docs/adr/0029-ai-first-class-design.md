@@ -127,7 +127,7 @@ The 10 s rules live in the library alone, which covers both the tool loop
   only for reading historical records.
 - These read sites switch to it: `classes/history.py:197`, `classes/routes.py:234`,
   `design/diff.py:27`, `jobs/routes.py:373`, `design/revise.py:216`, `design/refit.py:207` and
-  `songs/revise.py:303`. History, compare and diff stay safe because `to_spec`, `tss` and
+  `songs/revise_phase2.py`. History, compare and diff stay safe because `to_spec`, `tss` and
   `total_seconds` don't look up `GAMES`.
 - **`game_retired` refuses six actions on a legacy draft:**
   - Make current;
@@ -246,11 +246,24 @@ The fields are:
   The revise stage's stated block and `ExplicitGate` then use the layered brief; a miss after the
   correction budget is Not as asked. A class that states nothing is revised as before, with no
   interpret run.
+  **Change songs (#1023)** runs the same reading and layering. Phase 1 reads the request through the
+  same interpret stage (job stage `pool_search`, under the song job's cost ceiling and counted in the
+  job's per-job accounting), layers it with `revise_layer_policy` and sizes the pick by the layered
+  brief. The closed reading (values and origins, never the request's words) is kept in the new song
+  list's `provenance.reading`; phase 2, which may run after approval or as a `resume` job, layers
+  that stored reading onto the base and runs the revise stage on the result, so interpret is not
+  run again on resume. A list without a stored reading (made before this change) is read in phase 2.
+  A catalogue replace (no request text) is not read. The revision records `provenance.interpretation`
+  and `provenance.stated` as a design revise does.
+  **Known limit:** a new game reported alone cannot be told apart from a plain addition, so no
+  `game_missing` item is recorded in that case (the stated game it may have replaced is simply
+  dropped, with no Not as asked item).
 - **Where the layered values live.** `classes.brief` stays as the first design stored it. The
   revision records the layered brief's closed part (knobs, games, explicit paths; never text) in
   `provenance.stated`, and `design/chat.load_base` applies the layer nearest the base along its
   `parent_id` chain onto the class's brief. So the next revise and a Change songs start from the
-  layered values (Change songs in both of its phases: the pick is sized by the layered length),
+  layered values, and a Change songs request is itself read and layered (above), so its pick and its
+  revision use the values the request changes,
   a refit in between keeps them, and picking an older revision picks its values.
 - **Duplicate copies the layer (#907).** `classes/duplicate.py` resolves the source revision's
   nearest stated layer (`chat.stated_layer`, the same walk as `load_base`) and writes it into the

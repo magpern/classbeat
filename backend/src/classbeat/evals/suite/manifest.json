@@ -1,6 +1,6 @@
 {
- "suite_version": 19,
- "digest": "bb4ca4acddbfb47fcd15de398ce5b14bb3b97520e2264cab5bc5ef199535169c",
+ "suite_version": 20,
+ "digest": "b3a8ac799be05a013155f510a6a12de96592462cc841d0149fb3fbe37b2cc938",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -94,7 +94,7 @@
     "interpret_explicit_kept", "interpret_game_type", "interpret_game_any",
     "interpret_running_game", "interpret_beyond_plan", "interpret_swedish", "interpret_danish",
     "interpret_revise_length", "interpret_revise_game_type", "interpret_revise_relative",
-    "interpret_revise_remove_games"
+    "interpret_revise_remove_games", "interpret_revise_songs_length"
    ]
   },
   "adversarial": {

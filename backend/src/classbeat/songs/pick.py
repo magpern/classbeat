@@ -37,11 +37,8 @@ for a kept song, from the seed list, never from the model (ADR 0013 section 9).
 """
 
 import logging
-from dataclasses import dataclass
 from typing import Any, Literal
 from uuid import UUID
-
-from sqlalchemy import text
 
 from classbeat.agent import (
     AgentConfig,
@@ -63,7 +60,7 @@ from classbeat.agent.brief import Brief
 from classbeat.agent.limits import Limits
 from classbeat.agent.provider import ModelProvider
 from classbeat.agent.schemas import SONG_SCHEMA_VERSION
-from classbeat.agent.songs import KeptSong, analysed_pool
+from classbeat.agent.songs import analysed_pool
 from classbeat.connections import OpenConnection, hold
 from classbeat.crypto.keks import KeyRing
 from classbeat.design.music import MusicStep, load_music
@@ -72,33 +69,13 @@ from classbeat.operations import attach_spotify_playlist
 from classbeat.playlists import open_spotify, write_pool
 from classbeat.songs import song_list
 from classbeat.songs.config import SongConfig
-from classbeat.songs.inputs import Seed, SongJob
+from classbeat.songs.inputs import SongJob
 from classbeat.songs.search import job_searcher
+from classbeat.songs.seed import SeedSpec, load_seeded
 
 logger = logging.getLogger(__name__)
 
 Origin = Literal["design_with_songs", "revise_songs"]
-
-
-@dataclass(frozen=True)
-class SeedSpec:
-    """The list a replace starts from and the slots to fill (``None``: every slot)."""
-
-    song_list_revision_id: UUID
-    replace: tuple[int, ...] | None
-
-    @classmethod
-    def of(cls, seed: Seed | None) -> "SeedSpec | None":
-        return None if seed is None else cls(seed.song_list_revision_id, tuple(seed.replace))
-
-
-@dataclass(frozen=True)
-class Seeded:
-    """A replace: the plan's kept songs and replaced roles, and the seed list (the parent)."""
-
-    revision_id: UUID
-    kept: tuple[KeptSong, ...]
-    roles: tuple[str, ...]
 
 
 def stage_config(agent: AgentConfig, config: SongConfig, *, turns: int, calls: int) -> AgentConfig:
@@ -120,42 +97,6 @@ def stage_config(agent: AgentConfig, config: SongConfig, *, turns: int, calls: i
         route_key=agent.route_key,
         eval_result_id=agent.eval_result_id,
     )
-
-
-async def _seeded(run: JobRun, seed: SeedSpec | None) -> Seeded | None:
-    """The seed list re-read and re-hashed through the job's own class (``invalid_input`` when
-    it no longer loads or a slot is not in it); ``admit`` checked the rest."""
-    if seed is None:
-        return None
-    async with run.fenced() as fs:
-        class_id = await _class_of(fs)
-        found = await song_list.load(
-            fs.db, run.lease.owner_id, class_id, seed.song_list_revision_id
-        )
-    if found is None:
-        raise JobFailure("invalid_input")
-    slots = len(found.content.songs)
-    replaced = set(range(slots)) if seed.replace is None else set(seed.replace)
-    if not replaced or any(slot >= slots for slot in replaced):
-        raise JobFailure("invalid_input")
-    kept = tuple(
-        KeptSong(slot, s.spotify_id, s.title, s.artist, s.role, s.bpm, s.length_sec, s.cover)
-        for slot, s in enumerate(found.content.songs)
-        if slot not in replaced
-    )
-    roles = tuple(found.content.songs[slot].role for slot in sorted(replaced))
-    return Seeded(seed.song_list_revision_id, kept, roles)
-
-
-_JOB_CLASS = text("SELECT class_id FROM jobs WHERE id = :job_id AND owner_id = :owner_id")
-
-
-async def _class_of(fs: FencedSession) -> UUID:
-    """The job's own class, from the fenced job row (never from the input)."""
-    row = (await fs.db.execute(_JOB_CLASS, fs.lease.params())).first()
-    if row is None:
-        raise JobFailure("internal")
-    return row.class_id
 
 
 async def _pool(
@@ -197,6 +138,7 @@ async def run_phase_one(
     provider: ModelProvider,
     agent: AgentConfig,
     config: SongConfig,
+    extra_provenance: dict[str, Any] | None = None,
 ) -> AwaitApproval:
     if run.ctx.connection("mowl") != given.mowl_connection_id:
         raise JobFailure("not_connected")
@@ -204,7 +146,7 @@ async def run_phase_one(
     account = spotify.account
     if account is None:  # open_spotify refuses it already
         raise JobFailure("not_connected")
-    seeded = await _seeded(run, seed)
+    seeded = await load_seeded(run, seed)
     plan = (
         PickPlan.build(brief, replace=seeded.roles, kept=seeded.kept)
         if seeded is not None
@@ -235,7 +177,7 @@ async def run_phase_one(
         built = song_list.build(
             stored[0],
             account=account,
-            provenance=stored[1],
+            provenance={**stored[1], **(extra_provenance or {})},
             parent_id=seeded.revision_id if seeded is not None else None,
             generations=_generations(spotify, step),
         )
