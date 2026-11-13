@@ -70,7 +70,7 @@ RELEASED: dict[int, str] = {
     18: "fdbf9e421d1723e891d67c6c7cf0f863d9fd334e79b2f17485cca11070e1f8e5",
     19: "bb4ca4acddbfb47fcd15de398ce5b14bb3b97520e2264cab5bc5ef199535169c",
     20: "b3a8ac799be05a013155f510a6a12de96592462cc841d0149fb3fbe37b2cc938",
-    21: "d395870c61645f98767a57a037bef365bc9b7a8d1d66dadfad7ea8633531aa59",
+    21: "b8ea06d91f79da9dcd6e512051e97fc8f458c23f7c255dbe102db8aec2c32254",
 }
 
 SUITE = load_suite()

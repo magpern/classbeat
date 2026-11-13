@@ -121,4 +121,6 @@ and rounded to two decimals, in the same category as the BPM, drops and breakdow
 **MOWL's analysis of Spotify tracks, which this ADR's accepted Spotify risk (§III 14) already covers.**
 It adds no new field type (no text, no id) and no new provider contact. The allowlist
 (`classbeat.agent.model_input`, `songs.pool_view`, `tests/test_section_energy.py`) names the two new
-fields and nothing else.
+fields and nothing else, plus one pool-answer key: `sections_omitted_from_track`, a track index (an
+int) that `get_pool` adds when a big pool is cut to fit and the last tracks lose their `sections`
+first. `tests/test_section_energy.py` pins the exact top-level keys of the answer.

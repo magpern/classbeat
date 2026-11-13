@@ -1,6 +1,6 @@
 {
  "suite_version": 21,
- "digest": "d395870c61645f98767a57a037bef365bc9b7a8d1d66dadfad7ea8633531aa59",
+ "digest": "b8ea06d91f79da9dcd6e512051e97fc8f458c23f7c255dbe102db8aec2c32254",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,

@@ -227,6 +227,36 @@ def test_sections_are_stripped_before_any_track_is_cut(monkeypatch: pytest.Monke
     assert size <= choose_songs.MAX_POOL_BYTES
 
 
+TOP_KEYS = {"tracks", "omitted_no_bpm"}
+
+
+def test_the_get_pool_answer_has_exactly_the_pinned_top_level_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plain = pool_ctx(monkeypatch, 10).pool_answer()
+    assert set(plain) == TOP_KEYS
+    stripped = pool_ctx(monkeypatch, 100).pool_answer()
+    assert set(stripped) == TOP_KEYS | {"sections_omitted_from_track"}
+    first = stripped["sections_omitted_from_track"]
+    assert type(first) is int
+    assert 0 <= first < len(stripped["tracks"])
+    ctx = pool_ctx(monkeypatch, 100)
+    cut = dataclasses.replace(  # long titles: the cap cuts tracks even without spans
+        ctx,
+        tracks=[dataclasses.replace(t, title="x" * 100, artist="y" * 60) for t in ctx.tracks * 3],
+    )
+    truncated = cut.pool_answer()
+    assert set(truncated) <= TOP_KEYS | {"truncated", "sections_omitted_from_track"}
+    assert "truncated" in truncated
+    assert set(truncated["truncated"]) == {"tracks_shown", "tracks_total"}
+    shown = truncated["truncated"]["tracks_shown"]
+    assert type(shown) is int
+    assert shown == len(truncated["tracks"]) < 300
+    if "sections_omitted_from_track" in truncated:
+        assert type(truncated["sections_omitted_from_track"]) is int
+        assert 0 <= truncated["sections_omitted_from_track"] < shown
+
+
 def test_a_pool_that_fits_keeps_every_span(monkeypatch: pytest.MonkeyPatch) -> None:
     out = pool_ctx(monkeypatch, 10).pool_answer()
     assert "sections_omitted_from_track" not in out

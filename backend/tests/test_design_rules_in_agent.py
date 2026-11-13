@@ -40,7 +40,7 @@ PINNED = {
     "design": "ead8ee6227b99d148d4ba7318fd6032d9e12605894a968775b4ab4813d019e2b",
     "revise": "317d75e31910bb71dff3498f8a798901409a990f25f691ba29d11a6b680235b6",
     "pick_pool": "58d36e6a25155e86a70e88b79c845ccd1501f7f2db4c7d28af9f6f78badb5449",
-    "choose_songs": "74af32858f583381b0e9fd9881a658f2bfacbeef05df6ff9e9ab163ea58cde0a",
+    "choose_songs": "8276fcb86756747f9963e29763ee1cda1efa02dfeb5bfc32efc8f20e9b8ee930",
     # The running stages (ADR 0018), listed since E1 (#465) under their own keys.
     "running_design": "34ab4d8266807dce71af20b22115d6b103afbcea73c4e2abeefae41a3cdcea96",
     "running_revise": "5b5a99c92433da84c0ff8cacfd71e8b4c0081e02d53e13d316839923b9024e0a",

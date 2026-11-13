@@ -11,8 +11,9 @@ merges a pool track's sections into at most ``MAX_SECTIONS`` spans (``pool_secti
 guidance lines are the stage prompts' wording of how to use it.
 """
 
+import json
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
 MAX_SECTIONS: Final = 8  # spans shown per pool track
@@ -47,7 +48,8 @@ def pool_sections(
     """One track's ``(from_sec, to_sec, energy)`` spans, seconds from the track's start: the
     map's raw sections of that track (those with a valid energy), the shortest repeatedly merged
     into its shorter neighbour, energy averaged by duration, until at most ``MAX_SECTIONS``
-    remain. A track with at most that many keeps every section; a long one keeps its contrast."""
+    remain. A track with at most that many keeps every section; a long one keeps its contrast. A
+    section without a valid energy is skipped, so a neighbour's span covers its time."""
     spans: list[list[float]] = []  # [begin, end, energy x duration, duration]
     for section in sorted(sections, key=lambda s: float(s["start"])):
         energy = energy_of(section)
@@ -70,13 +72,23 @@ def pool_sections(
     return tuple(out)
 
 
-def strip_sections_until(views: Sequence[dict[str, Any]], fits: Callable[[], bool]) -> int | None:
-    """Drop ``sections`` from pool views, last track first, until ``fits()``; the index of the
-    first view that lost them, or ``None`` when none did. Used before any track is cut."""
-    first: int | None = None
+def fit_pool_answer(out: dict[str, Any], limit: int, total: int) -> None:
+    """Cut ``get_pool``'s answer in place to ``limit`` bytes: the ``sections`` of the last tracks
+    go first (``sections_omitted_from_track`` is the index of the first track that lost them),
+    then whole tracks from the end (``truncated``). The only keys this adds, both ints, are
+    pinned by ``tests/test_section_energy.py``."""
+    views: list[dict[str, Any]] = out["tracks"]
+
+    def size() -> int:
+        return len(json.dumps(out, ensure_ascii=False, separators=(",", ":")).encode())
+
     for i in range(len(views) - 1, -1, -1):
-        if fits():
+        if size() <= limit:
             break
         if views[i].pop("sections", None) is not None:
-            first = i
-    return first
+            out["sections_omitted_from_track"] = i
+    while size() > limit and views:
+        views.pop()
+        out["truncated"] = {"tracks_shown": len(views), "tracks_total": total}
+    if out.get("sections_omitted_from_track", 0) >= len(views):
+        out.pop("sections_omitted_from_track", None)  # it named a track that was then cut

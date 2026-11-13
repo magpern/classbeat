@@ -19,7 +19,6 @@ such field). The note is cleaned and cut at 300 characters, shown as plain text 
 back by a model.
 """
 
-import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
@@ -27,7 +26,7 @@ from typing import Any, Final
 from classbeat.agent import song_input
 from classbeat.agent.dispatcher import MAX_RESULT_BYTES
 from classbeat.agent.schemas import GetPoolInput, SongList, SongRef
-from classbeat.agent.section_energy import SONGS_GUIDANCE, strip_sections_until
+from classbeat.agent.section_energy import SONGS_GUIDANCE, fit_pool_answer
 from classbeat.agent.songs import (
     CROSSFADE_SEC,
     TOLERANCE,
@@ -93,7 +92,8 @@ GET_POOL_DESCRIPTION: Final = (
     "The analysed pool: per usable track its index, title, artist, role, BPM, length in seconds "
     "the seconds of its drops and breakdowns and, where known, its sections as [from_sec, "
     "to_sec, energy], how many tracks were left out for lack of a BPM, and, when replacing, the "
-    "songs that stay."
+    "songs that stay. A big pool is cut to fit: sections_omitted_from_track is the index from "
+    "which tracks lost their sections, and truncated says how many tracks are shown."
 )
 CHECK_DESCRIPTION: Final = (
     "Check a song list without finishing: every index must exist, no song twice, the total time "
@@ -171,15 +171,7 @@ class ChooseContext:
         if self.plan.kept:
             out["kept_songs"] = [kept_view(k, i) for i, k in enumerate(self.plan.kept)]
 
-        def size() -> int:
-            return len(json.dumps(out, ensure_ascii=False, separators=(",", ":")).encode())
-
-        cut = strip_sections_until(views, lambda: size() <= MAX_POOL_BYTES)  # before any track
-        if cut is not None:
-            out["sections_omitted_from_track"] = cut
-        while size() > MAX_POOL_BYTES and views:
-            views.pop()
-            out["truncated"] = {"tracks_shown": len(views), "tracks_total": len(self.tracks)}
+        fit_pool_answer(out, MAX_POOL_BYTES, len(self.tracks))
         return out
 
 
