@@ -422,12 +422,13 @@ it adds to the facts in the Context:
   and a crossfade per transition (off, or 1 to 30 s, with fade-out and fade-in curves). A purchased mix
   cannot be edited, only duplicated.
 - **The render runs on the phone.** Merge & Publish renders the playlist in the app with ffmpeg
-  (ffmpeg-kit 6.0: `atrim`, `atempo`, `acrossfade`) into one 320 kb/s MP3, uploads it to
+  (ffmpeg-kit, ffmpeg 6.0: `atrim`, `atempo`, `acrossfade`) into one 320 kb/s MP3, uploads it to
   `users-playlists.s3.eu-west-1.amazonaws.com` with requests the app signs itself, and registers it with
   `www.swedebeat.se/downloader/mergemp3api.php`. Request bodies were not visible.
-- **Fact 3 is confirmed, and the reason is known.** No server endpoint was seen that takes a mix
-  description and renders it; the only server step after the render registers a file the app has already
-  uploaded. Creating or editing a mix outside the app has no API. classbeat imitates neither the upload
+- **Fact 3 is confirmed by observation, with its likely reason.** No server endpoint was seen that takes
+  a mix description and renders it; the only server step after the render registers a file the app has
+  already uploaded. No API to create or edit a mix outside the app was seen, and whether Swedebeat has a
+  server renderer is unknown. classbeat imitates neither the upload
   nor the registration: the upload rests on the app's embedded credentials, which are never used (§4).
 - *(Inferred)* A published mix is what MOWL lists as the user's mixes (`POST v1/swedebeat/Playlists`,
   fact 1): the media host confirmed in #524, `users-playlists.s3-accelerate.amazonaws.com`, is the same
