@@ -561,16 +561,27 @@ def _calls(name: str) -> list[tuple[str, int, ast.Call]]:
 MARK_MAKERS = {"client_mark", "request_client_mark"}
 
 
+# Where each maker takes the client address: ``client_mark(keys, ip, user_agent)`` and
+# ``request_client_mark(request, ip)``. The address must be given there explicitly, since
+# ``request_client_mark(request)`` would read the request's address again on its own.
+MARK_ADDRESS_ARG = {"client_mark": 1, "request_client_mark": 1}
+
+
 def _passes_a_mark(call: ast.Call) -> bool:
-    for keyword in call.keywords:
-        if keyword.arg == "mark":
-            value = keyword.value
-            if not isinstance(value, ast.Call):
-                return False
-            func = value.func
-            called = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
-            return called in MARK_MAKERS
-    return False
+    """``mark=`` is a call of a maker whose address argument is the very expression passed as
+    ``ip=`` (#1029): the session's stored address and its mark come from the same client
+    address, so a peerless request can store neither, and an addressed one never stores a mark
+    of a different address than its ``ip``."""
+    keywords = {k.arg: k.value for k in call.keywords if k.arg is not None}
+    mark, ip = keywords.get("mark"), keywords.get("ip")
+    if not isinstance(mark, ast.Call) or ip is None or mark.keywords:
+        return False
+    func = mark.func
+    called = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+    position = MARK_ADDRESS_ARG.get(called or "")
+    if position is None or len(mark.args) <= position:
+        return False
+    return ast.dump(mark.args[position]) == ast.dump(ip)
 
 
 @pytest.mark.parametrize("name", ["start_session", "rotate_session"])
@@ -595,23 +606,32 @@ def test_only_the_streams_check_resolves_a_session_without_a_mark() -> None:
 
 
 def test_the_guard_can_fail() -> None:
-    bad = ast.parse("start_session(db, s, u, user_agent=a, ip=i, mark=None)").body[0]
-    good = ast.parse("start_session(db, s, u, mark=client_mark(k, i, a))").body[0]
-    assert isinstance(bad, ast.Expr)
-    assert isinstance(bad.value, ast.Call)
-    assert isinstance(good, ast.Expr)
-    assert isinstance(good.value, ast.Call)
-    assert not _passes_a_mark(bad.value)
-    assert not _passes_a_mark(ast.parse("rotate_session(db, info)").body[0].value)  # type: ignore[attr-defined]
-    for value, passes in (
-        ("mark", False),
-        ("ClientMark(h, a)", False),
-        ("make_mark(k, i, a)", False),
-        ("request_client_mark(r, i)", True),
-        ("anomaly.client_mark(k, i, a)", True),
-    ):
-        statement = ast.parse(f"rotate_session(db, info, mark={value})").body[0]
+    def passes(source: str) -> bool:
+        statement = ast.parse(source).body[0]
         assert isinstance(statement, ast.Expr)
         assert isinstance(statement.value, ast.Call)
-        assert _passes_a_mark(statement.value) is passes, value
-    assert _passes_a_mark(good.value)
+        return _passes_a_mark(statement.value)
+
+    assert not passes("start_session(db, s, u, user_agent=a, ip=i, mark=None)")
+    assert not passes("rotate_session(db, info)")
+    assert passes("start_session(db, s, u, user_agent=a, ip=i, mark=client_mark(k, i, a))")
+    for keywords, ok in (
+        ("mark=client_mark(k, i, a)", False),  # no ip=
+        ("ip=i", False),  # no mark=
+        ("ip=i, mark=mark", False),
+        ("ip=i, mark=ClientMark(h, a)", False),
+        ("ip=i, mark=make_mark(k, i, a)", False),
+        ("ip=i, mark=request_client_mark(r, i)", True),
+        ("ip=i, mark=anomaly.client_mark(k, i, a)", True),
+        ("ip=req.ip, mark=client_mark(req.keys, req.ip, req.user_agent)", True),
+        # The mark of another address than the stored one (#1029).
+        ("ip=i, mark=request_client_mark(r, other)", False),
+        ("ip=i, mark=client_mark(k, other, a)", False),
+        ("ip=req.ip, mark=client_mark(req.keys, other.ip, req.user_agent)", False),
+        ("ip=i, mark=client_mark(k, a, i)", False),  # the address in the agent's place
+        ("ip=UNKNOWN_ADDRESS, mark=client_mark(k, i, a)", False),
+        ("ip=i, mark=request_client_mark(r)", False),  # reads the request's address again
+        ("ip=i, mark=request_client_mark(r, ip=i)", False),
+        ("ip=i, mark=client_mark(k)", False),
+    ):
+        assert passes(f"rotate_session(db, info, {keywords})") is ok, keywords

@@ -833,7 +833,9 @@ still replaces the browser's old session and keeps its absolute limit), and a pe
 (re-authentication by password, passkey, OAuth or TOTP, MFA verification, step-up) issues the new
 token but keeps the old row's mark, address, `User-Agent`, "New location" flag and times, and sets
 none of them. Its response is normally lost with the connection; if it is not, the session just
-has no recent proof.
+has no recent proof. Like every rotation, a peerless one deletes the old row, so a lost response
+(the browser never gets the new token) signs that browser out: it fails safe, and was so before
+#1023.
 Binding the server to a unix socket would make every request peerless, so production stays on TCP.
 A notice mail is not sent yet; it waits for outgoing mail beyond the security notices (#352).
 

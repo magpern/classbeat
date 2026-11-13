@@ -29,6 +29,10 @@ from classbeat.auth.keys import Keys, hmac_digest
 from classbeat.context import UserContext
 from flows import PASSWORD, Browser, user_with_password
 from mfatools import Actor, admin_with_totp, step_of
+from oauthtools import location, make_invite, sign_in_with, sign_up_with
+from oidcfake import FakeProviders
+from passkeysignin import SIGNIN_FINISH, SIGNIN_START, with_passkey
+from passkeytools import penv as penv
 
 pytestmark = pytest.mark.usefixtures("frozen_rate_windows")
 
@@ -73,6 +77,14 @@ class At(Browser):
 
     def _cookie_header(self) -> dict[str, str]:
         return {**super()._cookie_header(), "X-Forwarded-For": self.forwarded, "User-Agent": AGENT}
+
+    async def get(self, path: str) -> httpx.Response:
+        if not self.peerless:
+            return await super().get(path)
+        async with peerless_client(self.env) as raw:
+            response = await raw.get(path, headers=self._cookie_header())
+        self._store(response)
+        return response
 
     async def request(
         self, method: str, path: str, json: Any = None, *, csrf: str | None = None
@@ -207,6 +219,49 @@ async def test_a_peerless_password_sign_in_starts_unmarked_and_unproven(env: Env
     assert await location_events(env) == 0
     assert (await browser.post("/api/auth/reauth", {"password": PASSWORD})).status_code == 200
     assert await browser.guarded() == 200
+
+
+async def assert_unmarked_and_unproven(env: Env) -> None:
+    """The one session row: no mark, no address and no proof time (#1023)."""
+    row = await session_row(env)
+    assert (row.seen_ip_hash, row.seen_agent, row.ip) == (None, None, None)
+    assert (row.reauth_at, row.mfa_at, row.stepup_at) == (None, None, None)
+
+
+async def test_a_peerless_passkey_sign_in_starts_unmarked_and_unproven(penv: Env) -> None:
+    """``POST /api/auth/passkeys/signin/{start,finish}`` with no peer (#1029): signed in with
+    the user's passkey, but the row has no mark, no address and no proof time."""
+    holder = await with_passkey(penv)
+    await penv.run("DELETE FROM sessions")
+    browser = At(penv)
+    browser.peerless = True
+    begun = await browser.post(SIGNIN_START)
+    assert begun.status_code == 200, begun.text
+    credential = holder.device.get(begun.json(), holder.handle)
+    finished = await browser.post(SIGNIN_FINISH, {"credential": credential})
+    assert finished.status_code == 200, finished.text
+    assert browser.signed_in
+    assert await penv.scalar("SELECT count(*) FROM sessions") == 1
+    await assert_unmarked_and_unproven(penv)
+    assert await location_events(penv) == 0
+
+
+async def test_a_peerless_oauth_sign_in_starts_unmarked_and_unproven(
+    oenv: Env, fake: FakeProviders
+) -> None:
+    """``POST /api/auth/oauth/google/start`` and its callback with no peer (#1029): signed in
+    with the existing identity, but the row has no mark, no address and no proof time."""
+    await sign_up_with(Browser(oenv), fake, "google", invite=await make_invite(oenv))
+    await oenv.run("DELETE FROM sessions")
+    browser = At(oenv)
+    browser.peerless = True
+    assert location(await sign_in_with(browser, fake, "google", return_to="/classes")) == (
+        "/classes"
+    )
+    assert browser.signed_in
+    assert await oenv.scalar("SELECT count(*) FROM sessions") == 1
+    await assert_unmarked_and_unproven(oenv)
+    assert await location_events(oenv) == 0
 
 
 async def test_a_sign_in_with_a_forwarded_unknown_is_marked_like_any_other(env: Env) -> None:
