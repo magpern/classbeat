@@ -17,7 +17,7 @@ the guidance is the cycling song stage's alone.
 """
 
 import math
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, Literal
 
@@ -70,12 +70,16 @@ def relation(a: float, b: float) -> Relation:
     return "jump"
 
 
-def tempo_jumps(bpms: Sequence[float], roles: Sequence[str]) -> tuple[TempoJump, ...]:
-    """The adjacent pairs of the list whose relation is a ``jump``, in play order."""
+def tempo_jumps(
+    bpms: Sequence[float], roles: Sequence[str], fixed: Collection[int] = ()
+) -> tuple[TempoJump, ...]:
+    """The adjacent pairs of the list whose relation is a ``jump``, in play order. ``fixed`` are
+    the positions of songs that cannot move (kept songs in replace mode); a pair of two of them is
+    left out, because the model cannot change it."""
     return tuple(
         TempoJump(n, bpms[n], bpms[n + 1], roles[n], roles[n + 1])
         for n in range(min(len(bpms), len(roles)) - 1)
-        if relation(bpms[n], bpms[n + 1]) == "jump"
+        if relation(bpms[n], bpms[n + 1]) == "jump" and not {n, n + 1} <= set(fixed)
     )
 
 

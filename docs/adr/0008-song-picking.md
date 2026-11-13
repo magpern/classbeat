@@ -734,13 +734,14 @@ tempo and effort") and no check on adjacent BPM. This amendment adds a **soft** 
   roles; at most 8) and one fixed sentence `tempo_note`. A jump is **never an error**: it does not
   make the list invalid, it uses none of the stage's three corrections (they count errors only), and
   `submit_song_list` accepts the list as it stands and adds no note. Some jumps are meant (warm-up
-  into the work, into the cooldown, a recovery after a sprint), so the model may keep them; the prompt
+  into the work, into the cooldown, a recovery after a sprint), so the model may keep them; in
+  replace mode a pair of two kept songs is left out, since the model cannot move them; the prompt
   says to jump only where the class changes phase.
 - **Model input.** Only numbers already in `get_pool` (two songs' BPM), positions, roles (a fixed
   set) and the fixed sentence. No id, title or free text, so no allowlist entry is added.
 - **Running (ADR 0018).** Song picking is cycling only: `songs.inputs` and the song stages' phase 2
   refuse a running brief, so the song stage never applies to running and no running guidance is
   added. The running stages' prompts do not change.
-- **Eval.** Suite version 22 adds the case `tempo_adjacent_30` with the check `tempo_flow` (no jump
+- **Eval.** Suite version 23 adds the case `tempo_adjacent_30` with the check `tempo_flow` (no jump
   between two adjacent songs of the same role); `agent/tempo_policy.py` joins the digest's rule
   sources. The `choose_songs` prompt version is re-pinned.

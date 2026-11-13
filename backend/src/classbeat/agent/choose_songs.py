@@ -262,7 +262,8 @@ def choose_stage(ctx: ChooseContext) -> Stage:
 
     def check_song_list(args: SongList) -> ToolAnswer:
         done = check_list(ctx, args)
-        jumps = tempo_jumps([c.bpm for c in done.songs], [c.role for c in done.songs])
+        kept = {k.slot for k in ctx.plan.kept}
+        jumps = tempo_jumps([c.bpm for c in done.songs], [c.role for c in done.songs], kept)
         valid = {"valid": True, "songs": len(done.songs), "total_sec": done.total_sec}
         return ToolAnswer(valid | jumps_view(jumps))  # a soft note: never an error
 

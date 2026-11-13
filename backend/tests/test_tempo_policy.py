@@ -10,12 +10,12 @@ from typing import Any
 import pytest
 
 from classbeat.agent import choose_songs, tempo_policy
-from classbeat.agent.choose_songs import ChooseContext, choose_stage
+from classbeat.agent.choose_songs import ChooseContext, ChosenSong, choose_stage
 from classbeat.agent.dispatcher import dispatch
 from classbeat.agent.provider import ToolCall
-from classbeat.agent.songs import PoolTrack
+from classbeat.agent.songs import KeptSong, PickPlan, PoolTrack
 from classbeat.agent.tempo_policy import TempoJump, relation, tempo_jumps
-from classbeat.evals import pick
+from classbeat.evals import pick, song_checks
 from classbeat.evals.suite import load_suite
 from pickfake import songs, world
 from songscripts import provider_for
@@ -103,6 +103,9 @@ def test_a_list_with_a_jump_gets_a_soft_note_naming_the_positions() -> None:
     stage = choose_stage(context([100, 104, 150, 148, 146, 144, 142, 140]))
     out = run(stage, "check_song_list", LIST)
     assert out["valid"] is True
+    # the exact answer the model receives: nothing else may be added to it
+    assert set(out) == {"ok", "valid", "songs", "total_sec", "tempo_jumps", "tempo_note"}
+    assert all(set(j) == {"from", "to", "bpm", "roles"} for j in out["tempo_jumps"])
     assert [(j["from"], j["to"], j["bpm"]) for j in out["tempo_jumps"]] == [(1, 2, [104, 150])]
     assert out["tempo_note"] == tempo_policy.NOTE
     assert "errors" not in out
@@ -115,7 +118,7 @@ def test_a_list_without_a_jump_gets_no_note() -> None:
         choose_stage(context([100, 104, 108, 110, 112, 114, 112, 108])), "check_song_list", LIST
     )
     assert out["valid"] is True
-    assert not {"tempo_jumps", "tempo_note"} & set(out)
+    assert set(out) == {"ok", "valid", "songs", "total_sec"}
 
 
 def test_a_jump_never_blocks_a_list_or_uses_a_correction() -> None:
@@ -132,9 +135,78 @@ def test_a_jump_never_blocks_a_list_or_uses_a_correction() -> None:
 
 def test_an_error_still_comes_back_as_an_error_not_a_note() -> None:
     stage = choose_stage(context([60, 200, 60, 200, 60, 200, 60, 200]))
-    out = run(stage, "check_song_list", songs(("pool", 0, "warmup")))
-    assert "tempo_jumps" not in out
-    assert out.get("error") or out.get("errors") or out.get("valid") is not True
+    done = dispatch(stage, ToolCall("c1", "check_song_list", songs(("pool", 0, "warmup"))))
+    assert not done.ok
+    assert not done.final
+    out = json.loads(done.result.content)
+    assert set(out) == {"error", "messages", "ok"}
+    assert (out["ok"], out["error"]) == (False, "invalid_song_list")
+
+
+def chosen(bpms: list[float], roles: list[str]) -> list[ChosenSong]:
+    pairs = list(zip(bpms, roles, strict=True))
+    return [ChosenSong(f"id{n}", "t", "a", r, b, 240, True) for n, (b, r) in enumerate(pairs)]
+
+
+@pytest.mark.parametrize(
+    ("bpms", "roles", "ok"),
+    [
+        ([100, 104], ["build", "build"], True),  # compatible
+        ([100, 150], ["build", "build"], False),  # a jump within one role
+        ([100, 150], ["sprint", "sprint"], False),
+        ([100, 150], ["warmup", "build"], True),  # a jump at a change of role may be meant
+        ([100, 50], ["build", "build"], True),  # half time
+        ([100, 104, 150, 150], ["build", "build", "build", "sprint"], False),
+        ([100, 150, 155], ["warmup", "build", "build"], True),
+    ],
+)
+def test_tempo_flow_fails_a_jump_within_a_role_and_passes_one_at_a_role_change(
+    bpms: list[float], roles: list[str], ok: bool
+) -> None:
+    name, passed, _ = song_checks.tempo_flow(chosen(bpms, roles))
+    assert name == "tempo_flow"
+    assert passed is ok
+
+
+def replace_context(pool_bpms: list[float]) -> ChooseContext:
+    """A replacement of slots 2 and 5 of eight songs; kept slots 0 and 1 clash (100 and 150)."""
+    seed = ["warmup", "build", "climb", "recovery", "sprint", "interval", "recovery", "cooldown"]
+    kept_bpm = {0: 100, 1: 150, 3: 148, 4: 146, 6: 144, 7: 142}
+    kept = [
+        KeptSong(n, f"Kept{n:017d}", f"Kept {n}", "Artist", seed[n], float(b), 240)
+        for n, b in kept_bpm.items()
+    ]
+    plan = PickPlan.build(world().plan.brief, replace=[seed[2], seed[5]], kept=kept)
+    tracks = [
+        PoolTrack(f"Pool{n:018d}", f"Pool {n}", "Artist", seed[slot], b, 240)
+        for n, (slot, b) in enumerate(zip((2, 5), pool_bpms, strict=True))
+    ]
+    return ChooseContext.build(plan, tracks, 0)
+
+
+REPLACED = songs(
+    ("kept", 0, "warmup"), ("kept", 1, "build"), ("pool", 0, "climb"), ("kept", 2, "recovery"),
+    ("kept", 3, "sprint"), ("pool", 1, "interval"), ("kept", 4, "recovery"),
+    ("kept", 5, "cooldown"),
+)  # fmt: skip
+
+
+def test_a_clash_between_two_kept_songs_is_not_reported_because_the_model_cannot_move_it() -> None:
+    out = run(choose_stage(replace_context([150, 146])), "check_song_list", REPLACED)
+    assert out["valid"] is True
+    assert set(out) == {"ok", "valid", "songs", "total_sec"}  # kept 100 to 150 is left out
+
+
+def test_a_clash_next_to_a_replaced_song_is_reported_in_replace_mode() -> None:
+    out = run(choose_stage(replace_context([90, 146])), "check_song_list", REPLACED)
+    assert [(j["from"], j["to"]) for j in out["tempo_jumps"]] == [(1, 2), (2, 3)]
+
+
+def test_fixed_positions_only_drop_pairs_of_two_fixed_songs() -> None:
+    bpms, roles = [100, 150, 100, 150], ["build"] * 4
+    assert [j.position for j in tempo_jumps(bpms, roles)] == [0, 1, 2]
+    assert [j.position for j in tempo_jumps(bpms, roles, fixed={0, 1})] == [1, 2]
+    assert [j.position for j in tempo_jumps(bpms, roles, fixed={0, 2})] == [0, 1, 2]
 
 
 async def test_the_eval_case_runs_the_tempo_flow_check() -> None:
