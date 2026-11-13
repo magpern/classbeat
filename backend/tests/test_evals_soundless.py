@@ -313,7 +313,7 @@ def test_a_soundless_run_that_fails_its_music_check_is_a_failed_case() -> None:
 
 
 def test_the_suite_is_current_and_its_digest_covers_the_soundless_parts() -> None:
-    assert SUITE.manifest.suite_version == 20
+    assert SUITE.manifest.suite_version == 21
     assert "agent/soundless_input.py" in suite.RULE_SOURCES
     data, cases, sources, constants = (
         suite.read_manifest_data(),

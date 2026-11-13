@@ -34,14 +34,16 @@ from classbeat.models.versions import all_prompt_versions
 # if one is intended it is a prompt change with its own smoke run, not part of the rules.
 # ADR 0029 section 3 (MA1a-1): the cycling and soundless design and revise stages changed once,
 # their schema's games narrowed to the four; then (MA1b-1) once more for the stated-values sentence.
+# #1035 (section energy): design, revise, choose_songs and the two running stages changed once,
+# on purpose: a guidance line on each section's energy, and get_pool's and get_music's description.
 PINNED = {
-    "design": "e49b9d03c38fb9481cf41a096e992fc3e8f3805c8aeb6507dd8be9ccbc402643",
-    "revise": "2d24e280ae51af9792836cf74866ba4899b08bbfa364cfa7801490a57b1c2f0e",
+    "design": "ead8ee6227b99d148d4ba7318fd6032d9e12605894a968775b4ab4813d019e2b",
+    "revise": "317d75e31910bb71dff3498f8a798901409a990f25f691ba29d11a6b680235b6",
     "pick_pool": "58d36e6a25155e86a70e88b79c845ccd1501f7f2db4c7d28af9f6f78badb5449",
-    "choose_songs": "4fb091519ef4af656c3fc32e424bc1b083db5531a7436e8976dc2e0e60a386db",
+    "choose_songs": "dc94ececa2ec8bc3692df0721bec879442adf92c56bca4c0dcce0fadc146cf44",
     # The running stages (ADR 0018), listed since E1 (#465) under their own keys.
-    "running_design": "0f9b165c3d8f59b5f9341c7ce6865468c19c58e2e0fa958d32ccf23ded83dca5",
-    "running_revise": "0b4d76b7cd6e280523fea027ba78f47e2c0fdfb810124d4de3240d1dd12e544f",
+    "running_design": "34ab4d8266807dce71af20b22115d6b103afbcea73c4e2abeefae41a3cdcea96",
+    "running_revise": "5b5a99c92433da84c0ff8cacfd71e8b4c0081e02d53e13d316839923b9024e0a",
     # The soundless design and revise stages (ADR 0007 amendment of 2026-11-03, #527 and #528),
     # under their own keys.
     "soundless_design": "19f070f1f62b715453650b64380c1dce53fd39c7e3e9791fd9ed433a69da295f",

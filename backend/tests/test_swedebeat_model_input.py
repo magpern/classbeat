@@ -162,8 +162,9 @@ def test_a_spotify_map_cannot_be_read_as_a_mix() -> None:
 
 # The Spotify source, byte for byte as before A4: what the model is sent of the synthetic playlist
 # (summary, first message, every track's detail, the warnings and the fitted timeline). Recorded
-# from the code on main before this change; any difference fails here.
-SPOTIFY_DIGEST = "6e08bf4406a9a0ee2f7cd375b5e0fcd365dede8ae8a24465ab5516cd370a04de"
+# from the code on main before this change; any difference fails here. Re-pinned once on purpose
+# by #1035: every track's detail now carries each section's ``energy`` (the only difference).
+SPOTIFY_DIGEST = "4bb2fcee10ecfac5f05dc2847d6d76c909d0cd6a22fcb056a3db26c8adfcc50b"
 
 
 def spotify_view(data: MusicData) -> str:

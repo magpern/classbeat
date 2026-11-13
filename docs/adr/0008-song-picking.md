@@ -236,7 +236,8 @@ or MOWL call are the backend's, around the stages.
   verify refs exist, no duplicate ref or (normalised title, artist), the size, and that every role the
   brief asks for has at least two candidates per slot (the brief's climbs, sprints, races, FTP test).
 - `get_pool()` (after the backend wrote and analysed the pool): per usable track `{index, title, artist,
-  role, bpm, length_sec, drops, breakdowns}` (MOWL's analysis; a track still without a BPM after the
+  role, bpm, length_sec, drops, breakdowns, sections}` (MOWL's analysis; `sections` is added by #1035,
+  see ADR 0010's note of 2026-11-13; a track still without a BPM after the
   wait is left out and counted in `omitted_no_bpm`); fewer than `n` usable tracks is `pool_too_small`
   (not retried).
 - `SongList` = `songs` (1..40) of `{source: "pool"|"kept", index: int, role: Role}` plus optional `note`
@@ -252,7 +253,7 @@ or MOWL call are the backend's, around the stages.
 
 **What may reach the model** (Amendment 1, ADR 0006 §7, one allowlisted builder, `model_input`):
 the brief; Spotify-derived **track metadata** (title, artist, album, year, duration); MOWL's
-**analysis** (BPM, length, drops, breakdowns); in replace mode the kept songs the same way. **Never**:
+**analysis** (BPM, length, drops, breakdowns, section energy); in replace mode the kept songs the same way. **Never**:
 tokens, emails, the Spotify user id or display name, Client IDs, playlist names/ids/URLs, track ids or
 URIs, MOWL ids, `Retry-After` and provider error texts. The planted-value test of ADR 0006 §7 is
 extended: the fake Spotify returns a display name, playlist names and ids and an email-shaped string in

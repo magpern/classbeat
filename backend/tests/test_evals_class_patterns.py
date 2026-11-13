@@ -298,6 +298,9 @@ def test_the_digest_sources_include_every_rule_source() -> None:
         "agent/interpreted.py", "agent/interpret.py", "agent/interpret_input.py",
         "agent/explicit_input.py", "agent/explicit_check.py",
         "design/revise_stated.py", "design/revise_layer_policy.py",
+        # #1035: the section energy the model sees, and the song stages' first messages (split
+        # out of agent/model_input.py)
+        "agent/section_energy.py", "agent/song_input.py",
     }  # fmt: skip
 
 

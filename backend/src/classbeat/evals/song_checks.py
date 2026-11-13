@@ -16,7 +16,10 @@ The hard checks, each one ``(name, ok, detail)``; a case passes when all of them
 - ``energy``: the peak energy of the main part (every role except warmup, recovery and cooldown)
   is above the opening song's and above the closing song's. A song's energy is its BPM plus
   ``DROP_ENERGY`` for each drop MOWL found, the data the model saw. A class with no main part
-  passes.
+  passes;
+- ``sections_shown`` (only for a case that sets ``expect.sections_shown``, #1035): every analysed
+  pool track has section energy spans, and the text sent to the model holds them. The span values
+  are within-track ranks, so no check compares one song's energy with another's.
 
 The total within +-10 %, the order (open on a warmup or build, end on a cooldown), no track twice
 and a replace keeping its kept songs are checked beside these in ``pick.pick_checks``.
@@ -34,13 +37,14 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from classbeat.agent.choose_songs import ChosenList
-from classbeat.agent.songs import PickPlan, key_of, total_sec
+from classbeat.agent.songs import PickPlan, PoolTrack, key_of, total_sec
 
 DROP_ENERGY: Final = 10.0
 MAIN_EXCLUDED: Final = ("warmup", "recovery", "cooldown")
 MIN_OPENERS: Final = 2
 YEAR_FILTER: Final = re.compile(r"\byear:(\d{4})(?:-(\d{4}))?\b")
 SCORE_DIGITS: Final = 4
+SECTIONS_KEY: Final = '"sections":[['  # how ``get_pool`` writes a track's energy spans
 
 
 class Band(BaseModel):
@@ -123,6 +127,14 @@ def _energy_row(chosen: ChosenList, facts: SongFacts) -> Row:
         ok,
         f"peak {round(peak)}, opening {round(energies[0])}, closing {round(energies[-1])}",
     )
+
+
+def sections_shown(analysed: Sequence[PoolTrack], sent: str) -> Row:
+    """``sections_shown`` (only for a case that sets ``expect.sections_shown``, #1035): every pool
+    track the choose stage read has energy spans, and the text the model was sent holds them."""
+    have = sum(1 for t in analysed if t.sections)
+    ok = bool(analysed) and have == len(analysed) and SECTIONS_KEY in sent
+    return "sections_shown", ok, f"{have} of {len(analysed)} pool tracks with energy spans"
 
 
 def band_judgement(chosen: ChosenList, facts: SongFacts, bands: Mapping[str, Band]) -> list[bool]:

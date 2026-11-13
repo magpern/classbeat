@@ -19,7 +19,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
-from classbeat.agent import model_input
+from classbeat.agent import song_input
 from classbeat.agent.registry import SearchRegistry
 from classbeat.agent.schemas import PoolEntry, SearchInput, SongPool
 from classbeat.agent.songs import CROSSFADE_SEC, PickPlan, kept_view, key_of
@@ -120,11 +120,11 @@ class PoolContext:
 
     def first_message(self) -> str:
         low, high = self.plan.pool_range
-        return model_input.pool_first_message(self.facts(), low, high)
+        return song_input.pool_first_message(self.facts(), low, high)
 
     def facts(self) -> dict[str, Any]:
         p = self.plan
-        return model_input.song_facts(
+        return song_input.song_facts(
             p.brief,
             mode=p.mode,
             target_sec=p.target_sec,

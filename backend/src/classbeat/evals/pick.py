@@ -18,13 +18,8 @@ needs a Spotify search the owner's live run does not wire. They run in CI agains
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from importlib import resources
-from typing import Literal
-
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from classbeat.agent import run_stage
-from classbeat.agent.brief import Brief
 from classbeat.agent.choose_songs import STAGE as CHOOSE_STAGE
 from classbeat.agent.choose_songs import ChooseContext, ChosenList, choose_stage
 from classbeat.agent.limits import Limits
@@ -41,6 +36,18 @@ from classbeat.agent.songs import (
     within_tolerance,
 )
 from classbeat.evals import song_checks
+from classbeat.evals.pick_case import (
+    PickCase as PickCase,
+)
+from classbeat.evals.pick_case import (
+    PickExpect as PickExpect,
+)
+from classbeat.evals.pick_case import (
+    load_pick_cases as load_pick_cases,
+)
+from classbeat.evals.pick_case import (
+    plan_for as plan_for,
+)
 from classbeat.evals.pick_world import (
     CatalogueSpec as CatalogueSpec,
 )
@@ -56,69 +63,9 @@ from classbeat.evals.pick_world import (
 from classbeat.evals.pick_world import (
     analysis_map as analysis_map,
 )
-from classbeat.evals.pick_world import (
-    kept_songs,
-)
 from classbeat.evals.runner import EvalHost
 from classbeat.evals.song_checks import Band, PoolRow, SongFacts
 from classbeat.jobs.errors import JobFailure
-
-
-class PickExpect(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    forbidden_text: list[str] = Field(default_factory=lambda: list[str]())  # in the note
-    years: list[int] | None = Field(default=None, min_length=2, max_length=2)  # the era asked for
-    # The expected end of the run: a list (``submitted``) or the failure the case is about
-    # (``pool_too_small``: too few usable tracks, nothing stored). The manifest lists the cases
-    # that expect the latter (``Manifest.expected_outcomes``); the gate reads it from there.
-    outcome: Literal["submitted", "pool_too_small"] = "submitted"
-    max_turns: int | None = Field(default=None, ge=1)  # the case's own bounds (cost category)
-    max_cost_micros: int | None = Field(default=None, ge=0)
-
-    @model_validator(mode="after")
-    def _years_ordered(self) -> "PickExpect":
-        if self.years is not None and self.years[0] > self.years[1]:
-            raise ValueError("the era runs from the earlier year to the later")
-        return self
-
-
-class PickCase(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    name: str = Field(pattern=r"^[a-z0-9_]{1,40}$")
-    about: str = Field(min_length=1, max_length=200)
-    brief: Brief
-    catalogue: CatalogueSpec
-    replace: ReplaceSpec | None = None
-    expect: PickExpect = Field(default_factory=PickExpect)
-    # Run the song-quality checks of ADR 0012 section 4.1 (``song_checks``); they need the
-    # manifest's band table, which the caller passes to ``run_pick_case``.
-    quality: bool = False
-
-
-def load_pick_cases() -> list[PickCase]:
-    folder = resources.files("classbeat.evals") / "smoke_pick"
-    cases = []
-    for item in sorted(folder.iterdir(), key=lambda p: p.name):
-        if not item.name.endswith(".json"):
-            continue
-        case = PickCase.model_validate_json(item.read_text("utf-8"))
-        if item.name != f"{case.name}.json":
-            raise ValueError(f"{item.name}: the file is named after its case, {case.name}")
-        cases.append(case)
-    return cases
-
-
-def plan_for(case: PickCase) -> PickPlan:
-    if case.replace is None:
-        return PickPlan.build(case.brief)
-    spec = case.replace
-    return PickPlan.build(
-        case.brief,
-        replace=[spec.seed_roles[s] for s in sorted(spec.replace)],
-        kept=kept_songs(spec),
-    )
 
 
 @dataclass(frozen=True)
@@ -338,6 +285,8 @@ def pick_checks(
         )
         checks.append(PickCheck("kept_in_place", in_slot))
         checks.append(PickCheck("replaced_are_new", sum(s.new for s in songs) == len(plan.replace)))
+    if case.expect.sections_shown:
+        checks.append(PickCheck(*song_checks.sections_shown(result.analysed, sent)))
     if case.quality:
         if bands is None:
             raise ValueError("a quality case needs the manifest's band table")

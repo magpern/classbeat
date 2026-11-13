@@ -46,6 +46,7 @@ from classbeat.agent.schemas import (
     ReviseInput,
     SongsRequestedInput,
 )
+from classbeat.agent.section_energy import DESIGN_GUIDANCE
 from classbeat.agent.stage import Stage, Tool, ToolAnswer
 from classbeat.plan_gates import PlanGates
 
@@ -87,6 +88,10 @@ the draft to the new music instead.
 The rules the app enforces: one cooldown segment, last, of at least 60 s; interval lengths in \
 whole seconds; zones 1 to 7; a game or an FTP test is separated from the next one by a regular \
 interval; at most one FTP test, whose length is exactly 3, 5 or 20 minutes; at most three hours.
+
+"""
+    + DESIGN_GUIDANCE
+    + """
 
 """
     + games_section(music=True, revise=True)

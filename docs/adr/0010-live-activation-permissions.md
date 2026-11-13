@@ -110,3 +110,15 @@ condition at the top of this ADR ("every feature's live path except Swedebeat ma
 is technically complete") now covers it, except that its live path needs the owner's secret, the
 `SWEDEBEAT_ENABLED` switch and the owner's go-ahead for each live check. The risk the owner accepts
 for the app key is T104.
+
+**Note 2026-11-13 (#1035): section energy.** MOWL's music map gives each section of a Spotify track an
+`energy` from 0 to 1 (`mowl-workouts` `spotify.py`, from Spotify's section loudness, ranked within the
+track; no audio is processed). classbeat now shows it to the model: `get_music(track=i)` lists it per
+section and `get_pool` lists a track's `[from_sec, to_sec, energy]` spans (at most 8), so a design puts
+the warm-up, recoveries and cooldown on quiet sections and hard work on loud ones, and the song stage
+prefers quiet songs for the easy roles. It is a number derived from Spotify's analysis, clamped to 0..1
+and rounded to two decimals, in the same category as the BPM, drops and breakdowns already sent:
+**MOWL's analysis of Spotify tracks, which this ADR's accepted Spotify risk (§III 14) already covers.**
+It adds no new field type (no text, no id) and no new provider contact. The allowlist
+(`classbeat.agent.model_input`, `songs.pool_view`, `tests/test_section_energy.py`) names the two new
+fields and nothing else.
