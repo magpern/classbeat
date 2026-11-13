@@ -36,11 +36,13 @@ from classbeat.models.versions import all_prompt_versions
 # their schema's games narrowed to the four; then (MA1b-1) once more for the stated-values sentence.
 # #1035 (section energy): design, revise, choose_songs and the two running stages changed once,
 # on purpose: a guidance line on each section's energy, and get_pool's and get_music's description.
+# #1040 (tempo adjacency): choose_songs changed once more, on purpose: a guidance line on the
+# crossfade between adjacent tempos and on the tempo_jumps note of check_song_list.
 PINNED = {
     "design": "ead8ee6227b99d148d4ba7318fd6032d9e12605894a968775b4ab4813d019e2b",
     "revise": "317d75e31910bb71dff3498f8a798901409a990f25f691ba29d11a6b680235b6",
     "pick_pool": "58d36e6a25155e86a70e88b79c845ccd1501f7f2db4c7d28af9f6f78badb5449",
-    "choose_songs": "8276fcb86756747f9963e29763ee1cda1efa02dfeb5bfc32efc8f20e9b8ee930",
+    "choose_songs": "74882603467ec87dc133b32addc24491c2f0e68d45f6a7c92f4d9f49f2a560ac",
     # The running stages (ADR 0018), listed since E1 (#465) under their own keys.
     "running_design": "34ab4d8266807dce71af20b22115d6b103afbcea73c4e2abeefae41a3cdcea96",
     "running_revise": "5b5a99c92433da84c0ff8cacfd71e8b4c0081e02d53e13d316839923b9024e0a",

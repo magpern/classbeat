@@ -89,6 +89,7 @@ RULE_SOURCES: Final = (
     "agent/model_input.py",
     "agent/section_energy.py",
     "agent/song_input.py",
+    "agent/tempo_policy.py",
     "design/guidance.py",
     "design/selection.py",
     "design/rules/__init__.py",

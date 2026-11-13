@@ -26,6 +26,8 @@ class PickExpect(BaseModel):
     max_cost_micros: int | None = Field(default=None, ge=0)
     # #1035: the choose stage's pool carried every track's section energy (``song_checks``).
     sections_shown: bool = False
+    # #1040: the submitted list has no tempo jump between two songs of the same role.
+    tempo_flow: bool = False
 
     @model_validator(mode="after")
     def _years_ordered(self) -> "PickExpect":
