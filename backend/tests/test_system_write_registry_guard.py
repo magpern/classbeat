@@ -22,6 +22,7 @@ import sys
 from test_billing_guard import modules
 
 NAME = "register_system_write_table"
+STORE = "_REGISTERED"  # the registry dict itself: writing to it would skip the first-wins check
 DEFINER = "classbeat.db.system_write_tables"
 REEXPORT = "classbeat.db.__init__"  # modules() names a package by its __init__ file
 LIMITER = "classbeat.auth.limit_writes"
@@ -46,17 +47,17 @@ def test_the_app_and_the_worker_register_exactly_the_real_rate_limits() -> None:
     assert json.loads(run.stdout.splitlines()[-1]) == {"names": ["rate_limits"], "real": True}
 
 
-def _spellings(tree: ast.AST) -> list[ast.AST]:
-    """Every node that spells the function: a name, an attribute, an import (also aliased) or a
+def _spellings(tree: ast.AST, name: str = NAME) -> list[ast.AST]:
+    """Every node that spells ``name``: a name, an attribute, an import (also aliased) or a
     string (``getattr(module, "register_system_write_table")``, ``__all__``)."""
     found: list[ast.AST] = []
     for node in ast.walk(tree):
         if (
-            (isinstance(node, ast.Name) and node.id == NAME)
-            or (isinstance(node, ast.Attribute) and node.attr == NAME)
-            or (isinstance(node, ast.alias) and node.name.split(".")[-1] == NAME)
-            or (isinstance(node, ast.Constant) and node.value == NAME)
-            or (isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == NAME)
+            (isinstance(node, ast.Name) and node.id == name)
+            or (isinstance(node, ast.Attribute) and node.attr == name)
+            or (isinstance(node, ast.alias) and node.name.split(".")[-1] == name)
+            or (isinstance(node, ast.Constant) and node.value == name)
+            or (isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name)
         ):
             found.append(node)
     return found
@@ -65,6 +66,13 @@ def _spellings(tree: ast.AST) -> list[ast.AST]:
 def test_the_function_is_spelled_only_in_the_registry_its_reexport_and_the_limiter() -> None:
     spelled = {m for m, tree in modules().items() if _spellings(tree)}
     assert spelled == {DEFINER, REEXPORT, LIMITER}
+
+
+def test_the_registry_dict_is_spelled_only_in_the_registry_module() -> None:
+    """``_REGISTERED`` (a name, an attribute, an import or a string) outside the defining module
+    could add or replace an entry without the first-wins check of the register function."""
+    spelled = {m for m, tree in modules().items() if _spellings(tree, STORE)}
+    assert spelled == {DEFINER}
 
 
 def test_the_limiter_calls_it_once_with_rate_limits() -> None:

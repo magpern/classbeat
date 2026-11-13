@@ -36,6 +36,15 @@ def quoted(result: Quote | Refusal) -> Quote:
     return result
 
 
+def test_a_quote_cannot_be_built_from_positional_arguments() -> None:
+    """``kw_only=True`` on ``Quote`` (#1019): a reordered field can never silently swap values."""
+    q = quoted(sp.quote_buy(offer(), at(2025, 3, 10)))
+    args = tuple(getattr(q, name) for name in Quote.__dataclass_fields__)
+    with pytest.raises(TypeError):
+        Quote(*args)  # pyright: ignore[reportCallIssue]
+    assert Quote(**{name: getattr(q, name) for name in Quote.__dataclass_fields__}) == q
+
+
 @pytest.mark.parametrize(
     ("start", "anchor", "end"),
     [

@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from classbeat.agent.brief import Brief
+from classbeat.agent.brief import Brief, BriefGame
 from classbeat.agent.interpret_input import current_values, first_message
 from classbeat.agent.interpreted import InterpretedRequest
 from classbeat.agent.records import Provenance
@@ -154,9 +154,19 @@ def test_an_unstated_base_game_reported_alone_is_no_replacement_for_a_stated_one
 
 
 def test_removing_games_with_a_list_records_no_missing_game() -> None:
+    # Two stated games and one reported: without the ``remove_games`` guard the other stated game
+    # would be recorded as ``game_missing`` (it is left out of the list, not removed).
+    second = {**RACETRACK, "placement": {"relation": "after", "anchor": "climb", "ordinal": 2}}
+    base = BASE.model_copy(
+        update={
+            "games": [*BASE.games, BriefGame.model_validate(second)],
+            "explicit": ["length_min", "climbs", "games.0", "games.1"],
+        }
+    )
     fast = {**RACETRACK, "type": "fast_lane", "origin": "explicit"}
-    done = layer(BASE, read(games=[fast], remove_games=True), gates())
+    done = layer(base, read(games=[fast], remove_games=True), gates())
     assert done.items == ()
+    assert [g.type for g in done.brief.games] == ["fast_lane"]
 
 
 def test_an_echoed_value_of_an_unstated_path_becomes_stated_when_explicit() -> None:
