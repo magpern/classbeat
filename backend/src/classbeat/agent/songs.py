@@ -24,6 +24,7 @@ from classbeat.agent import model_input
 from classbeat.agent.brief import Brief
 from classbeat.agent.registry import MAX_TEXT, normalised
 from classbeat.agent.schemas import MAX_POOL, MAX_SONGS
+from classbeat.agent.section_energy import pool_sections
 from classbeat.covers import cover_url
 
 SONG_SEC: Final = 240
@@ -45,6 +46,9 @@ class PoolTrack:
     length_sec: int
     drops: tuple[float, ...] = ()  # seconds from the start of the track
     breakdowns: tuple[float, ...] = ()
+    # (from_sec, to_sec, energy 0..1) spans, seconds from the start of the track; none where the
+    # map has no section energy (``section_energy.pool_sections``)
+    sections: tuple[tuple[int, int, float], ...] = ()
     cover: str | None = field(default=None, repr=False)  # the backend's; never in ``pool_view``
 
 
@@ -160,7 +164,7 @@ def kept_view(song: KeptSong, index: int) -> dict[str, Any]:
 
 def pool_view(track: PoolTrack, index: int) -> dict[str, Any]:
     """A pool track as ``get_pool`` shows it: MOWL's analysis and the pool's role, no id."""
-    return {
+    view: dict[str, Any] = {
         "index": index,
         "title": model_input.view_text(track.title, 100),
         "artist": model_input.view_text(track.artist, 60),
@@ -170,6 +174,9 @@ def pool_view(track: PoolTrack, index: int) -> dict[str, Any]:
         "drops": _marks(track.drops),
         "breakdowns": _marks(track.breakdowns),
     }
+    if track.sections:  # numbers only, at most MAX_SECTIONS spans: [from_sec, to_sec, energy]
+        view["sections"] = [list(s) for s in track.sections]
+    return view
 
 
 def analysed_pool(
@@ -191,8 +198,10 @@ def analysed_pool(
     for section in m["songs"]:
         starts.setdefault(int(section["track"]), float(section["start"]))
     sections_of: dict[int, set[int]] = {}
+    spans_of: dict[int, list[Mapping[str, Any]]] = {}
     for section in m["songs"]:
         sections_of.setdefault(int(section["track"]), set()).add(int(section["song"]))
+        spans_of.setdefault(int(section["track"]), []).append(section)
     out: list[PoolTrack] = []
     omitted = 0
     for spotify_id, role in wanted:
@@ -221,6 +230,7 @@ def analysed_pool(
                 length_sec=round(float(track["sec"])),
                 drops=tuple(float(e["t"]) - start for e in marks if e["kind"] == "drop"),
                 breakdowns=tuple(float(e["t"]) - start for e in marks if e["kind"] == "breakdown"),
+                sections=pool_sections(spans_of.get(number, []), start, round(float(track["sec"]))),
                 cover=cover_url(covers.get(spotify_id)),
             )
         )

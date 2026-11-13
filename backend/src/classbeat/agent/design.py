@@ -32,6 +32,7 @@ from classbeat.agent.game_prompt import games_section
 from classbeat.agent.guidance import Guidance, rules_result
 from classbeat.agent.model_input import MusicData
 from classbeat.agent.schemas import DraftInput, MusicInput, RunningDraft, WorkoutDraft
+from classbeat.agent.section_energy import DESIGN_GUIDANCE
 from classbeat.agent.stage import Stage, Tool, ToolAnswer, ToolError
 from classbeat.plan_gates import PlanGates, draft_problems
 
@@ -75,6 +76,10 @@ under the interval, and avoid changing cadence by more than 15 rpm inside one so
 - races only when the brief asks for them: races are 15 to 35 s, seated, zone 6 or \
 7, after a short build-up and before a recovery, best started on a drop.
 
+"""
+    + DESIGN_GUIDANCE
+    + """
+
 Keep the class within the length of the music and close to the length the brief asks for.
 
 """
@@ -91,7 +96,7 @@ sees your draft before anything is saved.
 GET_MUSIC_DESCRIPTION: Final = (
     "The music summary: playlist name, duration, per track its index, title, artist, BPM, "
     "start and length, and the drops and breakdowns with times. With track, that track's "
-    "sections and its drops and breakdowns."
+    "sections (each with its energy from 0 to 1, where known) and its drops and breakdowns."
 )
 PREVIEW_DESCRIPTION: Final = (
     "Check a draft and fit it to the music without finishing: returns the fitted timeline, "

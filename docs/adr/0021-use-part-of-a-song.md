@@ -138,3 +138,15 @@ could be built, the arithmetic, would show a timeline that no player follows.
 | T6 | e2e on fakes | a trimmed class is designed, approved and saved with a trimmed total | Sonnet / Sonnet |
 
 None of T1 to T6 is startable until a precondition in decision 3 holds and the owner says so.
+
+**Amendment 2026-11-13 (#1035): section energy instead of a trim.** The owner kept #580 blocked and
+asked for the honest neighbour: whole songs still play, but the model now sees each section's energy
+(a number from 0 to 1 ranked within its track, from MOWL's map) in `get_music(track=i)` and `get_pool`,
+and the prompts tell it to put the warm-up, recoveries and cooldown on quiet sections and hard work
+on loud ones; the song stage prefers songs that stay quiet for the easy roles. It is not a trim: no
+window, no `trims`, no change to a song's length or to the total. No audio is processed and no
+provider is contacted; ADR 0010's note of the same date records why the number may reach the model.
+`MAP_VERSION` stays 12: classbeat only reads a field the map already has (the vendored
+`mowl-workouts` 0.11.0 map holds `energy` since 0.5.1, which left `MAP_VERSION` at 12), and a map
+analysed before that simply has none, so the model sees no energy for it and the views leave the
+field out; nothing breaks and nothing is re-analysed. The decision above and T1 to T6 are unchanged.

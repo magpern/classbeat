@@ -66,11 +66,13 @@ RUN = {"sport": "running", "length_min": 30, "intensity": "moderate"}
 # none of them, so every recorded eval result and model route stays valid.
 # ADR 0029 section 3 (MA1a-1): the schema's four games; section 4 (MA1b-1): the stated-values
 # sentence.
+# #1035 (section energy): design, revise, choose_songs and the two running stages changed once,
+# on purpose: a guidance line on each section's energy, and get_pool's and get_music's description.
 CYCLING_PROMPT_VERSIONS = {
-    "design": "e49b9d03c38fb9481cf41a096e992fc3e8f3805c8aeb6507dd8be9ccbc402643",
-    "revise": "2d24e280ae51af9792836cf74866ba4899b08bbfa364cfa7801490a57b1c2f0e",
+    "design": "ead8ee6227b99d148d4ba7318fd6032d9e12605894a968775b4ab4813d019e2b",
+    "revise": "317d75e31910bb71dff3498f8a798901409a990f25f691ba29d11a6b680235b6",
     "pick_pool": "58d36e6a25155e86a70e88b79c845ccd1501f7f2db4c7d28af9f6f78badb5449",
-    "choose_songs": "4fb091519ef4af656c3fc32e424bc1b083db5531a7436e8976dc2e0e60a386db",
+    "choose_songs": "8276fcb86756747f9963e29763ee1cda1efa02dfeb5bfc32efc8f20e9b8ee930",
 }
 # Words of cycling's that a running prompt must never use (ADR 0018 section 2).
 CYCLING_WORDS = re.compile(

@@ -60,6 +60,7 @@ DIGEST_SOURCES: Final = (
     "game_checks.py",
     "music.py",
     "pick.py",
+    "pick_case.py",
     "pick_world.py",
     "runner.py",
     # #908: the results types and formats split out of the runner, and the chained revise case's
@@ -86,6 +87,8 @@ DIGEST_SOURCES: Final = (
 RULE_SOURCES: Final = (
     "agent/guidance.py",
     "agent/model_input.py",
+    "agent/section_energy.py",
+    "agent/song_input.py",
     "design/guidance.py",
     "design/selection.py",
     "design/rules/__init__.py",

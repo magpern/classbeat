@@ -1,0 +1,15 @@
+{
+ "name": "section_energy_30",
+ "about": "A 30 minute class: the choose stage is shown every pool track's section energy.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate"
+ },
+ "catalogue": {
+  "size": 40
+ },
+ "quality": true,
+ "expect": {
+  "sections_shown": true
+ }
+}

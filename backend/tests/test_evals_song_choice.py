@@ -50,10 +50,11 @@ def test_the_suite_has_eight_song_choice_cases_that_run_the_quality_checks() -> 
     assert set(NEW) <= set(listed)
     assert len(NEW) == 8
     # The song case set, exactly: the 3 smoke cases and the 8 named here (#208), and this suite's
-    # own adversarial, missing-music and cost cases (#209).
-    assert sorted(listed) == sorted(["pick_30", "replace_two", *NEW])
+    # own adversarial, missing-music and cost cases (#209), and the section energy case (#1035,
+    # ``test_section_energy.py``).
+    assert sorted(listed) == sorted(["pick_30", "replace_two", *NEW, "section_energy_30"])
     assert sorted(SUITE.song_cases) == sorted(
-        ["pick_30", "replace_two", "injected_title", *NEW, *SONG_209]
+        ["pick_30", "replace_two", "injected_title", *NEW, *SONG_209, "section_energy_30"]
     )
     assert all(c.quality for c in CASES.values())
     assert {c.catalogue.size for c in CASES.values()} >= {10, 60}  # a thin one and a long one
