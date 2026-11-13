@@ -271,7 +271,8 @@ async def test_the_interpret_spend_stops_a_later_stage_of_the_job(songenv: SongE
     ).all()
     interpret = next(r.cost_micros for r in spent if r.stage == "interpret")
     pick = sum(r.cost_micros for r in spent if r.stage != "interpret")
-    assert interpret > 0 and pick > 0  # the fake provider prices its turns
+    assert interpret > 0  # the fake provider prices its turns
+    assert pick > 0
 
     # A ceiling the pick alone fits and the interpret run on top of it does not.
     songs.configure(
