@@ -7,20 +7,15 @@ float clamped to 0..1 and rounded to 2 decimals, or nothing. A map analysed befo
 a one-section track and a flat-sounding track have none, and a Swedebeat mix never does.
 
 Pure: no I/O. ``model_input.track_detail`` shows one number per section; ``songs.analysed_pool``
-folds a pool track's sections into at most ``MAX_SECTIONS`` spans (``pool_sections``). The two
+merges a pool track's sections into at most ``MAX_SECTIONS`` spans (``pool_sections``). The two
 guidance lines are the stage prompts' wording of how to use it.
 """
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Final
 
-from mowl import spotify
-
 MAX_SECTIONS: Final = 8  # spans shown per pool track
-# A section shorter than the first step is folded into its neighbour (mowl's own rule); a track
-# with more than ``MAX_SECTIONS`` spans is folded again with the next, longer minimum.
-FOLD_STEPS: Final = (13, 20, 30, 45, 60, 90, 120)
 
 DESIGN_GUIDANCE: Final = (
     "Where a track's sections show an energy (0 is the quietest part of that track, 1 the "
@@ -29,10 +24,12 @@ DESIGN_GUIDANCE: Final = (
     "intervals on its loud ones."
 )
 SONGS_GUIDANCE: Final = (
-    "A pool track's sections are [from_sec, to_sec, energy] spans, energy from 0 (the quietest "
-    "part of that track) to 1 (the loudest), compared within the track only. Whole songs play: "
-    "prefer songs that stay quiet for the warmup, recovery and cooldown roles and songs with "
-    "long loud sections for the hard work."
+    "A pool track's sections are [from_sec, to_sec, energy] spans, energy a rank from 0 (the "
+    "quietest part of that track) to 1 (the loudest) within the track only, so every song "
+    "reaches both ends and none is louder than another. Whole songs play: compare where each "
+    "song's quiet and loud spans fall and how long they last, and prefer songs with long quiet "
+    "stretches for the warmup, recovery and cooldown roles and songs with long loud stretches "
+    "for the hard work."
 )
 
 
@@ -48,18 +45,38 @@ def pool_sections(
     sections: Sequence[Mapping[str, Any]], start: float, length_sec: int
 ) -> tuple[tuple[int, int, float], ...]:
     """One track's ``(from_sec, to_sec, energy)`` spans, seconds from the track's start: the
-    map's sections of that track, short ones folded into a neighbour (``spotify.energy_sections``),
-    folded further until at most ``MAX_SECTIONS`` remain. Sections without energy are left out."""
-    folded: list[dict[str, Any]] = []
-    for min_sec in FOLD_STEPS:
-        folded = spotify.energy_sections({"songs": list(sections)}, min_sec)
-        if len(folded) <= MAX_SECTIONS:
-            break
+    map's raw sections of that track (those with a valid energy), the shortest repeatedly merged
+    into its shorter neighbour, energy averaged by duration, until at most ``MAX_SECTIONS``
+    remain. A track with at most that many keeps every section; a long one keeps its contrast."""
+    spans: list[list[float]] = []  # [begin, end, energy x duration, duration]
+    for section in sorted(sections, key=lambda s: float(s["start"])):
+        energy = energy_of(section)
+        begin, end = float(section["start"]), float(section["end"])
+        if energy is not None and math.isfinite(begin) and math.isfinite(end) and end > begin:
+            spans.append([begin, end, energy * (end - begin), end - begin])
+    while len(spans) > MAX_SECTIONS:
+        i = min(range(len(spans)), key=lambda k: spans[k][3])
+        right = i < len(spans) - 1 and (i == 0 or spans[i + 1][3] < spans[i - 1][3])
+        j = i + 1 if right else i - 1
+        a, b = sorted((i, j))
+        spans[a] = [spans[a][0], spans[b][1], spans[a][2] + spans[b][2], spans[a][3] + spans[b][3]]
+        del spans[b]
     out: list[tuple[int, int, float]] = []
-    for span in folded[:MAX_SECTIONS]:
-        energy = energy_of(span)
-        begin = min(length_sec, max(0, round(float(span["start"]) - start)))
-        end = min(length_sec, max(0, round(float(span["end"]) - start)))
-        if energy is not None and end > begin:
-            out.append((begin, end, energy))
+    for begin, end, weighted, duration in spans:
+        low = min(length_sec, max(0, round(begin - start)))
+        high = min(length_sec, max(0, round(end - start)))
+        if high > low:
+            out.append((low, high, energy_of({"energy": weighted / duration}) or 0.0))
     return tuple(out)
+
+
+def strip_sections_until(views: Sequence[dict[str, Any]], fits: Callable[[], bool]) -> int | None:
+    """Drop ``sections`` from pool views, last track first, until ``fits()``; the index of the
+    first view that lost them, or ``None`` when none did. Used before any track is cut."""
+    first: int | None = None
+    for i in range(len(views) - 1, -1, -1):
+        if fits():
+            break
+        if views[i].pop("sections", None) is not None:
+            first = i
+    return first

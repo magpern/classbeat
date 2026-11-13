@@ -7,6 +7,7 @@ name the new fields, so any other key fails them.
 """
 
 import copy
+import dataclasses
 import json
 import math
 from itertools import pairwise
@@ -124,22 +125,112 @@ def test_a_pool_track_without_energy_has_no_sections_key(monkeypatch: pytest.Mon
     assert all("sections" not in pool_view(t, i) for i, t in enumerate(tracks))
 
 
-def test_a_track_with_many_sections_is_folded_to_the_bound() -> None:
-    sections = [
-        {"track": 1, "start": 10.0 * n, "end": 10.0 * (n + 1), "energy": (n % 5) / 4}
-        for n in range(40)
+def raw(energies: list[float], length: float = 30.0) -> list[dict[str, Any]]:
+    return [
+        {"track": 1, "start": length * n, "end": length * (n + 1), "energy": e}
+        for n, e in enumerate(energies)
     ]
-    spans = section_energy.pool_sections(sections, 0.0, 400)
-    assert 1 <= len(spans) <= section_energy.MAX_SECTIONS
+
+
+@pytest.mark.parametrize(("count", "length"), [(9, 30.0), (12, 20.0), (10, 25.0), (14, 18.0)])
+def test_a_typical_track_keeps_eight_spans_not_one(count: int, length: float) -> None:
+    energies = [(n % 4) / 3 for n in range(count)]
+    spans = section_energy.pool_sections(raw(energies, length), 0.0, round(count * length))
+    assert len(spans) == min(count, section_energy.MAX_SECTIONS) == 8
+    assert spans[0][0] == 0
+    assert spans[-1][1] == round(count * length)
+    assert all(a[1] == b[0] for a, b in pairwise(spans))  # contiguous, nothing lost
+
+
+def test_a_track_with_few_sections_keeps_each_one() -> None:
+    spans = section_energy.pool_sections(raw([0.0, 0.5, 1.0]), 0.0, 90)
+    assert spans == ((0, 30, 0.0), (30, 60, 0.5), (60, 90, 1.0))
+
+
+def test_merging_keeps_a_quiet_intro_and_a_loud_chorus_apart() -> None:
+    energies = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.9, 1.0, 1.0]  # 11 sections of 30 s
+    spans = section_energy.pool_sections(raw(energies), 0.0, 330)
+    assert len(spans) == 8
+    assert spans[0][2] < 0.2
+    assert spans[-1][2] >= 0.95
+    assert max(e for *_, e in spans) - min(e for *_, e in spans) > 0.7
+
+
+def test_merged_energy_is_weighted_by_duration() -> None:
+    sections = [
+        {"track": 1, "start": 0.0, "end": 30.0, "energy": 1.0},
+        {"track": 1, "start": 30.0, "end": 40.0, "energy": 0.0},
+        *[
+            {"track": 1, "start": 40.0 + 60 * n, "end": 100.0 + 60 * n, "energy": 0.5}
+            for n in range(7)
+        ],
+    ]
+    spans = section_energy.pool_sections(sections, 0.0, 460)
+    assert len(spans) == 8
+    assert spans[0] == (0, 40, 0.75)  # (1.0 x 30 + 0 x 10) / 40
+
+
+def test_the_cap_is_enforced_for_a_very_long_section_list() -> None:
+    spans = section_energy.pool_sections(raw([(n % 5) / 4 for n in range(40)], 10.0), 0.0, 400)
+    assert len(spans) == section_energy.MAX_SECTIONS  # fails if the reduction loop is removed
     assert spans[0][0] == 0
     assert spans[-1][1] == 400
 
 
-def test_the_pool_answer_still_fits_its_cap_for_a_big_pool(monkeypatch: pytest.MonkeyPatch) -> None:
-    tracks = pool_of(monkeypatch) * 15
-    ctx = choose_songs.ChooseContext.build(PickPlan.build(brief()), tracks, 0)
-    size = len(json.dumps(ctx.pool_answer(), separators=(",", ":")).encode())
+def test_the_slice_to_the_cap_is_not_what_bounds_the_spans() -> None:
+    """Without the merge loop a slice would keep 8 spans but lose the end of the track."""
+    spans = section_energy.pool_sections(raw([0.1] * 20 + [1.0] * 4, 10.0), 0.0, 240)
+    assert len(spans) == 8
+    assert spans[-1][1] == 240
+    assert spans[-1][2] == 1.0
+
+
+@pytest.mark.parametrize("bad", [None, True, "0.5", math.nan, math.inf, [0.5]])
+def test_a_bad_energy_is_left_out_of_a_pool_span_before_any_arithmetic(bad: object) -> None:
+    sections = raw([0.2, 0.4, 0.6, 0.8, 1.0, 0.0, 0.3, 0.5, 0.7, 0.9])
+    sections[3]["energy"] = bad
+    spans = section_energy.pool_sections(sections, 0.0, 300)
+    assert 1 <= len(spans) <= section_energy.MAX_SECTIONS
+    assert all(isinstance(e, float) and 0.0 <= e <= 1.0 for *_, e in spans)
+    assert all(not math.isnan(e) for *_, e in spans)
+
+
+def test_an_out_of_range_energy_is_clamped_on_the_pool_path() -> None:
+    spans = section_energy.pool_sections(raw([-3.0, 7.0]), 0.0, 60)
+    assert spans == ((0, 30, 0.0), (30, 60, 1.0))
+
+
+def pool_ctx(monkeypatch: pytest.MonkeyPatch, copies: int) -> choose_songs.ChooseContext:
+    tracks = [
+        dataclasses.replace(t, title=f"{t.title} {n}" * 3, sections=SPANS8)
+        for n in range(copies)
+        for t in pool_of(monkeypatch)[:1]
+    ]
+    return choose_songs.ChooseContext.build(PickPlan.build(brief()), tracks, 0)
+
+
+SPANS8 = tuple((30 * n, 30 * n + 30, round(n / 7, 2)) for n in range(8))
+
+
+def test_sections_are_stripped_before_any_track_is_cut(monkeypatch: pytest.MonkeyPatch) -> None:
+    ctx = pool_ctx(monkeypatch, 100)
+    full = len(json.dumps([pool_view(t, i) for i, t in enumerate(ctx.tracks)]).encode())
+    assert full > choose_songs.MAX_POOL_BYTES  # the spans alone push this pool over the cap
+    out = ctx.pool_answer()
+    assert len(out["tracks"]) == 100
+    assert "truncated" not in out
+    first_cut = out["sections_omitted_from_track"]
+    assert 0 < first_cut < 100
+    assert all("sections" in t for t in out["tracks"][:first_cut])
+    assert all("sections" not in t for t in out["tracks"][first_cut:])
+    size = len(json.dumps(out, ensure_ascii=False, separators=(",", ":")).encode())
     assert size <= choose_songs.MAX_POOL_BYTES
+
+
+def test_a_pool_that_fits_keeps_every_span(monkeypatch: pytest.MonkeyPatch) -> None:
+    out = pool_ctx(monkeypatch, 10).pool_answer()
+    assert "sections_omitted_from_track" not in out
+    assert all(t["sections"] == [list(s) for s in SPANS8] for t in out["tracks"])
 
 
 def test_every_stage_that_shows_energy_tells_the_model_how_to_use_it() -> None:

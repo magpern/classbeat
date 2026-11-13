@@ -2,8 +2,9 @@
 
 - the brief: the guided options and the user's free text (``Brief``);
 - the music summary: ``library.summary`` **projected** down to the playlist name and, per track,
-  its index, title, artist, BPM, start and length, plus the drops and breakdowns with times. Its
-  ``spotify_id``, ``playlist_id`` and MOWL's ``unavailable`` texts are dropped (unavailable tracks
+  its index, title, artist, BPM, start and length, the drops and breakdowns with times and, in a
+  track's detail, each section's energy (0..1, where the map has it). Its ``spotify_id``,
+  ``playlist_id`` and MOWL's ``unavailable`` texts are dropped (unavailable tracks
   are simply absent: ``library.spotify_analysis`` leaves them out of the map). Tracks are named by
   their **index** in that list (0-based), never by an id;
 - the fitted timeline of a draft (times, zones, cadences, the index of the track under each
@@ -12,9 +13,10 @@
 
 **Never:** tokens or credentials, the user's email, name or ids, connection data, MOWL or Spotify
 ids (playlist, track, program), playlist URLs, MOWL's availability texts, anything from another
-user, error texts from providers. Nothing else in ``classbeat.agent`` puts data in front of the
-model; ``tests/test_agent_model_input.py`` plants a value in each of those places and checks that
-none reaches what the provider adapter would send.
+user, error texts from providers. The song stages' views (``song_input``, ``songs.pool_view``) and
+the section energy (``section_energy``: numbers only) follow the same allowlist; nothing else in
+``classbeat.agent`` puts data in front of the model; ``tests/test_agent_model_input.py`` plants a
+value in each of those places and checks that none reaches what the provider adapter would send.
 
 **Crossfade.** A stored analysis made under ``mowl-workouts`` 0.4.1 has no ``crossfade`` key (its
 tracks are back to back); ``music_map`` converts it exactly with ``spotify.with_crossfade(map,

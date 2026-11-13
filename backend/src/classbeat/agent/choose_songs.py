@@ -27,7 +27,7 @@ from typing import Any, Final
 from classbeat.agent import song_input
 from classbeat.agent.dispatcher import MAX_RESULT_BYTES
 from classbeat.agent.schemas import GetPoolInput, SongList, SongRef
-from classbeat.agent.section_energy import SONGS_GUIDANCE
+from classbeat.agent.section_energy import SONGS_GUIDANCE, strip_sections_until
 from classbeat.agent.songs import (
     CROSSFADE_SEC,
     TOLERANCE,
@@ -174,6 +174,9 @@ class ChooseContext:
         def size() -> int:
             return len(json.dumps(out, ensure_ascii=False, separators=(",", ":")).encode())
 
+        cut = strip_sections_until(views, lambda: size() <= MAX_POOL_BYTES)  # before any track
+        if cut is not None:
+            out["sections_omitted_from_track"] = cut
         while size() > MAX_POOL_BYTES and views:
             views.pop()
             out["truncated"] = {"tracks_shown": len(views), "tracks_total": len(self.tracks)}
