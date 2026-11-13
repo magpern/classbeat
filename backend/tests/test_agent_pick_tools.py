@@ -481,7 +481,18 @@ def test_get_pool_shows_the_analysis_without_ids_and_counts_the_omitted() -> Non
         "length_sec",
         "drops",
         "breakdowns",
+        "sections",
     }
+    # section energy: at most 8 [from_sec, to_sec, energy] spans of bounded, rounded numbers
+    spans = first["sections"]
+    assert 0 < len(spans) <= 8
+    for begin, end, energy in spans:
+        assert isinstance(begin, int)
+        assert isinstance(end, int)
+        assert 0 <= begin < end <= first["length_sec"]
+        assert isinstance(energy, float)
+        assert 0.0 <= energy <= 1.0
+        assert energy == round(energy, 2)
     assert (first["index"], first["bpm"], first["length_sec"]) == (0, 100.0, 240)
     assert first["drops"] == [60, 180]
     assert first["breakdowns"] == [120]
