@@ -23,8 +23,9 @@ from sqlalchemy import text
 
 from authtools import ORIGIN, Env, running_env
 from classbeat import auth
-from classbeat.auth import sessions as sessions_module
-from classbeat.auth.anomaly import EVENT_KIND, agent_family, client_mark
+from classbeat.auth import session_marks
+from classbeat.auth.anomaly import EVENT_KIND, ClientMark, agent_family
+from classbeat.auth.anomaly import client_mark as request_mark
 from classbeat.auth.deps import require_recent_auth, require_stepup
 from classbeat.auth.export import account_export
 from classbeat.auth.keys import Keys, hmac_digest
@@ -50,6 +51,13 @@ SAFARI_IPHONE = (
     "(KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1"
 )
 HOME, MOBILE = "198.51.100.7", "203.0.113.40"
+
+
+def client_mark(keys: Keys, ip: str, user_agent: str | None) -> ClientMark:
+    """The mark of a request with a peer address (``request_mark`` is ``PEERLESS`` without one)."""
+    mark = request_mark(keys, ip, user_agent)
+    assert isinstance(mark, ClientMark)
+    return mark
 
 
 # --- the mark itself ---------------------------------------------------------------------------
@@ -359,7 +367,7 @@ async def test_a_request_that_lost_the_race_still_runs_without_recent_auth_and_w
     # row (its mark is stored) but the event interval was taken by the winner.
     for ip in (MOBILE, "192.0.2.99"):
         async with env.db() as db:
-            moved = await sessions_module._compare_mark(
+            moved = await session_marks.compare_mark(
                 db, stale, client_mark(keys, ip, CHROME_WINDOWS), ip
             )
         assert moved is True
@@ -548,11 +556,20 @@ def _calls(name: str) -> list[tuple[str, int, ast.Call]]:
     return found
 
 
+# The only makers of a request's mark: both give ``PEERLESS`` without a peer address (#1023), so a
+# session is never marked with the word ``unknown``.
+MARK_MAKERS = {"client_mark", "request_client_mark"}
+
+
 def _passes_a_mark(call: ast.Call) -> bool:
     for keyword in call.keywords:
         if keyword.arg == "mark":
             value = keyword.value
-            return not (isinstance(value, ast.Constant) and value.value is None)
+            if not isinstance(value, ast.Call):
+                return False
+            func = value.func
+            called = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            return called in MARK_MAKERS
     return False
 
 
@@ -586,4 +603,15 @@ def test_the_guard_can_fail() -> None:
     assert isinstance(good.value, ast.Call)
     assert not _passes_a_mark(bad.value)
     assert not _passes_a_mark(ast.parse("rotate_session(db, info)").body[0].value)  # type: ignore[attr-defined]
+    for value, passes in (
+        ("mark", False),
+        ("ClientMark(h, a)", False),
+        ("make_mark(k, i, a)", False),
+        ("request_client_mark(r, i)", True),
+        ("anomaly.client_mark(k, i, a)", True),
+    ):
+        statement = ast.parse(f"rotate_session(db, info, mark={value})").body[0]
+        assert isinstance(statement, ast.Expr)
+        assert isinstance(statement.value, ast.Call)
+        assert _passes_a_mark(statement.value) is passes, value
     assert _passes_a_mark(good.value)

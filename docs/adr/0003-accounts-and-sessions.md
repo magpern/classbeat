@@ -786,7 +786,9 @@ was last seen from.
   step-up), from the request that did it. A session without a mark (created before migration
   0033) takes the mark of its next request silently. If that first request is a thief's, the
   session takes the thief's mark and the victim's next request is the recorded move: the theft is
-  still noticed, one request later. This holds only for sessions that existed at the deploy.
+  still noticed, one request later. This holds only for sessions that existed at the deploy, and
+  for a session a peerless request started (below), which starts with no recent authentication,
+  MFA or step-up, so the adoption gives nothing.
 
 Every request that resolves a session with a cookie (`deps.resolve_request`) compares the request's
 mark with the stored one, in the transaction that touches `last_seen_at`. When either part differs:
@@ -822,7 +824,16 @@ The SSE stream's periodic check (`session_probe`) resolves without a request and
 A request whose peer address is unknown (`client_ip` gives `unknown`: uvicorn has no peer for a
 connection the client reset before it was accepted, an aborted fetch, #926) is not compared with
 the stored mark and stores no mark (it still touches `last_seen_at`), and it runs without
-`reauth_at`, `mfa_at` and `stepup_at` itself.
+`reauth_at`, `mfa_at` and `stepup_at` itself. Its mark is `PEERLESS` (`anomaly.client_mark`), never
+a mark of the word `unknown`; a forwarded `X-Forwarded-For: unknown` is not peerless (the walk
+ends at the trusted proxy, whose address is compared like any other). The same holds where a
+session is written (#1023): a peerless sign-in (password, passkey, OAuth) starts a session with no
+mark, no `sessions.ip` and no `reauth_at`, `mfa_at` or `stepup_at`, not even inherited ones (it
+still replaces the browser's old session and keeps its absolute limit), and a peerless rotation
+(re-authentication by password, passkey, OAuth or TOTP, MFA verification, step-up) issues the new
+token but keeps the old row's mark, address, `User-Agent`, "New location" flag and times, and sets
+none of them. Its response is normally lost with the connection; if it is not, the session just
+has no recent proof.
 Binding the server to a unix socket would make every request peerless, so production stays on TCP.
 A notice mail is not sent yet; it waits for outgoing mail beyond the security notices (#352).
 
@@ -832,7 +843,11 @@ the user's classes and messages, starting designs, saving to MOWL. The limits ar
 limit and the Save and Update caps (amendment above) and the plan quotas. The detection is this
 signal (an `auth_events` row, and "New location" in the user's session list); a script that sends
 the victim's exact `User-Agent` from the victim's own network (malware on the victim's machine) is
-not noticed, and a later PR adds the security log and the admin abuse view (#632).
+not noticed, and a later PR adds the security log and the admin abuse view (#632). A peerless
+request (above) can make the same ordinary writes blind (its response is normally lost) and records
+no `session_location_changed` event, since it has no mark to compare; it does touch `last_seen_at`.
+It never gets recent authentication, MFA, the step-up or the admin role, so it can do nothing
+that needs them, and it cannot give the session any of them by signing in or rotating.
 
 **Alternatives.**
 - *Log out on a move:* rejected, it breaks every phone (above).
@@ -850,7 +865,8 @@ not noticed, and a later PR adds the security log and the admin abuse view (#632
   counts as one move (one event, recent authentication cleared), and nothing more.
 - A user whose phone changes network often re-authenticates for the guarded actions more often;
   those already need a re-authentication within 10 minutes, so the cost is small.
-- Tests: `backend/tests/test_session_anomaly.py`.
+- Tests: `backend/tests/test_session_anomaly.py`, and for peerless sign-in and rotation
+  `backend/tests/test_peerless_signin.py`.
 
 ## Amendment 2026-11-05: the security log (#632)
 

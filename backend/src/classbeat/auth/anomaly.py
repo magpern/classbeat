@@ -11,12 +11,17 @@ between wifi and mobile data all day.
 - The browser family is ``<browser>/<os>`` from the ``User-Agent``, with no versions, so a browser
   update is not a move. A script that copies the victim's exact ``User-Agent`` is not told apart;
   the network still is.
+
+A request without a peer address (``clientip.UNKNOWN_ADDRESS``; #926, #1023) has no network, so
+its mark is ``PEERLESS``: nothing is compared with it, nothing is stored from it and it proves
+nothing (``sessions``). A forwarded ``unknown`` is not peerless (``client_ip`` never returns it).
 """
 
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Final
 
-from classbeat.auth.clientip import bucket_ip
+from classbeat.auth.clientip import UNKNOWN_ADDRESS, bucket_ip
 from classbeat.auth.keys import Keys, hmac_digest
 
 EVENT_KIND = "session_location_changed"
@@ -73,6 +78,19 @@ class ClientMark:
         return f"ClientMark(agent={self.agent!r})"
 
 
-def client_mark(keys: Keys, ip: str, user_agent: str | None) -> ClientMark:
-    """The mark of a request from ``ip`` (``client_ip``'s result) with ``user_agent``."""
+@dataclass(frozen=True, slots=True)
+class Peerless:
+    """The mark of a request without a peer address: there is none to compare or store."""
+
+
+PEERLESS: Final = Peerless()
+
+type RequestMark = ClientMark | Peerless
+
+
+def client_mark(keys: Keys, ip: str, user_agent: str | None) -> RequestMark:
+    """The mark of a request from ``ip`` (``client_ip``'s result) with ``user_agent``;
+    ``PEERLESS`` when ``ip`` is ``UNKNOWN_ADDRESS``, never a mark of the word ``unknown``."""
+    if ip == UNKNOWN_ADDRESS:
+        return PEERLESS
     return ClientMark(hmac_digest(keys.session_client, bucket_ip(ip)), agent_family(user_agent))
