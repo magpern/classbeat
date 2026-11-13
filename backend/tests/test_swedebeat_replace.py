@@ -35,7 +35,7 @@ from classbeat.swedebeat_match.revision import (
 )
 from ctx import make_context
 from preftools import use_swedebeat
-from revisesongtools import change, current, picked, replace_script, revise_script
+from revisesongtools import change, current, picked, replace_script, revise_script, runs, stated
 from songtools import SongEnv, song_id
 
 PLANTED_TITLE = "Planted Catalogue Title 3kq"
@@ -560,3 +560,59 @@ async def test_a_catalogue_replace_calls_nothing_while_the_preference_is_off(
         done = await songenv.run(job_id)
         assert (done.state, done.error_category) == ("failed", "feature_off")
         assert catalogue.calls == []
+
+
+async def test_a_catalogue_replace_of_a_class_that_states_values_is_never_read(
+    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1023: the server's status-only fact is no request: neither phase runs ``interpret`` (a
+    paid run that could layer values the instructor never asked for), and the list keeps no
+    reading, though the class states its length."""
+    catalogue = CatalogueFake()
+    monkeypatch.setattr(
+        match_kind, "catalogue_client", lambda: swedebeat_cloud_test_client(catalogue)
+    )
+    rider = await songenv.rider()
+    await connections.save(
+        songenv.factory,
+        songenv.ring,
+        make_context(rider.user_id),
+        "swedebeat",
+        {"token": "swedebeat-test-token", "device_id": "0123456789abcdef"},
+        public={"email": "rider@example.com"},
+    )
+    await use_swedebeat(songenv.factory, rider.user_id)
+    with _enabled(songenv):
+        class_id, base = await stated(songenv, rider)
+        first_list = songenv.sql(
+            "SELECT id FROM class_revisions WHERE class_id = :c AND kind = 'song_list'", c=class_id
+        ).scalar_one()
+        stored = songenv.revision(first_list)
+        parsed = SongListContent.model_validate(stored.content)
+        match_id = _insert_match(
+            songenv,
+            rider.user_id,
+            class_id,
+            first_list,
+            bytes(stored.content_hash),
+            [_song(n, song, missing=n == 3) for n, song in enumerate(parsed.songs, start=1)],
+        )
+        assert (await _approve(rider, class_id, match_id)).status_code == 200
+
+        songenv.script = replace_script()  # holds an interpret turn: it must stay unused
+        started = await change(
+            rider, class_id, base, replace=None, request=None, match_revision_id=str(match_id)
+        )
+        assert started.status_code == 201, started.text
+        job_id = UUID(started.json()["id"])
+        row = await songenv.run(job_id)
+        assert row.state == "waiting_for_approval", (row.state, row.error_category)
+        assert "interpret" not in runs(songenv, job_id)
+        assert "reading" not in songenv.revision(row.approval_revision_id).provenance
+
+        digest = bytes(row.approval_hash).hex()
+        assert (await rider.approve(job_id, row.approval_revision_id, digest)).status_code == 200
+        songenv.script = revise_script()
+        done = await songenv.run(job_id)
+        assert (done.state, done.error_category) == ("completed", None)
+        assert "interpret" not in runs(songenv, job_id)

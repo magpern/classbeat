@@ -14,7 +14,8 @@ section 4, #904).
   the layered one and its ``ExplicitGate`` checks the draft against it, so a miss after the
   correction budget is recorded as Not as asked.
 
-The run is an ``agent_runs`` row of the job under the job's ``revise`` stage, so it counts toward
+The run is an ``agent_runs`` row of the job, shown under ``job_stage`` (``revise`` by default;
+Change songs passes ``pool_search``), so it counts toward
 the job's cost ceiling and the month's cost cap. The revision's provenance keeps the revise run's
 usage only, as a design revision keeps its own and not its interpret job's. A failed interpret
 fails the job like any stage: nothing is stored. ``read`` is the model call alone, for a job that

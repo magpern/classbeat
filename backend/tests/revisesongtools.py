@@ -119,3 +119,23 @@ async def changed_approved(
     assert answer.status_code == 200, answer.text
     songenv.script = revise_script()
     return job_id, list_id
+
+
+async def stated(songenv: Any, rider: Any) -> tuple[Any, Any]:
+    """A class on picked songs whose brief states its length: (class id, its draft)."""
+    class_id, base, _ = await picked(songenv, rider)
+    songenv.sql(
+        "UPDATE classes SET brief = brief || CAST(:s AS jsonb) WHERE id = :c",
+        s=json.dumps({"explicit": ["length_min"]}),
+        c=class_id,
+    )
+    return class_id, base
+
+
+def runs(songenv: Any, *job_ids: Any) -> list[str]:
+    """The agent stages of the jobs' runs, oldest first."""
+    rows = songenv.sql(
+        "SELECT stage FROM agent_runs WHERE job_id = ANY(:ids) ORDER BY started_at",
+        ids=list(job_ids),
+    ).all()
+    return [r.stage for r in rows]

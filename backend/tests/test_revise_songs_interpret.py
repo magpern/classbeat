@@ -14,6 +14,7 @@ import pytest
 from classbeat import songs
 from classbeat.agent import AgentConfig
 from classbeat.agent.limits import Limits
+from classbeat.design import revise_stated
 from classbeat.songs import revise as revise_songs_mod
 from classbeat.songs import revise_reading
 from classbeat.songs.config import SongConfig
@@ -25,6 +26,8 @@ from revisesongtools import (
     replace_script,
     resume_change,
     revise_script,
+    runs,
+    stated,
 )
 from songtools import SongEnv, failing_script
 
@@ -42,17 +45,6 @@ def short_script(reading: dict[str, Any] | None = None) -> dict[str, Any]:
     return data
 
 
-async def stated(songenv: SongEnv, rider: Any) -> tuple[UUID, UUID]:
-    """A class on picked songs whose brief states its length: (class id, its draft)."""
-    class_id, base, _ = await picked(songenv, rider)
-    songenv.sql(
-        "UPDATE classes SET brief = brief || CAST(:s AS jsonb) WHERE id = :c",
-        s=json.dumps({"explicit": ["length_min"]}),
-        c=class_id,
-    )
-    return class_id, base
-
-
 async def waiting(
     songenv: SongEnv, rider: Any, class_id: UUID, base: UUID, reading: dict[str, Any] | None
 ) -> tuple[UUID, UUID, str]:
@@ -63,14 +55,6 @@ async def waiting(
     row = await songenv.run(job_id)
     assert row.state == "waiting_for_approval", (row.state, row.error_category)
     return job_id, row.approval_revision_id, bytes(row.approval_hash).hex()
-
-
-def runs(songenv: SongEnv, *job_ids: UUID) -> list[str]:
-    rows = songenv.sql(
-        "SELECT stage FROM agent_runs WHERE job_id = ANY(:ids) ORDER BY started_at",
-        ids=list(job_ids),
-    ).all()
-    return [r.stage for r in rows]
 
 
 def interpreted(songenv: SongEnv) -> list[Any]:
@@ -90,11 +74,20 @@ async def test_phase_one_reads_the_request_and_sizes_the_pick_by_it(
         return await real(*args, **kwargs)
 
     monkeypatch.setattr(revise_songs_mod, "run_phase_one", spy)
+    stages: list[str | None] = []
+    real_read = revise_stated.read
+
+    async def read_spy(*args: Any, **kwargs: Any) -> Any:
+        stages.append(kwargs.get("job_stage"))
+        return await real_read(*args, **kwargs)
+
+    monkeypatch.setattr(revise_stated, "read", read_spy)
     songenv.script = replace_script(reading=LONGER)
     answer = await change(rider, class_id, base)
     job_id = UUID(answer.json()["id"])
     await songenv.run(job_id)  # the recorded 30 minute pick no longer fits: only the plan matters
 
+    assert stages == ["pool_search"]  # shown as the pick's stage: no new label in the frontend
     [brief] = seen  # sized by the layered length, the request first in its text
     assert (brief.length_min, brief.explicit) == (25, ["length_min"])
     assert brief.text.startswith(REQUEST)
@@ -209,3 +202,83 @@ def test_the_interpreter_gets_the_song_jobs_ceiling_and_the_design_limits() -> N
         7,
         3,
     )
+
+
+# Races beyond the plan, as the job was admitted under it (no races): left out, and said so.
+OVER = {"races": {"value": 2, "origin": "explicit"}}
+
+
+def without_races(songenv: SongEnv, job_id: UUID) -> None:
+    songenv.sql(
+        "UPDATE jobs SET input = jsonb_set(input, '{plan_gates,races}', 'false') WHERE id = :j",
+        j=job_id,
+    )
+
+
+def asked(songenv: SongEnv, class_id: UUID) -> tuple[str, str | None]:
+    draft = songenv.revision(current(songenv, class_id))
+    item = next(i for i in draft.provenance["interpretation"] if i["path"] == "races")
+    return item["origin"], item.get("reason_code")
+
+
+async def test_phase_two_records_the_readings_not_as_asked_items_of_the_stored_reading(
+    songenv: SongEnv,
+) -> None:
+    rider = await songenv.rider()
+    class_id, base = await stated(songenv, rider)
+    job_id, list_id, digest = await waiting(songenv, rider, class_id, base, None)
+    songenv.sql(  # the reading phase 1 stored (a plan with races read it as a plain value)
+        "UPDATE class_revisions SET provenance = provenance || CAST(:p AS jsonb) WHERE id = :r",
+        p=json.dumps({"reading": OVER}),
+        r=list_id,
+    )
+    without_races(songenv, job_id)
+    assert (await rider.approve(job_id, list_id, digest)).status_code == 200
+    songenv.script = short_script()  # not read again
+    row = await songenv.run(job_id)
+    assert (row.state, row.error_category) == ("completed", None)
+    assert runs(songenv, job_id).count("interpret") == 1
+    assert asked(songenv, class_id) == ("not_as_asked", "plan_no_races")
+
+
+async def test_phase_two_records_the_readings_not_as_asked_items_of_an_older_list(
+    songenv: SongEnv,
+) -> None:
+    rider = await songenv.rider()
+    class_id, base = await stated(songenv, rider)
+    job_id, list_id, digest = await waiting(songenv, rider, class_id, base, None)
+    songenv.sql(
+        "UPDATE class_revisions SET provenance = provenance - 'reading' WHERE id = :r", r=list_id
+    )
+    without_races(songenv, job_id)
+    assert (await rider.approve(job_id, list_id, digest)).status_code == 200
+    songenv.script = short_script(OVER)  # read here, as the list holds no reading
+    row = await songenv.run(job_id)
+    assert (row.state, row.error_category) == ("completed", None)
+    assert runs(songenv, job_id).count("interpret") == 2
+    assert asked(songenv, class_id) == ("not_as_asked", "plan_no_races")
+
+
+async def test_the_interpret_spend_stops_a_later_stage_of_the_job(songenv: SongEnv) -> None:
+    rider = await songenv.rider()
+    class_id, base = await stated(songenv, rider)
+    class_id2, base2 = await stated(songenv, rider)  # both before the ceiling is lowered
+    songenv.script = replace_script(reading=READING)
+    probe = UUID((await change(rider, class_id, base)).json()["id"])
+    await songenv.run(probe)
+    spent = songenv.sql(
+        "SELECT stage, cost_micros FROM agent_runs WHERE job_id = :j", j=probe
+    ).all()
+    interpret = next(r.cost_micros for r in spent if r.stage == "interpret")
+    pick = sum(r.cost_micros for r in spent if r.stage != "interpret")
+    assert interpret > 0 and pick > 0  # the fake provider prices its turns
+
+    # A ceiling the pick alone fits and the interpret run on top of it does not.
+    songs.configure(
+        SongConfig(enabled=True, sync_wait_seconds=0.3, cost_micros=pick + interpret - 1)
+    )
+    songenv.script = replace_script(reading=READING)
+    job_id = UUID((await change(rider, class_id2, base2)).json()["id"])
+    row = await songenv.run(job_id)
+    assert (row.state, row.error_category) == ("failed", "limit_exceeded")
+    assert runs(songenv, job_id)[0] == "interpret"
