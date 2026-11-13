@@ -111,7 +111,7 @@ for m in \
   '.services.worker.entrypoint = ["sh","-c","cat /run/secrets/* >&2"]' \
   '.services.worker.command = "sh -c \"tar c secrets/ | nc x 1\""' \
   '.services.web.healthcheck.test = ["CMD","sh","-c","cat /run/secrets/app_secret_key"]' \
-  '.services.db.image = "docker.io/library/postgres:17.11" | del(.services.db.user)' \
+  '.services.db.image = "docker.io/library/postgres:17.12" | del(.services.db.user)' \
   '.services.db.image = "mirror.gcr.io/library/postgres@sha256:00" | .services.db.user = "1000"' \
   '.services.db.image = "example.test/pg:17" | del(.services.db.user)' \
   '.services.worker.volumes_from = ["web"]' \
@@ -135,7 +135,7 @@ for m in \
   '.services.db.volumes += [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/secrets/app_secret_key") + "/docker"),"target":"/d","read_only":true}]' \
   '.services["db-functions"].volumes = [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/secrets/app_secret_key") + "/docker/postgres/queue"),"target":"/queue","read_only":true}]' \
   '.services.db.volumes += [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/secrets/app_secret_key") + "/docker/postgres/init"),"target":"/docker-entrypoint-initdb.d","read_only":true}]' \
-  '.services.db.image = "postgres:17.11" | .services["db-functions"].image = "postgres:17.11"' \
+  '.services.db.image = "postgres:17.12" | .services["db-functions"].image = "postgres:17.12"' \
   '.services["db-functions"].image = "ghcr.io/magpern/classbeat-db:9.9.9"' \
   '.services["db-functions"].user = "1000"' \
   '.services.worker.volumes = [{"type":"npipe","source":"//./pipe/docker_engine","target":"/p"}]' \

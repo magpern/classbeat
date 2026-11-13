@@ -242,7 +242,7 @@ never a worker clock.
 `classbeat_queue` needs a superuser (Alembic as `classbeat_owner` can't: it would need membership
 in a `BYPASSRLS` role), so the role, its grants and the functions live in one idempotent script,
 `docker/postgres/queue/20-queue.sql`, run **as the superuser** by a one-shot compose service
-`db-functions` (image `postgres:17.11`, `psql --single-transaction -v ON_ERROR_STOP=1`), which
+`db-functions` (image `postgres:17.12`, `psql --single-transaction -v ON_ERROR_STOP=1`), which
 depends on `migrate` completing and which web and worker depend on. Its only secret is
 `postgres_password`, mounted as a file; its entrypoint builds a `PGPASSFILE` from it at run time,
 never an `environment:` value, so the `docker inspect` check holds. **This amends ADR 0002 §4's
