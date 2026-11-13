@@ -1,17 +1,18 @@
 # apt and libapt-pkg6.0 (CVE-2026-109518, HIGH): the app image (python:3.12.16-slim-bookworm) has apt
-# 2.6.1, the classbeat-db image (postgres:17.11 on trixie) has apt 3.0.3. The fixes are bookworm-security
-# 2.6.2 (DLA-4880-1) and trixie-security 3.0.4 (DSA-6607-1); no Docker Hub base image has them yet
-# (python 3.12.16 was pushed 2026-10-28, postgres 17.11 on 2026-11-01), so a tag bump cannot fix it.
+# 2.6.1. The fix is bookworm-security 2.6.2 (DLA-4880-1) and no python Docker Hub base has it yet
+# (python 3.12.16 was pushed 2026-10-28), so a tag bump cannot fix it. The classbeat-db image
+# (postgres:17.12 on trixie) now ships apt 3.0.4 (DSA-6607-1, checked 2026-11-13), so only the app
+# image still needs this line.
 # Unreachable in practice: it needs an on-path attacker on apt's own download traffic, and neither
 # image runs apt at runtime or in the Dockerfile. The ID is global, so one line covers both images.
-# Two weeks only: remove it as soon as Docker Hub republishes the bases (a postgres bump also moves
-# the queue functions' md5, queue_digests.py), or renew it only with a fresh reason.
+# Two weeks only: remove it as soon as Docker Hub republishes the python base, or renew it only with
+# a fresh reason.
 
 CVE-2026-109518 exp:2026-11-19
 
-# Go standard library v1.24.6 inside /usr/local/bin/gosu of the postgres:17.11 base image (the
+# Go standard library v1.24.6 inside /usr/local/bin/gosu of the postgres:17.12 base image (the
 # classbeat-db image, ADR 0020); the fixes are in Go 1.25/1.26, so only a newer postgres tag removes
-# them. That tag moves the queue functions' md5 (queue_digests.py) and is a separate change (#610).
+# them. 17.12 still ships gosu 1.19 built with go1.24.6 (checked 2026-11-13), so the entries stay.
 # Unreachable in practice: gosu is never run here, the image starts as USER postgres and compose runs
 # the services as postgres, so there is no root entrypoint re-exec. Confirmed with Trivy 0.76.1 on
 # 2026-11-04; the 26 IDs below are exactly the fixable HIGH/CRITICAL findings of that one file. The

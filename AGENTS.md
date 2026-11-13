@@ -262,7 +262,7 @@ Settings, per-feature behaviour, e2e and CI details: [docs/developer-commands.md
 uv sync && uv run ruff check && uv run ruff format --check && uv run pyright
 uv run pytest path/to/test_file.py     # targeted tests; database tests skip unless the Postgres below is up
 # Throwaway Postgres for database tests (one name and port per worktree; Git Bash: export MSYS_NO_PATHCONV=1)
-docker run -d --rm --name classbeat-5-pg -e POSTGRES_PASSWORD=test -p 127.0.0.1:55405:5432 postgres:17.11
+docker run -d --rm --name classbeat-5-pg -e POSTGRES_PASSWORD=test -p 127.0.0.1:55405:5432 postgres:17.12
 docker exec classbeat-5-pg psql -U postgres -c 'CREATE DATABASE classbeat'
 docker exec classbeat-5-pg sh -c 'echo owner-pw > /tmp/owner; echo app-pw > /tmp/app'
 docker cp ../docker/postgres/init/10-roles.sql classbeat-5-pg:/tmp/10-roles.sql

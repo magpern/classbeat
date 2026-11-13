@@ -36,7 +36,7 @@ x-app: &app
 
 services:
   db:
-    image: postgres:17.11
+    image: postgres:17.12
     restart: unless-stopped
     environment:
       POSTGRES_DB: classbeat
@@ -76,7 +76,7 @@ services:
   # postgres_password secret; the password goes into a PGPASSFILE on a tmpfs built at run time,
   # never into the environment or the command line, so it is not in `docker inspect`.
   db-functions:
-    image: postgres:17.11
+    image: postgres:17.12
     restart: "no"
     user: postgres
     entrypoint: ["sh", "/queue/db-functions.sh"]

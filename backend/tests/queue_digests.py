@@ -12,7 +12,7 @@ has run (as the test superuser):
 A guard trigger's digest is also written into ``20-queue.sql`` (its queue check refuses any other
 body); ``tests/test_queue_guard_triggers.py`` fails when the two disagree.
 
-It reads ``CLASSBEAT_TEST_DATABASE_URL``. Use the Postgres image compose pins (``postgres:17.11``).
+It reads ``CLASSBEAT_TEST_DATABASE_URL``. Use the Postgres image compose pins (``postgres:17.12``).
 """
 
 import difflib

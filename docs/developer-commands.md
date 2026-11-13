@@ -89,7 +89,7 @@ for test setup only) at it and stop it when done:
 
 ```bash
 export MSYS_NO_PATHCONV=1   # Git Bash on Windows only
-docker run -d --rm --name classbeat-5-pg -e POSTGRES_PASSWORD=test -p 127.0.0.1:55405:5432 postgres:17.11
+docker run -d --rm --name classbeat-5-pg -e POSTGRES_PASSWORD=test -p 127.0.0.1:55405:5432 postgres:17.12
 docker exec classbeat-5-pg psql -U postgres -c 'CREATE DATABASE classbeat'
 docker exec classbeat-5-pg sh -c 'echo owner-pw > /tmp/owner; echo app-pw > /tmp/app'
 docker cp ../docker/postgres/init/10-roles.sql classbeat-5-pg:/tmp/10-roles.sql
@@ -103,7 +103,7 @@ docker stop classbeat-5-pg
 The tests give `classbeat_owner` and `classbeat_app` random passwords for the run, connect as
 them, and create their own test-only owned tables. The script is idempotent. Tests that migrate
 to head also run `docker/postgres/queue/20-queue.sql` as the superuser, as `db-functions` does;
-use the image tag compose pins (`postgres:17.11`), because the queue check compares each
+use the image tag compose pins (`postgres:17.12`), because the queue check compares each
 function's `md5(pg_get_functiondef(oid))` with `classbeat/db/queue_digests.py` (README.md says
 how to refresh it). Web, worker and the CLI also refuse to start on a drifted job queue.
 

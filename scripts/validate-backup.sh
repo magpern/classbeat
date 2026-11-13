@@ -88,7 +88,7 @@ awk '
     if ($0 ~ /^COPY public\.[a-z0-9_]+ \([a-z0-9_, ]+\) FROM stdin;$/) { incopy = 1; next }
     deny("COPY in a form pg_dump does not write: " substr($0, 1, 80)); next
   }
-  # postgres 17.11 brackets plain-text output with \restrict KEY and \unrestrict KEY (a psql guard
+  # postgres 17.12 brackets plain-text output with \restrict KEY and \unrestrict KEY (a psql guard
   # against meta commands in a dump); pg_restore sends neither to the server.
   /^\\(un)?restrict [A-Za-z0-9]+$/ { next }
   /^\\/ { deny("psql meta command"); next }

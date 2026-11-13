@@ -94,7 +94,7 @@ x-app: &app
 
 services:
   db:
-    # The release's database image (docker/postgres/Dockerfile): postgres:17.11 with the role init
+    # The release's database image (docker/postgres/Dockerfile): postgres:17.12 with the role init
     # scripts, the queue functions and the maint role baked in, so the server needs no checkout.
     image: ghcr.io/magpern/classbeat-db:${CLASSBEAT_VERSION:?set CLASSBEAT_VERSION to a release tag}
     restart: unless-stopped
