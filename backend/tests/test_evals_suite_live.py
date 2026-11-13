@@ -75,6 +75,13 @@ def not_in_ci(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CI", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def root_logging_restored(restore_logging: None) -> None:
+    """``evals_main.main`` calls ``configure_logging``, which puts a handler on the root logger
+    holding ``sys.stdout``: under ``capsys`` that is a stream pytest closes after the test, so a
+    later test that logs (``test_security_log``) died with 'I/O operation on closed file'."""
+
+
 @pytest.fixture
 def key(kek_dir: Path) -> None:
     (kek_dir / "openai_api_key").write_text(PLANTED, "utf-8")
