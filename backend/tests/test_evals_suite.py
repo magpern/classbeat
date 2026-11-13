@@ -69,6 +69,7 @@ RELEASED: dict[int, str] = {
     17: "35ceafb410bc8029d2046613429fdfc8043825769fc29ac1d01c1ad9b0b4a68a",
     18: "fdbf9e421d1723e891d67c6c7cf0f863d9fd334e79b2f17485cca11070e1f8e5",
     19: "bb4ca4acddbfb47fcd15de398ce5b14bb3b97520e2264cab5bc5ef199535169c",
+    20: "15b2ae93f7f05008d30c9508f2793f44f697d0202c77a5580a39ed004929625d",
 }
 
 SUITE = load_suite()
@@ -188,12 +189,12 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10 + 2 + 2 + 10 + 3 + 1, 8 + 7)
     assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 69, 3 + 15)
     # #880: eight interpret cases, of their own kind (neither design nor song cases); #904: three
-    # revise readings, #908: one (remove_games)
-    assert len(SUITE.interpret_cases) == 8 + 3 + 1
+    # revise readings, #908: one (remove_games), #1023: one (a Change songs request)
+    assert len(SUITE.interpret_cases) == 8 + 3 + 1 + 1
     assert set(SUITE.interpret_cases) == set(MANIFEST.cases_of("interpret", "design")) | {
         "interpret_playlist_injection"
     }  # the injection is judged in adversarial: every run
-    assert len(index) == 30 + 69 + 3 + 15 + 8 + 3 + 1
+    assert len(index) == 30 + 69 + 3 + 15 + 8 + 3 + 1 + 1
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)

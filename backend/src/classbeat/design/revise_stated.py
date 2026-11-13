@@ -17,13 +17,16 @@ section 4, #904).
 The run is an ``agent_runs`` row of the job under the job's ``revise`` stage, so it counts toward
 the job's cost ceiling and the month's cost cap. The revision's provenance keeps the revise run's
 usage only, as a design revision keeps its own and not its interpret job's. A failed interpret
-fails the job like any stage: nothing is stored.
+fails the job like any stage: nothing is stored. ``read`` is the model call alone, for a job that
+keeps the reading (Change songs, ``classbeat.songs.revise_reading``).
 """
 
-from classbeat.agent import run_stage
+from classbeat.agent import AgentConfig, run_stage
 from classbeat.agent.brief import Brief
 from classbeat.agent.interpret import InterpretContext, InterpretResult, interpret_stage
 from classbeat.agent.interpret_input import current_values
+from classbeat.agent.interpreted import InterpretedRequest
+from classbeat.agent.provider import ModelProvider
 from classbeat.agent.records import JobStageHost
 from classbeat.design.revise_layer_policy import Layered, layer
 from classbeat.jobs import JobFailure, JobRun
@@ -45,19 +48,32 @@ def context_for(brief: Brief, request: str, gates: PlanGates | None) -> Interpre
     )
 
 
-async def layered(
-    job_run: JobRun, model: GroupModel, brief: Brief, request: str, gates: PlanGates | None
-) -> Layered:
+async def read(
+    job_run: JobRun,
+    provider: ModelProvider,
+    agent: AgentConfig,
+    brief: Brief,
+    request: str,
+    gates: PlanGates | None,
+    *,
+    job_stage: str = JOB_STAGE,
+) -> InterpretedRequest | None:
+    """The interpreter's reading of ``request``, or None for a brief that states nothing (no
+    model call). ``agent`` carries the ceiling the run counts against; ``job_stage`` is the job's
+    stage the run is shown under."""
     if not brief.explicit:
-        return Layered(brief)
+        return None
     ctx = context_for(brief, request, gates)
     outcome = await run_stage(
-        JobStageHost(job_run, JOB_STAGE),
-        model.provider,
-        interpret_stage(ctx),
-        ctx.first_message(),
-        model.agent,
+        JobStageHost(job_run, job_stage), provider, interpret_stage(ctx), ctx.first_message(), agent
     )
     if not isinstance(outcome.output, InterpretResult):
         raise JobFailure("internal")
-    return layer(brief, outcome.output.request, gates)
+    return outcome.output.request
+
+
+async def layered(
+    job_run: JobRun, model: GroupModel, brief: Brief, request: str, gates: PlanGates | None
+) -> Layered:
+    reading = await read(job_run, model.provider, model.agent, brief, request, gates)
+    return Layered(brief) if reading is None else layer(brief, reading, gates)
