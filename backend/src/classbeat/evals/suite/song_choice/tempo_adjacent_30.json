@@ -1,0 +1,15 @@
+{
+ "name": "tempo_adjacent_30",
+ "about": "A 30 minute class: adjacent songs of one role keep a compatible tempo at the crossfade.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate"
+ },
+ "catalogue": {
+  "size": 40
+ },
+ "quality": true,
+ "expect": {
+  "tempo_flow": true
+ }
+}

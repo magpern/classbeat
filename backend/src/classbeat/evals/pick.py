@@ -285,8 +285,8 @@ def pick_checks(
         )
         checks.append(PickCheck("kept_in_place", in_slot))
         checks.append(PickCheck("replaced_are_new", sum(s.new for s in songs) == len(plan.replace)))
-    if case.expect.sections_shown:
-        checks.append(PickCheck(*song_checks.sections_shown(result.analysed, sent)))
+    rows = song_checks.expected_rows(case.expect, songs, result.analysed, sent)
+    checks += [PickCheck(*r) for r in rows]
     if case.quality:
         if bands is None:
             raise ValueError("a quality case needs the manifest's band table")

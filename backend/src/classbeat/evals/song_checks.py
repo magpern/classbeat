@@ -17,6 +17,8 @@ The hard checks, each one ``(name, ok, detail)``; a case passes when all of them
   is above the opening song's and above the closing song's. A song's energy is its BPM plus
   ``DROP_ENERGY`` for each drop MOWL found, the data the model saw. A class with no main part
   passes;
+- ``tempo_flow`` (only for a case that sets ``expect.tempo_flow``, #1040): no tempo jump between
+  two adjacent songs of the same role (``tempo_policy``); a jump at a change of role may be meant.
 - ``sections_shown`` (only for a case that sets ``expect.sections_shown``, #1035): every analysed
   pool track has section energy spans, and the text sent to the model holds them. The span values
   are within-track ranks, so no check compares one song's energy with another's.
@@ -36,8 +38,10 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from classbeat.agent.choose_songs import ChosenList
+from classbeat.agent import tempo_policy
+from classbeat.agent.choose_songs import ChosenList, ChosenSong
 from classbeat.agent.songs import PickPlan, PoolTrack, key_of, total_sec
+from classbeat.evals.pick_case import PickExpect
 
 DROP_ENERGY: Final = 10.0
 MAIN_EXCLUDED: Final = ("warmup", "recovery", "cooldown")
@@ -135,6 +139,26 @@ def sections_shown(analysed: Sequence[PoolTrack], sent: str) -> Row:
     have = sum(1 for t in analysed if t.sections)
     ok = bool(analysed) and have == len(analysed) and SECTIONS_KEY in sent
     return "sections_shown", ok, f"{have} of {len(analysed)} pool tracks with energy spans"
+
+
+def expected_rows(
+    expect: PickExpect, songs: Sequence[ChosenSong], analysed: Sequence[PoolTrack], sent: str
+) -> list[Row]:
+    """The rows of the checks a case asks for in its ``expect`` (not part of ``song_checks``)."""
+    rows: list[Row] = []
+    if expect.sections_shown:
+        rows.append(sections_shown(analysed, sent))
+    if expect.tempo_flow:
+        rows.append(tempo_flow(songs))
+    return rows
+
+
+def tempo_flow(songs: Sequence[ChosenSong]) -> Row:
+    """``tempo_flow`` (only for a case that sets ``expect.tempo_flow``, #1040): no tempo jump
+    between two adjacent songs of the same role; a jump at a change of role may be meant."""
+    jumps = tempo_policy.tempo_jumps([s.bpm for s in songs], [s.role for s in songs])
+    bad = [j.position for j in jumps if not j.phase_change]
+    return "tempo_flow", not bad, f"{len(jumps)} jumps, {len(bad)} within a role"
 
 
 def band_judgement(chosen: ChosenList, facts: SongFacts, bands: Mapping[str, Band]) -> list[bool]:

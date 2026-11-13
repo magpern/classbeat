@@ -717,3 +717,31 @@ mode) and `revise_songs` on it are refused `invalid_input` at creation, by an ex
 `music_source` (issue #530), and the final stores of `songs.phase2` and `songs.revise` refuse to write
 `music_source` over a `none` source, so a soundless class never becomes a picked-songs class. The class
 page offers no Change songs for it. Nothing else in this ADR changes.
+
+## Amendment of 2026-11-13: tempo clashes at the crossfade (issue #1040)
+
+MOWL crossfades adjacent Spotify tracks for `CROSSFADE_SEC` (9 s), and two songs of very different
+tempo under that overlap sound like a clash. §3's `choose_songs` stage had only prose ("building
+tempo and effort") and no check on adjacent BPM. This amendment adds a **soft** check:
+
+- **Rule** (`agent/tempo_policy.py`, pure): two adjacent tempos are `compatible` when they differ by
+  at most 6 % of the slower one (inclusive), `half_double` when one is half or double the other
+  within the same tolerance, and otherwise a `jump`. A tempo that is not a positive finite number is
+  not judged. 6 % is the usual pitch range of a DJ crossfade; it is one constant
+  (`TEMPO_TOLERANCE`), so changing it is a one-line, reversible change (and a suite version bump).
+- **Soft only** (safest reversible default). `check_song_list` answers a valid list as before and,
+  when it has jumps, adds `tempo_jumps` (per jump: the two positions, the two BPM rounded, the two
+  roles; at most 8) and one fixed sentence `tempo_note`. A jump is **never an error**: it does not
+  make the list invalid, it uses none of the stage's three corrections (they count errors only), and
+  `submit_song_list` accepts the list as it stands and adds no note. Some jumps are meant (warm-up
+  into the work, into the cooldown, a recovery after a sprint), so the model may keep them; in
+  replace mode a pair of two kept songs is left out, since the model cannot move them; the prompt
+  says to jump only where the class changes phase.
+- **Model input.** Only numbers already in `get_pool` (two songs' BPM), positions, roles (a fixed
+  set) and the fixed sentence. No id, title or free text, so no allowlist entry is added.
+- **Running (ADR 0018).** Song picking is cycling only: `songs.inputs` and the song stages' phase 2
+  refuse a running brief, so the song stage never applies to running and no running guidance is
+  added. The running stages' prompts do not change.
+- **Eval.** Suite version 23 adds the case `tempo_adjacent_30` with the check `tempo_flow` (no jump
+  between two adjacent songs of the same role); `agent/tempo_policy.py` joins the digest's rule
+  sources. The `choose_songs` prompt version is re-pinned.

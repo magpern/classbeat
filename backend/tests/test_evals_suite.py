@@ -72,6 +72,7 @@ RELEASED: dict[int, str] = {
     20: "b3a8ac799be05a013155f510a6a12de96592462cc841d0149fb3fbe37b2cc938",
     21: "b8ea06d91f79da9dcd6e512051e97fc8f458c23f7c255dbe102db8aec2c32254",
     22: "610736b2f62be6e49ed4a71d9319a8a1c178f1dcc3732db5d9658d3d38871875",
+    23: "33234cb612a181069de990247af8041e983db2d5fe80cf7c925c106fccad0684",
 }
 
 SUITE = load_suite()
@@ -187,16 +188,18 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     # #206, #208, #209, #399, #465 (two running class_patterns cases) and #388 (two provisional 55
     # minute ones), #878 (ten game cases: four generic or margin, six revision edits), #904 (three
     # revisions of stated values), #908 (one chained revision); the smoke set holds the soundless
-    # cases of #531 (four of its 30); #1035 (one song case: section energy)
-    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10 + 2 + 2 + 10 + 3 + 1, 8 + 7 + 1)
-    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 69, 3 + 15 + 1)
+    # cases of #531 (four of its 30); #1035 (one song case:
+    # section energy); #1040 (one: tempo adjacent)
+    songs_own = 8 + 7 + 1 + 1
+    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10 + 2 + 2 + 10 + 3 + 1, songs_own)
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 69, 3 + 15 + 1 + 1)
     # #880: eight interpret cases, of their own kind (neither design nor song cases); #904: three
     # revise readings, #908: one (remove_games), #1023: one (a Change songs request)
     assert len(SUITE.interpret_cases) == 8 + 3 + 1 + 1
     assert set(SUITE.interpret_cases) == set(MANIFEST.cases_of("interpret", "design")) | {
         "interpret_playlist_injection"
     }  # the injection is judged in adversarial: every run
-    assert len(index) == 30 + 69 + 3 + 15 + 1 + 8 + 3 + 1 + 1
+    assert len(index) == 30 + 69 + 3 + 15 + 1 + 1 + 8 + 3 + 1 + 1
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)

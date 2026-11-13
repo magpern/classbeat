@@ -17,6 +17,9 @@ source and a role per song and a note; ``ChosenSong`` is built here from the ``P
 Spotify's, so a title, a length or an id written by the model has nowhere to go (the schema has no
 such field). The note is cleaned and cut at 300 characters, shown as plain text and never read
 back by a model.
+
+A tempo jump between adjacent songs (``tempo_policy``) is a soft note on ``check_song_list``'s
+valid answer, never an error: it costs no correction and ``submit_song_list`` accepts the list.
 """
 
 from collections.abc import Sequence
@@ -25,7 +28,8 @@ from typing import Any, Final
 
 from classbeat.agent import song_input
 from classbeat.agent.dispatcher import MAX_RESULT_BYTES
-from classbeat.agent.schemas import GetPoolInput, SongList, SongRef
+from classbeat.agent.replace_rules import replace_rules
+from classbeat.agent.schemas import GetPoolInput, SongList
 from classbeat.agent.section_energy import SONGS_GUIDANCE, fit_pool_answer
 from classbeat.agent.songs import (
     CROSSFADE_SEC,
@@ -39,6 +43,7 @@ from classbeat.agent.songs import (
     within_tolerance,
 )
 from classbeat.agent.stage import Stage, Tool, ToolAnswer, ToolError
+from classbeat.agent.tempo_policy import TEMPO_GUIDANCE, jumps_view, tempo_jumps
 from classbeat.jobs.errors import JobFailure
 
 STAGE: Final = "choose_songs"
@@ -76,6 +81,8 @@ the instructor (optional). The class is not done until you do.
 
 """
     + SONGS_GUIDANCE
+    + " "
+    + TEMPO_GUIDANCE
     + """
 
 A song from the pool has source "pool" and its index from get_pool. In a replacement, a song that \
@@ -229,7 +236,7 @@ def check_list(ctx: ChooseContext, args: SongList) -> ChosenList:
             errors.append(f"song {n}: the same song as song {keys[key]}")
         else:
             keys[key] = n
-    errors += _replace_rules(ctx, songs, kept_at)
+    errors += replace_rules(plan, songs, kept_at)
     total = total_sec([c.length_sec for c in chosen])
     target = plan.target_sec
     if not within_tolerance(total, target):
@@ -249,32 +256,16 @@ def check_list(ctx: ChooseContext, args: SongList) -> ChosenList:
     )
 
 
-def _replace_rules(
-    ctx: ChooseContext, songs: Sequence[SongRef], kept_at: dict[int, int]
-) -> list[str]:
-    plan = ctx.plan
-    if not plan.replace:
-        return []
-    errors = []
-    if len(songs) != plan.list_length:
-        errors.append(f"the list keeps every slot: it needs {plan.list_length} songs")
-    for i in range(len(plan.kept)):
-        if i not in kept_at:
-            errors.append(f"kept song {i} is missing; every kept song stays")
-    kept_slots = {k.slot for k in plan.kept}
-    for n, s in enumerate(songs):
-        if n not in kept_slots and s.source != "pool":
-            errors.append(f"song {n}: a replaced slot is filled from the pool")
-    return errors
-
-
 def choose_stage(ctx: ChooseContext) -> Stage:
     def get_pool(args: GetPoolInput) -> ToolAnswer:
         return ToolAnswer(ctx.pool_answer())
 
     def check_song_list(args: SongList) -> ToolAnswer:
         done = check_list(ctx, args)
-        return ToolAnswer({"valid": True, "songs": len(done.songs), "total_sec": done.total_sec})
+        kept = {k.slot for k in ctx.plan.kept}
+        jumps = tempo_jumps([c.bpm for c in done.songs], [c.role for c in done.songs], kept)
+        valid = {"valid": True, "songs": len(done.songs), "total_sec": done.total_sec}
+        return ToolAnswer(valid | jumps_view(jumps))  # a soft note: never an error
 
     def submit_song_list(args: SongList) -> ToolAnswer:
         done = check_list(ctx, args)
