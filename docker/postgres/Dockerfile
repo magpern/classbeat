@@ -8,11 +8,12 @@
 # backend/src/classbeat/db/queue_digests.py is computed on it); the `checks` job compares them. Build
 # context: docker/postgres. It holds SQL and one shell script, never a secret: passwords are read at
 # run time from Docker secret files.
-FROM postgres:17.11
+FROM postgres:17.12
 
 # Trivy fails the image scan on zlib1g (HIGH CVE-2026-76844, CVE-2026-85091; fixed in 1.3.1-1+deb13u1)
-# and the pinned postgres:17.11 still ships the old one. Upgrade only that package. Remove this
-# block when the postgres base image is bumped to one that carries the fix.
+# and the pinned postgres:17.12 still ships the old one (1.3.1-1+b1, checked
+# 2026-11-13). Upgrade only that package. Remove this block when the postgres base image carries
+# the fix.
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends --only-upgrade zlib1g \

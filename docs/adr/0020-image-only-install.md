@@ -15,7 +15,7 @@ there, and an update is a `git checkout` of a tag next to a `docker compose pull
 Constraints that stay: the app image holds no secret except Swedebeat's app key from the
 release workflow's BuildKit secret (ADR 0015 section 4); the packages are private and stay so
 (AGENTS.md "Releasing"); `db`, `db-functions` and `postgres_password` are on the pinned
-`postgres:17.11`, because the queue functions' md5 (`classbeat.db.queue_digests`) is
+`postgres:17.12`, because the queue functions' md5 (`classbeat.db.queue_digests`) is
 computed on it; the secret files keep their setup (`<deploy user>:10010`, mode 640, folder 2700;
 #511); agents never deploy. No install exists yet (the runbook says "configuration ready, not
 deployed"), so nothing has to migrate from a clone.
@@ -23,7 +23,7 @@ deployed"), so nothing has to migrate from a clone.
 ## Decision
 
 1. **The SQL ships in a small database image**, `ghcr.io/magpern/classbeat-db:X.Y.Z`, built in
-   the release run from `docker/postgres/Dockerfile`: `FROM postgres:17.11` plus `COPY` of
+   the release run from `docker/postgres/Dockerfile`: `FROM postgres:17.12` plus `COPY` of
    `docker/postgres/init` to `/docker-entrypoint-initdb.d`, `queue` to `/queue` and `maint` to
    `/maint`. The files are root-owned and readable by all, never writable by group or others
    (`chmod -R a+rX,go-w`); no exec bit is needed, because `db-functions` runs

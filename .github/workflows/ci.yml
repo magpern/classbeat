@@ -320,7 +320,7 @@ jobs:
     services:
       postgres:
         # The same exact tag as compose's db (checked in `checks`): the queue md5 depends on it.
-        image: postgres:17.11
+        image: postgres:17.12
         env:
           # Throwaway database of this job only; not a secret.
           POSTGRES_PASSWORD: test
@@ -425,7 +425,7 @@ jobs:
     services:
       postgres:
         # The same exact tag as compose's db (checked in `checks`): the queue md5 depends on it.
-        image: postgres:17.11
+        image: postgres:17.12
         env:
           # Throwaway database of this job only; not a secret.
           POSTGRES_PASSWORD: test
@@ -836,9 +836,9 @@ jobs:
             'for f in /queue/* /maint/* /docker-entrypoint-initdb.d/*; do test -r "$f" || { echo "unreadable: $f"; exit 1; }; done'
 
       # The 26 fixable HIGH/CRITICAL findings of /usr/local/bin/gosu (Go standard library of the
-      # postgres:17.11 base image) are time-boxed in .trivyignore, each ID with an exp: date and a
-      # reason; every other file and package stays a gate. The fix is a newer postgres tag, which
-      # moves the queue functions' md5 (queue_digests.py); remove the entries with it.
+      # postgres:17.12 base image) are time-boxed in .trivyignore, each ID with an exp: date and a
+      # reason; every other file and package stays a gate. The fix is a postgres tag whose gosu is
+      # built with a newer Go; remove the entries with it.
       - name: Scan the database image
         if: matrix.shard == 1
         working-directory: .

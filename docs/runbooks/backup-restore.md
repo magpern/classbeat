@@ -159,7 +159,7 @@ correctly signed but could do more than classbeat's schema does as the superuser
   event trigger, language, foreign data wrapper, publication, tablespace, cast, operator, other
   schema, or object owned by the superuser.
 - The SQL `pg_restore` would send (with the options `restore.sh` uses), outside COPY data: no psql
-  meta command (only the `\restrict` and `\unrestrict` brackets postgres 17.11 writes), no `ALTER
+  meta command (only the `\restrict` and `\unrestrict` brackets postgres 17.12 writes), no `ALTER
   SYSTEM`, role, database, tablespace, extension, event trigger, language, server or publication DDL,
   no `DROP` except the forms `--clean` writes, no `DO`, `SET ROLE` or `SESSION AUTHORIZATION`, no role
   grant, no file or program access (`COPY ... PROGRAM`, `pg_read_file`, `lo_import`, `dblink`), only
