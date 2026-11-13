@@ -14,6 +14,7 @@ import pytest
 from classbeat import songs
 from classbeat.agent import AgentConfig
 from classbeat.agent.limits import Limits
+from classbeat.agent.prices import FAKE_PRICE
 from classbeat.design import revise_stated
 from classbeat.songs import revise as revise_songs_mod
 from classbeat.songs import revise_reading
@@ -261,10 +262,9 @@ async def test_phase_two_records_the_readings_not_as_asked_items_of_an_older_lis
 
 async def test_the_interpret_spend_stops_a_later_stage_of_the_job(songenv: SongEnv) -> None:
     rider = await songenv.rider()
-    class_id, base = await stated(songenv, rider)
-    class_id2, base2 = await stated(songenv, rider)  # both before the ceiling is lowered
+    cases = [await stated(songenv, rider) for _ in range(3)]  # all before the ceiling is lowered
     songenv.script = replace_script(reading=READING)
-    probe = UUID((await change(rider, class_id, base)).json()["id"])
+    probe = UUID((await change(rider, *cases[0])).json()["id"])
     await songenv.run(probe)
     spent = songenv.sql(
         "SELECT stage, cost_micros FROM agent_runs WHERE job_id = :j", j=probe
@@ -273,13 +273,25 @@ async def test_the_interpret_spend_stops_a_later_stage_of_the_job(songenv: SongE
     pick = sum(r.cost_micros for r in spent if r.stage != "interpret")
     assert interpret > 0  # the fake provider prices its turns
     assert pick > 0
+    reserve = FAKE_PRICE.output_micros(Limits().turn_output_reserve)
 
-    # A ceiling the pick alone fits and the interpret run on top of it does not.
-    songs.configure(
-        SongConfig(enabled=True, sync_wait_seconds=0.3, cost_micros=pick + interpret - 1)
-    )
-    songenv.script = replace_script(reading=READING)
-    job_id = UUID((await change(rider, class_id2, base2)).json()["id"])
-    row = await songenv.run(job_id)
+    async def run_at(ceiling: int, case: tuple[Any, Any]) -> Any:
+        songs.configure(SongConfig(enabled=True, sync_wait_seconds=0.3, cost_micros=ceiling))
+        songenv.script = replace_script(reading=READING)
+        job_id = UUID((await change(rider, *case)).json()["id"])
+        return job_id, await songenv.run(job_id)
+
+    # Each model turn is checked against the ceiling with one turn's output reserve on top of the
+    # spend so far. Measured with the fake provider: the pick alone completes at about
+    # pick + reserve, and with the interpret run counted it needs about `interpret` more. Half
+    # of that lies between the two, so only the interpret spend can stop the pick. (A ceiling of
+    # pick + interpret - 1 would not do: the reserve check trips there either way.)
+    ceiling = pick + reserve + interpret // 2
+    job_id, row = await run_at(ceiling, cases[1])
     assert (row.state, row.error_category) == ("failed", "limit_exceeded")
-    assert runs(songenv, job_id)[0] == "interpret"
+    assert runs(songenv, job_id)[0] == "interpret"  # it ran; a later stage of the job stopped
+
+    # Control: the interpret spend on top fits, so the same job completes.
+    job_id, row = await run_at(ceiling + interpret, cases[2])
+    assert (row.state, row.error_category) == ("waiting_for_approval", None)
+    assert runs(songenv, job_id) == ["interpret", "pick_pool", "choose_songs"]
