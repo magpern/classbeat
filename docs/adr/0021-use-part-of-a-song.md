@@ -150,3 +150,28 @@ provider is contacted; ADR 0010's note of the same date records why the number m
 `mowl-workouts` 0.11.0 map holds `energy` since 0.5.1, which left `MAP_VERSION` at 12), and a map
 analysed before that simply has none, so the model sees no energy for it and the views leave the
 field out; nothing breaks and nothing is re-analysed. The decision above and T1 to T6 are unchanged.
+
+**Note 2026-11-13 (#1051): Swedebeat can cut songs, but only in its app.** The research for this
+issue ([`docs/providers/swedebeat-mixing-findings.md`](../providers/swedebeat-mixing-findings.md),
+PR #1048; summarised in [ADR 0016](0016-swedebeat-music.md)'s note of the same date) sharpens the
+Context's "Swedebeat mixes" point. The app's Merge & Publish makes one MP3 from a playlist of separate
+tracks, with a start and an end (1/100 s) and a tempo change (pitch kept) per track and a crossfade of
+1 to 30 s per transition: the knobs decision 4 needs. But the render runs in the app on the user's
+phone. No observed API renders a mix description or creates or edits a playlist, so precondition (b) of
+decision 3 still does not hold. The routes that could unblock it, in order of fit:
+
+1. **Server-side render API** (does not exist; needs Swedebeat's agreement): classbeat sends the
+   tracks, cuts, tempos and crossfades for the signed-in user, Swedebeat renders and publishes the mix,
+   and MOWL attaches it as it attaches mixes today (ADR 0016 (a)).
+2. **Draft-playlist API** (does not exist; needs Swedebeat's agreement): classbeat creates the
+   unrendered playlist in the user's account and the instructor presses Merge & Publish in the app.
+   *(Inferred from a backup call after each edit: playlists are already stored server-side.)*
+3. **Manual hand-off, extended** (ADR 0016 §7's approach; needs no API): classbeat shows the track list
+   with cut points, tempos and crossfade lengths and the instructor builds it in the app, at a real cost
+   in time per class. Adding it is a product decision for the owner, not scheduled here.
+
+Routes 1 and 2 also need Swedebeat's licensing answer on cuts designed by a third party, and every route
+relies on MOWL listing published mixes *(inferred, ADR 0016's note)*. The report's ten questions for
+Swedebeat are the owner's to send; agents do not contact Swedebeat. Never a route: the app's embedded AWS
+credentials, or imitating its upload or registration call. The decision is unchanged: #580 stays blocked,
+nothing is built, and T1 to T6 wait for a precondition and the owner.

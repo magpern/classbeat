@@ -408,3 +408,35 @@ no mix and no `song_list`: a `swedebeat_match` of it, a Swedebeat hand-off for i
 explicit check of `classes.music_source`, not only by a missing list or stored match (issue #530), and
 `swedebeat_handoff.adopt` refuses to write a mix over a `none` source. The class page shows no Swedebeat
 section for it. Nothing else in this ADR changes.
+
+## Note of 2026-11-13: how Swedebeat builds a mix (#1051)
+
+Research for #580 on the owner's own account in the Swedebeat Android app (the screens and the app's own
+system log only: no proxy, no decompiling, no audio kept) is in
+[`docs/providers/swedebeat-mixing-findings.md`](../providers/swedebeat-mixing-findings.md) (PR #1048). What
+it adds to the facts in the Context:
+
+- **A mix is made from a playlist with the app's Merge & Publish.** A user's own playlist is a list of
+  separate per-track MP3 files plus settings: which tracks and in what order; a start and an end per track
+  (1/100 s); a tempo change per track in percent with the pitch kept, or one target BPM for the playlist;
+  and a crossfade per transition (off, or 1 to 30 s, with fade-out and fade-in curves). A purchased mix
+  cannot be edited, only duplicated.
+- **The render runs on the phone.** Merge & Publish renders the playlist in the app with ffmpeg
+  (ffmpeg-kit, ffmpeg 6.0: `atrim`, `atempo`, `acrossfade`) into one 320 kb/s MP3, uploads it to
+  `users-playlists.s3.eu-west-1.amazonaws.com` with requests the app signs itself, and registers it with
+  `www.swedebeat.se/downloader/mergemp3api.php`. Request bodies were not visible.
+- **Fact 3 is confirmed by observation, with its likely reason.** No server endpoint was seen that takes
+  a mix description and renders it; the only server step after the render registers a file the app has
+  already uploaded. No API to create or edit a mix outside the app was seen, and whether Swedebeat has a
+  server renderer is unknown. classbeat imitates neither the upload
+  nor the registration: the upload rests on the app's embedded credentials, which are never used (§4).
+- *(Inferred)* A published mix is what MOWL lists as the user's mixes (`POST v1/swedebeat/Playlists`,
+  fact 1): the media host confirmed in #524, `users-playlists.s3-accelerate.amazonaws.com`, is the same
+  bucket. The report could not check its test mix in MOWL's listing.
+- *(Inferred)* The rendered file can be shorter than the total the app shows (33:20.87 against 33:38 in
+  the test), partly because that total ignores a tempo change. Fact 4's tolerant length check and §3's
+  listed-length warning already allow for this.
+
+The decision is unchanged: (a) and (b) stand, §7's hand-off stays manual, and §1 still puts creating or
+editing a mix by any means out of scope. What this means for part of a song is in
+[ADR 0021](0021-use-part-of-a-song.md)'s note of the same date.
