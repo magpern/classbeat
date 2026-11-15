@@ -1,6 +1,6 @@
 # ADR 0021: Use part of a song (trim an intro or outro, start mid-track) (#580)
 
-Status: Proposed (issue #580, nice-to-have). The finding is that **the feature is blocked today**:
+Status: Superseded for SwedeBeat by [ADR 0036](0036-swedebeat-studio.md) (2026-11-15): part of a song is built there for the SwedeBeat studio, where classbeat renders the mix. Spotify stays not allowed, as decided here. The original finding was that **the feature is blocked**:
 no music source classbeat supports can play part of a song. The owner decides whether to wait for
 a source that can, schedule the design below, or close the issue.
 

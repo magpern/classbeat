@@ -26,7 +26,7 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0018](0018-mowl-running-classes.md) | MOWL running classes next to cycling (M8, #373) | Accepted |
 | [0019](0019-passkeys.md) | Passkeys with cross-device sign-in (#311; revised 2026-11-05, amends ADR 0003) | Proposed |
 | [0020](0020-image-only-install.md) | Image-only install: db image, release assets, install checks (#519) | Proposed |
-| [0021](0021-use-part-of-a-song.md) | Use part of a song: trim an intro or outro, start mid-track (#580); blocked, no source can play part of a song | Proposed |
+| [0021](0021-use-part-of-a-song.md) | Use part of a song: trim an intro or outro, start mid-track (#580); blocked, no source can play part of a song | Superseded for SwedeBeat by 0036; Spotify still not allowed |
 | [0022](0022-account-emails.md) | Account emails: registry, branded multipart mail, fire-and-forget delivery, preferences (ME, #649) | Accepted, subject to review |
 | [0023](0023-multilingual.md) | Multilingual support: English, Swedish and Danish UI and mail; agent-translated and agent-reviewed; classes stay English (ML, #657) | Accepted, subject to review |
 | [0024](0024-mowl-qr-connect.md) | Connect MOWL by scanning a QR code: anonymous ticket, image from our origin, TLS-only MQTT on 8883, per-session wait (#647) | Proposed |
@@ -40,3 +40,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0033](0033-invite-requests.md) | Invite requests and invite codes that carry a tier: a public request form, the admin decides, one code granted through the redeem path at sign-up (PB-7, #985) | Accepted |
 | [0034](0034-classbeat-player-connection.md) | classbeat-player: classbeat as an OIDC provider for the player, signed events, the `player` connection, the class-format converter and "Send to player" (#1054) | Proposed |
 | [0035](0035-swedebeat-gateway.md) | The SwedeBeat gateway: one configured origin (production `http://192.168.1.222:7355`; plain http only to loopback or private IPs), a client-key secret file in web and worker, connect stores the bearer with the sign-out consent up front, one `/catalog/match` per job re-thresholded at 0.85, the SwedeBeat app key and hosts removed (SG, #1075; supersedes ADR 0015 §4 and §7 and parts of ADR 0016 §4 and §5) | Accepted (implemented on fakes, SG-1 to SG-5) |
+| [0036](0036-swedebeat-studio.md) | The SwedeBeat studio: one model for music and workout; match with evidence and undoable swaps; per-track analysis; mix spec (order, cuts, crossfades) in the draft; outputs per class (Spotify playlist, SwedeBeat playlist, mix, MOWL) with per-output state and gates; classbeat renders, and the gateway stays a proxy (SR; builds #580 for SwedeBeat) | Accepted (not implemented) |

@@ -13,7 +13,7 @@ and the roadmap sections and ADRs it names before writing code.
 - Stay inside the issue's scope. If the acceptance criteria are wrong or impossible, stop and
   report back to the Architect instead of changing them.
 - Write tests with the code. Tests never use the network or real accounts; fake MOWL, Spotify,
-  Swedebeat and model APIs.
+  the SwedeBeat gateway and model APIs. Never call a real gateway, whatever its URL (AGENTS.md, security rules).
 - Run the project's lint and type checks and the **targeted** tests (the files you changed and
   the guards they touch) locally before pushing; say in the PR what you ran and the result.
   Do not run the full suite locally: CI runs it, and a second full run only costs tokens and
@@ -23,6 +23,10 @@ and the roadmap sections and ADRs it names before writing code.
 - Open the PR with `gh pr create`, body: Scope, Acceptance criteria (each with how it's
   tested), `Closes #<issue>`, and the footer
   `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- When the Architect runs several Developers at once, open the PR as a **draft** (`gh pr create --draft`).
+  CI skips drafts and its `ci` gate shows red there (owner, 2026-11-15), so run the lint, type checks and targeted tests locally before
+  pushing. The Architect marks drafts ready one at a time, in merge order, and you rebase on `main` only
+  when asked. A ready PR follows the next line.
 - Wait for CI (`gh pr checks <n> --watch`) and fix failures.
 - You never review or merge your own PR. When a review returns `FAIL`, fix **all** blocking
   findings, push, and report back.
