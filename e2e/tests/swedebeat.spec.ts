@@ -12,6 +12,7 @@ import {
   openSwedebeatDialog,
   signOutConsent,
   swedebeatRow,
+  useSwedebeat,
 } from './swedebeat-helpers'
 
 // Swedebeat connect end to end (ADR 0015, ADR 0035 sections 3 and 4) against the fake SwedeBeat
@@ -99,6 +100,9 @@ test('the sign-out is said up front, and nothing is sent before it is confirmed'
   await expect(dialog.getByRole('button', { name: 'Sign in anyway' })).toHaveCount(0)
 
   // An API client gets the same rule: a body without "force": true is refused before any login.
+  // The preference goes on first, as the dialog stores it, or the route ends feature_off before
+  // it reads the body.
+  await useSwedebeat(page)
   const session = (await (await page.request.get('/api/auth/session')).json()) as { csrf_token: string }
   const refused = await page.request.post('/api/connections/swedebeat', {
     data: { email: EMAIL_A, password: PASSWORD_A },
