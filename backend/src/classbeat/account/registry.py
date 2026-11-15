@@ -53,6 +53,8 @@ SECTIONS: tuple[Section, ...] = (
     _section("saved_workouts", omit="content_hash state_hash"),
     _section("class_playlists", omit="content_hash"),
     _section("mowl_playlist_links"),
+    # ADR 0034 section 5: what was published to the player, with the document hash omitted.
+    _section("player_publications", omit="sent_document_hash"),
     _section("spotify_pool", "consented_at, id", "last_hash"),
     _section(
         "jobs",

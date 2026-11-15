@@ -49,7 +49,7 @@ class JobView:
     kind: str
     state: str
     stage: str | None
-    class_id: UUID
+    class_id: UUID | None  # None only for a ``player_remove`` (ADR 0034 section 5)
     cancel_requested: bool
     approval_revision_id: UUID | None
     expires_at: datetime | None

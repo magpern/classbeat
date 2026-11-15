@@ -27,8 +27,8 @@ from classbeat.jobs.sentences import job_sentence
 
 def migration_categories() -> set[str]:
     versions = Path(__file__).resolve().parent.parent / "migrations" / "versions"
-    path = versions / "0029_beat_one_corrections.py"
-    spec = importlib.util.spec_from_file_location("migration_0029", path)
+    path = versions / "0052_player_publications.py"
+    spec = importlib.util.spec_from_file_location("migration_0052", path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -138,6 +138,7 @@ def test_invalid_kinds_are_refused(
 def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     # design_draft (D1), revise_draft (R1), refit_draft (BC3), interpret_request (MA1b-3)
     import classbeat.design
+    import classbeat.player_send  # send_to_player and player_remove (ADR 0034 section 5)
     import classbeat.saving
     import classbeat.songs  # design_with_songs (SJ1) and revise_songs (SJ3)
     import classbeat.swedebeat_handoff  # swedebeat_verify_mix (B2)
@@ -148,16 +149,19 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     assert classbeat.swedebeat_match.KIND
     assert classbeat.swedebeat_handoff.KIND
     assert classbeat.saving.__name__
+    assert classbeat.player_send.KIND
     from classbeat.jobs import KINDS
 
     assert KINDS.names() == [
         "design_draft",
         "design_with_songs",
         "interpret_request",  # ADR 0029 section 5 (MA1b-3)
+        "player_remove",  # ADR 0034 section 5 (PC-5): only the class delete creates one
         "refit_draft",  # ADR 0007 amendment "beat-one corrections" (BC3)
         "revise_draft",
         "revise_songs",
         "save_workout",
+        "send_to_player",  # ADR 0034 section 5 (PC-5)
         "swedebeat_match",
         "swedebeat_verify_mix",
         "update_workout",

@@ -18,17 +18,18 @@ from classbeat.agent.brief import Brief
 from classbeat.classes import match_view, seams, song_views
 from classbeat.classes.dismissals import set_dismissed as set_dismissed  # the routes' name
 from classbeat.classes.kinds import CLASS_SPORT_SQL, SONG_DESIGN_KIND
+from classbeat.classes.messages import list_messages as list_messages  # the routes' name
 from classbeat.classes.selection import belongs_to_draft
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design.games_policy import RETIRED, has_retired_game
+from classbeat.player_send.publications import on_class_delete
 from classbeat.quota.gates import check_stored_draft
 
 Factory = async_sessionmaker[AsyncSession]
 
 LIST_LIMIT: Final = 500
 REVISION_LIMIT: Final = 200
-MESSAGE_LIMIT: Final = 500
 OPEN_JOB: Final = "('queued', 'running', 'waiting_for_approval')"
 
 
@@ -124,11 +125,6 @@ _BRIEF = text(
     "WHERE c.owner_id = :owner_id AND c.id = :class_id"
 )
 _CLASS_EXISTS = text("SELECT 1 FROM classes WHERE id = :class_id AND owner_id = :owner_id")
-_MESSAGES = text(
-    "SELECT seq, role, body, job_id, base_revision_id, result_revision_id, change, created_at "
-    "FROM class_messages WHERE owner_id = :owner_id AND class_id = :class_id "
-    "ORDER BY seq LIMIT :limit"
-)
 _LOCK_CLASS = text(
     "SELECT current_revision_id, approved_swedebeat_match_id FROM classes "
     "WHERE id = :class_id AND owner_id = :owner_id FOR UPDATE"
@@ -287,14 +283,6 @@ async def get_revision(
         return (await db.execute(_REVISION, params)).first()
 
 
-async def list_messages(factory: Factory, ctx: UserContext, class_id: UUID) -> list[Any] | None:
-    require_context(ctx)
-    async with user_session(factory, ctx) as db:
-        if (await db.execute(_CLASS_EXISTS, _ids(ctx, class_id))).first() is None:
-            return None
-        return list((await db.execute(_MESSAGES, _ids(ctx, class_id, limit=MESSAGE_LIMIT))).all())
-
-
 @dataclass(frozen=True, slots=True)
 class Outcome:
     """``reason`` is ``None`` when the call went through; ``kept`` is, for a delete, the number
@@ -359,7 +347,9 @@ async def delete(
     ``class_busy`` (an open job), ``call_may_be_running`` (a save or update row ``pending`` or
     ``uncertain`` and inside its bound), ``uncertain_write`` (an ``uncertain`` row, unless
     confirmed). A refusal returns normally, so what ``resolve_orphans`` marked stays marked.
-    The cascade is the schema's (migrations 0004 and 0005); ``agent_runs`` keeps its rows."""
+    A class sent to the player gets its ``player_remove`` job in this transaction (none while
+    the player is not connected, ``player_send.publications.on_class_delete``). The cascade
+    is the schema's (migrations 0004 and 0005); ``agent_runs`` keeps its rows."""
     require_context(ctx)
     async with user_session(factory, ctx) as db:
         await seams.resolve_orphans(db, ctx)
@@ -374,5 +364,6 @@ async def delete(
             return Outcome("uncertain_write")
         kept = int((await db.execute(_KEPT, _ids(ctx, class_id))).scalar_one())
         left = (await song_views.playlists_of(db, ctx.user_id, class_id)).all
+        await on_class_delete(db, ctx.user_id, class_id)  # ADR 0034 section 5: the removal
         await db.execute(_DELETE, _ids(ctx, class_id))
     return Outcome(None, kept, left)

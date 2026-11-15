@@ -80,6 +80,11 @@ CATEGORIES: Final = (
     # ADR 0007 amendment "beat-one corrections" (migration 0029): a ``refit_draft`` whose music
     # is no longer the base revision's (another fingerprint); nothing is stored, not retried.
     "music_changed",
+    # ADR 0034 section 5 (migration 0052): "Send to player" refused by the player. Its number was
+    # ahead of ours (the counter moves to it), or the same number held another document. Not
+    # retried: the user presses again, with a new number.
+    "player_ahead",
+    "player_conflict",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).

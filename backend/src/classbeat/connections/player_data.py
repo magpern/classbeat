@@ -5,9 +5,8 @@ Like ADR 0007 section 9 for MOWL: a reconnect or a disconnect deletes the user's
 ``not_connected`` at its hold. ``succeeded`` operations stay (history). The publication counters
 are not touched: the binding guarantees a reconnect is the same player account.
 
-``PLAYER_OPERATION_KINDS`` lists the ``external_operations`` kinds of "Send to player"; it is
-empty until those writes exist (ADR 0034 section 5, PC-5 adds them here), and the statement then
-deletes nothing.
+``PLAYER_OPERATION_KINDS`` lists the ``external_operations`` kinds of "Send to player" (ADR 0034
+section 5): the send and the removal made by a class's deletion (``classbeat.player_send``).
 """
 
 from typing import Final
@@ -16,7 +15,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-PLAYER_OPERATION_KINDS: tuple[str, ...] = ()
+PLAYER_OPERATION_KINDS: Final[tuple[str, ...]] = ("player_send", "player_remove")
 FORGOTTEN_STATES: Final = ("pending", "failed", "uncertain")
 
 _FORGET = text(

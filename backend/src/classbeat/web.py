@@ -62,12 +62,17 @@ from classbeat.plans.catalogue_routes import router as catalogue_router
 from classbeat.plans.routes import router as plans_router
 from classbeat.player_link.routes import api as player_router
 from classbeat.player_link.routes import callback as player_callback_router
+from classbeat.player_send import SEND_TO_PLAYER
 from classbeat.playlists.runtime import playlists_runtime
 from classbeat.quota import PlanRevisionPolicy
 from classbeat.spa_routes import add_single_page_app
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
 from classbeat.usage.routes import router as usage_router
+
+# Importing player_send registers send_to_player (the jobs API admits a press) and the player
+# operations (Check again finds them; without the worker's runtime it is inconclusive here).
+SEND_KINDS = (SEND_TO_PLAYER.name,)
 
 # The hand-off routes create jobs through the jobs API. The session guard allows
 # classbeat.jobs.service only from classbeat.jobs.routes, and that module only from here.

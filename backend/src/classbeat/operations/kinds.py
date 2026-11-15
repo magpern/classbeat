@@ -48,8 +48,15 @@ SPOTIFY_WRITE_KINDS: Final = frozenset({SPOTIFY_CREATE_KIND, SPOTIFY_REPLACE_KIN
 # carries ``bound_seconds``, and a stale call of one may still be sending requests until
 # ``actionable_at``. ``spotify_create_playlist`` is one request and is not in it.
 MULTI_REQUEST_KINDS: Final = frozenset({*CLASS_WRITE_KINDS, SPOTIFY_REPLACE_KIND})
-# The external_operations.kind check of migrations 0004 to 0006 and 0018.
-KIND_NAMES: Final = frozenset({*ATTACH_KINDS, *CLASS_WRITE_KINDS, *SPOTIFY_WRITE_KINDS})
+# ADR 0034 section 5 (migration 0052): "Send to player" carries its class; the removal made by
+# a class's deletion carries none (``classbeat.player_send``).
+PLAYER_SEND_KIND: Final = "player_send"
+PLAYER_REMOVE_KIND: Final = "player_remove"
+PLAYER_KINDS: Final = frozenset({PLAYER_SEND_KIND, PLAYER_REMOVE_KIND})
+# The external_operations.kind check of migrations 0004 to 0006, 0018 and 0052.
+KIND_NAMES: Final = frozenset(
+    {*ATTACH_KINDS, *CLASS_WRITE_KINDS, *SPOTIFY_WRITE_KINDS, *PLAYER_KINDS}
+)
 # A Spotify write's key names its purpose (ADR 0008 section 2): ``<job_id>:pool-create``,
 # ``<job_id>:final-create``, ``<job_id>:pool:<h16>`` and ``<job_id>:final-fill``. The job part is
 # a UUID; ``h16`` is the first 16 hex characters of the track-list hash.

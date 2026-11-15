@@ -55,7 +55,7 @@ security, so deleting a class still cascades and deleting a job still sets `job_
 | `kind text` | check `kind ~ '^[a-z_]{1,40}$'`; the code registry (§2) holds the valid kinds. M3a: `design_draft`; M4 adds song picking |
 | `state text` | check `IN ('queued', 'running', 'waiting_for_approval', 'completed', 'failed', 'cancelled', 'expired')` |
 | `stage text NULL` | the current stage of the kind's pipeline (ADR 0006 §3) |
-| `class_id uuid` | → `classes`, `ON DELETE CASCADE` |
+| `class_id uuid` | → `classes`, `ON DELETE CASCADE`. Amended by ADR 0034 §5: `jobs.class_id` may be null for `player_remove` only (check `jobs_class_id`) |
 | `input jsonb` | the validated job input (§2); `octet_length(input::text) <= 16384`; never secrets |
 | `idempotency_key text`, `request_hash bytea` | from the browser (§2); key check `^[A-Za-z0-9_-]{16,64}$`; `UNIQUE (owner_id, idempotency_key)` |
 | `attempt int`, `max_attempts int` | attempts of the current **phase**; `0 <= attempt <= max_attempts`, `1 <= max_attempts <= 10` (default 3). **Approve** starts a new phase and resets `attempt` to 0 (§2); the cost ceiling still spans the whole job (ADR 0006 §5) |
