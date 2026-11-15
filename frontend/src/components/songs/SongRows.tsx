@@ -49,7 +49,9 @@ export function SongRows({
           badge={song.isNew ? <Chip tone="ok">{t('songs.list.new')}</Chip> : null}
           description={
             <>
-              <span className="block break-words">{song.artist}</span>
+              <span className="block break-words" data-testid="song-artist">
+                {song.artist}
+              </span>
               <span className="block">
                 {roleLabel(song.role)}, {t('songs.list.bpm', { bpm: Math.round(song.bpm) })}, {minutes(song.lengthSec)}
               </span>

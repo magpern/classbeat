@@ -29,6 +29,12 @@ def all_sentences() -> list[Sentence]:
     ]
     found += [_swedebeat("queued", None, h) for h in (60, 180)]
     found.append(_swedebeat("failed", "rate_limited", None))
+    # ADR 0035 section 5: the gateway refused this server's client key.
+    unavailable = job_sentence_of(
+        "failed", "app_misconfigured", None, None, _NOW, _NOW, "swedebeat_match"
+    )
+    assert unavailable is not None
+    found.append(unavailable)
     return found
 
 

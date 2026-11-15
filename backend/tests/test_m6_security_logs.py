@@ -40,8 +40,9 @@ async def test_no_secret_is_in_any_log_record(
     logged = cap.logs()
     assert "POST /api/connections/mowl" in logged or "/api/connections/mowl" in logged
     assert "/api/connections/swedebeat" in logged
-    swedebeat = {"swedebeat_password", "swedebeat_token", "swedebeat_device_id"}
-    assert swedebeat | {"swedebeat_app_key", "swedebeat_app_iv"} <= set(known.values)
+    # ADR 0035: the gateway's bearer and its client key, no longer SwedeBeat's token or app key.
+    swedebeat = {"swedebeat_password", "swedebeat_bearer", "swedebeat_device_id"}
+    assert swedebeat | {"swedebeat_gateway_key"} <= set(known.values)
     assert leaks(logged, known) == []
 
 

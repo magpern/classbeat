@@ -33,8 +33,6 @@ const LIMITS: readonly [CatalogueKey, number][] = [
   ['spot.changeId', 3],
   ['spot.disconnectYes', 3],
   ['spot.connectAgain', 3],
-  ['swed.anyway', 3],
-  ['swed.keepOther', 3],
   ['swed.disconnectYes', 3],
   ['swmatch.approve', 3],
   ['swmatch.replace', 3],
@@ -56,6 +54,7 @@ const LIMITS: readonly [CatalogueKey, number][] = [
   ['spot.changeConfirm', 4],
   ['consent.label', 4],
   ['swmatch.missingChip', 4],
+  ['swed.signOutConfirm', 4],
   // headings
   ['mowlqr.title', 8],
   ['swnext.title', 8],
@@ -85,7 +84,6 @@ const LIMITS: readonly [CatalogueKey, number][] = [
   ['spot.step4', 20],
   // errors and confirmations the pass shortened
   ['spot.invalidClientId', 20],
-  ['swed.deviceInUse', 25],
   ['oauth.reauth_stale_set_password', 20],
   ['oauth.reauth_stale_both', 20],
   ['error.reason.passkey_busy', 20],

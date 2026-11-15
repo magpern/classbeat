@@ -177,5 +177,10 @@
     "code": "swedebeat.stopped",
     "params": {},
     "english": "Swedebeat asks to slow down. This match has stopped."
+  },
+  {
+    "code": "swedebeat.unavailable",
+    "params": {},
+    "english": "Swedebeat is not available on this server right now."
   }
 ]

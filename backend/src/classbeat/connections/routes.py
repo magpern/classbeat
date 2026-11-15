@@ -13,7 +13,7 @@ method, path and status only; validation errors of this router drop the ``input`
 handler, ``auth.setup``); failures answer with the category alone.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -26,7 +26,7 @@ from classbeat.connections.errors import ConnectionFailure
 from classbeat.connections.mowl_account import PROVIDER, connect_mowl
 from classbeat.connections.preferences import uses_swedebeat
 from classbeat.connections.repository import ConnectionInfo, disconnect, list_connections
-from classbeat.connections.swedebeat_account import swedebeat_access, swedebeat_email
+from classbeat.connections.swedebeat_account import live, swedebeat_access, swedebeat_email
 from classbeat.context import UserContext
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
@@ -67,11 +67,16 @@ class ConnectionOut(BaseModel):
 
     @classmethod
     def of(cls, info: ConnectionInfo, account: str | None = None) -> "ConnectionOut":
+        status = info.status
+        if info.provider == "swedebeat" and status == "connected":
+            # ADR 0035 section 5: a bearer past its ``expires_at`` (or a row without one, from
+            # before the gateway) is never sent; the page asks for a reconnect.
+            status = status if live(info.expires_at, datetime.now(UTC)) else "needs_reconnect"
         return cls(
             id=info.id,
             provider=info.provider,
             account=account,
-            status=info.status,
+            status=status,
             last_error=info.last_error,
             connected_at=info.connected_at,
             last_used_at=info.last_used_at,

@@ -5,6 +5,7 @@ import sv from './sv'
 import da from './da'
 import { en } from './en'
 import type { Catalogue, CatalogueKey } from './en'
+import untranslated from './untranslated.json'
 
 // ADR 0028 section 2 for the texts the backend mirrors: the server sentences (`sentence.*`, written by
 // `jobs/sentences.py` and `spotify/errors.py`), the reasons of an error answer (`error.reason.*`) and the
@@ -50,9 +51,12 @@ describe('backend-mirrored sentences, error reasons and rule rationales', () => 
     for (const [key] of NEXT_STEP) expect(en[key], key).toBeDefined()
   })
 
-  it('has every key in all three languages', () => {
+  it('has every key in all three languages, apart from a new one on the untranslated list', () => {
+    // ADR 0023: a feature PR adds English only and lists the key on untranslated.json until the
+    // catch-up translation (guard.test.ts fails a missing key that is not listed).
+    const listed = new Set<string>(untranslated)
     for (const [lang, catalogue] of [['sv', sv], ['da', da]] as const) {
-      expect(SCOPE.filter((k) => catalogue[k] === undefined), lang).toEqual([])
+      expect(SCOPE.filter((k) => catalogue[k] === undefined && !listed.has(k)), lang).toEqual([])
     }
   })
 

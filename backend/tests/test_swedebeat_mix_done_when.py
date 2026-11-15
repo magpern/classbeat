@@ -24,11 +24,13 @@ from classbeat.design import swedebeat_music as sbm
 from classbeat.log import QUIET_LOGGERS, configure_logging
 from ctx import make_context
 from designtools import BRIEF
+from gatewaycore import FakeGateway
+from gatewayfake import CLIENT_KEY as GATEWAY_KEY
+from gatewayfake import PASSWORD as GATEWAY_PASSWORD
 from jobapi import Browser
 from jobtools import new_job
 from mowlfake import FakeMowl
 from optools import TOKEN_A, TOKEN_B, OpsEnv
-from swedebeatcore import FakeSwedebeat
 from swedebeatfake import PASSWORD
 from test_mowl_redaction import Everything
 from test_swedebeat_design import (
@@ -151,6 +153,8 @@ async def test_the_temp_link_signature_and_app_key_are_in_no_log_response_or_dum
     assert (await harness.run(owner, connection, mix)).state == "completed"
     secrets = [
         PASSWORD,
+        GATEWAY_PASSWORD,
+        GATEWAY_KEY,
         swedebeat_app["key"],
         swedebeat_app["iv"],
         PLANTED_APP_KEY,
@@ -195,7 +199,7 @@ async def test_m4_style_design_on_a_playlist_touches_no_swedebeat_row_or_host(
     browsers: Any,
     mixenv: MixEnv,
     mowl_api: FakeMowl,
-    swedebeat_api: FakeSwedebeat,
+    gateway_api: FakeGateway,
     superuser: Any,
 ) -> None:
     browser = await rider(browsers, mixenv)
@@ -210,9 +214,9 @@ async def test_m4_style_design_on_a_playlist_touches_no_swedebeat_row_or_host(
     finally:
         flag(mixenv, None)
     assert created.status_code == 201, created.text
-    swedebeat_calls = len(swedebeat_api.calls)
+    # ADR 0035: classbeat's one SwedeBeat path is the gateway, and nothing reached it.
     assert superuser.execute(text("SELECT count(*) FROM swedebeat_mix_maps")).scalar_one() == 0
-    assert len(swedebeat_api.calls) == swedebeat_calls
+    assert gateway_api.requests == []
     assert not any("swedebeat" in r.lower() for r in mowl_api.requests)
 
 

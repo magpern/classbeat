@@ -5,20 +5,20 @@ import {
   EMAIL_B,
   PASSWORD_A,
   PASSWORD_B,
-  PHONE,
-  fakeState,
-  holdSession,
+  gatewayLogins,
+  injectGateway,
   resetSwedebeat,
   fillSwedebeat,
   openSwedebeatDialog,
-  setOutage,
+  signOutConsent,
   swedebeatRow,
 } from './swedebeat-helpers'
 
-// Swedebeat connect end to end (ADR 0015) against the fake Swedebeat of compose.e2e.yaml, which
-// answers as www.swedebeat.se inside the compose network and decodes the library's AES-encoded
-// login fields with a TEST key (e2e/fake-swedebeat/app.json, not Swedebeat's). Public test values
-// only: no real Swedebeat account and no real key.
+// Swedebeat connect end to end (ADR 0015, ADR 0035 sections 3 and 4) against the fake SwedeBeat
+// gateway of compose.e2e.yaml (gateway.classbeat-e2e.test, its public test client key). The gateway
+// always signs the account out of the Swedebeat app on other devices, so the dialog says so up front
+// and sends nothing until "I understand" is ticked. Public test values only: no real Swedebeat
+// account, gateway or key.
 
 test.beforeEach(() => {
   resetSwedebeat()
@@ -61,18 +61,19 @@ test('connect, wrong password, status after a reload, and disconnect', async ({ 
   expect(new URL(answer.url()).search).toBe('') // nothing in the URL
   const text = await answer.text()
   expect(text).not.toContain(PASSWORD_A)
-  expect(text).not.toMatch(/token|device/i) // the answer holds no secret
+  expect(text).not.toMatch(/token|device|bearer/i) // the answer holds no secret
   await expect(page.getByText('Swedebeat is connected.')).toBeVisible()
   await expect(card(page).getByTestId('swedebeat-status')).toHaveText('Connected')
   await expect(card(page).getByTestId('swedebeat-account')).toHaveText(EMAIL_A)
   await expect(page.getByLabel('Swedebeat password')).toHaveCount(0) // the dialog closed
 
-  // The fake saw a decoded, correctly encoded login without force.
-  const logins = fakeState().logins
-  expect(logins.map((l) => [l.email, l.force, l.ok])).toEqual([
-    [EMAIL_A, false, false],
-    [EMAIL_A, false, true],
+  // The gateway saw two logins, both with the confirmed force and this user's one device id.
+  const logins = gatewayLogins()
+  expect(logins.map((l) => [l.email, l.force])).toEqual([
+    [EMAIL_A, true],
+    [EMAIL_A, true],
   ])
+  expect(new Set(logins.map((l) => l.device_id)).size).toBe(1)
 
   // The status survives a reload: it comes from the server, and the password is nowhere.
   await page.reload()
@@ -85,30 +86,37 @@ test('connect, wrong password, status after a reload, and disconnect', async ({ 
   await expect(card(page).getByTestId('swedebeat-status')).toHaveCount(0)
 })
 
-test('another device holds the session: asked first, then signed in here anyway', async ({ page }) => {
-  await newUser(page, 'sb-device')
-  holdSession(EMAIL_A)
+test('the sign-out is said up front, and nothing is sent before it is confirmed', async ({ page }) => {
+  await newUser(page, 'sb-consent')
   const dialog = await openSwedebeatDialog(page)
-
-  await fillSwedebeat(dialog, EMAIL_A, PASSWORD_A)
-  await dialog.getByRole('button', { name: 'Connect Swedebeat' }).click()
-  await expect(dialog.getByRole('alert')).toContainText('signed in on another device')
-  await expect(card(page).getByTestId('swedebeat-status')).toHaveCount(0) // nothing stored
-  expect(fakeState().logins.map((l) => [l.force, l.ok])).toEqual([[false, false]])
-
+  await expect(
+    dialog.getByText('Connecting signs this Swedebeat account out of the Swedebeat app on other devices, such as your phone.'),
+  ).toBeVisible()
+  await expect(signOutConsent(dialog)).not.toBeChecked()
+  await dialog.getByLabel('Swedebeat email').fill(EMAIL_A)
   await dialog.getByLabel('Swedebeat password').fill(PASSWORD_A)
-  await dialog.getByRole('button', { name: 'Sign in anyway' }).click()
+  await expect(dialog.getByRole('button', { name: 'Connect Swedebeat' })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: 'Sign in anyway' })).toHaveCount(0)
+
+  // An API client gets the same rule: a body without "force": true is refused before any login.
+  const session = (await (await page.request.get('/api/auth/session')).json()) as { csrf_token: string }
+  const refused = await page.request.post('/api/connections/swedebeat', {
+    data: { email: EMAIL_A, password: PASSWORD_A },
+    headers: { 'X-CSRF-Token': session.csrf_token, Origin: new URL(page.url()).origin },
+  })
+  expect(refused.status()).toBe(409)
+  expect(await refused.text()).toContain('sign_out_required')
+  expect(gatewayLogins()).toEqual([])
+
+  await signOutConsent(dialog).check()
+  await dialog.getByRole('button', { name: 'Connect Swedebeat' }).click()
   await expect(card(page).getByTestId('swedebeat-status')).toHaveText('Connected')
-  expect(fakeState().logins.map((l) => [l.force, l.ok])).toEqual([
-    [false, false],
-    [true, true],
-  ])
-  expect(fakeState().logins[1]?.device_id).not.toBe(PHONE)
+  expect(gatewayLogins().map((l) => l.force)).toEqual([true])
 })
 
 test('an outage is explained in plain words and stores nothing', async ({ page }) => {
   await newUser(page, 'sb-outage')
-  setOutage(true)
+  injectGateway('status', '/auth/login', { status: 502 })
   const dialog = await openSwedebeatDialog(page)
   await fillSwedebeat(dialog, EMAIL_A, PASSWORD_A)
   await dialog.getByRole('button', { name: 'Connect Swedebeat' }).click()
@@ -143,11 +151,11 @@ test('two users on different Swedebeat accounts never see or share each other’
   await one.reload()
   await expect(card(one).getByTestId('swedebeat-account')).toHaveText(EMAIL_A)
 
-  // Each account got its own device id from classbeat, and none was forced.
-  const ok = fakeState().logins.filter((l) => l.ok)
-  expect(ok.map((l) => l.email)).toEqual([EMAIL_A, EMAIL_B])
-  expect(new Set(ok.map((l) => l.device_id)).size).toBe(2)
-  expect(ok.every((l) => !l.force)).toBe(true)
+  // Each account got its own device id from classbeat, and both confirmed the sign-out.
+  const logins = gatewayLogins()
+  expect(logins.map((l) => l.email)).toEqual([EMAIL_A, EMAIL_B])
+  expect(new Set(logins.map((l) => l.device_id)).size).toBe(2)
+  expect(logins.every((l) => l.force)).toBe(true)
 
   // Disconnecting one leaves the other.
   await disconnect(one)

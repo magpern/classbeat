@@ -5,7 +5,8 @@ import { renderAt } from '../../../test/render'
 
 // Swedebeat in the Connections list (ADR 0028 section 1, item 2; ADR 0015 and its #525 amendment):
 // always listed, optional; Connect stores the preference then connects; a dialog that ends without
-// a connection puts the preference back.
+// a connection puts the preference back. Connecting signs the Swedebeat app out on other devices
+// (ADR 0035 section 4): the dialog says so up front and sends nothing until "I understand" is ticked.
 
 const ACCOUNT_ROUTES = {
   'GET /api/auth/session': SIGNED_IN,
@@ -40,6 +41,8 @@ type Dialog = BoundFunctions<typeof queries>
 async function fill(dialog: Dialog, password = PASSWORD) {
   fireEvent.change(await dialog.findByLabelText('Swedebeat email'), { target: { value: ' rider@example.test ' } })
   fireEvent.change(dialog.getByLabelText('Swedebeat password'), { target: { value: password } })
+  const understood = dialog.getByRole('checkbox', { name: 'I understand' })
+  if (!(understood as HTMLInputElement).checked) fireEvent.click(understood)
 }
 
 describe('the Swedebeat row', () => {
@@ -95,7 +98,7 @@ describe('connect Swedebeat', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(api.to('PUT', '/api/connections/swedebeat/preference').map((c) => c.body)).toEqual([{ uses_swedebeat: true }])
     const [call] = api.to('POST', '/api/connections/swedebeat')
-    expect(call?.body).toEqual({ email: 'rider@example.test', password: PASSWORD, force: false })
+    expect(call?.body).toEqual({ email: 'rider@example.test', password: PASSWORD, force: true })
     expect(call?.headers.get('X-CSRF-Token')).toBe('csrf-session')
     expect(api.calls.every((c) => !c.path.includes(PASSWORD))).toBe(true)
     expect(document.body.innerHTML).not.toContain(PASSWORD)
@@ -231,35 +234,80 @@ describe('connect Swedebeat', () => {
     expect(await dialog.findByRole('alert')).toHaveTextContent(text)
   })
 
-  it('asks before signing another device out, and sends force only after the user chose it', async () => {
-    let attempts = 0
-    const api = fakeApi({
+  it('says up front that other devices are signed out, and sends nothing until the box is ticked', async () => {
+    const api = fakeApi({ ...ACCOUNT_ROUTES, 'GET /api/connections': list(ON), [PREFERENCE]: stored, [POST]: CONNECTED })
+    renderAt('/account')
+    const dialog = await openDialog()
+    expect(
+      dialog.getByText(
+        'Connecting signs this Swedebeat account out of the Swedebeat app on other devices, such as your phone.',
+      ),
+    ).toBeInTheDocument()
+    const understood = dialog.getByRole('checkbox', { name: 'I understand' })
+    expect(understood).not.toBeChecked()
+    expect(understood).toBeRequired()
+    fireEvent.change(dialog.getByLabelText('Swedebeat email'), { target: { value: 'rider@example.test' } })
+    fireEvent.change(dialog.getByLabelText('Swedebeat password'), { target: { value: PASSWORD } })
+    const button = dialog.getByRole('button', { name: 'Connect Swedebeat' })
+    expect(button).toBeDisabled()
+    fireEvent.submit(button.closest('form') as HTMLFormElement)
+    fireEvent.click(understood)
+    expect(button).toBeEnabled()
+    fireEvent.click(understood)
+    expect(button).toBeDisabled()
+    expect(api.to('POST', '/api/connections/swedebeat')).toHaveLength(0)
+    expect(api.to('PUT', '/api/connections/swedebeat/preference')).toHaveLength(0)
+    // No question about another device is asked any more.
+    expect(dialog.queryByRole('button', { name: 'Sign in anyway' })).toBeNull()
+  })
+
+  it('starts unticked on every open, also when it reconnects', async () => {
+    const stale = { ...CONNECTED, status: 'needs_reconnect' }
+    fakeApi({
+      ...ACCOUNT_ROUTES,
+      'GET /api/connections': list({ ...ON, uses_swedebeat: true }, [stale]),
+      [PREFERENCE]: stored,
+      [POST]: reason(400, 'invalid_credentials'),
+    })
+    renderAt('/account')
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Swedebeat again' }))
+    let dialog = within(await screen.findByRole('dialog', { name: 'Connect Swedebeat' }))
+    expect(
+      dialog.getByText(
+        'Connecting signs this Swedebeat account out of the Swedebeat app on other devices, such as your phone.',
+      ),
+    ).toBeInTheDocument()
+    await fill(dialog)
+    fireEvent.click(dialog.getByRole('button', { name: 'Connect Swedebeat again' }))
+    expect(await dialog.findByRole('alert')).toBeInTheDocument()
+    // The box stays ticked for another try in the same opening ...
+    expect(dialog.getByRole('checkbox', { name: 'I understand' })).toBeChecked()
+    fireEvent.click(dialog.getByRole('button', { name: 'Close' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+    // ... and is unticked again when the dialog opens next.
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Swedebeat again' }))
+    dialog = within(await screen.findByRole('dialog', { name: 'Connect Swedebeat' }))
+    expect(dialog.getByRole('checkbox', { name: 'I understand' })).not.toBeChecked()
+    expect(dialog.getByRole('button', { name: 'Connect Swedebeat again' })).toBeDisabled()
+  })
+
+  it('explains a refusal of a sign-in without the confirmation', async () => {
+    fakeApi({
       ...ACCOUNT_ROUTES,
       'GET /api/connections': list(ON),
       [PREFERENCE]: stored,
-      [POST]: () => {
-        attempts += 1
-        return attempts === 1 ? reason(409, 'device_in_use') : CONNECTED
-      },
+      [POST]: reason(409, 'sign_out_required'),
     })
     renderAt('/account')
     const dialog = await openDialog()
     await fill(dialog)
     fireEvent.click(dialog.getByRole('button', { name: 'Connect Swedebeat' }))
-    expect(await dialog.findByText(/signed in on another device/)).toBeInTheDocument()
+    expect(await dialog.findByRole('alert')).toHaveTextContent(
+      'Tick the box to confirm that other devices are signed out.',
+    )
     expect(dialog.getByLabelText('Swedebeat password')).toHaveValue('')
-    fireEvent.change(dialog.getByLabelText('Swedebeat password'), { target: { value: PASSWORD } })
-    fireEvent.click(dialog.getByRole('button', { name: 'Sign in anyway' }))
-    expect(await screen.findByText('Swedebeat is connected.')).toBeInTheDocument()
-    expect(api.to('POST', '/api/connections/swedebeat').map((c) => (c.body as { force: boolean }).force)).toEqual([
-      false,
-      true,
-    ])
-    // The preference stayed on through the question and was not put back.
-    expect(api.to('PUT', '/api/connections/swedebeat/preference').map((c) => c.body)).toEqual([
-      { uses_swedebeat: true },
-      { uses_swedebeat: true },
-    ])
   })
 })
 

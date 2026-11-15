@@ -9,7 +9,9 @@ also while the job waits for its retry. ``rate_limited`` and ``quota_exhausted``
 from Spotify's last ``Retry-After`` (``jobs.spotify_retry_after``). A ``swedebeat_match`` whose
 stored failure is Swedebeat's own 429 names that wait while the job is still queued, and never
 a longer wait than the pause cap. Once that match has failed, the sentence does not promise
-another try. It does not count as a Spotify rate limit."""
+another try. It does not count as a Spotify rate limit. A match that failed
+``app_misconfigured`` (the gateway refused this server's client key, ADR 0035 section 5) says
+SwedeBeat is not available on this server, never Spotify's sentence."""
 
 import math
 from datetime import datetime
@@ -66,6 +68,9 @@ _SWEDEBEAT_MATCH: Final = "swedebeat_match"
 _SWEDEBEAT_WAIT: Final = "Swedebeat asks to slow down; trying again in about {minutes}."
 # The attempts are used up. This must not say the job will try again.
 _SWEDEBEAT_STOPPED: Final = "Swedebeat asks to slow down. This match has stopped."
+# ADR 0035 section 5: the gateway refused this server's client key (or a proxy in front of it
+# did). The user's connection is fine; nothing they can do here.
+_SWEDEBEAT_UNAVAILABLE: Final = "Swedebeat is not available on this server right now."
 
 
 def _minutes(retry_after: int | None) -> int:
@@ -113,6 +118,8 @@ def job_sentence_of(
         if hint is None:
             hint = max(1, math.ceil((available_at - now).total_seconds()))
         return _swedebeat_wait(hint)
+    if kind == _SWEDEBEAT_MATCH and state == "failed" and category == "app_misconfigured":
+        return Sentence("swedebeat.unavailable", _SWEDEBEAT_UNAVAILABLE)
     if state == "failed" and category is not None and category == spotify_failure:
         return spotify_sentence_of(category, retry_after)
     if state == "queued" and category is None and spotify_failure in _RETRIED:

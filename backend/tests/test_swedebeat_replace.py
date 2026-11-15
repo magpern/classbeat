@@ -1,28 +1,27 @@
 """Replace songs Swedebeat does not have, then approve the selection (ADR 0016 section 6, B3).
 
 The catalogue fact is statuses only. A planted title, artist and catalogue id live on the match
-revision (and the fake catalogue answers with a reference id) and must not reach a model's input.
-The replace and the re-match run on the fakes: no network, no live account.
+revision (and the fake gateway answers with a planted reference, URL and key-shaped field) and
+must not reach a model's input. The replace and the re-match run on the fakes (the re-match on the
+fake gateway, ADR 0035 section 6): no network, no live account.
 """
 
 import inspect
 import json
 from contextlib import contextmanager
 from typing import Any
-from urllib.parse import unquote
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import SecretStr
 
-from cataloguefake import PLANTED_KEY, PLANTED_REFERENCE, PLANTED_URL, CatalogueFake
-from classbeat import connections, swedebeat_match
+from classbeat import swedebeat_match
 from classbeat.agent.brief import Brief
 from classbeat.agent.providers.fake import FakeProvider
-from classbeat.egress import swedebeat_cloud_test_client
 from classbeat.flags import effective as flag_effective
 from classbeat.songs.revise_brief import pick_brief
 from classbeat.songs.song_list import Song, SongListContent
-from classbeat.swedebeat_match import kind as match_kind
+from classbeat.swedebeat_match import gateway_match
 from classbeat.swedebeat_match.config import MatchConfig
 from classbeat.swedebeat_match.config import current as match_config
 from classbeat.swedebeat_match.replace import FACT, catalogue_fact, status_facts
@@ -34,6 +33,8 @@ from classbeat.swedebeat_match.revision import (
     build,
 )
 from ctx import make_context
+from gatewaycore import MATCH_PATH, FakeGateway
+from gatewayfake import CLIENT_KEY, ORIGIN, calls, store_bearer
 from preftools import use_swedebeat
 from revisesongtools import change, current, picked, replace_script, revise_script, runs, stated
 from songtools import SongEnv, song_id
@@ -43,6 +44,9 @@ PLANTED_ARTIST = "Planted Catalogue Artist 8vw"
 PLANTED_WANTED = "Planted Wanted Title 3kq"
 REPLACED_TITLE = "Ride Song 4 alpha"  # slot 2 of the picked list; the one the replace drops
 NEW_SONG = song_id(13)
+PLANTED_REFERENCE = "sb-ref-not-stored"
+PLANTED_URL = "https://evil.example/track?sig=planted-signature"
+PLANTED_KEY = "AKIA" + "012345678901"  # credential-shaped; shorter than an AWS access key id
 
 _PLANTED = (
     PLANTED_TITLE,
@@ -113,6 +117,34 @@ def _sent(providers: list[FakeProvider]) -> str:
     return "\n".join(parts)
 
 
+def _config(ring: Any, *, enabled: bool = True) -> MatchConfig:
+    return MatchConfig(
+        enabled=enabled,
+        keyring=ring,
+        swedebeat_gateway_url=ORIGIN,
+        swedebeat_gateway_key=SecretStr(CLIENT_KEY),
+    )
+
+
+@pytest.fixture
+def catalogue(gateway_api: FakeGateway, monkeypatch: pytest.MonkeyPatch) -> FakeGateway:
+    """The fake gateway, its tracks carrying planted fields; the match's pauses not slept."""
+
+    async def no_pause(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(gateway_match, "_pause", no_pause)
+    # The replacement song (``songtools.catalogue``'s 13) is in the catalogue; the rest are not,
+    # so a fresh match still has songs to replace.
+    gateway_api.add_track("Ride Song 13 beta", "Made-up Band 1", "found")
+    gateway_api.track_extras = {
+        "reference": PLANTED_REFERENCE,
+        "url": PLANTED_URL,
+        "accessKeyId": PLANTED_KEY,
+    }
+    return gateway_api
+
+
 @contextmanager
 def _enabled(songenv: SongEnv):
     env = songenv.spot.env
@@ -121,7 +153,7 @@ def _enabled(songenv: SongEnv):
     fresh = previous_settings.model_copy(update={"swedebeat_enabled": True})
     env.app.state.settings = fresh
     env.settings = fresh
-    swedebeat_match.configure(MatchConfig(enabled=True, keyring=songenv.ring, pace_seconds=0))
+    swedebeat_match.configure(_config(songenv.ring))
     try:
         yield
     finally:
@@ -202,21 +234,10 @@ async def test_flag_off_answers_404_for_a_real_class_and_an_unknown_one(songenv:
 
 
 async def test_missing_songs_are_replaced_rematched_and_the_selection_approved(
-    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+    songenv: SongEnv, catalogue: FakeGateway, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    catalogue = CatalogueFake()
-    monkeypatch.setattr(
-        match_kind, "catalogue_client", lambda: swedebeat_cloud_test_client(catalogue)
-    )
     rider = await songenv.rider()
-    await connections.save(
-        songenv.factory,
-        songenv.ring,
-        make_context(rider.user_id),
-        "swedebeat",
-        {"token": "swedebeat-test-token", "device_id": "0123456789abcdef"},
-        public={"email": "rider@example.com"},
-    )
+    await store_bearer(songenv.factory, songenv.ring, make_context(rider.user_id), catalogue)
     await use_swedebeat(songenv.factory, rider.user_id)  # #525: the user's own switch
     with _enabled(songenv):
         class_id, base, first_list = await picked(songenv, rider)
@@ -246,7 +267,7 @@ async def test_missing_songs_are_replaced_rematched_and_the_selection_approved(
         assert set(approved.json()) == {"revision_id", "content_hash"}
         for value in _PLANTED:
             assert value not in approved.text
-        assert catalogue.calls == []
+        assert calls(catalogue, MATCH_PATH) == []
         assert _approved(songenv, class_id) == match_id
 
         before = len(songenv.providers)
@@ -258,7 +279,7 @@ async def test_missing_songs_are_replaced_rematched_and_the_selection_approved(
         job_id = UUID(started.json()["id"])
         row = await songenv.run(job_id)
         assert row.state == "waiting_for_approval", (row.state, row.error_category)
-        assert catalogue.calls == []
+        assert calls(catalogue, MATCH_PATH) == []
         sent = _sent(songenv.providers[before:])
         # The fact is inside the brief JSON, so its quotes are escaped. The words are not.
         assert FACT in sent
@@ -289,21 +310,23 @@ async def test_missing_songs_are_replaced_rematched_and_the_selection_approved(
             parent=row.approval_revision_id,
         ).one()
         dumped = json.dumps(fresh.content)
+        assert fresh.content["found"] > 0  # the answer carried the planted fields
         for value in _PLANTED:
             assert value not in dumped
-        assert any("Ride Song 13" in unquote(call.url) for call in catalogue.calls)
-        assert all(PLANTED_TITLE not in call.url for call in catalogue.calls)
+        sent_titles = [t["title"] for r in calls(catalogue, MATCH_PATH) for t in r.body["tracks"]]
+        assert any("Ride Song 13" in title for title in sent_titles)
+        assert all(PLANTED_TITLE not in json.dumps(r.body) for r in calls(catalogue, MATCH_PATH))
         phase_two = _sent(songenv.providers[before:])
         for value in _PLANTED:
             assert value not in phase_two
 
-        calls = len(catalogue.calls)
+        sent_before = len(calls(catalogue, MATCH_PATH))
         again = await _approve(rider, class_id, fresh.id)
         assert again.status_code == 200, again.text
         assert _approved(songenv, class_id) == fresh.id
         repeat = await _approve(rider, class_id, fresh.id)
         assert repeat.status_code == 200, repeat.text
-        assert len(catalogue.calls) == calls  # the approval calls nothing
+        assert len(calls(catalogue, MATCH_PATH)) == sent_before  # the approval calls nothing
         stale = await _approve(rider, class_id, match_id)
         assert stale.status_code == 409
         assert stale.json()["detail"]["reason"] == "stale_match"
@@ -363,22 +386,11 @@ def _stored_flag(songenv: SongEnv, value: str | None) -> None:
 
 
 async def test_a_catalogue_replace_calls_nothing_when_the_flag_is_off(
-    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+    songenv: SongEnv, catalogue: FakeGateway, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Flag off: a replace is refused and a queued re-match calls no catalogue."""
-    catalogue = CatalogueFake()
-    monkeypatch.setattr(
-        match_kind, "catalogue_client", lambda: swedebeat_cloud_test_client(catalogue)
-    )
     rider = await songenv.rider()
-    await connections.save(
-        songenv.factory,
-        songenv.ring,
-        make_context(rider.user_id),
-        "swedebeat",
-        {"token": "swedebeat-test-token", "device_id": "0123456789abcdef"},
-        public={"email": "rider@example.com"},
-    )
+    await store_bearer(songenv.factory, songenv.ring, make_context(rider.user_id), catalogue)
     await use_swedebeat(songenv.factory, rider.user_id)  # #525: the user's own switch
     with _enabled(songenv):
         class_id, base, first_list = await picked(songenv, rider)
@@ -406,13 +418,13 @@ async def test_a_catalogue_replace_calls_nothing_when_the_flag_is_off(
             )
             assert answer.status_code == 409, answer.text
             assert answer.json()["detail"]["reason"] == "feature_off"
-            assert catalogue.calls == []
+            assert calls(catalogue, MATCH_PATH) == []
             assert _jobs(songenv, class_id) == before
 
-        off = MatchConfig(enabled=False, keyring=held.keyring, pace_seconds=0)
+        off = _config(held.keyring, enabled=False)
         swedebeat_match.configure(off)
         await refused_replace()  # the environment switch, before the match revision is read
-        swedebeat_match.configure(MatchConfig(enabled=True, keyring=held.keyring, pace_seconds=0))
+        swedebeat_match.configure(_config(held.keyring))
         _stored_flag(songenv, "off")
         try:
             await refused_replace()  # the stored flag, with the environment still on
@@ -427,7 +439,7 @@ async def test_a_catalogue_replace_calls_nothing_when_the_flag_is_off(
         job_id = UUID(started.json()["id"])
         waiting = await songenv.run(job_id)
         assert waiting.state == "waiting_for_approval", (waiting.state, waiting.error_category)
-        assert catalogue.calls == []
+        assert calls(catalogue, MATCH_PATH) == []
         swedebeat_match.configure(off)
         digest = bytes(waiting.approval_hash).hex()
         approved = await rider.approve(job_id, waiting.approval_revision_id, digest)
@@ -435,7 +447,7 @@ async def test_a_catalogue_replace_calls_nothing_when_the_flag_is_off(
         songenv.script = revise_script()
         done = await songenv.run(job_id)
         assert (done.state, done.error_category) == ("failed", "feature_off")
-        assert catalogue.calls == []
+        assert calls(catalogue, MATCH_PATH) == []
         matched = songenv.sql(
             "SELECT count(*) FROM class_revisions WHERE class_id = :c "
             "AND kind = 'swedebeat_match' AND parent_id = :parent",
@@ -446,7 +458,7 @@ async def test_a_catalogue_replace_calls_nothing_when_the_flag_is_off(
 
 
 async def test_either_catalogue_flag_check_refuses_on_its_own(
-    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+    songenv: SongEnv, catalogue: FakeGateway, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Both flag reads have to run. The first allows and the second refuses.
 
@@ -454,19 +466,8 @@ async def test_either_catalogue_flag_check_refuses_on_its_own(
     refusal stays green if the other check is deleted. Here the two reads disagree: removing
     either read lets the replace through.
     """
-    catalogue = CatalogueFake()
-    monkeypatch.setattr(
-        match_kind, "catalogue_client", lambda: swedebeat_cloud_test_client(catalogue)
-    )
     rider = await songenv.rider()
-    await connections.save(
-        songenv.factory,
-        songenv.ring,
-        make_context(rider.user_id),
-        "swedebeat",
-        {"token": "swedebeat-test-token", "device_id": "0123456789abcdef"},
-        public={"email": "rider@example.com"},
-    )
+    await store_bearer(songenv.factory, songenv.ring, make_context(rider.user_id), catalogue)
     await use_swedebeat(songenv.factory, rider.user_id)  # #525: the user's own switch
     with _enabled(songenv):
         class_id, base, first_list = await picked(songenv, rider)
@@ -499,29 +500,18 @@ async def test_either_catalogue_flag_check_refuses_on_its_own(
         assert seen == ["gate", "decide"]
         assert answer.status_code == 409, answer.text
         assert answer.json()["detail"]["reason"] == "feature_off"
-        assert catalogue.calls == []
+        assert calls(catalogue, MATCH_PATH) == []
         assert _jobs(songenv, class_id) == before
 
 
 async def test_a_catalogue_replace_calls_nothing_while_the_preference_is_off(
-    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+    songenv: SongEnv, catalogue: FakeGateway, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """#525: with the flag on and a connected Swedebeat row, the user's own switch off refuses
     the replace before anything is read; turned off after the approval, the queued re-match ends
     ``feature_off`` and searches nothing."""
-    catalogue = CatalogueFake()
-    monkeypatch.setattr(
-        match_kind, "catalogue_client", lambda: swedebeat_cloud_test_client(catalogue)
-    )
     rider = await songenv.rider()
-    await connections.save(
-        songenv.factory,
-        songenv.ring,
-        make_context(rider.user_id),
-        "swedebeat",
-        {"token": "swedebeat-test-token", "device_id": "0123456789abcdef"},
-        public={"email": "rider@example.com"},
-    )
+    await store_bearer(songenv.factory, songenv.ring, make_context(rider.user_id), catalogue)
     with _enabled(songenv):
         class_id, base, first_list = await picked(songenv, rider)
         stored = songenv.revision(first_list)
@@ -541,7 +531,7 @@ async def test_a_catalogue_replace_calls_nothing_while_the_preference_is_off(
         assert refused.status_code == 409, refused.text
         assert refused.json()["detail"]["reason"] == "feature_off"
         assert _jobs(songenv, class_id) == before
-        assert catalogue.calls == []
+        assert calls(catalogue, MATCH_PATH) == []
 
         await use_swedebeat(songenv.factory, rider.user_id)
         songenv.script = replace_script()
@@ -559,28 +549,17 @@ async def test_a_catalogue_replace_calls_nothing_while_the_preference_is_off(
         songenv.script = revise_script()
         done = await songenv.run(job_id)
         assert (done.state, done.error_category) == ("failed", "feature_off")
-        assert catalogue.calls == []
+        assert calls(catalogue, MATCH_PATH) == []
 
 
 async def test_a_catalogue_replace_of_a_class_that_states_values_is_never_read(
-    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+    songenv: SongEnv, catalogue: FakeGateway, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """#1023: the server's status-only fact is no request: neither phase runs ``interpret`` (a
     paid run that could layer values the instructor never asked for), and the list keeps no
     reading, though the class states its length."""
-    catalogue = CatalogueFake()
-    monkeypatch.setattr(
-        match_kind, "catalogue_client", lambda: swedebeat_cloud_test_client(catalogue)
-    )
     rider = await songenv.rider()
-    await connections.save(
-        songenv.factory,
-        songenv.ring,
-        make_context(rider.user_id),
-        "swedebeat",
-        {"token": "swedebeat-test-token", "device_id": "0123456789abcdef"},
-        public={"email": "rider@example.com"},
-    )
+    await store_bearer(songenv.factory, songenv.ring, make_context(rider.user_id), catalogue)
     await use_swedebeat(songenv.factory, rider.user_id)
     with _enabled(songenv):
         class_id, base = await stated(songenv, rider)

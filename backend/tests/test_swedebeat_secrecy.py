@@ -1,9 +1,9 @@
-"""Swedebeat connect: no secret in a log, an event, an error body or an exception chain, and the
-app key's settings (ADR 0015 sections 4 and 7; threat model T23). Fakes only, no network.
+"""SwedeBeat connect: no secret in a log, an event, an error body or an exception chain (ADR 0035
+sections 2 and 3; threat model T23), and the old app key's settings, which stay until SG-4 removes
+them (ADR 0035 section 8). Fakes only, no network.
 
-The secrets searched for: the password (right and wrong), the token, the device id and the app
-key and iv, plain and in the forms the app encodes them (the fake decodes with the test key, so
-the encoded fields are searched for as well).
+The secrets searched for: the password (right and wrong), the gateway's bearers, the client key
+and the device id the login sent.
 """
 
 import json
@@ -29,58 +29,53 @@ from classbeat.connections.swedebeat_account import (
 )
 from classbeat.log import redact
 from ctx import make_context
+from gatewaycore import LOGIN_PATH, FakeGateway
+from gatewayfake import CLIENT_KEY, EMAIL, GATEWAY_SETTINGS, PASSWORD, calls
 from preftools import use_swedebeat
-from swedebeatcore import FakeSwedebeat
-from swedebeatfake import EMAIL, PASSWORD, make_app_key
+from swedebeatfake import make_app_key
 from test_mowl_redaction import Everything, captured
 
 __all__ = ["captured"]  # fixture
 CONNECT = "/api/connections/swedebeat"
 WRONG_PASSWORD = "wrong-swedebeat-password-Wd5"
-pytestmark = pytest.mark.usefixtures("swedebeat_api")
+pytestmark = pytest.mark.usefixtures("gateway_api")
 
 
 @pytest.fixture
-async def env(clean_auth: None, app_database_url: str, swedebeat_app: dict[str, str]) -> Any:
-    async with running_env(
-        app_database_url, swedebeat_enabled=True, swedebeat_app=SecretStr(json.dumps(swedebeat_app))
-    ) as running:
+async def env(clean_auth: None, app_database_url: str) -> Any:
+    async with running_env(app_database_url, swedebeat_enabled=True, **GATEWAY_SETTINGS) as running:
         yield running
 
 
-def secrets_of(fake: FakeSwedebeat, app: dict[str, str]) -> list[str]:
-    values = [PASSWORD, WRONG_PASSWORD, app["key"], app["iv"], *fake.tokens]
-    values += [entry["device_id"] for entry in fake.logins]
+def secrets_of(fake: FakeGateway) -> list[str]:
+    values = [PASSWORD, WRONG_PASSWORD, CLIENT_KEY, *fake.bearers]
+    values += [r.body["device_id"] for r in calls(fake, LOGIN_PATH)]
     return values
 
 
 async def test_no_secret_in_logs_events_or_responses_on_any_path(
-    env: Env,
-    make_actor: Any,
-    swedebeat_api: FakeSwedebeat,
-    swedebeat_app: dict[str, str],
-    captured: Everything,
+    env: Env, make_actor: Any, gateway_api: FakeGateway, captured: Everything
 ) -> None:
     user_id = await env.user("user@example.com")
     await use_swedebeat(env.factory, user_id)  # #525: the user's own switch
     actor = await make_actor(user_id)
     texts: list[str] = []
-    steps: list[tuple[dict[str, Any], int]] = [
-        ({"password": WRONG_PASSWORD}, 400),
-        ({}, 200),
+    sent = {"email": EMAIL, "password": PASSWORD, "force": True}
+    steps: list[tuple[dict[str, Any], str | None, int]] = [
+        ({"password": WRONG_PASSWORD}, None, 400),
+        ({}, None, 200),
+        ({}, "unknown_client", 503),
+        ({}, "status", 503),  # a 502
+        ({"force": False}, None, 409),
+        ({}, None, 200),
     ]
-    for sent, status in steps:
-        response = await actor.post(CONNECT, {"email": EMAIL, "password": PASSWORD, **sent})
-        assert response.status_code == status
+    for more, injected, status in steps:
+        if injected is not None:
+            gateway_api.inject(injected, LOGIN_PATH)
+        response = await actor.post(CONNECT, {**sent, **more})
+        assert response.status_code == status, response.text
         texts.append(response.text + str(dict(response.headers)))
-    swedebeat_api.hold(EMAIL, "phone-device-0001")
-    swedebeat_api.accounts[EMAIL].holder = "phone-device-0001"
-    taken = await actor.post(CONNECT, {"email": EMAIL, "password": PASSWORD})
-    assert taken.status_code == 409
-    swedebeat_api.outage = True
-    down = await actor.post(CONNECT, {"email": EMAIL, "password": PASSWORD})
-    assert down.status_code == 503
-    texts += [taken.text, down.text, (await actor.get("/api/connections")).text]
+    texts.append((await actor.get("/api/connections")).text)
     assert (await actor.call("DELETE", CONNECT)).status_code == 204
     events = await env.scalar(
         "SELECT coalesce(json_agg(detail), '[]'::json)::text FROM auth_events"
@@ -92,48 +87,53 @@ async def test_no_secret_in_logs_events_or_responses_on_any_path(
     logged = captured.out.getvalue()
     assert "swedebeat" in logged  # the capture saw the flow
     blob = "\n".join(texts)
-    for secret in secrets_of(swedebeat_api, swedebeat_app):
+    # Three bearers were issued (the 502 replaced one login's answer); none is anywhere.
+    assert len(gateway_api.bearers) == 3
+    for secret in secrets_of(gateway_api):
         assert secret not in blob, secret[:6]
-    # The one thing the token is allowed in: nothing. The token is not even in the connect answer.
-    assert all(token not in blob for token in swedebeat_api.tokens)
 
 
 async def test_failures_carry_the_category_alone_and_no_chain(
-    env: Env, swedebeat_api: FakeSwedebeat, swedebeat_app: dict[str, str]
+    env: Env, gateway_api: FakeGateway
 ) -> None:
     user_id = await env.user("user@example.com")
     ctx = make_context(user_id)
     ring = env.app.state.keyring
     secret = b"x" * 32
+    key = SecretStr(CLIENT_KEY)
 
     async def attempt(password: str, **more: Any) -> BaseException:
+        values: dict[str, Any] = {"force": True, "device_secret": secret, "key": key, **more}
         with pytest.raises((ConnectionFailure, SwedebeatRefusal)) as caught:
-            await connect_swedebeat(
-                env.factory, ring, ctx, EMAIL, password,
-                force=False, device_secret=secret, app=swedebeat_app, **more,
-            )  # fmt: skip
+            await connect_swedebeat(env.factory, ring, ctx, EMAIL, password, **values)
         return caught.value
 
     wrong = await attempt(WRONG_PASSWORD)
     assert isinstance(wrong, ConnectionFailure) and wrong.args == ("invalid_credentials",)  # noqa: PT018
-    swedebeat_api.hold(EMAIL, "phone-device-0001")
-    taken = await attempt(PASSWORD)
-    assert isinstance(taken, SwedebeatRefusal) and taken.args == ("device_in_use",)  # noqa: PT018
-    swedebeat_api.accounts[EMAIL].holder = None
-    swedebeat_api.outage = True
+    gateway_api.inject("unknown_client", LOGIN_PATH)
+    refused = await attempt(PASSWORD)
+    assert isinstance(refused, SwedebeatRefusal) and refused.args == ("app_key_unavailable",)  # noqa: PT018
+    gateway_api.inject("status", LOGIN_PATH, status=502)
     down = await attempt(PASSWORD)
     assert isinstance(down, ConnectionFailure) and down.args == ("upstream_unavailable",)  # noqa: PT018
-    for error in (wrong, taken, down):
+    too_long = await attempt("p" * 257)  # outside the gateway's bounds: never sent
+    assert isinstance(too_long, ConnectionFailure) and too_long.args == ("invalid_credentials",)  # noqa: PT018
+    for error in (wrong, refused, down, too_long):
         assert error.__cause__ is None
         assert error.__context__ is None
-        assert WRONG_PASSWORD not in repr(error) + str(error.args)
-    sent = len(swedebeat_api.logins)
-    with pytest.raises(SwedebeatRefusal) as none:
-        await connect_swedebeat(
-            env.factory, ring, ctx, EMAIL, PASSWORD, force=False, device_secret=secret, app=None
-        )
-    assert none.value.args == ("app_key_unavailable",)
-    assert len(swedebeat_api.logins) == sent  # nothing was sent without the key
+        text = repr(error) + str(error.args)
+        assert WRONG_PASSWORD not in text and CLIENT_KEY not in text  # noqa: PT018
+    sent = len(gateway_api.requests)
+    assert sent == 3
+    for more in ({"key": None}, {"force": False}):
+        with pytest.raises(SwedebeatRefusal) as none:
+            await connect_swedebeat(
+                env.factory, ring, ctx, EMAIL, PASSWORD,
+                **{"force": True, "device_secret": secret, "key": key, **more},
+            )  # fmt: skip
+        expected = "app_key_unavailable" if "key" in more else "sign_out_required"
+        assert none.value.args == (expected,)
+    assert len(gateway_api.requests) == sent  # nothing was sent without the key or the consent
     assert await connections.connection_refs(env.factory, ctx) == frozenset()
 
 
@@ -157,6 +157,9 @@ def test_the_log_redaction_masks_the_swedebeat_names() -> None:
         "deviceid",
         "password",
         "x-auth-token",
+        "x-api-key",
+        "bearer",
+        "swedebeat_gateway_key",
     ):
         assert name in SECRET_KEYS
     planted = "planted-swedebeat-catalogue-token"

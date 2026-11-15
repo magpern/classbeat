@@ -1,6 +1,6 @@
-"""The ``swedebeat_match`` job kind (ADR 0016 sections 2, 5 and 8; B1): a ``song_list`` matched
-against Swedebeat's catalogue with the user's own Swedebeat token. Deterministic: no model call,
-no credit, no external write.
+"""The ``swedebeat_match`` job kind (ADR 0016 sections 2, 5 and 8; B1; ADR 0035 sections 5 and
+6): a ``song_list`` matched against SwedeBeat's catalogue through the owner's gateway, with the
+user's own bearer. Deterministic: no model call, no credit, no external write.
 
 - **Input** ``SwedebeatMatchInput``: the class, its ``song_list`` revision and the Swedebeat
   connection the page shows (``CONNECTIONS = ("swedebeat",)``: the jobs API checks it is the
@@ -9,52 +9,39 @@ no credit, no external write.
   ``swedebeat_enabled`` flag is on (``CLASSBEAT_SWEDEBEAT_ENABLED`` and the admin flag, stricter
   wins), then ``feature_off`` unless the user's own "I use Swedebeat" preference is on (#525; a
   connection made before the preference existed does not count as one), then ``not_connected``
-  unless the Swedebeat row is ``connected`` (a row that needs a reconnect makes no call), then
-  ``invalid_input`` for a soundless class (``music_kind.refuse_soundless``, #530) and unless the
-  list is the user's ``song_list`` of that class and still hashes to its stored hash. One open job
-  per class and the per-user limit are the jobs API's own.
+  unless the Swedebeat row is ``connected`` and not past its ``expires_at`` (ADR 0035 section 5:
+  a doomed job is never queued), then ``invalid_input`` for a soundless class
+  (``music_kind.refuse_soundless``, #530) and unless the list is the user's ``song_list`` of that
+  class and still hashes to its stored hash. One open job per class and the per-user limit are
+  the jobs API's own.
 - **prepare**: the flag again, from the worker's own settings and the database, and the user's
   preference (either off: the job ends ``feature_off`` and nothing is called), the list again
   (``song_list.load``), ``invalid_input`` when the class is soundless by now
-  (``music_kind.still_has_music``, before any request, #470), then the Swedebeat connection is
-  opened through ``UserContext`` (``classbeat.connections``), in the worker only, for this job and
-  nothing else; it must be the input's.
-- **match**: for each song in play order, at most ``MAX_SONGS``, one catalogue request
-  (``classbeat.swedebeat_match.search``) with only its title and artist, one at a time, paced
-  (``pace_seconds`` between two requests), a checkpoint before each. Two songs with the same
-  cleaned title and artist share one request (in-job memory only: nothing is cached across jobs,
-  classes or users, ADR 0016 section 5). The token follows ADR 0015: a 401 or 403 flips the
-  connection to ``needs_reconnect`` (the job ends so); a 429 ends the attempt ``rate_limited``
-  with Swedebeat's ``Retry-After`` (the retry waits at least that, and the job sentence names
-  that wait); a 5xx or a timeout is ``upstream_unavailable`` (retried); success records
-  ``last_used_at``.
+  (``music_kind.still_has_music``, before any request, #470), ``app_misconfigured`` when this
+  worker has no gateway URL or client key, then the bearer is opened through ``UserContext``
+  (``swedebeat_account.open_bearer``: ``not_connected`` past ``expires_at``, without a request),
+  in the worker only, for this job and nothing else; it must be the input's connection.
+- **match** (``classbeat.swedebeat_match.gateway_match``): one gateway call for the deduplicated
+  songs, title and artist only, classbeat's verdict, the 401 confirmation and the status mapping.
 - **store**: the ``swedebeat_match`` revision under the list
   (``classbeat.swedebeat_match.revision``), refused ``invalid_input`` (nothing stored) when the
   class's ``music_source`` is ``none`` by then (``music_kind.check_stored``).
 
 Registered in ``classbeat.jobs.KINDS`` on import, by the worker (which runs it) and the web app (the
-jobs API validates with the same registry). Only categories are logged, never a title or the token.
+jobs API validates with the same registry). Only categories are logged, never a title or the bearer.
 """
 
-import asyncio
-import logging
-from typing import Any, ClassVar, Final, Self
+from datetime import UTC, datetime
+from typing import ClassVar, Final, Self
 from uuid import UUID
 
-import httpx
 from pydantic import BaseModel, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat import egress
-from classbeat.connections import (
-    OpenConnection,
-    find_in,
-    mark_needs_reconnect,
-    open_connection,
-    record_result,
-)
+from classbeat.connections import find_in
 from classbeat.connections.preferences import uses_swedebeat_in
+from classbeat.connections.swedebeat_account import SwedebeatBearer, live, open_bearer
 from classbeat.context import UserContext
 from classbeat.design import music_kind
 from classbeat.flags import effective as flags
@@ -62,17 +49,9 @@ from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, 
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.songs import song_list
-from classbeat.swedebeat_match import config, search
-from classbeat.swedebeat_match.catalogue import Hit, dedupe_key, verdict
-from classbeat.swedebeat_match.revision import KIND, MAX_SONGS, Matched, MatchedSong, Wanted, build
-
-logger = logging.getLogger(__name__)
-
-
-async def _pause(seconds: float) -> None:
-    """The gap between two catalogue requests of one job (one request in flight)."""
-    await asyncio.sleep(seconds)
-
+from classbeat.swedebeat_match import config
+from classbeat.swedebeat_match.gateway_match import match_songs
+from classbeat.swedebeat_match.revision import KIND, MAX_SONGS, build
 
 PROVIDER: Final = "swedebeat"
 STAGES: Final = ("prepare", "match")
@@ -102,7 +81,9 @@ async def _connected(db: AsyncSession, ctx: UserContext, connection_id: UUID) ->
     if ctx.connection(PROVIDER) != connection_id:
         return False
     info = await find_in(db, ctx, connection_id)
-    return info is not None and info.provider == PROVIDER and info.status == "connected"
+    if info is None or info.provider != PROVIDER or info.status != "connected":
+        return False
+    return live(info.expires_at, datetime.now(UTC))  # ADR 0035 section 5: never a doomed job
 
 
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Admitted | Refused:
@@ -123,18 +104,12 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     return Admitted()
 
 
-def catalogue_client() -> httpx.AsyncClient:
-    """The catalogue client of one job. The seam the tests replace (the fake catalogue over a fake
-    transport, ``egress.swedebeat_cloud_test_client``); production builds the worker's own."""
-    return egress.swedebeat_cloud_async_client()
-
-
 JOB_CLASS = text("SELECT class_id FROM jobs WHERE id = :job_id AND owner_id = :owner_id")
 
 
 async def _prepare(
     run: JobRun, given: SwedebeatMatchInput, cfg: config.MatchConfig
-) -> tuple[song_list.SongListRevision, OpenConnection]:
+) -> tuple[song_list.SongListRevision, SwedebeatBearer]:
     async with run.fenced() as fs:
         enabled = await flags.swedebeat_enabled(fs.db, cfg.enabled)
         if enabled:  # #525: the user's own switch, re-read before any request
@@ -154,71 +129,23 @@ async def _prepare(
         raise JobFailure("internal")  # the API stores the input's class: a bug, never a match
     if stored is None or len(stored.content.songs) > MAX_SONGS:
         raise JobFailure("invalid_input")
-    if run.ctx.connection(PROVIDER) != given.swedebeat_connection_id:
+    return stored, await open_match_bearer(run, cfg, given.swedebeat_connection_id)
+
+
+async def open_match_bearer(
+    run: JobRun, cfg: config.MatchConfig, connection_id: UUID
+) -> SwedebeatBearer:
+    """The bearer of the connection a match names, or the job's end before any request: no
+    gateway on this worker (``app_misconfigured``), another or no connection, or one past its
+    ``expires_at`` (``not_connected``). Shared with the replace's re-match."""
+    if not cfg.available or cfg.keyring is None:
+        raise JobFailure("app_misconfigured" if not cfg.available else "internal")
+    if run.ctx.connection(PROVIDER) != connection_id:
         raise JobFailure("not_connected")
-    opened = await open_connection(run.factory, cfg.keyring, run.ctx, PROVIDER)
-    if opened.id != given.swedebeat_connection_id:
+    opened = await open_bearer(run.factory, cfg.keyring, run.ctx)
+    if opened.connection.id != connection_id:
         raise JobFailure("not_connected")
-    return stored, opened
-
-
-def _token(opened: OpenConnection) -> str:
-    token: Any = opened.credentials.swedebeat_token
-    if not isinstance(token, str) or not token:
-        raise JobFailure("not_connected")
-    return token
-
-
-async def _search(
-    run: JobRun, opened: OpenConnection, client: httpx.AsyncClient, title: str, artist: str
-) -> list[Hit]:
-    failure: search.SearchFailure | None = None
-    try:
-        return await search.search(client, _token(opened), title, artist)
-    except search.SearchFailure as refused:
-        failure = refused
-    # Outside the except block: nothing chained. The connection's rules of ``connections.use``.
-    if failure.category == "needs_reconnect":
-        await mark_needs_reconnect(run.factory, run.ctx, opened)
-    else:
-        await record_result(run.factory, run.ctx, opened, failure.category)
-    logger.info("swedebeat search failed", extra={"category": failure.category})
-    raise JobFailure(failure.category, failure.retry_after, provider=PROVIDER)
-
-
-async def match(
-    run: JobRun,
-    opened: OpenConnection,
-    client: httpx.AsyncClient,
-    songs: list[song_list.Song],
-    pace_seconds: float,
-) -> list[MatchedSong]:
-    """Each song's verdict, in play order (see the module docstring)."""
-    asked: dict[tuple[str, str], list[Hit]] = {}
-    matched: list[MatchedSong] = []
-    for position, song in enumerate(songs, 1):
-        key = dedupe_key(song.title, song.artist)
-        hits = asked.get(key)
-        if hits is None:
-            if asked and pace_seconds > 0:
-                await _pause(pace_seconds)
-            await run.checkpoint()
-            hits = await _search(run, opened, client, song.title, song.artist)
-            asked[key] = hits
-        found = verdict(song.title, hits)
-        hit = found.hit
-        matched.append(
-            MatchedSong(
-                position=position,
-                status=found.status,
-                wanted=Wanted(title=song.title, artist=song.artist),
-                swedebeat=None
-                if hit is None
-                else Matched(title=hit.title, artist=hit.artist, duration=hit.duration),
-            )
-        )
-    await record_result(run.factory, run.ctx, opened, None)
-    return matched
+    return opened
 
 
 async def run(job_run: JobRun) -> Complete:
@@ -227,10 +154,12 @@ async def run(job_run: JobRun) -> Complete:
     if not isinstance(given, SwedebeatMatchInput) or job_run.approved:
         raise JobFailure("internal")
     await job_run.stage("prepare")
-    stored, opened = await _prepare(job_run, given, cfg)
+    stored, bearer = await _prepare(job_run, given, cfg)
     await job_run.stage("match")
-    async with catalogue_client() as client:
-        songs = await match(job_run, opened, client, list(stored.content.songs), cfg.pace_seconds)
+    assert cfg.swedebeat_gateway_key is not None  # noqa: S101 - ``open_match_bearer`` checked
+    songs = await match_songs(
+        job_run, bearer, cfg.swedebeat_gateway_key, list(stored.content.songs)
+    )
     revision = build(
         songs, song_list_id=given.song_list_revision_id, song_list_hash=stored.content_hash
     )

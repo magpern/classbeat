@@ -7,7 +7,8 @@ carries a title, an artist, a duration, a catalogue id or a token, and neither d
 this module adds to a model's input. At most three such rounds per class.
 
 After the user approves the new ``song_list``, the same job matches that list again
-(``swedebeat_match``'s catalogue call, on the fakes in tests) and stores a new match revision.
+(``swedebeat_match``'s gateway call, ``gateway_match.match_songs``, on the fake gateway in tests)
+and stores a new match revision.
 A resume of that job matches only when that list has no match yet, so a retry does not search
 twice. The flag is read before the match revision and again before any catalogue call; off, the
 job is refused or ends ``feature_off`` and nothing is called. The user's own "I use Swedebeat"
@@ -16,14 +17,16 @@ preference (#525) is read with it at admission (``gate``) and before the rematch
 
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Final
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.connections import find_in, open_connection
+from classbeat.connections import find_in
 from classbeat.connections.preferences import uses_swedebeat_in
+from classbeat.connections.swedebeat_account import live
 from classbeat.context import UserContext
 from classbeat.flags import effective as flags
 from classbeat.jobs import FencedSession, JobFailure, JobRun
@@ -105,6 +108,8 @@ async def gate(db: AsyncSession, ctx: UserContext) -> UUID | Refused:
     info = await find_in(db, ctx, connection_id)
     if info is None or info.provider != PROVIDER or info.status != "connected":
         return Refused("not_connected")
+    if not live(info.expires_at, datetime.now(UTC)):  # ADR 0035 section 5: past its lifetime
+        return Refused("not_connected")
     return connection_id
 
 
@@ -170,18 +175,15 @@ async def rematch(run: JobRun, connection_id: UUID, song_list_id: UUID | None) -
         return
     if stored is None or len(stored.content.songs) > MAX_SONGS:
         raise JobFailure("invalid_input")
-    if run.ctx.connection(PROVIDER) != connection_id:
-        raise JobFailure("not_connected")
-    opened = await open_connection(run.factory, cfg.keyring, run.ctx, PROVIDER)
-    if opened.id != connection_id:
-        raise JobFailure("not_connected")
     # Imported here: this module is loaded while ``classbeat.songs`` is still initialising.
+    from classbeat.swedebeat_match import gateway_match
     from classbeat.swedebeat_match import kind as match_kind
 
-    async with match_kind.catalogue_client() as client:
-        songs = await match_kind.match(
-            run, opened, client, list(stored.content.songs), cfg.pace_seconds
-        )
+    bearer = await match_kind.open_match_bearer(run, cfg, connection_id)
+    assert cfg.swedebeat_gateway_key is not None  # noqa: S101 - ``open_match_bearer`` checked
+    songs = await gateway_match.match_songs(
+        run, bearer, cfg.swedebeat_gateway_key, list(stored.content.songs)
+    )
     built = build(songs, song_list_id=list_id, song_list_hash=stored.content_hash)
     async with run.fenced() as fs:
         await built.store(fs)

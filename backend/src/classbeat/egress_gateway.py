@@ -18,8 +18,10 @@ urllib list** (``WEB_URLLIB_HOSTS``, ``WORKER_HOSTS``), so the library's opener 
 - **no redirect at all**: ``follow_redirects=False``; a 3xx to another origin is refused after
   the request (``OutboundBlocked`` with ``after_request``), a same-origin 3xx comes back as a
   response for the caller to refuse (``classbeat.swedebeat_gateway.status_policy``);
-- ``trust_env=False`` (no proxy, ``NETRC`` or ``SSL_CERT_*`` choice from the environment), the
-  system trust store (``tls_client_context()``, no key log) for ``https``, no TLS for ``http``;
+- ``trust_env=False``: httpx reads no proxy and no ``NETRC`` from the environment. It does not
+  stop OpenSSL itself from reading ``SSL_CERT_FILE``/``SSL_CERT_DIR`` when it loads the system
+  trust store (``tls_client_context()``, no key log), which is how the e2e stack's throwaway CA
+  bundle is trusted; for ``http`` no TLS is used at all;
 - **no default header**: httpx's ``User-Agent``, ``Accept`` and ``Accept-Encoding`` are cleared,
   so a request carries only what the call site sets (``classbeat.swedebeat_gateway.client``);
 - a **total deadline** per request, its body included (``RequestDeadline``), clamped to
