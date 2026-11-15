@@ -137,11 +137,17 @@ _SONG_CHANGES = text(
 )
 
 
-async def _within_limit(db: AsyncSession, ctx: UserContext, class_id: UUID) -> Refused | None:
-    """``revision_limit`` when the class's song changes reached its per-class limit."""
+async def song_changes(db: AsyncSession, ctx: UserContext, class_id: UUID) -> tuple[int, int]:
+    """The class's song changes so far and its per-class limit (``count``, ``limit``): the one
+    count ``revision_limit`` refuses on, also shown on the studio's song page."""
     allowed = await limits.current().policy.limit_for(db, ctx, class_id)
     params = {"owner_id": ctx.user_id, "class_id": class_id, "kind": KIND}
-    count = int((await db.execute(_SONG_CHANGES, params)).scalar_one())
+    return int((await db.execute(_SONG_CHANGES, params)).scalar_one()), allowed
+
+
+async def _within_limit(db: AsyncSession, ctx: UserContext, class_id: UUID) -> Refused | None:
+    """``revision_limit`` when the class's song changes reached its per-class limit."""
+    count, allowed = await song_changes(db, ctx, class_id)
     if count >= allowed:
         return Refused("revision_limit", {"limit": allowed, "count": count})
     return None
