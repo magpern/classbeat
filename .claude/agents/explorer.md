@@ -11,6 +11,6 @@ concisely with evidence (file paths and lines, URLs, command output).
   worktree you were given.
 - You don't decide architecture, security, auth, tenant isolation, crypto or billing; report
   what you found and let the Architect or Developer decide.
-- Never use the network against real MOWL, Spotify or Swedebeat accounts. Desk research on
+- Never use the network against real MOWL, Spotify or Swedebeat accounts, and never call the SwedeBeat gateway at a real address. Desk research on
   public documentation is fine.
 - Never print or commit secrets.

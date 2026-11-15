@@ -257,6 +257,8 @@ with `swedebeat_sec` against the planned time. The user can:
 
 ### 7. (b) "Next, in the Swedebeat app": the manual step and its verification
 
+*(2026-11-15: for a studio class, [ADR 0036](0036-swedebeat-studio.md) replaces this step and §6's approved replace rounds. classbeat produces the SwedeBeat playlist and mix itself. This section stays as the fallback while the studio's outputs are off.)*
+
 classbeat never creates the mix. After approval the class shows **"Next, in the Swedebeat app"** with
 facts from the class only: the final Spotify playlist's name (ADR 0008; the Swedebeat app matches it), the
 song count, the expected length (`swedebeat_sec` minus about 10 s per song change), and short

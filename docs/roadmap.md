@@ -1,5 +1,39 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 24 (2026-11-15, owner direction: the SwedeBeat studio; ADR 0036)
+
+The owner accepted the plan for classbeat as the complete designer of music and workout, with Spotify,
+SwedeBeat, MOWL and classbeat-player as integrations of one model. The design is
+[ADR 0036](adr/0036-swedebeat-studio.md).
+
+- **New music source `swedebeat_studio`:**
+  - classbeat matches songs through the gateway and swaps missing ones (each swap can be undone);
+  - it downloads and analyses each track itself;
+  - it designs the workout together with the order, the cuts and the crossfades;
+  - it renders the mix itself.
+
+  The gateway stays a thin proxy. This builds #580 (part of a song) for SwedeBeat. Spotify stays not
+  allowed.
+- **Outputs**, chosen by the user per class from the final approved draft, each with its own state:
+  - the final Spotify playlist;
+  - the SwedeBeat playlist, created and published (on by default);
+  - the SwedeBeat mix, merge-published (needed for MOWL);
+  - the MOWL workout;
+  - later, classbeat-player.
+
+  A studio class needs no MOWL connection.
+- **Amends the AGENTS.md rule "Everything we create in a user's accounts is private":** a SwedeBeat playlist
+  or mix is published only when the user chose that output for that class on the consent screen. Everything
+  else stays private.
+- **New milestone "SR SwedeBeat studio":**
+  - SR0, the ADR;
+  - MW1 and MW2 in `magpern/mowl-workouts`;
+  - C1 to C8 in classbeat.
+
+  Security-critical items (C2, C3, C4, C5, C7, and the reviews of C1 and C6a) have Opus reviewers.
+- **Live activation is per output and the owner's** (ADR 0036 §10, gates L1 to L6). The rights decisions
+  L4a and L4b are open. `CLASSBEAT_SWEDEBEAT_STUDIO` stays empty until the gates hold.
+
 ## Amendment 23 (2026-11-15, owner direction: the SwedeBeat gateway; ADR 0035)
 
 The owner built a private SwedeBeat gateway (`magpern/sb-gateway-service`, reached on the LAN
