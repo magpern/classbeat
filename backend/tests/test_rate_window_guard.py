@@ -46,6 +46,7 @@ EXEMPT: dict[str, str] = {
     "test_mowl_qr.py": PROVIDER,
     "test_mowl_redaction.py": PROVIDER,
     "test_operations_api.py": PROVIDER,
+    "test_player_link_binding.py": "a 429 from the faked classbeat-player API, not our limiter",
     "test_paddle_webhook.py": OTHER + ": WebhookLimiter keeps its window in process memory",
     "test_quota_api.py": BUSY,
     "test_spotify_errors.py": PROVIDER,

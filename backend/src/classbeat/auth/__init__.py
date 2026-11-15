@@ -108,6 +108,11 @@ if TYPE_CHECKING:
         PasswordRuleError,
         normalize_password,
     )
+    from classbeat.auth.player_link_auth import (
+        PlayerBinding,
+        player_binding,
+        player_link_start_buckets,
+    )
     from classbeat.auth.player_subject_lookup import player_subject
     from classbeat.auth.purge import purge_expired
     from classbeat.auth.ratelimit import (
@@ -185,6 +190,7 @@ __all__ = [
     "PasswordHashBusy",
     "PasswordHasher",
     "PasswordRuleError",
+    "PlayerBinding",
     "RateLimited",
     "RateLimiter",
     "Resolution",
@@ -250,6 +256,8 @@ __all__ = [
     "owner_active",
     "password_buckets",
     "pending_wipe_mails",
+    "player_binding",
+    "player_link_start_buckets",
     "player_subject",
     "playlist_covers_buckets",
     "purge_expired",

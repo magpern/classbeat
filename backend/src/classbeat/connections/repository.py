@@ -49,19 +49,14 @@ from classbeat.connections.credentials import (
     build_credentials,
 )
 from classbeat.connections.errors import ConnectionFailure, run_library_call
+from classbeat.connections.player_data import forget_player_operations
+from classbeat.connections.row_crypto import open_row, seal_row
 from classbeat.connections.spotify_data import forget_spotify_account, revoke_pool
 from classbeat.connections.swedebeat_maps import FORGET_MIX_MAPS
 from classbeat.connections.tables import PROVIDERS, connections
 from classbeat.context import UserContext
-from classbeat.crypto.envelope import (
-    DecryptFailed,
-    canonical_json,
-    connection_aad,
-    connection_wrap_aad,
-    open_sealed,
-    seal,
-)
-from classbeat.crypto.keks import KeyRing, KeyUnavailable
+from classbeat.crypto.envelope import canonical_json
+from classbeat.crypto.keks import KeyRing
 from classbeat.db import user_session
 
 logger = logging.getLogger(__name__)
@@ -203,22 +198,11 @@ async def _write(
     ).first()
     existing: UUID | None = None if found is None else found.id
     row_id = existing if existing is not None else uuid.uuid4()
-    kek = await ring.current(db)
-    sealed = seal(
-        plaintext,
-        connection_aad(ctx.user_id, provider, row_id),
-        kek,
-        connection_wrap_aad(kek.key_id, ctx.user_id, provider, row_id),
-    )
     values: dict[str, Any] = {
         "status": "connected",
         "last_error": None,
         "public": public,
-        "secret": sealed.ciphertext,
-        "secret_nonce": sealed.nonce,
-        "wrapped_dek": sealed.wrapped_dek,
-        "dek_nonce": sealed.dek_nonce,
-        "key_id": sealed.key_id,
+        **await seal_row(db, ring, ctx.user_id, provider, row_id, plaintext),
         "expires_at": expires_at,
         "connected_at": func.now(),
         "updated_at": func.now(),
@@ -233,6 +217,8 @@ async def _write(
             await _forget_replaced_spotify(
                 db, ctx, dict(found.public or {}), public, confirm_account_change
             )
+        elif provider == "player":  # ADR 0034 section 3: the binding held (same account)
+            await forget_player_operations(db, ctx.user_id)
         await db.execute(
             update(connections)
             .where(_C.id == row_id, _C.owner_id == ctx.user_id)
@@ -304,7 +290,7 @@ async def open_connection(
             failure = "not_connected"
         else:
             row_id = row.id
-            failure, plaintext = await _decrypt(db, ring, ctx, provider, row)
+            failure, plaintext = await open_row(db, ring, ctx.user_id, provider, row)
             if failure == "decrypt_failed":
                 await _flip(
                     db, ctx, row.id, row.generation, "decrypt_failed", bytes(row.wrapped_dek)
@@ -319,28 +305,6 @@ async def open_connection(
             )
         raise ConnectionFailure(category)
     return opened
-
-
-async def _decrypt(
-    db: AsyncSession, ring: KeyRing, ctx: UserContext, provider: str, row: Any
-) -> tuple[str | None, bytes | None]:
-    try:
-        kek = await ring.kek_for(db, row.key_id)
-    except KeyUnavailable:
-        return "key_unavailable", None
-    try:
-        plaintext = open_sealed(
-            row.secret,
-            row.secret_nonce,
-            row.wrapped_dek,
-            row.dek_nonce,
-            kek,
-            connection_aad(ctx.user_id, provider, row.id),
-            connection_wrap_aad(kek.key_id, ctx.user_id, provider, row.id),
-        )
-    except DecryptFailed:
-        return "decrypt_failed", None
-    return None, plaintext
 
 
 def _parse(provider: str, row: Any, plaintext: bytes) -> tuple[str | None, OpenConnection | None]:
@@ -540,6 +504,8 @@ async def disconnect(factory: Factory, ctx: UserContext, provider: str) -> bool:
             await _forget_mowl_account(db, ctx)
         elif provider == "spotify":
             await forget_spotify_account(db, ctx.user_id)
+        elif provider == "player":
+            await forget_player_operations(db, ctx.user_id)
         result = await db.execute(
             delete(connections)
             .where(_C.owner_id == ctx.user_id, _C.provider == provider)
@@ -583,6 +549,7 @@ async def delete_all_in(db: AsyncSession, ctx: UserContext) -> list[str]:
     await db.execute(select(_C.id).where(_C.owner_id == ctx.user_id).with_for_update())
     await _forget_mowl_account(db, ctx)
     await forget_spotify_account(db, ctx.user_id)
+    await forget_player_operations(db, ctx.user_id)
     result = await db.execute(
         delete(connections).where(_C.owner_id == ctx.user_id).returning(_C.provider)
     )

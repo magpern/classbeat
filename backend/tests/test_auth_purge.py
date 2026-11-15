@@ -103,6 +103,7 @@ async def test_purge_deletes_what_is_expired_or_used_and_keeps_the_rest(env: Env
         "auth_events": 1,
         "sessions_ip_cleared": 1,
         "spotify_oauth_flows": 0,  # planted in test_spotify_forget.py
+        "player_link_flows": 0,  # planted in test_player_link_purge.py
         "swedebeat_handoffs": 0,
         "security_log": 1,
         "invite_requests": 0,  # planted in test_invite_requests_purge.py
