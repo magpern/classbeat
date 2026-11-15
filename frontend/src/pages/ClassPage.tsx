@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
+import type { Deleted } from '../api/classes'
 import { isSongKind } from '../api/songs'
 import { DeleteClass } from '../components/classes/DeleteClass'
 import { ChatPanel } from '../components/classes/ChatPanel'
@@ -31,6 +32,9 @@ import { useClassData, useRevision, type ClassData } from '../hooks/useClassData
 import { Link } from '../router/Router'
 import { useT } from '../i18n/I18n'
 
+// The page after a deletion loads when a class is deleted.
+const DeletedClass = lazy(() => import('../components/classes/DeletedClass'))
+
 export function ClassPage({ classId }: { classId: string }) {
   return (
     <RequireAuth>
@@ -42,18 +46,12 @@ export function ClassPage({ classId }: { classId: string }) {
 function ClassView({ classId }: { classId: string }) {
   const t = useT()
   const { state, reload } = useClassData(classId)
-  const [deleted, setDeleted] = useState<number | null>(null)
+  const [deleted, setDeleted] = useState<Deleted | null>(null)
   if (deleted !== null) {
     return (
-      <Card title={t('class.page.deletedTitle')}>
-        <p>{t('class.page.deleted')}</p>
-        {deleted > 0 ? <p>{t('class.delete.kept', { count: deleted })}</p> : null}
-        <p>
-          <Link className="button" to="/classes">
-            {t('class.list.title')}
-          </Link>
-        </p>
-      </Card>
+      <Suspense fallback={null}>
+        <DeletedClass deleted={deleted} />
+      </Suspense>
     )
   }
   if (state.status === 'loading') {
@@ -102,7 +100,7 @@ function ClassBody({
   classId: string
   data: ClassData
   reload: () => void
-  onDeleted: (kept: number) => void
+  onDeleted: (deleted: Deleted) => void
 }) {
   const t = useT()
   const { summary, revisions, messages } = data

@@ -4,6 +4,7 @@ import { Notice } from '../forms'
 import { PlayerOutcome } from './PlayerOutcome'
 import { PlayerRun } from './PlayerRun'
 import { ConfirmButtons } from './SaveProgress'
+export { default as PlayerSentState } from './PlayerSentState'
 import type { PlayerFlow } from './useSendToPlayer'
 
 /** The confirmation, the progress and the outcome of a send, under the header. */

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { classReasonText, isStale } from '../../api/classMessages'
-import { deleteClass, type ClassSummary } from '../../api/classes'
+import { deleteClass, type ClassSummary, type Deleted } from '../../api/classes'
 import { useT } from '../../i18n/I18n'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
@@ -24,7 +24,7 @@ export function DeleteClass({
   summary: ClassSummary
   open: boolean
   onClose: () => void
-  onDeleted: (kept: number) => void
+  onDeleted: (deleted: Deleted) => void
   onReload: () => void
 }) {
   const t = useT()
@@ -53,7 +53,7 @@ export function DeleteClass({
         },
       )
       .then((done) => {
-        if (done !== undefined) onDeleted(done.mowlWorkoutsKept)
+        if (done !== undefined) onDeleted(done)
       })
   }
 
@@ -68,6 +68,7 @@ export function DeleteClass({
         {t('class.delete.warning')}{' '}
         {kept > 0 ? t('class.delete.kept', { count: kept }) : t('class.delete.keptNone')}
       </Notice>
+      {summary.player !== null ? <Notice>{t('class.delete.player')}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <p>
         <Button

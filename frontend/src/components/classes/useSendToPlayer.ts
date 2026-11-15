@@ -112,10 +112,13 @@ export function useSendToPlayer(summary: ClassSummary, onReload: () => void) {
 
   // Not offered at all while the player is switched off and nothing is connected.
   const offered = player === undefined ? false : player === null || player.status !== 'not_connected' || player.linkEnabled
+  // The "not sent" and "sent" line: for a connected link, or when the class was sent before.
+  const showsState = offered && (summary.player !== null || player?.status === 'connected')
   return {
     summary,
     player,
     offered,
+    showsState,
     confirming,
     setConfirming,
     ended,

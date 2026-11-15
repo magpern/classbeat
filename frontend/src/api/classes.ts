@@ -1,7 +1,6 @@
 import { del, get, post, request } from './client'
 import {
   count,
-  flag,
   isObject,
   list,
   object,
@@ -10,6 +9,7 @@ import {
   optionalText,
   text,
 } from './decode'
+import { decodeBrief, decodeMatchPointer, decodeProfile } from './classBrief'
 import { decodeBeatOne, type BeatOne } from './beatOneTypes'
 import { decodeDraftContent, decodeUnknownBpm } from './draftTypes'
 import { decodeInterpretationItems } from './interpretationItems'
@@ -110,6 +110,32 @@ function decodeSongs(value: unknown): ClassSongs {
   }
 }
 
+export interface ClassPlayer {
+  sentRevisionId: string
+  sentRevisionNumber: number
+}
+
+export function decodeClassPlayer(value: unknown): ClassPlayer | null {
+  if (!isObject(value)) return null
+  const item = object(value, 'player')
+  return { sentRevisionId: text(item, 'sent_revision_id'), sentRevisionNumber: count(item, 'sent_revision_number') }
+}
+
+/** The answer of the class's deletion: whether a removal job went to the player, and its id. */
+export interface Deleted {
+  mowlWorkoutsKept: number
+  playerRemovalJobId: string | null
+}
+
+export function decodeDeleted(value: unknown): Deleted {
+  const body = object(value, 'deleted')
+  const started = optionalFlag(body, 'player_removal_started') === true
+  return {
+    mowlWorkoutsKept: count(body, 'mowl_workouts_kept'),
+    playerRemovalJobId: started ? optionalText(body, 'player_removal_job_id') : null,
+  }
+}
+
 export interface ClassSummary {
   id: string
   title: string
@@ -139,59 +165,8 @@ export interface ClassSummary {
   swedebeatMatch: { revisionId: string; approved: boolean } | null
   /** Beat-one corrections (ADR 0007 amendment): unavailable on the list and without beat data. */
   beatOne: BeatOne
-}
-
-const INTENSITIES: readonly unknown[] = ['easy', 'moderate', 'hard']
-
-/** The class's brief; anything malformed reads as none, and callers then use their fallback. */
-function decodeBrief(value: unknown): Brief | null {
-  if (!isObject(value)) return null
-  const whole = (key: string): number | null => {
-    const n = value[key]
-    return typeof n === 'number' && Number.isInteger(n) ? n : null
-  }
-  const length = whole('length_min')
-  const climbs = whole('climbs')
-  const sprints = whole('sprints')
-  const races = whole('races')
-  const ftp = value.ftp_test
-  if (length === null || climbs === null || sprints === null || races === null) return null
-  if (!INTENSITIES.includes(value.intensity)) return null
-  if (ftp !== null && ftp !== 3 && ftp !== 5 && ftp !== 20) return null
-  if (typeof value.style !== 'string' || typeof value.text !== 'string') return null
-  return {
-    length_min: length,
-    intensity: value.intensity as Brief['intensity'],
-    climbs,
-    sprints,
-    races,
-    ftp_test: ftp,
-    style: value.style,
-    text: value.text,
-  }
-}
-
-/**
- * Absent means no profile. An interval that is not a pair of whole numbers (zone 0 to 99,
- * seconds 0 or more) is skipped, so one bad interval never fails the list or hides the rest.
- */
-function decodeProfile(value: unknown): [number, number][] {
-  if (!Array.isArray(value)) return []
-  const out: [number, number][] = []
-  for (const entry of value as unknown[]) {
-    if (!Array.isArray(entry) || entry.length !== 2) continue
-    const [zone, sec] = entry as unknown[]
-    if (!Number.isInteger(zone) || !Number.isInteger(sec)) continue
-    if ((zone as number) < 0 || (zone as number) > 99 || (sec as number) < 0) continue
-    out.push([zone as number, sec as number])
-  }
-  return out
-}
-
-function decodeMatchPointer(value: unknown): { revisionId: string; approved: boolean } | null {
-  if (value === null || value === undefined) return null
-  const item = object(value, 'swedebeat_match')
-  return { revisionId: text(item, 'revision_id'), approved: flag(item, 'approved') }
+  /** What the player holds (#1068); null: never sent, or not connected. */
+  player: ClassPlayer | null
 }
 
 function decodeClass(value: unknown): ClassSummary {
@@ -231,6 +206,7 @@ function decodeClass(value: unknown): ClassSummary {
     swedebeatOn: 'swedebeat_match' in item,
     swedebeatMatch: decodeMatchPointer(item.swedebeat_match),
     beatOne: decodeBeatOne(item.beat_one),
+    player: decodeClassPlayer(item.player),
   }
 }
 
@@ -319,14 +295,9 @@ export async function pickCurrent(
   )
 }
 
-export interface Deleted {
-  mowlWorkoutsKept: number
-}
-
 export async function deleteClass(classId: string, confirmUncertain: boolean): Promise<Deleted> {
   const query = confirmUncertain ? '?confirm_uncertain=true' : ''
-  const body = object(await del(`${base(classId)}${query}`), 'deleted')
-  return { mowlWorkoutsKept: count(body, 'mowl_workouts_kept') }
+  return decodeDeleted(await del(`${base(classId)}${query}`))
 }
 
 /** Dismiss a pattern note for this class (ADR 0017 section 4); idempotent. */
