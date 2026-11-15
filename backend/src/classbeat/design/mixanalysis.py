@@ -50,6 +50,7 @@ from classbeat.design.rss import process_rss
 from classbeat.design.sandbox import LINUX, SandboxError, make_undumpable
 from classbeat.design.track_map_policy import valid_track_map
 from classbeat.jobs import JobFailure, JobRun
+from classbeat.jsonb_text_calc import jsonb_text_size
 
 logger = logging.getLogger(__name__)
 
@@ -132,9 +133,9 @@ def valid_map(candidate: object, version: int) -> bool:
     for event in events:  # pyright: ignore[reportUnknownVariableType]
         if not isinstance(event, dict) or not _number(event.get("t")):  # pyright: ignore[reportUnknownMemberType]
             return False
-    try:
-        return len(json.dumps(m, separators=(",", ":"), allow_nan=False)) <= MAX_MAP_BYTES
-    except ValueError:
+    try:  # the table's own measure: jsonb's text, not compact JSON (SR C5)
+        return jsonb_text_size(m) <= MAX_MAP_BYTES
+    except (TypeError, ValueError):
         return False
 
 

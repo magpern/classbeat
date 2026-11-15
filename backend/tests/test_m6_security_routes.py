@@ -193,6 +193,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/undo"): "owned",
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/another"): "owned",
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/swap-anyway"): "owned",
+    ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/design"): "owned",  # SR C5
     ("GET", "/api/classes/{class_id}/interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/design-from-interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/interpret-again"): "owned",
@@ -801,6 +802,13 @@ OWNED_ROUTES = [
             {"Idempotency-Key": STUDIO_KEY},
         )
         for action in ("undo", "another", "swap-anyway")
+    ),
+    OwnedRoute(  # SR C5: the studio design (test_swedebeat_studio_design: a foreign list is 404)
+        "POST",
+        "/api/classes/{class_id}/studio-songs/{revision_id}/design",
+        lambda rows: {},
+        frozenset({404}),
+        {"Idempotency-Key": STUDIO_KEY},
     ),
     OwnedRoute("DELETE", "/api/classes/{class_id}", control=frozenset({200, 409})),
     OwnedRoute("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),

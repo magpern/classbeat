@@ -143,7 +143,9 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     import classbeat.songs  # design_with_songs (SJ1) and revise_songs (SJ3)
     import classbeat.swedebeat_handoff  # swedebeat_verify_mix (B2)
     import classbeat.swedebeat_match  # swedebeat_match (B1)
+    import classbeat.swedebeat_studio.design_kind  # studio_design (ADR 0036, SR C5)
     import classbeat.swedebeat_studio.kind  # studio_songs (ADR 0036, SR C3)
+    import classbeat.swedebeat_studio.revise_kind  # studio_revise (ADR 0036, SR C5)
 
     assert classbeat.design.KIND
     assert classbeat.songs.KIND
@@ -152,6 +154,8 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     assert classbeat.saving.__name__
     assert classbeat.player_send.KIND
     assert classbeat.swedebeat_studio.kind.STUDIO_SONGS
+    assert classbeat.swedebeat_studio.design_kind.STUDIO_DESIGN
+    assert classbeat.swedebeat_studio.revise_kind.STUDIO_REVISE
     from classbeat.jobs import KINDS
 
     assert KINDS.names() == [
@@ -164,6 +168,8 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
         "revise_songs",
         "save_workout",
         "send_to_player",  # ADR 0034 section 5 (PC-5)
+        "studio_design",  # ADR 0036 section 4 (SR C5): no MOWL, no credit beyond the pick
+        "studio_revise",  # ADR 0036 section 4.5 (SR C5): no download, no credit
         "studio_songs",  # ADR 0036 section 3 (SR C3): no MOWL, no credit
         "swedebeat_match",
         "swedebeat_verify_mix",

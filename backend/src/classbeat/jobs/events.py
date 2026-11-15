@@ -59,6 +59,7 @@ TOOL_ERROR_CODES: Final = (
     "upstream_unavailable",
     "invalid_pool",
     "invalid_song_list",
+    "invalid_mix",  # SR C5: a studio mix plan that breaks a rule of mix_plan_policy
 )
 
 

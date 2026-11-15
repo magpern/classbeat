@@ -10,9 +10,13 @@ itself: the kind's ``admit`` and its run check them before calling it.
 2. **The cache** (``track_cache.cached``, under the connection's ``hold``). **A hit needs no
    download.** When every track is a hit nothing is called at all.
 3. **The misses.** A run without one of the worker's mix-analysis slots (#574) is requeued with
-   one here, the attempt not counted; then the user's daily download slots for every miss at once
-   (``tracklimit.reserve``: ``track_limit`` and nothing written when they do not fit). Then for
-   each miss in order: the lease extended over the download and the analysis, a checkpoint, a
+   one here, the attempt not counted; then the user's daily window must hold every miss
+   (``tracklimit.check``: ``track_limit`` and nothing written when they do not fit). A run holds
+   the slot for at most ``SLOT_BATCH`` downloads: the store of the last one frees it and the run
+   is requeued for a slot again, so other users' analyses are not kept waiting behind 40 tracks
+   (SR C5, the C4 review's carry-over); the next attempt finds the stored tracks in the cache.
+   Then for each miss in order: the lease extended over the download and the analysis with one
+   daily slot reserved for it in the same transaction (``tracklimit.reserve``), a checkpoint, a
    new private directory (``mixfetch.private_directory``: 0700, under the swept work root), one
    ``download_track`` into it (60 MB cap, ``audio/mpeg``, no redirect), the analysis in the
    sandboxed child (``mixanalysis.analyse_audio`` with ``mode="track"``: seccomp required,
@@ -56,6 +60,7 @@ logger = logging.getLogger(__name__)
 
 AUDIO_NAME: Final = "track.mp3"
 OWN_CATEGORIES: Final = frozenset({"track_too_large", "track_unavailable", "internal"})
+SLOT_BATCH: Final = 4  # downloads per hold of an analysis slot (about 4 x 5 min at worst)
 
 
 async def _download(
@@ -79,6 +84,7 @@ async def _analyse_one(
 ) -> tuple[TrackMap, int | None]:
     async with run.fenced() as fs:
         await fs.extend_lease(DOWNLOAD_SECONDS + ANALYSIS_SECONDS + CALL_LEASE_MARGIN_SECONDS)
+        await tracklimit.reserve(fs, 1)  # this download's daily slot, counted even if it fails
     await run.checkpoint()
     with private_directory() as directory:
         audio = directory / AUDIO_NAME
@@ -117,13 +123,20 @@ async def analyse_tracks(
         return [found[r] for r in refs]
     run.require_analysis_slot()  # #574: requeued with a slot, before the daily slots are taken
     async with run.fenced() as fs:
-        await tracklimit.reserve(fs, len(misses))
+        await tracklimit.check(fs, len(misses))
+    batch = misses[:SLOT_BATCH]
     peak = 0
-    for number, reference in enumerate(misses, 1):
+    for number, reference in enumerate(batch, 1):
         analysed, peak_rss = await _analyse_one(run, bearer, key, reference)
-        await store(run, connection, analysed, release_slot=number == len(misses))
+        await store(run, connection, analysed, release_slot=number == len(batch))
         found[reference] = analysed
         peak = max(peak, peak_rss or 0)
+    if len(batch) < len(misses):  # the slot is free: requeued for one, the rest from the cache
+        logger.info(
+            "swedebeat tracks batch analysed",
+            extra={"job_id": str(run.lease.job_id), "downloaded": len(batch)},
+        )
+        run.require_analysis_slot()
     logger.info(
         "swedebeat tracks analysed",
         extra={
