@@ -1,5 +1,30 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 22 (2026-11-14, owner direction: classbeat-player; ADR 0034)
+
+The owner said on 2026-11-14 that classbeat produces the class and classbeat-player runs it. The
+player is a second output format beside MOWL, through a new connection, and an instructor signs
+in to the player with their classbeat account ("same user, same account, same login reused").
+Design: [ADR 0034](adr/0034-classbeat-player-connection.md). The player's side is in its own
+repository (ADR 0010 and ADR 0002 there).
+
+- **New milestone "PL — Player connection"**, built on fakes only. Its issues are:
+  - **PL-1:** the OIDC provider core (ADR 0034 §1).
+  - **PL-2:** the signed events and their egress (§2).
+  - **PL-3:** the `player` connection (§3).
+  - **PL-4:** the converter and content hash (§4).
+  - **PL-5:** the send job (§5).
+  - **PL-6:** the UI (§6).
+- **Reviewers:**
+  - PL-1, PL-2, PL-3 and PL-5 are security-critical, with an Opus Developer and an Opus
+    Reviewer.
+  - PL-4 and PL-6 have a Sonnet Developer and a Sonnet Reviewer, and PL-6 also needs i18n.
+- **Done when:** an end-to-end test with a fake player backend signs in through classbeat,
+  connects the player, sends a class, sends a newer revision and a removal, and handles a stale
+  number and a reconnect. Two users' links and classes never mix.
+- **Still the owner's:** registering the real client, deploying the player, connecting a real
+  player, and the player's host on the production egress list.
+
 ## Amendment 21 (2026-11-12, owner: "go ahead with the fake Paddle and the rest"; ADR 0032)
 
 The owner authorized building everything of M7b that needs no real provider, with the live
