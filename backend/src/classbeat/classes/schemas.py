@@ -140,7 +140,7 @@ class DeletedOut(BaseModel):
     spotify_playlists_left: list[PlaylistNameOut] = []
     spotify_note: str | None = None
     # ADR 0034 section 6 (#1068): the class was sent to the player, which is connected, so a
-    # ``player_remove`` job was started; its id follows it (``GET /api/jobs/{id}``).
+    # removal job was started; its id follows it (``GET /api/jobs/{id}``).
     player_removal_started: bool = False
     player_removal_job_id: UUID | None = None
 
