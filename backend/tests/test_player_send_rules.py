@@ -83,7 +83,7 @@ def test_only_the_allowlisted_modules_name_either_kind() -> None:
 
 
 @pytest.fixture
-async def browser_of(env: Env, penv: SendEnv) -> AsyncIterator[Any]:
+async def browser_of(env: Env, sendenv: SendEnv) -> AsyncIterator[Any]:
     clients: list[httpx.AsyncClient] = []
 
     async def make(planted: Planted) -> Browser:
@@ -108,24 +108,26 @@ def document_hash(content: dict[str, Any]) -> str:
     return converted.content_hash
 
 
-def job_count(penv: SendEnv, planted: Planted) -> int:
-    return penv.sql("SELECT count(*) FROM jobs WHERE owner_id = :o", o=planted.owner).scalar_one()
+def job_count(sendenv: SendEnv, planted: Planted) -> int:
+    return sendenv.sql(
+        "SELECT count(*) FROM jobs WHERE owner_id = :o", o=planted.owner
+    ).scalar_one()
 
 
-async def connected(penv: SendEnv) -> Planted:
-    owner = await penv.user()
-    await penv.connect(owner)
-    return penv.plant(owner)
+async def connected(sendenv: SendEnv) -> Planted:
+    owner = await sendenv.user()
+    await sendenv.connect(owner)
+    return sendenv.plant(owner)
 
 
-async def test_the_api_never_creates_a_removal(penv: SendEnv, browser_of: Any) -> None:
-    planted = await connected(penv)
+async def test_the_api_never_creates_a_removal(sendenv: SendEnv, browser_of: Any) -> None:
+    planted = await connected(sendenv)
     browser = await browser_of(planted)
     answer = await create(
         browser, "player_remove", {"source_class_id": str(planted.class_id), "number": 2}
     )
     assert (answer.status_code, answer.json()["detail"]["reason"]) == (422, "unknown_kind")
-    assert job_count(penv, planted) == 0
+    assert job_count(sendenv, planted) == 0
 
 
 @pytest.mark.parametrize(
@@ -137,62 +139,68 @@ async def test_the_api_never_creates_a_removal(penv: SendEnv, browser_of: Any) -
     ],
 )
 async def test_the_api_refuses_a_press_that_does_not_bind(
-    penv: SendEnv, browser_of: Any, reason: str, status: int, change: Any
+    sendenv: SendEnv, browser_of: Any, reason: str, status: int, change: Any
 ) -> None:
-    planted = await connected(penv)
+    planted = await connected(sendenv)
     browser = await browser_of(planted)
     given = planted.input()
     if change == "other_class":
-        other = penv.plant(planted.owner)
+        other = sendenv.plant(planted.owner)
         given = planted.input(revision_id=str(other.revision_id))
     elif change == "disconnected":
-        penv.set_status(planted.owner, "needs_reconnect")
+        sendenv.set_status(planted.owner, "needs_reconnect")
     else:
         given = planted.input(**change)
     answer = await create(browser, "send_to_player", given)
     assert answer.status_code == status, answer.text
     assert answer.json()["detail"]["reason"] == reason
-    assert job_count(penv, planted) == 0
+    assert job_count(sendenv, planted) == 0
 
 
 async def test_the_api_accepts_a_press_and_the_worker_sends_that_revision(
-    penv: SendEnv, browser_of: Any
+    sendenv: SendEnv, browser_of: Any
 ) -> None:
-    planted = await connected(penv)
+    planted = await connected(sendenv)
     browser = await browser_of(planted)
     answer = await create(browser, "send_to_player", planted.input())
     assert answer.status_code == 201, answer.text
     # A newer revision appears after the press: the pressed one is still what is sent.
     newer = {**planted.content, "name": "Thursday climb"}
-    penv.revision(planted.owner, planted.class_id, newer)
-    await penv.run_next()
-    [body] = penv.fake.posts
+    sendenv.revision(planted.owner, planted.class_id, newer)
+    await sendenv.run_next()
+    [body] = sendenv.fake.posts
     assert body["content_hash"] == document_hash(planted.content)
     assert body["content_hash"] != document_hash(newer)
-    row = penv.publication(planted.owner, planted.class_id)
+    row = sendenv.publication(planted.owner, planted.class_id)
     assert row.sent_revision_id == planted.revision_id
 
 
-async def test_a_hash_changed_after_the_press_is_refused_by_the_worker(penv: SendEnv) -> None:
-    planted = await connected(penv)
-    job_id = penv.job(planted, content_hash="1" * 64)
-    await penv.run_next()
-    assert (penv.row(job_id).state, penv.row(job_id).error_category) == ("failed", "invalid_input")
-    assert penv.fake.posts == []
+async def test_a_hash_changed_after_the_press_is_refused_by_the_worker(sendenv: SendEnv) -> None:
+    planted = await connected(sendenv)
+    job_id = sendenv.job(planted, content_hash="1" * 64)
+    await sendenv.run_next()
+    assert (sendenv.row(job_id).state, sendenv.row(job_id).error_category) == (
+        "failed",
+        "invalid_input",
+    )
+    assert sendenv.fake.posts == []
 
 
-async def test_a_retry_never_sends_another_document(penv: SendEnv) -> None:
-    planted = await connected(penv)
-    penv.fake.script = ["refuse"]
-    job_id = penv.job(planted)
-    await penv.run_next()
+async def test_a_retry_never_sends_another_document(sendenv: SendEnv) -> None:
+    planted = await connected(sendenv)
+    sendenv.fake.script = ["refuse"]
+    job_id = sendenv.job(planted)
+    await sendenv.run_next()
     # The first attempt's operation names another document than the revision converts to now.
-    penv.sql(
+    sendenv.sql(
         "UPDATE external_operations SET request_context = jsonb_set(request_context, "
         "'{document_hash}', CAST(:h AS jsonb)) WHERE owner_id = :o AND kind = 'player_send'",
         h=json.dumps("sha256:" + "2" * 64), o=planted.owner,
     )  # fmt: skip
-    penv.ready(job_id)
-    await penv.run_next()
-    assert (penv.row(job_id).state, penv.row(job_id).error_category) == ("failed", "invalid_input")
-    assert len(penv.fake.posts) == 1
+    sendenv.ready(job_id)
+    await sendenv.run_next()
+    assert (sendenv.row(job_id).state, sendenv.row(job_id).error_category) == (
+        "failed",
+        "invalid_input",
+    )
+    assert len(sendenv.fake.posts) == 1

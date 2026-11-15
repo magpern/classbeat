@@ -265,7 +265,7 @@ class SendEnv:
 
 
 @pytest.fixture
-def penv(env: Env, jobs_admin: Connection) -> Iterator[SendEnv]:
+def sendenv(env: Env, jobs_admin: Connection) -> Iterator[SendEnv]:
     fake = FakeSource()
 
     def client() -> httpx.AsyncClient:
