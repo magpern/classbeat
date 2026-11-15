@@ -2,6 +2,8 @@
 
 Status: Proposed (issue #363; the owner's decisions of 2026-10-31 are its premise).
 
+**Superseded in part by [ADR 0035](0035-swedebeat-gateway.md)** (2026-11-15): the `cloud.swedebeat.se` host, its client and the per-song catalogue search of §4 and §5. The match goes through the gateway's `/catalog/match`. The rest stands.
+
 Related: [ADR 0005](0005-jobs-and-leases.md) (jobs, external operations), [ADR 0006](0006-agent-runs.md)
 (the music step, model input), [ADR 0008](0008-song-picking.md) (song picking, `song_list`, retention),
 [ADR 0010](0010-live-activation-permissions.md) (Spotify-derived data, live gate),

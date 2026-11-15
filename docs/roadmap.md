@@ -1,5 +1,39 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 23 (2026-11-15, owner direction: the SwedeBeat gateway; ADR 0035)
+
+The owner built a private SwedeBeat gateway (`magpern/sb-gateway-service`, reached on the LAN
+as `http://192.168.1.222:7355`, the same host as classbeat's production) that holds every SwedeBeat secret. classbeat must **no longer call
+SwedeBeat and must hold no SwedeBeat secret**. Design: [ADR 0035](adr/0035-swedebeat-gateway.md).
+It replaces Amendment 9's "Swedebeat's app key is used and baked into the production image" and
+the app-key parts of ADR 0015 and ADR 0016. Everything else of Amendment 9 stands: optional per
+user, built on fakes, live use owner-gated, `swedebeat_enabled` a real flag.
+
+- **New milestone "SG SwedeBeat gateway"**, built on fakes only:
+  - **SG-0:** ADR 0035 and this amendment.
+  - **SG-1:** the gateway URL setting (plain http only to a loopback or private IP, else https; owner's accepted LAN risk), the origin-checked client, the `swedebeat_gateway_key` secret file
+    (web and worker) and the fakes.
+  - **SG-2:** connect through `/auth/login` (storing the bearer, with the sign-out consent up
+    front) and the catalogue match through `/catalog/match` (re-thresholded at 0.85), in one PR.
+    The old match never sees a bearer. (SG-3 is folded into SG-2.)
+  - **SG-4:** removing the app key, the SwedeBeat hosts and the fake SwedeBeat.
+  - **SG-5:** sv and da strings.
+- **Reviewers:**
+  - SG-1, SG-2 and SG-4 are security-critical (egress, keys, tokens), with an Opus Developer and an Opus
+    Reviewer.
+  - SG-5 follows ADR 0023's translation rule.
+- **Nothing is written to SwedeBeat:** the gateway's playlist routes are not used.
+- **Done when:**
+  - `backend/src`, `e2e`, the compose files, the Dockerfile and the workflows name no
+    `swedebeat.se` host, no `swedebeat_app`, no `mowl.swedebeat.login` and no `match_track`;
+  - connect and match pass on the fake gateway in the backend tests and e2e;
+  - the docs are updated.
+- **Still the owner's:**
+  - listing the client key on the gateway, keeping it LAN-bound, and the TTL;
+  - the key on the server, deleting `SWEDEBEAT_APP` and old images;
+  - the live check;
+  - magpern/sb-gateway-service#3.
+
 ## Amendment 22 (2026-11-14, owner direction: classbeat-player; ADR 0034)
 
 The owner said on 2026-11-14 that classbeat produces the class and classbeat-player runs it. The
