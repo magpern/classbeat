@@ -3,18 +3,30 @@ import { expect, signInThroughUi, signUpThroughUi, test, uniqueEmail } from './h
 import { getJob, jobId } from './design-helpers'
 import { useModelScript } from './model-script'
 import { audit, setTheme, stackContext, type Findings } from './mu-helpers'
-import { listedTitles, readyToPick, sql, startPick, untilState } from './song-helpers'
+import { listedSongs, listedTitles, readyToPick, sql, startPick, untilState } from './song-helpers'
 import { resetSpotify } from './spotify-helpers'
 import { CACHED_MIX_ID, ownerIdForEmail, resetSwedebeatMixes, seedCachedMix, swedebeatMixState, workerLogTail } from './swedebeat-mix-helpers'
-import { EMAIL_A, PASSWORD_A, catalogueCalls, fakeState, resetSwedebeat, setCatalogue, fillSwedebeat, openSwedebeatDialog } from './swedebeat-helpers'
+import {
+  EMAIL_A,
+  PASSWORD_A,
+  fillSwedebeat,
+  gatewayLogins,
+  gatewayRequests,
+  matchCalls,
+  matchedTracks,
+  openSwedebeatDialog,
+  resetSwedebeat,
+  setCatalogue,
+  type Song,
+} from './swedebeat-helpers'
 
-// ADR 0016 section 5 to 7, path (b), on the fakes (B5): a picked class is matched against the fake
-// Swedebeat catalogue (found, unsure, missing), its two unmatched songs are replaced and matched
-// again, the selection is approved, "Next, in the Swedebeat app" is verified with a mix of the wrong
+// ADR 0016 section 5 to 7, path (b), on the fakes (B5): a picked class is matched through the fake
+// SwedeBeat gateway (ADR 0035 section 6: one match call per job, found, unsure and missing), its two
+// unmatched songs are replaced and matched again, the selection is approved, "Next, in the Swedebeat app" is verified with a mix of the wrong
 // length (not found first, then the user's own pick, too short), the user overrides the verdict and
 // the class is designed on that mix. Every state of the match view is audited at 390 and 1440 px in
-// both themes (axe, no sideways scroll, the primary action visible). No real Swedebeat, MOWL or
-// Spotify account and no model: the fakes answer, the worker replays recorded scripts.
+// both themes (axe, no sideways scroll, the primary action visible). No real Swedebeat, gateway,
+// MOWL or Spotify account and no model: the fakes answer, the worker replays recorded scripts.
 
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(300_000)
@@ -23,6 +35,7 @@ const LONG = { timeout: 90_000 }
 const findings: Findings[] = []
 let classId = ''
 let ownTitles: string[] = []
+let ownSongs: Song[] = []
 
 test.beforeAll(() => {
   sql(
@@ -86,7 +99,8 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
   await test.step('a picked class, approved once', async () => {
     const id = await startPick(page, 'E2E matched ride')
     await untilState(page, id, 'waiting_for_approval')
-    ownTitles = await listedTitles(page)
+    ownSongs = await listedSongs(page)
+    ownTitles = ownSongs.map((s) => s.title)
     expect(ownTitles).toHaveLength(8)
     useModelScript('good_first_draft')
     await page.getByRole('button', { name: 'Approve songs' }).click()
@@ -95,14 +109,14 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
     classId = /\/classes\/([0-9a-f-]{36})/.exec(href ?? '')![1]!
     await page.goto(`/classes/${classId}`)
     await expect(card(page)).toBeVisible(LONG)
-    // Nothing went to the catalogue before the user asked for the match.
-    expect(catalogueCalls()).toEqual([])
+    // Nothing went to the gateway's catalogue before the user asked for the match.
+    expect(matchCalls()).toEqual([])
   })
 
   await test.step('the match: found, unsure and missing', async () => {
     // Song 3 is not in the catalogue, song 5 only under another title, the other six are.
-    const unsure = ownTitles[4]!
-    setCatalogue(ownTitles.filter((_, i) => i !== 2 && i !== 4), [unsure])
+    const unsure = ownSongs[4]!
+    setCatalogue(ownSongs.filter((_, i) => i !== 2 && i !== 4), [unsure])
     await card(page).getByRole('button', { name: 'Match with Swedebeat' }).click()
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
     const id = jobId(page)
@@ -122,8 +136,12 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
     await expect(match(page).getByText('the mix will lack it')).toBeVisible()
     await expect(nextStep(page)).toHaveCount(0) // nothing is approved yet
 
-    // One search per distinct song, each with this user's own token.
-    expect(catalogueCalls()).toEqual(Array<string>(8).fill(EMAIL_A))
+    // One match call for the job, with this user's own bearer, sending each song's title and
+    // artist only (ADR 0035 section 6).
+    expect(matchCalls()).toEqual([EMAIL_A])
+    const [sent] = matchedTracks()
+    expect(sent).toEqual(ownSongs)
+    expect(sent!.every((t) => Object.keys(t).sort().join() === 'artist,title')).toBe(true)
     await check(page, 'match view: found, unsure and missing', match(page).getByRole('button', { name: 'Approve this selection' }))
   })
 
@@ -133,19 +151,22 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
     await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
     const id = jobId(page)
     await untilState(page, id, 'waiting_for_approval')
-    const replaced = await listedTitles(page)
+    const replacedSongs = await listedSongs(page)
+    const replaced = replacedSongs.map((s) => s.title)
     expect(replaced).toHaveLength(8)
     expect(replaced[2]).not.toBe(ownTitles[2])
     expect(replaced[4]).not.toBe(ownTitles[4])
     expect(replaced.filter((_, i) => i !== 2 && i !== 4)).toEqual(ownTitles.filter((_, i) => i !== 2 && i !== 4))
     // The new list is a proposal the user approves once; nothing was matched yet.
-    const before = catalogueCalls().length
-    setCatalogue(replaced)
+    const before = matchCalls().length
+    setCatalogue(replacedSongs)
     useModelScript('revise_good')
     await page.getByRole('button', { name: 'Approve songs' }).click()
     await untilState(page, id, 'completed')
-    expect(catalogueCalls().length).toBeGreaterThan(before)
+    // The re-match is the same one gateway call, with the same bearer.
+    expect(matchCalls().slice(before)).toEqual([EMAIL_A])
     ownTitles = replaced
+    ownSongs = replacedSongs
   })
 
   await test.step('approve the selection: nothing is written to Swedebeat', async () => {
@@ -245,8 +266,9 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
     const logs = workerLogTail(400)
     expect(logs).not.toContain(PASSWORD_A)
     expect(await page.content()).not.toContain(PASSWORD_A)
-    // Only the catalogue searches carried the token; no login after the connect.
-    expect(fakeState().logins.filter((l) => l.ok)).toHaveLength(1)
+    // Only the match calls carried the bearer; no login and no session check after the connect.
+    expect(gatewayLogins()).toHaveLength(1)
+    expect(gatewayRequests().map((r) => r.path).filter((p) => p !== '/catalog/match')).toEqual(['/auth/login'])
     expect(csp).toEqual([])
   })
 

@@ -64,3 +64,11 @@ export async function listedTitles(page: Page): Promise<string[]> {
   await expect(page.getByTestId('song').first()).toBeVisible() // the list may still be loading
   return page.getByTestId('song-title').allInnerTexts()
 }
+
+/** The listed songs' titles and artists, in order (what a Swedebeat match sends, ADR 0035 section 6). */
+export async function listedSongs(page: Page): Promise<{ title: string; artist: string }[]> {
+  const titles = await listedTitles(page)
+  const artists = await page.getByTestId('song-artist').allInnerTexts()
+  expect(artists).toHaveLength(titles.length)
+  return titles.map((title, i) => ({ title, artist: artists[i]! }))
+}

@@ -2,10 +2,12 @@
 
 - ``classbeat.swedebeat_match.kind``: the ``swedebeat_match`` job kind (registered in
   ``classbeat.jobs.KINDS`` on import, for both the worker and the web app);
-- ``classbeat.swedebeat_match.catalogue``: the library's query, the field-allowlist parser of an
-  answer and the verdict, without a network call;
-- ``classbeat.swedebeat_match.search``: one search over the worker's dedicated catalogue client
-  (``classbeat.egress.swedebeat_cloud_async_client``) and its status categories;
+- ``classbeat.swedebeat_match.gateway_match``: the one gateway match of a job (ADR 0035 sections 5
+  and 6), the 401 confirmation and the status mapping, over ``classbeat.swedebeat_gateway``;
+- ``classbeat.swedebeat_match.verdict_policy`` and ``confirm_policy``: what is sent, classbeat's
+  verdict (``SAME_SONG``) and a failed call's category, without I/O;
+- ``classbeat.swedebeat_match.catalogue`` and ``search``: the direct ``cloud.swedebeat.se`` search
+  of ADR 0016, no longer called by any job (SG-4 deletes them with the cloud client);
 - ``classbeat.swedebeat_match.revision``: the ``swedebeat_match`` revision, its hash, ``build``,
   ``store`` and the re-checking ``load``;
 - ``classbeat.swedebeat_match.replace``: the catalogue replace inside ``revise_songs`` (the
@@ -14,7 +16,7 @@
 
 A job kind's own package (job kinds live outside ``classbeat.jobs``): it writes only through the
 job's fence, reads the user's rows in the jobs API only through the session it is handed, and opens
-the Swedebeat token only through ``classbeat.connections``.
+the SwedeBeat bearer only through ``classbeat.connections.swedebeat_account.open_bearer``.
 """
 
 from classbeat.swedebeat_match.config import MatchConfig, configure

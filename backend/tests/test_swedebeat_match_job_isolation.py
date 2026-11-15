@@ -2,8 +2,8 @@
 """ADR 0016 sections 5, 6 and 8, B5: the match job, the catalogue replace and the approval stop at
 the owner, and nothing Spotify-derived is cached across classes or users. Fakes only.
 
-The fixtures and helpers are ``test_swedebeat_match.py``'s (real song lists, real Swedebeat
-connections, the fake catalogue over a fake transport).
+The fixtures and helpers are ``test_swedebeat_match.py``'s (real song lists, real SwedeBeat
+connections, the fake gateway over a fake transport, ADR 0035 section 9).
 """
 
 import json
@@ -13,14 +13,14 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import text
 
-from cataloguefake import CatalogueFake
 from classbeat.classes import selection
 from classbeat.db import user_session
 from classbeat.jobs.kinds import Refused
 from classbeat.swedebeat_match.replace import CatalogueReplace, decide
 from classbeat.swedebeat_match.revision import Matched, MatchedSong, Wanted, build
 from ctx import make_context
-from swedebeatfake import EMAIL, EMAIL_B, PASSWORD, PASSWORD_B
+from gatewaycore import MATCH_PATH, FakeGateway
+from gatewayfake import EMAIL, EMAIL_B, PASSWORD, PASSWORD_B, calls
 from test_swedebeat_match import (  # noqa: F401 - the fixtures: env, admin, catalogue, configured
     Rider,
     _body,
@@ -33,9 +33,10 @@ from test_swedebeat_match import (  # noqa: F401 - the fixtures: env, admin, cat
     catalogue,
     configured,
     env,
+    paused,
 )
 
-pytestmark = pytest.mark.usefixtures("swedebeat_api")
+pytestmark = pytest.mark.usefixtures("gateway_api")
 
 
 async def two(env: Any, make_actor: Any) -> tuple[Rider, Rider]:
@@ -59,7 +60,7 @@ def jobs_of(admin: Any, user: UUID) -> int:
 
 
 async def test_a_match_job_cannot_name_another_users_class_list_or_connection(
-    env: Any, admin: Any, make_actor: Any, catalogue: CatalogueFake, configured: None
+    env: Any, admin: Any, make_actor: Any, catalogue: FakeGateway, configured: None
 ) -> None:
     alice, bob = await two(env, make_actor)
     own_body = _body(bob)
@@ -84,13 +85,15 @@ async def test_a_match_job_cannot_name_another_users_class_list_or_connection(
         assert "Alice ride" not in refused.text
     assert jobs_of(admin, bob.user_id) == 0
     assert jobs_of(admin, alice.user_id) == 0
-    assert catalogue.calls == []
-    # The refusals did not lock Bob out: his own body is admitted and searched with his token.
+    assert calls(catalogue, MATCH_PATH) == []
+    # The refusals did not lock Bob out: his own body is admitted and matched with his bearer.
     ok = await _post_job(bob.actor, own_body)
     assert ok.status_code == 201, ok.text
     await _run(env)
-    assert catalogue.calls
-    assert {call.token for call in catalogue.calls} == {bob.token}
+    sent = calls(catalogue, MATCH_PATH)
+    assert sent
+    assert {r.headers["authorization"] for r in sent} == {f"Bearer {bob.bearer}"}
+    assert {r.email for r in sent} == {EMAIL_B}
 
 
 def _insert_match(admin: Any, rider: Rider) -> UUID:
@@ -192,7 +195,7 @@ async def test_the_replace_and_the_approval_read_only_the_owners_match(
 
 
 async def test_nothing_is_cached_across_classes_or_users(
-    env: Any, admin: Any, make_actor: Any, catalogue: CatalogueFake, configured: None
+    env: Any, admin: Any, make_actor: Any, catalogue: FakeGateway, configured: None
 ) -> None:
     alice = await _rider(
         env, make_actor, account="alice@example.com", swedebeat_email=EMAIL, password=PASSWORD,
@@ -221,9 +224,14 @@ async def test_nothing_is_cached_across_classes_or_users(
     ):
         created = await _post_job(actor, body)
         assert created.status_code == 201, created.text
-        before = len(catalogue.calls)
+        before = len(calls(catalogue, MATCH_PATH))
         await _run(env)
-        seen.append(len(catalogue.calls) - before)
-    # The same three distinct songs are searched again for the second class and for the second user.
-    assert seen == [3, 3, 3]
-    assert [call.token for call in catalogue.calls] == [alice.token] * 6 + [bob.token] * 3
+        seen.append(len(calls(catalogue, MATCH_PATH)) - before)
+    # The same three distinct songs are sent again for the second class and for the second user:
+    # one call per job, each with all three, each with its own user's bearer.
+    assert seen == [1, 1, 1]
+    sent = calls(catalogue, MATCH_PATH)
+    assert [len(r.body["tracks"]) for r in sent] == [3, 3, 3]
+    assert [r.headers["authorization"] for r in sent] == [f"Bearer {alice.bearer}"] * 2 + [
+        f"Bearer {bob.bearer}"
+    ]

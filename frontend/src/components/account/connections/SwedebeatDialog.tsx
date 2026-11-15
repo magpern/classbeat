@@ -15,6 +15,7 @@ const CONNECT_ERRORS: Record<string, CatalogueKey> = {
   upstream_unavailable: 'swed.err.upstream_unavailable',
   app_key_unavailable: 'swed.err.app_key_unavailable',
   feature_off: 'swed.err.feature_off',
+  sign_out_required: 'swed.err.sign_out_required',
   unknown: 'swed.err.unknown',
 }
 
@@ -30,7 +31,11 @@ function connectError(error: unknown): string {
  * Connect Swedebeat (ADR 0028 section 1, item 2). The stored "I use Swedebeat" preference (#525) is
  * what lets the backend talk to Swedebeat at all, so the dialog stores it as on, then connects. If
  * the dialog ends without a connection the preference is put back as it was: a failed attempt
- * leaves nothing half-set. Another device being signed in is asked about, not decided.
+ * leaves nothing half-set.
+ *
+ * Connecting through the gateway always signs the account out of the Swedebeat app on other devices
+ * (ADR 0035 section 4), so the form says so up front and needs a ticked "I understand" box, unticked
+ * on every open, before it sends anything; only then does it send `force: true`.
  *
  * Every call the dialog makes goes through one queue, so a rollback never lands before an attempt it
  * follows (a close during a slow connect) or after one that came later (a reopen and a new try), and
@@ -55,7 +60,14 @@ export function SwedebeatDialog({
   const action = useAction()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [taken, setTaken] = useState(false)
+  const [understood, setUnderstood] = useState(false)
+  // Unticked on every open, however the last opening ended (a close or a connection): reset while
+  // rendering the opening, not in an effect, so the box is never shown ticked.
+  const [shownOpen, setShownOpen] = useState(open)
+  if (open !== shownOpen) {
+    setShownOpen(open)
+    if (open) setUnderstood(false)
+  }
   const done = useRef(false)
   const queue = useRef<Promise<void>>(Promise.resolve())
 
@@ -75,7 +87,6 @@ export function SwedebeatDialog({
 
   const close = () => {
     action.clear()
-    setTaken(false)
     // Put the preference back when nothing was connected (best effort: a failure leaves it on, which
     // only means Swedebeat is offered, never that anything is sent without a connection).
     if (!wasUsing) {
@@ -88,7 +99,8 @@ export function SwedebeatDialog({
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    const sent = { email: email.trim(), password, force: taken }
+    if (!understood) return
+    const sent = { email: email.trim(), password, force: true }
     void action
       .run(
         () =>
@@ -96,17 +108,9 @@ export function SwedebeatDialog({
             await setSwedebeatPreference(true)
             const made = await guard(() => connectSwedebeat(sent.email, sent.password, sent.force))
             done.current = true
-            setTaken(false)
             onConnected(made)
           }),
-        (error) => {
-          if (error instanceof ApiError && error.reason === 'device_in_use') {
-            setTaken(true)
-            return t('swed.deviceInUse')
-          }
-          setTaken(false)
-          return connectError(error)
-        },
+        connectError,
       )
       .finally(() => {
         setPassword('') // the password is not kept on the page after the attempt
@@ -146,16 +150,22 @@ export function SwedebeatDialog({
             }}
             required
           />
-          {taken ? <p className="m-0 text-[0.9375rem] text-muted">{t('swed.again')}</p> : null}
+          <p className="m-0 text-[0.9375rem]">{t('swed.signOutNotice')}</p>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={understood}
+              onChange={(e) => {
+                setUnderstood(e.target.checked)
+              }}
+              required
+            />
+            {t('swed.signOutConfirm')}
+          </label>
           <div className="flex flex-wrap gap-3">
-            <Button type="submit" disabled={action.busy}>
-              {taken ? t('swed.anyway') : again ? t('swed.connectAgain') : t('swed.connect')}
+            <Button type="submit" disabled={action.busy || !understood}>
+              {again ? t('swed.connectAgain') : t('swed.connect')}
             </Button>
-            {taken ? (
-              <Button variant="secondary" onClick={close}>
-                {t('swed.keepOther')}
-              </Button>
-            ) : null}
           </div>
         </form>
       </DialogContent>

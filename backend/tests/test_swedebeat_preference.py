@@ -1,7 +1,7 @@
 """Issue #525: the per-user "I use Swedebeat" preference, default off (ADR 0015 amendment of
 2026-11-03). Default off, on, the flag winning over it, another user untouched, row security, the
 route's input, and that Disconnect never depends on it. The in-process fakes only (``mowlfake``,
-``swedebeatcore``); never the network."""
+the fake SwedeBeat gateway ``gatewaycore``); never the network."""
 
 import json
 from collections.abc import AsyncIterator
@@ -9,7 +9,6 @@ from typing import Any
 
 import httpx
 import pytest
-from pydantic import SecretStr
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -24,31 +23,29 @@ from classbeat.connections.preferences import (
 )
 from classbeat.db import user_session
 from ctx import make_context
+from gatewaycore import LOGIN_PATH, FakeGateway
+from gatewayfake import EMAIL, GATEWAY_SETTINGS, PASSWORD, calls
 from jobapi import ORIGIN, Browser, session_cookie
 from mowlfake import FakeMowl
 from optools import TOKEN_A
 from preftools import use_swedebeat
-from swedebeatcore import FakeSwedebeat
-from swedebeatfake import EMAIL, PASSWORD
 
 pytestmark = [
-    pytest.mark.usefixtures("jenv", "mowl_api", "swedebeat_api", "frozen_rate_windows")
+    pytest.mark.usefixtures("jenv", "mowl_api", "gateway_api", "frozen_rate_windows")
 ]  # #1012
 
 PREFERENCE = "/api/connections/swedebeat/preference"
 CONNECT = "/api/connections/swedebeat"
+SIGN_IN = {"email": EMAIL, "password": PASSWORD, "force": True}
 MIXES = "/api/music/swedebeat-mixes"
 LIST = "POST /v1/swedebeat/Playlists"
 
 
 @pytest.fixture
-async def env(
-    clean_auth: None, app_database_url: str, swedebeat_app: dict[str, str]
-) -> AsyncIterator[Env]:
-    """Swedebeat switched on for the server (environment and no admin row) with the test key."""
-    async with running_env(
-        app_database_url, swedebeat_enabled=True, swedebeat_app=SecretStr(json.dumps(swedebeat_app))
-    ) as running:
+async def env(clean_auth: None, app_database_url: str) -> AsyncIterator[Env]:
+    """Swedebeat switched on for the server (environment and no admin row), with the fake
+    gateway's URL and client key."""
+    async with running_env(app_database_url, swedebeat_enabled=True, **GATEWAY_SETTINGS) as running:
         yield running
 
 
@@ -115,7 +112,7 @@ async def test_by_default_the_preference_is_off_and_nothing_is_written_or_called
     browsers: Any,
     env: Env,
     mowl_api: FakeMowl,
-    swedebeat_api: FakeSwedebeat,
+    gateway_api: FakeGateway,
     superuser: Any,
 ) -> None:
     browser = await rider(browsers, env)
@@ -123,10 +120,10 @@ async def test_by_default_the_preference_is_off_and_nothing_is_written_or_called
     assert await access(browser) == {"enabled": True, "available": True, "uses_swedebeat": False}
     listed = await browser.get(MIXES)
     assert (listed.status_code, listed.json()) == (404, {"detail": {"reason": "feature_off"}})
-    connected = await browser.post(CONNECT, {"email": EMAIL, "password": PASSWORD})
+    connected = await browser.post(CONNECT, SIGN_IN)
     assert (connected.status_code, connected.json()) == (404, {"detail": {"reason": "feature_off"}})
     assert mowl_api.requests == []  # no MOWL call for the listing
-    assert swedebeat_api.logins == []  # and nothing reached Swedebeat
+    assert calls(gateway_api, LOGIN_PATH) == []  # and nothing reached the gateway
     assert rows(superuser) == []  # reading never writes a row
     held = "SELECT count(*) FROM connections WHERE provider = 'swedebeat'"
     assert superuser.execute(text(held)).scalar_one() == 0
@@ -149,7 +146,7 @@ async def test_preference_off_spends_no_rate_limit_slot_of_the_mixes_listing(
 
 
 async def test_turned_on_the_listing_and_connect_work_as_before(
-    browsers: Any, env: Env, mowl_api: FakeMowl, swedebeat_api: FakeSwedebeat, superuser: Any
+    browsers: Any, env: Env, mowl_api: FakeMowl, gateway_api: FakeGateway, superuser: Any
 ) -> None:
     browser = await rider(browsers, env)
     mowl_api.add_mix("Sunday Climb", token=TOKEN_A, listed_seconds=1830)
@@ -161,9 +158,9 @@ async def test_turned_on_the_listing_and_connect_work_as_before(
     assert listed.status_code == 200, listed.text
     assert [m["name"] for m in listed.json()["mixes"]] == ["Sunday Climb"]
     assert mowl_api.requests == [LIST]
-    connected = await browser.post(CONNECT, {"email": EMAIL, "password": PASSWORD})
+    connected = await browser.post(CONNECT, SIGN_IN)
     assert connected.status_code == 200, connected.text
-    assert len(swedebeat_api.logins) == 1
+    assert len(calls(gateway_api, LOGIN_PATH)) == 1
     # Storing it again updates the one row.
     assert (await put(browser, {"uses_swedebeat": True})).status_code == 200
     assert rows(superuser) == [(browser.user_id, True)]
@@ -177,7 +174,7 @@ async def test_the_flag_off_wins_over_the_preference(
     browsers: Any,
     env: Env,
     mowl_api: FakeMowl,
-    swedebeat_api: FakeSwedebeat,
+    gateway_api: FakeGateway,
     superuser: Any,
     off: str,
 ) -> None:
@@ -189,10 +186,10 @@ async def test_the_flag_off_wins_over_the_preference(
     else:
         env.app.state.settings = env.settings.model_copy(update={"swedebeat_enabled": False})
     assert (await browser.get(MIXES)).status_code == 404
-    refused = await browser.post(CONNECT, {"email": EMAIL, "password": PASSWORD})
+    refused = await browser.post(CONNECT, SIGN_IN)
     assert (refused.status_code, refused.json()) == (404, {"detail": {"reason": "feature_off"}})
     assert mowl_api.requests == []
-    assert swedebeat_api.logins == []
+    assert calls(gateway_api, LOGIN_PATH) == []
     assert await access(browser) == {
         "enabled": False, "available": True, "uses_swedebeat": True,
     }  # fmt: skip
@@ -256,17 +253,17 @@ async def test_a_session_cannot_write_a_row_for_another_user(browsers: Any, env:
 
 
 async def test_turned_off_the_stored_connection_still_shows_and_disconnects(
-    browsers: Any, env: Env, swedebeat_api: FakeSwedebeat, superuser: Any
+    browsers: Any, env: Env, gateway_api: FakeGateway, superuser: Any
 ) -> None:
     browser = await rider(browsers, env)
     assert (await put(browser, {"uses_swedebeat": True})).status_code == 200
-    assert (await browser.post(CONNECT, {"email": EMAIL, "password": PASSWORD})).status_code == 200
+    assert (await browser.post(CONNECT, SIGN_IN)).status_code == 200
     assert (await put(browser, {"uses_swedebeat": False})).status_code == 200
     listed = (await browser.get("/api/connections")).json()
     assert [c["provider"] for c in listed["connections"]].count("swedebeat") == 1
     assert listed["swedebeat"]["uses_swedebeat"] is False
-    assert (await browser.post(CONNECT, {"email": EMAIL, "password": PASSWORD})).status_code == 404
-    assert len(swedebeat_api.logins) == 1
+    assert (await browser.post(CONNECT, SIGN_IN)).status_code == 404
+    assert len(calls(gateway_api, LOGIN_PATH)) == 1
     assert (await delete(browser, CONNECT)).status_code == 204  # always allowed
     left = superuser.execute(
         text("SELECT count(*) FROM connections WHERE owner_id = :o AND provider = 'swedebeat'"),

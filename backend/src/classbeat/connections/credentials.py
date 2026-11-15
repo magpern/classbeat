@@ -19,7 +19,9 @@ from classbeat.connections.tables import PROVIDERS
 PAYLOAD_FIELDS: dict[str, frozenset[str]] = {
     "mowl": frozenset({"token"}),
     "spotify": frozenset({"access_token", "refresh_token", "expires_at"}),
-    "swedebeat": frozenset({"token", "device_id"}),
+    # ADR 0035 section 3: the gateway's bearer. Opened only by
+    # ``classbeat.connections.swedebeat_account.open_bearer``, never as library credentials.
+    "swedebeat": frozenset({"bearer"}),
     # ADR 0034 section 3: the ``cbp_src_`` source token. Opened only by
     # ``classbeat.connections.player_account``, never as library credentials.
     "player": frozenset({"token"}),
@@ -56,12 +58,10 @@ def build_credentials(
         raise ValueError("the payload does not have the provider's fields")
     if provider == "player":  # the library never gets it (``open_connection`` says ``unknown``)
         raise ValueError("a player token is never library credentials")
+    if provider == "swedebeat":  # ADR 0035 section 3: the gateway client alone takes the bearer
+        raise ValueError("a SwedeBeat bearer is never library credentials")
     if provider == "mowl":
         return Credentials(mowl_token=str(payload["token"]))
-    if provider == "swedebeat":
-        return Credentials(
-            swedebeat_token=str(payload["token"]), swedebeat_device_id=str(payload["device_id"])
-        )
     # ADR 0009 section 6 step 2: the library gets the access token only. No refresh token and
     # renewal off, so it never contacts the token endpoint and never persists anything (the
     # refresh is ``classbeat.connections.spotify_tokens``'s, under the row lock); no sleeping on

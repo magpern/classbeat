@@ -67,6 +67,12 @@ REFUSED = [
     ("http://192.168.1.222:7355/?x=1", "without query, fragment or userinfo"),
     ("http://192.168.1.222:7355/#x", "without query, fragment or userinfo"),
     ("http://192.168.1.222:7355\\@evil.example", "without query, fragment or userinfo"),
+    # An IPv6 zone id (``ipaddress`` takes one) or any percent-encoding (#1082 review).
+    ("http://[fd00::1%eth0]:7355", "without a zone id or percent-encoding"),
+    ("http://[fd00::1%25eth0]:7355", "without a zone id or percent-encoding"),
+    ("http://[::1%lo]:7355", "without a zone id or percent-encoding"),
+    ("https://sb.classbeat%2Eeu", "without a zone id or percent-encoding"),
+    ("http://192.168.1.222:7355/%2e", "without a zone id or percent-encoding"),
     ("http://192.168.1.222:7355/api", "no path but '/'"),
     ("https://sb.classbeat.eu/v1/", "no path but '/'"),
     ("http://192.168.1.222:7355//", "no path but '/'"),

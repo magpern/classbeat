@@ -1,8 +1,8 @@
 """``CLASSBEAT_SWEDEBEAT_GATEWAY_URL``: the gateway's origin (ADR 0035 section 1). Pure: no I/O.
 
 The gateway belongs to the owner's deployment, so its origin is a setting (as the player's host,
-ADR 0034 section 2). The value must be an origin: no userinfo, no path but ``/``, no query and no
-fragment. Then **one** of these must hold:
+ADR 0034 section 2). The value must be an origin: no userinfo, no path but ``/``, no query, no
+fragment and no ``%`` (an IPv6 zone id or a percent-encoded host). Then **one** of these must hold:
 
 - ``http`` to a loopback or private **IP literal** (IPv4 ``127.0.0.0/8``, ``10.0.0.0/8``,
   ``172.16.0.0/12``, ``192.168.0.0/16``; IPv6 ``::1`` or ``fc00::/7``) with an explicit port. A
@@ -66,6 +66,8 @@ def _private_ip(text: str) -> str | None:
         return None
     if address.is_link_local or address.is_multicast or address.is_unspecified:
         return None
+    if isinstance(address, ipaddress.IPv6Address) and address.scope_id is not None:
+        return None  # a zone id (also refused with any ``%`` before this)
     if isinstance(address, ipaddress.IPv4Address):
         allowed = address != _BROADCAST and any(address in n for n in _IPV4_ALLOWED)
     else:
@@ -81,6 +83,10 @@ def _split(value: str) -> tuple[SplitResult, int | None, str]:
         raise GatewayUrlRefused("an http or https URL")
     if any(mark in value for mark in "?#@\\"):
         raise GatewayUrlRefused("an origin without query, fragment or userinfo")
+    if "%" in value:
+        # An IPv6 zone id (``[fd00::1%eth0]``, which ``ipaddress`` accepts) or a percent-encoded
+        # host: neither is an origin the gateway client can pin.
+        raise GatewayUrlRefused("an origin without a zone id or percent-encoding")
     try:
         parts = urlsplit(value)
         port = parts.port

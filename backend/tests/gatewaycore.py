@@ -15,6 +15,7 @@ are ``{"detail": <string>}`` otherwise.
 
 - **Login** issues an opaque bearer per login (two users get two bearers) whose expiry the test
   can move (``advance``, ``expire``); unknown fields (``force``) are ignored, as pydantic does.
+  ``issue`` makes one without a login, for a connection a test stores itself.
 - **Match** answers ``tracks`` mode only, one item per track in order, from ``catalogue``
   (``(title, artist)`` folded, to ``found`` or ``unsure``; anything else is ``missing``).
   ``playlist`` mode is a ``422`` here: classbeat never sends it (ADR 0035 section 7).
@@ -122,6 +123,8 @@ class FakeGateway:
     injections: list[Injection] = field(default_factory=lambda: list[Injection]())
     ttl: int = TTL_SECONDS
     offset: float = 0.0  # added to the clock: a test moves time with ``advance``
+    # Fields added to every answered track (planted values a test checks are never kept).
+    track_extras: dict[str, Any] = field(default_factory=lambda: dict[str, Any]())
 
     def add_user(self, email: str, password: str) -> None:
         self.users[email] = password
@@ -141,6 +144,12 @@ class FakeGateway:
 
     def inject(self, kind: str, path: str | None = None, **params: Any) -> None:
         self.injections.append(Injection(kind, path, **params))
+
+    def issue(self, email: str) -> str:
+        """A bearer for ``email`` as a login would issue it (a test's stored connection)."""
+        bearer = "gAAAAB" + secrets.token_urlsafe(48)
+        self.bearers[bearer] = Session(email, self.now() + self.ttl, str(35900 + len(self.bearers)))
+        return bearer
 
     def reset(self) -> None:
         self.bearers.clear()
@@ -225,7 +234,7 @@ class FakeGateway:
         hit = title if status == "found" else UNSURE_TITLE
         score = FOUND_SCORE if status == "found" else UNSURE_SCORE
         found = {"reference": "ref-" + secrets.token_hex(4), "title": hit, "artist": artist}
-        found |= {"bpm": 128.0, "duration": float(SECONDS)}
+        found |= {"bpm": 128.0, "duration": float(SECONDS), **self.track_extras}
         return {"title": title, "artist": artist, "status": status, "score": score, "track": found}
 
     def _match(self, body: Any, route: str) -> Reply:

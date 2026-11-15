@@ -82,7 +82,7 @@ async def test_the_database_dump_search_would_see_a_plaintext_token(
 
     known, ids, _, _, _ = await dump(world, spotify_admin, monkeypatch, database_url)
     dsn = make_url(database_url).set(drivername="postgresql").render_as_string(hide_password=False)
-    for name in ("mowl_token", "password", "swedebeat_token"):
+    for name in ("mowl_token", "password", "swedebeat_bearer"):
         forms = set(known.forms({name})[name])
         assert len(forms) >= 4, name  # raw, base64, hex, upper-case hex (the rest equal for most)
         for form in sorted(forms):

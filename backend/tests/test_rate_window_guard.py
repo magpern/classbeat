@@ -54,8 +54,6 @@ EXEMPT: dict[str, str] = {
     "test_swedebeat_attach.py": PROVIDER,
     "test_swedebeat_fakes.py": PROVIDER,
     "test_swedebeat_fetch.py": PROVIDER,
-    "test_swedebeat_match.py": PROVIDER,
-    "test_swedebeat_match_catalogue.py": PROVIDER,
     "test_swedebeat_media_fetch.py": PROVIDER,
     "test_turnstile_verify.py": PROVIDER,
 }

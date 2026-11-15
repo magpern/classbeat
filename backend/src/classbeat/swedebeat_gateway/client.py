@@ -23,7 +23,7 @@ httpx's errors hold the request, and the request holds the headers.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 import httpx
@@ -77,8 +77,8 @@ class GatewayFailure(Exception):
 @dataclass(frozen=True, slots=True)
 class _Answer:
     status: int
-    body: bytes | None
-    retry_after: int | None
+    body: bytes | None = field(repr=False)  # a login's holds the bearer
+    retry_after: int | None = None
 
 
 def _headers(key: SecretStr, bearer: str | None, *, sends_body: bool) -> dict[str, str]:

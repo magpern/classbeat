@@ -136,14 +136,19 @@ MAX_HINT_SECONDS: Final = 86_400  # a longer Retry-After is kept as a day
 
 # A provider's ``Retry-After`` (seconds) is kept for these (ADR 0009 section 8's sentences).
 HINTED: Final = frozenset({"rate_limited", "quota_exhausted"})
+# A wait kept only as the retry's floor (``backoff_seconds``), never stored or shown: a SwedeBeat
+# match whose refused bearer the gateway's session check passed (ADR 0035 section 5) waits past
+# the gateway's 300 s cache of a good token check before it tries again.
+FLOORED: Final = frozenset({("upstream_unavailable", "swedebeat")})
 
 
 class JobFailure(Exception):
     """A run failed with ``category``. ``args == (category,)``; ``retry_after`` (seconds) only
-    for ``rate_limited`` and ``quota_exhausted``. ``provider`` is ``"spotify"`` for a failure
-    of a Spotify request (``ConnectionFailure.provider``) and ``"swedebeat"`` for a catalogue
-    search, else None. A Swedebeat ``rate_limited`` is recorded so the job sentence names the
-    wait; it does not count as a Spotify 429."""
+    for ``rate_limited`` and ``quota_exhausted``, and for a SwedeBeat ``upstream_unavailable``
+    (``FLOORED``: the retry's floor only). ``provider`` is ``"spotify"`` for a failure of a
+    Spotify request (``ConnectionFailure.provider``) and ``"swedebeat"`` for a catalogue match,
+    else None. A Swedebeat ``rate_limited`` is recorded so the job sentence names the wait; it
+    does not count as a Spotify 429."""
 
     def __init__(
         self, category: str, retry_after: float | None = None, *, provider: str | None = None
@@ -152,7 +157,8 @@ class JobFailure(Exception):
             category = "internal"
         super().__init__(category)
         self.category = category
-        self.retry_after = retry_after if category in HINTED else None
+        kept = category in HINTED or (category, provider) in FLOORED
+        self.retry_after = retry_after if kept else None
         self.provider = provider
 
 

@@ -1,13 +1,16 @@
 """``/api/connections/swedebeat``: connect and disconnect the user's Swedebeat account (ADR 0015).
 Its status is the ``swedebeat`` row of ``GET /api/connections`` and its ``swedebeat`` access block.
 
-- ``POST``: sign in with the Swedebeat email and password (JSON, CSRF by the middleware, recent
-  authentication and, with TOTP, step-up), optionally ``force`` after the user confirmed that
-  another device may be signed out. 404 ``feature_off`` while the effective flag is off (the
-  environment's switch and the admin flag, ``classbeat.flags``). 503 ``app_key_unavailable``
-  before the rate limit is spent when this server has no Swedebeat app key. Rate limited per user,
-  IP and Swedebeat email before the sign-in, like MOWL; a success releases the slots.
-  Also 404 ``feature_off`` while the user's own "I use Swedebeat" preference is off (#525).
+- ``POST``: sign in through the SwedeBeat gateway with the email and password (JSON, CSRF by the
+  middleware, recent authentication and, with TOTP, step-up) and ``"force": true``, which the page
+  sends only after the user ticked that connecting signs the SwedeBeat app out on their other
+  devices (ADR 0035 section 4). 404 ``feature_off`` while the effective flag is off (the
+  environment's switch and the admin flag, ``classbeat.flags``) or while the user's own "I use
+  Swedebeat" preference is off (#525). 503 ``app_key_unavailable`` when this server has no gateway
+  URL or client key, and 409 ``sign_out_required`` for a body without ``"force": true``: both
+  before the rate limit is spent and before anything is sent. Rate limited per user, IP and
+  Swedebeat email before the sign-in, like MOWL; a success releases the slots, and so does a
+  gateway that refuses this server's client key (``app_key_unavailable``: not the user's attempt).
 - ``DELETE``: disconnect (recent authentication). Deletes the row; local only. Never gated by the
   flag or the preference: a user can always remove what is stored about them.
 - ``PUT /preference``: store the user's "I use Swedebeat" preference
@@ -15,8 +18,8 @@ Its status is the ``swedebeat`` row of ``GET /api/connections`` and its ``swedeb
   storing ``true`` while the flag is off turns nothing on (``preferences.swedebeat_on`` needs
   both), and ``false`` always works.
 
-Failures answer with the category alone: ``invalid_credentials`` (400), ``device_in_use`` (409),
-``upstream_unavailable`` (503), ``app_key_unavailable`` (503), ``rate_limited`` (429, with
+Failures answer with the category alone: ``invalid_credentials`` (400), ``sign_out_required``
+(409), ``upstream_unavailable`` (503), ``app_key_unavailable`` (503), ``rate_limited`` (429, with
 ``Retry-After``), ``unknown`` (502). The password never reaches a log, an event, an error body or
 a URL (see ``routes``).
 """
@@ -41,11 +44,11 @@ from classbeat.connections.swedebeat_account import (
 )
 from classbeat.context import UserContext
 from classbeat.emailnorm import normalize_email
+from classbeat.swedebeat_gateway.login_policy import PASSWORD_MAX
 
 router = APIRouter(prefix="/api/connections/swedebeat", tags=["connections"])
 
-PASSWORD_MAX = 1024
-_REFUSAL_STATUS = {"device_in_use": 409, "app_key_unavailable": 503}
+_REFUSAL_STATUS = {"sign_out_required": 409, "app_key_unavailable": 503}
 
 
 class PreferenceIn(BaseModel):
@@ -60,9 +63,11 @@ class PreferenceOut(BaseModel):
 
 class SwedebeatConnectIn(BaseModel):
     email: auth.EmailAddress
+    # The gateway's own bound (ADR 0035 section 3): a longer password would be its 422.
     password: SecretStr = Field(min_length=1, max_length=PASSWORD_MAX)
-    # True only after the user confirmed that another device (the phone app) may be signed out.
-    force: bool = False
+    # ``true`` only after the user ticked that connecting signs the SwedeBeat app out on their
+    # other devices (ADR 0035 section 4). Strict: ``"true"`` or ``1`` is not that consent.
+    force: StrictBool = False
 
 
 def _refusal_response(refusal: SwedebeatRefusal) -> JSONResponse:
@@ -89,6 +94,8 @@ async def connect_swedebeat_route(
         raise HTTPException(status_code=404, detail={"reason": "feature_off"})
     if not access.available:  # nothing would be sent: spend no rate-limit slot
         return _refusal_response(SwedebeatRefusal("app_key_unavailable"))
+    if body.force is not True:  # ADR 0035 section 4: no phone is signed out without the consent
+        return _refusal_response(SwedebeatRefusal("sign_out_required"))
     assert settings.app_secret_key is not None  # noqa: S101 - the web app refuses to start without
     factory = request.app.state.session_factory
     attempt = await request.app.state.limiter.begin(
@@ -109,7 +116,7 @@ async def connect_swedebeat_route(
             body.password.get_secret_value(),
             force=body.force,
             device_secret=settings.app_secret_key.get_secret_value().encode(),
-            app=settings.swedebeat_keys(),
+            key=settings.swedebeat_gateway_key,
         )
     except ConnectionFailure as error:
         failure = error
@@ -119,6 +126,8 @@ async def connect_swedebeat_route(
         await event(request, ctx, "connection_failed", provider=PROVIDER, category=failure.category)
         return failure_response(failure)
     if refusal is not None:
+        if refusal.reason == "app_key_unavailable":
+            await attempt.succeed()  # this server's configuration, not the user's attempt
         await event(request, ctx, "connection_failed", provider=PROVIDER, category=refusal.reason)
         return _refusal_response(refusal)
     await attempt.succeed()
@@ -133,7 +142,8 @@ async def connect_swedebeat_route(
 async def disconnect_swedebeat(
     request: Request, ctx: Annotated[UserContext, Depends(auth.require_recent_auth)]
 ) -> Response:
-    """Delete the token and device id. Answers 204 whether or not a connection existed."""
+    """Delete the stored bearer. Answers 204 whether or not a connection existed. Local only: the
+    gateway has no sign-out of a bearer (it expires)."""
     if await disconnect(request.app.state.session_factory, ctx, PROVIDER):
         await event(request, ctx, "connection_disconnected", provider=PROVIDER)
     return Response(status_code=204)

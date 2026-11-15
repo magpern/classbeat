@@ -34,7 +34,7 @@ sys.path.insert(0, os.environ.get("FAKE_GATEWAY_CORE", "/fake-core"))
 import gatewaycore  # from the mounted directory above
 
 HOST = "gateway.classbeat-e2e.test"
-PREVIOUS_CA = os.environ.get("FAKE_GATEWAY_PREVIOUS_CA", "/swedebeat-ca/bundle.pem")
+PREVIOUS_CA = os.environ.get("FAKE_GATEWAY_PREVIOUS_CA", "/previous-ca/bundle.pem")
 BUNDLE = os.environ.get("FAKE_GATEWAY_BUNDLE", "/ca/bundle.pem")
 KEY_FILE = os.environ.get("FAKE_GATEWAY_CLIENT_KEY", "/fake/client-key.txt")
 ACCOUNTS = (

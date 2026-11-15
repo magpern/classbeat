@@ -5,8 +5,8 @@ import { audit, stackContext, type Findings } from './mu-helpers'
 import {
   EMAIL_A,
   PASSWORD_A,
-  fakeState,
   fillSwedebeat,
+  gatewayLogins,
   openSwedebeatDialog,
   resetSwedebeat,
   swedebeatRow,
@@ -78,7 +78,7 @@ test('listed from the start; Connect turns the preference on, Disconnect turns i
     await dialog.getByRole('button', { name: 'Close' }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     expect(preferenceOn(owner)).toBe('0')
-    expect(fakeState().logins).toEqual([])
+    expect(gatewayLogins()).toEqual([])
   })
 
   await test.step('connected: the preference is stored and the mix choice appears', async () => {

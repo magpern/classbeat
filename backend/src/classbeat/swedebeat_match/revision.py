@@ -40,16 +40,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.design.revision import MAX_CONTENT_BYTES, canonical
 from classbeat.jobs import FencedSession, JobFailure
-from classbeat.swedebeat_match import catalogue
+from classbeat.swedebeat_gateway.match_policy import MAX_DURATION, MAX_TEXT
+from classbeat.swedebeat_match.verdict_policy import SAME_SONG
 
 KIND: Final = "swedebeat_match"
 VERSION: Final = 1
-MATCHER_VERSION: Final = 1
+# 2: the verdict is classbeat's 0.85 on the gateway's score (ADR 0035 section 6); 1 was the
+# library's title_score on per-song searches. Only recorded in the provenance: approval, the
+# hand-off's stale_match and the replace bind a match by its song list, never by this number.
+MATCHER_VERSION: Final = 2
 MUSIC_SOURCE: Final = "swedebeat_catalogue"
 MAX_SONGS: Final = 40  # ADR 0016 section 5: at most 40 songs per job (a song list's own limit)
 
-SongText = Annotated[str, Field(max_length=catalogue.MAX_TEXT)]
-HitText = Annotated[str, Field(min_length=1, max_length=catalogue.MAX_TEXT)]
+SongText = Annotated[str, Field(max_length=MAX_TEXT)]
+HitText = Annotated[str, Field(min_length=1, max_length=MAX_TEXT)]
 
 
 class Wanted(BaseModel):
@@ -64,7 +68,7 @@ class Matched(BaseModel):
 
     title: HitText
     artist: HitText
-    duration: Annotated[int, Field(ge=1, le=catalogue.MAX_DURATION)] | None
+    duration: Annotated[int, Field(ge=1, le=MAX_DURATION)] | None
 
 
 class MatchedSong(BaseModel):
@@ -214,7 +218,7 @@ def build(songs: list[MatchedSong], *, song_list_id: UUID, song_list_hash: bytes
     provenance = {
         "origin": KIND,
         "matcher_version": MATCHER_VERSION,
-        "threshold": catalogue.SAME_SONG,
+        "threshold": SAME_SONG,
     }
     return MatchRevision(content, content_hash(dumped), music, provenance, song_list_id)
 

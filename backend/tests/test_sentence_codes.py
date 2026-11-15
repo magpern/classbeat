@@ -33,6 +33,7 @@ def test_every_spotify_category_and_song_sentence_has_a_code() -> None:
     assert {f"spotify.{c}" for c in CATEGORIES} <= codes
     assert {f"job.{c}" for c in SONG_SENTENCES} <= codes
     assert {"spotify.unknown", "swedebeat.wait", "swedebeat.stopped"} <= codes
+    assert "swedebeat.unavailable" in codes  # ADR 0035 section 5
 
 
 def test_the_text_is_unchanged_and_the_numbers_are_the_wait() -> None:
