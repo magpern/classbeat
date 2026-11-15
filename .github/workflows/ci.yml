@@ -7,8 +7,8 @@ name: CI
 # has no merge queue); its code is kept in case one returns.
 on:
   # Owner direction 2026-11-15: a draft PR builds nothing. Parallel PRs wait as drafts and are marked
-  # ready one at a time, so rebasing a queued draft costs no build. A draft cannot merge, and marking
-  # it ready (`ready_for_review`) runs everything its diff needs before the required `ci` gate passes.
+  # ready one at a time, so rebasing a queued draft costs no build. The required `ci` gate fails on a
+  # draft; marking it ready (`ready_for_review`) runs everything its diff needs.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
@@ -985,7 +985,11 @@ jobs:
 
       - name: Draft pull request
         if: github.event.pull_request.draft == true
-        run: echo "Draft PR, so nothing ran. Mark it ready for review to run CI."
+        # Fails on purpose: a draft's gate must never be green, so a green `ci` on a commit always
+        # comes from a real run (marking the PR ready starts one).
+        run: |
+          echo "::error::Draft PR, so nothing ran. Mark it ready for review to run CI."
+          exit 1
 
       - name: All needed jobs passed
         if: github.event.pull_request.draft != true

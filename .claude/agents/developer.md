@@ -24,7 +24,7 @@ and the roadmap sections and ADRs it names before writing code.
   tested), `Closes #<issue>`, and the footer
   `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 - When the Architect runs several Developers at once, open the PR as a **draft** (`gh pr create --draft`).
-  CI skips drafts (owner, 2026-11-15), so run the lint, type checks and targeted tests locally before
+  CI skips drafts and its `ci` gate shows red there (owner, 2026-11-15), so run the lint, type checks and targeted tests locally before
   pushing. The Architect marks drafts ready one at a time, in merge order, and you rebase on `main` only
   when asked. A ready PR follows the next line.
 - Wait for CI (`gh pr checks <n> --watch`) and fix failures.
