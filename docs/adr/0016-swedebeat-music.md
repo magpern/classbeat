@@ -220,7 +220,8 @@ request in flight, a per-user job limit) and writes an immutable revision `kind 
 (`content` at most 64 KB, versioned): per song `{position, status: found | unsure | missing, wanted,
 swedebeat?: {title, artist, duration}}`, the totals and `swedebeat_sec`. `found` keeps the library's
 0.85 threshold; `unsure` is never treated as found. Catalogue `reference` ids are not stored (nothing uses
-them; the mix is built by hand).
+them; the mix is built by hand). *Note 2026-11-15:* ADR 0036 §3.4 (SR C2, #1093) now stores the
+`reference` and the BPM on each found or unsure hit, owned and deleted with the class, never to a model.
 
 **What is sent to Swedebeat**: the title and artist of each song, as the Swedebeat app itself does for a
 Spotify list, and the user's token. No Spotify id, class, brief or BPM. Titles and artists are

@@ -43,6 +43,7 @@ from classbeat.swedebeat_gateway.answer import read_capped
 from classbeat.swedebeat_gateway.download_file import (
     Download,
     Refused,
+    close,
     create,
     discard,
     receive,
@@ -252,7 +253,8 @@ async def download_track(
     except (httpx.HTTPError, TimeoutError, OSError):
         outcome = None
     finally:  # a cancel too: no partial file is left behind
-        out.close()
+        if not close(out) and isinstance(outcome, Download):
+            outcome = Refused(None, "internal")  # the last bytes may not be on disk
         if not isinstance(outcome, Download):
             discard(dest_path)  # the file this call made, never another
     if refusal is not None:

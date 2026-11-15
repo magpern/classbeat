@@ -15,6 +15,7 @@ import traceback
 from collections.abc import Iterator
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from typing import BinaryIO
 
 import httpx
 import pytest
@@ -27,6 +28,7 @@ from classbeat.egress_gateway import (
     clamp_seconds,
     swedebeat_gateway_test_client,
 )
+from classbeat.swedebeat_gateway import client as client_module
 from classbeat.swedebeat_gateway.client import Download, GatewayFailure, download_track
 from classbeat.swedebeat_gateway.track_policy import DOWNLOAD_MAX
 from gatewaycore import FIXTURE_MP3, FakeGateway, make_handler, reference_of
@@ -355,6 +357,38 @@ async def test_a_cancelled_download_leaves_no_file(fake: FakeGateway, private: P
     with pytest.raises(TimeoutError):
         await asyncio.wait_for(fetch(fake, dest), timeout=0.3)
     assert gone(dest)
+
+
+class _CloseFails:
+    """A file whose close closes it and then fails, as a flush onto a full disk would."""
+
+    def __init__(self, inner: BinaryIO) -> None:
+        self._inner = inner
+
+    def write(self, data: bytes) -> int:
+        return self._inner.write(data)
+
+    def flush(self) -> None:
+        self._inner.flush()
+
+    def close(self) -> None:
+        self._inner.close()
+        raise OSError(28, "No space left on device")
+
+
+@pytest.mark.parametrize("injection", [None, {"kind": "status", "status": 404}])
+async def test_a_close_that_fails_is_internal_and_leaves_no_file(
+    fake: FakeGateway,
+    private: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    injection: dict[str, object] | None,
+) -> None:
+    real = client_module.create
+    monkeypatch.setattr(client_module, "create", lambda path: _CloseFails(real(path)))
+    if injection is not None:
+        fake.inject(path=ROUTE, **injection)  # pyright: ignore[reportArgumentType]
+    failure = await fails(fake, private / "t.mp3")
+    assert failure.category == ("internal" if injection is None else "track_unavailable")
 
 
 # --- The e2e fake serves the route --------------------------------------------------------------

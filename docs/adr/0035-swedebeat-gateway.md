@@ -343,6 +343,8 @@ retention and isolation. Only the catalogue step changes:
   - `reference`, `bpm`, `selected`, the totals, `playlist_name`, every other field and every URL are
     dropped inside the parser, and nothing from the answer is ever fetched.
   - The catalogue's `reference` is not stored (ADR 0016 §5: the mix is built by hand).
+    *Note 2026-11-15:* superseded by ADR 0036 §3.4 (SR C2, #1093): the match hit now keeps the
+    `reference` and the BPM, owned and deleted with the class, never to a model or the class API.
 - **classbeat's own verdict** stays the library's 0.85:
   - `found` only when the gateway says `found` **and** `score >= SAME_SONG` (0.85), with a usable
     track;

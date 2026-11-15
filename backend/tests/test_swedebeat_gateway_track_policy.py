@@ -94,6 +94,7 @@ def test_a_declared_length_is_digits_or_refused() -> None:
         (201, False, "invalid_response"),
     ],
 )
+@pytest.mark.usefixtures("frozen_rate_windows")  # it names rate_limited (test_rate_window_guard)
 def test_the_download_status_table(status: int, unknown_client: bool, category: str) -> None:
     assert download_category(status, unknown_client=unknown_client) == category
 

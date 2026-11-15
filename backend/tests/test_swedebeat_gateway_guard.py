@@ -204,6 +204,8 @@ CLIENT = "classbeat.swedebeat_gateway.client"
         (CLIENT, 'PATH = "/auth/logout"'),
         ("classbeat.studio", 'from classbeat.swedebeat_gateway import client\nP = "/health"'),
         ("classbeat.anything", 'URL = "http://gw/playlists/1"'),
+        ("classbeat.anything", 'P = "/tracks/x/download?preview=true"'),  # not a sender
+        ("classbeat.anything", 'P = "/tracks/{reference}"'),
     ],
 )
 def test_the_guard_fails_on_a_forbidden_path_or_method(module: str, source: str) -> None:

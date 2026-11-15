@@ -191,8 +191,12 @@ REVISION_KINDS: Mapping[str, str] = MappingProxyType(
         "song_list": "Spotify-derived: the chosen songs' ids, titles, artists and cover URLs",
         # ADR 0016 section 5 (B1): the match of one ``song_list`` against Swedebeat's catalogue.
         # Spotify-derived (each song's title and artist) and Swedebeat's (the matched title,
-        # artist and length); no catalogue id, no URL, no token. Never cached across classes or
-        # users: the job dedupes in memory only.
-        "swedebeat_match": "Spotify-derived titles and artists; Swedebeat titles, artists, lengths",
+        # artist, length and, since SR C2 (ADR 0036 section 3.4), the catalogue reference and
+        # BPM: owned, deleted with the class, never in a model input or the class API); no URL,
+        # no token. Never cached across classes or users: the job dedupes in memory only.
+        "swedebeat_match": (
+            "Spotify-derived titles and artists; Swedebeat titles, artists, lengths, "
+            "catalogue references and BPMs"
+        ),
     }
 )

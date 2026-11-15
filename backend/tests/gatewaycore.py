@@ -1,7 +1,6 @@
 """A fake of the SwedeBeat gateway (ADR 0035 section 9): ``/auth/login``, ``/auth/session``,
 ``/catalog/match`` and ``GET /tracks/{reference}/download`` (ADR 0036 section 8) of the contract
 (``docs/api.md`` of ``magpern/sb-gateway-service``), for the
-(``docs/api.md`` of ``magpern/sb-gateway-service``), for the
 backend tests and the e2e stack.
 
 TEST ONLY, public test values only, no network of its own. The same module serves both:

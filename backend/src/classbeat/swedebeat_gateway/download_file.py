@@ -12,7 +12,8 @@ capped, raw read of the answer into it. ``client.download_track`` is its only ca
   read raw (``aiter_raw``: httpx would decode gzip on read, and a small answer can decode to
   gigabytes) and counted: past the cap the read stops at once (``track_too_large``), whatever
   ``Content-Length`` said. An empty body or one shorter or longer than declared is
-  ``invalid_response``. A write that fails is ``internal``. The sha256 is taken as it is written.
+  ``invalid_response``. A write, a flush or the close that fails is ``internal``, and the file
+  is removed all the same. The sha256 is taken as it is written.
 
 Nothing here logs, and no message carries the reference, the bearer or the key.
 """
@@ -79,9 +80,19 @@ def create(dest_path: Path) -> BinaryIO:
     return os.fdopen(fd, "wb")
 
 
+def close(out: BinaryIO) -> bool:
+    """Close the file; ``False`` when that fails (its buffered bytes may be lost): the caller
+    then counts the download as ``internal`` and discards the file. Never raises."""
+    try:
+        out.close()
+    except OSError:
+        return False
+    return True
+
+
 def discard(dest_path: Path) -> None:
     """Remove the file ``create`` made (a refused or cut download leaves nothing behind)."""
-    with contextlib.suppress(FileNotFoundError):
+    with contextlib.suppress(OSError):  # gone already, or nothing more can be done
         os.unlink(dest_path)
 
 
