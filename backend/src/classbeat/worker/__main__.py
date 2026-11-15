@@ -38,6 +38,8 @@ from classbeat.egress_gateway import install_swedebeat_gateway_origin
 from classbeat.log import configure_logging
 from classbeat.player.delivery import run_player_delivery
 from classbeat.playlists.runtime import playlists_runtime
+from classbeat.swedebeat_studio import config as studio_config
+from classbeat.swedebeat_studio import kind as studio_kind  # noqa: F401 - registers studio_songs
 from classbeat.worker.loop import run_worker, worker_id
 
 
@@ -83,6 +85,9 @@ async def _run(settings: Settings, signer: EventSigner | None = None) -> None:
     swedebeat_match.configure(swedebeat_match.MatchConfig.from_settings(settings, keyring))
     # swedebeat_verify_mix (B2): the switch again, and the key ring that opens MOWL.
     swedebeat_handoff.configure(swedebeat_handoff.HandoffConfig.from_settings(settings, keyring))
+    # studio_songs (ADR 0036): CLASSBEAT_SWEDEBEAT_STUDIO (off unless the worker has it too: a
+    # queued job then ends feature_off); it shares swedebeat_match's gateway and key ring.
+    studio_config.configure(studio_config.StudioConfig.from_settings(settings))
     stop = asyncio.Event()
     # Before "worker started" is logged, so a signal after that line is always handled.
     _install_signal_handlers(asyncio.get_running_loop(), stop)

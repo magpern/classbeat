@@ -69,6 +69,9 @@ KIND_NAME = re.compile(r"^[a-z_]{1,40}$")  # the jobs.kind check of migration 00
 # ADR 0008 section 1: the song-picking kinds, reserved by migration 0006 (issue SP1); their code
 # and registration are issues SJ1 to SJ3.
 SONG_KIND_NAMES: Final = ("design_with_songs", "revise_songs")
+# The kinds that search Spotify and write the pool playlist: the song kinds and the studio's
+# ``studio_songs`` (ADR 0036 section 3), for ``pool_busy`` and the cover read's gate.
+POOL_KIND_NAMES: Final = (*SONG_KIND_NAMES, "studio_songs")
 STAGE_NAME = KIND_NAME
 REASON = KIND_NAME  # a refusal reason is a code, never text from the input
 

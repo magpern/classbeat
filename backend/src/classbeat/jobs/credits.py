@@ -114,6 +114,22 @@ _SETTLE = text(
 )
 
 
+async def settle_in(
+    db: AsyncSession, ctx: UserContext, ledger: CreditLedger, job_id: UUID
+) -> str | None:
+    """Settle one ended job in the caller's transaction (the owner's ``user_session``): what
+    ``settle_one`` does, for a caller that ends a job and creates its successor at once (a studio
+    action, ADR 0036 section 3.3), so the ended job's credit is released before the new one is
+    reserved. ``None`` when it was settled already (or is not ended)."""
+    params = {"job_id": job_id, "owner_id": ctx.user_id}
+    state = (await db.execute(_SETTLE, params)).scalar_one_or_none()
+    if state == "committed":
+        await ledger.commit(db, ctx, job_id)
+    elif state == "released":
+        await ledger.release(db, ctx, job_id)
+    return state
+
+
 async def settle_one(
     factory: Factory, ledger: CreditLedger, owner_id: UUID, job_id: UUID
 ) -> str | None:

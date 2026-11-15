@@ -20,6 +20,7 @@
 #   SMTP_HOST, SMTP_SENDER                                                                required
 #   SMTP_PORT, SMTP_TLS, SMTP_USERNAME, ADMIN_EMAILS, SIGNUP_MODE, CONNECTION_KEK_ID,
 #   MODEL_PROVIDER, DEEPSEEK_ENABLED, SWEDEBEAT_ENABLED, RUNNING_ENABLED, SMTP_CA_FILE    optional
+#   SWEDEBEAT_STUDIO (ADR 0036 section 10, default empty: the studio off)               optional
 #   MOWL_QR_ENABLED (ADR 0024, ADR 0028, default true; false turns the QR off)           optional
 #   LOCALES (ADR 0023, default en,sv,da: the languages offered; a subset of the build)    optional
 #   OAUTH_GOOGLE_CLIENT_ID, OAUTH_GITHUB_CLIENT_ID, OAUTH_MICROSOFT_CLIENT_ID (not secret),
@@ -182,6 +183,9 @@ services:
       # with a port, else https to a public name; web and worker refuse to start on another).
       # Unset, SwedeBeat is unavailable. Its client key is the secret file swedebeat_gateway_key.
       CLASSBEAT_SWEDEBEAT_GATEWAY_URL: ${SWEDEBEAT_GATEWAY_URL:-}
+      # ADR 0036 section 10: the SwedeBeat studio, a comma list (design, swedebeat_playlist,
+      # swedebeat_mix, mowl); empty is off. Each value's gates are the owner's.
+      CLASSBEAT_SWEDEBEAT_STUDIO: ${SWEDEBEAT_STUDIO:-}
       # ADR 0018: off unless the owner switches running classes on.
       CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
       # ADR 0007 (soundless classes): off unless the owner switches them on, after the live checks.
@@ -268,6 +272,8 @@ services:
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
       # ADR 0035 section 1: the gateway's origin (the match), the same value as web's.
       CLASSBEAT_SWEDEBEAT_GATEWAY_URL: ${SWEDEBEAT_GATEWAY_URL:-}
+      # ADR 0036 section 10: the studio, the same value as web's (a queued studio job checks it).
+      CLASSBEAT_SWEDEBEAT_STUDIO: ${SWEDEBEAT_STUDIO:-}
       # ADR 0018: a queued running design or revise checks the switch again; the same as web's.
       CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
       # ADR 0007 (soundless classes): a queued soundless design checks the switch again.

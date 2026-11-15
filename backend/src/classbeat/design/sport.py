@@ -132,7 +132,7 @@ _CLASS_SPORT = text(
     "SELECT (c.brief IS NOT NULL OR EXISTS (SELECT 1 FROM class_revisions r "
     "WHERE r.owner_id = c.owner_id AND r.class_id = c.id)) AS fixed, "
     "coalesce(c.brief, (SELECT j.input -> 'brief' FROM jobs j WHERE j.owner_id = c.owner_id "
-    "AND j.class_id = c.id AND j.kind IN ('design_draft', 'design_with_songs') "
+    "AND j.class_id = c.id AND j.kind IN ('design_draft', 'design_with_songs', 'studio_songs') "
     "ORDER BY j.created_at DESC LIMIT 1)) AS brief "
     "FROM classes c WHERE c.owner_id = :owner_id AND c.id = :class_id"
 )

@@ -145,16 +145,22 @@ class ChooseContext:
     plan: PickPlan
     tracks: tuple[PoolTrack, ...]
     omitted_no_bpm: int
+    upper: float = TOLERANCE  # the total's upper bound over the target (the studio relaxes it)
 
     @classmethod
     def build(
-        cls, plan: PickPlan, tracks: Sequence[PoolTrack], omitted_no_bpm: int
+        cls,
+        plan: PickPlan,
+        tracks: Sequence[PoolTrack],
+        omitted_no_bpm: int,
+        *,
+        upper: float = TOLERANCE,
     ) -> "ChooseContext":
         """``JobFailure('pool_too_small')`` (not retried) when fewer usable tracks than songs
         to find remain after the tracks without a BPM are left out."""
         if len(tracks) < plan.slots:
             raise JobFailure("pool_too_small")
-        return cls(plan, tuple(tracks), omitted_no_bpm)
+        return cls(plan, tuple(tracks), omitted_no_bpm, upper)
 
     def facts(self) -> dict[str, Any]:
         p = self.plan
@@ -239,8 +245,8 @@ def check_list(ctx: ChooseContext, args: SongList) -> ChosenList:
     errors += replace_rules(plan, songs, kept_at)
     total = total_sec([c.length_sec for c in chosen])
     target = plan.target_sec
-    if not within_tolerance(total, target):
-        low, high = round(target * (1 - TOLERANCE)), round(target * (1 + TOLERANCE))
+    if not within_tolerance(total, target, upper=ctx.upper):
+        low, high = round(target * (1 - TOLERANCE)), round(target * (1 + ctx.upper))
         errors.append(
             f"the total time is {round(total)} s (lengths less {CROSSFADE_SEC:g} s per change of "
             f"song); it must be between {low} and {high} s"

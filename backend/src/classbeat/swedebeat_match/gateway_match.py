@@ -62,8 +62,8 @@ def dedupe_key(title: str, artist: str) -> tuple[str, str]:
     return clean_title(title).casefold(), artist.strip().casefold()
 
 
-class _Match:
-    """One job's match: its run, the opened bearer and the client key."""
+class Matcher:
+    """One job's match: its run, the opened bearer and the client key (the studio's too)."""
 
     def __init__(
         self, run: JobRun, bearer: SwedebeatBearer, key: SecretStr, what: str = "match"
@@ -126,7 +126,7 @@ async def call_failure(
 ) -> JobFailure:
     """The job failure for a failed gateway call other than the match (the track download):
     the same confirmation of a refused bearer and the same connection rules."""
-    return await _Match(run, bearer, key, what="download").fail(category, retry_after)
+    return await Matcher(run, bearer, key, what="download").fail(category, retry_after)
 
 
 async def match_songs(
@@ -145,7 +145,7 @@ async def match_songs(
         if slot == len(tracks):
             tracks.append(pair)
         slots.append(slot)
-    items = await _Match(run, bearer, key).answer(tracks) if tracks else []
+    items = await Matcher(run, bearer, key).answer(tracks) if tracks else []
     matched: list[MatchedSong] = []
     for position, (song, slot) in enumerate(zip(songs, slots, strict=True), 1):
         found = verdict(None if slot is None else items[slot])

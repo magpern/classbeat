@@ -47,6 +47,7 @@ pytest_plugins = [
     "updatetools",
     "playlisttools",
     "songtools",
+    "studiotools",
     "plantools",
     "admintools",
     "billingtools",

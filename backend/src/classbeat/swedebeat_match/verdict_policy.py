@@ -17,7 +17,7 @@ Pure: no I/O.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final, Literal
 
 from classbeat.swedebeat_gateway.match_policy import MAX_TEXT, Item
@@ -38,6 +38,8 @@ class Verdict:
     duration: int | None = None  # whole seconds from 1, or None
     reference: str | None = None  # the catalogue's, for the download; never a model's input
     bpm: float | None = None
+    # The gateway's score (the studio's swap record, ADR 0036 section 3.3); not compared.
+    score: float | None = field(default=None, compare=False)
 
 
 def sent_pair(title: str, artist: str) -> tuple[str, str] | None:
@@ -57,7 +59,9 @@ def verdict(item: Item | None) -> Verdict:
     duration = track.duration if track.duration else None
     sure = item.status == "found" and item.score is not None and item.score >= SAME_SONG
     status: Status = "found" if sure else "unsure"
-    return Verdict(status, track.title, track.artist, duration, track.reference, track.bpm)
+    return Verdict(
+        status, track.title, track.artist, duration, track.reference, track.bpm, item.score
+    )
 
 
 def all_missing(items: Sequence[Item]) -> bool:
