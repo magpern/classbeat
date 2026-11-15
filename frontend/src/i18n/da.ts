@@ -2116,6 +2116,112 @@ const da: Catalogue = {
   'job.failure.player_ahead.detail': 'Afspilleren var foran. Vi er indhentet, så tryk på Send til afspilleren igen.',
   'job.failure.player_conflict.title': 'Holdet blev ændret i afspilleren',
   'job.failure.player_conflict.detail': 'Intet blev erstattet. Send til afspilleren igen for at erstatte afspillerens kopi med denne version.',
+  'studio.title':
+    'Sange fra SwedeBeat',
+  'studio.loading':
+    'Henter sangene…',
+  'studio.loadFailed':
+    'Sangene kunne ikke hentes. Genindlæs siden og prøv igen.',
+  'studio.list':
+    'Sange i SwedeBeats versioner',
+  'studio.length':
+    'Mixet bliver {length} langt med SwedeBeats versioner mod {target} planlagt.',
+  'studio.facts':
+    '{duration}, {bpm} BPM',
+  'studio.has':
+    'SwedeBeat har: {title}, {artist}',
+  'studio.gap':
+    'Hul',
+  'studio.gapText':
+    'SwedeBeat har ingen version af denne sang. Et hul kan aldrig komme med i et mix.',
+  'studio.swap':
+    '{original} → {replacement}',
+  'studio.swapReason.missing':
+    'Byttet, fordi SwedeBeat ikke har originalen.',
+  'studio.swapReason.unsure':
+    'Byttet, fordi SwedeBeats version måske ikke er den samme sang.',
+  'studio.swapReason.asked':
+    'Byttet, fordi du bad om en anden sang.',
+  'studio.swapUndone':
+    'Du fortrød byttet. {original} er et hul nu.',
+  'studio.undo':
+    'Fortryd',
+  'studio.undoLabel':
+    'Fortryd byttet af {title}',
+  'studio.another':
+    'Bed om en anden',
+  'studio.anotherLabel':
+    'Bed om en anden sang i stedet for {title}',
+  'studio.working':
+    'Arbejder…',
+  'studio.gaps':
+    { one: 'Én sang er et hul, så listen kan ikke godkendes. Bed om en anden sang, eller lav et nyt valg.', other: '{count} sange er huller, så listen kan ikke godkendes. Bed om andre sange, eller lav et nyt valg.' },
+  'studio.changes':
+    'Sangændringer i denne klasse: {count} af {limit}.',
+  'studio.changesNote':
+    'Fortryd, Bed om en anden og Byt alligevel tæller hver som én sangændring i klassen, også når de mislykkes.',
+  'studio.credit':
+    'Fortryd, Bed om en anden og Byt alligevel beholder klassens kredit. Et nyt valg koster en klassekredit.',
+  'studio.newPick':
+    'Lav et nyt valg',
+  'studio.suspected.title':
+    'SwedeBeat fandt ingen af sangene',
+  'studio.suspected.text':
+    'SwedeBeat fandt ingen af de {sent} sange. Det kan være en driftsforstyrrelse, ikke et tegn på, at sangene mangler.',
+  'studio.suspected.hint':
+    'Prøv igen senere stopper her og ændrer intet. Byt alligevel erstatter sangene med andre, selv om SwedeBeat måske er nede.',
+  'studio.tryLater':
+    'Prøv igen senere',
+  'studio.swapAnyway':
+    'Byt alligevel',
+  'studio.stopped':
+    'Stoppet. Intet blev ændret. Prøv igen senere fra klassens side.',
+  'studio.ended.title':
+    'Ingen sangliste venter på dig',
+  'studio.ended.noList':
+    'Ændringen gav ikke en liste, du kan godkende. Den tidligere liste blev annulleret, da du bad om den.',
+  'studio.ended.newPick':
+    'Lav et nyt valg for at få en liste, du kan godkende. Et nyt valg koster en klassekredit.',
+  'studio.reason.revision_limit':
+    'Klassen har nået grænsen for sangændringer. Lav et nyt valg i stedet.',
+  'studio.reason.revision_limit_counts':
+    'Klassen har brugt {count} af sine {limit} sangændringer. Lav et nyt valg i stedet.',
+  'studio.reason.quota':
+    'Din plan har ikke plads til dette lige nu. Listen blev ladt, som den var.',
+  'studio.reason.list_has_gap':
+    'Listen har stadig et hul og kan ikke godkendes. Bed om en anden sang, eller lav et nyt valg.',
+  'studio.reason.invalid_input':
+    'Listen er ændret, eller handlingen passer ikke længere. Genindlæs siden.',
+  'studio.reason.not_found':
+    'Listen findes ikke længere, eller studiet er slået fra. Genindlæs siden.',
+  'studio.reason.idempotency':
+    'Anmodningen blev allerede brugt til noget andet. Genindlæs siden og prøv igen.',
+  'songs.approve.list_has_gap':
+    'Et hul kan ikke komme med i mixet. Bed om en anden sang, eller lav et nyt valg.',
+  'job.failure.suspected_unavailable.title':
+    'SwedeBeat kan være nede',
+  'job.failure.suspected_unavailable.detail':
+    'SwedeBeat fandt ingen af sangene, hvilket kan være en driftsforstyrrelse. Prøv igen senere, eller byt alligevel.',
+  'job.failure.list_has_gap.title':
+    'Listen har et hul',
+  'job.failure.list_has_gap.detail':
+    'Et hul kan ikke komme med i et mix. Bed om en anden sang, eller lav et nyt valg.',
+  'job.failure.track_too_large.title':
+    'En sangfil er for stor',
+  'job.failure.track_too_large.detail':
+    'SwedeBeats fil til en sang er over størrelsesgrænsen. Byt sangen, eller lav et nyt valg.',
+  'job.failure.track_unavailable.title':
+    'En sangfil findes ikke',
+  'job.failure.track_unavailable.detail':
+    'SwedeBeat har ingen fil til en sang. Byt sangen, eller lav et nyt valg.',
+  'job.failure.track_limit.title':
+    'Dagens grænse for sangfiler er nået',
+  'job.failure.track_limit.detail':
+    'Du har brugt dagens grænse for download af sangfiler. Prøv igen i morgen.',
+  'job.failure.revision_limit.title':
+    'Grænsen for sangændringer er nået',
+  'job.failure.revision_limit.detail':
+    'Klassen har brugt alle sine sangændringer. Lav et nyt valg i stedet.',
 }
 
 export default da

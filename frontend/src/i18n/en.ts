@@ -1994,6 +1994,112 @@ export const en = {
   'job.failure.player_ahead.detail': 'The player was ahead. We caught up, so press Send to player again.',
   'job.failure.player_conflict.title': 'This class changed on the player',
   'job.failure.player_conflict.detail': 'Nothing was replaced. Send to player again to replace the player’s copy with this version.',
+  'studio.title':
+    'Songs from SwedeBeat',
+  'studio.loading':
+    'Loading the songs…',
+  'studio.loadFailed':
+    'The songs could not be loaded. Reload the page and try again.',
+  'studio.list':
+    'Songs in SwedeBeat’s versions',
+  'studio.length':
+    'The mix would be {length} long by SwedeBeat’s versions, against {target} planned.',
+  'studio.facts':
+    '{duration}, {bpm} BPM',
+  'studio.has':
+    'SwedeBeat has: {title}, {artist}',
+  'studio.gap':
+    'Gap',
+  'studio.gapText':
+    'SwedeBeat has no version of this song. A gap can never go into a mix.',
+  'studio.swap':
+    '{original} → {replacement}',
+  'studio.swapReason.missing':
+    'Swapped because SwedeBeat does not have the original.',
+  'studio.swapReason.unsure':
+    'Swapped because SwedeBeat’s version may not be the same song.',
+  'studio.swapReason.asked':
+    'Swapped because you asked for another song.',
+  'studio.swapUndone':
+    'You undid this swap. {original} is a gap now.',
+  'studio.undo':
+    'Undo',
+  'studio.undoLabel':
+    'Undo the swap of {title}',
+  'studio.another':
+    'Ask for another',
+  'studio.anotherLabel':
+    'Ask for another song instead of {title}',
+  'studio.working':
+    'Working…',
+  'studio.gaps':
+    { one: 'One song is a gap, so this list cannot be approved. Ask for another song, or start a new pick.', other: '{count} songs are gaps, so this list cannot be approved. Ask for other songs, or start a new pick.' },
+  'studio.changes':
+    'Song changes in this class: {count} of {limit}.',
+  'studio.changesNote':
+    'Undo, Ask for another and Swap anyway each count as one song change of this class, also when they fail.',
+  'studio.credit':
+    'Undo, Ask for another and Swap anyway keep this class’s credit. A new pick costs a class credit.',
+  'studio.newPick':
+    'Start a new pick',
+  'studio.suspected.title':
+    'SwedeBeat found none of these songs',
+  'studio.suspected.text':
+    'SwedeBeat found none of the {sent} songs. This may be an outage, not a sign that the songs are missing.',
+  'studio.suspected.hint':
+    'Try again later stops this and changes nothing. Swap anyway replaces the songs with others, even though SwedeBeat may be down.',
+  'studio.tryLater':
+    'Try again later',
+  'studio.swapAnyway':
+    'Swap anyway',
+  'studio.stopped':
+    'Stopped. Nothing was changed. Try again later from the class page.',
+  'studio.ended.title':
+    'No song list is waiting for you',
+  'studio.ended.noList':
+    'This change did not give a list you can approve. The earlier list was cancelled when you asked.',
+  'studio.ended.newPick':
+    'Start a new pick to get a list you can approve. A new pick costs a class credit.',
+  'studio.reason.revision_limit':
+    'This class has reached its limit of song changes. Start a new pick instead.',
+  'studio.reason.revision_limit_counts':
+    'This class has used {count} of its {limit} song changes. Start a new pick instead.',
+  'studio.reason.quota':
+    'Your plan has no room for this right now. The list was left as it was.',
+  'studio.reason.list_has_gap':
+    'This list still has a gap, so it cannot be approved. Ask for another song, or start a new pick.',
+  'studio.reason.invalid_input':
+    'This list has changed, or the action no longer fits it. Reload the page.',
+  'studio.reason.not_found':
+    'This list no longer exists, or the studio is off. Reload the page.',
+  'studio.reason.idempotency':
+    'That request was already used for something else. Reload the page and try again.',
+  'songs.approve.list_has_gap':
+    'This list has a gap, which cannot go into a mix. Ask for another song, or start a new pick.',
+  'job.failure.suspected_unavailable.title':
+    'SwedeBeat may be down',
+  'job.failure.suspected_unavailable.detail':
+    'SwedeBeat found none of the songs, which may be an outage. Try again later, or swap anyway.',
+  'job.failure.list_has_gap.title':
+    'The list has a gap',
+  'job.failure.list_has_gap.detail':
+    'A gap cannot go into a mix. Ask for another song, or start a new pick.',
+  'job.failure.track_too_large.title':
+    'A song file is too large',
+  'job.failure.track_too_large.detail':
+    'SwedeBeat’s file for one song is over the size limit. Swap that song, or start a new pick.',
+  'job.failure.track_unavailable.title':
+    'A song file is not available',
+  'job.failure.track_unavailable.detail':
+    'SwedeBeat has no file for one song. Swap that song, or start a new pick.',
+  'job.failure.track_limit.title':
+    'Today’s limit of song files is reached',
+  'job.failure.track_limit.detail':
+    'You have used today’s limit of song file downloads. Try again tomorrow.',
+  'job.failure.revision_limit.title':
+    'Song change limit reached',
+  'job.failure.revision_limit.detail':
+    'This class has used all its song changes. Start a new pick instead.',
 } as const satisfies Record<string, Message>
 
 export type Plural = {

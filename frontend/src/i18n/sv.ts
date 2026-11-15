@@ -2128,6 +2128,112 @@ const sv: Catalogue = {
   'job.failure.player_ahead.detail': 'Spelaren låg före. Vi har hämtat ikapp, så tryck på Skicka till spelaren igen.',
   'job.failure.player_conflict.title': 'Passet ändrades i spelaren',
   'job.failure.player_conflict.detail': 'Inget ersattes. Skicka till spelaren igen för att ersätta spelarens kopia med den här versionen.',
+  'studio.title':
+    'Låtar från SwedeBeat',
+  'studio.loading':
+    'Hämtar låtarna…',
+  'studio.loadFailed':
+    'Låtarna kunde inte hämtas. Ladda om sidan och försök igen.',
+  'studio.list':
+    'Låtar i SwedeBeats versioner',
+  'studio.length':
+    'Mixen blir {length} lång med SwedeBeats versioner, mot {target} planerat.',
+  'studio.facts':
+    '{duration}, {bpm} BPM',
+  'studio.has':
+    'SwedeBeat har: {title}, {artist}',
+  'studio.gap':
+    'Lucka',
+  'studio.gapText':
+    'SwedeBeat har ingen version av den här låten. En lucka kan aldrig komma med i en mix.',
+  'studio.swap':
+    '{original} → {replacement}',
+  'studio.swapReason.missing':
+    'Utbytt eftersom SwedeBeat inte har originalet.',
+  'studio.swapReason.unsure':
+    'Utbytt eftersom SwedeBeats version kanske inte är samma låt.',
+  'studio.swapReason.asked':
+    'Utbytt eftersom du bad om en annan låt.',
+  'studio.swapUndone':
+    'Du ångrade bytet. {original} är en lucka nu.',
+  'studio.undo':
+    'Ångra',
+  'studio.undoLabel':
+    'Ångra bytet av {title}',
+  'studio.another':
+    'Be om en annan',
+  'studio.anotherLabel':
+    'Be om en annan låt i stället för {title}',
+  'studio.working':
+    'Arbetar…',
+  'studio.gaps':
+    { one: 'En låt är en lucka, så listan kan inte godkännas. Be om en annan låt eller gör ett nytt val.', other: '{count} låtar är luckor, så listan kan inte godkännas. Be om andra låtar eller gör ett nytt val.' },
+  'studio.changes':
+    'Låtändringar i den här klassen: {count} av {limit}.',
+  'studio.changesNote':
+    'Ångra, Be om en annan och Byt ändå räknas var och en som en låtändring i klassen, också när de misslyckas.',
+  'studio.credit':
+    'Ångra, Be om en annan och Byt ändå behåller klassens kredit. Ett nytt val kostar en klasskredit.',
+  'studio.newPick':
+    'Gör ett nytt val',
+  'studio.suspected.title':
+    'SwedeBeat hittade ingen av låtarna',
+  'studio.suspected.text':
+    'SwedeBeat hittade ingen av de {sent} låtarna. Det kan vara ett avbrott, inte ett tecken på att låtarna saknas.',
+  'studio.suspected.hint':
+    'Försök igen senare avbryter och ändrar inget. Byt ändå ersätter låtarna med andra, även om SwedeBeat kanske ligger nere.',
+  'studio.tryLater':
+    'Försök igen senare',
+  'studio.swapAnyway':
+    'Byt ändå',
+  'studio.stopped':
+    'Avbrutet. Inget ändrades. Försök igen senare från klassens sida.',
+  'studio.ended.title':
+    'Ingen låtlista väntar på dig',
+  'studio.ended.noList':
+    'Ändringen gav ingen lista du kan godkänna. Den tidigare listan avbröts när du bad om den.',
+  'studio.ended.newPick':
+    'Gör ett nytt val för att få en lista du kan godkänna. Ett nytt val kostar en klasskredit.',
+  'studio.reason.revision_limit':
+    'Klassen har nått gränsen för låtändringar. Gör ett nytt val i stället.',
+  'studio.reason.revision_limit_counts':
+    'Klassen har använt {count} av sina {limit} låtändringar. Gör ett nytt val i stället.',
+  'studio.reason.quota':
+    'Din plan har inte utrymme för det här just nu. Listan lämnades som den var.',
+  'studio.reason.list_has_gap':
+    'Listan har fortfarande en lucka och kan inte godkännas. Be om en annan låt eller gör ett nytt val.',
+  'studio.reason.invalid_input':
+    'Listan har ändrats, eller åtgärden passar inte längre. Ladda om sidan.',
+  'studio.reason.not_found':
+    'Listan finns inte längre, eller studion är avstängd. Ladda om sidan.',
+  'studio.reason.idempotency':
+    'Begäran användes redan för något annat. Ladda om sidan och försök igen.',
+  'songs.approve.list_has_gap':
+    'En lucka kan inte komma med i mixen. Be om en annan låt eller gör ett nytt val.',
+  'job.failure.suspected_unavailable.title':
+    'SwedeBeat kan ligga nere',
+  'job.failure.suspected_unavailable.detail':
+    'SwedeBeat hittade ingen av låtarna, vilket kan vara ett avbrott. Försök igen senare eller byt ändå.',
+  'job.failure.list_has_gap.title':
+    'Listan har en lucka',
+  'job.failure.list_has_gap.detail':
+    'En lucka kan inte komma med i en mix. Be om en annan låt eller gör ett nytt val.',
+  'job.failure.track_too_large.title':
+    'En låtfil är för stor',
+  'job.failure.track_too_large.detail':
+    'SwedeBeats fil för en låt är över storleksgränsen. Byt ut låten eller gör ett nytt val.',
+  'job.failure.track_unavailable.title':
+    'En låtfil finns inte',
+  'job.failure.track_unavailable.detail':
+    'SwedeBeat har ingen fil för en låt. Byt ut låten eller gör ett nytt val.',
+  'job.failure.track_limit.title':
+    'Dagens gräns för låtfiler är nådd',
+  'job.failure.track_limit.detail':
+    'Du har använt dagens gräns för nedladdning av låtfiler. Försök igen i morgon.',
+  'job.failure.revision_limit.title':
+    'Gränsen för låtändringar är nådd',
+  'job.failure.revision_limit.detail':
+    'Klassen har använt alla sina låtändringar. Gör ett nytt val i stället.',
 }
 
 export default sv

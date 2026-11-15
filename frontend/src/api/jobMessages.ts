@@ -58,6 +58,13 @@ const FAILURES: Record<string, FailureKeys> = {
   // Send to player (ADR 0034 section 5): the player was ahead, or held another class under our number.
   player_ahead: { title: 'job.failure.player_ahead.title', detail: 'job.failure.player_ahead.detail' },
   player_conflict: { title: 'job.failure.player_conflict.title', detail: 'job.failure.player_conflict.detail' },
+  // The studio (ADR 0036): evidence, the approve check, a track's download and the per-class change limit.
+  suspected_unavailable: { title: 'job.failure.suspected_unavailable.title', detail: 'job.failure.suspected_unavailable.detail' },
+  list_has_gap: { title: 'job.failure.list_has_gap.title', detail: 'job.failure.list_has_gap.detail' },
+  track_too_large: { title: 'job.failure.track_too_large.title', detail: 'job.failure.track_too_large.detail' },
+  track_unavailable: { title: 'job.failure.track_unavailable.title', detail: 'job.failure.track_unavailable.detail' },
+  track_limit: { title: 'job.failure.track_limit.title', detail: 'job.failure.track_limit.detail' },
+  revision_limit: { title: 'job.failure.revision_limit.title', detail: 'job.failure.revision_limit.detail' },
 }
 
 const SOUNDLESS_INVALID: FailureKeys = {

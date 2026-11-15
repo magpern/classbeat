@@ -54,6 +54,7 @@ const APPROVE_REFUSALS: Record<string, RefusalKeys> = {
   not_connected: { key: 'songs.approve.not_connected', final: false, account: true },
   account_changed: { key: 'songs.approve.account_changed', final: true, newSongs: true },
   not_waiting: { key: 'songs.approve.not_waiting', final: true },
+  list_has_gap: { key: 'songs.approve.list_has_gap', final: true, newSongs: true },
   busy: { key: 'songs.approve.busy', final: false },
   quota: { key: 'songs.approve.quota', final: false },
   not_found: { key: 'songs.approve.not_found', final: true },
