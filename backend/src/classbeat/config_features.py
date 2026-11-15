@@ -13,6 +13,8 @@ from typing import Literal
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
+from classbeat.config_player import check_client_id as check_player_client_id
+from classbeat.config_player import check_redirect_uri as check_player_redirect_uri
 from classbeat.config_turnstile import check_site_key as check_turnstile_site_key
 
 
@@ -57,6 +59,21 @@ class FeatureSettings(BaseSettings):
     # only, refused in prod) runs the Paddle flow over ``billing.fake_paddle``; ``paddle`` is
     # refused until the real HTTP client exists (M7b-real, the owner's step).
     billing_provider: Literal["dummy", "fake_paddle", "paddle"] = "dummy"
+    # ADR 0034 section 1 (#1056): the one OpenID Connect client, classbeat-player. With neither,
+    # the provider is off (``/oidc`` answers 404); with both, its three secret files must exist
+    # (``classbeat.auth.oidc.provider``). The redirect address is compared exactly.
+    oidc_player_client_id: str | None = None
+    oidc_player_redirect_uri: str | None = None
+
+    @field_validator("oidc_player_client_id")
+    @classmethod
+    def _check_player_client_id(cls, value: str | None) -> str | None:
+        return check_player_client_id(value)
+
+    @field_validator("oidc_player_redirect_uri")
+    @classmethod
+    def _check_player_redirect_uri(cls, value: str | None) -> str | None:
+        return check_player_redirect_uri(value)
 
     @field_validator("billing_provider")
     @classmethod

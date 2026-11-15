@@ -76,6 +76,7 @@ async def build_export(
             "sessions": account["sessions"],
             "known_devices": account["known_devices"],
             "security_events": account["security_events"],
+            "player_sign_in": account["player_sign_in"],
             "connections": [
                 {
                     "provider": status.provider,

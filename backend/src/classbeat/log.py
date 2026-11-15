@@ -14,14 +14,22 @@ _STANDARD_ATTRIBUTES = frozenset(vars(logging.makeLogRecord({}))) | {"message", 
 
 # ADR 0003 section 10: never logged. The session, device, CSRF, OAuth and pending cookies; the
 # Authorization, X-CSRF-Token, X-Api-Key and X-Auth-Token headers (and whole Cookie headers);
-# query strings on /oauth/*. Our own access log never records any of them; this catches the
-# rest (an exception message or a library that dumps a request). The catalogue job is the
-# first worker send of X-Auth-Token (ADR 0016 section 5).
+# query strings on /oauth/* and /oidc/* (ADR 0034). Our own access log never records any of
+# them; this catches the rest (an exception message or a library that dumps a request). The
+# catalogue job is the first worker send of X-Auth-Token (ADR 0016 section 5).
 _REDACTED = "[redacted]"
+# The OAuth and OpenID Connect parameters that carry a secret or a binding (ADR 0009 §10, ADR 0034).
+_PARAMS = (
+    "code|code_verifier|code_challenge|state|nonce|refresh_token|access_token|id_token"
+    "|client_secret"
+)
 _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"(__Host-classbeat_\w+)\s*=\s*[^;\s\"',]+"), rf"\1={_REDACTED}"),
+    (re.compile(r"(__Host-(?:classbeat|cb)_\w+)\s*=\s*[^;\s\"',]+"), rf"\1={_REDACTED}"),
     # A dict or JSON repr: {'__Host-classbeat_session': 'value'} or "name": "value".
-    (re.compile(r"(__Host-classbeat_\w+[\"']?\s*:\s*[\"']?)[^\"',;}\s]+"), rf"\1{_REDACTED}"),
+    (
+        re.compile(r"(__Host-(?:classbeat|cb)_\w+[\"']?\s*:\s*[\"']?)[^\"',;}\s]+"),
+        rf"\1{_REDACTED}",
+    ),
     (
         re.compile(
             r"(?i)\b(authorization|x-csrf-token|x-api-key|x-auth-token|cookie|set-cookie)\b"
@@ -32,7 +40,8 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?i)\bbearer\s+[\w.~+/=-]+"), f"Bearer {_REDACTED}"),
     # ADR 0006 §9: an Anthropic API key, wherever it shows up.
     (re.compile(r"\bsk-ant-[\w-]+"), _REDACTED),
-    (re.compile(r"(/oauth/[^\s?\"'#]*)\?[^\s\"'#]*"), r"\1"),
+    # ADR 0034 section 1: no query string on /oidc/* either.
+    (re.compile(r"(/o(?:auth|idc)/[^\s?\"'#]*)\?[^\s\"'#]*"), r"\1"),
     # Mail links carry their token in the fragment (section 5): ``/reset#token=...``.
     (re.compile(r"(?i)([#?&]token=)[\w.~%-]+"), rf"\1{_REDACTED}"),
     # ADR 0009 §10: the OAuth ``code``, ``code_verifier`` and ``state`` (and the token endpoint's
@@ -40,14 +49,14 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # body in an exception), and as a quoted key in a dict or JSON text.
     (
         re.compile(
-            r"(?i)(?<![\w-])(code|code_verifier|state|refresh_token|access_token|client_secret)"
+            rf"(?i)(?<![\w-])({_PARAMS})"
             r"=(?:'[^']*'|\"[^\"]*\"|[^&\s\"'#]*)"
         ),
         rf"\1={_REDACTED}",
     ),
     (
         re.compile(
-            r"(?i)([\"'](?:code|code_verifier|state|refresh_token|access_token|client_secret)[\"']"
+            rf"(?i)([\"'](?:{_PARAMS})[\"']"
             r"\s*:\s*[\"'])[^\"']*"
         ),
         rf"\1{_REDACTED}",
@@ -92,6 +101,10 @@ SECRET_KEYS = frozenset(
         "code_verifier",
         "state",
         "client_secret",
+        # ADR 0034 section 1: the OpenID Connect token and request parameters.
+        "id_token",
+        "nonce",
+        "code_challenge",
     }
 )
 

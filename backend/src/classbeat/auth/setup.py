@@ -32,6 +32,10 @@ from classbeat.auth.oauth_client import OAuthRuntime
 from classbeat.auth.oauth_handoff import router as handoff_router
 from classbeat.auth.oauth_providers import enabled_providers
 from classbeat.auth.oauth_routes import router as oauth_router
+from classbeat.auth.oidc.authorize_routes import router as oidc_authorize_router
+from classbeat.auth.oidc.consent_routes import router as oidc_consent_router
+from classbeat.auth.oidc.provider import load_provider
+from classbeat.auth.oidc.token_routes import router as oidc_token_router
 from classbeat.auth.passkey_reauth_routes import router as passkey_reauth_router
 from classbeat.auth.passkey_register_routes import router as passkey_register_router
 from classbeat.auth.passkey_routes import router as passkey_router
@@ -57,6 +61,7 @@ SECRET_INPUT_PATHS = (
     "/api/jobs",
     "/api/account/redeem",
     "/api/mail/unsubscribe",
+    "/oidc/",  # ADR 0034: the consent body, never echoed
 )
 
 
@@ -80,6 +85,9 @@ def install(app: FastAPI) -> None:
         passkey_router,
     ):
         app.include_router(passkeys)
+    # ADR 0034 section 1 (#1056): the OpenID Connect provider, before the SPA catch-all.
+    for oidc in (oidc_authorize_router, oidc_token_router, oidc_consent_router):
+        app.include_router(oidc)
     app.include_router(admin_router)
     app.add_middleware(AuthMiddleware)
 
@@ -132,6 +140,7 @@ def attach_state(
     app.state.password_hasher = PasswordHasher(settings.password_hash_workers)
     app.state.mailer = Mailer(settings)
     app.state.oauth = OAuthRuntime(enabled_providers(settings))
+    app.state.oidc = load_provider(settings)  # None when off; refuses to start when broken
     # Turnstile on the anonymous auth forms (ADR 0025): None while it is off. Off in prod is the
     # owner's emergency degrade (section 5), so it is said once at start, loudly.
     app.state.captcha = build_verifier(settings)

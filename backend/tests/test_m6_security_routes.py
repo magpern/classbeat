@@ -73,6 +73,19 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/auth/password/reset/request"): "public",
     ("POST", "/api/auth/password/reset/info"): "public",
     ("POST", "/api/auth/password/reset/complete"): "public",
+    # ADR 0034 (#1056): the OpenID Connect provider for classbeat-player. Discovery, the key set
+    # and the token endpoint (client authentication, no session) are public; authorize starts a
+    # flow for any browser, and continue reads the session to send a signed-out browser to the
+    # sign-in page. The consent POST needs the session; its request id is bound to the browser's
+    # flow cookie, not to an owned row. Every /oidc route is 404 while the provider is off.
+    ("GET", "/.well-known/openid-configuration"): "public",
+    ("GET", "/oidc/jwks"): "public",
+    ("GET", "/oidc/authorize"): "public",
+    ("GET", "/oidc/authorize/continue"): "public",
+    ("POST", "/oidc/token"): "public",
+    ("POST", "/oidc/authorize/consent"): "session",
+    ("GET", "/api/auth/player-consent"): "session",
+    ("DELETE", "/api/auth/player-consent"): "session",
     ("POST", "/api/auth/email/confirm"): "session",
     ("POST", "/api/auth/mfa/verify"): "session",
     ("GET", "/api/auth/sessions"): "session",
@@ -276,6 +289,8 @@ OPTIONAL_SESSION = {
     ("GET", "/oauth/{provider}/callback"),
     # A browser returning from Spotify: without a session it connects nothing and redirects.
     ("GET", "/oauth/spotify/callback"),
+    # ADR 0034 (#1056): a signed-out browser is sent to the sign-in page and comes back here.
+    ("GET", "/oidc/authorize/continue"),
 }
 
 

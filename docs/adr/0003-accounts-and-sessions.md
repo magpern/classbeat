@@ -164,6 +164,11 @@ so the SPA can prompt.
 
 ### 4. CSRF, origin and redirects
 
+> **Amended by [ADR 0034](0034-classbeat-player-connection.md) §1 (#1056):** `POST /oidc/token` is
+> exempt from both checks below, by its exact path: it is a server-to-server call from
+> classbeat-player, and `client_secret_basic` is its credential. The consent POST
+> (`/oidc/authorize/consent`) keeps both.
+
 Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two checks. The few
 `GET` callbacks (OAuth) are protected by their state instead (§5).
 
@@ -674,6 +679,10 @@ invited; the M6 security review revisits it. With Turnstile on (ADR 0025, T126) 
 buckets are reserved only after a valid token, so this needs a solved challenge per attempt.
 
 ### 10. Logging
+
+> **Amended by [ADR 0034](0034-classbeat-player-connection.md) §1 (#1056):** no query string and no
+> body on `/oidc/*` is logged, nor the `__Host-cb_oidc` flow cookie; the provider adds the
+> `auth_events` kinds of ADR 0034 §1 ("Audit").
 
 > Passkeys (ADR 0019 §10): the three `__Host-classbeat_passkey_*` flow cookies (register, sign-in, re-auth) are never logged either.
 

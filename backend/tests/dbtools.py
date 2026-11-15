@@ -126,6 +126,9 @@ def truncate_auth(admin_url: str) -> None:
                 text("SELECT to_regclass('public.billing_webhook_refusals')")
             ).scalar_one():
                 connection.execute(text("TRUNCATE billing_webhook_refusals"))
+            # ADR 0034 (#1056): a pending player sign-in request has no user either.
+            if connection.execute(text("SELECT to_regclass('public.oidc_requests')")).scalar_one():
+                connection.execute(text("TRUNCATE oidc_requests"))
     finally:
         engine.dispose()
 

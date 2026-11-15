@@ -116,6 +116,12 @@ export const en = {
   'emailChange.signInFirst': 'Sign in to the account that asked for the change, then open the link in the mail again.',
   'emailChange.confirmIntro': 'Signed in as {email}. Confirm this account should use the new address.',
   'emailChange.confirm': 'Confirm new email',
+  'playerConsent.title': 'Sign in to classbeat-player',
+  'playerConsent.intro': 'classbeat-player asks to sign you in as {email}. It gets your email address and an id that only the player uses, never your password.',
+  'playerConsent.allow': 'Allow',
+  'playerConsent.deny': 'Cancel',
+  'playerConsent.expired': 'This sign-in request has expired or was opened in another browser. Start again from classbeat-player.',
+  'playerConsent.leaving': 'Returning to classbeat-player…',
   'providerEmail.loadingTitle': 'Almost there',
   'providerEmail.sent':
     'If we can use {email}, we sent a confirmation link. Open it in this same browser to finish. It works for 24 hours.',

@@ -237,9 +237,18 @@ def test_the_scanned_names_are_exactly_the_auth_tables() -> None:
     """#771: the guard's table list follows ``classbeat.auth.tables``, so a new account table (the
     passkey tables of ADR 0019) cannot be left out of guard 8."""
     from auth_tables_scan import TABLE_NAMES
+    from classbeat.auth.oidc.schema import TABLE_NAMES as OIDC_TABLES
     from classbeat.auth.tables import metadata
 
-    assert sorted(TABLE_NAMES) == sorted(metadata.tables)
+    # ADR 0034 (#1056): the provider's tables have their own metadata (``classbeat.auth.oidc``).
+    assert sorted(TABLE_NAMES) == sorted({*metadata.tables, *OIDC_TABLES})
+
+
+@pytest.mark.parametrize("table", ["oidc_requests", "oidc_codes", "oidc_grants"])
+def test_the_oidc_tables_are_guarded(table: str) -> None:
+    assert scan_source(f"q = 'DELETE FROM {table} WHERE id = :i'") != []  # noqa: S608 (scanned)
+    assert scan_source("from classbeat.auth.oidc.schema import oidc_codes") != []
+    assert scan_source("from classbeat.auth import oidc") != []
 
 
 @pytest.mark.parametrize("table", ["webauthn_credentials", "webauthn_challenges"])

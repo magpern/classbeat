@@ -54,8 +54,10 @@ SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 # database before that check, so it is also kept out of the general limit (which looks a session
 # cookie up): its own in-memory limit counts it (``billing.webhook_gate``). Exact path.
 SIGNED_PATHS = frozenset({"/api/billing/paddle/webhook"})
+# ADR 0034 section 1 (amends section 4): the OpenID Connect token endpoint is a server-to-server
+# call with no Origin or cookie; ``client_secret_basic`` is its credential. Exact path.
 CSRF_EXEMPT_PATHS = frozenset(
-    {"/api/mail/unsubscribe", "/api/mail/unsubscribe/confirm", *SIGNED_PATHS}
+    {"/api/mail/unsubscribe", "/api/mail/unsubscribe/confirm", "/oidc/token", *SIGNED_PATHS}
 )
 # #998: a lock timeout in the general limit is 503 with this Retry-After: short, as the wait
 # that timed out was the role's 5 s lock_timeout on a row that is normally held for milliseconds.

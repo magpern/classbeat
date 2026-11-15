@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat.auth import securitylog
 from classbeat.auth.deps import purge_contexts
 from classbeat.auth.invite_request_purge import purge_invite_requests
+from classbeat.auth.oidc.upkeep import purge_oidc
 from classbeat.auth.tables import (
     auth_events,
     auth_tokens,
@@ -97,6 +98,7 @@ async def purge_expired(
             .values(ip=None)
         )
         counts["sessions_ip_cleared"] = int(cleared.rowcount or 0)  # pyright: ignore[reportAttributeAccessIssue]
+        counts.update(await purge_oidc(db))  # ADR 0034 section 1
         contexts = await purge_contexts(db)
     counts["invite_requests"] = await purge_invite_requests(factory)
     counts["spotify_oauth_flows"] = await _purge_spotify_flows(factory, contexts)

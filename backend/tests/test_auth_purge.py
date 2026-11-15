@@ -106,6 +106,8 @@ async def test_purge_deletes_what_is_expired_or_used_and_keeps_the_rest(env: Env
         "swedebeat_handoffs": 0,
         "security_log": 1,
         "invite_requests": 0,  # planted in test_invite_requests_purge.py
+        "oidc_requests": 0,  # planted in test_oidc_purge.py
+        "oidc_codes": 0,
     }
     assert await env.scalar("SELECT count(*) FROM sessions") == 1
     assert await env.scalar("SELECT ip FROM sessions") is None  # cleared after 30 days
