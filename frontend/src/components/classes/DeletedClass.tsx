@@ -26,7 +26,6 @@ function PlayerRemoval({ jobId }: { jobId: string }) {
   )
 }
 
-
 /** The page after a class was deleted: what stays in MOWL, and the player's removal while it runs. */
 export default function DeletedClass({ deleted }: { deleted: Deleted }) {
   const t = useT()

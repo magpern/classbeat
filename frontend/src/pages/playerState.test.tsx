@@ -40,7 +40,15 @@ describe('the class page line for the player', () => {
   it('says which version was sent, from the answer alone', async () => {
     start(SENT)
     renderAt(PAGE)
-    expect(await screen.findByTestId('player-state')).toHaveTextContent('On the player: version 1.')
+    expect(await screen.findByTestId('player-state')).toHaveTextContent(/^On the player: version 1\.$/)
+  })
+
+  it('does not say newer when the current version is the one sent', async () => {
+    start(SENT, { current_revision_number: 1 })
+    renderAt(PAGE)
+    const line = await screen.findByTestId('player-state')
+    expect(line).toHaveTextContent(/^On the player: version 1\.$/)
+    expect(line).not.toHaveTextContent('newer')
   })
 
   it('says when the current version is newer than the one sent', async () => {

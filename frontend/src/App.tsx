@@ -8,12 +8,8 @@ import { Card } from './components/forms'
 import { RequireAuth } from './components/RequireAuth'
 import { AppShell } from './components/shell/AppShell'
 import { useT } from './i18n/I18n'
-import { ClassPage } from './pages/ClassPage'
-import { ClassesPage } from './pages/ClassesPage'
 import { EmailChangePage } from './pages/EmailChangePage'
 import { UnsubscribePage } from './pages/UnsubscribePage'
-import { JobPage } from './pages/JobPage'
-import { HomePage } from './pages/HomePage'
 import { LandingPage } from './pages/LandingPage'
 import { HelpPage } from './pages/HelpPage'
 import { ExamplePage } from './pages/ExamplePage'
@@ -23,8 +19,6 @@ import { FeaturesPage } from './pages/FeaturesPage'
 import { PricingPage } from './pages/PricingPage'
 import { PrivacyDraftPage, RefundsDraftPage, SubProcessorsDraftPage, TermsDraftPage } from './pages/LegalDraftPages'
 import { PrivacyPage } from './pages/PrivacyPage'
-import { MusicPage } from './pages/MusicPage'
-import { NewClassPage } from './pages/NewClassPage'
 import { PlayerConsentPage } from './pages/PlayerConsentPage'
 import { ProviderEmailPage } from './pages/ProviderEmailPage'
 import { ResetPage } from './pages/ResetPage'
@@ -35,6 +29,16 @@ import { TermsPage } from './pages/TermsPage'
 import { EXAMPLES } from './publicSite/examples'
 import { hasUnknownLanguage, isAdminPath } from './router/paths'
 import { Link, RouterProvider, useRouter, type Location } from './router/Router'
+
+// Pages that are not prerendered load as their own chunks, so the first load stays small (#1072).
+// The prerendered public pages stay in the entry (the takeover replaces them in one render), and so
+// do the sign-in, sign-up and mail-link pages: a mail link's token is stripped from the address bar on mount.
+const ClassPage = lazy(() => import('./pages/ClassPage').then((m) => ({ default: m.ClassPage })))
+const ClassesPage = lazy(() => import('./pages/ClassesPage').then((m) => ({ default: m.ClassesPage })))
+const NewClassPage = lazy(() => import('./pages/NewClassPage').then((m) => ({ default: m.NewClassPage })))
+const JobPage = lazy(() => import('./pages/JobPage').then((m) => ({ default: m.JobPage })))
+const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })))
+const MusicPage = lazy(() => import('./pages/MusicPage').then((m) => ({ default: m.MusicPage })))
 
 // The admin area is its own chunk, fetched only for a session whose role is admin or whose
 // account is an admin one with its TOTP check missing or lapsed (`adminPendingMfa`, ADR 0011
@@ -167,6 +171,15 @@ function Routes() {
   )
 }
 
+function LoadingCard() {
+  const t = useT()
+  return (
+    <Card title={t('shell.requireAuth.loadingTitle')}>
+      <p>{t('common.loading')}</p>
+    </Card>
+  )
+}
+
 /** `initialLocation` is for the build-time prerender, which has no window; the browser reads its own. */
 export function App({ initialLocation }: { initialLocation?: Location }) {
   return (
@@ -176,7 +189,9 @@ export function App({ initialLocation }: { initialLocation?: Location }) {
         <GuardProvider>
           <Banner />
           <AppShell>
-            <Routes />
+            <Suspense fallback={<LoadingCard />}>
+              <Routes />
+            </Suspense>
           </AppShell>
           <CookieNotice />
         </GuardProvider>
