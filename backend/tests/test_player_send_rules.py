@@ -32,10 +32,12 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "classbeat"
 # Every module that imports ``classbeat.player_send`` (or a module of it): the package itself,
 # the class delete (the removal), and the two processes that register the kinds.
 IMPORTERS = {"classes/service.py", "web.py", "worker/__main__.py"}
-# Every module outside the package that names a kind: the policy, the operation registry and
-# its checks, the connection's data and the jobs API's ``class_id`` comment.
+# Every module outside the package that names a kind: the policy, the kinds' brief
+# classification, the operation registry and its checks, the connection's data and the jobs
+# API's ``class_id`` comment.
 NAMERS = IMPORTERS | {
     "player_publish_policy.py",
+    "classes/kinds.py",  # the brief classification of every kind (test_class_kinds.py)
     "operations/kinds.py",
     "operations/orphans.py",
     "connections/player_data.py",

@@ -25,6 +25,8 @@ NO_FIRST_BRIEF: Final = (
     "update_workout",
     "swedebeat_match",
     "swedebeat_verify_mix",
+    "send_to_player",  # ADR 0034 section 5: a revision exists before a press
+    "player_remove",  # no class at all: the class is deleted
 )
 
 
