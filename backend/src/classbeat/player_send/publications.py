@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat.connections.player_account import player_connected
 from classbeat.jobs.events import notify_event, validated_payload
 from classbeat.player_publish_policy import NUMBER_LIMIT, REMOVE_KIND, SEND_KIND, valid_number
+from classbeat.player_send.class_state import has_live_publication
 
 REMOVE_JOB_KIND: Final = "player_remove"
 USER_LEASE_VERSION: Final = 0  # an event written outside any lease (``jobs.user``'s)
@@ -154,12 +155,16 @@ async def move_ahead(db: AsyncSession, owner_id: UUID, class_id: UUID, number: i
 async def on_class_delete(db: AsyncSession, owner_id: UUID, class_id: UUID) -> UUID | None:
     """In the class delete's transaction, before the class row goes: a class sent to the player
     and not removed gets a ``player_remove`` job (its number taken, ``removed_at`` set); with the
-    player not ``connected`` nothing is sent and the row is dropped. Returns the job's id.
+    player not ``connected`` nothing is sent and the row is dropped. Returns the job's id. A
+    class never sent (no row, or no number taken) is read first without a lock and returns
+    ``None`` before the connection row is touched.
 
     Lock order: the player connection (share), then the publication row (update), the same
     order as a send's decide step (``hold_player_link``, then ``take_number``), so a delete and
     a send of the class never wait on each other in a cycle. The class row is already locked by
     the delete, and a send job of the class is refused there (``class_busy``)."""
+    if not await has_live_publication(db, owner_id, class_id):
+        return None  # never sent: no lock on the connection row, no job (read first, #1068)
     connected = await player_connected(db, owner_id)
     row = (await db.execute(_LOCK, _ids(owner_id, class_id))).first()
     if row is None or row.removed_at is not None:

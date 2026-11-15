@@ -1,5 +1,5 @@
-"""The class API's transactions: reads, the current-revision pick and the class delete (the
-dismissed rules: ``classbeat.classes.dismissals``).
+"""The class API's transactions: reads and the current-revision pick (the class delete:
+``classbeat.classes.removal``; the dismissed rules: ``classbeat.classes.dismissals``).
 
 One ``user_session`` per call. Reads are fixed-size: a listing is one statement however many
 classes and revisions the user has (no per-class query).
@@ -23,7 +23,7 @@ from classbeat.classes.selection import belongs_to_draft
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design.games_policy import RETIRED, has_retired_game
-from classbeat.player_send.publications import on_class_delete
+from classbeat.player_send.class_state import SentState, sent_state
 from classbeat.quota.gates import check_stored_draft
 
 Factory = async_sessionmaker[AsyncSession]
@@ -146,17 +146,6 @@ _CLEAR_MATCH = text(
     "UPDATE classes SET approved_swedebeat_match_id = NULL "
     "WHERE id = :class_id AND owner_id = :owner_id"
 )
-_WRITES = text(
-    f"SELECT state, (state = 'uncertain' AND {seams.NOT_ACTIONABLE_SQL}) AS inside_bound "  # noqa: S608 - constants only
-    "FROM external_operations WHERE owner_id = :owner_id AND class_id = :class_id "
-    "AND kind IN ('mowl_save_workout', 'mowl_update_workout') "
-    "AND state IN ('pending', 'uncertain')"
-)
-_KEPT = text(
-    "SELECT count(*) FROM saved_workouts WHERE owner_id = :owner_id AND class_id = :class_id "
-    "AND detached_at IS NULL"
-)
-_DELETE = text("DELETE FROM classes WHERE id = :class_id AND owner_id = :owner_id")
 
 
 def _ids(ctx: UserContext, class_id: UUID | None, **more: Any) -> dict[str, Any]:
@@ -211,6 +200,7 @@ class ClassDetail:
     playlists: song_views.Playlists
     brief: Brief | None
     match: match_view.MatchPointer | None = None  # only read while the Swedebeat flag is on
+    player: SentState | None = None  # the revision the connected player holds (#1068)
 
 
 async def stored_brief(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Brief | None:
@@ -245,7 +235,8 @@ async def get_class_detail(
         playlists = await song_views.playlists_of(db, ctx.user_id, class_id)
         brief = await stored_brief(db, ctx.user_id, class_id)
         match = await match_view.newest_match(db, ctx.user_id, class_id) if with_match else None
-        return ClassDetail(row, songs, playlists, brief, match)
+        player = await sent_state(db, ctx.user_id, class_id)
+        return ClassDetail(row, songs, playlists, brief, match, player)
 
 
 _DISMISSED = text(
@@ -285,12 +276,9 @@ async def get_revision(
 
 @dataclass(frozen=True, slots=True)
 class Outcome:
-    """``reason`` is ``None`` when the call went through; ``kept`` is, for a delete, the number
-    of MOWL workouts classbeat made that stay in the user's account."""
+    """``reason`` is ``None`` when the call went through."""
 
     reason: str | None = None
-    kept: int = 0
-    playlists: tuple[song_views.PlaylistRef, ...] = ()  # a delete: left in the user's Spotify
 
 
 async def pick(
@@ -337,33 +325,3 @@ async def pick(
         if not keep:
             await db.execute(_CLEAR_MATCH, _ids(ctx, class_id))
     return Outcome()
-
-
-async def delete(
-    factory: Factory, ctx: UserContext, class_id: UUID, *, confirm_uncertain: bool
-) -> Outcome:
-    """ADR 0007 sections 8 and 11. Orphaned writes are resolved first; the class row is locked
-    (no job or operation of the class can be inserted meanwhile); then, in this order,
-    ``class_busy`` (an open job), ``call_may_be_running`` (a save or update row ``pending`` or
-    ``uncertain`` and inside its bound), ``uncertain_write`` (an ``uncertain`` row, unless
-    confirmed). A refusal returns normally, so what ``resolve_orphans`` marked stays marked.
-    A class sent to the player gets its ``player_remove`` job in this transaction (none while
-    the player is not connected, ``player_send.publications.on_class_delete``). The cascade
-    is the schema's (migrations 0004 and 0005); ``agent_runs`` keeps its rows."""
-    require_context(ctx)
-    async with user_session(factory, ctx) as db:
-        await seams.resolve_orphans(db, ctx)
-        if (await db.execute(_LOCK_CLASS, _ids(ctx, class_id))).first() is None:
-            return Outcome("not_found")
-        if (await db.execute(_OPEN_JOB, _ids(ctx, class_id))).first() is not None:
-            return Outcome("class_busy")
-        writes = (await db.execute(_WRITES, _ids(ctx, class_id))).all()
-        if any(w.state == "pending" or w.inside_bound for w in writes):
-            return Outcome("call_may_be_running")
-        if writes and not confirm_uncertain:
-            return Outcome("uncertain_write")
-        kept = int((await db.execute(_KEPT, _ids(ctx, class_id))).scalar_one())
-        left = (await song_views.playlists_of(db, ctx.user_id, class_id)).all
-        await on_class_delete(db, ctx.user_id, class_id)  # ADR 0034 section 5: the removal
-        await db.execute(_DELETE, _ids(ctx, class_id))
-    return Outcome(None, kept, left)

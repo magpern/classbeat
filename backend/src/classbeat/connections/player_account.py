@@ -55,6 +55,10 @@ _HOLD = text(
     "SELECT 1 FROM connections WHERE owner_id = :owner_id AND id = :id AND provider = 'player' "
     "AND generation = :generation AND status = 'connected' FOR SHARE"
 )
+_CONNECTED_READ = text(
+    "SELECT 1 FROM connections WHERE owner_id = :owner_id AND provider = 'player' "
+    "AND status = 'connected'"
+)
 _CONNECTED = text(
     "SELECT 1 FROM connections WHERE owner_id = :owner_id AND provider = 'player' "
     "AND status = 'connected' FOR SHARE"
@@ -158,6 +162,11 @@ async def hold_player_link(db: AsyncSession, owner_id: UUID, link: PlayerLink) -
 async def player_connected(db: AsyncSession, owner_id: UUID) -> bool:
     """The user's player row is ``connected`` (share-locked until the caller commits)."""
     return (await db.execute(_CONNECTED, {"owner_id": owner_id})).first() is not None
+
+
+async def player_is_connected(db: AsyncSession, owner_id: UUID) -> bool:
+    """The same as ``player_connected`` without the lock: for a page read."""
+    return (await db.execute(_CONNECTED_READ, {"owner_id": owner_id})).first() is not None
 
 
 @asynccontextmanager

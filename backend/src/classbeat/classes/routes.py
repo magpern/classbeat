@@ -30,7 +30,15 @@ from pydantic import ValidationError
 from classbeat import auth
 from classbeat.agent.design import ZONE7
 from classbeat.agent.stored_draft import stored_draft
-from classbeat.classes import beat_one, match_view, pattern_notes, selection, service, song_views
+from classbeat.classes import (
+    beat_one,
+    match_view,
+    pattern_notes,
+    removal,
+    selection,
+    service,
+    song_views,
+)
 from classbeat.classes.provenance_out import ProvenanceOut
 from classbeat.classes.schemas import (
     BeatOneIn,
@@ -38,7 +46,6 @@ from classbeat.classes.schemas import (
     ClassDetailOut,
     ClassesOut,
     ClassOut,
-    DeletedOut,
     DismissedRulesOut,
     MatchHitOut,
     MatchSongOut,
@@ -49,7 +56,7 @@ from classbeat.classes.schemas import (
     MusicPlaylistOut,
     MusicPlaylistsOut,
     PickIn,
-    PlaylistNameOut,
+    PlayerStateOut,
     PlaylistOut,
     RevisionOut,
     RevisionsOut,
@@ -71,10 +78,6 @@ router = APIRouter(prefix="/api/classes", tags=["classes"])
 music_router = APIRouter(prefix="/api/music", tags=["music"])
 
 HASH = re.compile(r"^[0-9a-f]{64}$")
-KEPT_NOTE = "The workouts classbeat saved to your MOWL account stay there; delete them in MOWL."
-SPOTIFY_NOTE = (
-    "The playlists classbeat made in your Spotify account stay there; delete them in Spotify."
-)
 
 
 def _refuse(reason: str, status: int = 409) -> JSONResponse:
@@ -182,6 +185,7 @@ async def get_class(
         playlist=None if playlists.current is None else PlaylistOut(**asdict(playlists.current)),
         spotify_playlists=[PlaylistOut(**asdict(p)) for p in playlists.all],
         brief=found.brief,
+        player=None if found.player is None else PlayerStateOut(**asdict(found.player)),
         swedebeat_match=None
         if match is None
         else SwedebeatMatchPointerOut(revision_id=match.revision_id, approved=match.approved),
@@ -440,31 +444,24 @@ async def pick_current(
     return _not_found() if row is None else ClassOut.of(row)
 
 
-@router.delete("/{class_id}", response_model=DeletedOut, responses={404: {}, 409: {}})
+@router.delete("/{class_id}", response_model=removal.DeletedOut, responses={404: {}, 409: {}})
 async def delete_class(
     class_id: str,
     request: Request,
     ctx: Annotated[UserContext, Depends(auth.require_user)],
     confirm_uncertain: bool = False,
-) -> DeletedOut | JSONResponse:
+) -> removal.DeletedOut | JSONResponse:
     wanted = _uuid(class_id)
     if wanted is None:
         return _not_found()
-    done = await service.delete(
+    done = await removal.delete(
         request.app.state.session_factory, ctx, wanted, confirm_uncertain=confirm_uncertain
     )
     if done.reason == "not_found":
         return _not_found()
     if done.reason is not None:
         return _refuse(done.reason)
-    left = [PlaylistNameOut(name=p.name, detached=p.detached) for p in done.playlists]
-    return DeletedOut(
-        deleted=True,
-        mowl_workouts_kept=done.kept,
-        note=KEPT_NOTE,
-        spotify_playlists_left=left,
-        spotify_note=SPOTIFY_NOTE if left else None,
-    )
+    return removal.deleted_out(done)
 
 
 async def _dismissal(

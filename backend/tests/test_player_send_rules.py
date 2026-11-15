@@ -30,8 +30,9 @@ from playersendtools import Planted, SendEnv
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "classbeat"
 # Every module that imports ``classbeat.player_send`` (or a module of it): the package itself,
-# the class delete (the removal), and the two processes that register the kinds.
-IMPORTERS = {"classes/service.py", "web.py", "worker/__main__.py"}
+# the class reads and delete (``classes/service.py``, ``classes/removal.py``), and the two
+# processes that register the kinds.
+IMPORTERS = {"classes/removal.py", "classes/service.py", "web.py", "worker/__main__.py"}
 # Every module outside the package that names a kind: the policy, the kinds' brief
 # classification, the operation registry and its checks, the connection's data and the jobs
 # API's ``class_id`` comment.

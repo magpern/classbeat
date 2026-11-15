@@ -204,8 +204,15 @@ class BeatOneIn(BaseModel):
         return self
 
 
+class PlayerStateOut(BaseModel):
+    sent_revision_id: UUID
+    sent_revision_number: int
+
+
 class ClassDetailOut(ClassOut):
     songs: SongsOut
+    # null: never sent, removed or not connected (ADR 0034 section 6)
+    player: PlayerStateOut | None = None
     playlist: PlaylistOut | None = None  # the current draft's own playlist
     spotify_playlists: list[PlaylistOut]  # every one left in Spotify if the class is deleted
     # The brief the class was designed (or its songs picked) for, to seed a follow-up job such as
@@ -340,14 +347,6 @@ class PickIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     revision_id: UUID
     content_hash: str
-
-
-class DeletedOut(BaseModel):
-    deleted: bool
-    mowl_workouts_kept: int
-    note: str
-    spotify_playlists_left: list[PlaylistNameOut] = []
-    spotify_note: str | None = None
 
 
 class SongOut(BaseModel):
