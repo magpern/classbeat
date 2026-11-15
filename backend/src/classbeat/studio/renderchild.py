@@ -16,7 +16,8 @@ network: it reads the plan and the tracks the plan names, and writes the one out
 - **Decoding is bounded**: each track is read in blocks of ``BLOCK_FRAMES`` frames (``soundfile``;
   rate and channel count bounded), brought to 44100 Hz stereo (``soxr``), cut, faded with equal
   power and added where the plan says. Reading stops at ``src_end``; a file that ends before it
-  fails. Memory is the overlap of two tracks, never a decoded track.
+  fails. Memory is the overlap or gap between tracks (at most 30 s, by the plan's rules), never a
+  decoded track.
 - **Streamed output**: the finished samples before the next track starts go to a 320 kb/s CBR MP3
   (``soundfile``, libsndfile's encoder) at once. The render is deterministic: the same plan and
   files give the same bytes.
@@ -37,6 +38,7 @@ EXIT_FAILED = 3
 BLOCK_FRAMES = 1 << 16
 MAX_RATE = 768_000
 MAX_CHANNELS = 8
+FILE_LIMIT_BYTES = 410 * 1000 * 1000  # 400 MB (render_policy.MAX_MIX_BYTES) and a margin
 SYSTEM_READ_ONLY = ("/usr", "/lib", "/lib64", "/bin", "/etc", "/proc", "/sys", "/dev")
 HERE = os.path.dirname(os.path.abspath(__file__))
 DESIGN = os.path.join(os.path.dirname(HERE), "design")
@@ -181,8 +183,6 @@ def render(tracks: list[dict[str, Any]], writer: Any, policy: ModuleType, work: 
             if ready is not None:
                 writer.write(ready)
                 written += len(ready)
-        if offset != track["src_end"] - track["src_start"]:
-            raise ValueError("short track")
     ready = mixer.flush(policy.composed_frames(tracks))
     if ready is not None:
         writer.write(ready)
@@ -222,6 +222,8 @@ def main(argv: list[str]) -> int:
             plan = json.load(handle)
         tracks = policy.validate_plan(plan)
         output = inside(work, plan["output"])
+        if any(inside(work, t["path"]) == output for t in tracks):
+            raise ValueError("a track is the output")
         import soundfile
 
         with soundfile.SoundFile(
@@ -270,7 +272,8 @@ def _watch(rss: ModuleType, max_rss: int) -> None:
 
 
 def _limits() -> None:
-    """No core dump (it would hold the audio) and a CPU ceiling over the parent's wall clock."""
+    """No core dump (it would hold the audio), a CPU ceiling over the parent's wall clock and a
+    file size ceiling of the output cap plus a margin."""
     if sys.platform == "win32":
         return
     try:
@@ -278,6 +281,8 @@ def _limits() -> None:
 
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         resource.setrlimit(resource.RLIMIT_CPU, (1500, 1510))
+        size = FILE_LIMIT_BYTES  # a file never grows past the gateway's cap (and the plan)
+        resource.setrlimit(resource.RLIMIT_FSIZE, (size, size))
     except (ImportError, ValueError, OSError):
         pass
 

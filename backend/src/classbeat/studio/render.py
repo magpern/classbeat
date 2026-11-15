@@ -45,7 +45,7 @@ MAX_RSS_BYTES: Final = 1024**3
 RENDER_SECONDS: Final = 1200.0
 POLL_SECONDS: Final = 0.1
 MAX_OUTPUT_BYTES: Final = 4096  # the child's one line
-MAX_MIX_BYTES: Final = 400 * 1000 * 1000  # the gateway's cap
+MAX_MIX_BYTES: Final = render_policy.MAX_MIX_BYTES  # the gateway's cap
 CHILD: Final = Path(__file__).with_name("renderchild.py")
 PLAN_NAME: Final = "plan.json"
 OUTPUT_NAME: Final = "mix.mp3"
@@ -162,10 +162,12 @@ async def render_files(
     data = output[0] if output else b""
     if process.returncode != 0 or len(data) > MAX_OUTPUT_BYTES:
         raise RenderFailed("child failed")
-    return _checked(work / OUTPUT_NAME, data, peak, render_policy.composed_seconds(checked))
+    return _checked(
+        work / OUTPUT_NAME, data, peak, render_policy.composed_seconds(checked), max_rss
+    )
 
 
-def _checked(path: Path, data: bytes, peak: int, composed_sec: float) -> Rendered:
+def _checked(path: Path, data: bytes, peak: int, composed_sec: float, max_rss: int) -> Rendered:
     try:
         answer: Any = json.loads(data)
         sandbox, sha256 = answer["sandbox"], answer["sha256"]
@@ -183,6 +185,10 @@ def _checked(path: Path, data: bytes, peak: int, composed_sec: float) -> Rendere
         )
         if not sane or not render_policy.length_ok(duration, composed_sec):
             raise RenderFailed("length")
+        if frames != round(duration * render_policy.RATE):
+            raise RenderFailed("frames and duration disagree")
+        if isinstance(reported, int) and not isinstance(reported, bool) and reported > max_rss:
+            raise RenderFailed("memory")  # on every OS, whatever the parent could watch
         if _sha256(path) != sha256:
             raise RenderFailed("the file is not the one reported")
     except (ValueError, KeyError, TypeError, OSError):

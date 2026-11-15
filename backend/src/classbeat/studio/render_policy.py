@@ -7,7 +7,10 @@ A **render plan** is JSON: ``{"output": path, "tracks": [track, ...]}`` where a 
 is a whole number of samples at 44100 Hz: the track plays its source samples
 ``[src_start, src_end)`` from output sample ``dst_start`` on, fading in over the first ``fade_in``
 and out over the last ``fade_out`` samples (equal power, so an overlap of two matching fades keeps
-the level). Tracks are in mix order: ``dst_start`` never decreases.
+the level). Tracks are in mix order: ``dst_start`` never decreases, and a track starts at most
+30 s before the end of the tracks before it (an overlap) or after it (a gap of silence; likewise
+the first track after the start): the render keeps only that much in memory. A track is never the
+output file.
 """
 
 import math
@@ -18,6 +21,8 @@ TOLERANCE_SEC: Final = 0.1  # encoder padding, ADR 0036 section 6
 MAX_TRACKS: Final = 200
 MAX_SECONDS: Final = 9000  # 150 minutes (ADR 0036 section 4.2) of source or output
 MAX_FRAMES: Final = MAX_SECONDS * RATE
+MAX_SHIFT_FRAMES: Final = 30 * RATE  # the longest gap or overlap between tracks (memory is that)
+MAX_MIX_BYTES: Final = 400 * 1000 * 1000  # the gateway's cap on the rendered file
 TRACK_INTS: Final = ("src_start", "src_end", "dst_start", "fade_in", "fade_out")
 
 
@@ -35,7 +40,7 @@ def validate_plan(plan: object) -> list[dict[str, Any]]:
     if not isinstance(tracks, list) or not 0 < len(tracks) <= MAX_TRACKS:  # pyright: ignore[reportUnknownArgumentType]
         raise ValueError("tracks")
     checked: list[dict[str, Any]] = []
-    previous = 0
+    previous = ends = 0
     for track in tracks:  # pyright: ignore[reportUnknownVariableType]
         if not isinstance(track, dict) or set(track) != {"path", *TRACK_INTS}:  # pyright: ignore[reportUnknownArgumentType]
             raise ValueError("track")
@@ -48,7 +53,12 @@ def validate_plan(plan: object) -> list[dict[str, Any]]:
             raise ValueError("cut")
         if track["dst_start"] < previous:
             raise ValueError("order")
+        if abs(track["dst_start"] - ends) > MAX_SHIFT_FRAMES:
+            raise ValueError("gap or overlap")
+        if track["path"] == plan["output"]:
+            raise ValueError("path")
         previous = track["dst_start"]
+        ends = max(ends, track["dst_start"] + length)
         checked.append(track)  # pyright: ignore[reportUnknownArgumentType]
     if composed_frames(checked) > MAX_FRAMES:
         raise ValueError("too long")
