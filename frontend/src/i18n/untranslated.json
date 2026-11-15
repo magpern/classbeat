@@ -111,9 +111,5 @@
   "plan.checkout.redirecting",
   "plan.checkout.waiting",
   "plan.checkout.slow",
-  "plan.checkout.failed",
-  "sentence.swedebeat.unavailable",
-  "swed.err.sign_out_required",
-  "swed.signOutNotice",
-  "swed.signOutConfirm"
+  "plan.checkout.failed"
 ]
