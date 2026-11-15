@@ -20,7 +20,7 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0012](0012-eval-suite-and-model-providers.md) | Eval suite, OpenAI and DeepSeek adapters, and the model enable gate (M3c) | Accepted |
 | [0013](0013-ui-design-night-studio.md) | UI design: the Night Studio look, navigation and components | Accepted |
 | [0014](0014-account-export-and-deletion.md) | Account data export and account deletion (M6, GDPR) | Proposed |
-| [0015](0015-swedebeat-connection.md) | The Swedebeat connection: connect, status, disconnect, the app key (S1) | Accepted |
+| [0015](0015-swedebeat-connection.md) | The Swedebeat connection: connect, status, disconnect, the app key (S1) | Accepted; §4 and §7 superseded by ADR 0035 |
 | [0016](0016-swedebeat-music.md) | Swedebeat music: "My Swedebeat mix" and Spotify-to-Swedebeat matching (S2) | Proposed |
 | [0017](0017-class-pattern-soft-rules.md) | Class patterns as soft rules: profiles, warnings, evals (#388) | Accepted |
 | [0018](0018-mowl-running-classes.md) | MOWL running classes next to cycling (M8, #373) | Accepted |
@@ -39,4 +39,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0031](0031-plans-and-dummy-billing.md) | Plans and billing with a dummy provider: Free / Individual / Professional, admins Professional, subscription writer on the audited maint path, proration, `billing_test` testers, prices on maint only (M7a, #945) | Accepted |
 | [0033](0033-invite-requests.md) | Invite requests and invite codes that carry a tier: a public request form, the admin decides, one code granted through the redeem path at sign-up (PB-7, #985) | Accepted |
 | [0034](0034-classbeat-player-connection.md) | classbeat-player: classbeat as an OIDC provider for the player, signed events, the `player` connection, the class-format converter and "Send to player" (#1054) | Proposed |
-| [0035](0035-swedebeat-gateway.md) | The SwedeBeat gateway: one configured origin (production `http://192.168.1.222:7355`; plain http only to loopback or private IPs), a client-key secret file in web and worker, connect stores the bearer with the sign-out consent up front, one `/catalog/match` per job re-thresholded at 0.85, the SwedeBeat app key and hosts removed (SG, #1075; supersedes ADR 0015 §4 and §7 and parts of ADR 0016 §4 and §5) | Proposed |
+| [0035](0035-swedebeat-gateway.md) | The SwedeBeat gateway: one configured origin (production `http://192.168.1.222:7355`; plain http only to loopback or private IPs), a client-key secret file in web and worker, connect stores the bearer with the sign-out consent up front, one `/catalog/match` per job re-thresholded at 0.85, the SwedeBeat app key and hosts removed (SG, #1075; supersedes ADR 0015 §4 and §7 and parts of ADR 0016 §4 and §5) | Accepted (implemented on fakes, SG-1 to SG-5) |

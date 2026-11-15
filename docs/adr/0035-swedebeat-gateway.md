@@ -1,6 +1,6 @@
 # ADR 0035: classbeat talks to the SwedeBeat gateway, not to SwedeBeat
 
-Status: Proposed (owner direction 2026-11-15; issue #1075; roadmap Amendment 23).
+Status: Accepted (owner direction 2026-11-15; issue #1075; roadmap Amendment 23; reviewed in #1076 and implemented on fakes in #1082, #1083, #1084 and #1085).
 
 Supersedes: [ADR 0015](0015-swedebeat-connection.md) §4 (the app key) and §7 (outbound), the
 `device_in_use` question of §3 and §5, §9's owner steps 1 to 3 (the `SWEDEBEAT_APP` secret) and its
