@@ -7,6 +7,7 @@ request bodies, the answers' field allowlists), ``status_policy`` (status to cat
 ``track_policy`` (the catalogue reference, the download's path, type and 60 MB cap; ADR 0036).
 Side effects: ``answer`` (a capped, raw read of one answer), ``download_file`` (a track streamed
 into a new file in a private directory) and ``client`` (``login``, ``session``, ``match`` and
-``download_track``, nothing else). The client goes out only through ``classbeat.egress_gateway``. This
-package imports nothing at import time, so ``classbeat.config_features`` may use ``url_policy``.
+``download_track``, nothing else). The client goes out only through ``classbeat.egress_gateway``.
+This package imports nothing at import time, so ``classbeat.config_features`` may use
+``url_policy``.
 """
