@@ -40,6 +40,14 @@ check_common() {
     || fail "web must not mount a model key" || return 1
   q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("swedebeat_app")) | .key] == ["web"]' \
     || fail "swedebeat_app belongs to web only" || return 1
+  # ADR 0035 section 2: the SwedeBeat gateway's client key is a file on web and the worker only,
+  # and its origin (CLASSBEAT_SWEDEBEAT_GATEWAY_URL) is theirs only, unset by default.
+  q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("swedebeat_gateway_key")) | .key] | sort == ["web","worker"]' \
+    || fail "swedebeat_gateway_key belongs to web and worker only" || return 1
+  q '[.services | to_entries[] | select(.value.environment // {} | has("CLASSBEAT_SWEDEBEAT_GATEWAY_URL")) | .key] | sort == ["web","worker"]' \
+    || fail "the SwedeBeat gateway URL belongs to web and worker only" || return 1
+  q '[.services.web, .services.worker | .environment.CLASSBEAT_SWEDEBEAT_GATEWAY_URL] | all(. == "")' \
+    || fail "the SwedeBeat gateway URL is unset by default (the owner sets SWEDEBEAT_GATEWAY_URL in .env)" || return 1
   q '.services.web.environment.CLASSBEAT_SWEDEBEAT_ENABLED == "false"' \
     || fail "Swedebeat must be off by default" || return 1
   q '.services.worker.environment.CLASSBEAT_SWEDEBEAT_ENABLED == "false"' \
@@ -171,7 +179,8 @@ check_keys() {
       "CLASSBEAT_DEEPSEEK_ENABLED","CLASSBEAT_ENVIRONMENT","CLASSBEAT_LOG_LEVEL","CLASSBEAT_MAIL_SUPPORT_ADDRESS","CLASSBEAT_PUBLIC_BASE_URL",
       "CLASSBEAT_SIGNUP_MODE","CLASSBEAT_SMTP_HOST","CLASSBEAT_SMTP_PORT","CLASSBEAT_SMTP_SENDER",
       "CLASSBEAT_SMTP_TLS","CLASSBEAT_SMTP_USERNAME"];
-    def flags: ["CLASSBEAT_RUNNING_ENABLED","CLASSBEAT_SOUNDLESS_ENABLED","CLASSBEAT_SWEDEBEAT_ENABLED"];
+    def flags: ["CLASSBEAT_RUNNING_ENABLED","CLASSBEAT_SOUNDLESS_ENABLED","CLASSBEAT_SWEDEBEAT_ENABLED",
+      "CLASSBEAT_SWEDEBEAT_GATEWAY_URL"];
     def allowed_env: {
       "db": ["POSTGRES_DB","POSTGRES_PASSWORD_FILE"],
       "db-functions": [],

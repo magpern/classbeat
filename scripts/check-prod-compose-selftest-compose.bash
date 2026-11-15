@@ -65,6 +65,14 @@ for m in \
   '.services.web.environment.CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID = "a-literal-in-compose"' \
   '.services.web.environment.CLASSBEAT_OAUTH_VISIBLE_PROVIDERS = "google"' \
   '.services.web.environment.CLASSBEAT_OAUTH_EXTRA = "x"' \
+  '.services.migrate.secrets += [{"source":"swedebeat_gateway_key"}]' \
+  '.services["db-functions"].secrets += [{"source":"swedebeat_gateway_key"}]' \
+  '.services.web.secrets |= map(select(.source != "swedebeat_gateway_key"))' \
+  '.services.worker.secrets |= map(select(.source != "swedebeat_gateway_key"))' \
+  '.services.migrate.environment.CLASSBEAT_SWEDEBEAT_GATEWAY_URL = ""' \
+  'del(.services.worker.environment.CLASSBEAT_SWEDEBEAT_GATEWAY_URL)' \
+  '.services.web.environment.CLASSBEAT_SWEDEBEAT_GATEWAY_URL = "http://192.168.1.222:7355"' \
+  '.services.worker.environment.CLASSBEAT_SWEDEBEAT_GATEWAY_KEY = "x"' \
   '.services.worker.secrets += [{"source":"turnstile_secret_key"}]' \
   '.services.web.secrets |= map(select(.source != "turnstile_secret_key"))' \
   '.services.web.environment.CLASSBEAT_TURNSTILE_ENABLED = "false"' \

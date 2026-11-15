@@ -90,6 +90,12 @@ def test_the_allowlist_module_itself_is_scanned_as_allowed() -> None:
     assert scan_source(source, "classbeat.worker.loop") != []  # it does build clients
 
 
+def test_the_gateway_client_module_is_scanned_as_allowed_and_only_under_its_name() -> None:
+    source = (SRC / "classbeat" / "egress_gateway.py").read_text(encoding="utf-8")
+    assert scan_source(source, "classbeat.egress_gateway") == []
+    assert scan_source(source, "classbeat.swedebeat_gateway.client") != []
+
+
 M = "classbeat.agent.providers.anthropic"
 
 REFUSED = [
@@ -194,6 +200,28 @@ REFUSED = [
     # Only the worker's entry point installs the player's host.
     "from classbeat.egress import install_player_allowlist\ninstall_player_allowlist(u)",
     "from classbeat import egress\negress.install_player_allowlist(None)",
+    # ADR 0035 section 1 (#1077): the gateway client takes its deadline and nothing else; the
+    # test builder, the transport and the inner builder are tests' only.
+    "from classbeat.egress_gateway import swedebeat_gateway_async_client\n"
+    "swedebeat_gateway_async_client()",
+    "from classbeat.egress_gateway import swedebeat_gateway_async_client\n"
+    "swedebeat_gateway_async_client(30, transport=t)",
+    "from classbeat.egress_gateway import swedebeat_gateway_async_client\n"
+    "swedebeat_gateway_async_client(*a)",
+    "from classbeat.egress_gateway import swedebeat_gateway_async_client\n"
+    "swedebeat_gateway_async_client(**k)",
+    "from classbeat.egress_gateway import swedebeat_gateway_async_client\n"
+    "swedebeat_gateway_async_client(origin='http://10.0.0.1:1')",
+    "from classbeat.egress_gateway import swedebeat_gateway_test_client\n"
+    "swedebeat_gateway_test_client('http://10.0.0.1:1', t)",
+    "from classbeat import egress_gateway\negress_gateway.swedebeat_gateway_test_client(o, t)",
+    "from classbeat import egress_gateway as g\ng._gateway_client(o, t, 1)",
+    "from classbeat.egress_gateway import gateway_network_transport\ngateway_network_transport()",
+    "from classbeat.egress_gateway import _GatewayTransport\n_GatewayTransport(o, t, 1)",
+    "from classbeat.egress_gateway import _GatewayTransport\nclass T(_GatewayTransport): pass",
+    # Only the web's and the worker's entry points install the gateway's origin.
+    "from classbeat.egress_gateway import install_swedebeat_gateway_origin\n"
+    "install_swedebeat_gateway_origin(u)",
     # No request follows redirects, whatever the client's own default is.
     "async def f(client, url):\n    await client.get(url, follow_redirects=True)",
     "async def f(client, url):\n"
@@ -236,6 +264,11 @@ ALLOWED = [
     "AsyncOpenAI(api_key=k, http_client=allowlisted_async_client(provider='deepseek'))",
     "from classbeat.egress import SPOTIFY_ALLOWLIST\nSPOTIFY_ALLOWLIST.check_url(u)",
     "from classbeat.egress import player_async_client\nplayer_async_client()",
+    "from classbeat.egress_gateway import swedebeat_gateway_async_client\n"
+    "swedebeat_gateway_async_client(LOGIN_SECONDS)",
+    "from classbeat.egress_gateway import swedebeat_gateway_async_client\n"
+    "swedebeat_gateway_async_client(total_seconds=150)",
+    "from classbeat import egress_gateway\negress_gateway.swedebeat_gateway_async_client(30.0)",
 ]
 
 
@@ -278,3 +311,24 @@ INSTALL = "from classbeat.egress import install_player_allowlist\ninstall_player
 )
 def test_only_the_worker_entry_point_installs_the_player_host(module: str, refused: bool) -> None:
     assert (scan_source(INSTALL, module) != []) is refused
+
+
+GATEWAY_INSTALL = (
+    "from classbeat.egress_gateway import install_swedebeat_gateway_origin\n"
+    "install_swedebeat_gateway_origin(settings.swedebeat_gateway_url)"
+)
+
+
+@pytest.mark.parametrize(
+    ("module", "refused"),
+    [
+        ("classbeat.__main__", False),
+        ("classbeat.worker.__main__", False),
+        ("classbeat.web", True),
+        ("classbeat.worker.loop", True),
+        ("classbeat.swedebeat_gateway.client", True),
+        ("classbeat.connections.swedebeat_account", True),
+    ],
+)
+def test_only_the_entry_points_install_the_gateway_origin(module: str, refused: bool) -> None:
+    assert (scan_source(GATEWAY_INSTALL, module) != []) is refused

@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from classbeat.cli import add_subcommands, run_command
 from classbeat.config import Settings
 from classbeat.egress import install_web_allowlist
+from classbeat.egress_gateway import install_swedebeat_gateway_origin
 from classbeat.log import configure_logging
 from classbeat.web import create_app
 
@@ -69,6 +70,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Every urllib request of the web process (the provider library's) goes through the web's
     # outbound allowlist (SR-03, threat model T19).
     install_web_allowlist()
+    # ADR 0035 section 1: the SwedeBeat gateway's one origin (a setting Settings() checked), for
+    # the login; unset, the gateway client refuses.
+    install_swedebeat_gateway_origin(settings.swedebeat_gateway_url)
     app = create_app(settings)
     Server(server_config(app, args.host, args.port), app).run()
     return 0

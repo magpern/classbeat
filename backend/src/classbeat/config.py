@@ -11,8 +11,7 @@ from urllib.parse import urlsplit
 
 from pydantic import SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
-from sqlalchemy.engine import URL, make_url
-from sqlalchemy.exc import ArgumentError
+from sqlalchemy.engine import URL
 
 from classbeat.config_accounts import (  # noqa: F401 (re-exported from classbeat.config)
     CONNECTION_KEK_ID,
@@ -21,6 +20,7 @@ from classbeat.config_accounts import (  # noqa: F401 (re-exported from classbea
 from classbeat.config_agent import AgentSettings
 from classbeat.config_billing import check_secret as check_paddle_secret
 from classbeat.config_billing import check_settings as check_billing_settings
+from classbeat.config_database import DATABASE_DRIVER, check_database_url, with_password
 from classbeat.config_features import FeatureSettings
 from classbeat.config_hosts import check_prod_trusted_proxies
 from classbeat.config_jobs import JobSettings
@@ -49,6 +49,7 @@ from classbeat.config_secrets import (  # noqa: F401 (re-exported from classbeat
     logger,
     read_files,
     secrets_dir,
+    with_file_variables,
 )
 from classbeat.config_smtp import check_ca_file as check_smtp_ca_file
 from classbeat.config_smtp import check_plain_smtp
@@ -60,8 +61,8 @@ from classbeat.config_turnstile import (  # noqa: F401 (re-exported from classbe
 )
 from classbeat.config_turnstile import check_secret_key as check_turnstile_secret_key
 from classbeat.config_turnstile import check_settings as check_turnstile_settings
+from classbeat.swedebeat_gateway.key_policy import check_key as check_swedebeat_gateway_key
 
-DATABASE_DRIVER = "postgresql+psycopg"
 # Fields read from secret files, and never from the environment.
 SECRET_FILE_FIELDS = (
     "database_password",
@@ -76,6 +77,7 @@ SECRET_FILE_FIELDS = (
     "openai_api_key",
     "deepseek_api_key",
     "swedebeat_app",
+    "swedebeat_gateway_key",
     "turnstile_secret_key",
     "paddle_webhook_secret",
 )
@@ -88,10 +90,13 @@ OPTIONAL_SECRET_FILE_FIELDS = frozenset(
         "oauth_github_client_secret",
         "oauth_microsoft_client_secret",
         "swedebeat_app",
+        "swedebeat_gateway_key",
         "turnstile_secret_key",
         "paddle_webhook_secret",
     }
 )
+# A secret file whose variable names another path for it (ADR 0035 section 2: the gateway key).
+SECRET_FILE_VARIABLES = {"swedebeat_gateway_key": "CLASSBEAT_SWEDEBEAT_GATEWAY_KEY_FILE"}
 # Read by the SQL init scripts too, with the same bytes (tests/test_roles_script.py): kept exact.
 BYTE_EXACT_SECRET_FIELDS = frozenset(
     {"database_password", "database_owner_password", "database_maint_password"}
@@ -109,7 +114,8 @@ def read_secret_files(
 
 
 def _read_settings_secret_files() -> dict[str, str]:
-    return read_secret_files(secrets_dir(), SECRET_FILE_FIELDS, OPTIONAL_SECRET_FILE_FIELDS)
+    found = read_secret_files(secrets_dir(), SECRET_FILE_FIELDS, OPTIONAL_SECRET_FILE_FIELDS)
+    return with_file_variables(found, SECRET_FILE_VARIABLES, OPTIONAL_SECRET_FILE_FIELDS)
 
 
 class Settings(
@@ -191,6 +197,9 @@ class Settings(
     # ``SWEDEBEAT_APP``, ADR 0015 section 4; absent from every PR, CI and e2e image).
     # With neither, connecting answers ``app_key_unavailable``.
     swedebeat_app: SecretStr | None = None
+    # ADR 0035 section 2: the SwedeBeat gateway's client key (``X-API-Key``), web and worker,
+    # file only (``key_policy``). Its URL is ``swedebeat_gateway_url`` (``config_features``).
+    swedebeat_gateway_key: SecretStr | None = None
     # ADR 0025 (#721): Turnstile's secret key file (web only, never the environment), needed when
     # ``turnstile_enabled`` is on and ``turnstile_fake`` is off (``config_features``).
     turnstile_secret_key: SecretStr | None = None
@@ -222,15 +231,7 @@ class Settings(
     @field_validator("database_url", "migrations_database_url", "maint_database_url")
     @classmethod
     def _check_database_url(cls, value: SecretStr | None, info: ValidationInfo) -> SecretStr | None:
-        if value is None:
-            return None
-        try:
-            url = make_url(value.get_secret_value())
-        except ArgumentError:
-            raise ValueError(f"{info.field_name} is not a valid database URL") from None
-        if url.drivername != DATABASE_DRIVER:
-            raise ValueError(f"{info.field_name} must use the {DATABASE_DRIVER}:// scheme")
-        return value
+        return check_database_url(value, info.field_name or "database_url")
 
     @field_validator("app_secret_key")
     @classmethod
@@ -258,6 +259,11 @@ class Settings(
     @classmethod
     def _check_swedebeat_app(cls, value: SecretStr | None) -> SecretStr | None:
         return check_swedebeat_app(value)  # the empty placeholder becomes None
+
+    @field_validator("swedebeat_gateway_key")
+    @classmethod
+    def _check_swedebeat_gateway_key(cls, value: SecretStr | None) -> SecretStr | None:
+        return check_swedebeat_gateway_key(value)  # the empty placeholder becomes None
 
     @field_validator("turnstile_secret_key")
     @classmethod
@@ -345,11 +351,11 @@ class Settings(
 
     def sqlalchemy_url(self) -> URL:
         """The app role's URL, with ``database_password`` substituted when it is set."""
-        return _with_password(self.database_url, self.database_password)
+        return with_password(self.database_url, self.database_password)
 
     def migrations_sqlalchemy_url(self) -> URL:
         """The owner role's URL, with ``database_owner_password`` substituted when it is set."""
-        return _with_password(self.migrations_database_url, self.database_owner_password)
+        return with_password(self.migrations_database_url, self.database_owner_password)
 
     def maint_sqlalchemy_url(self) -> URL | None:
         """The admin role's URL with its password, or ``None`` when either is missing (an empty
@@ -357,11 +363,4 @@ class Settings(
         password = self.database_maint_password
         if self.maint_database_url is None or password is None or not password.get_secret_value():
             return None
-        return _with_password(self.maint_database_url, password)
-
-
-def _with_password(url: SecretStr, password: SecretStr | None) -> URL:
-    result = make_url(url.get_secret_value())
-    if password is not None:
-        result = result.set(password=password.get_secret_value())
-    return result
+        return with_password(self.maint_database_url, password)

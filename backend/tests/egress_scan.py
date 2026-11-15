@@ -1,7 +1,8 @@
-"""Guard of ADR 0006 §9: outbound clients are built only in ``classbeat.egress``.
+"""Guard of ADR 0006 §9: outbound clients are built only in ``classbeat.egress`` and
+``classbeat.egress_gateway`` (the SwedeBeat gateway's client, split out of it, ADR 0035).
 
 ``scan_source(source, module)`` returns what ``module`` (a dotted name under ``classbeat``) may
-not do outside ``classbeat.egress``:
+not do outside those two modules:
 
 - call anything that builds an HTTP client, an opener or a raw connection, or sends a request on
   its own: ``urllib.request.urlopen``, ``build_opener``, ``install_opener``, ``OpenerDirector``,
@@ -18,7 +19,11 @@ not do outside ``classbeat.egress``:
   ``allowlisted_async_client`` an allowlist (ADR 0009 §10): every list is code in
   ``classbeat.egress`` and is chosen there, never widened by a caller;
 - install the player's host (``install_player_allowlist``, ADR 0034 section 2) anywhere but the
-  worker's entry point, or hand ``player_async_client`` an argument.
+  worker's entry point, or hand ``player_async_client`` an argument;
+- install the gateway's origin (``install_swedebeat_gateway_origin``, ADR 0035 section 1) anywhere
+  but the web's and the worker's entry points, build the gateway client for a test's origin or
+  transport (``swedebeat_gateway_test_client``), or hand ``swedebeat_gateway_async_client``
+  anything but its one deadline.
 
 Names are resolved through imports and aliases (``import httpx as h``, ``from urllib import
 request``, ``from httpx import AsyncClient as C``). Like the other guards this catches accidental
@@ -32,6 +37,9 @@ agent module never imports them (``WORKER_PACKAGES``, checked by the test).
 import ast
 
 EGRESS = "classbeat.egress"
+EGRESS_GATEWAY = "classbeat.egress_gateway"
+# The modules that build clients (each is the allowlist's own code).
+EGRESS_MODULES = frozenset({EGRESS, EGRESS_GATEWAY})
 # Packages that run in the worker: they may never import an exempt module.
 WORKER_PACKAGES = (
     "classbeat.worker",
@@ -151,6 +159,12 @@ _CALLS = frozenset(
         "classbeat.egress.player_network_transport",
         "classbeat.egress.player_test_client",
         "classbeat.egress._player_client",
+        # ADR 0035 section 1 (#1077): the gateway client for an origin and a transport of the
+        # caller's own, and what it is built from, are tests' only.
+        "classbeat.egress_gateway.swedebeat_gateway_test_client",
+        "classbeat.egress_gateway.gateway_network_transport",
+        "classbeat.egress_gateway._gateway_client",
+        "classbeat.egress_gateway._GatewayTransport",
     }
 )
 # Allowed only without an allowlist argument (the list is the function's own).
@@ -174,7 +188,14 @@ _NO_ARGUMENTS = frozenset(
 # worker's start (ADR 0034 section 2); nothing else may replace it.
 _ONLY_IN: dict[str, frozenset[str]] = {
     "classbeat.egress.install_player_allowlist": frozenset({"classbeat.worker.__main__"}),
+    # ADR 0035 section 1: the gateway's one origin, a setting, at the web's and worker's start.
+    "classbeat.egress_gateway.install_swedebeat_gateway_origin": frozenset(
+        {"classbeat.__main__", "classbeat.worker.__main__"}
+    ),
 }
+# Allowed only with exactly one argument, the deadline (positional or ``total_seconds=``): the
+# origin and the transport are the function's own (ADR 0035 section 1).
+_DEADLINE_ONLY = frozenset({"classbeat.egress_gateway.swedebeat_gateway_async_client"})
 
 # Any call by these attribute names, whatever the object (an event loop, a socket): raw
 # connections around both allowlisted paths.
@@ -206,6 +227,7 @@ _BASES = frozenset(
         "socket.socket",
         "classbeat.egress.Allowlist",
         "classbeat.egress.AllowlistTransport",
+        "classbeat.egress_gateway._GatewayTransport",
     }
 )
 ALLOWLISTED_CLIENT = "classbeat.egress.allowlisted_async_client"
@@ -319,7 +341,7 @@ def _imports(tree: ast.AST, module: str) -> list[tuple[int, str]]:
 
 def scan_source(source: str, module: str) -> list[tuple[int, str]]:
     """``(line, why)`` for every outbound client ``module`` builds outside the allowlist."""
-    if module == EGRESS:
+    if module in EGRESS_MODULES:
         return []
     tree = ast.parse(source)
     aliases = _aliases(tree, module)
@@ -356,6 +378,10 @@ def scan_source(source: str, module: str) -> list[tuple[int, str]]:
             if module not in _ONLY_IN[name]:
                 found.append((node.lineno, f"calls {name}: only {sorted(_ONLY_IN[name])}"))
             continue
+        if name in _DEADLINE_ONLY:
+            if not _deadline_only(node):
+                found.append((node.lineno, f"hands {name} more than its deadline"))
+            continue
         if name in _NO_ARGUMENTS:
             if node.args or node.keywords:
                 found.append((node.lineno, f"hands {name} an argument: it takes none ({EGRESS})"))
@@ -370,6 +396,15 @@ def scan_source(source: str, module: str) -> list[tuple[int, str]]:
             continue
         found.append((node.lineno, f"calls {name}: outbound clients live in {EGRESS}"))
     return sorted(set(found))
+
+
+def _deadline_only(call: ast.Call) -> bool:
+    """Exactly one argument: a positional one, or ``total_seconds=``; no ``*`` or ``**``."""
+    if any(isinstance(a, ast.Starred) for a in call.args):
+        return False
+    if len(call.args) == 1 and not call.keywords:
+        return True
+    return not call.args and [k.arg for k in call.keywords] == ["total_seconds"]
 
 
 def _hands_the_allowlisted_client(call: ast.Call, aliases: dict[str, str]) -> bool:
