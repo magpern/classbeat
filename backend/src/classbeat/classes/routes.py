@@ -46,6 +46,7 @@ from classbeat.classes.schemas import (
     ClassDetailOut,
     ClassesOut,
     ClassOut,
+    DeletedOut,
     DismissedRulesOut,
     MatchHitOut,
     MatchSongOut,
@@ -444,13 +445,13 @@ async def pick_current(
     return _not_found() if row is None else ClassOut.of(row)
 
 
-@router.delete("/{class_id}", response_model=removal.DeletedOut, responses={404: {}, 409: {}})
+@router.delete("/{class_id}", response_model=DeletedOut, responses={404: {}, 409: {}})
 async def delete_class(
     class_id: str,
     request: Request,
     ctx: Annotated[UserContext, Depends(auth.require_user)],
     confirm_uncertain: bool = False,
-) -> removal.DeletedOut | JSONResponse:
+) -> DeletedOut | JSONResponse:
     wanted = _uuid(class_id)
     if wanted is None:
         return _not_found()

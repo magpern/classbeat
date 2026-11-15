@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.agent.brief import Brief
 from classbeat.classes import match_view, seams, song_views
+from classbeat.classes.class_sql import LOCK_CLASS, OPEN_JOB, OPEN_JOB_SQL
 from classbeat.classes.dismissals import set_dismissed as set_dismissed  # the routes' name
 from classbeat.classes.kinds import CLASS_SPORT_SQL, SONG_DESIGN_KIND
 from classbeat.classes.messages import list_messages as list_messages  # the routes' name
@@ -30,7 +31,6 @@ Factory = async_sessionmaker[AsyncSession]
 
 LIST_LIMIT: Final = 500
 REVISION_LIMIT: Final = 200
-OPEN_JOB: Final = "('queued', 'running', 'waiting_for_approval')"
 
 
 _CLASSES = text(f"""
@@ -125,14 +125,6 @@ _BRIEF = text(
     "WHERE c.owner_id = :owner_id AND c.id = :class_id"
 )
 _CLASS_EXISTS = text("SELECT 1 FROM classes WHERE id = :class_id AND owner_id = :owner_id")
-_LOCK_CLASS = text(
-    "SELECT current_revision_id, approved_swedebeat_match_id FROM classes "
-    "WHERE id = :class_id AND owner_id = :owner_id FOR UPDATE"
-)
-_OPEN_JOB = text(
-    "SELECT 1 FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "  # noqa: S608 - constants only
-    f"AND state IN {OPEN_JOB} LIMIT 1"
-)
 _PICKABLE = text(
     "SELECT content_hash, content FROM class_revisions WHERE id = :revision_id "
     "AND owner_id = :owner_id AND class_id = :class_id AND kind = 'draft'"
@@ -300,7 +292,7 @@ async def pick(
     """
     require_context(ctx)
     async with user_session(factory, ctx) as db:
-        locked = (await db.execute(_LOCK_CLASS, _ids(ctx, class_id))).first()
+        locked = (await db.execute(LOCK_CLASS, _ids(ctx, class_id))).first()
         if locked is None:
             return Outcome("not_found")
         found = (await db.execute(_PICKABLE, _ids(ctx, class_id, revision_id=revision_id))).first()
@@ -310,7 +302,7 @@ async def pick(
             return Outcome("hash_mismatch")
         if locked.current_revision_id == revision_id:
             return Outcome()
-        if (await db.execute(_OPEN_JOB, _ids(ctx, class_id))).first() is not None:
+        if (await db.execute(OPEN_JOB_SQL, _ids(ctx, class_id))).first() is not None:
             return Outcome("class_busy")
         if not isinstance(found.content, dict):
             return Outcome("not_found")  # never a draft: fail closed

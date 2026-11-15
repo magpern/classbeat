@@ -133,6 +133,18 @@ class PlaylistNameOut(BaseModel):
     detached: bool = False
 
 
+class DeletedOut(BaseModel):
+    deleted: bool
+    mowl_workouts_kept: int
+    note: str
+    spotify_playlists_left: list[PlaylistNameOut] = []
+    spotify_note: str | None = None
+    # ADR 0034 section 6 (#1068): the class was sent to the player, which is connected, so a
+    # ``player_remove`` job was started; its id follows it (``GET /api/jobs/{id}``).
+    player_removal_started: bool = False
+    player_removal_job_id: UUID | None = None
+
+
 class SwedebeatMatchPointerOut(BaseModel):
     """The class's newest ``swedebeat_match`` revision (ADR 0016 section 6): its id, and whether it
     is the approved selection. No title, artist or count: the page reads the revision for those."""
