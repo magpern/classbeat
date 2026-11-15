@@ -60,6 +60,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/ready"): "public",
     ("GET", "/api/settings/public"): "public",
     ("GET", "/oauth/spotify/callback"): "public",
+    ("GET", "/connections/player/callback"): "public",
     ("GET", "/oauth/{provider}/callback"): "public",
     ("GET", "/api/auth/session"): "public",
     ("GET", "/api/auth/oauth/providers"): "public",
@@ -136,6 +137,9 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/connections/spotify"): "session",
     ("POST", "/api/connections/spotify/start"): "session",
     ("DELETE", "/api/connections/spotify"): "session",
+    ("GET", "/api/connections/player"): "session",
+    ("POST", "/api/connections/player/start"): "session",
+    ("DELETE", "/api/connections/player"): "session",
     ("PUT", "/api/connections/spotify/pool-consent"): "session",
     ("DELETE", "/api/connections/spotify/pool-consent"): "session",
     ("POST", "/api/jobs"): "owned_body",
@@ -290,6 +294,8 @@ OPTIONAL_SESSION = {
     ("GET", "/oauth/{provider}/callback"),
     # A browser returning from Spotify: without a session it connects nothing and redirects.
     ("GET", "/oauth/spotify/callback"),
+    # ADR 0034 section 3 (#1059): the same for a browser returning from classbeat-player.
+    ("GET", "/connections/player/callback"),
     # ADR 0034 (#1056): a signed-out browser is sent to the sign-in page and comes back here.
     ("GET", "/oidc/authorize/continue"),
 }

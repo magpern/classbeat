@@ -5,7 +5,7 @@ A **system table** (ADR 0002 section 3): it has no ``owner_id`` and no user id, 
 pairwise ``sub``, so it survives the user's deletion and the deletion scan of ADR 0014 section 4
 finds nothing of the user in it. Its own ``MetaData``; only ``classbeat.player.outbox`` (and
 migrations and tests) may import this module or name the table in SQL
-(``tests/test_player_events_guard.py``). Migration ``0050_player_events`` creates the same table;
+(``tests/test_player_events_guard.py``). Migration ``0051_player_events`` creates the same table;
 ``tests/test_player_events_schema.py`` keeps them in step.
 """
 

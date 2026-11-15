@@ -1,7 +1,7 @@
 """The outbox of signed events to classbeat-player (#1058, ADR 0034 section 2)
 
-Revision ID: 0050_player_events
-Revises: 0049_oidc_provider
+Revision ID: 0051_player_events
+Revises: 0050_player_connection
 Create Date: 2026-11-15
 
 One system table, reached only through ``classbeat.player.outbox``; the app role gets the default
@@ -18,8 +18,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0050_player_events"
-down_revision: str | Sequence[str] | None = "0049_oidc_provider"
+revision: str = "0051_player_events"
+down_revision: str | Sequence[str] | None = "0050_player_connection"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

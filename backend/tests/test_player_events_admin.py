@@ -17,7 +17,7 @@ from authtools import Env
 from classbeat.admin.jobs import FailedPlayerEvent
 from classbeat.auth.oidc.subject_calc import pairwise_subject
 from oidctools import CLIENT_ID, PAIRWISE_KEY, oidc_env
-from playertools import GRANT
+from playereventtools import GRANT
 
 USERS = "/api/admin/users"
 

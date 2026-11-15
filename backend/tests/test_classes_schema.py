@@ -629,6 +629,10 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
            session_hash=digest("x"), client_id="0123456789abcdef0123456789abcdef",
            redirect_uri="u", verifier="A" * 43, created_at="2998-12-31 23:55",
            expires_at="2999-01-01")  # fmt: skip
+    # ADR 0034 section 3 (migration 0050): an unfinished link to classbeat-player.
+    insert(admin, "player_link_flows", owner_id=owner, state_hash=digest("p"),
+           session_hash=digest("x"), redirect_uri="u", verifier="A" * 43,
+           created_at="2998-12-31 23:55", expires_at="2999-01-01")  # fmt: skip
     # M5 (migration 0007): an entitlement from a code, its redemption, a credit and its lock row.
     code_id = admin.execute(
         text("INSERT INTO redeem_codes (code_hash, label, plan_id, grant_days, max_redemptions, "

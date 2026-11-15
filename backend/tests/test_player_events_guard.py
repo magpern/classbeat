@@ -7,7 +7,8 @@
 - No module writes SQL against the table: no string constant names it after ``FROM``, ``INTO``,
   ``UPDATE``, ``JOIN``, ``TABLE`` or ``TRUNCATE``.
 - ``classbeat.player`` imports nothing from ``classbeat.auth`` (guard 8 keeps its submodules to
-  itself; the account side calls the outbox, never the other way round)."""
+  itself; the account side calls the outbox, never the other way round). The package exactly:
+  ``classbeat.player_link`` (ADR 0034 section 3) is another package, with rules of its own."""
 
 import ast
 import re
@@ -42,7 +43,7 @@ def test_the_player_package_imports_nothing_of_auth() -> None:
     found = [
         f"{name}:{node.lineno}"
         for name, tree in modules().items()
-        if name.startswith("classbeat.player")
+        if name == "classbeat.player" or name.startswith("classbeat.player.")
         for node in ast.walk(tree)
         if (
             isinstance(node, ast.ImportFrom)
@@ -60,6 +61,12 @@ def test_the_player_package_imports_nothing_of_auth() -> None:
         )
     ]
     assert found == []
+
+
+def test_the_package_scope_is_exact() -> None:
+    names = set(modules())
+    assert {"classbeat.player.outbox", "classbeat.player.delivery"} <= names
+    assert any(n.startswith("classbeat.player_link") for n in names)  # not in the scope above
 
 
 def test_the_sql_pattern_catches_a_write() -> None:

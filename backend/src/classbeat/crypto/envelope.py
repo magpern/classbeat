@@ -33,7 +33,7 @@ WRAPPED_DEK_LENGTH = KEY_LENGTH + 16  # the GCM tag
 CHECK_VALUE_LENGTH = 16
 KEY_ID_PATTERN = re.compile(r"kek-[a-z0-9-]{1,28}")
 _CHECK_MESSAGE = b"classbeat-kek-check-v1"
-_PROVIDERS = frozenset({"mowl", "spotify", "swedebeat"})
+_PROVIDERS = frozenset({"mowl", "spotify", "swedebeat", "player"})  # player: ADR 0034 s. 3
 
 
 class DecryptFailed(Exception):

@@ -39,7 +39,8 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.connections.errors import ConnectionFailure
-from classbeat.connections.repository import SPOTIFY_FLIP_CATEGORIES, _decrypt, _flip  # pyright: ignore[reportPrivateUsage]
+from classbeat.connections.repository import SPOTIFY_FLIP_CATEGORIES, _flip  # pyright: ignore[reportPrivateUsage]
+from classbeat.connections.row_crypto import open_row
 from classbeat.connections.tables import connections
 from classbeat.context import UserContext
 from classbeat.crypto.envelope import canonical_json, connection_aad, connection_wrap_aad, seal
@@ -148,7 +149,7 @@ async def _refresh_once(
         ).first()
         if row is None or row.status != "connected":
             raise ConnectionFailure("not_connected")
-        problem, plaintext = await _decrypt(db, ring, ctx, PROVIDER, row)
+        problem, plaintext = await open_row(db, ring, ctx.user_id, PROVIDER, row)
         if problem is not None or plaintext is None:
             # ``open_connection`` flips an undecryptable row; this path only refuses.
             raise ConnectionFailure(problem or "unknown")

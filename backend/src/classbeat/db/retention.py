@@ -139,6 +139,9 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         "spotify_oauth_flows": _entry(
             "client_id verifier", "state_hash session_hash redirect_uri", "account"
         ),
+        # ADR 0034 section 3: the PKCE verifier (useless without the one-time code); the
+        # redirect address is classbeat's own callback.
+        "player_link_flows": _entry("verifier", "state_hash session_hash redirect_uri", "account"),
         # ADR 0008 section 8: the pool playlist id and the Spotify user id, with the consent.
         "spotify_pool": _entry(
             "spotify_user_id playlist_id", "last_hash", "account", "spotify_connection"

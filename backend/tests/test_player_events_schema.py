@@ -1,4 +1,4 @@
-"""Migration 0050: ``player_events`` matches ``classbeat.player.schema`` and keeps its rules
+"""Migration 0051: ``player_events`` matches ``classbeat.player.schema`` and keeps its rules
 (ADR 0034 section 2): no foreign key and no user column, the CHECKs on every value, a unique
 ``jti``, and the app role's DML without TRUNCATE."""
 

@@ -20,6 +20,7 @@ URL = "/api/account/delete"
 # table lands here only with a reason, and the plant test fails for any other empty one.
 UNPLANTED: dict[tuple[str, str], str] = {
     ("spotify_oauth_flows", "owner_id"): "an unfinished connect flow: deleted when used",
+    ("player_link_flows", "owner_id"): "an unfinished player link flow: deleted when used",
 }
 
 

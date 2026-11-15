@@ -36,6 +36,11 @@ _SPOTIFY_FLOWS = text(
     "DELETE FROM spotify_oauth_flows WHERE owner_id = :owner_id "
     "AND (expires_at <= now() OR used_at IS NOT NULL)"
 )
+# ADR 0034 section 3: a link to classbeat-player, the same rule and the same per-user purge.
+_PLAYER_FLOWS = text(
+    "DELETE FROM player_link_flows WHERE owner_id = :owner_id "
+    "AND (expires_at <= now() OR used_at IS NOT NULL)"
+)
 
 
 def _ago(days: int) -> Any:
@@ -55,7 +60,8 @@ async def purge_expired(
     - ``invites``: used or expired more than 30 days ago;
     - ``known_devices``: unused for 90 days;
     - ``auth_events``: older than 30 days;
-    - ``spotify_oauth_flows``: expired or used (an owned table: per user, in their own session);
+    - ``spotify_oauth_flows`` and ``player_link_flows``: expired or used (owned tables: per
+      user, in their own session);
     - ``security_log``: older than ``security_log_days`` (7; owned, per user likewise; #632);
     - ``invite_requests``: decided 30 days ago, or pending for 90 days (ADR 0033).
     """
@@ -101,7 +107,8 @@ async def purge_expired(
         counts.update(await purge_oidc(db))  # ADR 0034 section 1
         contexts = await purge_contexts(db)
     counts["invite_requests"] = await purge_invite_requests(factory)
-    counts["spotify_oauth_flows"] = await _purge_spotify_flows(factory, contexts)
+    counts["spotify_oauth_flows"] = await _purge_flows(factory, contexts, _SPOTIFY_FLOWS)
+    counts["player_link_flows"] = await _purge_flows(factory, contexts, _PLAYER_FLOWS)
     counts["swedebeat_handoffs"] = await _purge_handoffs(factory, contexts)
     counts["security_log"] = await _purge_security_log(
         factory, contexts, settings.security_log_days
@@ -109,13 +116,13 @@ async def purge_expired(
     return counts
 
 
-async def _purge_spotify_flows(
-    factory: async_sessionmaker[AsyncSession], contexts: list[UserContext]
+async def _purge_flows(
+    factory: async_sessionmaker[AsyncSession], contexts: list[UserContext], statement: Any
 ) -> int:
     removed = 0
     for ctx in contexts:
         async with user_session(factory, ctx) as db:
-            result = await db.execute(_SPOTIFY_FLOWS, {"owner_id": ctx.user_id})
+            result = await db.execute(statement, {"owner_id": ctx.user_id})
             removed += int(result.rowcount or 0)  # pyright: ignore[reportAttributeAccessIssue]
     return removed
 

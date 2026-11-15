@@ -1,6 +1,7 @@
 """The player events (ADR 0034 section 2, #1058), on the real database: who gets one, the same
 transaction as the change, the row outliving its user, and the leased, fenced delivery to a fake
-player (``playertools``) with its retries, its 40-attempt and 7-day caps and the 30-day purge."""
+player (``playereventtools``) with its retries, its 40-attempt and 7-day caps and the 30-day
+purge."""
 
 from collections.abc import AsyncIterator
 from dataclasses import replace
@@ -20,7 +21,7 @@ from classbeat.egress import player_test_client
 from classbeat.player import outbox
 from classbeat.player.delivery import deliver_once
 from oidctools import CLIENT_ID, PAIRWISE_KEY, oidc_env
-from playertools import GRANT, FakePlayer, event_of, fake_player
+from playereventtools import GRANT, FakePlayer, event_of, fake_player
 
 DELETED = "urn:classbeat:player:account-deleted"
 REVOKED = "urn:classbeat:player:sessions-revoked"
