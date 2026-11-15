@@ -2,6 +2,8 @@
 
 Status: Accepted (#198, 2026-10-31; amended, see the dated amendments)
 
+*(2026-11-15, [ADR 0036](0036-swedebeat-studio.md) §6 and §9: for a SwedeBeat studio class, the final Spotify playlist is an output of the approved draft, in its order, and Spotify writes are serialized per playlist and read back.)*
+
 > **Amendment, 2026-10-31 (issue #198 item 6): accepted.** M4 was built to this ADR on fakes (#173 to
 > #185, and #186's first part, #302), with the dated amendments in its sections; it is accepted as
 > amended, and roadmap Amendment 5 is in effect. The live activation (§11,

@@ -33,7 +33,7 @@ Model *classes*, not versions: use the current generation of each tier. A model 
 never widens a role's authority. Agent definitions live in `.claude/agents/`.
 
 **Security-critical PRs get an Opus Developer** (owner decision, 2026-10-28): encryption and key
-handling, jobs with leases and fencing, Spotify OAuth, and approvals and external writes. The
+handling, jobs with leases and fencing, Spotify OAuth, and approvals and external writes (including the SwedeBeat gateway's playlist and mix writes, ADR 0036). The
 issue says so in its "Owner:" line; everything else keeps a Sonnet Developer. The Reviewer is a
 fresh context for a PR's first review either way, never the Developer's: Opus for those PRs and the others listed in
 the review gate. **Tooling is not security-critical by default** (roadmap Amendment 13, owner,
@@ -202,10 +202,18 @@ a release and still needs the owner's authorization.
   token and discarded. Never stored, logged, put in a URL or sent to a model.
 - No Spotify Client Secret, ever: Spotify sign-in is Authorization Code with PKCE (§3).
 - Never use credentials embedded in third-party apps (for example Swedebeat's AWS keys).
+- classbeat reaches SwedeBeat only through the owner's SwedeBeat gateway (ADR 0035). In these rules,
+  "Swedebeat" means that gateway and the account behind it.
+  - Only the paths of ADR 0036 §8 may be called. The playlist and mix writes are external writes
+    (security-critical) and are made only from a user's approved output choice.
+  - Agents never call a real gateway, whatever its URL, and never enable its writes. Tests use the fake
+    gateway; live checks are the owner's.
 - Tokens never go to a model. Model output is a proposal; the backend authorizes every write
   against the authenticated user (§2).
 - Everything we create in a user's accounts is private: playlists `public: false`,
-  `collaborative: false`; MOWL workouts private.
+  `collaborative: false`; MOWL workouts private. The one exception (roadmap Amendment 24, ADR 0036 §7):
+  a SwedeBeat playlist or mix is published only when the user chose that output for that class on the
+  consent screen.
 - Tests and CI never touch the network or real accounts: they use fakes for MOWL, Spotify,
   Swedebeat and model APIs.
   The backend test suite enforces it: an autouse fixture (`tests/netguard.py`) makes every
