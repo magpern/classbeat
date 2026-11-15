@@ -85,7 +85,7 @@ export const SIGNED_IN = {
 /**
  * Stubs `fetch` with a table of `"METHOD /path"` handlers. A handler returns a Response or any
  * JSON value (answered 200); a missing route fails the test loudly. `/api/auth/session`
- * defaults to anonymous, `/api/connections` and `/api/external-operations` to none, `/api/connections/spotify` to
+ * defaults to anonymous, `/api/connections` and `/api/external-operations` to none, `/api/connections/player` to off, `/api/connections/spotify` to
  * 404 `feature_off`, `/api/account/billing` to 403 `billing_closed` and
  * `/api/mail/preferences` to everything on, `/api/usage` to an empty month, `/api/music/playlist-covers` and
  * `/api/auth/events` to none.
@@ -98,6 +98,9 @@ export function fakeApi(routes: Record<string, Handler | object | string>) {
     'GET /api/connections': { connections: [] },
     'GET /api/connections/spotify': () => json({ detail: { reason: 'feature_off' } }, 404),
     'GET /api/external-operations': { operations: [] },
+    // classbeat-player is off by default: no row, no Send to player, no consent.
+    'GET /api/connections/player': { status: 'not_connected', last_error: null, connected_at: null, link_enabled: false },
+    'GET /api/auth/player-consent': { enabled: false, consent_at: null },
     'GET /api/usage': USAGE_NONE,
     'GET /api/account/plan': PLAN_FREE,
     'GET /api/plans': PLAN_CATALOGUE,

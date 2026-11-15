@@ -55,6 +55,9 @@ const FAILURES: Record<string, FailureKeys> = {
   analysis_limit: { title: 'job.failure.analysis_limit.title', detail: 'job.failure.analysis_limit.detail' },
   soundless_not_evaluated: { title: 'job.failure.soundless_not_evaluated.title', detail: 'job.failure.soundless_not_evaluated.detail' },
   music_unlinked: { title: 'job.failure.music_unlinked.title', detail: 'job.failure.music_unlinked.detail' },
+  // Send to player (ADR 0034 section 5): the player was ahead, or held another class under our number.
+  player_ahead: { title: 'job.failure.player_ahead.title', detail: 'job.failure.player_ahead.detail' },
+  player_conflict: { title: 'job.failure.player_conflict.title', detail: 'job.failure.player_conflict.detail' },
 }
 
 const SOUNDLESS_INVALID: FailureKeys = {

@@ -1,5 +1,5 @@
-import { post } from './client'
-import { object, text } from './decode'
+import { del, get, post } from './client'
+import { flag, object, optionalText, text } from './decode'
 
 // The consent step of the OpenID Connect provider for classbeat-player (ADR 0034 section 1,
 // backend/src/classbeat/auth/oidc/authorize_routes.py). The request id `r` is bound to this
@@ -14,3 +14,22 @@ export async function answerPlayerConsent(requestId: string, allow: boolean): Pr
   return text(answer, 'redirect')
 }
 
+
+// The account's own view of that consent (backend/src/classbeat/auth/oidc/consent_routes.py):
+// when it was given, and a way to withdraw it. The next sign-in from the player asks again.
+
+export interface PlayerConsent {
+  /** False while the sign-in provider is off: the account page then shows nothing. */
+  enabled: boolean
+  /** When the user allowed the player, or null (never, or withdrawn). */
+  consentAt: string | null
+}
+
+export async function getPlayerConsent(signal?: AbortSignal): Promise<PlayerConsent> {
+  const body = object(await get('/api/auth/player-consent', signal), 'player consent')
+  return { enabled: flag(body, 'enabled'), consentAt: optionalText(body, 'consent_at') }
+}
+
+export async function withdrawPlayerConsent(): Promise<boolean> {
+  return flag(object(await del('/api/auth/player-consent'), 'withdraw'), 'withdrawn')
+}

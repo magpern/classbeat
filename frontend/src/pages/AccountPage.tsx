@@ -1,5 +1,5 @@
 import { ChevronDown } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { getIdentities, logout, logoutAll } from '../api/auth'
 import { oauthOutcomeMessage } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
@@ -7,6 +7,7 @@ import type { CatalogueKey } from '../i18n/en'
 import { useT } from '../i18n/I18n'
 import { AccountHeader } from '../components/account/AccountHeader'
 import { ConnectionsList } from '../components/account/connections/ConnectionsList'
+import { PLAYER_PATH } from '../api/player'
 import { SPOTIFY_PATH } from '../components/account/connections/SpotifyRow'
 import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
 import { DeleteAccount } from '../components/account/DeleteAccount'
@@ -27,6 +28,10 @@ import { EmailPreferences } from '../components/account/EmailPreferences'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { replaceHash, useQuery, useRouter } from '../router/Router'
 import { ThemeSwitch } from '../theme/ThemeSwitch'
+
+const PlayerConsent = lazy(() =>
+  import('../components/account/PlayerConsent').then((m) => ({ default: m.PlayerConsent })),
+)
 
 const OAUTH_NOTES: Record<string, CatalogueKey> = {
   linked: 'account.oauth.linked',
@@ -79,7 +84,8 @@ function Account() {
   const { session, refresh } = useSession()
   const { navigate, path } = useRouter()
   const outcome = useQuery().get('oauth')
-  const spotify = path === SPOTIFY_PATH
+  // /account/spotify and /account/player are Connections with that service's dialog open.
+  const spotify = path === SPOTIFY_PATH || path === PLAYER_PATH
   const [tab, setTab] = useState<TabId>(() => initialTab(outcome, spotify))
   // Whether a failed provider re-authentication can point to the password (#522).
   // undefined while loading, null when it could not be read.
@@ -158,6 +164,9 @@ function Account() {
         </TabsList>
         <TabsContent value="connections" className="flex flex-col gap-4">
           <ConnectionsList />
+          <Suspense fallback={null}>
+            <PlayerConsent />
+          </Suspense>
         </TabsContent>
         <TabsContent value="plan" className="flex flex-col gap-4">
           <Plan />
