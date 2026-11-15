@@ -15,6 +15,10 @@ token, and ``public`` with the player's link id when the player names one.
 - ``mark_player_link_ended``: ``needs_reconnect`` for the row read earlier (same generation),
   when its link was ended but no new token could be stored, so no row stays ``connected`` with
   a token the player has revoked.
+- ``hold_player_link`` and ``player_connected`` (ADR 0034 section 5), in the caller's
+  transaction: the row read earlier share-locked while it is still that generation and
+  ``connected`` (a send's and a removal's decide step), and whether the user's row is
+  ``connected`` now (admit, a class's deletion).
 - ``player_link_lock``: the user's transaction-level advisory lock for a reconnect, taken
   without waiting (``pg_try_advisory_xact_lock``; a wait would run into the role's
   ``lock_timeout``). It serializes two callbacks of one user, so one old link is ended once and
@@ -47,6 +51,14 @@ _C = connections.c
 # The lock's key namespace, so it never shares a key with another advisory lock.
 LOCK_NAMESPACE = "classbeat.player.link:"
 _TRY_LOCK = text("SELECT pg_try_advisory_xact_lock(hashtextextended(:key, 0))")
+_HOLD = text(
+    "SELECT 1 FROM connections WHERE owner_id = :owner_id AND id = :id AND provider = 'player' "
+    "AND generation = :generation AND status = 'connected' FOR SHARE"
+)
+_CONNECTED = text(
+    "SELECT 1 FROM connections WHERE owner_id = :owner_id AND provider = 'player' "
+    "AND status = 'connected' FOR SHARE"
+)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -134,6 +146,18 @@ async def mark_player_link_ended(factory: Factory, ctx: UserContext, link: Playe
             .returning(_C.id)
         )
         return result.first() is not None
+
+
+async def hold_player_link(db: AsyncSession, owner_id: UUID, link: PlayerLink) -> bool:
+    """Share-lock ``link``'s row while it is that generation and ``connected``: no reconnect or
+    disconnect can come between this check and the commit."""
+    params = {"owner_id": owner_id, "id": link.id, "generation": link.generation}
+    return (await db.execute(_HOLD, params)).first() is not None
+
+
+async def player_connected(db: AsyncSession, owner_id: UUID) -> bool:
+    """The user's player row is ``connected`` (share-locked until the caller commits)."""
+    return (await db.execute(_CONNECTED, {"owner_id": owner_id})).first() is not None
 
 
 @asynccontextmanager

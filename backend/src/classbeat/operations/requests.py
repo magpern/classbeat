@@ -22,6 +22,8 @@ from classbeat.operations.kinds import (
     MAX_BOUND_SECONDS,
     MAX_CONTEXT_BYTES,
     MULTI_REQUEST_KINDS,
+    PLAYER_REMOVE_KIND,
+    PLAYER_SEND_KIND,
     REF_KEY,
     SPOTIFY_CREATE_KIND,
     SPOTIFY_WRITE_KINDS,
@@ -135,6 +137,10 @@ class OperationRequest:
             raise ValueError("an attach belongs to no class")
         if self.kind in CLASS_WRITE_KINDS and self.class_id is None:
             raise ValueError("a class write names its class")
+        if self.kind == PLAYER_SEND_KIND and self.class_id is None:
+            raise ValueError("a send to the player names its class")
+        if self.kind == PLAYER_REMOVE_KIND and self.class_id is not None:
+            raise ValueError("a removal from the player belongs to no class")
         if self.kind in SPOTIFY_WRITE_KINDS:
             purpose = spotify_purpose(self.kind, self.idempotency_key)
             if purpose is None:

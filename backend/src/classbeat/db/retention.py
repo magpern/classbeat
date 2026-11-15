@@ -142,6 +142,10 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # ADR 0034 section 3: the PKCE verifier (useless without the one-time code); the
         # redirect address is classbeat's own callback.
         "player_link_flows": _entry("verifier", "state_hash session_hash redirect_uri", "account"),
+        # ADR 0034 section 5: the class ids sent to the player and their numbers, the sent
+        # revision and its document hash. It outlives the class (the removal needs it) and goes
+        # with the account.
+        "player_publications": _entry("", "sent_document_hash", "account"),
         # ADR 0008 section 8: the pool playlist id and the Spotify user id, with the consent.
         "spotify_pool": _entry(
             "spotify_user_id playlist_id", "last_hash", "account", "spotify_connection"

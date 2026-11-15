@@ -5,7 +5,16 @@ import logging
 import signal
 import sys
 
-from classbeat import design, playlists, quota, saving, songs, swedebeat_handoff, swedebeat_match
+from classbeat import (
+    design,
+    player_send,
+    playlists,
+    quota,
+    saving,
+    songs,
+    swedebeat_handoff,
+    swedebeat_match,
+)
 from classbeat.auth import EventSigner, EventSignerRefused, load_event_signer
 from classbeat.config import (
     ModelProviderRefused,
@@ -61,6 +70,9 @@ async def _run(settings: Settings, signer: EventSigner | None = None) -> None:
     # save_workout (SV1): the key ring, and the listing lag its reconciler may rely on.
     saving.configure(saving.Runtime(keyring))
     saving.configure_listing_lag(settings.mowl_listing_lag_seconds)
+    # Send to player and the removal (ADR 0034 section 5): the key ring; the player's client is
+    # the installed host's (``install_player_allowlist`` in ``main``), refused when it is off.
+    player_send.configure(player_send.Runtime(keyring))
     # The Spotify writes (OP1): the refresh client and margin, and the listing lag of the create
     # reconciler (ADR 0008 section 2).
     playlists.configure(playlists_runtime(settings))

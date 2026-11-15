@@ -152,6 +152,14 @@ class Person:
             u=u,
         )
         self.sql("INSERT INTO user_preferences (owner_id, uses_swedebeat) VALUES (:u, true)", u=u)
+        # ADR 0034 section 5: a class published to the player (it outlives the class).
+        self.sql(
+            "INSERT INTO player_publications (owner_id, source_class_id, last_number, "
+            "sent_revision_id, sent_document_hash) VALUES (:u, :c, 1, gen_random_uuid(), :h)",
+            u=u,
+            c=class_id,
+            h=bytes(32),
+        )
         self.sql(
             "INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, status) "
             "VALUES (:u, gen_random_uuid(), :hash, 'GET', '/api/classes/{class_id}', 200)",

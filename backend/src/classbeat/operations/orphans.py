@@ -31,6 +31,9 @@ row (#117 item 7). The queue functions do not change; instead:
   ``spotify_create_playlist`` / ``spotify_replace_items`` row of the class means a playlist may
   exist that nobody has decided on, so no resume creates another until the user's Check again or
   Do it anyway. It runs ``resolve`` first in the same transaction.
+- ``player_unresolved(db, ctx, class_id, job_id)``: the same rule for "Send to player" (ADR 0034
+  section 5), at its admit and ``prepare``. Its rows (and the removal's, which has no class) are
+  marked by ``resolve`` too: their keys are per publication number, taken by one job.
 
 Only ids and counts are logged, never a row's context or result.
 """
@@ -56,7 +59,7 @@ _RESOLVE = text(
     "error_category = coalesce((SELECT j.error_category FROM jobs j "
     "WHERE j.owner_id = o.owner_id AND j.id = o.job_id), o.error_category), updated_at = now() "
     "WHERE o.owner_id = :owner_id AND o.state = 'pending' "
-    "AND (o.kind IN ('mowl_save_workout', 'mowl_update_workout') "
+    "AND (o.kind IN ('mowl_save_workout', 'mowl_update_workout', 'player_send', 'player_remove') "
     "OR (o.kind IN ('spotify_create_playlist', 'spotify_replace_items') "
     "AND o.class_id IS NOT NULL)) "
     "AND (o.job_id IS NULL "
@@ -76,6 +79,15 @@ _PLAYLIST_UNRESOLVED = text(
     "SELECT 1 FROM external_operations "
     "WHERE owner_id = :owner_id AND class_id = :class_id "
     "AND kind IN ('spotify_create_playlist', 'spotify_replace_items') "
+    "AND (state = 'uncertain' "
+    "OR (state = 'pending' AND job_id IS DISTINCT FROM CAST(:job_id AS uuid))) LIMIT 1"
+)
+
+# ADR 0034 section 5: a send to the player of that class (keys are per publication number, so
+# only the same job's next attempt meets its own ``pending`` row).
+_PLAYER_UNRESOLVED = text(
+    "SELECT 1 FROM external_operations "
+    "WHERE owner_id = :owner_id AND class_id = :class_id AND kind = 'player_send' "
     "AND (state = 'uncertain' "
     "OR (state = 'pending' AND job_id IS DISTINCT FROM CAST(:job_id AS uuid))) LIMIT 1"
 )
@@ -123,6 +135,24 @@ async def playlist_unresolved(
     await resolve(db, ctx)
     found = await db.execute(
         _PLAYLIST_UNRESOLVED,
+        {
+            "owner_id": ctx.user_id,
+            "class_id": class_id,
+            "job_id": None if job_id is None else str(job_id),
+        },
+    )
+    return found.first() is not None
+
+
+async def player_unresolved(
+    db: AsyncSession, ctx: UserContext, class_id: UUID, job_id: UUID | None = None
+) -> bool:
+    """True when a new "Send to player" of ``class_id`` must be refused (``unresolved_write``):
+    a send of that class is ``uncertain``, or ``pending`` for a job other than ``job_id`` (None
+    at admit: any job). Runs ``resolve`` first."""
+    await resolve(db, ctx)
+    found = await db.execute(
+        _PLAYER_UNRESOLVED,
         {
             "owner_id": ctx.user_id,
             "class_id": class_id,
