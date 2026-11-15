@@ -17,7 +17,7 @@ Every rule refuses with ``KeysetRefused`` (its message names the rule, never a k
 
 import json
 import re
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
@@ -45,12 +45,12 @@ class KeyEntry:
 
 
 def _time(value: Any, name: str) -> datetime:
-    if not isinstance(value, str):
-        raise KeysetRefused(f"{name} must be an ISO 8601 time")
     try:
-        moment = datetime.fromisoformat(value)
+        moment = datetime.fromisoformat(value) if isinstance(value, str) else None
     except ValueError:
-        raise KeysetRefused(f"{name} must be an ISO 8601 time") from None
+        moment = None
+    if moment is None:
+        raise KeysetRefused(f"{name} must be an ISO 8601 time")
     if moment.tzinfo is None:
         raise KeysetRefused(f"{name} must carry a time zone")
     return moment
@@ -96,17 +96,9 @@ def parse(text: str | bytes, *, allow_empty: bool = False) -> list[KeyEntry]:
 
 
 def dump(keys: list[KeyEntry]) -> str:
-    items = [
-        {
-            "kid": key.kid,
-            "state": key.state,
-            "published_at": key.published_at.isoformat(),
-            "retired_at": None if key.retired_at is None else key.retired_at.isoformat(),
-            "pem": key.pem,
-        }
-        for key in keys
-    ]
-    return json.dumps({"keys": items}, indent=2) + "\n"
+    # The fields in file order; ``default`` writes each time as ISO 8601.
+    items = [asdict(key) for key in keys]
+    return json.dumps({"keys": items}, indent=2, default=datetime.isoformat) + "\n"
 
 
 def signing_key(keys: list[KeyEntry]) -> KeyEntry:
@@ -142,11 +134,10 @@ def promote(keys: list[KeyEntry], now: datetime) -> list[KeyEntry]:
     moved: list[KeyEntry] = []
     for key in keys:
         if key.state == "current":
-            moved.append(replace(key, state="retired", retired_at=now))
+            key = KeyEntry(key.kid, "retired", key.published_at, now, key.pem)
         elif key.state == "next":
-            moved.append(replace(key, state="current"))
-        else:
-            moved.append(key)
+            key = KeyEntry(key.kid, "current", key.published_at, None, key.pem)
+        moved.append(key)
     return check(moved)
 
 

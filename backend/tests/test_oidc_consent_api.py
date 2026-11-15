@@ -54,6 +54,22 @@ async def test_read_and_withdraw_the_consent(oenv: Env) -> None:
     assert again.json() == {"withdrawn": False}
 
 
+async def test_withdrawing_leaves_another_users_consent_alone(oenv: Env) -> None:
+    sessions: list[str] = []
+    for email in ("alice@example.com", "bob@example.com"):
+        session = (await oenv.login(await oenv.user(email))).token
+        player = FakePlayer(oenv)
+        assert (await player.token(await player.code_for(session))).status_code == 200
+        sessions.append(session)
+    alice, bob = sessions
+
+    gone = await oenv.client.delete(PATH, headers=unsafe_headers(alice, await csrf_of(oenv, alice)))
+    assert gone.json() == {"withdrawn": True}
+    assert (await oenv.client.get(PATH, headers=session_cookie(alice))).json()["consent_at"] is None
+    kept = (await oenv.client.get(PATH, headers=session_cookie(bob))).json()
+    assert kept["consent_at"] is not None
+
+
 async def test_the_routes_need_a_session_and_csrf(oenv: Env) -> None:
     assert (await oenv.client.get(PATH)).status_code == 401
     session = (await oenv.login(await oenv.user())).token

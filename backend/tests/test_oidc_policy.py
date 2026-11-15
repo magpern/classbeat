@@ -13,7 +13,8 @@ from classbeat.auth.oidc.request_policy import (
     RedirectError,
     check_authorize,
 )
-from classbeat.config_player import check_client_id, check_redirect_uri
+from classbeat.config_features import check_player_client_id as check_client_id
+from classbeat.config_features import check_player_redirect_uri as check_redirect_uri
 
 CLIENT = Client("player", "https://player.example/cb")
 GOOD = {
