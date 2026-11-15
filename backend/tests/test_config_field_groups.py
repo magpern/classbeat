@@ -29,6 +29,7 @@ ALLOWED_IMPORTS = frozenset(
         "pydantic_settings",
         "classbeat.config_hosts",
         "classbeat.config_turnstile",
+        "classbeat.player.base_url_policy",  # pure (ADR 0034 section 2)
         "classbeat.emailnorm",
     }
 )

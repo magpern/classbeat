@@ -62,6 +62,10 @@ const JOBS = {
   uncertain_operations: [
     { user_id: USER_ID, email: 'other@example.test', kind: 'spotify_create_playlist', since: '2026-10-30T08:00:00Z', job_state: null },
   ],
+  failed_player_events: [
+    { kind: 'account_deleted', created_at: '2026-10-20T08:00:00Z', give_up_at: '2026-10-27T08:00:00Z', attempts: 31, last_error: 'status_5xx' },
+  ],
+  player_events_truncated: false,
 }
 
 const AUDIT_ROW = {
@@ -213,6 +217,24 @@ describe('admin jobs', () => {
       expect(api.to('GET', '/api/admin/jobs?days=30')).toHaveLength(1)
     })
     expect(window.location.search).toBe('?days=30')
+  })
+
+  it('lists the undelivered player events without a user, and says when the list is cut', async () => {
+    adminApi({ 'GET /api/admin/jobs?days=7': { ...JOBS, player_events_truncated: true } })
+    renderAt('/admin/jobs')
+    const events = await screen.findByRole('table', { name: 'Undelivered player events' })
+    expect(within(events).getByText('account_deleted')).toBeInTheDocument()
+    expect(within(events).getByText('31')).toBeInTheDocument()
+    expect(within(events).getByText('status_5xx')).toBeInTheDocument()
+    expect(within(events).queryByRole('link')).toBeNull()
+    expect(screen.getByText('Only the most recent undelivered events are shown.')).toBeInTheDocument()
+  })
+
+  it('says when no player event is undelivered', async () => {
+    adminApi({ 'GET /api/admin/jobs?days=7': { ...JOBS, failed_player_events: [] } })
+    renderAt('/admin/jobs')
+    expect(await screen.findByText('No undelivered player events.')).toBeInTheDocument()
+    expect(screen.queryByText('Only the most recent undelivered events are shown.')).toBeNull()
   })
 })
 

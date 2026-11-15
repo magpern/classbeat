@@ -16,7 +16,9 @@ not do outside ``classbeat.egress``:
 - build an allowlist, an allowlisted transport or opener itself (``classbeat.egress.Allowlist``,
   ``AllowlistTransport``, ``build_allowlist_opener``, the deadline handlers), or hand
   ``allowlisted_async_client`` an allowlist (ADR 0009 §10): every list is code in
-  ``classbeat.egress`` and is chosen there, never widened by a caller.
+  ``classbeat.egress`` and is chosen there, never widened by a caller;
+- install the player's host (``install_player_allowlist``, ADR 0034 section 2) anywhere but the
+  worker's entry point, or hand ``player_async_client`` an argument.
 
 Names are resolved through imports and aliases (``import httpx as h``, ``from urllib import
 request``, ``from httpx import AsyncClient as C``). Like the other guards this catches accidental
@@ -145,6 +147,10 @@ _CALLS = frozenset(
         "classbeat.egress.turnstile_network_transport",
         "classbeat.egress.turnstile_test_client",
         "classbeat.egress._turnstile_client",
+        # ADR 0034 section 2 (#1058): the player client with a transport of the caller's own.
+        "classbeat.egress.player_network_transport",
+        "classbeat.egress.player_test_client",
+        "classbeat.egress._player_client",
     }
 )
 # Allowed only without an allowlist argument (the list is the function's own).
@@ -160,8 +166,15 @@ _NO_ARGUMENTS = frozenset(
         "classbeat.egress.mowl_mqtt_open",
         # ADR 0025 section 9: the Turnstile siteverify client (list, deadline, transport its own).
         "classbeat.egress.turnstile_async_client",
+        # ADR 0034 section 2 (#1058): the player client (its list is the installed host).
+        "classbeat.egress.player_async_client",
     }
 )
+# Allowed only in these modules: the player's one host, a setting, is installed once, at the
+# worker's start (ADR 0034 section 2); nothing else may replace it.
+_ONLY_IN: dict[str, frozenset[str]] = {
+    "classbeat.egress.install_player_allowlist": frozenset({"classbeat.worker.__main__"}),
+}
 
 # Any call by these attribute names, whatever the object (an event loop, a socket): raw
 # connections around both allowlisted paths.
@@ -339,6 +352,10 @@ def scan_source(source: str, module: str) -> list[tuple[int, str]]:
         if name is None:
             continue
         name = _canonical(name)
+        if name in _ONLY_IN:
+            if module not in _ONLY_IN[name]:
+                found.append((node.lineno, f"calls {name}: only {sorted(_ONLY_IN[name])}"))
+            continue
         if name in _NO_ARGUMENTS:
             if node.args or node.keywords:
                 found.append((node.lineno, f"hands {name} an argument: it takes none ({EGRESS})"))

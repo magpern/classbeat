@@ -15,6 +15,7 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 from classbeat.config_turnstile import check_site_key as check_turnstile_site_key
+from classbeat.player.base_url_policy import player_base_url as check_player_base_url
 
 # ADR 0034 section 1: the player's client id is 1 to 128 letters, digits, ``.``, ``_`` or ``-``.
 # Its redirect address is an absolute ``https`` URL (``http`` only on a loopback host, for local
@@ -97,6 +98,15 @@ class FeatureSettings(BaseSettings):
     # (``classbeat.auth.oidc.provider``). The redirect address is compared exactly.
     oidc_player_client_id: str | None = None
     oidc_player_redirect_uri: str | None = None
+    # ADR 0034 section 2 (#1058): where the worker POSTs the signed events (the player's one
+    # host, ``classbeat.egress``). Unset, nothing is delivered and events fail visibly after 7
+    # days; a value that breaks a rule of ``player.base_url_policy`` refuses startup.
+    player_base_url: str | None = None
+
+    @field_validator("player_base_url")
+    @classmethod
+    def _check_player_base_url(cls, value: str | None) -> str | None:
+        return None if value is None else check_player_base_url(value)
 
     @field_validator("oidc_player_client_id")
     @classmethod

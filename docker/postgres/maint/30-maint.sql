@@ -224,3 +224,13 @@ GRANT SELECT (id, owner_id, job_id, kind, state, error_category, created_at, upd
 -- maint may read and the tests pin that no response carries it.
 GRANT SELECT (owner_id, session_id, ip_hash, status, at) ON public.security_log
   TO classbeat_maint;
+
+-- The player events (ADR 0034 section 2, #1058): the operator's erase and disable write them
+-- in their own transaction (classbeat.player.outbox), so maint finds a user's player grants
+-- (never the consent) and inserts and replaces pending events. It never reads the jti; the
+-- admin area lists the failed events without their subject.
+GRANT SELECT (user_id, client_id, first_issued_at) ON public.oidc_grants TO classbeat_maint;
+GRANT SELECT (id, kind, sub, state, attempt, created_at, give_up_at, leased_by, last_error)
+  ON public.player_events TO classbeat_maint;
+GRANT INSERT (kind, sub, jti) ON public.player_events TO classbeat_maint;
+GRANT DELETE ON public.player_events TO classbeat_maint;

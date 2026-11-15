@@ -9,10 +9,14 @@
 - **recent failures by category**: failed jobs that finished within ``days``, counted per kind
   and error category, with the latest;
 - **uncertain external operations**: owner (id and email), the operation's kind, since when
-  (its ``updated_at``) and its job's state (``None`` once the job went with its class).
+  (its ``updated_at``) and its job's state (``None`` once the job went with its class);
+- **failed player events** (ADR 0034 section 2): kind, created, given up at, attempts and the
+  last error's category (``classbeat.player.outbox.failed_events``; never the subject or ``jti``),
+  kept 30 days after ``give_up_at``.
 
-Both lists stop at ``LIST_ROWS`` (200); ``waiting_truncated`` and ``uncertain_truncated`` say when
-there were more, so a full list never reads as all of them (#227, PR #281 review).
+The lists stop at 200 rows; ``waiting_truncated``, ``uncertain_truncated`` and
+``player_events_truncated`` say when there were more, so a full list never reads as all of them
+(#227, PR #281 review).
 
 Read only (ADR 0011 section 6: an uncertain operation stays the user's to resolve, ADR 0005
 section 7). Never a job's input, stage detail, keys or hashes, an operation's idempotency key,
@@ -32,6 +36,7 @@ from sqlalchemy import text
 from classbeat import auth
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
+from classbeat.player.outbox import failed_events
 
 router = admin_router()
 
@@ -86,6 +91,14 @@ class UncertainOperation(Out):
     job_state: str | None
 
 
+class FailedPlayerEvent(Out):
+    kind: str
+    created_at: datetime
+    give_up_at: datetime
+    attempts: int
+    last_error: str | None
+
+
 class JobsOut(Out):
     days: int
     states: list[StateCount]
@@ -95,6 +108,8 @@ class JobsOut(Out):
     failures: list[Failure]
     uncertain_operations: list[UncertainOperation]
     uncertain_truncated: bool
+    failed_player_events: list[FailedPlayerEvent]
+    player_events_truncated: bool
 
 
 def _db(request: Request) -> AdminDb:
@@ -118,6 +133,7 @@ async def read_jobs(
             len(uncertain) > LIST_ROWS,
         )
         waiting, uncertain = waiting[:LIST_ROWS], uncertain[:LIST_ROWS]
+        player_events, player_events_truncated = await failed_events(db)
         emails = await auth.account_emails(
             db, {r.owner_id for r in waiting} | {r.owner_id for r in uncertain}
         )
@@ -150,4 +166,15 @@ async def read_jobs(
             for r in uncertain
         ],
         uncertain_truncated=uncertain_truncated,
+        failed_player_events=[
+            FailedPlayerEvent(
+                kind=e.kind,
+                created_at=e.created_at,
+                give_up_at=e.give_up_at,
+                attempts=e.attempts,
+                last_error=e.last_error,
+            )
+            for e in player_events
+        ],
+        player_events_truncated=player_events_truncated,
     )

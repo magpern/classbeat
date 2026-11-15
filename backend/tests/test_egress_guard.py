@@ -185,6 +185,15 @@ REFUSED = [
     "swedebeat_cloud_network_transport()",
     "from classbeat.egress import swedebeat_cloud_test_client\nswedebeat_cloud_test_client(t)",
     "from classbeat import egress\negress.swedebeat_cloud_test_client(t)",
+    # ADR 0034 section 2 (#1058): the player client takes no argument, its builders are tests'.
+    "from classbeat.egress import player_async_client\nplayer_async_client(inner=t)",
+    "from classbeat.egress import player_async_client\nplayer_async_client('https://x.example')",
+    "from classbeat.egress import player_test_client\nplayer_test_client(t)",
+    "from classbeat import egress\negress._player_client(p, t)",
+    "from classbeat.egress import player_network_transport\nplayer_network_transport()",
+    # Only the worker's entry point installs the player's host.
+    "from classbeat.egress import install_player_allowlist\ninstall_player_allowlist(u)",
+    "from classbeat import egress\negress.install_player_allowlist(None)",
     # No request follows redirects, whatever the client's own default is.
     "async def f(client, url):\n    await client.get(url, follow_redirects=True)",
     "async def f(client, url):\n"
@@ -226,6 +235,7 @@ ALLOWED = [
     "from openai import AsyncOpenAI\nfrom classbeat.egress import allowlisted_async_client\n"
     "AsyncOpenAI(api_key=k, http_client=allowlisted_async_client(provider='deepseek'))",
     "from classbeat.egress import SPOTIFY_ALLOWLIST\nSPOTIFY_ALLOWLIST.check_url(u)",
+    "from classbeat.egress import player_async_client\nplayer_async_client()",
 ]
 
 
@@ -251,3 +261,20 @@ def test_an_exemption_is_per_module_and_per_call() -> None:
     assert scan_source(call, "classbeat.auth.routes") != []
     other = "import httpx\nhttpx.Client()"
     assert scan_source(other, "classbeat.auth.oauth_client") != []
+
+
+INSTALL = "from classbeat.egress import install_player_allowlist\ninstall_player_allowlist(u)"
+
+
+@pytest.mark.parametrize(
+    ("module", "refused"),
+    [
+        ("classbeat.worker.__main__", False),
+        ("classbeat.__main__", True),
+        ("classbeat.worker.loop", True),
+        ("classbeat.player.delivery", True),
+        ("classbeat.worker.__main__x", True),
+    ],
+)
+def test_only_the_worker_entry_point_installs_the_player_host(module: str, refused: bool) -> None:
+    assert (scan_source(INSTALL, module) != []) is refused

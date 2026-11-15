@@ -65,6 +65,17 @@ def _hex_file(directory: Path, name: str) -> bytes:
     return bytes.fromhex(raw[:64].decode("ascii"))
 
 
+def read_pairwise_key(directory: Path) -> bytes:
+    """The pairwise key file (``OidcConfigError`` when missing or malformed)."""
+    return _hex_file(directory, PAIRWISE_KEY_FILE)
+
+
+def load_signer(directory: Path) -> Signer:
+    """The signing key set alone: the worker signs the player events with it (ADR 0034 section
+    2) and needs neither the client secret's hash nor the pairwise key."""
+    return _signer(directory)
+
+
 def _signer(directory: Path) -> Signer:
     try:
         raw = (directory / SIGNING_KEYS_FILE).read_bytes()

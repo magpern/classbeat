@@ -191,7 +191,7 @@ def test_the_worker_installs_the_model_hosts_of_its_usable_providers(
         installed.append(frozenset(model_providers))  # pyright: ignore[reportArgumentType]
         return real(model_providers)  # pyright: ignore[reportArgumentType]
 
-    async def no_run(_: Settings) -> None:
+    async def no_run(_: Settings, _signer: object = None) -> None:
         return None
 
     monkeypatch.setattr(worker_main, "install_worker_allowlist", recording)

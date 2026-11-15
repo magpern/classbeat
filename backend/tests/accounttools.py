@@ -2,10 +2,13 @@
 
 import hashlib
 import json
+import os
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from classbeat.account.coverage import USER_REFERENCES
+from oidctools import PAIRWISE_KEY
 from songtools import Rider, SongEnv
 from test_song_deletion_paths import Planted, planted
 
@@ -38,7 +41,12 @@ class Person:
         ).scalar_one()
 
     def plant_account_rows(self) -> None:
-        """What the songs fixture does not create: the sign-in side and the admin-ish links."""
+        """What the songs fixture does not create: the sign-in side and the admin-ish links.
+
+        The player grant below makes a delete write a player event (ADR 0034 section 2, #1058),
+        which needs the pairwise key: the fixed public test key goes in the secrets directory."""
+        secrets = Path(os.environ["CLASSBEAT_SECRETS_DIR"])
+        (secrets / "oidc_pairwise_key").write_text(PAIRWISE_KEY.hex() + "\n")
         u = self.user_id
         statements = (
             "INSERT INTO identities (user_id, provider, subject, email_at_link) "

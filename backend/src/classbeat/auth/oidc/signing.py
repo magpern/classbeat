@@ -53,8 +53,10 @@ class Signer:
         ]
         return {"keys": keys}
 
-    def sign(self, claims: dict[str, Any]) -> str:
-        header = {"alg": ALGORITHM, "typ": "JWT", "kid": self._current}
+    def sign(self, claims: dict[str, Any], *, typ: str = "JWT") -> str:
+        """Sign with the current key; ``typ`` is ``JWT`` (an ID token) or ``logout+jwt`` (an
+        event to the player, ADR 0034 section 2)."""
+        header = {"alg": ALGORITHM, "typ": typ, "kid": self._current}
         return jwt.encode(header, claims, self._keys[self._current], algorithms=[ALGORITHM])
 
 

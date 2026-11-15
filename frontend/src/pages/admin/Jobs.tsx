@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { adminError } from '../../api/admin'
-import { getJobs, JOB_WINDOWS, type Jobs as JobsData } from '../../api/adminViews'
+import { getJobs, JOB_WINDOWS, type Jobs as JobsData } from '../../api/adminJobs'
 import { Notice } from '../../components/forms'
 import { SelectField } from '../../components/classes/fields'
 import { Link, useQuery, useRouter } from '../../router/Router'
@@ -22,8 +22,9 @@ function owner(userId: string, email: string | null) {
 
 /**
  * Jobs (ADR 0011 section 6), read only: counts per state, waiting approvals, recent failures by
- * category and uncertain external operations. An uncertain operation stays the user's to resolve
- * (ADR 0005 section 7), so there is no action here.
+ * category, uncertain external operations and the player events that could not be delivered
+ * (ADR 0034 section 2). An uncertain operation stays the user's to resolve (ADR 0005 section 7),
+ * so there is no action here; a failed player event names no user.
  */
 export function Jobs() {
   const onMfaRequired = useMfaRequired()
@@ -121,6 +122,24 @@ export function Jobs() {
               cells: [f.kind, f.category, f.count, when(f.lastAt)],
             }))}
           />
+
+          <SubTitle>Undelivered player events</SubTitle>
+          <p className="m-0 mb-2 text-muted">
+            Account events the class player never accepted. Each is removed 30 days after delivery
+            gave up.
+          </p>
+          <DataTable
+            caption="Undelivered player events"
+            head={['Event', 'Written', 'Gave up', 'Attempts', 'Last error']}
+            empty="No undelivered player events."
+            rows={data.failedPlayerEvents.map((e, index) => ({
+              key: `${e.createdAt}-${String(index)}`,
+              cells: [e.kind, when(e.createdAt), when(e.giveUpAt), e.attempts, e.lastError ?? 'None'],
+            }))}
+          />
+          {data.playerEventsTruncated ? (
+            <p className="m-0 mt-2 text-muted">Only the most recent undelivered events are shown.</p>
+          ) : null}
         </>
       ) : null}
     </section>

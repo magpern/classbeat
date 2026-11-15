@@ -129,6 +129,9 @@ def truncate_auth(admin_url: str) -> None:
             # ADR 0034 (#1056): a pending player sign-in request has no user either.
             if connection.execute(text("SELECT to_regclass('public.oidc_requests')")).scalar_one():
                 connection.execute(text("TRUNCATE oidc_requests"))
+            # ADR 0034 section 2 (#1058): the player events outlive their user by design.
+            if connection.execute(text("SELECT to_regclass('public.player_events')")).scalar_one():
+                connection.execute(text("TRUNCATE player_events"))
     finally:
         engine.dispose()
 

@@ -37,6 +37,8 @@ OTHER_SYSTEM_TABLES = {
     "model_eval_results": "recorded eval suite runs, not per user",
     "model_routes": "which model each route uses, not per user",
     "billing_webhook_refusals": "refused provider notifications; no user (ADR 0032 section 3)",
+    "player_events": "delivery state of the player's signed events: a pairwise subject, no user "
+    "id, gone once delivered (ADR 0034 section 2)",
 }
 
 

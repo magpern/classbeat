@@ -108,6 +108,7 @@ if TYPE_CHECKING:
         PasswordRuleError,
         normalize_password,
     )
+    from classbeat.auth.player_events import EventSigner, EventSignerRefused, load_event_signer
     from classbeat.auth.player_subject_lookup import player_subject
     from classbeat.auth.purge import purge_expired
     from classbeat.auth.ratelimit import (
@@ -129,12 +130,12 @@ if TYPE_CHECKING:
         swedebeat_mixes_buckets,
     )
     from classbeat.auth.reset_routes import make_reset_link_sender
+    from classbeat.auth.session_list import list_sessions
     from classbeat.auth.sessions import (
         IssuedSession,
         Resolution,
         SessionGone,
         SessionInfo,
-        list_sessions,
         resolve_session,
         revoke_session,
         revoke_user_sessions,
@@ -178,6 +179,8 @@ __all__ = [
     "Attempt",
     "Bucket",
     "EmailAddress",
+    "EventSigner",
+    "EventSignerRefused",
     "InviteRow",
     "IssuedSession",
     "Keys",
@@ -235,6 +238,7 @@ __all__ = [
     "issue_unsubscribe_token",
     "list_invites",
     "list_sessions",
+    "load_event_signer",
     "lock_owner_row",
     "mail_handoff_context",
     "mail_prefs_for_email",
