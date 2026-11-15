@@ -110,6 +110,8 @@ services:
       # ADR 0035 section 1: the SwedeBeat gateway's origin (web logs in through it); empty is
       # unset, SwedeBeat unavailable. Its client key is the swedebeat_gateway_key secret below.
       CLASSBEAT_SWEDEBEAT_GATEWAY_URL: ${SWEDEBEAT_GATEWAY_URL:-}
+      # ADR 0036 section 10: the SwedeBeat studio (a comma list; empty is off), as the worker's.
+      CLASSBEAT_SWEDEBEAT_STUDIO: ${SWEDEBEAT_STUDIO:-}
       # ADR 0018: running classes are off unless the owner switches them on here. This is the kill
       # switch only: a plain dev stack can no longer switch running on with it (it was enough before
       # #590). Running also needs an admin-stored `on` and a `design` route covering running for
@@ -176,6 +178,8 @@ services:
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
       # ADR 0035 section 1: the gateway's origin (the worker matches through it), as web's.
       CLASSBEAT_SWEDEBEAT_GATEWAY_URL: ${SWEDEBEAT_GATEWAY_URL:-}
+      # ADR 0036 section 10: the studio, as web's (off here, a queued studio job ends feature_off).
+      CLASSBEAT_SWEDEBEAT_STUDIO: ${SWEDEBEAT_STUDIO:-}
       # ADR 0018: a queued running design or revise checks the switch again; the same as web's.
       CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
       # ADR 0007 (soundless classes): a queued soundless design checks the switch again.

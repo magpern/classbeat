@@ -71,7 +71,14 @@ class Provenance(BaseModel):
     cost_micros: int = Field(ge=0)
     # ADR 0007 section 2; absent on revisions stored before it.
     origin: (
-        Literal["design_draft", "revise_draft", "design_with_songs", "revise_songs", "duplicate"]
+        Literal[
+            "design_draft",
+            "revise_draft",
+            "design_with_songs",
+            "revise_songs",
+            "studio_songs",
+            "duplicate",
+        ]
         | None
     ) = None
     base_revision_id: UUID | None = None
@@ -164,7 +171,7 @@ def provenance(
     music_map: Mapping[str, Any] | None,
     *,
     origin: Literal[
-        "design_draft", "revise_draft", "design_with_songs", "revise_songs"
+        "design_draft", "revise_draft", "design_with_songs", "revise_songs", "studio_songs"
     ] = "design_draft",
     base_revision_id: UUID | None = None,
     request_message_id: UUID | None = None,

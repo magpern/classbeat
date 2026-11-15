@@ -25,7 +25,7 @@ from classbeat.jobs import user
 from classbeat.jobs.credits import CreditLedger, QuotaRefused
 from classbeat.jobs.hold import CreateHold
 from classbeat.jobs.inputs import JobInput
-from classbeat.jobs.kinds import SONG_KIND_NAMES, Approving, KindRegistry
+from classbeat.jobs.kinds import POOL_KIND_NAMES, Approving, KindRegistry
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -76,13 +76,13 @@ _OPEN_SONG_JOB = text(
 async def cover_read_admitted(factory: Factory, ctx: UserContext, *, song_picking_on: bool) -> bool:
     """Whether the picker's cover read may call Spotify for this user: song picking admits them
     (``CLASSBEAT_SONG_PICKING`` is ``song_picking_on``, joined with the stored flag and the
-    user's features) and none of their song-picking jobs (``SONG_KIND_NAMES``) is queued or
+    user's features) and none of their song-picking jobs (``POOL_KIND_NAMES``) is queued or
     running. Read-only, under RLS as the user."""
     async with user_session(factory, ctx) as db:
         if not await flags.song_picking_admits(db, ctx, song_picking_on):
             return False
         found = await db.execute(
-            _OPEN_SONG_JOB, {"owner_id": ctx.user_id, "kinds": list(SONG_KIND_NAMES)}
+            _OPEN_SONG_JOB, {"owner_id": ctx.user_id, "kinds": list(POOL_KIND_NAMES)}
         )
         return not bool(found.scalar_one())
 

@@ -39,6 +39,7 @@ from classbeat.classes.history import router as history_router
 from classbeat.classes.interpretation_routes import router as interpretation_router
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
+from classbeat.classes.studio_songs_routes import router as studio_songs_router
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.mowl_qr import QrWaits
 from classbeat.connections.mowl_qr_routes import router as mowl_qr_router
@@ -68,6 +69,8 @@ from classbeat.quota import PlanRevisionPolicy
 from classbeat.spa_routes import add_single_page_app
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
+from classbeat.swedebeat_studio import config as studio_config
+from classbeat.swedebeat_studio import kind as studio_kind  # noqa: F401 - registers studio_songs
 from classbeat.usage.routes import router as usage_router
 
 # Importing player_send registers send_to_player (the jobs API admits a press) and the player
@@ -212,6 +215,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     swedebeat_match.configure(swedebeat_match.MatchConfig.from_settings(settings))
     # swedebeat_verify_mix (B2): the same switch. The web never opens MOWL for the job itself.
     swedebeat_handoff.configure(swedebeat_handoff.HandoffConfig.from_settings(settings))
+    # studio_songs (ADR 0036 sections 2 and 3): CLASSBEAT_SWEDEBEAT_STUDIO; importing
+    # classbeat.swedebeat_studio.kind registered the kind.
+    studio_config.configure(studio_config.StudioConfig.from_settings(settings))
     app.include_router(api)
     # The Spotify callback (outside /api, ADR 0009 section 2) before the sign-in providers'
     # ``/oauth/{provider}/callback``, which would otherwise answer it with a 404.
@@ -244,6 +250,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(history_router)
     app.include_router(duplicate_router)
     app.include_router(handoff_router)
+    app.include_router(studio_songs_router)
     app.include_router(interpretation_router)
 
     if settings.static_dir is not None:

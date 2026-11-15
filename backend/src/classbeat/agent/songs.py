@@ -137,8 +137,9 @@ def total_sec(lengths: Sequence[int]) -> float:
     return float(sum(lengths)) - CROSSFADE_SEC * (len(lengths) - 1)
 
 
-def within_tolerance(total: float, target_sec: int) -> bool:
-    return abs(total - target_sec) <= TOLERANCE * target_sec
+def within_tolerance(total: float, target_sec: int, *, upper: float = TOLERANCE) -> bool:
+    """Within 10 % under the target and ``upper`` (10 % unless relaxed) over it."""
+    return -TOLERANCE * target_sec <= total - target_sec <= upper * target_sec
 
 
 def key_of(title: str, artist: str) -> tuple[str, str]:

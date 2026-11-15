@@ -30,7 +30,8 @@ job, the per-user limit), in this order, each refusal writing nothing:
    for the rest of the transaction);
 4. ``consent_missing`` unless the user's pool consent is given for that Spotify account;
 5. ``pool_busy`` while the user has another pick (``design_with_songs`` or ``revise_songs`` in
-   mode ``pick``) that is ``queued`` or ``running`` and not yet approved: the pool playlist is
+   mode ``pick``, or a ``studio_songs``, ``POOL_KIND_NAMES``) that is ``queued`` or ``running``
+   and not yet approved: the pool playlist is
    shared by all of a user's classes (section 2). A job ``waiting_for_approval`` no longer needs
    the pool and does not count; nor does an approved one (phase 2 never touches the pool);
 6. for a ``seed`` (``invalid_input`` otherwise): the seed is the **newest** ``song_list`` revision
@@ -71,7 +72,7 @@ from classbeat import connections
 from classbeat.context import UserContext
 from classbeat.design import music_kind, sport
 from classbeat.flags import effective as flags
-from classbeat.jobs.kinds import SONG_KIND_NAMES, Admitted, Approving, Refused
+from classbeat.jobs.kinds import POOL_KIND_NAMES, SONG_KIND_NAMES, Admitted, Approving, Refused
 from classbeat.operations import orphans
 from classbeat.quota.gates import brief_of, check_brief, current_gates
 from classbeat.songs import config, song_list
@@ -170,7 +171,7 @@ async def _admit_resume(
 
 
 async def pool_busy(db: AsyncSession, owner_id: UUID) -> bool:
-    found = await db.execute(_PICK_OPEN, {"owner_id": owner_id, "kinds": list(SONG_KIND_NAMES)})
+    found = await db.execute(_PICK_OPEN, {"owner_id": owner_id, "kinds": list(POOL_KIND_NAMES)})
     return found.first() is not None
 
 

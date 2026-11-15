@@ -21,6 +21,7 @@ are ``{"detail": <string>}`` otherwise.
   (``(title, artist)`` folded, to ``found`` or ``unsure``; anything else is ``missing``).
   ``playlist`` mode is a ``422`` here: classbeat never sends it (ADR 0035 section 7). Each
   catalogue track's ``reference`` is ``reference_of(title, artist)``, the same on every answer.
+  ``add_flaky`` makes a catalogue track answer ``missing`` a few times first (a transient miss).
 - **Download** serves ``audio`` (reference to bytes): every catalogue track has ``FIXTURE_MP3``
   (a few silent MPEG-1 Layer III frames, generated here), and ``add_audio`` adds a test's own.
   After the key and the bearer: a reference outside the gateway's shape is ``422`` (a string
@@ -152,6 +153,8 @@ class FakeGateway:
     # Fields added to every answered track (planted values a test checks are never kept).
     track_extras: dict[str, Any] = field(default_factory=lambda: dict[str, Any]())
     audio: dict[str, bytes] = field(default_factory=lambda: dict[str, bytes]())
+    # A catalogue track answered ``missing`` this many more times first (a transient miss).
+    flaky: dict[tuple[str, str], int] = field(default_factory=lambda: dict[tuple[str, str], int]())
 
     def add_user(self, email: str, password: str) -> None:
         self.users[email] = password
@@ -170,6 +173,10 @@ class FakeGateway:
         self.catalogue[(title.strip().casefold(), artist.strip().casefold())] = status
         self.audio[reference_of(title, artist)] = FIXTURE_MP3
 
+    def add_flaky(self, title: str, artist: str, misses: int = 1) -> None:
+        """The catalogue track ``(title, artist)`` answers ``missing`` ``misses`` more times."""
+        self.flaky[(title.strip().casefold(), artist.strip().casefold())] = misses
+
     def add_audio(self, reference: str, body: bytes) -> None:
         self.audio[reference] = body
 
@@ -186,6 +193,7 @@ class FakeGateway:
         self.bearers.clear()
         self.catalogue.clear()
         self.audio.clear()
+        self.flaky.clear()
         self.requests.clear()
         self.injections.clear()
         self.offset = 0.0
@@ -266,7 +274,11 @@ class FakeGateway:
 
     def _item(self, track: dict[str, str]) -> dict[str, Any]:
         title, artist = track["title"], track["artist"]
-        status = self.catalogue.get((title.strip().casefold(), artist.strip().casefold()))
+        key = (title.strip().casefold(), artist.strip().casefold())
+        status = self.catalogue.get(key)
+        if self.flaky.get(key, 0) > 0:
+            self.flaky[key] -= 1
+            status = None
         if status is None:
             return {
                 "title": title,

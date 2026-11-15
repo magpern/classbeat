@@ -167,7 +167,7 @@ class SongListRevision:
         revision_id = uuid.uuid4()
         found = (
             await fs.db.execute(
-                _INSERT,
+                INSERT,
                 {
                     "id": revision_id,
                     "content": _json(self.content.model_dump(mode="json")),
@@ -193,8 +193,8 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, ensure_ascii=False)
 
 
-# As the draft's insert (classbeat.design.revision), with kind 'song_list'.
-_INSERT = text(
+# As the draft's insert (classbeat.design.revision), with kind 'song_list'; the studio list too.
+INSERT = text(
     "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
     "music, provenance, job_id, parent_id) "
     "SELECT :id, j.owner_id, j.class_id, coalesce((SELECT max(r.number) FROM class_revisions r "

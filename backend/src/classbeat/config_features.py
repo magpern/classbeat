@@ -17,6 +17,7 @@ from pydantic_settings import BaseSettings
 from classbeat.config_turnstile import check_site_key as check_turnstile_site_key
 from classbeat.player.base_url_policy import player_base_url as check_player_base_url
 from classbeat.swedebeat_gateway.url_policy import gateway_url as check_swedebeat_gateway_url
+from classbeat.swedebeat_studio.config_policy import canonical as check_swedebeat_studio
 
 # ADR 0034 section 1: the player's client id is 1 to 128 letters, digits, ``.``, ``_`` or ``-``.
 # Its redirect address is an absolute ``https`` URL (``http`` only on a loopback host, for local
@@ -67,6 +68,10 @@ class FeatureSettings(BaseSettings):
     # SwedeBeat is unavailable; a value that breaks a rule of ``swedebeat_gateway.url_policy``
     # refuses startup of both. Its client key is ``Settings.swedebeat_gateway_key`` (a file).
     swedebeat_gateway_url: str | None = None
+    # ADR 0036 sections 2 and 10: the SwedeBeat studio, a comma list of ``design``,
+    # ``swedebeat_playlist``, ``swedebeat_mix`` and ``mowl``; empty (the default) is off.
+    # ``swedebeat_studio.config_policy`` refuses anything else at startup.
+    swedebeat_studio: str = ""
     # ADR 0018 section 5: running classes. The environment's kill switch (off by default; the
     # admin flag ``running_enabled`` can only tighten it), read by the web (admit) and the worker
     # (a queued running job checks it again).
@@ -112,6 +117,11 @@ class FeatureSettings(BaseSettings):
     @classmethod
     def _check_swedebeat_gateway_url(cls, value: str | None) -> str | None:
         return None if value is None else check_swedebeat_gateway_url(value)
+
+    @field_validator("swedebeat_studio")
+    @classmethod
+    def _check_swedebeat_studio(cls, value: str) -> str:
+        return check_swedebeat_studio(value)
 
     @field_validator("player_base_url")
     @classmethod

@@ -11,7 +11,8 @@ holds every registered kind to one of these lists, so a new kind is classified w
 
 from typing import Final
 
-DESIGN_KINDS: Final = ("design_draft", "design_with_songs")
+# ``studio_songs`` (ADR 0036): a studio class's brief is its song job's until the design.
+DESIGN_KINDS: Final = ("design_draft", "design_with_songs", "studio_songs")
 SONG_DESIGN_KIND: Final = "design_with_songs"
 INTERPRET_KIND: Final = "interpret_request"
 # Kinds that never carry a class's first brief: a revision exists before they can run, or (the
