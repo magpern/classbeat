@@ -1,0 +1,318 @@
+{
+  "format_version": "1.0",
+  "class": {
+    "title": "Half-hour spin without crossfade",
+    "sport": "cycling",
+    "length_ms": 1800000
+  },
+  "music": {
+    "source": "spotify",
+    "design_crossfade_ms": 0,
+    "song_timing": "estimated"
+  },
+  "zone_scale": [
+    {
+      "zone": 1,
+      "name": "Recovery",
+      "ftp_pct": [
+        0,
+        55
+      ],
+      "rpe": [
+        1,
+        2
+      ]
+    },
+    {
+      "zone": 2,
+      "name": "Endurance",
+      "ftp_pct": [
+        56,
+        75
+      ],
+      "rpe": [
+        3,
+        4
+      ]
+    },
+    {
+      "zone": 3,
+      "name": "Tempo",
+      "ftp_pct": [
+        76,
+        90
+      ],
+      "rpe": [
+        5,
+        6
+      ]
+    },
+    {
+      "zone": 4,
+      "name": "Threshold",
+      "ftp_pct": [
+        91,
+        105
+      ],
+      "rpe": [
+        7,
+        8
+      ]
+    },
+    {
+      "zone": 5,
+      "name": "VO2 max",
+      "ftp_pct": [
+        106,
+        120
+      ],
+      "rpe": [
+        9,
+        9
+      ]
+    }
+  ],
+  "totals": {
+    "length_ms": 1800000,
+    "time_in_zone_ms": {
+      "1": 420000,
+      "2": 300000,
+      "3": 480000,
+      "4": 360000,
+      "5": 240000
+    }
+  },
+  "segments": [
+    {
+      "name": "Warm up",
+      "kind": "warmup",
+      "start_ms": 0,
+      "end_ms": 240000
+    },
+    {
+      "name": "Main set",
+      "kind": "main",
+      "start_ms": 240000,
+      "end_ms": 1620000
+    },
+    {
+      "name": "Cool down",
+      "kind": "cooldown",
+      "start_ms": 1620000,
+      "end_ms": 1800000
+    }
+  ],
+  "intervals": [
+    {
+      "start_ms": 0,
+      "length_ms": 240000,
+      "zone": 1,
+      "cadence": {
+        "from": 80,
+        "to": 90
+      },
+      "position": "seated",
+      "cue": "Easy start"
+    },
+    {
+      "start_ms": 240000,
+      "length_ms": 180000,
+      "zone": 3,
+      "cadence": {
+        "from": 90,
+        "to": 100
+      },
+      "position": "seated",
+      "cue": "Tempo"
+    },
+    {
+      "start_ms": 420000,
+      "length_ms": 60000,
+      "zone": 2,
+      "cadence": {
+        "from": 80,
+        "to": 90
+      },
+      "position": "seated",
+      "cue": "Ease"
+    },
+    {
+      "start_ms": 480000,
+      "length_ms": 180000,
+      "zone": 4,
+      "cadence": {
+        "from": 85,
+        "to": 95
+      },
+      "position": "seated",
+      "cue": "Threshold"
+    },
+    {
+      "start_ms": 660000,
+      "length_ms": 60000,
+      "zone": 2,
+      "cadence": {
+        "from": 80,
+        "to": 90
+      },
+      "position": "seated",
+      "cue": "Ease"
+    },
+    {
+      "start_ms": 720000,
+      "length_ms": 180000,
+      "zone": 4,
+      "cadence": {
+        "from": 85,
+        "to": 95
+      },
+      "position": "seated",
+      "cue": "Threshold again"
+    },
+    {
+      "start_ms": 900000,
+      "length_ms": 60000,
+      "zone": 2,
+      "cadence": {
+        "from": 80,
+        "to": 90
+      },
+      "position": "seated",
+      "cue": "Ease"
+    },
+    {
+      "start_ms": 960000,
+      "length_ms": 240000,
+      "zone": 5,
+      "cadence": {
+        "from": 95,
+        "to": 105
+      },
+      "position": "standing",
+      "cue": "Stand and push"
+    },
+    {
+      "start_ms": 1200000,
+      "length_ms": 120000,
+      "zone": 2,
+      "cadence": {
+        "from": 80,
+        "to": 90
+      },
+      "position": "seated",
+      "cue": "Spin it out"
+    },
+    {
+      "start_ms": 1320000,
+      "length_ms": 300000,
+      "zone": 3,
+      "cadence": {
+        "from": 90,
+        "to": 100
+      },
+      "position": "seated",
+      "cue": "Tempo to finish"
+    },
+    {
+      "start_ms": 1620000,
+      "length_ms": 180000,
+      "zone": 1,
+      "cadence": {
+        "from": 70,
+        "to": 80
+      },
+      "position": "seated",
+      "cue": "Cool down"
+    }
+  ],
+  "songs": [
+    {
+      "title": "Fixture Song 1",
+      "artist": "Example Artist A",
+      "length_ms": 240000,
+      "start_ms": 0,
+      "end_ms": 240000,
+      "bpm": 110,
+      "ids": {
+        "spotify_track": "FAKEtrack0000000000001"
+      }
+    },
+    {
+      "title": "Fixture Song 2",
+      "artist": "Example Artist B",
+      "length_ms": 210000,
+      "start_ms": 240000,
+      "end_ms": 450000,
+      "bpm": 118,
+      "ids": {
+        "spotify_track": "FAKEtrack0000000000002"
+      }
+    },
+    {
+      "title": "Fixture Song 3",
+      "artist": "Example Artist C",
+      "length_ms": 225000,
+      "start_ms": 450000,
+      "end_ms": 675000,
+      "bpm": 126,
+      "ids": {
+        "spotify_track": "FAKEtrack0000000000003"
+      }
+    },
+    {
+      "title": "Fixture Song 4",
+      "artist": "Example Artist A",
+      "length_ms": 230000,
+      "start_ms": 675000,
+      "end_ms": 905000,
+      "bpm": 134,
+      "ids": {
+        "spotify_track": "FAKEtrack0000000000004"
+      }
+    },
+    {
+      "title": "Fixture Song 5",
+      "artist": "Example Artist B",
+      "length_ms": 220000,
+      "start_ms": 905000,
+      "end_ms": 1125000,
+      "bpm": 110,
+      "ids": {
+        "spotify_track": "FAKEtrack0000000000005"
+      }
+    },
+    {
+      "title": "Fixture Song 6",
+      "artist": "Example Artist C",
+      "length_ms": 235000,
+      "start_ms": 1125000,
+      "end_ms": 1360000,
+      "bpm": 118,
+      "ids": {
+        "spotify_track": "FAKEtrack0000000000006"
+      }
+    },
+    {
+      "title": "Fixture Song 7",
+      "artist": "Example Artist A",
+      "length_ms": 215000,
+      "start_ms": 1360000,
+      "end_ms": 1575000,
+      "bpm": 126,
+      "ids": {
+        "spotify_track": "FAKEtrack0000000000007"
+      }
+    },
+    {
+      "title": "Fixture Song 8",
+      "artist": "Example Artist B",
+      "length_ms": 225000,
+      "start_ms": 1575000,
+      "end_ms": 1800000,
+      "bpm": 134,
+      "ids": {
+        "spotify_track": "FAKEtrack0000000000008"
+      }
+    }
+  ]
+}

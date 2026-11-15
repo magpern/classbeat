@@ -1,0 +1,123 @@
+{
+  "format_version": "1.0",
+  "class": {
+    "title": "Quick spin",
+    "description": "Six minutes, no music.",
+    "sport": "cycling",
+    "length_ms": 360000
+  },
+  "music": {
+    "source": "none",
+    "design_crossfade_ms": 0,
+    "song_timing": "missing"
+  },
+  "zone_scale": [
+    {
+      "zone": 1,
+      "name": "Recovery",
+      "ftp_pct": [
+        0,
+        55
+      ],
+      "rpe": [
+        1,
+        2
+      ]
+    },
+    {
+      "zone": 2,
+      "name": "Endurance",
+      "ftp_pct": [
+        56,
+        75
+      ],
+      "rpe": [
+        3,
+        4
+      ]
+    },
+    {
+      "zone": 3,
+      "name": "Tempo",
+      "ftp_pct": [
+        76,
+        90
+      ],
+      "hrmax_pct": [
+        75,
+        85
+      ],
+      "rpe": [
+        5,
+        6
+      ]
+    },
+    {
+      "zone": 4,
+      "name": "Threshold",
+      "ftp_pct": [
+        91,
+        105
+      ],
+      "rpe": [
+        7,
+        8
+      ]
+    },
+    {
+      "zone": 5,
+      "name": "VO2 max",
+      "ftp_pct": [
+        106,
+        120
+      ],
+      "rpe": [
+        9,
+        10
+      ]
+    }
+  ],
+  "totals": {
+    "length_ms": 360000,
+    "time_in_zone_ms": {
+      "1": 120000,
+      "2": 0,
+      "3": 180000,
+      "4": 0,
+      "5": 60000
+    }
+  },
+  "intervals": [
+    {
+      "start_ms": 0,
+      "length_ms": 120000,
+      "zone": 1,
+      "cadence": {
+        "from": 80,
+        "to": 90
+      },
+      "position": "seated",
+      "cue": "Warm up easy"
+    },
+    {
+      "start_ms": 120000,
+      "length_ms": 180000,
+      "zone": 3,
+      "cadence": {
+        "from": 90,
+        "to": 100
+      },
+      "position": "seated",
+      "cue": "Find your rhythm"
+    },
+    {
+      "start_ms": 300000,
+      "length_ms": 60000,
+      "zone": 5,
+      "cadence": "beat",
+      "position": "standing",
+      "cue": ""
+    }
+  ],
+  "songs": []
+}

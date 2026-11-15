@@ -1,0 +1,190 @@
+{
+  "format_version": "1.0",
+  "class": {
+    "title": "Beat test",
+    "sport": "cycling",
+    "length_ms": 600000
+  },
+  "music": {
+    "source": "spotify",
+    "design_crossfade_ms": 9000,
+    "song_timing": "missing"
+  },
+  "zone_scale": [
+    {
+      "zone": 1,
+      "name": "Recovery",
+      "ftp_pct": [
+        0,
+        55
+      ],
+      "rpe": [
+        1,
+        2
+      ]
+    },
+    {
+      "zone": 2,
+      "name": "Endurance",
+      "ftp_pct": [
+        56,
+        75
+      ],
+      "rpe": [
+        3,
+        4
+      ]
+    },
+    {
+      "zone": 3,
+      "name": "Tempo",
+      "ftp_pct": [
+        76,
+        90
+      ],
+      "hrmax_pct": [
+        75,
+        85
+      ],
+      "rpe": [
+        5,
+        6
+      ]
+    },
+    {
+      "zone": 4,
+      "name": "Threshold",
+      "ftp_pct": [
+        91,
+        105
+      ],
+      "rpe": [
+        7,
+        8
+      ]
+    },
+    {
+      "zone": 5,
+      "name": "VO2 max",
+      "ftp_pct": [
+        106,
+        120
+      ],
+      "rpe": [
+        9,
+        10
+      ]
+    }
+  ],
+  "totals": {
+    "length_ms": 600000,
+    "time_in_zone_ms": {
+      "1": 240000,
+      "2": 0,
+      "3": 180000,
+      "4": 0,
+      "5": 180000
+    }
+  },
+  "segments": [
+    {
+      "name": "Warm up",
+      "kind": "warmup",
+      "start_ms": 0,
+      "end_ms": 120000
+    },
+    {
+      "name": "Main set",
+      "kind": "main",
+      "start_ms": 120000,
+      "end_ms": 480000
+    },
+    {
+      "name": "Cool down",
+      "kind": "cooldown",
+      "start_ms": 480000,
+      "end_ms": 600000
+    }
+  ],
+  "intervals": [
+    {
+      "start_ms": 0,
+      "length_ms": 120000,
+      "zone": 1,
+      "cadence": {
+        "from": 80,
+        "to": 90
+      },
+      "position": "seated",
+      "cue": "Easy spin"
+    },
+    {
+      "start_ms": 120000,
+      "length_ms": 180000,
+      "zone": 3,
+      "cadence": {
+        "from": 90,
+        "to": 100
+      },
+      "position": "seated",
+      "cue": "Steady"
+    },
+    {
+      "start_ms": 300000,
+      "length_ms": 180000,
+      "zone": 5,
+      "cadence": "beat",
+      "position": "standing",
+      "cue": "Ride on the beat"
+    },
+    {
+      "start_ms": 480000,
+      "length_ms": 120000,
+      "zone": 1,
+      "cadence": {
+        "from": 70,
+        "to": 80
+      },
+      "position": "seated",
+      "cue": "Cool down"
+    }
+  ],
+  "songs": [
+    {
+      "title": "Alpha",
+      "artist": "The Firsts",
+      "length_ms": 300000,
+      "start_ms": 0,
+      "end_ms": 291000,
+      "bpm": 120,
+      "ids": {
+        "spotify_track": "4uLU6hMCjMI75M1A2tKUQC",
+        "isrc": "USRC17607839"
+      },
+      "beat_anchors": {
+        "quality": "missing",
+        "anchors": []
+      },
+      "moments": {
+        "quality": "missing",
+        "items": []
+      }
+    },
+    {
+      "title": "Beta",
+      "artist": "Second Wind",
+      "length_ms": 318000,
+      "start_ms": 291000,
+      "end_ms": 600000,
+      "bpm": 128,
+      "beat_anchors": {
+        "quality": "missing",
+        "anchors": []
+      },
+      "moments": {
+        "quality": "missing",
+        "items": []
+      }
+    }
+  ]
+}

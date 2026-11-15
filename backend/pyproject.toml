@@ -23,6 +23,7 @@ dependencies = [
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
     "pyotp==2.10.0",
+    "rfc8785==0.1.4",
     "segno==1.6.6",
     "sqlalchemy[asyncio]>=2.0.36",
     "uvicorn[standard]>=0.34",
@@ -33,6 +34,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.26.0",
     "pyright>=1.1.390",
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
@@ -70,7 +72,7 @@ filterwarnings = ["error"]
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
-extend-exclude = ["migrations/versions"]
+extend-exclude = ["migrations/versions", "tests/player_format"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "ASYNC", "RUF", "S", "PT"]
@@ -82,5 +84,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "ASYNC", "RUF", "S", "PT"]
 typeCheckingMode = "standard"
 pythonVersion = "3.12"
 include = ["src", "tests", "migrations"]
+exclude = ["tests/player_format"]
+extraPaths = ["tests/player_format"]
 venvPath = "."
 venv = ".venv"
