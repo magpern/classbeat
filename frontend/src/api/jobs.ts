@@ -35,6 +35,7 @@ export interface Job {
   kind: string
   state: JobState
   stage: string | null
+  /** '' for a `player_remove` job, which has no class (ADR 0034 section 5). */
   classId: string
   cancelRequested: boolean
   /** An ADR 0005 section 4 category, never an error text. */
@@ -63,7 +64,7 @@ export function decodeJob(value: unknown): Job {
     kind: optionalText(item, 'kind') ?? '',
     state: STATES.includes(state) ? (state as JobState) : 'failed',
     stage: optionalText(item, 'stage'),
-    classId: text(item, 'class_id'),
+    classId: optionalText(item, 'class_id') ?? '',
     cancelRequested: flag(item, 'cancel_requested'),
     errorCategory: optionalText(item, 'error_category'),
     errorMessage: optionalText(item, 'error_message'),

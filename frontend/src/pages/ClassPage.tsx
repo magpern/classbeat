@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { isSongKind } from '../api/songs'
 import { DeleteClass } from '../components/classes/DeleteClass'
 import { ChatPanel } from '../components/classes/ChatPanel'
@@ -20,6 +20,8 @@ import { JobNotice } from '../components/classes/JobNotice'
 import { ClassHeader } from '../components/classes/ClassHeader'
 import { UncertainWrite } from '../components/classes/UncertainWrite'
 import { useSaveFlow } from '../components/classes/useSaveFlow'
+import { useSendToPlayer } from '../components/classes/useSendToPlayer'
+import { sendOf } from '../components/player/operations'
 import { BeatOnePanel } from '../components/classes/BeatOnePanel'
 import { RevisionView } from '../components/classes/RevisionView'
 import { SwedebeatSection } from '../components/swedebeat/SwedebeatSection'
@@ -86,6 +88,11 @@ function ClassView({ classId }: { classId: string }) {
   return <ClassBody classId={classId} data={state.data} reload={reload} onDeleted={setDeleted} />
 }
 
+// The undecided player sends load only for a user who has the player (`player.offered`).
+const UncertainPlayer = lazy(() =>
+  import('../components/player/UncertainPlayer').then((m) => ({ default: m.UncertainPlayer })),
+)
+
 function ClassBody({
   classId,
   data,
@@ -101,6 +108,7 @@ function ClassBody({
   const { summary, revisions, messages } = data
   const [chosen, setChosen] = useState<string | null>(null)
   const save = useSaveFlow(summary, reload)
+  const player = useSendToPlayer(summary, reload)
   // A chosen version that is gone after a reload falls back to the current one.
   const viewingId =
     chosen !== null && revisions.some((r) => r.id === chosen) ? chosen : summary.currentRevisionId
@@ -146,6 +154,7 @@ function ClassBody({
       <ClassHeader
         summary={summary}
         flow={save}
+        player={player}
         viewingId={viewingId}
         versionNumber={viewing?.number ?? null}
         canChangeSongs={canChangeSongs}
@@ -156,6 +165,16 @@ function ClassBody({
         }}
       />
       <UncertainWrite classId={summary.id} version={save.version} onDecided={save.decided} onChanged={reload} />
+      {player.offered ? (
+        <Suspense fallback={null}>
+          <UncertainPlayer
+            keep={sendOf(summary.id)}
+            version={player.version}
+            onDecided={player.onDecided}
+            onChanged={reload}
+          />
+        </Suspense>
+      ) : null}
       <DeleteClass
         summary={summary}
         open={deleting}

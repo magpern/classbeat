@@ -122,6 +122,8 @@ const PAGES: Readonly<Record<string, () => ReactNode>> = {
   '/account': () => <Account />,
   // Connections with the Spotify dialog open; Spotify's callback returns here (`?result=`).
   '/account/spotify': () => <Account />,
+  // Connections with the classbeat-player dialog open; the player's link returns here (`?result=`).
+  '/account/player': () => <Account />,
 }
 
 /** Every path pattern the app answers, for the guard that keeps two-letter first segments free. */

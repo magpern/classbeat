@@ -18,6 +18,7 @@ import { forgetWarning } from '../mowlWarning'
 import { ConfirmDisconnect } from './ConfirmDisconnect'
 import { ConnectionRow } from './ConnectionRow'
 import { MowlDialog } from './MowlDialog'
+import { PlayerRow } from './PlayerRow'
 import { SpotifyRow } from './SpotifyRow'
 import { SwedebeatDialog } from './SwedebeatDialog'
 
@@ -57,7 +58,8 @@ interface View {
  * Account, Connections (ADR 0028 section 3): MOWL, Spotify and Swedebeat as three rows. Each has a
  * status line and one button; Connect opens a dialog for that service, Disconnect asks first.
  * Spotify's dialog is also opened by /account/spotify, where Spotify's callback returns
- * (SpotifyRow). Swedebeat is always listed, as optional.
+ * (SpotifyRow). classbeat-player has its own row and dialog (PlayerRow), opened by /account/player.
+ * Swedebeat is always listed, as optional.
  */
 export function ConnectionsList() {
   const t = useT()
@@ -137,6 +139,7 @@ export function ConnectionsList() {
         <Notice kind="error">{t('mowl.loadFailed')}</Notice>
         <ul className="m-0 flex list-none flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface p-0 empty:hidden">
           <SpotifyRow />
+          <PlayerRow />
         </ul>
       </section>
     )
@@ -213,6 +216,7 @@ export function ConnectionsList() {
           }
         />
         <SpotifyRow />
+        <PlayerRow />
         <ConnectionRow
           testId="connection-swedebeat"
           mark="Sb"

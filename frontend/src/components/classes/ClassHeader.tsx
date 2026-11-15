@@ -1,4 +1,5 @@
 import { Ellipsis } from 'lucide-react'
+import { lazy, Suspense } from 'react'
 import type { ClassSummary } from '../../api/classes'
 import { classStatus } from '../../lib/classCards'
 import { useT } from '../../i18n/I18n'
@@ -7,17 +8,23 @@ import { Chip } from '../ui/chip'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu'
 import { DuplicateClass } from './DuplicateClass'
 import { SaveActions, SaveNotices, SaveStatus } from './SavePanel'
+import { SendToPlayerActions } from './SendToPlayer'
 import type { SaveFlow } from './useSaveFlow'
+import type { PlayerFlow } from './useSendToPlayer'
+
+// The confirmation, progress and outcome of a send load when a send has something to show.
+const SendToPlayerNotices = lazy(() => import('./SendToPlayerNotices'))
 
 /**
  * The header of the class page (ADR 0028 section 5: the primary action is not buried). The title,
- * the state chips and what MOWL holds are on the left; Save to MOWL and the other actions are on the
+ * the state chips and what MOWL holds are on the left; Save to MOWL, Send to player and the other actions are on the
  * right (they wrap under the title on a phone, the primary one first). The confirmation, progress and
  * outcome of a save show under the row, still inside the header.
  */
 export function ClassHeader({
   summary,
   flow,
+  player,
   viewingId,
   versionNumber,
   canChangeSongs,
@@ -27,6 +34,7 @@ export function ClassHeader({
 }: {
   summary: ClassSummary
   flow: SaveFlow
+  player: PlayerFlow
   viewingId: string | null
   versionNumber: number | null
   canChangeSongs: boolean
@@ -50,6 +58,7 @@ export function ClassHeader({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <SaveActions flow={flow} />
+          <SendToPlayerActions flow={player} />
           {canChangeSongs ? (
             <Button
               variant="secondary"
@@ -92,6 +101,11 @@ export function ClassHeader({
         </div>
       </div>
       <SaveNotices flow={flow} />
+      {player.active ? (
+        <Suspense fallback={null}>
+          <SendToPlayerNotices flow={player} />
+        </Suspense>
+      ) : null}
     </header>
   )
 }
