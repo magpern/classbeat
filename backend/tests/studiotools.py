@@ -135,11 +135,17 @@ class StudioRider:
         return await self.browser.post("/api/jobs", body, {"Idempotency-Key": new_key()})
 
     async def act(
-        self, class_id: object, revision_id: object, action: str, position: int | None = None
+        self,
+        class_id: object,
+        revision_id: object,
+        action: str,
+        position: int | None = None,
+        *,
+        key: str | None = None,
     ) -> httpx.Response:
         body = {} if position is None else {"position": position}
         path = f"/api/classes/{class_id}/studio-songs/{revision_id}/{action}"
-        return await self.browser.post(path, body, {"Idempotency-Key": new_key()})
+        return await self.browser.post(path, body, {"Idempotency-Key": key or new_key()})
 
 
 @dataclass

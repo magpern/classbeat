@@ -18,7 +18,17 @@ the owner lock, after the generic checks), in this order, each refusal writing n
    ``song_list``, made by a ``studio_songs`` job that ended ``cancelled`` or ``expired`` and was
    never approved, it still hashes to its stored hash (``song_list.load``), and the action fits
    it: ``swap_anyway`` a ``suspected_unavailable`` list, ``undo`` a swap not yet undone at that
-   position, ``another`` a swapped slot or a gap.
+   position, ``another`` a swapped slot or a gap; then ``revision_limit`` (``{limit, count}``,
+   as Change songs) once the class's song changes reach the per-class limit
+   (``design.limits``' ``RevisionPolicy``: ``CLASSBEAT_REVISIONS_PER_CLASS`` or the plan's
+   ``revisions_per_class``). The count is the class's Change songs and chat revisions plus every
+   studio job of an action (undo, another, Swap anyway) created for it, whatever it ended.
+
+**Credit** (``consumes_credit``): a pick reserves the class's credit as ``design_with_songs``
+does, committed when the approved list completes and released when it ends otherwise. An action
+passes that one credit on: its route cancels the waiting job and settles its credit in the same
+transaction before the new job reserves (``classes.studio_songs``), so the class never holds
+more than one.
 
 **``approve_check``** (the ``JobKind.approve_check`` seam; it only reads):
 ``hash_mismatch`` unless the list, read again, hashes to the approved hash; ``list_has_gap`` for a
@@ -43,7 +53,7 @@ from classbeat.connections import find_in
 from classbeat.connections.preferences import uses_swedebeat_in
 from classbeat.connections.swedebeat_account import live
 from classbeat.context import UserContext
-from classbeat.design import music_kind, sport
+from classbeat.design import limits, music_kind, sport
 from classbeat.flags import effective as flags
 from classbeat.jobs.kinds import Admitted, Approving, Refused
 from classbeat.quota.gates import brief_of, check_brief, current_gates
@@ -117,6 +127,26 @@ async def _class_checks(
     return await _seed_fits(db, ctx, parsed)
 
 
+# Change songs and chat revisions of the class (``design.chat``'s count), and its studio actions.
+_SONG_CHANGES = text(
+    "SELECT (SELECT count(*) FROM class_revisions WHERE owner_id = :owner_id "
+    "AND class_id = :class_id AND kind = 'draft' "
+    "AND provenance ->> 'origin' IN ('revise_draft', 'revise_songs')) + "
+    "(SELECT count(*) FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "
+    "AND kind = :kind AND COALESCE(input ->> 'action', 'pick') <> 'pick')"
+)
+
+
+async def _within_limit(db: AsyncSession, ctx: UserContext, class_id: UUID) -> Refused | None:
+    """``revision_limit`` when the class's song changes reached its per-class limit."""
+    allowed = await limits.current().policy.limit_for(db, ctx, class_id)
+    params = {"owner_id": ctx.user_id, "class_id": class_id, "kind": KIND}
+    count = int((await db.execute(_SONG_CHANGES, params)).scalar_one())
+    if count >= allowed:
+        return Refused("revision_limit", {"limit": allowed, "count": count})
+    return None
+
+
 async def _seed_fits(
     db: AsyncSession, ctx: UserContext, parsed: StudioSongsInput
 ) -> Refused | None:
@@ -132,7 +162,9 @@ async def _seed_fits(
         "undo": undoable(content, position),
         "another": askable(content, position),
     }
-    return None if fits.get(parsed.action, False) else Refused("invalid_input")
+    if not fits.get(parsed.action, False):
+        return Refused("invalid_input")
+    return await _within_limit(db, ctx, class_id)
 
 
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Admitted | Refused:

@@ -3,7 +3,8 @@ MOWL connection**. From the brief (or a list the user is changing) to a studio `
 revision and the wait for the user's one approval (ADR 0008 section 5).
 
 - **Input** ``StudioSongsInput`` (``CONNECTIONS = ("spotify", "swedebeat")``); ``admit`` and
-  ``approve_check`` are ``swedebeat_studio.admit``'s. No credit (the design is a later stage's).
+  ``approve_check`` are ``swedebeat_studio.admit``'s. The class's credit, as ``design_with_songs``
+  (``consumes_credit``; an action passes it on, see ``swedebeat_studio.admit``).
 - **Before any call** (the worker): the studio is on and the user's SwedeBeat preference too
   (``feature_off`` otherwise), the class is not soundless, a seed list still loads and still fits
   its action (``invalid_input``); then the Spotify connection and the SwedeBeat bearer are opened
@@ -197,7 +198,7 @@ STUDIO_SONGS: Final = KINDS.register(
         StudioSongsInput,
         STAGES,
         with_plan_run(run),
-        consumes_credit=False,
+        consumes_credit=True,
         admit=with_plan(admit),
         approve_check=approve_check,
         server_fields=frozenset({"route_key", "plan_gates"}),

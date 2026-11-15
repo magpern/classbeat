@@ -144,3 +144,40 @@ async def test_a_song_list_of_another_kind_landing_first_rolls_the_studio_store_
         ).scalar_one()
         == lists
     )  # nothing stored
+
+
+async def test_a_studio_revision_alone_rolls_another_kinds_final_store_back(
+    songenv: SongEnv,
+) -> None:
+    """The reverse store lock: the class has no stored source and its song list is untouched;
+    only one revision of studio music (planted after the approval, as a job of the other kind
+    landing first would leave it) makes it a studio class, so ``design_with_songs``' final store
+    (``check_stored``) refuses and nothing is written."""
+    rider = await songenv.rider()
+    job_id, _ = await songenv.approved(rider)
+    class_id = songenv.row(job_id).class_id
+    assert (
+        songenv.sql("SELECT music_source FROM classes WHERE id = :c", c=class_id).scalar() is None
+    )
+    songenv.sql(
+        "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, "
+        "content_hash, music, provenance, job_id) SELECT gen_random_uuid(), owner_id, class_id, "
+        "(SELECT max(number) FROM class_revisions WHERE class_id = :c) + 1, 'swedebeat_match', "
+        "'{}'::jsonb, sha256('planted'::bytea), CAST(:m AS jsonb), '{}'::jsonb, id "
+        "FROM jobs WHERE id = :j",
+        c=class_id,
+        m=json.dumps(STUDIO),
+        j=job_id,
+    )
+    row = await songenv.run(job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert (
+        songenv.sql(
+            "SELECT count(*) FROM class_revisions WHERE class_id = :c AND kind = 'draft'",
+            c=class_id,
+        ).scalar_one()
+        == 0
+    )
+    assert (
+        songenv.sql("SELECT music_source FROM classes WHERE id = :c", c=class_id).scalar() is None
+    )

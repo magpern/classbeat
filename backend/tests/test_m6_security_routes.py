@@ -189,6 +189,10 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/classes/{class_id}/swedebeat-handoff/override"): "owned",
     ("POST", "/api/classes/{class_id}/swedebeat-handoff/design"): "owned",
     ("POST", "/api/classes/{class_id}/swedebeat-handoff/not-now"): "owned",
+    ("GET", "/api/classes/{class_id}/studio-songs/{revision_id}"): "owned",
+    ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/undo"): "owned",
+    ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/another"): "owned",
+    ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/swap-anyway"): "owned",
     ("GET", "/api/classes/{class_id}/interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/design-from-interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/interpret-again"): "owned",
@@ -726,6 +730,7 @@ def _pick(rows: Rows) -> dict[str, str]:
 
 # One key for every call of the duplicate case (made per run, not a literal).
 DUPLICATE_KEY = uuid.uuid4().hex
+STUDIO_KEY = uuid.uuid4().hex
 
 OWNED_ROUTES = [
     OwnedRoute("GET", "/api/jobs/{job_id}"),
@@ -781,6 +786,21 @@ OWNED_ROUTES = [
     ),
     OwnedRoute(
         "POST", "/api/classes/{class_id}/swedebeat-handoff/not-now", control=frozenset({404})
+    ),
+    # ADR 0036: the studio is off in this app, so every studio route is 404 before the class is
+    # read; with it on, a foreign class or list is 404 too (test_swedebeat_studio_songs).
+    OwnedRoute(
+        "GET", "/api/classes/{class_id}/studio-songs/{revision_id}", control=frozenset({404})
+    ),
+    *(
+        OwnedRoute(
+            "POST",
+            f"/api/classes/{{class_id}}/studio-songs/{{revision_id}}/{action}",
+            lambda rows: {"position": 0},
+            frozenset({404}),
+            {"Idempotency-Key": STUDIO_KEY},
+        )
+        for action in ("undo", "another", "swap-anyway")
     ),
     OwnedRoute("DELETE", "/api/classes/{class_id}", control=frozenset({200, 409})),
     OwnedRoute("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),

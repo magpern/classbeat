@@ -38,11 +38,6 @@ _STATUS = {
     "idempotency_key_missing": 400,
     "idempotency_key_invalid": 400,
 }
-_ACTIONS: dict[str, Literal["undo", "another", "swap_anyway"]] = {
-    "undo": "undo",
-    "another": "another",
-    "swap-anyway": "swap_anyway",
-}
 
 
 class PositionIn(BaseModel):
@@ -91,25 +86,59 @@ def jsonable(value: dict[str, Any]) -> dict[str, Any]:
     return {**value, "revision_id": str(value["revision_id"])}
 
 
-@router.post(
-    "/{class_id}/studio-songs/{revision_id}/{action}",
-    status_code=201,
-    response_model=StudioJobOut,
-    responses={200: {"model": StudioJobOut}, 400: {}, 404: {}, 409: {}, 422: {}, 429: {}},
-)
-async def act_on_studio_songs(
+_ACT = {
+    "status_code": 201,
+    "response_model": StudioJobOut,
+    "responses": {200: {"model": StudioJobOut}, 400: {}, 404: {}, 409: {}, 422: {}, 429: {}},
+}
+Ledger = Annotated[CreditLedger, Depends(credit_ledger)]
+Limit = Annotated[JobLimitPolicy, Depends(job_limit)]
+Key = Annotated[str | None, Header()]
+
+
+@router.post("/{class_id}/studio-songs/{revision_id}/undo", **_ACT)
+async def undo_studio_song(
+    class_id: str, revision_id: str, request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)], ledger: Ledger, limit: Limit,
+    idempotency_key: Key = None,
+) -> StudioJobOut | JSONResponse:  # fmt: skip
+    return await _act("undo", class_id, revision_id, request, ctx, ledger, limit, idempotency_key)
+
+
+@router.post("/{class_id}/studio-songs/{revision_id}/another", **_ACT)
+async def another_studio_song(
+    class_id: str, revision_id: str, request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)], ledger: Ledger, limit: Limit,
+    idempotency_key: Key = None,
+) -> StudioJobOut | JSONResponse:  # fmt: skip
+    return await _act(
+        "another", class_id, revision_id, request, ctx, ledger, limit, idempotency_key
+    )
+
+
+@router.post("/{class_id}/studio-songs/{revision_id}/swap-anyway", **_ACT)
+async def swap_studio_songs_anyway(
+    class_id: str, revision_id: str, request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)], ledger: Ledger, limit: Limit,
+    idempotency_key: Key = None,
+) -> StudioJobOut | JSONResponse:  # fmt: skip
+    return await _act(
+        "swap_anyway", class_id, revision_id, request, ctx, ledger, limit, idempotency_key
+    )
+
+
+async def _act(
+    chosen: Literal["undo", "another", "swap_anyway"],
     class_id: str,
     revision_id: str,
-    action: str,
     request: Request,
-    ctx: Annotated[UserContext, Depends(auth.require_user)],
-    ledger: Annotated[CreditLedger, Depends(credit_ledger)],
-    limit: Annotated[JobLimitPolicy, Depends(job_limit)],
-    idempotency_key: Annotated[str | None, Header()] = None,
+    ctx: UserContext,
+    ledger: CreditLedger,
+    limit: JobLimitPolicy,
+    idempotency_key: str | None,
 ) -> StudioJobOut | JSONResponse:
     wanted, revision = _uuid(class_id), _uuid(revision_id)
-    chosen = _ACTIONS.get(action)
-    if wanted is None or revision is None or chosen is None:
+    if wanted is None or revision is None:
         return _refuse("not_found")
     if idempotency_key is None:
         return _refuse("idempotency_key_missing")

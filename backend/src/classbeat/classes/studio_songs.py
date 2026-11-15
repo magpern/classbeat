@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.jobs.credits import CreditLedger
+from classbeat.jobs.credits import CreditLedger, settle_in
 from classbeat.jobs.hold import Held
 from classbeat.jobs.http import JobEnqueue
 from classbeat.jobs.user import JobLimitPolicy, cancel
@@ -119,16 +119,21 @@ class _Rollback(Exception):
 
 @dataclass
 class _CancelWaiting:
-    """The hold: cancel the list's waiting job before the create; roll back on a refusal."""
+    """The hold: cancel the list's waiting job before the create, and settle its credit there, so
+    the class's one credit passes to the new job (released, then reserved, in one transaction: a
+    class's studio jobs hold at most one credit, committed once by the approved list). A refusal
+    rolls all of it back."""
 
     ctx: UserContext
     job_id: UUID
+    ledger: CreditLedger
 
     async def before(self, db: AsyncSession, /) -> Held | None:
         params = {"owner_id": self.ctx.user_id, "job_id": self.job_id}
         state = (await db.execute(_JOB_STATE, params)).scalar_one_or_none()
         if state == "waiting_for_approval":  # never an approved or running job
             await cancel(db, self.ctx, self.job_id)
+        await settle_in(db, self.ctx, self.ledger, self.job_id)  # a no-op once settled
         return None
 
     async def refused(
@@ -196,7 +201,7 @@ async def act(
             ledger=ledger,
             limit=limit,
             consumes_credit=STUDIO_SONGS.consumes_credit,
-            hold=_CancelWaiting(ctx, row.id),
+            hold=_CancelWaiting(ctx, row.id, ledger),
         )
     except _Rollback as refused:
         return Acted(None, False, refused.reason, refused.counts)

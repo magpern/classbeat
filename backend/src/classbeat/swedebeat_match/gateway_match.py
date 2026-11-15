@@ -126,7 +126,7 @@ async def call_failure(
 ) -> JobFailure:
     """The job failure for a failed gateway call other than the match (the track download):
     the same confirmation of a refused bearer and the same connection rules."""
-    return await _Match(run, bearer, key, what="download").fail(category, retry_after)
+    return await Matcher(run, bearer, key, what="download").fail(category, retry_after)
 
 
 async def match_songs(

@@ -16,7 +16,7 @@ stage run is kept in ``runs`` for the list's provenance; a model stage's host st
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any
 
 from mowl import spotify_web
@@ -113,7 +113,10 @@ class Steps:
         """The candidates with their final verdicts, and the match's evidence."""
         pairs = [(c.title, c.artist) for c in candidates]
         matched = await match_pairs(self.run, self.bearer, self.key, pairs)
-        out = [replace(c, verdict=v) for c, v in zip(candidates, matched.verdicts, strict=True)]
+        out = [
+            Candidate(c.spotify_id, c.title, c.artist, c.role, c.cover, v)
+            for c, v in zip(candidates, matched.verdicts, strict=True)
+        ]
         return out, matched.evidence
 
     async def choose(self, plan: PickPlan, candidates: Sequence[Candidate]) -> ChosenList:
