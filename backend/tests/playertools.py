@@ -3,6 +3,7 @@ player's source API behind ``PlayerSourceHttp`` (httpx ``MockTransport``, never 
 app with the OpenID Connect provider on, browsers that hold a session, and the link dance.
 TEST ONLY: public test values, invented users."""
 
+import asyncio
 import json
 import secrets
 from collections.abc import AsyncIterator, Iterator
@@ -58,6 +59,7 @@ class FakePlayer:
     exchange_status: int = 200
     delete_status: int = 204
     down: bool = False
+    delete_delay: float = 0.0  # seconds a DELETE takes, to make two callbacks overlap
 
     def approve(self, link_url: str) -> dict[str, str]:
         """The browser at the player's ``/link/source``: the callback's query."""
@@ -72,7 +74,7 @@ class FakePlayer:
         )
         return {"code": code, "state": query["state"]}
 
-    def handle(self, request: httpx.Request) -> httpx.Response:
+    async def handle(self, request: httpx.Request) -> httpx.Response:
         self.seen.append(request)
         if self.down:
             raise httpx.ConnectError("the fake player is down", request=request)
@@ -81,6 +83,8 @@ class FakePlayer:
         if request.method == "DELETE" and request.url.path == "/api/source/link":
             bearer = request.headers.get("authorization", "")
             self.ended.append(bearer.removeprefix("Bearer "))
+            if self.delete_delay:
+                await asyncio.sleep(self.delete_delay)
             return httpx.Response(self.delete_status)
         return httpx.Response(404)
 

@@ -18,11 +18,17 @@ that flow stays valid for its owner. Otherwise:
 - **the binding**: the token is kept only if ``account_subject`` is classbeat's own issuer and
   the user's pairwise subject. Otherwise ``DELETE /api/source/link`` is called with that token
   at once, nothing is stored and the answer is ``wrong_account``;
+- **one at a time**: from here on the callback holds the user's link lock (taken without
+  waiting). A second callback of the same user that finds it held ends its own new link at once
+  and answers ``link_in_progress``, so an old link is ended once and no new link is overwritten
+  and left orphaned on the player;
 - **reconnect** (a row exists): the old link is ended first with the old token, then the row is
   replaced in one transaction that also forgets the pending, failed and uncertain player
   operations. If the old ``DELETE`` fails (or the old token cannot be opened), the reconnect
   still completes and the page says the old link may still be listed on the player's site.
-  Should storing the new token fail, the new link is ended so no unreachable link is left.
+  Should storing the new token fail, the new link is ended so no unreachable link is left, and
+  an old row whose link is no longer usable becomes ``needs_reconnect`` (never ``connected``
+  with a revoked token).
 
 **Disconnect**: ``DELETE /api/source/link`` with the stored token, then the row is deleted in
 any case (a ``401`` means it was already gone; no answer or a ``5xx`` gives the same "may still
@@ -31,12 +37,16 @@ be listed" note). Without a player client configured, the row is still deleted w
 The token never goes to a log, a model or the browser; the taken flow is always deleted.
 """
 
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth import PlayerBinding
 from classbeat.connections.player_account import (
+    PlayerLink,
+    mark_player_link_ended,
+    player_link_lock,
     read_player_link,
     remove_player_link,
     store_player_link,
@@ -51,6 +61,7 @@ from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.player_link.link_policy import (
     CONNECTED,
+    IN_PROGRESS,
     INVALID_RESPONSE,
     MISMATCH,
     STATE_MAX,
@@ -64,8 +75,9 @@ from classbeat.player_link.link_policy import (
     session_hash,
     sha256,
 )
-from classbeat.player_link.source_http import PlayerSourceHttp
+from classbeat.player_link.source_http import Ended, PlayerSourceHttp
 
+logger = logging.getLogger(__name__)
 Factory = async_sessionmaker[AsyncSession]
 
 
@@ -168,16 +180,42 @@ async def _link(
     if decision.action == "end":
         await http.end_link(decision.token)
         return Result(WRONG_ACCOUNT)
+    async with player_link_lock(factory, ctx) as held:
+        if not held:
+            await http.end_link(decision.token)
+            return Result(IN_PROGRESS)
+        return await _replace(factory, ring, http, ctx, decision.token, decision.link_id)
+
+
+async def _replace(
+    factory: Factory,
+    ring: KeyRing,
+    http: PlayerSourceHttp,
+    ctx: UserContext,
+    token: str,
+    link_id: str | None,
+) -> Result:
+    """Under the user's link lock: end the old link, then store the new one."""
     old = await read_player_link(factory, ring, ctx)
-    old_listed = False
-    if old is not None:
-        old_listed = old.token is None or await http.end_link(old.token) == "failed"
+    ended: Ended | None = None
+    if old is not None and old.token is not None:
+        ended = await http.end_link(old.token)
     try:
-        await store_player_link(factory, ring, ctx, decision.token, decision.link_id)
+        await store_player_link(factory, ring, ctx, token, link_id)
     except Exception:
-        await http.end_link(decision.token)
+        await http.end_link(token)
+        if old is not None and ended != "failed":  # its link is gone or its token unusable
+            await _mark_quietly(factory, ctx, old)
         raise
-    return Result(CONNECTED, old_listed)
+    return Result(CONNECTED, old is not None and (old.token is None or ended == "failed"))
+
+
+async def _mark_quietly(factory: Factory, ctx: UserContext, old: PlayerLink) -> None:
+    """The store's own error is the one raised; a failed mark only adds a warning."""
+    try:
+        await mark_player_link_ended(factory, ctx, old)
+    except Exception:
+        logger.warning("player link left connected after a failed store")
 
 
 async def disconnect(

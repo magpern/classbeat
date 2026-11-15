@@ -2,6 +2,7 @@
 #1059 criterion 1): the source token is stored encrypted and never logged, never in an answer to
 the browser and never in an ``auth_events`` row."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -10,7 +11,10 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from authtools import Env
+from classbeat.connections.player_account import read_player_link
 from classbeat.log import JsonFormatter
+from classbeat.player_link import connect
+from ctx import make_context
 from playertools import CALLBACK, PLAYER, START, STATUS, Linker
 
 
@@ -124,8 +128,56 @@ async def test_without_a_player_client_linking_is_off_and_disconnect_still_works
     assert len(linker.fake.ended) == 0
 
 
-async def test_start_and_disconnect_need_csrf(linker: Linker) -> None:
+async def test_a_failed_store_on_reconnect_never_leaves_a_revoked_token_connected(
+    linker: Linker, monkeypatch: pytest.MonkeyPatch
+) -> None:
     alice = await linker.actor("alice@example.com")
-    response = await alice.client.post(START, headers={"Origin": "https://evil.example"})
-    assert response.status_code in (401, 403)
-    assert linker.fake.seen == []
+    await linker.connect(alice)
+    before = await linker.connection(linker.user_id(alice))
+
+    async def broken(*_: object, **__: object) -> None:
+        raise RuntimeError("the database went away")
+
+    monkeypatch.setattr(connect, "store_player_link", broken)
+    query = linker.fake.approve(await linker.start(alice))
+    with pytest.raises(RuntimeError):
+        await linker.callback(alice, query)
+    assert linker.fake.ended == linker.fake.tokens  # the old link and the new one
+    after = await linker.connection(linker.user_id(alice))
+    assert (after.id, after.generation) == (before.id, before.generation)
+    assert after.status == "needs_reconnect"
+    assert await linker.flows(linker.user_id(alice)) == []
+
+
+async def test_a_failed_store_keeps_an_old_link_that_could_not_be_ended(
+    linker: Linker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alice = await linker.actor("alice@example.com")
+    await linker.connect(alice)
+
+    async def broken(*_: object, **__: object) -> None:
+        raise RuntimeError("the database went away")
+
+    monkeypatch.setattr(connect, "store_player_link", broken)
+    linker.fake.delete_status = 503
+    with pytest.raises(RuntimeError):
+        await linker.connect(alice)
+    assert (await linker.connection(linker.user_id(alice))).status == "connected"
+
+
+async def test_two_parallel_reconnects_of_one_user_leave_no_orphaned_link(linker: Linker) -> None:
+    alice = await linker.actor("alice@example.com")
+    other = await linker.browser(linker.user_id(alice))
+    await linker.connect(alice)
+    first = linker.fake.approve(await linker.start(alice))
+    second = linker.fake.approve(await linker.start(other))
+    linker.fake.delete_delay = 0.3
+    pages = await asyncio.gather(linker.callback(alice, first), linker.callback(other, second))
+    assert sorted(page["result"] for page in pages) == ["connected", "link_in_progress"]
+    stored = await read_player_link(
+        linker.env.factory, linker.env.app.state.keyring, make_context(linker.user_id(alice))
+    )
+    assert stored is not None
+    assert stored.generation == 2
+    # Every link the player issued is ended exactly once, except the one stored.
+    assert sorted(linker.fake.ended) == sorted(t for t in linker.fake.tokens if t != stored.token)

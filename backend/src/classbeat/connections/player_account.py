@@ -12,16 +12,25 @@ token, and ``public`` with the player's link id when the player names one.
 - ``remove_player_link``: delete the row read earlier, only while it is still that
   ``generation`` (a reconnect in between keeps its new row and its new link), with the row lock
   first and the player operations forgotten in the same transaction.
+- ``mark_player_link_ended``: ``needs_reconnect`` for the row read earlier (same generation),
+  when its link was ended but no new token could be stored, so no row stays ``connected`` with
+  a token the player has revoked.
+- ``player_link_lock``: the user's transaction-level advisory lock for a reconnect, taken
+  without waiting (``pg_try_advisory_xact_lock``; a wait would run into the role's
+  ``lock_timeout``). It serializes two callbacks of one user, so one old link is ended once and
+  no new link is overwritten and left orphaned on the player.
 
 Nothing here logs or returns the token except to the caller that sends it to the player.
 """
 
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import NoReturn
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.connections.player_data import forget_player_operations
@@ -35,6 +44,9 @@ from classbeat.db import user_session
 PROVIDER = "player"
 Factory = async_sessionmaker[AsyncSession]
 _C = connections.c
+# The lock's key namespace, so it never shares a key with another advisory lock.
+LOCK_NAMESPACE = "classbeat.player.link:"
+_TRY_LOCK = text("SELECT pg_try_advisory_xact_lock(hashtextextended(:key, 0))")
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -106,3 +118,27 @@ async def remove_player_link(factory: Factory, ctx: UserContext, link: PlayerLin
             delete(connections).where(*mine, _C.generation == link.generation).returning(_C.id)
         )
         return result.first() is not None
+
+
+async def mark_player_link_ended(factory: Factory, ctx: UserContext, link: PlayerLink) -> bool:
+    async with user_session(factory, ctx) as db:
+        result = await db.execute(
+            update(connections)
+            .where(
+                _C.id == link.id,
+                _C.owner_id == ctx.user_id,
+                _C.provider == PROVIDER,
+                _C.generation == link.generation,
+            )
+            .values(status="needs_reconnect", last_error="needs_reconnect", updated_at=func.now())
+            .returning(_C.id)
+        )
+        return result.first() is not None
+
+
+@asynccontextmanager
+async def player_link_lock(factory: Factory, ctx: UserContext) -> AsyncIterator[bool]:
+    """``True`` while this caller holds the user's link lock; ``False`` if another holds it."""
+    async with user_session(factory, ctx) as db:
+        held = (await db.execute(_TRY_LOCK, {"key": f"{LOCK_NAMESPACE}{ctx.user_id}"})).scalar_one()
+        yield bool(held)

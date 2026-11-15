@@ -38,6 +38,7 @@ WRONG_ACCOUNT: Final = "wrong_account"  # "This player account belongs to someon
 UNAVAILABLE: Final = "upstream_unavailable"
 RATE_LIMITED: Final = "rate_limited"
 INVALID_RESPONSE: Final = "invalid_response"
+IN_PROGRESS: Final = "link_in_progress"  # another callback of the same user is linking now
 
 TokenKind = Literal["lc", "src"]
 
