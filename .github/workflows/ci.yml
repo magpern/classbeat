@@ -6,7 +6,11 @@ name: CI
 # one) runs everything too and picks up new advisories. `merge_group` is unused (the repository
 # has no merge queue); its code is kept in case one returns.
 on:
+  # Owner direction 2026-11-15: a draft PR builds nothing. Parallel PRs wait as drafts and are marked
+  # ready one at a time, so rebasing a queued draft costs no build. A draft cannot merge, and marking
+  # it ready (`ready_for_review`) runs everything its diff needs before the required `ci` gate passes.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   merge_group:
@@ -29,6 +33,7 @@ jobs:
   # Which jobs does this change need? See scripts/ci-changes.sh (tested by scripts/test-ci-gate.sh).
   changes:
     name: Changes
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
@@ -85,6 +90,7 @@ jobs:
   # (scripts/ci-install-release.sh: retried, cached, re-verified after a cache restore).
   checks:
     name: Checks
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
     # A hung check (the site-config tokenizer, a Docker pull) must fail the job, not run to GitHub's
     # six-hour default.
@@ -977,7 +983,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Draft pull request
+        if: github.event.pull_request.draft == true
+        run: echo "Draft PR, so nothing ran. Mark it ready for review to run CI."
+
       - name: All needed jobs passed
+        if: github.event.pull_request.draft != true
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
           NEEDS: ${{ toJSON(needs) }}
