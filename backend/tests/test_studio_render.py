@@ -403,7 +403,7 @@ def good_track(**changes: Any) -> dict[str, Any]:
     ],
 )
 def test_a_plan_that_is_not_well_formed_is_refused(plan: object) -> None:
-    with pytest.raises(ValueError, match=".+"):
+    with pytest.raises(ValueError, match=r".+"):
         render_policy.validate_plan(plan)
 
 
