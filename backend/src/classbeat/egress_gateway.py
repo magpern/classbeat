@@ -26,7 +26,10 @@ urllib list** (``WEB_URLLIB_HOSTS``, ``WORKER_HOSTS``), so the library's opener 
   so a request carries only what the call site sets (``classbeat.swedebeat_gateway.client``);
 - a **total deadline** per request, its body included (``RequestDeadline``), clamped to
   ``TOTAL_MIN_SECONDS`` to ``TOTAL_MAX_SECONDS``: login takes ``LOGIN_SECONDS`` (30), the match
-  ``MATCH_SECONDS`` (150; the contract asks for at least 120).
+  ``MATCH_SECONDS`` (150; the contract asks for at least 120), the track download
+  ``DOWNLOAD_SECONDS`` (120 for the whole answer, its 60 MB body included: ADR 0036 section 8's
+  own deadline for the download, which amends ADR 0035 section 1; the 150 s clamp stays for
+  every call).
 
 A transport and an origin of the test's own come only from tests, through
 ``swedebeat_gateway_test_client``, which the guard refuses inside ``classbeat``.
@@ -48,6 +51,7 @@ TOTAL_MAX_SECONDS: Final = 150.0
 LOGIN_SECONDS: Final = 30.0
 SESSION_SECONDS: Final = 30.0
 MATCH_SECONDS: Final = 150.0
+DOWNLOAD_SECONDS: Final = 120.0  # ADR 0036 section 8: the track download, its body included
 _DEFAULT_PORTS: Final = {"http": 80, "https": 443}
 
 _origin: GatewayOrigin | None = None

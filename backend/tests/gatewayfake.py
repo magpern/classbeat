@@ -72,7 +72,10 @@ def transport(fake: FakeGateway) -> httpx.MockTransport:
             await asyncio.sleep(reply.delay)
         # A stream with the declared length, as a server sends it: never decoded on the way, so
         # a gzip answer reaches the client as the raw bytes.
-        headers = {**reply.headers, "content-length": str(len(reply.body))}
+        headers = dict(reply.headers)
+        if not reply.no_length:
+            length = len(reply.body) if reply.declared is None else reply.declared
+            headers["content-length"] = str(length)
         stream = _Trickle(reply.body, reply.trickle)
         return httpx.Response(reply.status, headers=headers, stream=stream)
 

@@ -1,5 +1,6 @@
-"""A fake of the SwedeBeat gateway (ADR 0035 section 9): ``/auth/login``, ``/auth/session`` and
-``/catalog/match`` of the contract (``docs/api.md`` of ``magpern/sb-gateway-service``), for the
+"""A fake of the SwedeBeat gateway (ADR 0035 section 9): ``/auth/login``, ``/auth/session``,
+``/catalog/match`` and ``GET /tracks/{reference}/download`` (ADR 0036 section 8) of the contract
+(``docs/api.md`` of ``magpern/sb-gateway-service``), for the
 backend tests and the e2e stack.
 
 TEST ONLY, public test values only, no network of its own. The same module serves both:
@@ -18,7 +19,13 @@ are ``{"detail": <string>}`` otherwise.
   ``issue`` makes one without a login, for a connection a test stores itself.
 - **Match** answers ``tracks`` mode only, one item per track in order, from ``catalogue``
   (``(title, artist)`` folded, to ``found`` or ``unsure``; anything else is ``missing``).
-  ``playlist`` mode is a ``422`` here: classbeat never sends it (ADR 0035 section 7).
+  ``playlist`` mode is a ``422`` here: classbeat never sends it (ADR 0035 section 7). Each
+  catalogue track's ``reference`` is ``reference_of(title, artist)``, the same on every answer.
+- **Download** serves ``audio`` (reference to bytes): every catalogue track has ``FIXTURE_MP3``
+  (a few silent MPEG-1 Layer III frames, generated here), and ``add_audio`` adds a test's own.
+  After the key and the bearer: a reference outside the gateway's shape is ``422`` (a string
+  ``detail``), one without a file ``404``. The answer is ``audio/mpeg`` with
+  ``Content-Disposition``, as the gateway streams it.
 - **The record** (``requests``) holds every request's method, path, headers (the key and the
   bearer too, so a test can check exactly what was sent), body and the account its bearer
   belongs to. ``public_state`` is the same without any header value, password or bearer, for
@@ -30,11 +37,15 @@ are ``{"detail": <string>}`` otherwise.
   ``seconds``), ``oversize`` (a valid answer padded to ``size`` bytes), ``gzip`` (the answer
   gzipped), ``redirect`` (``3xx`` to ``location``), ``wrong_count`` (one item too few),
   ``all_missing``, ``body`` (a raw ``200`` answer of the test's own) and ``raw`` (a raw answer
-  with ``status``).
+  with ``status``); for any answer ``content_type`` (``value``), ``declared`` (a
+  ``Content-Length`` of ``size``, whatever the body) and ``no_length`` (none at all). ``oversize``
+  pads an audio answer with ``size`` bytes.
 """
 
 import gzip
+import hashlib
 import json
+import re
 import secrets
 import time
 from dataclasses import dataclass, field
@@ -46,6 +57,11 @@ LOGIN_PATH = "/auth/login"
 SESSION_PATH = "/auth/session"
 MATCH_PATH = "/catalog/match"
 HEALTH_PATH = "/health"
+DOWNLOAD_ROUTE = re.compile(r"/tracks/([^/]*)/download")
+SAFE_REFERENCE = re.compile(r"[A-Za-z0-9_-]{1,64}")  # the gateway's is_safe_reference
+NO_FILE = "no file for that reference"
+# Silent MPEG-1 Layer III frames (128 kbit/s, 44.1 kHz, 417 bytes each: the header and zeros).
+FIXTURE_MP3 = (bytes.fromhex("fffb9064") + bytes(413)) * 24
 CONTROL = "/__e2e/"
 BODY_MAX = 2 * 1024 * 1024
 UNKNOWN_CLIENT = "unknown client"
@@ -68,6 +84,8 @@ class Reply:
     headers: dict[str, str] = field(default_factory=lambda: dict(_JSON))
     delay: float = 0.0
     trickle: float = 0.0
+    declared: int | None = None  # the Content-Length sent; None: the body's own length
+    no_length: bool = False  # send no Content-Length (the body ends with the connection)
 
 
 @dataclass
@@ -84,6 +102,7 @@ class Recorded:
     headers: dict[str, str]  # lower-case names
     body: Any  # the parsed JSON, or None
     email: str | None  # the account of the bearer it carried, if any
+    query: str = ""  # the raw query string, if any
 
 
 @dataclass
@@ -96,6 +115,7 @@ class Injection:
     location: str = "/elsewhere"
     size: int = 0
     body: bytes = b""
+    value: str = ""
 
 
 def _reply(status: int, payload: object, headers: dict[str, str] | None = None) -> Reply:
@@ -105,6 +125,12 @@ def _reply(status: int, payload: object, headers: dict[str, str] | None = None) 
 def _schema_error(loc: str) -> Reply:
     # The schema 422: a list detail that never echoes the submitted values.
     return _reply(422, {"detail": [{"type": "value_error", "loc": ["body", loc], "msg": "bad"}]})
+
+
+def reference_of(title: str, artist: str) -> str:
+    """The fake catalogue's stable reference of a track (the folded title and artist)."""
+    folded = f"{title.strip().casefold()}\n{artist.strip().casefold()}".encode()
+    return "ref-" + hashlib.sha256(folded).hexdigest()[:16]
 
 
 def _text(value: object, low: int, high: int) -> bool:
@@ -125,6 +151,7 @@ class FakeGateway:
     offset: float = 0.0  # added to the clock: a test moves time with ``advance``
     # Fields added to every answered track (planted values a test checks are never kept).
     track_extras: dict[str, Any] = field(default_factory=lambda: dict[str, Any]())
+    audio: dict[str, bytes] = field(default_factory=lambda: dict[str, bytes]())
 
     def add_user(self, email: str, password: str) -> None:
         self.users[email] = password
@@ -141,6 +168,10 @@ class FakeGateway:
     def add_track(self, title: str, artist: str, status: str) -> None:
         """``status`` is ``found`` or ``unsure``; any other song is ``missing``."""
         self.catalogue[(title.strip().casefold(), artist.strip().casefold())] = status
+        self.audio[reference_of(title, artist)] = FIXTURE_MP3
+
+    def add_audio(self, reference: str, body: bytes) -> None:
+        self.audio[reference] = body
 
     def inject(self, kind: str, path: str | None = None, **params: Any) -> None:
         self.injections.append(Injection(kind, path, **params))
@@ -154,6 +185,7 @@ class FakeGateway:
     def reset(self) -> None:
         self.bearers.clear()
         self.catalogue.clear()
+        self.audio.clear()
         self.requests.clear()
         self.injections.clear()
         self.offset = 0.0
@@ -167,7 +199,7 @@ class FakeGateway:
 
     def handle(self, method: str, path: str, headers: dict[str, str], raw: bytes) -> Reply:
         """The answer to one request (headers with lower-case names)."""
-        route = path.split("?", 1)[0]
+        route, _, query = path.partition("?")
         if route == HEALTH_PATH:
             return _reply(200, {"status": "ok"})
         try:
@@ -177,7 +209,7 @@ class FakeGateway:
         bearer = headers.get("authorization", "").removeprefix("Bearer ")
         session = self.bearers.get(bearer)
         self.requests.append(
-            Recorded(method, route, dict(headers), body, session.email if session else None)
+            Recorded(method, route, dict(headers), body, session.email if session else None, query)
         )
         if len(raw) > BODY_MAX:
             return _reply(413, {"detail": "request body too large"})
@@ -196,6 +228,8 @@ class FakeGateway:
             answer = _reply(200, {"valid": True, "customer_id": session.customer_id})
         elif (route, method) == (MATCH_PATH, "POST"):
             answer = self._match(body, route)
+        elif method == "GET" and (found := DOWNLOAD_ROUTE.fullmatch(route)):
+            answer = self._download(found.group(1))
         else:
             return _reply(404, {"detail": "Not Found"})
         return self._injected(route, answer)
@@ -220,6 +254,16 @@ class FakeGateway:
         payload = {"bearer": bearer, "token_type": "Bearer", "expires_in": self.ttl}
         return _reply(200, {**payload, "customer_id": customer})
 
+    def _download(self, reference: str) -> Reply:
+        if not SAFE_REFERENCE.fullmatch(reference):
+            return _reply(422, {"detail": "invalid reference"})
+        audio = self.audio.get(reference)
+        if audio is None:
+            return _reply(404, {"detail": NO_FILE})
+        disposition = f'attachment; filename="{reference}.mp3"'
+        headers = {"content-type": "audio/mpeg", "content-disposition": disposition}
+        return Reply(200, audio, headers)
+
     def _item(self, track: dict[str, str]) -> dict[str, Any]:
         title, artist = track["title"], track["artist"]
         status = self.catalogue.get((title.strip().casefold(), artist.strip().casefold()))
@@ -233,7 +277,7 @@ class FakeGateway:
             }
         hit = title if status == "found" else UNSURE_TITLE
         score = FOUND_SCORE if status == "found" else UNSURE_SCORE
-        found = {"reference": "ref-" + secrets.token_hex(4), "title": hit, "artist": artist}
+        found = {"reference": reference_of(title, artist), "title": hit, "artist": artist}
         found |= {"bpm": 128.0, "duration": float(SECONDS), **self.track_extras}
         return {"title": title, "artist": artist, "status": status, "score": score, "track": found}
 
@@ -264,7 +308,7 @@ class FakeGateway:
 
     def _injected(self, route: str, answer: Reply) -> Reply:
         kinds = ("status", "rate_limited", "slow", "trickle", "oversize", "gzip", "redirect")
-        kinds += ("body", "raw")
+        kinds += ("body", "raw", "content_type", "declared", "no_length")
         injection = self._take(route, kinds)
         if injection is None:
             return answer
@@ -281,6 +325,14 @@ class FakeGateway:
             answer.delay = injection.seconds
         elif kind == "trickle":
             answer.trickle = injection.seconds
+        elif kind == "content_type":
+            answer.headers["content-type"] = injection.value
+        elif kind == "declared":
+            answer.declared = injection.size
+        elif kind == "no_length":
+            answer.no_length = True
+        elif kind == "oversize" and not answer.headers["content-type"].startswith("application/"):
+            answer.body += bytes(injection.size)
         elif kind == "oversize":
             padded = json.loads(answer.body) | {"pad": "x" * injection.size}
             answer.body = json.dumps(padded).encode()
@@ -335,7 +387,9 @@ def make_handler(fake: FakeGateway) -> type[BaseHTTPRequestHandler]:
             self.send_response(reply.status)
             for name, value in reply.headers.items():
                 self.send_header(name, value)
-            self.send_header("Content-Length", str(len(reply.body)))
+            if not reply.no_length:
+                length = len(reply.body) if reply.declared is None else reply.declared
+                self.send_header("Content-Length", str(length))
             self.end_headers()
             if reply.trickle:
                 for byte in reply.body:

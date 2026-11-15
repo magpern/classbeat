@@ -301,7 +301,7 @@ client module's methods, and each PR opens only its own paths:
 | `POST /playlists`, `POST /playlists/{id}/publish`, `POST /playlists/merge-publish`, `GET /playlists/shared` (reconciliation only) | C7 |
 
 **Deadlines** amend ADR 0035 §1, where every call is clamped to 1–150 s. Two calls get their own deadline:
-- the track download: a 120 s read, with its own 60 MB cap;
+- the track download: a 120 s deadline for the whole download, with its own 60 MB cap;
 - `merge-publish`: 900 s, with a streamed body.
 
 The 150 s clamp stays for every other call.
