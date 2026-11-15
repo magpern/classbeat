@@ -17,12 +17,12 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat.connections.player_account import player_is_connected
+
 _SENT = text(
     "SELECT r.id AS revision_id, r.number AS revision_number FROM player_publications p "
     "JOIN class_revisions r ON r.id = p.sent_revision_id AND r.owner_id = p.owner_id "
-    "WHERE p.owner_id = :owner_id AND p.source_class_id = :class_id AND p.removed_at IS NULL "
-    "AND EXISTS (SELECT 1 FROM connections c WHERE c.owner_id = p.owner_id "
-    "AND c.provider = 'player' AND c.status = 'connected')"
+    "WHERE p.owner_id = :owner_id AND p.source_class_id = :class_id AND p.removed_at IS NULL"
 )
 _LIVE = text(
     "SELECT 1 FROM player_publications WHERE owner_id = :owner_id AND source_class_id = :class_id "
@@ -41,13 +41,9 @@ class SentState:
 
 async def sent_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> SentState | None:
     row = (await db.execute(_SENT, {"owner_id": owner_id, "class_id": class_id})).first()
-    return (
-        None
-        if row is None
-        else SentState(
-            sent_revision_id=row.revision_id, sent_revision_number=int(row.revision_number)
-        )
-    )
+    if row is None or not await player_is_connected(db, owner_id):
+        return None
+    return SentState(row.revision_id, int(row.revision_number))
 
 
 async def has_live_publication(db: AsyncSession, owner_id: UUID, class_id: UUID) -> bool:
