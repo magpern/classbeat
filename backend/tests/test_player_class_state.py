@@ -20,7 +20,7 @@ from sqlalchemy import text
 
 from authtools import ORIGIN
 from classbeat.classes import removal, service
-from classbeat.classes.schemas import DeletedOut
+from classbeat.classes.removal import DeletedOut
 from classbeat.db import user_session
 from classbeat.player_send.class_state import sent_state
 from ctx import make_context
@@ -254,3 +254,28 @@ async def test_the_delete_answer_over_http_without_a_job(sendenv: SendEnv, brows
     body = got.json()
     assert body["player_removal_started"] is False
     assert body["player_removal_job_id"] is None
+
+
+@pytest.mark.parametrize("state", ["numbered", "removed"])
+async def test_the_unnumbered_drop_leaves_a_numbered_or_removed_row(
+    sendenv: SendEnv, state: str
+) -> None:
+    from classbeat.player_send import publications
+
+    owner = await sendenv.user()
+    await sendenv.connect(owner)
+    planted = sendenv.plant(owner)
+    sendenv.sql(
+        "INSERT INTO player_publications (owner_id, source_class_id, last_number, removed_at) "
+        "VALUES (:o, :c, :n, CASE WHEN :removed THEN now() END)",
+        o=owner,
+        c=planted.class_id,
+        n=0 if state == "removed" else 2,
+        removed=state == "removed",
+    )
+    async with user_session(sendenv.factory, make_context(owner)) as db:
+        await db.execute(
+            publications._DROP_UNNUMBERED,  # pyright: ignore[reportPrivateUsage]
+            {"owner_id": owner, "class_id": planted.class_id},
+        )
+    assert sendenv.publication(owner, planted.class_id) is not None

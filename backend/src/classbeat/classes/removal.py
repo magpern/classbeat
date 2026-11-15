@@ -1,16 +1,17 @@
 """The class delete's transaction (ADR 0007 sections 8 and 11, ADR 0034 section 5) and its
-answer (``schemas.DeletedOut``). Split out of ``classbeat.classes.service``."""
+answer (``DeletedOut``). Split out of ``classbeat.classes.service``."""
 
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.classes import seams, song_views
 from classbeat.classes.class_sql import LOCK_CLASS, OPEN_JOB_SQL
-from classbeat.classes.schemas import DeletedOut, PlaylistNameOut
+from classbeat.classes.schemas import PlaylistNameOut
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.player_send.publications import on_class_delete
@@ -31,6 +32,18 @@ _KEPT = text(
     "AND detached_at IS NULL"
 )
 _DELETE = text("DELETE FROM classes WHERE id = :class_id AND owner_id = :owner_id")
+
+
+class DeletedOut(BaseModel):
+    deleted: bool
+    mowl_workouts_kept: int
+    note: str
+    spotify_playlists_left: list[PlaylistNameOut] = []
+    spotify_note: str | None = None
+    # ADR 0034 section 6 (#1068): the class was sent to the player, which is connected, so a
+    # ``player_remove`` job was started; its id follows it (``GET /api/jobs/{id}``).
+    player_removal_started: bool = False
+    player_removal_job_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
