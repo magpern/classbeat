@@ -16,7 +16,7 @@ from uuid import UUID
 
 import pytest
 
-from classbeat.classes import service
+from classbeat.classes import removal
 from classbeat.player_publish_policy import operation_key
 from ctx import make_context
 from playersendtools import Planted, SendEnv
@@ -36,7 +36,7 @@ async def sent(sendenv: SendEnv) -> Planted:
 
 async def delete(sendenv: SendEnv, planted: Planted) -> None:
     ctx = make_context(planted.owner)
-    outcome = await service.delete(sendenv.factory, ctx, planted.class_id, confirm_uncertain=False)
+    outcome = await removal.delete(sendenv.factory, ctx, planted.class_id, confirm_uncertain=False)
     assert outcome.reason is None
 
 
