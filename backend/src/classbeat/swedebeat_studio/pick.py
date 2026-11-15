@@ -1,6 +1,7 @@
 """A studio pick (ADR 0036 section 3): from the brief to the list's content, with no MOWL.
 
-1. ``pool_search``: candidates from a Spotify search (``Steps.search``).
+1. ``pool_search``: candidates from a Spotify search (``Steps.search``), or ``playlist_read``:
+   the user's own Spotify playlist, read only and never modified (``Steps.read_playlist``).
 2. ``pool_match``: their facts from one gateway match, with the evidence retry (``Steps.match``).
    **Suspected unavailability** (every sent candidate still missing, at least 3): no swaps and no
    choice; the list holds the candidates as gaps with ``suspected_unavailable``, for the user's
@@ -15,6 +16,7 @@
    carries its swap record.
 """
 
+from collections.abc import Mapping
 from typing import Final
 
 from classbeat.agent import PickPlan
@@ -30,6 +32,7 @@ from classbeat.swedebeat_studio.candidate_policy import (
     usable,
 )
 from classbeat.swedebeat_studio.evidence_policy import SUSPECTED, Evidence
+from classbeat.swedebeat_studio.playlist_policy import PLAYLIST_NEED
 from classbeat.swedebeat_studio.song_list_model import (
     MAX_ROUNDS,
     SOURCE,
@@ -83,15 +86,16 @@ async def _swap_rounds(
     pool: list[Candidate],
     *,
     swap_anyway: bool,
+    need: Mapping[str, int],
 ) -> tuple[list[Candidate], dict[str, Swap], int]:
     found = [c for c in pool if usable(c)]
     missing = [c for c in pool if not usable(c)]
     seen = {c.spotify_id for c in pool}
     swaps: dict[str, Swap] = {}
     rounds = 0
-    while missing and rounds < MAX_ROUNDS and short(found, plan.slots, plan.required_roles()):
+    while missing and rounds < MAX_ROUNDS and short(found, plan.slots, need):
         rounds += 1
-        wanted = to_replace(missing, found, plan.slots, plan.required_roles())[:MAX_SONGS]
+        wanted = to_replace(missing, found, plan.slots, need)[:MAX_SONGS]
         roles = [c.role for c in wanted]
         searched = await steps.search(PickPlan.build(brief, replace=roles), "swap")
         fresh = [c for c in searched if c.spotify_id not in seen]
@@ -108,14 +112,26 @@ async def _swap_rounds(
     return found, swaps, rounds
 
 
-async def pick(steps: Steps, brief: Brief, *, swap_anyway: bool) -> StudioListContent:
+async def pick(
+    steps: Steps, brief: Brief, *, swap_anyway: bool, playlist_id: str | None = None
+) -> StudioListContent:
+    """A pick from a Spotify search, or from the user's own playlist (``playlist_id``, read only;
+    its songs need no role, so it swaps only while they cannot fill the list)."""
     plan = PickPlan.build(brief)
-    pool = await steps.search(plan, "pool_search")
+    if playlist_id is not None:
+        await steps.run.stage("playlist_read")
+        pool = await steps.read_playlist(playlist_id)
+        need = PLAYLIST_NEED
+    else:
+        pool = await steps.search(plan, "pool_search")
+        need = plan.required_roles()
     await steps.run.stage("pool_match")
     pool, found_first = await steps.match(pool)
     if found_first.state == SUSPECTED and not swap_anyway:
         return suspected(plan, pool, found_first)
-    found, swaps, rounds = await _swap_rounds(steps, brief, plan, pool, swap_anyway=swap_anyway)
+    found, swaps, rounds = await _swap_rounds(
+        steps, brief, plan, pool, swap_anyway=swap_anyway, need=need
+    )
     chosen = await steps.choose(plan, found)
     by_id = {c.spotify_id: c for c in found}
     songs = [song_of(by_id[s.spotify_id], s.role, swaps.get(s.spotify_id)) for s in chosen.songs]

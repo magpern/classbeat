@@ -8,7 +8,8 @@ revision and the wait for the user's one approval (ADR 0008 section 5).
   (``feature_off`` otherwise), the class is not soundless, a seed list still loads and still fits
   its action (``invalid_input``); then the Spotify connection and the SwedeBeat bearer are opened
   (``not_connected``, ``app_misconfigured`` without a gateway), in this job only.
-- **The action**: ``pick`` and ``swap_anyway`` (``pick.pick``), ``undo`` and ``another``
+- **The action**: ``pick`` and ``swap_anyway`` (``pick.pick``; from a search, or from the user's
+  own Spotify playlist, read only, in the stage ``playlist_read``), ``undo`` and ``another``
   (``edit``). Their models are the ``songs`` stage group's.
 - ``working_copy``: the pool playlist (the user's working copy) follows the list, in order
   (``playlists.write_pool``: the owner check, a replace of exactly those tracks, read back). The
@@ -58,7 +59,9 @@ from classbeat.swedebeat_studio.song_list_model import StudioListContent
 from classbeat.swedebeat_studio.stages import Steps
 from classbeat.swedebeat_studio.swap_policy import askable, undoable
 
-STAGES: Final = ("pool_search", "pool_match", "swap", "choose", "working_copy")
+STAGES: Final = (
+    "playlist_read", "pool_search", "pool_match", "swap", "choose", "working_copy",
+)  # fmt: skip
 _APPROVED = text(
     "SELECT class_id, approval_revision_id FROM jobs WHERE id = :job_id AND owner_id = :owner_id"
 )
@@ -70,7 +73,7 @@ async def _prepare(run: JobRun, given: StudioSongsInput) -> song_list.StudioList
     async with run.fenced() as fs:
         on = await studio_on(fs.db) and await uses_swedebeat_in(fs.db, run.lease.owner_id)
         if on and class_id is not None:
-            await music_kind.still_has_music(fs, class_id)
+            await music_kind.still_studio(fs, class_id)
         seed = None
         if on and given.seed is not None and class_id is not None:
             seed = await song_list.load(
@@ -154,11 +157,18 @@ async def run(job_run: JobRun) -> Outcome:
             job_searcher(job_run, keyring, spotify),
             bearer,
             cfg.swedebeat_gateway_key,
+            keyring,
+            spotify,
         )
         if given.action == "another" and seed is not None and position is not None:
             content = await another(steps, given.brief, seed.content, position)
         else:
-            content = await pick(steps, given.brief, swap_anyway=given.action == "swap_anyway")
+            content = await pick(
+                steps,
+                given.brief,
+                swap_anyway=given.action == "swap_anyway",
+                playlist_id=given.spotify_playlist_id,
+            )
     built = song_list.build(
         content,
         account=spotify.account,
@@ -175,7 +185,7 @@ async def run(job_run: JobRun) -> Outcome:
             fs.db, fs.lease.ctx, bearer.connection
         ):
             raise JobFailure("not_connected")
-        await music_kind.check_stored(fs, soundless=False)
+        await music_kind.check_stored(fs, soundless=False, studio=True)
         return await built.store(fs), built.content_hash
 
     return AwaitApproval(store)

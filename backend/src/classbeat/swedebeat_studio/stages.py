@@ -1,5 +1,7 @@
 """The studio pick's steps (ADR 0036 section 3), shared by every action of ``studio_songs``.
 
+- ``read_playlist``: the user's own Spotify playlist, read only (``playlist_policy``); never
+  modified.
 - ``search``: the song pick's ``pick_pool`` stage (the model names candidates by registry ``ref``;
   ``search_tracks`` through the job's Spotify connection). The candidates keep the search hit's
   Spotify title, artist and cover; no Spotify write.
@@ -17,6 +19,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from mowl import spotify_web
+from mowl.credentials import Credentials
 from pydantic import SecretStr
 
 from classbeat.agent import (
@@ -36,15 +40,20 @@ from classbeat.agent import (
 from classbeat.agent import choose_songs as choose_module
 from classbeat.agent import pick_pool as pool_module
 from classbeat.agent.provider import ModelProvider
+from classbeat.agent.schemas import MAX_POOL
 from classbeat.agent.songs import PoolTrack
+from classbeat.connections import OpenConnection
 from classbeat.connections.swedebeat_account import SwedebeatBearer
+from classbeat.crypto.keks import KeyRing
 from classbeat.jobs import JobFailure, JobRun
+from classbeat.playlists import common
 from classbeat.songs.config import SongConfig
 from classbeat.songs.pick import stage_config
 from classbeat.swedebeat_studio.candidate_policy import Candidate, facts_of
 from classbeat.swedebeat_studio.evidence_policy import Evidence
 from classbeat.swedebeat_studio.length_policy import UPPER
 from classbeat.swedebeat_studio.match import match_pairs
+from classbeat.swedebeat_studio.playlist_policy import playlist_candidates
 
 
 @dataclass
@@ -58,7 +67,23 @@ class Steps:
     searcher: Any
     bearer: SwedebeatBearer
     key: SecretStr
+    keyring: KeyRing
+    spotify: OpenConnection
     runs: list[StageOutcome] = field(default_factory=list[StageOutcome])
+
+    async def read_playlist(self, playlist_id: str) -> list[Candidate]:
+        """The user's own playlist's candidates: one read (``playlist_items``), never a write."""
+
+        def read(creds: Credentials) -> list[Any]:
+            return spotify_web.playlist_items(creds, playlist_id, MAX_POOL)
+
+        entries = await common.call(
+            self.run.factory, self.keyring, self.run.ctx, self.spotify, read
+        )
+        found = playlist_candidates(entries)
+        if not found:
+            raise JobFailure("pool_too_small")  # nothing playable to match
+        return found
 
     async def search(self, plan: PickPlan, job_stage: str) -> list[Candidate]:
         """The ``pick_pool`` stage's candidates for ``plan`` (not matched yet)."""

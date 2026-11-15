@@ -982,6 +982,27 @@ async def test_a_soundless_class_is_not_matched_at_admit_or_in_the_store(
     assert _stored(admin, job_id) == 0
 
 
+async def test_a_studio_class_is_not_matched_at_admit_or_in_the_store(
+    env: Env, admin: Connection, make_actor: Any, catalogue: FakeGateway, configured: None
+) -> None:
+    """ADR 0036 section 2: a studio class's music kind never changes, so no other kind's match."""
+    rider = await _one(env, make_actor, "studioclass", 92)
+    _soundless(admin, rider.class_id, {"source": "swedebeat_studio"})
+    refused = await _post_job(rider.actor, _body(rider))
+    assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "invalid_input")
+    assert _rows(admin, "jobs", rider.user_id) == 0
+    _soundless(admin, rider.class_id, None)
+    assert (await _post_job(rider.actor, _body(rider))).status_code == 201
+    _soundless(admin, rider.class_id, {"source": "swedebeat_studio"})
+    job_id = await _run(env)
+    assert (_job(admin, job_id).state, _job(admin, job_id).error_category) == (
+        "failed",
+        "invalid_input",
+    )
+    assert calls(catalogue, MATCH_PATH) == []
+    assert _stored(admin, job_id) == 0
+
+
 @pytest.mark.parametrize("turns_soundless", [True, False])
 async def test_a_class_that_turns_soundless_while_matching_is_not_stored(
     env: Env,

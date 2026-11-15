@@ -33,7 +33,11 @@ module holds the checks that are not the input's own validation:
   ``none`` on a class whose music is not ``none``, or other music on a class whose music is
   ``none``, is ``invalid_input``; ``check_stored`` repeats it in the final fenced store before
   ``revision.adopt_first`` (#589; the soundless store with ``before_adopt``, then strictly after
-  it), so two queued jobs of different kinds cannot both land.
+  it), so two queued jobs of different kinds cannot both land. A **studio class** (ADR 0036
+  section 2: a stored source or newest revision of ``swedebeat_studio``) refuses every job of
+  another kind here and in ``refuse_soundless``; the studio's own ``studio_songs`` is admitted
+  only by ``admit_studio`` (no music yet, or the studio's), checked again by ``still_studio``
+  and, in the final stores, by ``check_stored`` (``studio``; any studio revision counts there).
 - **A revise of a soundless class** (SL2, #528) is admitted by ``admit_class`` through the same
   gate (``admit_soundless``); in the worker ``still_on`` and ``require_covered`` run before any
   call, as for a design. Its final store repeats ``check_stored``.
@@ -66,6 +70,7 @@ from classbeat.jobs.kinds import Refused
 from classbeat.models.jobs import GroupModel
 
 NONE: Final = "none"
+STUDIO: Final = "swedebeat_studio"  # ADR 0036 section 2: only the studio's own kinds act on it
 NO_MUSIC: Final[dict[str, str]] = {"source": NONE}  # classes.music_source and revision music
 
 
@@ -106,6 +111,11 @@ def is_none(music: Any) -> bool:
     """Whether a stored music value (``classes.music_source`` or ``class_revisions.music``, a
     dict) is ``none``. Anything else, ``NULL`` included, is not."""
     return isinstance(music, dict) and music.get("source") == NONE  # pyright: ignore[reportUnknownMemberType]
+
+
+def is_studio(music: Any) -> bool:
+    """Whether a stored music value is the SwedeBeat studio's (ADR 0036 section 2)."""
+    return isinstance(music, dict) and music.get("source") == STUDIO  # pyright: ignore[reportUnknownMemberType]
 
 
 async def soundless_on(db: AsyncSession) -> bool:
@@ -164,16 +174,35 @@ async def admit_music(
     if row is None:
         return None  # the generic checks answered ``class_not_found`` already
     known = row.music_source if row.music_source is not None else row.newest
+    if is_studio(known):  # a studio class: no other kind's job, ever (ADR 0036 section 2)
+        return Refused("invalid_input")
     if known is not None and is_none(known) != soundless:
         return Refused("invalid_input")
     return None
 
 
+async def admit_studio(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Refused | None:
+    """A studio job (``studio_songs``) of a class: ``invalid_input`` when the class has music of
+    another kind (a stored source or a newest revision that is not the studio's, soundless
+    included). None admits (a studio class, or one with no music yet). Reads only."""
+    row = (await db.execute(_CLASS_MUSIC, {"owner_id": owner_id, "class_id": class_id})).first()
+    if row is None:
+        return None  # the generic checks answered ``class_not_found`` already
+    known = row.music_source if row.music_source is not None else row.newest
+    return None if known is None or is_studio(known) else Refused("invalid_input")
+
+
+async def still_studio(fs: FencedSession, class_id: UUID) -> None:
+    """``admit_studio`` again in the worker, before a studio job calls anything outside."""
+    if await admit_studio(fs.db, fs.lease.owner_id, class_id) is not None:
+        raise JobFailure("invalid_input")
+
+
 async def refuse_soundless(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Refused | None:
     """Song picking, the Swedebeat match, the hand-off and ``swedebeat_verify_mix`` of a class
     (item 9, #530): ``invalid_input`` when the class is soundless (its ``music_source``, or its
-    newest revision's music while it has none, is ``none``), read explicitly rather than inferred
-    from a missing song list or match. None admits. Reads only."""
+    newest revision's music while it has none, is ``none``) or a studio class (ADR 0036), read
+    explicitly rather than inferred from a missing song list or match. None admits. Reads only."""
     return await admit_music(db, owner_id, False, class_id)
 
 
@@ -224,7 +253,33 @@ _JOB_CLASS_SOURCE = text(
 )
 
 
-async def check_stored(fs: FencedSession, soundless: bool, *, before_adopt: bool = False) -> None:
+# Whether the job's class has a studio revision, and whether it has a revision with other music
+# (ADR 0036 section 2): a class's kind never changes, so one of either decides it.
+_JOB_CLASS_KINDS = text(
+    "SELECT bool_or(r.music ->> 'source' = :studio) AS studio, "
+    "bool_or(r.music IS NOT NULL AND r.music ->> 'source' IS DISTINCT FROM :studio) AS other "
+    "FROM class_revisions r JOIN jobs j ON j.owner_id = r.owner_id AND j.class_id = r.class_id "
+    "WHERE j.id = :job_id AND j.owner_id = :owner_id"
+)
+
+
+async def _check_kind(fs: FencedSession, source: Any, studio: bool) -> None:
+    row = (
+        await fs.db.execute(
+            _JOB_CLASS_KINDS,
+            {"job_id": fs.lease.job_id, "owner_id": fs.lease.owner_id, "studio": STUDIO},
+        )
+    ).one()
+    if studio:
+        if (source is not None and not is_studio(source)) or row.other:
+            raise JobFailure("invalid_input")
+    elif is_studio(source) or row.studio:
+        raise JobFailure("invalid_input")
+
+
+async def check_stored(
+    fs: FencedSession, soundless: bool, *, before_adopt: bool = False, studio: bool = False
+) -> None:
     """In a design's final fenced transaction: a soundless revision needs the class's
     ``music_source`` to be ``none``, and a music revision a class whose source is not ``none``.
     Otherwise (a job of the other kind landed first) ``invalid_input``, which rolls the whole
@@ -233,13 +288,18 @@ async def check_stored(fs: FencedSession, soundless: bool, *, before_adopt: bool
     Call it BEFORE ``revision.adopt_first`` (#589), which writes ``music_source`` whenever the
     class has no current revision yet. A first soundless design has no source until
     ``adopt_first`` writes ``none``, so with ``before_adopt`` a soundless check also accepts an
-    unset source (a music source is still refused); the strict check follows ``adopt_first``."""
+    unset source (a music source is still refused); the strict check follows ``adopt_first``.
+
+    A studio class (a stored studio source, or any studio revision) refuses every other kind's
+    store; the studio's own (``studio``) refuses a class with another source or a revision of other
+    music, so a job of the other kind admitted at the same time cannot land second (ADR 0036)."""
     source = (
         await fs.db.execute(
             _JOB_CLASS_SOURCE, {"job_id": fs.lease.job_id, "owner_id": fs.lease.owner_id}
         )
     ).scalar_one_or_none()
-    if soundless and before_adopt and source is None:
+    await _check_kind(fs, source, studio)
+    if studio or (soundless and before_adopt and source is None):
         return
     if is_none(source) != soundless:
         raise JobFailure("invalid_input")

@@ -50,6 +50,8 @@ check_common() {
     || fail "the SwedeBeat gateway URL belongs to web and worker only" || return 1
   q '[.services.web, .services.worker | .environment.CLASSBEAT_SWEDEBEAT_GATEWAY_URL] | all(. == "")' \
     || fail "the SwedeBeat gateway URL is unset by default (the owner sets SWEDEBEAT_GATEWAY_URL in .env)" || return 1
+  q '[.services.web, .services.worker | .environment.CLASSBEAT_SWEDEBEAT_STUDIO] | all(. == "")' \
+    || fail "the SwedeBeat studio is off by default on web and worker (ADR 0036; the owner sets SWEDEBEAT_STUDIO in .env)" || return 1
   q '.services.web.environment.CLASSBEAT_SWEDEBEAT_ENABLED == "false"' \
     || fail "Swedebeat must be off by default" || return 1
   q '.services.worker.environment.CLASSBEAT_SWEDEBEAT_ENABLED == "false"' \
@@ -182,7 +184,7 @@ check_keys() {
       "CLASSBEAT_SIGNUP_MODE","CLASSBEAT_SMTP_HOST","CLASSBEAT_SMTP_PORT","CLASSBEAT_SMTP_SENDER",
       "CLASSBEAT_SMTP_TLS","CLASSBEAT_SMTP_USERNAME"];
     def flags: ["CLASSBEAT_RUNNING_ENABLED","CLASSBEAT_SOUNDLESS_ENABLED","CLASSBEAT_SWEDEBEAT_ENABLED",
-      "CLASSBEAT_SWEDEBEAT_GATEWAY_URL"];
+      "CLASSBEAT_SWEDEBEAT_GATEWAY_URL","CLASSBEAT_SWEDEBEAT_STUDIO"];
     def allowed_env: {
       "db": ["POSTGRES_DB","POSTGRES_PASSWORD_FILE"],
       "db-functions": [],

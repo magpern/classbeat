@@ -1,7 +1,10 @@
 """The input of ``studio_songs`` (ADR 0036 section 3).
 
 ``{class_id | title, brief, action, seed?: {song_list_revision_id, position?},
-spotify_connection_id, swedebeat_connection_id}``.
+spotify_playlist_id?, spotify_connection_id, swedebeat_connection_id}``.
+
+- ``spotify_playlist_id``: the user's own Spotify playlist as the candidates instead of a search
+  (``pick`` and ``swap_anyway`` only). It is read with the user's connection and never modified.
 
 - ``CONNECTIONS = ("spotify", "swedebeat")``: no MOWL connection (a studio class needs none, ADR
   0036 section 2). The jobs API refuses the job, and later its approval, unless both ids are the
@@ -21,7 +24,7 @@ No field is a server field beyond ``ModelJobInput``'s, and nothing in the input 
 the pool, the playlists, the matched titles and every id written come from the user's own rows.
 """
 
-from typing import ClassVar, Literal, Self
+from typing import Annotated, ClassVar, Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -48,6 +51,9 @@ class StudioSongsInput(ModelJobInput):
     brief: Brief
     action: Action = "pick"
     seed: StudioSeed | None = None
+    # The user's own Spotify playlist as the candidates (read only, never modified), instead of a
+    # search: only for a pick or a swap anyway.
+    spotify_playlist_id: Annotated[str, Field(pattern=r"^[0-9A-Za-z]{22}$")] | None = None
     spotify_connection_id: UUID
     swedebeat_connection_id: UUID
 
@@ -57,6 +63,8 @@ class StudioSongsInput(ModelJobInput):
             raise ValueError("the brief is too long")
         if self.brief.sport != "cycling":  # ADR 0018: running v1 has no song picking
             raise ValueError("song picking is for cycling classes only")
+        if self.spotify_playlist_id is not None and self.action not in ("pick", "swap_anyway"):
+            raise ValueError("only a pick reads the user's playlist")
         if self.action == "pick":
             if self.seed is not None:
                 raise ValueError("a pick has no seed")

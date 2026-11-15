@@ -8,8 +8,9 @@
 - ``act``: ``undo``, ``another`` or ``swap_anyway`` on a list, as **one** step in the jobs API's
   create transaction (``classbeat.jobs.hold``, under the owner lock): the job that made the list
   is cancelled when it still waits for the approval, then a ``studio_songs`` job of that action
-  is created from that job's own brief and connections, through ``studio_songs``' ``admit`` (the
-  newest list, ended and never approved, the action fitting the list). A refusal rolls the
+  is created from that job's own brief and connections (and, for Swap anyway, its playlist),
+  through ``studio_songs``' ``admit`` (the newest list, ended and never approved, the action
+  fitting the list). A refusal rolls the
   cancel back, so a refused action leaves the waiting list as it was.
 
 Every statement filters on ``owner_id`` as well as running under RLS; another user's class or
@@ -176,6 +177,9 @@ async def act(
                 "brief": made["brief"],
                 "action": action,
                 "seed": {"song_list_revision_id": str(revision_id), "position": position},
+                "spotify_playlist_id": made.get("spotify_playlist_id")
+                if action == "swap_anyway"
+                else None,
                 "spotify_connection_id": made["spotify_connection_id"],
                 "swedebeat_connection_id": made["swedebeat_connection_id"],
             }

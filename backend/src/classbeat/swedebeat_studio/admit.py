@@ -94,9 +94,9 @@ async def _class_checks(
     fixed = await sport.admit_brief(db, ctx, parsed.brief, parsed.class_id)
     if fixed is not None or parsed.class_id is None:
         return fixed
-    soundless = await music_kind.refuse_soundless(db, ctx.user_id, parsed.class_id)
-    if soundless is not None:
-        return soundless
+    other = await music_kind.admit_studio(db, ctx.user_id, parsed.class_id)
+    if other is not None:  # soundless or another music kind: a class's kind never changes
+        return other
     row = (
         await db.execute(_CLASS_MUSIC, {"owner_id": ctx.user_id, "class_id": parsed.class_id})
     ).first()

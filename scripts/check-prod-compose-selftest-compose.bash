@@ -47,6 +47,9 @@ for m in \
   '.services.web.environment.CLASSBEAT_RUNNING_ENABLED = "true"' \
   '.services.worker.environment.CLASSBEAT_SOUNDLESS_ENABLED = "true"' \
   '.services.worker.environment.CLASSBEAT_SWEDEBEAT_ENABLED = "true"' \
+  '.services.web.environment.CLASSBEAT_SWEDEBEAT_STUDIO = "design"' \
+  'del(.services.worker.environment.CLASSBEAT_SWEDEBEAT_STUDIO)' \
+  '.services.migrate.environment.CLASSBEAT_SWEDEBEAT_STUDIO = ""' \
   '.services.mailpit = {"image":"axllent/mailpit","logging":.services.web.logging}' \
   '.volumes["caddy-data"] = {}' \
   '.services.extra = {"image":"busybox","networks":{"proxy":null},"logging":.services.web.logging}' \
