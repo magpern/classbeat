@@ -1,5 +1,43 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 22 (2026-11-14, owner direction: classbeat-player; ADR 0034)
+
+The owner said on 2026-11-14 that classbeat produces the class and classbeat-player runs it. The
+player is a second output format beside MOWL, through a new connection, and an instructor signs
+in to the player with their classbeat account ("same user, same account, same login reused").
+Design: [ADR 0034](adr/0034-classbeat-player-connection.md). The player's side is in its own
+repository (ADR 0010 and ADR 0002 there).
+
+- **New milestone "PC — Player connection"**, built on fakes only. The name is PC, not PL, because
+  the player repository uses PL for its phases. Its issues are:
+  - **PC-1:** the OIDC provider core (ADR 0034 §1).
+  - **PC-2:** the signed events, their outbox and the player client's egress (§2).
+  - **PC-3:** the `player` connection (§3).
+  - **PC-4:** the converter and content hash (§4).
+  - **PC-5:** the send and removal jobs (§5).
+  - **PC-6:** the UI (§6).
+- **Reviewers:**
+  - PC-1, PC-2, PC-3 and PC-5 are security-critical, with an Opus Developer and an Opus
+    Reviewer.
+  - PC-4 and PC-6 have a Sonnet Developer and a Sonnet Reviewer, and PC-6 also needs i18n.
+- **Dependencies:**
+  - PC-2 and PC-3 depend on PC-1. PC-2 also waits for the player's docs PR that pins the
+    event URNs (ADR 0034 §2).
+  - PC-5 depends on PC-3 and PC-4.
+  - PC-6 depends on PC-3 and PC-5.
+- **Amends roadmap §2:** the "user write" row gains "send to player" (the user's press for one
+  revision) and the removal sent when a class that was sent is deleted.
+- **Done when:** an end-to-end test with a fake player backend does all of this:
+  - signs in through classbeat, including a `prompt=login` re-authentication;
+  - connects the player, and refuses a link to another instructor's player account;
+  - sends a class, then a newer revision, then a removal on delete;
+  - handles a stale number, a conflict, an uncertain send and a reconnect;
+  - delivers `sessions-revoked` and `account-deleted`.
+
+  Two users' links and classes never mix.
+- **Still the owner's:** registering the real client, deploying the player, connecting a real
+  player, and setting the player's host for production.
+
 ## Amendment 21 (2026-11-12, owner: "go ahead with the fake Paddle and the rest"; ADR 0032)
 
 The owner authorized building everything of M7b that needs no real provider, with the live
