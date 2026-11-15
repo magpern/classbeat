@@ -17,10 +17,12 @@ model (T19, T23, T104 to T107, T110), the gateway contract `docs/api.md` of
 
 The owner built a private service, the **SwedeBeat gateway** (`magpern/sb-gateway-service`). It sits
 between classbeat and SwedeBeat and holds every SwedeBeat secret: the AES login key, the S3 key id
-and its own Spotify app credentials. It runs on the owner's home server (docker compose, port 7355).
-The owner publishes it as **`https://sb.classbeat.eu`** behind their nginx, on port 443 (owner,
-2026-11-15). Every request except `/health` needs a client key in `X-API-Key`. The owner issued
-classbeat one and stored it as the repository secret `SB_CLIENT_API_KEY`.
+and its own Spotify app credentials. It runs on the owner's home server (docker compose, port 7355),
+**the same host as classbeat's production stack**. It is bound to the LAN and reached as
+**`http://192.168.1.222:7355`**: plain HTTP on a private address (owner decision, 2026-11-15). An
+nginx name, `sb.classbeat.eu`, was discussed first. The owner chose the LAN address. Every request
+except `/health` needs a client key in `X-API-Key`. The owner issued classbeat one and stored it as
+the repository secret `SB_CLIENT_API_KEY`.
 
 The owner's direction: classbeat must **no longer call SwedeBeat at all and must hold no SwedeBeat
 secret**. Today it does both:
@@ -60,38 +62,77 @@ Gateway facts this ADR relies on (`docs/api.md`, and the source for the first tw
 
 ## Decision
 
-### 1. One host, in code: `sb.classbeat.eu`
+### 1. One gateway origin, a setting with a strict policy
 
-- `classbeat.egress` gains `SWEDEBEAT_GATEWAY_HOST: Final = "sb.classbeat.eu"` and its own scoped
-  list `SWEDEBEAT_GATEWAY_ALLOWLIST`: https, port 443, no wildcard.
-- It is a **literal, not a setting**. The host is known, so the egress rule "the list is code"
-  holds (ADR 0006 §9). This is unlike the player, whose host is the operator's choice (ADR 0034 §2).
-  Moving the gateway is a one-line reviewed change.
-- **Port 443, not a non-standard port** (owner question, 2026-11-15). Scanners find every port, so
-  another port hides nothing. The protection is the client key, TLS, and nginx allowing only
-  classbeat's server address (an owner step, §10).
+- **The setting.** `CLASSBEAT_SWEDEBEAT_GATEWAY_URL` (`Settings.swedebeat_gateway_url`) is the
+  gateway's origin. Unset means SwedeBeat is unavailable on this server (§2's "available").
+  - Production's intended value is `http://192.168.1.222:7355`. It goes in `compose.prod.yaml`'s
+    example environment, `.env.example`/`prod.env.example` and the runbook, never in code.
+- **It is a setting, not a literal.** The address belongs to the owner's deployment, like the
+  player's host (ADR 0034 §2). That amends the rule in `classbeat.egress` that "the list is code",
+  for this one origin.
+- **The policy** is a pure module, `classbeat.swedebeat_gateway.url_policy`, modelled on
+  `player/base_url_policy.py`. The value must be an origin: no userinfo, no path but `/`, no query
+  and no fragment. Then **one** of these must hold:
+  - **`http` to a loopback or private IP literal**: IPv4 `127.0.0.0/8`, `10.0.0.0/8`,
+    `172.16.0.0/12` or `192.168.0.0/16`, or IPv6 `::1` or `fc00::/7`, with an explicit port.
+    - A DNS name is never allowed over plain http, because it could resolve anywhere.
+    - Link-local addresses (`169.254.0.0/16`, `fe80::/10`, the cloud metadata range) are refused.
+    - So are `0.0.0.0`, multicast and broadcast.
+  - **`https` to a public lowercase DNS name** (the player's name rules), on 443 or an explicit
+    port. This is for a deployment where the gateway is on another machine behind TLS.
+
+  Anything else is refused at start with `ValueError`. The message names the rule, never the value,
+  and the process refuses to start (both web and worker validate it).
+- **Plain HTTP on the LAN is the owner's accepted risk** (see Consequences).
+  - The SwedeBeat password (at connect), the bearer and the client key cross the host's LAN
+    interface in clear.
+  - On one box with a LAN-bound gateway, only the host, the LAN and its other devices can see that
+    traffic.
+  - The policy keeps plaintext off any public address, and off any DNS name that could be
+    repointed.
+  - Mitigations the owner may add: bind the gateway to the docker bridge instead of the LAN, or put
+    TLS in front. Either is a change of the setting only.
+- **Exact origin, no redirects.** The gateway client's list is exactly the configured `(scheme,
+  host, port)`.
+  - A request to any other scheme, host or port is refused before it is sent. Redirects are never
+    followed: a 3xx comes back as a response, to be refused.
+  - The client's transport therefore checks a full origin, not only a host: the existing
+    `Allowlist` is https/443-only, so this client gets its own origin check in `classbeat.egress`.
+  - For `http` no TLS is used. For `https` the system trust store is used.
+- **No port obscurity** (owner question, 2026-11-15). A non-standard port hides nothing from a
+  scanner. The protection is the client key, the LAN binding and, if exposed later, TLS with an
+  nginx address allowlist (§10).
 - The list is on **no urllib list**: neither `WEB_URLLIB_HOSTS` nor `WORKER_HOSTS` holds it.
   - One dedicated client builder, `swedebeat_gateway_async_client(total_seconds)`, is used in **both
-    web (login) and worker (match)**. It is the only client that reaches the host.
+    web (login) and worker (match)**. It is the only client that reaches the gateway.
   - It is built like the catalogue client of ADR 0016 §4:
     - no redirect at all (`follow_redirects=False`; a hop to another host is refused before it is
       sent, and a same-host 3xx comes back to be refused);
-    - `trust_env=False` and the system trust store;
+    - `trust_env=False`, and the system trust store for `https`;
     - no default header: a request carries only what the call site sets (`Accept`, `Content-Type`,
       `X-API-Key`, and `Authorization` for the match);
     - a total deadline per request, body included;
     - the response body read raw, with any `Content-Encoding` other than identity refused;
     - a size cap per call (login 16 KB, match 1 MB).
-  - It takes the deadline as its only argument. A transport comes only from tests, through
-    `swedebeat_gateway_test_client`, which the egress guard refuses inside `classbeat`.
+  - It takes the deadline as its only argument.
+    - The origin is installed once at process start from the validated setting
+      (`egress.install_swedebeat_gateway_origin`, called by web and worker start-up), never per
+      call. Until it is installed, the builder refuses.
+    - A transport and an origin of the test's own come only from tests, through
+      `swedebeat_gateway_test_client`, which the egress guard refuses inside `classbeat`.
   - The deadline is 30 s for login. For the match it is `SWEDEBEAT_GATEWAY_MATCH_SECONDS = 150`
     (the contract asks for at least 120).
 - The web's login and the worker's match each build one client per call (`async with`). Neither the
   cookie jar nor the connection pool outlives that call.
 - **No request goes to `www.swedebeat.se` or `cloud.swedebeat.se` any more.** Both constants and the
   `cloud` client are deleted (§8), and no list in classbeat names a SwedeBeat host.
-- In e2e, the fake gateway answers as `sb.classbeat.eu` (a compose network alias) with its own
-  throwaway CA. That is the pattern of the other fakes (§9).
+- In e2e, the fake gateway runs on the compose network. The stack sets
+  `CLASSBEAT_SWEDEBEAT_GATEWAY_URL` to the fake's https name with its throwaway CA, as the other
+  fakes do (§9).
+  - The backend tests cover the `http` private-IP origin (fake transport) and every refusal of the
+    policy.
+  - The netguard still blocks every non-loopback connect in tests.
 
 ### 2. The client key: a secret file in web and worker
 
@@ -110,13 +151,13 @@ Gateway facts this ADR relies on (`docs/api.md`, and the source for the first tw
   - On a server the owner writes the value into `secrets/swedebeat_gateway_key`: `scripts/worktree.sh`
     and `scripts/install` create the empty placeholder, and `docs/runbooks/swedebeat-connect.md`
     says how to fill it.
-- The key is sent only in `X-API-Key`, only to the gateway host, and only by the client of §1.
+- The key is sent only in `X-API-Key`, only to the configured gateway origin, and only by the client of §1.
   - It is never logged: the header and the setting are on the redaction lists, and httpx's request
     log stays off.
   - It is never put in a URL, a response, an event, a job, a revision or a model input.
   - The M6 secrecy tests search for it in every log, response and database dump of the fake flows.
-- **"Available"** (the account page's `swedebeat.available`, ADR 0015 §1) now means the key file
-  holds a key.
+- **"Available"** (the account page's `swedebeat.available`, ADR 0015 §1) now means the gateway URL
+  is set **and** the key file holds a key.
   - The flag stays as it is: `CLASSBEAT_SWEDEBEAT_ENABLED`, the admin flag, stricter wins (ADR 0015
     §6), and the per-user preference (ADR 0015's amendment).
   - The SwedeBeat features run only when the flag, the preference and the key are all present.
@@ -126,9 +167,9 @@ Gateway facts this ADR relies on (`docs/api.md`, and the source for the first tw
 `classbeat.connections.swedebeat_account.connect_swedebeat` keeps its shape (ADR 0015 §1). The route
 is unchanged: recent authentication and step-up, CSRF, rate limits, events. The sign-in becomes:
 
-1. **The key is checked first.** No key: `SwedebeatRefusal("app_key_unavailable")` (503) before the
+1. **The URL and the key are checked first.** Neither set: `SwedebeatRefusal("app_key_unavailable")` (503) before the
    rate limit is spent and before anything is sent.
-2. **Login.** One `POST https://sb.classbeat.eu/auth/login` with:
+2. **Login.** One `POST {gateway}/auth/login` with:
    - the body `{"email", "password", "device_id", "force": true}`;
    - the device id of ADR 0015 §2 (the user's HMAC device id, 16 hex characters, within the
      gateway's 64);
@@ -228,7 +269,7 @@ retention and isolation. Only the catalogue step changes:
 
 - **The request.** The class's songs in play order, at most `MAX_SONGS` (40, under the gateway's
   200), deduplicated by the current `dedupe_key` (cleaned title and artist, in job memory only).
-  - The job sends **one** `POST https://sb.classbeat.eu/catalog/match` with
+  - The job sends **one** `POST {gateway}/catalog/match` with
     `{"tracks": [{"title", "artist"}], "include_unsure": false}` and the headers `X-API-Key`,
     `Authorization: Bearer <bearer>`, `Content-Type` and `Accept`.
   - **Only each song's title and artist leave**: no Spotify id, BPM, length, role, class, brief or
@@ -347,8 +388,9 @@ packages.
 
   It checks `X-API-Key` before anything else and the bearer next, in the contract's order. Two users
   get two bearers, and the fake records which bearer each match carried.
-- **e2e:** `e2e/fake-gateway/` serves the same core over TLS as `sb.classbeat.eu` (network alias),
-  adds its CA to the shared bundle chain and replaces `swedebeat-fake`.
+- **e2e:** `e2e/fake-gateway/` serves the same core over TLS under a compose network alias. The
+  stack's `CLASSBEAT_SWEDEBEAT_GATEWAY_URL` names it, its CA joins the shared bundle chain, and it
+  replaces `swedebeat-fake`.
   - The stack mounts a **public test client key**, `e2e/fake-gateway/client-key.txt`, as web's and
     the worker's `swedebeat_gateway_key`. It is a test value, not the owner's.
   - The connect, match, replace and hand-off specs run against it, and the netguard rule is
@@ -356,12 +398,22 @@ packages.
 
 ### 10. Owner steps (never an agent's)
 
-1. On the gateway: list classbeat's key in `CLIENT_API_KEYS`. Have nginx serve `sb.classbeat.eu` on
-   443 with a valid certificate. Allow only classbeat's server address (`allow <ip>; deny all;`),
-   and optionally rate-limit `/auth/login` (`limit_req`). Optionally raise `SESSION_TTL_SECONDS`
-   (§5).
-2. On the classbeat server: write the key into `secrets/swedebeat_gateway_key` (mode as the other
-   secret files), deploy a release carrying SG-4, and keep `SWEDEBEAT_ENABLED` as it is.
+1. On the gateway:
+   - list classbeat's key in `CLIENT_API_KEYS`;
+   - keep it bound to the LAN or the docker bridge, never on a public interface while it is plain
+     HTTP;
+   - optionally raise `SESSION_TTL_SECONDS` (§5).
+
+   If it is ever exposed outside the LAN: put TLS in front, allow only classbeat's address in nginx,
+   and rate-limit `/auth/login`. Then the setting becomes an `https` name.
+2. On the classbeat server:
+   - set `SWEDEBEAT_GATEWAY_URL=http://192.168.1.222:7355` (the compose variable for web and
+     worker);
+   - write the key into `secrets/swedebeat_gateway_key` (mode as the other secret files);
+   - deploy a release carrying SG-4, and keep `SWEDEBEAT_ENABLED` as it is.
+
+   The worker and web containers must reach the host's LAN address (docker's default bridge
+   does).
 3. Delete the GitHub secret `SWEDEBEAT_APP`, and delete older release image tags that carry the key
    from GHCR (the key is the gateway's now).
 4. Authorize one live check with the owner's own SwedeBeat account:
@@ -379,7 +431,7 @@ packages.
 | # | Title | Scope | Review | Depends on |
 |---|---|---|---|---|
 | SG-0 | `docs(adr): 0035 the SwedeBeat gateway` | this ADR, roadmap Amendment 23, notes on ADR 0015 and 0016 | Opus | none |
-| SG-1 | `feat(swedebeat): gateway client, egress, client key and fakes` | §1, §2 (setting and mount; available still false unless set), the client module `classbeat.swedebeat_gateway` (`login`, `match`, the parsers and the status mapping as pure `*_policy` modules), `gatewayfake.py`, `e2e/fake-gateway` in `compose.e2e.yaml` beside the old fake, guard and egress tests. No caller is switched | Opus Developer, Opus Reviewer | SG-0 |
+| SG-1 | `feat(swedebeat): gateway client, egress, client key and fakes` | §1 (the URL setting and its policy, the origin-checked client), §2 (setting and mount; available still false unless set), the client module `classbeat.swedebeat_gateway` (`login`, `match`, the parsers and the status mapping as pure `*_policy` modules), `gatewayfake.py`, `e2e/fake-gateway` in `compose.e2e.yaml` beside the old fake, guard and egress tests. No caller is switched | Opus Developer, Opus Reviewer | SG-0 |
 | SG-2 | `feat(connections): connect SwedeBeat through the gateway` | §3, §4, §5 for connect: `swedebeat_account`, the payload, `build_credentials`, the route's `sign_out_required`, the dialog's notice and checkbox (English, with keys on `untranslated.json`), the connect e2e spec on the fake gateway | Opus, Opus | SG-1 |
 | SG-3 | `feat(swedebeat): match the catalogue through the gateway` | §5, §6: the match job, the replace's re-match, the expiry admission, `app_misconfigured`, the match e2e specs on the fake gateway | Opus, Opus | SG-2 |
 | SG-4 | `refactor(swedebeat)!: remove the SwedeBeat app key, hosts and fake` | §7 guard, §8 in full, threat model T19, T23, T104 to T107 and T110 rewritten "as enforced", the runbooks, `docs/developer-commands.md`, ADR 0015 and 0016 marked superseded in part | Opus, Opus (egress and secret handling) | SG-3 |
@@ -389,12 +441,14 @@ packages.
 
 ## Alternatives
 
-- **The gateway URL as a setting** (`SWEDEBEAT_GATEWAY_URL`, as the player's host).
-  - The host is known, and a setting widens what the environment can reach.
-  - A literal keeps "the list is code" and is a one-line change if the gateway moves.
-- **A non-standard port for the gateway.** It obscures nothing from a scanner, breaks the 443-only
-  rule of every client, and may be blocked by networks. The protection is the key, TLS and nginx's
-  address allowlist.
+- **One fixed https host in code** (`sb.classbeat.eu` through nginx, the first draft).
+  - It is stronger in transit.
+  - The owner chose the LAN address on the shared host (2026-11-15).
+  - The policy still allows an https name later, by setting only.
+- **Allow any http URL.** That would let a mistyped or repointed DNS name receive passwords in
+  clear. Plain http is limited to IP literals in loopback and private ranges.
+- **A non-standard port as protection.** It obscures nothing from a scanner. The protection is the
+  key, the LAN binding and TLS if exposed.
 - **Bake the client key into the release image** (as `SWEDEBEAT_APP` was).
   - Anyone who can pull the image could read it.
   - A runtime secret file changes without a rebuild and is the pattern of every other secret.
@@ -412,8 +466,10 @@ packages.
 ## Consequences
 
 - classbeat holds no SwedeBeat secret and makes no SwedeBeat request. Its one SwedeBeat-related
-  outbound path is `https://sb.classbeat.eu`, from web (login) and worker (match), with a client key
-  both processes now mount.
+  outbound path is the configured gateway origin (production: `http://192.168.1.222:7355`), from
+  web (login) and worker (match), with a client key both processes now mount.
+- **Accepted (owner, 2026-11-15):** on the LAN, the SwedeBeat password, the bearer and the client
+  key travel in clear between classbeat and the gateway (§1).
 - Every connect signs the user's SwedeBeat phone app out, and the form says so first. The bearer
   expires (24 h by default) and a match after that asks for the password again.
 - A gateway outage or a wrong client key stops SwedeBeat connect and match for everyone. The page
@@ -426,6 +482,7 @@ packages.
     `CLIENT_API_KEYS` and the secret file.
   - T105 changes to "every connect forces, after an explicit consent".
   - T19 and T110 change their hosts.
+  - T23 gains the accepted LAN plaintext path for the password (§1).
   - The gateway, a service of the owner's on a home server, becomes a processor of SwedeBeat
     passwords and bearers in transit (it keeps neither the password nor a session store). That is
     the owner's own service and risk; classbeat's part is TLS, the key and the one-host client.

@@ -2,8 +2,8 @@
 
 ## Amendment 23 (2026-11-15, owner direction: the SwedeBeat gateway; ADR 0035)
 
-The owner built a private SwedeBeat gateway (`magpern/sb-gateway-service`, served as
-`https://sb.classbeat.eu`) that holds every SwedeBeat secret. classbeat must **no longer call
+The owner built a private SwedeBeat gateway (`magpern/sb-gateway-service`, reached on the LAN
+as `http://192.168.1.222:7355`, the same host as classbeat's production) that holds every SwedeBeat secret. classbeat must **no longer call
 SwedeBeat and must hold no SwedeBeat secret**. Design: [ADR 0035](adr/0035-swedebeat-gateway.md).
 It replaces Amendment 9's "Swedebeat's app key is used and baked into the production image" and
 the app-key parts of ADR 0015 and ADR 0016. Everything else of Amendment 9 stands: optional per
@@ -11,7 +11,7 @@ user, built on fakes, live use owner-gated, `swedebeat_enabled` a real flag.
 
 - **New milestone "SG SwedeBeat gateway"**, built on fakes only:
   - **SG-0:** ADR 0035 and this amendment.
-  - **SG-1:** the gateway client, its one-host egress, the `swedebeat_gateway_key` secret file
+  - **SG-1:** the gateway URL setting (plain http only to a loopback or private IP, else https; owner's accepted LAN risk), the origin-checked client, the `swedebeat_gateway_key` secret file
     (web and worker) and the fakes.
   - **SG-2:** connect through `/auth/login`, storing the bearer, with the sign-out consent up front.
   - **SG-3:** the catalogue match through `/catalog/match`, re-thresholded at 0.85.
@@ -28,7 +28,7 @@ user, built on fakes, live use owner-gated, `swedebeat_enabled` a real flag.
   - connect and match pass on the fake gateway in the backend tests and e2e;
   - the docs are updated.
 - **Still the owner's:**
-  - listing the client key on the gateway, the nginx address allowlist and the TTL;
+  - listing the client key on the gateway, keeping it LAN-bound, and the TTL;
   - the key on the server, deleting `SWEDEBEAT_APP` and old images;
   - the live check;
   - magpern/sb-gateway-service#3.
