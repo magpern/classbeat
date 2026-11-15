@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.12.*"
 
 [manifest]
@@ -290,7 +290,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.138" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "joserfc", specifier = "==1.8.0" },
-    { name = "mowl-workouts", path = "vendor/mowl_workouts-0.11.0-py3-none-any.whl" },
+    { name = "mowl-workouts", path = "vendor/mowl_workouts-0.12.0-py3-none-any.whl" },
     { name = "openai", specifier = "==2.54.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.10" },
@@ -756,8 +756,8 @@ wheels = [
 
 [[package]]
 name = "mowl-workouts"
-version = "0.11.0"
-source = { path = "vendor/mowl_workouts-0.11.0-py3-none-any.whl" }
+version = "0.12.0"
+source = { path = "vendor/mowl_workouts-0.12.0-py3-none-any.whl" }
 dependencies = [
     { name = "cryptography" },
     { name = "librosa" },
@@ -765,7 +765,7 @@ dependencies = [
     { name = "soundfile" },
 ]
 wheels = [
-    { filename = "mowl_workouts-0.11.0-py3-none-any.whl", hash = "sha256:f931f21e29cd896d9ef2f68f031deae1980c7b969c6e9dc1cfc893ffebba1cf0" },
+    { filename = "mowl_workouts-0.12.0-py3-none-any.whl", hash = "sha256:07c08e1d91044331215b98c8aff380de029f25fe8cf4e9bcb88142a3b0bbe65a" },
 ]
 
 [package.metadata]

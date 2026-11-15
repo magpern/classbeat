@@ -13,7 +13,9 @@ with the class or the account. Every owned table is listed with
   ADR 0007 section 9), which the guard can't see and a test exercises; ``spotify_connection`` is
   the same for Spotify (ADR 0009 section 7, ADR 0008 sections 2 and 8): Disconnect and an account
   change (``forget_spotify_account``), and the narrower ``forget_pool`` of a consent revoke, a
-  ``pool_missing`` and a Client ID change, tested in ``tests/test_spotify_schema.py``.
+  ``pool_missing`` and a Client ID change, tested in ``tests/test_spotify_schema.py``;
+  ``swedebeat_connection`` is the SwedeBeat Disconnect (``connections.forget``, ADR 0036 section
+  4.1), tested in ``tests/test_swedebeat_track_cache.py``.
 
 ``spotify_oauth_flows`` also go when used or expired (the callback, the hourly purge of
 ``classbeat.auth``); the registry lists the account, the path that always holds.
@@ -29,7 +31,9 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Literal
 
-DeletionPath = Literal["class", "account", "mowl_connection", "spotify_connection"]
+DeletionPath = Literal[
+    "class", "account", "mowl_connection", "spotify_connection", "swedebeat_connection"
+]
 
 
 @dataclass(frozen=True)
@@ -87,13 +91,23 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # ADR 0016 section 3: the user's own analysis of a mix Swedebeat licensed to them (the mix
         # name, MOWL's playlist id, the map). No audio, nothing Spotify-derived. At most 20 per user
         # and 30 days (A3); gone with the account and with the MOWL connection (Disconnect, an
-        # account change, ``connections.repository._forget_mowl_account``).
+        # account change, ``connections.forget.forget_mowl_account``).
         "swedebeat_mix_maps": _entry(
             "mix_id name playlist_id map", "", "account", "mowl_connection"
         ),
         # ADR 0016 section 7 (A4): when each new mix analysis started, for the daily limit. No
         # content; a user's rows past 48 hours go with their next one, all with the account.
         "swedebeat_analyses": _entry("", "", "account"),
+        # ADR 0036 section 4.1 (SR C4): the user's own analysis of a catalogue track (its gateway
+        # reference, the SHA-256 of the analysed bytes, the map). No audio, nothing
+        # Spotify-derived. At most ``track_cache.MAPS_PER_USER`` per user and 30 days, as the mix
+        # maps; gone with the account and with the SwedeBeat connection (Disconnect, a keys wipe).
+        "swedebeat_track_maps": _entry(
+            "reference sha256 map", "", "account", "swedebeat_connection"
+        ),
+        # The daily limit of track downloads: no content; a user's rows past 48 hours go with
+        # their next one, all with the account.
+        "swedebeat_track_downloads": _entry("", "", "account"),
         # ADR 0016 section 7 (B2): the manual step. Mix ids only (the snapshot and the verified
         # mix). Gone with the class, the account, and the MOWL connection (Disconnect and an
         # account change). Rows expired for 7 days go in the hourly purge.

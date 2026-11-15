@@ -24,7 +24,9 @@ the worker lives on.
   read the worker's memory through ``/proc``), and starts the child in a process group of its own
   that it kills whole.
 - **The answer** is checked here (``valid_map``): a map is stored and used only when it has the
-  library's current map version and the shape every later step reads.
+  library's current map version and the shape every later step reads. ``mode="track"`` (a studio
+  track, ADR 0036 section 4.1) runs ``mowl.music.analyze_track`` in the same child and checks
+  its answer with ``track_map_policy.valid_track_map`` against ``TRACK_VERSION`` instead.
 """
 
 import asyncio
@@ -42,10 +44,11 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from classbeat.design.rss import process_rss
 from classbeat.design.sandbox import LINUX, SandboxError, make_undumpable
+from classbeat.design.track_map_policy import valid_track_map
 from classbeat.jobs import JobFailure, JobRun
 
 logger = logging.getLogger(__name__)
@@ -72,11 +75,12 @@ def decode_limit_seconds(listed_seconds: float) -> float:
     return min(listed_seconds + EXTRA_SECONDS, MAX_MIX_SECONDS)
 
 
-def child_argv(audio: Path, max_seconds: float, max_rss: int) -> list[str]:
+def child_argv(audio: Path, max_seconds: float, max_rss: int, mode: str = "mix") -> list[str]:
     """The child's command line: ``mixchild.py`` by path in isolated mode (never ``-m``, which
     would import the ``classbeat.design`` package). A function, so a test can run another program
     in its place."""
-    return [sys.executable, "-I", str(CHILD), str(audio), repr(max_seconds), str(max_rss)]
+    command = [sys.executable, "-I", str(CHILD), str(audio), repr(max_seconds), str(max_rss)]
+    return command if mode == "mix" else [*command, mode]
 
 
 def child_environment(work: Path) -> dict[str, str]:
@@ -175,11 +179,17 @@ async def analyse_audio(
     max_rss: int = MAX_RSS_BYTES,
     clock: Callable[[], float] = time.monotonic,
     argv: Callable[[Path, float, int], Sequence[str]] | None = None,
+    mode: Literal["mix", "track"] = "mix",
 ) -> Analysis:
     """Analyse ``audio`` (a file in the job's private directory) in a limited child. Raises
     ``JobFailure('analysis_failed')`` for anything the child or its limits end, and what
-    ``JobRun.checkpoint`` raises (``RunStopped``) after killing the child."""
-    command = list((argv or child_argv)(audio, max_seconds, max_rss))
+    ``JobRun.checkpoint`` raises (``RunStopped``) after killing the child. ``map_version`` is the
+    library's ``MAP_VERSION`` for a mix and its ``TRACK_VERSION`` for a track."""
+    if argv is None:  # a mix keeps the three-argument call (tests stand in for it)
+        extra = () if mode == "mix" else (mode,)
+        command = child_argv(audio, max_seconds, max_rss, *extra)
+    else:
+        command = list(argv(audio, max_seconds, max_rss))
     work = audio.parent
     try:
         make_undumpable()
@@ -245,7 +255,8 @@ async def analyse_audio(
     syscalls, files = confined.get("syscalls"), confined.get("files")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
     if LINUX and syscalls is not True:
         raise JobFailure("analysis_failed")
-    if not valid_map(music_map, map_version):
+    valid = valid_track_map if mode == "track" else valid_map
+    if not valid(music_map, map_version):
         raise JobFailure("analysis_failed")
     logger.info(
         "swedebeat analysis confined", extra={"syscalls": syscalls is True, "files": files is True}

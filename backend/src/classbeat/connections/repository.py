@@ -49,10 +49,10 @@ from classbeat.connections.credentials import (
     build_credentials,
 )
 from classbeat.connections.errors import ConnectionFailure, run_library_call
+from classbeat.connections.forget import forget_account, forget_every_account, forget_mowl_account
 from classbeat.connections.player_data import forget_player_operations
 from classbeat.connections.row_crypto import open_row, seal_row
 from classbeat.connections.spotify_data import forget_spotify_account, revoke_pool
-from classbeat.connections.swedebeat_maps import FORGET_MIX_MAPS
 from classbeat.connections.tables import PROVIDERS, connections
 from classbeat.context import UserContext
 from classbeat.crypto.envelope import canonical_json
@@ -212,7 +212,7 @@ async def _write(
             # A reconnect in place may be another MOWL account, and the row records no account
             # identity: it forgets the old account's links and attach operations exactly as a
             # disconnect then connect would (ADR 0006 section 3), after the row lock above.
-            await _forget_mowl_account(db, ctx)
+            await forget_mowl_account(db, ctx)
         elif provider == "spotify":
             await _forget_replaced_spotify(
                 db, ctx, dict(found.public or {}), public, confirm_account_change
@@ -455,36 +455,6 @@ async def connect(
     return await save(factory, ring, ctx, provider, secret, public=public, expires_at=expires_at)
 
 
-# ADR 0006 section 3 and ADR 0007 section 9: classbeat's local data about a MOWL account goes with
-# its connection, so a reconnect as another MOWL account never reuses a link, a saved program or an
-# ``external_id`` of the old one. Every MOWL operation is deleted (attach, save and update, in any
-# state) and every live saved workout is detached (kept as history, out of the live-program
-# index, never re-attached). The operations go first: a worker recording an attach or a save locks
-# the operation row and then writes the link or the saved row, so taking the same order here
-# cannot deadlock with it, and a save recorded after this finds its row gone (``not_connected``).
-_FORGET_MOWL = (
-    text(
-        "DELETE FROM external_operations WHERE owner_id = :owner_id AND kind IN "
-        "('mowl_attach_spotify_playlist', 'mowl_attach_swedebeat_mix', "
-        "'mowl_save_workout', 'mowl_update_workout')"
-    ),
-    text(
-        "UPDATE saved_workouts SET detached_at = now(), updated_at = now() "
-        "WHERE owner_id = :owner_id AND detached_at IS NULL"
-    ),
-    text("DELETE FROM mowl_playlist_links WHERE owner_id = :owner_id"),  # Spotify and Swedebeat
-    FORGET_MIX_MAPS,  # ADR 0016 section 3: the analysis belongs to the MOWL account it was made in
-    # ADR 0016 section 7: the hand-off belongs to that account too. Inlined so connections does not
-    # import the hand-off package (that package imports connections).
-    text("DELETE FROM swedebeat_handoffs WHERE owner_id = :owner_id"),
-)
-
-
-async def _forget_mowl_account(db: AsyncSession, ctx: UserContext) -> None:
-    for statement in _FORGET_MOWL:
-        await db.execute(statement, {"owner_id": ctx.user_id})
-
-
 async def disconnect(factory: Factory, ctx: UserContext, provider: str) -> bool:
     """Delete the row (local only: MOWL has no known revoke endpoint, Spotify no app-side one). For
     MOWL, the user's playlist links and MOWL operations go and the saved workouts are detached in
@@ -500,12 +470,7 @@ async def disconnect(factory: Factory, ctx: UserContext, provider: str) -> bool:
             .where(_C.owner_id == ctx.user_id, _C.provider == provider)
             .with_for_update()
         )
-        if provider == "mowl":
-            await _forget_mowl_account(db, ctx)
-        elif provider == "spotify":
-            await forget_spotify_account(db, ctx.user_id)
-        elif provider == "player":
-            await forget_player_operations(db, ctx.user_id)
+        await forget_account(db, ctx, provider)
         result = await db.execute(
             delete(connections)
             .where(_C.owner_id == ctx.user_id, _C.provider == provider)
@@ -547,9 +512,7 @@ async def delete_all_in(db: AsyncSession, ctx: UserContext) -> list[str]:
     detached too, as on a disconnect, and so does what is kept about the Spotify account (the
     connection rows locked first, as ``disconnect`` does)."""
     await db.execute(select(_C.id).where(_C.owner_id == ctx.user_id).with_for_update())
-    await _forget_mowl_account(db, ctx)
-    await forget_spotify_account(db, ctx.user_id)
-    await forget_player_operations(db, ctx.user_id)
+    await forget_every_account(db, ctx)
     result = await db.execute(
         delete(connections).where(_C.owner_id == ctx.user_id).returning(_C.provider)
     )

@@ -108,6 +108,11 @@ NOT_EXPORTED: Mapping[str, str] = MappingProxyType(
         "player_link_flows": "an unfinished link to classbeat-player (ADR 0034 section 3): a "
         "one-time PKCE verifier and state hash, deleted when used or expired, nothing the user "
         "wrote",
+        "swedebeat_track_maps": "exported as a count only (``swedebeat_track_analyses`` in the "
+        "file, ADR 0036 section 4.1): the analysis of a catalogue track is a derived map, not "
+        "something the user wrote",
+        "swedebeat_track_downloads": "the times track downloads started, for the daily limit "
+        "(ADR 0036 section 4.1): no content, gone after two days, nothing the user wrote",
         "swedebeat_analyses": "the times new mix analyses started, for the daily limit (ADR 0016 "
         "section 7): no content, gone after two days, nothing the user wrote",
         "mail_handoff": "a 'class ready' mail on its way from the worker to the web process (ADR "

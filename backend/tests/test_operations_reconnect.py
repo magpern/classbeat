@@ -286,10 +286,10 @@ async def test_a_later_request_refused_in_a_multi_request_call_is_uncertain(
 async def test_the_forget_statements_filter_on_the_owner_without_rls(
     xenv: OpsEnv, fake_attach: FakeMowlAttach
 ) -> None:
-    """#117 item 6: the ``owner_id = :owner_id`` filter of ``_FORGET_MOWL`` scopes the deletes on
+    """#117 item 6: the ``owner_id = :owner_id`` filter of ``FORGET_MOWL`` scopes the deletes on
     its own. Run as the superuser (RLS does not apply), one owner's forget leaves the other's
     link and attach in place, and detaches only the owner's live saved workout (#155)."""
-    from classbeat.connections.repository import _FORGET_MOWL  # pyright: ignore[reportPrivateUsage]
+    from classbeat.connections.forget import FORGET_MOWL
 
     owner, _ = await attached(xenv)
     other, _ = await attached(xenv)
@@ -307,7 +307,7 @@ async def test_the_forget_statements_filter_on_the_owner_without_rls(
             c=class_id,
             p=number,
         )
-    for statement in _FORGET_MOWL:
+    for statement in FORGET_MOWL:
         xenv.admin.execute(statement, {"owner_id": owner})
     assert (xenv.links(owner), xenv.operations(owner)) == ([], [])
     assert len(xenv.links(other)) == len(xenv.operations(other)) == 1

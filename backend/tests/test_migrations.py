@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0052_player_publications"]
+    assert script.get_heads() == ["0053_swedebeat_track_maps"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0052_player_publications"]
+        assert applied_revisions(database_url) == ["0053_swedebeat_track_maps"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -178,6 +178,9 @@ JOBS = [
     "swedebeat_mix_maps",
     "swedebeat_analyses",
     "swedebeat_handoffs",
+    # ADR 0036 section 4.1 (0053_swedebeat_track_maps, SR C4).
+    "swedebeat_track_maps",
+    "swedebeat_track_downloads",
     # Issue #525 (0028_user_preferences).
     "user_preferences",
     # ADR 0007 amendment "beat-one corrections" (0029).

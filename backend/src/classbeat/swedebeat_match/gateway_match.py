@@ -19,7 +19,8 @@
   ``record_result``) and logs ``swedebeat gateway refused the client key``. The call's own
   ``429``, ``5xx`` and bad answers record their category on the row as ``connections.use`` does;
   a redirect is ``OutboundBlocked`` (``outbound_blocked``), the row untouched. A success records
-  ``last_used_at``.
+  ``last_used_at``. ``call_failure`` is the same mapping for the studio's track download
+  (``design.track_analysis``, ADR 0036 section 4.1), after its own ``track_*`` categories.
 
 Only categories and counts are logged: never a title, an artist, the bearer or the key.
 """
@@ -64,8 +65,10 @@ def dedupe_key(title: str, artist: str) -> tuple[str, str]:
 class _Match:
     """One job's match: its run, the opened bearer and the client key."""
 
-    def __init__(self, run: JobRun, bearer: SwedebeatBearer, key: SecretStr) -> None:
-        self.run, self.bearer, self.key = run, bearer, key
+    def __init__(
+        self, run: JobRun, bearer: SwedebeatBearer, key: SecretStr, what: str = "match"
+    ) -> None:
+        self.run, self.bearer, self.key, self.what = run, bearer, key, what
 
     async def confirm(self) -> tuple[str, int | None]:
         """ADR 0035 section 5: pause, then one session check with the same bearer and key."""
@@ -93,7 +96,8 @@ class _Match:
             await mark_needs_reconnect(run.factory, run.ctx, opened)
         elif own:
             await record_result(run.factory, run.ctx, opened, category)
-        logger.info("swedebeat match failed", extra={"category": category})
+        message = "swedebeat match failed" if self.what == "match" else "swedebeat download failed"
+        logger.info(message, extra={"category": category})
         return JobFailure(category, retry_after, provider=PROVIDER)
 
     async def call(self, tracks: Sequence[tuple[str, str]]) -> list[Item]:
@@ -115,6 +119,14 @@ class _Match:
         if all_missing(items):
             logger.warning("swedebeat match all missing", extra={"sent": len(tracks)})
         return items
+
+
+async def call_failure(
+    run: JobRun, bearer: SwedebeatBearer, key: SecretStr, category: str, retry_after: int | None
+) -> JobFailure:
+    """The job failure for a failed gateway call other than the match (the track download):
+    the same confirmation of a refused bearer and the same connection rules."""
+    return await _Match(run, bearer, key, what="download").fail(category, retry_after)
 
 
 async def match_songs(

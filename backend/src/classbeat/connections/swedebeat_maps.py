@@ -4,10 +4,13 @@ Spotify-derived) and the MOWL links of Swedebeat mixes.
 
 - ``analysed_mix_ids``: the mix ids the user has an analysis of, for the picker's "analysed before"
   badge. Ids only: never a name, a map or a playlist id.
-- ``FORGET_MIX_MAPS``: every analysis of the user, run by ``repository._forget_mowl_account`` in
+- ``FORGET_MIX_MAPS``: every analysis of the user, run by ``forget.forget_mowl_account`` in
   the transaction that drops or replaces the MOWL connection (beside the user's links, which
   include the Swedebeat ones), so a reconnect as another MOWL account never reuses a map or a MOWL
   playlist id of the old one.
+- ``FORGET_TRACK_MAPS``: every studio track analysis of the user (``swedebeat_track_maps``, ADR
+  0036 section 4.1), run by ``forget.forget_swedebeat_account`` when the SwedeBeat connection is
+  dropped (Disconnect, a keys wipe).
 
 Every statement filters on ``owner_id`` itself as well as through row security.
 """
@@ -20,6 +23,7 @@ from classbeat.db import user_session
 
 _ANALYSED = text("SELECT mix_id FROM swedebeat_mix_maps WHERE owner_id = :owner_id")
 FORGET_MIX_MAPS = text("DELETE FROM swedebeat_mix_maps WHERE owner_id = :owner_id")
+FORGET_TRACK_MAPS = text("DELETE FROM swedebeat_track_maps WHERE owner_id = :owner_id")
 
 
 async def analysed_mix_ids(

@@ -298,7 +298,7 @@ async def test_disconnecting_mowl_drops_hand_offs_maps_and_links_but_not_the_mat
 async def test_reconnecting_as_another_mowl_account_drops_hand_offs_maps_and_links(
     browsers: Any, henv: HandEnv, mowl_api: FakeMowl
 ) -> None:
-    """The account-change path (a reconnect in place) shares ``_FORGET_MOWL`` with Disconnect."""
+    """The account-change path (a reconnect in place) shares ``FORGET_MOWL`` with Disconnect."""
     alice = await rider_of(browsers, henv, TOKEN_A)
     bob = await rider_of(browsers, henv, TOKEN_B)
     a_class = plant(henv, alice.user_id, [150])
