@@ -86,6 +86,7 @@ if TYPE_CHECKING:
     )
     from classbeat.auth.mailprefs import MailPreferences, get_mail_prefs, mail_prefs_for_email
     from classbeat.auth.notices import SecurityNotifier, register_security_notifier
+    from classbeat.auth.oidc_key_rotation import oidc_keys
     from classbeat.auth.operator import (
         WipeEvent,
         mark_wipe_mailed,
@@ -107,6 +108,7 @@ if TYPE_CHECKING:
         PasswordRuleError,
         normalize_password,
     )
+    from classbeat.auth.player_subject_lookup import player_subject
     from classbeat.auth.purge import purge_expired
     from classbeat.auth.ratelimit import (
         Attempt,
@@ -243,10 +245,12 @@ __all__ = [
     "mowl_playlists_buckets",
     "mowl_qr_buckets",
     "normalize_password",
+    "oidc_keys",
     "operator_contexts",
     "owner_active",
     "password_buckets",
     "pending_wipe_mails",
+    "player_subject",
     "playlist_covers_buckets",
     "purge_expired",
     "record_event",

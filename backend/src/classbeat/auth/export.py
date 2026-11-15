@@ -13,7 +13,8 @@ Only what the user could see about themselves is returned:
   devices (dates only);
 - two-factor status (whether it is on, when confirmed, how many recovery codes are unused;
   never the secret, a code or a hash);
-- the user's security events (kind, address, time, detail).
+- the user's security events (kind, address, time, detail);
+- the player sign-in grants (client, consent and first sign-in times; ADR 0034).
 
 Never ``password_hash``, a token hash or any ciphertext.
 
@@ -34,6 +35,7 @@ from uuid import UUID
 from sqlalchemy import Column, Table, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat.auth.oidc.upkeep import GRANT_COLUMNS, export_grants
 from classbeat.auth.tables import (
     auth_events,
     identities,
@@ -80,6 +82,7 @@ INCLUDE: dict[str, tuple[str, ...]] = {
         "created_at",
         "last_used_at",
     ),
+    "oidc_grants": GRANT_COLUMNS,
 }
 # Binary columns that are exported, as base64url, with the reason they are no secret.
 PUBLIC_BYTES: dict[tuple[str, str], str] = {
@@ -130,6 +133,7 @@ EXCLUDE: dict[str, dict[str, str]] = {
         "public_key": "key material, of no use outside the sign-in check (ADR 0019)",
         "sign_count": "internal replay guard",
     },
+    "oidc_grants": {"id": "internal", "user_id": "the user's own id"},
 }
 # The other account tables. Every system table outside this package is decided in
 # ``tests/test_account_export_schema.py`` (``OTHER_SYSTEM_TABLES``): they hold no per-user data, and
@@ -141,6 +145,8 @@ NOT_EXPORTED: dict[str, str] = {
     "oauth_flows": "in-flight sign-in flows: state hashes and a PKCE verifier, short-lived",
     "rate_limits": "counters keyed by an HMAC of the bucket; no user column",
     "webauthn_challenges": "in-flight passkey ceremonies: a nonce and a flow hash, five minutes",
+    "oidc_requests": "in-flight player sign-in requests: no user, ten minutes (ADR 0034)",
+    "oidc_codes": "single-use player sign-in codes (hash only), sixty seconds",
 }
 
 
@@ -273,4 +279,5 @@ async def account_export(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
             {"kind": row.kind, "ip": row.ip, "at": _iso(row.at), "detail": row.detail}
             for row in events
         ],
+        "player_sign_in": await export_grants(db, user_id),
     }

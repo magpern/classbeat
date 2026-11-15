@@ -76,6 +76,10 @@ TABLE_NAMES = (
     "auth_events",
     "webauthn_credentials",
     "webauthn_challenges",
+    # ADR 0034 section 1 (#1056): ``classbeat.auth.oidc.schema``.
+    "oidc_requests",
+    "oidc_codes",
+    "oidc_grants",
 )
 SUBMODULES = frozenset(
     {
@@ -108,6 +112,8 @@ SUBMODULES = frozenset(
         "oauth_providers",
         "oauth_routes",
         "oauth_store",
+        "oidc",
+        "oidc_key_rotation",
         "passkey_assertion",
         "passkey_counter",
         "passkey_limits",
@@ -123,6 +129,7 @@ SUBMODULES = frozenset(
         "passkey_store",
         "passkey_webauthn",
         "passwords",
+        "player_subject_lookup",
         "purge",
         "ratelimit",
         "reset_routes",

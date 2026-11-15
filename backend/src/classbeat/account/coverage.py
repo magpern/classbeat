@@ -29,7 +29,7 @@ _OWNED = (
 )
 _ACCOUNT = (
     "auth_events auth_tokens identities known_devices mfa_recovery_codes mfa_totp "
-    "oauth_flows sessions webauthn_challenges webauthn_credentials"
+    "oauth_flows oidc_codes oidc_grants sessions webauthn_challenges webauthn_credentials"
 )
 
 USER_REFERENCES: Mapping[tuple[str, str], str] = MappingProxyType(

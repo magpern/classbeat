@@ -95,6 +95,12 @@ const sv: Catalogue = {
   'emailChange.signInFirst': 'Logga in på kontot som bad om ändringen och öppna sedan länken i mejlet igen.',
   'emailChange.confirmIntro': 'Inloggad som {email}. Bekräfta att kontot ska använda den nya adressen.',
   'emailChange.confirm': 'Bekräfta ny e-postadress',
+  'playerConsent.title': 'Logga in i classbeat-player',
+  'playerConsent.intro': 'classbeat-player vill logga in dig som {email}. Den får din e-postadress och ett id som bara spelaren använder, aldrig ditt lösenord.',
+  'playerConsent.allow': 'Tillåt',
+  'playerConsent.deny': 'Avbryt',
+  'playerConsent.expired': 'Den här inloggningen har gått ut eller öppnades i en annan webbläsare. Börja om från classbeat-player.',
+  'playerConsent.leaving': 'Går tillbaka till classbeat-player…',
   'providerEmail.loadingTitle': 'Nästan klart',
   'providerEmail.sent':
     'Om vi kan använda {email} är en bekräftelselänk på väg. Öppna den i samma webbläsare för att slutföra. Länken fungerar i 24 timmar.',

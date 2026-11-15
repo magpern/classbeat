@@ -11,6 +11,7 @@ import { splitPath } from './paths'
 // see Landing on every return to Home, and no crawler is ever in that state.
 
 const LISTED: ReadonlySet<string> = new Set(LISTED_PATHS)
+const SERVER_ROUTES = /^\/oidc(\/|$)/
 
 interface Place {
   /** True for a listed page under a language prefix. */
@@ -30,7 +31,10 @@ function place(pathname: string): Place {
 /** `to` is a localized target and may carry a query and a fragment; only its pathname counts. */
 export function needsDocumentLoad(from: string, to: string, authenticated: boolean): boolean {
   const cut = to.search(/[?#]/)
-  const target = place(cut === -1 ? to : to.slice(0, cut))
+  const pathname = cut === -1 ? to : to.slice(0, cut)
+  // The server's OpenID Connect routes (ADR 0034): sign-in returns to `/oidc/authorize/continue`.
+  if (SERVER_ROUTES.test(pathname)) return true
+  const target = place(pathname)
   const current = place(from)
   // The same page again (a trailing slash, a query or a fragment only): nothing to re-author.
   if (current.key === target.key) return false

@@ -65,6 +65,12 @@ class Person:
             "INSERT INTO webauthn_challenges (flow_hash, purpose, challenge, user_id, session_id, "
             "expires_at) SELECT :hash, 'register', :handle, :u, id, now() + interval '5 minutes' "
             "FROM sessions WHERE user_id = :u LIMIT 1",
+            # ADR 0034 (#1056): a player sign-in code in flight and the consent.
+            "INSERT INTO oidc_codes (code_hash, user_id, client_id, redirect_uri, code_challenge, "
+            "nonce, auth_time, expires_at) VALUES (:hash, :u, 'player', 'https://p.example/cb', "
+            "repeat('a', 43), 'n', now(), now() + interval '1 minute')",
+            "INSERT INTO oidc_grants (user_id, client_id, consent_at, first_issued_at) "
+            "VALUES (:u, 'player', now(), now())",
         )
         params = {
             "u": u,

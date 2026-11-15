@@ -97,6 +97,12 @@ const da: Catalogue = {
     'Log ind på den konto, der bad om ændringen, og åbn derefter linket i mailen igen.',
   'emailChange.confirmIntro': 'Logget ind som {email}. Bekræft, at kontoen skal bruge den nye adresse.',
   'emailChange.confirm': 'Bekræft ny e-mailadresse',
+  'playerConsent.title': 'Log ind i classbeat-player',
+  'playerConsent.intro': 'classbeat-player vil logge dig ind som {email}. Den får din e-mailadresse og et id, som kun afspilleren bruger, aldrig din adgangskode.',
+  'playerConsent.allow': 'Tillad',
+  'playerConsent.deny': 'Annuller',
+  'playerConsent.expired': 'Dette login er udløbet eller blev åbnet i en anden browser. Start forfra fra classbeat-player.',
+  'playerConsent.leaving': 'Går tilbage til classbeat-player…',
   'providerEmail.loadingTitle': 'Næsten færdig',
   'providerEmail.sent':
     'Hvis vi kan bruge {email}, er et bekræftelseslink på vej. Åbn det i samme browser for at gøre det færdigt. Linket virker i 24 timer.',

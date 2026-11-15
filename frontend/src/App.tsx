@@ -25,6 +25,7 @@ import { PrivacyDraftPage, RefundsDraftPage, SubProcessorsDraftPage, TermsDraftP
 import { PrivacyPage } from './pages/PrivacyPage'
 import { MusicPage } from './pages/MusicPage'
 import { NewClassPage } from './pages/NewClassPage'
+import { PlayerConsentPage } from './pages/PlayerConsentPage'
 import { ProviderEmailPage } from './pages/ProviderEmailPage'
 import { ResetPage } from './pages/ResetPage'
 import { SignInPage } from './pages/SignInPage'
@@ -98,6 +99,8 @@ const PAGES: Readonly<Record<string, () => ReactNode>> = {
   '/reset': () => <ResetPage />,
   '/email-change': () => <EmailChangePage />,
   '/unsubscribe': () => <UnsubscribePage />,
+  // The provider's consent step for classbeat-player (ADR 0034); the server sends the browser here.
+  '/player-consent': () => <PlayerConsentPage />,
   '/privacy': () => <PrivacyPage />,
   '/terms': () => <TermsPage />,
   '/help': () => <HelpPage />,

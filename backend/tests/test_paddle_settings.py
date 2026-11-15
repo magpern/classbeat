@@ -99,7 +99,8 @@ def test_the_webhook_is_on_the_csrf_allowlist_by_its_exact_path_only() -> None:
     assert webhook.PATH == "/api/billing/paddle/webhook"
     assert {webhook.PATH} == SIGNED_PATHS
     assert {
-        "/api/mail/unsubscribe", "/api/mail/unsubscribe/confirm", webhook.PATH
+        "/api/mail/unsubscribe", "/api/mail/unsubscribe/confirm", webhook.PATH,
+        "/oidc/token",  # ADR 0034 section 1: client_secret_basic, exact path (test_oidc_refusals)
     } == CSRF_EXEMPT_PATHS  # fmt: skip
 
 

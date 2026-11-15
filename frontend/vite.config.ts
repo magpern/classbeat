@@ -35,6 +35,8 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api': { target: apiProxyTarget(env.API_PROXY_TARGET) },
+        // The OpenID Connect provider's routes (ADR 0034): the consent page posts to /oidc.
+        '/oidc': { target: apiProxyTarget(env.API_PROXY_TARGET) },
       },
     },
     test: {

@@ -8,12 +8,47 @@ A ``BaseSettings`` (not a plain ``BaseModel``) only so its ``model_config`` type
 ``Settings``'; the mixin adds no config of its own and declares no ``SecretStr`` field.
 """
 
+import re
 from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 from classbeat.config_turnstile import check_site_key as check_turnstile_site_key
+
+# ADR 0034 section 1: the player's client id is 1 to 128 letters, digits, ``.``, ``_`` or ``-``.
+# Its redirect address is an absolute ``https`` URL (``http`` only on a loopback host, for local
+# stacks) with a host, no user info and no fragment, at most 512 characters; the authorize
+# request must name it exactly.
+_PLAYER_CLIENT_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
+_PLAYER_REDIRECT = re.compile(
+    r"(?P<scheme>https?)://(?P<host>\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(?::[0-9]{1,5})?"
+    r"(?:[/?][^\s#]*)?"
+)
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "[::1]"})
+PLAYER_REDIRECT_MAX = 512
+
+
+def check_player_client_id(value: str | None) -> str | None:
+    if value is not None and not _PLAYER_CLIENT_ID.fullmatch(value):
+        raise ValueError("oidc_player_client_id must be 1 to 128 letters, digits, '.', '_' or '-'")
+    return value
+
+
+def check_player_redirect_uri(value: str | None) -> str | None:
+    if value is None:
+        return None
+    parts = (
+        _PLAYER_REDIRECT.fullmatch(value)
+        if len(value) <= PLAYER_REDIRECT_MAX and value.isprintable()
+        else None
+    )
+    host = parts["host"].lower() if parts else None
+    if parts is None or not (parts["scheme"] == "https" or host in _LOOPBACK_HOSTS):
+        raise ValueError(
+            "oidc_player_redirect_uri must be an absolute https URL without a fragment"
+        )
+    return value
 
 
 class FeatureSettings(BaseSettings):
@@ -57,6 +92,21 @@ class FeatureSettings(BaseSettings):
     # only, refused in prod) runs the Paddle flow over ``billing.fake_paddle``; ``paddle`` is
     # refused until the real HTTP client exists (M7b-real, the owner's step).
     billing_provider: Literal["dummy", "fake_paddle", "paddle"] = "dummy"
+    # ADR 0034 section 1 (#1056): the one OpenID Connect client, classbeat-player. With neither,
+    # the provider is off (``/oidc`` answers 404); with both, its three secret files must exist
+    # (``classbeat.auth.oidc.provider``). The redirect address is compared exactly.
+    oidc_player_client_id: str | None = None
+    oidc_player_redirect_uri: str | None = None
+
+    @field_validator("oidc_player_client_id")
+    @classmethod
+    def _check_player_client_id(cls, value: str | None) -> str | None:
+        return check_player_client_id(value)
+
+    @field_validator("oidc_player_redirect_uri")
+    @classmethod
+    def _check_player_redirect_uri(cls, value: str | None) -> str | None:
+        return check_player_redirect_uri(value)
 
     @field_validator("billing_provider")
     @classmethod

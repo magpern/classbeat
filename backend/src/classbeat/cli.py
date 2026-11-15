@@ -7,6 +7,8 @@ job state and of ``uncertain`` external operations, no ids) and the stage 1 meas
 (#735): the p95 queue wait of claims with and without an analysis slot, at the peak hour, and of
 the analyses' fetch and decode, over the last seven days; ``-`` where there are too few samples.
 
+``oidc keys`` and ``admin player-subject`` (ADR 0034) live in ``classbeat.oidc_cli``.
+
 ``invite create``, ``admin grant``, ``admin revoke`` and ``admin mfa-reset`` run as the app role
 through the functions of ``classbeat.auth``; they never touch the tables. In the stack:
 ``docker compose exec web python -m classbeat admin grant owner@example.com``. With no
@@ -35,6 +37,14 @@ from classbeat.keys_cli import run as run_keys
 from classbeat.mail import Mailer, MailError
 from classbeat.models.cli import add_models_subcommands
 from classbeat.models.cli import run as run_models
+from classbeat.oidc_cli import (
+    add_oidc_subcommands,
+    add_player_subject,
+    run_player_subject,
+)
+from classbeat.oidc_cli import (
+    run_keys as run_oidc_keys,
+)
 
 _DURATION = re.compile(r"(\d+)([dhm])")
 _UNITS = {"d": "days", "h": "hours", "m": "minutes"}
@@ -69,12 +79,14 @@ def add_subcommands(parser: argparse.ArgumentParser) -> None:
         ("mfa-reset", "remove the user's TOTP, recovery codes and passkeys and mail a reset link"),
     ):
         admin.add_parser(name, help=text).add_argument("email")
+    add_player_subject(admin)  # ADR 0034, classbeat.oidc_cli
     jobs = sub.add_parser("jobs", help="the job queue").add_subparsers(dest="action", required=True)
     jobs.add_parser(
         "stats", help="count jobs per state; queue wait and analysis p95 of the last 7 days"
     )
     add_keys_subcommands(sub)
     add_models_subcommands(sub)
+    add_oidc_subcommands(sub)
 
 
 async def _jobs(args: argparse.Namespace, settings: Settings, out: TextIO, err: TextIO) -> int:
@@ -144,6 +156,13 @@ def run_command(
     err: TextIO | None = None,
 ) -> int:
     """Run an operator subcommand; the exit code is 0, or 1 for a refusal."""
+    if args.command == "oidc":  # no database, no event loop
+        return run_oidc_keys(args, out or sys.stdout, err or sys.stderr)
+    if args.command == "admin" and args.action == "player-subject":
+        return asyncio.run(
+            run_player_subject(args, settings, out or sys.stdout, err or sys.stderr),
+            loop_factory=event_loop_factory(),
+        )
     command = {"keys": run_keys, "jobs": _jobs, "models": run_models}.get(args.command, _admin)
     return asyncio.run(
         command(args, settings, out or sys.stdout, err or sys.stderr),

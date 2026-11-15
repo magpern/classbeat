@@ -58,6 +58,19 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("POST", "/api/auth/logout"): (
         "ends the caller's own session; without one it does nothing (no account, mail or session)"
     ),
+    # ADR 0034 (#1056): the OpenID Connect provider for classbeat-player.
+    ("GET", "/oidc/authorize"): (
+        "touches no account or mailbox: a 10-minute request row bound to a flow cookie, only for "
+        "the one configured client and redirect address, limited per address"
+    ),
+    ("GET", "/oidc/authorize/continue"): (
+        "issues a code only for a signed-in user who consented, through the browser's own flow "
+        "cookie; without a session it only redirects to the sign-in page; limited per user"
+    ),
+    ("POST", "/oidc/token"): (
+        "the client secret, a single-use 60-second code and its PKCE verifier are the proof; "
+        "failures are limited per address"
+    ),
 }
 SESSION_REQUIRED = {
     auth_deps.require_user,
@@ -78,6 +91,8 @@ READ_ONLY = {
     ("GET", "/api/ready"): "readiness",
     ("GET", "/api/settings/public"): "public settings",
     ("GET", "/api/plans"): "lists the plans, their limits and quality (no price)",
+    ("GET", "/.well-known/openid-configuration"): "the provider's fixed discovery document",
+    ("GET", "/oidc/jwks"): "the provider's public signing keys",
     ("GET", "/oauth/spotify/callback"): (
         "acts only for a signed-in user (the flow row is bound to the session); without one it "
         "only redirects"

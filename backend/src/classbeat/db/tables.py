@@ -45,6 +45,13 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         # ADR 0032 section 3 (#973): a refused notification may name no user; maint only.
         "billing_webhook_refusals": "refused payment-provider notifications, one per event id, "
         "before any user is known; written and read only through classbeat_maint",
+        # ADR 0034 section 1 (#1056): the OpenID Connect provider, only through classbeat.auth.
+        "oidc_requests": "in-flight player sign-in requests, bound to a browser cookie hash before "
+        "a user is known; ten minutes",
+        "oidc_codes": "single-use player sign-in codes (hash only), redeemed by the player's "
+        "server, which has no user session",
+        "oidc_grants": "a user's consent to a player client, read at the player's sign-in and "
+        "goes with the user",
     }
 )
 # System tables the app role must have no privilege on at all (the rest get DML, or the narrower

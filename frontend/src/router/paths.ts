@@ -5,7 +5,7 @@ import { isLocale, localeFromPath, type Locale } from '../i18n/locales'
 // are `/sv`, never `/sv/sv?x=1`. A language is an allowlisted code (`isLocale`), never a value from a URL.
 
 /** Areas that never carry a prefix: the API, the provider callbacks, and the English-only admin. */
-const NEVER_PREFIXED = /^\/(admin|api|oauth)(\/|$)/
+const NEVER_PREFIXED = /^\/(admin|api|oauth|oidc)(\/|$)/
 
 export interface SplitPath {
   /** The language the URL names, or null for an unprefixed URL. */
@@ -45,7 +45,7 @@ function cutAtQuery(to: string): [string, string] {
 /**
  * Adds the prefix to a neutral target (`/classes?x=1#y`). A target that already starts with an
  * allowlisted `/<code>/` or is `/<code>` is left alone, so a mixed value cannot become `/sv/sv/...`;
- * so is `/admin`, `/api` and `/oauth`.
+ * so is `/admin`, `/api`, `/oauth` and `/oidc` (the server's OpenID Connect routes, ADR 0034).
  * Only the pathname is looked at: a target that is just a fragment or a query (`#x`, `?a=1`) has
  * an empty path, so it goes to the language's home page (`/sv#x`), not to the current page.
  */

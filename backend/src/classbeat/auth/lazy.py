@@ -97,6 +97,8 @@ EXPORTS: dict[str, str] = {
     "PasswordHasher": "passwords",
     "PasswordRuleError": "passwords",
     "normalize_password": "passwords",
+    "oidc_keys": "oidc_key_rotation",
+    "player_subject": "player_subject_lookup",
     "purge_expired": "purge",
     "Attempt": "ratelimit",
     "Bucket": "ratelimit",
