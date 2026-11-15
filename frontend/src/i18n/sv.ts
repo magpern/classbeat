@@ -297,6 +297,7 @@ const sv: Catalogue = {
     other: 'Swedebeat ber oss sakta ner; försöker igen om cirka {count} minuter.',
   },
   'sentence.swedebeat.stopped': 'Swedebeat ber oss sakta ner. Den här matchningen har stoppats.',
+  'sentence.swedebeat.unavailable': 'Swedebeat är inte tillgängligt på den här servern just nu.',
 
   // Class page, my classes, versions, save, undecided writes and pattern notes (ML5c). The class
   // text itself (names, cues, descriptions, song titles) is generated and stays as written.
@@ -1631,12 +1632,15 @@ const sv: Catalogue = {
   'swed.err.upstream_unavailable': 'Det gick inte att nå Swedebeat. Försök igen om några minuter.',
   'swed.err.app_key_unavailable': 'Inloggning hos Swedebeat är inte tillgänglig på den här servern.',
   'swed.err.feature_off': 'Swedebeat är inte påslaget just nu.',
+  'swed.err.sign_out_required': 'Bocka i rutan för att bekräfta att andra enheter loggas ut.',
   'swed.err.unknown': 'Swedebeat svarade på ett oväntat sätt. Försök igen senare.',
   'swed.last.needs_reconnect': 'Swedebeat godkänner inte längre den sparade inloggningen. Anslut igen.',
   'swed.last.decrypt_failed': 'Den sparade inloggningen kunde inte läsas. Anslut igen.',
   'swed.last.rate_limited': 'Swedebeat bad oss sakta ner.',
   'swed.last.upstream_unavailable': 'Det gick inte att nå Swedebeat förra gången.',
   'swed.last.other': 'Den senaste användningen av den här anslutningen misslyckades.',
+  'swed.signOutNotice': 'När du ansluter loggas det här Swedebeat-kontot ut från Swedebeat-appen på andra enheter, till exempel din telefon.',
+  'swed.signOutConfirm': 'Jag förstår',
   'swed.title': 'Swedebeat',
   'swed.connected': 'Swedebeat är anslutet.',
   'swed.disconnected': 'Swedebeat är frånkopplat. Vi har inte längre dess inloggning.',
