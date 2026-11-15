@@ -10,21 +10,25 @@ same class.
       {"v": 1, "song_list_hash": "<hex sha-256 of the list's content>",
        "songs": [{"position": 1, "status": "found" | "unsure" | "missing",
                   "wanted": {"title": "...", "artist": "..."},
-                  "swedebeat": {"title": "...", "artist": "...", "duration": 241} | null}],
+                  "swedebeat": {"title": "...", "artist": "...", "duration": 241,
+                                "reference": "...", "bpm": 128.0} | null}],
        "found": 6, "unsure": 1, "missing": 1, "swedebeat_sec": 1501}
 
   ``wanted`` is the list's song (Spotify-derived), ``swedebeat`` the best catalogue hit as the
   parser kept it (``null`` exactly when ``missing``; ``duration`` in whole seconds or ``null``).
-  ``swedebeat_sec`` is the sum of the **found** songs' durations (an ``unsure`` song is never
-  counted). No catalogue id, URL or token: the parser never keeps one.
+  ``reference`` (the catalogue's id, ``track_policy.REFERENCE``, the track download's key) and
+  ``bpm`` (SwedeBeat's, 1 to 400) are kept since SR C2 (ADR 0036 section 3.4); a match stored
+  before has neither and still loads (both optional, absent read as ``null``; the stored hash is
+  of the stored JSON, so it still checks). ``swedebeat_sec`` is the sum of the **found** songs'
+  durations (an ``unsure`` song is never counted). No URL or token: the parser never keeps one.
 - **content_hash** = SHA-256 of the content's canonical JSON
   (``classbeat.design.revision.canonical``).
 - **music** = ``{source: "swedebeat_catalogue", song_list_hash}``; ``song_list_hash`` binds the
   match to the exact list it was made from (B3 compares it before approving a selection).
 - **provenance** = ``{origin: "swedebeat_match", matcher_version, threshold}``: no model ran.
 
-Nothing here is logged; the titles never reach a model (ADR 0016 section 6: statuses only), an
-event or a log.
+Nothing here is logged; the titles and the reference never reach a model (ADR 0016 section 6:
+statuses only), an event or a log.
 """
 
 import hashlib
@@ -40,7 +44,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.design.revision import MAX_CONTENT_BYTES, canonical
 from classbeat.jobs import FencedSession, JobFailure
-from classbeat.swedebeat_gateway.match_policy import MAX_DURATION, MAX_TEXT
+from classbeat.swedebeat_gateway.match_policy import MAX_BPM, MAX_DURATION, MAX_TEXT, MIN_BPM
+from classbeat.swedebeat_gateway.track_policy import REFERENCE
 from classbeat.swedebeat_match.verdict_policy import SAME_SONG
 
 KIND: Final = "swedebeat_match"
@@ -69,6 +74,9 @@ class Matched(BaseModel):
     title: HitText
     artist: HitText
     duration: Annotated[int, Field(ge=1, le=MAX_DURATION)] | None
+    # SR C2 (ADR 0036 section 3.4); absent in a match stored before.
+    reference: Annotated[str, Field(pattern=rf"^{REFERENCE.pattern}$")] | None = None
+    bpm: Annotated[float, Field(ge=MIN_BPM, le=MAX_BPM, allow_inf_nan=False)] | None = None
 
 
 class MatchedSong(BaseModel):

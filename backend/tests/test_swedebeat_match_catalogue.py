@@ -31,7 +31,8 @@ from classbeat.swedebeat_match.verdict_policy import (
     verdict,
 )
 
-TRACK = Track("Blue Monday", "New Order", 241)
+TRACK = Track("Blue Monday", "New Order", 241, "sb-ref_1", 125.5)
+KEPT = ("Blue Monday", "New Order", 241, "sb-ref_1", 125.5)
 
 
 def test_the_threshold_is_classbeats_own_085() -> None:
@@ -41,20 +42,20 @@ def test_the_threshold_is_classbeats_own_085() -> None:
 @pytest.mark.parametrize(
     ("item", "expected"),
     [
-        (Item("found", 0.85, TRACK), Verdict("found", "Blue Monday", "New Order", 241)),
-        (Item("found", 1.0, TRACK), Verdict("found", "Blue Monday", "New Order", 241)),
+        (Item("found", 0.85, TRACK), Verdict("found", *KEPT)),
+        (Item("found", 1.0, TRACK), Verdict("found", *KEPT)),
         # The gateway's own cut is 0.78: classbeat calls 0.78 to 0.85 unsure.
-        (Item("found", 0.849, TRACK), Verdict("unsure", "Blue Monday", "New Order", 241)),
-        (Item("found", 0.78, TRACK), Verdict("unsure", "Blue Monday", "New Order", 241)),
-        (Item("found", None, TRACK), Verdict("unsure", "Blue Monday", "New Order", 241)),
-        (Item("unsure", 0.99, TRACK), Verdict("unsure", "Blue Monday", "New Order", 241)),
+        (Item("found", 0.849, TRACK), Verdict("unsure", *KEPT)),
+        (Item("found", 0.78, TRACK), Verdict("unsure", *KEPT)),
+        (Item("found", None, TRACK), Verdict("unsure", *KEPT)),
+        (Item("unsure", 0.99, TRACK), Verdict("unsure", *KEPT)),
         (Item("found", 0.95, None), Verdict("missing")),  # no usable track
         (Item("unsure", 0.5, None), Verdict("missing")),
         (Item("missing", 0.0, TRACK), Verdict("missing")),
         (None, Verdict("missing")),  # not sent
         # A length of 0 is kept as no length (the revision keeps 1 to 3600 s).
-        (Item("found", 0.9, Track("T", "A", 0)), Verdict("found", "T", "A", None)),
-        (Item("found", 0.9, Track("T", "A", None)), Verdict("found", "T", "A", None)),
+        (Item("found", 0.9, Track("T", "A", 0, "r")), Verdict("found", "T", "A", None, "r")),
+        (Item("found", 0.9, Track("T", "A", None, "r")), Verdict("found", "T", "A", None, "r")),
     ],
 )
 def test_the_verdict(item: Item | None, expected: Verdict) -> None:

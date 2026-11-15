@@ -8,13 +8,16 @@
   caller leaves such a song out; it is ``missing``).
 - **The answer** is read through a field allowlist. ``items`` must be a list with exactly one
   item per sent track, in order; any other count, a non-object item or an unknown ``status`` is
-  ``None`` (``invalid_response``). Of each item only ``status``, ``score`` and ``track.title``,
-  ``track.artist`` and ``track.duration`` are read: the texts at most 200 characters with
+  ``None`` (``invalid_response``). Of each item only ``status``, ``score`` and ``track.reference``,
+  ``track.title``, ``track.artist``, ``track.duration`` and ``track.bpm`` are read: the reference
+  ``track_policy.REFERENCE`` (ADR 0036 section 3.4), the texts at most 200 characters with
   URL-shaped and credential-shaped values dropped, the duration finite from 0 to 3600 s and
-  rounded, the score a finite number from 0 to 1. A track without a usable title and artist is
-  ``None``; so is every ``missing`` item's. ``reference``, ``bpm``, ``selected``, the totals,
+  rounded, the BPM finite from 1 to 400 and rounded to 0.1 (else ``None``), the score a finite
+  number from 0 to 1. A track without a valid reference or a usable title and artist is ``None``
+  (the song's verdict is ``missing``); so is every ``missing`` item's. ``selected``, the totals,
   ``playlist_name``, every other field and every URL are dropped here, and nothing from the
-  answer is ever fetched.
+  answer is ever fetched. The reference is the download's key (``client.download_track``) and
+  never reaches a model: a model sees song numbers and statuses only.
 """
 
 import json
@@ -24,10 +27,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final, Literal
 
+from classbeat.swedebeat_gateway.track_policy import is_reference
+
 MATCH_ANSWER_MAX: Final = 1024 * 1024
 TRACKS_MAX: Final = 200
 MAX_TEXT: Final = 200
 MAX_DURATION: Final = 3600
+MIN_BPM: Final = 1.0
+MAX_BPM: Final = 400.0
 
 Status = Literal["found", "unsure", "missing"]
 _STATUSES: Final = frozenset({"found", "unsure", "missing"})
@@ -48,6 +55,8 @@ class Track:
     title: str
     artist: str
     duration: int | None  # whole seconds, or None when the answer gave no usable length
+    reference: str  # track_policy.REFERENCE: the download's key, never a model's input
+    bpm: float | None = None  # SwedeBeat's tempo, 1 to 400 rounded to 0.1, or None
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +102,14 @@ def _duration(value: object) -> int | None:
     return round(value)
 
 
+def _bpm(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    if not math.isfinite(value) or not MIN_BPM <= value <= MAX_BPM:
+        return None
+    return round(float(value), 1)
+
+
 def _score(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
@@ -106,9 +123,13 @@ def _track(raw: object) -> Track | None:
         return None
     node: dict[str, Any] = raw  # pyright: ignore[reportUnknownVariableType]
     title, artist = _text(node.get("title")), _text(node.get("artist"))
-    if title is None or artist is None:
+    reference: object = node.get("reference")
+    if title is None or artist is None or not isinstance(reference, str):
         return None
-    return Track(title, artist, _duration(node.get("duration")))
+    if not is_reference(reference):
+        return None
+    duration, bpm = _duration(node.get("duration")), _bpm(node.get("bpm"))
+    return Track(title, artist, duration, reference, bpm)
 
 
 def _item(raw: object) -> Item | None:

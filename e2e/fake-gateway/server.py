@@ -8,7 +8,10 @@ worker trust a bundle of the other fakes' throwaway CAs plus this process's (wri
 /ca/bundle.pem at start, the health signal). It publishes no port.
 
 The fake itself is `backend/tests/gatewaycore.py`, mounted at /fake-core: the same code the
-backend tests run in-process, so the two cannot drift. Its one client key is the PUBLIC TEST value
+backend tests run in-process, so the two cannot drift. It serves `/auth/login`, `/auth/session`,
+`/catalog/match` and `GET /tracks/{reference}/download` (ADR 0036 section 8): every catalogue
+track's download is the core's fixture audio, a few silent generated MP3 frames.
+Its one client key is the PUBLIC TEST value
 of `client-key.txt` (also mounted into web and the worker as their `swedebeat_gateway_key`
 secret; never the owner's key). It never logs a request: no password, key or bearer reaches its
 output.

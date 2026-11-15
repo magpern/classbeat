@@ -44,7 +44,10 @@ PLANTED_ARTIST = "Planted Catalogue Artist 8vw"
 PLANTED_WANTED = "Planted Wanted Title 3kq"
 REPLACED_TITLE = "Ride Song 4 alpha"  # slot 2 of the picked list; the one the replace drops
 NEW_SONG = song_id(13)
-PLANTED_REFERENCE = "sb-ref-not-stored"
+# A valid catalogue reference: kept on the match since SR C2 (ADR 0036 section 3.4), never a
+# model's input.
+PLANTED_REFERENCE = "sb-ref-planted-Q7x"
+PLANTED_BPM = 173.4
 PLANTED_URL = "https://evil.example/track?sig=planted-signature"
 PLANTED_KEY = "AKIA" + "012345678901"  # credential-shaped; shorter than an AWS access key id
 
@@ -66,7 +69,13 @@ def _row(position: int, status: str) -> MatchedSong:
         wanted=Wanted(title=PLANTED_WANTED, artist=PLANTED_REFERENCE),
         swedebeat=None
         if missing
-        else Matched(title=PLANTED_TITLE, artist=PLANTED_ARTIST, duration=200),
+        else Matched(
+            title=PLANTED_TITLE,
+            artist=PLANTED_ARTIST,
+            duration=200,
+            reference=PLANTED_REFERENCE,
+            bpm=PLANTED_BPM,
+        ),
     )
 
 
@@ -85,7 +94,11 @@ def _content() -> MatchContent:
 
 
 def test_the_catalogue_fact_is_statuses_only() -> None:
+    """The match carries the catalogue reference and SwedeBeat's BPM (SR C2); the model's view of
+    it, the catalogue fact and the brief it goes into, carries neither."""
     content = _content()
+    hit = content.songs[0].swedebeat
+    assert hit is not None and (hit.reference, hit.bpm) == (PLANTED_REFERENCE, PLANTED_BPM)  # noqa: PT018
     facts = status_facts(content)
     assert facts == [
         {"position": 2, "status": "unsure"},
@@ -98,10 +111,10 @@ def test_the_catalogue_fact_is_statuses_only() -> None:
     assert '"status":"unsure"' in fact
     for value in _PLANTED:
         assert value not in fact
-    for key in ('"title"', '"artist"', '"reference"', "catalogue id"):
+    for key in ('"title"', '"artist"', '"reference"', '"bpm"', str(PLANTED_BPM), "catalogue id"):
         assert key not in fact
     brief = pick_brief(Brief(length_min=30, text="Keep the climb."), fact)
-    for value in _PLANTED:
+    for value in (*_PLANTED, str(PLANTED_BPM)):
         assert value not in brief.text
     assert '"status":"missing"' in brief.text
 
@@ -203,7 +216,13 @@ def _song(position: int, song: Song, *, missing: bool) -> MatchedSong:
         position=position,
         status="found",
         wanted=Wanted(title=song.title, artist=song.artist),
-        swedebeat=Matched(title=PLANTED_TITLE, artist=PLANTED_ARTIST, duration=180),
+        swedebeat=Matched(
+            title=PLANTED_TITLE,
+            artist=PLANTED_ARTIST,
+            duration=180,
+            reference=PLANTED_REFERENCE,
+            bpm=PLANTED_BPM,
+        ),
     )
 
 
@@ -311,8 +330,12 @@ async def test_missing_songs_are_replaced_rematched_and_the_selection_approved(
         ).one()
         dumped = json.dumps(fresh.content)
         assert fresh.content["found"] > 0  # the answer carried the planted fields
+        # The catalogue reference is kept on the match (SR C2); every other planted field not.
+        hits = [song["swedebeat"] for song in fresh.content["songs"] if song["swedebeat"]]
+        assert hits and all(hit["reference"] == PLANTED_REFERENCE for hit in hits)  # noqa: PT018
         for value in _PLANTED:
-            assert value not in dumped
+            if value != PLANTED_REFERENCE:
+                assert value not in dumped
         sent_titles = [t["title"] for r in calls(catalogue, MATCH_PATH) for t in r.body["tracks"]]
         assert any("Ride Song 13" in title for title in sent_titles)
         assert all(PLANTED_TITLE not in json.dumps(r.body) for r in calls(catalogue, MATCH_PATH))

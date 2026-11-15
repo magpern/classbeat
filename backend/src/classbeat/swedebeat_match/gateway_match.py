@@ -6,8 +6,10 @@
   ``verdict_policy.sent_pair`` (title and artist only; a song with an empty one is not sent and is
   ``missing``). One checkpoint before the call; no pacing (one call is one request in flight).
   The client is ``swedebeat_gateway.opener.open_client(MATCH_SECONDS)``, one per call.
-- **The answer**: ``verdict_policy.verdict`` per song. ``reference`` is never kept (the parser
-  drops it). Every sent track ``missing`` with at least three sent is suspect: after a 5 s pause
+- **The answer**: ``verdict_policy.verdict`` per song. A found or unsure song keeps the catalogue
+  ``reference`` and the SwedeBeat ``bpm`` on its stored hit (ADR 0036 section 3.4; the track
+  download's key, owned and deleted with the class, never a model's input).
+  Every sent track ``missing`` with at least three sent is suspect: after a 5 s pause
   and a checkpoint the call is made once more; still all missing, it is stored with the operator
   line ``swedebeat match all missing`` (counts only).
 - **Failures** (``confirm_policy``): a refused bearer is confirmed by one ``GET /auth/session``
@@ -137,7 +139,13 @@ async def match_songs(
         found = verdict(None if slot is None else items[slot])
         hit = None
         if found.status != "missing" and found.title is not None and found.artist is not None:
-            hit = Matched(title=found.title, artist=found.artist, duration=found.duration)
+            hit = Matched(
+                title=found.title,
+                artist=found.artist,
+                duration=found.duration,
+                reference=found.reference,
+                bpm=found.bpm,
+            )
         matched.append(
             MatchedSong(
                 position=position,

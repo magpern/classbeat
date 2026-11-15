@@ -54,7 +54,14 @@ def songs() -> list[MatchedSong]:
             position=1,
             status="found",
             wanted=Wanted(title="Climb Song", artist="Ride Band"),
-            swedebeat=Matched(title="Climb Song (Radio)", artist="Ride Band", duration=241),
+            # The stored hit keeps the catalogue reference and BPM (SR C2); the API shows neither.
+            swedebeat=Matched(
+                title="Climb Song (Radio)",
+                artist="Ride Band",
+                duration=241,
+                reference=PLANTED_REFERENCE,
+                bpm=131.5,
+            ),
         ),
         MatchedSong(
             position=2,

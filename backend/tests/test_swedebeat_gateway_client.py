@@ -17,7 +17,7 @@ from classbeat.swedebeat_gateway import client as gateway_client_module
 from classbeat.swedebeat_gateway.client import GatewayFailure, login, match, session
 from classbeat.swedebeat_gateway.login_policy import LoginAnswer
 from classbeat.swedebeat_gateway.match_policy import Item, Track
-from gatewaycore import BEARER_REFUSED, UNKNOWN_CLIENT, FakeGateway
+from gatewaycore import BEARER_REFUSED, UNKNOWN_CLIENT, FakeGateway, reference_of
 from gatewayfake import (
     CLIENT_KEY,
     DEVICE_ID,
@@ -361,9 +361,11 @@ async def test_match_200_gives_one_kept_item_per_song_in_order(gateway: FakeGate
     bearer = await signed_in(gateway)
     async with gateway_client(gateway, total_seconds=MATCH_SECONDS) as client:
         items = await match(client, KEY, bearer, SONGS)
+    LEVITATING = reference_of("Levitating", "Dua Lipa")
+    LIGHTS = reference_of("Blinding Lights", "The Weeknd")
     assert items == [
-        Item("found", 0.93, Track("Levitating", "Dua Lipa", 240)),
-        Item("unsure", 0.61, Track("A Different Tune Entirely", "The Weeknd", 240)),
+        Item("found", 0.93, Track("Levitating", "Dua Lipa", 240, LEVITATING, 128.0)),
+        Item("unsure", 0.61, Track("A Different Tune Entirely", "The Weeknd", 240, LIGHTS, 128.0)),
         Item("missing", 0.0, None),
     ]
 
@@ -525,7 +527,7 @@ async def test_nothing_secret_is_logged(
         assert secret not in caplog.text
 
 
-def test_the_module_exposes_exactly_login_session_and_match() -> None:
+def test_the_module_exposes_exactly_login_session_match_and_download_track() -> None:
     functions = {
         name
         for name, value in vars(gateway_client_module).items()
@@ -534,8 +536,10 @@ def test_the_module_exposes_exactly_login_session_and_match() -> None:
         and not isinstance(value, type)
         and getattr(value, "__module__", "") == gateway_client_module.__name__
     }
-    assert functions == {"login", "session", "match"}
+    assert functions == {"login", "session", "match", "download_track"}
     assert set(gateway_client_module.__all__) == {
+        "Download",
+        "download_track",
         "GatewayFailure",
         "Item",
         "LoginAnswer",

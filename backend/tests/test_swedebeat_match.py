@@ -40,7 +40,14 @@ from classbeat.swedebeat_match import kind as match_kind
 from classbeat.swedebeat_match.config import MatchConfig
 from classbeat.swedebeat_match.kind import SWEDEBEAT_MATCH
 from ctx import make_context
-from gatewaycore import MATCH_PATH, SECONDS, SESSION_PATH, UNSURE_TITLE, FakeGateway
+from gatewaycore import (
+    MATCH_PATH,
+    SECONDS,
+    SESSION_PATH,
+    UNSURE_TITLE,
+    FakeGateway,
+    reference_of,
+)
 from gatewayfake import CLIENT_KEY, EMAIL, EMAIL_B, GATEWAY_SETTINGS, PASSWORD, PASSWORD_B, calls
 from gatewayfake import ORIGIN as GATEWAY_ORIGIN
 from jobtools import engine_for
@@ -412,12 +419,16 @@ async def test_two_users_match_with_one_call_each_and_their_bearers_never_mix(
         assert (content["found"], content["unsure"], content["missing"]) == (2, 1, 1)
         assert content["songs"][0]["swedebeat"] == {
             "title": FOUND_TITLE, "artist": ARTIST, "duration": SECONDS,
+            "reference": reference_of(FOUND_TITLE, ARTIST), "bpm": 128.0,
         }  # fmt: skip
         assert content["songs"][1]["swedebeat"]["title"] == UNSURE_TITLE
         assert content["songs"][2]["swedebeat"] is None
         assert content["swedebeat_sec"] == SECONDS * 2  # an unsure song is never counted
+        # SR C2 (ADR 0036 section 3.4): a hit keeps its catalogue reference, a missing song none.
+        unsure = content["songs"][1]
+        assert unsure["swedebeat"]["reference"] == reference_of(unsure["wanted"]["title"], ARTIST)
         blob = json.dumps(content)
-        assert "ref-" not in blob and "reference" not in blob  # noqa: PT018 - never stored
+        assert blob.count('"reference"') == 3
         for spotify_id in rider.spotify_ids:
             assert spotify_id not in blob
         assert match.music == {
@@ -453,6 +464,7 @@ async def test_classbeat_decides_found_at_085_and_drops_every_other_field(
         _song(306, "Zero Length", ARTIST, 120.0),
         _song(307, "   ", ARTIST, 120.0),  # empty after trimming: not sent, missing
         _song(308, "No Artist", "", 120.0),
+        _song(309, "Bad Reference", ARTIST, 120.0),
     ]
     rider = await _one(env, make_actor, "verdict", 300, songs=songs)
     planted_url = "https://evil.example/track?sig=planted-signature"
@@ -464,6 +476,8 @@ async def test_classbeat_decides_found_at_085_and_drops_every_other_field(
             _item("found", 0.95, None),
             _item("missing", 0.0, _track("Ignored")),
             _item("found", 0.9, _track("Zero Length", duration=0)),
+            # A reference outside the pattern makes the track unusable: missing (SR C2).
+            _item("found", 0.99, _track("Bad Reference", duration=200, reference="../planted")),
         ],
         "selected": [_track("Sure Song")],
         "playlist_name": "planted-playlist",
@@ -476,18 +490,22 @@ async def test_classbeat_decides_found_at_085_and_drops_every_other_field(
     [sent] = calls(catalogue, MATCH_PATH)
     assert [t["title"] for t in sent.body["tracks"]] == [
         "Sure Song", "Loose Song", "Unsure Song", "No Track Song", "Gone Song", "Zero Length",
+        "Bad Reference",
     ]  # fmt: skip
     content = _match(admin, job_id).content
     assert [s["status"] for s in content["songs"]] == [
         "found", "unsure", "unsure", "missing", "missing", "found", "missing", "missing",
+        "missing",
     ]  # fmt: skip
+    # The reference and SwedeBeat's BPM are kept (ADR 0036 section 3.4); every other field not.
     assert content["songs"][0]["swedebeat"] == {
         "title": "Sure Song", "artist": ARTIST, "duration": 241,
+        "reference": "planted-ref-Kx1", "bpm": 128.0,
     }  # fmt: skip
     assert content["songs"][5]["swedebeat"]["duration"] is None  # 0 s is no length
     assert content["swedebeat_sec"] == 241
     blob = json.dumps(content)
-    for planted in ("planted-ref-Kx1", "evil.example", "planted-playlist", "128"):
+    for planted in ("../planted", "evil.example", "planted-playlist", "selected"):
         assert planted not in blob
 
 
