@@ -193,14 +193,19 @@ The owner's direction (2026-11-15):
 `class_outputs(owner_id, class_id, revision_id, output, attempt, state, external_id, detail, updated_at)` table,
 with RLS and `UNIQUE (owner_id, class_id, revision_id, output, attempt)`. `attempt` starts at 1.
 
+The `output` values are `spotify_playlist`, `swedebeat_playlist`, `swedebeat_mix` and `mowl`. When an attempt row is created, it stores everything that would otherwise vary between runs, **before the first write intent**: the mix name with its random `cb-` suffix, the playlist name, and the render plan.
+
 **Keys and the link to ADR 0005 §7.** Each external call is an ADR 0005 external operation, and a write-intent
 row is committed before the call.
 - The idempotency key is **bound to the approval, not to the job**:
   `out:<class_id>:<revision_id>:<output>:<attempt>:<step>`. The steps are `create`, `publish`, `merge`,
   `attach`, `spotify_create` and `spotify_fill`. A later job for the same approval finds the earlier row, so
   it cannot make a second record.
-- The request hash is the canonical JSON of `{kind, draft content_hash, output, the exact gateway body fields}`.
-  The same key with a different hash is refused (`idempotency_mismatch`).
+- The request hash is the canonical JSON of `{kind, draft content_hash, output, attempt, the stored names, the
+  exact JSON body fields}`. For `merge`, it covers the stored **render plan** and the tracks' analysed
+  sha256s, not the MP3 bytes. The render must still be deterministic: C1 tests it, and a different output
+  sha256 on a retry stops with "music changed".
+- The same key with a different hash is refused, as ADR 0005 §7 refuses it (`internal`).
 - `class_outputs.state` is derived from the operations:
 
   | ADR 0005 operation | Output state |
@@ -225,7 +230,7 @@ row is committed before the call.
   published playlists, and an unpublished one cannot be found. The step stays `in_doubt`, and the user is told
   it may exist. The only way on is **Create another anyway** (`attempt + 1`). The recommended gateway pass-through
   (listing one's own playlists) would let Check again settle it.
-- **Playlist publish in doubt.** The `playlist_id` is stored, so Check again reads `GET /playlists/shared`. If
+- **Playlist publish in doubt.** The `playlist_id` is stored, so Check again reads **every page** of `GET /playlists/shared` (pages 1 to 50, until a page comes back empty). If
   the id is listed, the step is `succeeded`. If it is not, publishing **the same `playlist_id`** again is safe,
   because publish is one-way on an existing record and creates none. It is never a new create.
 - **Mix (merge-publish) in doubt.**
@@ -244,7 +249,8 @@ row is committed before the call.
   - `crossfade_sec` is 0 at the playlist level;
   - every track gets an **explicit** `crossfade_sec` (its outgoing crossfade; the last track gets 0, because
     the gateway would otherwise default to 5);
-  - `start_sec` and `end_sec` are rounded to 0.01 s, the app's precision;
+  - `start_sec` and `end_sec` are rounded to 0.01 s, the app's precision. The spec stores the cuts already
+    rounded, so `compose_map`, `mix_offsets` and the gateway body all use the same numbers;
   - `trim` is true whenever there is a cut;
   - title, artist and bpm come from the `song_list`'s SwedeBeat facts.
 - **Mix:**

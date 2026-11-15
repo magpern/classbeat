@@ -379,7 +379,7 @@ retention and isolation. Only the catalogue step changes:
 
 ### 7. Nothing is written to SwedeBeat
 
-*(Superseded by [ADR 0036](0036-swedebeat-studio.md) §8 on 2026-11-15: classbeat may also call `GET /tracks/{reference}/download`, `POST /playlists`, `POST /playlists/{id}/publish`, `POST /playlists/merge-publish` and a user's approved output choice. `GET /playlists/shared` (reconciliation only). `PATCH`, `/catalog/search` and the match's `playlist` mode stay forbidden. ADR 0036 §8 also amends §1's 150 s clamp for the download (120 s read) and `merge-publish` (900 s).)*
+*(Superseded by [ADR 0036](0036-swedebeat-studio.md) §8 on 2026-11-15: classbeat may also call `GET /tracks/{reference}/download`, `POST /playlists`, `POST /playlists/{id}/publish`, `POST /playlists/merge-publish` and `GET /playlists/shared` (reconciliation only), and the writes only from a user's approved output choice. `PATCH`, `/catalog/search` and the match's `playlist` mode stay forbidden. ADR 0036 §8 also amends §1's 150 s clamp for the download (120 s read) and `merge-publish` (900 s).)*
 
 classbeat never calls the gateway's playlist routes. ADR 0016 keeps the mix manual, and the gateway
 ships with writes off.
