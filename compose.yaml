@@ -107,6 +107,9 @@ services:
       CLASSBEAT_MAINT_DATABASE_URL: postgresql+psycopg://classbeat_maint@db:5432/classbeat
       # ADR 0015: the Swedebeat connection is off unless the owner switches it on here.
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
+      # ADR 0035 section 1: the SwedeBeat gateway's origin (web logs in through it); empty is
+      # unset, SwedeBeat unavailable. Its client key is the swedebeat_gateway_key secret below.
+      CLASSBEAT_SWEDEBEAT_GATEWAY_URL: ${SWEDEBEAT_GATEWAY_URL:-}
       # ADR 0018: running classes are off unless the owner switches them on here. This is the kill
       # switch only: a plain dev stack can no longer switch running on with it (it was enough before
       # #590). Running also needs an admin-stored `on` and a `design` route covering running for
@@ -131,12 +134,15 @@ services:
     # override of the key a release image holds. Empty from init (empty is no key).
     # turnstile_secret_key (ADR 0025 section 7) is web's only too; empty from init. Turnstile stays
     # off in this stack (no CLASSBEAT_TURNSTILE_* here).
+    # swedebeat_gateway_key (ADR 0035 section 2): the gateway's client key, web and worker only;
+    # empty from init (empty is no key).
     secrets:
       - database_password
       - app_secret_key
       - connection_kek
       - database_maint_password
       - swedebeat_app
+      - swedebeat_gateway_key
       - oauth_google_client_secret
       - oauth_github_client_secret
       - oauth_microsoft_client_secret
@@ -171,12 +177,14 @@ services:
       # ADR 0016: a design job on a Swedebeat mix checks the switch again when it runs; off here,
       # every such job ends feature_off. The same value as web's.
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
+      # ADR 0035 section 1: the gateway's origin (the worker matches through it), as web's.
+      CLASSBEAT_SWEDEBEAT_GATEWAY_URL: ${SWEDEBEAT_GATEWAY_URL:-}
       # ADR 0018: a queued running design or revise checks the switch again; the same as web's.
       CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
       # ADR 0007 (soundless classes): a queued soundless design checks the switch again.
       CLASSBEAT_SOUNDLESS_ENABLED: ${SOUNDLESS_ENABLED:-false}
     # The model API keys are the worker's only: web, migrate and maint never mount them
-    # (ADR 0006 section 9, ADR 0012 section 2).
+    # (ADR 0006 section 9, ADR 0012 section 2). swedebeat_gateway_key: web's and the worker's.
     secrets:
       - database_password
       - app_secret_key
@@ -184,6 +192,7 @@ services:
       - anthropic_api_key
       - openai_api_key
       - deepseek_api_key
+      - swedebeat_gateway_key
 
   # Maintenance after a suspected KEK compromise (ADR 0004 section 2), never started by default:
   #   docker compose stop web worker
@@ -238,6 +247,9 @@ secrets:
   # ADR 0015 section 4: Swedebeat's app key, JSON {"key", "iv"}; empty or absent is no key.
   swedebeat_app:
     file: ./secrets/swedebeat_app
+  # ADR 0035 section 2: the SwedeBeat gateway's client key; web and worker only; empty from init.
+  swedebeat_gateway_key:
+    file: ./secrets/swedebeat_gateway_key
   # OAuth client secrets (ADR 0003 section 5): web only; empty from init, which means that provider is off.
   oauth_google_client_secret:
     file: ./secrets/oauth_google_client_secret

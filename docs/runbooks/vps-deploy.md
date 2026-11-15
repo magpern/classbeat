@@ -182,8 +182,8 @@ cd /opt/classbeat
   head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/app_secret_key      # >= 32 bytes
   head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/connection_kek      # exactly 64 hex characters
   for n in smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app \
-    oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret \
-    turnstile_secret_key; do
+    swedebeat_gateway_key oauth_google_client_secret oauth_github_client_secret \
+    oauth_microsoft_client_secret turnstile_secret_key; do
     [ -e "secrets/$n" ] || install -m 640 /dev/null "secrets/$n"   # empty placeholder; fill in below
   done )
 ls -ln secrets/          # every file: <your uid> 10010, -rw-r-----
@@ -209,6 +209,15 @@ Fill in these files by hand (writing into an existing file keeps its group and m
   because `compose.yaml` and `compose.prod.yaml` mount it into `web`, and compose fails at `up`
   without it. A release image holds Swedebeat's key itself; the file is only a runtime override
   ([swedebeat-connect.md](swedebeat-connect.md)).
+- `secrets/swedebeat_gateway_key`: the SwedeBeat gateway's client key (ADR 0035 section 2), the
+  value the gateway lists for classbeat in its `CLIENT_API_KEYS`. Mounted into `web` and the
+  `worker` only; the file **must exist** (empty is fine: SwedeBeat is then "not available"), or `up`
+  fails with a missing-file error. A filled one must be 16 to 256 printable ASCII characters
+  without whitespace, or web and the worker refuse to start (the message names the file, never the
+  value). Write it as the other secrets, `( umask 027; read -rs S && printf '%s' "$S" >
+  secrets/swedebeat_gateway_key; unset S )`. Its origin is `SWEDEBEAT_GATEWAY_URL` in `.env`
+  (production: `http://192.168.1.222:7355`, a reserved address; plain http only to a private IP
+  with a port, else https to a public name), [swedebeat-connect.md](swedebeat-connect.md).
 - `secrets/oauth_google_client_secret`, `secrets/oauth_github_client_secret`,
   `secrets/oauth_microsoft_client_secret`: the OAuth client secrets, mounted into `web` only. The
   loop above creates them **empty** (that provider is off) and never empties one that exists; the
@@ -787,7 +796,7 @@ mv -f "staging-$NEW"/* . && rmdir "staging-$NEW"
 chmod +x check-prod-compose.sh install-swag-logrotate.sh backup.sh restore.sh validate-backup.sh   # a download has no exec bit
 diff -u previous-$OLD/swag-classbeat.subdomain.conf swag-classbeat.subdomain.conf   # swag's copy changed?
 diff -u previous-$OLD/prod.env.example prod.env.example                              # new settings to put in .env?
-( umask 027; touch secrets/swedebeat_app secrets/turnstile_secret_key \
+( umask 027; touch secrets/swedebeat_app secrets/swedebeat_gateway_key secrets/turnstile_secret_key \
   secrets/oauth_google_client_secret secrets/oauth_github_client_secret secrets/oauth_microsoft_client_secret )
 sed -i "s/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=$NEW/" .env
 ./check-prod-compose.sh                           # files, .env, secrets/: group 10010, mode 640 or stricter
@@ -804,7 +813,9 @@ Postgres restarts for a few seconds; the data volume is kept.
 the worker has 30 s to hand its leases back (ADR 0005). Read the release notes for owner-facing
 steps, and copy the swag sample to swag if the first `diff` shows a change. A stack older than the
 Swedebeat connection (#366) has no `secrets/swedebeat_app`, and one older than #507 has no
-`secrets/oauth_*_client_secret`, and one older than #724 has no `secrets/turnstile_secret_key`;
+`secrets/oauth_*_client_secret`, and one older than #724 has no `secrets/turnstile_secret_key`,
+and one older than the SwedeBeat gateway client (#1077, ADR 0035) has no
+`secrets/swedebeat_gateway_key` (**create it before running a release that carries #1077**);
 without them `up` fails with a missing-file error for that secret, which the `touch` line above fixes
 (an empty OAuth file keeps that provider off; an empty Turnstile file only works with
 `TURNSTILE_ENABLED=false`, because Turnstile is on by default; `touch` never empties a file). A file it

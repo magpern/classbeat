@@ -8,7 +8,7 @@ in no other module, ``tests/test_maint_privileges.py``), and are passed in. Re-e
 
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +62,27 @@ def read_files(
                 text = ""  # a blank file is the empty placeholder: that secret is off
             values[name] = text
     return values
+
+
+def with_file_variables(
+    values: dict[str, str], variables: Mapping[str, str], optional: frozenset[str]
+) -> dict[str, str]:
+    """``values`` where each field of ``variables`` whose variable is set (a path, never the
+    secret) comes from that file instead, by the rules of ``read_files``: missing is not set,
+    an unreadable file of an ``optional`` field is not set with a warning. The variable names the
+    file only; the secret itself is never read from the environment."""
+    result = dict(values)
+    for field, variable in variables.items():
+        named = os.environ.get(variable)
+        if not named:
+            continue
+        result.pop(field, None)
+        path = Path(named)
+        allowed = frozenset({path.name}) if field in optional else frozenset[str]()
+        found = read_files(path.parent, (path.name,), optional=allowed, byte_exact=frozenset())
+        if path.name in found:
+            result[field] = found[path.name]
+    return result
 
 
 class SecretFilesSettingsSource(PydanticBaseSettingsSource):

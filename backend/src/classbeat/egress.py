@@ -1,7 +1,8 @@
 """The outbound allowlists (ADR 0006 §9, ADR 0009 §10; threat model T19, T49, T73).
 
-The only place in ``classbeat`` that builds an HTTP client or an ``urllib`` opener (the guard in
-``tests/egress_scan.py`` fails on any other). Two paths leave the worker:
+The only place in ``classbeat`` that builds an HTTP client or an ``urllib`` opener, with
+``classbeat.egress_gateway`` (the SwedeBeat gateway's client, below; the guard in
+``tests/egress_scan.py`` fails on any other module). Two paths leave the worker:
 
 - **urllib**, used by the provider library (``mowl-workouts`` calls ``urllib.request.urlopen``).
   The web process installs the same opener with ``WEB_URLLIB_HOSTS``, MOWL, the Spotify API and
@@ -91,6 +92,14 @@ total deadline (``PLAYER_TOTAL_SECONDS``), an answer of at most ``PLAYER_ANSWER_
 (``AnswerTooLarge``) and **no argument** (a transport comes only from tests, through
 ``player_test_client``, which the guard refuses in ``classbeat``). Unset, it refuses.
 
+**The SwedeBeat gateway client** (ADR 0035 section 1, #1077; web and worker) lives in
+``classbeat.egress_gateway``: ``swedebeat_gateway_async_client(total_seconds)`` reaches exactly
+one origin (scheme, host and port), the setting ``CLASSBEAT_SWEDEBEAT_GATEWAY_URL`` checked by
+``classbeat.swedebeat_gateway.url_policy`` (``http`` only to a loopback or private IP literal,
+else ``https`` to a public name) and installed once at start by ``install_swedebeat_gateway_origin``
+in both entry points. The ``Allowlist`` here is https/443-only, so it has its own exact-origin
+check. It is on **no urllib list**; no redirect, no default header, ``trust_env=False``.
+
 All paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
 log (``SSLKEYLOGFILE`` is ignored, threat model T49).
 
@@ -111,9 +120,10 @@ budget in ``classbeat.egress_budget``; this module re-exports both.
 A refused request raises ``OutboundBlocked`` (the job fails ``outbound_blocked``, ADR 0005 §4)
 and logs the host only, never the URL, its path or query, or a header.
 
-Every list is code, not a setting, with one exception: the player's one host
-(``CLASSBEAT_PLAYER_BASE_URL``, above), an operator's deploy-time value that replaces nothing and
-widens no other list, refused at startup unless it keeps every rule. Nothing else in the
+Every list is code, not a setting, with two exceptions: the player's one host
+(``CLASSBEAT_PLAYER_BASE_URL``, above) and the gateway's one origin
+(``CLASSBEAT_SWEDEBEAT_GATEWAY_URL``), an operator's deploy-time values that replace nothing and
+widen no other list, refused at startup unless they keep every rule. Nothing else in the
 environment can widen a list. This is enforced inside
 the process; code running in the worker could still open a socket around it (accepted until the
 network-level egress rule of M6, threat model).
@@ -143,6 +153,7 @@ from classbeat.egress_budget import (  # noqa: F401 (re-exported: the budget's h
 )
 from classbeat.egress_deadline import (  # noqa: F401 (re-exported: they lived here)
     REQUEST_FALLBACK_SECONDS,
+    DeadlineStream,
     RequestDeadline,
     _Watchdog,  # pyright: ignore[reportPrivateUsage]
     call_deadline,
@@ -573,33 +584,6 @@ def install_web_allowlist() -> urllib.request.OpenerDirector:
 # --- httpx ---------------------------------------------------------------------------------
 
 
-class _DeadlineStream(httpx.AsyncByteStream):
-    """An answer's body that must be read by ``at`` (``time.monotonic()``): each chunk waits at
-    most until then, so a body trickling in a byte at a time ends with ``RequestDeadline``."""
-
-    def __init__(self, inner: httpx.AsyncByteStream, at: float) -> None:
-        self._inner = inner
-        self._at = at
-
-    async def __aiter__(self) -> AsyncIterator[bytes]:
-        chunks = self._inner.__aiter__()
-        while True:
-            remaining = self._at - time.monotonic()
-            if remaining <= 0:
-                raise RequestDeadline
-            try:
-                async with asyncio.timeout(remaining):
-                    chunk = await anext(chunks)
-            except StopAsyncIteration:
-                return
-            except TimeoutError:
-                raise RequestDeadline from None
-            yield chunk
-
-    async def aclose(self) -> None:
-        await self._inner.aclose()
-
-
 class AllowlistTransport(httpx.AsyncBaseTransport):
     """Checks every request (each redirect hop is a request) before the inner transport, and
     refuses a redirect response that points at another host: httpx drops ``Authorization`` on a
@@ -647,7 +631,7 @@ class AllowlistTransport(httpx.AsyncBaseTransport):
         return httpx.Response(
             response.status_code,
             headers=response.headers,
-            stream=_DeadlineStream(stream, at),
+            stream=DeadlineStream(stream, at),
             extensions=response.extensions,
             request=request,
         )

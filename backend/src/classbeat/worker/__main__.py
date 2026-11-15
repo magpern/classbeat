@@ -35,6 +35,7 @@ from classbeat.db import (
 from classbeat.design import music_kind, sport
 from classbeat.design.mixfetch import sweep_work_root
 from classbeat.egress import install_player_allowlist, install_worker_allowlist
+from classbeat.egress_gateway import install_swedebeat_gateway_origin
 from classbeat.log import configure_logging
 from classbeat.player.delivery import run_player_delivery
 from classbeat.playlists.runtime import playlists_runtime
@@ -118,6 +119,8 @@ def main() -> int:
     # ADR 0034 section 2: the player's one host (a checked setting) and the logout-token signer,
     # only when the player is configured; without its client id or key set, no worker.
     install_player_allowlist(settings.player_base_url)
+    # ADR 0035 section 1: the SwedeBeat gateway's one origin (a checked setting), for the match.
+    install_swedebeat_gateway_origin(settings.swedebeat_gateway_url)
     try:
         signer = None if settings.player_base_url is None else load_event_signer(settings)
     except EventSignerRefused as refused:

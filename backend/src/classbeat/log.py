@@ -16,7 +16,8 @@ _STANDARD_ATTRIBUTES = frozenset(vars(logging.makeLogRecord({}))) | {"message", 
 # Authorization, X-CSRF-Token, X-Api-Key and X-Auth-Token headers (and whole Cookie headers);
 # query strings on /oauth/* and /oidc/* (ADR 0034). Our own access log never records any of
 # them; this catches the rest (an exception message or a library that dumps a request). The
-# catalogue job is the first worker send of X-Auth-Token (ADR 0016 section 5).
+# catalogue job is the first worker send of X-Auth-Token (ADR 0016 section 5). ADR 0035 section 2:
+# the SwedeBeat gateway's bearer (a ``bearer`` field or value) and its client key, wherever written.
 _REDACTED = "[redacted]"
 # The OAuth and OpenID Connect parameters that carry a secret or a binding (ADR 0009 §10, ADR 0034).
 _PARAMS = (
@@ -32,7 +33,8 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
     (
         re.compile(
-            r"(?i)\b(authorization|x-csrf-token|x-api-key|x-auth-token|cookie|set-cookie)\b"
+            r"(?i)\b(authorization|x-csrf-token|x-api-key|x-auth-token|cookie|set-cookie|bearer"
+            r"|swedebeat_gateway_key)\b"
             r"([\"']?\s*[:=]\s*[\"']?)[^\r\n\"']*"
         ),
         rf"\1\2{_REDACTED}",
@@ -101,6 +103,9 @@ SECRET_KEYS = frozenset(
         "api_key",
         "x-api-key",
         "x-auth-token",
+        # ADR 0035 section 2: the gateway's bearer and its client key.
+        "bearer",
+        "swedebeat_gateway_key",
         "anthropic_api_key",
         "openai_api_key",
         "deepseek_api_key",

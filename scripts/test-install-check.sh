@@ -87,7 +87,7 @@ sed -i -e 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=1.2.3/' "$install/.env"
 # Turnstile is on by default (#792): a good install has the public site key (a placeholder) and, below, a secret file.
 echo 'TURNSTILE_SITE_KEY=0x4AAAAAAcheck' >> "$install/.env"
 names=(postgres_password database_owner_password database_password database_maint_password app_secret_key
-  connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app
+  connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app swedebeat_gateway_key
   oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret turnstile_secret_key)
 canary="secret-canary-$RANDOM$RANDOM$RANDOM"
 mksecrets() {

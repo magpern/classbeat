@@ -56,6 +56,7 @@ def test_the_optional_secrets_are_exactly_these() -> None:
         "paddle_webhook_secret",
         "smtp_password",
         "swedebeat_app",
+        "swedebeat_gateway_key",
         "turnstile_secret_key",
     ]
     assert set(SECRET_FILE_FIELDS) >= OPTIONAL_SECRET_FILE_FIELDS

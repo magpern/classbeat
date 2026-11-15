@@ -33,6 +33,7 @@ pytest_plugins = [
     "mowlfake",
     "mowlqrfake",
     "swedebeatfake",
+    "gatewayfake",
     "isofake",
     "spotifyfake",
     "spotifytools",
@@ -91,13 +92,15 @@ def _loopback_only(request: pytest.FixtureRequest) -> Iterator[None]:
 @pytest.fixture(autouse=True)
 def _no_worker_allowlist_leak(monkeypatch: pytest.MonkeyPatch) -> None:
     """A test that installs the worker's allowlist (ADR 0006 section 9) leaves neither its
-    process-wide opener nor its worker flag to the tests after it."""
+    process-wide opener nor its worker flag to the tests after it, nor the gateway's origin
+    (ADR 0035 section 1) that an entry point installed."""
     import urllib.request
 
-    from classbeat import egress
+    from classbeat import egress, egress_gateway
 
     monkeypatch.setattr(urllib.request, "_opener", None)
     monkeypatch.setattr(egress, "_worker_process", False)
+    monkeypatch.setattr(egress_gateway, "_origin", None)
 
 
 @pytest.fixture(autouse=True)

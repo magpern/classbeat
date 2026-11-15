@@ -1,17 +1,21 @@
 """The total deadline of one urllib request (ADR 0007 section 6), moved out of
 ``classbeat.egress``, which re-exports every name here and whose ``DeadlineHTTPSConnection``
 arms ``_Watchdog``: the thread's ``call_deadline``, ``request_deadline`` and the watchdog that
-shuts a request's socket down at its deadline. Builds no client and sends nothing
-(``tests/egress_scan.py`` still scans this module)."""
+shuts a request's socket down at its deadline. Also ``DeadlineStream``, the httpx answer body
+with a total deadline (``classbeat.egress.AllowlistTransport`` and ``classbeat.egress_gateway``).
+Builds no client and sends nothing (``tests/egress_scan.py`` still scans this module)."""
 
+import asyncio
 import contextlib
 import math
 import socket
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import contextmanager
 from typing import Final
+
+import httpx
 
 # A request whose caller gave no timeout (urllib's default) still ends within this.
 REQUEST_FALLBACK_SECONDS: Final = 60.0
@@ -133,3 +137,30 @@ class _Watchdog:
             raise
         self.check()
         return out
+
+
+class DeadlineStream(httpx.AsyncByteStream):
+    """An answer's body that must be read by ``at`` (``time.monotonic()``): each chunk waits at
+    most until then, so a body trickling in a byte at a time ends with ``RequestDeadline``."""
+
+    def __init__(self, inner: httpx.AsyncByteStream, at: float) -> None:
+        self._inner = inner
+        self._at = at
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        chunks = self._inner.__aiter__()
+        while True:
+            remaining = self._at - time.monotonic()
+            if remaining <= 0:
+                raise RequestDeadline
+            try:
+                async with asyncio.timeout(remaining):
+                    chunk = await anext(chunks)
+            except StopAsyncIteration:
+                return
+            except TimeoutError:
+                raise RequestDeadline from None
+            yield chunk
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()

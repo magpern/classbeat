@@ -65,3 +65,28 @@ record:
    or the package page); anyone who could pull them could read the key.
 4. On the home server, replace `secrets/swedebeat_app` the same way and restart web.
 5. Users reconnect only if Swedebeat invalidated their tokens.
+
+## The SwedeBeat gateway (ADR 0035; the client key and URL arrive with #1077)
+
+classbeat moves from SwedeBeat itself to the owner's gateway ([ADR 0035](../adr/0035-swedebeat-gateway.md)).
+From the release that carries #1077, **every server needs the file `secrets/swedebeat_gateway_key`**,
+empty or filled, before that release is started: `web` and the `worker` mount it, and compose refuses to
+start a service whose secret file is missing (`( umask 027; touch secrets/swedebeat_gateway_key )`;
+[vps-deploy.md](vps-deploy.md) section 5). Until the connect and the match use the gateway (SG-2), the
+file and the URL change nothing a user sees.
+
+- **The key** is the value the gateway lists for classbeat in its `CLIENT_API_KEYS` (the owner keeps a
+  copy as the repository secret `SB_CLIENT_API_KEY`; no workflow reads it). Write it on the server
+  without echoing it: `( umask 027; read -rs S && printf '%s' "$S" > secrets/swedebeat_gateway_key;
+  unset S )`, then `ls -ln secrets/swedebeat_gateway_key` (mode `-rw-r-----`, group 10010). It must be
+  16 to 256 printable ASCII characters without whitespace; anything else stops web and the worker at
+  start (the message names the file, never the value). Empty means no key: SwedeBeat is "not
+  available".
+- **The URL** is `SWEDEBEAT_GATEWAY_URL` in `.env` (production `http://192.168.1.222:7355`; reserve
+  that address, ADR 0035 section 10). Plain http is accepted only to a loopback or private IP address
+  with a port; otherwise it must be https to a public DNS name. A value that breaks a rule stops web
+  and the worker at start, and the message names the rule, never the value.
+- SwedeBeat is available only with both the URL and a key.
+- **Rotation or a leak of the key:** list the new key in the gateway's `CLIENT_API_KEYS`, write it into
+  `secrets/swedebeat_gateway_key`, restart web and the worker (`docker compose up -d --wait`), then
+  remove the old key from the gateway.
