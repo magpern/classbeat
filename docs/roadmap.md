@@ -563,7 +563,7 @@ The owner's decisions apply now; [ADR 0015](adr/0015-swedebeat-connection.md) ca
   - ADR 0011 §7 and §8: `swedebeat_enabled` is a real admin flag (stricter wins, default off: the
     environment's `CLASSBEAT_SWEDEBEAT_ENABLED` is the kill switch and the database can only switch
     it off), no longer a read-only line.
-- **Swedebeat's app key is used and baked into the production image at build time** (owner, 2026-10-31),
+- *(Superseded by Amendment 23 and ADR 0035, 2026-11-15: classbeat holds no SwedeBeat key; the image no longer contains it.)* **Swedebeat's app key is used and baked into the production image at build time** (owner, 2026-10-31),
   from the GitHub secret `SWEDEBEAT_APP`, in the release workflow only. The "classbeat doesn't use that
   key" of the threat model's accepted risks and the "its app key isn't used" of ADR 0010's table are
   replaced: pull-request, CI and e2e images never contain it, the vendored `mowl-workouts` wheel still

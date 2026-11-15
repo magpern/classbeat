@@ -849,8 +849,10 @@ or reshape data, so even a pass is a rollback of the software, not of data writt
 
 - **Going back to a release before SG-4** (#1080, ADR 0035 section 8): its compose files mount
   `secrets/swedebeat_app` into `web`, so recreate the empty file first, or `up` fails:
-  `( umask 027; touch secrets/swedebeat_app )`. Leave it empty: SwedeBeat then goes through the
-  gateway, as on the newer release.
+  `( umask 027; touch secrets/swedebeat_app )`. Leave it empty. A release from SG-2 (#1083) to just
+  before SG-4 still goes through the gateway. A release older than SG-2 talks to SwedeBeat directly,
+  using the key built into its own image, so going that far back brings back the direct SwedeBeat
+  path.
 - **The check passes (no migration):** restore the previous release's files (`cp previous-$OLD/* .`;
   they are the ones you downloaded for it), set `CLASSBEAT_VERSION=$OLD` in `.env`,
   `./check-prod-compose.sh && docker compose pull && docker compose up -d --wait`. If the
