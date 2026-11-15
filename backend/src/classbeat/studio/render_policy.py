@@ -16,7 +16,7 @@ from typing import Any, Final
 RATE: Final = 44100
 TOLERANCE_SEC: Final = 0.1  # encoder padding, ADR 0036 section 6
 MAX_TRACKS: Final = 200
-MAX_SECONDS: Final = 7200  # 120 minutes of source or output
+MAX_SECONDS: Final = 9000  # 150 minutes (ADR 0036 section 4.2) of source or output
 MAX_FRAMES: Final = MAX_SECONDS * RATE
 TRACK_INTS: Final = ("src_start", "src_end", "dst_start", "fade_in", "fade_out")
 

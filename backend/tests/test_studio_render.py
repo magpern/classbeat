@@ -7,6 +7,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -316,8 +317,13 @@ async def test_peak_rss_stays_under_the_cap_for_a_long_plan(tmp_path: Path) -> N
         entry(source, 5 * s, 65 * s, i * 55 * s, fade_in=fade if i else 0, fade_out=fade)
         for i in range(20)
     ]
+    started = time.monotonic()
     result = await run(tmp_path, tracks)
+    elapsed = time.monotonic() - started
     assert result.duration_sec == pytest.approx(19 * 55 + 60, abs=0.1)
+    # The wall-clock cap (1200 s) is 3x the time 150 minutes would take at 25x real time; the
+    # rate measured on a laptop is about 280x. Below 10x the cap no longer covers 150 minutes.
+    assert result.duration_sec / elapsed >= 10
     assert result.peak_rss is not None
     assert result.peak_rss < render.MAX_RSS_BYTES
 
@@ -412,3 +418,12 @@ def test_a_good_plan_is_accepted_and_its_length_is_where_the_last_track_ends() -
         {"output": "o", "tracks": [good_track(), good_track(dst_start=800, src_end=2000)]}
     )
     assert render_policy.composed_frames(tracks) == 800 + 2000
+
+
+def test_a_class_of_150_minutes_is_the_longest_output() -> None:
+    assert render_policy.MAX_SECONDS == 150 * 60
+    full = {"output": "o", "tracks": [good_track(src_end=render_policy.MAX_FRAMES)]}
+    assert render_policy.composed_frames(render_policy.validate_plan(full)) == 150 * 60 * RATE
+    over = {"output": "o", "tracks": [good_track(src_end=render_policy.MAX_FRAMES, dst_start=1)]}
+    with pytest.raises(ValueError, match=r"too long"):
+        render_policy.validate_plan(over)

@@ -39,6 +39,9 @@ from classbeat.design.sandbox import LINUX, SandboxError, make_undumpable
 from classbeat.studio import render_policy
 
 MAX_RSS_BYTES: Final = 1024**3
+# Measured (macOS, one core, 20 minutes of output): about 280x real time, so 150 minutes take about
+# 30 s; a CI Linux runner was not measured but the test below demands at least 10x. The cap is
+# three times a conservative 150-minute estimate (at 25x real time, 360 s), never under 1200 s.
 RENDER_SECONDS: Final = 1200.0
 POLL_SECONDS: Final = 0.1
 MAX_OUTPUT_BYTES: Final = 4096  # the child's one line
