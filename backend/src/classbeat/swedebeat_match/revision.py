@@ -45,7 +45,10 @@ from classbeat.swedebeat_match.verdict_policy import SAME_SONG
 
 KIND: Final = "swedebeat_match"
 VERSION: Final = 1
-MATCHER_VERSION: Final = 1
+# 2: the verdict is classbeat's 0.85 on the gateway's score (ADR 0035 section 6); 1 was the
+# library's title_score on per-song searches. Only recorded in the provenance: approval, the
+# hand-off's stale_match and the replace bind a match by its song list, never by this number.
+MATCHER_VERSION: Final = 2
 MUSIC_SOURCE: Final = "swedebeat_catalogue"
 MAX_SONGS: Final = 40  # ADR 0016 section 5: at most 40 songs per job (a song list's own limit)
 

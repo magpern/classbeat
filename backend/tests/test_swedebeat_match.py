@@ -426,6 +426,7 @@ async def test_two_users_match_with_one_call_each_and_their_bearers_never_mix(
         }
         assert match.provenance["origin"] == "swedebeat_match"
         assert match.provenance["threshold"] == 0.85
+        assert match.provenance["matcher_version"] == 2  # the gateway's score, ADR 0035
         assert match.parent_id == rider.revision_id
         held = _held(admin, rider)
         assert (held.status, held.last_error) == ("connected", None)
