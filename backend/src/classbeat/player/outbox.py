@@ -17,7 +17,8 @@ seconds to one worker; ``delivered``, ``retry`` and ``give_up`` write only under
 ``lease_version`` and worker, so a stale worker changes nothing. ``maintain`` requeues expired
 leases (``lease_version + 1`` again), marks rows past ``give_up_at`` or their 40 attempts
 ``failed``, and purges failed rows 30 days after their ``give_up_at`` (so at least 30 days after
-they failed). ``failed_events`` lists the failed rows for the admin area (no ``sub``, no ``jti``).
+they failed). ``failed_events`` lists the failed rows for the admin area's audited list: with
+the ``sub`` (the operator tells the player's operator which account it is), never the ``jti``.
 
 The admin area's erase and disable run these writers on ``classbeat_maint``, whose grants
 (``docker/postgres/maint/30-maint.sql``) allow exactly the statements here: no ``RETURNING`` and
@@ -26,7 +27,7 @@ no read of ``jti`` in the writers.
 
 import secrets
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Final
 from uuid import UUID
@@ -137,6 +138,12 @@ async def claim(db: AsyncSession, worker: str) -> Claim | None:
     )
 
 
+async def database_now(db: AsyncSession) -> datetime:
+    """The database's ``now()``: the clock ``claim`` and ``maintain`` compare against, so a
+    retry's ``available_at`` is scheduled on it too (ADR 0034 section 2)."""
+    return (await db.execute(select(func.now()))).scalar_one()
+
+
 def _fenced(lease: Claim) -> ColumnElement[bool]:
     return and_(
         t.c.id == lease.id,
@@ -199,9 +206,11 @@ async def maintain(db: AsyncSession) -> dict[str, int]:
 
 @dataclass(frozen=True, slots=True)
 class FailedEvent:
-    """A failed event as the admin area shows it: never its ``sub`` or ``jti``."""
+    """A failed event as the admin area's audited list shows it (ADR 0034 section 2): the
+    ``sub`` is there for the operator, never in ``repr``; there is no ``jti``."""
 
     kind: str
+    sub: str = field(repr=False)
     created_at: datetime
     give_up_at: datetime
     attempts: int
@@ -209,18 +218,18 @@ class FailedEvent:
 
 
 async def failed_events(db: AsyncSession) -> tuple[list[FailedEvent], bool]:
-    """The failed events, oldest first, at most ``FAILED_LIST_ROWS``; and whether there were
-    more."""
+    """The failed events (only ``state = 'failed'``), oldest first, at most
+    ``FAILED_LIST_ROWS``; and whether there were more."""
     rows = (
         await db.execute(
-            select(t.c.kind, t.c.created_at, t.c.give_up_at, t.c.attempt, t.c.last_error)
+            select(t.c.kind, t.c.sub, t.c.created_at, t.c.give_up_at, t.c.attempt, t.c.last_error)
             .where(t.c.state == "failed")
             .order_by(t.c.created_at, t.c.id)
             .limit(FAILED_LIST_ROWS + 1)
         )
     ).all()
     events = [
-        FailedEvent(r.kind, r.created_at, r.give_up_at, r.attempt, r.last_error)
+        FailedEvent(r.kind, r.sub, r.created_at, r.give_up_at, r.attempt, r.last_error)
         for r in rows[:FAILED_LIST_ROWS]
     ]
     return events, len(rows) > FAILED_LIST_ROWS

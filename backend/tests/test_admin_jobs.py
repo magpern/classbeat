@@ -175,5 +175,4 @@ async def test_an_empty_queue_answers_empty_lists(env: Env, make_actor: Any) -> 
     body = (await actor.get(JOBS)).json()
     assert body == {"days": 7, "states": [], "waiting_approvals": [], "waiting_truncated": False,
                     "failures": [], "uncertain_operations": [],
-                    "uncertain_truncated": False, "failed_player_events": [],
-                    "player_events_truncated": False}  # fmt: skip
+                    "uncertain_truncated": False}  # fmt: skip

@@ -210,6 +210,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/admin/abuse"): "admin",
     ("POST", "/api/admin/users/{user_id}/credits/{ledger_id}/refund"): "admin",
     ("GET", "/api/admin/jobs"): "admin",
+    ("GET", "/api/admin/player-events"): "admin",  # ADR 0034 s. 2: failed events, with sub
     ("GET", "/api/admin/invites"): "admin",
     ("POST", "/api/admin/invites"): "admin",
     ("POST", "/api/admin/invites/{invite_id}/disable"): "admin",

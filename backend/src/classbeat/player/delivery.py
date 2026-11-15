@@ -104,8 +104,14 @@ async def deliver_once(
     client_factory: Callable[[], httpx.AsyncClient] = player_async_client,
     now: Callable[[], datetime] = _utcnow,
     jitter: Callable[[], float] = _jitter,
+    clock: Callable[[], datetime] | None = None,
 ) -> Delivery | None:
-    """Deliver one due event, or ``None`` when none is due."""
+    """Deliver one due event, or ``None`` when none is due.
+
+    ``now`` is the token's ``iat`` (the worker's clock; the player checks it against its own).
+    The retry is scheduled on ``clock``, by default the database's ``now()`` read in the
+    transaction that records it: the clock ``claim`` and ``maintain`` compare ``available_at``
+    and ``give_up_at`` against, so the two never mix."""
     async with system_session(factory) as db:
         lease = await outbox.claim(db, worker)
     if lease is None:
@@ -125,8 +131,9 @@ async def deliver_once(
         if error is None:
             outcome: Outcome = "delivered" if await outbox.delivered(db, lease) else "lost"
         else:
+            at = clock() if clock is not None else await outbox.database_now(db)
             step = after_failure(
-                attempt=lease.attempt, now=now(), give_up_at=lease.give_up_at, jitter=jitter()
+                attempt=lease.attempt, now=at, give_up_at=lease.give_up_at, jitter=jitter()
             )
             if isinstance(step, GiveUp):
                 outcome = "failed" if await outbox.give_up(db, lease, error) else "lost"

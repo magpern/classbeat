@@ -121,6 +121,23 @@ back-channel logout token, POSTed to `<CLASSBEAT_PLAYER_BASE_URL>/api/classbeat/
   maint (the operator's erase and the CLI's revocations). Without it, an account delete or a
   revocation for a user the player knows is refused rather than losing the event.
 
+**An undelivered event.** A failed event means the player never heard of the change, and its
+account stays as it was. For an `account_deleted`, the user row is already gone, so section 3
+can no longer compute the subject. Use the list instead:
+
+1. Open **Admin, Jobs, Undelivered player events**. Each row shows the event, the user's
+   pairwise **subject** (`sub`), when it was written, when delivery gave up, the attempts and
+   the last error category. Only failed events are listed, never a pending one and never the
+   event's `jti`. Every opening of the list is an `admin_audit` row (`player.event.list`).
+2. Look at the last error. `status_4xx` usually means the player refused the token: check the
+   client id and the published keys with the player's operator. `network`, `timeout` and
+   `status_5xx` mean the player could not be reached.
+3. Send the player's operator the subject and the event, over the channel you agreed with them.
+   For `account_deleted` they delete that account (player ADR 0010 §8, `admin account delete`);
+   for `sessions_revoked` they end its sessions. Send nothing else: the subject identifies the
+   account to the player and to no one else.
+4. Nothing to clear here: the row is purged 30 days after delivery gave up.
+
 > Mounting `oidc_signing_keys` into the worker, and `oidc_pairwise_key` into web and maint, in the
 > deploy compose files is a separate tooling change; until it lands, leave
 > `CLASSBEAT_PLAYER_BASE_URL` unset in production.

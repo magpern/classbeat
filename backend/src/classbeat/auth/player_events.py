@@ -4,8 +4,9 @@ paths and the worker.
 - ``sessions_revoked``: called by ``sessions.revoke_user_sessions``, the one path that ends all
   (or all other) sessions of a user, which every revocation of ADR 0003 sections 3 and 7 takes
   (password, email and reset changes, role grants and ``admin revoke``, ``admin mfa-reset``, the
-  TOTP reset of ``keys wipe``, admin disable, sign out everywhere, TOTP removed or replaced).
-  Signing out one session (``revoke_session``) writes nothing.
+  TOTP reset of ``keys wipe``, admin disable, sign out everywhere, TOTP removed).
+  Signing out one session (``revoke_session``) writes nothing, and neither does confirming a
+  replacement TOTP: it rotates the current session and ends no other.
 - ``account_deleted``: called by ``admin_accounts.delete_account``, which the user's own delete
   and the operator's erase both take, before the ``users`` row goes.
 - ``load_event_signer``: the worker's signer of the logout tokens (exported, with

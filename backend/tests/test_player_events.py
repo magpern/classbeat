@@ -3,9 +3,10 @@ transaction as the change, the row outliving its user, and the leased, fenced de
 player (``playertools``) with its retries, its 40-attempt and 7-day caps and the 30-day purge."""
 
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import httpx
@@ -150,8 +151,8 @@ async def test_a_retry_reuses_the_jti_with_a_new_iat_after_the_backoff(penv: Env
     player = await fake_player(penv)
     player.statuses = [503, 400]
     start = datetime.now(UTC)
-    clock = iter([start, start, start + timedelta(minutes=2), start + timedelta(minutes=2)])
-    first = await deliver(penv, player, now=lambda: next(clock), jitter=lambda: 0.0)
+    later = start + timedelta(minutes=2)
+    first = await deliver(penv, player, now=lambda: start, clock=lambda: start, jitter=lambda: 0.0)
     assert (first.outcome, first.error) == ("retry", "status_5xx")
     row = await penv.row(
         "SELECT attempt, last_error, available_at, leased_by, lease_version FROM player_events"
@@ -160,12 +161,73 @@ async def test_a_retry_reuses_the_jti_with_a_new_iat_after_the_backoff(penv: Env
     assert row.available_at == start + timedelta(seconds=30)
     assert await deliver(penv, player) is None  # not due yet
     await penv.run("UPDATE player_events SET available_at = now()")
-    second = await deliver(penv, player, now=lambda: next(clock), jitter=lambda: 0.0)
+    second = await deliver(penv, player, now=lambda: later, clock=lambda: later, jitter=lambda: 0.0)
     assert (second.outcome, second.error) == ("retry", "status_4xx")
     one, two = player.received
     assert one["jti"] == two["jti"]
     assert two["iat"] - one["iat"] == 120
     assert await penv.scalar("SELECT attempt FROM player_events") == 2
+
+
+async def test_a_retry_is_scheduled_on_the_database_clock(penv: Env) -> None:
+    user_id = await player_user(penv)
+    await delete(penv, user_id)
+    player = await fake_player(penv)
+    player.statuses = [503]
+    skewed = datetime.now(UTC) + timedelta(hours=3)  # a worker clock far ahead of the database
+    before = cast(datetime, await penv.scalar("SELECT now()"))
+    result = await deliver(penv, player, now=lambda: skewed, jitter=lambda: 0.0)
+    after = cast(datetime, await penv.scalar("SELECT now()"))
+    assert (result.outcome, result.error) == ("retry", "status_5xx")
+    available_at = cast(datetime, await penv.scalar("SELECT available_at FROM player_events"))
+    assert before + timedelta(seconds=30) <= available_at <= after + timedelta(seconds=30)
+
+
+async def expired_and_requeued(env: Env) -> None:
+    await env.run("UPDATE player_events SET lease_expires_at = now() - interval '1 second'")
+    async with env.db() as db:
+        assert (await outbox.maintain(db))["requeued"] == 1
+
+
+async def refused_everywhere(env: Env, lease: outbox.Claim) -> None:
+    async with env.db() as db:
+        assert not await outbox.delivered(db, lease)
+        assert not await outbox.retry(db, lease, datetime.now(UTC), "network")
+        assert not await outbox.give_up(db, lease, "network")
+
+
+async def test_the_lease_version_alone_fences_the_same_worker_after_a_requeue(penv: Env) -> None:
+    user_id = await player_user(penv)
+    await delete(penv, user_id)
+    async with penv.db() as db:
+        stale = await outbox.claim(db, "w1")
+    assert stale is not None
+    await expired_and_requeued(penv)
+    async with penv.db() as db:
+        fresh = await outbox.claim(db, "w1")  # the same worker id claims again
+    assert fresh is not None
+    assert (fresh.worker, fresh.id) == (stale.worker, stale.id)
+    assert fresh.lease_version > stale.lease_version
+    await refused_everywhere(penv, stale)
+    row = await penv.row("SELECT leased_by, state, last_error, attempt FROM player_events")
+    assert (row.leased_by, row.state, row.last_error, row.attempt) == ("w1", "pending", None, 2)
+    async with penv.db() as db:
+        assert await outbox.delivered(db, fresh)
+    assert await rows(penv) == []
+
+
+async def test_the_worker_alone_fences_a_lease_of_the_same_version(penv: Env) -> None:
+    user_id = await player_user(penv)
+    await delete(penv, user_id)
+    async with penv.db() as db:
+        lease = await outbox.claim(db, "w1")
+    assert lease is not None
+    await refused_everywhere(penv, replace(lease, worker="w2"))  # same version, another worker
+    row = await penv.row("SELECT leased_by, state, last_error FROM player_events")
+    assert (row.leased_by, row.state, row.last_error) == ("w1", "pending", None)
+    async with penv.db() as db:
+        assert await outbox.delivered(db, lease)
+    assert await rows(penv) == []
 
 
 async def test_a_stale_worker_is_fenced_out(penv: Env) -> None:
@@ -232,7 +294,8 @@ async def test_after_7_days_the_event_fails_visibly_and_goes_30_days_later(penv:
     assert not truncated
     [event] = failed
     assert (event.kind, event.attempts, event.last_error) == ("account_deleted", 0, "expired")
-    assert not hasattr(event, "sub")
+    assert len(event.sub) == 43  # for the operator (ADR 0034 section 2)
+    assert event.sub not in repr(event)
     assert not hasattr(event, "jti")
     await penv.run(
         "UPDATE player_events SET created_at = now() - interval '38 days', "
@@ -250,7 +313,7 @@ async def test_the_last_failure_within_the_7_days_gives_up(penv: Env) -> None:
     player = await fake_player(penv)
     player.statuses = [500]
     later = datetime.now(UTC) + timedelta(minutes=2)
-    result = await deliver(penv, player, now=lambda: later)
+    result = await deliver(penv, player, clock=lambda: later)
     assert (result.outcome, result.error) == ("failed", "status_5xx")
     row = await penv.row("SELECT state, leased_by, last_error FROM player_events")
     assert (row.state, row.leased_by, row.last_error) == ("failed", None, "status_5xx")

@@ -9,14 +9,18 @@
 - **recent failures by category**: failed jobs that finished within ``days``, counted per kind
   and error category, with the latest;
 - **uncertain external operations**: owner (id and email), the operation's kind, since when
-  (its ``updated_at``) and its job's state (``None`` once the job went with its class);
-- **failed player events** (ADR 0034 section 2): kind, created, given up at, attempts and the
-  last error's category (``classbeat.player.outbox.failed_events``; never the subject or ``jti``),
-  kept 30 days after ``give_up_at``.
+  (its ``updated_at``) and its job's state (``None`` once the job went with its class).
 
-The lists stop at 200 rows; ``waiting_truncated``, ``uncertain_truncated`` and
-``player_events_truncated`` say when there were more, so a full list never reads as all of them
-(#227, PR #281 review).
+The lists stop at 200 rows; ``waiting_truncated`` and ``uncertain_truncated`` say when there were
+more, so a full list never reads as all of them (#227, PR #281 review).
+
+``GET /api/admin/player-events`` (``player.event.list``, its own audit row, so every sight of a
+subject is on the audit log): the **failed player events** of ADR 0034 section 2, oldest first,
+at most 200 (``truncated``), each with its kind, pairwise ``sub``, created, given up at, attempts
+and the last error's category, so the operator can tell the player's operator which account an
+undelivered ``account_deleted`` was for (the user row is gone, so ``admin player-subject`` cannot
+compute it any more). Only rows in the ``failed`` state, never a ``jti``; failed rows are purged
+30 days after ``give_up_at``. Admin role only, like every route here (``AdminActor``).
 
 Read only (ADR 0011 section 6: an uncertain operation stays the user's to resolve, ADR 0005
 section 7). Never a job's input, stage detail, keys or hashes, an operation's idempotency key,
@@ -30,7 +34,7 @@ from typing import Annotated, Final
 from uuid import UUID
 
 from fastapi import Query, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
 from classbeat import auth
@@ -93,6 +97,7 @@ class UncertainOperation(Out):
 
 class FailedPlayerEvent(Out):
     kind: str
+    sub: str = Field(repr=False)  # for the operator; never in a repr or a log line
     created_at: datetime
     give_up_at: datetime
     attempts: int
@@ -108,8 +113,11 @@ class JobsOut(Out):
     failures: list[Failure]
     uncertain_operations: list[UncertainOperation]
     uncertain_truncated: bool
-    failed_player_events: list[FailedPlayerEvent]
-    player_events_truncated: bool
+
+
+class PlayerEventsOut(Out):
+    events: list[FailedPlayerEvent]
+    truncated: bool
 
 
 def _db(request: Request) -> AdminDb:
@@ -133,7 +141,6 @@ async def read_jobs(
             len(uncertain) > LIST_ROWS,
         )
         waiting, uncertain = waiting[:LIST_ROWS], uncertain[:LIST_ROWS]
-        player_events, player_events_truncated = await failed_events(db)
         emails = await auth.account_emails(
             db, {r.owner_id for r in waiting} | {r.owner_id for r in uncertain}
         )
@@ -166,15 +173,24 @@ async def read_jobs(
             for r in uncertain
         ],
         uncertain_truncated=uncertain_truncated,
-        failed_player_events=[
+    )
+
+
+@router.get("/player-events", response_model=PlayerEventsOut)
+async def read_player_events(request: Request, actor: AdminActor) -> PlayerEventsOut:
+    async with admin_session(_db(request), actor, "player.event.list") as db:
+        events, truncated = await failed_events(db)
+    return PlayerEventsOut(
+        events=[
             FailedPlayerEvent(
                 kind=e.kind,
+                sub=e.sub,
                 created_at=e.created_at,
                 give_up_at=e.give_up_at,
                 attempts=e.attempts,
                 last_error=e.last_error,
             )
-            for e in player_events
+            for e in events
         ],
-        player_events_truncated=player_events_truncated,
+        truncated=truncated,
     )
