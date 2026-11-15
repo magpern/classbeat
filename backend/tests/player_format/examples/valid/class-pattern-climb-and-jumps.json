@@ -1,0 +1,219 @@
+{
+  "format_version": "1.1",
+  "class": {
+    "title": "Climb and jumps",
+    "description": "A three-step climb inside one song, then 8 up and 8 down on the beat.",
+    "sport": "cycling",
+    "length_ms": 600000
+  },
+  "music": {
+    "source": "spotify",
+    "design_crossfade_ms": 9000,
+    "song_timing": "measured"
+  },
+  "zone_scale": [
+    {
+      "zone": 1,
+      "name": "Recovery",
+      "ftp_pct": [
+        0,
+        55
+      ],
+      "rpe": [
+        1,
+        2
+      ]
+    },
+    {
+      "zone": 2,
+      "name": "Endurance",
+      "ftp_pct": [
+        56,
+        75
+      ],
+      "rpe": [
+        3,
+        4
+      ]
+    },
+    {
+      "zone": 3,
+      "name": "Tempo",
+      "ftp_pct": [
+        76,
+        90
+      ],
+      "hrmax_pct": [
+        75,
+        85
+      ],
+      "rpe": [
+        5,
+        6
+      ]
+    },
+    {
+      "zone": 4,
+      "name": "Threshold",
+      "ftp_pct": [
+        91,
+        105
+      ],
+      "rpe": [
+        7,
+        8
+      ]
+    },
+    {
+      "zone": 5,
+      "name": "VO2 max",
+      "ftp_pct": [
+        106,
+        120
+      ],
+      "rpe": [
+        9,
+        10
+      ]
+    }
+  ],
+  "totals": {
+    "length_ms": 600000,
+    "time_in_zone_ms": {
+      "1": 180000,
+      "2": 180000,
+      "3": 60000,
+      "4": 60000,
+      "5": 120000
+    }
+  },
+  "segments": [
+    {
+      "name": "Warm up",
+      "kind": "warmup",
+      "start_ms": 0,
+      "end_ms": 300000
+    },
+    {
+      "name": "Climb and jumps",
+      "kind": "main",
+      "start_ms": 300000,
+      "end_ms": 540000
+    },
+    {
+      "name": "Cool down",
+      "kind": "cooldown",
+      "start_ms": 540000,
+      "end_ms": 600000
+    }
+  ],
+  "intervals": [
+    {
+      "start_ms": 0,
+      "length_ms": 120000,
+      "zone": 1,
+      "cadence": {
+        "from": 80,
+        "to": 90
+      },
+      "position": "seated",
+      "cue": "Easy spin"
+    },
+    {
+      "start_ms": 120000,
+      "length_ms": 180000,
+      "zone": 2,
+      "cadence": {
+        "from": 85,
+        "to": 95
+      },
+      "position": "seated",
+      "cue": "Steady"
+    },
+    {
+      "start_ms": 300000,
+      "length_ms": 60000,
+      "zone": 3,
+      "cadence": {
+        "from": 70,
+        "to": 80
+      },
+      "position": "seated",
+      "cue": "Climb, first step"
+    },
+    {
+      "start_ms": 360000,
+      "length_ms": 60000,
+      "zone": 4,
+      "cadence": {
+        "from": 65,
+        "to": 75
+      },
+      "position": "seated",
+      "cue": "Climb, add load"
+    },
+    {
+      "start_ms": 420000,
+      "length_ms": 60000,
+      "zone": 5,
+      "cadence": {
+        "from": 60,
+        "to": 70
+      },
+      "position": "seated",
+      "cue": "Climb, top of the hill"
+    },
+    {
+      "start_ms": 480000,
+      "length_ms": 60000,
+      "zone": 5,
+      "cadence": {
+        "from": 60,
+        "to": 70
+      },
+      "position": "seated",
+      "cue": "Jumps, eight up and eight down",
+      "pattern": {
+        "kind": "alternate",
+        "positions": [
+          "seated",
+          "standing"
+        ],
+        "beats": [
+          8,
+          8
+        ],
+        "start_on": "next_downbeat"
+      }
+    },
+    {
+      "start_ms": 540000,
+      "length_ms": 60000,
+      "zone": 1,
+      "cadence": {
+        "from": 70,
+        "to": 80
+      },
+      "position": "seated",
+      "cue": "Cool down"
+    }
+  ],
+  "songs": [
+    {
+      "title": "Alpha",
+      "artist": "The Firsts",
+      "length_ms": 300000,
+      "start_ms": 0,
+      "end_ms": 300000,
+      "bpm": 120
+    },
+    {
+      "title": "Beta",
+      "artist": "Second Wind",
+      "length_ms": 300000,
+      "start_ms": 300000,
+      "end_ms": 600000,
+      "bpm": 128
+    }
+  ]
+}

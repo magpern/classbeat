@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://classbeat.example/schema/class-format/v1/class.schema.json",
+  "title": "Class",
+  "description": "One class as the player plays it (ADR 0003). Strict: this is the schema a producer validates against. Readers use the lax form the validators derive from it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format_version", "class", "music", "zone_scale", "totals", "intervals", "songs"],
+  "properties": {
+    "format_version": { "$ref": "#/$defs/formatVersion" },
+    "class": { "$ref": "#/$defs/classInfo" },
+    "music": { "$ref": "#/$defs/music" },
+    "zone_scale": { "type": "array", "minItems": 1, "maxItems": 7, "items": { "$ref": "#/$defs/zoneDef" } },
+    "totals": { "$ref": "#/$defs/totals" },
+    "segments": { "type": "array", "items": { "$ref": "#/$defs/segment" } },
+    "intervals": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/interval" } },
+    "songs": { "type": "array", "items": { "$ref": "#/$defs/song" } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "format_version": { "const": "1.0" } }, "required": ["format_version"] },
+      "then": { "properties": { "intervals": { "items": { "not": { "required": ["pattern"] } } } } }
+    },
+    {
+      "if": { "properties": { "music": { "properties": { "source": { "const": "none" } } } } },
+      "then": {
+        "properties": {
+          "music": { "properties": { "song_timing": { "const": "missing" } } },
+          "songs": { "maxItems": 0 }
+        }
+      },
+      "else": { "properties": { "songs": { "minItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "class": { "properties": { "sport": { "const": "cycling" } } } } },
+      "then": {
+        "properties": {
+          "intervals": {
+            "items": { "required": ["cadence", "position"], "not": { "required": ["incline"] } }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "intervals": {
+            "items": {
+              "required": ["incline"],
+              "not": { "anyOf": [{ "required": ["cadence"] }, { "required": ["position"] }, { "required": ["pattern"] }, { "required": ["test"] }] }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "formatVersion": { "enum": ["1.0", "1.1"] },
+    "ms": { "type": "integer", "minimum": 0 },
+    "positiveMs": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "range": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number", "minimum": 0 }
+    },
+    "quality": { "enum": ["measured", "estimated", "missing"] },
+    "classInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "sport", "length_ms"],
+      "properties": {
+        "title": { "$ref": "#/$defs/name" },
+        "description": { "type": "string", "maxLength": 2000 },
+        "sport": { "enum": ["cycling", "running"] },
+        "length_ms": { "type": "integer", "minimum": 1, "maximum": 86400000 }
+      }
+    },
+    "music": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "design_crossfade_ms", "song_timing"],
+      "properties": {
+        "source": { "enum": ["spotify", "swedebeat", "none"] },
+        "design_crossfade_ms": { "type": "integer", "minimum": 0, "maximum": 30000 },
+        "song_timing": { "$ref": "#/$defs/quality" }
+      }
+    },
+    "zoneDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zone", "name"],
+      "properties": {
+        "zone": { "type": "integer", "minimum": 1, "maximum": 7 },
+        "name": { "$ref": "#/$defs/name" },
+        "ftp_pct": { "$ref": "#/$defs/range" },
+        "hrmax_pct": { "$ref": "#/$defs/range" },
+        "rpe": { "$ref": "#/$defs/range" }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["length_ms", "time_in_zone_ms"],
+      "properties": {
+        "length_ms": { "type": "integer", "minimum": 1, "maximum": 86400000 },
+        "time_in_zone_ms": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "pattern": "^[1-7]$" },
+          "additionalProperties": { "$ref": "#/$defs/ms" }
+        },
+        "planned_load": { "type": "number", "minimum": 0 }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "start_ms", "end_ms"],
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "kind": { "enum": ["warmup", "main", "recovery", "cooldown"] },
+        "start_ms": { "$ref": "#/$defs/ms" },
+        "end_ms": { "$ref": "#/$defs/positiveMs" }
+      }
+    },
+    "cadence": {
+      "oneOf": [
+        { "const": "beat" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to"],
+          "properties": {
+            "from": { "type": "number", "minimum": 1, "maximum": 300 },
+            "to": { "type": "number", "minimum": 1, "maximum": 300 }
+          }
+        }
+      ]
+    },
+    "positionPattern": {
+      "description": "Format 1.1. Position changes counted in beats, repeated over the interval. positions and beats have the same length (semantic rule pattern_length_mismatch).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "positions", "beats"],
+      "properties": {
+        "kind": { "const": "alternate" },
+        "positions": { "type": "array", "minItems": 2, "maxItems": 4, "items": { "enum": ["seated", "standing"] } },
+        "beats": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4,
+          "items": { "type": "integer", "minimum": 1, "maximum": 64 }
+        },
+        "start_on": { "enum": ["interval_start", "next_downbeat"] }
+      }
+    },
+    "interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_ms", "length_ms", "zone", "cue"],
+      "properties": {
+        "start_ms": { "$ref": "#/$defs/ms" },
+        "length_ms": { "$ref": "#/$defs/positiveMs" },
+        "zone": { "type": "integer", "minimum": 1, "maximum": 7 },
+        "cadence": { "$ref": "#/$defs/cadence" },
+        "position": { "enum": ["seated", "standing"] },
+        "pattern": { "$ref": "#/$defs/positionPattern" },
+        "incline": { "enum": ["flat", "raised"] },
+        "cue": { "type": "string", "maxLength": 120 },
+        "test": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "minutes"],
+          "properties": {
+            "kind": { "const": "ftp" },
+            "minutes": { "enum": [3, 5, 20] }
+          }
+        }
+      }
+    },
+    "song": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "artist", "length_ms", "start_ms", "end_ms"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "artist": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "length_ms": { "$ref": "#/$defs/positiveMs" },
+        "start_ms": { "$ref": "#/$defs/ms" },
+        "end_ms": { "$ref": "#/$defs/positiveMs" },
+        "bpm": { "type": "number", "minimum": 30, "maximum": 300 },
+        "ids": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "spotify_track": { "type": "string", "pattern": "^[A-Za-z0-9]{22}$" },
+            "isrc": { "type": "string", "pattern": "^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$" },
+            "swedebeat_mix": { "type": "string", "minLength": 1, "maxLength": 100 }
+          }
+        },
+        "beat_anchors": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["quality", "anchors"],
+          "properties": {
+            "quality": { "$ref": "#/$defs/quality" },
+            "anchors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["at_ms", "bpm"],
+                "properties": {
+                  "at_ms": { "$ref": "#/$defs/ms" },
+                  "bpm": { "type": "number", "minimum": 30, "maximum": 300 }
+                }
+              }
+            }
+          },
+          "if": { "properties": { "quality": { "const": "missing" } } },
+          "then": { "properties": { "anchors": { "maxItems": 0 } } },
+          "else": { "properties": { "anchors": { "minItems": 1 } } }
+        },
+        "moments": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["quality", "items"],
+          "properties": {
+            "quality": { "$ref": "#/$defs/quality" },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["at_ms", "kind"],
+                "properties": {
+                  "at_ms": { "$ref": "#/$defs/ms" },
+                  "kind": { "enum": ["drop", "breakdown", "build", "other"] }
+                }
+              }
+            }
+          },
+          "if": { "properties": { "quality": { "const": "missing" } } },
+          "then": { "properties": { "items": { "maxItems": 0 } } },
+          "else": { "properties": { "items": { "minItems": 1 } } }
+        }
+      }
+    }
+  }
+}

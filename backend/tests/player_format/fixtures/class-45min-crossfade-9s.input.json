@@ -1,0 +1,249 @@
+{
+  "name": "Forty-five minute ride",
+  "description": "A steady ride with threshold blocks and two climbs on the beat.",
+  "sport": "cycling",
+  "segments": [
+    {
+      "name": "Warm up",
+      "kind": "warmup",
+      "intervals": [
+        {
+          "sec": 300,
+          "zone": 1,
+          "rpm": [
+            80,
+            90
+          ],
+          "standing": false,
+          "cue": "Warm up, easy legs"
+        },
+        {
+          "sec": 300,
+          "zone": 2,
+          "rpm": [
+            85,
+            95
+          ],
+          "standing": false,
+          "cue": "Build the base"
+        }
+      ]
+    },
+    {
+      "name": "Main set",
+      "kind": "main",
+      "intervals": [
+        {
+          "sec": 240,
+          "zone": 3,
+          "rpm": [
+            90,
+            100
+          ],
+          "standing": false,
+          "cue": "Tempo, steady breathing"
+        },
+        {
+          "sec": 120,
+          "zone": 2,
+          "rpm": [
+            80,
+            90
+          ],
+          "standing": false,
+          "cue": "Recover"
+        },
+        {
+          "sec": 240,
+          "zone": 4,
+          "rpm": [
+            85,
+            95
+          ],
+          "standing": false,
+          "cue": "Threshold, hold it"
+        },
+        {
+          "sec": 120,
+          "zone": 2,
+          "rpm": [
+            80,
+            90
+          ],
+          "standing": false,
+          "cue": "Recover"
+        },
+        {
+          "sec": 240,
+          "zone": 4,
+          "rpm": [
+            85,
+            95
+          ],
+          "standing": false,
+          "cue": "Threshold again"
+        },
+        {
+          "sec": 120,
+          "zone": 2,
+          "rpm": [
+            80,
+            90
+          ],
+          "standing": false,
+          "cue": "Recover"
+        },
+        {
+          "sec": 180,
+          "zone": 5,
+          "rpm": "beat",
+          "standing": true,
+          "cue": "Climb on the beat"
+        },
+        {
+          "sec": 120,
+          "zone": 2,
+          "rpm": [
+            80,
+            90
+          ],
+          "standing": false,
+          "cue": "Recover"
+        },
+        {
+          "sec": 180,
+          "zone": 5,
+          "rpm": "beat",
+          "standing": true,
+          "cue": "Last climb"
+        },
+        {
+          "sec": 120,
+          "zone": 2,
+          "rpm": [
+            80,
+            90
+          ],
+          "standing": false,
+          "cue": "Recover"
+        },
+        {
+          "sec": 300,
+          "zone": 4,
+          "rpm": [
+            85,
+            95
+          ],
+          "standing": false,
+          "cue": "Five minute test, pace it evenly",
+          "ftp_test": 5
+        }
+      ]
+    },
+    {
+      "name": "Cool down",
+      "kind": "cooldown",
+      "intervals": [
+        {
+          "sec": 120,
+          "zone": 1,
+          "rpm": [
+            70,
+            80
+          ],
+          "standing": false,
+          "cue": "Cool down"
+        }
+      ]
+    }
+  ],
+  "music": {
+    "crossfade_sec": 9.0,
+    "songs": [
+      {
+        "spotify_id": "FAKEtrack0000000000001",
+        "title": "Fixture Song 1",
+        "artist": "Example Artist A",
+        "bpm": 120,
+        "length_sec": 234
+      },
+      {
+        "spotify_id": "FAKEtrack0000000000002",
+        "title": "Fixture Song 2",
+        "artist": "Example Artist B",
+        "bpm": 124,
+        "length_sec": 234
+      },
+      {
+        "spotify_id": "FAKEtrack0000000000003",
+        "title": "Fixture Song 3",
+        "artist": "Example Artist C",
+        "bpm": 128,
+        "length_sec": 234
+      },
+      {
+        "spotify_id": "FAKEtrack0000000000004",
+        "title": "Fixture Song 4",
+        "artist": "Example Artist A",
+        "bpm": 132,
+        "length_sec": 234
+      },
+      {
+        "spotify_id": "FAKEtrack0000000000005",
+        "title": "Fixture Song 5",
+        "artist": "Example Artist B",
+        "bpm": 120,
+        "length_sec": 234
+      },
+      {
+        "spotify_id": "FAKEtrack0000000000006",
+        "title": "Fixture Song 6",
+        "artist": "Example Artist C",
+        "bpm": 124,
+        "length_sec": 234
+      },
+      {
+        "spotify_id": "FAKEtrack0000000000007",
+        "title": "Fixture Song 7",
+        "artist": "Example Artist A",
+        "bpm": 128,
+        "length_sec": 234
+      },
+      {
+        "spotify_id": "FAKEtrack0000000000008",
+        "title": "Fixture Song 8",
+        "artist": "Example Artist B",
+        "bpm": 132,
+        "length_sec": 234
+      },
+      {
+        "spotify_id": "FAKEtrack0000000000009",
+        "title": "Fixture Song 9",
+        "artist": "Example Artist C",
+        "bpm": 120,
+        "length_sec": 234
+      },
+      {
+        "spotify_id": "FAKEtrack0000000000010",
+        "title": "Fixture Song 10",
+        "artist": "Example Artist A",
+        "bpm": 124,
+        "length_sec": 234
+      },
+      {
+        "spotify_id": "FAKEtrack0000000000011",
+        "title": "Fixture Song 11",
+        "artist": "Example Artist B",
+        "bpm": 128,
+        "length_sec": 234
+      },
+      {
+        "spotify_id": "FAKEtrack0000000000012",
+        "title": "Fixture Song 12",
+        "artist": "Example Artist C",
+        "bpm": 132,
+        "length_sec": 234
+      }
+    ]
+  }
+}
