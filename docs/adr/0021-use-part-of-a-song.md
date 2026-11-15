@@ -1,6 +1,6 @@
 # ADR 0021: Use part of a song (trim an intro or outro, start mid-track) (#580)
 
-Status: Proposed (issue #580, nice-to-have). The finding is that **the feature is blocked today**:
+Status: Proposed (issue #580). **Amended 2026-11-15: unblocked for SwedeBeat mixes through the owner's gateway (see the last section); Spotify stays blocked.** The original finding was that **the feature is blocked**:
 no music source classbeat supports can play part of a song. The owner decides whether to wait for
 a source that can, schedule the design below, or close the issue.
 
@@ -175,3 +175,81 @@ relies on MOWL listing published mixes *(inferred, ADR 0016's note)*. The report
 Swedebeat are the owner's to send; agents do not contact Swedebeat. Never a route: the app's embedded AWS
 credentials, or imitating its upload or registration call. The decision is unchanged: #580 stays blocked,
 nothing is built, and T1 to T6 wait for a precondition and the owner.
+
+## Amendment 2026-11-15: unblocked for SwedeBeat mixes through the gateway (#580)
+
+**Owner decision (2026-11-15, in chat):** classbeat no longer talks to SwedeBeat. It talks to the
+owner's SwedeBeat gateway ([ADR 0035](0035-swedebeat-gateway.md)), whose contract
+(`magpern/sb-gateway-service`, `docs/api.md`) has `POST /playlists` and `PATCH /playlists/{id}` with a
+per-track `start_sec`, `end_sec` and `crossfade_sec`. That is route 2 of the 2026-11-13 note, a
+draft-playlist API, and the owner supplies it: precondition 3(b) **holds for SwedeBeat**. The owner also
+said #580 may be developed. The note's routes 1 (server render) and 3 (all by hand) are not used.
+Spotify tracks stay **not allowed** (decision 2, unchanged); a class whose music is a Spotify playlist
+has no trim.
+
+### What changes in the decision
+
+1. **Decision 1** ("do not build") is replaced by the build below, behind a setting that defaults off
+   (`CLASSBEAT_SWEDEBEAT_TRIM`, ADR 0010's activation style). With it off, or with a Spotify class,
+   nothing differs from today.
+2. **The shape, which is simpler than T1 to T6.** classbeat does not time a trimmed song against a
+   player. It writes a **private draft playlist** into the user's SwedeBeat account with the cuts, the
+   instructor presses Merge & Publish in the SwedeBeat app (ADR 0016 §7, unchanged: classbeat never
+   publishes), and the class is then designed on the **finished mix**, which MOWL analyses as today
+   (ADR 0016 (a)). The timeline is therefore the real mix's, not arithmetic that a player might not
+   follow. So `mowl-workouts` needs **no trim map** (T1 and T3 are dropped); the trim only affects
+   the song stage's total, the hand-off's expected length and the draft.
+3. **Data.** The song list carries per song `trim: {start_sec, end_sec}` (whole seconds, `0 <= start <
+   end <= length_sec`, effective length at least 60 s) as in decision 4's *Data*. The match keeps each
+   matched song's gateway `reference` (ADR 0035 §6 discarded it; **this amendment makes it the one kept
+   gateway field**, an opaque catalogue id of at most 64 characters, owned, deleted with the class,
+   never shown to a model). A song with no `reference` (unsure or missing) cannot be put in a draft.
+4. **Time.** As decision 4's *Time*, minus the map: the class total is the sum of effective lengths
+   less the 9 s crossfade per change, and the draft sets `crossfade_sec = 9` on each transition, so the
+   mix and the check agree. The hand-off's expected length (ADR 0016 §7) and its verdict use the same
+   total.
+5. **The write is an external write**, so it follows AGENTS.md's gate for approvals and external writes:
+   - Only after the user approves the song list, with its trims, in a **separate click**
+     ("Create the draft in SwedeBeat") that names what happens: a draft playlist named for the class,
+     private, **permanent (SwedeBeat has no delete)**, signed in with the user's own bearer.
+   - **One playlist per class.** The first click calls `POST /playlists` and stores the returned
+     `playlist_id`; every later click for that class calls `PATCH /playlists/{id}` (same id), so edits
+     never pile up records. A class with a stored id never creates a second one. If `PATCH` answers
+     502 "different id", the id is dropped, the user is told, and nothing is retried.
+   - The backend validates every track against the approved list (`reference` and trim come from the
+     stored list, never from the request body), caps it at 60 tracks (the gateway's limit) and sends
+     only `reference`, `start_sec`, `end_sec` and the crossfade. No title, artist or free text comes
+     from a model.
+   - **Never `publish` or `merge-publish`.** Publishing is permanent and shows the owner's name and
+     email; it stays the instructor's in the app. A guard test pins the paths: only `POST /playlists`
+     and `PATCH /playlists/{id}` are allowed (ADR 0035 §7's guard is relaxed to exactly these two).
+   - A 403 "writes are disabled" is a normal state: the button is hidden or says drafts are not on for
+     this server; it never retries. A 401 follows ADR 0035 §5.
+6. **The gateway's writes are the owner's switch** (a "Waiting for the owner" step, replacing "keep the
+   gateway's writes off"): the owner turns writes on for the gateway, accepting permanent records in
+   users' SwedeBeat accounts. Agents never turn it on, never call the playlist routes on a real gateway,
+   and never test against a real account (AGENTS.md safety envelope). The live check is the owner's, on
+   the owner's own account, with a throwaway draft.
+
+### Revised PR split (replaces the table above)
+
+| PR | Scope | Acceptance criteria (how tested) | Developer / Reviewer |
+|---|---|---|---|
+| T1 | Keep the match's `reference`; `ChosenSong.trim`; `total_sec` and `check_list` on effective lengths; limits and minimum length; the setting | the total uses effective lengths; bounds, minimum length and duplicates are refused; a model-written length or reference has no field; the 10 % check at both edges; setting off changes nothing (unit tests) | Opus / Opus (song stage, approvals) |
+| T2 | Client: `create_playlist` and `update_playlist` in `swedebeat_gateway`, path guard relaxed to those two, fake gateway routes (write, 403 off, 502 different id), egress unchanged | only the two paths exist; a body carries only the allowed fields; 403, 401 and 502 map to named states; no live call (client and guard tests on the fake) | Opus / Opus (external write) |
+| T3 | Revision, approval and the draft route: trims in `song_list` revisions and the approval hash, `swedebeat_drafts(owner_id, class_id, playlist_id)` with RLS, retention, GDPR export and deletion, the separate consent click, one playlist per class | an edited trim supersedes the approval; no draft without an approved list; a second click patches the stored id; a copy keeps trims but not the playlist id; another user's class is refused (route and database tests, RLS guard) | Opus / Opus |
+| T4 | Hand-off: "Next, in the SwedeBeat app" says "open the draft playlist, Merge & Publish"; expected length and verdict use the trimmed total | the text and the verdict follow the total (component and unit tests) | Sonnet / Sonnet |
+| T5 | Web: edit a song's start and end, show the effective length, the draft button and its states; sv and da | shows and edits the window; invalid input shows the backend's message; the button states (component tests) | Sonnet / Sonnet |
+| T6 | e2e on the fake gateway | a trimmed class is approved, a draft is created once and patched on a second click, the verdict matches the trimmed total | Sonnet / Sonnet |
+
+T1 to T3 are security-critical (approvals and an external write). Nothing here changes Spotify classes,
+and the original T1 (`mowl-workouts` `trim_map`) and T3 (a trimmed map) are not built.
+
+### Risks the owner accepts by approving this
+
+- Every draft is a **permanent record** in the user's SwedeBeat account (no delete), and a user with
+  many classes gets many drafts. The one-per-class rule and `PATCH` are the mitigation.
+- The gateway, not classbeat, decides what SwedeBeat sees. If SwedeBeat objects to cuts built by a third
+  party, the answer is the owner's (the report's licensing question stands).
+- Cuts are metadata: SwedeBeat's app applies them when it merges. If a merge ignores a cut, the verdict
+  (`too_long`) shows it and the instructor can override, as today.

@@ -33,7 +33,7 @@ Model *classes*, not versions: use the current generation of each tier. A model 
 never widens a role's authority. Agent definitions live in `.claude/agents/`.
 
 **Security-critical PRs get an Opus Developer** (owner decision, 2026-10-28): encryption and key
-handling, jobs with leases and fencing, Spotify OAuth, and approvals and external writes. The
+handling, jobs with leases and fencing, Spotify OAuth, and approvals and external writes (this includes the gateway's SwedeBeat draft-playlist writes, ADR 0021). The
 issue says so in its "Owner:" line; everything else keeps a Sonnet Developer. The Reviewer is a
 fresh context for a PR's first review either way, never the Developer's: Opus for those PRs and the others listed in
 the review gate. **Tooling is not security-critical by default** (roadmap Amendment 13, owner,
@@ -202,6 +202,12 @@ a release and still needs the owner's authorization.
   token and discarded. Never stored, logged, put in a URL or sent to a model.
 - No Spotify Client Secret, ever: Spotify sign-in is Authorization Code with PKCE (§3).
 - Never use credentials embedded in third-party apps (for example Swedebeat's AWS keys).
+- classbeat reaches SwedeBeat only through the owner's SwedeBeat gateway (ADR 0035); "Swedebeat" in
+  these rules means that gateway and the account behind it. The gateway's playlist writes are
+  external writes (ADR 0021, 2026-11-15): the code may call only `POST /playlists` and
+  `PATCH /playlists/{id}`, after the user's separate consent click, never `publish` or
+  `merge-publish`. Agents never call them on a real gateway, whatever its URL; tests use the fake
+  gateway, and a live check is the owner's on the owner's own account.
 - Tokens never go to a model. Model output is a proposal; the backend authorizes every write
   against the authenticated user (§2).
 - Everything we create in a user's accounts is private: playlists `public: false`,

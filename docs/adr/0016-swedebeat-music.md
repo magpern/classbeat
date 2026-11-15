@@ -257,6 +257,8 @@ with `swedebeat_sec` against the planned time. The user can:
 
 ### 7. (b) "Next, in the Swedebeat app": the manual step and its verification
 
+*(Amended 2026-11-15, [ADR 0021](0021-use-part-of-a-song.md): the mix is still made by the instructor in the app, but for a trimmed class classbeat first puts a private draft playlist with the cuts in the user's account through the gateway, and the expected length uses the trims. classbeat never publishes.)*
+
 classbeat never creates the mix. After approval the class shows **"Next, in the Swedebeat app"** with
 facts from the class only: the final Spotify playlist's name (ADR 0008; the Swedebeat app matches it), the
 song count, the expected length (`swedebeat_sec` minus about 10 s per song change), and short

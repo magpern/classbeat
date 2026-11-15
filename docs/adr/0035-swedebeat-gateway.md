@@ -379,6 +379,8 @@ retention and isolation. Only the catalogue step changes:
 
 ### 7. Nothing is written to SwedeBeat
 
+*(Amended 2026-11-15 by [ADR 0021](0021-use-part-of-a-song.md): when `CLASSBEAT_SWEDEBEAT_TRIM` is on, classbeat may call exactly `POST /playlists` and `PATCH /playlists/{id}`, one draft per class, never `publish` or `merge-publish`. Everything below holds for every other route and while the setting is off.)*
+
 classbeat never calls the gateway's playlist routes. ADR 0016 keeps the mix manual, and the gateway
 ships with writes off.
 
