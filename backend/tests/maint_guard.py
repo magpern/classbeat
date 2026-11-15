@@ -65,6 +65,9 @@ SECRET_COLUMNS: dict[str, frozenset[str]] = {
         "swedebeat_mix_maps": "mix_id name playlist_id map",
         "redeem_codes": "code_hash",
         "admin_audit": "ip_hash",
+        # ADR 0034 section 2: an event's single-use id; the consent stays the user's.
+        "player_events": "jti",
+        "oidc_grants": "consent_at",
     }.items()
 }
 # Names that are secret wherever they appear (a new table's token or hash is caught unlisted).
@@ -121,6 +124,9 @@ _COLUMNS = {
     # ADR 0033 (#985): the requests the admin decides on.
     "invite_requests": "id email email_normalized heard_from instructor locale state plan_id "
     "grant_days invite_id decided_by decided_at created_at",
+    # ADR 0034 section 2 (#1058): the erase and disable write the player events.
+    "oidc_grants": "user_id client_id first_issued_at",
+    "player_events": "id kind sub state attempt created_at give_up_at leased_by last_error",
 }
 READABLE: dict[str, frozenset[str]] = {t: frozenset(c.split()) for t, c in _COLUMNS.items()}
 _UPDATES = {
@@ -161,6 +167,9 @@ EXPECTED: dict[tuple[str, str], frozenset[str]] = {
     ("model_routes", "INSERT"): frozenset({"*"}),
     ("model_routes", "UPDATE"): frozenset({"*"}),
     ("model_routes", "DELETE"): frozenset({"*"}),
+    # ADR 0034 section 2: an event is inserted (never its lease or state) and replaced.
+    ("player_events", "INSERT"): frozenset({"kind", "sub", "jti"}),
+    ("player_events", "DELETE"): frozenset({"*"}),
 }
 # Everything else maint may hold, as pg_shdepend-free ACL entries: CONNECT and USAGE.
 EXPECTED_OTHER = {"database:CONNECT", "schema:public:USAGE"}

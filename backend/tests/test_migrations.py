@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0050_player_connection"]
+    assert script.get_heads() == ["0051_player_events"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0050_player_connection"]
+        assert applied_revisions(database_url) == ["0051_player_events"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -165,6 +165,8 @@ JOBS = [
     "oidc_requests",
     "oidc_codes",
     "oidc_grants",
+    # ADR 0034 section 2 (0051_player_events, #1058).
+    "player_events",
     # ADR 0034 section 3 (0050_player_connection, #1059).
     "player_link_flows",
     # M3c (0009_models).

@@ -38,6 +38,13 @@ accountability (GDPR Art. 6(1)(f)). A user who never acted as an admin has no su
 records what an operator did *to* a user by the user's id: the foreign key `target_user_id`
 becomes null, and the id kept as text in `target_id` stays (section 5).
 
+> **Amended by ADR 0034 (section 2, #1058).** Also retained by design: a pending
+> `account_deleted` row in `player_events`, the outbox to classbeat-player. It holds the
+> pairwise `sub` and the event's `jti`, never the user's id or address. It stays until the player
+> accepts it, at most 7 days; one that is never accepted is marked `failed` and purged 30 days
+> later. The section 4 scan's `RETAINED` is unchanged, because the row holds nothing the scan
+> looks for.
+
 Never shipped or stored by us and therefore not deleted by us: workouts saved to the user's MOWL
 account and playlists made in their Spotify account. They are the user's, in those services; the
 delete dialog says so (as the class delete does).
@@ -67,6 +74,10 @@ and hour (every request counts). Format `classbeat-export` version 1:
   registry omits: idempotency keys, request and content hashes, lease and worker fields, the ids of
   the admins who granted, revoked or refunded;
 - `not_included`: the plain-language list of what is left out.
+
+  > **Amended by ADR 0034 (section 2, #1058).** `not_included` also names "Pending events to
+  > classbeat-player": the outbox is a system table with no user id, so it is not the user's
+  > rows to export.
 
 **Built from owner-scoped rows only.** The export runs in the user's own `user_session` (row-level
 security) and every statement also filters on `owner_id` (or the account tables on the user's id),
@@ -128,6 +139,13 @@ export. In order:
 No request goes to MOWL, Spotify or a model (the test counts at the fakes). A write that was in
 flight to a provider when the account went is the user's to see in their own account, as with a
 class delete.
+
+> **Amended by ADR 0034 (section 2, #1058).** No request goes to MOWL, Spotify or a model, and
+> one signed `account-deleted` event goes to classbeat-player when the player ever issued a
+> sign-in for the user (`oidc_grants.first_issued_at` is set). Step 4 writes it to the
+> `player_events` outbox in the same transaction, before the `users` row goes, on the user's
+> delete and on the operator's erase alike, and drops any pending `sessions-revoked` event for
+> the same subject. The request itself sends nothing: the worker delivers the event afterwards.
 
 ### 4. Verification: from the schema, not a list
 

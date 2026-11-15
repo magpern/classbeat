@@ -23,9 +23,11 @@ agent.
   locks the row ``FOR UPDATE`` before its cascade reaches the sessions, so a session row held by
   the middleware (whose ``auth_events`` insert then needs ``FOR KEY SHARE`` on that user) would
   deadlock it; deleting the sessions first waits for that request with no conflicting lock on
-  ``users``. The lock before the sessions (ADR 0019 section 6, as every revoke): a sign-out,
-  rotation or re-auth takes it and then its own session row, so a delete that deleted that row
-  first and asked for the user row after would deadlock with it. The same mode as
+  ``users``. A player user's ``account_deleted`` event (ADR 0034 section 2) is written after the
+  sessions and before the row, in the same transaction. The lock before the sessions (ADR 0019
+  section 6, as every revoke): a sign-out, rotation or re-auth takes it and then its own session
+  row, so a delete that deleted that row first and asked for the user row after would deadlock
+  with it. The same mode as
   ``userlock.lock_user``, which this cannot call: it reads ``password_hash``.
 
 None of these changes ``users.role``: granting and revoking admin stay with the CLI (ADR 0003
@@ -40,6 +42,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat.auth import player_events
 from classbeat.auth.sessions import revoke_user_sessions
 from classbeat.auth.tables import users
 from classbeat.emailnorm import normalize_email
@@ -116,5 +119,6 @@ async def delete_account(db: AsyncSession, user_id: UUID) -> bool:
         select(users.c.id).where(users.c.id == user_id).with_for_update(key_share=True)
     )
     await revoke_user_sessions(db, user_id)
+    await player_events.account_deleted(db, user_id)  # ADR 0034 section 2, before the row goes
     result = await db.execute(delete(users).where(users.c.id == user_id).returning(users.c.id))
     return result.first() is not None

@@ -6,6 +6,7 @@ import signal
 import sys
 
 from classbeat import design, playlists, quota, saving, songs, swedebeat_handoff, swedebeat_match
+from classbeat.auth import EventSigner, EventSignerRefused, load_event_signer
 from classbeat.config import (
     ModelProviderRefused,
     Settings,
@@ -24,10 +25,11 @@ from classbeat.db import (
 )
 from classbeat.design import music_kind, sport
 from classbeat.design.mixfetch import sweep_work_root
-from classbeat.egress import install_worker_allowlist
+from classbeat.egress import install_player_allowlist, install_worker_allowlist
 from classbeat.log import configure_logging
+from classbeat.player.delivery import run_player_delivery
 from classbeat.playlists.runtime import playlists_runtime
-from classbeat.worker.loop import run_worker
+from classbeat.worker.loop import run_worker, worker_id
 
 
 def _install_signal_handlers(loop: asyncio.AbstractEventLoop, stop: asyncio.Event) -> None:
@@ -38,7 +40,7 @@ def _install_signal_handlers(loop: asyncio.AbstractEventLoop, stop: asyncio.Even
             signal.signal(sig, lambda *_: loop.call_soon_threadsafe(stop.set))
 
 
-async def _run(settings: Settings) -> None:
+async def _run(settings: Settings, signer: EventSigner | None = None) -> None:
     engine = create_engine(settings)
     try:
         await verify_database_role(engine)  # refuses to start on a privileged role
@@ -72,7 +74,13 @@ async def _run(settings: Settings) -> None:
     stop = asyncio.Event()
     # Before "worker started" is logged, so a signal after that line is always handled.
     _install_signal_handlers(asyncio.get_running_loop(), stop)
-    await run_worker(settings, stop)
+    # The player events beside the jobs: maintained always, delivered with a signer.
+    delivery = asyncio.create_task(run_player_delivery(settings, signer, worker_id(), stop))
+    try:
+        await run_worker(settings, stop)
+    finally:
+        stop.set()
+        await delivery
 
 
 logger = logging.getLogger("classbeat.worker")
@@ -95,9 +103,17 @@ def main() -> int:
         return 2
     # ADR 0012 §2: a model host only for a provider with its key (DeepSeek: and its setting on).
     install_worker_allowlist(worker_model_providers(settings))
+    # ADR 0034 section 2: the player's one host (a checked setting) and the logout-token signer,
+    # only when the player is configured; without its client id or key set, no worker.
+    install_player_allowlist(settings.player_base_url)
+    try:
+        signer = None if settings.player_base_url is None else load_event_signer(settings)
+    except EventSignerRefused as refused:
+        logger.error("worker refused to start", extra={"reason": str(refused)})
+        return 2
     # A crashed run may have left the audio of a Swedebeat mix in the temp directory (ADR 0016 §4).
     sweep_work_root()
-    asyncio.run(_run(settings), loop_factory=event_loop_factory())
+    asyncio.run(_run(settings, signer), loop_factory=event_loop_factory())
     return 0
 
 

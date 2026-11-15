@@ -21,6 +21,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.auth import player_events
 from classbeat.auth.anomaly import ClientMark, Peerless, RequestMark
 from classbeat.auth.keys import new_token, token_hash
 from classbeat.auth.session_marks import compare_mark
@@ -376,50 +377,12 @@ async def revoke_session(db: AsyncSession, user_id: UUID, session_id: UUID) -> b
 async def revoke_user_sessions(
     db: AsyncSession, user_id: UUID, *, except_id: UUID | None = None
 ) -> int:
-    """Sign out everywhere (or everywhere but ``except_id``). Returns how many were deleted."""
+    """Sign out everywhere (or everywhere but ``except_id``). Returns how many were deleted.
+    A player user also gets a ``sessions_revoked`` event, however many were deleted (ADR 0034
+    section 2, ``player_events``)."""
     statement = delete(sessions).where(sessions.c.user_id == user_id)
     if except_id is not None:
         statement = statement.where(sessions.c.id != except_id)
     result = await db.execute(statement.returning(sessions.c.id))
+    await player_events.sessions_revoked(db, user_id)
     return len(result.all())
-
-
-@dataclass(frozen=True, slots=True)
-class SessionSummary:
-    id: UUID
-    created_at: datetime
-    last_seen_at: datetime
-    expires_at: datetime
-    user_agent: str | None
-    ip: str | None
-    location_changed_at: datetime | None  # seen from a new network or browser since (#632)
-
-
-async def list_sessions(
-    db: AsyncSession, settings: Settings, user_id: UUID
-) -> list[SessionSummary]:
-    """The user's own live sessions, newest first. Never the token or its hash.
-
-    Absolute- and idle-expired rows that the purge has not removed yet are left out, the same
-    rule as ``resolve_session`` (a row whose ``expires_at`` has passed, or whose ``last_seen_at``
-    is ``session_idle_days`` or more ago, is not a session).
-    """
-    idle = timedelta(days=settings.session_idle_days)
-    rows = await db.execute(
-        select(
-            sessions.c.id,
-            sessions.c.created_at,
-            sessions.c.last_seen_at,
-            sessions.c.expires_at,
-            sessions.c.user_agent,
-            sessions.c.ip,
-            sessions.c.location_changed_at,
-        )
-        .where(
-            sessions.c.user_id == user_id,
-            sessions.c.expires_at > func.now(),
-            sessions.c.last_seen_at > func.now() - idle,
-        )
-        .order_by(sessions.c.created_at.desc())
-    )
-    return [SessionSummary(*row) for row in rows.all()]

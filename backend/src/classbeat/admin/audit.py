@@ -251,6 +251,7 @@ ACTIONS["mail.test"] = MailTestParams
 ACTIONS["model.read"] = NoParams
 ACTIONS["model.route_set"] = ModelRouteParams
 ACTIONS["model.route_clear"] = ModelRouteParams
+ACTIONS["player.event.list"] = NoParams  # ADR 0034 s. 2: failed player events, with each sub
 
 
 class UnknownAction(ValueError):

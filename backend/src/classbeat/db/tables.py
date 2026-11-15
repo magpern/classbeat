@@ -52,6 +52,9 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "server, which has no user session",
         "oidc_grants": "a user's consent to a player client, read at the player's sign-in and "
         "goes with the user",
+        # ADR 0034 section 2 (#1058): only through classbeat.player.outbox.
+        "player_events": "signed events to the player, keyed by a pairwise subject with no user "
+        "id; written before an account goes and outlive it until delivered",
     }
 )
 # System tables the app role must have no privilege on at all (the rest get DML, or the narrower

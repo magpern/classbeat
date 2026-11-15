@@ -1,10 +1,11 @@
 import { get } from './client'
 import { count, list, object, optionalText, text, type JsonObject } from './decode'
 
-// The admin area's read-only views (ADR 0011 section 6): Usage and cost and Jobs
-// (backend/src/classbeat/admin/usage.py and jobs.py, #221) and the audit log
-// (backend/src/classbeat/admin/audit_routes.py, #222). Kept apart from `admin.ts` (Users and
-// Codes) to keep both files small. Server text is data, rendered as text only.
+// The admin area's read-only views (ADR 0011 section 6): Usage and cost
+// (backend/src/classbeat/admin/usage.py, #221) and the audit log
+// (backend/src/classbeat/admin/audit_routes.py, #222); Jobs is in `adminJobs.ts`. Kept apart
+// from `admin.ts` (Users and Codes) to keep both files small. Server text is data, rendered as
+// text only.
 
 const BASE = '/api/admin'
 
@@ -174,74 +175,6 @@ export function usagePath(month: string | null): string {
 
 export async function getUsage(month: string | null, signal?: AbortSignal): Promise<Usage> {
   return decodeUsage(await get(usagePath(month), signal))
-}
-
-// --- jobs --------------------------------------------------------------------------------------
-
-export interface Jobs {
-  days: number
-  states: { state: string; count: number }[]
-  waitingApprovals: {
-    userId: string
-    email: string | null
-    kind: string
-    waitingSince: string
-    expiresAt: string | null
-  }[]
-  failures: { kind: string; category: string; count: number; lastAt: string }[]
-  uncertainOperations: {
-    userId: string
-    email: string | null
-    kind: string
-    since: string
-    jobState: string | null
-  }[]
-}
-
-export const JOB_WINDOWS = [7, 30, 90] as const
-
-export function jobsPath(days: number): string {
-  return `${BASE}/jobs?days=${String(days)}`
-}
-
-export async function getJobs(days: number, signal?: AbortSignal): Promise<Jobs> {
-  const body = object(await get(jobsPath(days), signal), 'jobs')
-  return {
-    days: count(body, 'days'),
-    states: list(body, 'states').map((row) => {
-      const item = object(row, 'state')
-      return { state: text(item, 'state'), count: count(item, 'count') }
-    }),
-    waitingApprovals: list(body, 'waiting_approvals').map((row) => {
-      const item = object(row, 'waiting approval')
-      return {
-        userId: text(item, 'user_id'),
-        email: optionalText(item, 'email'),
-        kind: text(item, 'kind'),
-        waitingSince: text(item, 'waiting_since'),
-        expiresAt: optionalText(item, 'expires_at'),
-      }
-    }),
-    failures: list(body, 'failures').map((row) => {
-      const item = object(row, 'failure')
-      return {
-        kind: text(item, 'kind'),
-        category: text(item, 'category'),
-        count: count(item, 'count'),
-        lastAt: text(item, 'last_at'),
-      }
-    }),
-    uncertainOperations: list(body, 'uncertain_operations').map((row) => {
-      const item = object(row, 'uncertain operation')
-      return {
-        userId: text(item, 'user_id'),
-        email: optionalText(item, 'email'),
-        kind: text(item, 'kind'),
-        since: text(item, 'since'),
-        jobState: optionalText(item, 'job_state'),
-      }
-    }),
-  }
 }
 
 // --- audit log ---------------------------------------------------------------------------------

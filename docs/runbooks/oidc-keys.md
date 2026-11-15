@@ -77,8 +77,9 @@ run list < secrets/oidc_signing_keys
 1. **Publish the next key:** `step add-next`, then restart web. `/oidc/jwks` now lists both keys;
    the current one still signs. There can be only one next key.
 2. **Wait at least 24 hours and 5 minutes.** `promote` refuses earlier and says so.
-3. **Promote:** `step promote`, then restart web. The next key signs; the old one is retired
-   and stays published.
+3. **Promote:** `step promote`, then restart web (and the worker, when player events are on,
+   section 4: it signs the logout tokens with the same key). The next key signs; the old one is
+   retired and stays published.
 4. **After 24 more hours, retire:** `step retire`, then restart web. It drops every retired key
    whose 24 hours have passed (earlier, it keeps them and changes nothing).
 
@@ -97,3 +98,47 @@ docker compose --profile maint run --rm maint python -m classbeat admin player-s
 
 It prints the user's pairwise `sub` (player ADR 0010 §4) and writes one `admin_audit` row
 (`player.subject`). It changes nothing else.
+
+## 4. Player events (the worker)
+
+ADR 0034 §2 (issue #1058). When a user deletes their account, or every session of theirs ends
+(ADR 0003 §3), classbeat writes an event to the `player_events` outbox, but only for a user the
+player ever signed in. The worker delivers it to the player as a signed OpenID Connect
+back-channel logout token, POSTed to `<CLASSBEAT_PLAYER_BASE_URL>/api/classbeat/events`.
+
+- **Off** while `CLASSBEAT_PLAYER_BASE_URL` is unset. Events are still written and, after 7
+  days, marked failed; they then show under **Admin, Jobs, Undelivered player events** and are
+  purged 30 days later.
+- **On:** set `CLASSBEAT_PLAYER_BASE_URL` on the worker to the player's origin: `https`, a public
+  DNS name, no user, path, query or fragment (an IP, `localhost`, `.local` and the like are
+  refused). The worker then needs `CLASSBEAT_OIDC_PLAYER_CLIENT_ID` (the token's `aud`) and the
+  `oidc_signing_keys` file, and refuses to start without them. The web process never reaches the
+  player.
+- **Retries:** backoff from 30 seconds to 6 hours, at most 40 attempts and 7 days; every attempt
+  signs a new token with the event's one `jti`, so the player sees one event.
+- **After a key rotation step** (section 2), restart the worker too.
+- **Writing events** needs `oidc_pairwise_key` on web (the user's delete, sessions ending) and on
+  maint (the operator's erase and the CLI's revocations). Without it, an account delete or a
+  revocation for a user the player knows is refused rather than losing the event.
+
+**An undelivered event.** A failed event means the player never heard of the change, and its
+account stays as it was. For an `account_deleted`, the user row is already gone, so section 3
+can no longer compute the subject. Use the list instead:
+
+1. Open **Admin, Jobs, Undelivered player events**. Each row shows the event, the user's
+   pairwise **subject** (`sub`), when it was written, when delivery gave up, the attempts and
+   the last error category. Only failed events are listed, never a pending one and never the
+   event's `jti`. Every opening of the list is an `admin_audit` row (`player.event.list`).
+2. Look at the last error. `status_4xx` usually means the player refused the token: check the
+   client id and the published keys with the player's operator. `network`, `timeout` and
+   `status_5xx` mean the player could not be reached.
+3. Send the player's operator the subject and the event, over the channel you agreed with them.
+   For `account_deleted` they delete that account (player ADR 0010 §8, `admin account delete`);
+   for `sessions_revoked` they end its sessions. Send nothing else: the subject identifies the
+   account to the player and to no one else.
+4. Nothing to clear here: the row is purged 30 days after delivery gave up.
+
+> Mounting `oidc_signing_keys` into the worker, and `oidc_pairwise_key` into web and maint, in the
+> deploy compose files is a separate tooling change; until it lands, leave
+> `CLASSBEAT_PLAYER_BASE_URL` unset in production.
+

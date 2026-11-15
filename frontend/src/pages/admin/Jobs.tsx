@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { adminError } from '../../api/admin'
-import { getJobs, JOB_WINDOWS, type Jobs as JobsData } from '../../api/adminViews'
+import { getJobs, JOB_WINDOWS, type Jobs as JobsData } from '../../api/adminJobs'
 import { Notice } from '../../components/forms'
 import { SelectField } from '../../components/classes/fields'
 import { Link, useQuery, useRouter } from '../../router/Router'
+import { PlayerEventsSection } from './PlayerEvents'
 import { isReason, useMfaRequired } from './StepUp'
 import { DataTable, SectionTitle, SubTitle, when } from './Table'
 
@@ -22,8 +23,9 @@ function owner(userId: string, email: string | null) {
 
 /**
  * Jobs (ADR 0011 section 6), read only: counts per state, waiting approvals, recent failures by
- * category and uncertain external operations. An uncertain operation stays the user's to resolve
- * (ADR 0005 section 7), so there is no action here.
+ * category, uncertain external operations and (`PlayerEventsSection`, its own audited request)
+ * the player events that could not be delivered (ADR 0034 section 2). An uncertain operation
+ * stays the user's to resolve (ADR 0005 section 7), so there is no action here.
  */
 export function Jobs() {
   const onMfaRequired = useMfaRequired()
@@ -121,8 +123,10 @@ export function Jobs() {
               cells: [f.kind, f.category, f.count, when(f.lastAt)],
             }))}
           />
+
         </>
       ) : null}
+      <PlayerEventsSection />
     </section>
   )
 }

@@ -79,6 +79,18 @@ media client: no redirect, no default header, ``trust_env=False``, a total deadl
 (``TURNSTILE_TOTAL_SECONDS``), **no argument** (a transport comes only from tests, through
 ``turnstile_test_client``, which the guard refuses in ``classbeat``).
 
+**The player client** (ADR 0034 section 2, #1058; worker only): ``player_async_client()``
+POSTs the signed events of ``classbeat.player.delivery`` to classbeat-player. Its list is
+``player_allowlist()``, one host, which is **a setting**: ``CLASSBEAT_PLAYER_BASE_URL``, checked
+at startup by ``classbeat.player.base_url_policy`` (``https``, port 443, a public DNS name, no
+IP, no local name, no path, query, fragment or userinfo; any other value refuses startup) and
+installed once by ``install_player_allowlist`` in the worker's entry point (the guard allows no
+other caller; elsewhere the client refuses). The host is on **no urllib list**. Built like the media
+client: no redirect at all (any ``3xx`` is refused), no default header, ``trust_env=False``, a
+total deadline (``PLAYER_TOTAL_SECONDS``), an answer of at most ``PLAYER_ANSWER_MAX`` bytes
+(``AnswerTooLarge``) and **no argument** (a transport comes only from tests, through
+``player_test_client``, which the guard refuses in ``classbeat``). Unset, it refuses.
+
 All paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
 log (``SSLKEYLOGFILE`` is ignored, threat model T49).
 
@@ -93,29 +105,28 @@ sent. A multi-request write runs inside ``call_deadline_until(at)``, ``at`` bein
 its ``pending`` row is written plus ``bound_seconds``, so no request of it outlives its bound
 (``call_may_be_running`` rests on that), however late its thread starts. The one wait it cannot
 cut is a DNS lookup in progress, which the resolver's own timeout ends; the request is refused
-right after.
+right after. The deadline helpers live in ``classbeat.egress_deadline`` and the per-job request
+budget in ``classbeat.egress_budget``; this module re-exports both.
 
 A refused request raises ``OutboundBlocked`` (the job fails ``outbound_blocked``, ADR 0005 §4)
 and logs the host only, never the URL, its path or query, or a header.
 
-The list is code, not a setting: nothing in the environment can widen it. This is enforced inside
+Every list is code, not a setting, with one exception: the player's one host
+(``CLASSBEAT_PLAYER_BASE_URL``, above), an operator's deploy-time value that replaces nothing and
+widens no other list, refused at startup unless it keeps every rule. Nothing else in the
+environment can widen a list. This is enforced inside
 the process; code running in the worker could still open a socket around it (accepted until the
 network-level egress rule of M6, threat model).
 """
 
 import asyncio
-import contextlib
 import http.client
 import logging
-import math
 import socket
 import ssl
-import threading
 import time
 import urllib.request
-from collections.abc import AsyncIterator, Callable, Iterable, Iterator, Mapping
-from contextlib import contextmanager
-from contextvars import ContextVar
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Final, Literal
@@ -123,6 +134,23 @@ from urllib.parse import urlsplit
 
 import certifi
 import httpx
+
+from classbeat.egress_budget import (  # noqa: F401 (re-exported: the budget's home was here)
+    RequestBudget,
+    RequestBudgetExhausted,
+    _spend,  # pyright: ignore[reportPrivateUsage]
+    request_budget,
+)
+from classbeat.egress_deadline import (  # noqa: F401 (re-exported: they lived here)
+    REQUEST_FALLBACK_SECONDS,
+    RequestDeadline,
+    _Watchdog,  # pyright: ignore[reportPrivateUsage]
+    call_deadline,
+    call_deadline_at,
+    call_deadline_until,
+    request_deadline,
+)
+from classbeat.player.base_url_policy import player_base_url, player_host
 
 logger = logging.getLogger(__name__)
 
@@ -311,66 +339,6 @@ def blocked(host: str | None, *, after_request: bool = False) -> OutboundBlocked
     return OutboundBlocked(shown, after_request=after_request)
 
 
-# --- the per-job request budget (ADR 0009 section 8) -------------------------------------------
-
-
-class RequestBudgetExhausted(Exception):
-    """A request to a budgeted host would have gone over its job's budget, so it was **never
-    sent** (``CLASSBEAT_SPOTIFY_CALLS_PER_JOB``). No text, no host, no count."""
-
-    def __init__(self) -> None:
-        super().__init__("request budget used up")
-
-
-class RequestBudget:
-    """How many requests to ``hosts`` one job may still make: ``limit`` in all, ``used`` of them
-    already (across its stages and attempts; the runner reads and stores ``used``). Every
-    request and every redirect hop to one of the hosts takes one before it is sent; the one that
-    would go over ``limit`` raises ``RequestBudgetExhausted`` instead. Thread-safe: the library's
-    calls run in worker threads (``asyncio.to_thread`` carries the context)."""
-
-    def __init__(self, hosts: frozenset[str], limit: int, used: int = 0) -> None:
-        if limit < 0 or used < 0:
-            raise ValueError("a request budget is not negative")
-        self.hosts = hosts
-        self.limit = limit
-        self._used = used
-        self._lock = threading.Lock()
-
-    @property
-    def used(self) -> int:
-        with self._lock:
-            return self._used
-
-    def take(self, host: str) -> None:
-        if host.lower() not in self.hosts:
-            return
-        with self._lock:
-            if self._used >= self.limit:
-                raise RequestBudgetExhausted
-            self._used += 1
-
-
-_request_budget: ContextVar[RequestBudget | None] = ContextVar("request_budget", default=None)
-
-
-@contextmanager
-def request_budget(budget: RequestBudget) -> Iterator[RequestBudget]:
-    """Inside the block (and in threads started from it with the context, as ``asyncio.to_thread``
-    does), every urllib and ``spotify_async_client`` request to the budget's hosts is counted."""
-    token = _request_budget.set(budget)
-    try:
-        yield budget
-    finally:
-        _request_budget.reset(token)
-
-
-def _spend(host: str | None) -> None:
-    budget = _request_budget.get()
-    if budget is not None and host is not None:
-        budget.take(host)
-
-
 # --- urllib --------------------------------------------------------------------------------
 
 
@@ -424,130 +392,6 @@ class _SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
                 urlsplit(newurl).hostname if "://" in newurl else None, after_request=True
             )
         return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-# --- the total deadline of one urllib request ------------------------------------------------
-
-# A request whose caller gave no timeout (urllib's default) still ends within this.
-REQUEST_FALLBACK_SECONDS: Final = 60.0
-_thread_deadline = threading.local()
-
-
-class RequestDeadline(TimeoutError):
-    """A request outlived its total deadline (or would have started after it). No text."""
-
-    def __init__(self) -> None:
-        super().__init__("request deadline passed")
-
-
-@contextmanager
-def call_deadline(seconds: float) -> Iterator[None]:
-    """Inside the block, every urllib request this thread makes ends by ``now + seconds``: one
-    still running then is cut off, and a later one is refused before it is sent. Nested blocks
-    keep the earlier deadline."""
-    if not seconds > 0:
-        raise ValueError("a call deadline is positive")
-    with call_deadline_until(time.monotonic() + seconds):
-        yield
-
-
-@contextmanager
-def call_deadline_until(at: float) -> Iterator[None]:
-    """``call_deadline`` for an absolute ``time.monotonic()`` instant taken by the caller
-    **before** the call was scheduled (a multi-request write takes it before its ``pending``
-    row is written). A thread that starts late uses up the time instead of extending it: once
-    ``at`` has passed every request is refused before it is sent."""
-    if not isinstance(at, int | float) or isinstance(at, bool):
-        raise TypeError("a call deadline is a monotonic instant")
-    if not math.isfinite(at):  # nan would compare false everywhere and never expire
-        raise ValueError("a call deadline is a finite instant")
-    previous: float | None = getattr(_thread_deadline, "at", None)
-    _thread_deadline.at = float(at) if previous is None else min(previous, float(at))
-    try:
-        yield
-    finally:
-        _thread_deadline.at = previous
-
-
-def call_deadline_at() -> float | None:
-    """The ``time.monotonic()`` instant of this thread's innermost ``call_deadline`` (the earliest
-    one in force), or None outside every block. Read-only: it builds nothing and sends nothing."""
-    at: float | None = getattr(_thread_deadline, "at", None)
-    return at
-
-
-def request_deadline(timeout: object) -> float:
-    """The monotonic time by which a request with this ``timeout`` must be over."""
-    total = REQUEST_FALLBACK_SECONDS
-    if isinstance(timeout, int | float) and not isinstance(timeout, bool) and timeout > 0:
-        total = float(timeout)
-    at = time.monotonic() + total
-    call = call_deadline_at()
-    return at if call is None else min(at, call)
-
-
-class _Watchdog:
-    """Shuts the request's socket down at its deadline. It holds a duplicate of the socket
-    (``shutdown`` acts on the connection, whatever descriptor it is called on, so it also cuts
-    a TLS socket wrapped around the original), closed when the request is over."""
-
-    def __init__(self, at: float) -> None:
-        self.at = at
-        self.expired = False
-        self._lock = threading.Lock()
-        self._sock: socket.socket | None = None
-        self._timer: threading.Timer | None = None
-        self._done = False
-
-    def check(self) -> None:
-        if self.expired or time.monotonic() >= self.at:
-            self.expired = True
-            raise RequestDeadline
-
-    def arm(self, sock: socket.socket) -> None:
-        with self._lock:
-            if self._done:
-                return
-            self._sock = sock.dup()
-            timer = threading.Timer(max(0.0, self.at - time.monotonic()), self._fire)
-            timer.daemon = True
-            self._timer = timer
-            timer.start()
-
-    def _fire(self) -> None:
-        with self._lock:
-            if self._done:
-                return
-            self.expired = True
-            self._release(shutdown=True)
-
-    def disarm(self) -> None:
-        with self._lock:
-            if self._timer is not None:
-                self._timer.cancel()
-            self._release(shutdown=False)
-
-    def _release(self, *, shutdown: bool) -> None:  # with the lock held
-        self._done = True
-        sock, self._sock = self._sock, None
-        if sock is None:
-            return
-        if shutdown:
-            with contextlib.suppress(OSError):  # closed already
-                sock.shutdown(socket.SHUT_RDWR)
-        sock.close()
-
-    def guard[T](self, read: Callable[[], T]) -> T:
-        """A read of the response: past the deadline it raises ``RequestDeadline`` (also when
-        the cut-off made the read fail or come back short)."""
-        try:
-            out = read()
-        except Exception:
-            if self.expired:
-                raise RequestDeadline from None
-            raise
-        self.check()
-        return out
 
 
 class _DeadlineResponse(http.client.HTTPResponse):
@@ -1094,6 +938,109 @@ def turnstile_test_client(
     production list and a fake transport (an ``httpx.MockTransport``, no network). Same builder,
     so the same redirect, header and deadline behaviour."""
     return _turnstile_client(inner, total_seconds)
+
+
+# --- classbeat-player (ADR 0034 section 2, #1058) ---------------------------------------------
+# The one host that is a setting (``CLASSBEAT_PLAYER_BASE_URL``, ``player.base_url_policy``),
+# installed at start by the worker's entry point only (the guard allows no other caller).
+
+PLAYER_TOTAL_SECONDS: Final = 10.0
+PLAYER_ANSWER_MAX: Final = 64 * 1024
+_player: tuple[str, Allowlist] | None = None  # (base URL, its one-host list)
+
+
+def install_player_allowlist(base_url: str | None) -> None:
+    """The player's base URL, checked again here, or ``None``: the player is off."""
+    global _player
+    host = None if base_url is None else player_host(player_base_url(base_url))
+    _player = None if host is None else (f"{HTTPS}://{host}", Allowlist(frozenset({host})))
+
+
+def player_allowlist() -> Allowlist | None:
+    """The installed player host alone, or ``None`` (the player is off)."""
+    return None if _player is None else _player[1]
+
+
+class AnswerTooLarge(Exception):
+    def __init__(self) -> None:
+        super().__init__("answer too large")
+
+
+class _CappedStream(httpx.AsyncByteStream):
+    def __init__(self, inner: httpx.AsyncByteStream) -> None:
+        self._inner = inner
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        seen = 0
+        async for chunk in self._inner:
+            seen += len(chunk)
+            if seen > PLAYER_ANSWER_MAX:
+                raise AnswerTooLarge
+            yield chunk
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
+
+
+class _PlayerTransport(AllowlistTransport):
+    """Refuses every 3xx (after the request: ``OutboundBlocked`` with ``after_request``) and
+    caps every answer at ``PLAYER_ANSWER_MAX`` bytes (``AnswerTooLarge``)."""
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        response = await super().handle_async_request(request)
+        length = response.headers.get("content-length", "0")
+        if response.is_redirect or 300 <= response.status_code < 400:
+            await response.aclose()
+            raise blocked(request.url.host, after_request=True)
+        if not length.isdigit() or int(length) > PLAYER_ANSWER_MAX:
+            await response.aclose()
+            raise AnswerTooLarge
+        stream = response.stream
+        if not isinstance(stream, httpx.AsyncByteStream):  # pragma: no cover - async transports
+            await response.aclose()
+            raise TypeError("an async transport answers with an async stream")
+        return httpx.Response(
+            response.status_code,
+            headers=response.headers,
+            stream=_CappedStream(stream),
+            extensions=response.extensions,
+            request=request,
+        )
+
+
+def player_network_transport() -> httpx.AsyncHTTPTransport:
+    """The system trust store (as the urllib path), no TLS key log, no proxy."""
+    return httpx.AsyncHTTPTransport(trust_env=False, verify=tls_client_context())
+
+
+def _player_client(
+    player: tuple[str, Allowlist], inner: httpx.AsyncBaseTransport
+) -> httpx.AsyncClient:
+    client = httpx.AsyncClient(
+        base_url=player[0],
+        transport=_PlayerTransport(player[1], inner, total_seconds=PLAYER_TOTAL_SECONDS),
+        trust_env=False,
+        timeout=PLAYER_TOTAL_SECONDS,
+        follow_redirects=False,
+    )
+    client.headers.clear()
+    return client
+
+
+def player_async_client() -> httpx.AsyncClient:
+    """The one client that reaches the player (the worker; one per call). **No argument**:
+    its base and list are the installed host's; refused (``OutboundBlocked``) when none is."""
+    if _player is None:
+        raise blocked(None)
+    return _player_client(_player, player_network_transport())
+
+
+def player_test_client(
+    inner: httpx.AsyncBaseTransport, base_url: str = "https://player.example"
+) -> httpx.AsyncClient:
+    """**Tests only** (the guard refuses it in ``classbeat``): the same client, a fake transport."""
+    host = player_host(player_base_url(base_url))
+    return _player_client((f"{HTTPS}://{host}", Allowlist(frozenset({host}))), inner)
 
 
 # MOWL's MQTT broker (ADR 0024 section 4). **TLS on 8883 only**, the one non-HTTP rule of the

@@ -30,6 +30,7 @@ NOT_INCLUDED = [
     "What an operator did to your account (the admin audit log); ask the operator for it.",
     "The amounts charged: they are with the payment provider (the test provider charges nothing).",
     "Workouts saved to MOWL and playlists made in your Spotify: they are yours, in those services.",
+    "Pending events to classbeat-player (a sign-out or deletion notice not yet delivered).",
 ]
 
 

@@ -64,6 +64,14 @@ const JOBS = {
   ],
 }
 
+const SUBJECT = 'a'.repeat(21) + '-' + 'b'.repeat(21)
+const PLAYER_EVENTS = {
+  events: [
+    { kind: 'account_deleted', sub: SUBJECT, created_at: '2026-10-20T08:00:00Z', give_up_at: '2026-10-27T08:00:00Z', attempts: 31, last_error: 'status_5xx' },
+  ],
+  truncated: false,
+}
+
 const AUDIT_ROW = {
   id: 'aaaaaaaa-0000-0000-0000-000000000001',
   created_at: '2026-10-31T09:00:00Z',
@@ -83,6 +91,7 @@ function adminApi(routes: Record<string, unknown> = {}) {
   return fakeApi({
     'GET /api/auth/session': ADMIN,
     'GET /api/admin/whoami': { email: 'ann@example.test' },
+    'GET /api/admin/player-events': { events: [], truncated: false },
     ...(routes as Record<string, object>),
   })
 }
@@ -213,6 +222,29 @@ describe('admin jobs', () => {
       expect(api.to('GET', '/api/admin/jobs?days=30')).toHaveLength(1)
     })
     expect(window.location.search).toBe('?days=30')
+  })
+
+  it('lists the undelivered player events with their subject, from their own request', async () => {
+    const api = adminApi({
+      'GET /api/admin/jobs?days=7': JOBS,
+      'GET /api/admin/player-events': { ...PLAYER_EVENTS, truncated: true },
+    })
+    renderAt('/admin/jobs')
+    const events = await screen.findByRole('table', { name: 'Undelivered player events' })
+    expect(within(events).getByText('account_deleted')).toBeInTheDocument()
+    expect(within(events).getByText(SUBJECT)).toBeInTheDocument()
+    expect(within(events).getByText('31')).toBeInTheDocument()
+    expect(within(events).getByText('status_5xx')).toBeInTheDocument()
+    expect(within(events).queryByRole('link')).toBeNull()
+    expect(screen.getByText('Only the oldest undelivered events are shown.')).toBeInTheDocument()
+    expect(api.to('GET', '/api/admin/player-events')).toHaveLength(1)
+  })
+
+  it('says when no player event is undelivered', async () => {
+    adminApi({ 'GET /api/admin/jobs?days=7': JOBS })
+    renderAt('/admin/jobs')
+    expect(await screen.findByText('No undelivered player events.')).toBeInTheDocument()
+    expect(screen.queryByText('Only the oldest undelivered events are shown.')).toBeNull()
   })
 })
 

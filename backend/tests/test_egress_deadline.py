@@ -26,7 +26,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 from mowl import api, workout
 
-from classbeat import egress
+from classbeat import egress, egress_deadline
 from classbeat.connections import Credentials
 from classbeat.egress import (
     DeadlineHTTPSConnection,
@@ -235,7 +235,7 @@ def test_no_request_starts_after_the_call_deadline(
     second line of defence that would mask a missing check): this proves the refusal before
     connecting, nothing else."""
     now = [1000.0]
-    monkeypatch.setattr(egress, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    monkeypatch.setattr(egress_deadline, "time", SimpleNamespace(monotonic=lambda: now[0]))
     monkeypatch.setattr(egress._Watchdog, "arm", lambda self, sock: None)  # pyright: ignore[reportPrivateUsage]
     real_call = api.call
 

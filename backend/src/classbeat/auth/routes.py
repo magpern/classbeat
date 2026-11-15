@@ -35,12 +35,8 @@ from classbeat.auth.cookies import CSRF_COOKIE, clear_session_cookie, set_csrf_c
 from classbeat.auth.deps import current_session, request_ip, require_user
 from classbeat.auth.events import record_event
 from classbeat.auth.middleware import csrf_token_for_session
-from classbeat.auth.sessions import (
-    SessionInfo,
-    list_sessions,
-    revoke_session,
-    revoke_user_sessions,
-)
+from classbeat.auth.session_list import list_sessions
+from classbeat.auth.sessions import SessionInfo, revoke_session, revoke_user_sessions
 from classbeat.auth.userlock import lock_user
 from classbeat.context import UserContext
 from classbeat.db import system_session
