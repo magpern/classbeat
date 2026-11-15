@@ -14,6 +14,8 @@ import type { PlayerFlow } from './useSendToPlayer'
 
 // The confirmation, progress and outcome of a send load when a send has something to show.
 const SendToPlayerNotices = lazy(() => import('./SendToPlayerNotices'))
+// What the player holds of the class, for a user who has the player.
+const PlayerSentState = lazy(() => import('./SendToPlayerNotices').then((m) => ({ default: m.PlayerSentState })))
 
 /**
  * The header of the class page (ADR 0028 section 5: the primary action is not buried). The title,
@@ -55,6 +57,11 @@ export function ClassHeader({
             {summary.soundless ? <Chip data-testid="soundless">{t('class.page.noMusic')}</Chip> : null}
           </div>
           <SaveStatus flow={flow} />
+          {player.showsState ? (
+            <Suspense fallback={null}>
+              <PlayerSentState summary={summary} />
+            </Suspense>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <SaveActions flow={flow} />
