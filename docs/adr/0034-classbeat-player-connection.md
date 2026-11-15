@@ -71,9 +71,15 @@ token endpoint) or must outlive one (the outbox, §2). Each is listed in `SYSTEM
 reason and is reached **only through `classbeat.auth.oidc`** (and `classbeat.player.outbox`),
 the pattern `sessions` and `oauth_flows` already use. No `SECURITY DEFINER` function is needed,
 because no owned table is read across users.
-- `oidc_requests`: one pending authorization. Columns: id, `session_hash`, the validated request
-  (`redirect_uri`, `state`, `nonce`, `code_challenge`, `prompt_login boolean`), `received_at`,
-  `expires_at` (10 minutes). At most 3 per session. Purged hourly with the other flows.
+- `oidc_requests`: one pending authorization. Columns: id, `browser_hash` (SHA-256 of the flow
+  cookie below), the validated request (`redirect_uri`, `state`, `nonce`, `code_challenge`,
+  `prompt_login boolean`), `received_at`, `expires_at` (10 minutes). At most 3 per flow cookie
+  (an older one is dropped). Purged hourly with the other flows.
+  - **The flow cookie** binds the request to the browser, not to a session, because a signed-out
+    user has no session yet and ADR 0003 §3 gives the session a new token after sign-in, TOTP
+    and re-authentication. `/oidc/authorize` sets `__Host-cb_oidc` (32 random bytes,
+    base64url; `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age=600`); only its hash is
+    stored. A browser that already has the cookie keeps it.
 - `oidc_codes`: `code_hash bytea UNIQUE` (SHA-256 of 32 random bytes), `user_id` (FK, cascade),
   `client_id`, `redirect_uri`, `code_challenge`, `nonce`, `auth_time`, `expires_at` (60 s),
   `used_at`. Single use; a second use is refused and writes `oidc_code_refused`.
@@ -91,8 +97,15 @@ because no owned table is read across users.
 - `prompt` may be absent or `login`. `none`, `consent`, `select_account` and `max_age` answer
   `error=invalid_request`, because the player never sends them.
 - The request is stored in `oidc_requests`. A signed-out user signs in first and comes back to
-  `/oidc/authorize/continue?r=<id>`, a relative `return_to` (ADR 0003 §4). Only the same session
-  can continue a request.
+  `/oidc/authorize/continue?r=<id>`, a relative `return_to` (ADR 0003 §4). Continuing needs a
+  signed-in session **and** a flow cookie whose hash equals the row's `browser_hash`; with
+  `prompt_login`, also a re-authentication of that session made after `received_at` (the
+  `auth_time` rule below). Continuing deletes the row in the same transaction that issues the code
+  or shows the consent page (the consent POST carries the row id and checks the cookie again).
+- A missing, unknown, expired or mismatched request shows the error page "This sign-in request
+  has expired. Start again from the player." It **never redirects** (the stored `redirect_uri`
+  and `state` are not trusted without the binding), writes `oidc_request_refused` to
+  `auth_events`, and deletes nothing that belongs to another browser.
 - A disabled user, or one whose role forbids sign-in, is refused with `error=access_denied`.
 - **Consent.** The first time per user, a consent page names the player and what it gets (a
   sign-in and the email). `POST /oidc/authorize/consent` is CSRF- and Origin-checked. Denial
@@ -165,6 +178,7 @@ because no owned table is read across users.
 **Audit.** These are `auth_events` kinds (ADR 0003 §10), not the owned security log:
 - `oidc_signed_in` (a code redeemed, with the user);
 - `oidc_consent` and `oidc_consent_withdrawn`;
+- `oidc_request_refused` (no user: a continue without its binding);
 - `oidc_code_refused` (the user when the code names one, else none);
 - `oidc_client_auth_failed` (no user).
 
@@ -244,6 +258,10 @@ user):
   fragment, and a lowercase DNS name with at least one dot. It must not be an IP literal,
   `localhost`, or end in `.local`, `.internal` or `.localhost`. Otherwise the process refuses to
   start. Unset means the player features are off.
+- **Residual risk:** the check refuses IP literals and local names, but not a public name that
+  resolves to a private address. The setting is the operator's, at deploy time, not a user's;
+  the scoped client's own allowlist, no redirects and the size cap bound what such a mistake
+  could reach. Recorded, not mitigated further.
 - The host is the only entry of `PLAYER_ALLOWLIST` and is on **no urllib list**.
 - Only `player_async_client()` in `classbeat.egress` reaches it:
   - `trust_env=False`;
@@ -385,14 +403,16 @@ Updating the pin is its own PR.
   number, and the dialog says it replaces the player's copy.
 - `401`: the connection becomes `reconnect`, and the job fails `not_connected`.
 - The request provably never left (DNS, connection refused): `failed`, retryable under ADR 0005
-  §4 with the same operation.
+  §4 with the same operation: a retried job keeps its publication number and idempotency key;
+  a new number is taken only by a new press.
 - Another `4xx`: `failed`, not retryable.
 - A timeout after sending, a lost connection, or a `5xx`: `uncertain`. There is **one automatic
   reconciliation** (ADR 0005 §7 step 4) through `GET /api/source/classes/{source_class_id}`,
   which returns numbers only:
   - the player's current number equals ours: `succeeded`;
-  - it is lower: `failed` (a late arrival of this number would be stale against any later
-    press);
+  - it is lower: `failed`. This does not prove the request never arrives: it may still be
+    applied later. That is harmless: the player then holds the revision the user pressed for,
+    the page says "failed", and any later press uses a higher number and supersedes it;
   - no answer: the row stays `uncertain`, and the user has **Check again** or **Do it anyway**.
 
   **An uncertain write is never retried automatically** (ADR 0005 §7.4 holds unchanged).
@@ -412,7 +432,7 @@ the class page shows "the player has revision N" and offers to send the current 
   connection is connected under the hold.
 - A send job in flight for the deleted class cascades away (ADR 0007 §5.2). A late arrival of
   its lower number is stale on the player.
-- While disconnected, a class deletion sends nothing, the publication row is deleted, and the
+- While disconnected, or while the connection needs reconnecting, a class deletion sends nothing, the publication row is deleted, and the
   delete dialog says the player's copy stays.
 - Deleting the whole account sends no removals. The jobs and publications cascade, and
   `account-deleted` (§2) removes everything on the player.
@@ -470,6 +490,10 @@ No model output can create any of these jobs.
       for the user.
   - **`egress.py`:** one validated single-host setting, the player's, on its own client.
   - **Roadmap §2:** the "user write" row gains "send to player" and the removal on class delete.
+- **Inline notes:** each amended ADR above gets an inline "Amended by ADR 0034" note at the
+  amended place (ADR 0003 §4, §6 and §10, ADR 0005 §1, ADR 0014 §1–§3) in the PR that accepts
+  this ADR or, at the latest, in the PC PR that builds that part; PC-2 also rewrites the
+  `egress.py` docstring paragraph "the list is code, not a setting".
 - **New tables:**
   - system: `oidc_requests`, `oidc_codes`, `oidc_grants` and `player_events`;
   - owned: `player_link_flows` and `player_publications`.
