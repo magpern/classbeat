@@ -9,17 +9,22 @@ lock on the connection row and starts no job.
 """
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from typing import Any
 from uuid import UUID
 
+import httpx
 import pytest
 from sqlalchemy import text
 
+from authtools import ORIGIN
 from classbeat.classes import removal, service
 from classbeat.classes.removal import DeletedOut
+from classbeat.db import user_session
+from classbeat.player_send.class_state import sent_state
 from ctx import make_context
+from jobapi import Browser
 from playersendtools import Planted, SendEnv
 
 pytestmark = pytest.mark.usefixtures("sendenv")
@@ -146,3 +151,131 @@ async def test_deleting_a_class_never_sent_takes_no_lock_on_the_connection_row(
         )
     assert done.reason is None
     assert done.removal_job_id is None
+
+
+async def test_a_never_numbered_publication_row_goes_with_its_class(sendenv: SendEnv) -> None:
+    owner = await sendenv.user()
+    await sendenv.connect(owner)
+    planted = sendenv.plant(owner)
+    sendenv.sql(
+        "INSERT INTO player_publications (owner_id, source_class_id) VALUES (:o, :c)",
+        o=owner,
+        c=planted.class_id,
+    )
+    assert sendenv.publication(owner, planted.class_id).last_number == 0
+    done = await removal.delete(
+        sendenv.factory, make_context(owner), planted.class_id, confirm_uncertain=False
+    )
+    assert (done.reason, done.removal_job_id) == (None, None)
+    assert sendenv.publication(owner, planted.class_id) is None
+
+
+async def test_reading_a_class_takes_no_lock_on_the_connection_row(sendenv: SendEnv) -> None:
+    planted = await sent(sendenv)
+    with connection_lock(sendenv):
+        found = await asyncio.wait_for(
+            service.get_class_detail(
+                sendenv.factory, make_context(planted.owner), planted.class_id
+            ),
+            timeout=5,
+        )
+    assert found is not None
+    assert found.player is not None
+
+
+async def test_sent_state_of_another_owner_sees_nothing(sendenv: SendEnv) -> None:
+    planted = await sent(sendenv)
+    stranger = await sendenv.user()
+    await sendenv.connect(stranger)
+    async with user_session(sendenv.factory, make_context(stranger)) as db:
+        assert await sent_state(db, stranger, planted.class_id) is None
+    async with user_session(sendenv.factory, make_context(planted.owner)) as db:
+        assert await sent_state(db, planted.owner, planted.class_id) is not None
+
+
+@pytest.fixture
+async def browser(sendenv: SendEnv) -> AsyncIterator[Any]:
+    clients: list[httpx.AsyncClient] = []
+
+    async def make(owner: UUID) -> Browser:
+        issued = await sendenv.app.login(owner)
+        client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=sendenv.app.app), base_url=ORIGIN
+        )
+        clients.append(client)
+        return Browser(sendenv.app, issued.token, client, owner)
+
+    yield make
+    for client in clients:
+        await client.aclose()
+
+
+async def delete_over_http(web: Browser, class_id: UUID) -> httpx.Response:
+    response = await web.client.delete(f"/api/classes/{class_id}", headers=await web.headers())
+    web.client.cookies.clear()
+    return response
+
+
+async def test_the_class_read_over_http_names_the_sent_revision(
+    sendenv: SendEnv, browser: Any
+) -> None:
+    planted = await sent(sendenv)
+    web = await browser(planted.owner)
+    got = await web.get(f"/api/classes/{planted.class_id}")
+    assert got.status_code == 200
+    assert got.json()["player"] == {
+        "sent_revision_id": str(planted.revision_id),
+        "sent_revision_number": 1,
+    }
+
+
+async def test_the_delete_answer_over_http_carries_the_removal_keys(
+    sendenv: SendEnv, browser: Any
+) -> None:
+    planted = await sent(sendenv)
+    web = await browser(planted.owner)
+    got = await delete_over_http(web, planted.class_id)
+    [job] = sendenv.sql(
+        "SELECT id FROM jobs WHERE owner_id = :o AND kind = 'player_remove'", o=planted.owner
+    ).all()
+    assert got.status_code == 200
+    body = got.json()
+    assert body["player_removal_started"] is True
+    assert body["player_removal_job_id"] == str(job.id)
+
+
+async def test_the_delete_answer_over_http_without_a_job(sendenv: SendEnv, browser: Any) -> None:
+    owner = await sendenv.user()
+    await sendenv.connect(owner)
+    planted = sendenv.plant(owner)
+    web = await browser(owner)
+    got = await delete_over_http(web, planted.class_id)
+    assert got.status_code == 200
+    body = got.json()
+    assert body["player_removal_started"] is False
+    assert body["player_removal_job_id"] is None
+
+
+@pytest.mark.parametrize("state", ["numbered", "removed"])
+async def test_the_unnumbered_drop_leaves_a_numbered_or_removed_row(
+    sendenv: SendEnv, state: str
+) -> None:
+    from classbeat.player_send import publications
+
+    owner = await sendenv.user()
+    await sendenv.connect(owner)
+    planted = sendenv.plant(owner)
+    sendenv.sql(
+        "INSERT INTO player_publications (owner_id, source_class_id, last_number, removed_at) "
+        "VALUES (:o, :c, :n, CASE WHEN :removed THEN now() END)",
+        o=owner,
+        c=planted.class_id,
+        n=0 if state == "removed" else 2,
+        removed=state == "removed",
+    )
+    async with user_session(sendenv.factory, make_context(owner)) as db:
+        await db.execute(
+            publications._DROP_UNNUMBERED,  # pyright: ignore[reportPrivateUsage]
+            {"owner_id": owner, "class_id": planted.class_id},
+        )
+    assert sendenv.publication(owner, planted.class_id) is not None

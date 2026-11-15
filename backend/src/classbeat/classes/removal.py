@@ -10,8 +10,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.classes import seams, song_views
+from classbeat.classes.class_sql import LOCK_CLASS, OPEN_JOB_SQL
 from classbeat.classes.schemas import PlaylistNameOut
-from classbeat.classes.service import OPEN_JOB
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.player_send.publications import on_class_delete
@@ -21,11 +21,6 @@ SPOTIFY_NOTE = (
     "The playlists classbeat made in your Spotify account stay there; delete them in Spotify."
 )
 
-_LOCK_CLASS = text("SELECT 1 FROM classes WHERE id = :class_id AND owner_id = :owner_id FOR UPDATE")
-_OPEN_JOB = text(
-    "SELECT 1 FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "  # noqa: S608 - constants only
-    f"AND state IN {OPEN_JOB} LIMIT 1"
-)
 _WRITES = text(
     f"SELECT state, (state = 'uncertain' AND {seams.NOT_ACTIONABLE_SQL}) AS inside_bound "  # noqa: S608 - constants only
     "FROM external_operations WHERE owner_id = :owner_id AND class_id = :class_id "
@@ -86,9 +81,9 @@ async def delete(
     require_context(ctx)
     async with user_session(factory, ctx) as db:
         await seams.resolve_orphans(db, ctx)
-        if (await db.execute(_LOCK_CLASS, _ids(ctx, class_id))).first() is None:
+        if (await db.execute(LOCK_CLASS, _ids(ctx, class_id))).first() is None:
             return DeleteOutcome("not_found")
-        if (await db.execute(_OPEN_JOB, _ids(ctx, class_id))).first() is not None:
+        if (await db.execute(OPEN_JOB_SQL, _ids(ctx, class_id))).first() is not None:
             return DeleteOutcome("class_busy")
         writes = (await db.execute(_WRITES, _ids(ctx, class_id))).all()
         if any(w.state == "pending" or w.inside_bound for w in writes):
