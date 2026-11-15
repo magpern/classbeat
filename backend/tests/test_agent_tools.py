@@ -303,7 +303,7 @@ def test_the_result_is_computed_by_the_backend(stage: Stage, data: MusicData) ->
     assert result.tss == round(workout.tss(result.spec), 1)
     assert result.duration_sec == workout.total_seconds(result.spec)
     workout.validate(result.spec)
-    assert (result.map_version, result.crossfade_sec) == (12, spotify.CROSSFADE_SEC)
+    assert (result.map_version, result.crossfade_sec) == (13, spotify.CROSSFADE_SEC)
 
 
 def test_a_zone_7_interval_sets_the_approximate_flag_from_the_fitted_draft(

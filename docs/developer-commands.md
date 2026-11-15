@@ -29,9 +29,9 @@ docker compose --profile maint run --rm maint python -m classbeat keys wipe --co
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
-The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.11.0-py3-none-any.whl`,
-built from the v0.11.0 tag (commit `c361187a`; vendored wheel SHA-256 `f931f21e…`, release asset
-`18399944…`, 76583 bytes) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
+The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.12.0-py3-none-any.whl`,
+built from the v0.12.0 tag (commit `b83fa460`; vendored wheel SHA-256 `07c08e1d…`, release asset
+`e5dbaa11…`, 83352 bytes) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
 (needs `gh` access to the private repo; it checks the tag's commit, the missing key file, the release
 asset's pinned size and SHA-256, that the release wheel holds the key file by name (never read), and that
 every other file and the `Requires-Dist` lines match the release wheel). After a rebuild run `uv lock`. classbeat leaves out
