@@ -8,22 +8,35 @@ in to the player with their classbeat account ("same user, same account, same lo
 Design: [ADR 0034](adr/0034-classbeat-player-connection.md). The player's side is in its own
 repository (ADR 0010 and ADR 0002 there).
 
-- **New milestone "PL — Player connection"**, built on fakes only. Its issues are:
-  - **PL-1:** the OIDC provider core (ADR 0034 §1).
-  - **PL-2:** the signed events and their egress (§2).
-  - **PL-3:** the `player` connection (§3).
-  - **PL-4:** the converter and content hash (§4).
-  - **PL-5:** the send job (§5).
-  - **PL-6:** the UI (§6).
+- **New milestone "PC — Player connection"**, built on fakes only. The name is PC, not PL, because
+  the player repository uses PL for its phases. Its issues are:
+  - **PC-1:** the OIDC provider core (ADR 0034 §1).
+  - **PC-2:** the signed events, their outbox and the player client's egress (§2).
+  - **PC-3:** the `player` connection (§3).
+  - **PC-4:** the converter and content hash (§4).
+  - **PC-5:** the send and removal jobs (§5).
+  - **PC-6:** the UI (§6).
 - **Reviewers:**
-  - PL-1, PL-2, PL-3 and PL-5 are security-critical, with an Opus Developer and an Opus
+  - PC-1, PC-2, PC-3 and PC-5 are security-critical, with an Opus Developer and an Opus
     Reviewer.
-  - PL-4 and PL-6 have a Sonnet Developer and a Sonnet Reviewer, and PL-6 also needs i18n.
-- **Done when:** an end-to-end test with a fake player backend signs in through classbeat,
-  connects the player, sends a class, sends a newer revision and a removal, and handles a stale
-  number and a reconnect. Two users' links and classes never mix.
+  - PC-4 and PC-6 have a Sonnet Developer and a Sonnet Reviewer, and PC-6 also needs i18n.
+- **Dependencies:**
+  - PC-2 and PC-3 depend on PC-1. PC-2 also waits for the player's docs PR that pins the
+    event URNs (ADR 0034 §2).
+  - PC-5 depends on PC-3 and PC-4.
+  - PC-6 depends on PC-3 and PC-5.
+- **Amends roadmap §2:** the "user write" row gains "send to player" (the user's press for one
+  revision) and the removal sent when a class that was sent is deleted.
+- **Done when:** an end-to-end test with a fake player backend does all of this:
+  - signs in through classbeat, including a `prompt=login` re-authentication;
+  - connects the player, and refuses a link to another instructor's player account;
+  - sends a class, then a newer revision, then a removal on delete;
+  - handles a stale number, a conflict, an uncertain send and a reconnect;
+  - delivers `sessions-revoked` and `account-deleted`.
+
+  Two users' links and classes never mix.
 - **Still the owner's:** registering the real client, deploying the player, connecting a real
-  player, and the player's host on the production egress list.
+  player, and setting the player's host for production.
 
 ## Amendment 21 (2026-11-12, owner: "go ahead with the fake Paddle and the rest"; ADR 0032)
 
