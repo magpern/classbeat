@@ -8,7 +8,7 @@ of ADR 0015 section 4. Static checks over the repository's own files, no network
 - no tracked file is shaped like SwedeBeat's old ``{"key", "iv"}`` app key or named after it;
 - ``swedebeat_app`` (the retired secret) is in no compose file, workflow, image or setting; the
   image takes no build secret or argument and no workflow hands Docker a secret; the production
-  compose check keeps refusing a ``swedebeat_app`` secret;
+  compose check keeps refusing a ``swedebeat_app`` secret; Swedebeat stays off by default;
 - no SwedeBeat host is in ``classbeat``, nothing in it uses the library's SwedeBeat calls, and the
   done-when search of ADR 0035 section 8 finds nothing in the places it names.
 """
@@ -45,10 +45,18 @@ OLD_SECRET = "SWEDEBEAT_APP"  # the owner's retired repository secret
 # ADR 0035 section 8's done-when: none of these anywhere in these places.
 DONE_WHEN = re.compile(r"swedebeat\.se|swedebeat_app|swedebeat\.login|match_track")
 DONE_WHEN_PLACES = ("backend/src/", "e2e/", ".github/")
-# The old app key's shape, in either order: a 32-character key and a 16-character iv.
-_KEY_FIRST = r'"key"\s*:\s*"[^"\n]{32}"\s*,\s*"iv"\s*:\s*"[^"\n]{16}"'
-_IV_FIRST = r'"iv"\s*:\s*"[^"\n]{16}"\s*,\s*"key"\s*:\s*"[^"\n]{32}"'
-KEY_SHAPED = re.compile(f"{_KEY_FIRST}|{_IV_FIRST}")
+# The old app key's shape, in either order: a 32-character key and a 16-character iv, as JSON with
+# double or single quotes, a Python or shell literal, or YAML (``key: ...`` then ``iv: ...``).
+_Q = "[\"']?"
+_CHAR = "[^\"'\\s,{}]"
+
+
+def _field(name: str, length: int) -> str:
+    return rf"(?<![\w-]){_Q}{name}{_Q}\s*[:=]\s*{_Q}{_CHAR}{{{length}}}(?!{_CHAR}){_Q}"
+
+
+_KEY, _IV, _SEP = _field("key", 32), _field("iv", 16), r"\s*,?\s*"
+KEY_SHAPED = re.compile(f"{_KEY}{_SEP}{_IV}|{_IV}{_SEP}{_KEY}")
 BINARY = frozenset({".png", ".ico", ".woff2", ".whl", ".lock", ".zip", ".gz", ".mp3", ".jpg"})
 
 pytestmark = pytest.mark.skipif(
@@ -169,6 +177,19 @@ def test_the_env_examples_never_hold_the_key() -> None:
         assert not re.search(r"^[^#]*GATEWAY_KEY", body, re.M), example
 
 
+def test_swedebeat_is_off_by_default_in_every_compose_file() -> None:
+    """Kept from the app-key guard: the Swedebeat switch is off unless the owner sets it, on web and
+    on the worker (which checks a mix job's switch again, ADR 0016 A4)."""
+    for file in ("compose.yaml", "compose.prod.yaml"):
+        for service in ("web", "worker"):
+            env = compose(file)["services"][service]["environment"]
+            assert env["CLASSBEAT_SWEDEBEAT_ENABLED"] == "${SWEDEBEAT_ENABLED:-false}", (
+                file,
+                service,
+            )
+    assert re.search(r"^SWEDEBEAT_ENABLED=false$", text(".env.example"), re.M)
+
+
 def test_the_init_script_creates_an_empty_placeholder_and_nothing_for_the_old_key() -> None:
     script = text("scripts/worktree.sh")
     names = script.split("SECRETS=(", 1)[1].split(")", 1)[0].split()
@@ -224,11 +245,32 @@ def test_no_tracked_file_is_shaped_like_or_named_after_the_old_app_key() -> None
     assert found == []
 
 
-def test_the_key_shape_search_would_find_a_planted_key() -> None:
-    planted = json.dumps({"key": "k" * 32, "iv": "i" * 16})
-    assert KEY_SHAPED.search(planted)
-    assert KEY_SHAPED.search(json.dumps({"iv": "i" * 16, "key": "k" * 32}))
-    assert not KEY_SHAPED.search(json.dumps({"key": "k" * 31, "iv": "i" * 16}))
+@pytest.mark.parametrize(
+    "planted",
+    [
+        json.dumps({"key": "k" * 32, "iv": "i" * 16}),
+        json.dumps({"iv": "i" * 16, "key": "k" * 32}),
+        str({"key": "k" * 32, "iv": "i" * 16}),  # single quotes (a Python literal)
+        "{'iv': '" + "i" * 16 + "', 'key': '" + "k" * 32 + "'}",
+        "swedebeat:\n  key: " + "k" * 32 + "\n  iv: " + "i" * 16 + "\n",  # YAML
+        "  iv: '" + "i" * 16 + "'\n  key: \"" + "k" * 32 + '"\n',
+    ],
+)
+def test_the_key_shape_search_would_find_a_planted_key(planted: str) -> None:
+    assert KEY_SHAPED.search(planted), planted
+
+
+@pytest.mark.parametrize(
+    "harmless",
+    [
+        json.dumps({"key": "k" * 31, "iv": "i" * 16}),
+        json.dumps({"key": "k" * 32, "iv": "i" * 17}),
+        "key: " + "k" * 32 + "\nvalue: " + "i" * 16,
+        "monkey: " + "k" * 32 + "\niv: " + "i" * 16,
+    ],
+)
+def test_the_key_shape_search_ignores_other_lengths_and_names(harmless: str) -> None:
+    assert not KEY_SHAPED.search(harmless), harmless
 
 
 @pytest.mark.parametrize("file", ["compose.yaml", "compose.prod.yaml", "compose.e2e.yaml"])
@@ -260,11 +302,24 @@ def test_the_image_takes_no_build_secret_or_argument() -> None:
     assert re.findall(r"^\s*ARG\b", dockerfile, re.M) == []  # no argument could carry a key
 
 
+def _steps(workflow: dict[str, Any]) -> list[dict[str, Any]]:
+    return [step for job in (workflow.get("jobs") or {}).values() for step in job.get("steps", [])]
+
+
 def test_no_workflow_hands_docker_a_secret_and_the_release_builds_without_a_cache() -> None:
     for path in workflows():
         body = path.read_text(encoding="utf-8")
         for option in ("--secret", "secret-envs", "secret-files", "build-args", "build-arg"):
             assert option not in body, (path.name, option)
+        # build-push-action's own inputs: no ``secrets`` (or any secret-like input) either.
+        for step in _steps(yaml.safe_load(body)):
+            if "build-push-action" not in str(step.get("uses", "")):
+                continue
+            inputs = {str(name).lower() for name in (step.get("with") or {})}
+            assert not [n for n in inputs if "secret" in n or n.startswith("build-arg")], (
+                path.name,
+                inputs,
+            )
     release = yaml.safe_load(text(".github/workflows/release.yml"))
     on = release.get("on", release.get(True))
     assert on == {"push": {"tags": ["v*.*.*"]}}  # never a pull request

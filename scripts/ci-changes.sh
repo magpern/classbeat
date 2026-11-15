@@ -22,8 +22,10 @@ re_all='^(\.github/|\.gitattributes$|scripts/(ci-changes|ci-gate|ci-shards|test-
 # scripts/worktree.sh (test_oauth_compose_placement.py, test_swedebeat_gateway_key_guard.py,
 # test_agent_running.py), so a change to only one of those must run them too (#470, review of #598).
 # The public-page path list and the example fixture (ADR 0030) sit in frontend/ but the backend tests
-# read them (test_web_language.py, test_web_prerender.py), so they are backend changes too.
-re_backend='^(backend/|docker/postgres/|Dockerfile$|compose[^/]*\.ya?ml$|\.env\.example$|scripts/worktree\.sh$|frontend/src/publicSite/(publicPaths|examples)\.json$)'
+# read them (test_web_language.py, test_web_prerender.py), so they are backend changes too. The
+# SwedeBeat key guard (test_swedebeat_gateway_key_guard.py, ADR 0035 section 8) also reads e2e/, the
+# two ignore files, the production compose check scripts and prod.env.example.
+re_backend='^(backend/|e2e/|docker/postgres/|Dockerfile$|compose[^/]*\.ya?ml$|\.env\.example$|\.gitignore$|\.dockerignore$|scripts/worktree\.sh$|scripts/check-prod-compose(-[a-z-]+\.bash|\.sh)$|docs/runbooks/prod\.env\.example$|frontend/src/publicSite/(publicPaths|examples)\.json$)'
 re_frontend='^(frontend/|backend/src/classbeat/design/rules/|backend/src/classbeat/design/profiles/)'
 # Playwright (the slow part of the e2e job) runs only for what a browser can see: the UI, the e2e
 # suite and its fakes, the compose files, the image and the docker/ files. A backend-only, scripts-only
