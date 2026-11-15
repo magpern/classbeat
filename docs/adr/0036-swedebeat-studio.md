@@ -10,7 +10,7 @@ Supersedes:
   classes.
 - [ADR 0016](0016-swedebeat-music.md) §7, the manual hand-off, for studio classes only. It stays as the
   fallback.
-- [ADR 0035](0035-swedebeat-gateway.md) §7 ("nothing is written to SwedeBeat"), within the four gateway paths
+- [ADR 0035](0035-swedebeat-gateway.md) §7 ("nothing is written to SwedeBeat") and §1's 150 s clamp for two calls, within the gateway paths
   of §8 here.
 - The draft-playlist route of the closed PR #1089, which does not work: API-created playlists are invisible
   in the app unless public.
@@ -18,6 +18,7 @@ Supersedes:
 Amends:
 - [ADR 0008](0008-song-picking.md): for a studio class, the final Spotify playlist is an output of the
   approved draft (§6).
+- [ADR 0007](0007-classes-revisions-and-saving.md) §2: a studio draft's `content_hash` covers the mix spec (§1).
 - AGENTS.md "Everything we create in a user's accounts is private": the user may choose published SwedeBeat
   outputs (§7, roadmap Amendment 24).
 
@@ -62,7 +63,7 @@ The owner's direction (2026-11-15):
 ### 1. Three related objects, never one
 
 1. **Revisions** (the existing ADR 0007 kinds; no new mechanism):
-   - **`song_list`** is approved as today (ADR 0008 §4). A studio list also holds, per song:
+   - **`song_list`** is approved as today (ADR 0008 §5). A studio list also holds, per song:
      - the gateway `reference`;
      - the SwedeBeat `duration_sec` and `bpm` from the match;
      - the swap record (§3).
@@ -73,7 +74,10 @@ The owner's direction (2026-11-15):
      - Its `content` is the workout.
      - Its `music` (`StudioRevisionMusic`) holds `source: "swedebeat_studio"`, the `song_list_id`, and the
        **mix spec** (§4) with its `map_version`.
-     - Its `content_hash` covers the mix spec, so an edited cut makes a new draft.
+     - **Its `content_hash` covers the mix spec** (amending ADR 0007 §2, which hashes `content` only). For a
+       studio draft it is the SHA-256 of the canonical JSON `{"content": …, "mix_spec": …}`. Every other draft
+       keeps ADR 0007's hash of `content`. So an edited cut makes a new draft, and the revise no-op rule and the
+       consent binding see the cut.
 
      The outputs (§6) bind **one** draft's id and `content_hash`. A song change makes a new `song_list` and
      then a new draft, as "Change songs" does.
@@ -180,30 +184,73 @@ The owner's direction (2026-11-15):
   - a published playlist shows the user's name and email;
   - what a merged mix shows others (gate L2).
 
-  It checks `GET /auth/session` before the button. The approval binds the draft's id, its `content_hash` and
-  the chosen outputs. The server re-checks them when the job runs (ADR 0007 §5).
+  It checks `GET /auth/session` before the button. The approval binds the draft's id, its `content_hash`, the
+  chosen outputs and the **SwedeBeat connection** (its id and generation; ADR 0035 keeps no `customer_id`). The
+  server re-checks all of them when the job runs (ADR 0007 §5). A different or reconnected connection refuses
+  the job with `connection_changed`, and nothing is written.
 
 **One security-critical job, `produce_outputs`.** It keeps state per output in an owned
-`class_outputs(owner_id, class_id, revision_id, output, state, external_id, detail, updated_at)` table,
-with RLS. Each external call is an ADR 0005 external operation: a write-intent row is committed before the call.
+`class_outputs(owner_id, class_id, revision_id, output, attempt, state, external_id, detail, updated_at)` table,
+with RLS and `UNIQUE (owner_id, class_id, revision_id, output, attempt)`. `attempt` starts at 1.
 
+**Keys and the link to ADR 0005 §7.** Each external call is an ADR 0005 external operation, and a write-intent
+row is committed before the call.
+- The idempotency key is **bound to the approval, not to the job**:
+  `out:<class_id>:<revision_id>:<output>:<attempt>:<step>`. The steps are `create`, `publish`, `merge`,
+  `attach`, `spotify_create` and `spotify_fill`. A later job for the same approval finds the earlier row, so
+  it cannot make a second record.
+- The request hash is the canonical JSON of `{kind, draft content_hash, output, the exact gateway body fields}`.
+  The same key with a different hash is refused (`idempotency_mismatch`).
+- `class_outputs.state` is derived from the operations:
+
+  | ADR 0005 operation | Output state |
+  |---|---|
+  | `pending` | `running` |
+  | `succeeded` (all steps) | `done` |
+  | `failed`, a definite refusal or never sent | `failed`, safe to retry |
+  | `uncertain` | `in_doubt` |
+
+  The wording of this ADR maps onto ADR 0005's: **Check again** is ADR 0005's reconciler, and **Create another
+  anyway** is ADR 0005's **Do it anyway**. "Create another anyway" opens `attempt + 1` with new keys after a
+  warning that states the duplicate risk. The `in_doubt` row stays on record.
+
+**Rules for every output.**
 - **Every returned id is stored before the next step:** the `playlist_id`, the mix URL and MOWL's
   `PlaylistID`. A resumed output **always continues from its stored id and never creates a second record.**
-  When `/publish` fails after `POST /playlists`, the next run publishes that same `playlist_id`.
 - **`in_doubt`** (a timeout, a lost lease, or a 5xx after the request was sent) **must be reconciled before any
   new write** to that output, and is never retried automatically.
-  - **A playlist in doubt** cannot be listed through the gateway (`/playlists/shared` lists only published
-    playlists). It stays `in_doubt` for good, and the user is told it may exist. If the user explicitly asks to
-    **create another anyway**, that is a **separate, new irreversible operation** with a new key and the
-    duplicate risk stated. It is not a retry.
-  - **A mix in doubt** is looked up in the MOWL listing by its unique name (`<class title> · cb-<6 chars>`). It
-    is **shown** to the user, never attached automatically.
+
+**Settling an output in doubt.**
+- **Playlist create in doubt.** It cannot be listed through the gateway: `/playlists/shared` lists only
+  published playlists, and an unpublished one cannot be found. The step stays `in_doubt`, and the user is told
+  it may exist. The only way on is **Create another anyway** (`attempt + 1`). The recommended gateway pass-through
+  (listing one's own playlists) would let Check again settle it.
+- **Playlist publish in doubt.** The `playlist_id` is stored, so Check again reads `GET /playlists/shared`. If
+  the id is listed, the step is `succeeded`. If it is not, publishing **the same `playlist_id`** again is safe,
+  because publish is one-way on an existing record and creates none. It is never a new create.
+- **Mix (merge-publish) in doubt.**
+  - With a MOWL connection, Check again looks in the user's MOWL listing for the unique name. A hit is **shown**
+    to the user, never attached automatically. When the user confirms it, the step becomes `succeeded`, with
+    that entry's URL.
+  - Without MOWL (or before gate L1 holds), the mix cannot be checked. It stays `in_doubt` for good, and the way
+    on is Create another anyway, with a new unique name and the duplicate risk stated.
+
 - **Spotify final playlist:** the ADR 0008 create and fill, from the approved draft's order. It is stored with
   the revision id.
-- **SwedeBeat playlist:** `POST /playlists` with the references, cuts and crossfades of the spec, then
-  `/publish`.
+- **SwedeBeat playlist:** `POST /playlists`, then `/publish`. The body is built from the spec, never from model
+  text:
+  - `name` is the class title: printable, 1–120 characters, otherwise "classbeat class";
+  - `category_id` is 27;
+  - `crossfade_sec` is 0 at the playlist level;
+  - every track gets an **explicit** `crossfade_sec` (its outgoing crossfade; the last track gets 0, because
+    the gateway would otherwise default to 5);
+  - `start_sec` and `end_sec` are rounded to 0.01 s, the app's precision;
+  - `trim` is true whenever there is a cut;
+  - title, artist and bpm come from the `song_list`'s SwedeBeat facts.
 - **Mix:**
-  1. Render **once**, from freshly downloaded tracks. A sha256 different from the analysed bytes stops the
+  1. Render once **per merge attempt**, from freshly downloaded tracks, and never before the approval. After a
+     definite failure (nothing sent), a retry downloads and renders again; the result has the same sha256
+     because the render is deterministic. A sha256 different from the analysed bytes stops the
      output with "the music changed, review again"; nothing is published.
   2. The render is sample-accurate from `mix_offsets`: cuts, equal-power crossfades, and 320 kb/s CBR MP3
      through the `soundfile` libsndfile encoder (checked: libsndfile 1.2.2 writes `MPEG_LAYER_III`; ffmpeg is
@@ -211,8 +258,13 @@ with RLS. Each external call is an ADR 0005 external operation: a write-intent r
   3. It runs in the sandboxed child and streams transition by transition, under 1 GiB.
   4. Its decoded length must equal the composed duration within 100 ms of encoder padding. A beat-alignment
      spot check runs at each transition.
-  5. Then `merge-publish` with the exact bytes, the unique name and its own streamed deadline of 900 s. The 150
-     s egress cap stays for every other call. The returned URL is stored.
+  5. The file must be at most 400 MB, the gateway's cap; 150 minutes at 320 kb/s is about 360 MB. Otherwise
+     nothing is sent.
+  6. Then `merge-publish` with the exact bytes and its own streamed deadline of 900 s (an amendment to ADR 0035
+     §1, below). The name is unique: `<class title, at most 100 chars> · cb-<6 random [a-z0-9]>`. `X-Tracks`
+     lists the tracks in mix order with title, artist and bpm from the `song_list`'s SwedeBeat facts and the
+     played duration in seconds. It is UTF-8 JSON of at most 16 KB, with titles cut to fit. The returned URL is
+     stored.
 - **MOWL attach:**
   - Poll the user's MOWL mix listing with backoff for about 30 minutes.
   - Attach **only** the entry whose `URL` has the stored S3 object key and whose duration is within tolerance.
@@ -234,11 +286,19 @@ with RLS. Each external call is an ADR 0005 external operation: a write-intent r
 ### 8. The gateway paths classbeat may use
 
 These are exactly the paths classbeat may call. `test_swedebeat_gateway_guard.py` pins them, together with the
-client module's methods:
-- the existing `/auth/login`, `/auth/session` and `/catalog/match`;
-- `GET /tracks/{reference}/download`;
-- `POST /playlists` and `POST /playlists/{id}/publish`;
-- `POST /playlists/merge-publish`.
+client module's methods, and each PR opens only its own paths:
+
+| Path | Opened by |
+|---|---|
+| `/auth/login`, `/auth/session`, `/catalog/match` | already open (ADR 0035) |
+| `GET /tracks/{reference}/download` | C2 |
+| `POST /playlists`, `POST /playlists/{id}/publish`, `POST /playlists/merge-publish`, `GET /playlists/shared` (reconciliation only) | C7 |
+
+**Deadlines** amend ADR 0035 §1, where every call is clamped to 1–150 s. Two calls get their own deadline:
+- the track download: a 120 s read, with its own 60 MB cap;
+- `merge-publish`: 900 s, with a streamed body.
+
+The 150 s clamp stays for every other call.
 
 These stay forbidden:
 - `PATCH /playlists/{id}`: classbeat makes a new published playlist only from a new approval, and never edits
@@ -269,8 +329,16 @@ without MOWL.
 
 ### 10. Live activation: gates per output (the owner's)
 
-`CLASSBEAT_SWEDEBEAT_STUDIO` lists the outputs that are enabled, and it is empty by default. Each output's
-gates must all hold first. They are listed in `docs/status.md` "Waiting for the owner".
+`CLASSBEAT_SWEDEBEAT_STUDIO` is a comma-separated list, empty by default. Its accepted values are `design`
+(the studio itself), `swedebeat_playlist`, `swedebeat_mix` and `mowl`. Every other value refuses to start the
+app.
+- An output value needs `design`.
+- `mowl` needs `swedebeat_mix`.
+
+Each value's gates must all hold first. They are listed in `docs/status.md` "Waiting for the owner".
+- **The final Spotify playlist** of a studio class has no value of its own. It follows Spotify's existing live
+  activation (the M4 steps), as every Spotify playlist does.
+- **classbeat-player** follows ADR 0034's own activation, once player format 1.2 exists.
 
 | Enables | Gates |
 |---|---|
@@ -291,15 +359,15 @@ Each PR is tested on fakes. Security-critical PRs get an Opus Developer and an O
 | SR0 | classbeat | This ADR; roadmap Amendment 24; the AGENTS.md and agent-rule updates; notes in ADR 0008, 0016, 0021 and 0035 | Architect / Opus |
 | MW1 | magpern/mowl-workouts | `music.analyze_track` | Sonnet / Sonnet |
 | MW2 | magpern/mowl-workouts | `window_map`, `compose_map`, `mix_offsets`, the duration rule; `MAP_VERSION` bump | Sonnet / Sonnet |
-| C1 | classbeat | Wheel bump; sandboxed render child (cuts, crossfades, MP3 encode, length check) | Sonnet / Opus |
+| C1 | classbeat | Sandboxed render child taking a render plan as data (cuts, crossfades, MP3 encode, length check) | Sonnet / Opus |
 | C2 | classbeat | Gateway `download_track` with the 60 MB cap; keep `reference`; guard (§8) | Opus / Opus |
 | C3 | classbeat | Studio song stage without MOWL: facts from the match, evidence retry, swaps with records and undo | Opus / Opus |
-| C4 | classbeat | Per-track analysis job and per-owner cache (migration, RLS, retention, GDPR) | Opus / Opus |
-| C5 | classbeat | `StudioRevisionMusic`, `mix_plan_policy`, design and revise on the composed map, prompts | Opus / Opus |
-| C6a | classbeat | Timeline API, the output choice and the approval binding | Sonnet / Opus |
+| C4 | classbeat | Wheel bump (MW1); per-track analysis job and per-owner cache (migration, RLS, retention, GDPR) | Opus / Opus |
+| C5 | classbeat | Wheel bump (MW2); `StudioRevisionMusic`, `mix_plan_policy`, design and revise on the composed map, prompts | Opus / Opus |
+| C6a | classbeat | Timeline API, the output choice and the approval binding | Opus / Opus (approval binding) |
 | C6b | classbeat | Timeline view, output choice and consent; sv and da | Sonnet / Sonnet |
 | C7 | classbeat | `produce_outputs`: write intents, `class_outputs`, resume and reconcile, render once, merge-publish, playlist then publish, MOWL attach by URL | Opus / Opus |
-| C8 | classbeat | Spotify sync state per revision, serialized, read back; e2e including a studio class with no MOWL | Sonnet / Sonnet |
+| C8 | classbeat | Spotify sync state per revision, serialized, read back; e2e including a studio class with no MOWL | Opus / Opus (Spotify external writes) |
 
 ## Alternatives
 
@@ -326,6 +394,6 @@ Each PR is tested on fakes. Security-critical PRs get an Opus Developer and an O
     settled;
   - **optional:** a search-error status in `/catalog/match`.
 - New threat-model rows (to be added with C2 and C7):
-  - T128: audio downloaded through the gateway: a size cap, the sandbox, no storage;
-  - T129: published outputs: the consent binding, at most once per output, no auto-attach by name;
-  - T130: the model proposing cuts: validated against the analysis, never from model text.
+  - T127: audio downloaded through the gateway: a size cap, the sandbox, no storage;
+  - T128: published outputs: the consent binding, at most once per output, no auto-attach by name;
+  - T129: the model proposing cuts: validated against the analysis, never from model text.

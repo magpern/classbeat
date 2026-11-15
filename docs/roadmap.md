@@ -30,7 +30,7 @@ SwedeBeat, MOWL and classbeat-player as integrations of one model. The design is
   - MW1 and MW2 in `magpern/mowl-workouts`;
   - C1 to C8 in classbeat.
 
-  Security-critical items (C2, C3, C4, C5, C7, and the reviews of C1 and C6a) have Opus reviewers.
+  Security-critical items (C2, C3, C4, C5, C6a, C7 and C8) have an Opus Developer and an Opus Reviewer. C1 has an Opus Reviewer.
 - **Live activation is per output and the owner's** (ADR 0036 §10, gates L1 to L6). The rights decisions
   L4a and L4b are open. `CLASSBEAT_SWEDEBEAT_STUDIO` stays empty until the gates hold.
 

@@ -2,6 +2,8 @@
 
 Status: Accepted (#152, 2026-10-29)
 
+*(2026-11-15, [ADR 0036](0036-swedebeat-studio.md) §1: a SwedeBeat studio draft's `content_hash` is the SHA-256 of the canonical JSON `{"content", "mix_spec"}`, so cuts, order and crossfades are covered by approvals and the no-op rule. Every other draft is unchanged.)*
+
 ## Context
 
 M3a (ADR 0005, ADR 0006) ends with a `design_draft` job that stores an immutable `draft` revision
