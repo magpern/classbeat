@@ -1,0 +1,14 @@
+{
+ "name": "studio_30",
+ "about": "A studio class: the workout and its mix (order, cuts, crossfades) on eight approved tracks.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2
+ },
+ "music": {
+  "tracks": 8
+ },
+ "expect": {}
+}

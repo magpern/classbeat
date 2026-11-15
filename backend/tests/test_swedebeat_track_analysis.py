@@ -356,3 +356,43 @@ async def test_a_disconnect_before_the_store_stores_nothing(
     row = await harness.run(owner, [ONE])
     assert (row.state, row.error_category) == ("failed", "not_connected")
     assert harness.maps(owner) == []
+
+
+# --- SR C5: the C4 review's carry-overs ------------------------------------------------------
+
+
+async def test_a_run_holds_the_slot_for_one_batch_then_is_requeued_for_the_rest(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Other users' analyses are not kept waiting behind a whole list: after ``SLOT_BATCH``
+    downloads the slot is freed and the run is requeued; the next attempt takes the rest and
+    finds the first batch in the cache."""
+    monkeypatch.setattr(track_analysis, "SLOT_BATCH", 1)
+    owner = await harness.user()
+    job_id = new_job(
+        harness.ops.admin, owner, input=json.dumps({"references": [ONE, TWO]}), max_attempts=1
+    )
+    await harness.ops.run_next()
+    row = harness.ops.row(job_id)
+    assert (row.state, row.analysis_slot) == ("queued", True)  # requeued, the attempt not counted
+    assert harness.fetched() == [route(ONE)]
+    assert [m.reference for m in harness.maps(owner)] == [ONE]
+    await harness.ops.run_next()
+    row = harness.ops.row(job_id)
+    assert (row.state, row.error_category, row.analysis_slot) == ("completed", None, False)
+    assert harness.fetched() == [route(ONE), route(TWO)]  # ONE was not downloaded again
+    assert [t.cached for t in harness.results[-1]] == [True, False]
+    assert harness.downloads(owner) == 2
+
+
+async def test_a_retried_run_reserves_only_the_downloads_it_starts(harness: Harness) -> None:
+    """A failed download counts once; the retry reserves for its own downloads, never the whole
+    list again (one reservation per download, not per run)."""
+    owner = await harness.user()
+    harness.gateway.inject(path=route(ONE), kind="status", status=503)  # once
+    row = await harness.run(owner, [ONE, TWO])
+    assert (row.state, row.error_category) == ("failed", "upstream_unavailable")
+    assert harness.downloads(owner) == 1  # the failed download of ONE, nothing for TWO
+    row = await harness.run(owner, [ONE, TWO])
+    assert row.state == "completed"
+    assert harness.downloads(owner) == 3  # ONE twice, TWO once: the downloads started

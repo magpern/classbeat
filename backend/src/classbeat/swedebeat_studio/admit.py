@@ -89,7 +89,7 @@ async def studio_on(db: AsyncSession) -> bool:
     return await flags.swedebeat_enabled(db, match.enabled)
 
 
-async def _swedebeat_connected(db: AsyncSession, ctx: UserContext, connection_id: UUID) -> bool:
+async def swedebeat_connected(db: AsyncSession, ctx: UserContext, connection_id: UUID) -> bool:
     if ctx.connection(PROVIDER) != connection_id:
         return False
     info = await find_in(db, ctx, connection_id)
@@ -177,7 +177,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     refused = await _class_checks(db, ctx, parsed)
     if refused is not None:
         return refused
-    if not await _swedebeat_connected(db, ctx, parsed.swedebeat_connection_id):
+    if not await swedebeat_connected(db, ctx, parsed.swedebeat_connection_id):
         return Refused("not_connected")
     refused = await pick_checks(db, ctx, parsed.spotify_connection_id)
     return refused if refused is not None else Admitted()
