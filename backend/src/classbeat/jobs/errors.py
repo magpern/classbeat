@@ -85,6 +85,12 @@ CATEGORIES: Final = (
     # retried: the user presses again, with a new number.
     "player_ahead",
     "player_conflict",
+    # ADR 0036 section 4.1 (migration 0053): a studio track the gateway serves over the 60 MB
+    # cap (or answers 413), one it has no file for, and the daily limit of track downloads.
+    # None is retried (the same track would be refused again).
+    "track_too_large",
+    "track_unavailable",
+    "track_limit",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).

@@ -635,6 +635,10 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
            created_at="2998-12-31 23:55", expires_at="2999-01-01")  # fmt: skip
     # ADR 0034 section 5 (migration 0052): a class published to the player.
     insert(admin, "player_publications", owner_id=owner, source_class_id=class_id, last_number=1)
+    # ADR 0036 section 4.1 (migration 0053): a studio track's analysis and its download record.
+    insert(admin, "swedebeat_track_maps", owner_id=owner, reference="trk-1", analyser_version=1,
+           sha256=bytes(32), map={"track_version": 1})  # fmt: skip
+    insert(admin, "swedebeat_track_downloads", owner_id=owner)
     # M5 (migration 0007): an entitlement from a code, its redemption, a credit and its lock row.
     code_id = admin.execute(
         text("INSERT INTO redeem_codes (code_hash, label, plan_id, grant_days, max_redemptions, "

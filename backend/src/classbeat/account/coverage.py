@@ -26,7 +26,7 @@ _OWNED = (
     "mail_handoff mowl_playlist_links player_link_flows player_publications quota_periods "
     "saved_workouts "
     "spotify_oauth_flows spotify_pool security_log subscriptions swedebeat_analyses "
-    "swedebeat_mix_maps "
+    "swedebeat_mix_maps swedebeat_track_downloads swedebeat_track_maps "
     "swedebeat_handoffs user_preferences"
 )
 _ACCOUNT = (

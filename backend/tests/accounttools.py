@@ -114,6 +114,14 @@ class Person:
             u=u,
         )
         self.sql("INSERT INTO swedebeat_analyses (owner_id) VALUES (:u)", u=u)
+        # ADR 0036 section 4.1 (SR C4): a studio track's analysis and its download record.
+        self.sql(
+            "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map) "
+            "VALUES (:u, 'trk-1', 1, :h, '{}'::jsonb)",
+            u=u,
+            h=bytes(32),
+        )
+        self.sql("INSERT INTO swedebeat_track_downloads (owner_id) VALUES (:u)", u=u)
         # ADR 0031 (#948): a Dummy subscription, its event and the user's billing log row.
         self.sql(
             "INSERT INTO billing_events (owner_id, provider, event_id, kind, plan_id, "

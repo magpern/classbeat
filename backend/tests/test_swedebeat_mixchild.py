@@ -84,6 +84,33 @@ async def test_an_mp3_mix_is_decoded_and_analysed_by_the_confined_child(
     assert record.files is (sandbox.landlock_abi() > 0)  # pyright: ignore[reportAttributeAccessIssue]
 
 
+async def test_an_mp3_track_is_analysed_as_one_song_in_track_mode(tmp_path: Path) -> None:
+    """ADR 0036 section 4.1 (SR C4): the same confined child with ``mowl.music.analyze_track``,
+    its answer checked against ``TRACK_VERSION``; a track map is not a mix map either way."""
+    from mowl import track
+
+    audio = tmp_path / "track.mp3"
+    audio.write_bytes(kick_mp3_bytes(40.0, 128.0))
+    result = await mixanalysis.analyse_audio(
+        FakeRun().job, audio, max_seconds=3600.0, map_version=track.TRACK_VERSION, mode="track"
+    )
+    assert result.music_map["track_version"] == track.TRACK_VERSION
+    (song,) = result.music_map["songs"]
+    assert song["bpm"] == pytest.approx(128.0, abs=0.5)
+    assert result.music_map["sections"]
+    with pytest.raises(JobFailure) as failed:  # a mix's version where a track's is wanted
+        await analyse(audio, max_seconds=3600.0, mode="track")
+    assert failed.value.category == "analysis_failed"
+
+
+def test_the_child_refuses_an_unknown_mode_or_an_extra_argument(tmp_path: Path) -> None:
+    audio = tmp_path / "track.mp3"
+    audio.write_bytes(kick_mp3_bytes(10.0))
+    for extra in (["playlist"], ["track", "more"]):
+        argv = ["mixchild.py", str(audio), "60.0", str(2**31), *extra]
+        assert mixchild.main(argv) == mixchild.EXIT_FAILED
+
+
 # --- decoding --------------------------------------------------------------------------------
 
 
