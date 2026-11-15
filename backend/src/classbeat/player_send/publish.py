@@ -10,9 +10,9 @@ publication row's lock (``Publication.take``; a number that is not this attempt'
 The **call** maps the player's answer (``player_publish_policy.answer``) onto the protocol:
 
 - 200 applied or repeat: ``succeeded``;
-- 409 stale with ``last < N < 2^62``: ``failed`` with ``player_ahead``, and after the protocol
-  returns the counter moves to N (a fenced update that never lowers it); any other N:
-  ``internal``;
+- 409 stale with ``number < N < 2^62`` (the counter already holds the number): ``failed`` with
+  ``player_ahead``, and after the protocol returns the counter moves to N (a fenced update that
+  never lowers it); any other N: ``internal``;
 - 409 conflict: ``failed`` with ``player_conflict``; never resent with a new number;
 - 401: ``failed`` with ``not_connected``, and the connection becomes ``needs_reconnect``;
 - another 4xx: ``failed`` with ``invalid_input`` (not retried);
@@ -93,7 +93,7 @@ async def publish(run: JobRun, runtime: Runtime, link: PlayerLink, pub: Publicat
 
     async def call() -> CallResult:
         found = await source_calls.publish(runtime.client_factory, token, body)
-        judged = answer(found.status, found.body, pub.number, pub.number)
+        judged = answer(found.status, found.body, pub.number)
         if judged.answer == "applied":
             return CallResult(str(pub.number), {"publication_number": pub.number})
         if judged.answer == "ahead":

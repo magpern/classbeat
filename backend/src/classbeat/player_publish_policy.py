@@ -81,10 +81,11 @@ def _number_in(body: Mapping[str, Any] | None) -> object:
     return None if body is None else body.get("highest_publication_number")
 
 
-def answer(status: int, body: Mapping[str, Any] | None, number: int, last: int) -> Judged:
-    """The player's answer to publication ``number`` (``last``: our counter before it).
+def answer(status: int, body: Mapping[str, Any] | None, number: int) -> Judged:
+    """The player's answer to publication ``number``. Our counter already holds ``number`` (the
+    decide step took it), so the player is ahead only with a higher N.
 
-    ``applied`` (200 applied or repeat), ``ahead`` (409 stale with ``last < N < 2^62``),
+    ``applied`` (200 applied or repeat), ``ahead`` (409 stale with ``number < N < 2^62``),
     ``internal`` (409 stale with any other N), ``conflict``, ``unauthorized`` (401),
     ``refused`` (another 4xx) or ``unsure`` (a 5xx or an answer that is not one of these)."""
     error = None if body is None else body.get("error")
@@ -95,7 +96,7 @@ def answer(status: int, body: Mapping[str, Any] | None, number: int, last: int) 
         return Judged("unauthorized")
     if status == 409 and error == "stale_publication":
         ahead = _number_in(body)
-        if valid_number(ahead) and isinstance(ahead, int) and last < ahead:
+        if valid_number(ahead) and isinstance(ahead, int) and number < ahead:
             return Judged("ahead", ahead)
         return Judged("internal")
     if status == 409 and error == "publication_conflict":

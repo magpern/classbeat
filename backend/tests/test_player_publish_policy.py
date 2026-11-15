@@ -38,7 +38,7 @@ def stale(n: Any) -> dict[str, Any]:
         (200, None, ("unsure", None)),
         (401, None, ("unauthorized", None)),
         (409, stale(9), ("ahead", 9)),
-        (409, stale(3), ("internal", None)),  # not ahead of our counter
+        (409, stale(3), ("internal", None)),  # not ahead of our number
         (409, stale(2), ("internal", None)),
         (409, stale(NUMBER_LIMIT), ("internal", None)),
         (409, stale("9"), ("internal", None)),
@@ -61,7 +61,7 @@ def stale(n: Any) -> dict[str, Any]:
 def test_every_answer_to_a_publication(
     status: int, body: dict[str, Any] | None, expected: tuple[str, int | None]
 ) -> None:
-    judged = answer(status, body, 3, 3)
+    judged = answer(status, body, 3)
     assert (judged.answer, judged.ahead_to) == expected
 
 
