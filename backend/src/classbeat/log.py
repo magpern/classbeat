@@ -40,8 +40,15 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?i)\bbearer\s+[\w.~+/=-]+"), f"Bearer {_REDACTED}"),
     # ADR 0006 §9: an Anthropic API key, wherever it shows up.
     (re.compile(r"\bsk-ant-[\w-]+"), _REDACTED),
-    # ADR 0034 section 1: no query string on /oidc/* either.
-    (re.compile(r"(/o(?:auth|idc)/[^\s?\"'#]*)\?[^\s\"'#]*"), r"\1"),
+    # ADR 0034 section 1: no query string on /oidc/* either, nor on the player link's callback
+    # (section 3: its ``code`` and ``state``).
+    (
+        re.compile(r"(/o(?:auth|idc)/[^\s?\"'#]*|/connections/player/callback)\?[^\s\"'#]*"),
+        r"\1",
+    ),
+    # ADR 0034 section 3: a classbeat-player token (``cbp_src_`` source token, ``cbp_lc_`` link
+    # code), wherever it shows up.
+    (re.compile(r"\bcbp_[a-z]{2,4}_[A-Za-z0-9_-]{8,}"), _REDACTED),
     # Mail links carry their token in the fragment (section 5): ``/reset#token=...``.
     (re.compile(r"(?i)([#?&]token=)[\w.~%-]+"), rf"\1{_REDACTED}"),
     # ADR 0009 §10: the OAuth ``code``, ``code_verifier`` and ``state`` (and the token endpoint's

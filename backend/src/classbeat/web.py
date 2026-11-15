@@ -60,6 +60,8 @@ from classbeat.jobs.routes import router as jobs_router
 from classbeat.operations.routes import router as operations_router
 from classbeat.plans.catalogue_routes import router as catalogue_router
 from classbeat.plans.routes import router as plans_router
+from classbeat.player_link.routes import api as player_router
+from classbeat.player_link.routes import callback as player_callback_router
 from classbeat.playlists.runtime import playlists_runtime
 from classbeat.quota import PlanRevisionPolicy
 from classbeat.spa_routes import add_single_page_app
@@ -209,9 +211,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # The Spotify callback (outside /api, ADR 0009 section 2) before the sign-in providers'
     # ``/oauth/{provider}/callback``, which would otherwise answer it with a 404.
     app.include_router(spotify_callback_router)
+    app.include_router(player_callback_router)  # ADR 0034 section 3, outside /api
     auth.install(app)
     admin_routes.install(app)  # every /api/admin route of the admin area (ADR 0011 section 6)
     app.include_router(spotify_router)
+    app.include_router(player_router)
     app.include_router(connections_router)
     app.include_router(mowl_qr_router)
     app.include_router(swedebeat_router)

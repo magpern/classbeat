@@ -227,6 +227,7 @@ async def test_the_detail_shows_entitlements_three_periods_and_connection_status
         "mowl": ("needs_reconnect", CATEGORIES[0]),
         "spotify": ("not_connected", None),
         "swedebeat": ("not_connected", None),
+        "player": ("not_connected", None),
     }
     assert audit(superuser, actor.user_id) == [("user.read", "ok", None)]
 

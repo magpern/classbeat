@@ -2,7 +2,7 @@
 
 Only ``classbeat.connections`` reads or writes it (``tests/test_crypto_guard.py``). Migration
 ``0003_connections`` creates it with its constraints and RLS, ``0006_spotify`` adds
-``generation``; this is the query-side mirror.
+``generation``, ``0050_player_connection`` the ``player`` provider; this is the query-side mirror.
 """
 
 from sqlalchemy import (
@@ -18,7 +18,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
-PROVIDERS = ("mowl", "spotify", "swedebeat")
+# ADR 0034 section 3: ``player`` holds the classbeat-player source token (``cbp_src_``).
+PROVIDERS = ("mowl", "spotify", "swedebeat", "player")
 STATUSES = ("connected", "needs_reconnect")
 
 metadata = MetaData()

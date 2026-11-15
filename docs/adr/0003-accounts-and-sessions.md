@@ -529,6 +529,12 @@ client can't submit someone else's `subject`.
 
 ### 6. Recent authentication
 
+> **Amended by [ADR 0034](0034-classbeat-player-connection.md) §3 (#1059):** connecting and
+> disconnecting classbeat-player (`POST /api/connections/player/start`,
+> `DELETE /api/connections/player`) join the guarded actions below, with the step-up when TOTP is
+> confirmed, like MOWL, Spotify and Swedebeat. The callback itself needs only the session that
+> started the link.
+
 > Passkeys (ADR 0019 §4, §8): a passkey bound to the session's user is one more way to re-authenticate, never a step-up; adding, renaming and removing a passkey join the guarded actions below (with confirmed TOTP each also needs the step-up).
 
 `reauth_at` within **10 minutes** is needed to:
@@ -683,6 +689,10 @@ buckets are reserved only after a valid token, so this needs a solved challenge 
 > **Amended by [ADR 0034](0034-classbeat-player-connection.md) §1 (#1056):** no query string and no
 > body on `/oidc/*` is logged, nor the `__Host-cb_oidc` flow cookie; the provider adds the
 > `auth_events` kinds of ADR 0034 §1 ("Audit").
+>
+> **Amended by [ADR 0034](0034-classbeat-player-connection.md) §3 (#1059):** nor the query string
+> of `/connections/player/callback` (its `code` and `state`); a `cbp_` player token is redacted
+> wherever it shows up.
 
 > Passkeys (ADR 0019 §10): the three `__Host-classbeat_passkey_*` flow cookies (register, sign-in, re-auth) are never logged either.
 

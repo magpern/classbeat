@@ -51,6 +51,7 @@ SECRET_COLUMNS: dict[str, frozenset[str]] = {
         "connections": "public secret secret_nonce wrapped_dek dek_nonce",
         "connection_keks": "check_value",
         "spotify_oauth_flows": "state_hash session_hash client_id verifier redirect_uri",
+        "player_link_flows": "state_hash session_hash verifier redirect_uri",
         "spotify_pool": "spotify_user_id playlist_id last_hash",
         "jobs": "input idempotency_key request_hash approval_hash leased_by",
         "job_events": "payload",

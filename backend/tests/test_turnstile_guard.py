@@ -97,6 +97,10 @@ READ_ONLY = {
         "acts only for a signed-in user (the flow row is bound to the session); without one it "
         "only redirects"
     ),
+    ("GET", "/connections/player/callback"): (
+        "acts only for a signed-in user (the link flow is bound to the session); without one it "
+        "only redirects"
+    ),
 }
 
 

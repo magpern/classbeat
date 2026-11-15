@@ -125,6 +125,7 @@ async def test_connections_are_status_only_and_no_secret_or_hash_is_exported(
         "mowl": "connected",
         "spotify": "connected",
         "swedebeat": "not_connected",
+        "player": "not_connected",
     }
     assert set(keys(document)).isdisjoint(FORBIDDEN_KEYS)
     assert document["account"]["has_password"] is True
