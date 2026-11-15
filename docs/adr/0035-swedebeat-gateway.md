@@ -2,8 +2,9 @@
 
 Status: Proposed (owner direction 2026-11-15; issue #1075; roadmap Amendment 23).
 
-Supersedes: [ADR 0015](0015-swedebeat-connection.md) §4 (the app key) and §7 (outbound), and the
-`device_in_use` question of §3 and §5. Also the SwedeBeat host and catalogue-client parts of
+Supersedes: [ADR 0015](0015-swedebeat-connection.md) §4 (the app key) and §7 (outbound), the
+`device_in_use` question of §3 and §5, §9's owner steps 1 to 3 (the `SWEDEBEAT_APP` secret) and its
+"`expires_at` stays `NULL`". Also the SwedeBeat host and catalogue-client parts of
 [ADR 0016](0016-swedebeat-music.md) §4 and §5. The rest of both ADRs stands: the flag, the
 preference, the mixes through MOWL, the match revision, the replace, the hand-off, retention and
 isolation.
@@ -49,7 +50,14 @@ Gateway facts this ADR relies on (`docs/api.md`, and the source for the first tw
    (`401 "missing, invalid or expired bearer; POST /auth/login"`) → schema 422 → … .
    - Errors are `{"detail": str}`, except the schema 422, whose `detail` is a list.
    - A login that SwedeBeat refuses is a `401` with SwedeBeat's own message relayed.
-   - An unreachable or failing SwedeBeat is a `502`.
+   - An **unreachable** SwedeBeat is a `502`. But on every route that needs a login, the gateway
+     first asks SwedeBeat whether the token is still valid (`checktoken.php`; a positive answer is
+     cached for 300 s).
+     - **Any non-200 answer from that check becomes the bearer `401`** (`deps.py`
+       `current_session`, `swedebeat/auth.py` `check_token`).
+     - Inside a route, an upstream 403 becomes a 401 too (`swedebeat/client.py` `parse_json`).
+     - So a failing SwedeBeat can look like an expired login.
+     - Raised as magpern/sb-gateway-service#5; §5 handles it until then.
 3. `POST /catalog/match {tracks: [{title, artist}] (at most 200), include_unsure}` answers `items[]`,
    each `{title, artist, status: found|unsure|missing, score, track: {reference, title, artist, bpm,
    duration} | null}`.
@@ -85,10 +93,17 @@ Gateway facts this ADR relies on (`docs/api.md`, and the source for the first tw
   Anything else is refused at start with `ValueError`. The message names the rule, never the value,
   and the process refuses to start (both web and worker validate it).
 - **Plain HTTP on the LAN is the owner's accepted risk** (see Consequences).
-  - The SwedeBeat password (at connect), the bearer and the client key cross the host's LAN
-    interface in clear.
-  - On one box with a LAN-bound gateway, only the host, the LAN and its other devices can see that
-    traffic.
+  - The SwedeBeat password (at connect), the bearer and the client key travel unencrypted from the
+    classbeat containers to the host's own address.
+    - Traffic from a container to its own host's address stays inside the host's kernel and does
+      not go on the LAN wire.
+    - The real exposure is the open port: anything on the LAN can reach `192.168.1.222:7355`,
+      guarded only by the client key.
+  - The gateway's own compose binds to `127.0.0.1` by default and says to use HTTPS beyond
+    localhost. Reaching it on the LAN address means the owner set `GATEWAY_BIND`, and accepts this
+    for the LAN.
+  - If a DHCP change hands `192.168.1.222` to another device, that device would receive passwords
+    in clear. So the address must be reserved (§10).
   - The policy keeps plaintext off any public address, and off any DNS name that could be
     repointed.
   - Mitigations the owner may add: bind the gateway to the docker bridge instead of the LAN, or put
@@ -100,6 +115,8 @@ Gateway facts this ADR relies on (`docs/api.md`, and the source for the first tw
   - The client's transport therefore checks a full origin, not only a host: the existing
     `Allowlist` is https/443-only, so this client gets its own origin check in `classbeat.egress`.
   - For `http` no TLS is used. For `https` the system trust store is used.
+- **This amends ADR 0006 §9 and threat model T19's "https on 443 only"** for this one configured
+  origin. Every other client keeps the rule. SG-4 rewrites T19.
 - **No port obscurity** (owner question, 2026-11-15). A non-standard port hides nothing from a
   scanner. The protection is the client key, the LAN binding and, if exposed later, TLS with an
   nginx address allowlist (§10).
@@ -115,7 +132,9 @@ Gateway facts this ADR relies on (`docs/api.md`, and the source for the first tw
     - a total deadline per request, body included;
     - the response body read raw, with any `Content-Encoding` other than identity refused;
     - a size cap per call (login 16 KB, match 1 MB).
-  - It takes the deadline as its only argument.
+  - It takes the deadline as its only argument. Unlike the other dedicated clients, which have
+    one deadline, login (30 s) and match (150 s) need different ones; the builder clamps the value
+    to 1 to 150 s.
     - The origin is installed once at process start from the validated setting
       (`egress.install_swedebeat_gateway_origin`, called by web and worker start-up), never per
       call. Until it is installed, the builder refuses.
@@ -148,9 +167,15 @@ Gateway facts this ADR relies on (`docs/api.md`, and the source for the first tw
 - The value is the key the gateway lists in its `CLIENT_API_KEYS` for classbeat.
   - The owner keeps it as the GitHub secret `SB_CLIENT_API_KEY` for their own record. **No workflow
     reads that secret**: CI and e2e use fakes, and the release image never holds the key.
-  - On a server the owner writes the value into `secrets/swedebeat_gateway_key`: `scripts/worktree.sh`
-    and `scripts/install` create the empty placeholder, and `docs/runbooks/swedebeat-connect.md`
-    says how to fill it.
+  - On a server the owner writes the value into `secrets/swedebeat_gateway_key`.
+    - `scripts/worktree.sh` creates the empty placeholder for development. The deploy runbook
+      (`docs/runbooks/vps-deploy.md`, the image-only install of ADR 0020) and the prod compose
+      check scripts (`scripts/check-prod-compose*.bash`) are updated **in SG-1**, which adds the
+      mount.
+    - `docs/runbooks/swedebeat-connect.md` says how to fill the file.
+  - **A server must have the file, empty or filled, before it runs a release that carries SG-1**:
+    compose refuses to start a service whose secret file is missing. That goes in the release
+    notes and the owner steps.
 - The key is sent only in `X-API-Key`, only to the configured gateway origin, and only by the client of §1.
   - It is never logged: the header and the setting are on the redaction lists, and httpx's request
     log stays off.
@@ -160,14 +185,15 @@ Gateway facts this ADR relies on (`docs/api.md`, and the source for the first tw
   is set **and** the key file holds a key.
   - The flag stays as it is: `CLASSBEAT_SWEDEBEAT_ENABLED`, the admin flag, stricter wins (ADR 0015
     §6), and the per-user preference (ADR 0015's amendment).
-  - The SwedeBeat features run only when the flag, the preference and the key are all present.
+  - The SwedeBeat features run only when the flag, the preference, the URL and the key are all
+    present.
 
 ### 3. Connect: `POST /auth/login`, store the bearer
 
 `classbeat.connections.swedebeat_account.connect_swedebeat` keeps its shape (ADR 0015 §1). The route
 is unchanged: recent authentication and step-up, CSRF, rate limits, events. The sign-in becomes:
 
-1. **The URL and the key are checked first.** Neither set: `SwedebeatRefusal("app_key_unavailable")` (503) before the
+1. **The URL and the key are checked first.** Either one missing: `SwedebeatRefusal("app_key_unavailable")` (503) before the
    rate limit is spent and before anything is sent.
 2. **Login.** One `POST {gateway}/auth/login` with:
    - the body `{"email", "password", "device_id", "force": true}`;
@@ -185,9 +211,14 @@ is unchanged: recent authentication and step-up, CSRF, rate limits, events. The 
 4. **Store.** `save(..., "swedebeat", {"bearer": bearer}, public={"email": email},
    expires_at=now + expires_in)`.
    - The payload fields of `swedebeat` become `{"bearer"}` (`PAYLOAD_FIELDS`).
-   - `build_credentials` hands the bearer to the rest of classbeat as `Credentials.swedebeat_token`,
-     the one field the match reads. `swedebeat_device_id` is empty, because it is derived and never
-     stored.
+   - **The bearer is never library credentials.** `build_credentials` refuses `swedebeat` as it
+     refuses `player`, so `mowl-workouts` code can never hold or send it.
+     - Only `classbeat.connections.swedebeat_account.open_bearer` opens it, through `UserContext`
+       (as `player_account` opens its token). It returns the bearer with the row's id, versions
+       and `expires_at`, and only the gateway client takes it.
+     - This also closes the old path: the old match job reads `Credentials.swedebeat_token`, which
+       no row can fill any more. It can never send a bearer to `cloud.swedebeat.se`. SG-2 replaces
+       that job in the same PR anyway (§11).
    - The password is discarded, as today. It is never stored, logged, put in a URL or a response,
      and never chained on a failure.
    - The device id is not stored either (ADR 0015 §2: derived on each connect).
@@ -198,10 +229,11 @@ is unchanged: recent authentication and step-up, CSRF, rate limits, events. The 
    |---|---|
    | `200` with a valid body | connected |
    | `401` whose `detail` is exactly `unknown client` | `SwedebeatRefusal("app_key_unavailable")`, 503. The operator log names the gateway and the category. Nothing is stored, the user is not asked again, and the rate-limit slot is released |
-   | any other `401`, or a `403` | `invalid_credentials`, 400 |
-   | `422` | `invalid_credentials`. The form already bounds the lengths, so a 422 is an email or password the gateway would not take |
+   | any other `401` | `invalid_credentials`, 400 |
+   | `403` (the gateway's login never answers 403, so it is a proxy or deny in front of it: configuration) | `app_key_unavailable`, 503, as for `unknown client` |
+   | `422` | `invalid_credentials`. The form already bounds the lengths to the gateway's (email 3 to 254, password 1 to 256), so a 422 is an email or password the gateway would not take |
    | `413`, another `4xx`, a non-JSON or oversized body, a redirect | `unknown`, 502 |
-   | `429` | `rate_limited` with `Retry-After` (nginx may limit) |
+   | `429` | `rate_limited` with `Retry-After` (a proxy in front may limit; the gateway itself does not) |
    | `502`, `5xx`, a timeout, a refused connection | `upstream_unavailable`, 503 |
 
    `device_in_use` (409) is no longer produced.
@@ -249,9 +281,26 @@ owner has not agreed to drop the consent, so classbeat keeps it and moves it to 
   - The owner may raise `SESSION_TTL_SECONDS` on the gateway (a 24 h default means a daily
     password). classbeat reads `expires_in` and needs no change.
 - **`401` with any `detail` other than `unknown client`** means the bearer was refused
-  (`missing, invalid or expired bearer`, or SwedeBeat refusing the token inside it). It flips the
-  connection to `needs_reconnect` exactly as SwedeBeat's 401/403 did (`connections.use`,
-  `mark_needs_reconnect`).
+  (`missing, invalid or expired bearer`). That covers more than one cause:
+  - the bearer expired;
+  - SwedeBeat invalidated the token inside it, which is common: signing in on the phone app takes
+    the session back;
+  - the gateway's session key was rotated;
+  - or, today, **SwedeBeat failing its token check** (Context, fact 2).
+
+  To keep an outage from asking every user for a password (and signing their phone out), the
+  match confirms first:
+  - It pauses 5 s, then makes **one** `GET {gateway}/auth/session` with the same bearer and key.
+    A failed check is not cached, so the gateway asks SwedeBeat again.
+  - `200`: the job ends `upstream_unavailable` (retried) and the row is untouched.
+  - `401` again (not `unknown client`): the row flips to `needs_reconnect` as SwedeBeat's 401/403
+    did (`connections.use`, `mark_needs_reconnect`).
+  - `502`, `5xx` or a timeout: `upstream_unavailable`, untouched.
+
+  **Accepted until magpern/sb-gateway-service#5 is fixed:** an outage of SwedeBeat's token check
+  that lasts past the pause and the confirmation still flips the row, and the user's reconnect then
+  signs their phone out. When the gateway answers 502 for those failures, the confirmation becomes
+  a cheap extra call and can stay.
 - **`401 unknown client`** is classbeat's configuration error, not the user's. It **never flips the
   connection and never asks for a password**.
   - Connect answers `app_key_unavailable` (§3).
@@ -274,7 +323,10 @@ retention and isolation. Only the catalogue step changes:
     `Authorization: Bearer <bearer>`, `Content-Type` and `Accept`.
   - **Only each song's title and artist leave**: no Spotify id, BPM, length, role, class, brief or
     user detail. ADR 0016 §5 and T110 still hold, and the test still reads every request.
-  - The titles are sent as the song list holds them. The gateway cleans them itself.
+  - The titles are sent as the song list holds them, at most 200 characters each (`song_list`'s
+    own bound, under the gateway's 300). The gateway cleans them itself.
+  - A song whose title or artist is empty after trimming is **not sent**; it is `missing`. One bad
+    item would make the gateway refuse the whole request with a 422.
   - One checkpoint before the call. No pacing: one call is one request in flight.
 - **The answer.** It is read through a field allowlist (the ADR 0016 §4 parser rules carry over):
   - `items` must be a list with **exactly one item per sent track, in order**. Any other count is
@@ -312,7 +364,8 @@ retention and isolation. Only the catalogue step changes:
   |---|---|
   | `200` with a valid body | the verdicts |
   | `401` whose `detail` is `unknown client` | `app_misconfigured` (§5); connection untouched |
-  | any other `401` | `needs_reconnect`: `mark_needs_reconnect`, the job ends so |
+  | any other `401` | the confirmation of §5, then `needs_reconnect` (`mark_needs_reconnect`) or `upstream_unavailable` |
+  | `403` (a proxy or deny in front of the gateway) | `app_misconfigured`; connection untouched |
   | `429` | `rate_limited` with `Retry-After` |
   | `502`, other `5xx`, a timeout, the deadline, a refused connection | `upstream_unavailable` (retried, as today) |
   | `413`, `422`, another status, a bad body, a redirect | `invalid_response` (a redirect: `outbound_blocked`) |
@@ -363,10 +416,10 @@ Nothing of classbeat holds, mounts, reads, validates or tests SwedeBeat's AES ke
 - **Code:** `SWEDEBEAT_WWW_HOST`, `SWEDEBEAT_CLOUD_HOST`, `SWEDEBEAT_CLOUD_ALLOWLIST`,
   `swedebeat_cloud_*`, `www.swedebeat.se` from `WEB_URLLIB_HOSTS`, the `mowl.swedebeat.login` call,
   the catalogue query builder and the extendedsearch parser.
-  - Log redaction drops the dead names (`swedebeat_app`, `swedebeat_app_key`,
-    `swedebeat_device_id`).
-  - It keeps `swedebeat_token` (the field still carries the bearer) and adds `bearer`, `x-api-key`
-    and `swedebeat_gateway_key`.
+  - Log redaction drops the dead names (`swedebeat_app`, `swedebeat_app_key`). It keeps
+    `swedebeat_device_id`, which is still sent in every login.
+  - It keeps `swedebeat_token` (a defence for any stray library field) and adds `bearer`,
+    `x-api-key` and `swedebeat_gateway_key`.
 - **Done when:** `git grep -E "swedebeat\.se|swedebeat_app|swedebeat\.login|match_track"` finds
   nothing under `backend/src`, `e2e`, `compose*.yaml`, `Dockerfile` or `.github`, except the guard
   tests that look for these strings.
@@ -400,6 +453,12 @@ packages.
 
 1. On the gateway:
    - list classbeat's key in `CLIENT_API_KEYS`;
+   - keep its writes off (`allow_swedebeat_writes` false, the default). Its write guard applies to
+     every client, not per key, so classbeat's key must never be the only thing between a caller
+     and a permanent SwedeBeat record;
+   - **reserve `192.168.1.222`** for the server (a DHCP reservation or a static address), so the
+     address can never be handed to another device;
+   - set `GATEWAY_BIND` so the port listens on that address;
    - keep it bound to the LAN or the docker bridge, never on a public interface while it is plain
      HTTP;
    - optionally raise `SESSION_TTL_SECONDS` (§5).
@@ -409,12 +468,15 @@ packages.
 2. On the classbeat server:
    - set `SWEDEBEAT_GATEWAY_URL=http://192.168.1.222:7355` (the compose variable for web and
      worker);
-   - write the key into `secrets/swedebeat_gateway_key` (mode as the other secret files);
+   - create `secrets/swedebeat_gateway_key` **before** deploying any release that carries SG-1
+     (empty is fine: SwedeBeat is then "not available"), and write the key into it (mode as the
+     other secret files);
    - deploy a release carrying SG-4, and keep `SWEDEBEAT_ENABLED` as it is.
 
    The worker and web containers must reach the host's LAN address (docker's default bridge
    does).
-3. Delete the GitHub secret `SWEDEBEAT_APP`, and delete older release image tags that carry the key
+3. **After a release with SG-4 exists:** delete the GitHub secret `SWEDEBEAT_APP` (until SG-4 the
+   release workflow fails without it), and delete the older release image tags that carry the key
    from GHCR (the key is the gateway's now).
 4. Authorize one live check with the owner's own SwedeBeat account:
    - connect (it signs the phone app out, as the form says);
@@ -424,7 +486,12 @@ packages.
 
    Logged under "Live activation log".
 5. Decide on magpern/sb-gateway-service#3 (optional `force` and a 409). Until then the up-front
-   consent of §4 stays.
+   consent of §4 stays. Fix magpern/sb-gateway-service#5 (a 502 when SwedeBeat's token check
+   fails).
+6. **The privacy notice** (`frontend/src/legal/legal.en.ts`) says SwedeBeat gives classbeat a
+   device id that is stored encrypted. After SG-2 that is no longer true: classbeat stores a
+   gateway bearer, and sends the password through the owner's gateway. The wording, and whether to
+   name the gateway, is the owner's (and a lawyer's) call. Agents do not edit legal text.
 
 ### 11. The issues (milestone "SG SwedeBeat gateway")
 
@@ -432,10 +499,15 @@ packages.
 |---|---|---|---|---|
 | SG-0 | `docs(adr): 0035 the SwedeBeat gateway` | this ADR, roadmap Amendment 23, notes on ADR 0015 and 0016 | Opus | none |
 | SG-1 | `feat(swedebeat): gateway client, egress, client key and fakes` | §1 (the URL setting and its policy, the origin-checked client), §2 (setting and mount; available still false unless set), the client module `classbeat.swedebeat_gateway` (`login`, `match`, the parsers and the status mapping as pure `*_policy` modules), `gatewayfake.py`, `e2e/fake-gateway` in `compose.e2e.yaml` beside the old fake, guard and egress tests. No caller is switched | Opus Developer, Opus Reviewer | SG-0 |
-| SG-2 | `feat(connections): connect SwedeBeat through the gateway` | §3, §4, §5 for connect: `swedebeat_account`, the payload, `build_credentials`, the route's `sign_out_required`, the dialog's notice and checkbox (English, with keys on `untranslated.json`), the connect e2e spec on the fake gateway | Opus, Opus | SG-1 |
-| SG-3 | `feat(swedebeat): match the catalogue through the gateway` | §5, §6: the match job, the replace's re-match, the expiry admission, `app_misconfigured`, the match e2e specs on the fake gateway | Opus, Opus | SG-2 |
-| SG-4 | `refactor(swedebeat)!: remove the SwedeBeat app key, hosts and fake` | §7 guard, §8 in full, threat model T19, T23, T104 to T107 and T110 rewritten "as enforced", the runbooks, `docs/developer-commands.md`, ADR 0015 and 0016 marked superseded in part | Opus, Opus (egress and secret handling) | SG-3 |
+| SG-2 | `feat(swedebeat): connect and match through the gateway` | §3 to §6 in **one PR**, so main never holds a bearer that the old match could send to `cloud.swedebeat.se`. It covers:<br>- connect: `swedebeat_account` with `open_bearer`, the payload, `build_credentials` refusing `swedebeat`, the route's `sign_out_required`, the dialog's notice and checkbox (English, keys on `untranslated.json`);<br>- match: the job, the replace's re-match, the expiry admission, the 401 confirmation, `app_misconfigured`.<br>Tests changed:<br>- `test_swedebeat_connect.py`, `test_swedebeat_secrecy.py`, `test_swedebeat_match.py`, `test_swedebeat_match_catalogue.py` (to gateway shape), `test_swedebeat_replace.py`, `test_classes_swedebeat_match.py`, `test_swedebeat_preference.py`, `m6world.py`;<br>- the frontend `SwedebeatConnection.test.tsx`;<br>- `e2e/tests/swedebeat.spec.ts`, `swedebeat-match.spec.ts` and the hand-off spec, on the fake gateway | Opus, Opus | SG-1 |
+| SG-3 | folded into SG-2 (the issue is closed with a pointer) | none | none | none |
+| SG-4 | `refactor(swedebeat)!: remove the SwedeBeat app key, hosts and fake` | It covers:<br>- §7's guard and §8 in full;<br>- the threat model: T19, T23, T104 to T107 and T110 rewritten "as enforced", plus the accepted-risks paragraph on the app key;<br>- ADR 0010's table row and accepted risk, and ADR 0009's wheel-key paragraph (the notes on ADR 0015 and 0016 are already in SG-0);<br>- the runbooks and `docs/developer-commands.md`. | Opus, Opus (egress and secret handling) | SG-2 |
 | SG-5 | `feat(i18n): Swedish and Danish for the SwedeBeat gateway strings` | the new strings in sv and da (ADR 0023's translation PR rule) | Sonnet translator, Opus Reviewer | SG-2 |
+
+SG-1 changes `classbeat.egress` (over 1000 lines). It has Opus review, so the split-on-touch rule
+applies (CLAUDE.md, rule 2): the gateway's origin check and client move to their own module, and
+`egress.py` ends with no net growth. The e2e fake's https name must pass the policy's DNS-name
+rules (for example `gateway.classbeat-e2e.test`).
 
 `docs/status.md` is updated by the Architect after each merge.
 
@@ -485,4 +557,5 @@ packages.
   - T23 gains the accepted LAN plaintext path for the password (§1).
   - The gateway, a service of the owner's on a home server, becomes a processor of SwedeBeat
     passwords and bearers in transit (it keeps neither the password nor a session store). That is
-    the owner's own service and risk; classbeat's part is TLS, the key and the one-host client.
+    the owner's own service and risk. classbeat's part is the URL policy, the key and the
+    one-origin client.

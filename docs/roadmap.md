@@ -13,12 +13,13 @@ user, built on fakes, live use owner-gated, `swedebeat_enabled` a real flag.
   - **SG-0:** ADR 0035 and this amendment.
   - **SG-1:** the gateway URL setting (plain http only to a loopback or private IP, else https; owner's accepted LAN risk), the origin-checked client, the `swedebeat_gateway_key` secret file
     (web and worker) and the fakes.
-  - **SG-2:** connect through `/auth/login`, storing the bearer, with the sign-out consent up front.
-  - **SG-3:** the catalogue match through `/catalog/match`, re-thresholded at 0.85.
+  - **SG-2:** connect through `/auth/login` (storing the bearer, with the sign-out consent up
+    front) and the catalogue match through `/catalog/match` (re-thresholded at 0.85), in one PR.
+    The old match never sees a bearer. (SG-3 is folded into SG-2.)
   - **SG-4:** removing the app key, the SwedeBeat hosts and the fake SwedeBeat.
   - **SG-5:** sv and da strings.
 - **Reviewers:**
-  - SG-1 to SG-4 are security-critical (egress, keys, tokens), with an Opus Developer and an Opus
+  - SG-1, SG-2 and SG-4 are security-critical (egress, keys, tokens), with an Opus Developer and an Opus
     Reviewer.
   - SG-5 follows ADR 0023's translation rule.
 - **Nothing is written to SwedeBeat:** the gateway's playlist routes are not used.
