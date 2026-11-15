@@ -71,7 +71,7 @@ agent-run test against a real account, the owner's authorization for that specif
 | Creating the pool and final playlists in a user's Spotify account (private) | Allowed | Needs Spotify S1, S2, S3 |
 | Keeping track lists, timing and shared analyses for saved classes | Allowed while a class refers to them, then deleted | Needs Spotify S4 |
 | Any paid or public use, or users the owner doesn't know | Not allowed | Needs all of the above, S5, MOWL M3, and agreements (M7) |
-| Swedebeat connection (connect, status, disconnect) | Built against fakes (S1, ADR 0015); the app key is baked into the release image by the owner's decision of 2026-10-31 (threat model, T104); **live use only with the owner's authorization** | Needs the owner's `SWEDEBEAT_APP` secret and go-ahead |
+| Swedebeat connection (connect, status, disconnect) | Built against fakes (S1, ADR 0015); since SG-4 it goes through the owner's SwedeBeat gateway and classbeat holds no SwedeBeat key ([ADR 0035](0035-swedebeat-gateway.md) supersedes the baked-in app key; threat model, T104 is now the gateway client key's row); **live use only with the owner's authorization** | Needs the gateway URL, the `secrets/swedebeat_gateway_key` file and the owner's go-ahead (ADR 0035 §10) |
 | Other Swedebeat features | Not built; each needs its own issue | Needs Swedebeat S2 and later |
 
 The questions stay in [docs/providers/questions.md](../providers/questions.md), unsent, for a
@@ -109,7 +109,9 @@ feature". Its connection is built and verified on fakes ([ADR 0015](0015-swedebe
 condition at the top of this ADR ("every feature's live path except Swedebeat may be switched on once it
 is technically complete") now covers it, except that its live path needs the owner's secret, the
 `SWEDEBEAT_ENABLED` switch and the owner's go-ahead for each live check. The risk the owner accepts
-for the app key is T104.
+for the app key is T104. *(Superseded by [ADR 0035](0035-swedebeat-gateway.md), SG-4: classbeat no
+longer holds SwedeBeat's app key; the live path needs the gateway URL and its client key, and T104 is
+the client key's row.)*
 
 **Note 2026-11-13 (#1035): section energy.** MOWL's music map gives each section of a Spotify track an
 `energy` from 0 to 1 (`mowl-workouts` `spotify.py`, from Spotify's section loudness, ranked within the

@@ -86,9 +86,10 @@ class ConnectionOut(BaseModel):
 
 class SwedebeatAccessOut(BaseModel):
     """Whether the Swedebeat card may show its form (ADR 0015): the flag is on, and this server
-    holds Swedebeat's app key. Neither says anything about the user's own connection.
-    ``uses_swedebeat`` is the user's own "I use Swedebeat" preference (#525, default false): the
-    card's form and the mix choice need it and ``enabled`` both."""
+    has the SwedeBeat gateway's URL and client key (ADR 0035 section 2). Neither says anything
+    about the user's own connection. ``uses_swedebeat`` is the user's own "I use Swedebeat"
+    preference (#525, default false): the card's form and the mix choice need it and ``enabled``
+    both."""
 
     enabled: bool
     available: bool

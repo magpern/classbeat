@@ -213,7 +213,6 @@ services:
       # empty is unset, so web refuses to start with passkeys on and no RP ID. Neither is a secret.
       CLASSBEAT_PASSKEYS: ${PASSKEYS:-false}
       CLASSBEAT_WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
-    # swedebeat_app: Swedebeat's app key if the image does not hold it (ADR 0015 section 4).
     # swedebeat_gateway_key: web and worker; the file must exist (empty is no key, ADR 0035 section 2).
     # oauth_*_client_secret: web only; each file must exist, empty while that provider is off.
     # turnstile_secret_key: web only; the file must exist; Turnstile is on by default, so it must hold the key unless TURNSTILE_ENABLED=false.
@@ -223,7 +222,6 @@ services:
       - connection_kek
       - database_maint_password
       - smtp_password
-      - swedebeat_app
       - swedebeat_gateway_key
       - oauth_google_client_secret
       - oauth_github_client_secret
@@ -323,8 +321,6 @@ secrets:
     file: ./secrets/openai_api_key
   deepseek_api_key:
     file: ./secrets/deepseek_api_key
-  swedebeat_app:
-    file: ./secrets/swedebeat_app
   swedebeat_gateway_key:
     file: ./secrets/swedebeat_gateway_key
   oauth_google_client_secret:

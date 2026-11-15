@@ -1,8 +1,8 @@
 """The environment's feature switches, a field group of ``classbeat.config.Settings``.
 
-Pure: no I/O. The secret files a feature needs (``swedebeat_app``, ``turnstile_secret_key``) and
-the checks that combine fields stay on ``Settings`` in ``classbeat.config``. Never instantiated on
-its own.
+Pure: no I/O. The secret files a feature needs (``swedebeat_gateway_key``,
+``turnstile_secret_key``) and the checks that combine fields stay on ``Settings`` in
+``classbeat.config``. Never instantiated on its own.
 
 A ``BaseSettings`` (not a plain ``BaseModel``) only so its ``model_config`` type matches
 ``Settings``'; the mixin adds no config of its own and declares no ``SecretStr`` field.
@@ -61,7 +61,7 @@ class FeatureSettings(BaseSettings):
     deepseek_enabled: bool = False
     # ADR 0015: the Swedebeat connection. ``swedebeat_enabled`` is the environment's kill switch
     # (off by default; the admin flag ``swedebeat_enabled`` can only tighten it, ADR 0011 section
-    # 7). The app key is ``Settings.swedebeat_app`` (``classbeat.config``).
+    # 7). SwedeBeat is reached only through the gateway below (ADR 0035).
     swedebeat_enabled: bool = False
     # ADR 0035 section 1: the SwedeBeat gateway's origin (web's login, the worker's match). Unset,
     # SwedeBeat is unavailable; a value that breaks a rule of ``swedebeat_gateway.url_policy``

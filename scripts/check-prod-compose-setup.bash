@@ -45,7 +45,7 @@ cp compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml "$tmp/"
 mkdir "$tmp/secrets"
 oauth_providers=(google github microsoft)
 for n in postgres_password database_owner_password database_password database_maint_password \
-  app_secret_key connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app \
+  app_secret_key connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key \
   swedebeat_gateway_key turnstile_secret_key; do
   # One line without `=` (a dummy, never a real secret): an env_file of it, however spelled, gives
   # the variable "" in the render, which check_keys refuses (#610); an empty file would add nothing.

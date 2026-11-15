@@ -19,7 +19,7 @@ out="${GITHUB_OUTPUT:-/dev/stdout}"
 # Path filters (extended regexes, matched against each whole path).
 re_all='^(\.github/|\.gitattributes$|scripts/(ci-changes|ci-gate|ci-shards|test-ci-gate)\.sh$)'
 # Backend tests also read files outside backend/: the compose files, the Dockerfile, .env.example and
-# scripts/worktree.sh (test_oauth_compose_placement.py, test_swedebeat_key_guard.py,
+# scripts/worktree.sh (test_oauth_compose_placement.py, test_swedebeat_gateway_key_guard.py,
 # test_agent_running.py), so a change to only one of those must run them too (#470, review of #598).
 # The public-page path list and the example fixture (ADR 0030) sit in frontend/ but the backend tests
 # read them (test_web_language.py, test_web_prerender.py), so they are backend changes too.

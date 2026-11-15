@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Builds the mowl-workouts wheel classbeat pins (ADR 0001, threat model "accepted risks"):
-# the source of a release tag, built WITHOUT the bundled Swedebeat app key. The release wheel
-# on GitHub carries mowl/_swedebeat_app.json (written by that repo's release workflow from a
-# secret); the source never does, so a wheel built from the tagged source has no key file.
+# the source of a release tag, built WITHOUT the bundled Swedebeat app key. classbeat holds no
+# SwedeBeat key at all (ADR 0035 section 8: the gateway does), so the wheel must hold none either.
+# The release wheel on GitHub carries mowl/_swedebeat_app.json (written by that repo's release
+# workflow from a secret); the source never does, so a wheel built from the tagged source has no
+# key file.
 #
 #   scripts/build-mowl-wheel.sh            # v0.11.0 into backend/vendor/
 #

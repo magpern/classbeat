@@ -201,7 +201,7 @@ services:
   # connection_kek). It does NOT mount database_maint_password (no CLASSBEAT_MAINT_DATABASE_URL
   # either: the admin routes answer 503 here and no passkey spec uses them), so CI's "Check
   # database_maint_password is mounted on db-functions and web only" step is unchanged. It mounts
-  # no model key, no Swedebeat key, no OAuth or Turnstile secret (the fake needs none).
+  # no model key, no SwedeBeat gateway key, no OAuth or Turnstile secret (the fake needs none).
   web-passkeys:
     profiles: [e2e]
     image: ${COMPOSE_PROJECT_NAME:-classbeat}:local
@@ -253,7 +253,7 @@ services:
   # secret never goes here. It mounts paddle_webhook_secret (web only; the worker refuses to start
   # with it, CI checks it is on this service alone) and database_maint_password (the billing
   # routes and the webhook write on the maint role), plus the three every web starts with. No
-  # model key, no Swedebeat key, no OAuth or Turnstile secret (the fake needs none).
+  # model key, no SwedeBeat gateway key, no OAuth or Turnstile secret (the fake needs none).
   web-paddle:
     profiles: [e2e]
     image: ${COMPOSE_PROJECT_NAME:-classbeat}:local
@@ -339,11 +339,6 @@ services:
         condition: service_healthy
 
 secrets:
-  # The old TEST app key (a public test value, not Swedebeat's): replaces the empty
-  # secrets/swedebeat_app in this stack only. Nothing calls Swedebeat directly since SG-2 (ADR
-  # 0035); the secret stays on web, where CI checks it, until SG-4 removes the AES plumbing.
-  swedebeat_app:
-    file: ./e2e/fake-swedebeat/app.json
   # ADR 0035 section 9: the PUBLIC TEST client key of the fake gateway (not the owner's): replaces
   # the empty secrets/swedebeat_gateway_key of web and the worker in this stack only.
   swedebeat_gateway_key:

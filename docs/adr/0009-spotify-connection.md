@@ -435,7 +435,9 @@ the header constants of the script (tag commit, release asset digest, wheel SHA-
 classbeat issue L1's PR. The old 0.5.0 wheel is removed in the same PR. *(2026-10-31, ADR 0015 §4: the
 wheel check is unchanged and stays true, the bundled key file is absent from the **wheel**; the release **image**
 now adds Swedebeat's key as its own file, `/app/swedebeat_app.json`, from a build secret, and passes it to the
-library through `Credentials.swedebeat_app`.)* Whether MOWL re-reads a
+library through `Credentials.swedebeat_app`. Superseded by [ADR 0035](0035-swedebeat-gateway.md) §8 (SG-4): the
+image holds no SwedeBeat key any more; the wheel check stays, now a plain "the wheel holds no SwedeBeat key"
+guard.)* Whether MOWL re-reads a
 Spotify playlist whose content changed is a MOWL fact the library cannot give (ADR 0008 §2, §11).
 
 ### 13. The fake Spotify and tests

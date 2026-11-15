@@ -8,8 +8,8 @@
 #
 # Assets are repository files copied byte for byte from the tagged checkout: nothing is generated,
 # stamped or edited, so the file on the server is the file CI checked at that tag. None can hold a
-# secret (all are committed, reviewed files; secrets/ and .env are git-ignored, and the Swedebeat
-# app key only ever exists inside the app image). SHA256SUMS lists the others by name.
+# secret (all are committed, reviewed files; secrets/ and .env are git-ignored, and classbeat holds
+# no SwedeBeat key, ADR 0035 section 8). SHA256SUMS lists the others by name.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

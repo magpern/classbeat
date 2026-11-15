@@ -130,8 +130,6 @@ services:
       CLASSBEAT_OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
       CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID: ${OAUTH_MICROSOFT_CLIENT_ID:-}
       CLASSBEAT_OAUTH_VISIBLE_PROVIDERS: ${OAUTH_VISIBLE_PROVIDERS:-google}
-    # swedebeat_app (ADR 0015 section 4) is web's only: Swedebeat's app key as a runtime
-    # override of the key a release image holds. Empty from init (empty is no key).
     # turnstile_secret_key (ADR 0025 section 7) is web's only too; empty from init. Turnstile stays
     # off in this stack (no CLASSBEAT_TURNSTILE_* here).
     # swedebeat_gateway_key (ADR 0035 section 2): the gateway's client key, web and worker only;
@@ -141,7 +139,6 @@ services:
       - app_secret_key
       - connection_kek
       - database_maint_password
-      - swedebeat_app
       - swedebeat_gateway_key
       - oauth_google_client_secret
       - oauth_github_client_secret
@@ -244,9 +241,6 @@ secrets:
     file: ./secrets/openai_api_key
   deepseek_api_key:
     file: ./secrets/deepseek_api_key
-  # ADR 0015 section 4: Swedebeat's app key, JSON {"key", "iv"}; empty or absent is no key.
-  swedebeat_app:
-    file: ./secrets/swedebeat_app
   # ADR 0035 section 2: the SwedeBeat gateway's client key; web and worker only; empty from init.
   swedebeat_gateway_key:
     file: ./secrets/swedebeat_gateway_key

@@ -31,7 +31,7 @@ MAX_DURATION: Final = 3600
 
 Status = Literal["found", "unsure", "missing"]
 _STATUSES: Final = frozenset({"found", "unsure", "missing"})
-# Values that are no song's title or artist (``swedebeat_match.catalogue``'s rule): a URL or a
+# Values that are no song's title or artist (ADR 0016 section 4's parser rule): a URL or a
 # scheme, an e-mail, or a credential's shape (an access key id, a JWT, a long unbroken key run).
 _URLISH = re.compile(r"(?i)([a-z][a-z0-9+.-]*://|\bwww\.|\bmailto:|@[a-z0-9-]+\.[a-z])")
 _KEY_RUN = r"[0-9A-Za-z+/=_-]"

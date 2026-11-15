@@ -3,7 +3,7 @@
 Status: Accepted (the owner's decisions of 2026-10-31, issue #362, are its premise; reviewed with
 the code in that PR).
 
-**Superseded in part by [ADR 0035](0035-swedebeat-gateway.md)** (2026-11-15): §4 (the app key) and §7 (outbound), and the `device_in_use` question of §3 and §5. classbeat signs in through the SwedeBeat gateway and holds no SwedeBeat key. The rest stands.
+**Superseded in part by [ADR 0035](0035-swedebeat-gateway.md)** (2026-11-15): §4 (the app key) and §7 (outbound, `www.swedebeat.se` on the web list), the `device_in_use` question of §3 and §5, and §9's owner steps 1 to 3 (the `SWEDEBEAT_APP` secret). classbeat signs in through the SwedeBeat gateway and holds no SwedeBeat key (removed in SG-4). The rest stands.
 
 Related: [ADR 0004](0004-connections-and-encryption.md) (connections and encryption),
 [ADR 0009](0009-spotify-connection.md) (the connect wizard's style), [ADR 0010](0010-live-activation-permissions.md)

@@ -1,9 +1,8 @@
-"""Guards of the SwedeBeat gateway (ADR 0035 sections 1, 2, 7 and 9). Static checks over the
-repository's own files, no network, no real key:
+"""Guards of the SwedeBeat gateway (ADR 0035 sections 1, 7 and 9). Static checks over the
+repository's own files, no network, no real key (the client key's own guards, section 2, are
+``test_swedebeat_gateway_key_guard.py``'s):
 
-- the client key comes from a secret file only, sits on web and worker only in every compose file,
-  is never an environment variable or a workflow secret, and is redacted from every log;
-- the e2e stack mounts the public TEST key and names the fake gateway's https alias;
+- the e2e stack names the fake gateway's https alias, and web and worker alone get the URL;
 - classbeat names no gateway path but ``/auth/login``, ``/auth/session`` and ``/catalog/match``
   (no playlist write, publish, merge-publish, track download or catalogue search) and never the
   match's ``playlist`` mode;
@@ -11,25 +10,18 @@ repository's own files, no network, no real key:
 """
 
 import ast
-import io
-import json
-import logging
 import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
-from pydantic import SecretStr
 
-from classbeat.log import SECRET_KEYS, JsonFormatter, redact
-from classbeat.swedebeat_gateway.key_policy import check_key
 from classbeat.swedebeat_gateway.url_policy import gateway_origin
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "backend" / "src" / "classbeat"
 NAME = "swedebeat_gateway_key"
-E2E_KEY_FILE = "e2e/fake-gateway/client-key.txt"
 E2E_URL = "https://gateway.classbeat-e2e.test"
 ALLOWED_PATHS = frozenset({"/auth/login", "/auth/session", "/catalog/match"})
 # The gateway's other routes (docs/api.md): writes, downloads, the search and the categories.
@@ -55,30 +47,7 @@ def mounts(service: dict[str, Any]) -> list[str]:
     return [s if isinstance(s, str) else s["source"] for s in service.get("secrets", [])]
 
 
-# --- The key: a file, on web and worker only ----------------------------------------------
-
-
-@pytest.mark.parametrize("file", ["compose.yaml", "compose.prod.yaml"])
-def test_the_key_is_a_secret_file_mounted_on_web_and_worker_only(file: str) -> None:
-    config = compose(file)
-    holders = sorted(n for n, s in config["services"].items() if NAME in mounts(s))
-    assert holders == ["web", "worker"]
-    assert config["secrets"][NAME] == {"file": f"./secrets/{NAME}"}
-
-
-def test_the_e2e_stack_mounts_the_public_test_key_on_no_other_service() -> None:
-    config = compose("compose.e2e.yaml")
-    assert config["secrets"][NAME] == {"file": f"./{E2E_KEY_FILE}"}
-    # compose.yaml's web and worker mount it; nothing the e2e file adds may (the second and third
-    # webs, the fakes), and the e2e web and worker add no second mount of it.
-    assert [n for n, s in config["services"].items() if NAME in mounts(s)] == []
-
-
-def test_the_e2e_key_is_a_public_test_value_that_passes_the_rule() -> None:
-    key = text(E2E_KEY_FILE).strip()
-    assert "e2e" in key  # marked; never the owner's key
-    assert "test" in key
-    assert check_key(SecretStr(key)) is not None
+# --- The URL: web and worker only ------------------------------------------------------------
 
 
 def test_the_e2e_stack_names_the_fake_gateway_over_tls() -> None:
@@ -92,17 +61,6 @@ def test_the_e2e_stack_names_the_fake_gateway_over_tls() -> None:
     assert fake["networks"]["default"]["aliases"] == [origin.host]
     assert "ports" not in fake  # reachable only inside the compose network
     assert NAME not in mounts(fake)
-
-
-@pytest.mark.parametrize("file", ["compose.yaml", "compose.prod.yaml", "compose.e2e.yaml"])
-def test_no_service_has_the_key_or_its_file_in_its_environment(file: str) -> None:
-    e2e_key = text(E2E_KEY_FILE).strip()
-    for name, service in compose(file)["services"].items():
-        env = service.get("environment") or {}
-        items = env.items() if isinstance(env, dict) else (e.split("=", 1) for e in env)  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
-        for variable, value in items:  # pyright: ignore[reportUnknownVariableType]
-            assert "GATEWAY_KEY" not in str(variable).upper(), (file, name, variable)
-            assert e2e_key not in str(value), (file, name, variable)
 
 
 @pytest.mark.parametrize("file", ["compose.yaml", "compose.prod.yaml"])
@@ -122,63 +80,6 @@ def test_the_production_value_is_in_the_examples_never_in_code() -> None:
     assert re.search(r"^SWEDEBEAT_GATEWAY_URL=$", text(".env.example"), re.M)
     for path in SRC.rglob("*.py"):
         assert "192.168.1.222" not in path.read_text(encoding="utf-8"), path
-
-
-def test_no_workflow_or_image_holds_the_key() -> None:
-    for path in (ROOT / ".github" / "workflows").glob("*.y*ml"):
-        body = path.read_text(encoding="utf-8")
-        assert "SB_CLIENT_API_KEY" not in body, path.name  # the owner's record, read by nothing
-    dockerfile = text("Dockerfile")
-    assert NAME not in dockerfile
-    assert "SB_CLIENT_API_KEY" not in dockerfile
-    assert "GATEWAY" not in dockerfile.upper()
-
-
-def test_the_env_examples_never_hold_the_key() -> None:
-    for example in (".env.example", "docs/runbooks/prod.env.example"):
-        body = text(example)
-        assert not re.search(r"^[^#]*GATEWAY_KEY", body, re.M), example
-
-
-def test_the_init_script_creates_an_empty_placeholder() -> None:
-    script = text("scripts/worktree.sh")
-    assert NAME in script.split("SECRETS=(", 1)[1].split(")", 1)[0]
-    assert f'"$name" == {NAME}' in script
-
-
-# --- The key and the bearer are redacted --------------------------------------------------
-
-
-def test_the_redaction_names_are_on_the_list() -> None:
-    assert {"bearer", "x-api-key", NAME} <= SECRET_KEYS
-
-
-def test_the_key_and_the_bearer_never_reach_a_log_line() -> None:
-    key, bearer = "fake-gateway-client-key-Zq4mR8", "gAAAABfakeBearerValue0123456789"
-    out = io.StringIO()
-    handler = logging.StreamHandler(out)
-    handler.setFormatter(JsonFormatter())
-    logger = logging.getLogger("test.gateway.redaction")
-    logger.addHandler(handler)
-    logger.propagate = False
-    try:
-        logger.warning(
-            "Authorization: Bearer %s x-api-key: %s {'X-API-Key': '%s'} {\"bearer\": \"%s\"} "
-            "swedebeat_gateway_key=%s",
-            bearer,
-            key,
-            key,
-            bearer,
-            key,
-            extra={"bearer": bearer, "headers": {"X-API-Key": key}, NAME: key},
-        )
-    finally:
-        logger.removeHandler(handler)
-    line = out.getvalue()
-    assert key not in line
-    assert bearer not in line
-    assert json.loads(line)["bearer"] == "[redacted]"
-    assert key not in redact(f"X-API-Key={key}")
 
 
 # --- No gateway path but the three ---------------------------------------------------------
@@ -265,12 +166,3 @@ def test_the_test_client_is_referenced_only_by_its_own_module() -> None:
         names |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
         names |= {a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) for a in n.names}
         assert "swedebeat_gateway_test_client" not in names, module
-
-
-def test_the_gateway_modules_carry_no_swedebeat_host_or_secret_name() -> None:
-    for module, tree in _sources():
-        if not module.startswith(GATEWAY_MODULES):
-            continue
-        for value in _strings(tree):
-            assert "swedebeat.se" not in value, module
-            assert "swedebeat_app" not in value, module

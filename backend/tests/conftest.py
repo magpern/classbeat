@@ -32,7 +32,6 @@ pytest_plugins = [
     "oauthtools",
     "mowlfake",
     "mowlqrfake",
-    "swedebeatfake",
     "gatewayfake",
     "isofake",
     "spotifyfake",

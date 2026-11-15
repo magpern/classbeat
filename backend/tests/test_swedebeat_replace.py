@@ -457,6 +457,47 @@ async def test_a_catalogue_replace_calls_nothing_when_the_flag_is_off(
         assert matched == 0
 
 
+@pytest.mark.parametrize("expires_at", ["now() - interval '1 second'", "NULL"])
+async def test_a_catalogue_replace_refuses_a_bearer_past_or_without_expires_at(
+    songenv: SongEnv, catalogue: FakeGateway, expires_at: str
+) -> None:
+    """ADR 0035 section 5: the replace's admission refuses ``not_connected`` for a row past its
+    ``expires_at`` or with none (no gateway-era row lacks one), before any job or request."""
+    rider = await songenv.rider()
+    await store_bearer(songenv.factory, songenv.ring, make_context(rider.user_id), catalogue)
+    await use_swedebeat(songenv.factory, rider.user_id)
+    with _enabled(songenv):
+        class_id, base, first_list = await picked(songenv, rider)
+        stored = songenv.revision(first_list)
+        parsed = SongListContent.model_validate(stored.content)
+        match_id = _insert_match(
+            songenv,
+            rider.user_id,
+            class_id,
+            first_list,
+            bytes(stored.content_hash),
+            [_song(n, song, missing=n == 3) for n, song in enumerate(parsed.songs, start=1)],
+        )
+        before = _jobs(songenv, class_id)
+        songenv.sql(
+            f"UPDATE connections SET expires_at = {expires_at} "  # noqa: S608 - a fixed literal
+            "WHERE owner_id = :o AND provider = 'swedebeat'",
+            o=rider.user_id,
+        )
+        answer = await change(
+            rider, class_id, base, replace=None, request=None, match_revision_id=str(match_id)
+        )
+        assert answer.status_code == 409, answer.text
+        assert answer.json()["detail"]["reason"] == "not_connected"
+        assert _jobs(songenv, class_id) == before
+        assert catalogue.requests == []
+        status = songenv.sql(
+            "SELECT status FROM connections WHERE owner_id = :o AND provider = 'swedebeat'",
+            o=rider.user_id,
+        ).scalar_one()
+        assert status == "connected"  # refused without a write
+
+
 async def test_either_catalogue_flag_check_refuses_on_its_own(
     songenv: SongEnv, catalogue: FakeGateway, monkeypatch: pytest.MonkeyPatch
 ) -> None:

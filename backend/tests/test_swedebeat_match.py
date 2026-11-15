@@ -787,23 +787,34 @@ async def _created_and_run(env: Env, rider: Rider) -> UUID:
     return await _run(env)
 
 
-def _expire(admin: Connection, rider: Rider) -> None:
+# A row past its lifetime, and one with none (no gateway-era row lacks one): both are not live.
+_EXPIRED = ("now() - interval '1 second'", "NULL")
+
+
+def _expire(admin: Connection, rider: Rider, expires_at: str = _EXPIRED[0]) -> None:
+    assert expires_at in _EXPIRED
     admin.execute(
         text(
-            "UPDATE connections SET expires_at = now() - interval '1 second' "
+            f"UPDATE connections SET expires_at = {expires_at} "  # noqa: S608 - a fixed literal
             "WHERE owner_id = :o AND provider = 'swedebeat'"
         ),
         {"o": rider.user_id},
     )
 
 
-async def test_a_bearer_past_expires_at_is_refused_at_admission_and_in_prepare(
-    env: Env, admin: Connection, make_actor: Any, catalogue: FakeGateway, configured: None
+@pytest.mark.parametrize("expires_at", _EXPIRED)
+async def test_a_bearer_past_or_without_expires_at_is_refused_at_admission_and_in_prepare(
+    env: Env,
+    admin: Connection,
+    make_actor: Any,
+    catalogue: FakeGateway,
+    configured: None,
+    expires_at: str,
 ) -> None:
     rider = await _one(env, make_actor, "expiry", 900)
     # Admitted while live, expired before the worker runs it: no request, no flip.
     assert (await _post_job(rider.actor, _body(rider))).status_code == 201
-    _expire(admin, rider)
+    _expire(admin, rider, expires_at)
     job_id = await _run(env)
     assert (_job(admin, job_id).state, _job(admin, job_id).error_category) == (
         "failed", "not_connected",

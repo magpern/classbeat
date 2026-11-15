@@ -1,26 +1,18 @@
 """SwedeBeat connect: no secret in a log, an event, an error body or an exception chain (ADR 0035
-sections 2 and 3; threat model T23), and the old app key's settings, which stay until SG-4 removes
-them (ADR 0035 section 8). Fakes only, no network.
+sections 2 and 3; threat model T23). Fakes only, no network. classbeat holds no SwedeBeat key of its
+own any more (ADR 0035 section 8; ``test_swedebeat_gateway_key_guard.py``).
 
 The secrets searched for: the password (right and wrong), the gateway's bearers, the client key
 and the device id the login sent.
 """
 
-import json
-from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import SecretStr, ValidationError
+from pydantic import SecretStr
 
 from authtools import Env, running_env
 from classbeat import connections
-from classbeat.config import (
-    ModelProviderRefused,
-    Settings,
-    check_worker_has_no_swedebeat_app,
-    swedebeat_app_keys,
-)
 from classbeat.connections import ConnectionFailure
 from classbeat.connections.swedebeat_account import (
     SwedebeatRefusal,
@@ -32,7 +24,6 @@ from ctx import make_context
 from gatewaycore import LOGIN_PATH, FakeGateway
 from gatewayfake import CLIENT_KEY, EMAIL, GATEWAY_SETTINGS, PASSWORD, calls
 from preftools import use_swedebeat
-from swedebeatfake import make_app_key
 from test_mowl_redaction import Everything, captured
 
 __all__ = ["captured"]  # fixture
@@ -153,7 +144,6 @@ def test_the_log_redaction_masks_the_swedebeat_names() -> None:
     for name in (
         "swedebeat_token",
         "swedebeat_device_id",
-        "swedebeat_app",
         "deviceid",
         "password",
         "x-auth-token",
@@ -167,76 +157,3 @@ def test_the_log_redaction_masks_the_swedebeat_names() -> None:
     assert planted not in masked
     assert "[redacted]" in masked
     assert redact("plain text") == "plain text"
-
-
-# --- the app key's settings ---------------------------------------------------------------
-
-
-def _app_text(app: dict[str, str]) -> str:
-    return json.dumps(app)
-
-
-def test_the_app_key_file_is_validated_and_masked() -> None:
-    app = make_app_key()
-    assert swedebeat_app_keys(SecretStr(_app_text(app))) == app
-    for bad in (
-        "",
-        "not json",
-        "[]",
-        json.dumps({"key": app["key"]}),
-        json.dumps({"key": "short", "iv": app["iv"]}),
-        json.dumps({"key": app["key"], "iv": "x" * 17}),
-        json.dumps({**app, "extra": "1"}),
-        json.dumps({"key": 1, "iv": 2}),
-        json.dumps({"key": "€" * 32, "iv": app["iv"]}),
-    ):
-        assert swedebeat_app_keys(SecretStr(bad)) is None
-    shown = repr(Settings(swedebeat_app=SecretStr(_app_text(app))))
-    assert app["key"] not in shown
-    assert app["iv"] not in shown
-
-
-def test_a_malformed_app_key_file_refuses_the_settings_without_echoing_it() -> None:
-    with pytest.raises(ValidationError) as caught:
-        Settings(swedebeat_app=SecretStr('{"key": "short-secret-value", "iv": "x"}'))
-    assert "short-secret-value" not in str(caught.value)
-
-
-def test_an_empty_placeholder_is_no_key() -> None:
-    assert Settings(swedebeat_app=SecretStr("")).swedebeat_app is None
-    assert Settings(swedebeat_app=SecretStr("  \n")).swedebeat_keys() is None
-
-
-def test_the_secret_wins_over_the_image_file_and_a_bad_image_file_is_no_key(tmp_path: Path) -> None:
-    secret_app, image_app = make_app_key(), make_app_key()
-    image = tmp_path / "swedebeat_app.json"
-    image.write_text(_app_text(image_app))
-    both = Settings(swedebeat_app=SecretStr(_app_text(secret_app)), swedebeat_app_file=image)
-    assert both.swedebeat_keys() == secret_app
-    only_image = Settings(swedebeat_app_file=image)
-    assert only_image.swedebeat_keys() == image_app
-    image.write_text("garbage")
-    assert Settings(swedebeat_app_file=image).swedebeat_keys() is None
-    assert Settings(swedebeat_app_file=tmp_path / "missing.json").swedebeat_keys() is None
-
-
-def test_the_secret_file_in_the_secrets_directory_sets_the_app_key(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    app = make_app_key()
-    (tmp_path / "swedebeat_app").write_text(_app_text(app) + chr(10))
-    monkeypatch.setenv("CLASSBEAT_SECRETS_DIR", str(tmp_path))
-    assert Settings().swedebeat_keys() == app
-
-
-def test_the_environment_cannot_set_the_app_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CLASSBEAT_SWEDEBEAT_APP", _app_text(make_app_key()))
-    assert Settings().swedebeat_app is None
-
-
-def test_the_worker_refuses_to_start_with_the_app_key_secret() -> None:
-    check_worker_has_no_swedebeat_app(Settings())
-    with pytest.raises(ModelProviderRefused):
-        check_worker_has_no_swedebeat_app(
-            Settings(swedebeat_app=SecretStr(_app_text(make_app_key())))
-        )

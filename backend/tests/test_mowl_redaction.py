@@ -170,8 +170,9 @@ async def test_an_unexpected_library_error_is_not_chained(
 
 
 def test_the_vendored_wheel_has_no_swedebeat_key() -> None:
-    """ADR 0001 and the threat model: classbeat installs mowl-workouts without the bundled
-    Swedebeat app key (scripts/build-mowl-wheel.sh)."""
+    """The wheel holds no SwedeBeat key (ADR 0001, ADR 0035 section 8: classbeat holds none at
+    all): classbeat installs mowl-workouts without the bundled Swedebeat app key
+    (scripts/build-mowl-wheel.sh)."""
     names = zipfile.ZipFile(VENDORED).namelist()
     assert "mowl/api.py" in names
     assert not [n for n in names if "swedebeat_app" in n]
