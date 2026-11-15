@@ -180,17 +180,6 @@ REFUSED = [
     "from classbeat.egress import mowl_media_test_client\nmowl_media_test_client(a, t)",
     "from classbeat import egress\negress.mowl_media_test_client(a, t)",
     "from classbeat import egress\negress._media_client(a, 1.0, t)",
-    # ADR 0016 §4 (B1): the catalogue client's list is code; a caller never hands one in.
-    "from classbeat.egress import swedebeat_cloud_async_client\n"
-    "swedebeat_cloud_async_client(allowlist=a)",
-    "from classbeat.egress import swedebeat_cloud_async_client\n"
-    "swedebeat_cloud_async_client(total_seconds=1)",
-    "from classbeat.egress import swedebeat_cloud_async_client\n"
-    "swedebeat_cloud_async_client(inner=t)",
-    "from classbeat.egress import swedebeat_cloud_network_transport\n"
-    "swedebeat_cloud_network_transport()",
-    "from classbeat.egress import swedebeat_cloud_test_client\nswedebeat_cloud_test_client(t)",
-    "from classbeat import egress\negress.swedebeat_cloud_test_client(t)",
     # ADR 0034 section 2 (#1058): the player client takes no argument, its builders are tests'.
     "from classbeat.egress import player_async_client\nplayer_async_client(inner=t)",
     "from classbeat.egress import player_async_client\nplayer_async_client('https://x.example')",
@@ -239,7 +228,6 @@ def test_the_guard_refuses(source: str) -> None:
 ALLOWED = [
     "from classbeat.egress import allowlisted_async_client\nallowlisted_async_client()",
     "from classbeat.egress import mowl_media_async_client\nmowl_media_async_client()",
-    "from classbeat.egress import swedebeat_cloud_async_client\nswedebeat_cloud_async_client()",
     "async def f(client, url):\n    await client.get(url, follow_redirects=False)",
     "async def f(client, url):\n    await client.get(url)",
     "import httpx\nx: httpx.AsyncBaseTransport\nhttpx.Timeout(1.0)\nhttpx.MockTransport(f)",

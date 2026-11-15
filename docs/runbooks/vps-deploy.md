@@ -181,7 +181,7 @@ cd /opt/classbeat
   done
   head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/app_secret_key      # >= 32 bytes
   head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/connection_kek      # exactly 64 hex characters
-  for n in smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app \
+  for n in smtp_password anthropic_api_key openai_api_key deepseek_api_key \
     swedebeat_gateway_key oauth_google_client_secret oauth_github_client_secret \
     oauth_microsoft_client_secret turnstile_secret_key; do
     [ -e "secrets/$n" ] || install -m 640 /dev/null "secrets/$n"   # empty placeholder; fill in below
@@ -205,10 +205,6 @@ Fill in these files by hand (writing into an existing file keeps its group and m
 - `secrets/anthropic_api_key`: the Anthropic key. The worker refuses to start in prod without it.
 - `secrets/openai_api_key`, `secrets/deepseek_api_key`: leave **empty** until the owner decides
   (ADR 0012, [m3c-model-enable.md](m3c-model-enable.md)); the files must exist.
-- `secrets/swedebeat_app`: leave **empty** (the loop above made it); the file must exist
-  because `compose.yaml` and `compose.prod.yaml` mount it into `web`, and compose fails at `up`
-  without it. A release image holds Swedebeat's key itself; the file is only a runtime override
-  ([swedebeat-connect.md](swedebeat-connect.md)).
 - `secrets/swedebeat_gateway_key`: the SwedeBeat gateway's client key (ADR 0035 section 2), the
   value the gateway lists for classbeat in its `CLIENT_API_KEYS`. Mounted into `web` and the
   `worker` only; the file **must exist** (empty is fine: SwedeBeat is then "not available"), or `up`
@@ -229,11 +225,11 @@ Fill in these files by hand (writing into an existing file keeps its group and m
   `TURNSTILE_SITE_KEY`, and in prod with one of Cloudflare's test keys ([ADR 0025](../adr/0025-turnstile.md) section 7).
 
 A file that holds only blanks counts as empty. If an optional file (`smtp_password`, the three
-`oauth_*_client_secret`, `swedebeat_app`, `turnstile_secret_key`) cannot be read, `web` starts without it and logs
+`oauth_*_client_secret`, `swedebeat_gateway_key`, `turnstile_secret_key`) cannot be read, `web` starts without it and logs
 `secret file <name> is not readable; treated as not set` (that feature is off); any other unreadable
 secret stops the service that needs it. Either way, fix the group and mode as above. For
-`swedebeat_app` that means the runtime override silently does not apply: web falls back to the key
-built into the release image, and only that warning says so.
+`swedebeat_gateway_key` that means SwedeBeat is "not available" on web or the worker, and only that
+warning says so.
 
 **Back up `secrets/connection_kek` and `secrets/postgres_password` and the other secret files
 off the server now** (a password manager or an encrypted offline copy). Losing `connection_kek`
@@ -796,7 +792,7 @@ mv -f "staging-$NEW"/* . && rmdir "staging-$NEW"
 chmod +x check-prod-compose.sh install-swag-logrotate.sh backup.sh restore.sh validate-backup.sh   # a download has no exec bit
 diff -u previous-$OLD/swag-classbeat.subdomain.conf swag-classbeat.subdomain.conf   # swag's copy changed?
 diff -u previous-$OLD/prod.env.example prod.env.example                              # new settings to put in .env?
-( umask 027; touch secrets/swedebeat_app secrets/swedebeat_gateway_key secrets/turnstile_secret_key \
+( umask 027; touch secrets/swedebeat_gateway_key secrets/turnstile_secret_key \
   secrets/oauth_google_client_secret secrets/oauth_github_client_secret secrets/oauth_microsoft_client_secret )
 sed -i "s/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=$NEW/" .env
 ./check-prod-compose.sh                           # files, .env, secrets/: group 10010, mode 640 or stricter
@@ -806,14 +802,21 @@ docker compose up -d --wait
 ```
 
 Your own `compose.bridge.yaml` (`proton-bridge-smtp.md`) is not a release asset and is never touched.
+
+**From the release that carries SG-4 (#1080, ADR 0035 section 8)** no service mounts
+`secrets/swedebeat_app` any more: SwedeBeat's app key is gone from classbeat, and
+`./check-prod-compose.sh` refuses a compose file that still mounts a `swedebeat_app` secret (an old
+copy of the compose files). Once that release runs, delete the old file:
+`shred -u secrets/swedebeat_app 2>/dev/null || rm -f secrets/swedebeat_app`. Then (owner steps, never
+an agent's) delete the GitHub secret `SWEDEBEAT_APP` and the older release image tags on GHCR that
+still hold the key ([swedebeat-connect.md](swedebeat-connect.md), "After the SG-4 release").
 `db` is **recreated on every update** (its image reference changes with `CLASSBEAT_VERSION`), so
 Postgres restarts for a few seconds; the data volume is kept.
 
 `up` re-runs `migrate` (idempotent) and `db-functions` before it replaces `web` and `worker`;
 the worker has 30 s to hand its leases back (ADR 0005). Read the release notes for owner-facing
-steps, and copy the swag sample to swag if the first `diff` shows a change. A stack older than the
-Swedebeat connection (#366) has no `secrets/swedebeat_app`, and one older than #507 has no
-`secrets/oauth_*_client_secret`, and one older than #724 has no `secrets/turnstile_secret_key`,
+steps, and copy the swag sample to swag if the first `diff` shows a change. A stack older than
+#507 has no `secrets/oauth_*_client_secret`, and one older than #724 has no `secrets/turnstile_secret_key`,
 and one older than the SwedeBeat gateway client (#1077, ADR 0035) has no
 `secrets/swedebeat_gateway_key` (**create it before running a release that carries #1077**);
 without them `up` fails with a missing-file error for that secret, which the `touch` line above fixes
@@ -844,6 +847,10 @@ image is gone), and answers either "every database revision is known to release 
 names the revision OLD lacks and tells you to restore the backup (exit 1). Some migrations also drop
 or reshape data, so even a pass is a rollback of the software, not of data written since.
 
+- **Going back to a release before SG-4** (#1080, ADR 0035 section 8): its compose files mount
+  `secrets/swedebeat_app` into `web`, so recreate the empty file first, or `up` fails:
+  `( umask 027; touch secrets/swedebeat_app )`. Leave it empty: SwedeBeat then goes through the
+  gateway, as on the newer release.
 - **The check passes (no migration):** restore the previous release's files (`cp previous-$OLD/* .`;
   they are the ones you downloaded for it), set `CLASSBEAT_VERSION=$OLD` in `.env`,
   `./check-prod-compose.sh && docker compose pull && docker compose up -d --wait`. If the

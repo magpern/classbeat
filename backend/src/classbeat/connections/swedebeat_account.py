@@ -16,7 +16,8 @@ connection (ADR 0004). The password is discarded. classbeat never calls SwedeBea
   ``open_bearer`` opens it, through ``UserContext``, for the gateway client alone.
 - **Status from the answer only** (``swedebeat_gateway.status_policy``): ``unknown client`` and a
   ``403`` are this server's configuration (``app_key_unavailable``, an operator log line, nothing
-  stored), never the user's password.
+  stored), never the user's password. No gateway origin installed in this process is the same
+  refusal with its own line (``swedebeat gateway not configured``): nothing was sent.
 
 **Opening** (``open_bearer``): ``not_connected`` without a ``connected`` row or when the row is
 past ``expires_at`` (or has none: every gateway-era row has one), without a request and without a
@@ -61,6 +62,10 @@ PROVIDER = "swedebeat"
 DEVICE_ID_CHARS = 16
 _DEVICE_LABEL = b"classbeat/swedebeat-device/v1\x00"
 _LEGACY_FIELDS = frozenset({"token", "device_id"})  # ADR 0015's payload, before the gateway
+# The operator log lines of a configuration failure (no value in either): the gateway refused the
+# key, or this process has no gateway origin, so nothing was sent.
+REFUSED_KEY = "swedebeat gateway refused the client key"
+UNCONFIGURED = "swedebeat gateway not configured"
 _C = connections.c
 
 
@@ -127,12 +132,11 @@ async def _login(
     except ValueError:
         # Outside the gateway's bounds (the route bounds the form first); the text names a field.
         failure = gateway.GatewayFailure("invalid_credentials")
-    # Outside the except blocks: nothing is chained onto what is raised.
+    # Outside the except blocks: nothing is chained onto what is raised. With no origin installed
+    # nothing was sent, so the operator line says so rather than blaming the key.
     if unreachable or (failure is not None and failure.category == "app_key_unavailable"):
-        logger.error(
-            "swedebeat gateway refused the client key",
-            extra={"category": "app_key_unavailable", "action": "sign_in"},
-        )
+        message = UNCONFIGURED if unreachable else REFUSED_KEY
+        logger.error(message, extra={"category": "app_key_unavailable", "action": "sign_in"})
         raise SwedebeatRefusal("app_key_unavailable")
     category = "unknown" if failure is None else failure.category
     retry_after = None if failure is None else failure.retry_after

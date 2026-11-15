@@ -90,6 +90,11 @@ for m in \
   'del(.services.web.environment.CLASSBEAT_WEBAUTHN_RP_ID)'; do
   expect_refused shared "$shared" "$m"
 done
+# ADR 0035 section 8: the retired SwedeBeat app key, declared as a well-formed secret file (so no
+# other rule refuses it first), mounted on web or only declared.
+sb_app='.secrets.swedebeat_app = {"file": (.secrets.app_secret_key.file | rtrimstr("app_secret_key") + "swedebeat_app")}'
+expect_refused shared "$shared" "$sb_app | .services.web.secrets += [{\"source\":\"swedebeat_app\"}]" "swedebeat_app"
+expect_refused shared "$shared" "$sb_app" "swedebeat_app"
 # Secret files (#511): the group, the users, one name per file, no other way into secrets/.
 for m in \
   'del(.services.web.group_add)' \

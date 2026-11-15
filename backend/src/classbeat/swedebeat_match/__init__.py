@@ -6,8 +6,6 @@
   and 6), the 401 confirmation and the status mapping, over ``classbeat.swedebeat_gateway``;
 - ``classbeat.swedebeat_match.verdict_policy`` and ``confirm_policy``: what is sent, classbeat's
   verdict (``SAME_SONG``) and a failed call's category, without I/O;
-- ``classbeat.swedebeat_match.catalogue`` and ``search``: the direct ``cloud.swedebeat.se`` search
-  of ADR 0016, no longer called by any job (SG-4 deletes them with the cloud client);
 - ``classbeat.swedebeat_match.revision``: the ``swedebeat_match`` revision, its hash, ``build``,
   ``store`` and the re-checking ``load``;
 - ``classbeat.swedebeat_match.replace``: the catalogue replace inside ``revise_songs`` (the

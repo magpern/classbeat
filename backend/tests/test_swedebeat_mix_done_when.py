@@ -31,7 +31,6 @@ from jobapi import Browser
 from jobtools import new_job
 from mowlfake import FakeMowl
 from optools import TOKEN_A, TOKEN_B, OpsEnv
-from swedebeatfake import PASSWORD
 from test_mowl_redaction import Everything
 from test_swedebeat_design import (
     MIX_ID,
@@ -144,7 +143,6 @@ async def test_the_temp_link_signature_and_app_key_are_in_no_log_response_or_dum
     harness: Harness,
     mowl_api: FakeMowl,
     operator_log: io.StringIO,
-    swedebeat_app: dict[str, str],
     captured: Everything,
 ) -> None:
     owner = await harness.ops.user()
@@ -152,11 +150,8 @@ async def test_the_temp_link_signature_and_app_key_are_in_no_log_response_or_dum
     mix = add_beats(mowl_api)
     assert (await harness.run(owner, connection, mix)).state == "completed"
     secrets = [
-        PASSWORD,
         GATEWAY_PASSWORD,
         GATEWAY_KEY,
-        swedebeat_app["key"],
-        swedebeat_app["iv"],
         PLANTED_APP_KEY,
         *harness.media.signatures,
     ]

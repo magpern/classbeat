@@ -38,8 +38,10 @@ check_common() {
     || fail "web and db need their healthchecks" || return 1
   q '[.services.web.secrets[].source] | (index("anthropic_api_key") // -1) < 0' \
     || fail "web must not mount a model key" || return 1
-  q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("swedebeat_app")) | .key] == ["web"]' \
-    || fail "swedebeat_app belongs to web only" || return 1
+  # ADR 0035 section 8: classbeat holds no SwedeBeat key. An old server copy must not mount the
+  # retired swedebeat_app secret, nor declare it.
+  q '(.secrets // {} | has("swedebeat_app") | not) and ([.services[] | .secrets // [] | .[] | select(.source == "swedebeat_app")] | length == 0)' \
+    || fail "no service mounts swedebeat_app and no secret is named so (the SwedeBeat app key is retired, ADR 0035)" || return 1
   # ADR 0035 section 2: the SwedeBeat gateway's client key is a file on web and the worker only,
   # and its origin (CLASSBEAT_SWEDEBEAT_GATEWAY_URL) is theirs only, unset by default.
   q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("swedebeat_gateway_key")) | .key] | sort == ["web","worker"]' \

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../../../api/client'
 import { connectSwedebeat, setSwedebeatPreference, type Connection } from '../../../api/connections'
 import { errorMessage } from '../../../api/messages'
@@ -35,7 +35,8 @@ function connectError(error: unknown): string {
  *
  * Connecting through the gateway always signs the account out of the Swedebeat app on other devices
  * (ADR 0035 section 4), so the form says so up front and needs a ticked "I understand" box, unticked
- * on every open, before it sends anything; only then does it send `force: true`.
+ * on every open, before it sends anything; only then does it send `force: true`. The box is described
+ * by the notice (`aria-describedby`), so a screen reader reads what "I understand" agrees to.
  *
  * Every call the dialog makes goes through one queue, so a rollback never lands before an attempt it
  * follows (a close during a slow connect) or after one that came later (a reopen and a new try), and
@@ -61,6 +62,7 @@ export function SwedebeatDialog({
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [understood, setUnderstood] = useState(false)
+  const noticeId = useId()
   // Unticked on every open, however the last opening ended (a close or a connection): reset while
   // rendering the opening, not in an effect, so the box is never shown ticked.
   const [shownOpen, setShownOpen] = useState(open)
@@ -150,10 +152,13 @@ export function SwedebeatDialog({
             }}
             required
           />
-          <p className="m-0 text-[0.9375rem]">{t('swed.signOutNotice')}</p>
+          <p id={noticeId} className="m-0 text-[0.9375rem]">
+            {t('swed.signOutNotice')}
+          </p>
           <label className="check">
             <input
               type="checkbox"
+              aria-describedby={noticeId}
               checked={understood}
               onChange={(e) => {
                 setUnderstood(e.target.checked)

@@ -145,9 +145,6 @@ _CALLS = frozenset(
         # tests; production code gets the one with no arguments.
         "classbeat.egress.mowl_media_test_client",
         "classbeat.egress._media_client",
-        # ADR 0016 §4 (B1): the catalogue client with a transport of the caller's own is for tests.
-        "classbeat.egress.swedebeat_cloud_network_transport",
-        "classbeat.egress.swedebeat_cloud_test_client",
         # ADR 0024 (#647): the QR image client with a transport of the caller's own is for tests.
         "classbeat.egress.mowl_qr_image_network_transport",
         "classbeat.egress.mowl_qr_image_test_client",
@@ -174,7 +171,6 @@ _NO_ALLOWLIST_ARGUMENT = frozenset({"classbeat.egress.allowlisted_async_client"}
 _NO_ARGUMENTS = frozenset(
     {
         "classbeat.egress.mowl_media_async_client",
-        "classbeat.egress.swedebeat_cloud_async_client",
         # ADR 0024 (#647): the QR image client and the broker connection (host, port 8883, TLS).
         "classbeat.egress.mowl_qr_image_async_client",
         "classbeat.egress.mowl_mqtt_open",

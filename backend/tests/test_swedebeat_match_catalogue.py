@@ -139,7 +139,7 @@ _KIND_FILES = (
     "verdict_policy.py",
 )
 # What the job no longer uses (ADR 0035 sections 6 and 8): the library's catalogue calls and the
-# direct SwedeBeat client. SG-4 deletes the old modules and constants themselves.
+# direct SwedeBeat client (deleted with their modules and constants in SG-4).
 _GONE = frozenset(
     {
         "match_track",

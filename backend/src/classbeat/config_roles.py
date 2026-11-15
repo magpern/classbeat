@@ -77,15 +77,6 @@ def check_worker_model_provider(settings: "Settings") -> None:
         raise ModelProviderRefused("model_provider fake is not allowed when environment is prod")
 
 
-def check_worker_has_no_swedebeat_app(settings: "Settings") -> None:
-    """Swedebeat's app key is the web app's only (ADR 0015 section 4): no worker job signs in to
-    Swedebeat, so a readable ``swedebeat_app`` file refuses the worker's start."""
-    if settings.swedebeat_app is not None:
-        raise ModelProviderRefused(
-            "the worker must not see the swedebeat_app secret file (web only)"
-        )
-
-
 def check_worker_has_no_turnstile_secret(settings: "Settings") -> None:
     """The Turnstile secret is the web app's only (ADR 0025 section 7): the worker verifies no
     token, so a readable ``turnstile_secret_key`` file refuses the worker's start."""

@@ -36,7 +36,6 @@ from classbeat.config_roles import (  # noqa: F401 (re-exported from classbeat.c
     ModelProviderRefused,
     check_web_has_no_model_key,
     check_worker_has_no_paddle_secret,
-    check_worker_has_no_swedebeat_app,
     check_worker_has_no_turnstile_secret,
     check_worker_model_provider,
     model_sdk_environment_problems,
@@ -53,8 +52,6 @@ from classbeat.config_secrets import (  # noqa: F401 (re-exported from classbeat
 )
 from classbeat.config_smtp import check_ca_file as check_smtp_ca_file
 from classbeat.config_smtp import check_plain_smtp
-from classbeat.config_swedebeat import check_app as check_swedebeat_app
-from classbeat.config_swedebeat import swedebeat_app_keys
 from classbeat.config_turnstile import (  # noqa: F401 (re-exported from classbeat.config)
     TURNSTILE_DUMMY_KEY,
     TURNSTILE_SITE_KEY,
@@ -76,7 +73,6 @@ SECRET_FILE_FIELDS = (
     "anthropic_api_key",
     "openai_api_key",
     "deepseek_api_key",
-    "swedebeat_app",
     "swedebeat_gateway_key",
     "turnstile_secret_key",
     "paddle_webhook_secret",
@@ -89,7 +85,6 @@ OPTIONAL_SECRET_FILE_FIELDS = frozenset(
         "oauth_google_client_secret",
         "oauth_github_client_secret",
         "oauth_microsoft_client_secret",
-        "swedebeat_app",
         "swedebeat_gateway_key",
         "turnstile_secret_key",
         "paddle_webhook_secret",
@@ -189,16 +184,11 @@ class Settings(
     # ``deepseek_api_key`` files, worker only, empty file = none, never the environment).
     openai_api_key: SecretStr | None = None
     deepseek_api_key: SecretStr | None = None
-    # ADR 0015: the Swedebeat connection (its switch ``swedebeat_enabled`` is in
-    # ``config_features``). Swedebeat's AES app key (JSON ``{"key", "iv"}``: 32 and 16
-    # characters) comes from, in this order: the optional secret file ``swedebeat_app`` (a runtime
-    # Docker secret, web only, never the environment; the home server's way) and the file
-    # ``swedebeat_app_file`` that a release image build writes (the owner's GitHub secret
-    # ``SWEDEBEAT_APP``, ADR 0015 section 4; absent from every PR, CI and e2e image).
-    # With neither, connecting answers ``app_key_unavailable``.
-    swedebeat_app: SecretStr | None = None
     # ADR 0035 section 2: the SwedeBeat gateway's client key (``X-API-Key``), web and worker,
-    # file only (``key_policy``). Its URL is ``swedebeat_gateway_url`` (``config_features``).
+    # file only (``key_policy``). Its URL is ``swedebeat_gateway_url`` and the Swedebeat switch
+    # ``swedebeat_enabled`` (both ``config_features``). classbeat holds no SwedeBeat key of its
+    # own (ADR 0035 section 8): without the URL or this key, connecting answers
+    # ``app_key_unavailable``.
     swedebeat_gateway_key: SecretStr | None = None
     # ADR 0025 (#721): Turnstile's secret key file (web only, never the environment), needed when
     # ``turnstile_enabled`` is on and ``turnstile_fake`` is off (``config_features``).
@@ -206,7 +196,6 @@ class Settings(
     # ADR 0032 section 3 (#973): the Paddle webhook's signing secrets, one per line (a rotation),
     # file only, web only; needed for a Paddle ``billing_provider`` (``config_billing``).
     paddle_webhook_secret: SecretStr | None = None
-    swedebeat_app_file: Path = Path("/app/swedebeat_app.json")
 
     @classmethod
     def settings_customise_sources(
@@ -255,11 +244,6 @@ class Settings(
             raise ValueError(f"{info.field_name} has whitespace, control or non-ASCII characters")
         return value
 
-    @field_validator("swedebeat_app")
-    @classmethod
-    def _check_swedebeat_app(cls, value: SecretStr | None) -> SecretStr | None:
-        return check_swedebeat_app(value)  # the empty placeholder becomes None
-
     @field_validator("swedebeat_gateway_key")
     @classmethod
     def _check_swedebeat_gateway_key(cls, value: SecretStr | None) -> SecretStr | None:
@@ -284,18 +268,6 @@ class Settings(
     def turnstile_hostname(self) -> str:
         """The host a Turnstile answer must name (ADR 0025 section 4): ``public_base_url``'s."""
         return urlsplit(self.public_base_url).hostname or ""
-
-    def swedebeat_keys(self) -> dict[str, str] | None:
-        """``{"key", "iv"}`` for the library's ``Credentials.swedebeat_app``, or ``None``: the
-        runtime secret first, else the file a release image holds (read per call; a missing,
-        unreadable or malformed file is no key)."""
-        if self.swedebeat_app is not None:
-            return swedebeat_app_keys(self.swedebeat_app)
-        try:
-            text = self.swedebeat_app_file.read_text(encoding="utf-8")
-        except (OSError, ValueError):
-            return None
-        return swedebeat_app_keys(SecretStr(text))
 
     def model_key(self, provider: str) -> SecretStr | None:
         """The key file of ``provider`` (``None`` when missing or empty, or not a provider)."""

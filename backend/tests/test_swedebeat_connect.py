@@ -311,6 +311,36 @@ async def test_unknown_client_releases_the_slot_logs_the_category_and_never_flip
     assert CLIENT_KEY not in caplog.text and PASSWORD not in caplog.text  # noqa: PT018
 
 
+async def test_without_an_installed_origin_connect_logs_not_configured_and_sends_nothing(
+    env: Env,
+    make_actor: Any,
+    gateway_api: FakeGateway,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The settings name a gateway, but this process installed no origin (the production builder
+    refuses before anything is built): the same 503, and the operator line says the gateway is not
+    configured, never that it refused the key (nothing was sent)."""
+    from classbeat import egress_gateway
+
+    actor = await actor_for(env, make_actor)
+    monkeypatch.setattr(egress_gateway, "_origin", None)
+    monkeypatch.setattr(opener, "open_client", egress_gateway.swedebeat_gateway_async_client)
+    caplog.set_level(logging.INFO)
+    refused = await actor.post(CONNECT, body())
+    assert (refused.status_code, refused.json()) == (
+        503, {"detail": {"reason": "app_key_unavailable"}},
+    )  # fmt: skip
+    lines = [r for r in caplog.records if r.getMessage() == "swedebeat gateway not configured"]
+    assert [(r.levelno, getattr(r, "category", None)) for r in lines] == [
+        (logging.ERROR, "app_key_unavailable")
+    ]
+    assert not [r for r in caplog.records if r.getMessage() == REFUSED_KEY]
+    assert gateway_api.requests == []
+    assert await owned(env, "SELECT count(*) FROM connections") == 0
+    assert CLIENT_KEY not in caplog.text and PASSWORD not in caplog.text  # noqa: PT018
+
+
 async def test_without_the_url_or_the_key_connect_says_so_and_sends_nothing(
     env: Env, make_actor: Any, gateway_api: FakeGateway
 ) -> None:
@@ -360,8 +390,9 @@ async def test_a_legacy_token_row_opens_as_needs_reconnect_without_a_request(
     assert await bearer_of(env) in gateway_api.bearers
 
 
-async def test_a_bearer_past_expires_at_shows_needs_reconnect_and_never_opens(
-    env: Env, make_actor: Any, gateway_api: FakeGateway
+@pytest.mark.parametrize("expires_at", ["now() - interval '1 second'", "NULL"])
+async def test_a_bearer_past_or_without_expires_at_shows_needs_reconnect_and_never_opens(
+    env: Env, make_actor: Any, gateway_api: FakeGateway, expires_at: str
 ) -> None:
     actor = await actor_for(env, make_actor)
     assert (await actor.post(CONNECT, body())).status_code == 200
@@ -371,7 +402,7 @@ async def test_a_bearer_past_expires_at_shows_needs_reconnect_and_never_opens(
     )
     assert opened.expires_at == expires
     assert opened.bearer not in repr(opened)
-    await write_own(env, "UPDATE connections SET expires_at = now() - interval '1 second'")
+    await write_own(env, f"UPDATE connections SET expires_at = {expires_at}")  # noqa: S608
     shown = (await actor.get("/api/connections")).json()["connections"][0]
     assert (shown["status"], shown["last_error"]) == ("needs_reconnect", None)
     with pytest.raises(ConnectionFailure) as caught:

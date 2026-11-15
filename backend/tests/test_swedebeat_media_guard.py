@@ -27,7 +27,8 @@ THIS = Path(__file__).resolve()
 
 # What the lists held when A1 was written (ADR 0016 §4: A1 changes neither).
 WORKER_HOSTS_BEFORE = frozenset({"api.mowl.com", "api.spotify.com", "accounts.spotify.com"})
-WEB_HOSTS_BEFORE = frozenset({"api.mowl.com", "api.spotify.com", "www.swedebeat.se"})
+# ADR 0035 section 8 removed Swedebeat's sign-in host from the web's list since.
+WEB_HOSTS_BEFORE = frozenset({"api.mowl.com", "api.spotify.com"})
 
 
 def egress_tree() -> ast.Module:
@@ -259,7 +260,7 @@ def test_the_production_lists_are_unchanged_and_hold_no_media_host() -> None:
     for hosts in (egress.WORKER_HOSTS, egress.WEB_URLLIB_HOSTS, egress.SPOTIFY_HOSTS):
         assert not (hosts & egress.MOWL_MEDIA_HOSTS)
     assert egress.worker_hosts(egress.MODEL_HOSTS) & egress.MOWL_MEDIA_HOSTS == frozenset()
-    assert "cloud.swedebeat.se" not in egress.WORKER_HOSTS | egress.WEB_URLLIB_HOSTS
+    assert not [h for h in egress.WORKER_HOSTS | egress.WEB_URLLIB_HOSTS if "swedebeat" in h]
 
 
 def test_the_media_hosts_are_exact_https_names_never_a_wildcard_or_a_cloud_domain() -> None:

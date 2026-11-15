@@ -9,6 +9,7 @@ import {
   gatewayLogins,
   openSwedebeatDialog,
   resetSwedebeat,
+  signOutConsent,
   swedebeatRow,
 } from './swedebeat-helpers'
 import { ownerIdForEmail, resetSwedebeatMixes, sql, swedebeatMixState } from './swedebeat-mix-helpers'
@@ -17,7 +18,8 @@ import { ownerIdForEmail, resetSwedebeatMixes, sql, swedebeatMixState } from './
 // Connections list (ADR 0028) on the e2e stack's fakes: the row is always listed; without the
 // preference nothing Swedebeat shows and the mix listing makes no MOWL call; Connect stores it,
 // Disconnect turns it off, a dialog closed without connecting puts it back; the admin flag stored
-// `off` wins over it. axe audits the account page. Public test values only.
+// `off` wins over it. axe audits the account page and the Connect dialog with its sign-out notice
+// and "I understand" box (ADR 0035 section 4), which the notice describes. Public test values only.
 
 test.setTimeout(120_000)
 
@@ -75,6 +77,14 @@ test('listed from the start; Connect turns the preference on, Disconnect turns i
 
   await test.step('a dialog closed without connecting leaves the preference off', async () => {
     const dialog = await openSwedebeatDialog(page)
+    // The notice is the box's description, and the dialog passes axe at both sizes and themes.
+    await expect(signOutConsent(dialog)).toHaveAccessibleDescription(
+      'Connecting signs this Swedebeat account out of the Swedebeat app on other devices, such as your phone.',
+    )
+    const audited = await audit(page, 'Connect Swedebeat dialog', signOutConsent(dialog), '[role="dialog"]')
+    findings.push(audited)
+    expect.soft(audited.problems, audited.page).toEqual([])
+    await page.setViewportSize({ width: 1280, height: 720 })
     await dialog.getByRole('button', { name: 'Close' }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     expect(preferenceOn(owner)).toBe('0')

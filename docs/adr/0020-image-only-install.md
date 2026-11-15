@@ -12,8 +12,8 @@ queue's functions and the admin role, run by the one-shot `db-functions`), and t
 A clone on the server is more than the server needs: it holds the whole source, `git` must be
 there, and an update is a `git checkout` of a tag next to a `docker compose pull`.
 
-Constraints that stay: the app image holds no secret except Swedebeat's app key from the
-release workflow's BuildKit secret (ADR 0015 section 4); the packages are private and stay so
+Constraints that stay: the app image holds no secret (it held Swedebeat's app key from the
+release workflow's BuildKit secret, ADR 0015 section 4, until ADR 0035 removed it in SG-4); the packages are private and stay so
 (AGENTS.md "Releasing"); `db`, `db-functions` and `postgres_password` are on the pinned
 `postgres:17.12`, because the queue functions' md5 (`classbeat.db.queue_digests`) is
 computed on it; the secret files keep their setup (`<deploy user>:10010`, mode 640, folder 2700;

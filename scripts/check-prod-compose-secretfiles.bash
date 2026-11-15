@@ -42,7 +42,7 @@ check_secrets_group() {   # check_secrets_group GID "$(getent group GID)" "$(get
 }
 secret_names=()
 mapfile -t secret_names < <(jq -r '.secrets | keys[]' <<<"$shared")
-(( ${#secret_names[@]} >= 16 )) || { fail "compose.prod.yaml names fewer secrets than expected"; exit 1; }
+(( ${#secret_names[@]} >= 15 )) || { fail "compose.prod.yaml names fewer secrets than expected"; exit 1; }
 server_secrets=""
 if [[ -n "${PROD_CHECK_SECRETS_DIR:-}" ]]; then
   server_secrets="$PROD_CHECK_SECRETS_DIR"
@@ -85,7 +85,7 @@ check_secret_files "$st_dir" "$mygid" "${secret_names[@]}" \
 for m in 'chmod 644 "$st_dir/app_secret_key"' 'chmod 600 "$st_dir/connection_kek"' 'chmod 604 "$st_dir/smtp_password"' \
   'chmod 660 "$st_dir/database_password"' 'chmod 650 "$st_dir/postgres_password"' 'chmod 641 "$st_dir/anthropic_api_key"' \
   'rm "$st_dir/oauth_google_client_secret"' 'chmod 755 "$st_dir"' 'chmod 2701 "$st_dir"' 'chmod 2750 "$st_dir"' 'chmod 2710 "$st_dir"' 'chmod 2770 "$st_dir"' \
-  'rm "$st_dir/swedebeat_app"; install -m 640 /dev/null "$tmp/outside"; ln -s "$tmp/outside" "$st_dir/swedebeat_app"' \
+  'rm "$st_dir/turnstile_secret_key"; install -m 640 /dev/null "$tmp/outside"; ln -s "$tmp/outside" "$st_dir/turnstile_secret_key"' \
   'rm "$st_dir/deepseek_api_key"; mkdir -m 750 "$st_dir/deepseek_api_key"' \
   'rm "$st_dir/swedebeat_gateway_key"' 'chmod 644 "$st_dir/swedebeat_gateway_key"'; do
   reset_secret_files

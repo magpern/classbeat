@@ -292,7 +292,10 @@ owner has not agreed to drop the consent, so classbeat keeps it and moves it to 
   match confirms first:
   - It pauses 5 s, then makes **one** `GET {gateway}/auth/session` with the same bearer and key.
     A failed check is not cached, so the gateway asks SwedeBeat again.
-  - `200`: the job ends `upstream_unavailable` (retried) and the row is untouched.
+  - `200`: the job ends `upstream_unavailable` (retried) and the row is untouched. The gateway
+    caches a positive token check for 300 s, so a bearer SwedeBeat refused mid-match can still
+    pass; the retry therefore comes no sooner than 330 s
+    (`swedebeat_match.confirm_policy.CACHED_CHECK_SECONDS`), past the cache.
   - `401` again (not `unknown client`): the row flips to `needs_reconnect` as SwedeBeat's 401/403
     did (`connections.use`, `mark_needs_reconnect`).
   - `502`, `5xx` or a timeout: `upstream_unavailable`, untouched.
@@ -379,7 +382,7 @@ retention and isolation. Only the catalogue step changes:
 classbeat never calls the gateway's playlist routes. ADR 0016 keeps the mix manual, and the gateway
 ships with writes off.
 
-- The gateway client module exposes only `login` and `match`.
+- The gateway client module exposes only `login`, `session` (the 401 confirmation of §5) and `match`.
 - A guard test fails on any other gateway path string in `classbeat`: `/playlists`, `/publish`,
   `merge-publish` and `/tracks/`.
 
@@ -488,7 +491,7 @@ packages.
 5. Decide on magpern/sb-gateway-service#3 (optional `force` and a 409). Until then the up-front
    consent of §4 stays. Fix magpern/sb-gateway-service#5 (a 502 when SwedeBeat's token check
    fails).
-6. **The privacy notice** (`frontend/src/legal/legal.en.ts`) says SwedeBeat gives classbeat a
+6. **The privacy notice** (`frontend/src/i18n/legal.en.ts`) says SwedeBeat gives classbeat a
    device id that is stored encrypted. After SG-2 that is no longer true: classbeat stores a
    gateway bearer, and sends the password through the owner's gateway. The wording, and whether to
    name the gateway, is the owner's (and a lawyer's) call. Agents do not edit legal text.

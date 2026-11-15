@@ -246,6 +246,10 @@ describe('connect Swedebeat', () => {
     const understood = dialog.getByRole('checkbox', { name: 'I understand' })
     expect(understood).not.toBeChecked()
     expect(understood).toBeRequired()
+    // The notice describes the box, so a screen reader reads what "I understand" agrees to.
+    expect(understood).toHaveAccessibleDescription(
+      'Connecting signs this Swedebeat account out of the Swedebeat app on other devices, such as your phone.',
+    )
     fireEvent.change(dialog.getByLabelText('Swedebeat email'), { target: { value: 'rider@example.test' } })
     fireEvent.change(dialog.getByLabelText('Swedebeat password'), { target: { value: PASSWORD } })
     const button = dialog.getByRole('button', { name: 'Connect Swedebeat' })

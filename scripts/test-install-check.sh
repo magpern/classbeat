@@ -57,7 +57,7 @@ if [ -f "$runbook" ]; then
   done
 fi
 # No asset may be a secret holder: nothing but committed text files, none under secrets/ or named .env.
-if grep -rIlE -- '-----BEGIN [A-Z ]*PRIVATE KEY|swedebeat_app\.json' "$work/assets" >/dev/null; then bad "an asset mentions a key or the app key file"; fi
+if grep -rIlE -- '-----BEGIN [A-Z ]*PRIVATE KEY' "$work/assets" >/dev/null; then bad "an asset holds a private key"; fi
 
 # The log-rotation installer (#826): against a stub docker it writes the shipped rule to swag's
 # volume path, dry-runs it, schedules nothing, and --check writes nothing.
@@ -87,7 +87,7 @@ sed -i -e 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=1.2.3/' "$install/.env"
 # Turnstile is on by default (#792): a good install has the public site key (a placeholder) and, below, a secret file.
 echo 'TURNSTILE_SITE_KEY=0x4AAAAAAcheck' >> "$install/.env"
 names=(postgres_password database_owner_password database_password database_maint_password app_secret_key
-  connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app swedebeat_gateway_key
+  connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_gateway_key
   oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret turnstile_secret_key)
 canary="secret-canary-$RANDOM$RANDOM$RANDOM"
 mksecrets() {
@@ -143,8 +143,8 @@ expect "real render: a network of the owner's own" 1 'networks\.spynet'
 # A secret file that does not parse as an env file (#616 review): Compose's error quotes the whole line,
 # so it must never be printed. `expect` checks stdout and stderr for the canary; the fixed sentence is all.
 printf 'a~%s' "$canary" > "$install/secrets/oauth_microsoft_client_secret"
-printf '{"k":"%s"}' "$canary" > "$install/secrets/swedebeat_app"
-for f in oauth_microsoft_client_secret swedebeat_app; do
+printf '{"k":"%s"}' "$canary" > "$install/secrets/swedebeat_gateway_key"
+for f in oauth_microsoft_client_secret swedebeat_gateway_key; do
   printf 'services:\n  web:\n    env_file: ./secrets/%s\n' "$f" > "$install/compose.extra.yaml"
   expect "real render: an env_file of a secret that does not parse ($f) prints no Compose output" 1 \
     "docker compose config fails with your \\.env: .*Compose's message is not printed"

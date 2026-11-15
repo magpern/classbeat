@@ -95,8 +95,6 @@ SECRET_KEYS = frozenset(
         "mowl_token",
         "swedebeat_token",
         "swedebeat_device_id",
-        "swedebeat_app",
-        "swedebeat_app_key",
         "deviceid",
         "spotify_access_token",
         "spotify_refresh_token",

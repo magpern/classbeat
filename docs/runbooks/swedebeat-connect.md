@@ -1,92 +1,96 @@
 # Swedebeat connection: the owner's steps
 
-[ADR 0015](../adr/0015-swedebeat-connection.md). The connection (connect, status, disconnect) is built
-and tested against a fake Swedebeat only. **Live use is yours**: agents make no live Swedebeat call and
-never create, read or ask for the app key.
+[ADR 0015](../adr/0015-swedebeat-connection.md) and [ADR 0035](../adr/0035-swedebeat-gateway.md).
+classbeat signs a user in to SwedeBeat **through the owner's SwedeBeat gateway**
+(`magpern/sb-gateway-service`) and never calls SwedeBeat itself. It holds no SwedeBeat key: the
+gateway does. The connection (connect, status, disconnect) and the match are built and tested against
+a fake gateway only. **Live use is yours**: agents make no live gateway or SwedeBeat call and never
+create, read or ask for the client key.
 
 ## Rules
 
-- The app key is Swedebeat's. It lives in the GitHub secret `SWEDEBEAT_APP`, in release images, and
-  (optionally) in a `swedebeat_app` secret file on the web container. Never in git, a pull-request or
-  CI image, a log, an issue or this file.
-- Never paste a Swedebeat password, token or the key into chat, an issue or a log.
+- The client key is the value the gateway lists for classbeat in its `CLIENT_API_KEYS`. It lives in
+  the gateway's configuration and in `secrets/swedebeat_gateway_key` on the classbeat server (web and
+  the worker mount it, nothing else). You keep a copy as the repository secret `SB_CLIENT_API_KEY`; no
+  workflow reads it. It is never in git, an image, a workflow, a log, an issue or this file.
+- Never paste a Swedebeat password, a bearer or the client key into chat, an issue or a log.
 - Each live step below needs the owner's own go-ahead for that step; log it under "Live activation
   log" in [docs/status.md](../status.md).
 
-## 1. Create the secret (once)
+## 1. The gateway (once)
 
-The key is a JSON file with exactly `key` (32 characters) and `iv` (16 characters), the same content as
-the `mowl-workouts` repository's `SWEDEBEAT_APP` secret. From the directory that holds it:
+On the gateway (ADR 0035 section 10):
 
-```bash
-gh secret set SWEDEBEAT_APP --repo magpern/classbeat < swedebeat_app.json
-```
+- list classbeat's key in `CLIENT_API_KEYS`;
+- keep its writes off (`allow_swedebeat_writes` false, the default);
+- **reserve `192.168.1.222`** for the server (a DHCP reservation or a static address), so the address
+  can never be handed to another device (the LAN path is plain http);
+- set `GATEWAY_BIND` so the port listens on that address, and keep it on the LAN or the docker bridge,
+  never on a public interface while it is plain http;
+- optionally raise `SESSION_TTL_SECONDS` (default 24 h: a user enters the password again after it).
 
-`gh` reads the file from standard input; nothing is printed. Delete the local file afterwards if you
-do not need it. `.gitignore` and `.dockerignore` already ignore any `swedebeat_app*` file.
+## 2. The classbeat server
 
-## 2. Release
-
-Cut a release as in AGENTS.md ("Releasing"). `release.yml` checks the secret (present, JSON, 32 and 16
-characters) before it builds, and the `Dockerfile` checks it again; a missing or malformed secret fails
-the release with an error that names the problem, never the value. Pull-request, CI and e2e builds never
-receive it (`backend/tests/test_swedebeat_key_guard.py` and the CI step "Check the Swedebeat app key is
-not in the image" keep it so).
+- **The file `secrets/swedebeat_gateway_key` must exist**, empty or filled, before any release that
+  carries #1077 (SG-1) is started: `web` and the `worker` mount it, and compose refuses to start a
+  service whose secret file is missing (`( umask 027; touch secrets/swedebeat_gateway_key )`;
+  [vps-deploy.md](vps-deploy.md) section 5). Empty means no key: SwedeBeat is "not available".
+- **The key.** Write it without echoing it:
+  `( umask 027; read -rs S && printf '%s' "$S" > secrets/swedebeat_gateway_key; unset S )`, then
+  `ls -ln secrets/swedebeat_gateway_key` (mode `-rw-r-----`, group 10010, as the other secret files).
+  It must be 16 to 256 printable ASCII characters without whitespace; anything else stops web and the
+  worker at start (the message names the file, never the value).
+- **The URL** is `SWEDEBEAT_GATEWAY_URL` in `.env` (production `http://192.168.1.222:7355`). Plain http
+  is accepted only to a loopback or private IP address with a port; otherwise it must be https to a
+  public DNS name. A value that breaks a rule stops web and the worker at start, and the message names
+  the rule, never the value. The containers reach the host's LAN address over docker's default bridge.
+- SwedeBeat is available only with both the URL and a key.
 
 ## 3. Switch it on
 
-- `SWEDEBEAT_ENABLED=true` in the web service's environment (`.env` of the stack; default `false`).
+- `SWEDEBEAT_ENABLED=true` in `.env` (web and the worker; default `false`).
 - The admin area (Settings > Swedebeat) can switch it off for everyone, never on past this variable.
-- **Home server, without a rebuild:** put the key file at `secrets/swedebeat_app` (same JSON) and mount
-  it as the Docker secret `swedebeat_app` on `web` only (`compose.yaml` and `compose.prod.yaml` do; an
-  empty file means no key). The file must exist even when empty, or compose fails at `up`: an
-  existing stack (the home beta, an older worktree) runs `touch secrets/swedebeat_app` once
-  (`scripts/worktree.sh init` does it for a checkout). A file there wins over the one in the image. The worker must not get it
-  (it refuses to start if it can read it).
-- Without any key the account card says "Swedebeat sign-in is not available on this server." and
-  connect answers 503 `app_key_unavailable`.
+- Each user turns on their own "I use Swedebeat" preference by connecting.
+- Without the URL or the key the account card says "Swedebeat sign-in is not available on this
+  server." and connect answers 503 `app_key_unavailable` before anything is sent. A gateway that
+  answers `unknown client` (a wrong key) gives the same answer and the log line
+  `swedebeat gateway refused the client key`; no user's connection is touched. The line
+  `swedebeat gateway not configured` means web started without the gateway's origin, so nothing was
+  sent (check `SWEDEBEAT_GATEWAY_URL` and restart web).
 
 ## 4. One live check (owner's go-ahead)
 
-With your own Swedebeat account on your own stack: connect (a wrong password first, to see the message),
-see the status and the email, connect again from the same page (same device), disconnect. Read off and
-record:
+With your own Swedebeat account on your own stack:
 
-- the real wording Swedebeat answers when another device (your phone app) holds the session; compare it
-  with the phrases in `classbeat.connections.swedebeat_account` (`_DEVICE_PHRASES`) and fix them if
-  they differ (ADR 0015 §5);
-- whether a token ever expires (first 401 or 403), as for MOWL (ADR 0004 §6).
+- connect (a wrong password first, to see the message). **Every connect signs the account out of the
+  Swedebeat app on your phone**: the form says so and needs "I understand" ticked;
+- see the status and the email;
+- match a short real list and read `found`/`unsure`/`missing` against the app
+  ([swedebeat-match.md](swedebeat-match.md));
+- disconnect.
 
-## Rotation or a leak
+Record whether the connection's expiry matches the gateway's `SESSION_TTL_SECONDS`.
 
-1. Get the new key; `gh secret set SWEDEBEAT_APP --repo magpern/classbeat < swedebeat_app.json`.
-2. Cut a new release and deploy it.
-3. Delete the old image tags from GHCR (`gh api -X DELETE /user/packages/container/classbeat/versions/<id>`
-   or the package page); anyone who could pull them could read the key.
-4. On the home server, replace `secrets/swedebeat_app` the same way and restart web.
-5. Users reconnect only if Swedebeat invalidated their tokens.
+## Rotation or a leak of the client key
 
-## The SwedeBeat gateway (ADR 0035; the client key and URL arrive with #1077)
+1. List the new key in the gateway's `CLIENT_API_KEYS`.
+2. Write it into `secrets/swedebeat_gateway_key` as in section 2.
+3. Restart web and the worker (`docker compose up -d --wait`).
+4. Remove the old key from the gateway.
 
-classbeat moves from SwedeBeat itself to the owner's gateway ([ADR 0035](../adr/0035-swedebeat-gateway.md)).
-From the release that carries #1077, **every server needs the file `secrets/swedebeat_gateway_key`**,
-empty or filled, before that release is started: `web` and the `worker` mount it, and compose refuses to
-start a service whose secret file is missing (`( umask 027; touch secrets/swedebeat_gateway_key )`;
-[vps-deploy.md](vps-deploy.md) section 5). Until the connect and the match use the gateway (SG-2), the
-file and the URL change nothing a user sees.
+A leaked key lets a caller on the LAN use the gateway with a user's bearer or password, never by
+itself (threat model T104).
 
-- **The key** is the value the gateway lists for classbeat in its `CLIENT_API_KEYS` (the owner keeps a
-  copy as the repository secret `SB_CLIENT_API_KEY`; no workflow reads it). Write it on the server
-  without echoing it: `( umask 027; read -rs S && printf '%s' "$S" > secrets/swedebeat_gateway_key;
-  unset S )`, then `ls -ln secrets/swedebeat_gateway_key` (mode `-rw-r-----`, group 10010). It must be
-  16 to 256 printable ASCII characters without whitespace; anything else stops web and the worker at
-  start (the message names the file, never the value). Empty means no key: SwedeBeat is "not
-  available".
-- **The URL** is `SWEDEBEAT_GATEWAY_URL` in `.env` (production `http://192.168.1.222:7355`; reserve
-  that address, ADR 0035 section 10). Plain http is accepted only to a loopback or private IP address
-  with a port; otherwise it must be https to a public DNS name. A value that breaks a rule stops web
-  and the worker at start, and the message names the rule, never the value.
-- SwedeBeat is available only with both the URL and a key.
-- **Rotation or a leak of the key:** list the new key in the gateway's `CLIENT_API_KEYS`, write it into
-  `secrets/swedebeat_gateway_key`, restart web and the worker (`docker compose up -d --wait`), then
-  remove the old key from the gateway.
+## After the SG-4 release (owner steps, never an agent's)
+
+Until SG-4 (#1080), release images were built with SwedeBeat's own app key from the GitHub secret
+`SWEDEBEAT_APP` (ADR 0015 section 4). Since SG-4 no workflow reads that secret and no image holds the
+key. **Only after a release that carries SG-4 exists** (before it, the release workflow needs the
+secret):
+
+1. delete the GitHub secret `SWEDEBEAT_APP` (`gh secret delete SWEDEBEAT_APP --repo magpern/classbeat`);
+2. delete the older release image tags on GHCR that carry the key
+   (`gh api -X DELETE /user/packages/container/classbeat/versions/<id>` or the package page);
+3. on a server, delete the leftover `secrets/swedebeat_app` once the SG-4 release runs
+   ([vps-deploy.md](vps-deploy.md)); `./check-prod-compose.sh` refuses a compose file that still mounts
+   a `swedebeat_app` secret.

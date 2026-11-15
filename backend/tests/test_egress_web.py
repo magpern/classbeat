@@ -18,7 +18,6 @@ import httpx
 import pytest
 from mowl import api, swedebeat
 from mowl.credentials import Credentials
-from mowl.errors import MowlError
 
 from classbeat import __main__ as entry
 from classbeat import egress
@@ -64,11 +63,10 @@ def web_opener(monkeypatch: pytest.MonkeyPatch) -> Callable[[FakeUpstreams], Non
     return install
 
 
-def test_the_web_urllib_list_is_exactly_mowl_the_spotify_api_and_swedebeat_sign_in() -> None:
-    """What the library reaches in the web process: MOWL, Spotify's API for Check again and
-    Swedebeat's sign-in host (ADR 0015). Not ``cloud.swedebeat.se``: the web opener never calls
-    it. The worker's catalogue client is the only caller (ADR 0016 B1)."""
-    expected = {"api.mowl.com", "api.spotify.com", "www.swedebeat.se"}
+def test_the_web_urllib_list_is_exactly_mowl_and_the_spotify_api() -> None:
+    """What the library reaches in the web process: MOWL and Spotify's API for Check again. No
+    SwedeBeat host (ADR 0035 section 8): the Swedebeat sign-in goes through the gateway client."""
+    expected = {"api.mowl.com", "api.spotify.com"}
     assert frozenset(expected) == egress.WEB_URLLIB_HOSTS
     assert egress.WEB_URLLIB_ALLOWLIST.hosts == egress.WEB_URLLIB_HOSTS
 
@@ -114,53 +112,28 @@ def test_a_spotify_redirect_never_shows_the_spotify_token_to_mowl(
     assert list(fake.received) == ["api.spotify.com"]
 
 
-# --- Swedebeat sign-in (ADR 0015) -------------------------------------------------------------
+# --- No SwedeBeat host (ADR 0035 section 8) ------------------------------------------------------
 
-SWEDEBEAT_LOGIN = "https://www.swedebeat.se/downloader/login.php"
-# A throwaway app key made for this run (never Swedebeat's): 32 and 16 characters.
+# A throwaway app key made for this run (never Swedebeat's): the library refuses to sign in without
+# one, so the refusal below is the opener's.
 TEST_APP = {"key": secrets.token_hex(16), "iv": secrets.token_hex(8)}
 
 
-def swedebeat_login() -> None:
-    creds = Credentials(swedebeat_app=dict(TEST_APP), swedebeat_device_id="0123456789abcdef")
-    swedebeat.login(creds, "rider@example.test", "test-password-not-real")
-
-
-@pytest.mark.parametrize(
-    "target",
-    [
-        "https://evil.example/steal",
-        "https://cloud.swedebeat.se/track",  # Swedebeat's other host: on no list
-        "https://api.mowl.com/v1/ping",  # on the list, but another host
-        "http://www.swedebeat.se/downloader/login.php",  # same host, plain http
-        "https://www.swedebeat.se:8443/downloader/login.php",
-        "//evil.example/steal",
-    ],
-)
-def test_a_swedebeat_sign_in_redirect_to_another_host_is_refused_before_it_is_sent(
-    target: str, web_opener: Callable[[FakeUpstreams], None]
-) -> None:
-    fake = FakeUpstreams(redirects={SWEDEBEAT_LOGIN: target})
-    web_opener(fake)
-    with pytest.raises(OutboundBlocked) as raised:
-        swedebeat_login()
-    assert raised.value.after_request is True
-    assert list(fake.received) == ["www.swedebeat.se"]
-
-
-def test_a_swedebeat_sign_in_reaches_only_its_own_host_and_a_same_host_redirect_is_followed(
+def test_the_library_swedebeat_sign_in_is_refused_before_anything_is_sent(
     web_opener: Callable[[FakeUpstreams], None],
 ) -> None:
-    next_url = "https://www.swedebeat.se/downloader/next.php"
-    fake = FakeUpstreams(redirects={SWEDEBEAT_LOGIN: next_url})
+    """classbeat never calls the library's SwedeBeat sign-in; were any code to, the web opener
+    refuses ``www.swedebeat.se`` before a byte leaves (it is on no list)."""
+    fake = FakeUpstreams()
     web_opener(fake)
-    with pytest.raises(MowlError):  # the fake answers 200 without a token
-        swedebeat_login()
-    assert list(fake.received) == ["www.swedebeat.se"]
-    assert [r["url"] for r in fake.received["www.swedebeat.se"]] == [SWEDEBEAT_LOGIN, next_url]
+    creds = Credentials(swedebeat_app=dict(TEST_APP), swedebeat_device_id="0123456789abcdef")
+    with pytest.raises(OutboundBlocked) as raised:
+        swedebeat.login(creds, "rider@example.test", "test-password-not-real")
+    assert (raised.value.host, raised.value.after_request) == ("www.swedebeat.se", False)
+    assert fake.received == {}
 
 
-def test_the_swedebeat_catalogue_host_is_refused(
+def test_the_library_swedebeat_catalogue_search_is_refused_before_anything_is_sent(
     web_opener: Callable[[FakeUpstreams], None],
 ) -> None:
     fake = FakeUpstreams()
