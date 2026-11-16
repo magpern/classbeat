@@ -15,7 +15,8 @@ every statement scoped by ``owner_id``:
    be the stored one (409 ``hash_mismatch``), which must still be the SHA-256 of the canonical
    content; a draft with a game MOWL no longer offers is 409 ``game_retired`` (ADR 0029); the
    content must validate under the class's sport (500 ``internal`` otherwise); a class with no
-   stored brief is 409 ``not_ready``;
+   stored brief is 409 ``not_ready``; a SwedeBeat studio class (its source or the draft's music;
+   ADR 0036, whose hash covers the mix spec) is 409 ``studio_not_duplicable``;
 2. (``classbeat.classes.duplicate_gates``) a running class is admitted only by
    ``design.sport.admit_running``, as a running design is
    (``feature_off``, or ``running_not_evaluated`` for the user's uncovered plan; ADR 0018 Amendment
@@ -65,8 +66,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat import auth, quota
 from classbeat.agent.beat_one import MAX_PER_CLASS
-from classbeat.agent.records import Provenance
-from classbeat.agent.stated_layer import StatedLayer
 from classbeat.classes.duplicate_gates import flag_refusal
 from classbeat.classes.duplicate_music import (
     HASH,
@@ -74,11 +73,13 @@ from classbeat.classes.duplicate_music import (
     music_copy,
     music_source_copy,
 )
+from classbeat.classes.duplicate_provenance import provenance_copy
 from classbeat.config import Settings
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design import chat
 from classbeat.design.games_policy import RETIRED, has_retired_game
+from classbeat.design.music_kind import is_studio
 from classbeat.jobs.credits import QuotaRefused
 from classbeat.jobs.http import IDEMPOTENCY_KEY, canonical_json
 from classbeat.jobs.user import lock_owner
@@ -89,31 +90,8 @@ Factory = async_sessionmaker[AsyncSession]
 
 router = APIRouter(prefix="/api/classes", tags=["classes"])
 
+STUDIO: Final = "studio_not_duplicable"  # a SwedeBeat studio class (ADR 0036)
 TITLE_MAX: Final = 100  # the classes_title check of migration 0004
-# The descriptive fields of the source revision's provenance: how the content was made. Run ids,
-# usage, cost and the lineage of the source class are never copied.
-DESCRIPTIVE: Final = (
-    "provider",
-    "model",
-    "model_answered",
-    "effort",
-    "prompt_version",
-    "classbeat_version",
-    "mowl_version",
-    "map_version",
-    "crossfade_sec",
-    "route_key",
-    "eval_result_id",
-    "tss_approximate",
-    "rules",
-    "sport",
-)
-ZERO_USAGE: Final = {
-    "input_tokens": 0,
-    "output_tokens": 0,
-    "cache_read_tokens": 0,
-    "cache_write_tokens": 0,
-}
 
 _SOURCE = text(
     "SELECT r.id, r.number, r.content, r.content_hash, r.music, r.provenance, c.brief, "
@@ -192,10 +170,6 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, ensure_ascii=False)
 
 
-def _dict(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}  # pyright: ignore[reportUnknownArgumentType]
-
-
 def request_digest(class_id: UUID, revision_id: UUID, content_hash: bytes, title: str) -> str:
     """The SHA-256 (hex) of the canonical request a key stands for."""
     request = {
@@ -205,45 +179,6 @@ def request_digest(class_id: UUID, revision_id: UUID, content_hash: bytes, title
         "title": title,
     }
     return hashlib.sha256(canonical_json(request)).hexdigest()
-
-
-def provenance_copy(
-    source: Any,
-    class_id: UUID,
-    revision_id: UUID,
-    number: int,
-    *,
-    idempotency_key: str,
-    request_hash: str,
-    stated: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """The duplicate's provenance (``ValidationError`` when the source's no longer checks);
-    ``stated`` is the source revision's nearest stated layer (#907), or ``None`` for none."""
-    found = _dict(source)
-    fields = {k: found[k] for k in DESCRIPTIVE if k in found}
-    built = Provenance.model_validate(
-        {
-            **fields,
-            "origin": "duplicate",
-            "duplicated_from": {
-                "class_id": str(class_id),
-                "revision_id": str(revision_id),
-                "number": number,
-                "idempotency_key": idempotency_key,
-                "request_hash": request_hash,
-            },
-            **({} if stated is None else {"stated": stated}),
-            "agent_run_ids": [],
-            "usage": ZERO_USAGE,
-            "cost_micros": 0,
-        },
-        strict=False,
-    )
-    out = built.model_dump(mode="json")
-    if stated is not None:
-        StatedLayer.model_validate(stated)  # strictly, before it is copied (ValidationError)
-        out["stated"] = stated  # as the source stored it, not with defaults filled in
-    return out
 
 
 async def duplicate(
@@ -278,6 +213,8 @@ async def duplicate(
             return Outcome("hash_mismatch")
         if not isinstance(row.brief, dict):
             return Outcome("not_ready")
+        if is_studio(row.music_source) or is_studio(row.music):
+            return Outcome(STUDIO)  # SR C5b: its hash covers the mix spec; not copied (ADR 0036)
         brief: dict[str, Any] = row.brief  # pyright: ignore[reportUnknownVariableType]
         sport = sport_of_brief(brief.get("sport"))
         canonical = json.dumps(
@@ -381,6 +318,7 @@ async def duplicate_class(
 ) -> DuplicateOut | JSONResponse:
     """201 with the new class, 200 with the same one for a replayed key. 400 for the header;
     409 reasons: ``idempotency_mismatch``, ``hash_mismatch``, ``not_ready``, ``game_retired``,
+    ``studio_not_duplicable``,
     ``feature_off`` and ``quota`` (the jobs API's body: ``quota`` ``classes``, ``length`` or
     ``feature``, no money)."""
     if idempotency_key is None:

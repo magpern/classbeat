@@ -62,8 +62,11 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.config import Settings
 from classbeat.context import UserContext
+from classbeat.design.music_kind_gate import SoundlessGate as SoundlessGate  # re-exported
+from classbeat.design.music_kind_gate import configure as configure
+from classbeat.design.music_kind_gate import current
+from classbeat.design.music_kind_gate import fake_covers as fake_covers
 from classbeat.flags import effective
 from classbeat.jobs import FencedSession, JobFailure
 from classbeat.jobs.kinds import Refused
@@ -72,39 +75,6 @@ from classbeat.models.jobs import GroupModel
 NONE: Final = "none"
 STUDIO: Final = "swedebeat_studio"  # ADR 0036 section 2: only the studio's own kinds act on it
 NO_MUSIC: Final[dict[str, str]] = {"source": NONE}  # classes.music_source and revision music
-
-
-@dataclass(frozen=True, slots=True)
-class SoundlessGate:
-    enabled: bool = False  # CLASSBEAT_SOUNDLESS_ENABLED
-    # The web's own ``fake`` provider outside prod (see the module); never true in prod.
-    fake_covers: bool = False
-
-    @classmethod
-    def from_settings(cls, settings: Settings) -> "SoundlessGate":
-        return cls(
-            enabled=settings.soundless_enabled,
-            fake_covers=fake_covers(settings),
-        )
-
-
-def fake_covers(settings: Settings) -> bool:
-    """Whether this process's ``fake`` provider counts as covering soundless: only when its own
-    ``CLASSBEAT_MODEL_PROVIDER`` is ``fake`` and ``CLASSBEAT_ENVIRONMENT`` is not ``prod``."""
-    return settings.model_provider == "fake" and settings.environment != "prod"
-
-
-_gate = SoundlessGate()
-
-
-def configure(gate: SoundlessGate | None) -> None:
-    """Set the process's gate (None: soundless off)."""
-    global _gate
-    _gate = gate or SoundlessGate()
-
-
-def current() -> SoundlessGate:
-    return _gate
 
 
 def is_none(music: Any) -> bool:
@@ -221,12 +191,15 @@ _STORED_SOURCE = text(
 
 
 async def admit_class(db: AsyncSession, ctx: UserContext, class_id: UUID) -> Refused | None:
-    """A revise of a class (SL2, #528): a music class passes untouched; a soundless one goes
+    """A revise of a class (SL2, #528): a studio class is ``invalid_input`` (ADR 0036 section 2;
+    ``studio_revise`` is its own); a music class passes untouched; a soundless one goes
     through the same gate as its design (``admit_soundless``: the switch, the job's own plan's
     route, every plan's route), before the job row is written. None admits."""
     source = (
         await db.execute(_STORED_SOURCE, {"owner_id": ctx.user_id, "class_id": class_id})
     ).scalar_one_or_none()
+    if is_studio(source):  # SR C5b: only the studio's own kinds revise a studio class
+        return Refused("invalid_input")
     if not is_none(source):
         return None
     return await admit_soundless(db, ctx)

@@ -12,7 +12,6 @@ the fakes (Spotify, the SwedeBeat gateway, ``FakeProvider``), with no MOWL conne
 import asyncio
 import copy
 import hashlib
-import json
 from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
@@ -21,11 +20,13 @@ import httpx
 import pytest
 
 from agentfake import good_draft
+from classbeat import connections
 from classbeat.design import revision, track_analysis
 from classbeat.jobs import KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.swedebeat_studio.design_kind import STUDIO_DESIGN
 from classbeat.swedebeat_studio.revise_kind import STUDIO_REVISE
+from ctx import make_context
 from songtools import new_key
 from studiomaps import track_map
 from studiotools import StudioEnv, StudioRider, pick_script
@@ -262,22 +263,31 @@ async def test_a_revise_whose_analysis_is_gone_downloads_nothing(studio: StudioE
     assert downloads(studio) == fetched
 
 
-async def test_a_design_draft_or_revise_draft_is_refused_on_a_studio_class(
+async def test_a_revise_draft_is_refused_on_a_studio_class_by_its_music_kind(
     studio: StudioEnv,
 ) -> None:
+    """With the user's real MOWL connection, so nothing but the class's music kind refuses it."""
     rider, class_id, _, current = await designed(studio)
+    mowl_id = await connections.save(
+        studio.songs.factory, studio.songs.ring, make_context(rider.user_id), "mowl",
+        {"token": "invented-mowl-token-0001"},
+    )  # fmt: skip
     body = {
         "kind": "revise_draft",
         "input": {
             "class_id": str(class_id),
             "base_revision_id": str(current.current_revision_id),
             "request": "Harder",
-            "mowl_connection_id": str(rider.swedebeat_connection_id),
+            "mowl_connection_id": str(mowl_id),
         },
     }
     refused = await rider.browser.post("/api/jobs", body, {"Idempotency-Key": new_key()})
-    assert refused.status_code in (409, 422), refused.text
-    assert json.dumps(refused.json())  # a refusal, never a job
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"]["reason"] == "invalid_input"
+    jobs = studio.songs.sql(
+        "SELECT count(*) FROM jobs WHERE owner_id = :o AND kind = 'revise_draft'", o=rider.user_id
+    ).scalar_one()
+    assert jobs == 0
 
 
 async def test_a_new_pick_on_a_designed_class_analyses_only_new_references(
@@ -321,3 +331,58 @@ async def test_a_browser_cannot_send_the_brief_of_a_studio_design(studio: Studio
     refused = await rider.browser.post("/api/jobs", body, {"Idempotency-Key": new_key()})
     assert refused.status_code == 422, refused.text
     assert downloads(studio) == []
+
+
+async def test_a_list_whose_pick_ended_without_approval_cannot_be_designed(
+    studio: StudioEnv,
+) -> None:
+    """The list is the class's newest and has no gap, but its ``studio_songs`` job was cancelled
+    while it waited: only the pick's approval makes a list designable (``design_admit``)."""
+    studio.found(*ALL_POOL)
+    rider = await studio.rider()
+    job_id, list_id, _ = await studio.waiting(rider)
+    class_id = studio.songs.row(job_id).class_id
+    cancelled = await rider.browser.post(f"/api/jobs/{job_id}/cancel", {})
+    assert cancelled.status_code == 200, cancelled.text
+    assert studio.songs.row(job_id).state == "cancelled"
+    refused = await start_design(rider, class_id, list_id)
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["detail"]["reason"] == "invalid_input"
+    assert downloads(studio) == []
+
+
+async def test_a_revise_with_one_analysis_gone_is_music_changed(studio: StudioEnv) -> None:
+    rider, class_id, list_id, current = await designed(studio)
+    fetched = downloads(studio)
+    listed = studio.songs.revision(list_id).content["songs"]
+    one = listed[3]["swedebeat"]["reference"]
+    studio.songs.sql(
+        "DELETE FROM swedebeat_track_maps WHERE owner_id = :o AND reference = :r",
+        o=rider.user_id,
+        r=one,
+    )
+    studio.songs.script = design_script(MIX_8)
+    response = await revise(rider, class_id, current.current_revision_id, "Harder")
+    row = await run_kind(studio, UUID(response.json()["id"]))
+    assert (row.state, row.error_category) == ("failed", "music_changed")
+    assert downloads(studio) == fetched
+
+
+async def test_a_studio_class_is_not_duplicated(studio: StudioEnv) -> None:
+    """A studio draft's hash covers its mix spec, so the content-only copy is refused by name
+    (SR C5b), never a 500, and nothing is written."""
+    rider, class_id, _, current = await designed(studio)
+    stored = studio.songs.revision(current.current_revision_id)
+    body = {
+        "revision_id": str(stored.id),
+        "content_hash": bytes(stored.content_hash).hex(),
+        "title": "Copy",
+    }
+    path = f"/api/classes/{class_id}/duplicate"
+    refused = await rider.browser.post(path, body, {"Idempotency-Key": new_key()})
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"]["reason"] == "studio_not_duplicable"
+    classes = studio.songs.sql(
+        "SELECT count(*) FROM classes WHERE owner_id = :o", o=rider.user_id
+    ).scalar_one()
+    assert classes == 1

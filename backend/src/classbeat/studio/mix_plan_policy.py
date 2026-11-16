@@ -21,7 +21,11 @@ it with its cuts snapped and rounded, or raises ``MixPlanRefused`` with one name
 
 **Snapping.** A cut moves to the nearest downbeat of the track's grid (its first downbeat plus
 whole bars at its BPM). A start of 0 and an end at the track's length stay the file's own edges.
-Cuts are stored rounded to 0.01 s, the app's precision and ``mowl.compose``'s arithmetic.
+Cuts are stored rounded to 0.01 s, the app's precision. **Every comparison is in whole
+hundredths of a second** (``cs``, as ``mowl.compose`` computes), so a window the library plays is
+never refused here and a plan this policy passes never fails ``compose_map`` on a rule of its own
+(SR C5b): a 60.00 s window is 6000 cs whatever its start, and 30 + 30 s of crossfade over it is not
+shorter.
 """
 
 import math
@@ -34,6 +38,7 @@ MAX_TOTAL_SEC: Final = 150 * 60
 MIN_PLAYED_SEC: Final = 60.0
 MAX_CROSSFADE: Final = 30
 EDGE: Final = 0.01  # the cut rounding; an end within it of the length is the file's end
+CS: Final = 100  # hundredths of a second per second (``mowl.compose.CS``)
 TRACK_FIELDS: Final = frozenset({"reference", "start_sec", "end_sec"})
 TEMPO_FIELDS: Final = frozenset({"tempo", "rate", "bpm", "speed", "pitch", "stretch"})
 
@@ -59,10 +64,15 @@ def _seconds(value: object) -> float:
     return float(value)
 
 
+def cs(sec: float) -> int:
+    """Seconds as whole hundredths, rounded exactly as ``mowl.compose._cs`` rounds them."""
+    return round(float(sec) * CS)
+
+
 def _snap(at: float, facts: TrackFacts) -> float:
     if at <= 0:
         return 0.0
-    if at >= facts.length - EDGE:
+    if cs(at) >= cs(facts.length) - 1:  # within the cut rounding of the end: the file's end
         return round(facts.length, 2)
     bar = 240.0 / facts.bpm
     nearest = facts.first_downbeat + round((at - facts.first_downbeat) / bar) * bar
@@ -83,15 +93,16 @@ def _track(raw: object, facts: Mapping[str, TrackFacts]) -> tuple[str, float, fl
         raise MixPlanRefused("not_a_permutation", "a track that is not on the approved list")
     known = facts[reference]
     start, end = _seconds(item.get("start_sec")), _seconds(item.get("end_sec"))
-    if not 0 <= start < end <= known.length + EDGE:
+    if not 0 <= cs(start) < cs(end) <= cs(known.length) + 1:  # the library's 0.01 s of slack
         raise MixPlanRefused("cut_out_of_range", "need 0 <= start_sec < end_sec <= length")
     start, end = _snap(start, known), _snap(end, known)
-    if end - start < MIN_PLAYED_SEC:
+    if cs(end) - cs(start) < cs(MIN_PLAYED_SEC):
         raise MixPlanRefused("window_too_short", f"at least {MIN_PLAYED_SEC:.0f} s of each track")
     return reference, start, end
 
 
-def _crossfades(raw: object, windows: Sequence[float]) -> list[int]:
+def _crossfades(raw: object, windows: Sequence[int]) -> list[int]:
+    """``windows`` in hundredths of a second."""
     if not isinstance(raw, list | tuple) or len(raw) != len(windows) - 1:  # pyright: ignore[reportUnknownArgumentType]
         raise MixPlanRefused("crossfade_count", "one crossfade per change of track")
     out: list[int] = []
@@ -102,17 +113,17 @@ def _crossfades(raw: object, windows: Sequence[float]) -> list[int]:
             raise MixPlanRefused("crossfade_out_of_range", f"0 to {MAX_CROSSFADE} s")
         out.append(value)
     for n, fade in enumerate(out):
-        if fade >= min(windows[n], windows[n + 1]):
+        if fade * CS >= min(windows[n], windows[n + 1]):
             raise MixPlanRefused("crossfade_too_long", "shorter than both neighbouring windows")
     for n in range(1, len(windows) - 1):
-        if out[n - 1] + out[n] >= windows[n]:
+        if (out[n - 1] + out[n]) * CS >= windows[n]:
             raise MixPlanRefused("crossfades_overlap", "part of each track must play alone")
     return out
 
 
 def total_sec(windows: Sequence[float], crossfades: Sequence[int]) -> float:
-    """The one duration rule: the played windows less the crossfades."""
-    return round(sum(windows) - sum(crossfades), 2)
+    """The one duration rule: the played windows (seconds) less the crossfades, in hundredths."""
+    return (sum(cs(w) for w in windows) - CS * sum(crossfades)) / CS
 
 
 def checked(
@@ -133,9 +144,9 @@ def checked(
     cut = [_track(t, known) for t in tracks]  # pyright: ignore[reportUnknownVariableType]
     if sorted(r for r, _, _ in cut) != sorted(r for r in approved if r is not None):
         raise MixPlanRefused("not_a_permutation", "each approved track exactly once")
-    windows = [end - start for _, start, end in cut]
+    windows = [cs(end) - cs(start) for _, start, end in cut]
     crossfades = _crossfades(spec.get("crossfades"), windows)
-    if total_sec(windows, crossfades) > MAX_TOTAL_SEC:
+    if sum(windows) - CS * sum(crossfades) > MAX_TOTAL_SEC * CS:
         raise MixPlanRefused("mix_too_long", f"at most {MAX_TOTAL_SEC // 60} minutes")
     return {
         "tracks": [{"reference": r, "start_sec": a, "end_sec": b} for r, a, b in cut],

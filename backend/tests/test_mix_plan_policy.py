@@ -107,10 +107,10 @@ def test_a_crossfade_as_long_as_a_neighbours_window_is_too_long() -> None:
     from classbeat.studio import mix_plan_policy
 
     with pytest.raises(MixPlanRefused) as caught:
-        mix_plan_policy._crossfades([30], [30.0, 240.0])  # pyright: ignore[reportPrivateUsage]
+        mix_plan_policy._crossfades([30], [3000, 24000])  # pyright: ignore[reportPrivateUsage]
     assert caught.value.reason == "crossfade_too_long"
     with pytest.raises(MixPlanRefused) as caught:
-        mix_plan_policy._crossfades([20], [240.0, 20.0])  # pyright: ignore[reportPrivateUsage]
+        mix_plan_policy._crossfades([20], [24000, 2000])  # pyright: ignore[reportPrivateUsage]
     assert caught.value.reason == "crossfade_too_long"
 
 
@@ -155,3 +155,39 @@ def test_the_stored_shape_refuses_unrounded_cuts_and_a_wrong_count() -> None:
         MixSpec.model_validate(spec(("a", 0, 240.0), ("b", 0, 240.0), crossfades=[]))
     with pytest.raises(ValueError, match="less than or equal to 30"):
         MixSpec.model_validate(spec(("a", 0, 240.0), ("b", 0, 240.0), crossfades=[31]))
+
+
+# --- SR C5b: whole hundredths, as mowl.compose ----------------------------------------------
+
+FIRST = 0.01  # a grid on which float subtraction leaves 59.999... for many exact minutes
+GRID = {r: TrackFacts(length=300.0, bpm=120.0, first_downbeat=FIRST) for r in ORDER}
+
+
+def _minute_at(start: float) -> dict[str, Any]:
+    """Every track plays exactly 60.00 s from ``start`` (a downbeat), with ``fades``."""
+    end = round(start + 60.0, 2)
+    return spec(*[(r, start, end) for r in ORDER], crossfades=[29, 30])
+
+
+@pytest.mark.parametrize("bar", range(100))
+def test_an_exact_minute_is_played_from_any_downbeat(bar: int) -> None:
+    start = round(FIRST + 2.0 * bar, 2)
+    good = checked(_minute_at(start), ORDER, GRID)
+    windows = [t["end_sec"] - t["start_sec"] for t in good["tracks"]]
+    assert total_sec(windows, good["crossfades"]) == 180.0 - 59
+    maps = [
+        {"duration": 300.0, "songs": [{"start": 0, "end": 300.0, "bpm": 120.0,
+                                       "first_downbeat": FIRST}], "events": []}
+        for _ in ORDER
+    ]  # fmt: skip
+    compose.compose_map(maps, good)  # what the policy passes, the library composes
+
+
+@pytest.mark.parametrize("bar", range(100))
+def test_thirty_and_thirty_over_a_minute_is_refused_from_any_downbeat(bar: int) -> None:
+    start = round(FIRST + 2.0 * bar, 2)
+    value = _minute_at(start)
+    value["crossfades"] = [30, 30]
+    with pytest.raises(MixPlanRefused) as caught:
+        checked(value, ORDER, GRID)
+    assert caught.value.reason == "crossfades_overlap"
