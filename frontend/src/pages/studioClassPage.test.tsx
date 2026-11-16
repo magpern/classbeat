@@ -239,6 +239,36 @@ describe('a studio class on the class page', () => {
       expect(await screen.findByRole('region', { name: 'Change songs' })).toBeInTheDocument()
     })
 
+    it('asks for no legacy song list and shows no error while the studio kind is still being found', async () => {
+      let release: () => void = () => undefined
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const SONGS_PATH = `${CLASS_PATH}/revisions/${LIST}`
+      const api = fakeApi(
+        approved('studio_songs', {
+          [`GET ${CLASS_PATH}/timeline`]: () => gate.then(() => reason(409, 'no_studio_draft')),
+          [`GET ${SONGS_PATH}`]: () => reason(500, 'boom'),
+        }),
+      )
+      renderAt(PAGE)
+      await screen.findByTestId('tss')
+      expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
+      expect(screen.queryByRole('link', { name: 'Change songs' })).toBeNull()
+      release()
+      await screen.findByRole('button', { name: 'Start the design' })
+      expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
+      expect(screen.queryByText('The songs could not be loaded. Reload the page.')).toBeNull()
+      expect(api.to('GET', SONGS_PATH)).toHaveLength(0)
+      expect(api.to('GET', `/api/jobs/${SONGS_JOB}`)).toHaveLength(1)
+    })
+
+    it.each([500, 404])('keeps the legacy song panel on a non-studio class when the timeline answers %i', async (status) => {
+      fakeApi(approved('design_with_songs', { [`GET ${CLASS_PATH}/timeline`]: () => reason(status, 'x') }))
+      renderAt(PAGE)
+      expect(await screen.findByRole('region', { name: 'Change songs' })).toBeInTheDocument()
+    })
+
     it('offers nothing for a class whose approved songs are not a studio list', async () => {
       fakeApi(approved('design_with_songs'))
       renderAt(PAGE)

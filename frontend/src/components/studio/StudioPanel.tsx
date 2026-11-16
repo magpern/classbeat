@@ -17,13 +17,13 @@ import type { StudioView } from './useStudioTimeline'
  * shown for a class that is not a studio class. A draft whose cached analysis expired says so and
  * offers Change songs, which is a new studio pick (it costs a class credit) and then a design.
  */
-export function StudioPanel({ summary, view }: { summary: ClassSummary; view: StudioView }) {
+export function StudioPanel({ summary, view, studioList }: { summary: ClassSummary; view: StudioView; studioList: boolean }) {
   const t = useT()
   const outputs = useStudioOutputs(summary.id, view.status === 'done' && view.kind === 'ready', summary.openJob !== null)
   if (view.status === 'loading') return null
   if (view.status === 'failed') return <Notice kind="error">{t('studio.tl.loadFailed')}</Notice>
   if (view.kind === 'none') return null
-  if (view.kind === 'no_draft') return <StudioStartDesign summary={summary} />
+  if (view.kind === 'no_draft') return studioList ? <StudioStartDesign summary={summary} /> : null
   if (view.kind === 'music_changed') {
     return (
       <Card className="flex flex-col gap-3" data-testid="studio-music-changed">

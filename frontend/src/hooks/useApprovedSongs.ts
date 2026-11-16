@@ -3,8 +3,8 @@ import type { ClassSummary } from '../api/classes'
 import { getSongList, type Song } from '../api/songs'
 
 /** The approved song list, for the strip under the axis; null (hidden) until there is one. */
-export function useApprovedSongs(classId: string, summary: ClassSummary): Song[] | null {
-  const revisionId = summary.songs.state === 'approved' ? summary.songs.revisionId : null
+export function useApprovedSongs(classId: string, summary: ClassSummary, enabled = true): Song[] | null {
+  const revisionId = enabled && summary.songs.state === 'approved' ? summary.songs.revisionId : null
   const [loaded, setLoaded] = useState<{ id: string; songs: Song[] } | null>(null)
   useEffect(() => {
     if (revisionId === null) return

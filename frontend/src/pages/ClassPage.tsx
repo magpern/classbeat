@@ -4,7 +4,7 @@ import { isSongKind } from '../api/songs'
 import { DeleteClass } from '../components/classes/DeleteClass'
 import { ChatPanel } from '../components/classes/ChatPanel'
 import { StudioPanel } from '../components/studio/StudioPanel'
-import { useIsStudioClass } from '../components/studio/useIsStudioClass'
+import { useClassKind } from '../components/studio/useClassKind'
 import { useStudioTimeline } from '../components/studio/useStudioTimeline'
 import { ChangeMusic } from '../components/classes/ChangeMusic'
 import { PlannedSongs } from '../components/classes/PlannedSongs'
@@ -121,12 +121,15 @@ function ClassBody({
   // A studio class is found by its timeline (the summary carries no studio status).
   const studioView = useStudioTimeline(classId, summary.currentRevisionId, summary.openJob === null)
   // A studio class's songs are the studio's own; the legacy song panels do not apply (#1119).
-  const studio = useIsStudioClass(summary, studioView)
+  const kind = useClassKind(summary, studioView)
+  const studio = kind === 'studio'
+  // The legacy panels wait until the kind is known (a studio class has no legacy song list).
+  const legacySongs = kind === 'other'
+  const songs = useApprovedSongs(classId, summary, legacySongs)
   // A soundless class has no songs to change (#530).
   const canChangeSongs =
-    !studio &&
+    legacySongs &&
     !summary.soundless && summary.songs.state === 'approved' && summary.songs.revisionId !== null
-  const songs = useApprovedSongs(classId, summary)
   const handoff = useHandoff(summary, reload)
   // A design with no version yet is shown in place, not on the job page (MA3), and so is a song
   // job (MA4): its list waits for approval right here.
@@ -263,7 +266,7 @@ function ClassBody({
                 classId={classId}
               />
             ) : null}
-            <StudioPanel summary={summary} view={studioView} />
+            <StudioPanel summary={summary} view={studioView} studioList={studio} />
             {shown.status === 'ready' ? <PlannedSongs segments={shown.revision.segments} songs={songs} /> : null}
             {summary.beatOne.available && viewingId === summary.currentRevisionId ? (
               <BeatOnePanel
@@ -283,7 +286,7 @@ function ClassBody({
                 goTo(CHANGE_SONGS_ID)
               }}
             />
-            {studio ? null : <ChangeSongs summary={summary} />}
+            {legacySongs ? <ChangeSongs summary={summary} /> : null}
             <div id="versions" className="scroll-mt-4">
               <HistoryPanel
                 classId={summary.id}
