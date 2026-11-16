@@ -4,11 +4,17 @@ the fakes, against Postgres as ``classbeat_app``; never the network.
 - the fill is the draft's ``final`` row: ``synced`` after the read-back, under its own lock key;
 - a failed fill is the row's state, ``failed`` with its category, and the Spotify output's (C7):
   the SwedeBeat playlist is still produced; "Sync again" fills the **same** playlist (no second
-  create) in the mix's order under the output's own fill key, so the output is then ``done``.
+  create) in the mix's order under the output's own fill key, so the output is then ``done``;
+- **the race on one final playlist**: a newer revision's fill waits for the playlist's lock while
+  an older one is in flight (it is not turned away busy), and the playlist ends with the newer
+  content; an older fill that has not written yet when a newer revision is intended hands over
+  without writing (``superseded``).
 """
 
+import asyncio
 import copy
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -16,6 +22,7 @@ from uuid import UUID
 import pytest
 
 from pickfake import POOL_14
+from spotifycore import API_HOST
 from studiooutputs import (
     outputs_on,  # noqa: F401 - fixture
     produce,
@@ -23,7 +30,7 @@ from studiooutputs import (
     view,
 )
 from studiotools import StudioEnv, choose_turns, pool_turns, script
-from test_spotify_sync import run_sync
+from test_spotify_sync import ITEMS, LIST_A, LIST_B, gate_first_put, run_sync, uris
 from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage]
     MIX_8,
     analysed,  # noqa: F401 - the autouse stand-in of the sandboxed child
@@ -137,3 +144,87 @@ def test_the_e2e_studio_revise_is_this_suites_cut() -> None:
     assert json.loads(path.read_text(encoding="utf-8")) == design_script(
         cut, note="Cut the last song."
     )
+
+
+# --- the race on one final playlist --------------------------------------------------------------
+
+
+async def two_final_rows(studio: StudioEnv) -> tuple[Any, Any, Any, Any, Any]:
+    """A class with its final playlist made, and two failed ``final`` rows of two revisions for
+    that same playlist, each with its own fill key: the rider, the class, the playlist, and the
+    older and the newer revision."""
+    rider, class_id, _, current = await designed(studio)
+    done = await produce(studio, rider, class_id, current, "spotify_playlist")
+    assert done.state == "completed"
+    (playlist,) = studio.songs.class_playlists(rider.user_id)
+    revisions = []
+    for ids in (LIST_A, LIST_B):
+        revision_id = uuid.uuid4()
+        studio.songs.sql(
+            "INSERT INTO spotify_syncs (owner_id, class_id, revision_id, target, "
+            "class_playlist_id, fill_key, lock_key, track_ids, state, detail) VALUES (:o, :c, :r, "
+            "'final', :p, :k, :l, CAST(:t AS jsonb), 'failed', 'forbidden')",
+            o=rider.user_id,
+            c=class_id,
+            r=revision_id,
+            p=playlist.id,
+            k=f"{revision_id}:final-fill",
+            l=f"final:{playlist.id}",
+            t=json.dumps(ids),
+        )
+        revisions.append(revision_id)
+    return rider, class_id, playlist, revisions[0], revisions[1]
+
+
+async def final_again(rider: Any, class_id: Any, revision_id: Any) -> UUID:
+    answer = await rider.browser.post(f"/api/classes/{class_id}/spotify-sync/{revision_id}/final")
+    assert answer.status_code == 201, answer.text
+    return UUID(answer.json()["job_id"])
+
+
+def final_state(studio: StudioEnv, owner: Any, revision_id: Any) -> tuple[str, str | None]:
+    row = studio.songs.sql(
+        "SELECT state, detail FROM spotify_syncs WHERE owner_id = :o AND revision_id = :r",
+        o=owner,
+        r=revision_id,
+    ).one()
+    return row.state, row.detail
+
+
+def final_puts(studio: StudioEnv) -> list[Any]:
+    return [s for s in studio.songs.fake.requests(API_HOST, ITEMS) if s.method == "PUT"]
+
+
+async def test_a_newer_fill_waits_for_the_final_playlists_lock(studio: StudioEnv) -> None:
+    rider, class_id, playlist, older, newer = await two_final_rows(studio)
+    fake = studio.songs.fake
+    entered, gate, original = gate_first_put(studio)
+    older_run = asyncio.ensure_future(run_sync(studio, await final_again(rider, class_id, older)))
+    assert await asyncio.to_thread(entered.wait, 20), "the older PUT never arrived"
+    newer_run = asyncio.ensure_future(run_sync(studio, await final_again(rider, class_id, newer)))
+    seen = len(fake.requests(API_HOST))
+    await asyncio.sleep(1.5)
+    assert len(fake.requests(API_HOST)) == seen, "a second write started while one was in flight"
+    assert not newer_run.done()  # it waits for the lock, not turned away busy
+    gate.set()
+    older_row, newer_row = await asyncio.gather(older_run, newer_run)
+    fake.handle = original  # type: ignore[method-assign]
+    # Both ran in their one attempt: the newer one waited, it was not requeued busy.
+    assert (older_row.state, newer_row.state) == ("completed", "completed")
+    assert final_state(studio, rider.user_id, older) == ("synced", None)
+    assert final_state(studio, rider.user_id, newer) == ("synced", None)
+    assert fake.playlists[playlist.playlist_id].entries == uris(LIST_B)
+
+
+async def test_a_stale_fill_hands_over_without_writing(studio: StudioEnv) -> None:
+    rider, class_id, playlist, older, newer = await two_final_rows(studio)
+    older_job = await final_again(rider, class_id, older)
+    newer_job = await final_again(rider, class_id, newer)  # intended after the older one
+    count = len(final_puts(studio))
+    done = await run_sync(studio, older_job)
+    assert (done.state, done.error_category) == ("completed", None)
+    assert final_state(studio, rider.user_id, older) == ("failed", "superseded")
+    assert len(final_puts(studio)) == count  # nothing written
+    assert (await run_sync(studio, newer_job)).state == "completed"
+    assert final_state(studio, rider.user_id, newer) == ("synced", None)
+    assert studio.songs.fake.playlists[playlist.playlist_id].entries == uris(LIST_B)
