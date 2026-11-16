@@ -2184,6 +2184,70 @@ export const en = {
     'The mix stays on while MOWL is on, because the mix is attached to the workout.',
   'studio.out.none':
     'Choose at least one output.',
+  'studio.out.noneEnabled':
+    'No output is available right now. Try again later.',
+  'studio.os.title':
+    'Output status',
+  'studio.os.loadFailed':
+    'The status of the outputs could not be loaded. Reload the page.',
+  'studio.os.state.pending':
+    'Waiting to start.',
+  'studio.os.state.running':
+    'Being created.',
+  'studio.os.state.done':
+    'Created.',
+  'studio.os.state.failed':
+    'Did not finish. Nothing needs checking; approve the outputs again to retry.',
+  'studio.os.state.in_doubt':
+    'In doubt: it may exist, but classbeat could not confirm it. Check again before you create another.',
+  'studio.os.state.published_not_listed':
+    'Published, but not listed in MOWL yet. Check again in a little while.',
+  'studio.os.note.created_not_public':
+    'The playlist is created but not published yet.',
+  'studio.os.note.not_sent':
+    'Nothing was sent.',
+  'studio.os.name':
+    'Name: {name}',
+  'studio.os.superseded':
+    'Replaced: another one will be created at your next approval.',
+  'studio.os.supersededHint':
+    'The earlier one stays in SwedeBeat. Approve the outputs again to create the new one.',
+  'studio.os.retryHint':
+    'Approve the outputs again to retry.',
+  'studio.os.candidate':
+    'Found in MOWL: {name} ({length}). Is this your mix?',
+  'studio.os.candidateNoLength':
+    'Found in MOWL: {name}. Is this your mix?',
+  'studio.os.confirm':
+    'Yes, it is my mix',
+  'studio.os.checkAgain':
+    'Check again',
+  'studio.os.createAnother':
+    'Create another anyway',
+  'studio.os.createAnotherConfirm':
+    'Create another anyway',
+  'studio.os.cancel':
+    'Cancel',
+  'studio.os.duplicateRisk':
+    'If the first one exists, you will get a duplicate. SwedeBeat has no delete and classbeat cannot remove it, so the duplicate stays there. This can be done only a few times per class and per day.',
+  'studio.os.duplicateAccept':
+    'I understand that this may create a duplicate that cannot be deleted.',
+  'studio.os.category.writes_off':
+    'SwedeBeat has writes switched off right now. Nothing was sent. Try again later.',
+  'studio.os.category.needs_reconnect':
+    'SwedeBeat did not accept your sign-in. Connect again on your account page, then approve again.',
+  'studio.os.category.rate_limited':
+    'SwedeBeat asked us to slow down. Wait a few minutes, then approve again.',
+  'studio.os.category.track_unavailable':
+    'SwedeBeat has no file for one of the songs. Swap that song, or start a new pick.',
+  'studio.os.category.track_too_large':
+    'A song file is over SwedeBeat’s size limit. Swap that song, or start a new pick.',
+  'studio.os.category.upstream_unavailable':
+    'SwedeBeat could not be reached or answered unexpectedly. Try again later.',
+  'studio.reason.not_in_doubt':
+    'This output is not in doubt, so it cannot be created again. Reload the page.',
+  'studio.reason.nothing_to_confirm':
+    'There is no mix to confirm. Check again first.',
   'studio.consent.title':
     'Before you approve',
   'studio.consent.chosen':

@@ -6,6 +6,8 @@ import { Notice } from '../forms'
 import { Card, CardTitle } from '../ui/card'
 import { StudioStartDesign } from './StudioStartDesign'
 import { StudioOutputs } from './StudioOutputs'
+import { StudioOutputStates } from './StudioOutputStates'
+import { useStudioOutputs } from './useStudioOutputs'
 import { StudioTimeline } from './StudioTimeline'
 import type { StudioView } from './useStudioTimeline'
 
@@ -16,6 +18,7 @@ import type { StudioView } from './useStudioTimeline'
  */
 export function StudioPanel({ summary, view }: { summary: ClassSummary; view: StudioView }) {
   const t = useT()
+  const outputs = useStudioOutputs(summary.id, summary.openJob === null && view.status === 'done' && view.kind === 'ready')
   if (view.status === 'loading') return null
   if (view.status === 'failed') return <Notice kind="error">{t('studio.tl.loadFailed')}</Notice>
   if (view.kind === 'none') return null
@@ -35,10 +38,22 @@ export function StudioPanel({ summary, view }: { summary: ClassSummary; view: St
   }
   // Only the class's current version can be approved: the server refuses another one.
   const current = view.timeline.revisionId === summary.currentRevisionId
+  const loaded = outputs.load.status === 'done' ? outputs.load.view : null
   return (
     <Card className="flex flex-col gap-5">
       <StudioTimeline timeline={view.timeline} />
-      {current ? <StudioOutputs classId={summary.id} timeline={view.timeline} disabled={summary.openJob !== null} /> : null}
+      {loaded !== null ? (
+        <StudioOutputStates classId={summary.id} outputs={loaded.outputs} onChange={outputs.replace} />
+      ) : null}
+      {outputs.load.status === 'failed' ? <Notice kind="error">{t('studio.os.loadFailed')}</Notice> : null}
+      {current && outputs.load.status !== 'loading' ? (
+        <StudioOutputs
+          classId={summary.id}
+          timeline={view.timeline}
+          disabled={summary.openJob !== null}
+          enabled={loaded?.enabled ?? null}
+        />
+      ) : null}
     </Card>
   )
 }

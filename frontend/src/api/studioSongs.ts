@@ -196,6 +196,8 @@ const OWN: Record<string, CatalogueKey> = {
   session_refused: 'studio.reason.session_refused',
   no_studio_draft: 'studio.reason.no_studio_draft',
   account_changed: 'studio.reason.account_changed',
+  not_in_doubt: 'studio.reason.not_in_doubt',
+  nothing_to_confirm: 'studio.reason.nothing_to_confirm',
 }
 
 export function studioError(error: unknown): string {

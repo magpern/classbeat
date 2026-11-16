@@ -53,6 +53,10 @@ function studioRoutes(extra: Record<string, unknown> = {}) {
     ...classRoutes(),
     'GET /api/connections': SWEDEBEAT,
     [`GET ${CLASS_PATH}/timeline`]: TIMELINE,
+    [`GET ${CLASS_PATH}/outputs`]: {
+      enabled_outputs: ['spotify_playlist', 'swedebeat_playlist', 'swedebeat_mix', 'mowl'],
+      outputs: [],
+    },
     ...extra,
   }
 }
@@ -214,5 +218,25 @@ describe('a studio class on the class page', () => {
       await waitFor(() => { expect(screen.queryByTestId('studio-music-changed')).toBeNull() })
       expect(screen.queryByRole('button', { name: 'Start the design' })).toBeNull()
     })
+  })
+
+  it('offers only the enabled outputs and falls the defaults back to them', async () => {
+    fakeApi(
+      studioRoutes({
+        [`GET ${CLASS_PATH}/outputs`]: { enabled_outputs: ['swedebeat_playlist', 'swedebeat_mix'], outputs: [] },
+      }),
+    )
+    renderAt(PAGE)
+    expect(await screen.findByRole('checkbox', { name: /SwedeBeat playlist/ })).toBeChecked()
+    expect(screen.queryByRole('checkbox', { name: /Spotify playlist/ })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /MOWL/ })).toBeNull()
+    expect(screen.getByRole('checkbox', { name: /SwedeBeat mix/ })).not.toBeChecked()
+  })
+
+  it('says so when no output is enabled', async () => {
+    fakeApi(studioRoutes({ [`GET ${CLASS_PATH}/outputs`]: { enabled_outputs: [], outputs: [] } }))
+    renderAt(PAGE)
+    expect(await screen.findByText(/No output is available/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve and create' })).toBeDisabled()
   })
 })

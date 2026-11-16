@@ -2306,6 +2306,70 @@ const da: Catalogue = {
     'Mixet er slået til, så længe MOWL er det, fordi mixet er knyttet til træningspasset.',
   'studio.out.none':
     'Vælg mindst ét resultat.',
+  'studio.out.noneEnabled':
+    'Intet resultat er tilgængeligt lige nu. Prøv igen senere.',
+  'studio.os.title':
+    'Resultaternes status',
+  'studio.os.loadFailed':
+    'Resultaternes status kunne ikke hentes. Genindlæs siden.',
+  'studio.os.state.pending':
+    'Venter på at starte.',
+  'studio.os.state.running':
+    'Bliver oprettet.',
+  'studio.os.state.done':
+    'Oprettet.',
+  'studio.os.state.failed':
+    'Blev ikke færdig. Intet skal kontrolleres; godkend resultaterne igen for at prøve igen.',
+  'studio.os.state.in_doubt':
+    'Usikkert: den findes måske, men classbeat kunne ikke bekræfte det. Tjek igen, før du opretter en til.',
+  'studio.os.state.published_not_listed':
+    'Udgivet, men endnu ikke på listen i MOWL. Tjek igen om lidt.',
+  'studio.os.note.created_not_public':
+    'Playlisten er oprettet, men endnu ikke udgivet.',
+  'studio.os.note.not_sent':
+    'Der blev ikke sendt noget.',
+  'studio.os.name':
+    'Navn: {name}',
+  'studio.os.superseded':
+    'Erstattet: en ny oprettes ved næste godkendelse.',
+  'studio.os.supersededHint':
+    'Den tidligere bliver i SwedeBeat. Godkend resultaterne igen for at oprette den nye.',
+  'studio.os.retryHint':
+    'Godkend resultaterne igen for at prøve igen.',
+  'studio.os.candidate':
+    'Fundet i MOWL: {name} ({length}). Er det din mix?',
+  'studio.os.candidateNoLength':
+    'Fundet i MOWL: {name}. Er det din mix?',
+  'studio.os.confirm':
+    'Ja, det er min mix',
+  'studio.os.checkAgain':
+    'Tjek igen',
+  'studio.os.createAnother':
+    'Opret en til alligevel',
+  'studio.os.createAnotherConfirm':
+    'Opret en til alligevel',
+  'studio.os.cancel':
+    'Annuller',
+  'studio.os.duplicateRisk':
+    'Hvis den første findes, får du en dublet. SwedeBeat kan ikke slette, og classbeat kan ikke fjerne den, så dubletten bliver der. Det kan kun gøres få gange pr. hold og dag.',
+  'studio.os.duplicateAccept':
+    'Jeg forstår, at det kan oprette en dublet, som ikke kan slettes.',
+  'studio.os.category.writes_off':
+    'SwedeBeat har skrivning slået fra lige nu. Der blev ikke sendt noget. Prøv igen senere.',
+  'studio.os.category.needs_reconnect':
+    'SwedeBeat godkendte ikke dit login. Tilslut igen på din kontoside, og godkend derefter igen.',
+  'studio.os.category.rate_limited':
+    'SwedeBeat beder os sætte tempoet ned. Vent et par minutter, og godkend derefter igen.',
+  'studio.os.category.track_unavailable':
+    'SwedeBeat har ingen fil til en af sangene. Skift den sang, eller lav et nyt valg.',
+  'studio.os.category.track_too_large':
+    'En sangfil er større end SwedeBeats grænse. Skift den sang, eller lav et nyt valg.',
+  'studio.os.category.upstream_unavailable':
+    'SwedeBeat kunne ikke nås eller svarede uventet. Prøv igen senere.',
+  'studio.reason.not_in_doubt':
+    'Dette resultat er ikke usikkert, så det kan ikke oprettes igen. Genindlæs siden.',
+  'studio.reason.nothing_to_confirm':
+    'Der er ingen mix at bekræfte. Tjek igen først.',
   'studio.consent.title':
     'Før du godkender',
   'studio.consent.chosen':

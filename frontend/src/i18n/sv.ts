@@ -2318,6 +2318,70 @@ const sv: Catalogue = {
     'Mixen är på så länge MOWL är på, eftersom mixen kopplas till träningspasset.',
   'studio.out.none':
     'Välj minst ett resultat.',
+  'studio.out.noneEnabled':
+    'Inget resultat är tillgängligt just nu. Försök igen senare.',
+  'studio.os.title':
+    'Resultatens status',
+  'studio.os.loadFailed':
+    'Statusen för resultaten kunde inte hämtas. Ladda om sidan.',
+  'studio.os.state.pending':
+    'Väntar på att starta.',
+  'studio.os.state.running':
+    'Skapas just nu.',
+  'studio.os.state.done':
+    'Skapad.',
+  'studio.os.state.failed':
+    'Blev inte klar. Inget behöver kontrolleras; godkänn resultaten igen för att försöka på nytt.',
+  'studio.os.state.in_doubt':
+    'Osäkert: den kan finnas, men classbeat kunde inte bekräfta det. Kontrollera igen innan du skapar en till.',
+  'studio.os.state.published_not_listed':
+    'Publicerad, men inte listad i MOWL än. Kontrollera igen om en liten stund.',
+  'studio.os.note.created_not_public':
+    'Spellistan är skapad men inte publicerad än.',
+  'studio.os.note.not_sent':
+    'Ingenting skickades.',
+  'studio.os.name':
+    'Namn: {name}',
+  'studio.os.superseded':
+    'Ersatt: en ny skapas vid nästa godkännande.',
+  'studio.os.supersededHint':
+    'Den tidigare finns kvar i SwedeBeat. Godkänn resultaten igen för att skapa den nya.',
+  'studio.os.retryHint':
+    'Godkänn resultaten igen för att försöka på nytt.',
+  'studio.os.candidate':
+    'Hittades i MOWL: {name} ({length}). Är det din mix?',
+  'studio.os.candidateNoLength':
+    'Hittades i MOWL: {name}. Är det din mix?',
+  'studio.os.confirm':
+    'Ja, det är min mix',
+  'studio.os.checkAgain':
+    'Kontrollera igen',
+  'studio.os.createAnother':
+    'Skapa en till ändå',
+  'studio.os.createAnotherConfirm':
+    'Skapa en till ändå',
+  'studio.os.cancel':
+    'Avbryt',
+  'studio.os.duplicateRisk':
+    'Om den första finns får du en dubblett. SwedeBeat saknar borttagning och classbeat kan inte ta bort den, så dubbletten blir kvar. Det går bara några få gånger per pass och dag.',
+  'studio.os.duplicateAccept':
+    'Jag förstår att det kan skapa en dubblett som inte går att ta bort.',
+  'studio.os.category.writes_off':
+    'SwedeBeat har skrivning avstängd just nu. Ingenting skickades. Försök igen senare.',
+  'studio.os.category.needs_reconnect':
+    'SwedeBeat godtog inte din inloggning. Anslut igen på din kontosida och godkänn sedan igen.',
+  'studio.os.category.rate_limited':
+    'SwedeBeat ber oss sakta ner. Vänta några minuter och godkänn sedan igen.',
+  'studio.os.category.track_unavailable':
+    'SwedeBeat saknar fil för en av låtarna. Byt den låten, eller gör ett nytt val.',
+  'studio.os.category.track_too_large':
+    'En låtfil är större än SwedeBeats gräns. Byt den låten, eller gör ett nytt val.',
+  'studio.os.category.upstream_unavailable':
+    'SwedeBeat kunde inte nås eller svarade oväntat. Försök igen senare.',
+  'studio.reason.not_in_doubt':
+    'Det här resultatet är inte osäkert, så det kan inte skapas igen. Ladda om sidan.',
+  'studio.reason.nothing_to_confirm':
+    'Det finns ingen mix att bekräfta. Kontrollera igen först.',
   'studio.consent.title':
     'Innan du godkänner',
   'studio.consent.chosen':
