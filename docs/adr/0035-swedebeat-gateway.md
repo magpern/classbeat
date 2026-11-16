@@ -205,7 +205,10 @@ is unchanged: recent authentication and step-up, CSRF, rate limits, events. The 
 3. **The answer.** It is read through a field allowlist:
    - `bearer`: a string of 16 to 4096 printable ASCII characters;
    - `expires_in`: an integer from 60 s to 400 days;
-   - `customer_id` and `token_type` are not kept.
+   - `token_type` is not kept. `customer_id` is kept only as a keyed digest (amended, #1117): HMAC-SHA256
+     of the user id and the id under the app secret key, 32 hex characters, in `connections.account_ref`
+     (migration 0057), `NULL` when the answer has none or a malformed one. It tells a reconnect to the
+     same SwedeBeat account (ADR 0036 §6, a publish in doubt). The raw id is never stored or logged.
 
    Any other shape is `unknown`.
 4. **Store.** `save(..., "swedebeat", {"bearer": bearer}, public={"email": email},
@@ -541,6 +544,8 @@ rules (for example `gateway.classbeat-e2e.test`).
 - **Drop the sign-out consent** because the gateway always forces. That is the owner's product call
   (§4). Until then the consent moves up front.
 - **Store `customer_id`.** Nothing uses it. The email in `public` already says whose account it is.
+  (Amended, #1117: a keyed digest of it is stored, see §3 item 3, because a publish in doubt must tell a
+  same-account reconnect from another account; the email can change and is never compared.)
 
 ## Consequences
 

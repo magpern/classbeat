@@ -2,7 +2,8 @@
 
 Only ``classbeat.connections`` reads or writes it (``tests/test_crypto_guard.py``). Migration
 ``0003_connections`` creates it with its constraints and RLS, ``0006_spotify`` adds
-``generation``, ``0050_player_connection`` the ``player`` provider; this is the query-side mirror.
+``generation``, ``0050_player_connection`` the ``player`` provider, ``0057_swedebeat_account_ref``
+``account_ref``; this is the query-side mirror.
 """
 
 from sqlalchemy import (
@@ -44,4 +45,7 @@ connections = Table(
     # ADR 0009 section 5.4: the version ``hold`` and the status flips compare. A user's connect,
     # reconnect or Client ID change increases it; a refresh or a rewrap does not.
     Column("generation", BigInteger, nullable=False, server_default=text("1")),
+    # #1117: a keyed digest of the SwedeBeat ``customer_id`` (``swedebeat`` rows only), set on
+    # every connect and reconnect; ``NULL`` reads as another account.
+    Column("account_ref", Text),
 )

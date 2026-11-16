@@ -18,7 +18,7 @@ from authtools import ORIGIN, Env, running_env
 from classbeat import connections
 from classbeat.connections import ConnectionFailure
 from classbeat.connections.credentials import build_credentials
-from classbeat.connections.swedebeat_account import device_id_for, open_bearer
+from classbeat.connections.swedebeat_account import account_ref_for, device_id_for, open_bearer
 from classbeat.db import user_session
 from classbeat.egress_gateway import LOGIN_SECONDS, swedebeat_gateway_test_client
 from classbeat.swedebeat_gateway import opener
@@ -504,6 +504,63 @@ async def test_a_reconnect_keeps_the_row_id_and_replaces_the_bearer(
     assert (again.status_code, again.json()["status"]) == (200, "connected")
     assert await owned(env, "SELECT id FROM connections") == first_id
     assert await bearer_of(env) != first
+
+
+async def test_every_connect_stores_the_accounts_digest_and_never_keeps_an_old_one(
+    env: Env, make_actor: Any, gateway_api: FakeGateway, caplog: pytest.LogCaptureFixture
+) -> None:
+    """#1117: ``account_ref`` is the keyed digest of the login's ``customer_id`` (never the raw
+    id, never logged), the same on a reconnect to the same account, another for another account,
+    and ``NULL`` after a login that names none: a reconnect never keeps the old account."""
+    caplog.set_level(logging.DEBUG)
+    actor = await actor_for(env, make_actor)
+    me = await user_id(env)
+    secret = secret_of(env)
+    sql = "SELECT account_ref FROM connections"
+    assert (await actor.post(CONNECT, body())).status_code == 200
+    first = await owned(env, sql)
+    expected = account_ref_for(secret, me, gateway_api.customer_of(EMAIL))
+    assert isinstance(first, str)
+    assert first == expected
+    assert len(first) == 32
+    opened = await open_bearer(env.factory, env.app.state.keyring, await user_ctx(env))
+    assert opened.account_ref == first
+    assert first not in repr(opened)
+    assert (await actor.post(CONNECT, body())).status_code == 200  # the same account again
+    assert await owned(env, sql) == first
+    assert (await actor.post(CONNECT, body(EMAIL_B, PASSWORD_B))).status_code == 200
+    other = await owned(env, sql)
+    assert isinstance(other, str)
+    assert other != first
+    gateway_api.answers_customer = False
+    assert (await actor.post(CONNECT, body())).status_code == 200  # still connects
+    assert await owned(env, sql) is None  # never the old account's digest
+    # Per user: another user's digest of the same account differs.
+    gateway_api.answers_customer = True
+    assert account_ref_for(secret, UUID(int=1), gateway_api.customer_of(EMAIL)) != first
+    customers = {gateway_api.customer_of(EMAIL), gateway_api.customer_of(EMAIL_B)}
+    shown = json.dumps((await actor.get("/api/connections")).json())
+    for value in customers | {first, other}:
+        assert value not in shown
+        assert value not in caplog.text
+    # It goes with the row.
+    assert (await actor.call("DELETE", CONNECT)).status_code == 204
+    assert await owned(env, "SELECT count(*) FROM connections") == 0
+
+
+async def test_only_a_swedebeat_row_holds_an_account_ref(
+    env: Env, make_actor: Any, gateway_api: FakeGateway
+) -> None:
+    actor = await actor_for(env, make_actor)
+    ctx = await user_ctx(env)
+    with pytest.raises(ValueError, match="only a SwedeBeat connection"):
+        await connections.save(
+            env.factory, env.app.state.keyring, ctx, "player", {"token": "t"}, account_ref="0" * 32
+        )
+    assert (await actor.post(CONNECT, body())).status_code == 200
+    for bad in ("A" * 32, "0" * 31, "0" * 64, "35907"):
+        with pytest.raises(Exception, match="connections_account_ref"):
+            await write_own(env, f"UPDATE connections SET account_ref = '{bad}'")  # noqa: S608
 
 
 async def test_connect_and_disconnect_need_recent_auth_and_step_up(

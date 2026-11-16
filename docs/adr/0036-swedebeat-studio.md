@@ -185,7 +185,7 @@ The owner's direction (2026-11-15):
   - what a merged mix shows others (gate L2).
 
   It checks `GET /auth/session` before the button. The approval binds the draft's id, its `content_hash`, the
-  chosen outputs and the **SwedeBeat connection** (its id and generation; ADR 0035 keeps no `customer_id`). The
+  chosen outputs and the **SwedeBeat connection** (its id and generation, and for a publish the account's digest, ADR 0035 §3 as amended by #1117). The
   server re-checks all of them when the job runs (ADR 0007 §5). A different or reconnected connection refuses
   the job with `connection_changed`, and nothing is written.
 
@@ -232,7 +232,7 @@ row is committed before the call.
   published playlists, and an unpublished one cannot be found. The step stays `in_doubt`, and the user is told
   it may exist. The only way on is **Create another anyway** (`attempt + 1`). The recommended gateway pass-through
   (listing one's own playlists) would let Check again settle it.
-- **Playlist publish in doubt.** The `playlist_id` is stored, so Check again reads **every page** of `GET /playlists/shared` (pages 1 to 50, until a page comes back empty), **with the approved SwedeBeat connection and generation** only (stored with the publish). When that connection is gone or reconnected, the listing proves nothing about it: the step stays `in_doubt` with `connection_changed` and nothing is read, never "not listed" and then a publish under another bearer. If
+- **Playlist publish in doubt.** The `playlist_id` is stored, so Check again reads **every page** of `GET /playlists/shared` (pages 1 to 50, until a page comes back empty), **with the approved SwedeBeat connection and generation** only (stored with the publish). When that connection is gone or reconnected, the listing proves nothing about it: the step stays `in_doubt` with `connection_changed` and nothing is read, never "not listed" and then a publish under another bearer. Amended (#1117): a reconnect of the **same** connection row to the **same** SwedeBeat account (the publish's stored account digest equals the row's, both present) is read with the new bearer; another account, a row or a publish without the digest, or another row stays `connection_changed`. That reason is recorded apart from the failure's category the user was shown (`check_reason`). If
   the id is listed, the step is `succeeded`. If it is not, publishing **the same `playlist_id`** again is safe,
   because publish is one-way on an existing record and creates none. It is never a new create.
 - **Mix (merge-publish) in doubt.**

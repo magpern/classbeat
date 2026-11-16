@@ -154,7 +154,7 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
             "account",
         ),
         "connections": _entry(
-            "public last_error secret secret_nonce wrapped_dek dek_nonce",
+            "public last_error secret secret_nonce wrapped_dek dek_nonce account_ref",
             "provider status key_id",
             "account",
             "mowl_connection",
