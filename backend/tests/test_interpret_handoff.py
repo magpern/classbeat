@@ -37,11 +37,6 @@ class RefusingLedger(UnmeteredLedger):
         raise QuotaRefused("classes", limit=3, used=3, plan="pro")
 
 
-def empty_names(ienv: InterpretEnv, fake_mowl: Any) -> None:
-    for token in fake_mowl.names:
-        fake_mowl.names[token] = {}
-
-
 async def wait_for_lock_waiters(ienv: InterpretEnv, n: int, seconds: float = 10) -> None:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + seconds
@@ -129,11 +124,10 @@ async def test_the_whole_class_designs_and_its_first_revision_names_no_request(
 
 
 async def test_a_refusal_is_stored_answered_again_and_retried_only_on_request(
-    ienv: InterpretEnv, fake_mowl: Any
+    ienv: InterpretEnv,
 ) -> None:
-    empty_names(ienv, fake_mowl)
     music_kind.configure(None)  # the soundless switch off: ``design_draft`` refuses feature_off
-    class_id, _ = await ienv.interpreted()
+    class_id, _ = await ienv.interpreted(spotify=False, music_override={"source": "none"})
     assert ienv.interpretation(class_id)["music"] == {"source": "none"}
     before = ienv.counts()
     refused = await ienv.handoff(class_id)
@@ -170,20 +164,24 @@ async def test_a_quota_refusal_rolls_back_the_create_and_is_stored(ienv: Interpr
         app.dependency_overrides.pop(credit_ledger, None)
 
 
-async def test_a_running_class_with_no_playlist_stores_needs_mowl_playlist(
-    ienv: InterpretEnv,
+@pytest.mark.parametrize(
+    ("sport", "reason"), [("cycling", "needs_spotify"), ("running", "needs_mowl_playlist")]
+)
+async def test_a_class_with_no_music_stores_what_it_needs(
+    ienv: InterpretEnv, sport: str, reason: str
 ) -> None:
     class_id, _ = await ienv.interpreted()
     ienv.sql(
-        "UPDATE classes SET interpretation = jsonb_set(interpretation, '{music}', 'null') "
-        "WHERE id = :c",
+        "UPDATE classes SET interpretation = jsonb_set(jsonb_set(interpretation, '{music}', "
+        "'null'), '{brief,sport}', CAST(:s AS jsonb)) WHERE id = :c",
         c=class_id,
+        s=f'"{sport}"',
     )
     before = ienv.counts()
     refused = await ienv.handoff(class_id)
-    assert refused.json()["detail"]["reason"] == "needs_mowl_playlist"
-    assert ienv.interpretation(class_id)["refusal"]["reason"] == "needs_mowl_playlist"
-    assert ienv.counts() == before
+    assert refused.json()["detail"]["reason"] == reason
+    assert ienv.interpretation(class_id)["refusal"]["reason"] == reason
+    assert ienv.counts() == before  # no job, no credit
 
 
 async def test_another_users_class_and_an_unknown_one_are_not_found(

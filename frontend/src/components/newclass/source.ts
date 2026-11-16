@@ -49,7 +49,7 @@ async function songsAvailability(connections: Connection[], signal: AbortSignal)
   if (spotify === undefined || spotify.status !== 'connected' || status.status !== 'connected') {
     return { kind: 'needs_spotify' }
   }
-  if (!status.poolConsent) return { kind: 'needs_consent' }
+  if (!status.poolConsent) return { kind: 'needs_consent', spotifyConnectionId: spotify.id }
   return { kind: 'ready', spotifyConnectionId: spotify.id }
 }
 

@@ -10,8 +10,8 @@ completes without enqueuing anything. ``design_from_interpretation`` then enqueu
    class on the user's own Spotify playlist is a ``design_with_songs`` with that playlist as its
    ``source`` (roadmap Amendment 26: a new private playlist in class order, after the approval)
    when the ``song_picking`` flag and its environment switch admit the user (the kill switch of
-   Spotify writes); without that or without a Spotify connection it stays the write-free
-   ``design_draft`` (#1131 owns the refusals);
+   Spotify writes); without that it stays the write-free ``design_draft``, as does one stored
+   with no Spotify connection before roadmap Amendment 25;
 2. the jobs API's create (``JobEnqueue``, ``classbeat.jobs.routes.enqueue``) with the kind's own
    ``admit``, the per-user limit and the class credit, under the idempotency key derived from the
    interpret job id (``interpretation_row.handoff_key``), and with a ``CreateHold``
@@ -24,7 +24,8 @@ completes without enqueuing anything. ``design_from_interpretation`` then enqueu
 So two calls at the same time are serialized by the owner lock: the second sees either the job the
 first created (the same key and body: the same job id and state, no second credit) or the refusal
 the first stored, and answers it. A call after a reopened tab is the same call. A class whose
-music could not be chosen (a running class with no MOWL playlist) stores ``needs_mowl_playlist``
+music could not be chosen (a running class with no MOWL playlist, or a cycling class with no Spotify
+connection that can use one) stores ``needs_mowl_playlist`` or ``needs_spotify``
 the same way, under the owner lock, without a create.
 
 Two answers are never stored (#904): a class that already has a revision and no design job of this
@@ -51,7 +52,7 @@ from classbeat.db import user_session
 from classbeat.design import DESIGN_DRAFT, interpretation_row
 from classbeat.design.interpret_kind import KIND as INTERPRET_KIND
 from classbeat.design.interpret_kind import InterpretRequestInput
-from classbeat.design.interpret_music_policy import NEEDS_MOWL_PLAYLIST
+from classbeat.design.interpret_music_policy import NEEDS_MOWL_PLAYLIST, NEEDS_SPOTIFY
 from classbeat.design.interpretation_row import Refusal, StoredInterpretation
 from classbeat.design.kind import DesignDraftInput, SpotifyMusicChoice
 from classbeat.flags import effective as flags
@@ -165,15 +166,16 @@ def _design_input(
 ) -> tuple[JobKind, JobInput] | str:
     """The design kind and its unchanged input, or the reason there is none. ``song_picking``:
     the flag admits the user, so a playlist class may get its new playlist (Amendment 26)."""
-    if row.music is None:
-        return NEEDS_MOWL_PLAYLIST
+    if row.music is None:  # a running class has MOWL playlists only; a cycling one needs Spotify
+        return NEEDS_MOWL_PLAYLIST if row.brief.get("sport") == "running" else NEEDS_SPOTIFY
     if not isinstance(job_input, dict):
         return "not_ready"
     try:
         given = InterpretRequestInput.model_validate(job_input)
         brief = Brief.model_validate(row.brief)
         pick = row.music.get("source") == "pick"
-        # Amendment 26: a cycling class on the user's playlist gets a new one in class order.
+        # Amendment 26: a cycling class on the user's playlist gets a new one in class order. One
+        # stored with no Spotify (only before Amendment 25) keeps its write-free design_draft.
         own = row.music.get("source") == PLAYLIST and brief.sport == "cycling" and song_picking
         if pick or (own and given.spotify_connection_id is not None):
             if given.spotify_connection_id is None:

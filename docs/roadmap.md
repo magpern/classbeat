@@ -20,7 +20,33 @@ an existing playlist, a new playlist is still created with the correct order of 
   while they do not admit the user, the class stays the write-free `design_draft` on the user's
   playlist. No model picks songs and the pool is not touched, so the pool consent is not needed.
 - **Unchanged:** Swedebeat mixes, soundless classes and running classes (ADR 0018). Spotify becoming
-  required, and the first playlist no longer being the default, are issue #1131.
+  required, and the first playlist no longer being the default, are Amendment 25 (issue #1131).
+
+## Amendment 25 (2026-11-16, owner decision: Spotify is required for a class with music; issue #1131)
+
+Owner decision (2026-11-16, chat): "Unless you do a soundless class, Spotify is where we search, but in
+theory we could search in Swedebeat too. In general: create a playlist in Spotify with the songs the user
+wants. If the user picks an existing playlist, a new playlist is still created with the correct order of
+the songs. Reinstate Spotify."
+
+This replaces the account-level wording "Spotify and Swedebeat are optional per user" (ADR 0015's
+amendment of 2026-11-03, ADR 0028 section 3, ADR 0013) for classes that have music. MOWL stays required;
+Swedebeat stays optional per user, and its mixes stay as they are (ADR 0016, 0035, 0036).
+
+- **A cycling class that is not soundless needs a Spotify connection.** The music order (ADR 0029
+  section 4, rule 4) is the user's own choice (the picker, "No music" included), a playlist or mix the
+  request names, then a song pick (Spotify); there is no default music. The implicit "first MOWL playlist"
+  is gone for cycling. "No music" and a Swedebeat mix need no Spotify.
+- **A named or chosen existing playlist needs Spotify too**, because the class always gets a new playlist
+  with the songs in the right order (follow-up #1132).
+- **`interpret_request` refuses with `needs_spotify`** (409) when the account has no Spotify connection
+  and the request can only end without music: no model call, no credit. When the sport or a Swedebeat mix
+  may still be read from the request, the interpretation runs and the hand-off stops Not as asked with the
+  same code (no design job, no credit).
+- **The start screen says so before the request is sent**, with a link to connect Spotify, and shows the
+  same message when the server refuses.
+- **Running is unchanged** (ADR 0018): MOWL playlists only, the first one by default, Not as asked
+  `needs_mowl_playlist` with none.
 
 ## Amendment 24 (2026-11-15, owner direction: the SwedeBeat studio; ADR 0036)
 

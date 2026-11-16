@@ -770,7 +770,9 @@ picking) are unchanged and stay `design_draft`.
   `seed`). The interpretation hand-off (ADR 0029 §5) enqueues it when the interpret request named a
   Spotify connection **and** `song_picking_admits` admits the user (`CLASSBEAT_SONG_PICKING` and the
   stored `song_picking` flag, the kill switch of classbeat's Spotify writes, ADR 0009 §2, ADR 0011
-  §7). Otherwise it still enqueues the write-free `design_draft`. Issue #1131 owns any refusal there.
+  §7). Otherwise it still enqueues the write-free `design_draft`. Since roadmap Amendment 25
+  (issue #1131) a cycling playlist is only chosen with a Spotify connection; one stored without it
+  before then keeps its `design_draft`.
 - **Phase 1 with a source** (`songs/from_playlist.py`) has one stage, `pool_analyse`. It runs the
   design music step on the user's playlist exactly as `design_draft` does: the stored MOWL link or
   the MOWL attach, then read-only analysis. There is **no model, no search, no pool and no Spotify

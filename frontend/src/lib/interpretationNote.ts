@@ -78,6 +78,7 @@ export const REASONS: Record<string, CatalogueKey> = {
   game_placement: 'interp.reason.game_placement',
   game_duration: 'interp.reason.game_duration',
   needs_mowl_playlist: 'interp.reason.needs_mowl_playlist',
+  needs_spotify: 'interp.reason.needs_spotify',
 }
 
 const GAMES: readonly string[] = ['racetrack', 'power_pull', 'fast_lane', 'overflow', 'ghost_target']

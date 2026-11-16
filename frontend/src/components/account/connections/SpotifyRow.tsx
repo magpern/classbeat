@@ -55,7 +55,7 @@ export function SpotifyRow() {
           testId="connection-spotify"
           mark="S"
           name={t('spot.title')}
-          optional
+          optional={false} // a class with music needs it (roadmap Amendment 25)
           status={
             notConnected ? (
               t('conn.spotify.purpose')

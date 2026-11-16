@@ -27,10 +27,14 @@ from classbeat.agent.interpretation_record import InterpretationItem, Origin, ke
 from classbeat.plan_gates import PlanGates
 
 ALL_SPORTS: Final = ("cycling", "running")
-# The music of a class, first available wins (cycling may end without music; running may not).
-CYCLING_MUSIC: Final = ("override", "name_match", "pick", "first_playlist", "soundless")
+# The music of a class, first available wins. Cycling has no default music (roadmap Amendment 25):
+# without the user's own choice (the "No music" one is an override), a name the request gives or
+# a song pick it has nothing, and is Not as asked ``needs_spotify``. Running takes the MOWL
+# playlists only (ADR 0018) and, with none, is Not as asked ``needs_mowl_playlist``.
+CYCLING_MUSIC: Final = ("override", "name_match", "pick")
 RUNNING_MUSIC: Final = ("override", "name_match", "first_playlist")
 NEEDS_MOWL_PLAYLIST: Final = "needs_mowl_playlist"
+NEEDS_SPOTIFY: Final = "needs_spotify"
 # Stated, sent to the model, but not checked against the draft (no closed comparison exists):
 # recorded as an assumption, never as "As you asked".
 UNVERIFIED: Final = ("intensity", "class_type")
@@ -78,8 +82,8 @@ def music_order(sport: str) -> tuple[str, ...]:
 
 
 def choose_music(sport: str, available: Collection[str]) -> str | None:
-    """The first source of the sport's order that is available; ``None`` only for running with no
-    MOWL playlist (Not as asked: ``needs_mowl_playlist``)."""
+    """The first source of the sport's order that is available; ``None`` when there is none (Not
+    as asked: ``needs_spotify`` for cycling, ``needs_mowl_playlist`` for running)."""
     return next((s for s in music_order(sport) if s in available), None)
 
 

@@ -44,13 +44,15 @@ TITLE_CHARS: Final = 60
 
 @dataclass(frozen=True)
 class Offer:
-    """What the account may use: the sports, the plan's gates, the music and whether a song pick
-    can run (song picking admits the user and a Spotify connection is named)."""
+    """What the account may use: the sports, the plan's gates, the music, whether a Spotify
+    connection is named (a cycling class has Spotify playlists only, roadmap Amendment 25) and
+    whether a song pick can run (song picking admits the user and a Spotify connection is named)."""
 
     sports: tuple[str, ...] = ("cycling",)
     gates: PlanGates | None = None
     options: tuple[MusicOption, ...] = ()
     pick_ready: bool = False
+    spotify: bool = False  # a Spotify connection is named: a cycling class may use a playlist
 
 
 @dataclass(frozen=True)
@@ -172,7 +174,9 @@ def resolve(
         fields["games"] = games
     fields["explicit"] = explicit + stated_games
     override = dict(music_override or {}) or None
-    music = choose(read.music, request, sport, offer.options, offer.pick_ready, override, items)
+    music = choose(
+        read.music, request, sport, offer.options, offer.pick_ready, offer.spotify, override, items
+    )
     return Resolved(Brief.model_validate(fields), music, items)
 
 

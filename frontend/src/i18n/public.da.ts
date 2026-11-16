@@ -54,7 +54,7 @@ export const publicDa: Catalogue = {
   'how.connect.mowl.text': 'Påkrævet. Vi læser din musik derfra og gemmer dine hold dér.',
   'how.connect.spotify.name': 'Spotify',
   'how.connect.spotify.text':
-    'Valgfrit. Kun hvis du vil have, at vi vælger sange til dig. Du laver en Spotify-app til dig selv, så grænserne er dine. Dens ejer skal have Spotify Premium.',
+    'Kræves til hvert hold med musik: vi finder sangene dér og gemmer din playliste dér. Du laver en Spotify-app til dig selv, så grænserne er dine. Dens ejer skal have Spotify Premium.',
   'how.connect.swedebeat.name': 'Swedebeat',
   'how.connect.swedebeat.text':
     'Valgfrit. Kun hvis du underviser med Swedebeat, for at designe et hold til et af dine mix.',

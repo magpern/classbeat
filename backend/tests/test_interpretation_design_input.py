@@ -57,7 +57,7 @@ def test_a_song_pick_names_no_source() -> None:
 def test_without_spotify_or_song_picking_a_running_class_or_a_mix_stays_design_draft() -> None:
     mix = {"source": "mowl_swedebeat_mix", "mix_id": "mix-1"}
     for music, brief, spotify, picking in (
-        (PLAYLIST, CYCLING, False, True),  # #1131 refuses it; until then the old design
+        (PLAYLIST, CYCLING, False, True),  # stored before Amendment 25 only: the old design
         (PLAYLIST, CYCLING, True, False),  # the kill switch of Spotify writes: no new playlist
         (PLAYLIST, RUNNING, True, True),  # ADR 0018: no song picking for running
         (mix, CYCLING, True, True),

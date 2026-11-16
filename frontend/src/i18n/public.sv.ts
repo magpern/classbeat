@@ -54,7 +54,7 @@ export const publicSv: Catalogue = {
   'how.connect.mowl.text': 'Krävs. Vi läser din musik därifrån och sparar dina pass där.',
   'how.connect.spotify.name': 'Spotify',
   'how.connect.spotify.text':
-    'Valfritt. Bara om du vill att vi ska välja låtar åt dig. Du skapar en egen Spotify-app, så gränserna är dina. Dess ägare behöver Spotify Premium.',
+    'Behövs för varje pass med musik: vi hittar låtarna där och sparar din spellista där. Du skapar en egen Spotify-app, så gränserna är dina. Dess ägare behöver Spotify Premium.',
   'how.connect.swedebeat.name': 'Swedebeat',
   'how.connect.swedebeat.text':
     'Valfritt. Bara om du håller pass med Swedebeat, för att utforma ett pass till en av dina mixar.',
