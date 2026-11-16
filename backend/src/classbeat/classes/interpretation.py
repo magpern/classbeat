@@ -8,8 +8,10 @@ completes without enqueuing anything. ``design_from_interpretation`` then enqueu
    (a Swedebeat mix, no music, a running class's playlist) or ``design_with_songs`` (a song
    pick) input for the class, with the connection ids the interpret request named. A cycling
    class on the user's own Spotify playlist is a ``design_with_songs`` with that playlist as its
-   ``source`` (roadmap Amendment 26: a new private playlist in class order, after the approval);
-   without a Spotify connection it stays a ``design_draft`` here (#1131 refuses it);
+   ``source`` (roadmap Amendment 26: a new private playlist in class order, after the approval)
+   when the ``song_picking`` flag and its environment switch admit the user (the kill switch of
+   Spotify writes); without that or without a Spotify connection it stays the write-free
+   ``design_draft`` (#1131 owns the refusals);
 2. the jobs API's create (``JobEnqueue``, ``classbeat.jobs.routes.enqueue``) with the kind's own
    ``admit``, the per-user limit and the class credit, under the idempotency key derived from the
    interpret job id (``interpretation_row.handoff_key``), and with a ``CreateHold``
@@ -52,12 +54,14 @@ from classbeat.design.interpret_kind import InterpretRequestInput
 from classbeat.design.interpret_music_policy import NEEDS_MOWL_PLAYLIST
 from classbeat.design.interpretation_row import Refusal, StoredInterpretation
 from classbeat.design.kind import DesignDraftInput, SpotifyMusicChoice
+from classbeat.flags import effective as flags
 from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.hold import Held
 from classbeat.jobs.http import JobEnqueue
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import REASON, JobKind
 from classbeat.jobs.user import JobLimitPolicy, lock_owner
+from classbeat.songs import config as songs_config
 from classbeat.songs.inputs import DesignWithSongsInput
 from classbeat.songs.kind import DESIGN_WITH_SONGS
 
@@ -157,9 +161,10 @@ class _Hold:
 
 
 def _design_input(
-    row: StoredInterpretation, job_input: Any, class_id: UUID
+    row: StoredInterpretation, job_input: Any, class_id: UUID, *, song_picking: bool
 ) -> tuple[JobKind, JobInput] | str:
-    """The design kind and its unchanged input, or the reason there is none."""
+    """The design kind and its unchanged input, or the reason there is none. ``song_picking``:
+    the flag admits the user, so a playlist class may get its new playlist (Amendment 26)."""
     if row.music is None:
         return NEEDS_MOWL_PLAYLIST
     if not isinstance(job_input, dict):
@@ -169,7 +174,7 @@ def _design_input(
         brief = Brief.model_validate(row.brief)
         pick = row.music.get("source") == "pick"
         # Amendment 26: a cycling class on the user's playlist gets a new one in class order.
-        own = row.music.get("source") == PLAYLIST and brief.sport == "cycling"
+        own = row.music.get("source") == PLAYLIST and brief.sport == "cycling" and song_picking
         if pick or (own and given.spotify_connection_id is not None):
             if given.spotify_connection_id is None:
                 return "not_connected"
@@ -229,8 +234,9 @@ async def design_from_interpretation(
             return Handoff(reason="not_ready" if found is not None else "not_found")
         params = {**owner, "job_id": row.job_id, "kind": INTERPRET_KIND}
         job_input = (await db.execute(_INTERPRET_JOB, params)).scalar_one_or_none()
+        picking = await flags.song_picking_admits(db, ctx, songs_config.current().enabled)
     hold = _Hold(ctx.user_id, class_id, row.job_id, retry)
-    planned = _design_input(row, job_input, class_id)
+    planned = _design_input(row, job_input, class_id, song_picking=picking)
     if isinstance(planned, str):
         return await _store_refusal(factory, ctx, hold, planned)
     kind, parsed = planned

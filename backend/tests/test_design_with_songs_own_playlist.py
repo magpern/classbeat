@@ -7,24 +7,35 @@ network, no real account."""
 import json
 import secrets
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 import pytest
 
-from classbeat import connections
+from classbeat import songs
 from classbeat.design.interpretation_row import handoff_key
 from classbeat.playlists import common
-from ctx import make_context
 from jobtools import new_class, new_job
+from revisesongtools import change, current
 from songtools import BRIEF, Rider, SongEnv, design_script, song_id
 from spotifyfake import USER_A
 
-pytestmark = pytest.mark.usefixtures("songenv")
+pytestmark = pytest.mark.usefixtures("songenv", "no_stored_flag")
+
+
+@pytest.fixture
+def no_stored_flag(songenv: SongEnv) -> Iterator[None]:
+    """The stored ``song_picking`` flag is shared by the database: none before and after."""
+    songenv.sql("DELETE FROM app_settings WHERE key = 'song_picking'")
+    yield
+    songenv.sql("DELETE FROM app_settings WHERE key = 'song_picking'")
+
 
 ORDER = [5, 3, 11, 0, 7, 2, 9, 14]  # 8 songs of 240 s: the design script's 30 minutes
 OWN = [song_id(i) for i in ORDER]
+ITEMS = r"/v1/playlists/[0-9A-Za-z]{22}/items"
 
 
 def own_playlist(songenv: SongEnv, ids: list[str] | None = None) -> Any:
@@ -137,18 +148,124 @@ async def test_another_user_can_neither_approve_nor_design_on_the_list(songenv: 
     assert songenv.writes() == 0
 
 
-async def test_no_song_picking_feature_or_pool_consent_is_needed_but_spotify_is(
+def flag_off(songenv: SongEnv, how: str) -> None:
+    """The kill switch of classbeat's Spotify writes: the environment switch
+    (``CLASSBEAT_SONG_PICKING``) or the stored ``song_picking`` flag ``off``."""
+    if how == "environment":
+        songs.configure(songs.SongConfig(enabled=False, sync_wait_seconds=0.3))
+    else:
+        songenv.sql(
+            "INSERT INTO app_settings (key, value) VALUES ('song_picking', CAST(:v AS jsonb)) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            v=json.dumps("off"),
+        )
+
+
+async def test_the_pool_consent_is_not_needed_but_the_song_picking_flag_is(
     songenv: SongEnv,
 ) -> None:
-    rider = await songenv.rider(consent=False)
-    songenv.sql("DELETE FROM entitlements WHERE owner_id = :o", o=rider.user_id)
+    rider = await songenv.rider(consent=False)  # no pool consent: the pool is never touched
     mine = own_playlist(songenv)
-    refused(await rider.create(), "song_picking_off")  # a Claude pick still needs it
+    refused(await rider.create(), "consent_missing")  # a Claude pick still needs it
     job_id, _, _ = await songenv.waiting(rider, source=source(mine))
     assert songenv.row(job_id).owner_id == rider.user_id
+    # Without the ``song_picking`` feature (the flag is ``granted``), refused like a pick.
     other = await songenv.rider()
-    assert await connections.disconnect(songenv.factory, make_context(other.user_id), "spotify")
-    refused(await other.create(source=source(mine)), "not_connected")
+    songenv.sql("DELETE FROM entitlements WHERE owner_id = :o", o=other.user_id)
+    refused(await other.create(source=source(mine)), "song_picking_off")
+    assert songenv.writes() == 0
+
+
+@pytest.mark.parametrize("how", ["environment", "stored"])
+async def test_the_kill_switch_refuses_a_source_job_and_sends_the_handoff_to_design_draft(
+    songenv: SongEnv, how: str
+) -> None:
+    rider = await songenv.rider()
+    mine = own_playlist(songenv)
+    class_id, _ = interpreted(songenv, rider, source(mine))
+    flag_off(songenv, how)
+    refused(await rider.create(source=source(mine)), "song_picking_off")
+    made = await rider.browser.post(f"/api/classes/{class_id}/design-from-interpretation", None)
+    assert made.status_code == 201, made.text
+    assert made.json()["kind"] == "design_draft"  # the write-free design, as before
+    row = songenv.row(UUID(made.json()["job_id"]))
+    assert row.input["music"] == source(mine)
+    assert songenv.writes() == 0
+
+
+@pytest.mark.parametrize("spoil", ["needs_reconnect", "no_account"])
+async def test_a_spotify_row_without_a_usable_account_is_not_connected_at_admit(
+    songenv: SongEnv, spoil: str
+) -> None:
+    """The source path's own ``spotify_account_in`` check: the row is still the user's current
+    Spotify connection (the jobs API's generic check passes), but not usable."""
+    rider = await songenv.rider()
+    mine = own_playlist(songenv)
+    if spoil == "needs_reconnect":
+        change = "status = 'needs_reconnect'"
+    else:
+        change = "public = public - 'spotify_user_id'"
+    songenv.sql(
+        f"UPDATE connections SET {change} WHERE id = :id",  # noqa: S608 - fixed test SQL
+        id=rider.spotify_connection_id,
+    )
+    refused(await rider.create(source=source(mine)), "not_connected")
+    assert songenv.writes() == 0
+
+
+async def failed_after_approve(songenv: SongEnv, rider: Rider, mine: Any) -> tuple[UUID, UUID]:
+    """A source job approved whose fill writes 7 of the 8 songs: ``playlist_mismatch``."""
+    job_id, revision_id = await songenv.approved(rider, source=source(mine))
+    songenv.fake.inject("partial", method="PUT", path=ITEMS, keep=7)
+    row = await songenv.run(job_id)
+    assert (row.state, row.error_category) == ("failed", "playlist_mismatch")
+    return row.class_id, revision_id
+
+
+async def test_a_failed_source_job_resumes_under_the_same_gate_without_the_consent(
+    songenv: SongEnv,
+) -> None:
+    """A resume (``mode = "resume"``, no ``source``) needs the flag and Spotify, as the source job
+    did, and no pool consent: the user it admitted can always finish the class."""
+    rider = await songenv.rider(consent=False)
+    mine = own_playlist(songenv)
+    entries = list(mine.entries)
+    class_id, revision_id = await failed_after_approve(songenv, rider, mine)
+    songenv.script = design_script()
+    resumed = await rider.resume(class_id, revision_id)
+    assert resumed.status_code == 201, resumed.text
+    row = await songenv.run(UUID(resumed.json()["id"]))
+    assert (row.state, row.error_category) == ("completed", None)
+    final = [p for p in songenv.class_playlists(rider.user_id) if p.state == "verified"]
+    assert [songenv.fake.playlists[p.playlist_id].entries for p in final] == [
+        [f"spotify:track:{i}" for i in OWN]
+    ]
+    untouched(songenv, mine, entries)
+
+
+@pytest.mark.parametrize("how", ["environment", "stored"])
+async def test_the_kill_switch_also_stops_the_resume(songenv: SongEnv, how: str) -> None:
+    rider = await songenv.rider()
+    mine = own_playlist(songenv)
+    class_id, revision_id = await failed_after_approve(songenv, rider, mine)
+    flag_off(songenv, how)
+    refused(await rider.resume(class_id, revision_id), "song_picking_off")
+
+
+async def test_changing_songs_of_a_source_class_is_a_claude_pick_with_its_gates(
+    songenv: SongEnv,
+) -> None:
+    """``revise_songs`` on the class picks new songs with Claude: it needs the flag and the pool
+    consent, like any pick."""
+    rider = await songenv.rider(consent=False)
+    mine = own_playlist(songenv)
+    job_id, _ = await songenv.approved(rider, source=source(mine))
+    row = await songenv.run(job_id)
+    assert row.state == "completed"
+    base = current(songenv, row.class_id)
+    refused(await change(rider, row.class_id, base), "consent_missing")
+    flag_off(songenv, "stored")
+    refused(await change(rider, row.class_id, base), "song_picking_off")
 
 
 async def test_a_job_on_the_users_playlist_does_not_hold_the_pool(songenv: SongEnv) -> None:

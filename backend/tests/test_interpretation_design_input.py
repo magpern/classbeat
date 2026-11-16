@@ -22,12 +22,14 @@ CYCLING = {"length_min": 30, "intensity": "moderate"}
 RUNNING = {"sport": "running", "length_min": 15, "intensity": "moderate"}
 
 
-def planned(music: dict[str, str], brief: dict[str, Any], *, spotify: bool) -> Any:
+def planned(
+    music: dict[str, str], brief: dict[str, Any], *, spotify: bool, song_picking: bool = True
+) -> Any:
     row = StoredInterpretation(job_id=uuid.uuid4(), brief=brief, music=music, items=[])
     given: dict[str, Any] = {"request": "A class, please", "mowl_connection_id": str(MOWL)}
     if spotify:
         given["spotify_connection_id"] = str(SPOTIFY)
-    return _design_input(row, given, CLASS)
+    return _design_input(row, given, CLASS, song_picking=song_picking)
 
 
 def test_a_cycling_class_on_the_users_playlist_is_the_pick_pipeline_with_that_source() -> None:
@@ -52,15 +54,16 @@ def test_a_song_pick_names_no_source() -> None:
     assert planned({"source": "pick"}, CYCLING, spotify=False) == "not_connected"
 
 
-def test_without_spotify_a_running_class_or_a_mix_stays_design_draft() -> None:
+def test_without_spotify_or_song_picking_a_running_class_or_a_mix_stays_design_draft() -> None:
     mix = {"source": "mowl_swedebeat_mix", "mix_id": "mix-1"}
-    for music, brief, spotify in (
-        (PLAYLIST, CYCLING, False),  # #1131 refuses it; until then the old design
-        (PLAYLIST, RUNNING, True),  # ADR 0018: no song picking for running
-        (mix, CYCLING, True),
-        ({"source": "none"}, CYCLING, True),
+    for music, brief, spotify, picking in (
+        (PLAYLIST, CYCLING, False, True),  # #1131 refuses it; until then the old design
+        (PLAYLIST, CYCLING, True, False),  # the kill switch of Spotify writes: no new playlist
+        (PLAYLIST, RUNNING, True, True),  # ADR 0018: no song picking for running
+        (mix, CYCLING, True, True),
+        ({"source": "none"}, CYCLING, True, True),
     ):
-        kind, made = planned(music, brief, spotify=spotify)
+        kind, made = planned(music, brief, spotify=spotify, song_picking=picking)
         assert kind is DESIGN_DRAFT
         assert isinstance(made, DesignDraftInput)
         assert made.music.model_dump() == music

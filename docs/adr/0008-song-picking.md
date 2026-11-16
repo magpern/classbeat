@@ -433,8 +433,8 @@ it instead of from browser storage; the job inputs keep `brief` as in §4.
 **Music the user already has** (a MOWL playlist, a Swedebeat mix) skips all of this: `design_draft`
 is unchanged, needs no Spotify connection, and `song_picking` being off affects nothing there.
 *(Superseded for a cycling class on the user's own Spotify playlist by the amendment of 2026-11-16
-below: that playlist is copied into a new private playlist in class order, after the approval. A
-Swedebeat mix and a running class's playlist are unchanged.)*
+below: while `song_picking` admits the user, that playlist is copied into a new private playlist in
+class order, after the approval. A Swedebeat mix and a running class's playlist are unchanged.)*
 
 **Resume.** `mode = "resume"` (both kinds) starts at phase 2 for a list the user **already approved**:
 for failures after approval (a Do-it-anyway on an uncertain create or fill, `playlist_mismatch`, a MOWL
@@ -768,8 +768,9 @@ picking) are unchanged and stay `design_draft`.
 - **One pipeline, not a fork.** The class is a `design_with_songs` job whose input names
   `source: {source: "mowl_spotify_playlist", spotify_playlist_id}` (only with `mode = "pick"` and no
   `seed`). The interpretation hand-off (ADR 0029 §5) enqueues it when the interpret request named a
-  Spotify connection. Without one it still enqueues `design_draft`; issue #1131 makes Spotify
-  required there, so this case is then refused as the hand-off's `not_connected`.
+  Spotify connection **and** `song_picking_admits` admits the user (`CLASSBEAT_SONG_PICKING` and the
+  stored `song_picking` flag, the kill switch of classbeat's Spotify writes, ADR 0009 §2, ADR 0011
+  §7). Otherwise it still enqueues the write-free `design_draft`. Issue #1131 owns any refusal there.
 - **Phase 1 with a source** (`songs/from_playlist.py`) has one stage, `pool_analyse`. It runs the
   design music step on the user's playlist exactly as `design_draft` does: the stored MOWL link or
   the MOWL attach, then read-only analysis. There is **no model, no search, no pool and no Spotify
@@ -790,11 +791,15 @@ picking) are unchanged and stay `design_draft`.
 - **The user's playlist is read-only.** No Spotify request ever writes it. It is read only through
   MOWL. The tests assert that no write request names it and that its items and version are
   unchanged (`tests/test_design_with_songs_own_playlist.py`).
-- **`admit`** (§4) for a source: the soundless and sport rules and `not_connected` as for a pick.
-  `song_picking_off`, `consent_missing` and `pool_busy` do not apply, because nothing is picked and
-  the pool is never touched (as for `design_draft` on that playlist, which never needed them). Such
-  a job does not count for another pick's `pool_busy`. The new playlist is covered by the user's
-  Approve, as every final playlist is.
+- **`admit`** (§4) for a source: `song_picking_off` (the kill switch gates this new-playlist path
+  as it gates every Spotify write, as the studio's Spotify output does, ADR 0036), the soundless and
+  sport rules and `not_connected` as for a pick. `consent_missing` and `pool_busy` do not apply,
+  because nothing is picked and the pool is never touched. Such a job does not count for another
+  pick's `pool_busy`. The new playlist is covered by the user's Approve, as every final playlist is.
+- **Recovery and change follow the same rule.** A source job that fails after the approval is
+  resumed by a `mode = "resume"` job (no `source`): it needs `song_picking` and Spotify and no pool
+  consent, so a user the source path admitted can always finish the class. Change songs
+  (`revise_songs`) is a Claude pick and needs `song_picking` and the pool consent, as on any class.
 - **Not changed:** the "Advanced" new-class form still creates `design_draft` on a chosen playlist
   directly. Moving it to this path is a separate, frontend issue. The Designing page shows the pick's
   phase-1 checklist for such a job.

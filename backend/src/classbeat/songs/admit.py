@@ -39,12 +39,14 @@ job, the per-user limit), in this order, each refusal writing nothing:
    ``revise_songs``) that ended ``cancelled`` or ``expired`` and was never approved, its
    stored hash still matches its content (``song_list.load``), and every ``replace`` slot is a
    position in it;
-7. with ``source`` (the user's own Spotify playlist, roadmap Amendment 26) step 1's
-   ``song_picking_off`` and steps 4 and 5 do not apply: no song is picked and the pool is never
-   touched, so neither ``song_picking`` nor the pool consent is needed (as for ``design_draft``
-   on that playlist), and such a job never counts for another pick's ``pool_busy``. The soundless
-   and sport rules and ``not_connected`` (step 3) are checked as for a pick. The new
-   playlist's consent is the user's Approve, as for every pick.
+7. with ``source`` (the user's own Spotify playlist, roadmap Amendment 26) steps 4 and 5 do not
+   apply: no song is picked and the pool is never touched, so the pool consent is not needed and
+   such a job never counts for another pick's ``pool_busy``. Step 1 applies unchanged:
+   ``CLASSBEAT_SONG_PICKING`` and the ``song_picking`` flag are the kill switch of classbeat's
+   Spotify writes (ADR 0009 section 2, ADR 0011 section 7), and phase 2 writes a new playlist.
+   The soundless and sport rules and ``not_connected`` (step 3) are checked as for a pick. The
+   new playlist's consent is the user's Approve, as for every pick. A resume of such a job (step
+   2) and a later ``revise_songs`` need the same flag; ``revise_songs`` also needs the consent.
 
 **``approve_check``** (``POST /api/jobs/{id}/approve``, the ``JobKind.approve_check`` seam, after
 the row checks and the connection checks of ``CONNECTIONS``; it only reads):
@@ -221,9 +223,10 @@ async def pick_checks(
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Admitted | Refused:
     if not isinstance(parsed, DesignWithSongsInput):
         return Refused("invalid_input")
-    own = parsed.source is not None  # the user's own playlist: no pick, no pool (step 7)
-    if not own and not await flags.song_picking_admits(db, ctx, config.current().enabled):
+    # The kill switch of every Spotify write, a source job's included (step 7).
+    if not await flags.song_picking_admits(db, ctx, config.current().enabled):
         return Refused("song_picking_off")
+    own = parsed.source is not None  # the user's own playlist: no pick, no pool (step 7)
     # ADR 0007 amendment item 9 (#530): no song pick, resume or seed of a soundless class.
     if parsed.class_id is not None:
         soundless = await music_kind.refuse_soundless(db, ctx.user_id, parsed.class_id)

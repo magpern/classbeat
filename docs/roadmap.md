@@ -15,8 +15,10 @@ an existing playlist, a new playlist is still created with the correct order of 
   classes to every class with Spotify music.
 - **ADR 0008 is amended** (amendment of 2026-11-16): §6's "Music the user already has … skips all of
   this" no longer holds for that case. The same approval, `external_operations`, idempotency,
-  fencing and by-id rules apply as for a pick. No model picks songs, so the `song_picking` flag and
-  the pool consent are not needed, as before for a playlist.
+  fencing and by-id rules apply as for a pick. The `song_picking` flag and its environment switch
+  `CLASSBEAT_SONG_PICKING`, the kill switch of classbeat's Spotify writes, gate this path too:
+  while they do not admit the user, the class stays the write-free `design_draft` on the user's
+  playlist. No model picks songs and the pool is not touched, so the pool consent is not needed.
 - **Unchanged:** Swedebeat mixes, soundless classes and running classes (ADR 0018). Spotify becoming
   required, and the first playlist no longer being the default, are issue #1131.
 
