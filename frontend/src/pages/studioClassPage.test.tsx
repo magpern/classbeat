@@ -198,6 +198,15 @@ describe('a studio class on the class page', () => {
       expect(call.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
     })
 
+    it('words a design that ran and failed as failed, not as never started', async () => {
+      window.sessionStorage.setItem(`classbeat.studio-design.${CLASS_ID}`, DESIGN_JOB)
+      fakeApi(approved('studio_songs', { [`GET /api/jobs/${DESIGN_JOB}`]: jobBody('failed', { id: DESIGN_JOB, kind: 'studio_design' }) }))
+      renderAt(PAGE)
+      expect(await screen.findByText('The songs are approved, but the design failed.')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Start the design' })).toBeInTheDocument()
+      window.sessionStorage.clear()
+    })
+
     it('offers nothing for a class whose approved songs are not a studio list', async () => {
       fakeApi(approved('design_with_songs'))
       renderAt(PAGE)

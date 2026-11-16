@@ -22,7 +22,7 @@ import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
 import { StudioSongRow } from './StudioSongRow'
-import { rememberStudioAction } from './studioAction'
+import { rememberStudioAction, rememberStudioDesign } from './studioAction'
 
 // The list can be changed while it waits for approval, or after it ended without one (the server
 // cancels a waiting job in the same step as the action).
@@ -51,6 +51,8 @@ export function StudioSongs({ job }: { job: Job }) {
   const approve = useAction()
   // The list is approved but its design did not start: the next click only starts it again.
   const [approved, setApproved] = useState(false)
+  // The approval had gone through before (its answer was lost): no "approved, but" lead-in.
+  const [lost, setLost] = useState(false)
 
   useEffect(() => {
     if (revisionId === null) return
@@ -105,12 +107,14 @@ export function StudioSongs({ job }: { job: Job }) {
           } catch (error) {
             // A lost answer of the approval: the list is approved already, so go on to the design.
             if (!(error instanceof ApiError && error.reason === 'not_waiting')) throw error
+            setLost(true)
           }
           past = true
           setApproved(true)
         }
         const design = await startStudioDesign(job.classId, revisionId, actionKey(scope))
         dropActionKey(scope)
+        rememberStudioDesign(job.classId, design.id)
         navigate(`/jobs/${design.id}`)
       },
       (error) => (past ? studioError(error) : approveRefusal(error).text),
@@ -169,7 +173,7 @@ export function StudioSongs({ job }: { job: Job }) {
       {gaps > 0 && !suspected ? <Notice>{t('studio.gaps', { count: gaps })}</Notice> : null}
       {act.error ? <Notice kind="error">{act.error}</Notice> : null}
       {approve.error ? (
-        <Notice kind="error">{approved ? `${t('studio.designFailed')} ${approve.error}` : approve.error}</Notice>
+        <Notice kind="error">{approved && !lost ? `${t('studio.designFailed')} ${approve.error}` : approve.error}</Notice>
       ) : null}
       {stop.error ? <Notice kind="error">{stop.error}</Notice> : null}
       {changes !== null ? (

@@ -265,6 +265,19 @@ describe('StudioEnded', () => {
       await waitFor(() => { expect(api.to('POST', `${PATH}/design`)).toHaveLength(1) })
     })
 
+    it('after a lost approval answer, shows the design start\'s own refusal without the lead-in', async () => {
+      fakeApi({
+        [`GET ${PATH}`]: view({ approvable: true }),
+        [`POST ${APPROVE}`]: () => reason(409, 'not_waiting'),
+        [`POST ${PATH}/design`]: () => reason(409, 'already_designed'),
+      })
+      mount()
+      fireEvent.click(await screen.findByRole('button', { name: 'Approve songs' }))
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent('already designed')
+      expect(alert).not.toHaveTextContent('did not start')
+    })
+
     it('words a refused approval and keeps the list', async () => {
       fakeApi({
         [`GET ${PATH}`]: view({ approvable: true }),

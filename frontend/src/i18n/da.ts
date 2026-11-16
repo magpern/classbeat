@@ -2221,13 +2221,15 @@ const da: Catalogue = {
   'job.failure.revision_limit.title':
     'Grænsen for sangændringer er nået',
   'job.failure.revision_limit.detail':
-    'Klassen har brugt alle sine sangændringer. Lav et nyt valg i stedet.',
+    'Holdet har brugt alle sine sangændringer. Lav et nyt valg i stedet.',
   'studio.approve':
     'Godkend sangene',
   'studio.approveHint':
     'Godkendelsen starter designet af holdet på disse sange. Det bruger ingen yderligere kredit.',
   'studio.designFailed':
     'Sangene er godkendt, men designet startede ikke.',
+  'studio.designRunFailed':
+    'Sangene er godkendt, men designet mislykkedes.',
   'studio.designRetry':
     'Start designet',
   'studio.reason.music_changed':

@@ -2233,13 +2233,15 @@ const sv: Catalogue = {
   'job.failure.revision_limit.title':
     'Gränsen för låtändringar är nådd',
   'job.failure.revision_limit.detail':
-    'Klassen har använt alla sina låtändringar. Gör ett nytt val i stället.',
+    'Passet har använt alla sina låtändringar. Gör ett nytt val i stället.',
   'studio.approve':
     'Godkänn låtarna',
   'studio.approveHint':
     'Godkännandet startar utformningen av passet på de här låtarna. Det använder ingen ytterligare kredit.',
   'studio.designFailed':
     'Låtarna är godkända, men utformningen startade inte.',
+  'studio.designRunFailed':
+    'Låtarna är godkända, men utformningen misslyckades.',
   'studio.designRetry':
     'Starta utformningen',
   'studio.reason.music_changed':

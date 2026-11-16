@@ -9,6 +9,7 @@ import { useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
+import { recallStudioDesign, rememberStudioDesign } from './studioAction'
 
 /**
  * A studio class whose song list is approved but has no draft: the design never started (its
@@ -19,25 +20,33 @@ export function StudioStartDesign({ summary }: { summary: ClassSummary }) {
   const t = useT()
   const { navigate } = useRouter()
   const { jobId, revisionId, state } = summary.songs
-  const [studio, setStudio] = useState<{ jobId: string; studio: boolean } | null>(null)
+  const [studio, setStudio] = useState<{ jobId: string; studio: boolean; ranAndFailed: boolean } | null>(null)
   const action = useAction()
   const approved = state === 'approved' && jobId !== null && revisionId !== null
 
   useEffect(() => {
     if (!approved) return
     const abort = new AbortController()
-    getJob(jobId, abort.signal).then(
-      (job) => {
-        if (!abort.signal.aborted) setStudio({ jobId, studio: job.kind === STUDIO_KIND })
+    const ran = recallStudioDesign(summary.id)
+    const failed =
+      ran === null
+        ? Promise.resolve(false)
+        : getJob(ran, abort.signal).then(
+            (design) => design.kind === 'studio_design' && design.state === 'failed',
+            () => false,
+          )
+    Promise.all([getJob(jobId, abort.signal), failed]).then(
+      ([job, ranAndFailed]) => {
+        if (!abort.signal.aborted) setStudio({ jobId, studio: job.kind === STUDIO_KIND, ranAndFailed })
       },
       () => {
-        if (!abort.signal.aborted) setStudio({ jobId, studio: false })
+        if (!abort.signal.aborted) setStudio({ jobId, studio: false, ranAndFailed: false })
       },
     )
     return () => {
       abort.abort()
     }
-  }, [approved, jobId])
+  }, [approved, jobId, summary.id])
 
   if (!approved || studio?.jobId !== jobId || !studio.studio) return null
   const scope = `studio-design.${revisionId}`
@@ -45,12 +54,13 @@ export function StudioStartDesign({ summary }: { summary: ClassSummary }) {
     void action.run(async () => {
       const design = await startStudioDesign(summary.id, revisionId, actionKey(scope))
       dropActionKey(scope)
+      rememberStudioDesign(summary.id, design.id)
       navigate(`/jobs/${design.id}`)
     }, studioError)
   }
   return (
     <Card className="flex flex-col gap-3" data-testid="studio-start-design">
-      <CardTitle>{t('studio.designFailed')}</CardTitle>
+      <CardTitle>{studio.ranAndFailed ? t('studio.designRunFailed') : t('studio.designFailed')}</CardTitle>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <div>
         <Button disabled={summary.openJob !== null || action.busy} onClick={start}>

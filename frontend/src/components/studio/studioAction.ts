@@ -24,3 +24,23 @@ export function recallStudioAction(jobId: string): StudioAction | null {
     return null
   }
 }
+
+// The design job last started for a class, kept in this tab's session storage: the class page has
+// no failed-job field, and a design that failed is worded as failed, not as never started.
+const DESIGN = 'classbeat.studio-design.'
+
+export function rememberStudioDesign(classId: string, jobId: string): void {
+  try {
+    window.sessionStorage.setItem(DESIGN + classId, jobId)
+  } catch {
+    // Without storage the page words it as not started.
+  }
+}
+
+export function recallStudioDesign(classId: string): string | null {
+  try {
+    return window.sessionStorage.getItem(DESIGN + classId)
+  } catch {
+    return null
+  }
+}

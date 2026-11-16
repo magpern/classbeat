@@ -2106,6 +2106,8 @@ export const en = {
     'Approving starts the design of the class on these songs. It uses no further credit.',
   'studio.designFailed':
     'The songs are approved, but the design did not start.',
+  'studio.designRunFailed':
+    'The songs are approved, but the design failed.',
   'studio.designRetry':
     'Start the design',
   'studio.reason.music_changed':
