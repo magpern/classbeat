@@ -24,7 +24,14 @@ from classbeat.agent import mix_input, model_input
 from classbeat.agent.model_input import EVENT_KINDS, view_text
 from classbeat.agent.stage import ToolError
 from classbeat.agent.studio_schemas import MixInput
-from classbeat.studio.mix_plan_policy import MixPlanRefused, TrackFacts, checked, total_sec
+from classbeat.studio.mix_plan_policy import (
+    CS,
+    MixPlanRefused,
+    TrackFacts,
+    checked,
+    cs,
+    total_sec,
+)
 
 BEAT_ONE_HEAD: Final = mix_input.BEAT_ONE_ESTIMATE.split("{", 1)[0]
 COMPOSE_FAILED: Final = "compose_failed"  # named, though the policy leaves the library no rule
@@ -127,7 +134,7 @@ def compose(tracks: Sequence[StudioTrack], given: MixInput) -> Composed:
         ],
         "crossfades": good["crossfades"],
     }
-    windows = [t["end_sec"] - t["start_sec"] for t in good["tracks"]]
+    windows = [(cs(t["end_sec"]) - cs(t["start_sec"])) / CS for t in good["tracks"]]  # exact cs
     return Composed(plan, composed, total_sec(windows, good["crossfades"]))
 
 

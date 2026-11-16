@@ -62,3 +62,33 @@ def test_a_compose_failure_is_named(monkeypatch: pytest.MonkeyPatch) -> None:
         studio_mix.compose(MUSIC.tracks, MixInput.model_validate(whole_mix()))
     assert caught.value.code == "invalid_mix"
     assert caught.value.messages[0].startswith("compose_failed: ")
+
+
+def test_the_total_is_the_composed_maps_for_a_three_decimal_length() -> None:
+    from classbeat.agent.studio_mix import StudioTrack
+    from studiomaps import track_map
+
+    odd = (
+        StudioTrack("One", "Band", track_map(300.0)),
+        StudioTrack("Two", "Band", track_map(60.005)),
+        StudioTrack("Three", "Band", track_map(300.0)),
+    )
+    given = MixInput.model_validate(
+        {
+            "tracks": [
+                {"track": 0, "start_sec": 0, "end_sec": 300.0},
+                {"track": 1, "start_sec": 0, "end_sec": 60.005},
+                {"track": 2, "start_sec": 0, "end_sec": 300.0},
+            ],
+            "crossfades": [30, 29],
+        }
+    )
+    composed = studio_mix.compose(odd, given)
+    assert composed.plan["tracks"][1]["end_sec"] == 60.0
+    assert (
+        composed.duration_sec == composed.map["duration"] == 660.0 - 59
+    )  # 300 + 60.00 + 300 less the crossfades
+    given = MixInput.model_validate({**given.model_dump(), "crossfades": [30, 30]})
+    with pytest.raises(ToolError) as caught:
+        studio_mix.compose(odd, given)
+    assert caught.value.messages[0].startswith("crossfades_overlap")  # named by the policy

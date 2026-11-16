@@ -191,3 +191,40 @@ def test_thirty_and_thirty_over_a_minute_is_refused_from_any_downbeat(bar: int) 
     with pytest.raises(MixPlanRefused) as caught:
         checked(value, ORDER, GRID)
     assert caught.value.reason == "crossfades_overlap"
+
+
+# --- the end clamped to the length in hundredths, as mowl.compose._clamp -----------------------
+
+ODD = {
+    "a": TrackFacts(length=300.0, bpm=120.0, first_downbeat=0.5),
+    "b": TrackFacts(length=60.005, bpm=120.0, first_downbeat=0.5),  # 6000 cs, not round(, 2)
+    "c": TrackFacts(length=300.0, bpm=120.0, first_downbeat=0.5),
+}
+
+
+def _odd_maps() -> list[dict[str, Any]]:
+    return [
+        {"duration": f.length, "songs": [{"start": 0, "end": f.length, "bpm": 120.0,
+                                          "first_downbeat": 0.5}], "events": []}
+        for f in ODD.values()
+    ]  # fmt: skip
+
+
+def test_an_end_at_a_three_decimal_length_is_the_librarys_end() -> None:
+    whole = spec(("a", 0, 300.0), ("b", 0, 60.005), ("c", 0, 300.0), crossfades=[30, 29])
+    good = checked(whole, ORDER, ODD)
+    assert good["tracks"][1]["end_sec"] == 60.0  # cs(60.005) = 6000, never 60.01
+    composed = compose.compose_map(_odd_maps(), good)
+    windows = [t["end_sec"] - t["start_sec"] for t in good["tracks"]]
+    assert composed["duration"] == total_sec(windows, good["crossfades"])
+
+
+def test_thirty_and_thirty_over_a_three_decimal_minute_is_refused_as_the_library_does() -> None:
+    value = spec(("a", 0, 300.0), ("b", 0, 60.005), ("c", 0, 300.0), crossfades=[30, 30])
+    with pytest.raises(MixPlanRefused) as caught:
+        checked(value, ORDER, ODD)
+    assert caught.value.reason == "crossfades_overlap"
+    clamped = {**value, "tracks": [*value["tracks"]]}
+    clamped["tracks"][1] = {"reference": "b", "start_sec": 0, "end_sec": 60.0}
+    with pytest.raises(ValueError, match="incoming plus outgoing"):
+        compose.compose_map(_odd_maps(), clamped)  # the library agrees
