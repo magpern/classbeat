@@ -128,11 +128,14 @@ def test_a_name_only_match_never_attaches() -> None:
 @pytest.mark.parametrize(
     "entry",
     [listed(URL, mix_id="../x"), listed(URL, ms=0), listed(URL, ms=True), listed(URL, ms="600"),
-     "not an entry"],
+     "not an entry", listed(""), listed("http://mixes.example/a.mp3"),
+     listed("https://mixes.example/a.mp3?sig=1"), listed("https://u@mixes.example/a.mp3"),
+     listed("https://mixes.example/"), listed("https://m.example/" + "a" * 2048), listed(None)],
 )  # fmt: skip
 def test_a_malformed_entry_is_left_out(entry: object) -> None:
     assert match.entries([entry]) == []
     assert match.object_key("ftp://x/y") is None
+    assert match.object_key("http://x/y") is None  # only what the merge returns: https
     assert match.object_key("https://x/") is None
 
 
@@ -228,6 +231,9 @@ def test_the_answers_are_checked() -> None:
         "https://mixes.example/a.mp3?x=1",
         "https://mixes.example/",
         "https://x/a#f",
+        " https://mixes.example/a.mp3",  # urlsplit would drop the blanks
+        "https://mixes.example/a.mp3 ",
+        "https://mixes.example/a b.mp3",
     ):
         assert wp.parse_merged(json.dumps({"url": url}).encode()) is None  # fmt: skip
 
