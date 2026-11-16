@@ -1,5 +1,27 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 26 (2026-11-16, owner decision: a new playlist also from an existing one; issue #1132)
+
+The owner decided: *"Create a playlist in Spotify with the songs the user wants. If the user picks
+an existing playlist, a new playlist is still created with the correct order of the songs."*
+
+- **What changes.** A cycling class on the user's own Spotify playlist now goes through the song
+  pick's approval and phase 2. The playlist's tracks, in their analysed order, are the song list the
+  user approves. After the approval classbeat creates a **new** private playlist (`public: false`,
+  `collaborative: false`), fills it by id in class order, verifies it and attaches it in MOWL. This
+  holds whether the request named the playlist or the user picked it.
+- **The user's playlist is read-only.** It is never modified. This extends ADR 0036 §9's principle
+  ("the user's own playlist is never modified; the final playlist is fresh and private") from studio
+  classes to every class with Spotify music.
+- **ADR 0008 is amended** (amendment of 2026-11-16): §6's "Music the user already has … skips all of
+  this" no longer holds for that case. The same approval, `external_operations`, idempotency,
+  fencing and by-id rules apply as for a pick. The `song_picking` flag and its environment switch
+  `CLASSBEAT_SONG_PICKING`, the kill switch of classbeat's Spotify writes, gate this path too:
+  while they do not admit the user, the class stays the write-free `design_draft` on the user's
+  playlist. No model picks songs and the pool is not touched, so the pool consent is not needed.
+- **Unchanged:** Swedebeat mixes, soundless classes and running classes (ADR 0018). Spotify becoming
+  required, and the first playlist no longer being the default, are Amendment 25 (issue #1131).
+
 ## Amendment 25 (2026-11-16, owner decision: Spotify is required for a class with music; issue #1131)
 
 Owner decision (2026-11-16, chat): "Unless you do a soundless class, Spotify is where we search, but in

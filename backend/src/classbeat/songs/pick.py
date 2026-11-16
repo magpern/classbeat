@@ -179,7 +179,7 @@ async def run_phase_one(
             account=account,
             provenance={**stored[1], **(extra_provenance or {})},
             parent_id=seeded.revision_id if seeded is not None else None,
-            generations=_generations(spotify, step),
+            generations=generations(spotify, step),
         )
     except BaseException:
         step.close()
@@ -193,6 +193,15 @@ async def run_phase_one(
             "omitted_no_bpm": built.content.omitted_no_bpm,
         },
     )
+
+    return await_approval(spotify, step, built)
+
+
+def await_approval(
+    spotify: OpenConnection, step: MusicStep, built: song_list.SongListRevision
+) -> AwaitApproval:
+    """Step 5 (a pick, and a list from the user's own playlist, ``classbeat.songs.from_playlist``):
+    the wait on the ``song_list`` revision ``built``, stored in the final fenced transaction."""
 
     async def store(fs: FencedSession) -> tuple[UUID, bytes]:
         """In the final fenced transaction: both connections still the ones the pick used, then
@@ -208,7 +217,7 @@ async def run_phase_one(
     return AwaitApproval(store, release=step.close)
 
 
-def _generations(spotify: OpenConnection, step: MusicStep) -> song_list.Generations:
+def generations(spotify: OpenConnection, step: MusicStep) -> song_list.Generations:
     mowl = step.generation
     if mowl is None:
         raise JobFailure("not_connected")

@@ -213,7 +213,10 @@ The fields are:
    "then the first MOWL playlist, then soundless"). A playlist, named or chosen, needs a Spotify
    connection; with nothing left the class is Not as asked `needs_spotify`, and `admit` refuses it
    with that code when it can only end that way. For running (ADR 0018): MOWL playlists only,
-   otherwise Not as asked `needs_mowl_playlist`.
+   otherwise Not as asked `needs_mowl_playlist`. *(Roadmap Amendment 26, 2026-11-16: the order is
+   unchanged. When a cycling class's music is a playlist and song picking admits the user, the
+   hand-off designs it through the song pick's approval on a new private playlist in that
+   playlist's order (ADR 0008 amendment of 2026-11-16).)*
 5. The allowed sports go to the interpreter.
 
 **`Brief`** (moved into `agent/brief.py`)
