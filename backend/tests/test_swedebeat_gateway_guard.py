@@ -9,8 +9,10 @@ repository's own files, no network, no real key (the client key's own guards, se
   ``POST /playlists``, ``POST /playlists/{playlist_id}/publish`` (that template),
   ``POST /playlists/merge-publish`` and ``GET /playlists/shared`` (no other ``/playlists`` path,
   so never the ``PATCH`` target ``/playlists/{id}``; no other ``/tracks/`` path, ``preview`` or
-  query, or catalogue search); never the match's ``playlist`` mode, and the gateway modules name
-  no ``PATCH``, ``PUT`` or ``DELETE``. ``violations`` is the check; it is shown to fail on each
+  query, or catalogue search); in a module that can reach the gateway no other ``playlist`` or
+  ``playlists`` segment in any case or spelling (``PLAYLIST_SEGMENT``: a relative, singular or
+  trailing-slash path, a query, a URI, the match's ``playlist`` mode), and the gateway modules
+  name no ``PATCH``, ``PUT`` or ``DELETE``. ``violations`` is the check; it is shown to fail on each
   forbidden shape;
 - the test client builder is referenced nowhere in ``classbeat`` but its own module.
 """
@@ -43,6 +45,12 @@ ALLOWED_PATHS = frozenset(
 # the search for good.
 FORBIDDEN = ("/catalog/search",)
 FORBIDDEN_METHODS = frozenset({"PATCH", "PUT", "DELETE"})
+# "playlist" or "playlists" as a whole value or a path, query or URI segment, in any case and
+# spelling: ``/Playlists/x``, ``playlists/merge-publish`` (no leading slash), ``/playlist/1``,
+# ``?mode=playlist``, ``spotify:playlist:x``, ``open.spotify.com/playlist/``, the match's
+# ``playlist`` mode. Never an identifier part (``playlist_id``, ``swedebeat_create_playlist``) or a
+# word in a sentence. In a module that can reach the gateway only ``PLAYLIST_PATHS`` may match.
+PLAYLIST_SEGMENT = re.compile(r"(?:^|[/:?#=&.])\s*playlists?\s*(?:$|[/:?#=&.])", re.IGNORECASE)
 GATEWAY_MODULES = ("classbeat.swedebeat_gateway", "classbeat.egress_gateway")
 # What can send a request to the gateway: the client modules and the client builder's module.
 SENDERS = (
@@ -171,11 +179,10 @@ def violations(sources: list[tuple[str, ast.Module]]) -> list[tuple[str, str]]:
                 found.append((module, value))
             if sender and "preview" in value.lower():  # the download's short preview
                 found.append((module, value))
-            if module.startswith(GATEWAY_MODULES):
-                if value.strip().lower() == "playlist":  # never that match mode
-                    found.append((module, value))
-                if value.strip().upper() in FORBIDDEN_METHODS:
-                    found.append((module, value))
+            if sender and PLAYLIST_SEGMENT.search(value) and value not in PLAYLIST_PATHS:
+                found.append((module, value))  # a playlist path variant, or the match's mode
+            if module.startswith(GATEWAY_MODULES) and value.strip().upper() in FORBIDDEN_METHODS:
+                found.append((module, value))
             if sender and value.startswith("/") and value != "/" and value not in ALLOWED_PATHS:
                 found.append((module, value))
     return found
@@ -225,6 +232,22 @@ CLIENT = "classbeat.swedebeat_gateway.client"
         (CLIENT, 'METHOD = "PATCH"'),
         (CLIENT, 'METHOD = "delete"'),
         (CLIENT, 'BODY = {"playlist": "x"}'),
+        (CLIENT, 'MODE = " Playlist "'),
+        (CLIENT, 'PATH = "/Playlists"'),  # another case of an allowed path
+        (CLIENT, 'PATH = "/PLAYLISTS/merge-publish"'),
+        (CLIENT, 'PATH = "playlists/merge-publish"'),  # relative: joined to the base URL
+        (CLIENT, 'PATH = "playlists"'),
+        (CLIENT, 'PATH = "/playlist"'),  # singular
+        (CLIENT, 'PATH = "/playlist/{playlist_id}"'),
+        (CLIENT, 'PATH = "/playlists/"'),  # a trailing slash
+        (CLIENT, 'PATH = "/playlists/{playlist_id}/publish/"'),
+        (CLIENT, 'QUERY = "?mode=playlist"'),
+        (CLIENT, 'URI = "spotify:playlist:x"'),
+        (CLIENT, 'URL = "https://open.spotify.com/playlist/x"'),
+        (CLIENT, 'URL = "https://gw.example/playlists"'),
+        (CLIENT, 'PATH = "/v1/playlists/shared"'),
+        ("classbeat.studio", 'from classbeat.swedebeat_gateway import writes\nP = "playlists"'),
+        ("classbeat.studio", 'from classbeat.swedebeat_gateway import writes\nP = "Playlists/x"'),
         (CLIENT, 'PATH = "/auth/logout"'),
         ("classbeat.studio", 'from classbeat.swedebeat_gateway import client\nP = "/health"'),
         ("classbeat.anything", 'URL = "http://gw/playlists/1"'),
@@ -247,6 +270,10 @@ def test_the_guard_fails_on_a_forbidden_path_or_method(module: str, source: str)
         'P = "/playlists/merge-publish"',
         'P = "/playlists/shared"',
         'F = "playlist_id"',
+        'P = "{playlist_id}"',
+        'K = "swedebeat_publish_playlist"',
+        'K = "mowl_playlist_id"',
+        'E = "a playlist id is 1 to 64 letters"',
     ],
 )
 def test_the_guard_passes_the_allowed_paths(source: str) -> None:

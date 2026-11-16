@@ -15,12 +15,15 @@
 - **Reconcilers** (read-only, the job's one automatic check and the user's Check again):
   a **create** in doubt cannot be listed (``/playlists/shared`` lists published playlists only),
   so it is always inconclusive: it stays in doubt and the way on is Create another anyway; a
-  **publish** in doubt reads **every page** of ``GET /playlists/shared``: listed is
+  **publish** in doubt reads **every page** of ``GET /playlists/shared`` with the **approved**
+  SwedeBeat connection and generation (stored in the operation's context): listed is
   ``succeeded``, not listed (every page read) is ``failed``, because publishing the same id again
-  is safe (one-way on an existing record, it creates none); a **merge** in doubt is never settled
-  here (the MOWL listing by its unique name is shown to the user, never taken: ``outputs_view``);
-  an **attach** in doubt is ``succeeded`` when the user's MOWL listing shows the ``PlaylistID``
-  wrapping that mix. A failed read is inconclusive.
+  is safe (one-way on an existing record, it creates none); with that connection gone or
+  reconnected it stays in doubt (``connection_changed``), never "not listed" under another
+  bearer; a **merge** in doubt is never settled here (the MOWL listing by its unique name is
+  shown to the user, never taken: ``outputs_view``); an **attach** in doubt is ``succeeded``
+  when the user's MOWL listing shows the ``PlaylistID`` wrapping that mix. A failed read is
+  inconclusive.
 """
 
 import hashlib
@@ -34,8 +37,16 @@ from mowl import api as mowl_api
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.connections import ConnectionFailure, call_opened, open_connection
+from classbeat.connections import (
+    ConnectionFailure,
+    Credentials,
+    OpenConnection,
+    call_opened,
+    hold,
+    open_connection,
+)
 from classbeat.connections.swedebeat_account import open_bearer
+from classbeat.db import user_session
 from classbeat.egress import OutboundBlocked
 from classbeat.egress_gateway import MATCH_SECONDS
 from classbeat.operations import (
@@ -195,19 +206,56 @@ async def _attached(db: AsyncSession, owner_id: UUID, operation: Operation) -> N
     await _record(db, owner_id, okey, state="done", external_id=str(playlist_id), patch=patch)
 
 
+CONNECTION_CHANGED: Final = Reconciliation("inconclusive", reason="connection_changed")
+
+
 async def _never(_: ReconcileInput) -> Reconciliation:
     return INCONCLUSIVE  # a create in doubt cannot be listed; a merge is the user's to confirm
 
 
+def _approved(context: Mapping[str, Any]) -> OpenConnection | None:
+    """The SwedeBeat connection and generation the publish was approved and sent with."""
+    connection_id, generation = context.get("connection_id"), context.get("generation")
+    if not isinstance(connection_id, str) or isinstance(generation, bool):
+        return None
+    if not isinstance(generation, int) or generation < 1:
+        return None
+    try:
+        found = UUID(connection_id)
+    except ValueError:
+        return None
+    return OpenConnection(found, "swedebeat", Credentials(), b"", generation)
+
+
+async def _still_held(check: ReconcileInput, approved: OpenConnection) -> bool:
+    async with user_session(check.factory, check.ctx) as db:
+        return await hold(db, check.ctx, approved)
+
+
 async def _publish_listed(check: ReconcileInput) -> Reconciliation:
+    """Every page of the shared listing, read **with the approved connection** only: a publish is
+    listed under the account it was sent for. When that connection is gone or reconnected (another
+    generation, maybe another account), a listing under the current bearer proves nothing about
+    it, and "not listed" there would let the next approval publish under another bearer: the
+    doubt stays (``connection_changed``, for the user's view)."""
     playlist_id = check.operation.context.get("playlist_id")
     key = match_config.current().swedebeat_gateway_key
     if _key_of(check.operation, PUBLISH) is None or not is_playlist_id(playlist_id):
         return INCONCLUSIVE
+    approved = _approved(check.operation.context)
+    if approved is None:
+        return CONNECTION_CHANGED  # no approved connection on record: nothing to list it with
     if check.keyring is None or key is None:
         return INCONCLUSIVE
+    if not await _still_held(check, approved):
+        return CONNECTION_CHANGED
     try:
         opened = await open_bearer(check.factory, check.keyring, check.ctx)
+        if (opened.connection.id, opened.connection.generation) != (
+            approved.id,
+            approved.generation,
+        ):
+            return CONNECTION_CHANGED  # reconnected between the check and the read
         async with opener.open_client(SHARED_SECONDS * writes.SHARED_PAGES) as client:
             listed = await writes.list_shared(client, key, opened.bearer)
     except (ConnectionFailure, writes.WriteFailure, OutboundBlocked, ValueError):

@@ -92,7 +92,12 @@ async def playlist(p: Producer, row: OutputRow) -> None:
         {**names, "playlist_id": playlist_id, "body": json.loads(PUBLISH_BODY)},
         timeout_seconds=outputs_ops.PUBLISH_SECONDS,
         guard=p.still_approved(),
-        context={"playlist_id": playlist_id},
+        # The reconciler lists with this connection and generation only (``outputs_ops``).
+        context={
+            "playlist_id": playlist_id,
+            "connection_id": str(p.given.swedebeat_connection_id),
+            "generation": p.given.swedebeat_generation,
+        },
     )
 
     async def published() -> CallResult:

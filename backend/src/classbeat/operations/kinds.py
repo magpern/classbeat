@@ -161,10 +161,13 @@ class Operation:
 @dataclass(frozen=True, slots=True)
 class Reconciliation:
     """What a reconciler found: ``succeeded`` (the effect is there, with its external id),
-    ``failed`` (proof there was none) or ``inconclusive`` (the row stays ``uncertain``)."""
+    ``failed`` (proof there was none) or ``inconclusive`` (the row stays ``uncertain``). An
+    inconclusive one may name a ``reason``, a code the user's view shows (e.g.
+    ``connection_changed``: the approved connection is gone, so nothing could be read for it)."""
 
     outcome: Literal["succeeded", "failed", "inconclusive"]
     external_id: str | None = None
+    reason: str | None = None
 
     def __post_init__(self) -> None:
         if self.outcome == "succeeded":
@@ -172,6 +175,8 @@ class Reconciliation:
                 raise ValueError("a succeeded reconciliation names the external id")
         elif self.external_id is not None:
             raise ValueError("only a succeeded reconciliation names an external id")
+        if self.reason is not None and self.outcome != "inconclusive":
+            raise ValueError("only an inconclusive reconciliation names a reason")
 
 
 INCONCLUSIVE: Final = Reconciliation("inconclusive")

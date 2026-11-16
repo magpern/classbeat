@@ -240,3 +240,12 @@ def test_a_reconciliation_names_an_id_only_when_it_succeeded() -> None:
         Reconciliation("failed", "1")
     with pytest.raises(ValueError, match="names the external id"):
         Reconciliation("succeeded", "x" * 201)
+
+
+def test_only_an_inconclusive_reconciliation_names_a_reason() -> None:
+    changed = Reconciliation("inconclusive", reason="connection_changed")
+    assert changed.reason == "connection_changed"
+    with pytest.raises(ValueError, match="only an inconclusive"):
+        Reconciliation("succeeded", "1", reason="connection_changed")
+    with pytest.raises(ValueError, match="only an inconclusive"):
+        Reconciliation("failed", reason="connection_changed")

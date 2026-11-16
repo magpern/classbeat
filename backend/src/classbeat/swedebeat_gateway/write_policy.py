@@ -22,7 +22,7 @@ Pure: no I/O.
 
 import json
 import re
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, Literal, TypeGuard, cast
 from urllib.parse import urlsplit
 
 CREATE_PATH: Final = "/playlists"
@@ -125,9 +125,12 @@ def parse_shared(body: bytes | None) -> list[str] | None:
     return ids
 
 
-def is_mix_url(value: object) -> bool:
-    """An ``https`` URL with a host and a path, no userinfo, query or fragment."""
+def is_mix_url(value: object) -> TypeGuard[str]:
+    """An ``https`` URL with a host and a path, no userinfo, query or fragment, and no space
+    (``urlsplit`` drops leading and trailing blanks, so one would pass as another URL)."""
     if not isinstance(value, str) or not 1 <= len(value) <= MAX_URL or not value.isprintable():
+        return False
+    if any(c.isspace() for c in value):
         return False
     try:
         parts = urlsplit(value)
