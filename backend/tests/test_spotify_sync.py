@@ -9,6 +9,9 @@ never the network.
   write starts only after it ended, and the playlist ends with the newer content; an older write
   that has not written yet when a newer revision is intended hands over without writing
   (``superseded``), also when it runs after the newer one;
+- a "Sync again" job that ended without settling its row (cancelled, out of attempts) leaves it
+  ``pending`` with no job to write it: it is shown ``failed``/``interrupted`` and can be pressed
+  again; a pick's row is its job's own (one revision id per job, not per attempt);
 - another user's class is not found, and the studio off answers like an unknown path.
 """
 
@@ -101,7 +104,10 @@ async def run_sync(studio: StudioEnv, job_id: UUID) -> Any:
         "AND state = 'queued' AND id <> :id",
         id=job_id,
     )
-    songs.sql("UPDATE jobs SET available_at = now() WHERE id = :id", id=job_id)
+    # A sync never takes a mix-analysis slot (``analysis_slot_by_default`` would give it one).
+    songs.sql(
+        "UPDATE jobs SET available_at = now(), analysis_slot = false WHERE id = :id", id=job_id
+    )
     lease = songs.spot.env.settings.job_lease_seconds
     row = await queue.claim(songs.factory, "sync-w", lease, [SPOTIFY_SYNC.name])
     assert row is not None, "nothing to claim"
@@ -191,6 +197,79 @@ async def test_a_sync_that_fails_again_is_failed_again_and_the_job_completes(
     assert retried.state == "completed"
     assert state(studio, rider.user_id, revision_id) == ("synced", None)
     assert pool_entries(studio, rider.user_id) == uris(LIST_A)
+
+
+# --- a sync that ended without settling its row -------------------------------------------------
+
+
+async def shown_working(rider: StudioRider, class_id: UUID, revision_id: UUID) -> Any:
+    answer = await rider.browser.get(f"/api/classes/{class_id}/spotify-sync/{revision_id}")
+    assert answer.status_code == 200, answer.text
+    return answer.json()["working_copy"]
+
+
+async def test_a_cancelled_sync_again_is_interrupted_and_can_be_pressed_again(
+    studio: StudioEnv,
+) -> None:
+    rider, class_id, _ = await picked(studio)
+    revision_id = plant(studio, rider.user_id, class_id, LIST_A)
+    sync_job = await again_job(rider, class_id, revision_id)
+    # While its job is queued the row is being written: shown pending, a press starts nothing.
+    assert await shown_working(rider, class_id, revision_id) == {"state": "pending", "detail": None}
+    busy = await again(rider, class_id, revision_id)
+    assert (busy.status_code, busy.json()["detail"]) == (409, {"reason": "not_failed"})
+
+    cancelled = await rider.browser.post(f"/api/jobs/{sync_job}/cancel")
+    assert cancelled.status_code == 200, cancelled.text
+    assert studio.songs.row(sync_job).state == "cancelled"
+    # The row stayed pending with no job left to write it: shown failed, and Sync again takes it.
+    assert state(studio, rider.user_id, revision_id) == ("pending", None)
+    assert await shown_working(rider, class_id, revision_id) == {
+        "state": "failed",
+        "detail": "interrupted",
+    }
+    done = await run_sync(studio, await again_job(rider, class_id, revision_id))
+    assert (done.state, done.error_category) == ("completed", None)
+    assert state(studio, rider.user_id, revision_id) == ("synced", None)
+    assert pool_entries(studio, rider.user_id) == uris(LIST_A)
+
+
+async def test_a_sync_again_that_ran_out_of_attempts_is_interrupted_and_can_be_pressed_again(
+    studio: StudioEnv, monkeypatch: Any
+) -> None:
+    from classbeat.swedebeat_studio import sync_kind
+
+    rider, class_id, _ = await picked(studio)
+    revision_id = plant(studio, rider.user_id, class_id, LIST_A)
+    sync_job = await again_job(rider, class_id, revision_id)
+    studio.songs.sql("UPDATE jobs SET max_attempts = 1 WHERE id = :id", id=sync_job)
+
+    async def crash(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("the worker crashed mid-write")
+
+    original = sync_kind.write_pool
+    monkeypatch.setattr(sync_kind, "write_pool", crash)
+    done = await run_sync(studio, sync_job)
+    assert done.state == "failed"  # its last attempt ended by the crash: nothing settled the row
+    assert state(studio, rider.user_id, revision_id) == ("pending", None)
+    assert await shown_working(rider, class_id, revision_id) == {
+        "state": "failed",
+        "detail": "interrupted",
+    }
+    monkeypatch.setattr(sync_kind, "write_pool", original)
+    retried = await run_sync(studio, await again_job(rider, class_id, revision_id))
+    assert (retried.state, retried.error_category) == ("completed", None)
+    assert state(studio, rider.user_id, revision_id) == ("synced", None)
+    assert pool_entries(studio, rider.user_id) == uris(LIST_A)
+
+
+async def test_a_picks_working_copy_row_is_the_jobs_own(studio: StudioEnv) -> None:
+    """One revision id per pick job (not per attempt): a retried pick re-intends the same row."""
+    studio.found(*ALL_POOL)
+    rider = await studio.rider()
+    job_id, revision_id, _ = await studio.waiting(rider)
+    assert revision_id == uuid.uuid5(job_id, "studio-songs:working-copy")
+    assert [r.revision_id for r in syncs(studio, rider.user_id)] == [revision_id]
 
 
 # --- the race ------------------------------------------------------------------------------------

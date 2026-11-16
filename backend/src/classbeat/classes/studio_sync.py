@@ -3,8 +3,10 @@
 - ``view``: the ``working_copy`` and ``final`` states of one revision of the user's class, each
   ``{state, detail}`` or None (never synced). No playlist id, no track id.
 - ``sync_again``: in one user transaction, under the class row's lock: the studio on and the
-  user's class (``not_found``), the row (``not_found``), still ``failed`` (``not_failed``: a
-  pending or synced row has nothing to do, so a repeated press starts nothing), a Spotify
+  user's class (``not_found``), the row (``not_found``), still ``failed`` as ``sync.shown``
+  sees it, a ``pending`` row with no job that could still write it included (``not_failed``: a
+  synced row, or a pending one being written, has nothing to do, so a repeated press starts
+  nothing), a Spotify
   connection (``not_connected``); then the row is intended again (``pending``, a new ``seq``:
   it becomes the playlist's intended revision) and a ``spotify_sync`` job is inserted with
   ``class_id`` NULL (it runs beside the class's own open job) and its queued event.
@@ -61,10 +63,11 @@ async def view(
         ids = {"class_id": class_id, "owner_id": ctx.user_id}
         if (await db.execute(_CLASS, ids)).first() is None:
             return "not_found"
-        found = {
-            target: sync.view(await sync.load(db, ctx.user_id, class_id, revision_id, target))
-            for target in sync.TARGETS
-        }
+        found: dict[str, Any] = {}
+        for target in sync.TARGETS:
+            row = await sync.load(db, ctx.user_id, class_id, revision_id, target)
+            seen = None if row is None else await sync.shown(db, ctx.user_id, row)
+            found[target] = sync.view(seen)
     return found
 
 
@@ -120,7 +123,7 @@ async def sync_again(
         found = await sync.load(db, ctx.user_id, class_id, revision_id, target, lock=True)
         if found is None:
             return Again("not_found")
-        if found.state != "failed":
+        if (await sync.shown(db, ctx.user_id, found)).state != "failed":
             return Again("not_failed")
         if ctx.connection("spotify") is None:
             return Again("not_connected")

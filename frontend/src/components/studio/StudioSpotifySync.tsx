@@ -17,12 +17,20 @@ const DETAILS: Partial<Record<string, CatalogueKey>> = {
   consent_missing: 'studio.sync.detail.consent_missing',
   pool_missing: 'studio.sync.detail.pool_missing',
   rate_limited: 'studio.sync.detail.rate_limited',
+  interrupted: 'studio.sync.detail.interrupted',
+}
+// The final playlist's own words where the working playlist's would not fit.
+const FINAL_DETAILS: Partial<Record<string, CatalogueKey>> = {
+  superseded: 'studio.sync.detail.final.superseded',
+  consent_missing: 'studio.sync.detail.final.consent_missing',
+  pool_missing: 'studio.sync.detail.final.pool_missing',
 }
 
 /**
  * One revision's Spotify sync state (ADR 0036 section 9): the working playlist following a studio
  * song list, or the final playlist of an approved draft. `synced`, `pending` (read again until it
- * settles) or `failed` with "Sync again". Nothing is shown before the revision has a state. A
+ * settles) or `failed` with "Sync again" (the server shows a `pending` row that no job can still
+ * write as `failed`, `interrupted`, so it never polls for good). Nothing is shown before the revision has a state. A
  * failure here never stops the SwedeBeat outputs or the approval of the list.
  */
 export function StudioSpotifySync({ classId, revisionId, target }: { classId: string; revisionId: string; target: SyncTarget }) {
@@ -75,7 +83,10 @@ export function StudioSpotifySync({ classId, revisionId, target }: { classId: st
     )
   }
 
-  const detail = shown.detail === null ? null : (DETAILS[shown.detail] ?? 'studio.sync.detail.other')
+  const detail =
+    shown.detail === null
+      ? null
+      : ((target === 'final' ? FINAL_DETAILS[shown.detail] : undefined) ?? DETAILS[shown.detail] ?? 'studio.sync.detail.other')
   return (
     <div className="flex flex-col gap-2" data-testid={`studio-sync-${target}`}>
       <p className="m-0 text-text">

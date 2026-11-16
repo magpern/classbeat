@@ -2212,6 +2212,14 @@ export const en = {
     'The working playlist was deleted in Spotify. Sync again to make a new one.',
   'studio.sync.detail.rate_limited':
     'Spotify asked us to slow down. Sync again in a minute.',
+  'studio.sync.detail.final.superseded':
+    'It now follows a newer version of this class. Sync again to make it follow this one.',
+  'studio.sync.detail.final.consent_missing':
+    'Spotify did not allow the change. Check your Spotify connection, then sync again.',
+  'studio.sync.detail.final.pool_missing':
+    'Spotify could not find the final playlist. Sync again.',
+  'studio.sync.detail.interrupted':
+    'The sync stopped before it finished. Sync again.',
   'studio.sync.detail.other':
     'Spotify did not take the change. Sync again.',
   'studio.os.title':

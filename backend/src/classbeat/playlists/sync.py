@@ -24,6 +24,15 @@ playlist (``target = 'final'``). Each ``(class, revision, target)`` has one row 
    key, so "Sync again" settles that operation, and the output with it, instead of adding a
    second one.
 
+4. **Interrupted**: a row left ``pending`` with no job that could still write it (the "Sync
+   again" job cancelled, or ended by its attempts, a crash or a missing runtime; a pick or an
+   output job that ended between intending and settling) is shown ``failed`` with
+   ``interrupted`` (``shown``) and "Sync again" takes it like a failed one. Derived, not
+   written: every way a job ends (the user's cancel, the worker's terminal transitions, the
+   expiry sweep) is covered without a hook in each. A job "could still write it" while it is
+   ``queued`` or ``running``: a ``spotify_sync`` job of this revision and target, or any job of
+   the class (a pick, a list action, an output job).
+
 For a final playlist the recheck also waits (``operation_busy``) while another replace of that
 playlist is ``pending`` or ``uncertain`` inside its bound: a write the lock no longer covers (its
 worker lost the lock's connection) can then not interleave with this one.
@@ -49,6 +58,7 @@ from classbeat.playlists.lock import WORKING_COPY
 Target = Literal["working_copy", "final"]
 TARGETS: Final[tuple[Target, ...]] = ("working_copy", "final")
 SUPERSEDED: Final = "superseded"
+INTERRUPTED: Final = "interrupted"
 
 
 class Superseded(Exception):
@@ -95,7 +105,14 @@ _INTEND = text(
 _AGAIN = text(
     "UPDATE spotify_syncs SET state = 'pending', detail = NULL, updated_at = now(), "
     "seq = nextval(pg_get_serial_sequence('public.spotify_syncs', 'seq')) "
-    "WHERE owner_id = :owner_id AND id = :id AND state = 'failed' RETURNING id"
+    "WHERE owner_id = :owner_id AND id = :id AND state IN ('failed', 'pending') RETURNING id"
+)
+# A job that could still write a row (see "Interrupted" above).
+_WRITER = text(
+    "SELECT 1 FROM jobs WHERE owner_id = :owner_id AND state IN ('queued', 'running') AND "
+    "(class_id = :class_id OR (kind = 'spotify_sync' AND class_id IS NULL "
+    "AND input ->> 'source_class_id' = :class_text AND input ->> 'revision_id' = :revision_text "
+    "AND input ->> 'target' = :target)) LIMIT 1"
 )
 _LOAD = text(
     f"SELECT {_COLUMNS} FROM spotify_syncs WHERE owner_id = :owner_id "  # noqa: S608 - constants
@@ -166,8 +183,39 @@ async def intend(
     return _sync(row)
 
 
+async def has_writer(db: AsyncSession, owner_id: UUID, sync: Sync) -> bool:
+    """A ``queued`` or ``running`` job could still write ``sync`` (see "Interrupted")."""
+    params = {
+        "owner_id": owner_id,
+        "class_id": sync.class_id,
+        "class_text": str(sync.class_id),
+        "revision_text": str(sync.revision_id),
+        "target": sync.target,
+    }
+    return (await db.execute(_WRITER, params)).first() is not None
+
+
+async def shown(db: AsyncSession, owner_id: UUID, sync: Sync) -> Sync:
+    """The row as the user sees it: ``pending`` with no writer is ``failed``/``interrupted``."""
+    if sync.state == "pending" and not await has_writer(db, owner_id, sync):
+        return Sync(
+            sync.id,
+            sync.class_id,
+            sync.revision_id,
+            sync.target,
+            sync.lock_key,
+            sync.class_playlist_id,
+            sync.fill_key,
+            sync.track_ids,
+            "failed",
+            INTERRUPTED,
+        )
+    return sync
+
+
 async def again(db: AsyncSession, owner_id: UUID, sync_id: UUID) -> bool:
-    """ "Sync again": a ``failed`` row is intended again, ``pending``. False for any other."""
+    """ "Sync again": the row (``failed`` as ``shown``, the caller checked) is intended again,
+    ``pending``. False for a synced one."""
     return (await db.execute(_AGAIN, {"owner_id": owner_id, "id": sync_id})).first() is not None
 
 

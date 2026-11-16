@@ -2346,6 +2346,14 @@ const sv: Catalogue = {
     'Arbetsspellistan togs bort i Spotify. Synka igen för att skapa en ny.',
   'studio.sync.detail.rate_limited':
     'Spotify bad oss sakta ner. Synka igen om en minut.',
+  'studio.sync.detail.final.superseded':
+    'Den följer nu en nyare version av passet. Synka igen för att den ska följa den här.',
+  'studio.sync.detail.final.consent_missing':
+    'Spotify tillät inte ändringen. Kontrollera din Spotify-anslutning och synka sedan igen.',
+  'studio.sync.detail.final.pool_missing':
+    'Spotify hittade inte den slutliga spellistan. Synka igen.',
+  'studio.sync.detail.interrupted':
+    'Synkningen stoppades innan den var klar. Synka igen.',
   'studio.sync.detail.other':
     'Spotify tog inte emot ändringen. Synka igen.',
   'studio.os.title':

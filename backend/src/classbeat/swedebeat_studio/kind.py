@@ -186,7 +186,10 @@ async def run(job_run: JobRun) -> Outcome:
         parent_id=given.the_seed.song_list_revision_id if seed is not None else None,
     )
     await job_run.stage("working_copy")
-    revision_id = uuid.uuid4()
+    # One id per job, not per attempt: a retried pick re-intends the same sync row instead of
+    # leaving a ``pending`` one for a revision that was never stored. The revision is stored once,
+    # with the job's approval, so the id is never taken twice.
+    revision_id = uuid.uuid5(job_run.lease.job_id, "studio-songs:working-copy")
     async with job_run.fenced() as fs:
         class_id = (await fs.db.execute(_JOB_CLASS, fs.lease.params())).scalar_one()
         working = await sync.intend(

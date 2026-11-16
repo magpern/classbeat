@@ -3,7 +3,7 @@ Spotify playlist, enqueued only by the studio's route (``classes.studio_sync``),
 API or a model.
 
 Its input ``{source_class_id, revision_id, target}`` is no ``JobInput``, so the jobs API refuses
-to create it (``unknown_kind``). The job's ``class_id`` is NULL (migration 0055): a sync runs
+to create it (``unknown_kind``). The job's ``class_id`` is NULL (migration 0056): a sync runs
 beside the class's own open job (a list waiting for its approval, an output job). The class is
 named by its input and re-read here: a class or row that is gone, or a row that is no longer
 ``pending``, ends the job with nothing written.

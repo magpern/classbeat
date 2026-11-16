@@ -2334,6 +2334,14 @@ const da: Catalogue = {
     'Arbejdsplaylisten blev slettet i Spotify. Synkroniser igen for at lave en ny.',
   'studio.sync.detail.rate_limited':
     'Spotify bad os sætte tempoet ned. Synkroniser igen om et minut.',
+  'studio.sync.detail.final.superseded':
+    'Den følger nu en nyere version af holdet. Synkroniser igen for at få den til at følge denne.',
+  'studio.sync.detail.final.consent_missing':
+    'Spotify tillod ikke ændringen. Tjek din Spotify-forbindelse, og synkroniser så igen.',
+  'studio.sync.detail.final.pool_missing':
+    'Spotify kunne ikke finde den endelige playliste. Synkroniser igen.',
+  'studio.sync.detail.interrupted':
+    'Synkroniseringen stoppede, før den var færdig. Synkroniser igen.',
   'studio.sync.detail.other':
     'Spotify tog ikke imod ændringen. Synkroniser igen.',
   'studio.os.title':

@@ -39,7 +39,7 @@ describe('the Spotify sync state of a revision', () => {
     render(<StudioSpotifySync classId={CLASS} revisionId={REV} target="final" />)
     expect(await screen.findByText('not updated')).toBeInTheDocument()
     expect(screen.getByText('Final Spotify playlist')).toBeInTheDocument()
-    expect(screen.getByText(/Allow the working playlist/)).toBeInTheDocument()
+    expect(screen.getByText(/Spotify did not allow the change/)).toBeInTheDocument()
     expect(screen.getByText('This never stops the SwedeBeat outputs.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Sync again' }))
     expect(await screen.findByText('up to date')).toBeInTheDocument()
@@ -54,6 +54,23 @@ describe('the Spotify sync state of a revision', () => {
     fakeApi({ [`GET ${BASE}`]: () => json(view({ state: 'failed', detail: 'playlist_mismatch' })) })
     render(<StudioSpotifySync classId={CLASS} revisionId={REV} target="working_copy" />)
     expect(await screen.findByText('Spotify did not take the change. Sync again.')).toBeInTheDocument()
+  })
+
+  it('words the final playlist on its own, and offers Sync again for an interrupted sync', async () => {
+    fakeApi({ [`GET ${BASE}`]: () => json(view(null, { state: 'failed', detail: 'superseded' })) })
+    const { unmount } = render(<StudioSpotifySync classId={CLASS} revisionId={REV} target="final" />)
+    expect(await screen.findByText(/follows a newer version of this class/)).toBeInTheDocument()
+    expect(screen.queryByText(/working playlist|song list/)).toBeNull()
+    unmount()
+    fakeApi({ [`GET ${BASE}`]: () => json(view(null, { state: 'failed', detail: 'consent_missing' })) })
+    const second = render(<StudioSpotifySync classId={CLASS} revisionId={REV} target="final" />)
+    expect(await screen.findByText(/Spotify did not allow the change/)).toBeInTheDocument()
+    expect(screen.queryByText(/working playlist/)).toBeNull()
+    second.unmount()
+    fakeApi({ [`GET ${BASE}`]: () => json(view({ state: 'failed', detail: 'interrupted' })) })
+    render(<StudioSpotifySync classId={CLASS} revisionId={REV} target="working_copy" />)
+    expect(await screen.findByText('The sync stopped before it finished. Sync again.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sync again' })).toBeInTheDocument()
   })
 
   it('reads the state again when a press finds a sync already started', async () => {
