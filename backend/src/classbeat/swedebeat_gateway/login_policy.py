@@ -4,13 +4,16 @@
   explicitly although today's gateway ignores it (section 4). The device id is the user's HMAC
   device id (ADR 0015 section 2), at most the gateway's 64 characters.
 - **The login answer** is read through a field allowlist: ``bearer`` is 16 to 4096 printable ASCII
-  characters without whitespace, ``expires_in`` an integer from 60 s to 400 days;
-  ``customer_id``, ``token_type`` and every other field are dropped. Any other shape is ``None``
-  (``unknown``).
+  characters without whitespace, ``expires_in`` an integer from 60 s to 400 days; ``customer_id``
+  (the SwedeBeat account, #1117) is kept only as 1 to 64 ASCII letters, digits, ``-`` or ``_``
+  (an integer is read as its digits), else ``None``, and the login still counts: it is never
+  logged and only its keyed digest is stored (``swedebeat_account.account_ref_for``).
+  ``token_type`` and every other field are dropped. Any other shape is ``None`` (``unknown``).
 - **The session answer** (``GET /auth/session``) is valid only as ``{"valid": true, ...}``.
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Final
 
@@ -24,14 +27,17 @@ DEVICE_ID_MAX: Final = 64
 EMAIL_MIN: Final = 3
 EMAIL_MAX: Final = 254
 PASSWORD_MAX: Final = 256
+CUSTOMER_ID: Final = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 @dataclass(frozen=True, slots=True)
 class LoginAnswer:
-    """What a login keeps: the bearer (never in ``repr``) and its lifetime in seconds."""
+    """What a login keeps: the bearer and the SwedeBeat account (neither in ``repr``) and the
+    bearer's lifetime in seconds."""
 
     bearer: str = field(repr=False)
     expires_in: int
+    customer_id: str | None = field(default=None, repr=False)
 
 
 def _visible_ascii(value: str) -> bool:
@@ -77,7 +83,16 @@ def parse_login(body: bytes | None) -> LoginAnswer | None:
         return None
     if not EXPIRES_MIN <= expires_in <= EXPIRES_MAX:
         return None
-    return LoginAnswer(bearer, expires_in)
+    return LoginAnswer(bearer, expires_in, customer_id_of(answer.get("customer_id")))
+
+
+def customer_id_of(value: object) -> str | None:
+    """The account id of a login or session answer, or ``None`` when absent or malformed."""
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        value = str(value)
+    if not isinstance(value, str) or CUSTOMER_ID.fullmatch(value) is None:
+        return None
+    return value
 
 
 def parse_session(body: bytes | None) -> bool:

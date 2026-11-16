@@ -92,11 +92,14 @@ async def playlist(p: Producer, row: OutputRow) -> None:
         {**names, "playlist_id": playlist_id, "body": json.loads(PUBLISH_BODY)},
         timeout_seconds=outputs_ops.PUBLISH_SECONDS,
         guard=p.still_approved(),
-        # The reconciler lists with this connection and generation only (``outputs_ops``).
+        # The reconciler lists with this connection and generation, or after a reconnect of that
+        # connection to the same SwedeBeat account (``account``, a digest, #1117): ``outputs_ops``.
+        # Context only, never in the hash: a reconnect must not change the request.
         context={
             "playlist_id": playlist_id,
             "connection_id": str(p.given.swedebeat_connection_id),
             "generation": p.given.swedebeat_generation,
+            "account": p.bearer.account_ref,
         },
     )
 

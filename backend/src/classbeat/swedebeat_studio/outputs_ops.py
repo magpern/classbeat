@@ -16,12 +16,15 @@
   a **create** in doubt cannot be listed (``/playlists/shared`` lists published playlists only),
   so it is always inconclusive: it stays in doubt and the way on is Create another anyway; a
   **publish** in doubt reads **every page** of ``GET /playlists/shared`` with the **approved**
-  SwedeBeat connection and generation (stored in the operation's context): listed is
-  ``succeeded``, not listed (every page read) is ``failed``, because publishing the same id again
-  is safe (one-way on an existing record, it creates none); with that connection gone or
-  reconnected it stays in doubt (``connection_changed``), never "not listed" under another
-  bearer; a **merge** in doubt is never settled here (the MOWL listing by its unique name is
-  shown to the user, never taken: ``outputs_view``); an **attach** in doubt is ``succeeded``
+  SwedeBeat connection and generation (stored in the operation's context), or with that same
+  connection reconnected to the **same SwedeBeat account** (#1117: the context's ``account``
+  equals the row's ``account_ref``, both present): listed is ``succeeded``, not listed (every
+  page read) is ``failed``, because publishing the same id again is safe (one-way on an existing
+  record, it creates none); with that connection gone, replaced, or reconnected to another
+  account or one not on record (either side without its ``account``) it stays in doubt
+  (``connection_changed``), never "not listed" under another account's bearer; a **merge** in
+  doubt is never settled here (the MOWL listing by its unique name is shown to the user, never
+  taken: ``outputs_view``); an **attach** in doubt is ``succeeded``
   when the user's MOWL listing shows the ``PlaylistID`` wrapping that mix. A failed read is
   inconclusive.
 """
@@ -212,6 +215,12 @@ async def _never(_: ReconcileInput) -> Reconciliation:
     return INCONCLUSIVE  # a create in doubt cannot be listed; a merge is the user's to confirm
 
 
+def same_account(context: Mapping[str, Any], current: str | None) -> bool:
+    """The approved account (the context's ``account``) is the current row's: both present."""
+    approved = context.get("account")
+    return isinstance(approved, str) and bool(approved) and approved == current
+
+
 def _approved(context: Mapping[str, Any]) -> OpenConnection | None:
     """The SwedeBeat connection and generation the publish was approved and sent with."""
     connection_id, generation = context.get("connection_id"), context.get("generation")
@@ -228,10 +237,11 @@ def _approved(context: Mapping[str, Any]) -> OpenConnection | None:
 
 async def _publish_listed(check: ReconcileInput) -> Reconciliation:
     """Every page of the shared listing, read **with the approved connection** only: a publish is
-    listed under the account it was sent for. When that connection is gone or reconnected (another
-    generation, maybe another account), a listing under the current bearer proves nothing about
-    it, and "not listed" there would let the next approval publish under another bearer: the
-    doubt stays (``connection_changed``, for the user's view)."""
+    listed under the account it was sent for. A reconnect of that connection (another generation)
+    is read only when it is the same SwedeBeat account. When the connection is gone, replaced or
+    reconnected to another account (or to one not on record), a listing under the current bearer
+    proves nothing about it, and "not listed" there would let the next approval publish under
+    another account's bearer: the doubt stays (``connection_changed``, for the user's view)."""
     playlist_id = check.operation.context.get("playlist_id")
     key = match_config.current().swedebeat_gateway_key
     if _key_of(check.operation, PUBLISH) is None or not is_playlist_id(playlist_id):
@@ -249,8 +259,13 @@ async def _publish_listed(check: ReconcileInput) -> Reconciliation:
         if failure.category in GONE:
             return CONNECTION_CHANGED
         return INCONCLUSIVE
-    # The id, generation and bearer are read together: another generation is a reconnect.
-    if (opened.connection.id, opened.connection.generation) != (approved.id, approved.generation):
+    # The id, generation, account and bearer are read together: another generation is a
+    # reconnect, accepted only to the same account; another id is another connection.
+    if opened.connection.id != approved.id:
+        return CONNECTION_CHANGED
+    if opened.connection.generation != approved.generation and not same_account(
+        check.operation.context, opened.account_ref
+    ):
         return CONNECTION_CHANGED
     try:
         async with opener.open_client(SHARED_SECONDS * writes.SHARED_PAGES) as client:

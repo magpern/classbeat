@@ -18,6 +18,8 @@ found, the same as an unknown one. Writes:
   checked under the row lock, else ``account_changed`` and nothing written) forgets the account's
   pool, operations and live class playlists, another Client ID the pool and its operations, in
   the same transaction.
+  A SwedeBeat connect stores its ``account_ref`` (#1117) in the same write: always, ``NULL``
+  included, so a reconnect never keeps the account of the login it replaces.
   Every rewrite of an existing row is a user's connect, so it increases ``generation`` (ADR 0009
   section 5.4); a refresh (``classbeat.spotify``) and a rewrap keep it.
 - **status changes** (``needs_reconnect``, ``last_error``, ``last_used_at``) are conditional on
@@ -151,6 +153,7 @@ async def save(
     public: Mapping[str, Any] | None = None,
     expires_at: datetime | None = None,
     confirm_account_change: bool = False,
+    account_ref: str | None = None,
 ) -> UUID:
     """Connect or reconnect: store ``secret`` (the provider's payload fields) encrypted.
     Returns the row id (kept across reconnects).
@@ -162,13 +165,15 @@ async def save(
     _check_provider(provider)
     if set(secret) != PAYLOAD_FIELDS[provider]:
         raise ValueError("the payload does not have the provider's fields")
+    if account_ref is not None and provider != "swedebeat":
+        raise ValueError("only a SwedeBeat connection records its account")
     plaintext = canonical_json(dict(secret))
     public_values = dict(public or {})
     confirm = confirm_account_change
     try:
         async with user_session(factory, ctx) as db:
             return await _write(
-                db, ring, ctx, provider, plaintext, public_values, expires_at, confirm
+                db, ring, ctx, provider, plaintext, public_values, expires_at, confirm, account_ref
             )
     except IntegrityError as error:
         if not _is_provider_conflict(error):
@@ -176,7 +181,9 @@ async def save(
     # A parallel connect inserted the row first: start again in a new transaction (once).
     logger.info("parallel connect; retrying once", extra={"provider": provider})
     async with user_session(factory, ctx) as db:
-        return await _write(db, ring, ctx, provider, plaintext, public_values, expires_at, confirm)
+        return await _write(
+            db, ring, ctx, provider, plaintext, public_values, expires_at, confirm, account_ref
+        )
 
 
 async def _write(
@@ -188,6 +195,7 @@ async def _write(
     public: dict[str, Any],
     expires_at: datetime | None,
     confirm_account_change: bool = False,
+    account_ref: str | None = None,
 ) -> UUID:
     found = (
         await db.execute(
@@ -204,6 +212,7 @@ async def _write(
         "public": public,
         **await seal_row(db, ring, ctx.user_id, provider, row_id, plaintext),
         "expires_at": expires_at,
+        "account_ref": account_ref,  # every write: a reconnect never keeps the old account
         "connected_at": func.now(),
         "updated_at": func.now(),
     }

@@ -197,9 +197,15 @@ class FakeGateway:
     mixes: list[dict[str, Any]] = field(default_factory=lambda: list[dict[str, Any]]())
     writes_enabled: bool = True
     shared_page_size: int = 2
+    # #1117: whether a login answer names the account (``customer_id``), as the contract says.
+    answers_customer: bool = True
 
     def add_user(self, email: str, password: str) -> None:
         self.users[email] = password
+
+    def customer_of(self, email: str) -> str:
+        """The account's one SwedeBeat ``customer_id``: the same on every login (#1117)."""
+        return str(35900 + list(self.users).index(email)) if email in self.users else "35999"
 
     def now(self) -> float:
         return time.time() + self.offset
@@ -228,7 +234,7 @@ class FakeGateway:
     def issue(self, email: str) -> str:
         """A bearer for ``email`` as a login would issue it (a test's stored connection)."""
         bearer = "gAAAAB" + secrets.token_urlsafe(48)
-        self.bearers[bearer] = Session(email, self.now() + self.ttl, str(35900 + len(self.bearers)))
+        self.bearers[bearer] = Session(email, self.now() + self.ttl, self.customer_of(email))
         return bearer
 
     def reset(self) -> None:
@@ -435,9 +441,11 @@ class FakeGateway:
         if self.users.get(email) != password:
             return _reply(401, {"detail": WRONG_LOGIN})
         bearer = "gAAAAB" + secrets.token_urlsafe(48)
-        customer = str(35900 + len(self.bearers))
+        customer = self.customer_of(email)
         self.bearers[bearer] = Session(email, self.now() + self.ttl, customer)
         payload = {"bearer": bearer, "token_type": "Bearer", "expires_in": self.ttl}
+        if not self.answers_customer:
+            return _reply(200, payload)
         return _reply(200, {**payload, "customer_id": customer})
 
     def _download(self, reference: str) -> Reply:

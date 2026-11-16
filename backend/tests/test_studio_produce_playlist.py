@@ -6,8 +6,9 @@ fakes (the SwedeBeat gateway, Spotify), against Postgres as ``classbeat_app``; n
 - a publish that failed resumes **on the stored ``playlist_id``**, never a second create; a
   publish in doubt is settled by every page of ``/playlists/shared``;
 - Check again lists a publish in doubt only with the approved connection and generation: gone,
-  reconnected or not on record, it stays in doubt (``connection_changed``), nothing is read and
-  nothing is published again;
+  reconnected without an account on record (#1117: ``test_studio_publish_reconnect``) or not on
+  record, it stays in doubt (``connection_changed``, as the check's reason beside the kept
+  category), nothing is read and nothing is published again;
 - a create in doubt (a 5xx after the work, a cut connection) blocks every new write to that
   output; Check again keeps it in doubt; "Create another anyway" opens attempt 2 with new keys
   and the old row stays on record; a create that never left (no connection) is retried;
@@ -226,7 +227,9 @@ async def test_check_again_lists_a_publish_only_with_the_approved_connection(
         assert (checked.json()["state"], publish.state) == ("failed", "failed")
         return
     shown = checked.json()
-    assert (shown["state"], shown["category"]) == ("in_doubt", "connection_changed")
+    # #1117: the reason is the check's own; the job's category the user was shown stays.
+    assert (shown["state"], shown["check_reason"]) == ("in_doubt", "connection_changed")
+    assert shown["category"] == "uncertain_write"
     assert shown["actions"] == ["check_again", "create_another"]
     assert publish.state == "uncertain"  # never "not listed" under another bearer
     assert len(sent(fake, "GET", SHARED)) == listed_before  # nothing read for it

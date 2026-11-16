@@ -12,8 +12,11 @@ ADR 0005 section 7; SR C7). User actions in the web process on the caller's own 
 - ``check_again`` (ADR 0005's reconciler, once more): an orphaned ``pending`` step (no running
   holder) is first marked ``uncertain``; then each ``uncertain`` step through its kind's
   reconciler (a publish via every page of ``GET /playlists/shared`` with the approved connection
-  and generation, else it stays in doubt with the category ``connection_changed``; a create stays
-  in doubt; a Spotify write by its ``ref``), recorded conditional on ``state = 'uncertain'``.
+  and generation, or that connection reconnected to the same SwedeBeat account, else it stays in
+  doubt with the check reason ``connection_changed``; a create stays in doubt; a Spotify write by
+  its ``ref``), recorded conditional on ``state = 'uncertain'``. The reason is kept apart from
+  the failure's ``category`` (``check_reason``, #1117), so the category the user was shown
+  stays; it is cleared by the next check that does not give it.
   A **mix** in doubt is looked up in the user's MOWL listing by its unique name: a hit is
   **shown** (``candidate``), never taken; without MOWL it stays in doubt. A MOWL output
   ``published_not_listed`` reads the listing again: an entry with the URL's object key and the
@@ -55,7 +58,7 @@ from classbeat.swedebeat_studio.outputs_ops import CONNECTION_CHANGED, url_diges
 from classbeat.swedebeat_studio.outputs_rows import OutputRow
 
 Factory = Any
-SHOWN: Final = ("name", "category", "superseded")
+SHOWN: Final = ("name", "category", "check_reason", "superseded")
 _CLASS = text("SELECT 1 FROM classes WHERE owner_id = :owner_id AND id = :class_id")
 _OPEN_JOB = text(
     "SELECT 1 FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "
@@ -153,9 +156,13 @@ async def _reconcile_steps(
     factory: Factory, keyring: KeyRing | None, ctx: UserContext, row: OutputRow
 ) -> dict[str, Any]:
     """Each step in doubt through its reconciler; the ``detail`` patch for the view: an
-    inconclusive one's reason (``connection_changed``) as the shown category, cleared again once
-    a later check settles it."""
+    inconclusive one's reason (``connection_changed``) as ``check_reason``, never over the
+    failure's ``category``, and cleared by a check that does not give it. A ``category`` of
+    ``connection_changed`` that an earlier Check again wrote over (before #1117) is cleared
+    once a check settles the step."""
     patch: dict[str, Any] = {}
+    if row.detail.get("check_reason") is not None:
+        patch["check_reason"] = None
     for step, key in outputs_rows.step_keys(row).items():
         params = {"owner_id": ctx.user_id, "class_id": row.class_id, "key": key}
         async with user_session(factory, ctx) as db:
@@ -168,7 +175,7 @@ async def _reconcile_steps(
         outcome = await reconcile(kind, ReconcileInput(factory, keyring, ctx, read))
         if outcome.outcome == "inconclusive":
             if outcome.reason is not None:
-                patch["category"] = outcome.reason
+                patch["check_reason"] = outcome.reason
             continue
         if row.detail.get("category") == CONNECTION_CHANGED.reason:
             patch.setdefault("category", None)

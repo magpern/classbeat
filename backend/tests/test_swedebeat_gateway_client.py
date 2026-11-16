@@ -15,7 +15,7 @@ from classbeat.egress import OutboundBlocked
 from classbeat.egress_gateway import MATCH_SECONDS, swedebeat_gateway_test_client
 from classbeat.swedebeat_gateway import client as gateway_client_module
 from classbeat.swedebeat_gateway.client import GatewayFailure, login, match, session
-from classbeat.swedebeat_gateway.login_policy import LoginAnswer
+from classbeat.swedebeat_gateway.login_policy import LoginAnswer, parse_login
 from classbeat.swedebeat_gateway.match_policy import Item, Track
 from gatewaycore import BEARER_REFUSED, UNKNOWN_CLIENT, FakeGateway, reference_of
 from gatewayfake import (
@@ -90,13 +90,41 @@ async def test_force_is_sent_as_given(gateway: FakeGateway) -> None:
     assert gateway.requests[0].body["force"] is False
 
 
-async def test_the_login_answer_keeps_only_the_bearer_and_its_lifetime(
+async def test_the_login_answer_keeps_the_bearer_its_lifetime_and_the_account(
     gateway: FakeGateway,
 ) -> None:
     async with gateway_client(gateway) as client:
         answer = await login(client, KEY, EMAIL, PASSWORD, DEVICE_ID, force=True)
     assert answer.bearer not in repr(answer)
-    assert set(LoginAnswer.__dataclass_fields__) == {"bearer", "expires_in"}  # no customer_id
+    # #1117: the account (``customer_id``) is kept to tell a same-account reconnect, never shown.
+    assert set(LoginAnswer.__dataclass_fields__) == {"bearer", "expires_in", "customer_id"}
+    assert answer.customer_id is not None
+    assert answer.customer_id not in repr(answer)
+
+
+@pytest.mark.parametrize(
+    ("value", "kept"),
+    [
+        ("35907", "35907"),
+        (35907, "35907"),
+        ("cus_A-9", "cus_A-9"),
+        (None, None),
+        (True, None),
+        (-1, None),
+        ("", None),
+        ("a" * 65, None),
+        ("35 907", None),
+        ("35907\n", None),
+        (["35907"], None),
+    ],
+)
+def test_the_login_answer_reads_the_account_through_its_bounds(value: object, kept: object) -> None:
+    body = {"bearer": "b" * 32, "token_type": "Bearer", "expires_in": 86400}
+    if value is not None:
+        body["customer_id"] = value
+    answer = parse_login(json.dumps(body).encode())
+    assert answer is not None  # a login without a usable account still connects
+    assert answer.customer_id == kept
 
 
 async def test_session_sends_the_key_and_the_bearer_and_no_body(gateway: FakeGateway) -> None:

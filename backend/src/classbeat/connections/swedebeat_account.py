@@ -11,7 +11,12 @@ connection (ADR 0004). The password is discarded. classbeat never calls SwedeBea
 - **One device id per user**, derived and never random: HMAC-SHA256 of the user id under the app
   secret key, 16 hex characters. The same on every connect, reconnect and after a disconnect, and
   never stored.
-- **Store**: ``{"bearer"}`` with ``expires_at = now + expires_in`` and ``public = {"email"}``.
+- **Store**: ``{"bearer"}`` with ``expires_at = now + expires_in`` and ``public = {"email"}``,
+  and ``account_ref`` (#1117): the login's ``customer_id`` as a pseudonymous digest keyed per
+  user (HMAC-SHA256 of the user id and the id under an HKDF key of the app secret,
+  ``swedebeat-account``, 32 hex characters), ``NULL`` when the answer had none. Never the raw id,
+  never logged. A rotated secret key makes every stored digest read as another account (the safe
+  direction: a publish in doubt stays in doubt).
   The bearer is never library credentials (``build_credentials`` refuses ``swedebeat``): only
   ``open_bearer`` opens it, through ``UserContext``, for the gateway client alone.
 - **Status from the answer only** (``swedebeat_gateway.status_policy``): ``unknown client`` and a
@@ -35,6 +40,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, NoReturn
 from uuid import UUID
 
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from pydantic import SecretStr
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -61,6 +68,12 @@ logger = logging.getLogger(__name__)
 PROVIDER = "swedebeat"
 DEVICE_ID_CHARS = 16
 _DEVICE_LABEL = b"classbeat/swedebeat-device/v1\x00"
+_ACCOUNT_LABEL = b"classbeat/swedebeat-account/v1\x00"
+ACCOUNT_REF_CHARS = 32
+# The account digest's key: HKDF-SHA256 of the app secret with ``auth.keys``' salt and its own
+# info (``classbeat.auth`` is not imported here: guard ``test_auth_tables_guard``).
+_HKDF_SALT = b"classbeat-v1"
+_ACCOUNT_INFO = b"swedebeat-account"
 _LEGACY_FIELDS = frozenset({"token", "device_id"})  # ADR 0015's payload, before the gateway
 # The operator log lines of a configuration failure (no value in either): the gateway refused the
 # key, or this process has no gateway origin, so nothing was sent.
@@ -90,11 +103,13 @@ class SwedebeatAccess:
 class SwedebeatBearer:
     """An opened SwedeBeat connection for one job: the row (``connection``: id, generation and
     version, for ``record_result`` and ``mark_needs_reconnect``; its credentials are empty), the
-    bearer and its ``expires_at``. Never logged, stored or serialized."""
+    bearer, its ``expires_at`` and the row's ``account_ref`` (``None`` without one). Never
+    logged, stored or serialized."""
 
     connection: OpenConnection
     bearer: str
     expires_at: datetime
+    account_ref: str | None = None
 
     def __repr__(self) -> str:
         return f"SwedebeatBearer(id={self.connection.id}, bearer=...)"
@@ -109,6 +124,17 @@ def device_id_for(secret: bytes, user_id: UUID) -> str:
     """The user's one stable device id (see the module docstring)."""
     mac = hmac.new(secret, _DEVICE_LABEL + user_id.bytes, hashlib.sha256)
     return mac.hexdigest()[:DEVICE_ID_CHARS]
+
+
+def account_ref_for(secret: bytes, user_id: UUID, customer_id: str | None) -> str | None:
+    """The stored form of the login's SwedeBeat account (see the module docstring)."""
+    if customer_id is None:
+        return None
+    message = _ACCOUNT_LABEL + user_id.bytes + customer_id.encode("ascii")
+    key = HKDF(algorithm=hashes.SHA256(), length=32, salt=_HKDF_SALT, info=_ACCOUNT_INFO).derive(
+        secret
+    )
+    return hmac.new(key, message, hashlib.sha256).hexdigest()[:ACCOUNT_REF_CHARS]
 
 
 def live(expires_at: datetime | None, now: datetime) -> bool:
@@ -178,6 +204,7 @@ async def connect_swedebeat(
         {"bearer": answer.bearer},
         public={"email": email},
         expires_at=expires_at,
+        account_ref=account_ref_for(device_secret, ctx.user_id, answer.customer_id),
     )
 
 
@@ -228,7 +255,7 @@ async def open_bearer(
             await db.execute(
                 select(
                     _C.id, _C.owner_id, _C.status, _C.secret, _C.secret_nonce, _C.wrapped_dek,
-                    _C.dek_nonce, _C.key_id, _C.generation, _C.expires_at,
+                    _C.dek_nonce, _C.key_id, _C.generation, _C.expires_at, _C.account_ref,
                 ).where(_C.owner_id == ctx.user_id, _C.provider == PROVIDER)
             )
         ).first()  # fmt: skip
@@ -252,7 +279,8 @@ async def open_bearer(
                 connection = OpenConnection(
                     row.id, PROVIDER, Credentials(), bytes(row.wrapped_dek), int(row.generation)
                 )
-                opened = SwedebeatBearer(connection, bearer, row.expires_at)
+                account = row.account_ref if isinstance(row.account_ref, str) else None
+                opened = SwedebeatBearer(connection, bearer, row.expires_at, account)
     if opened is None:
         category = failure or "unknown"
         if row is not None and category != "not_connected":

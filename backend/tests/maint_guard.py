@@ -48,7 +48,7 @@ SECRET_COLUMNS: dict[str, frozenset[str]] = {
         # ADR 0019 (#771): passkeys and their ceremonies are no operator's business.
         "webauthn_credentials": "credential_id public_key label transports",
         "webauthn_challenges": "flow_hash challenge",
-        "connections": "public secret secret_nonce wrapped_dek dek_nonce",
+        "connections": "public secret secret_nonce wrapped_dek dek_nonce account_ref",
         "connection_keks": "check_value",
         "spotify_oauth_flows": "state_hash session_hash client_id verifier redirect_uri",
         "player_link_flows": "state_hash session_hash verifier redirect_uri",
