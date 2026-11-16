@@ -10,7 +10,10 @@ model-produced text can come back to a model through the brief.
 - ``explicit``: at most 20 paths of the values the instructor stated and the policy never
   replaces (``classbeat.design.request_policy``); the others are assumptions.
 
-Both are left out of the serialized brief when empty, so every brief stored before them stays
+- ``music_taste`` (issue #1133): the request's eras, language, style words and "hits"
+  (``classbeat.agent.music_taste``): years, an ISO code, a flag and words of the request itself.
+
+All three are left out of the serialized brief when empty, so every brief stored before them stays
 byte-identical (the evals, the size guard and every reader see what they saw).
 """
 
@@ -25,6 +28,7 @@ from pydantic import (
     model_validator,
 )
 
+from classbeat.agent.music_taste import MusicTaste
 from classbeat.agent.schemas import STRICT, BriefText, Game, Style
 
 Sport = Literal["cycling", "running"]
@@ -105,6 +109,7 @@ class Brief(BaseModel):
     explicit: list[ExplicitPath] = Field(
         default_factory=lambda: list[ExplicitPath](), max_length=MAX_EXPLICIT
     )
+    music_taste: MusicTaste | None = None
 
     @model_validator(mode="after")
     def _running_has_no_bike_knobs(self) -> Self:
@@ -136,8 +141,9 @@ class Brief(BaseModel):
         (ADR 0029); a running brief is written with its sport and without the bike-only knobs,
         so it validates again as written."""
         out: dict[str, Any] = handler(self)
-        if out.get("class_type") is None:
-            out.pop("class_type", None)
+        for key in ("class_type", "music_taste"):
+            if out.get(key) is None:
+                out.pop(key, None)
         for key in ("games", "explicit"):
             if not out.get(key):
                 out.pop(key, None)

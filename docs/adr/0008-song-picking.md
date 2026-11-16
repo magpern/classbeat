@@ -749,3 +749,58 @@ tempo and effort") and no check on adjacent BPM. This amendment adds a **soft** 
 - **Eval.** Suite version 23 adds the case `tempo_adjacent_30` with the check `tempo_flow` (no jump
   between two adjacent songs of the same role); `agent/tempo_policy.py` joins the digest's rule
   sources. The `choose_songs` prompt version is re-pinned.
+
+## Amendment of 2026-11-17: the music taste of the request (issue #1133)
+
+Owner decision (2026-11-16): the picked songs must be what the instructor asked for. A live request for
+"only Swedish hit songs from the 80s, 90s and 00s" got songs of other years and languages, with no
+signal. §3's stages had the request text only, free-text search, and no check of the picks against it.
+
+- **Interpretation** (ADR 0029 section 4). `InterpretedRequest.music_taste` holds:
+  - `eras`: year ranges, at most 4, each at most 30 years;
+  - `language`: an ISO 639-1 code;
+  - `genres`: up to 3 style words, kept only when the request holds them, in the request's own spelling;
+  - `hits`.
+
+  Each has its origin and kept quote. `design.interpret_taste_policy` makes it `Brief.music_taste`
+  (`agent.music_taste`, closed, left out of the stored brief when absent, so every existing brief is
+  byte-identical) and the items `music_era.N`, `music_language`, `music_genre.N` and `music_hits` of
+  "How we read your request". Only a song pick acts on it: with any other music, a stated taste item is
+  Not as asked `taste_needs_pick`, and the brief has no taste. `worst_case_brief` includes the largest
+  taste.
+- **Pool** (§3). The song stages' facts carry `music_taste` (years, the code, the flag and the request's
+  own words). `pick_pool` gets a third read tool, `find_songs(songs: [{artist, track}] (1..10),
+  year_from?, year_to?)` (`agent.find_songs`): the model proposes songs from its own knowledge, about
+  three times what the class needs, one call per era. For each song the backend searches
+  `track:"…" artist:"…"` with `year:` (the words are cleaned of filter and quote syntax). It keeps the
+  song only when a hit is that song (`agent.song_match_policy`):
+  - one of its artists is the named artist, after normalising;
+  - its title is the named one once a ` - …` or a trailing bracket tail is set aside;
+  - it is not a live, karaoke, cover, tribute, instrumental, acoustic, demo or re-recorded version
+    unless the title asks for one;
+  - its year is within the years asked for.
+
+  A kept hit gets a registry ref. A song without one is only reported missing (its position) and can
+  never enter the pool, so the model's memory is never used without a Spotify match. `search_tracks`
+  stays. With stated eras, a valid `check_pool` also counts the candidates per era and outside them (a
+  note, never an error). Limits are unchanged (12 / 30 / 3).
+- **After the choice** (`agent.taste_check_policy`, pure). Before the `song_list` is stored, each miss
+  is a Not as asked item in the content's new `unmet` list (at most 8, written only when there is one,
+  so every other list is hashed and stored as before; the hash covers it):
+  - `music_era.N` `era_too_few` (pick mode): fewer chosen new songs from a stated era than half an even
+    spread over the eras, at least one each. The value is the era and how many were found;
+  - `music_taste` `songs_outside_eras` (pick mode): new songs from no stated era, with the count;
+  - `music_length` `songs_too_short`: the list is more than 10 % shorter than the class (the choice
+    already refuses that; this is the backstop).
+
+  A song's year is its search hit's release year. A kept song of a replacement has none, so a
+  replacement is checked for its length only. The language and the style words are told to the model
+  but not checked: Spotify's search answer has neither. The list still waits for the user; the
+  approval screen lists the items in plain words (catalogue keys in en, sv and da), and the user
+  decides.
+- **API.** `GET /api/classes/{id}/revisions/{id}` of a `song_list` adds `unmet` (closed paths, codes
+  and small numbers). The song-list and match response models and readers moved to
+  `classes/song_list_out.py`.
+- **Eval.** Suite version 24: `agent/music_taste.py` joins the digest's rule sources, and the interpret
+  and `pick_pool` prompt versions are re-pinned. No case changed; the offline gate runs on the fake
+  model.

@@ -23,6 +23,15 @@ SAMPLES: dict[str, list[dict[str, Any]]] = {
     "ReviseInput": [{"draft": good_draft()}, {"draft": good_draft(), "note": "Easier start."}],
     "SongsRequestedInput": [{}],
     "SearchInput": [{"query": "rock"}, {"query": "rock", "year_from": 1990, "year_to": 2000}],
+    "FindSongsInput": [
+        {"songs": [{"artist": "Roxette", "track": "Joyride"}]},
+        {"songs": [{"artist": "Europe", "track": "The Final Countdown"}], "year_from": 1980},
+        {
+            "songs": [{"artist": "Avicii", "track": "Levels"}],
+            "year_from": 2000,
+            "year_to": 2009,
+        },
+    ],
     "SongPool": [entries((0, "warmup"), (1, "build"))],
     "GetPoolInput": [{}],
     "InterpretedRequest": [
@@ -31,6 +40,14 @@ SAMPLES: dict[str, list[dict[str, Any]]] = {
             "sport": {"value": "cycling", "origin": "explicit", "quote": "spin"},
             "length_min": {"value": 45, "origin": "inferred"},
             "music": {"value": 2, "origin": "explicit"},
+            "music_taste": {
+                "eras": [
+                    {"year_from": 1980, "year_to": 1989, "origin": "explicit", "quote": "80s"}
+                ],
+                "language": {"value": "sv", "origin": "explicit"},
+                "genres": [{"value": "disco", "origin": "inferred"}],
+                "hits": {"value": True, "origin": "explicit"},
+            },
             "games": [
                 {"type": "any", "origin": "explicit"},
                 {

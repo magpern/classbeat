@@ -1,13 +1,20 @@
-"""The ``pick_pool`` stage (ADR 0008 section 3): ``search_tracks`` (read), ``check_pool``
-(compute), ending with ``submit_pool``. Limits 12 turns, 30 tool calls, 3 corrections.
+"""The ``pick_pool`` stage (ADR 0008 section 3): ``search_tracks`` and ``find_songs`` (read),
+``check_pool`` (compute), ending with ``submit_pool``. Limits 12 turns, 30 tool calls, 3
+corrections.
 
 - ``search_tracks(query, year_from?, year_to?)``: the backend builds the Spotify request (it adds
   ``year:`` and owns the market and the limit) and runs it through the ``Searcher`` it was given;
   the answer is at most 10 tracks of ``{ref, title, artist, album, year, duration_sec}``. A ``ref``
   is an index into the job's ``SearchRegistry``; the Spotify id never reaches the model.
+- ``find_songs(songs, year_from?, year_to?)`` (issue #1133, ``classbeat.agent.find_songs``): songs
+  the model knows, each searched on Spotify and kept only when Spotify has that exact song; the
+  found ones come back with refs, the others as missing.
 - ``check_pool(entries)``, ``submit_pool(entries)``: every ref is in the registry, no ref twice, no
   track twice (normalised title and artist, also against the kept songs), the size, and two
-  candidates per slot of every role the brief asks for. Errors come back for correction.
+  candidates per slot of every role the brief asks for. Errors come back for correction. With
+  stated eras (``Brief.music_taste``) a valid answer also counts the candidates per era and
+  outside every era: a note, never an error (the choice is checked after it,
+  ``taste_check_policy``).
 
 The stage has no write tool and no network client of its own: the ``Searcher`` is the one read the
 backend lends it, and it answers with the library's track dicts. Its failure is
@@ -20,6 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any, Final
 
 from classbeat.agent import song_input
+from classbeat.agent.find_songs import find_songs_tool
 from classbeat.agent.registry import SearchRegistry
 from classbeat.agent.schemas import PoolEntry, SearchInput, SongPool
 from classbeat.agent.songs import CROSSFADE_SEC, PickPlan, kept_view, key_of
@@ -42,9 +50,13 @@ instructor's own words), the number of songs the class needs, and the pool size 
 a replacement you also get the slots to fill and the songs that stay.
 
 How to work:
-1. Call search_tracks with plain words (a title, an artist, a style) and, if it helps, a range of \
-years. It returns up to 10 tracks, each with a ref, a title, an artist, an album, a year and a \
-length in seconds. Search several times: different styles and eras.
+1. Find candidates. When the brief has music_taste, think of songs that fit it from your own \
+knowledge, about three times as many as the class needs, and check them with find_songs: one call \
+per era with that era's year_from and year_to, the artist and the track (its title) of each song. \
+Only the songs it finds exist on Spotify; use those, and replace the missing ones with others from \
+the same era. Keep to the language and the styles of music_taste. You may also call \
+search_tracks with plain words (a title, an artist, a style) and, if it helps, a range of years. \
+Both return tracks with a ref, a title, an artist, an album, a year and a length in seconds.
 2. Give each candidate a role: warmup, build, climb, sprint, interval, race, recovery or cooldown. \
 Songs of 3 to 5 minutes suit a class. The pool needs two candidates for every climb, sprint and \
 race the brief asks for, two for an FTP test (role interval), and two cooldown songs.
@@ -96,6 +108,7 @@ class PoolPick:
     role: str
     spotify_id: str
     cover: str | None = field(default=None, repr=False)
+    year: int | None = None  # the search hit's release year (``taste_check_policy``)
 
 
 @dataclass(frozen=True)
@@ -185,7 +198,7 @@ def check_entries(ctx: PoolContext, entries: Sequence[PoolEntry]) -> PoolResult:
         entry = reg.get(e.ref)
         if entry is None:  # checked above; never reached
             raise ToolError("out_of_range", ["a ref is not from your search results"])
-        picks.append(PoolPick(e.ref, e.role, entry.spotify_id, entry.cover))
+        picks.append(PoolPick(e.ref, e.role, entry.spotify_id, entry.cover, entry.year))
     return PoolResult(tuple(picks))
 
 
@@ -223,7 +236,13 @@ def pool_stage(ctx: PoolContext) -> Stage:
         by_role: dict[str, int] = {}
         for pick in result.picks:
             by_role[pick.role] = by_role.get(pick.role, 0) + 1
-        return {"entries": len(result.picks), "by_role": by_role}
+        out: dict[str, Any] = {"entries": len(result.picks), "by_role": by_role}
+        taste = ctx.plan.brief.music_taste
+        if taste is not None and taste.eras:  # a note for the model, never an error
+            years = [p.year for p in result.picks]
+            out["by_era"] = [sum(1 for y in years if e.holds(y)) for e in taste.eras]
+            out["outside_eras"] = sum(1 for y in years if not taste.in_any_era(y))
+        return out
 
     def check_pool(args: SongPool) -> ToolAnswer:
         return ToolAnswer({"valid": True, **counts(check_entries(ctx, args.entries))})
@@ -237,6 +256,7 @@ def pool_stage(ctx: PoolContext) -> Stage:
         system=SYSTEM_PROMPT,
         tools=(
             Tool("search_tracks", "read", SEARCH_DESCRIPTION, SearchInput, search_tracks),
+            find_songs_tool(ctx, SearchUnavailable, unavailable),
             Tool("check_pool", "compute", CHECK_DESCRIPTION, SongPool, check_pool),
             Tool(FINAL_TOOL, "compute", SUBMIT_DESCRIPTION, SongPool, submit_pool),
         ),

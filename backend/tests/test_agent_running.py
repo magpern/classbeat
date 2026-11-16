@@ -69,10 +69,11 @@ RUN = {"sport": "running", "length_min": 30, "intensity": "moderate"}
 # #1035 (section energy): design, revise, choose_songs and the two running stages changed once,
 # on purpose: a guidance line on each section's energy, and get_pool's and get_music's description.
 # #1040 (tempo adjacency): choose_songs changed once more, on purpose: a tempo guidance line.
+# #1133 (music taste): pick_pool changed on purpose: the find_songs tool and its guidance.
 CYCLING_PROMPT_VERSIONS = {
     "design": "ead8ee6227b99d148d4ba7318fd6032d9e12605894a968775b4ab4813d019e2b",
     "revise": "317d75e31910bb71dff3498f8a798901409a990f25f691ba29d11a6b680235b6",
-    "pick_pool": "58d36e6a25155e86a70e88b79c845ccd1501f7f2db4c7d28af9f6f78badb5449",
+    "pick_pool": "e1887da4f5959cc9adb94ae3a3d332161dda107364c7f7c6363ad8ea1b826a75",
     "choose_songs": "74882603467ec87dc133b32addc24491c2f0e68d45f6a7c92f4d9f49f2a560ac",
 }
 # Words of cycling's that a running prompt must never use (ADR 0018 section 2).

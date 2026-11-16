@@ -120,6 +120,9 @@ RULE_SOURCES: Final = (
     # held a chained case, so the earlier digests stayed valid.
     "design/revise_stated.py",
     "design/revise_layer_policy.py",
+    # The music taste (issue #1133): the closed form the interpreter returns and the song stages
+    # are told. Added with suite version 24.
+    "agent/music_taste.py",
 )
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")

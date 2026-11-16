@@ -41,7 +41,7 @@ from classbeat.models.versions import all_prompt_versions
 PINNED = {
     "design": "ead8ee6227b99d148d4ba7318fd6032d9e12605894a968775b4ab4813d019e2b",
     "revise": "317d75e31910bb71dff3498f8a798901409a990f25f691ba29d11a6b680235b6",
-    "pick_pool": "58d36e6a25155e86a70e88b79c845ccd1501f7f2db4c7d28af9f6f78badb5449",
+    "pick_pool": "e1887da4f5959cc9adb94ae3a3d332161dda107364c7f7c6363ad8ea1b826a75",
     "choose_songs": "74882603467ec87dc133b32addc24491c2f0e68d45f6a7c92f4d9f49f2a560ac",
     # The running stages (ADR 0018), listed since E1 (#465) under their own keys.
     "running_design": "34ab4d8266807dce71af20b22115d6b103afbcea73c4e2abeefae41a3cdcea96",
@@ -50,8 +50,9 @@ PINNED = {
     # under their own keys.
     "soundless_design": "19f070f1f62b715453650b64380c1dce53fd39c7e3e9791fd9ed433a69da295f",
     "soundless_revise": "8279c4a6a9750c9ff238bbd7db5c915e9b9a8dc44f1b16e7fbbcae502fdfdc7b",
-    # The interpret stage (MA1b-2, #880), under its own key.
-    "interpret": "ef6e6e114af5da9bcad0b5e47900392e26127c7b2bc4765f2382536b01513885",
+    # The interpret stage (MA1b-2, #880), under its own key. #1133 changed it and pick_pool on
+    # purpose: the music taste (interpret) and the find_songs tool (pick_pool).
+    "interpret": "a94daa2a2e7231d600ed21ecf2c52c4067444326acadad304bc0585771df9d00",
 }
 PLANTED = "Zq9 planted brief text"
 PLANTED_STYLE = "Zq9 planted style"

@@ -1,6 +1,7 @@
 import { get, post } from './client'
 import { count, flag, list, object, optionalCount, optionalText, text } from './decode'
 import { isTrackLink } from './classes'
+import { decodeInterpretationItems, type InterpretationItem } from './interpretationItems'
 import { decodeJob, type Brief, type Job } from './jobs'
 
 // Song picking (ADR 0008 sections 4 to 6 and 9): the song list a job waits on, the approval, and
@@ -49,6 +50,8 @@ export interface SongList {
   songs: Song[]
   omittedNoBpm: number
   note: string
+  /** What the list could not do as asked (issue #1133): Not as asked items, worded by code. */
+  unmet: InterpretationItem[]
 }
 
 /** A link from the API is kept only when it is a Spotify track link. */
@@ -104,6 +107,7 @@ export function decodeSongList(value: unknown): SongList {
     songs: withStartTimes(list(item, 'songs').map(decodeSong), optionalCount(item, 'crossfade_sec') ?? 0),
     omittedNoBpm: optionalCount(item, 'omitted_no_bpm') ?? 0,
     note: optionalText(item, 'note') ?? '',
+    unmet: (decodeInterpretationItems(item.unmet) ?? []).filter((i) => i.origin === 'not_as_asked'),
   }
 }
 

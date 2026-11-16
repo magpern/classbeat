@@ -32,11 +32,11 @@ from classbeat.agent.design import ZONE7
 from classbeat.agent.stored_draft import stored_draft
 from classbeat.classes import (
     beat_one,
-    match_view,
     pattern_notes,
     removal,
     selection,
     service,
+    song_list_out,
     song_views,
 )
 from classbeat.classes.provenance_out import ProvenanceOut
@@ -47,9 +47,6 @@ from classbeat.classes.schemas import (
     ClassesOut,
     ClassOut,
     DismissedRulesOut,
-    MatchHitOut,
-    MatchSongOut,
-    MatchWantedOut,
     MessageOut,
     MessagesOut,
     MosaicSongOut,
@@ -62,13 +59,11 @@ from classbeat.classes.schemas import (
     RevisionsOut,
     RevisionSummaryOut,
     RuleHitOut,
-    SongListOut,
-    SongOut,
     SongsOut,
-    SwedebeatMatchOut,
     SwedebeatMatchPointerOut,
     UnknownBpmOut,
 )
+from classbeat.classes.song_list_out import SongListOut, SwedebeatMatchOut
 from classbeat.connections.swedebeat_account import swedebeat_enabled
 from classbeat.context import UserContext
 from classbeat.covers import cover_url
@@ -231,7 +226,7 @@ async def get_revision(
     factory = request.app.state.session_factory
     row = await service.get_revision(factory, ctx, wanted_class, wanted)
     if row is None:
-        return await _song_list(request, factory, ctx, wanted_class, wanted)
+        return await song_list_out.song_list(request, factory, ctx, wanted_class, wanted)
     brief, dismissed = await service.get_pattern_inputs(factory, ctx, wanted_class)
     try:
         # Only keys the class's sport's schema names are shown (ADR 0018: absent = cycling).
@@ -260,99 +255,6 @@ async def get_revision(
         tss_approximate=approximate,
         rule_hits=hits,
         notes_use_current_rules=notes.uses_current_rules,
-    )
-
-
-async def _song_list(
-    request: Request, factory: Any, ctx: UserContext, class_id: UUID, revision_id: UUID
-) -> SongListOut | SwedebeatMatchOut | JSONResponse:
-    """A ``song_list`` revision: songs without ids, totals, ``new`` marks, a plain-text note."""
-    view = await song_views.get_song_list(factory, ctx, class_id, revision_id)
-    if view is None:
-        return await _swedebeat_match(request, factory, ctx, class_id, revision_id)
-    if view == "unreadable":  # the stored hash or content no longer checks: never shown
-        return _internal()
-    c = view.content
-    return SongListOut(
-        id=view.id,
-        number=view.number,
-        created_at=view.created_at,
-        parent_id=view.parent_id,
-        parent_number=view.parent_number,
-        status=view.status,
-        job_id=view.job_id,
-        expires_at=view.expires_at,
-        approved_at=view.approved_at,
-        content_hash=view.content_hash,
-        mode=c.mode,
-        target_sec=c.target_sec,
-        total_sec=c.total_sec,
-        crossfade_sec=c.crossfade_sec,
-        songs=[
-            SongOut(
-                position=i,
-                title=song_views.plain(s.title),
-                artist=song_views.plain(s.artist),
-                role=s.role,
-                bpm=s.bpm,
-                length_sec=s.length_sec,
-                new=s.new,
-                cover=cover_url(s.cover),  # the pinned host only, again (ADR 0013 section 9)
-                open_spotify=song_views.track_link(s.spotify_id),
-            )
-            for i, s in enumerate(c.songs, start=1)
-        ],
-        omitted_no_bpm=c.omitted_no_bpm,
-        note=song_views.plain(c.note),
-    )
-
-
-async def _swedebeat_match(
-    request: Request, factory: Any, ctx: UserContext, class_id: UUID, revision_id: UUID
-) -> SwedebeatMatchOut | JSONResponse:
-    """A ``swedebeat_match`` revision (ADR 0016 section 6, #458), field by field.
-
-    Flag off: an own match id is 404 ``feature_off`` and only its key is looked up (its content,
-    hash and music are not read); any other id stays 404 ``not_found``. Flag on: another user's
-    or an unknown id is 404 ``not_found``; a row that no longer checks is 500 ``internal``.
-    """
-    if not await swedebeat_enabled(request.app.state.settings, factory):
-        if await match_view.is_match(factory, ctx, class_id, revision_id):
-            return _refuse("feature_off", 404)
-        return _not_found()
-    view = await match_view.get_match(factory, ctx, class_id, revision_id)
-    if view is None:
-        return _not_found()
-    if view == "unreadable":
-        return _internal()
-    c = view.content
-    return SwedebeatMatchOut(
-        id=view.id,
-        number=view.number,
-        parent_id=view.parent_id,
-        content_hash=view.content_hash,
-        songs=[
-            MatchSongOut(
-                position=s.position,
-                status=s.status,
-                wanted=MatchWantedOut(
-                    title=song_views.plain(s.wanted.title),
-                    artist=song_views.plain(s.wanted.artist),
-                ),
-                swedebeat=None
-                if s.swedebeat is None
-                else MatchHitOut(
-                    title=song_views.plain(s.swedebeat.title),
-                    artist=song_views.plain(s.swedebeat.artist),
-                    duration=s.swedebeat.duration,
-                ),
-            )
-            for s in c.songs
-        ],
-        found=c.found,
-        unsure=c.unsure,
-        missing=c.missing,
-        swedebeat_sec=c.swedebeat_sec,
     )
 
 
