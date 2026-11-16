@@ -1,9 +1,10 @@
 """A class's final playlist (ADR 0008 sections 2 and 4): create it, then fill it with the approved
 songs. The job kinds of phase 2 (SJ2) call these; they only write.
 
-- ``create_final_playlist``: a ``spotify_create_playlist`` with key ``<job_id>:final-create`` and
-  the class; its ``on_succeeded`` inserts the ``class_playlists`` row (``created``) for the
-  approved ``song_list`` revision. Returns that row's id and the playlist id.
+- ``create_final_playlist``: a ``spotify_create_playlist`` with key ``<job_id>:final-create`` (or
+  a studio output's ``out:...:spotify_create``, ADR 0036 section 6) and the class; its
+  ``on_succeeded`` inserts the ``class_playlists`` row (``created``) for the approved
+  ``song_list`` revision. Returns that row's id and the playlist id.
 - ``fill_final_playlist``: a ``spotify_replace_items`` with key ``<job_id>:final-fill`` and the
   class, to the playlist of the user's own **live** ``class_playlists`` row of that class (named
   by the row's id, never by a playlist id from input), connected as the same Spotify account;
@@ -68,8 +69,10 @@ async def create_final_playlist(
     revision_id: UUID,
     content_hash: bytes,
     name: str,
+    key: str | None = None,
 ) -> ClassPlaylist:
-    """The class's new final playlist and its ``class_playlists`` row."""
+    """The class's new final playlist and its ``class_playlists`` row. ``key`` is a studio
+    output's, bound to its approval (ADR 0036 section 6); by default the job's."""
     if opened.account is None:
         raise JobFailure("not_connected")
     request = create.final_request(
@@ -81,6 +84,7 @@ async def create_final_playlist(
         name,
         opened.account,
         _create_guard(run, opened, class_id),
+        key,
     )
     playlist_id = await create.create(run, keyring, opened, request, common.check_name(name))
     async with run.fenced() as fs:
@@ -112,8 +116,10 @@ async def fill_final_playlist(
     class_id: UUID,
     class_playlist_id: UUID,
     track_ids: tuple[str, ...] | list[str],
+    key: str | None = None,
 ) -> None:
-    """Set the class playlist to exactly ``track_ids`` and verify it by reading it back."""
+    """Set the class playlist to exactly ``track_ids`` and verify it by reading it back (``key``
+    as for the create)."""
     ids = common.check_track_ids(track_ids)
     owner_id = run.lease.owner_id
     async with run.fenced() as fs:
@@ -129,6 +135,11 @@ async def fill_final_playlist(
         return still == playlist_id and still_account == opened.account
 
     request = replace.replace_request(
-        replace.final_key(run.lease.job_id), "final", playlist_id, ids, guard, class_id=class_id
+        key or replace.final_key(run.lease.job_id),
+        "final",
+        playlist_id,
+        ids,
+        guard,
+        class_id=class_id,
     )
     await replace.replace(run, keyring, opened, request, ids)

@@ -1,5 +1,6 @@
 """The SwedeBeat gateway calls (ADR 0035 sections 3, 5 and 6; ADR 0036 section 8): exactly
-``login``, ``session``, ``match`` and ``download_track``, nothing else. Each takes a client of
+``login``, ``session``, ``match`` and ``download_track``, nothing else (the playlist writes are
+``writes``). Each takes a client of
 ``classbeat.egress_gateway`` (one per call) and the client key; the bearer goes only into
 ``session``, ``match`` and ``download_track``.
 

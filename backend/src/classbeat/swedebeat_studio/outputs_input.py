@@ -13,12 +13,16 @@ draft for the outputs they chose. It is the approval record; the worker reads it
 - ``swedebeat_generation`` is a **server field**: the generation of that connection at the
   approval, which the route's ``GET /auth/session`` checked (``outputs_session``) and which every
   later step compares again. A browser sending it is refused (422).
+- ``binding_version`` is a **server field** too: ``BINDING_VERSION``, set by the consent route's
+  ``admit``. A job without it (one approved in the C6a era, when ``produce_outputs`` was a stub
+  that wrote nothing) or with another version is refused when it runs, terminal and with nothing
+  written: an approval only binds the writes of the version it was given for.
 
 Nothing here is a name, a body or an id of anything outside: every written value comes from the
 stored draft and its approved list.
 """
 
-from typing import ClassVar, Self
+from typing import ClassVar, Final, Self
 from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
@@ -26,6 +30,8 @@ from pydantic import Field, field_validator, model_validator
 from classbeat.design.revise import Sha256Hex
 from classbeat.jobs.inputs import JobInput
 from classbeat.studio.output_choice_policy import OUTPUTS, Output, canonical
+
+BINDING_VERSION: Final = 2  # 1: the C6a stub's approvals (no field)
 
 
 class ProduceOutputsInput(JobInput):
@@ -37,6 +43,7 @@ class ProduceOutputsInput(JobInput):
     swedebeat_connection_id: UUID
     spotify_connection_id: UUID | None = None
     swedebeat_generation: int | None = Field(default=None, ge=1)  # server field
+    binding_version: int | None = Field(default=None, ge=1)  # server field
 
     @field_validator("outputs")
     @classmethod

@@ -27,6 +27,7 @@ from classbeat.operations.kinds import (
     REF_KEY,
     SPOTIFY_CREATE_KIND,
     SPOTIFY_WRITE_KINDS,
+    STUDIO_OUTPUT_KINDS,
     context_size,
     ref_of,
     spotify_purpose,
@@ -141,6 +142,8 @@ class OperationRequest:
             raise ValueError("a send to the player names its class")
         if self.kind == PLAYER_REMOVE_KIND and self.class_id is not None:
             raise ValueError("a removal from the player belongs to no class")
+        if self.kind in STUDIO_OUTPUT_KINDS and self.class_id is None:
+            raise ValueError("a studio output's write names its class")
         if self.kind in SPOTIFY_WRITE_KINDS:
             purpose = spotify_purpose(self.kind, self.idempotency_key)
             if purpose is None:

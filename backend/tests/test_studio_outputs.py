@@ -9,8 +9,10 @@ class's timeline and the user's output choice, on the fakes (Spotify, the SwedeB
   output, another user's class, a refused session and a reconnect are refused with nothing
   stored (and, before the session check, nothing asked of the gateway); the ``Idempotency-Key``
   replays and refuses a different body; only this route can create the job;
-- the stub ``produce_outputs`` re-checks the binding when it starts and ends ``feature_off``,
-  having written nothing.
+- ``produce_outputs`` re-checks the binding when it starts, with nothing written when it fails:
+  a job without the binding version (approved for C6a's stub), a reconnect, another Spotify
+  account (``account_changed``), a draft that changed after the create, an output turned off.
+  Its writes are SR C7's (``test_studio_produce_playlist``, ``test_studio_produce_mix``).
 """
 
 import asyncio
@@ -90,6 +92,12 @@ async def run_outputs(studio: StudioEnv, job_id: UUID) -> Any:
         asyncio.Event(),
     )
     return songs.row(job_id)
+
+
+def outputs_of(studio: StudioEnv, owner: UUID) -> int:
+    return studio.songs.sql(
+        "SELECT count(*) FROM class_outputs WHERE owner_id = :o", o=owner
+    ).scalar_one()
 
 
 def no_writes(studio: StudioEnv) -> None:
@@ -182,6 +190,7 @@ async def test_a_choice_binds_the_draft_the_outputs_and_the_connection(studio: S
         "swedebeat_connection_id": str(rider.swedebeat_connection_id),
         "spotify_connection_id": None,
         "swedebeat_generation": generation,
+        "binding_version": 2,
     }
     # The same key and body again (in another order): the same job, no second one.
     again = await choose(rider, class_id, {**body, "outputs": body["outputs"][::-1]}, key)
@@ -190,10 +199,29 @@ async def test_a_choice_binds_the_draft_the_outputs_and_the_connection(studio: S
     other = await choose(rider, class_id, {**body, "outputs": ["swedebeat_playlist"]}, key)
     assert (other.status_code, other.json()["detail"]["reason"]) == (409, "idempotency_mismatch")
     assert len(produce_jobs(studio, rider.user_id)) == 1
-    # The stub re-checks at its start and ends feature_off; nothing is written anywhere.
-    done = await run_outputs(studio, UUID(answer.json()["job_id"]))
-    assert (done.state, done.error_category) == ("failed", "feature_off")
+
+
+@pytest.mark.usefixtures("outputs_on")
+@pytest.mark.parametrize("version", [None, 1, 3])
+async def test_a_job_without_this_binding_version_writes_nothing(
+    studio: StudioEnv, version: int | None
+) -> None:
+    rider, class_id, _, current = await designed(studio)
+    answer = await choose(rider, class_id, choice(current, studio, "swedebeat_playlist"))
+    assert answer.status_code == 201, answer.text
+    job_id = UUID(answer.json()["job_id"])
+    # As a job approved in the C6a era (the stub) was stored: no binding_version, or another.
+    studio.songs.sql(
+        "UPDATE jobs SET input = CASE WHEN CAST(:v AS int) IS NULL "
+        "THEN input - 'binding_version' "
+        "ELSE jsonb_set(input, '{binding_version}', to_jsonb(CAST(:v AS int))) END WHERE id = :id",
+        v=version,
+        id=job_id,
+    )
+    done = await run_outputs(studio, job_id)
+    assert (done.state, done.error_category) == ("failed", "invalid_input")
     no_writes(studio)
+    assert outputs_of(studio, rider.user_id) == 0
 
 
 @pytest.mark.usefixtures("outputs_on")
@@ -300,8 +328,55 @@ async def test_a_reconnect_before_the_job_starts_refuses_it(studio: StudioEnv) -
         c=rider.swedebeat_connection_id,
     )
     done = await run_outputs(studio, UUID(answer.json()["job_id"]))
-    assert (done.state, done.error_category) == ("failed", "not_connected")
+    assert (done.state, done.error_category) == ("failed", "connection_changed")
     no_writes(studio)
+
+
+def other_spotify_account(studio: StudioEnv, rider: StudioRider) -> None:
+    studio.songs.sql(
+        "UPDATE connections SET public = jsonb_set(public, '{spotify_user_id}', "
+        "'\"someone-else\"') WHERE id = :c",
+        c=rider.spotify_connection_id,
+    )
+
+
+@pytest.mark.usefixtures("outputs_on")
+async def test_another_spotify_account_is_account_changed(studio: StudioEnv) -> None:
+    rider, class_id, _, current = await designed(studio)
+    other_spotify_account(studio, rider)
+    answer = await choose(rider, class_id, choice(current, studio, "spotify_playlist"))
+    assert (answer.status_code, answer.json()["detail"]["reason"]) == (409, "account_changed")
+    assert produce_jobs(studio, rider.user_id) == []
+
+
+@pytest.mark.usefixtures("outputs_on")
+async def test_another_spotify_account_before_the_job_starts_refuses_it(
+    studio: StudioEnv,
+) -> None:
+    rider, class_id, _, current = await designed(studio)
+    before = set(studio.songs.fake.playlists)
+    answer = await choose(rider, class_id, choice(current, studio, "spotify_playlist"))
+    assert answer.status_code == 201, answer.text
+    other_spotify_account(studio, rider)
+    done = await run_outputs(studio, UUID(answer.json()["job_id"]))
+    assert (done.state, done.error_category) == ("failed", "account_changed")
+    assert set(studio.songs.fake.playlists) == before
+    assert outputs_of(studio, rider.user_id) == 0
+
+
+@pytest.mark.usefixtures("outputs_on")
+async def test_a_draft_changed_after_the_create_refuses_the_job(studio: StudioEnv) -> None:
+    rider, class_id, list_id, current = await designed(studio)
+    answer = await choose(rider, class_id, choice(current, studio, "swedebeat_playlist"))
+    assert answer.status_code == 201, answer.text
+    # Another draft is now the class's current one (as a revise between the create and the run).
+    studio.songs.sql(
+        "UPDATE classes SET current_revision_id = :r WHERE id = :c", r=list_id, c=class_id
+    )
+    done = await run_outputs(studio, UUID(answer.json()["job_id"]))
+    assert (done.state, done.error_category) == ("failed", "invalid_input")
+    no_writes(studio)
+    assert outputs_of(studio, rider.user_id) == 0
 
 
 @pytest.mark.usefixtures("outputs_on")
@@ -327,9 +402,10 @@ async def test_only_the_consent_route_creates_the_job(studio: StudioEnv) -> None
     }
     answer = await rider.browser.post("/api/jobs", body, {"Idempotency-Key": new_key()})
     assert (answer.status_code, answer.json()["detail"]["reason"]) == (409, "consent_required")
-    with_generation = {**body, "input": {**body["input"], "swedebeat_generation": 1}}
-    sent = await rider.browser.post("/api/jobs", with_generation, {"Idempotency-Key": new_key()})
-    assert sent.status_code == 422  # a server field
+    for server_field in ("swedebeat_generation", "binding_version"):
+        with_field = {**body, "input": {**body["input"], server_field: 2}}
+        sent = await rider.browser.post("/api/jobs", with_field, {"Idempotency-Key": new_key()})
+        assert sent.status_code == 422  # a server field
     assert produce_jobs(studio, rider.user_id) == []
 
 

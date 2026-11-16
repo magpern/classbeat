@@ -51,9 +51,11 @@ EXEMPT: dict[str, str] = {
     "test_quota_api.py": BUSY,
     "test_spotify_errors.py": PROVIDER,
     "test_spotify_fake.py": PROVIDER,
+    "test_studio_output_policies.py": "the SwedeBeat gateway's 429, mapped by a pure rule",
     "test_swedebeat_attach.py": PROVIDER,
     "test_swedebeat_fakes.py": PROVIDER,
     "test_swedebeat_fetch.py": PROVIDER,
+    "test_swedebeat_gateway_writes.py": PROVIDER,
     "test_swedebeat_media_fetch.py": PROVIDER,
     "test_turnstile_verify.py": PROVIDER,
 }

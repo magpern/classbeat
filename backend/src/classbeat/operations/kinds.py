@@ -53,21 +53,35 @@ MULTI_REQUEST_KINDS: Final = frozenset({*CLASS_WRITE_KINDS, SPOTIFY_REPLACE_KIND
 PLAYER_SEND_KIND: Final = "player_send"
 PLAYER_REMOVE_KIND: Final = "player_remove"
 PLAYER_KINDS: Final = frozenset({PLAYER_SEND_KIND, PLAYER_REMOVE_KIND})
-# The external_operations.kind check of migrations 0004 to 0006, 0018 and 0052.
+# ADR 0036 section 6 (migration 0054, SR C7): a studio output's own writes; each carries its class.
+STUDIO_OUTPUT_KINDS: Final = frozenset(
+    {
+        "swedebeat_create_playlist",
+        "swedebeat_publish_playlist",
+        "swedebeat_merge_publish",
+        "mowl_attach_studio_mix",
+    }
+)
+# The external_operations.kind check of migrations 0004 to 0006, 0018, 0052 and 0054.
 KIND_NAMES: Final = frozenset(
-    {*ATTACH_KINDS, *CLASS_WRITE_KINDS, *SPOTIFY_WRITE_KINDS, *PLAYER_KINDS}
+    {*ATTACH_KINDS, *CLASS_WRITE_KINDS, *SPOTIFY_WRITE_KINDS, *PLAYER_KINDS, *STUDIO_OUTPUT_KINDS}
 )
 # A Spotify write's key names its purpose (ADR 0008 section 2): ``<job_id>:pool-create``,
 # ``<job_id>:final-create``, ``<job_id>:pool:<h16>`` and ``<job_id>:final-fill``. The job part is
-# a UUID; ``h16`` is the first 16 hex characters of the track-list hash.
+# a UUID; ``h16`` is the first 16 hex characters of the track-list hash. A studio class's final
+# playlist (ADR 0036 section 6) is keyed by its approval: ``out:<class>:<revision>:
+# spotify_playlist:<attempt>:spotify_create`` and ``...:spotify_fill`` (``output_key_policy``).
+_OUT: Final = r"out:[0-9a-f-]{36}:[0-9a-f-]{36}:spotify_playlist:[1-9][0-9]{0,3}:"
 _SPOTIFY_KEYS: Final = {
     SPOTIFY_CREATE_KIND: (
         (re.compile(r"[0-9a-f-]{36}:pool-create"), "pool"),
         (re.compile(r"[0-9a-f-]{36}:final-create"), "final"),
+        (re.compile(_OUT + "spotify_create"), "final"),
     ),
     SPOTIFY_REPLACE_KIND: (
         (re.compile(r"[0-9a-f-]{36}:pool:[0-9a-f]{16}"), "pool"),
         (re.compile(r"[0-9a-f-]{36}:final-fill"), "final"),
+        (re.compile(_OUT + "spotify_fill"), "final"),
     ),
 }
 

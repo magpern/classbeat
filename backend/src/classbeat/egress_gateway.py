@@ -29,7 +29,10 @@ urllib list** (``WEB_URLLIB_HOSTS``, ``WORKER_HOSTS``), so the library's opener 
   ``MATCH_SECONDS`` (150; the contract asks for at least 120), the track download
   ``DOWNLOAD_SECONDS`` (120 for the whole answer, its 60 MB body included: ADR 0036 section 8's
   own deadline for the download, which amends ADR 0035 section 1; the 150 s clamp stays for
-  every call).
+  every call but one).
+- **the one exception**: ``swedebeat_gateway_upload_client()`` takes no argument and has
+  ``MERGE_SECONDS`` (900) for the whole of a merge-publish, its streamed MP3 body and the answer
+  included (ADR 0036 section 8, amending ADR 0035 section 1's clamp for that call only; SR C7).
 
 A transport and an origin of the test's own come only from tests, through
 ``swedebeat_gateway_test_client``, which the guard refuses inside ``classbeat``.
@@ -52,6 +55,7 @@ LOGIN_SECONDS: Final = 30.0
 SESSION_SECONDS: Final = 30.0
 MATCH_SECONDS: Final = 150.0
 DOWNLOAD_SECONDS: Final = 120.0  # ADR 0036 section 8: the track download, its body included
+MERGE_SECONDS: Final = 900.0  # ADR 0036 section 8: merge-publish, its streamed upload included
 _DEFAULT_PORTS: Final = {"http": 80, "https": 443}
 
 _origin: GatewayOrigin | None = None
@@ -153,9 +157,13 @@ def gateway_network_transport() -> httpx.AsyncHTTPTransport:
 
 
 def _gateway_client(
-    origin: GatewayOrigin, inner: httpx.AsyncBaseTransport, total_seconds: float
+    origin: GatewayOrigin,
+    inner: httpx.AsyncBaseTransport,
+    total_seconds: float,
+    *,
+    upload: bool = False,
 ) -> httpx.AsyncClient:
-    total = clamp_seconds(total_seconds)
+    total = MERGE_SECONDS if upload else clamp_seconds(total_seconds)
     client = httpx.AsyncClient(
         base_url=origin.url,
         transport=_GatewayTransport(origin, inner, total),
@@ -176,10 +184,23 @@ def swedebeat_gateway_async_client(total_seconds: float) -> httpx.AsyncClient:
     return _gateway_client(_origin, gateway_network_transport(), total_seconds)
 
 
+def swedebeat_gateway_upload_client() -> httpx.AsyncClient:
+    """The same client with ``MERGE_SECONDS`` for one merge-publish (module docstring): no
+    argument, so no caller can widen another call's deadline."""
+    if _origin is None:
+        raise blocked(None)
+    return _gateway_client(_origin, gateway_network_transport(), MERGE_SECONDS, upload=True)
+
+
 def swedebeat_gateway_test_client(
-    origin: str, transport: httpx.AsyncBaseTransport, *, total_seconds: float = LOGIN_SECONDS
+    origin: str,
+    transport: httpx.AsyncBaseTransport,
+    *,
+    total_seconds: float = LOGIN_SECONDS,
+    upload: bool = False,
 ) -> httpx.AsyncClient:
     """**Tests only** (the guard refuses it in ``classbeat``): the same client for an origin of
     the test's own (checked by the same policy) over a fake transport. The origin check, the
-    redirect, header and deadline behaviour are the production client's (the same builder)."""
-    return _gateway_client(gateway_origin(origin), transport, total_seconds)
+    redirect, header and deadline behaviour are the production client's (the same builder);
+    ``upload`` is the merge-publish's (``MERGE_SECONDS``, ``total_seconds`` ignored)."""
+    return _gateway_client(gateway_origin(origin), transport, total_seconds, upload=upload)

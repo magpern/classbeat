@@ -189,6 +189,15 @@ class Person:
             c=class_id,
             rev=self.found.list_rev,
         )
+        # ADR 0036 section 6 (SR C7): a studio output attempt and its daily-limit record.
+        self.sql(
+            "INSERT INTO class_outputs (owner_id, class_id, revision_id, output, attempt, state, "
+            "detail) VALUES (:u, :c, :rev, 'swedebeat_playlist', 1, 'done', '{}'::jsonb)",
+            u=u,
+            c=class_id,
+            rev=self.found.list_rev,
+        )
+        self.sql("INSERT INTO studio_output_starts (owner_id) VALUES (:u)", u=u)
         code_id = self.sql(
             "INSERT INTO redeem_codes (code_hash, label, plan_id, grant_days, max_redemptions, "
             "expires_at) VALUES (:hash, 'gdpr', 'instructor', 30, 5, now() + interval '30 days') "

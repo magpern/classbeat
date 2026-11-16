@@ -19,7 +19,8 @@ order, each refusal writing nothing:
 6. for ``spotify_playlist``: ``not_connected`` unless the Spotify connection is the user's and
    ``connected``, ``account_changed`` unless it is the account the list was made for.
 
-Accepted: the stored input gains ``swedebeat_generation`` (a server field). ``bound`` (checks 2
+Accepted: the stored input gains ``swedebeat_generation`` and ``binding_version`` (server
+fields). ``bound`` (checks 2
 to 6) runs again from the database when the job starts (``outputs_kind``; ADR 0007 section 5,
 point 2). Reasons are codes only; nothing of the rows is logged or returned.
 """
@@ -40,11 +41,11 @@ from classbeat.studio.output_choice_policy import enabled_outputs, refusal
 from classbeat.swedebeat_studio import config, current_draft
 from classbeat.swedebeat_studio.admit import studio_on, swedebeat_connected
 from classbeat.swedebeat_studio.current_draft import CurrentDraft
-from classbeat.swedebeat_studio.outputs_input import ProduceOutputsInput
+from classbeat.swedebeat_studio.outputs_input import BINDING_VERSION, ProduceOutputsInput
 from classbeat.swedebeat_studio.outputs_session import consented
 
 KIND: Final = "produce_outputs"
-SERVER_FIELDS: Final = frozenset({"swedebeat_generation"})
+SERVER_FIELDS: Final = frozenset({"swedebeat_generation", "binding_version"})
 
 
 async def enabled(db: AsyncSession, ctx: UserContext) -> frozenset[str]:
@@ -129,4 +130,6 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: object, /) -> Admitt
     done = await bound(db, ctx, parsed, mark.generation, lock=True)
     if isinstance(done, str):
         return Refused(done)
-    return Admitted(fields={"swedebeat_generation": mark.generation})
+    return Admitted(
+        fields={"swedebeat_generation": mark.generation, "binding_version": BINDING_VERSION}
+    )
