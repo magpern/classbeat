@@ -7,23 +7,30 @@ the fakes, against Postgres as ``classbeat_app``; never the network.
   create) in the mix's order under the output's own fill key, so the output is then ``done``.
 """
 
+import copy
+import json
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 import pytest
 
+from pickfake import POOL_14
 from studiooutputs import (
     outputs_on,  # noqa: F401 - fixture
     produce,
     rows,
     view,
 )
-from studiotools import StudioEnv
+from studiotools import StudioEnv, choose_turns, pool_turns, script
 from test_spotify_sync import run_sync
 from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage]
+    MIX_8,
     analysed,  # noqa: F401 - the autouse stand-in of the sandboxed child
+    design_script,
     designed,
 )
+from test_swedebeat_studio_songs import SWAP_12, SWAPPED_LIST
 
 pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on")
 ONE = r"/v1/playlists/[0-9A-Za-z]{22}"
@@ -102,3 +109,31 @@ async def test_a_failed_fill_never_blocks_the_swedebeat_outputs_and_sync_again_f
     assert len(keys) == 1  # the output's own fill, taken over: no second operation
     assert keys[0].endswith(":spotify_playlist:1:spotify_fill")
     assert (await view(rider, class_id))["spotify_playlist"]["state"] == "done"
+
+
+def test_the_e2e_studio_design_is_this_suites_design() -> None:
+    """e2e/tests/studio.spec.ts replays the same design on the same maps (seeded there)."""
+    path = Path(__file__).parent / "agent_scripts" / "e2e_studio_design.json"
+    assert json.loads(path.read_text(encoding="utf-8")) == design_script(MIX_8)
+
+
+def test_the_e2e_studio_swap_is_this_suites_swap() -> None:
+    """The swap pick of e2e/tests/studio.spec.ts: the backend's ``_swap_script`` with the e2e
+    catalogue's searches (two artists for the pool, two others for the swap round)."""
+    path = Path(__file__).parent / "agent_scripts" / "e2e_studio_swap.json"
+    expected = script(
+        pool_turns(("the invented band", "placeholder collective"), POOL_14),
+        pool_turns(("test pattern", "nobody real"), SWAP_12),
+        choose_turns(SWAPPED_LIST),
+    )
+    assert json.loads(path.read_text(encoding="utf-8")) == expected
+
+
+def test_the_e2e_studio_revise_is_this_suites_cut() -> None:
+    """The edit loop of e2e/tests/studio.spec.ts: the last song cut at 230 s, with its note."""
+    path = Path(__file__).parent / "agent_scripts" / "e2e_studio_revise.json"
+    cut = copy.deepcopy(MIX_8)
+    cut["tracks"][-1]["end_sec"] = 230.0
+    assert json.loads(path.read_text(encoding="utf-8")) == design_script(
+        cut, note="Cut the last song."
+    )

@@ -29,6 +29,9 @@ export type ModelScript =
   | 'ai_first_design_any' // its design: a Racetrack after climb 2
   | 'ai_first_read_long' // reads a 90 minute class (beyond a 60 minute plan)
   | 'ai_first_design_long' // its design: 60 minutes with no music
+  | 'e2e_studio_swap' // a studio pick with swaps: 10 of its 14 candidates missing (SR C8)
+  | 'e2e_studio_revise' // its edit loop: a chat revise that cuts the last song at 230 s (SR C8)
+  | 'e2e_studio_design' // a studio design and mix on the seeded analyses (SR C8; backend design_script(MIX_8))
 
 export function useModelScript(name: ModelScript): void {
   execFileSync(

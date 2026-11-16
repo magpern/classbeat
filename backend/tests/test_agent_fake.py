@@ -71,6 +71,14 @@ COVERED = {
     "ai_first_read_long",
     "ai_first_design_long",
     "form_climbs_missed",
+    # the studio design of the e2e studio class (e2e/tests/studio.spec.ts, SR C8): the backend's
+    # own ``design_script(MIX_8)``, pinned by tests/test_spotify_sync_final.py
+    "e2e_studio_design",
+    # its pick with swaps (70 % of the pool missing), the backend's swap script on the e2e
+    # catalogue's searches, pinned by tests/test_spotify_sync_final.py
+    "e2e_studio_swap",
+    # its edit loop: a chat revise that cuts the last song (the backend's revise test's script)
+    "e2e_studio_revise",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")
