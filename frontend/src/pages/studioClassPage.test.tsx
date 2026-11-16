@@ -139,6 +139,21 @@ describe('a studio class on the class page', () => {
     expect(screen.queryByTestId('studio-outputs')).toBeNull()
   })
 
+  it('shows no legacy song panel on a studio class', async () => {
+    fakeApi(studioRoutes())
+    renderAt(PAGE)
+    await screen.findAllByTestId('timeline-song')
+    expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
+    expect(screen.queryByText('The songs could not be loaded. Reload the page.')).toBeNull()
+  })
+
+  it('shows no legacy song panel when the studio music needs a new analysis', async () => {
+    fakeApi(studioRoutes({ [`GET ${CLASS_PATH}/timeline`]: () => reason(409, 'music_changed') }))
+    renderAt(PAGE)
+    await screen.findByTestId('studio-music-changed')
+    expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
+  })
+
   it('shows nothing of the studio on a class that is not one', async () => {
     fakeApi({ ...SESSION_ROUTES, ...classRoutes() })
     renderAt(PAGE)
@@ -211,10 +226,24 @@ describe('a studio class on the class page', () => {
       window.sessionStorage.clear()
     })
 
+    it('shows no legacy song panel for it', async () => {
+      fakeApi(approved('studio_songs'))
+      renderAt(PAGE)
+      await screen.findByRole('button', { name: 'Start the design' })
+      expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
+    })
+
+    it('keeps the legacy song panel on a Spotify or SwedeBeat-mix class (approved songs are not a studio list)', async () => {
+      fakeApi(approved('revise_songs'))
+      renderAt(PAGE)
+      expect(await screen.findByRole('region', { name: 'Change songs' })).toBeInTheDocument()
+    })
+
     it('offers nothing for a class whose approved songs are not a studio list', async () => {
       fakeApi(approved('design_with_songs'))
       renderAt(PAGE)
       await screen.findByTestId('tss')
+      expect(await screen.findByRole('region', { name: 'Change songs' })).toBeInTheDocument()
       await waitFor(() => { expect(screen.queryByTestId('studio-music-changed')).toBeNull() })
       expect(screen.queryByRole('button', { name: 'Start the design' })).toBeNull()
     })

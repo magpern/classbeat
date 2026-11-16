@@ -4,7 +4,8 @@ import { isSongKind } from '../api/songs'
 import { DeleteClass } from '../components/classes/DeleteClass'
 import { ChatPanel } from '../components/classes/ChatPanel'
 import { StudioPanel } from '../components/studio/StudioPanel'
-import { isStudio, useStudioTimeline } from '../components/studio/useStudioTimeline'
+import { useIsStudioClass } from '../components/studio/useIsStudioClass'
+import { useStudioTimeline } from '../components/studio/useStudioTimeline'
 import { ChangeMusic } from '../components/classes/ChangeMusic'
 import { PlannedSongs } from '../components/classes/PlannedSongs'
 import { DesignInPlace } from '../components/classes/DesignInPlace'
@@ -119,8 +120,11 @@ function ClassBody({
   const [canChange, setCanChange] = useState(true)
   // A studio class is found by its timeline (the summary carries no studio status).
   const studioView = useStudioTimeline(classId, summary.currentRevisionId, summary.openJob === null)
+  // A studio class's songs are the studio's own; the legacy song panels do not apply (#1119).
+  const studio = useIsStudioClass(summary, studioView)
   // A soundless class has no songs to change (#530).
   const canChangeSongs =
+    !studio &&
     !summary.soundless && summary.songs.state === 'approved' && summary.songs.revisionId !== null
   const songs = useApprovedSongs(classId, summary)
   const handoff = useHandoff(summary, reload)
@@ -197,7 +201,7 @@ function ClassBody({
               revisions={revisions}
               messages={messages}
               canChange={canChange}
-              studio={isStudio(studioView)}
+              studio={studio}
               requestJobId={request?.jobId ?? null}
               onReload={reload}
               onView={setChosen}
@@ -279,7 +283,7 @@ function ClassBody({
                 goTo(CHANGE_SONGS_ID)
               }}
             />
-            <ChangeSongs summary={summary} />
+            {studio ? null : <ChangeSongs summary={summary} />}
             <div id="versions" className="scroll-mt-4">
               <HistoryPanel
                 classId={summary.id}
