@@ -1,7 +1,7 @@
 """SwedeBeat studio: the Spotify sync state per revision (ADR 0036 §9; SR C8)
 
-Revision ID: 0055_spotify_syncs
-Revises: 0054_class_outputs
+Revision ID: 0056_spotify_syncs
+Revises: 0055_class_outputs_detail
 Create Date: 2026-11-16
 
 - ``spotify_syncs``: one row per ``(owner_id, class_id, revision_id, target)``: the state of one
@@ -28,8 +28,8 @@ from alembic import op
 
 from classbeat.db.rls import enable_owner_rls
 
-revision: str = "0055_spotify_syncs"
-down_revision: str | Sequence[str] | None = "0054_class_outputs"
+revision: str = "0056_spotify_syncs"
+down_revision: str | Sequence[str] | None = "0055_class_outputs_detail"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

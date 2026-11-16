@@ -203,8 +203,10 @@ row is committed before the call.
   it cannot make a second record.
 - The request hash is the canonical JSON of `{kind, draft content_hash, output, attempt, the stored names, the
   exact JSON body fields}`. For `merge`, it covers the stored **render plan** and the tracks' analysed
-  sha256s, not the MP3 bytes. The render must still be deterministic: C1 tests it, and a different output
-  sha256 on a retry stops with "music changed".
+  sha256s, not the MP3 bytes. The render must still be deterministic: C1 tests it. The first render's
+  sha256 is stored with the attempt, and a later render with a different one stops the output with
+  `render_not_reproducible` (its own message), nothing sent. "Music changed" (`music_changed`) is only a
+  fresh download whose sha256 is not the analysed bytes' (step 1 of the mix, below).
 - The same key with a different hash is refused, as ADR 0005 §7 refuses it (`internal`).
 - `class_outputs.state` is derived from the operations:
 
@@ -230,7 +232,7 @@ row is committed before the call.
   published playlists, and an unpublished one cannot be found. The step stays `in_doubt`, and the user is told
   it may exist. The only way on is **Create another anyway** (`attempt + 1`). The recommended gateway pass-through
   (listing one's own playlists) would let Check again settle it.
-- **Playlist publish in doubt.** The `playlist_id` is stored, so Check again reads **every page** of `GET /playlists/shared` (pages 1 to 50, until a page comes back empty). If
+- **Playlist publish in doubt.** The `playlist_id` is stored, so Check again reads **every page** of `GET /playlists/shared` (pages 1 to 50, until a page comes back empty), **with the approved SwedeBeat connection and generation** only (stored with the publish). When that connection is gone or reconnected, the listing proves nothing about it: the step stays `in_doubt` with `connection_changed` and nothing is read, never "not listed" and then a publish under another bearer. If
   the id is listed, the step is `succeeded`. If it is not, publishing **the same `playlist_id`** again is safe,
   because publish is one-way on an existing record and creates none. It is never a new create.
 - **Mix (merge-publish) in doubt.**
@@ -275,7 +277,10 @@ row is committed before the call.
   - Poll the user's MOWL mix listing with backoff for about 30 minutes.
   - Attach **only** the entry whose `URL` has the stored S3 object key and whose duration is within tolerance.
     **Never by name.**
-  - Attach once and store the `PlaylistID`.
+  - Attach once and store the `PlaylistID`. The attach is the external operation `mowl_attach_studio_mix`,
+    written through `operations.perform` directly rather than the SwedeBeat write path (`Producer.write`,
+    whose `WriteFailure` mapping is the gateway's): its guard holds the user's MOWL connection at the
+    opened generation **and** the approval's (the SwedeBeat connection and the draft).
   - If nothing matches, the state is `published_not_listed`, with **Check again**. The mix is never published
     again.
 - **Per-output states** are shown with the action that is safe for each. For example: "Playlist created, not

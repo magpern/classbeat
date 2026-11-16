@@ -10,8 +10,10 @@ MOWL attach; SR C7). Pure: no I/O.
   the stored unique name, for the user to confirm; nothing is attached or settled by this.
 
 Entries are the library's ``swedebeat_mixes`` answer (``{ID, Name, URL,
-DurationInMilliseconds}``); one without an id of the link table's shape, a string URL or a
-duration is left out.
+DurationInMilliseconds}``); one without an id of the link table's shape, a URL the gateway's
+merge could have returned (``write_policy.is_mix_url``: ``https``, a host and a path, no
+userinfo, query or fragment, at most 2048 characters) or a duration is left out, so no shown
+candidate and no confirmed ``mix_url`` is ever anything else.
 """
 
 import re
@@ -20,9 +22,10 @@ from dataclasses import dataclass
 from typing import Any, Final, cast
 from urllib.parse import unquote, urlsplit
 
+from classbeat.swedebeat_gateway.write_policy import is_mix_url
+
 DURATION_TOLERANCE_SEC: Final = 2.0
 MIX_ID: Final = re.compile(r"[0-9A-Za-z_-]{1,64}")  # the mowl_playlist_links check
-MAX_URL: Final = 2048
 MAX_NAME: Final = 200
 
 
@@ -35,14 +38,12 @@ class Listed:
 
 
 def object_key(url: object) -> str | None:
-    """The S3 object key of an ``http(s)`` URL, or ``None``."""
-    if not isinstance(url, str) or not 1 <= len(url) <= MAX_URL:
+    """The S3 object key of a mix URL (``is_mix_url``), or ``None``."""
+    if not is_mix_url(url):
         return None
     try:
         parts = urlsplit(url)
-    except ValueError:
-        return None
-    if parts.scheme not in ("http", "https") or not parts.hostname:
+    except ValueError:  # pragma: no cover - is_mix_url split it already
         return None
     path = unquote(parts.path).lstrip("/")
     return path or None
@@ -58,7 +59,7 @@ def entries(answer: object) -> list[Listed]:
         ms = entry.get("DurationInMilliseconds")
         if not isinstance(mix_id, str) or MIX_ID.fullmatch(mix_id) is None:
             continue
-        if not isinstance(url, str) or len(url) > MAX_URL:
+        if not is_mix_url(url):
             continue
         if isinstance(ms, bool) or not isinstance(ms, int | float) or not 0 < ms < 86_400_000:
             continue

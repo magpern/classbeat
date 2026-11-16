@@ -7,11 +7,13 @@ as through row security; the worker writes through its fence (``fs.db``), the we
 
 - ``latest``: an output's newest attempt of a draft (locked ``FOR UPDATE`` when asked).
 - ``open_attempt``: insert attempt ``n`` with what it must keep **before the first write intent**
-  (the names, the body, the render plan and the analysed sha256s: ``detail``), after the limits
-  (``check_limits``): at most ``ATTEMPTS_PER_CLASS`` attempts of a class and ``STARTS_PER_DAY``
-  per user in any 24 hours (``studio_output_starts``, the ``mixlimit`` pattern: a per-user
-  advisory lock, a row per attempt, kept through a class delete), else ``output_limit`` and
-  nothing written. A racing insert of the same attempt is not an error: the existing row is used.
+  (the names, the body, the render plan and the analysed sha256s: ``detail``, at most
+  ``MAX_DETAIL_BYTES`` less the room its later patches need, else ``invalid_input``), after the
+  limits (``check_limits``): at most ``ATTEMPTS_PER_CLASS`` attempts of a class and
+  ``STARTS_PER_DAY`` per user in any 24 hours (``studio_output_starts``, the ``mixlimit`` pattern:
+  a per-user advisory lock, a row per attempt, kept through a class delete), else
+  ``output_limit`` and nothing written. A racing insert of the same attempt is not an error: the
+  existing row is used.
 - ``update``: the state, the external id and a patch of ``detail`` (merged, never replaced).
 - ``operations``: each step's operation state of one attempt, and whether a running job holds it.
 """
@@ -32,6 +34,19 @@ ATTEMPTS_PER_CLASS: Final = 24  # four outputs, a few "Create another anyway" ea
 STARTS_PER_DAY: Final = 24
 KEEP_HOURS: Final = 48
 LIMIT_CATEGORY: Final = "output_limit"
+# The ``class_outputs_detail`` check (migration 0055): ``octet_length(detail::text)``. Measured,
+# not guessed (``detail_bytes`` counts what Postgres counts; ``test_studio_output_detail.py``
+# builds the case): the largest attempt is a mix, and one of ``SIZED_TRACKS`` tracks (above the
+# spec's 40) with 64-character references stores a render plan of about 11.3 KB, sha256s of
+# about 8.2 KB and a full 16 KB X-Tracks of about 16.9 KB (``jsonb`` text adds ", " and ": "),
+# some 37 KB with the name; 32 KB refused it. Its later patches (``PATCH_RESERVE``: the merge
+# URL and a MOWL candidate with 2048-character URLs, the render sha256, a category, the ids)
+# add at most about 5 KB. 64 KiB holds both with room; rather than trusting it, ``open_attempt``
+# refuses a detail over ``MAX_DETAIL_BYTES - PATCH_RESERVE`` before any write intent, so no
+# later patch can fail at the database after a write went out.
+MAX_DETAIL_BYTES: Final = 65536
+PATCH_RESERVE: Final = 8192
+SIZED_TRACKS: Final = 60
 
 _COLUMNS = "id, class_id, revision_id, output, attempt, state, external_id, detail, updated_at"
 _LATEST = (
@@ -130,6 +145,13 @@ async def all_latest(db: AsyncSession, owner_id: UUID, class_id: UUID) -> list[O
     return [_row(r) for r in (await db.execute(_ALL_LATEST, params)).all()]
 
 
+def detail_bytes(detail: Mapping[str, Any]) -> int:
+    """The size the ``class_outputs_detail`` check measures: ``jsonb``'s text form is this JSON
+    (", " and ": " separators, UTF-8, the same escapes)."""
+    raw = json.dumps(dict(detail), ensure_ascii=False, separators=(", ", ": "), allow_nan=False)
+    return len(raw.encode("utf-8"))
+
+
 async def check_limits(db: AsyncSession, owner_id: UUID, class_id: UUID) -> None:
     """``output_limit`` unless one more attempt fits the class and the user's day."""
     await db.execute(_LOCK, {"key": f"studio_output_starts:{owner_id}"})
@@ -149,6 +171,8 @@ async def open_attempt(
     detail: Mapping[str, Any],
 ) -> OutputRow:
     """Attempt ``attempt`` with ``detail`` stored, or the row a racing insert made."""
+    if detail_bytes(detail) > MAX_DETAIL_BYTES - PATCH_RESERVE:
+        raise JobFailure("invalid_input")  # nothing written (see ``MAX_DETAIL_BYTES``)
     await check_limits(db, owner_id, class_id)
     params = {
         "owner_id": owner_id,

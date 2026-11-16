@@ -198,6 +198,8 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/classes/{class_id}/outputs"): "owned",  # SR C6a: the output choice
     ("GET", "/api/classes/{class_id}/outputs"): "owned",  # SR C7: the per-output states
     ("POST", "/api/classes/{class_id}/outputs/{output}/{action}"): "owned",  # SR C7: the actions
+    ("GET", "/api/classes/{class_id}/spotify-sync/{revision_id}"): "owned",  # SR C8: sync states
+    ("POST", "/api/classes/{class_id}/spotify-sync/{revision_id}/{target}"): "owned",  # Sync again
     ("GET", "/api/classes/{class_id}/interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/design-from-interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/interpret-again"): "owned",
@@ -633,6 +635,7 @@ class Rows:
             "song": "1",
             "output": "swedebeat_mix",
             "action": "check-again",
+            "target": "working_copy",
             "class_id": self.class_id,
             "job_id": self.job_id,
             "revision_id": self.revision_id,
@@ -838,6 +841,15 @@ OWNED_ROUTES = [
         lambda rows: {"revision_id": str(rows.revision_id)},
         frozenset({404}),
         {"Idempotency-Key": STUDIO_KEY},
+    ),
+    # SR C8 (test_spotify_sync: another user's class or revision is 404 with the studio on).
+    OwnedRoute(
+        "GET", "/api/classes/{class_id}/spotify-sync/{revision_id}", control=frozenset({404})
+    ),
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/spotify-sync/{revision_id}/{target}",
+        control=frozenset({404}),
     ),
     OwnedRoute("DELETE", "/api/classes/{class_id}", control=frozenset({200, 409})),
     OwnedRoute("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),

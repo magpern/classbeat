@@ -5,9 +5,16 @@ fakes (the SwedeBeat gateway, Spotify), against Postgres as ``classbeat_app``; n
   publish of that id, the output ``done``; a second approval writes nothing again (at most once);
 - a publish that failed resumes **on the stored ``playlist_id``**, never a second create; a
   publish in doubt is settled by every page of ``/playlists/shared``;
+- Check again lists a publish in doubt only with the approved connection and generation: gone,
+  reconnected or not on record, it stays in doubt (``connection_changed``), nothing is read and
+  nothing is published again;
 - a create in doubt (a 5xx after the work, a cut connection) blocks every new write to that
   output; Check again keeps it in doubt; "Create another anyway" opens attempt 2 with new keys
   and the old row stays on record; a create that never left (no connection) is retried;
+- a write intent left ``pending`` by a lost lease (the reaper requeued the job during the call)
+  is in doubt and never sent again, by the requeued run or by another approval;
+- ``output_limit``: at most ``ATTEMPTS_PER_CLASS`` attempts of a class and ``STARTS_PER_DAY`` in
+  any 24 hours (a rolling window), nothing sent and no attempt opened beyond them;
 - the gateway's ``403`` (writes off) is a state the user sees; a reconnect between the approval
   and the job is ``connection_changed`` with nothing written;
 - the final Spotify playlist is created private and filled in the mix's order;
@@ -21,6 +28,7 @@ import pytest
 
 from classbeat.studio.output_choice_policy import OUTPUTS
 from classbeat.swedebeat_studio import config as studio_config
+from classbeat.swedebeat_studio import outputs_rows
 from gatewaycore import FakeGateway, Reply, Session
 from studiooutputs import (
     act,
@@ -178,6 +186,54 @@ async def test_a_publish_that_failed_unseen_is_published_again_on_the_same_id(
     assert published(fake) == [playlist_id]
 
 
+CHANGES = {
+    "reconnected": "UPDATE connections SET generation = generation + 1 WHERE id = :c",
+    "flipped": "UPDATE connections SET status = 'needs_reconnect' WHERE id = :c",
+    "not_on_record": (
+        "UPDATE external_operations SET request_context = request_context - 'connection_id' "
+        "WHERE kind = 'swedebeat_publish_playlist' "
+        "AND owner_id = (SELECT owner_id FROM connections WHERE id = :c)"
+    ),
+}
+
+
+@pytest.mark.parametrize("change", [None, *CHANGES])
+async def test_check_again_lists_a_publish_only_with_the_approved_connection(
+    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch, change: str | None
+) -> None:
+    rider, class_id, _, current = await designed(studio)
+    fake = studio.gateway
+
+    def lost(real: Publish, pid: str, body: Any, session: Session) -> Reply:
+        fake.inject("status", SHARED, status=502)  # the job's own check reads nothing
+        return Reply(502, b'{"detail": "SwedeBeat failed"}')  # nothing published: in doubt
+
+    on_publish(monkeypatch, fake, lost)
+    done = await produce(studio, rider, class_id, current, "swedebeat_playlist")
+    assert (done.state, done.error_category) == ("failed", "uncertain_write")
+    assert (await view(rider, class_id))["swedebeat_playlist"]["state"] == "in_doubt"
+    if change is not None:
+        studio.songs.sql(CHANGES[change], c=rider.swedebeat_connection_id)
+    listed_before = len(sent(fake, "GET", SHARED))
+    body = {"revision_id": str(current.current_revision_id)}
+    checked = await act(rider, class_id, "swedebeat_playlist", "check-again", body)
+    assert checked.status_code == 200, checked.text
+    (publish,) = [
+        o for o in operations(studio, rider.user_id) if o.kind == "swedebeat_publish_playlist"
+    ]
+    if change is None:  # the approved connection: every page read, not listed, safe to publish
+        assert len(sent(fake, "GET", SHARED)) > listed_before
+        assert (checked.json()["state"], publish.state) == ("failed", "failed")
+        return
+    shown = checked.json()
+    assert (shown["state"], shown["category"]) == ("in_doubt", "connection_changed")
+    assert shown["actions"] == ["check_again", "create_another"]
+    assert publish.state == "uncertain"  # never "not listed" under another bearer
+    assert len(sent(fake, "GET", SHARED)) == listed_before  # nothing read for it
+    assert len(sent(fake, "POST", "publish")) == 1
+    assert published(fake) == []
+
+
 @pytest.mark.parametrize("fault", ["status", "drop"])
 async def test_a_create_in_doubt_blocks_until_create_another_anyway(
     studio: StudioEnv, fault: str
@@ -228,6 +284,81 @@ async def test_a_create_that_never_left_is_retried(studio: StudioEnv) -> None:
     assert (done.state, done.error_category) == ("completed", None)
     assert len(studio.gateway.playlists) == 1
     assert [(r.attempt, r.state) for r in rows(studio, rider.user_id)] == [(1, "done")]
+
+
+async def test_an_orphaned_pending_create_is_never_sent_again(
+    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rider, class_id, _, current = await designed(studio)
+    fake = studio.gateway
+    job_id = await choose(rider, class_id, choice(current, studio, "swedebeat_playlist"))
+    real = fake._create  # pyright: ignore[reportPrivateUsage]
+
+    def lease_lost(body: Any, session: Session) -> Reply:
+        answer = real(body, session)  # it took effect
+        # What the reaper does to an expired lease: a new token, back to the queue. The run's
+        # outcome is then fenced out and its write intent stays ``pending`` with the old token.
+        studio.songs.sql(
+            "UPDATE jobs SET state = 'queued', lease_version = lease_version + 1, "
+            "leased_by = NULL, lease_expires_at = NULL WHERE id = :id",
+            id=job_id,
+        )
+        return answer
+
+    monkeypatch.setattr(fake, "_create", lease_lost)
+    done = await run_job(studio, job_id)  # the lost run, then the requeued one
+    assert done.state != "queued"
+    made = operations(studio, rider.user_id)
+    (create,) = [o for o in made if o.kind == "swedebeat_create_playlist"]
+    assert create.state in ("pending", "uncertain")  # never settled as not written
+    assert len(sent(fake, "POST", CREATE)) == 1  # the requeued run sent nothing
+    shown = (await view(rider, class_id))["swedebeat_playlist"]
+    assert (shown["state"], shown["actions"]) == ("in_doubt", ["check_again", "create_another"])
+    again = await produce(studio, rider, class_id, current, "swedebeat_playlist")
+    assert again.state != "queued"
+    assert len(sent(fake, "POST", CREATE)) == 1  # nor another approval
+    assert sent(fake, "POST", "publish") == []
+    assert [(r.attempt, r.state) for r in rows(studio, rider.user_id)] == [(1, "in_doubt")]
+
+
+async def test_the_output_limit_per_class(
+    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(outputs_rows, "ATTEMPTS_PER_CLASS", 1)
+    rider, class_id, _, current = await designed(studio)
+    studio.gateway.inject("status", CREATE, status=502)  # attempt 1 in doubt
+    done = await produce(studio, rider, class_id, current, "swedebeat_playlist")
+    assert (done.state, done.error_category) == ("failed", "uncertain_write")
+    body = {"revision_id": str(current.current_revision_id), "acknowledge_duplicate": True}
+    another = await act(rider, class_id, "swedebeat_playlist", "create-another", body)
+    assert another.status_code == 200, another.text
+    limited = await produce(studio, rider, class_id, current, "swedebeat_playlist")
+    assert (limited.state, limited.error_category) == ("failed", "output_limit")
+    assert len(sent(studio.gateway, "POST", CREATE)) == 1  # attempt 2 was never opened
+    assert [r.attempt for r in rows(studio, rider.user_id)] == [1]
+
+
+async def test_the_output_limit_per_rolling_day(studio: StudioEnv) -> None:
+    rider, class_id, _, current = await designed(studio)
+    starts = outputs_rows.STARTS_PER_DAY
+    studio.songs.sql(  # the user's other classes opened the day's attempts 23 h 59 min ago
+        "INSERT INTO studio_output_starts (owner_id, created_at) SELECT :o, "
+        "now() - interval '23 hours 59 minutes' FROM generate_series(1, :n)",
+        o=rider.user_id, n=starts,
+    )  # fmt: skip
+    limited = await produce(studio, rider, class_id, current, "swedebeat_playlist")
+    assert (limited.state, limited.error_category) == ("failed", "output_limit")
+    assert sent(studio.gateway, "POST", CREATE) == []
+    assert rows(studio, rider.user_id) == []
+    # One minute later they are out of the window: a rolling day, not a calendar one.
+    studio.songs.sql(
+        "UPDATE studio_output_starts SET created_at = created_at - interval '2 minutes' "
+        "WHERE owner_id = :o",
+        o=rider.user_id,
+    )
+    done = await produce(studio, rider, class_id, current, "swedebeat_playlist")
+    assert (done.state, done.error_category) == ("completed", None)
+    assert len(sent(studio.gateway, "POST", CREATE)) == 1
 
 
 async def test_writes_off_is_a_state_the_user_sees(studio: StudioEnv) -> None:

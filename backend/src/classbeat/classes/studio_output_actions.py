@@ -11,14 +11,16 @@ ADR 0005 section 7; SR C7). User actions in the web process on the caller's own 
   URL or a body.
 - ``check_again`` (ADR 0005's reconciler, once more): an orphaned ``pending`` step (no running
   holder) is first marked ``uncertain``; then each ``uncertain`` step through its kind's
-  reconciler (a publish via every page of ``GET /playlists/shared``; a create stays in doubt; a
-  Spotify write by its ``ref``), recorded conditional on ``state = 'uncertain'``. A **mix** in
-  doubt is looked up in the user's MOWL listing by its unique name: a hit is **shown**
-  (``candidate``), never taken; without MOWL it stays in doubt. A MOWL output
+  reconciler (a publish via every page of ``GET /playlists/shared`` with the approved connection
+  and generation, else it stays in doubt with the category ``connection_changed``; a create stays
+  in doubt; a Spotify write by its ``ref``), recorded conditional on ``state = 'uncertain'``.
+  A **mix** in doubt is looked up in the user's MOWL listing by its unique name: a hit is
+  **shown** (``candidate``), never taken; without MOWL it stays in doubt. A MOWL output
   ``published_not_listed`` reads the listing again: an entry with the URL's object key and the
   duration makes it ``pending``, so the next approval attaches it (nothing is attached here).
 - ``confirm``: the user's decision that the shown entry is their mix: the merge step
-  ``succeeded`` with that entry's URL, the output ``done``.
+  ``succeeded`` with that entry's URL, the output ``done``; only a URL the merge could have
+  returned (``write_policy.is_mix_url``), else ``nothing_to_confirm`` and nothing changes.
 - ``create_another`` (ADR 0005's **Do it anyway**, as ``attempt + 1``): only for an output in
   doubt, with the duplicate risk acknowledged; the attempt is marked ``superseded`` and stays on
   record (its operations untouched), and the next ``produce_outputs`` opens the next attempt with
@@ -45,10 +47,11 @@ from classbeat.operations.requests import NOT_ACTIONABLE_SQL
 from classbeat.studio import mowl_match_policy
 from classbeat.studio.output_choice_policy import OUTPUTS
 from classbeat.studio.output_state_policy import actions, derived, note
+from classbeat.swedebeat_gateway.write_policy import is_mix_url
 from classbeat.swedebeat_studio import outputs_rows
 from classbeat.swedebeat_studio.admit import studio_on
 from classbeat.swedebeat_studio.outputs_admit import enabled
-from classbeat.swedebeat_studio.outputs_ops import url_digest
+from classbeat.swedebeat_studio.outputs_ops import CONNECTION_CHANGED, url_digest
 from classbeat.swedebeat_studio.outputs_rows import OutputRow
 
 Factory = Any
@@ -148,7 +151,11 @@ async def _mowl_listing(
 
 async def _reconcile_steps(
     factory: Factory, keyring: KeyRing | None, ctx: UserContext, row: OutputRow
-) -> None:
+) -> dict[str, Any]:
+    """Each step in doubt through its reconciler; the ``detail`` patch for the view: an
+    inconclusive one's reason (``connection_changed``) as the shown category, cleared again once
+    a later check settles it."""
+    patch: dict[str, Any] = {}
     for step, key in outputs_rows.step_keys(row).items():
         params = {"owner_id": ctx.user_id, "class_id": row.class_id, "key": key}
         async with user_session(factory, ctx) as db:
@@ -160,7 +167,11 @@ async def _reconcile_steps(
         read = operation_of(found)
         outcome = await reconcile(kind, ReconcileInput(factory, keyring, ctx, read))
         if outcome.outcome == "inconclusive":
+            if outcome.reason is not None:
+                patch["category"] = outcome.reason
             continue
+        if row.detail.get("category") == CONNECTION_CHANGED.reason:
+            patch.setdefault("category", None)
         ids = {"id": found.id, "owner_id": ctx.user_id}
         async with user_session(factory, ctx) as db:
             moved = await db.execute(
@@ -171,6 +182,7 @@ async def _reconcile_steps(
             if moved.first() is not None and outcome.outcome == "succeeded":
                 now = (await db.execute(_STEP_ROWS, params)).one()
                 await succeeded(db, kind, ctx.user_id, operation_of(now))
+    return patch
 
 
 async def _store_state(
@@ -218,8 +230,7 @@ async def check_again(
         async with user_session(factory, ctx) as db:
             await outputs_rows.update(db, ctx.user_id, row.id, state="pending")
         return await _store_state(factory, ctx, row)
-    await _reconcile_steps(factory, keyring, ctx, row)
-    patch: dict[str, Any] = {}
+    patch = await _reconcile_steps(factory, keyring, ctx, row)
     if output == "swedebeat_mix" and isinstance(row.detail.get("name"), str):
         listed = await _mowl_listing(factory, keyring, ctx)
         named = [] if listed is None else mowl_match_policy.named(listed, row.detail["name"])
@@ -246,7 +257,9 @@ async def confirm(
         params = {"owner_id": ctx.user_id, "class_id": class_id,
                   "key": outputs_rows.step_keys(row)["merge"]}  # fmt: skip
         found = (await db.execute(_STEP_ROWS, params)).first()
-        if not isinstance(url, str) or found is None or found.state != "uncertain":
+        # Only a URL the merge could have returned (``is_mix_url``) is stored as the mix's: a
+        # listing entry that is not one (empty, ``http:``, a query) is never confirmed.
+        if not is_mix_url(url) or found is None or found.state != "uncertain":
             return "nothing_to_confirm"
         moved = await db.execute(
             RESOLVE,

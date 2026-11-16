@@ -8,10 +8,13 @@ in-test listing), with the render child stood in (``studiooutputs.Renders``); ne
   or sent; a second render with another sha256 is ``render_not_reproducible``, nothing sent;
 - a merge in doubt is never rendered or sent again; Check again shows the MOWL entry with the
   mix's unique name (never taken); the user's Confirm settles it;
+- an entry whose URL the merge could not have returned (empty, ``http:``, a query) is never
+  shown or confirmed: Confirm is ``nothing_to_confirm`` and the merge stays in doubt;
 - MOWL attaches only the entry with the URL's object key and the duration; an entry with the
   name alone is never attached: ``published_not_listed`` with Check again.
 """
 
+import json
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -26,6 +29,7 @@ from mowlfake import TOKEN
 from studiooutputs import (
     Renders,
     act,
+    operations,
     outputs_on,  # noqa: F401 - fixture
     produce,
     renders_fixture,  # noqa: F401 - the ``renders`` fixture
@@ -48,6 +52,7 @@ class Listing:
     def __init__(self, studio: StudioEnv) -> None:
         self.studio = studio
         self.named_only = False  # list every merged mix under its name and another URL only
+        self.listed_url: str | None = None  # list every merged mix under this URL instead
         self.extra: list[dict[str, Any]] = []
         self.attached: list[str] = []
 
@@ -60,11 +65,16 @@ class Listing:
     def mixes(self, creds: Any) -> list[dict[str, Any]]:
         listed = [
             {"ID": f"mix-{n}", "Name": m["name"],
-             "URL": "https://other.example/a.mp3" if self.named_only else m["url"],
+             "URL": self.url_of(m),
              "DurationInMilliseconds": self.duration_ms()}
             for n, m in enumerate(self.studio.gateway.mixes)
         ]  # fmt: skip
         return [*self.extra, *listed]
+
+    def url_of(self, mix: dict[str, Any]) -> str:
+        if self.listed_url is not None:
+            return self.listed_url
+        return "https://other.example/a.mp3" if self.named_only else mix["url"]
 
     def attach(self, creds: Any, mix_id: str) -> dict[str, Any]:
         self.attached.append(mix_id)
@@ -187,6 +197,38 @@ async def test_a_merge_in_doubt_is_confirmed_by_the_user_from_the_named_entry(
     (row,) = rows(studio, rider.user_id)
     assert row.detail["mix_url"] == studio.gateway.mixes[0]["url"]
     assert listing.attached == []  # MOWL was not chosen
+
+
+@pytest.mark.parametrize(
+    "url", ["", "http://mixes.example/a.mp3", "https://mixes.example/a.mp3?x=1", " https://m.e/a"]
+)
+async def test_a_listed_url_that_is_no_mix_url_is_never_confirmed(
+    studio: StudioEnv, renders: Renders, listing: Listing, url: str
+) -> None:
+    rider, class_id, _, current = await designed(studio)
+    await with_mowl(studio, rider)
+    studio.gateway.inject("status", MERGE_PATH, status=502)  # after the work: it may exist
+    done = await produce(studio, rider, class_id, current, "swedebeat_mix")
+    assert (done.state, done.error_category) == ("failed", "uncertain_write")
+    listing.listed_url = url  # the unique name, under a URL no merge returns
+    body = {"revision_id": str(current.current_revision_id)}
+    checked = await act(rider, class_id, "swedebeat_mix", "check-again", body)
+    assert checked.status_code == 200, checked.text
+    assert "candidate" not in checked.json()  # left out of the listing: nothing shown
+    assert checked.json()["actions"] == ["check_again", "create_another"]
+    # A candidate stored before the check (an older row) is refused by Confirm itself.
+    candidate = {"name": studio.gateway.mixes[0]["name"], "url": url, "duration_sec": 1.0}
+    studio.songs.sql(
+        "UPDATE class_outputs SET detail = detail || jsonb_build_object('candidate', "
+        "CAST(:c AS jsonb)) WHERE owner_id = :o AND output = 'swedebeat_mix'",
+        c=json.dumps(candidate), o=rider.user_id,
+    )  # fmt: skip
+    refused = await act(rider, class_id, "swedebeat_mix", "confirm", body)
+    assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "nothing_to_confirm")
+    (row,) = rows(studio, rider.user_id)
+    assert (row.state, row.external_id, row.detail.get("mix_url")) == ("in_doubt", None, None)
+    (merge,) = [o for o in operations(studio, rider.user_id) if o.kind == "swedebeat_merge_publish"]
+    assert merge.state == "uncertain"
 
 
 async def test_a_name_only_entry_is_never_attached(
