@@ -42,11 +42,9 @@ from classbeat.connections import (
     Credentials,
     OpenConnection,
     call_opened,
-    hold,
     open_connection,
 )
 from classbeat.connections.swedebeat_account import open_bearer
-from classbeat.db import user_session
 from classbeat.egress import OutboundBlocked
 from classbeat.egress_gateway import MATCH_SECONDS
 from classbeat.operations import (
@@ -207,6 +205,7 @@ async def _attached(db: AsyncSession, owner_id: UUID, operation: Operation) -> N
 
 
 CONNECTION_CHANGED: Final = Reconciliation("inconclusive", reason="connection_changed")
+GONE: Final = frozenset({"not_connected", "needs_reconnect"})  # ``open_bearer``'s categories
 
 
 async def _never(_: ReconcileInput) -> Reconciliation:
@@ -227,11 +226,6 @@ def _approved(context: Mapping[str, Any]) -> OpenConnection | None:
     return OpenConnection(found, "swedebeat", Credentials(), b"", generation)
 
 
-async def _still_held(check: ReconcileInput, approved: OpenConnection) -> bool:
-    async with user_session(check.factory, check.ctx) as db:
-        return await hold(db, check.ctx, approved)
-
-
 async def _publish_listed(check: ReconcileInput) -> Reconciliation:
     """Every page of the shared listing, read **with the approved connection** only: a publish is
     listed under the account it was sent for. When that connection is gone or reconnected (another
@@ -247,18 +241,21 @@ async def _publish_listed(check: ReconcileInput) -> Reconciliation:
         return CONNECTION_CHANGED  # no approved connection on record: nothing to list it with
     if check.keyring is None or key is None:
         return INCONCLUSIVE
-    if not await _still_held(check, approved):
-        return CONNECTION_CHANGED
     try:
         opened = await open_bearer(check.factory, check.keyring, check.ctx)
-        if (opened.connection.id, opened.connection.generation) != (
-            approved.id,
-            approved.generation,
-        ):
-            return CONNECTION_CHANGED  # reconnected between the check and the read
+    except ConnectionFailure as failure:
+        # Gone, disconnected or flipped (or past its lifetime): nothing can be read for the
+        # approved account, and no other bearer may stand in for it.
+        if failure.category in GONE:
+            return CONNECTION_CHANGED
+        return INCONCLUSIVE
+    # The id, generation and bearer are read together: another generation is a reconnect.
+    if (opened.connection.id, opened.connection.generation) != (approved.id, approved.generation):
+        return CONNECTION_CHANGED
+    try:
         async with opener.open_client(SHARED_SECONDS * writes.SHARED_PAGES) as client:
             listed = await writes.list_shared(client, key, opened.bearer)
-    except (ConnectionFailure, writes.WriteFailure, OutboundBlocked, ValueError):
+    except (writes.WriteFailure, OutboundBlocked, ValueError):
         return INCONCLUSIVE  # a failed listing proves nothing
     if playlist_id in listed:
         return Reconciliation("succeeded", str(playlist_id))
