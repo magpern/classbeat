@@ -1,6 +1,6 @@
 import { ApiError, get, post } from './client'
 import { count, flag, isObject, list, object, optionalCount, optionalText, text } from './decode'
-import { decodeJob, type Job } from './jobs'
+import { decodeStartedJob, type Job } from './jobs'
 import { swedebeatError } from './swedebeatMatch'
 import type { CatalogueKey } from '../i18n/en'
 import { t } from '../i18n/t'
@@ -162,7 +162,7 @@ export async function actOnStudioList(
   idempotencyKey: string,
 ): Promise<Job> {
   const body = position === null ? {} : { position }
-  return decodeJob(await post(`${base(classId, revisionId)}/${action}`, body, { 'Idempotency-Key': idempotencyKey }))
+  return decodeStartedJob(await post(`${base(classId, revisionId)}/${action}`, body, { 'Idempotency-Key': idempotencyKey }))
 }
 
 /** `{limit, count}` of a `revision_limit` refusal (409), the class's song changes against its limit. */

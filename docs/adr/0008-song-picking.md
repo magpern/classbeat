@@ -206,6 +206,8 @@ is unknown. The analysis therefore waits, up to `CLASSBEAT_SPOTIFY_POOL_SYNC_WAI
 decision for an amendment, not a switch: a **fresh pool playlist per pick** (the same create and replace
 code, the old one left in the user's Spotify), recorded in Alternatives.
 
+> *(2026-11-16, [ADR 0036](0036-swedebeat-studio.md) §9: for a SwedeBeat studio list, a failed working-playlist write, including a retryable category, is no longer retried by the job: it becomes the list's sync state, and the user retries it with "Sync again".)*
+
 **Privacy wording** (roadmap §2): the page and the consent say a non-public playlist does not appear on
 the profile or in search but anyone with its link can open it. Playlist URLs and ids are never in
 events, SSE, logs or model input; the owner sees a link to their own final playlist on their class page

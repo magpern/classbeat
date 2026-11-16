@@ -228,3 +228,17 @@ def test_thirty_and_thirty_over_a_three_decimal_minute_is_refused_as_the_library
     clamped["tracks"][1] = {"reference": "b", "start_sec": 0, "end_sec": 60.0}
     with pytest.raises(ValueError, match="incoming plus outgoing"):
         compose.compose_map(_odd_maps(), clamped)  # the library agrees
+
+
+def test_a_cut_snapped_to_a_downbeat_just_past_the_length_is_clamped_to_it() -> None:
+    # SR C8 carry-over from #1112's review: the clamp in ``_snap`` (``min(..., end)``). With the
+    # first downbeat at 0.006 s and 2 s bars, 59.5 s snaps to the downbeat 60.006 s, past the
+    # 60.005 s track. Clamped to cs(60.005) = 6000 cs, the window is 60.00 s and 30 + 30 s of
+    # crossfade overlap; unclamped (60.01 s, 6001 cs) they would pass.
+    early = {**ODD, "b": TrackFacts(length=60.005, bpm=120.0, first_downbeat=0.006)}
+    value = spec(("a", 0, 300.0), ("b", 0, 59.5), ("c", 0, 300.0), crossfades=[30, 30])
+    with pytest.raises(MixPlanRefused) as caught:
+        checked(value, ORDER, early)
+    assert caught.value.reason == "crossfades_overlap"
+    good = checked({**value, "crossfades": [30, 29]}, ORDER, early)
+    assert good["tracks"][1]["end_sec"] == 60.0  # never the downbeat 60.01 past the file

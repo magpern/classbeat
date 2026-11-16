@@ -121,6 +121,10 @@ services:
     restart: "no"
     user: "0:0" # writes the CA bundle to a shared volume and binds :443 (test-only service)
     command: ["python", "/fake/server.py"]
+    environment:
+      # SR C8: every catalogue track downloads 240 s of generated silence (the match's length),
+      # so the studio e2e renders and merge-publishes a real mix.
+      FAKE_GATEWAY_AUDIO_SECONDS: "240"
     volumes:
       - ./e2e/fake-gateway:/fake:ro
       - ./backend/tests/gatewaycore.py:/fake-core/gatewaycore.py:ro
@@ -145,6 +149,10 @@ services:
       CLASSBEAT_SWEDEBEAT_ENABLED: "true"
       # ADR 0035 section 9: the fake gateway's https alias (its CA is in the bundle below).
       CLASSBEAT_SWEDEBEAT_GATEWAY_URL: https://gateway.classbeat-e2e.test
+      # ADR 0036 section 10 (SR C8): the studio and its SwedeBeat outputs, on the fake gateway in
+      # the e2e stack only (the default stack keeps the setting empty). A studio class is started
+      # only by its own request; every other flow is unchanged.
+      CLASSBEAT_SWEDEBEAT_STUDIO: design,swedebeat_playlist,swedebeat_mix
       # ADR 0028: the MOWL QR is on by default, and the e2e fake MOWL has no QR endpoint, so the
       # specs connect MOWL with the password form (the dialog then has no Scan tab).
       CLASSBEAT_MOWL_QR_ENABLED: "false"
@@ -321,6 +329,7 @@ services:
       CLASSBEAT_SWEDEBEAT_ENABLED: "true"
       # ADR 0035 section 9: the fake gateway, as web's.
       CLASSBEAT_SWEDEBEAT_GATEWAY_URL: https://gateway.classbeat-e2e.test
+      CLASSBEAT_SWEDEBEAT_STUDIO: design,swedebeat_playlist,swedebeat_mix  # as web's (SR C8)
       CLASSBEAT_RUNNING_ENABLED: "true"
       CLASSBEAT_SOUNDLESS_ENABLED: "true"
       SSL_CERT_FILE: /fake-ca/bundle.pem

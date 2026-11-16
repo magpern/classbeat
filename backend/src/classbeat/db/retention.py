@@ -184,6 +184,16 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
             "account",
             "spotify_connection",
         ),
+        # ADR 0036 section 9 (SR C8): a revision's Spotify sync state and the ordered Spotify track
+        # ids it wrote. Gone with the class, the account and the Spotify connection (Disconnect and
+        # an account change, ``forget_spotify_account``).
+        "spotify_syncs": _entry(
+            "track_ids",
+            "target lock_key fill_key state detail",
+            "class",
+            "account",
+            "spotify_connection",
+        ),
         # ADR 0011 section 1 (M5): plans, credits and their lock rows go with the account; none
         # holds Spotify-derived data. The note is the admin's own text about the grant.
         "entitlements": _entry("note", "plan_id source", "account"),

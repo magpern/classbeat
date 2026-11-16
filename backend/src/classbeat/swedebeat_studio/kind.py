@@ -14,7 +14,12 @@ revision and the wait for the user's one approval (ADR 0008 section 5).
   (``edit``). Their models are the ``songs`` stage group's.
 - ``working_copy``: the pool playlist (the user's working copy) follows the list, in order
   (``playlists.write_pool``: the owner check, a replace of exactly those tracks, read back). The
-  user's own playlists are never modified.
+  user's own playlists are never modified. Its state belongs to the new revision (ADR 0036
+  section 9, SR C8; ``playlists.sync``): the revision's id is chosen first, the row is intended
+  ``pending``, the write holds the pool's lock and re-checks the intended revision in each decide
+  step, and the row ends ``synced`` or ``failed``. **A failed sync never fails the job**: the list
+  is stored and waits for its approval, and the user sees the state with "Sync again". Only a
+  lost lease ends the job here.
 - **The store**, in the final fenced transaction: both connections still the ones the run used
   (``not_connected``), a class still with music, then the revision; the runner sets
   ``waiting_for_approval``.
@@ -25,6 +30,7 @@ revision and the wait for the user's one approval (ADR 0008 section 5).
 Registered in ``classbeat.jobs.KINDS`` on import, by the worker and the web app.
 """
 
+import uuid
 from typing import Any, Final
 
 from sqlalchemy import text
@@ -45,7 +51,7 @@ from classbeat.jobs import (
     JobRun,
 )
 from classbeat.jobs.kinds import Outcome
-from classbeat.playlists import open_spotify, write_pool
+from classbeat.playlists import open_spotify, sync, write_pool
 from classbeat.quota.route import with_plan, with_plan_run
 from classbeat.songs import config as song_config
 from classbeat.songs.search import job_searcher
@@ -66,6 +72,7 @@ STAGES: Final = (
 _APPROVED = text(
     "SELECT class_id, approval_revision_id FROM jobs WHERE id = :job_id AND owner_id = :owner_id"
 )
+_JOB_CLASS = text("SELECT class_id FROM jobs WHERE id = :job_id AND owner_id = :owner_id")
 
 
 async def _prepare(run: JobRun, given: StudioSongsInput) -> song_list.StudioList | None:
@@ -179,7 +186,22 @@ async def run(job_run: JobRun) -> Outcome:
         parent_id=given.the_seed.song_list_revision_id if seed is not None else None,
     )
     await job_run.stage("working_copy")
-    await write_pool(job_run, keyring, spotify, built.track_ids)
+    # One id per job, not per attempt: a retried pick re-intends the same sync row instead of
+    # leaving a ``pending`` one for a revision that was never stored. The revision is stored once,
+    # with the job's approval, so the id is never taken twice.
+    revision_id = uuid.uuid5(job_run.lease.job_id, "studio-songs:working-copy")
+    async with job_run.fenced() as fs:
+        class_id = (await fs.db.execute(_JOB_CLASS, fs.lease.params())).scalar_one()
+        working = await sync.intend(
+            fs.db, fs.lease.owner_id, class_id, revision_id, "working_copy", built.track_ids
+        )
+
+    async def write() -> None:
+        await write_pool(
+            job_run, keyring, spotify, built.track_ids, recheck=sync.recheck(job_run, working)
+        )
+
+    await sync.run_sync(job_run, working, write, requeue_busy=False)
 
     async def store(fs: FencedSession) -> tuple[Any, bytes]:
         if not await hold(fs.db, fs.lease.ctx, spotify) or not await hold(
@@ -187,7 +209,7 @@ async def run(job_run: JobRun) -> Outcome:
         ):
             raise JobFailure("not_connected")
         await music_kind.check_stored(fs, soundless=False, studio=True)
-        return await built.store(fs), built.content_hash
+        return await built.store(fs, revision_id), built.content_hash
 
     return AwaitApproval(store)
 

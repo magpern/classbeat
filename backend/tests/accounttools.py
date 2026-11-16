@@ -198,6 +198,15 @@ class Person:
             rev=self.found.list_rev,
         )
         self.sql("INSERT INTO studio_output_starts (owner_id) VALUES (:u)", u=u)
+        # ADR 0036 section 9 (SR C8): a revision's working-copy sync state.
+        self.sql(
+            "INSERT INTO spotify_syncs (owner_id, class_id, revision_id, target, lock_key, "
+            "track_ids, state) VALUES (:u, :c, :rev, 'working_copy', 'working_copy', "
+            "'[]'::jsonb, 'synced')",
+            u=u,
+            c=class_id,
+            rev=self.found.list_rev,
+        )
         code_id = self.sql(
             "INSERT INTO redeem_codes (code_hash, label, plan_id, grant_days, max_redemptions, "
             "expires_at) VALUES (:hash, 'gdpr', 'instructor', 30, 5, now() + interval '30 days') "

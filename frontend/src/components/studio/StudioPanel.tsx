@@ -7,6 +7,7 @@ import { Card, CardTitle } from '../ui/card'
 import { StudioStartDesign } from './StudioStartDesign'
 import { StudioOutputs } from './StudioOutputs'
 import { StudioOutputStates } from './StudioOutputStates'
+import { StudioSpotifySync } from './StudioSpotifySync'
 import { outputLimitReached } from './studioAction'
 import { useStudioOutputs } from './useStudioOutputs'
 import { StudioTimeline } from './StudioTimeline'
@@ -47,6 +48,7 @@ export function StudioPanel({ summary, view, studioList }: { summary: ClassSumma
         <StudioOutputStates classId={summary.id} outputs={loaded.outputs} onChange={outputs.replace} />
       ) : null}
       {outputs.load.status === 'failed' ? <Notice kind="error">{t('studio.os.loadFailed')}</Notice> : null}
+      <StudioSpotifySync classId={summary.id} revisionId={view.timeline.revisionId} target="final" />
       {current && outputs.load.status !== 'loading' ? (
         <StudioOutputs
           classId={summary.id}

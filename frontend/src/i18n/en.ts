@@ -2186,6 +2186,42 @@ export const en = {
     'Choose at least one output.',
   'studio.out.noneEnabled':
     'No output is available right now. Try again later.',
+  'studio.sync.working_copy':
+    'Spotify working playlist',
+  'studio.sync.final':
+    'Final Spotify playlist',
+  'studio.sync.state.synced':
+    'up to date',
+  'studio.sync.state.pending':
+    'updating',
+  'studio.sync.state.failed':
+    'not updated',
+  'studio.sync.again':
+    'Sync again',
+  'studio.sync.againFailed':
+    'The sync did not start. Try again.',
+  'studio.sync.notBlocking':
+    'This never stops the SwedeBeat outputs.',
+  'studio.sync.detail.superseded':
+    'It now follows a newer song list. Sync again to make it follow this one.',
+  'studio.sync.detail.not_connected':
+    'Connect Spotify again, then sync again.',
+  'studio.sync.detail.consent_missing':
+    'Allow the working playlist in your Spotify settings, then sync again.',
+  'studio.sync.detail.pool_missing':
+    'The working playlist was deleted in Spotify. Sync again to make a new one.',
+  'studio.sync.detail.rate_limited':
+    'Spotify asked us to slow down. Sync again in a minute.',
+  'studio.sync.detail.final.superseded':
+    'It now follows a newer version of this class. Sync again to make it follow this one.',
+  'studio.sync.detail.final.consent_missing':
+    'Spotify did not allow the change. Check your Spotify connection, then sync again.',
+  'studio.sync.detail.final.pool_missing':
+    'Spotify could not find the final playlist. Sync again.',
+  'studio.sync.detail.interrupted':
+    'The sync stopped before it finished. Sync again.',
+  'studio.sync.detail.other':
+    'Spotify did not take the change. Sync again.',
   'studio.os.title':
     'Output status',
   'job.failure.output_limit.title':

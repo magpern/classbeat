@@ -45,6 +45,8 @@ _CLEAR_POOL_PLAYLIST = text(
     "updated_at = now() WHERE owner_id = :owner_id AND id = :pool_id "
     "AND playlist_id = :playlist_id RETURNING id"
 )
+# ADR 0036 section 9 (SR C8): every revision's sync state names that Spotify account's playlists.
+_FORGET_SYNCS = text("DELETE FROM spotify_syncs WHERE owner_id = :owner_id")
 _DETACH_PLAYLISTS = text(
     "UPDATE class_playlists SET detached_at = now(), updated_at = now() "
     "WHERE owner_id = :owner_id AND detached_at IS NULL"
@@ -85,7 +87,9 @@ async def pool_missing(db: AsyncSession, owner_id: UUID, pool_id: UUID, playlist
 
 async def forget_spotify_account(db: AsyncSession, owner_id: UUID) -> None:
     """Disconnect and an account change (ADR 0009 section 7): every Spotify operation row, the
-    consent row, and every live class playlist detached. The connection row is the caller's."""
+    consent row, every live class playlist detached, and every revision's sync state (SR C8). The
+    connection row is the caller's."""
     await db.execute(_FORGET_ALL_OPERATIONS, {"owner_id": owner_id})
     await db.execute(_DELETE_POOL, {"owner_id": owner_id})
     await db.execute(_DETACH_PLAYLISTS, {"owner_id": owner_id})
+    await db.execute(_FORGET_SYNCS, {"owner_id": owner_id})

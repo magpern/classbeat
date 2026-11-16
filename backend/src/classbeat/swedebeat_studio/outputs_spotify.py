@@ -5,10 +5,17 @@ the approved studio ``song_list`` revision, the absolute fill, read back). Its k
 approval's (``out:...:spotify_playlist:<n>:spotify_create`` and ``...:spotify_fill``), so a later
 job for the same approval finds the earlier rows and makes no second playlist. It needs no
 SwedeBeat write, no render and no MOWL.
+
+The fill is the approved draft's **sync** (ADR 0036 section 9, SR C8; ``playlists.sync``): a
+``final`` row for the draft, intended ``pending``, the fill under the playlist's lock with the
+intended revision re-checked in its decide step, then ``synced`` or ``failed``. A failed fill is
+both the sync's state and this output's (as before: the other outputs go on, the job's retry or
+the user's actions settle it); the sync names the output's own fill key, so "Sync again" settles
+the same operation and the output's derived state with it.
 """
 
 from classbeat.jobs import JobFailure
-from classbeat.playlists import fill_final_playlist, open_spotify
+from classbeat.playlists import fill_final_playlist, open_spotify, sync
 from classbeat.playlists.final import create_final_playlist
 from classbeat.swedebeat_studio.outputs_attempt import mark
 from classbeat.swedebeat_studio.outputs_job import Producer
@@ -45,13 +52,30 @@ async def spotify_playlist(p: Producer, row: OutputRow) -> None:
         key=keys["spotify_create"],
     )
     await mark(p, row, "running", playlist_id=made.playlist_id)
-    await fill_final_playlist(
-        p.run,
-        p.keyring,
-        opened,
-        class_id=p.class_id,
-        class_playlist_id=made.id,
-        track_ids=track_ids(p),
-        key=keys["spotify_fill"],
-    )
+    ids = track_ids(p)
+    async with p.run.fenced() as fs:
+        final = await sync.intend(
+            fs.db,
+            p.owner_id,
+            p.class_id,
+            p.given.revision_id,
+            "final",
+            ids,
+            made.id,
+            keys["spotify_fill"],
+        )
+
+    async def write() -> None:
+        await fill_final_playlist(
+            p.run,
+            p.keyring,
+            opened,
+            class_id=p.class_id,
+            class_playlist_id=made.id,
+            track_ids=ids,
+            key=keys["spotify_fill"],
+            recheck=lambda playlist_id, key: sync.final_recheck(p.run, final, playlist_id, key),
+        )
+
+    await sync.run_sync(p.run, final, write, requeue_busy=True, reraise=True)
     await mark(p, row, "done")

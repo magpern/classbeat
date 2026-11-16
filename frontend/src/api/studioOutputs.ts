@@ -1,6 +1,6 @@
 import { ApiError, get, post } from './client'
 import { count, flag, list, object, optionalCount, optionalText, text } from './decode'
-import { decodeJob, type Job } from './jobs'
+import { decodeJob, decodeStartedJob, type Job } from './jobs'
 
 // A studio class's timeline, its design start, its chat revise and its output choice (ADR 0036
 // sections 4 to 6; backend `classes/studio_timeline.py`, `studio_outputs_routes.py`,
@@ -136,7 +136,7 @@ export async function getTimeline(classId: string, signal?: AbortSignal): Promis
 /** "Approve" is done: design the class on the approved list (no credit; the pick committed it). */
 export async function startStudioDesign(classId: string, revisionId: string, idempotencyKey: string): Promise<Job> {
   const path = `${classBase(classId)}/studio-songs/${encodeURIComponent(revisionId)}/design`
-  return decodeJob(await post(path, {}, { 'Idempotency-Key': idempotencyKey }))
+  return decodeStartedJob(await post(path, {}, { 'Idempotency-Key': idempotencyKey }))
 }
 
 export interface StudioReviseInput {
@@ -182,5 +182,5 @@ export async function chooseOutputs(
   idempotencyKey: string,
 ): Promise<Job> {
   const body = { revision_id: input.revisionId, content_hash: input.contentHash, outputs: input.outputs }
-  return decodeJob(await post(`${classBase(classId)}/outputs`, body, { 'Idempotency-Key': idempotencyKey }))
+  return decodeStartedJob(await post(`${classBase(classId)}/outputs`, body, { 'Idempotency-Key': idempotencyKey }))
 }

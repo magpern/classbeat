@@ -56,6 +56,30 @@ export function isTerminal(state: string): boolean {
   return TERMINAL_STATES.includes(state)
 }
 
+/**
+ * A job a studio route started (`{job_id, kind, state}`: backend `StudioJobOut`), as a `Job`. The
+ * jobs API's own answers name it `id`; both are read, so a page follows the job either way.
+ */
+export function decodeStartedJob(value: unknown): Job {
+  const item = object(value, 'job')
+  if (!('job_id' in item)) return decodeJob(item)
+  const state = text(item, 'state')
+  return {
+    id: text(item, 'job_id'),
+    kind: optionalText(item, 'kind') ?? '',
+    state: STATES.includes(state) ? (state as JobState) : 'failed',
+    stage: null,
+    classId: '',
+    cancelRequested: false,
+    errorCategory: null,
+    errorMessage: null,
+    sentence: null,
+    approvalRevisionId: null,
+    expiresAt: null,
+    approvedAt: null,
+  }
+}
+
 export function decodeJob(value: unknown): Job {
   const item = object(value, 'job')
   const state = text(item, 'state')

@@ -66,6 +66,7 @@ SECRET_COLUMNS: dict[str, frozenset[str]] = {
         "swedebeat_mix_maps": "mix_id name playlist_id map",
         "swedebeat_track_maps": "reference sha256 map",
         "class_outputs": "external_id detail",
+        "spotify_syncs": "track_ids",
         "redeem_codes": "code_hash",
         "admin_audit": "ip_hash",
         # ADR 0034 section 2: an event's single-use id; the consent stays the user's.

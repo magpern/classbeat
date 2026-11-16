@@ -23,8 +23,9 @@ are ``{"detail": <string>}`` otherwise.
   ``playlist`` mode is a ``422`` here: classbeat never sends it (ADR 0035 section 7). Each
   catalogue track's ``reference`` is ``reference_of(title, artist)``, the same on every answer.
   ``add_flaky`` makes a catalogue track answer ``missing`` a few times first (a transient miss).
-- **Download** serves ``audio`` (reference to bytes): every catalogue track has ``FIXTURE_MP3``
-  (a few silent MPEG-1 Layer III frames, generated here), and ``add_audio`` adds a test's own.
+- **Download** serves ``audio`` (reference to bytes): every catalogue track has
+  ``default_audio``, ``FIXTURE_MP3`` (a few silent MPEG-1 Layer III frames, generated here)
+  unless the e2e server sets a longer one, and ``add_audio`` adds a test's own.
   After the key and the bearer: a reference outside the gateway's shape is ``422`` (a string
   ``detail``), one without a file ``404``. The answer is ``audio/mpeg`` with
   ``Content-Disposition``, as the gateway streams it.
@@ -185,6 +186,8 @@ class FakeGateway:
     # Fields added to every answered track (planted values a test checks are never kept).
     track_extras: dict[str, Any] = field(default_factory=lambda: dict[str, Any]())
     audio: dict[str, bytes] = field(default_factory=lambda: dict[str, bytes]())
+    # What every catalogue track downloads (the e2e server may set a longer one, SR C8).
+    default_audio: bytes = FIXTURE_MP3
     # A catalogue track answered ``missing`` this many more times first (a transient miss).
     flaky: dict[tuple[str, str], int] = field(default_factory=lambda: dict[tuple[str, str], int]())
     # SR C7: the playlists by id ({email, name, tracks, public}) and the merged mixes, in order.
@@ -210,7 +213,7 @@ class FakeGateway:
     def add_track(self, title: str, artist: str, status: str) -> None:
         """``status`` is ``found`` or ``unsure``; any other song is ``missing``."""
         self.catalogue[(title.strip().casefold(), artist.strip().casefold())] = status
-        self.audio[reference_of(title, artist)] = FIXTURE_MP3
+        self.audio[reference_of(title, artist)] = self.default_audio
 
     def add_flaky(self, title: str, artist: str, misses: int = 1) -> None:
         """The catalogue track ``(title, artist)`` answers ``missing`` ``misses`` more times."""
@@ -550,7 +553,8 @@ class FakeGateway:
         return {"requests": calls, "playlists": playlists, "mixes": mixes}
 
     def control(self, path: str, query: dict[str, str]) -> Reply:
-        """The e2e stack's control (``/__e2e/...``): reset, state, catalogue, inject."""
+        """The e2e stack's control (``/__e2e/...``): reset, state, catalogue, inject, and
+        ``audio`` (the SHA-256 of what every catalogue track downloads)."""
         name = path.removeprefix(CONTROL)
         if name == "reset":
             self.reset()
@@ -562,6 +566,8 @@ class FakeGateway:
                 for pair in filter(None, query.get(status, "").split("|")):
                     title, _, artist = pair.partition("~")
                     self.add_track(title, artist or "The Invented Band", status)
+        elif name == "audio":
+            return _reply(200, {"sha256": hashlib.sha256(self.default_audio).hexdigest()})
         elif name == "writes":
             self.writes_enabled = query.get("on", "1") == "1"
         elif name == "inject" and query.get("kind"):

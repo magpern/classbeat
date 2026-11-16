@@ -48,6 +48,7 @@ from classbeat.jobs import JobFailure, JobRun
 from classbeat.operations.kinds import SPOTIFY_CREATE_KIND, SPOTIFY_REPLACE_KIND
 from classbeat.operations.requests import NOT_ACTIONABLE_SQL, Guard
 from classbeat.playlists import common, create, replace
+from classbeat.playlists.lock import WORKING_COPY, playlist_lock
 
 PROVIDER: Final = "spotify"
 
@@ -154,9 +155,17 @@ async def _supersede_one(
 
 
 def _guard(
-    run: JobRun, opened: OpenConnection, pool: Pool, kind: str, key: str, playlist_id: str | None
+    run: JobRun,
+    opened: OpenConnection,
+    pool: Pool,
+    kind: str,
+    key: str,
+    playlist_id: str | None,
+    recheck: Guard | None = None,
 ) -> Guard:
     async def guard(db: AsyncSession) -> bool:
+        if recheck is not None and not await recheck(db):
+            return False
         if not await hold(db, run.ctx, opened):
             return False
         found = await read_pool(db, run.lease.owner_id)
@@ -188,10 +197,16 @@ async def current_pool(run: JobRun, opened: OpenConnection) -> Pool:
     return pool
 
 
-async def create_pool(run: JobRun, keyring: KeyRing, opened: OpenConnection, pool: Pool) -> str:
+async def create_pool(
+    run: JobRun,
+    keyring: KeyRing,
+    opened: OpenConnection,
+    pool: Pool,
+    recheck: Guard | None = None,
+) -> str:
     """The pool playlist, created under this job's own key and a new ``ref``."""
     key = create.pool_key(run.lease.job_id)
-    guard = _guard(run, opened, pool, SPOTIFY_CREATE_KIND, key, None)
+    guard = _guard(run, opened, pool, SPOTIFY_CREATE_KIND, key, None, recheck)
     request = create.pool_request(run.lease.owner_id, run.lease.job_id, pool.id, guard)
     return await create.create(run, keyring, opened, request, common.POOL_NAME)
 
@@ -203,9 +218,10 @@ async def replace_pool(
     pool: Pool,
     playlist_id: str,
     track_ids: tuple[str, ...],
+    recheck: Guard | None = None,
 ) -> None:
     key = replace.pool_key(run.lease.job_id, common.ids_hash(track_ids))
-    guard = _guard(run, opened, pool, SPOTIFY_REPLACE_KIND, key, playlist_id)
+    guard = _guard(run, opened, pool, SPOTIFY_REPLACE_KIND, key, playlist_id, recheck)
     request = replace.replace_request(key, "pool", playlist_id, track_ids, guard, pool_id=pool.id)
     try:
         await replace.replace(run, keyring, opened, request, track_ids)
@@ -217,16 +233,26 @@ async def replace_pool(
 
 
 async def write_pool(
-    run: JobRun, keyring: KeyRing, opened: OpenConnection, track_ids: tuple[str, ...] | list[str]
+    run: JobRun,
+    keyring: KeyRing,
+    opened: OpenConnection,
+    track_ids: tuple[str, ...] | list[str],
+    *,
+    recheck: Guard | None = None,
 ) -> PoolWrite:
-    """Ensure the pool playlist and set it to exactly ``track_ids`` (read back and compared)."""
+    """Ensure the pool playlist and set it to exactly ``track_ids`` (read back and compared).
+
+    The whole write holds the pool's lock (``playlists.lock``, ADR 0036 section 9), so an earlier
+    write still in flight finishes first; ``recheck`` (a revision's sync, ``playlists.sync``)
+    runs first in the decide step of the create and of the replace."""
     ids = common.check_track_ids(track_ids)
-    pool = await current_pool(run, opened)
-    created = False
-    playlist_id = pool.playlist_id
-    if playlist_id is None:
-        playlist_id = await create_pool(run, keyring, opened, pool)
-        pool = Pool(pool.id, playlist_id, pool.account)
-        created = True
-    await replace_pool(run, keyring, opened, pool, playlist_id, ids)
+    async with playlist_lock(run.factory, run.lease.owner_id, WORKING_COPY):
+        pool = await current_pool(run, opened)
+        created = False
+        playlist_id = pool.playlist_id
+        if playlist_id is None:
+            playlist_id = await create_pool(run, keyring, opened, pool, recheck)
+            pool = Pool(pool.id, playlist_id, pool.account)
+            created = True
+        await replace_pool(run, keyring, opened, pool, playlist_id, ids, recheck)
     return PoolWrite(pool.id, playlist_id, created, len(ids))

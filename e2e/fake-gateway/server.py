@@ -10,7 +10,9 @@ worker trust a bundle of the other fakes' throwaway CAs plus this process's (wri
 The fake itself is `backend/tests/gatewaycore.py`, mounted at /fake-core: the same code the
 backend tests run in-process, so the two cannot drift. It serves `/auth/login`, `/auth/session`,
 `/catalog/match` and `GET /tracks/{reference}/download` (ADR 0036 section 8): every catalogue
-track's download is the core's fixture audio, a few silent generated MP3 frames. For the studio
+track's download is the core's fixture audio, a few silent generated MP3 frames, or with
+`FAKE_GATEWAY_AUDIO_SECONDS` that many seconds of generated silence (SR C8: a mix the studio
+renders). For the studio
 outputs (SR C7) it also serves `POST /playlists`, `POST /playlists/{id}/publish`,
 `POST /playlists/merge-publish` (an S3-style URL, the body's sha256 kept) and
 `GET /playlists/shared`; `/__e2e/writes?on=0` turns the write guard on (`403`).
@@ -21,7 +23,8 @@ output.
 
 Public test data: the accounts in ACCOUNTS. `/__e2e/...` is the test control, reached from the
 compose network only: `reset`, `state` (every request without a header value, password, key or
-bearer), `catalogue?found=Title~Artist|...&unsure=...` and `inject?kind=...&path=...`.
+bearer), `catalogue?found=Title~Artist|...&unsure=...`, `inject?kind=...&path=...` and `audio` (the
+SHA-256 of what every catalogue track downloads).
 """
 
 import datetime
@@ -49,10 +52,31 @@ ACCOUNTS = (
 )
 
 
+def silent_mp3(seconds: float) -> bytes:
+    """``seconds`` of stereo silence at 44.1 kHz as a 320 kb/s MP3, through the libsndfile
+    encoder the render uses (the app image's ``soundfile``): what every catalogue track downloads
+    when ``FAKE_GATEWAY_AUDIO_SECONDS`` is set, so a studio mix (SR C8) can be rendered on the
+    stack. Generated here, never fetched."""
+    import io
+
+    import numpy
+    import soundfile
+
+    out = io.BytesIO()
+    frames = numpy.zeros((round(seconds * 44100), 2), dtype="float32")
+    soundfile.write(
+        out, frames, 44100, format="MP3", subtype="MPEG_LAYER_III", compression_level=0.0
+    )
+    return out.getvalue()
+
+
 def seeded() -> gatewaycore.FakeGateway:
     with open(KEY_FILE, encoding="utf-8") as handle:
         key = handle.read().strip()
     fake = gatewaycore.FakeGateway({key})
+    seconds = os.environ.get("FAKE_GATEWAY_AUDIO_SECONDS")
+    if seconds:
+        fake.default_audio = silent_mp3(float(seconds))
     for email, password in ACCOUNTS:
         fake.add_user(email, password)
     return fake

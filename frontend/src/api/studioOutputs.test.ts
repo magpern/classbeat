@@ -17,3 +17,19 @@ describe('the output choice', () => {
     expect(toggleOutput(['spotify_playlist'], 'spotify_playlist', true)).toEqual(['spotify_playlist'])
   })
 })
+
+describe('a job a studio route started', () => {
+  it('is followed by its job_id, as the routes answer (StudioJobOut)', async () => {
+    const { fakeApi, json } = await import('../test/fakeApi')
+    const { chooseOutputs, startStudioDesign } = await import('./studioOutputs')
+    const started = { job_id: '44444444-4444-4444-8444-444444444444', kind: 'produce_outputs', state: 'queued' }
+    fakeApi({
+      'POST /api/classes/c1/outputs': () => json(started, 201),
+      'POST /api/classes/c1/studio-songs/r1/design': () => json({ ...started, kind: 'studio_design' }, 201),
+    })
+    const outputs = await chooseOutputs('c1', { revisionId: 'r1', contentHash: 'ab'.repeat(32), outputs: ['spotify_playlist'] }, 'k'.repeat(20))
+    expect(outputs.kind).toBe('produce_outputs')
+    expect(outputs.id).toBe(started.job_id)
+    expect((await startStudioDesign('c1', 'r1', 'k'.repeat(20))).id).toBe(started.job_id)
+  })
+})
