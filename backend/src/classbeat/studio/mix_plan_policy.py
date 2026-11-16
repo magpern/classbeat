@@ -20,12 +20,12 @@ it with its cuts snapped and rounded, or raises ``MixPlanRefused`` with one name
 - ``mix_too_long``: the one duration rule (the windows less the crossfades) over ``MAX_TOTAL_SEC``.
 
 **Snapping.** A cut moves to the nearest downbeat of the track's grid (its first downbeat plus
-whole bars at its BPM). A start of 0 and an end at the track's length stay the file's own edges.
-Cuts are stored rounded to 0.01 s, the app's precision. **Every comparison is in whole
-hundredths of a second** (``cs``, as ``mowl.compose`` computes), so a window the library plays is
-never refused here and a plan this policy passes never fails ``compose_map`` on a rule of its own
-(SR C5b): a 60.00 s window is 6000 cs whatever its start, and 30 + 30 s of crossfade over it is not
-shorter.
+whole bars at its BPM). A start of 0 stays the file's start, and an end within 0.01 s of the
+track's length, or past it once snapped, is **clamped to the length in whole hundredths**
+(``cs(length)``), as ``mowl.compose._clamp`` clamps a window to its file. Cuts are stored rounded
+to 0.01 s, the app's precision, and every comparison is in whole hundredths (``cs``, as
+``mowl.compose`` computes): a 60.00 s window is 6000 cs whatever its start, and a 60.005 s track
+plays 6000 cs, not 6001, so 30 + 30 s of crossfade over it is refused here as it would be there.
 """
 
 import math
@@ -72,11 +72,12 @@ def cs(sec: float) -> int:
 def _snap(at: float, facts: TrackFacts) -> float:
     if at <= 0:
         return 0.0
+    end = cs(facts.length) / CS  # the file's end as the library clamps it (never round(length, 2))
     if cs(at) >= cs(facts.length) - 1:  # within the cut rounding of the end: the file's end
-        return round(facts.length, 2)
+        return end
     bar = 240.0 / facts.bpm
     nearest = facts.first_downbeat + round((at - facts.first_downbeat) / bar) * bar
-    return round(min(max(nearest, 0.0), facts.length), 2)
+    return min(round(max(nearest, 0.0), 2), end)
 
 
 def _track(raw: object, facts: Mapping[str, TrackFacts]) -> tuple[str, float, float]:
