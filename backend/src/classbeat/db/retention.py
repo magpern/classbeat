@@ -108,6 +108,18 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # The daily limit of track downloads: no content; a user's rows past 48 hours go with
         # their next one, all with the account.
         "swedebeat_track_downloads": _entry("", "", "account"),
+        # ADR 0036 section 6 (SR C7): each output attempt of an approved studio draft: the
+        # published SwedeBeat playlist id or mix URL, the MOWL PlaylistID, the final Spotify
+        # playlist id, and ``detail`` (the stored names, body with catalogue references and the
+        # list's titles, render plan, analysed sha256s). Gone with the class (and its revision)
+        # and the account; the MOWL output's rows also with the MOWL connection
+        # (``connections.forget.forget_mowl_account``).
+        "class_outputs": _entry(
+            "external_id detail", "output state", "class", "account", "mowl_connection"
+        ),
+        # The daily limit of studio output attempts: no content; a user's rows past 48 hours go
+        # with their next one, all with the account (a class delete never gives a fresh day).
+        "studio_output_starts": _entry("", "", "account"),
         # ADR 0016 section 7 (B2): the manual step. Mix ids only (the snapshot and the verified
         # mix). Gone with the class, the account, and the MOWL connection (Disconnect and an
         # account change). Rows expired for 7 days go in the hourly purge.

@@ -196,6 +196,8 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/design"): "owned",  # SR C5
     ("GET", "/api/classes/{class_id}/timeline"): "owned",  # SR C6a
     ("POST", "/api/classes/{class_id}/outputs"): "owned",  # SR C6a: the output choice
+    ("GET", "/api/classes/{class_id}/outputs"): "owned",  # SR C7: the per-output states
+    ("POST", "/api/classes/{class_id}/outputs/{output}/{action}"): "owned",  # SR C7: the actions
     ("GET", "/api/classes/{class_id}/interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/design-from-interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/interpret-again"): "owned",
@@ -629,6 +631,8 @@ class Rows:
         return {
             "rule_id": RULE_ID,
             "song": "1",
+            "output": "swedebeat_mix",
+            "action": "check-again",
             "class_id": self.class_id,
             "job_id": self.job_id,
             "revision_id": self.revision_id,
@@ -826,6 +830,15 @@ OWNED_ROUTES = [
         frozenset({404}),
         {"Idempotency-Key": STUDIO_KEY},
     ),
+    # SR C7 (test_studio_produce_*: another user's class is 404 with the studio on).
+    OwnedRoute("GET", "/api/classes/{class_id}/outputs", control=frozenset({404})),
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/outputs/{output}/{action}",
+        lambda rows: {"revision_id": str(rows.revision_id)},
+        frozenset({404}),
+        {"Idempotency-Key": STUDIO_KEY},
+    ),
     OwnedRoute("DELETE", "/api/classes/{class_id}", control=frozenset({200, 409})),
     OwnedRoute("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),
     OwnedRoute("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),
@@ -921,7 +934,9 @@ async def test_owned_routes_answer_404_for_another_users_ids(
     bob_rows = await plant(env, superuser, (await browsers(mowl=False)).user_id)
     alice: Actor = await make_actor(alice_rows.user)
     bob: Actor = await make_actor(bob_rows.user)
-    unknown = {n: uuid.UUID(UNKNOWN) for n in OWNED_PATH_PARAMS} | {"song": "1"}
+    unknown = {n: uuid.UUID(UNKNOWN) for n in OWNED_PATH_PARAMS} | {
+        "song": "1", "output": "swedebeat_mix", "action": "check-again",
+    }  # fmt: skip
     body = route.body(alice_rows) if route.body else None
     # What an id that exists nowhere gets is the reference answer.
     reference = await bob.call(route.method, fill(route.template, **unknown), body, route.headers)

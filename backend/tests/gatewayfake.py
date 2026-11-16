@@ -3,8 +3,9 @@ section 9): no socket, no network. ``gateway`` is a fake with two users and the 
 key; ``gateway_client(fake)`` is the production gateway client (``egress_gateway``'s builder,
 through ``swedebeat_gateway_test_client``) for ``ORIGIN`` over the fake. Public test values only.
 
-``gateway_api`` puts the fake behind ``classbeat.swedebeat_gateway.opener.open_client`` (the
-seam the web's login and the worker's match open their client through) for one test;
+``gateway_api`` puts the fake behind ``classbeat.swedebeat_gateway.opener.open_client`` and
+``open_upload_client`` (the seams the web's login, the worker's match and the studio's writes open
+their client through) for one test;
 ``GATEWAY_SETTINGS`` are the settings that make SwedeBeat available (the URL and the key).
 ``store_legacy_row`` writes a ``{token, device_id}`` row of the direct-SwedeBeat era (ADR 0015),
 which ``repository.save`` no longer takes.
@@ -64,12 +65,16 @@ def transport(fake: FakeGateway) -> httpx.MockTransport:
     """The fake behind an httpx transport, with its delays and trickles."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.raw_path.decode("ascii")
+        if fake._take(path.partition("?")[0], ("connect_error",)):  # pyright: ignore[reportPrivateUsage]
+            raise httpx.ConnectError("injected: no connection", request=request)
         raw = await request.aread()
         headers = {k.lower(): v for k, v in request.headers.items()}
-        path = request.url.raw_path.decode("ascii")
         reply: Reply = fake.handle(request.method, path, headers, raw)
         if reply.delay:
             await asyncio.sleep(reply.delay)
+        if reply.drop:  # the work is done; the connection is cut before the answer
+            raise httpx.ReadError("injected: connection lost", request=request)
         # A stream with the declared length, as a server sends it: never decoded on the way, so
         # a gzip answer reaches the client as the raw bytes.
         headers = dict(reply.headers)
@@ -90,10 +95,17 @@ def new_fake() -> FakeGateway:
 
 
 def gateway_client(
-    fake: FakeGateway, *, total_seconds: float = LOGIN_SECONDS, origin: str = ORIGIN
+    fake: FakeGateway,
+    *,
+    total_seconds: float = LOGIN_SECONDS,
+    origin: str = ORIGIN,
+    upload: bool = False,
 ) -> httpx.AsyncClient:
-    """The production client builder for ``origin`` over the fake."""
-    return swedebeat_gateway_test_client(origin, transport(fake), total_seconds=total_seconds)
+    """The production client builder for ``origin`` over the fake (``upload``: the
+    merge-publish's, with its own 900 s deadline)."""
+    return swedebeat_gateway_test_client(
+        origin, transport(fake), total_seconds=total_seconds, upload=upload
+    )
 
 
 @pytest.fixture
@@ -108,7 +120,11 @@ def gateway_api(monkeypatch: pytest.MonkeyPatch, gateway: FakeGateway) -> FakeGa
     def open_client(total_seconds: float) -> httpx.AsyncClient:
         return gateway_client(gateway, total_seconds=total_seconds)
 
+    def open_upload_client() -> httpx.AsyncClient:
+        return gateway_client(gateway, upload=True)
+
     monkeypatch.setattr(opener, "open_client", open_client)
+    monkeypatch.setattr(opener, "open_upload_client", open_upload_client)
     return gateway
 
 

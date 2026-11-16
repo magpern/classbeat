@@ -52,6 +52,9 @@ SECTIONS: tuple[Section, ...] = (
     _section("beat_one_corrections", "class_id, song, id", "fingerprint"),
     _section("saved_workouts", omit="content_hash state_hash"),
     _section("class_playlists", omit="content_hash"),
+    # ADR 0036 section 6 (SR C7): what each output attempt published, with its state; the stored
+    # names, body and render plan (``detail``) are the backend's, not something the user wrote.
+    _section("class_outputs", omit="detail"),
     _section("mowl_playlist_links"),
     # ADR 0034 section 5: what was published to the player, with the document hash omitted.
     _section("player_publications", omit="sent_document_hash"),
@@ -113,6 +116,8 @@ NOT_EXPORTED: Mapping[str, str] = MappingProxyType(
         "something the user wrote",
         "swedebeat_track_downloads": "the times track downloads started, for the daily limit "
         "(ADR 0036 section 4.1): no content, gone after two days, nothing the user wrote",
+        "studio_output_starts": "the times studio output attempts started, for the daily limit "
+        "(ADR 0036 section 6): no content, gone after two days, nothing the user wrote",
         "swedebeat_analyses": "the times new mix analyses started, for the daily limit (ADR 0016 "
         "section 7): no content, gone after two days, nothing the user wrote",
         "mail_handoff": "a 'class ready' mail on its way from the worker to the web process (ADR "

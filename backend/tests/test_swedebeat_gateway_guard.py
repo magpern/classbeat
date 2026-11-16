@@ -4,11 +4,14 @@ repository's own files, no network, no real key (the client key's own guards, se
 ``test_swedebeat_gateway_key_guard.py``'s):
 
 - the e2e stack names the fake gateway's https alias, and web and worker alone get the URL;
-- classbeat names no gateway path but ``/auth/login``, ``/auth/session``, ``/catalog/match`` and,
-  since SR C2, ``GET /tracks/{reference}/download`` as that exact template (no playlist write,
-  publish, merge-publish, other ``/tracks/`` path, ``preview`` or query, or catalogue search);
-  never the match's ``playlist`` mode, and the gateway modules name no ``PATCH``, ``PUT`` or
-  ``DELETE``. ``violations`` is the check; it is shown to fail on each forbidden shape;
+- classbeat names no gateway path but ``/auth/login``, ``/auth/session``, ``/catalog/match``,
+  since SR C2 ``GET /tracks/{reference}/download`` as that exact template, and since SR C7
+  ``POST /playlists``, ``POST /playlists/{playlist_id}/publish`` (that template),
+  ``POST /playlists/merge-publish`` and ``GET /playlists/shared`` (no other ``/playlists`` path,
+  so never the ``PATCH`` target ``/playlists/{id}``; no other ``/tracks/`` path, ``preview`` or
+  query, or catalogue search); never the match's ``playlist`` mode, and the gateway modules name
+  no ``PATCH``, ``PUT`` or ``DELETE``. ``violations`` is the check; it is shown to fail on each
+  forbidden shape;
 - the test client builder is referenced nowhere in ``classbeat`` but its own module.
 """
 
@@ -27,14 +30,26 @@ SRC = ROOT / "backend" / "src" / "classbeat"
 NAME = "swedebeat_gateway_key"
 E2E_URL = "https://gateway.classbeat-e2e.test"
 DOWNLOAD_TEMPLATE = "/tracks/{reference}/download"  # ADR 0036 section 8: opened by SR C2
-ALLOWED_PATHS = frozenset({"/auth/login", "/auth/session", "/catalog/match", DOWNLOAD_TEMPLATE})
-# The gateway's other routes (docs/api.md): writes, the preview, the search and the categories.
-# The write paths stay forbidden until C7 (ADR 0036 section 8); PATCH and the search for good.
-FORBIDDEN = ("/playlists", "/publish", "merge-publish", "/catalog/search")
+# ADR 0036 section 8: opened by SR C7. The publish is this template only (filled with a checked
+# id by ``write_policy.publish_path``); ``/playlists/{id}`` itself (PATCH's target) stays closed.
+PUBLISH_TEMPLATE = "/playlists/{playlist_id}/publish"
+PLAYLIST_PATHS = frozenset(
+    {"/playlists", PUBLISH_TEMPLATE, "/playlists/merge-publish", "/playlists/shared"}
+)
+ALLOWED_PATHS = frozenset(
+    {"/auth/login", "/auth/session", "/catalog/match", DOWNLOAD_TEMPLATE, *PLAYLIST_PATHS}
+)
+# The gateway's other routes (docs/api.md): the preview, the search and the categories; PATCH and
+# the search for good.
+FORBIDDEN = ("/catalog/search",)
 FORBIDDEN_METHODS = frozenset({"PATCH", "PUT", "DELETE"})
 GATEWAY_MODULES = ("classbeat.swedebeat_gateway", "classbeat.egress_gateway")
-# What can send a request to the gateway: the client module and the client builder's module.
-SENDERS = ("classbeat.swedebeat_gateway.client", "classbeat.egress_gateway")
+# What can send a request to the gateway: the client modules and the client builder's module.
+SENDERS = (
+    "classbeat.swedebeat_gateway.client",
+    "classbeat.swedebeat_gateway.writes",
+    "classbeat.egress_gateway",
+)
 
 pytestmark = pytest.mark.skipif(
     not (ROOT / "compose.yaml").is_file(), reason="not a full checkout (no compose.yaml)"
@@ -88,7 +103,7 @@ def test_the_production_value_is_in_the_examples_never_in_code() -> None:
         assert "192.168.1.222" not in path.read_text(encoding="utf-8"), path
 
 
-# --- No gateway path but the three ---------------------------------------------------------
+# --- No gateway path but the allowed ones ---------------------------------------------------------
 
 
 def _module(path: Path) -> str:
@@ -150,10 +165,14 @@ def violations(sources: list[tuple[str, ast.Module]]) -> list[tuple[str, str]]:
                 found.append((module, value))
             if "/tracks/" in value and value != DOWNLOAD_TEMPLATE:
                 found.append((module, value))
+            if "/playlists" in value and value not in PLAYLIST_PATHS:
+                found.append((module, value))  # another write, PATCH's target, a query
+            if "/publish" in value and value != PUBLISH_TEMPLATE:
+                found.append((module, value))
             if sender and "preview" in value.lower():  # the download's short preview
                 found.append((module, value))
             if module.startswith(GATEWAY_MODULES):
-                if "playlist" in value.lower():  # never that match mode, never a write
+                if value.strip().lower() == "playlist":  # never that match mode
                     found.append((module, value))
                 if value.strip().upper() in FORBIDDEN_METHODS:
                     found.append((module, value))
@@ -166,10 +185,11 @@ def test_classbeat_names_no_forbidden_gateway_string() -> None:
     assert violations(_sources()) == []
 
 
-def test_the_gateway_modules_and_their_callers_name_exactly_the_four_paths() -> None:
+def test_the_gateway_modules_and_their_callers_name_exactly_the_allowed_paths() -> None:
     gateway = [(m, t) for m, t in _sources() if _calls_the_gateway(m, t)]
     assert {m for m, _ in gateway} >= {
         "classbeat.swedebeat_gateway.client",
+        "classbeat.swedebeat_gateway.writes",
         "classbeat.egress_gateway",
         "classbeat.__main__",
         "classbeat.worker.__main__",
@@ -189,9 +209,13 @@ CLIENT = "classbeat.swedebeat_gateway.client"
 @pytest.mark.parametrize(
     ("module", "source"),
     [
-        (CLIENT, 'PATH = "/playlists"'),
-        (CLIENT, 'PATH = "/playlists/{id}/publish"'),
-        (CLIENT, 'PATH = "/playlists/merge-publish"'),
+        (CLIENT, 'PATH = "/playlists/{playlist_id}"'),  # PATCH's target
+        (CLIENT, 'PATH = "/playlists/{id}/publish"'),  # not the template
+        (CLIENT, 'PATH = f"/playlists/{pid}/publish"'),  # built otherwise
+        (CLIENT, 'PATH = "/playlists/shared?page=1"'),
+        (CLIENT, 'PATH = "/playlists/merge-publish/x"'),
+        (CLIENT, 'PATH = "/playlists/categories"'),
+        ("classbeat.studio", 'from classbeat.swedebeat_gateway import writes\nP = "/health"'),
         (CLIENT, 'PATH = "/catalog/search"'),
         (CLIENT, 'PATH = "/catalog/categories"'),
         (CLIENT, 'PATH = "/tracks/{reference}/download?preview=true"'),
@@ -213,7 +237,17 @@ def test_the_guard_fails_on_a_forbidden_path_or_method(module: str, source: str)
 
 
 @pytest.mark.parametrize(
-    "source", ['PATH = "/tracks/{reference}/download"', 'P = "/catalog/match"', 'M = "GET"']
+    "source",
+    [
+        'PATH = "/tracks/{reference}/download"',
+        'P = "/catalog/match"',
+        'M = "GET"',
+        'P = "/playlists"',
+        'P = "/playlists/{playlist_id}/publish"',
+        'P = "/playlists/merge-publish"',
+        'P = "/playlists/shared"',
+        'F = "playlist_id"',
+    ],
 )
 def test_the_guard_passes_the_allowed_paths(source: str) -> None:
     assert violations([(CLIENT, ast.parse(source))]) == []

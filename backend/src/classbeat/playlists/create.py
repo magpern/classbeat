@@ -2,7 +2,8 @@
 the user's own Spotify account, as an external operation. Create only: the tracks are written by
 ``spotify_replace_items`` afterwards, so the id exists on a row between the two requests.
 
-- **Key** ``<job_id>:pool-create`` or ``<job_id>:final-create``: one row per job, never one per
+- **Key** ``<job_id>:pool-create`` or ``<job_id>:final-create`` (a studio output's is its
+  approval's, ``out:...:spotify_create``, ADR 0036 section 6): one row per job, never one per
   user, so a later job (after ``pool_missing``, a revoked and given-again consent, or a superseded
   uncertain create) makes a new row with a new id and therefore a new ``ref``. Only the attempts
   of one job share a row, and they take a ``failed`` row over only when the create provably did
@@ -24,10 +25,8 @@ the user's own Spotify account, as an external operation. Create only: the track
   ``create_playlist`` with no tracks, which sends ``public: false`` and ``collaborative: false``.
   A request refused before it left, or answered with a refusal (4xx), is ``failed``; anything
   else (dropped after sending, a 5xx, an answer without a valid id) is ``uncertain``.
-- **On success**, in the transaction that records it (whoever does: the worker, its
-  reconciliation, the user's Check again on a final row): pool, ``spotify_pool.playlist_id`` set
-  while the pool row is still the one the create was for and still has no playlist; final, the
-  ``class_playlists`` row (``created``) of the operation's own class and revision.
+- **On success** (``create_record``): the pool's ``spotify_pool.playlist_id``, or the final
+  playlist's ``class_playlists`` row of the operation's own class and revision.
 - **The reconciler** lists the user's playlists (at most 20 pages of 50) for exactly one owned
   by the connected user, not public, whose description names this row's ``ref``:
 
@@ -71,9 +70,10 @@ from classbeat.operations import (
     perform_for,
     request_hash,
 )
-from classbeat.operations.kinds import REF_KEY, SPOTIFY_CREATE_KIND, ref_of, spotify_purpose
+from classbeat.operations.kinds import REF_KEY, SPOTIFY_CREATE_KIND, ref_of
 from classbeat.operations.requests import Guard
 from classbeat.playlists import common
+from classbeat.playlists.create_record import on_succeeded, purpose_fits
 
 logger = logging.getLogger(__name__)
 
@@ -120,11 +120,12 @@ def final_request(
     name: str,
     account: str,
     guard: Guard,
+    key: str | None = None,  # a studio output's, bound to its approval (ADR 0036 section 6)
 ) -> OperationRequest:
     if len(content_hash) != 32:
         raise JobFailure("invalid_input")
     name = common.check_name(name)
-    key = final_key(job_id)
+    key = key or final_key(job_id)
     return OperationRequest(
         kind=KIND,
         idempotency_key=key,
@@ -227,15 +228,10 @@ def _lag_passed(operation: Operation) -> bool:
     return datetime.now(UTC) >= operation.call_ended_at + timedelta(seconds=lag)
 
 
-def _purpose_fits(operation: Operation) -> bool:
-    purpose = spotify_purpose(operation.kind, operation.idempotency_key)
-    return purpose is not None and (purpose == "final") == (operation.class_id is not None)
-
-
 async def _reconcile(check: ReconcileInput) -> Reconciliation:
     operation = check.operation
     ref = operation.context.get(REF_KEY)
-    if operation.kind != KIND or not _purpose_fits(operation) or ref != ref_of(operation.id):
+    if operation.kind != KIND or not purpose_fits(operation) or ref != ref_of(operation.id):
         return INCONCLUSIVE
     if check.keyring is None:
         return INCONCLUSIVE
@@ -278,72 +274,7 @@ async def _reconcile(check: ReconcileInput) -> Reconciliation:
     return INCONCLUSIVE
 
 
-# --- on success --------------------------------------------------------------------------------
-
-_POOL_PLAYLIST = text(
-    "UPDATE spotify_pool SET playlist_id = :playlist_id, updated_at = now() "
-    "WHERE owner_id = :owner_id AND id = :pool_id AND playlist_id IS NULL"
-)
-# The class playlist, from the operation row and the ``song_list`` revision **of the operation's
-# own class** with the stored hash, so it can only ever name one owner's class, revision and
-# operation. ``ON CONFLICT DO NOTHING``: idempotent (the live-playlist index).
-_CLASS_PLAYLIST = text(
-    "INSERT INTO class_playlists (owner_id, class_id, revision_id, playlist_id, spotify_user_id, "
-    "name, state, create_operation_id) "
-    "SELECT o.owner_id, o.class_id, r.id, :playlist_id, :spotify_user_id, :name, 'created', o.id "
-    "FROM external_operations o JOIN class_revisions r ON r.owner_id = o.owner_id "
-    "AND r.class_id = o.class_id AND r.id = :revision_id "
-    "WHERE o.owner_id = :owner_id AND o.id = :operation_id AND o.kind = :kind "
-    "AND o.state = 'succeeded' AND o.external_id = :playlist_id AND o.class_id = :class_id "
-    "AND r.kind = 'song_list' AND r.content_hash = :content_hash "
-    "ON CONFLICT DO NOTHING"
-)
-
-
-async def _on_succeeded(db: AsyncSession, owner_id: UUID, operation: Operation) -> None:
-    playlist_id = operation.external_id
-    if (
-        operation.kind != KIND
-        or not _purpose_fits(operation)
-        or not isinstance(playlist_id, str)
-        or common.SPOTIFY_ID.fullmatch(playlist_id) is None
-    ):
-        logger.warning("created playlist not recorded: not a create", extra={"kind": KIND})
-        return
-    context = operation.context
-    try:
-        if operation.class_id is None:
-            await db.execute(
-                _POOL_PLAYLIST,
-                {
-                    "owner_id": owner_id,
-                    "pool_id": UUID(str(context["pool_id"])),
-                    "playlist_id": playlist_id,
-                },
-            )
-            return
-        account = context["spotify_user_id"]
-        name = common.check_name(context["name"])
-        if not isinstance(account, str) or not 1 <= len(account) <= 100:
-            raise ValueError("no Spotify user id")
-        params = {
-            "owner_id": owner_id,
-            "operation_id": operation.id,
-            "kind": KIND,
-            "class_id": operation.class_id,
-            "revision_id": UUID(str(context["revision_id"])),
-            "content_hash": bytes.fromhex(str(context["content_hash"])),
-            "playlist_id": playlist_id,
-            "spotify_user_id": account,
-            "name": name,
-        }
-    except (KeyError, ValueError, JobFailure):
-        logger.warning("created playlist not recorded: unreadable operation", extra={"kind": KIND})
-        return
-    await db.execute(_CLASS_PLAYLIST, params)
-
-
-CREATE: Final = OPERATION_KINDS.register(OperationKind(KIND, _reconcile, _on_succeeded))
+CREATE: Final = OPERATION_KINDS.register(OperationKind(KIND, _reconcile, on_succeeded))
 
 
 async def _reconcile_in_job(check: ReconcileInput) -> Reconciliation:
@@ -356,4 +287,4 @@ async def _reconcile_in_job(check: ReconcileInput) -> Reconciliation:
 
 # What ``create`` hands ``perform_for``: the same kind, with the job's reconciler.
 _JOB_KINDS: Final = OperationKinds()
-_JOB_KINDS.register(OperationKind(KIND, _reconcile_in_job, _on_succeeded))
+_JOB_KINDS.register(OperationKind(KIND, _reconcile_in_job, on_succeeded))

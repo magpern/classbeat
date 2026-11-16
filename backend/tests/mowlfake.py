@@ -8,7 +8,8 @@ It also speaks the Swedebeat calls of the library (ADR 0016, A1): ``POST v1/swed
 (the caller's own mixes), ``PUT v1/swedebeat/Playlist`` (attach: a MOWL playlist, the same one on a
 repeat), ``GET v1/Playlists/{id}/tracks`` (the indexing, which can take several polls or fail) and
 ``GET v1/swedebeat/playlist/{id}/TemporaryLinks`` (a link on the fake media host, ``mediafake``,
-whose behaviour is chosen per mix). Mixes belong to a token (``add_mix``); another token never
+whose behaviour is chosen per mix; ``add_mix(url=...)`` sets the listing's ``URL``, SR C7). Mixes
+belong to a token (``add_mix``); another token never
 lists,
 attaches or fetches them. The same mix id can belong to two tokens (``add_mix(mix_id=...)``): each
 token has its own playlist for it.
@@ -65,6 +66,7 @@ class Mix:
     index_polls: int = 0  # track reads answered "still indexing" before it is done
     index_error: str | None = None
     playlist_id: dict[str, int] = field(default_factory=lambda: dict[str, int]())  # per token
+    url: str | None = None  # the listing's ``URL``; ``mix:<id>`` when not given
 
 
 @dataclass
@@ -102,6 +104,7 @@ class FakeMowl:
         index_polls: int = 0,
         index_error: str | None = None,
         mix_id: str | None = None,
+        url: str | None = None,
         **link_options: Any,
     ) -> str:
         """A Swedebeat mix of ``token``'s account; ``audio_seconds`` is what its file holds.
@@ -112,7 +115,7 @@ class FakeMowl:
         listed = Mix(
             mix_id, name, int(listed_seconds * 1000),
             listed_seconds if audio_seconds is None else audio_seconds,
-            link, link_options, index_polls, index_error,
+            link, link_options, index_polls, index_error, url=url,
         )  # fmt: skip
         self.mixes.setdefault(token, []).append(listed)
         return mix_id
@@ -132,7 +135,7 @@ class FakeMowl:
                 entry: dict[str, Any] = {
                     "ID": m.id,
                     "Name": m.name,
-                    "URL": f"mix:{m.id}",
+                    "URL": m.url or f"mix:{m.id}",
                     "DurationInMilliseconds": m.listed_ms,
                 }
                 if self.list_shows_playlist and token in m.playlist_id:

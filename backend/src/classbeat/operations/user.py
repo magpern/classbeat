@@ -14,9 +14,10 @@ go through the fence (``classbeat.operations.protocol``).
   ``resolved_by = 'user'``, conditional on ``state = 'uncertain'``. The next job on the same
   target then takes the ``failed`` row over and makes the call again.
 
-**Pool rows** (a Spotify create or replace without a class, ADR 0008 section 2) are never shown
-or acted on: listed nowhere and not found by id (404), so the user is never asked to resolve a
-pool write; the next pick supersedes them (``classbeat.playlists.pool``).
+**Pool rows** (a Spotify create or replace without a class, ADR 0008 section 2) and a studio
+output's rows (``out:`` keys, ADR 0036 section 6) are never shown or acted on here: listed
+nowhere and not found by id (404). The user is never asked to resolve a pool write (the next
+pick supersedes them, ``classbeat.playlists.pool``), and an output's own actions settle its rows.
 
 Neither applies to a ``succeeded`` row (``final``: it is final) or a ``pending`` one
 (``not_uncertain``: a call is in flight or its holder has not been reaped yet). Both are
@@ -57,7 +58,13 @@ LIST_LIMIT: Final = 50
 # class (the pool's create and replace) is not shown and not acted on: not found, like another
 # user's id, so no user action ever re-sends a pool create under the same id and ``ref``.
 _SPOTIFY_KINDS_SQL: Final = ", ".join(f"'{name}'" for name in sorted(SPOTIFY_WRITE_KINDS))
-_OFFERED: Final = f"NOT (kind IN ({_SPOTIFY_KINDS_SQL}) AND class_id IS NULL)"
+# ADR 0036 section 6 (SR C7): a studio output's writes (keys ``out:...``) are settled only through
+# that output (``classes.studio_output_actions``): its Do it anyway is "Create another anyway",
+# the next attempt under new keys, never a ``failed`` row taken over under the same key.
+_OFFERED: Final = (
+    f"NOT (kind IN ({_SPOTIFY_KINDS_SQL}) AND class_id IS NULL) "
+    "AND NOT starts_with(idempotency_key, 'out:')"
+)
 
 _FIELDS = (
     "id, kind, idempotency_key, state, external_id, result, job_id, resolved_by, created_at, "

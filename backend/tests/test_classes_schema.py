@@ -639,6 +639,10 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     insert(admin, "swedebeat_track_maps", owner_id=owner, reference="trk-1", analyser_version=1,
            sha256=bytes(32), map={"track_version": 1})  # fmt: skip
     insert(admin, "swedebeat_track_downloads", owner_id=owner)
+    # ADR 0036 section 6 (migration 0054): a studio output attempt and its daily-limit record.
+    insert(admin, "class_outputs", owner_id=owner, class_id=class_id, revision_id=rev,
+           output="swedebeat_mix", attempt=1, state="in_doubt", detail={"name": "x"})  # fmt: skip
+    insert(admin, "studio_output_starts", owner_id=owner)
     # M5 (migration 0007): an entitlement from a code, its redemption, a credit and its lock row.
     code_id = admin.execute(
         text("INSERT INTO redeem_codes (code_hash, label, plan_id, grant_days, max_redemptions, "

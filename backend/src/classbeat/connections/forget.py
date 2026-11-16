@@ -5,7 +5,8 @@ the caller's transaction, after the connection row lock (``repository.disconnect
 security.
 
 - **MOWL** (``forget_mowl_account``, Disconnect and a reconnect in place): every MOWL operation
-  (attach, save and update, in any state) is deleted and every live saved workout is detached
+  (attach, save and update, a studio mix's attach, in any state) is deleted with the studio
+  classes' MOWL outputs (``class_outputs``), and every live saved workout is detached
   (kept as history, out of the live-program index, never re-attached), the playlist links go
   (Spotify and Swedebeat), and so do the mix analyses and the hand-offs, which belong to that
   MOWL account. The operations go first: a worker recording an attach or a save locks the
@@ -32,8 +33,10 @@ FORGET_MOWL: Final = (
     text(
         "DELETE FROM external_operations WHERE owner_id = :owner_id AND kind IN "
         "('mowl_attach_spotify_playlist', 'mowl_attach_swedebeat_mix', "
-        "'mowl_save_workout', 'mowl_update_workout')"
+        "'mowl_save_workout', 'mowl_update_workout', 'mowl_attach_studio_mix')"
     ),
+    # ADR 0036 section 6 (SR C7): a studio class's MOWL output belongs to that MOWL account too.
+    text("DELETE FROM class_outputs WHERE owner_id = :owner_id AND output = 'mowl'"),
     text(
         "UPDATE saved_workouts SET detached_at = now(), updated_at = now() "
         "WHERE owner_id = :owner_id AND detached_at IS NULL"

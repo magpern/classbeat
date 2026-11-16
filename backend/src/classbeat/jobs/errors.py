@@ -91,6 +91,13 @@ CATEGORIES: Final = (
     "track_too_large",
     "track_unavailable",
     "track_limit",
+    # ADR 0036 section 6 (migration 0054, SR C7): the approved SwedeBeat connection gone or
+    # reconnected, the gateway's writes off (``403``), a re-render whose sha256 is not the first
+    # render's, and the per-class or daily limit of studio outputs. None is retried.
+    "connection_changed",
+    "writes_off",
+    "render_not_reproducible",
+    "output_limit",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).
