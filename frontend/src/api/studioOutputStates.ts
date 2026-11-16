@@ -27,6 +27,8 @@ export interface OutputStatus {
   name: string | null
   /** The failure's category (`writes_off`, `rate_limited` ...), for a failed output. */
   category: string | null
+  /** Why Check again could not settle an output in doubt (`connection_changed`); absent before the backend sends it. */
+  checkReason: string | null
   /** "Create another anyway" was used: the next approval makes a new attempt. */
   superseded: boolean
   /** A MOWL entry found by the mix's unique name, shown for the user's own decision. */
@@ -58,6 +60,7 @@ export function decodeOutputStatus(value: unknown): OutputStatus {
     note: note !== null && NOTES.includes(note) ? (note as OutputNote) : null,
     name: optionalText(item, 'name'),
     category: optionalText(item, 'category'),
+    checkReason: optionalText(item, 'check_reason'),
     superseded: item.superseded === true,
     candidate:
       candidate !== null && typeof candidate.name === 'string'

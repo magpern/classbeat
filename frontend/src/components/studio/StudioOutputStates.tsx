@@ -45,6 +45,11 @@ const CATEGORY_TEXT: Record<string, CatalogueKey> = {
   internal: 'studio.os.category.internal',
 }
 
+/** Why Check again could not settle an output in doubt (backend `check_reason`, #1117). */
+const CHECK_REASON_TEXT: Record<string, CatalogueKey> = {
+  connection_changed: 'studio.os.checkReason.connection_changed',
+}
+
 /** Failures that approving again cannot help: the category's own sentence says what to do. */
 const NO_RETRY: readonly string[] = ['render_not_reproducible', 'music_changed', 'analysis_failed', 'invalid_input']
 
@@ -102,6 +107,9 @@ function OutputRow({
     status.note === 'created_not_public' || status.note === 'not_sent' ? t(NOTE_TEXT[status.note]) : null
   const category = status.state === 'failed' && status.category !== null ? CATEGORY_TEXT[status.category] : undefined
 
+  const checkReason =
+    status.state === 'in_doubt' && status.checkReason !== null ? CHECK_REASON_TEXT[status.checkReason] : undefined
+
   return (
     <li className="rounded-md border border-line bg-surface p-3" data-testid={`studio-output-state-${status.output}`}>
       <p className="m-0 font-medium text-text">{t(`studio.out.${status.output}`)}</p>
@@ -111,6 +119,7 @@ function OutputRow({
         <p className="m-0 text-muted">{t('studio.os.name', { name: status.name })}</p>
       ) : null}
       {category !== undefined ? <p className="m-0 text-muted">{t(category)}</p> : null}
+      {checkReason !== undefined ? <p className="m-0 text-muted">{t(checkReason)}</p> : null}
       {status.candidate !== null && status.state === 'in_doubt' ? (
         <p className="m-0 text-text">
           {status.candidate.durationSec === null

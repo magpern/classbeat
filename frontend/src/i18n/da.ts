@@ -2368,6 +2368,8 @@ const da: Catalogue = {
     'Tilbage til holdet',
   'studio.os.category.connection_changed':
     'Din SwedeBeat-tilslutning blev ændret. Genindlæs siden, og godkend derefter resultaterne igen.',
+  'studio.os.checkReason.connection_changed':
+    'Tjek igen kræver den SwedeBeat-konto, som godkendte dette. Tilslut den konto igen for at tjekke.',
   'studio.os.category.render_not_reproducible':
     'Mixet blev anderledes ved en anden rendering, så der blev ikke sendt mere. Lav et nyt valg.',
   'studio.os.category.music_changed':
