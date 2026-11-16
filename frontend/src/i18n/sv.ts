@@ -2320,6 +2320,34 @@ const sv: Catalogue = {
     'Välj minst ett resultat.',
   'studio.out.noneEnabled':
     'Inget resultat är tillgängligt just nu. Försök igen senare.',
+  'studio.sync.working_copy':
+    'Spotify-arbetsspellista',
+  'studio.sync.final':
+    'Slutlig Spotify-spellista',
+  'studio.sync.state.synced':
+    'uppdaterad',
+  'studio.sync.state.pending':
+    'uppdateras',
+  'studio.sync.state.failed':
+    'inte uppdaterad',
+  'studio.sync.again':
+    'Synka igen',
+  'studio.sync.againFailed':
+    'Synkningen startade inte. Försök igen.',
+  'studio.sync.notBlocking':
+    'Det här stoppar aldrig SwedeBeat-resultaten.',
+  'studio.sync.detail.superseded':
+    'Den följer nu en nyare låtlista. Synka igen för att den ska följa den här.',
+  'studio.sync.detail.not_connected':
+    'Anslut Spotify igen och synka sedan igen.',
+  'studio.sync.detail.consent_missing':
+    'Tillåt arbetsspellistan i dina Spotify-inställningar och synka sedan igen.',
+  'studio.sync.detail.pool_missing':
+    'Arbetsspellistan togs bort i Spotify. Synka igen för att skapa en ny.',
+  'studio.sync.detail.rate_limited':
+    'Spotify bad oss sakta ner. Synka igen om en minut.',
+  'studio.sync.detail.other':
+    'Spotify tog inte emot ändringen. Synka igen.',
   'studio.os.title':
     'Resultatens status',
   'job.failure.output_limit.title':

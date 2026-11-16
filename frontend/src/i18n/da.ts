@@ -2308,6 +2308,34 @@ const da: Catalogue = {
     'Vælg mindst ét resultat.',
   'studio.out.noneEnabled':
     'Intet resultat er tilgængeligt lige nu. Prøv igen senere.',
+  'studio.sync.working_copy':
+    'Spotify-arbejdsplayliste',
+  'studio.sync.final':
+    'Endelig Spotify-playliste',
+  'studio.sync.state.synced':
+    'opdateret',
+  'studio.sync.state.pending':
+    'opdateres',
+  'studio.sync.state.failed':
+    'ikke opdateret',
+  'studio.sync.again':
+    'Synkroniser igen',
+  'studio.sync.againFailed':
+    'Synkroniseringen startede ikke. Prøv igen.',
+  'studio.sync.notBlocking':
+    'Det stopper aldrig SwedeBeat-resultaterne.',
+  'studio.sync.detail.superseded':
+    'Den følger nu en nyere sangliste. Synkroniser igen for at få den til at følge denne.',
+  'studio.sync.detail.not_connected':
+    'Tilslut Spotify igen, og synkroniser så igen.',
+  'studio.sync.detail.consent_missing':
+    'Tillad arbejdsplaylisten i dine Spotify-indstillinger, og synkroniser så igen.',
+  'studio.sync.detail.pool_missing':
+    'Arbejdsplaylisten blev slettet i Spotify. Synkroniser igen for at lave en ny.',
+  'studio.sync.detail.rate_limited':
+    'Spotify bad os sætte tempoet ned. Synkroniser igen om et minut.',
+  'studio.sync.detail.other':
+    'Spotify tog ikke imod ændringen. Synkroniser igen.',
   'studio.os.title':
     'Resultaternes status',
   'job.failure.output_limit.title':

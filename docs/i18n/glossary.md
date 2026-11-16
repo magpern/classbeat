@@ -41,6 +41,8 @@ everywhere; a change here changes both places in the same PR. ADR 0023 has the d
 | song | låt | sang | |
 | playlist | spellista | playliste | Danish "playliste" is common gender. |
 | working playlist | arbetsspellista | arbejdsplayliste | |
+| sync, Sync again (a Spotify playlist following a revision) | synka, Synka igen | synkronisere, Synkroniser igen | The studio's sync state (ADR 0036 §9): "up to date" is uppdaterad / opdateret. |
+| final playlist | slutlig spellista | endelig playliste | The fresh private Spotify playlist of an approved studio draft. |
 | draft | utkast | udkast | |
 | save | spara | gem | |
 | design (verb) | utforma | designe | |

@@ -22,6 +22,7 @@ import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
 import { StudioSongRow } from './StudioSongRow'
+import { StudioSpotifySync } from './StudioSpotifySync'
 import { rememberStudioAction, rememberStudioDesign } from './studioAction'
 
 // The list can be changed while it waits for approval, or after it ended without one (the server
@@ -171,6 +172,7 @@ export function StudioSongs({ job }: { job: Job }) {
         ))}
       </ol>
       {gaps > 0 && !suspected ? <Notice>{t('studio.gaps', { count: gaps })}</Notice> : null}
+      <StudioSpotifySync classId={job.classId} revisionId={revisionId} target="working_copy" />
       {act.error ? <Notice kind="error">{act.error}</Notice> : null}
       {approve.error ? (
         <Notice kind="error">{approved && !lost ? `${t('studio.designFailed')} ${approve.error}` : approve.error}</Notice>
