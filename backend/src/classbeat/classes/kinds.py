@@ -29,6 +29,7 @@ NO_FIRST_BRIEF: Final = (
     "swedebeat_match",
     "swedebeat_verify_mix",
     "send_to_player",  # ADR 0034 section 5: a revision exists before a press
+    "produce_outputs",  # SR C6a: the approval of a studio draft that exists
     "player_remove",  # no class at all: the class is deleted
 )
 

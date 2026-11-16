@@ -113,9 +113,13 @@ async def test_studio_actions_count_against_the_song_change_limit(
     studio: StudioEnv, song_change_limit: None
 ) -> None:
     rider, _, revision_id, class_id = await _swapped(studio)
+    view = await rider.browser.get(f"/api/classes/{class_id}/studio-songs/{revision_id}")
+    assert view.json()["changes"] == {"count": 0, "limit": 1}  # SR C6a: shown before a refusal
     undo = await rider.act(class_id, revision_id, "undo", 0)
     assert undo.status_code == 201, undo.text  # the first change is within the limit
     undone = await studio.run(UUID(undo.json()["job_id"]))
+    path = f"/api/classes/{class_id}/studio-songs/{undone.approval_revision_id}"
+    assert (await rider.browser.get(path)).json()["changes"] == {"count": 1, "limit": 1}
     refused = await rider.act(class_id, undone.approval_revision_id, "another", 0)
     assert refused.status_code == 409
     assert refused.json()["detail"] == {"reason": "revision_limit", "limit": 1, "count": 1}
