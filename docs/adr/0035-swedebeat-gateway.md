@@ -205,10 +205,13 @@ is unchanged: recent authentication and step-up, CSRF, rate limits, events. The 
 3. **The answer.** It is read through a field allowlist:
    - `bearer`: a string of 16 to 4096 printable ASCII characters;
    - `expires_in`: an integer from 60 s to 400 days;
-   - `token_type` is not kept. `customer_id` is kept only as a keyed digest (amended, #1117): HMAC-SHA256
-     of the user id and the id under the app secret key, 32 hex characters, in `connections.account_ref`
-     (migration 0057), `NULL` when the answer has none or a malformed one. It tells a reconnect to the
-     same SwedeBeat account (ADR 0036 §6, a publish in doubt). The raw id is never stored or logged.
+   - `token_type` is not kept. `customer_id` is kept only as a pseudonymous digest keyed per user
+     (amended, #1117): HMAC-SHA256 of the user id and the id under an HKDF key of the app secret
+     (`swedebeat-account`), 32 hex characters, in `connections.account_ref` (migration 0057), `NULL` when
+     the answer has none or a malformed one. It tells a reconnect to the same SwedeBeat account (ADR 0036
+     §6, a publish in doubt). The raw id is never stored or logged. It goes with the row; the copy a
+     publish records in its operation's context is removed by a SwedeBeat disconnect, and the operation
+     goes with its class or the account.
 
    Any other shape is `unknown`.
 4. **Store.** `save(..., "swedebeat", {"bearer": bearer}, public={"email": email},

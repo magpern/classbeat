@@ -185,7 +185,7 @@ The owner's direction (2026-11-15):
   - what a merged mix shows others (gate L2).
 
   It checks `GET /auth/session` before the button. The approval binds the draft's id, its `content_hash`, the
-  chosen outputs and the **SwedeBeat connection** (its id and generation, and for a publish the account's digest, ADR 0035 §3 as amended by #1117). The
+  chosen outputs and the **SwedeBeat connection** (its id and generation; the publish operation also records the connection's account digest in its context when it is sent, ADR 0035 §3 as amended by #1117, which the approval does not bind). The
   server re-checks all of them when the job runs (ADR 0007 §5). A different or reconnected connection refuses
   the job with `connection_changed`, and nothing is written.
 

@@ -12,10 +12,11 @@ connection (ADR 0004). The password is discarded. classbeat never calls SwedeBea
   secret key, 16 hex characters. The same on every connect, reconnect and after a disconnect, and
   never stored.
 - **Store**: ``{"bearer"}`` with ``expires_at = now + expires_in`` and ``public = {"email"}``,
-  and ``account_ref`` (#1117): the login's ``customer_id`` as a keyed digest (HMAC-SHA256 of the
-  user id and the id under the app secret key, 32 hex characters), ``NULL`` when the answer had
-  none. Never the raw id, never logged. A rotated secret key makes every stored digest read as
-  another account (the safe direction: a publish in doubt stays in doubt).
+  and ``account_ref`` (#1117): the login's ``customer_id`` as a pseudonymous digest keyed per
+  user (HMAC-SHA256 of the user id and the id under an HKDF key of the app secret,
+  ``swedebeat-account``, 32 hex characters), ``NULL`` when the answer had none. Never the raw id,
+  never logged. A rotated secret key makes every stored digest read as another account (the safe
+  direction: a publish in doubt stays in doubt).
   The bearer is never library credentials (``build_credentials`` refuses ``swedebeat``): only
   ``open_bearer`` opens it, through ``UserContext``, for the gateway client alone.
 - **Status from the answer only** (``swedebeat_gateway.status_policy``): ``unknown client`` and a
@@ -43,6 +44,7 @@ from pydantic import SecretStr
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.auth.keys import derive_key
 from classbeat.config import Settings
 from classbeat.connections.credentials import Credentials, OpenConnection
 from classbeat.connections.errors import ConnectionFailure
@@ -124,7 +126,8 @@ def account_ref_for(secret: bytes, user_id: UUID, customer_id: str | None) -> st
     if customer_id is None:
         return None
     message = _ACCOUNT_LABEL + user_id.bytes + customer_id.encode("ascii")
-    return hmac.new(secret, message, hashlib.sha256).hexdigest()[:ACCOUNT_REF_CHARS]
+    key = derive_key(secret, "swedebeat-account")
+    return hmac.new(key, message, hashlib.sha256).hexdigest()[:ACCOUNT_REF_CHARS]
 
 
 def live(expires_at: datetime | None, now: datetime) -> bool:

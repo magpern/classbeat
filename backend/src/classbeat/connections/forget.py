@@ -15,7 +15,9 @@ security.
 - **SwedeBeat** (``forget_swedebeat_account``, Disconnect and a keys wipe): the studio's track
   analyses (``swedebeat_track_maps``). A worker stores one only while it holds the connection
   (``repository.hold``), so a store after this finds the connection gone and writes nothing. A
-  reconnect in place keeps them: a bearer expires daily, and the catalogue is the same.
+  reconnect in place keeps them: a bearer expires daily, and the catalogue is the same. The
+  account digest a publish recorded in its operation's context (``account``, #1117) is removed
+  too: the operation stays, and without it a later Check again stays ``connection_changed``.
 - **Spotify** and **player** are their own modules' (``spotify_data``, ``player_data``).
 """
 
@@ -54,8 +56,16 @@ async def forget_mowl_account(db: AsyncSession, ctx: UserContext) -> None:
         await db.execute(statement, {"owner_id": ctx.user_id})
 
 
+FORGET_PUBLISH_ACCOUNT: Final = text(
+    "UPDATE external_operations SET request_context = request_context - 'account' "
+    "WHERE owner_id = :owner_id AND kind = 'swedebeat_publish_playlist' "
+    "AND request_context ? 'account'"
+)
+
+
 async def forget_swedebeat_account(db: AsyncSession, ctx: UserContext) -> None:
     await db.execute(FORGET_TRACK_MAPS, {"owner_id": ctx.user_id})
+    await db.execute(FORGET_PUBLISH_ACCOUNT, {"owner_id": ctx.user_id})
 
 
 async def forget_account(db: AsyncSession, ctx: UserContext, provider: str) -> None:

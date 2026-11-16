@@ -5,6 +5,9 @@ expired and the user reconnected, on the fakes (the gateway, Spotify), against P
 - a reconnect of the approved connection to the **same** SwedeBeat account (its ``account_ref``
   equals the publish's stored ``account``) is read with the new bearer: listed settles
   ``succeeded`` (the output ``done``), not listed ``failed`` (safe to publish the same id again);
+- a disconnect then a connect to another account (a new row, maybe at the approved generation)
+  stays in doubt with ``connection_changed``, nothing read; the disconnect also removes the
+  publish's recorded ``account``;
 - another account, a publish approved before the account was on record, and a reconnect whose
   login named no account all stay in doubt with ``connection_changed``, nothing read;
 - the reason is the check's own (``check_reason``): the job's ``category`` the user was shown
@@ -16,6 +19,7 @@ from typing import Any
 import pytest
 from pydantic import SecretStr
 
+from classbeat.connections.repository import disconnect
 from classbeat.connections.swedebeat_account import connect_swedebeat
 from ctx import make_context
 from gatewaycore import FakeGateway, Reply, Session
@@ -164,3 +168,39 @@ async def test_a_reconnect_without_the_account_on_record_stays_in_doubt(
     assert shown["category"] == "uncertain_write"
     assert publish_state(studio, rider) == "uncertain"
     assert len(sent(fake, "GET", SHARED)) == reads
+
+
+@pytest.mark.parametrize("connected", [False, True])
+async def test_a_disconnect_then_another_account_stays_in_doubt(
+    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch, connected: bool
+) -> None:
+    """The new row has another id. Without an account on record (``connected=False``) it is at
+    the approved generation 1 too, so only the row-id check keeps the other account's bearer
+    from listing it."""
+    rider, class_id, current = await in_doubt(
+        studio, monkeypatch, takes_effect=False, connected=connected
+    )
+    fake = studio.gateway
+    approved = rider.swedebeat_connection_id
+    context = (
+        "SELECT request_context FROM external_operations "
+        "WHERE owner_id = :o AND kind = 'swedebeat_publish_playlist'"
+    )
+    had = studio.songs.sql(context, o=rider.user_id).scalar_one()
+    assert ("account" in had and had["account"] is not None) == connected
+    assert await disconnect(studio.songs.factory, make_context(rider.user_id), "swedebeat")
+    assert "account" not in studio.songs.sql(context, o=rider.user_id).scalar_one()
+    await connect(studio, rider, EMAIL_B, PASSWORD_B)  # a new row for another account
+    row = studio.songs.sql(
+        "SELECT id, generation FROM connections WHERE owner_id = :o AND provider = 'swedebeat'",
+        o=rider.user_id,
+    ).one()
+    assert row.id != approved
+    assert row.generation == had["generation"] or connected
+    reads = len(sent(fake, "GET", SHARED))
+    shown = await check_again(rider, class_id, current)
+    assert (shown["state"], shown["check_reason"]) == ("in_doubt", "connection_changed")
+    assert shown["category"] == "uncertain_write"
+    assert publish_state(studio, rider) == "uncertain"
+    assert len(sent(fake, "GET", SHARED)) == reads  # never listed under the other bearer
+    assert published(fake) == []
