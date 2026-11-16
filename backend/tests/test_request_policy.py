@@ -76,8 +76,10 @@ def test_allowed_sports() -> None:
 def test_music_order_per_sport() -> None:
     everything = set(rp.CYCLING_MUSIC)
     assert rp.choose_music("cycling", everything) == "override"
-    assert rp.choose_music("cycling", {"pick", "soundless"}) == "pick"
-    assert rp.choose_music("cycling", {"soundless"}) == "soundless"
+    assert rp.choose_music("cycling", {"pick", "name_match"}) == "name_match"
+    assert rp.choose_music("cycling", {"pick"}) == "pick"
+    # No default music for cycling (roadmap Amendment 25): not a first playlist, not silence.
+    assert rp.choose_music("cycling", {"first_playlist", "soundless"}) is None
     assert rp.choose_music("running", everything) == "override"
     assert rp.choose_music("running", {"pick", "soundless"}) is None  # needs a MOWL playlist
     assert rp.choose_music("running", {"first_playlist"}) == "first_playlist"

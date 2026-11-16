@@ -208,8 +208,11 @@ The fields are:
    isn't offered. The policy uses the nearest allowed value or leaves the item out, and records a
    **Not as asked** item with a reason code. A game is never swapped for another.
 3. Inferred and default values are recorded as **Assumed**.
-4. Music order for cycling: the override, then a name match, then pick (when Spotify is ready),
-   then the first MOWL playlist, then soundless. For running (ADR 0018): MOWL playlists only,
+4. Music order for cycling: the override ("No music" is one), then a name match, then pick (when
+   Spotify is ready). There is no default music (roadmap Amendment 25, 2026-11-16: this replaced
+   "then the first MOWL playlist, then soundless"). A playlist, named or chosen, needs a Spotify
+   connection; with nothing left the class is Not as asked `needs_spotify`, and `admit` refuses it
+   with that code when it can only end that way. For running (ADR 0018): MOWL playlists only,
    otherwise Not as asked `needs_mowl_playlist`.
 5. The allowed sports go to the interpreter.
 

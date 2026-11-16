@@ -14,13 +14,15 @@ import httpx
 import pytest
 
 from agentfake import CONFIG, FactoryModels
-from classbeat import design
+from classbeat import connections, design
 from classbeat.agent.interpret import FINAL_TOOL
 from classbeat.agent.provider import ModelProvider
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
 from classbeat.design import DESIGN_DRAFT, INTERPRET_REQUEST, Runtime
 from classbeat.jobs import KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
+from ctx import make_context
+from designtools import PLAYLIST
 from jobapi import new_key
 from revisetools import ReviseEnv
 
@@ -49,6 +51,7 @@ def refusing() -> FakeProvider:
 class InterpretEnv:
     renv: ReviseEnv
     queue_: list[ModelProvider] = field(default_factory=lambda: list[ModelProvider]())
+    spotify_id: UUID | None = None
 
     @property
     def sql(self) -> Any:
@@ -69,8 +72,38 @@ class InterpretEnv:
             Runtime(keyring=self.renv.denv.ops.keyring, models=FactoryModels(build), agent=CONFIG)
         )
 
-    async def start(self, request: str = REQUEST, **more: Any) -> httpx.Response:
-        values = {"request": request, "mowl_connection_id": str(self.renv.browser.connection_id)}
+    async def connect_spotify(self) -> UUID:
+        """A Spotify connection of the user (fake tokens; nothing reaches Spotify), once."""
+        if self.spotify_id is None:
+            ops = self.renv.denv.ops
+            tokens = {"access_token": "a", "refresh_token": "r", "expires_at": 4_000_000_000}
+            self.spotify_id = await connections.save(
+                ops.factory,
+                ops.keyring,
+                make_context(self.owner),
+                "spotify",
+                tokens,
+                public={"client_id": "c" * 32, "spotify_user_id": "rider"},
+                confirm_account_change=True,
+            )
+        return self.spotify_id
+
+    async def start(
+        self, request: str = REQUEST, *, spotify: bool = True, **more: Any
+    ) -> httpx.Response:
+        """Starts an interpretation. By default the user has Spotify and chose the MOWL playlist
+        (roadmap Amendment 25: a cycling class has no default music); ``spotify=False`` sends the
+        bare request, as a user with no Spotify connection would."""
+        values: dict[str, Any] = {
+            "request": request,
+            "mowl_connection_id": str(self.renv.browser.connection_id),
+        }
+        if spotify:
+            values["spotify_connection_id"] = str(await self.connect_spotify())
+            values["music_override"] = {
+                "source": "mowl_spotify_playlist",
+                "spotify_playlist_id": PLAYLIST,
+            }
         body = {"kind": INTERPRET_REQUEST.name, "input": values | more}
         return await self.renv.browser.post("/api/jobs", body, {"Idempotency-Key": new_key()})
 
@@ -93,10 +126,13 @@ class InterpretEnv:
         )
         return execution
 
-    async def interpreted(self, reading: dict[str, Any] | None = None) -> tuple[UUID, UUID]:
-        """A class whose interpretation is stored: (class id, interpret job id)."""
+    async def interpreted(
+        self, reading: dict[str, Any] | None = None, **more: Any
+    ) -> tuple[UUID, UUID]:
+        """A class whose interpretation is stored: (class id, interpret job id); ``more`` is
+        ``start``'s."""
         self.models(interpreter(reading))
-        made = await self.start()
+        made = await self.start(**more)
         assert made.status_code == 201, made.text
         job_id = UUID(made.json()["id"])
         await self.run(INTERPRET_REQUEST.name)

@@ -2,13 +2,14 @@ import { expect, type Page } from '@playwright/test'
 import { signedInWithMowl } from './class-helpers'
 import { useModelScript, type ModelScript } from './model-script'
 import { sql } from './song-helpers'
+import { CLIENT_A, connectSpotify, playSpotify, spotifyDialog } from './spotify-helpers'
 
 // Shared by the ai-first*.spec.ts files (MA5, ADR 0029, plan "Verification"): the free-text start
 // screen, the hand-off to the design and the workspace, against the fake model, MOWL and Spotify.
 
 export const LONG = { timeout: 90_000 }
 
-/** A signed-in user with MOWL connected on the instructor plan (Individual: 75 minutes, games and FTP
+/** A signed-in user with MOWL and Spotify connected on the instructor plan (Individual: 75 minutes, games and FTP
  *  tests allowed). The free plan has no games, no FTP tests and 30 minutes, so the suite's requests
  *  need the plan above it. */
 export async function instructorWithMowl(page: Page, tag: string): Promise<void> {
@@ -17,6 +18,19 @@ export async function instructorWithMowl(page: Page, tag: string): Promise<void>
   const id = me.user?.id
   if (id === undefined || !/^[0-9a-f-]{36}$/.test(id)) throw new Error('no signed-in user id')
   sql(`INSERT INTO entitlements (owner_id, plan_id, source) VALUES ('${id}', 'instructor', 'grant')`)
+  await withSpotify(page)
+}
+
+/**
+ * Connect the fake Spotify (CLIENT_A) to the signed-in user. A class with music needs Spotify (roadmap
+ * Amendment 25): the start screen asks for it before it sends a request that is not "No music".
+ */
+export async function withSpotify(page: Page): Promise<void> {
+  await playSpotify(page)
+  await connectSpotify(page, CLIENT_A)
+  await expect(page.getByText('Spotify is connected.')).toBeVisible()
+  await spotifyDialog(page).getByRole('button', { name: 'Close' }).click()
+  await expect(spotifyDialog(page)).toHaveCount(0)
 }
 
 export interface Held {

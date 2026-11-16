@@ -19,7 +19,8 @@ completes without enqueuing anything. ``design_from_interpretation`` then enqueu
 So two calls at the same time are serialized by the owner lock: the second sees either the job the
 first created (the same key and body: the same job id and state, no second credit) or the refusal
 the first stored, and answers it. A call after a reopened tab is the same call. A class whose
-music could not be chosen (a running class with no MOWL playlist) stores ``needs_mowl_playlist``
+music could not be chosen (a running class with no MOWL playlist, or a cycling class with no Spotify
+connection that can use one) stores ``needs_mowl_playlist`` or ``needs_spotify``
 the same way, under the owner lock, without a create.
 
 Two answers are never stored (#904): a class that already has a revision and no design job of this
@@ -46,7 +47,7 @@ from classbeat.db import user_session
 from classbeat.design import DESIGN_DRAFT, interpretation_row
 from classbeat.design.interpret_kind import KIND as INTERPRET_KIND
 from classbeat.design.interpret_kind import InterpretRequestInput
-from classbeat.design.interpret_music_policy import NEEDS_MOWL_PLAYLIST
+from classbeat.design.interpret_music_policy import NEEDS_MOWL_PLAYLIST, NEEDS_SPOTIFY
 from classbeat.design.interpretation_row import Refusal, StoredInterpretation
 from classbeat.design.kind import DesignDraftInput
 from classbeat.jobs.credits import CreditLedger
@@ -156,8 +157,8 @@ def _design_input(
     row: StoredInterpretation, job_input: Any, class_id: UUID
 ) -> tuple[JobKind, JobInput] | str:
     """The design kind and its unchanged input, or the reason there is none."""
-    if row.music is None:
-        return NEEDS_MOWL_PLAYLIST
+    if row.music is None:  # a running class has MOWL playlists only; a cycling one needs Spotify
+        return NEEDS_MOWL_PLAYLIST if row.brief.get("sport") == "running" else NEEDS_SPOTIFY
     if not isinstance(job_input, dict):
         return "not_ready"
     try:

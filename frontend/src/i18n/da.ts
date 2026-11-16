@@ -1867,6 +1867,7 @@ const da: Catalogue = {
   'start.music.pick': 'classbeat vælger sange (Spotify)',
   'start.music.src.playlist': 'Spotify-playliste · i MOWL',
   'start.music.src.mix': 'Swedebeat-mix',
+  'start.spotify.needed': 'Et hold med musik kræver Spotify: classbeat finder sangene dér og gemmer playlisten dér. {link} først.',
   'start.destination':
     'Holdet gemmes i dit MOWL-konto som et privat træningspas, først når du har godkendt det.',
   'start.design': 'Design mit hold',
@@ -1943,6 +1944,7 @@ const da: Catalogue = {
   'interp.reason.game_placement': 'Spillet passede ikke, hvor du bad om det.',
   'interp.reason.game_duration': 'Spillets længde passede ikke.',
   'interp.reason.needs_mowl_playlist': 'Løbehold kræver en playliste fra din MOWL-musik.',
+  'interp.reason.needs_spotify': 'Et hold med musik kræver din Spotify-konto.',
   'interp.reason.other': 'Det kunne ikke gøres, som du bad om.',
   'class.status.reading': 'Læser din anmodning',
   'ws.request': 'Din anmodning',

@@ -38,12 +38,15 @@ export function HandoffStatus({ classId, handoff }: { classId: string; handoff: 
       })
   }
   const notConnected = phase === 'refused' && refusal === 'not_connected'
+  const needsSpotify = phase === 'refused' && refusal === 'needs_spotify'
   return (
     <div className="flex flex-col gap-3" data-testid="handoff-stopped">
       <Notice kind="error">
         {notConnected
           ? t('ws.refused.notConnected')
-          : phase === 'refused'
+          : needsSpotify
+            ? t('interp.reason.needs_spotify')
+            : phase === 'refused'
             ? t('start.handoff.refused')
             : phase === 'failed'
               ? t('start.handoff.failed')
@@ -61,6 +64,7 @@ export function HandoffStatus({ classId, handoff }: { classId: string; handoff: 
         ) : phase === 'error' ? (
           <Button onClick={retry}>{t('ws.tryAgainNow')}</Button>
         ) : null}
+        {needsSpotify ? <Link to="/account/spotify">{t('music.connectSpotify')}</Link> : null}
         {notConnected ? null : <Link to={startAgainPath(classId)}>{t('start.handoff.tryAgain')}</Link>}
       </p>
     </div>

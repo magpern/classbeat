@@ -238,16 +238,17 @@ call, and any live call. Agents run none (AGENTS.md safety envelope).
 
 ## Amendment of 2026-11-03: the per-user "I use Swedebeat" preference (issue #525)
 
-Owner decision (2026-11-03, chat): MOWL is always required; Spotify and Swedebeat are optional per user, and
-a user without Swedebeat never sees Swedebeat features. This amends §6 and §8 (and ADR 0016 §2).
+Owner decision (2026-11-03, chat): MOWL is always required; Swedebeat is optional per user, and a user
+without Swedebeat never sees Swedebeat features. This amends §6 and §8 (and ADR 0016 §2). The same
+decision called Spotify optional too; roadmap Amendment 25 (2026-11-16) replaces that part: Spotify is
+required for any class that has music (not for "No music" or a Swedebeat mix).
 
 - **Storage.** A new owned table `user_preferences` (migration `0028_user_preferences`): `id`, `owner_id`
   (`UNIQUE`, one row per user at most, `ON DELETE CASCADE` from `users`), `uses_swedebeat boolean NOT NULL
   DEFAULT false`, `created_at`, `updated_at`; forced owner RLS (`owner_isolation`), the app role's grants from
   the default privileges, nothing for `classbeat_maint`. No row is every preference at its default: reading
   never writes, so a user who never touches the switch has no row. A table rather than a column on `users`
-  because `users` is an account table without owner RLS, and the next per-user switch (Spotify is optional
-  too) gets a column here. No backfill: the migration role is subject to the forced RLS of `connections`, and
+  because `users` is an account table without owner RLS, and the next per-user switch gets a column here. No backfill: the migration role is subject to the forced RLS of `connections`, and
   the flag has been off in every deployment; a user who already holds a Swedebeat connection still sees its
   status and Disconnect and turns the switch on once.
 - **Code.** `classbeat.connections.preferences` (inside the package allowed to open a `user_session`): every

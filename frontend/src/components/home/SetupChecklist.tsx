@@ -19,8 +19,8 @@ type State = { status: 'loading' } | { status: 'ready'; steps: Step[] } | { stat
 
 /**
  * "Get set up": the connections still missing, as rows with one Connect button each: MOWL and,
- * where song picking is on, Spotify (optional). Built from the existing connection APIs and shown
- * until every one is connected. A failed read hides it rather than guessing.
+ * where song picking is on, Spotify (a class with music needs it, roadmap Amendment 25). Built from
+ * the existing connection APIs and shown until every one is connected. A failed read hides it rather than guessing.
  */
 export function SetupChecklist() {
   const t = useT()
@@ -49,7 +49,7 @@ export function SetupChecklist() {
             key: 'spotify',
             mark: 'S',
             name: t('spot.title'),
-            optional: true,
+            optional: false,
             status: spotify.status === 'needs_reconnect' ? t('mowl.statusAgain') : t('conn.spotify.purpose'),
             to: '/account/spotify',
           })
