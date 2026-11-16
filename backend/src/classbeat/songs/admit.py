@@ -38,7 +38,13 @@ job, the per-user limit), in this order, each refusal writing nothing:
    of the class, made by a ``design_with_songs`` job (a song change's list is changed again by
    ``revise_songs``) that ended ``cancelled`` or ``expired`` and was never approved, its
    stored hash still matches its content (``song_list.load``), and every ``replace`` slot is a
-   position in it.
+   position in it;
+7. with ``source`` (the user's own Spotify playlist, roadmap Amendment 26) step 1's
+   ``song_picking_off`` and steps 4 and 5 do not apply: no song is picked and the pool is never
+   touched, so neither ``song_picking`` nor the pool consent is needed (as for ``design_draft``
+   on that playlist), and such a job never counts for another pick's ``pool_busy``. The soundless
+   and sport rules and ``not_connected`` (step 3) are checked as for a pick. The new
+   playlist's consent is the user's Approve, as for every pick.
 
 **``approve_check``** (``POST /api/jobs/{id}/approve``, the ``JobKind.approve_check`` seam, after
 the row checks and the connection checks of ``CONNECTIONS``; it only reads):
@@ -87,7 +93,8 @@ SEED_ENDED: Final = ("cancelled", "expired")
 _PICK_OPEN = text(
     "SELECT 1 FROM jobs WHERE owner_id = :owner_id AND kind = ANY(:kinds) "
     "AND state IN ('queued', 'running') AND approved_at IS NULL "
-    "AND coalesce(input ->> 'mode', 'pick') = 'pick' LIMIT 1"
+    "AND coalesce(input ->> 'mode', 'pick') = 'pick' "
+    "AND jsonb_typeof(input -> 'source') IS DISTINCT FROM 'object' LIMIT 1"
 )
 # The class's newest song list and the job that made it.
 _NEWEST_LIST = text(
@@ -214,7 +221,8 @@ async def pick_checks(
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Admitted | Refused:
     if not isinstance(parsed, DesignWithSongsInput):
         return Refused("invalid_input")
-    if not await flags.song_picking_admits(db, ctx, config.current().enabled):
+    own = parsed.source is not None  # the user's own playlist: no pick, no pool (step 7)
+    if not own and not await flags.song_picking_admits(db, ctx, config.current().enabled):
         return Refused("song_picking_off")
     # ADR 0007 amendment item 9 (#530): no song pick, resume or seed of a soundless class.
     if parsed.class_id is not None:
@@ -227,6 +235,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     fixed = await sport.admit_brief(db, ctx, parsed.brief, parsed.class_id)
     if fixed is not None:
         return fixed
+    if own:
+        found = await connections.spotify_account_in(db, ctx, parsed.spotify_connection_id)
+        return Admitted() if found is not None else Refused("not_connected")
     refused = await pick_checks(db, ctx, parsed.spotify_connection_id)
     if refused is not None:
         return refused

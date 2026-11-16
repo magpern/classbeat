@@ -1,7 +1,8 @@
 """The input of ``design_with_songs`` (ADR 0008 section 4).
 
 ``{class_id | title, brief, mode: "pick" | "resume", resume?: {song_list_revision_id},
-seed?: {song_list_revision_id, replace: [int]}, mowl_connection_id, spotify_connection_id}``.
+seed?: {song_list_revision_id, replace: [int]}, source?: {source: "mowl_spotify_playlist",
+spotify_playlist_id}, mowl_connection_id, spotify_connection_id}``.
 
 - ``CONNECTIONS = ("mowl", "spotify")``: the jobs API refuses the job, and later its approval,
   unless both ids are the user's current connections (and, at approval, ``connected``).
@@ -10,6 +11,12 @@ seed?: {song_list_revision_id, replace: [int]}, mowl_connection_id, spotify_conn
 - ``seed`` ("Ask for changes", section 5): a pick that keeps the seed list's other songs in their
   slots and replaces the ones at ``replace`` (positions in that list, each once). Only with
   ``mode = "pick"`` and an existing class (``class_id``); ``admit`` checks the rest.
+- ``source`` (roadmap Amendment 26, ADR 0008 amendment of 2026-11-16): the user's own Spotify
+  playlist, as ``design_draft`` takes it. Phase 1 then makes the ``song_list`` from that playlist's
+  analysed tracks in their order, with no model, no search and no pool
+  (``classbeat.songs.from_playlist``); the approval and phase 2 are the pick's. The playlist is
+  only read (through MOWL); phase 2 writes a **new** private playlist. Only with ``mode = "pick"``
+  and no ``seed``.
 - ``resume`` names an approved list to start phase 2 for (section 6): exactly when
   ``mode = "resume"``, and only with an existing class; ``admit`` checks the receipt.
 
@@ -25,6 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from classbeat.agent.brief import Brief
 from classbeat.agent.schemas import MAX_SONGS
 from classbeat.design import revision
+from classbeat.design.kind import SpotifyMusicChoice
 from classbeat.design.revise import Request, Sha256Hex
 from classbeat.jobs.inputs import ModelJobInput, jsonb_size
 
@@ -58,6 +66,7 @@ class DesignWithSongsInput(ModelJobInput):
     mode: Literal["pick", "resume"] = "pick"
     resume: Resume | None = None
     seed: Seed | None = None
+    source: SpotifyMusicChoice | None = None
     mowl_connection_id: UUID
     spotify_connection_id: UUID
 
@@ -73,6 +82,8 @@ class DesignWithSongsInput(ModelJobInput):
             raise ValueError("a resume belongs to an existing class")
         if self.seed is not None and (self.mode != "pick" or self.class_id is None):
             raise ValueError("a seed belongs to a pick of an existing class")
+        if self.source is not None and (self.mode != "pick" or self.seed is not None):
+            raise ValueError("a source playlist belongs to a pick without a seed")
         return self
 
 

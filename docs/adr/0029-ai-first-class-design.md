@@ -210,7 +210,10 @@ The fields are:
 3. Inferred and default values are recorded as **Assumed**.
 4. Music order for cycling: the override, then a name match, then pick (when Spotify is ready),
    then the first MOWL playlist, then soundless. For running (ADR 0018): MOWL playlists only,
-   otherwise Not as asked `needs_mowl_playlist`.
+   otherwise Not as asked `needs_mowl_playlist`. *(Roadmap Amendment 26, 2026-11-16: the order is
+   unchanged. When a cycling class's music is a playlist, the hand-off designs it through the song
+   pick's approval on a new private playlist in that playlist's order (ADR 0008 amendment of
+   2026-11-16).)*
 5. The allowed sports go to the interpreter.
 
 **`Brief`** (moved into `agent/brief.py`)
