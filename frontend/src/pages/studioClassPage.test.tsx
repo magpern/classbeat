@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { CLASS_PATH, REV1, REVISE_JOB, classRoutes } from '../test/classFixtures'
+import { CLASS_PATH, REV1, REVISE_JOB, classBody, classRoutes } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { CLASS_ID, SESSION_ROUTES, jobBody } from '../test/jobFixtures'
 import { renderAt } from '../test/render'
@@ -261,6 +261,31 @@ describe('a studio class on the class page', () => {
       expect(screen.queryByText('The songs could not be loaded. Reload the page.')).toBeNull()
       expect(api.to('GET', SONGS_PATH)).toHaveLength(0)
       expect(api.to('GET', `/api/jobs/${SONGS_JOB}`)).toHaveLength(1)
+    })
+
+    const OPEN = { open_job_id: REVISE_JOB, open_job: { id: REVISE_JOB, kind: 'revise_draft', state: 'running' } }
+    const withOpenJob = (kind: string, extra: Record<string, unknown> = {}) => {
+      const routes = approved(kind, extra)
+      return {
+        ...routes,
+        [`GET ${CLASS_PATH}`]: classBody({ songs: { state: 'approved', job_id: SONGS_JOB, revision_id: LIST, content_hash: HASH }, ...OPEN }),
+      }
+    }
+
+    it('still shows the legacy song panel, waiting, on a Spotify class loaded with a job open', async () => {
+      fakeApi(withOpenJob('design_with_songs'))
+      renderAt(PAGE)
+      const panel = await screen.findByRole('region', { name: 'Change songs' })
+      expect(panel).toHaveTextContent(/wait/i)
+    })
+
+    it('never shows the legacy song panel on a studio class loaded with a job open', async () => {
+      const api = fakeApi(withOpenJob('studio_songs'))
+      renderAt(PAGE)
+      await screen.findByTestId('tss')
+      await waitFor(() => { expect(api.to('GET', `/api/jobs/${SONGS_JOB}`)).toHaveLength(1) })
+      expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
+      expect(api.to('GET', `${CLASS_PATH}/revisions/${LIST}`)).toHaveLength(0)
     })
 
     it.each([500, 404])('keeps the legacy song panel on a non-studio class when the timeline answers %i', async (status) => {

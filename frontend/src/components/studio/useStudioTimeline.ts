@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getTimeline, type TimelineResult } from '../../api/studioOutputs'
 
 export type StudioView = { status: 'loading' } | { status: 'failed' } | ({ status: 'done' } & TimelineResult)
@@ -10,16 +10,22 @@ export type StudioView = { status: 'loading' } | { status: 'failed' } | ({ statu
 export function useStudioTimeline(classId: string, revisionId: string | null, enabled: boolean): StudioView {
   const key = `${classId}/${revisionId ?? ''}`
   const [found, setFound] = useState<{ key: string; view: StudioView } | null>(null)
+  const answered = useRef<string | null>(null)
   useEffect(() => {
-    // While a job of the class is open the last answer stays; the version it makes is read after.
-    if (!enabled || revisionId === null) return
+    // While a job of the class is open the last answer stays and is not read again; the version it
+    // makes is read after. A page loaded with a job open is read once, so the kind settles.
+    if (revisionId === null || (!enabled && answered.current === key)) return
     const abort = new AbortController()
     getTimeline(classId, abort.signal).then(
       (result) => {
-        if (!abort.signal.aborted) setFound({ key, view: { status: 'done', ...result } })
+        if (abort.signal.aborted) return
+        answered.current = key
+        setFound({ key, view: { status: 'done', ...result } })
       },
       () => {
-        if (!abort.signal.aborted) setFound({ key, view: { status: 'failed' } })
+        if (abort.signal.aborted) return
+        answered.current = key
+        setFound({ key, view: { status: 'failed' } })
       },
     )
     return () => {
