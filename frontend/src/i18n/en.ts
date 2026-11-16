@@ -2126,6 +2126,8 @@ export const en = {
     'Your SwedeBeat connection changed since you chose. Reload the page and approve again.',
   'studio.reason.session_refused':
     'SwedeBeat did not accept your sign-in. Connect again on your account page.',
+  'studio.reason.account_changed':
+    'Your account is not the one these songs were chosen for. Make a new pick.',
   'studio.reason.no_studio_draft':
     'This class has no studio draft yet. Approve songs first.',
   'studio.tl.title':
@@ -2177,7 +2179,7 @@ export const en = {
   'studio.out.mowl.desc':
     'The workout in MOWL, with the mix attached. It needs the mix.',
   'studio.out.mowlNeedsMix':
-    'The mix stays on while MOWL is on, because the workout attaches it.',
+    'The mix stays on while MOWL is on, because the mix is attached to the workout.',
   'studio.out.none':
     'Choose at least one output.',
   'studio.consent.title':

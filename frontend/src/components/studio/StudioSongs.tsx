@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ApiError } from '../../api/client'
 import { cancelJob, type Job } from '../../api/jobs'
 import { approveSongs } from '../../api/songs'
 import { approveRefusal } from '../../api/songMessages'
@@ -99,7 +100,12 @@ export function StudioSongs({ job }: { job: Job }) {
     void approve.run(
       async () => {
         if (!approved) {
-          await approveSongs(job.id, revisionId, list.contentHash)
+          try {
+            await approveSongs(job.id, revisionId, list.contentHash)
+          } catch (error) {
+            // A lost answer of the approval: the list is approved already, so go on to the design.
+            if (!(error instanceof ApiError && error.reason === 'not_waiting')) throw error
+          }
           past = true
           setApproved(true)
         }

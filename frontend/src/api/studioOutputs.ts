@@ -112,7 +112,12 @@ export type TimelineResult =
   | { kind: 'ready'; timeline: Timeline }
   /** A studio class whose cached analysis is gone: Change songs analyses again. */
   | { kind: 'music_changed' }
-  /** Not a studio class (or no studio draft yet, or the studio is off). */
+  /**
+   * `no_studio_draft`: not a studio class, or a studio class whose design has not made a draft yet
+   * (the answer is the same; the class page tells them apart by the class's approved song list).
+   */
+  | { kind: 'no_draft' }
+  /** No such class or the studio is off. */
   | { kind: 'none' }
 
 export async function getTimeline(classId: string, signal?: AbortSignal): Promise<TimelineResult> {
@@ -120,6 +125,7 @@ export async function getTimeline(classId: string, signal?: AbortSignal): Promis
     return { kind: 'ready', timeline: decodeTimeline(await get(`${classBase(classId)}/timeline`, signal)) }
   } catch (error) {
     if (error instanceof ApiError && error.status === 409 && error.reason === 'music_changed') return { kind: 'music_changed' }
+    if (error instanceof ApiError && error.status === 409 && error.reason === 'no_studio_draft') return { kind: 'no_draft' }
     if (error instanceof ApiError && (error.status === 404 || error.status === 409)) return { kind: 'none' }
     throw error
   }

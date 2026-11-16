@@ -2157,11 +2157,11 @@ const da: Catalogue = {
   'studio.gaps':
     { one: 'Én sang er et hul, så listen kan ikke godkendes. Bed om en anden sang, eller lav et nyt valg.', other: '{count} sange er huller, så listen kan ikke godkendes. Bed om andre sange, eller lav et nyt valg.' },
   'studio.changes':
-    'Sangændringer i denne klasse: {count} af {limit}.',
+    'Sangændringer i dette hold: {count} af {limit}.',
   'studio.changesNote':
-    'Fortryd, Bed om en anden og Byt alligevel tæller hver som én sangændring i klassen, også når de mislykkes.',
+    'Fortryd, Bed om en anden og Byt alligevel tæller hver som én sangændring i holdet, også når de mislykkes.',
   'studio.credit':
-    'Fortryd, Bed om en anden og Byt alligevel beholder klassens kredit. Et nyt valg koster en klassekredit.',
+    'Fortryd, Bed om en anden og Byt alligevel beholder holdets kredit. Et nyt valg koster en holdkredit.',
   'studio.newPick':
     'Lav et nyt valg',
   'studio.suspected.title':
@@ -2175,17 +2175,17 @@ const da: Catalogue = {
   'studio.swapAnyway':
     'Byt alligevel',
   'studio.stopped':
-    'Stoppet. Intet blev ændret. Prøv igen senere fra klassens side.',
+    'Stoppet. Intet blev ændret. Prøv igen senere fra holdets side.',
   'studio.ended.title':
     'Ingen sangliste venter på dig',
   'studio.ended.noList':
     'Ændringen gav ikke en liste, du kan godkende. Den tidligere liste blev annulleret, da du bad om den.',
   'studio.ended.newPick':
-    'Lav et nyt valg for at få en liste, du kan godkende. Et nyt valg koster en klassekredit.',
+    'Lav et nyt valg for at få en liste, du kan godkende. Et nyt valg koster en holdkredit.',
   'studio.reason.revision_limit':
-    'Klassen har nået grænsen for sangændringer. Lav et nyt valg i stedet.',
+    'Holdet har nået grænsen for sangændringer. Lav et nyt valg i stedet.',
   'studio.reason.revision_limit_counts':
-    'Klassen har brugt {count} af sine {limit} sangændringer. Lav et nyt valg i stedet.',
+    'Holdet har brugt {count} af sine {limit} sangændringer. Lav et nyt valg i stedet.',
   'studio.reason.quota':
     'Din plan har ikke plads til dette lige nu. Listen blev ladt, som den var.',
   'studio.reason.list_has_gap':
@@ -2225,31 +2225,33 @@ const da: Catalogue = {
   'studio.approve':
     'Godkend sangene',
   'studio.approveHint':
-    'Godkendelsen starter designet af klassen på disse sange. Det bruger ingen yderligere kredit.',
+    'Godkendelsen starter designet af holdet på disse sange. Det bruger ingen yderligere kredit.',
   'studio.designFailed':
     'Sangene er godkendt, men designet startede ikke.',
   'studio.designRetry':
     'Start designet',
   'studio.reason.music_changed':
-    'Analysen af klassens musik er udløbet. Skift sange for at analysere igen. Et nyt valg koster en klassekredit.',
+    'Analysen af holdets musik er udløbet. Skift sange for at analysere igen. Et nyt valg koster en holdkredit.',
   'studio.reason.already_designed':
-    'Klassen er allerede designet på disse sange. Åbn klassen for at se den.',
+    'Holdet er allerede designet på disse sange. Åbn holdet for at se det.',
   'studio.reason.stale_base':
-    'Klassen blev ændret i mellemtiden. Genindlæs siden og prøv igen.',
+    'Holdet blev ændret i mellemtiden. Genindlæs siden og prøv igen.',
   'studio.reason.hash_mismatch':
     'Udkastet blev ændret, efter siden blev indlæst. Genindlæs siden, kontrollér det og godkend igen.',
   'studio.reason.not_current':
-    'Dette er ikke længere klassens aktuelle version. Genindlæs siden.',
+    'Dette er ikke længere holdets aktuelle version. Genindlæs siden.',
   'studio.reason.mowl_needs_mix':
-    'Et MOWL-hold kræver mixet. Vælg også mixet.',
+    'Et MOWL-træningspas kræver mixet. Vælg også mixet.',
   'studio.reason.output_off':
     'Et af de valgte resultater er slået fra lige nu. Vælg andre, eller prøv igen senere.',
   'studio.reason.connection_changed':
     'Din SwedeBeat-forbindelse er ændret, siden du valgte. Genindlæs siden og godkend igen.',
   'studio.reason.session_refused':
-    'SwedeBeat accepterede ikke dit login. Opret forbindelsen igen på din kontoside.',
+    'SwedeBeat accepterede ikke dit login. Tilslut igen på din kontoside.',
+  'studio.reason.account_changed':
+    'Din konto er ikke den, som disse sange blev valgt til. Lav et nyt valg.',
   'studio.reason.no_studio_draft':
-    'Klassen har endnu intet studieudkast. Godkend sange først.',
+    'Holdet har endnu intet studieudkast. Godkend sange først.',
   'studio.tl.title':
     'Musiktidslinje',
   'studio.tl.length':
@@ -2295,11 +2297,11 @@ const da: Catalogue = {
   'studio.out.swedebeat_mix.desc':
     'Én renderet MP3 af hele mixet, udgivet i SwedeBeat.',
   'studio.out.mowl':
-    'MOWL-hold',
+    'MOWL-træningspas',
   'studio.out.mowl.desc':
-    'Holdet i MOWL, med mixet tilknyttet. Det kræver mixet.',
+    'Træningspasset i MOWL, med mixet tilknyttet. Det kræver mixet.',
   'studio.out.mowlNeedsMix':
-    'Mixet er slået til, så længe MOWL er det, fordi holdet tilknytter det.',
+    'Mixet er slået til, så længe MOWL er det, fordi mixet er knyttet til træningspasset.',
   'studio.out.none':
     'Vælg mindst ét resultat.',
   'studio.consent.title':
@@ -2307,7 +2309,7 @@ const da: Catalogue = {
   'studio.consent.chosen':
     'Du er ved at oprette: {outputs}.',
   'studio.consent.noDelete':
-    'SwedeBeat har ingen sletning, og classbeat kan ikke fjerne det, der udgives dér.',
+    'Det er ikke muligt at slette noget i SwedeBeat, og classbeat kan ikke fjerne det, der udgives dér.',
   'studio.consent.publicPlaylist':
     'En udgivet playliste viser dit navn og din e-mailadresse for andre i SwedeBeat.',
   'studio.consent.mix':
@@ -2317,7 +2319,7 @@ const da: Catalogue = {
   'studio.consent.sending':
     'Sender…',
   'class.duplicate.reason.studio_not_duplicable':
-    'En klasse lavet med SwedeBeats studie kan ikke kopieres. Lav et nyt valg i stedet.',
+    'Et hold lavet med SwedeBeats studie kan ikke kopieres. Lav et nyt valg i stedet.',
   'job.failure.studioMusicChanged.title':
     'Musikken skal analyseres igen',
   'job.failure.studioMusicChanged.detail':

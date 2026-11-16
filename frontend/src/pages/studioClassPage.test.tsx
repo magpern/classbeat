@@ -167,4 +167,43 @@ describe('a studio class on the class page', () => {
       },
     })
   })
+
+  describe('an approved list whose design never started', () => {
+    const SONGS_JOB = 'f1111111-1111-4111-8111-111111111111'
+    const LIST = '55555555-5555-4555-8555-555555555555'
+    const DESIGN_JOB = '77777777-7777-4777-8777-777777777777'
+    const approved = (kind: string, extra: Record<string, unknown> = {}) => ({
+      ...SESSION_ROUTES,
+      ...classRoutes({
+        cls: { songs: { state: 'approved', job_id: SONGS_JOB, revision_id: LIST, content_hash: HASH } },
+      }),
+      'GET /api/connections': SWEDEBEAT,
+      [`GET ${CLASS_PATH}/timeline`]: () => reason(409, 'no_studio_draft'),
+      [`GET /api/jobs/${SONGS_JOB}`]: jobBody('completed', { id: SONGS_JOB, kind }),
+      ...extra,
+    })
+
+    it('after a reload offers Start the design, which posts the start with a key', async () => {
+      const api = fakeApi(
+        approved('studio_songs', {
+          [`POST ${CLASS_PATH}/studio-songs/${LIST}/design`]: () =>
+            json({ id: DESIGN_JOB, kind: 'studio_design', state: 'queued' }, 201),
+        }),
+      )
+      renderAt(PAGE)
+      fireEvent.click(await screen.findByRole('button', { name: 'Start the design' }))
+      await waitFor(() => { expect(api.to('POST', `${CLASS_PATH}/studio-songs/${LIST}/design`)).toHaveLength(1) })
+      const call = api.to('POST', `${CLASS_PATH}/studio-songs/${LIST}/design`)[0]!
+      expect(call.body).toEqual({})
+      expect(call.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
+    })
+
+    it('offers nothing for a class whose approved songs are not a studio list', async () => {
+      fakeApi(approved('design_with_songs'))
+      renderAt(PAGE)
+      await screen.findByTestId('tss')
+      await waitFor(() => { expect(screen.queryByTestId('studio-music-changed')).toBeNull() })
+      expect(screen.queryByRole('button', { name: 'Start the design' })).toBeNull()
+    })
+  })
 })

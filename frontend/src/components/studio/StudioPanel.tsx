@@ -4,6 +4,7 @@ import { startAgainPath } from '../../lib/startRequest'
 import { Link } from '../../router/Router'
 import { Notice } from '../forms'
 import { Card, CardTitle } from '../ui/card'
+import { StudioStartDesign } from './StudioStartDesign'
 import { StudioOutputs } from './StudioOutputs'
 import { StudioTimeline } from './StudioTimeline'
 import type { StudioView } from './useStudioTimeline'
@@ -18,6 +19,7 @@ export function StudioPanel({ summary, view }: { summary: ClassSummary; view: St
   if (view.status === 'loading') return null
   if (view.status === 'failed') return <Notice kind="error">{t('studio.tl.loadFailed')}</Notice>
   if (view.kind === 'none') return null
+  if (view.kind === 'no_draft') return <StudioStartDesign summary={summary} />
   if (view.kind === 'music_changed') {
     return (
       <Card className="flex flex-col gap-3" data-testid="studio-music-changed">

@@ -88,7 +88,7 @@ export const SIGNED_IN = {
  * defaults to anonymous, `/api/connections` and `/api/external-operations` to none, `/api/connections/player` to off, `/api/connections/spotify` to
  * 404 `feature_off`, `/api/account/billing` to 403 `billing_closed` and
  * `/api/mail/preferences` to everything on, `/api/usage` to an empty month, `/api/music/playlist-covers` and
- * `/api/auth/events` to none, and a class's `/timeline` to 404 `no_studio_draft` (not a studio class).
+ * `/api/auth/events` to none, and a class's `/timeline` to 409 `no_studio_draft` (not a studio class).
  */
 export function fakeApi(routes: Record<string, Handler | object | string>) {
   rememberCsrfToken(null)
@@ -122,7 +122,7 @@ export function fakeApi(routes: Record<string, Handler | object | string>) {
     const route =
       table[`${method} ${path}`] ??
       (method === 'GET' && /^\/api\/classes\/[^/]+\/timeline$/.test(path)
-        ? () => json({ detail: { reason: 'no_studio_draft' } }, 404)
+        ? () => json({ detail: { reason: 'no_studio_draft' } }, 409)
         : undefined)
     if (route === undefined) {
       return Promise.reject(new Error(`unexpected request: ${method} ${path}`))

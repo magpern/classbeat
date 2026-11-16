@@ -254,6 +254,17 @@ describe('StudioEnded', () => {
       expect(api.to('POST', APPROVE)).toHaveLength(1)
     })
 
+    it('treats not_waiting on the approval as already approved and starts the design', async () => {
+      const api = fakeApi({
+        [`GET ${PATH}`]: view({ approvable: true }),
+        [`POST ${APPROVE}`]: () => reason(409, 'not_waiting'),
+        [`POST ${PATH}/design`]: json({ id: DESIGN_JOB, kind: 'studio_design', state: 'queued' }, 201),
+      })
+      mount()
+      fireEvent.click(await screen.findByRole('button', { name: 'Approve songs' }))
+      await waitFor(() => { expect(api.to('POST', `${PATH}/design`)).toHaveLength(1) })
+    })
+
     it('words a refused approval and keeps the list', async () => {
       fakeApi({
         [`GET ${PATH}`]: view({ approvable: true }),
