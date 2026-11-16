@@ -2318,6 +2318,116 @@ const sv: Catalogue = {
     'Mixen är på så länge MOWL är på, eftersom mixen kopplas till träningspasset.',
   'studio.out.none':
     'Välj minst ett resultat.',
+  'studio.out.noneEnabled':
+    'Inget resultat är tillgängligt just nu. Försök igen senare.',
+  'studio.os.title':
+    'Resultatens status',
+  'job.failure.output_limit.title':
+    'Gränsen för resultat är nådd',
+  'job.failure.output_limit.detail':
+    'Inget skapades. Högst 24 försök per pass totalt, och 24 per dygn för alla dina pass.',
+  'job.failure.writes_off.title':
+    'SwedeBeat har skrivning avstängd',
+  'job.failure.writes_off.detail':
+    'Ingenting skickades. Försök igen senare.',
+  'job.failure.connection_changed.title':
+    'Din SwedeBeat-anslutning ändrades',
+  'job.failure.connection_changed.detail':
+    'Ingenting mer skickades. Gå tillbaka till passet, ladda om och godkänn igen.',
+  'job.failure.render_not_reproducible.title':
+    'Mixen blev annorlunda',
+  'job.failure.render_not_reproducible.detail':
+    'Mixen blev inte likadan två gånger, så ingenting mer skickades. Gör ett nytt val.',
+  'studio.os.limitReached':
+    'Ditt senaste godkännande stoppades av gränsen för försök till resultat: högst 24 per pass totalt, och 24 per dygn för alla dina pass. Det kan ändå gå att godkänna för ett oavslutat resultat.',
+  'studio.ended.backToClass':
+    'Tillbaka till passet',
+  'studio.os.category.connection_changed':
+    'Din SwedeBeat-anslutning ändrades. Ladda om sidan och godkänn sedan resultaten igen.',
+  'studio.os.category.render_not_reproducible':
+    'Mixen blev annorlunda vid en andra rendering, så ingenting mer skickades. Gör ett nytt val.',
+  'studio.os.category.music_changed':
+    'Analysen av musiken har gått ut. Byt låtar för att analysera på nytt; ett nytt val kostar en passkredit.',
+  'studio.os.category.not_connected':
+    'SwedeBeat är inte anslutet. Anslut det på din kontosida och godkänn sedan igen.',
+  'studio.os.category.invalid_input':
+    'SwedeBeat godtog inte begäran. Ingenting skickades. Ladda om sidan; om det händer igen, gör ett nytt val.',
+  'studio.os.category.analysis_failed':
+    'Musiken kunde inte analyseras. Gör ett nytt val.',
+  'studio.os.category.internal':
+    'Något gick fel hos oss. Försök igen senare.',
+  'studio.os.duplicateRisk.spotify_playlist':
+    'Om den första spellistan finns får du en andra i ditt Spotify-konto. Du kan ta bort någon av dem i Spotify. Det går bara några få gånger per pass och dag.',
+  'studio.os.duplicateRisk.swedebeat_playlist':
+    'Om den första spellistan finns får du en dubblett i SwedeBeat. SwedeBeat saknar borttagning och classbeat kan inte ta bort den, så dubbletten blir kvar. Det går bara några få gånger per pass och dag.',
+  'studio.os.duplicateRisk.swedebeat_mix':
+    'Om den första mixen finns får du en dubblett i SwedeBeat. SwedeBeat saknar borttagning och classbeat kan inte ta bort den, så dubbletten blir kvar. Det går bara några få gånger per pass och dag.',
+  'studio.os.duplicateRisk.mowl':
+    'Om det första träningspasset finns får du ett andra i MOWL. Det går bara några få gånger per pass och dag.',
+  'studio.os.duplicateAccept.swedebeat':
+    'Jag förstår att det kan skapa en dubblett som inte går att ta bort.',
+  'studio.os.supersededHint.swedebeat':
+    'Den tidigare finns kvar i SwedeBeat. Godkänn resultaten igen för att skapa den nya.',
+  'studio.os.supersededHint.spotify_playlist':
+    'Den tidigare spellistan kan finnas kvar i ditt Spotify-konto; du kan ta bort den där. Godkänn resultaten igen för att skapa den nya.',
+  'studio.os.supersededHint.mowl':
+    'Det tidigare träningspasset kan finnas kvar i MOWL. Godkänn resultaten igen för att skapa det nya.',
+  'studio.os.loadFailed':
+    'Statusen för resultaten kunde inte hämtas. Ladda om sidan.',
+  'studio.os.state.pending':
+    'Väntar på att starta.',
+  'studio.os.state.running':
+    'Skapas just nu.',
+  'studio.os.state.done':
+    'Skapad.',
+  'studio.os.state.failed':
+    'Blev inte klar.',
+  'studio.os.state.in_doubt':
+    'Osäkert: den kan finnas, men classbeat kunde inte bekräfta det. Kontrollera igen innan du skapar en till.',
+  'studio.os.state.published_not_listed':
+    'Publicerad, men inte listad i MOWL än. Kontrollera igen om en liten stund.',
+  'studio.os.note.created_not_public':
+    'Spellistan är skapad men inte publicerad än.',
+  'studio.os.note.not_sent':
+    'Ingenting skickades.',
+  'studio.os.name':
+    'Namn: {name}',
+  'studio.os.superseded':
+    'Ersatt: en ny skapas vid nästa godkännande.',
+  'studio.os.retryHint':
+    'Godkänn resultaten igen för att försöka på nytt.',
+  'studio.os.candidate':
+    'Hittades i MOWL: {name} ({length}). Är det din mix?',
+  'studio.os.candidateNoLength':
+    'Hittades i MOWL: {name}. Är det din mix?',
+  'studio.os.confirm':
+    'Ja, det är min mix',
+  'studio.os.checkAgain':
+    'Kontrollera igen',
+  'studio.os.createAnother':
+    'Skapa en till ändå',
+  'studio.os.createAnotherConfirm':
+    'Skapa en till ändå',
+  'studio.os.cancel':
+    'Avbryt',
+  'studio.os.duplicateAccept':
+    'Jag förstår att det kan skapa en dubblett.',
+  'studio.os.category.writes_off':
+    'SwedeBeat har skrivning avstängd just nu. Ingenting skickades. Försök igen senare.',
+  'studio.os.category.needs_reconnect':
+    'SwedeBeat godtog inte din inloggning. Anslut igen på din kontosida och godkänn sedan igen.',
+  'studio.os.category.rate_limited':
+    'SwedeBeat ber oss sakta ner. Vänta några minuter och godkänn sedan igen.',
+  'studio.os.category.track_unavailable':
+    'SwedeBeat saknar fil för en av låtarna. Byt den låten, eller gör ett nytt val.',
+  'studio.os.category.track_too_large':
+    'En låtfil är större än SwedeBeats gräns. Byt den låten, eller gör ett nytt val.',
+  'studio.os.category.upstream_unavailable':
+    'SwedeBeat kunde inte nås eller svarade oväntat. Försök igen senare.',
+  'studio.reason.not_in_doubt':
+    'Det här resultatet är inte osäkert, så det kan inte skapas igen. Ladda om sidan.',
+  'studio.reason.nothing_to_confirm':
+    'Det finns ingen mix att bekräfta. Kontrollera igen först.',
   'studio.consent.title':
     'Innan du godkänner',
   'studio.consent.chosen':

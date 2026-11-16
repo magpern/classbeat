@@ -65,6 +65,11 @@ const FAILURES: Record<string, FailureKeys> = {
   track_unavailable: { title: 'job.failure.track_unavailable.title', detail: 'job.failure.track_unavailable.detail' },
   track_limit: { title: 'job.failure.track_limit.title', detail: 'job.failure.track_limit.detail' },
   revision_limit: { title: 'job.failure.revision_limit.title', detail: 'job.failure.revision_limit.detail' },
+  // The studio outputs (ADR 0036 section 6): the limit of attempts, the gateway's writes off, the connection gone and a mix that did not render the same.
+  output_limit: { title: 'job.failure.output_limit.title', detail: 'job.failure.output_limit.detail' },
+  writes_off: { title: 'job.failure.writes_off.title', detail: 'job.failure.writes_off.detail' },
+  connection_changed: { title: 'job.failure.connection_changed.title', detail: 'job.failure.connection_changed.detail' },
+  render_not_reproducible: { title: 'job.failure.render_not_reproducible.title', detail: 'job.failure.render_not_reproducible.detail' },
 }
 
 const SOUNDLESS_INVALID: FailureKeys = {

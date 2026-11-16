@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useT } from '../i18n/I18n'
 import { isSongKind } from '../api/songs'
+import { OutputsEnded } from '../components/studio/OutputsEnded'
 import { StudioEnded } from '../components/studio/StudioEnded'
 import { StudioSongs } from '../components/studio/StudioSongs'
 import { STUDIO_KIND } from '../api/studioSongs'
@@ -104,6 +105,7 @@ function JobBody({
       return <StudioSongs job={job} />
     }
   }
+  if (job.kind === 'produce_outputs' && job.state === 'failed') return <OutputsEnded job={job} />
   if (song && job.state === 'waiting_for_approval') {
     return <SongsForApproval job={job} onApproved={onApproved} />
   }

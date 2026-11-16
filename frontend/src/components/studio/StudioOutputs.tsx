@@ -10,6 +10,7 @@ import {
 } from '../../api/studioOutputs'
 import { useT } from '../../i18n/I18n'
 import { actionKey, dropActionKey } from '../../lib/submittedInput'
+import { forgetOutputLimit } from './studioAction'
 import { useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
@@ -19,26 +20,32 @@ import { Button } from '../ui/button'
  * the user accepts (SwedeBeat has no delete; a published playlist shows their name and email; what
  * a merged mix shows others is unconfirmed), and the approval of this draft for those outputs.
  *
- * `enabled` is the outputs the server runs, when the page knows them; null offers all four and a
- * switched-off one is refused in words. TODO(backend): no route sends them to the browser yet.
- * TODO(#1113): the per-output states and their actions (`api/studioOutputStates.ts`) show here.
+ * `enabled` is the outputs the server runs for the user (`GET /outputs`), so only those are
+ * offered and the defaults fall back to what is on; null (the list could not be read) offers all
+ * four and a switched-off one is refused in words. The per-output states and their actions are
+ * `StudioOutputStates`.
  */
 export function StudioOutputs({
   classId,
   timeline,
   disabled,
   enabled = null,
+  limitReached = false,
 }: {
   classId: string
   timeline: Timeline
   /** Another job of the class is open. */
   disabled: boolean
   enabled?: readonly Output[] | null
+  /** The class's last approval stopped at the limit: a notice only, Approve stays on. */
+  limitReached?: boolean
 }) {
   const t = useT()
   const { navigate } = useRouter()
   const offered = OUTPUTS.filter((o) => enabled === null || enabled.includes(o))
-  const [chosen, setChosen] = useState<Output[]>(() => DEFAULT_OUTPUTS.filter((o) => offered.includes(o)))
+  const [picked, setChosen] = useState<Output[]>(() => DEFAULT_OUTPUTS.filter((o) => offered.includes(o)))
+  // An output that went off after the page loaded is dropped from the choice (and MOWL goes with a mix that is off).
+  const chosen = picked.filter((o) => offered.includes(o) && (o !== 'mowl' || offered.includes('swedebeat_mix')))
   const action = useAction()
   const has = (output: Output) => chosen.includes(output)
   const publishes = has('swedebeat_playlist') || has('swedebeat_mix')
@@ -52,6 +59,7 @@ export function StudioOutputs({
         actionKey(scope),
       )
       dropActionKey(scope)
+      forgetOutputLimit(classId)
       navigate(`/jobs/${job.id}`)
     }, studioError)
   }
@@ -72,7 +80,7 @@ export function StudioOutputs({
                   type="checkbox"
                   className="mt-1"
                   checked={has(output)}
-                  disabled={locked || action.busy}
+                  disabled={locked || action.busy || disabled}
                   onChange={(event) => {
                     setChosen(toggleOutput(chosen, output, event.target.checked))
                   }}
@@ -88,7 +96,7 @@ export function StudioOutputs({
         })}
       </ul>
       {chosen.length === 0 ? (
-        <Notice>{t('studio.out.none')}</Notice>
+        <Notice>{t(offered.length === 0 ? 'studio.out.noneEnabled' : 'studio.out.none')}</Notice>
       ) : (
         <div className="flex flex-col gap-1" data-testid="studio-consent">
           <p className="m-0 font-medium text-text">{t('studio.consent.title')}</p>
@@ -100,6 +108,7 @@ export function StudioOutputs({
           {has('swedebeat_mix') ? <p className="m-0 text-muted">{t('studio.consent.mix')}</p> : null}
         </div>
       )}
+      {limitReached ? <Notice>{t('studio.os.limitReached')}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <div>
         <Button disabled={disabled || action.busy || chosen.length === 0} onClick={approve}>
