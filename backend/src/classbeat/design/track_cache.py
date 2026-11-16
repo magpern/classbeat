@@ -5,7 +5,8 @@
   library's current ``TRACK_VERSION``, whose map still passes ``valid_track_map``. It is read in a
   fenced transaction that share-locks the job's SwedeBeat connection (``hold``): a run whose
   connection is gone (a Disconnect forgot the rows) or was reconnected meanwhile ends
-  ``not_connected`` before any download. **A hit needs no download.**
+  ``not_connected`` before any download. **A hit needs no download.** ``cached_in`` is the same
+  read in the caller's transaction, for a page (the studio timeline), with no connection held.
 - **A store** (``store``) is one fenced transaction per analysed track: the connection held again
   (so a Disconnect that forgot the rows cannot be undone by a late store), the row upserted with
   the SHA-256 of the analysed bytes, then the user's rows past ``MAP_TTL_DAYS`` and all but the
@@ -18,9 +19,11 @@ Every statement filters on ``owner_id`` itself as well as through row security. 
 import json
 from dataclasses import dataclass
 from typing import Any, Final, cast
+from uuid import UUID
 
 from mowl import track
 from sqlalchemy import bindparam, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.connections import OpenConnection, hold
 from classbeat.design.track_map_policy import valid_track_map
@@ -62,20 +65,16 @@ class TrackMap:
     cached: bool
 
 
-async def cached(
-    run: JobRun, connection: OpenConnection, references: list[str]
-) -> dict[str, TrackMap]:
-    """The user's current analyses of ``references`` (the hits only)."""
+async def cached_in(db: AsyncSession, owner_id: UUID, references: list[str]) -> dict[str, TrackMap]:
+    """The user's current analyses of ``references`` (the hits only), in the caller's
+    transaction: a page's read (the timeline), which holds no connection and writes nothing."""
     params = {
-        "owner_id": run.lease.owner_id,
+        "owner_id": owner_id,
         "version": track.TRACK_VERSION,
         "references": references,
         "days": MAP_TTL_DAYS,
     }
-    async with run.fenced() as fs:
-        if not await hold(fs.db, run.ctx, connection):
-            raise JobFailure("not_connected")
-        rows = (await fs.db.execute(_CACHED, params)).all() if references else []
+    rows = (await db.execute(_CACHED, params)).all() if references else []
     hits: dict[str, TrackMap] = {}
     for row in rows:
         stored: object = row.map
@@ -86,6 +85,16 @@ async def cached(
             str(row.reference), bytes(row.sha256).hex(), music_map, cached=True
         )
     return hits
+
+
+async def cached(
+    run: JobRun, connection: OpenConnection, references: list[str]
+) -> dict[str, TrackMap]:
+    """The user's current analyses of ``references`` (the hits only), with the connection held."""
+    async with run.fenced() as fs:
+        if not await hold(fs.db, run.ctx, connection):
+            raise JobFailure("not_connected")
+        return await cached_in(fs.db, run.lease.owner_id, references)
 
 
 async def store(

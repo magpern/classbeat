@@ -20,7 +20,8 @@
   ``{source: "none"}`` (``NoRevisionMusic``): no link, no fingerprint, no ``unknown_bpm``. Its
   provenance has ``map_version`` and ``crossfade_sec`` ``None``. ``REVISION_MUSIC`` (the two
   music shapes, with a link) does not take it; Save reads ``approval.SAVED_MUSIC``, which does,
-  and writes such a revision with no playlist (SL3, #529).
+  and writes such a revision with no playlist (SL3, #529). A SwedeBeat studio draft (ADR 0036
+  section 1, SR C5): ``StudioRevisionMusic``, and its ``content_hash`` is ``studio_hash``'s.
   The revision is the user's own and is deleted with its class or account (ADR 0010).
 - **provenance**: ``classbeat.agent.records.provenance``: provider, model, effort, the prompt and
   tool-schema version, classbeat's and mowl-workouts' versions, ``map_version`` and the map's
@@ -41,19 +42,17 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Final, Literal, Self
 from uuid import UUID
 
-from mowl import music as music_lib
 from mowl import workout
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 from sqlalchemy import text
 
-from classbeat import __version__ as classbeat_version
 from classbeat.agent import DesignResult, Provenance, WorkoutDraft, beat_one, mix_input, provenance
 from classbeat.agent.loop import StageOutcome
-from classbeat.agent.records import mowl_version
 from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
 from classbeat.design.music_kind import NoMusicStep
 from classbeat.jobs import FencedSession, JobFailure
+from classbeat.studio.mix_spec_model import MixSpec
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +194,26 @@ class NoRevisionMusic(BaseModel):
     source: Literal["none"]
 
 
+class StudioRevisionMusic(BaseModel):
+    """``class_revisions.music`` of a SwedeBeat studio draft (ADR 0036 section 1): the approved
+    studio ``song_list`` it was designed on, the mix spec (``studio.mix_spec_model``, made by
+    ``mix_plan_policy``) and the composed map's version. No link, fingerprint or MOWL object; its
+    ``content_hash`` is ``studio_hash``'s, so a cut, the order or a crossfade is under it."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    source: Literal["swedebeat_studio"]
+    song_list_id: UUID
+    mix_spec: MixSpec
+    map_version: int = Field(ge=1)
+
+
+def studio_hash(content: Mapping[str, Any], mix_spec: Mapping[str, Any]) -> bytes:
+    """A studio draft's ``content_hash`` (ADR 0036 section 1, amending ADR 0007 section 2): the
+    SHA-256 of the canonical JSON ``{"content": ..., "mix_spec": ...}``."""
+    return hashlib.sha256(canonical({"content": content, "mix_spec": mix_spec})).digest()
+
+
 RevisionMusic = SpotifyRevisionMusic | SwedebeatRevisionMusic
 
 
@@ -288,7 +307,7 @@ class DraftRevision:
         return revision_id
 
 
-def _content_and_music(
+def content_and_music(
     result: DesignResult,
     music_map: dict[str, Any] | None,
     step: MusicStep | NoMusicStep,
@@ -361,9 +380,7 @@ def build(
 ) -> DraftRevision:
     """The revision to store; ``invalid_output`` if the draft no longer validates, or (a revise)
     if it is the base draft again: a revision that changes nothing is not stored."""
-    content, content_hash, music, running = _content_and_music(
-        result, music_map, step, song_list_id
-    )
+    content, content_hash, music, running = content_and_music(result, music_map, step, song_list_id)
     if base_hash is not None and content_hash == base_hash:
         raise JobFailure("invalid_output")
     made: Provenance = provenance(
@@ -381,51 +398,5 @@ def build(
         content_hash=content_hash,
         music=music.model_dump(mode="json", exclude_none=True),
         provenance=made.model_dump(mode="json"),
-        parent_id=base_revision_id,
-    )
-
-
-class RefitProvenance(BaseModel):
-    """``class_revisions.provenance`` of a ``refit_draft`` revision (ADR 0007 amendment
-    "beat-one corrections", item 6): no model ran, so no model field, usage or cost."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    origin: Literal["beat_one"]
-    base_revision_id: UUID
-    classbeat_version: str = Field(min_length=1, max_length=64)
-    mowl_version: str = Field(min_length=1, max_length=64)
-    map_version: int = Field(ge=1)
-    crossfade_sec: float = Field(ge=0, le=12)
-    sport: Literal["running"] | None = None
-
-
-def build_refit(
-    result: DesignResult,
-    music_map: dict[str, Any],
-    step: MusicStep,
-    *,
-    base_revision_id: UUID,
-    song_list_id: UUID | None = None,
-) -> DraftRevision:
-    """The base's content fitted again to the corrected music. Stored even when the content is
-    the base's again: its ``music.beat_one`` records the corrections now applied."""
-    content, content_hash, music, running = _content_and_music(
-        result, music_map, step, song_list_id
-    )
-    made = RefitProvenance(
-        origin="beat_one",
-        base_revision_id=base_revision_id,
-        classbeat_version=classbeat_version,
-        mowl_version=mowl_version(),
-        map_version=int(music_map.get("version", music_lib.MAP_VERSION)),
-        crossfade_sec=float(music_map.get("crossfade", 0.0)),
-        sport="running" if running else None,
-    )
-    return DraftRevision(
-        content=content,
-        content_hash=content_hash,
-        music=music.model_dump(mode="json", exclude_none=True),
-        provenance=made.model_dump(mode="json", exclude_none=True),
         parent_id=base_revision_id,
     )

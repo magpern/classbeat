@@ -39,6 +39,11 @@ from classbeat.log import configure_logging
 from classbeat.player.delivery import run_player_delivery
 from classbeat.playlists.runtime import playlists_runtime
 from classbeat.swedebeat_studio import config as studio_config
+from classbeat.swedebeat_studio import (  # noqa: F401 - each registers its kind on import
+    design_kind,  # studio_design (SR C5)
+    outputs_kind,  # produce_outputs, the SR C6a stub
+    revise_kind,  # studio_revise (SR C5)
+)
 from classbeat.swedebeat_studio import kind as studio_kind  # noqa: F401 - registers studio_songs
 from classbeat.worker.loop import run_worker, worker_id
 

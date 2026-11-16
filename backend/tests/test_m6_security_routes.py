@@ -193,6 +193,9 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/undo"): "owned",
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/another"): "owned",
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/swap-anyway"): "owned",
+    ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/design"): "owned",  # SR C5
+    ("GET", "/api/classes/{class_id}/timeline"): "owned",  # SR C6a
+    ("POST", "/api/classes/{class_id}/outputs"): "owned",  # SR C6a: the output choice
     ("GET", "/api/classes/{class_id}/interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/design-from-interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/interpret-again"): "owned",
@@ -801,6 +804,27 @@ OWNED_ROUTES = [
             {"Idempotency-Key": STUDIO_KEY},
         )
         for action in ("undo", "another", "swap-anyway")
+    ),
+    OwnedRoute(  # SR C5: the studio design (test_swedebeat_studio_design: a foreign list is 404)
+        "POST",
+        "/api/classes/{class_id}/studio-songs/{revision_id}/design",
+        lambda rows: {},
+        frozenset({404}),
+        {"Idempotency-Key": STUDIO_KEY},
+    ),
+    # SR C6a (test_studio_outputs: another user's class is 404 with the studio on, and asks the
+    # gateway nothing).
+    OwnedRoute("GET", "/api/classes/{class_id}/timeline", control=frozenset({404})),
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/outputs",
+        lambda rows: {
+            "revision_id": str(uuid.uuid4()),
+            "content_hash": "0" * 64,
+            "outputs": ["swedebeat_playlist"],
+        },
+        frozenset({404}),
+        {"Idempotency-Key": STUDIO_KEY},
     ),
     OwnedRoute("DELETE", "/api/classes/{class_id}", control=frozenset({200, 409})),
     OwnedRoute("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),

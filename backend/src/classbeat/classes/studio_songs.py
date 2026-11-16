@@ -3,8 +3,10 @@
 - ``view``: the user's own studio ``song_list`` of that class, its hash re-checked
   (``swedebeat_studio.song_list.load``), as the page shows it: per song its position, Spotify
   title, artist, role and cover, the SwedeBeat title, artist, duration and BPM, whether it is a
-  gap, its swap record and which actions it allows; the totals, the evidence and whether the list
-  can be approved. **No Spotify id and no catalogue reference** leave the server.
+  gap, its swap record and which actions it allows; the totals, the evidence, whether the list
+  can be approved and the class's song ``changes`` ``{count, limit}`` (the count
+  ``revision_limit`` refuses on, ``admit.song_changes``).
+  **No Spotify id and no catalogue reference** leave the server.
 - ``act``: ``undo``, ``another`` or ``swap_anyway`` on a list, as **one** step in the jobs API's
   create transaction (``classbeat.jobs.hold``, under the owner lock): the job that made the list
   is cancelled when it still waits for the approval, then a ``studio_songs`` job of that action
@@ -33,7 +35,7 @@ from classbeat.jobs.hold import Held
 from classbeat.jobs.http import JobEnqueue
 from classbeat.jobs.user import JobLimitPolicy, cancel
 from classbeat.swedebeat_studio import song_list
-from classbeat.swedebeat_studio.admit import KIND, studio_on
+from classbeat.swedebeat_studio.admit import KIND, song_changes, studio_on
 from classbeat.swedebeat_studio.inputs import Action, StudioSongsInput
 from classbeat.swedebeat_studio.kind import STUDIO_SONGS
 from classbeat.swedebeat_studio.song_list_model import StudioListContent
@@ -93,7 +95,8 @@ async def view(
         if not await studio_on(db):
             return "feature_off"
         stored = await song_list.load(db, ctx.user_id, class_id, revision_id)
-    if stored is None:
+        changes = None if stored is None else await song_changes(db, ctx, class_id)
+    if stored is None or changes is None:
         return "not_found"
     content = stored.content
     return {
@@ -106,6 +109,7 @@ async def view(
         "note": content.note,
         "approvable": content.evidence.state == "ok" and not content.has_gap(),
         "songs": [song_view(content, at) for at in range(len(content.songs))],
+        "changes": {"count": changes[0], "limit": changes[1]},
     }
 
 

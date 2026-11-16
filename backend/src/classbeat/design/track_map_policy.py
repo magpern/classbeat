@@ -3,9 +3,9 @@
 - **The map** (``valid_track_map``) is what ``mowl.track.analyze_track`` returns for one song: the
   library's ``TRACK_VERSION``, a positive duration within ``MAX_TRACK_SECONDS``, exactly one song
   with a BPM and a beat grid, at most ``MAX_EVENTS`` events each at a time, and sections each with
-  a start, an end and an energy (a number or ``None``). It must fit the table's 1 MiB check. The
-  child's answer is checked against this before anything is stored or used: never model text,
-  never the file's own words.
+  a start, an end and an energy (a number or ``None``). It must fit the table's 1 MiB check,
+  measured as the table measures it (``jsonb_text_calc``, SR C5). The child's answer is checked
+  against this before anything is stored or used: never model text, never the file's own words.
 - **The references** (``wanted``): the approved tracks' catalogue references, each of the
   gateway's shape (``track_policy.is_reference``), in order, without repeats, at most
   ``MAX_TRACKS`` (the mix spec's bound).
@@ -13,11 +13,11 @@
   128 kbit/s is about an hour); a longer file fails in the child.
 """
 
-import json
 import math
 from collections.abc import Iterable, Mapping
 from typing import Any, Final
 
+from classbeat.jsonb_text_calc import jsonb_text_size
 from classbeat.swedebeat_gateway.track_policy import is_reference
 
 MAX_TRACKS: Final = 40
@@ -72,8 +72,8 @@ def valid_track_map(candidate: object, version: int) -> bool:
         return False
     if not all(_section(s) for s in sections):  # pyright: ignore[reportUnknownVariableType]
         return False
-    try:
-        size = len(json.dumps(m, separators=(",", ":"), allow_nan=False).encode("utf-8"))
+    try:  # the table's own measure: jsonb's text, not compact JSON (SR C5)
+        size = jsonb_text_size(m)
     except (TypeError, ValueError):
         return False
     return size <= MAX_MAP_BYTES

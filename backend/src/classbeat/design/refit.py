@@ -53,7 +53,7 @@ from classbeat.agent.schemas import RunningDraft
 from classbeat.agent.stage import ToolError
 from classbeat.agent.stored_draft import stored_draft
 from classbeat.context import UserContext
-from classbeat.design import chat, mixadmit, music_kind, revision, sport
+from classbeat.design import chat, mixadmit, music_kind, revision, revision_refit, sport
 from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.design.kind import (
     CLASS_MUSIC_SOURCE,
@@ -233,7 +233,7 @@ async def run(job_run: JobRun) -> Complete:
         m = mix_input.music_map(step.data)
         result = refit(base_draft, m)
         song_list_id = getattr(base_music, "song_list_id", None)
-        draft = revision.build_refit(
+        draft = revision_refit.build_refit(
             result, m, step, base_revision_id=base_id, song_list_id=song_list_id
         )
 

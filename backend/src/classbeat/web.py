@@ -39,6 +39,8 @@ from classbeat.classes.history import router as history_router
 from classbeat.classes.interpretation_routes import router as interpretation_router
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
+from classbeat.classes.studio_design_routes import router as studio_design_router
+from classbeat.classes.studio_outputs_routes import router as studio_outputs_router
 from classbeat.classes.studio_songs_routes import router as studio_songs_router
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.mowl_qr import QrWaits
@@ -70,6 +72,11 @@ from classbeat.spa_routes import add_single_page_app
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
 from classbeat.swedebeat_studio import config as studio_config
+from classbeat.swedebeat_studio import (  # noqa: F401 - each registers its kind on import
+    design_kind,  # studio_design (SR C5)
+    outputs_kind,  # produce_outputs, the SR C6a stub
+    revise_kind,  # studio_revise (SR C5)
+)
 from classbeat.swedebeat_studio import kind as studio_kind  # noqa: F401 - registers studio_songs
 from classbeat.usage.routes import router as usage_router
 
@@ -251,6 +258,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(duplicate_router)
     app.include_router(handoff_router)
     app.include_router(studio_songs_router)
+    app.include_router(studio_design_router)
+    app.include_router(studio_outputs_router)  # SR C6a: timeline and output choice
     app.include_router(interpretation_router)
 
     if settings.static_dir is not None:
