@@ -2188,6 +2188,56 @@ export const en = {
     'No output is available right now. Try again later.',
   'studio.os.title':
     'Output status',
+  'job.failure.output_limit.title':
+    'Output limit reached',
+  'job.failure.output_limit.detail':
+    'Nothing was created. The limit is 24 attempts per class and per day. Try tomorrow or make a new pick.',
+  'job.failure.writes_off.title':
+    'SwedeBeat has writes switched off',
+  'job.failure.writes_off.detail':
+    'Nothing was sent. Try again later.',
+  'job.failure.connection_changed.title':
+    'Your SwedeBeat connection changed',
+  'job.failure.connection_changed.detail':
+    'Nothing more was sent. Go back to the class, reload and approve again.',
+  'job.failure.render_not_reproducible.title':
+    'The mix came out differently',
+  'job.failure.render_not_reproducible.detail':
+    'The mix did not render the same twice, so nothing more was sent. Make a new pick.',
+  'studio.os.limitReached':
+    'The limit of output attempts is reached (24 per class and 24 per day). Try again tomorrow, or make a new pick.',
+  'studio.ended.backToClass':
+    'Back to the class',
+  'studio.os.category.connection_changed':
+    'Your SwedeBeat connection changed. Reload this page, then approve the outputs again.',
+  'studio.os.category.render_not_reproducible':
+    'The mix came out differently on a second render, so nothing more was sent. Make a new pick.',
+  'studio.os.category.music_changed':
+    'The analysis of the music has expired. Change songs to analyse it again; a new pick costs a class credit.',
+  'studio.os.category.not_connected':
+    'SwedeBeat is not connected. Connect it on your account page, then approve again.',
+  'studio.os.category.invalid_input':
+    'SwedeBeat did not accept the request. Nothing was sent. Reload the page; if it happens again, make a new pick.',
+  'studio.os.category.analysis_failed':
+    'The music could not be analysed. Make a new pick.',
+  'studio.os.category.internal':
+    'Something went wrong on our side. Try again later.',
+  'studio.os.duplicateRisk.spotify_playlist':
+    'If the first playlist exists, you will get a second one in your Spotify account. You can remove either of them in Spotify. This can be done only a few times per class and per day.',
+  'studio.os.duplicateRisk.swedebeat_playlist':
+    'If the first playlist exists, you will get a duplicate in SwedeBeat. SwedeBeat has no delete and classbeat cannot remove it, so the duplicate stays there. This can be done only a few times per class and per day.',
+  'studio.os.duplicateRisk.swedebeat_mix':
+    'If the first mix exists, you will get a duplicate in SwedeBeat. SwedeBeat has no delete and classbeat cannot remove it, so the duplicate stays there. This can be done only a few times per class and per day.',
+  'studio.os.duplicateRisk.mowl':
+    'If the first workout exists, you will get a second one in MOWL. This can be done only a few times per class and per day.',
+  'studio.os.duplicateAccept.swedebeat':
+    'I understand that this may create a duplicate that cannot be deleted.',
+  'studio.os.supersededHint.swedebeat':
+    'The earlier one stays in SwedeBeat. Approve the outputs again to create the new one.',
+  'studio.os.supersededHint.spotify_playlist':
+    'The earlier playlist may stay in your Spotify account; you can remove it there. Approve the outputs again to create the new one.',
+  'studio.os.supersededHint.mowl':
+    'The earlier workout may stay in MOWL. Approve the outputs again to create the new one.',
   'studio.os.loadFailed':
     'The status of the outputs could not be loaded. Reload the page.',
   'studio.os.state.pending':
@@ -2197,7 +2247,7 @@ export const en = {
   'studio.os.state.done':
     'Created.',
   'studio.os.state.failed':
-    'Did not finish. Nothing needs checking; approve the outputs again to retry.',
+    'Did not finish.',
   'studio.os.state.in_doubt':
     'In doubt: it may exist, but classbeat could not confirm it. Check again before you create another.',
   'studio.os.state.published_not_listed':
@@ -2210,8 +2260,6 @@ export const en = {
     'Name: {name}',
   'studio.os.superseded':
     'Replaced: another one will be created at your next approval.',
-  'studio.os.supersededHint':
-    'The earlier one stays in SwedeBeat. Approve the outputs again to create the new one.',
   'studio.os.retryHint':
     'Approve the outputs again to retry.',
   'studio.os.candidate':
@@ -2228,10 +2276,8 @@ export const en = {
     'Create another anyway',
   'studio.os.cancel':
     'Cancel',
-  'studio.os.duplicateRisk':
-    'If the first one exists, you will get a duplicate. SwedeBeat has no delete and classbeat cannot remove it, so the duplicate stays there. This can be done only a few times per class and per day.',
   'studio.os.duplicateAccept':
-    'I understand that this may create a duplicate that cannot be deleted.',
+    'I understand that this may create a duplicate.',
   'studio.os.category.writes_off':
     'SwedeBeat has writes switched off right now. Nothing was sent. Try again later.',
   'studio.os.category.needs_reconnect':

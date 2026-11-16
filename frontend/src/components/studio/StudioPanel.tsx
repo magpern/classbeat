@@ -7,6 +7,7 @@ import { Card, CardTitle } from '../ui/card'
 import { StudioStartDesign } from './StudioStartDesign'
 import { StudioOutputs } from './StudioOutputs'
 import { StudioOutputStates } from './StudioOutputStates'
+import { outputLimitReached } from './studioAction'
 import { useStudioOutputs } from './useStudioOutputs'
 import { StudioTimeline } from './StudioTimeline'
 import type { StudioView } from './useStudioTimeline'
@@ -18,7 +19,7 @@ import type { StudioView } from './useStudioTimeline'
  */
 export function StudioPanel({ summary, view }: { summary: ClassSummary; view: StudioView }) {
   const t = useT()
-  const outputs = useStudioOutputs(summary.id, summary.openJob === null && view.status === 'done' && view.kind === 'ready')
+  const outputs = useStudioOutputs(summary.id, view.status === 'done' && view.kind === 'ready', summary.openJob !== null)
   if (view.status === 'loading') return null
   if (view.status === 'failed') return <Notice kind="error">{t('studio.tl.loadFailed')}</Notice>
   if (view.kind === 'none') return null
@@ -43,7 +44,7 @@ export function StudioPanel({ summary, view }: { summary: ClassSummary; view: St
     <Card className="flex flex-col gap-5">
       <StudioTimeline timeline={view.timeline} />
       {loaded !== null ? (
-        <StudioOutputStates classId={summary.id} outputs={loaded.outputs} onChange={outputs.replace} />
+        <StudioOutputStates classId={summary.id} outputs={loaded.outputs} limitReached={outputLimitReached(summary.id)} onChange={outputs.replace} />
       ) : null}
       {outputs.load.status === 'failed' ? <Notice kind="error">{t('studio.os.loadFailed')}</Notice> : null}
       {current && outputs.load.status !== 'loading' ? (
@@ -52,6 +53,7 @@ export function StudioPanel({ summary, view }: { summary: ClassSummary; view: St
           timeline={view.timeline}
           disabled={summary.openJob !== null}
           enabled={loaded?.enabled ?? null}
+          limitReached={outputLimitReached(summary.id)}
         />
       ) : null}
     </Card>

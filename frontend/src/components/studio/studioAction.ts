@@ -44,3 +44,25 @@ export function recallStudioDesign(classId: string): string | null {
     return null
   }
 }
+
+// The day a class's output attempts hit the limit (`output_limit`, 24 per class and 24 per day),
+// kept in this tab's session storage so the class page stops offering "approve again" the same
+// day. Never stale for long: the day limit resets, and the class limit is found again by the next try.
+const LIMIT = 'classbeat.studio-output-limit.'
+const today = () => new Date().toISOString().slice(0, 10)
+
+export function rememberOutputLimit(classId: string): void {
+  try {
+    window.sessionStorage.setItem(LIMIT + classId, today())
+  } catch {
+    // Without storage the page offers approval and the job says why it stopped.
+  }
+}
+
+export function outputLimitReached(classId: string): boolean {
+  try {
+    return window.sessionStorage.getItem(LIMIT + classId) === today()
+  } catch {
+    return false
+  }
+}

@@ -239,4 +239,19 @@ describe('a studio class on the class page', () => {
     expect(await screen.findByText(/No output is available/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Approve and create' })).toBeDisabled()
   })
+
+  it('shows a running output state from the read of the outputs', async () => {
+    fakeApi(
+      studioRoutes({
+        [`GET ${CLASS_PATH}/outputs`]: {
+          enabled_outputs: ['spotify_playlist', 'swedebeat_playlist'],
+          outputs: [
+            { revision_id: REV1, output: 'swedebeat_playlist', attempt: 1, state: 'running', actions: [], note: null },
+          ],
+        },
+      }),
+    )
+    renderAt(PAGE)
+    expect(await screen.findByTestId('studio-output-state-swedebeat_playlist')).toHaveTextContent('Being created')
+  })
 })

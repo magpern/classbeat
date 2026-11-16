@@ -29,12 +29,15 @@ export function StudioOutputs({
   timeline,
   disabled,
   enabled = null,
+  limitReached = false,
 }: {
   classId: string
   timeline: Timeline
   /** Another job of the class is open. */
   disabled: boolean
   enabled?: readonly Output[] | null
+  /** The class hit the limit of output attempts today. */
+  limitReached?: boolean
 }) {
   const t = useT()
   const { navigate } = useRouter()
@@ -75,7 +78,7 @@ export function StudioOutputs({
                   type="checkbox"
                   className="mt-1"
                   checked={has(output)}
-                  disabled={locked || action.busy}
+                  disabled={locked || action.busy || disabled}
                   onChange={(event) => {
                     setChosen(toggleOutput(chosen, output, event.target.checked))
                   }}
@@ -103,9 +106,10 @@ export function StudioOutputs({
           {has('swedebeat_mix') ? <p className="m-0 text-muted">{t('studio.consent.mix')}</p> : null}
         </div>
       )}
+      {limitReached ? <Notice>{t('studio.os.limitReached')}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <div>
-        <Button disabled={disabled || action.busy || chosen.length === 0} onClick={approve}>
+        <Button disabled={disabled || limitReached || action.busy || chosen.length === 0} onClick={approve}>
           {action.busy ? t('studio.consent.sending') : t('studio.consent.approve')}
         </Button>
       </div>

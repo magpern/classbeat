@@ -20,9 +20,9 @@ function status(extra: Record<string, unknown>) {
   }
 }
 
-async function shown(item: Record<string, unknown>, onChange = vi.fn()) {
+async function shown(item: Record<string, unknown>, onChange = vi.fn(), limitReached = false) {
   const { decodeOutputStatus } = await import('../../api/studioOutputStates')
-  render(<StudioOutputStates classId={CLASS} outputs={[decodeOutputStatus(item)]} onChange={onChange} />)
+  render(<StudioOutputStates classId={CLASS} outputs={[decodeOutputStatus(item)]} limitReached={limitReached} onChange={onChange} />)
   return onChange
 }
 
@@ -106,5 +106,30 @@ describe('the per-output states', () => {
     const alert = await screen.findByRole('alert')
     expect(alert).not.toHaveTextContent('not_in_doubt')
     expect(alert.textContent?.length).toBeGreaterThan(10)
+  })
+
+  it('does not say SwedeBeat has no delete for a Spotify playlist', async () => {
+    await shown(status({ output: 'spotify_playlist' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create another anyway' }))
+    const warning = screen.getByTestId('studio-duplicate-warning')
+    expect(warning).toHaveTextContent('Spotify')
+    expect(warning).not.toHaveTextContent('no delete')
+  })
+
+  it('stops offering approve again once the limit is reached', async () => {
+    await shown(status({ state: 'failed', actions: ['retry'], note: null, category: 'internal' }), vi.fn(), true)
+    expect(screen.getByTestId('studio-output-limit')).toBeInTheDocument()
+    expect(screen.queryByText(/Approve the outputs again/)).toBeNull()
+  })
+
+  it('offers no approve again where it cannot help, and says it once where it can', async () => {
+    await shown(status({ state: 'failed', actions: ['retry'], note: null, category: 'render_not_reproducible' }))
+    expect(screen.getByText(/came out differently/)).toBeInTheDocument()
+    expect(screen.queryByText(/Approve the outputs again/)).toBeNull()
+  })
+
+  it('says approve again once for a retryable failure', async () => {
+    await shown(status({ state: 'failed', actions: ['retry'], note: null, category: 'rate_limited' }))
+    expect(screen.getAllByText(/Approve the outputs again/)).toHaveLength(1)
   })
 })

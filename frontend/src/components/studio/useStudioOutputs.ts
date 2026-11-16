@@ -7,27 +7,34 @@ export type OutputsLoad =
   | { status: 'done'; view: OutputsView | null }
 
 /**
- * The class's outputs and their states, read again when the class's open job ends (a
- * `produce_outputs` job changes them). `replace` puts in the answer of an action.
+ * The class's outputs and their states, read again when the class's open job starts or ends (a
+ * `produce_outputs` job changes them) and every few seconds while it is open. `replace` puts in the answer of an action.
  */
-export function useStudioOutputs(classId: string, settled: boolean) {
+export function useStudioOutputs(classId: string, enabled: boolean, open: boolean) {
   const [load, setLoad] = useState<{ key: string; value: OutputsLoad } | null>(null)
-  const key = `${classId}/${String(settled)}`
+  const key = classId
   useEffect(() => {
-    if (!settled) return
+    if (!enabled) return
     const abort = new AbortController()
-    getOutputs(classId, abort.signal).then(
-      (view) => {
-        if (!abort.signal.aborted) setLoad({ key, value: { status: 'done', view } })
-      },
-      () => {
-        if (!abort.signal.aborted) setLoad({ key, value: { status: 'failed' } })
-      },
-    )
+    const read = () => {
+      getOutputs(classId, abort.signal).then(
+        (view) => {
+          if (!abort.signal.aborted) setLoad({ key, value: { status: 'done', view } })
+        },
+        () => {
+          // A failed poll keeps the last answer.
+          if (!abort.signal.aborted) setLoad((was) => (was?.value.status === 'done' ? was : { key, value: { status: 'failed' } }))
+        },
+      )
+    }
+    read()
+    // While a job of the class is open the states are read again, so `running` shows and ends.
+    const timer = open ? window.setInterval(read, 5000) : undefined
     return () => {
       abort.abort()
+      if (timer !== undefined) window.clearInterval(timer)
     }
-  }, [classId, settled, key])
+  }, [classId, enabled, open, key])
   const replace = useCallback((next: OutputStatus) => {
     setLoad((was) => {
       if (was === null || was.value.status !== 'done' || was.value.view === null) return was

@@ -2322,6 +2322,56 @@ const sv: Catalogue = {
     'Inget resultat är tillgängligt just nu. Försök igen senare.',
   'studio.os.title':
     'Resultatens status',
+  'job.failure.output_limit.title':
+    'Gränsen för resultat är nådd',
+  'job.failure.output_limit.detail':
+    'Inget skapades. Gränsen är 24 försök per pass och per dag. Försök i morgon eller gör ett nytt val.',
+  'job.failure.writes_off.title':
+    'SwedeBeat har skrivning avstängd',
+  'job.failure.writes_off.detail':
+    'Ingenting skickades. Försök igen senare.',
+  'job.failure.connection_changed.title':
+    'Din SwedeBeat-anslutning ändrades',
+  'job.failure.connection_changed.detail':
+    'Ingenting mer skickades. Gå tillbaka till passet, ladda om och godkänn igen.',
+  'job.failure.render_not_reproducible.title':
+    'Mixen blev annorlunda',
+  'job.failure.render_not_reproducible.detail':
+    'Mixen blev inte likadan två gånger, så ingenting mer skickades. Gör ett nytt val.',
+  'studio.os.limitReached':
+    'Gränsen för försök till resultat är nådd (24 per pass och 24 per dag). Försök igen i morgon, eller gör ett nytt val.',
+  'studio.ended.backToClass':
+    'Tillbaka till passet',
+  'studio.os.category.connection_changed':
+    'Din SwedeBeat-anslutning ändrades. Ladda om sidan och godkänn sedan resultaten igen.',
+  'studio.os.category.render_not_reproducible':
+    'Mixen blev annorlunda vid en andra rendering, så ingenting mer skickades. Gör ett nytt val.',
+  'studio.os.category.music_changed':
+    'Analysen av musiken har gått ut. Byt låtar för att analysera på nytt; ett nytt val kostar en passkredit.',
+  'studio.os.category.not_connected':
+    'SwedeBeat är inte anslutet. Anslut det på din kontosida och godkänn sedan igen.',
+  'studio.os.category.invalid_input':
+    'SwedeBeat godtog inte begäran. Ingenting skickades. Ladda om sidan; om det händer igen, gör ett nytt val.',
+  'studio.os.category.analysis_failed':
+    'Musiken kunde inte analyseras. Gör ett nytt val.',
+  'studio.os.category.internal':
+    'Något gick fel hos oss. Försök igen senare.',
+  'studio.os.duplicateRisk.spotify_playlist':
+    'Om den första spellistan finns får du en andra i ditt Spotify-konto. Du kan ta bort någon av dem i Spotify. Det går bara några få gånger per pass och dag.',
+  'studio.os.duplicateRisk.swedebeat_playlist':
+    'Om den första spellistan finns får du en dubblett i SwedeBeat. SwedeBeat saknar borttagning och classbeat kan inte ta bort den, så dubbletten blir kvar. Det går bara några få gånger per pass och dag.',
+  'studio.os.duplicateRisk.swedebeat_mix':
+    'Om den första mixen finns får du en dubblett i SwedeBeat. SwedeBeat saknar borttagning och classbeat kan inte ta bort den, så dubbletten blir kvar. Det går bara några få gånger per pass och dag.',
+  'studio.os.duplicateRisk.mowl':
+    'Om det första träningspasset finns får du ett andra i MOWL. Det går bara några få gånger per pass och dag.',
+  'studio.os.duplicateAccept.swedebeat':
+    'Jag förstår att det kan skapa en dubblett som inte går att ta bort.',
+  'studio.os.supersededHint.swedebeat':
+    'Den tidigare finns kvar i SwedeBeat. Godkänn resultaten igen för att skapa den nya.',
+  'studio.os.supersededHint.spotify_playlist':
+    'Den tidigare spellistan kan finnas kvar i ditt Spotify-konto; du kan ta bort den där. Godkänn resultaten igen för att skapa den nya.',
+  'studio.os.supersededHint.mowl':
+    'Det tidigare träningspasset kan finnas kvar i MOWL. Godkänn resultaten igen för att skapa det nya.',
   'studio.os.loadFailed':
     'Statusen för resultaten kunde inte hämtas. Ladda om sidan.',
   'studio.os.state.pending':
@@ -2331,7 +2381,7 @@ const sv: Catalogue = {
   'studio.os.state.done':
     'Skapad.',
   'studio.os.state.failed':
-    'Blev inte klar. Inget behöver kontrolleras; godkänn resultaten igen för att försöka på nytt.',
+    'Blev inte klar.',
   'studio.os.state.in_doubt':
     'Osäkert: den kan finnas, men classbeat kunde inte bekräfta det. Kontrollera igen innan du skapar en till.',
   'studio.os.state.published_not_listed':
@@ -2344,8 +2394,6 @@ const sv: Catalogue = {
     'Namn: {name}',
   'studio.os.superseded':
     'Ersatt: en ny skapas vid nästa godkännande.',
-  'studio.os.supersededHint':
-    'Den tidigare finns kvar i SwedeBeat. Godkänn resultaten igen för att skapa den nya.',
   'studio.os.retryHint':
     'Godkänn resultaten igen för att försöka på nytt.',
   'studio.os.candidate':
@@ -2362,10 +2410,8 @@ const sv: Catalogue = {
     'Skapa en till ändå',
   'studio.os.cancel':
     'Avbryt',
-  'studio.os.duplicateRisk':
-    'Om den första finns får du en dubblett. SwedeBeat saknar borttagning och classbeat kan inte ta bort den, så dubbletten blir kvar. Det går bara några få gånger per pass och dag.',
   'studio.os.duplicateAccept':
-    'Jag förstår att det kan skapa en dubblett som inte går att ta bort.',
+    'Jag förstår att det kan skapa en dubblett.',
   'studio.os.category.writes_off':
     'SwedeBeat har skrivning avstängd just nu. Ingenting skickades. Försök igen senare.',
   'studio.os.category.needs_reconnect':

@@ -2310,6 +2310,56 @@ const da: Catalogue = {
     'Intet resultat er tilgængeligt lige nu. Prøv igen senere.',
   'studio.os.title':
     'Resultaternes status',
+  'job.failure.output_limit.title':
+    'Grænsen for resultater er nået',
+  'job.failure.output_limit.detail':
+    'Intet blev oprettet. Grænsen er 24 forsøg pr. hold og pr. dag. Prøv i morgen eller lav et nyt valg.',
+  'job.failure.writes_off.title':
+    'SwedeBeat har skrivning slået fra',
+  'job.failure.writes_off.detail':
+    'Der blev ikke sendt noget. Prøv igen senere.',
+  'job.failure.connection_changed.title':
+    'Din SwedeBeat-tilslutning blev ændret',
+  'job.failure.connection_changed.detail':
+    'Der blev ikke sendt mere. Gå tilbage til holdet, genindlæs og godkend igen.',
+  'job.failure.render_not_reproducible.title':
+    'Mixet blev anderledes',
+  'job.failure.render_not_reproducible.detail':
+    'Mixet blev ikke ens to gange, så der blev ikke sendt mere. Lav et nyt valg.',
+  'studio.os.limitReached':
+    'Grænsen for forsøg på resultater er nået (24 pr. hold og 24 om dagen). Prøv igen i morgen, eller lav et nyt valg.',
+  'studio.ended.backToClass':
+    'Tilbage til holdet',
+  'studio.os.category.connection_changed':
+    'Din SwedeBeat-tilslutning blev ændret. Genindlæs siden, og godkend derefter resultaterne igen.',
+  'studio.os.category.render_not_reproducible':
+    'Mixet blev anderledes ved en anden rendering, så der blev ikke sendt mere. Lav et nyt valg.',
+  'studio.os.category.music_changed':
+    'Analysen af musikken er udløbet. Skift sange for at analysere igen; et nyt valg koster en holdkredit.',
+  'studio.os.category.not_connected':
+    'SwedeBeat er ikke tilsluttet. Tilslut det på din kontoside, og godkend derefter igen.',
+  'studio.os.category.invalid_input':
+    'SwedeBeat accepterede ikke forespørgslen. Der blev ikke sendt noget. Genindlæs siden; sker det igen, så lav et nyt valg.',
+  'studio.os.category.analysis_failed':
+    'Musikken kunne ikke analyseres. Lav et nyt valg.',
+  'studio.os.category.internal':
+    'Noget gik galt hos os. Prøv igen senere.',
+  'studio.os.duplicateRisk.spotify_playlist':
+    'Hvis den første playliste findes, får du en anden på din Spotify-konto. Du kan fjerne en af dem i Spotify. Det kan kun gøres få gange pr. hold og dag.',
+  'studio.os.duplicateRisk.swedebeat_playlist':
+    'Hvis den første playliste findes, får du en dublet i SwedeBeat. SwedeBeat kan ikke slette, og classbeat kan ikke fjerne den, så dubletten bliver der. Det kan kun gøres få gange pr. hold og dag.',
+  'studio.os.duplicateRisk.swedebeat_mix':
+    'Hvis det første mix findes, får du en dublet i SwedeBeat. SwedeBeat kan ikke slette, og classbeat kan ikke fjerne den, så dubletten bliver der. Det kan kun gøres få gange pr. hold og dag.',
+  'studio.os.duplicateRisk.mowl':
+    'Hvis det første træningspas findes, får du et andet i MOWL. Det kan kun gøres få gange pr. hold og dag.',
+  'studio.os.duplicateAccept.swedebeat':
+    'Jeg forstår, at det kan oprette en dublet, som ikke kan slettes.',
+  'studio.os.supersededHint.swedebeat':
+    'Den tidligere bliver i SwedeBeat. Godkend resultaterne igen for at oprette den nye.',
+  'studio.os.supersededHint.spotify_playlist':
+    'Den tidligere playliste kan blive på din Spotify-konto; du kan fjerne den dér. Godkend resultaterne igen for at oprette den nye.',
+  'studio.os.supersededHint.mowl':
+    'Det tidligere træningspas kan blive i MOWL. Godkend resultaterne igen for at oprette det nye.',
   'studio.os.loadFailed':
     'Resultaternes status kunne ikke hentes. Genindlæs siden.',
   'studio.os.state.pending':
@@ -2319,7 +2369,7 @@ const da: Catalogue = {
   'studio.os.state.done':
     'Oprettet.',
   'studio.os.state.failed':
-    'Blev ikke færdig. Intet skal kontrolleres; godkend resultaterne igen for at prøve igen.',
+    'Blev ikke færdig.',
   'studio.os.state.in_doubt':
     'Usikkert: den findes måske, men classbeat kunne ikke bekræfte det. Tjek igen, før du opretter en til.',
   'studio.os.state.published_not_listed':
@@ -2332,16 +2382,14 @@ const da: Catalogue = {
     'Navn: {name}',
   'studio.os.superseded':
     'Erstattet: en ny oprettes ved næste godkendelse.',
-  'studio.os.supersededHint':
-    'Den tidligere bliver i SwedeBeat. Godkend resultaterne igen for at oprette den nye.',
   'studio.os.retryHint':
     'Godkend resultaterne igen for at prøve igen.',
   'studio.os.candidate':
-    'Fundet i MOWL: {name} ({length}). Er det din mix?',
+    'Fundet i MOWL: {name} ({length}). Er det dit mix?',
   'studio.os.candidateNoLength':
-    'Fundet i MOWL: {name}. Er det din mix?',
+    'Fundet i MOWL: {name}. Er det dit mix?',
   'studio.os.confirm':
-    'Ja, det er min mix',
+    'Ja, det er mit mix',
   'studio.os.checkAgain':
     'Tjek igen',
   'studio.os.createAnother':
@@ -2350,10 +2398,8 @@ const da: Catalogue = {
     'Opret en til alligevel',
   'studio.os.cancel':
     'Annuller',
-  'studio.os.duplicateRisk':
-    'Hvis den første findes, får du en dublet. SwedeBeat kan ikke slette, og classbeat kan ikke fjerne den, så dubletten bliver der. Det kan kun gøres få gange pr. hold og dag.',
   'studio.os.duplicateAccept':
-    'Jeg forstår, at det kan oprette en dublet, som ikke kan slettes.',
+    'Jeg forstår, at det kan oprette en dublet.',
   'studio.os.category.writes_off':
     'SwedeBeat har skrivning slået fra lige nu. Der blev ikke sendt noget. Prøv igen senere.',
   'studio.os.category.needs_reconnect':

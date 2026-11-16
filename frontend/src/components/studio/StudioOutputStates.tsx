@@ -5,6 +5,7 @@ import {
   createAnotherAnyway,
   type OutputStatus,
 } from '../../api/studioOutputStates'
+import type { Output } from '../../api/studioOutputs'
 import { studioError } from '../../api/studioSongs'
 import { useT } from '../../i18n/I18n'
 import type { CatalogueKey } from '../../i18n/en'
@@ -35,7 +36,31 @@ const CATEGORY_TEXT: Record<string, CatalogueKey> = {
   upstream_unavailable: 'studio.os.category.upstream_unavailable',
   app_misconfigured: 'studio.os.category.upstream_unavailable',
   invalid_response: 'studio.os.category.upstream_unavailable',
+  connection_changed: 'studio.os.category.connection_changed',
+  render_not_reproducible: 'studio.os.category.render_not_reproducible',
+  music_changed: 'studio.os.category.music_changed',
+  not_connected: 'studio.os.category.not_connected',
+  invalid_input: 'studio.os.category.invalid_input',
+  analysis_failed: 'studio.os.category.analysis_failed',
+  internal: 'studio.os.category.internal',
 }
+
+/** Failures that approving again cannot help: the category's own sentence says what to do. */
+const NO_RETRY: readonly string[] = ['render_not_reproducible', 'music_changed', 'analysis_failed', 'invalid_input']
+
+const DUPLICATE_RISK = {
+  spotify_playlist: 'studio.os.duplicateRisk.spotify_playlist',
+  swedebeat_playlist: 'studio.os.duplicateRisk.swedebeat_playlist',
+  swedebeat_mix: 'studio.os.duplicateRisk.swedebeat_mix',
+  mowl: 'studio.os.duplicateRisk.mowl',
+} as const satisfies Record<Output, CatalogueKey>
+
+const SUPERSEDED_HINT = {
+  spotify_playlist: 'studio.os.supersededHint.spotify_playlist',
+  swedebeat_playlist: 'studio.os.supersededHint.swedebeat',
+  swedebeat_mix: 'studio.os.supersededHint.swedebeat',
+  mowl: 'studio.os.supersededHint.mowl',
+} as const satisfies Record<Output, CatalogueKey>
 
 function minutes(sec: number): string {
   const whole = Math.round(sec)
@@ -50,10 +75,12 @@ function minutes(sec: number): string {
 function OutputRow({
   classId,
   status,
+  limitReached,
   onChange,
 }: {
   classId: string
   status: OutputStatus
+  limitReached: boolean
   onChange: (next: OutputStatus) => void
 }) {
   const t = useT()
@@ -93,8 +120,13 @@ function OutputRow({
             : t('studio.os.candidate', { name: status.candidate.name, length: minutes(status.candidate.durationSec) })}
         </p>
       ) : null}
-      {has('retry') && !status.superseded ? <p className="m-0 text-muted">{t('studio.os.retryHint')}</p> : null}
-      {status.superseded ? <p className="m-0 text-muted">{t('studio.os.supersededHint')}</p> : null}
+      {limitReached && (status.superseded || has('retry')) ? (
+        <p className="m-0 text-muted" data-testid="studio-output-limit">{t('studio.os.limitReached')}</p>
+      ) : status.superseded ? (
+        <p className="m-0 text-muted">{t(SUPERSEDED_HINT[status.output])}</p>
+      ) : has('retry') && !(status.category !== null && NO_RETRY.includes(status.category)) ? (
+        <p className="m-0 text-muted">{t('studio.os.retryHint')}</p>
+      ) : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <div className="mt-2 flex flex-wrap gap-2">
         {has('confirm') ? (
@@ -115,7 +147,7 @@ function OutputRow({
       </div>
       {asking ? (
         <div className="mt-2 flex flex-col gap-2" data-testid="studio-duplicate-warning" role="group" aria-label={t('studio.os.createAnother')}>
-          <p className="m-0 text-text">{t('studio.os.duplicateRisk')}</p>
+          <p className="m-0 text-text">{t(DUPLICATE_RISK[status.output])}</p>
           <label className="flex min-h-11 cursor-pointer items-start gap-3">
             <input
               type="checkbox"
@@ -123,7 +155,7 @@ function OutputRow({
               checked={accepted}
               onChange={(event) => { setAccepted(event.target.checked) }}
             />
-            <span>{t('studio.os.duplicateAccept')}</span>
+            <span>{t(status.output.startsWith('swedebeat') ? 'studio.os.duplicateAccept.swedebeat' : 'studio.os.duplicateAccept')}</span>
           </label>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -146,10 +178,13 @@ function OutputRow({
 export function StudioOutputStates({
   classId,
   outputs,
+  limitReached = false,
   onChange,
 }: {
   classId: string
   outputs: readonly OutputStatus[]
+  /** The class hit the limit of output attempts today: approving again would fail. */
+  limitReached?: boolean
   onChange: (next: OutputStatus) => void
 }) {
   const t = useT()
@@ -161,7 +196,7 @@ export function StudioOutputStates({
       </h3>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {outputs.map((status) => (
-          <OutputRow key={`${status.revisionId}.${status.output}`} classId={classId} status={status} onChange={onChange} />
+          <OutputRow key={`${status.revisionId}.${status.output}`} classId={classId} status={status} limitReached={limitReached} onChange={onChange} />
         ))}
       </ul>
     </section>
