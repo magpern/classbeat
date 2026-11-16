@@ -91,7 +91,7 @@ order and answered together in one message.
   `after_request`) and reviewing it again, while keeping httpx2 out of the web process and out of
   Authlib's OAuth client (the `mcp` exclusion: `httpx2` replaced httpx inside Authlib); 0.125.0
   has no known advisory (pip-audit is clean) and has everything the provider uses (streamed
-  Messages, strict tools, adaptive thinking, `output_config.effort`). Dependabot ignores
+  Messages, tools, adaptive thinking, `output_config.effort`). Dependabot ignores
   `anthropic` semver-major updates (1.x, 2.x) until the review. The move to httpx2 gets its own
   issue at the review date, or earlier if pip-audit reports an advisory against 0.125.0, the API
   needs something 0.x lacks, or Authlib (already warning that its httpx integration is
@@ -103,8 +103,14 @@ order and answered together in one message.
   (the loop acts on a tool call only once the whole answer is in). Forced tool choice (`any` or a
   named tool) is rejected by Opus 5.5, so the final tool is required by the prompt and by §1's
   reminder rule instead.
-- **Tools:** every tool has `strict: true` and an `input_schema` with `additionalProperties:
-  false` and `required`; the loop still validates every input itself (§4).
+- **Tools:** no tool carries `strict`, and each `input_schema` is the stage's own Pydantic
+  schema, untransformed (`additionalProperties: false` from the models); the loop validates
+  every input itself, strictly (§4), and a bad submission is an ordinary correction round.
+  Amendment (#1129): the real API refused `strict: true` with a 400 "compiled grammar is too
+  large" for the interpret stage's `submit_brief`, and accepted the raw schema without `strict`
+  (the owner's live check). *Was:* "every tool has `strict: true`" with the schema run through the
+  SDK's `transform_schema`. Slimming schemas to bring strict mode back is a possible later
+  hardening.
 - **Caching:** `cache_control: {"type": "ephemeral"}` on the system prompt block, on the last
   tool definition and on the last block of the newest message (set on the request copy only, so
   the stored history carries none and the total stays at three of the API's four). That makes the

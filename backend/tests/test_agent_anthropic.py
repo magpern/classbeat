@@ -51,19 +51,6 @@ async def one_turn(*replies: Reply) -> tuple[Turn, FakeAnthropic]:
     return await p.start(SPEC).turn(()), fake
 
 
-def _objects(node: Any) -> list[dict[str, Any]]:
-    found: list[dict[str, Any]] = []
-    if isinstance(node, dict):
-        if node.get("type") == "object":
-            found.append(node)
-        for value in node.values():
-            found += _objects(value)
-    elif isinstance(node, list):
-        for value in node:
-            found += _objects(value)
-    return found
-
-
 # --- the request ---------------------------------------------------------------------------
 
 
@@ -121,22 +108,21 @@ async def test_system_and_the_last_tool_carry_the_cache_breakpoints() -> None:
     assert tools[-1]["cache_control"] == {"type": "ephemeral"}
 
 
-async def test_every_tool_is_strict_with_closed_objects_and_required() -> None:
+async def test_every_tool_goes_out_with_the_stage_s_own_schema_and_no_strict() -> None:
+    """#1129: the real API refuses ``strict`` tools whose grammar is too large; the schema is the
+    one the loop validates against, unchanged (``tests/test_agent_anthropic_no_strict.py`` covers
+    every real stage)."""
     _, fake = await one_turn(stream(message(text("hi"))))
-    for tool in fake.bodies[0]["tools"]:
-        assert tool["strict"] is True
-        assert set(tool) <= {"name", "description", "input_schema", "strict", "cache_control"}
-        objects = _objects(tool["input_schema"])
-        assert objects
-        for obj in objects:
-            assert obj["additionalProperties"] is False
-            assert isinstance(obj["required"], list)
-    submit = fake.bodies[0]["tools"][1]["input_schema"]
+    sent = fake.bodies[0]["tools"]
+    assert len(sent) == len(SPEC.tools)
+    for tool, defined in zip(sent, SPEC.tools, strict=True):
+        assert "strict" not in tool
+        assert set(tool) <= {"name", "description", "input_schema", "cache_control"}
+        assert tool["input_schema"] == dict(defined.input_schema)
+    submit = sent[1]["input_schema"]
     assert submit["required"] == ["name"]
-    # What strict mode can't express moves to the description; a const becomes an enum.
-    assert "minLength" not in submit["properties"]["name"]
-    assert {"type": "string", "enum": ["beat"]} in submit["properties"]["rpm"]["anyOf"]
-    assert SPEC.tools[1].input_schema["properties"]["name"]["minLength"] == 1  # spec untouched
+    assert submit["properties"]["name"]["minLength"] == 1
+    assert {"const": "beat", "type": "string"} in submit["properties"]["rpm"]["anyOf"]
 
 
 async def test_two_runs_of_a_stage_send_identical_system_and_tools() -> None:

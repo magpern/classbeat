@@ -10,16 +10,11 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from agentfake import analysed, brief, good_draft
-from classbeat.agent import DesignContext, design_stage
-from classbeat.agent.choose_songs import choose_stage
-from classbeat.agent.interpret import InterpretContext, interpret_stage
-from classbeat.agent.pick_pool import pool_stage
+from agentfake import good_draft
 from classbeat.agent.providers.openai_common import strict_schema, strip_added_nulls, tool_input
-from classbeat.agent.revise import ReviseContext, revise_stage
-from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.stage import Stage, Tool
-from pickfake import POOL_14, entries, songs, world
+from pickfake import entries, songs
+from stagetools import all_stages
 
 # Valid inputs per tool input model. A new tool needs its own here (the test says which).
 SAMPLES: dict[str, list[dict[str, Any]]] = {
@@ -55,28 +50,8 @@ SAMPLES: dict[str, list[dict[str, Any]]] = {
 }
 
 
-def _stages(monkeypatch: pytest.MonkeyPatch) -> list[Stage]:
-    music = analysed(monkeypatch)
-    revise = ReviseContext.build(
-        brief(),
-        music,
-        WorkoutDraft.model_validate(good_draft()),
-        ("Longer warm-up",),
-        "Harder",
-        music_changed=False,
-    )
-    w = world()
-    return [
-        design_stage(DesignContext.build(brief(), music)),
-        revise_stage(revise),
-        pool_stage(w.pool),
-        choose_stage(w.choose_context(POOL_14)),
-        interpret_stage(InterpretContext("")),
-    ]
-
-
 def _tools(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Stage, Tool]]:
-    return [(stage, tool) for stage in _stages(monkeypatch) for tool in stage.tools]
+    return [(stage, tool) for stage in all_stages(monkeypatch) for tool in stage.tools]
 
 
 def _objects(node: Any) -> Iterator[Mapping[str, Any]]:

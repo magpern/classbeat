@@ -12,9 +12,10 @@
 - **Request:** streamed (``messages.stream(...)``, then ``get_final_message()``); ``model``,
   ``max_tokens`` and ``output_config={"effort": ...}`` from the ``StageSpec``,
   ``thinking={"type": "adaptive"}``, ``tool_choice={"type": "auto"}``; no sampling parameters, no
-  fallbacks, no beta, no server tool. Every tool is ``strict: true``; its schema goes through the
-  SDK's ``transform_schema`` (what strict mode can't express moves into the description, the loop
-  still validates every input itself) and every object gets ``required``.
+  fallbacks, no beta, no server tool. No tool carries ``strict`` and every ``input_schema`` is the
+  stage's own, untransformed (the form the real API accepts; strict mode's compiled grammar is
+  refused as too large for ``submit_brief``, #1129). The loop validates every input itself
+  (strictly, ``classbeat.agent.dispatcher``), so a bad submission is an ordinary correction round.
 - **Caching:** ``cache_control: {"type": "ephemeral"}`` on the system block, on the last tool and
   on the last block of the newest message (on the request copy only), so the brief, the music and
   every earlier turn are cache reads from the second turn on.
@@ -44,7 +45,6 @@ The key lives in the SDK client only; nothing here logs, stores or repr()s it.
 """
 
 import asyncio
-import copy
 import logging
 from collections.abc import Mapping, Sequence
 from typing import Any, Final
@@ -97,45 +97,13 @@ class ModelOutboundBlocked(anthropic.AnthropicError):
         self.host = refused.host
 
 
-def _strict_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
-    """The SDK's strict-mode transform, plus ``required`` on every object. A ``const`` (which
-    the transform would move into the description) is first written as the one-value ``enum``
-    strict mode supports."""
-
-    def consts(node: Any) -> Any:
-        if isinstance(node, dict):
-            out = {k: consts(v) for k, v in node.items()}  # pyright: ignore[reportUnknownVariableType]
-            if "const" in out and "enum" not in out:
-                out["enum"] = [out.pop("const")]
-            return out  # pyright: ignore[reportUnknownVariableType]
-        if isinstance(node, list):
-            return [consts(v) for v in node]  # pyright: ignore[reportUnknownVariableType]
-        return node
-
-    out = anthropic.transform_schema(consts(copy.deepcopy(dict(schema))))
-
-    def walk(node: Any) -> None:
-        if isinstance(node, dict):
-            if node.get("type") == "object" and "required" not in node:  # pyright: ignore[reportUnknownMemberType]
-                node["required"] = []
-            for value in node.values():  # pyright: ignore[reportUnknownVariableType]
-                walk(value)
-        elif isinstance(node, list):
-            for value in node:  # pyright: ignore[reportUnknownVariableType]
-                walk(value)
-
-    walk(out)
-    return out
-
-
 def request_shape(spec: StageSpec) -> dict[str, Any]:
     """The stable part of every request of a stage run: ``system`` and ``tools``."""
     tools: list[dict[str, Any]] = [
         {
             "name": tool.name,
             "description": tool.description,
-            "input_schema": _strict_schema(tool.input_schema),
-            "strict": True,
+            "input_schema": dict(tool.input_schema),
         }
         for tool in spec.tools
     ]
