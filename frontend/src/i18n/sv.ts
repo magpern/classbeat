@@ -2234,6 +2234,106 @@ const sv: Catalogue = {
     'Gränsen för låtändringar är nådd',
   'job.failure.revision_limit.detail':
     'Klassen har använt alla sina låtändringar. Gör ett nytt val i stället.',
+  'studio.approve':
+    'Godkänn låtarna',
+  'studio.approveHint':
+    'Godkännandet startar designen av klassen på de här låtarna. Det använder ingen ytterligare kredit.',
+  'studio.designFailed':
+    'Låtarna är godkända, men designen startade inte.',
+  'studio.designRetry':
+    'Starta designen',
+  'studio.reason.music_changed':
+    'Analysen av klassens musik har gått ut. Byt låtar för att analysera igen. Ett nytt val kostar en klasskredit.',
+  'studio.reason.already_designed':
+    'Klassen är redan designad på de här låtarna. Öppna klassen för att se den.',
+  'studio.reason.stale_base':
+    'Klassen ändrades under tiden. Ladda om sidan och försök igen.',
+  'studio.reason.hash_mismatch':
+    'Utkastet ändrades efter att sidan lästes in. Ladda om sidan, kontrollera det och godkänn igen.',
+  'studio.reason.not_current':
+    'Det här är inte längre klassens aktuella version. Ladda om sidan.',
+  'studio.reason.mowl_needs_mix':
+    'Ett MOWL-pass behöver mixen. Välj mixen också.',
+  'studio.reason.output_off':
+    'Något av de valda resultaten är avstängt just nu. Välj andra eller försök igen senare.',
+  'studio.reason.connection_changed':
+    'Din SwedeBeat-anslutning har ändrats sedan du valde. Ladda om sidan och godkänn igen.',
+  'studio.reason.session_refused':
+    'SwedeBeat godtog inte din inloggning. Anslut igen på din kontosida.',
+  'studio.reason.no_studio_draft':
+    'Klassen har inget studioutkast än. Godkänn låtar först.',
+  'studio.tl.title':
+    'Musiktidslinje',
+  'studio.tl.length':
+    'Mixen är {mix} lång och passet {workout}.',
+  'studio.tl.noAudio':
+    'Det här är planen från den analyserade musiken. Den kan inte spelas upp här.',
+  'studio.tl.songs':
+    'Låtar i mixen',
+  'studio.tl.song':
+    '{title}, {artist}',
+  'studio.tl.songFacts':
+    '{bpm} BPM. Spelar {from} till {to} av låten ({played}), vid {mixFrom} till {mixTo} i mixen.',
+  'studio.tl.fade':
+    'Övertoning på {sec} s vid {from} till {to} i mixen.',
+  'studio.tl.intervals':
+    'Intervaller',
+  'studio.tl.interval':
+    '{start} till {end}, zon {zone}, över låt {song}.',
+  'studio.tl.intervalNoZone':
+    '{start} till {end}, över låt {song}.',
+  'studio.tl.standing':
+    'Stående',
+  'studio.tl.loadFailed':
+    'Tidslinjen kunde inte hämtas. Ladda om sidan.',
+  'studio.musicChanged.title':
+    'Musiken behöver analyseras på nytt',
+  'studio.changeSongs':
+    'Byt låtar',
+  'studio.out.title':
+    'Resultat',
+  'studio.out.intro':
+    'Välj vad som ska skapas från det här utkastet.',
+  'studio.out.spotify_playlist':
+    'Spotify-spellista',
+  'studio.out.spotify_playlist.desc':
+    'En ny privat spellista i ditt Spotify-konto, i den godkända ordningen.',
+  'studio.out.swedebeat_playlist':
+    'SwedeBeat-spellista',
+  'studio.out.swedebeat_playlist.desc':
+    'En spellista som skapas och publiceras i SwedeBeat.',
+  'studio.out.swedebeat_mix':
+    'SwedeBeat-mix',
+  'studio.out.swedebeat_mix.desc':
+    'En renderad MP3 av hela mixen, publicerad i SwedeBeat.',
+  'studio.out.mowl':
+    'MOWL-pass',
+  'studio.out.mowl.desc':
+    'Passet i MOWL, med mixen kopplad. Det behöver mixen.',
+  'studio.out.mowlNeedsMix':
+    'Mixen är på så länge MOWL är på, eftersom passet kopplar den.',
+  'studio.out.none':
+    'Välj minst ett resultat.',
+  'studio.consent.title':
+    'Innan du godkänner',
+  'studio.consent.chosen':
+    'Du är på väg att skapa: {outputs}.',
+  'studio.consent.noDelete':
+    'SwedeBeat har ingen radering, och classbeat kan inte ta bort det som publiceras där.',
+  'studio.consent.publicPlaylist':
+    'En publicerad spellista visar ditt namn och din e-postadress för andra i SwedeBeat.',
+  'studio.consent.mix':
+    'Vad en sammanfogad mix visar för andra är inte bekräftat än.',
+  'studio.consent.approve':
+    'Godkänn och skapa',
+  'studio.consent.sending':
+    'Skickar…',
+  'class.duplicate.reason.studio_not_duplicable':
+    'En klass som gjorts med SwedeBeats studio kan inte kopieras. Gör ett nytt val i stället.',
+  'job.failure.studioMusicChanged.title':
+    'Musiken behöver analyseras på nytt',
+  'job.failure.studioMusicChanged.detail':
+    'Analysen av musiken har gått ut. Byt låtar för att analysera den igen.',
 }
 
 export default sv

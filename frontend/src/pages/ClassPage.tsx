@@ -3,6 +3,8 @@ import type { Deleted } from '../api/classes'
 import { isSongKind } from '../api/songs'
 import { DeleteClass } from '../components/classes/DeleteClass'
 import { ChatPanel } from '../components/classes/ChatPanel'
+import { StudioPanel } from '../components/studio/StudioPanel'
+import { isStudio, useStudioTimeline } from '../components/studio/useStudioTimeline'
 import { ChangeMusic } from '../components/classes/ChangeMusic'
 import { PlannedSongs } from '../components/classes/PlannedSongs'
 import { DesignInPlace } from '../components/classes/DesignInPlace'
@@ -115,6 +117,8 @@ function ClassBody({
   const [deleting, setDeleting] = useState(false)
   // Whether the class's history says Change it works (true until it says otherwise).
   const [canChange, setCanChange] = useState(true)
+  // A studio class is found by its timeline (the summary carries no studio status).
+  const studioView = useStudioTimeline(classId, summary.currentRevisionId, summary.openJob === null)
   // A soundless class has no songs to change (#530).
   const canChangeSongs =
     !summary.soundless && summary.songs.state === 'approved' && summary.songs.revisionId !== null
@@ -193,6 +197,7 @@ function ClassBody({
               revisions={revisions}
               messages={messages}
               canChange={canChange}
+              studio={isStudio(studioView)}
               requestJobId={request?.jobId ?? null}
               onReload={reload}
               onView={setChosen}
@@ -254,6 +259,7 @@ function ClassBody({
                 classId={classId}
               />
             ) : null}
+            <StudioPanel summary={summary} view={studioView} />
             {shown.status === 'ready' ? <PlannedSongs segments={shown.revision.segments} songs={songs} /> : null}
             {summary.beatOne.available && viewingId === summary.currentRevisionId ? (
               <BeatOnePanel

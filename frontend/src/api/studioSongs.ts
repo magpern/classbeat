@@ -184,6 +184,17 @@ const OWN: Record<string, CatalogueKey> = {
   idempotency_mismatch: 'studio.reason.idempotency',
   idempotency_key_missing: 'studio.reason.idempotency',
   idempotency_key_invalid: 'studio.reason.idempotency',
+  // The design start, the output choice and the timeline (part 2).
+  music_changed: 'studio.reason.music_changed',
+  already_designed: 'studio.reason.already_designed',
+  stale_base: 'studio.reason.stale_base',
+  hash_mismatch: 'studio.reason.hash_mismatch',
+  not_current: 'studio.reason.not_current',
+  mowl_needs_mix: 'studio.reason.mowl_needs_mix',
+  output_off: 'studio.reason.output_off',
+  connection_changed: 'studio.reason.connection_changed',
+  session_refused: 'studio.reason.session_refused',
+  no_studio_draft: 'studio.reason.no_studio_draft',
 }
 
 export function studioError(error: unknown): string {

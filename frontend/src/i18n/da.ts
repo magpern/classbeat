@@ -2222,6 +2222,106 @@ const da: Catalogue = {
     'Grænsen for sangændringer er nået',
   'job.failure.revision_limit.detail':
     'Klassen har brugt alle sine sangændringer. Lav et nyt valg i stedet.',
+  'studio.approve':
+    'Godkend sangene',
+  'studio.approveHint':
+    'Godkendelsen starter designet af klassen på disse sange. Det bruger ingen yderligere kredit.',
+  'studio.designFailed':
+    'Sangene er godkendt, men designet startede ikke.',
+  'studio.designRetry':
+    'Start designet',
+  'studio.reason.music_changed':
+    'Analysen af klassens musik er udløbet. Skift sange for at analysere igen. Et nyt valg koster en klassekredit.',
+  'studio.reason.already_designed':
+    'Klassen er allerede designet på disse sange. Åbn klassen for at se den.',
+  'studio.reason.stale_base':
+    'Klassen blev ændret i mellemtiden. Genindlæs siden og prøv igen.',
+  'studio.reason.hash_mismatch':
+    'Udkastet blev ændret, efter siden blev indlæst. Genindlæs siden, kontrollér det og godkend igen.',
+  'studio.reason.not_current':
+    'Dette er ikke længere klassens aktuelle version. Genindlæs siden.',
+  'studio.reason.mowl_needs_mix':
+    'Et MOWL-hold kræver mixet. Vælg også mixet.',
+  'studio.reason.output_off':
+    'Et af de valgte resultater er slået fra lige nu. Vælg andre, eller prøv igen senere.',
+  'studio.reason.connection_changed':
+    'Din SwedeBeat-forbindelse er ændret, siden du valgte. Genindlæs siden og godkend igen.',
+  'studio.reason.session_refused':
+    'SwedeBeat accepterede ikke dit login. Opret forbindelsen igen på din kontoside.',
+  'studio.reason.no_studio_draft':
+    'Klassen har endnu intet studieudkast. Godkend sange først.',
+  'studio.tl.title':
+    'Musiktidslinje',
+  'studio.tl.length':
+    'Mixet er {mix} langt, og holdet {workout}.',
+  'studio.tl.noAudio':
+    'Dette er planen fra den analyserede musik. Den kan ikke afspilles her.',
+  'studio.tl.songs':
+    'Sange i mixet',
+  'studio.tl.song':
+    '{title}, {artist}',
+  'studio.tl.songFacts':
+    '{bpm} BPM. Spiller {from} til {to} af sangen ({played}), ved {mixFrom} til {mixTo} i mixet.',
+  'studio.tl.fade':
+    'Overtoning på {sec} s ved {from} til {to} i mixet.',
+  'studio.tl.intervals':
+    'Intervaller',
+  'studio.tl.interval':
+    '{start} til {end}, zone {zone}, over sang {song}.',
+  'studio.tl.intervalNoZone':
+    '{start} til {end}, over sang {song}.',
+  'studio.tl.standing':
+    'Stående',
+  'studio.tl.loadFailed':
+    'Tidslinjen kunne ikke hentes. Genindlæs siden.',
+  'studio.musicChanged.title':
+    'Musikken skal analyseres igen',
+  'studio.changeSongs':
+    'Skift sange',
+  'studio.out.title':
+    'Resultater',
+  'studio.out.intro':
+    'Vælg, hvad der skal oprettes fra dette udkast.',
+  'studio.out.spotify_playlist':
+    'Spotify-playliste',
+  'studio.out.spotify_playlist.desc':
+    'En ny privat playliste på din Spotify-konto, i den godkendte rækkefølge.',
+  'studio.out.swedebeat_playlist':
+    'SwedeBeat-playliste',
+  'studio.out.swedebeat_playlist.desc':
+    'En playliste, der oprettes og udgives i SwedeBeat.',
+  'studio.out.swedebeat_mix':
+    'SwedeBeat-mix',
+  'studio.out.swedebeat_mix.desc':
+    'Én renderet MP3 af hele mixet, udgivet i SwedeBeat.',
+  'studio.out.mowl':
+    'MOWL-hold',
+  'studio.out.mowl.desc':
+    'Holdet i MOWL, med mixet tilknyttet. Det kræver mixet.',
+  'studio.out.mowlNeedsMix':
+    'Mixet er slået til, så længe MOWL er det, fordi holdet tilknytter det.',
+  'studio.out.none':
+    'Vælg mindst ét resultat.',
+  'studio.consent.title':
+    'Før du godkender',
+  'studio.consent.chosen':
+    'Du er ved at oprette: {outputs}.',
+  'studio.consent.noDelete':
+    'SwedeBeat har ingen sletning, og classbeat kan ikke fjerne det, der udgives dér.',
+  'studio.consent.publicPlaylist':
+    'En udgivet playliste viser dit navn og din e-mailadresse for andre i SwedeBeat.',
+  'studio.consent.mix':
+    'Hvad et sammenflettet mix viser andre, er endnu ikke bekræftet.',
+  'studio.consent.approve':
+    'Godkend og opret',
+  'studio.consent.sending':
+    'Sender…',
+  'class.duplicate.reason.studio_not_duplicable':
+    'En klasse lavet med SwedeBeats studie kan ikke kopieres. Lav et nyt valg i stedet.',
+  'job.failure.studioMusicChanged.title':
+    'Musikken skal analyseres igen',
+  'job.failure.studioMusicChanged.detail':
+    'Analysen af musikken er udløbet. Skift sange for at analysere den igen.',
 }
 
 export default da

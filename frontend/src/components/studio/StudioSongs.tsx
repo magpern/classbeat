@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { cancelJob, type Job } from '../../api/jobs'
+import { approveSongs } from '../../api/songs'
+import { approveRefusal } from '../../api/songMessages'
+import { startStudioDesign } from '../../api/studioOutputs'
 import {
   actOnStudioList,
   getStudioList,
@@ -30,20 +33,11 @@ const CHANGEABLE: readonly string[] = ['waiting_for_approval', 'cancelled', 'exp
  * class's song changes against its limit, and for a suspected outage "Try again later" or "Swap
  * anyway". `job` is the `studio_songs` job that made the list.
  *
- * TODO(#1097, C6a): the timeline, the output choice, the consent and the per-output states, and
- * the approval itself (then the `onApproved` seam), come here once the timeline's API exists. Nothing of them is faked.
+ * Approving the list starts the design: the list is approved (ADR 0008 section 5), then `studio_design`
+ * is started for that version (ADR 0036 section 5) and the page follows its job. The timeline and
+ * the output choice are on the class page once the design has made a version.
  */
-export function StudioSongs({
-  job,
-}: {
-  job: Job
-  /**
-   * SEAM (part 2): called with the approved list's revision id once the list is approved. It is
-   * where `studio_design` (C5, started after the approval) is created; its route is not here
-   * because it is not merged yet, and no URL is invented.
-   */
-  onApproved?: (revisionId: string) => void
-}) {
+export function StudioSongs({ job }: { job: Job }) {
   const t = useT()
   const { navigate } = useRouter()
   const revisionId = job.approvalRevisionId
@@ -53,6 +47,9 @@ export function StudioSongs({
   const [refused, setRefused] = useState<StudioChanges | null>(null)
   const act = useAction()
   const stop = useAction()
+  const approve = useAction()
+  // The list is approved but its design did not start: the next click only starts it again.
+  const [approved, setApproved] = useState(false)
 
   useEffect(() => {
     if (revisionId === null) return
@@ -73,8 +70,8 @@ export function StudioSongs({
   if (revisionId === null || loadFailed) return <Notice kind="error">{t('studio.loadFailed')}</Notice>
   if (list === null) return <p>{t('studio.loading')}</p>
 
-  const changeable = CHANGEABLE.includes(job.state) && !stopped
-  const busy = act.busy || stop.busy
+  const changeable = CHANGEABLE.includes(job.state) && !stopped && !approved
+  const busy = act.busy || stop.busy || approve.busy
   const gaps = list.songs.filter((song) => song.gap).length
   const changes = list.changes ?? refused
   const suspected = list.evidence.state === 'suspected_unavailable'
@@ -92,6 +89,25 @@ export function StudioSongs({
         setRefused(refusalChanges(error))
         return studioError(error)
       },
+    )
+  }
+
+  const approveList = () => {
+    const scope = `studio-design.${revisionId}`
+    // The state below is read by the error words after an await, so the step is kept here too.
+    let past = approved
+    void approve.run(
+      async () => {
+        if (!approved) {
+          await approveSongs(job.id, revisionId, list.contentHash)
+          past = true
+          setApproved(true)
+        }
+        const design = await startStudioDesign(job.classId, revisionId, actionKey(scope))
+        dropActionKey(scope)
+        navigate(`/jobs/${design.id}`)
+      },
+      (error) => (past ? studioError(error) : approveRefusal(error).text),
     )
   }
 
@@ -146,11 +162,24 @@ export function StudioSongs({
       </ol>
       {gaps > 0 && !suspected ? <Notice>{t('studio.gaps', { count: gaps })}</Notice> : null}
       {act.error ? <Notice kind="error">{act.error}</Notice> : null}
+      {approve.error ? (
+        <Notice kind="error">{approved ? `${t('studio.designFailed')} ${approve.error}` : approve.error}</Notice>
+      ) : null}
       {stop.error ? <Notice kind="error">{stop.error}</Notice> : null}
       {changes !== null ? (
         <p className="m-0 text-muted" data-testid="studio-changes">
           {t('studio.changes', { count: changes.count, limit: changes.limit })}
         </p>
+      ) : null}
+      {(changeable || approved) && list.approvable && !suspected ? (
+        <div className="flex flex-col gap-1">
+          <p className="m-0 text-muted">{t('studio.approveHint')}</p>
+          <div>
+            <Button disabled={busy} onClick={approveList}>
+              {approved ? t('studio.designRetry') : t('studio.approve')}
+            </Button>
+          </div>
+        </div>
       ) : null}
       <p className="m-0 text-muted">{t('studio.changesNote')}</p>
       <p className="m-0 text-muted" data-testid="studio-credit">{t('studio.credit')}</p>

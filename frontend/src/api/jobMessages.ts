@@ -93,6 +93,10 @@ export function failureText(
   if (category === 'feature_off' && feature !== null) return words(FEATURE_OFF[feature])
   // A class with no music is cycling only and has no songs or mix: say what to change.
   if (category === 'invalid_input' && feature === 'soundless') return words(SOUNDLESS_INVALID)
+  // A studio revise or design whose cached analysis expired: Change songs analyses again.
+  if (category === 'music_changed' && kind.startsWith('studio_')) {
+    return words({ title: 'job.failure.studioMusicChanged.title', detail: 'job.failure.studioMusicChanged.detail' })
+  }
   if (isSongKind(kind)) {
     const song = songFailure(category)
     if (song !== null) return song

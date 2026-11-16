@@ -206,4 +206,63 @@ describe('StudioEnded', () => {
     expect(screen.queryByTestId('studio-no-list')).toBeNull()
     expect(screen.getByText('Today’s limit of song files is reached')).toBeInTheDocument()
   })
+
+  describe('approval', () => {
+    const DESIGN_JOB = '77777777-7777-4777-8777-777777777777'
+    const APPROVE = `/api/jobs/${JOB_ID}/approve`
+
+    it('approves the list, starts the design with a key and follows its job', async () => {
+      const api = fakeApi({
+        [`GET ${PATH}`]: view({ approvable: true }),
+        [`POST ${APPROVE}`]: jobBody('completed', { kind: 'studio_songs' }),
+        [`POST ${PATH}/design`]: json({ id: DESIGN_JOB, kind: 'studio_design', state: 'queued' }, 201),
+      })
+      mount()
+      fireEvent.click(await screen.findByRole('button', { name: 'Approve songs' }))
+      await waitFor(() => { expect(api.to('POST', `${PATH}/design`)).toHaveLength(1) })
+      expect(api.to('POST', APPROVE)[0]!.body).toEqual({ revision_id: LIST, content_hash: 'ab'.repeat(32) })
+      const design = api.to('POST', `${PATH}/design`)[0]!
+      expect(design.body).toEqual({})
+      expect(design.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
+    })
+
+    it('offers no approval for a list that cannot be approved', async () => {
+      fakeApi({ [`GET ${PATH}`]: view({ approvable: false }) })
+      mount()
+      await screen.findAllByTestId('studio-song')
+      expect(screen.queryByRole('button', { name: 'Approve songs' })).toBeNull()
+    })
+
+    it('retries only the design start when it failed after the approval', async () => {
+      let designs = 0
+      const api = fakeApi({
+        [`GET ${PATH}`]: view({ approvable: true }),
+        [`POST ${APPROVE}`]: jobBody('completed', { kind: 'studio_songs' }),
+        [`POST ${PATH}/design`]: () => {
+          designs += 1
+          return designs === 1
+            ? reason(409, 'already_designed')
+            : json({ id: DESIGN_JOB, kind: 'studio_design', state: 'queued' }, 201)
+        },
+      })
+      mount()
+      fireEvent.click(await screen.findByRole('button', { name: 'Approve songs' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('already designed')
+      expect(screen.getByRole('alert')).toHaveTextContent('did not start')
+      fireEvent.click(screen.getByRole('button', { name: 'Start the design' }))
+      await waitFor(() => { expect(api.to('POST', `${PATH}/design`)).toHaveLength(2) })
+      expect(api.to('POST', APPROVE)).toHaveLength(1)
+    })
+
+    it('words a refused approval and keeps the list', async () => {
+      fakeApi({
+        [`GET ${PATH}`]: view({ approvable: true }),
+        [`POST ${APPROVE}`]: () => reason(409, 'list_has_gap'),
+      })
+      mount()
+      fireEvent.click(await screen.findByRole('button', { name: 'Approve songs' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('gap')
+      expect(screen.getAllByTestId('studio-song')).toHaveLength(3)
+    })
+  })
 })

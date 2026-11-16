@@ -2100,6 +2100,106 @@ export const en = {
     'Song change limit reached',
   'job.failure.revision_limit.detail':
     'This class has used all its song changes. Start a new pick instead.',
+  'studio.approve':
+    'Approve songs',
+  'studio.approveHint':
+    'Approving starts the design of the class on these songs. It uses no further credit.',
+  'studio.designFailed':
+    'The songs are approved, but the design did not start.',
+  'studio.designRetry':
+    'Start the design',
+  'studio.reason.music_changed':
+    'The analysis of this class’s music has expired. Change songs to analyse it again. A new pick costs a class credit.',
+  'studio.reason.already_designed':
+    'This class is already designed on these songs. Open the class to see it.',
+  'studio.reason.stale_base':
+    'The class changed in the meantime. Reload the page and try again.',
+  'studio.reason.hash_mismatch':
+    'The draft changed after this page loaded. Reload the page, check it and approve again.',
+  'studio.reason.not_current':
+    'This is no longer the class’s current version. Reload the page.',
+  'studio.reason.mowl_needs_mix':
+    'A MOWL workout needs the mix. Choose the mix too.',
+  'studio.reason.output_off':
+    'One of the chosen outputs is switched off right now. Choose others, or try again later.',
+  'studio.reason.connection_changed':
+    'Your SwedeBeat connection changed since you chose. Reload the page and approve again.',
+  'studio.reason.session_refused':
+    'SwedeBeat did not accept your sign-in. Connect again on your account page.',
+  'studio.reason.no_studio_draft':
+    'This class has no studio draft yet. Approve songs first.',
+  'studio.tl.title':
+    'Music timeline',
+  'studio.tl.length':
+    'The mix is {mix} long and the workout {workout}.',
+  'studio.tl.noAudio':
+    'This is the plan from the analysed music. It cannot be played here.',
+  'studio.tl.songs':
+    'Songs in the mix',
+  'studio.tl.song':
+    '{title}, {artist}',
+  'studio.tl.songFacts':
+    '{bpm} BPM. Plays {from} to {to} of the song ({played}), at {mixFrom} to {mixTo} in the mix.',
+  'studio.tl.fade':
+    'Crossfade of {sec} s at {from} to {to} in the mix.',
+  'studio.tl.intervals':
+    'Intervals',
+  'studio.tl.interval':
+    '{start} to {end}, zone {zone}, over song {song}.',
+  'studio.tl.intervalNoZone':
+    '{start} to {end}, over song {song}.',
+  'studio.tl.standing':
+    'Standing',
+  'studio.tl.loadFailed':
+    'The timeline could not be loaded. Reload the page.',
+  'studio.musicChanged.title':
+    'The music needs a new analysis',
+  'studio.changeSongs':
+    'Change songs',
+  'studio.out.title':
+    'Outputs',
+  'studio.out.intro':
+    'Choose what to create from this draft.',
+  'studio.out.spotify_playlist':
+    'Spotify playlist',
+  'studio.out.spotify_playlist.desc':
+    'A new private playlist in your Spotify account, in the approved order.',
+  'studio.out.swedebeat_playlist':
+    'SwedeBeat playlist',
+  'studio.out.swedebeat_playlist.desc':
+    'A playlist created and published in SwedeBeat.',
+  'studio.out.swedebeat_mix':
+    'SwedeBeat mix',
+  'studio.out.swedebeat_mix.desc':
+    'One rendered MP3 of the whole mix, published in SwedeBeat.',
+  'studio.out.mowl':
+    'MOWL workout',
+  'studio.out.mowl.desc':
+    'The workout in MOWL, with the mix attached. It needs the mix.',
+  'studio.out.mowlNeedsMix':
+    'The mix stays on while MOWL is on, because the workout attaches it.',
+  'studio.out.none':
+    'Choose at least one output.',
+  'studio.consent.title':
+    'Before you approve',
+  'studio.consent.chosen':
+    'You are about to create: {outputs}.',
+  'studio.consent.noDelete':
+    'SwedeBeat has no delete, and classbeat cannot remove what it publishes there.',
+  'studio.consent.publicPlaylist':
+    'A published playlist shows your name and email to others in SwedeBeat.',
+  'studio.consent.mix':
+    'What a merged mix shows others has not been confirmed yet.',
+  'studio.consent.approve':
+    'Approve and create',
+  'studio.consent.sending':
+    'Sending…',
+  'class.duplicate.reason.studio_not_duplicable':
+    'A class made with SwedeBeat’s studio cannot be copied. Start a new pick instead.',
+  'job.failure.studioMusicChanged.title':
+    'The music needs a new analysis',
+  'job.failure.studioMusicChanged.detail':
+    'The analysis of the music has expired. Change songs to analyse it again.',
 } as const satisfies Record<string, Message>
 
 export type Plural = {
