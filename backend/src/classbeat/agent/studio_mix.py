@@ -27,6 +27,7 @@ from classbeat.agent.studio_schemas import MixInput
 from classbeat.studio.mix_plan_policy import MixPlanRefused, TrackFacts, checked, total_sec
 
 BEAT_ONE_HEAD: Final = mix_input.BEAT_ONE_ESTIMATE.split("{", 1)[0]
+COMPOSE_FAILED: Final = "compose_failed"  # named, though the policy leaves the library no rule
 KEY: Final = "t{}"  # the stage's own stand-in for a reference: the index, never the catalogue's
 
 
@@ -116,7 +117,8 @@ def compose(tracks: Sequence[StudioTrack], given: MixInput) -> Composed:
     try:
         composed = mix.compose_map([dict(tracks[n].music_map) for n in order], good)
     except (ValueError, KeyError, TypeError):
-        raise ToolError("invalid_mix", ["the mix could not be composed"]) from None
+        failed = f"{COMPOSE_FAILED}: the mix could not be composed"
+        raise ToolError("invalid_mix", [failed]) from None
     composed["crossfade"] = 0.0  # the crossfades are in the composed map already
     plan = {
         "tracks": [

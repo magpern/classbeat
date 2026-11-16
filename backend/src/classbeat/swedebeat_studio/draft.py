@@ -72,21 +72,24 @@ class StudioMusic:
         }
 
     def spec_of(self, plan: Mapping[str, Any]) -> dict[str, Any]:
-        """The stage's plan by reference, checked again against the stored analyses."""
-        spec = {
-            "tracks": [
-                {
-                    "reference": self.references[t["track"]],
-                    "start_sec": t["start_sec"],
-                    "end_sec": t["end_sec"],
-                }
-                for t in plan["tracks"]
-            ],
-            "crossfades": list(plan["crossfades"]),
-        }
+        """The stage's plan by reference, checked again against the stored analyses;
+        ``invalid_output`` for anything the backend would not make (an index off the list too)."""
         try:
+            if any(type(t["track"]) is not int or t["track"] < 0 for t in plan["tracks"]):
+                raise IndexError("a track is a list index")  # never -1 for the last one
+            spec = {
+                "tracks": [
+                    {
+                        "reference": self.references[t["track"]],
+                        "start_sec": t["start_sec"],
+                        "end_sec": t["end_sec"],
+                    }
+                    for t in plan["tracks"]
+                ],
+                "crossfades": list(plan["crossfades"]),
+            }
             again = checked(spec, self.references, self.facts())
-        except (MixPlanRefused, IndexError):
+        except (MixPlanRefused, IndexError, KeyError, TypeError):
             raise JobFailure("invalid_output") from None
         if again != spec:  # the stage's plan was snapped already: nothing may move here
             raise JobFailure("invalid_output")
