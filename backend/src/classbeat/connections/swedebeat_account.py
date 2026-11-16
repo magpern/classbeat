@@ -40,12 +40,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, NoReturn
 from uuid import UUID
 
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from pydantic import SecretStr
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.auth import derive_key
 from classbeat.config import Settings
 from classbeat.connections.credentials import Credentials, OpenConnection
 from classbeat.connections.errors import ConnectionFailure
@@ -70,10 +69,9 @@ DEVICE_ID_CHARS = 16
 _DEVICE_LABEL = b"classbeat/swedebeat-device/v1\x00"
 _ACCOUNT_LABEL = b"classbeat/swedebeat-account/v1\x00"
 ACCOUNT_REF_CHARS = 32
-# The account digest's key: HKDF-SHA256 of the app secret with ``auth.keys``' salt and its own
-# info (``classbeat.auth`` is not imported here: guard ``test_auth_tables_guard``).
-_HKDF_SALT = b"classbeat-v1"
-_ACCOUNT_INFO = b"swedebeat-account"
+# The account digest's key: ``classbeat.auth.derive_key`` (HKDF-SHA256, ``auth.keys``' salt) of
+# the app secret under its own info string.
+_ACCOUNT_INFO = "swedebeat-account"
 _LEGACY_FIELDS = frozenset({"token", "device_id"})  # ADR 0015's payload, before the gateway
 # The operator log lines of a configuration failure (no value in either): the gateway refused the
 # key, or this process has no gateway origin, so nothing was sent.
@@ -131,9 +129,7 @@ def account_ref_for(secret: bytes, user_id: UUID, customer_id: str | None) -> st
     if customer_id is None:
         return None
     message = _ACCOUNT_LABEL + user_id.bytes + customer_id.encode("ascii")
-    key = HKDF(algorithm=hashes.SHA256(), length=32, salt=_HKDF_SALT, info=_ACCOUNT_INFO).derive(
-        secret
-    )
+    key = derive_key(secret, _ACCOUNT_INFO)
     return hmac.new(key, message, hashlib.sha256).hexdigest()[:ACCOUNT_REF_CHARS]
 
 
