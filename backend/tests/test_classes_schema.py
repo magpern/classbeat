@@ -63,6 +63,7 @@ def insert(conn: Connection, table: str, **values: Any) -> uuid.UUID:
         "mixes_before",
         "detail",
         "params",
+        "track_ids",
     }
     params = ", ".join(f"CAST(:{k} AS jsonb)" if k in jsonb else f":{k}" for k in values)
     row = {k: json.dumps(v) if k in jsonb else v for k, v in values.items()}
@@ -643,6 +644,10 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     insert(admin, "class_outputs", owner_id=owner, class_id=class_id, revision_id=rev,
            output="swedebeat_mix", attempt=1, state="in_doubt", detail={"name": "x"})  # fmt: skip
     insert(admin, "studio_output_starts", owner_id=owner)
+    # ADR 0036 section 9 (migration 0055): a revision's working-copy sync state.
+    insert(admin, "spotify_syncs", owner_id=owner, class_id=class_id, revision_id=rev,
+           target="working_copy", lock_key="working_copy", track_ids=["0vvXsWCC9xrXsKd4FyS8kM"],
+           state="synced")  # fmt: skip
     # M5 (migration 0007): an entitlement from a code, its redemption, a credit and its lock row.
     code_id = admin.execute(
         text("INSERT INTO redeem_codes (code_hash, label, plan_id, grant_days, max_redemptions, "

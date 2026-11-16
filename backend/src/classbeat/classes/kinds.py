@@ -31,6 +31,7 @@ NO_FIRST_BRIEF: Final = (
     "send_to_player",  # ADR 0034 section 5: a revision exists before a press
     "produce_outputs",  # SR C6a: the approval of a studio draft that exists
     "player_remove",  # no class at all: the class is deleted
+    "spotify_sync",  # SR C8: Sync again of a revision that exists; no class column
 )
 
 

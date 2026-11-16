@@ -43,6 +43,7 @@ from classbeat.classes.studio_design_routes import router as studio_design_route
 from classbeat.classes.studio_output_actions_routes import router as studio_output_actions_router
 from classbeat.classes.studio_outputs_routes import router as studio_outputs_router
 from classbeat.classes.studio_songs_routes import router as studio_songs_router
+from classbeat.classes.studio_sync_routes import router as studio_sync_router
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.mowl_qr import QrWaits
 from classbeat.connections.mowl_qr_routes import router as mowl_qr_router
@@ -77,6 +78,7 @@ from classbeat.swedebeat_studio import (  # noqa: F401 - each registers its kind
     design_kind,  # studio_design (SR C5)
     outputs_kind,  # produce_outputs (SR C7)
     revise_kind,  # studio_revise (SR C5)
+    sync_kind,  # spotify_sync (SR C8)
 )
 from classbeat.swedebeat_studio import kind as studio_kind  # noqa: F401 - registers studio_songs
 from classbeat.usage.routes import router as usage_router
@@ -262,6 +264,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(studio_design_router)
     app.include_router(studio_outputs_router)  # SR C6a: timeline and output choice
     app.include_router(studio_output_actions_router)  # SR C7: output states and their actions
+    app.include_router(studio_sync_router)  # SR C8: Spotify sync state and Sync again
     app.include_router(interpretation_router)
 
     if settings.static_dir is not None:

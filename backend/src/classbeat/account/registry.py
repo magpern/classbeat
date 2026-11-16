@@ -55,6 +55,9 @@ SECTIONS: tuple[Section, ...] = (
     # ADR 0036 section 6 (SR C7): what each output attempt published, with its state; the stored
     # names, body and render plan (``detail``) are the backend's, not something the user wrote.
     _section("class_outputs", omit="detail"),
+    # ADR 0036 section 9 (SR C8): each revision's Spotify sync state; the tracks it wrote are the
+    # revision's own (exported with it), the lock key is bookkeeping.
+    _section("spotify_syncs", omit="track_ids lock_key fill_key seq"),
     _section("mowl_playlist_links"),
     # ADR 0034 section 5: what was published to the player, with the document hash omitted.
     _section("player_publications", omit="sent_document_hash"),

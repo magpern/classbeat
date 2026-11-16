@@ -43,6 +43,7 @@ from classbeat.swedebeat_studio import (  # noqa: F401 - each registers its kind
     design_kind,  # studio_design (SR C5)
     outputs_kind,  # produce_outputs (SR C7)
     revise_kind,  # studio_revise (SR C5)
+    sync_kind,  # spotify_sync (SR C8)
 )
 from classbeat.swedebeat_studio import kind as studio_kind  # noqa: F401 - registers studio_songs
 from classbeat.worker.loop import run_worker, worker_id

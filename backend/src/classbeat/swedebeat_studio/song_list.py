@@ -50,9 +50,10 @@ class StudioList:
     def track_ids(self) -> tuple[str, ...]:
         return self.content.track_ids()
 
-    async def store(self, fs: FencedSession) -> UUID:
-        """Insert the revision under the job's class and its ``revision_created`` event."""
-        revision_id = uuid.uuid4()
+    async def store(self, fs: FencedSession, revision_id: UUID | None = None) -> UUID:
+        """Insert the revision under the job's class and its ``revision_created`` event.
+        ``revision_id`` is one chosen before (the working copy's sync names it, SR C8)."""
+        revision_id = revision_id or uuid.uuid4()
         found = (
             await fs.db.execute(
                 INSERT,

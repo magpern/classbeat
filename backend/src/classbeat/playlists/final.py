@@ -16,6 +16,7 @@ Spotify user id, ``not_connected`` otherwise); the fill also re-reads the class 
 write is the user's to resolve (Check again / Do it anyway).
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 from uuid import UUID
@@ -28,6 +29,7 @@ from classbeat.crypto.keks import KeyRing
 from classbeat.jobs import JobFailure, JobRun
 from classbeat.operations.requests import Guard
 from classbeat.playlists import common, create, replace
+from classbeat.playlists.lock import playlist_lock
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,9 +119,12 @@ async def fill_final_playlist(
     class_playlist_id: UUID,
     track_ids: tuple[str, ...] | list[str],
     key: str | None = None,
+    recheck: Callable[[str, str], Guard] | None = None,
 ) -> None:
     """Set the class playlist to exactly ``track_ids`` and verify it by reading it back (``key``
-    as for the create)."""
+    as for the create). The write holds the playlist's lock (``playlists.lock``, key
+    ``final:<class_playlist_id>``); ``recheck(playlist_id, key)``, when given, makes the guard a
+    revision's sync runs first in the decide step (``playlists.sync``)."""
     ids = common.check_track_ids(track_ids)
     owner_id = run.lease.owner_id
     async with run.fenced() as fs:
@@ -128,18 +133,17 @@ async def fill_final_playlist(
         raise JobFailure("account_changed")
     playlist_id = common.check_playlist_id(playlist_id)
 
+    own_key = key or replace.final_key(run.lease.job_id)
+    first = None if recheck is None else recheck(playlist_id, own_key)
+
     async def guard(db: AsyncSession) -> bool:
+        if first is not None and not await first(db):
+            return False
         if not await hold(db, run.ctx, opened):
             return False
         still, still_account = await _live(db, owner_id, class_id, class_playlist_id)
         return still == playlist_id and still_account == opened.account
 
-    request = replace.replace_request(
-        key or replace.final_key(run.lease.job_id),
-        "final",
-        playlist_id,
-        ids,
-        guard,
-        class_id=class_id,
-    )
-    await replace.replace(run, keyring, opened, request, ids)
+    request = replace.replace_request(own_key, "final", playlist_id, ids, guard, class_id=class_id)
+    async with playlist_lock(run.factory, owner_id, f"final:{class_playlist_id}"):
+        await replace.replace(run, keyring, opened, request, ids)
