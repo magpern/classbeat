@@ -44,7 +44,7 @@ export function StudioPanel({ summary, view }: { summary: ClassSummary; view: St
     <Card className="flex flex-col gap-5">
       <StudioTimeline timeline={view.timeline} />
       {loaded !== null ? (
-        <StudioOutputStates classId={summary.id} outputs={loaded.outputs} limitReached={outputLimitReached(summary.id)} onChange={outputs.replace} />
+        <StudioOutputStates classId={summary.id} outputs={loaded.outputs} onChange={outputs.replace} />
       ) : null}
       {outputs.load.status === 'failed' ? <Notice kind="error">{t('studio.os.loadFailed')}</Notice> : null}
       {current && outputs.load.status !== 'loading' ? (

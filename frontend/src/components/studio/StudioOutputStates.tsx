@@ -75,12 +75,10 @@ function minutes(sec: number): string {
 function OutputRow({
   classId,
   status,
-  limitReached,
   onChange,
 }: {
   classId: string
   status: OutputStatus
-  limitReached: boolean
   onChange: (next: OutputStatus) => void
 }) {
   const t = useT()
@@ -120,9 +118,7 @@ function OutputRow({
             : t('studio.os.candidate', { name: status.candidate.name, length: minutes(status.candidate.durationSec) })}
         </p>
       ) : null}
-      {limitReached && (status.superseded || has('retry')) ? (
-        <p className="m-0 text-muted" data-testid="studio-output-limit">{t('studio.os.limitReached')}</p>
-      ) : status.superseded ? (
+      {status.superseded ? (
         <p className="m-0 text-muted">{t(SUPERSEDED_HINT[status.output])}</p>
       ) : has('retry') && !(status.category !== null && NO_RETRY.includes(status.category)) ? (
         <p className="m-0 text-muted">{t('studio.os.retryHint')}</p>
@@ -178,13 +174,10 @@ function OutputRow({
 export function StudioOutputStates({
   classId,
   outputs,
-  limitReached = false,
   onChange,
 }: {
   classId: string
   outputs: readonly OutputStatus[]
-  /** The class hit the limit of output attempts today: approving again would fail. */
-  limitReached?: boolean
   onChange: (next: OutputStatus) => void
 }) {
   const t = useT()
@@ -196,7 +189,7 @@ export function StudioOutputStates({
       </h3>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {outputs.map((status) => (
-          <OutputRow key={`${status.revisionId}.${status.output}`} classId={classId} status={status} limitReached={limitReached} onChange={onChange} />
+          <OutputRow key={`${status.revisionId}.${status.output}`} classId={classId} status={status} onChange={onChange} />
         ))}
       </ul>
     </section>

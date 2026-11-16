@@ -2325,7 +2325,7 @@ const sv: Catalogue = {
   'job.failure.output_limit.title':
     'Gränsen för resultat är nådd',
   'job.failure.output_limit.detail':
-    'Inget skapades. Gränsen är 24 försök per pass och per dag. Försök i morgon eller gör ett nytt val.',
+    'Inget skapades. Högst 24 försök per pass totalt, och 24 per dygn för alla dina pass.',
   'job.failure.writes_off.title':
     'SwedeBeat har skrivning avstängd',
   'job.failure.writes_off.detail':
@@ -2339,7 +2339,7 @@ const sv: Catalogue = {
   'job.failure.render_not_reproducible.detail':
     'Mixen blev inte likadan två gånger, så ingenting mer skickades. Gör ett nytt val.',
   'studio.os.limitReached':
-    'Gränsen för försök till resultat är nådd (24 per pass och 24 per dag). Försök igen i morgon, eller gör ett nytt val.',
+    'Ditt senaste godkännande stoppades av gränsen för försök till resultat: högst 24 per pass totalt, och 24 per dygn för alla dina pass. Det kan ändå gå att godkänna för ett oavslutat resultat.',
   'studio.ended.backToClass':
     'Tillbaka till passet',
   'studio.os.category.connection_changed':

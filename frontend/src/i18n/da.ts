@@ -2313,7 +2313,7 @@ const da: Catalogue = {
   'job.failure.output_limit.title':
     'Grænsen for resultater er nået',
   'job.failure.output_limit.detail':
-    'Intet blev oprettet. Grænsen er 24 forsøg pr. hold og pr. dag. Prøv i morgen eller lav et nyt valg.',
+    'Intet blev oprettet. Højst 24 forsøg pr. hold i alt, og 24 i døgnet på tværs af alle dine hold.',
   'job.failure.writes_off.title':
     'SwedeBeat har skrivning slået fra',
   'job.failure.writes_off.detail':
@@ -2327,7 +2327,7 @@ const da: Catalogue = {
   'job.failure.render_not_reproducible.detail':
     'Mixet blev ikke ens to gange, så der blev ikke sendt mere. Lav et nyt valg.',
   'studio.os.limitReached':
-    'Grænsen for forsøg på resultater er nået (24 pr. hold og 24 om dagen). Prøv igen i morgen, eller lav et nyt valg.',
+    'Din seneste godkendelse blev stoppet af grænsen for forsøg på resultater: højst 24 pr. hold i alt, og 24 i døgnet på tværs af alle dine hold. Det kan stadig lykkes at godkende for et uafsluttet resultat.',
   'studio.ended.backToClass':
     'Tilbage til holdet',
   'studio.os.category.connection_changed':

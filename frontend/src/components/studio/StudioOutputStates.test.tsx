@@ -20,9 +20,9 @@ function status(extra: Record<string, unknown>) {
   }
 }
 
-async function shown(item: Record<string, unknown>, onChange = vi.fn(), limitReached = false) {
+async function shown(item: Record<string, unknown>, onChange = vi.fn()) {
   const { decodeOutputStatus } = await import('../../api/studioOutputStates')
-  render(<StudioOutputStates classId={CLASS} outputs={[decodeOutputStatus(item)]} limitReached={limitReached} onChange={onChange} />)
+  render(<StudioOutputStates classId={CLASS} outputs={[decodeOutputStatus(item)]} onChange={onChange} />)
   return onChange
 }
 
@@ -114,12 +114,6 @@ describe('the per-output states', () => {
     const warning = screen.getByTestId('studio-duplicate-warning')
     expect(warning).toHaveTextContent('Spotify')
     expect(warning).not.toHaveTextContent('no delete')
-  })
-
-  it('stops offering approve again once the limit is reached', async () => {
-    await shown(status({ state: 'failed', actions: ['retry'], note: null, category: 'internal' }), vi.fn(), true)
-    expect(screen.getByTestId('studio-output-limit')).toBeInTheDocument()
-    expect(screen.queryByText(/Approve the outputs again/)).toBeNull()
   })
 
   it('offers no approve again where it cannot help, and says it once where it can', async () => {

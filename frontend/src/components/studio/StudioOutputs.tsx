@@ -10,6 +10,7 @@ import {
 } from '../../api/studioOutputs'
 import { useT } from '../../i18n/I18n'
 import { actionKey, dropActionKey } from '../../lib/submittedInput'
+import { forgetOutputLimit } from './studioAction'
 import { useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
@@ -36,7 +37,7 @@ export function StudioOutputs({
   /** Another job of the class is open. */
   disabled: boolean
   enabled?: readonly Output[] | null
-  /** The class hit the limit of output attempts today. */
+  /** The class's last approval stopped at the limit: a notice only, Approve stays on. */
   limitReached?: boolean
 }) {
   const t = useT()
@@ -58,6 +59,7 @@ export function StudioOutputs({
         actionKey(scope),
       )
       dropActionKey(scope)
+      forgetOutputLimit(classId)
       navigate(`/jobs/${job.id}`)
     }, studioError)
   }
@@ -109,7 +111,7 @@ export function StudioOutputs({
       {limitReached ? <Notice>{t('studio.os.limitReached')}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <div>
-        <Button disabled={disabled || limitReached || action.busy || chosen.length === 0} onClick={approve}>
+        <Button disabled={disabled || action.busy || chosen.length === 0} onClick={approve}>
           {action.busy ? t('studio.consent.sending') : t('studio.consent.approve')}
         </Button>
       </div>

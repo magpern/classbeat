@@ -254,4 +254,13 @@ describe('a studio class on the class page', () => {
     renderAt(PAGE)
     expect(await screen.findByTestId('studio-output-state-swedebeat_playlist')).toHaveTextContent('Being created')
   })
+
+  it('shows the output-limit notice after a stopped approval but leaves Approve enabled', async () => {
+    window.sessionStorage.setItem('classbeat.studio-output-limit.' + CLASS_ID, '1')
+    fakeApi(studioRoutes())
+    renderAt(PAGE)
+    expect(await screen.findByText(/24 per day across all your classes/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve and create' })).toBeEnabled()
+    window.sessionStorage.clear()
+  })
 })

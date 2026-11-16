@@ -22,7 +22,7 @@ describe('a failed produce_outputs job', () => {
     ended('output_limit')
     const card = screen.getByTestId('outputs-ended')
     expect(card).toHaveTextContent('Output limit reached')
-    expect(card).toHaveTextContent('24 attempts per class and per day')
+    expect(card).toHaveTextContent('24 per day across all your classes')
     expect(card).not.toHaveTextContent('Try again later')
     expect(screen.getByRole('link', { name: 'Back to the class' }).getAttribute('href')).toMatch(new RegExp(`/classes/${CLASS_ID}$`))
     expect(screen.queryByRole('button')).toBeNull()

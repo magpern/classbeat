@@ -45,23 +45,32 @@ export function recallStudioDesign(classId: string): string | null {
   }
 }
 
-// The day a class's output attempts hit the limit (`output_limit`, 24 per class and 24 per day),
-// kept in this tab's session storage so the class page stops offering "approve again" the same
-// day. Never stale for long: the day limit resets, and the class limit is found again by the next try.
+// A class's last approval of outputs stopped at the limit (`output_limit`: at most 24 attempts per
+// class in total and 24 per rolling day per user), kept in this tab's session storage only to show
+// a notice. It never disables Approve: only a new attempt counts against the limit (resuming an
+// unfinished output does not), and the server's refusal is the authority. It is dropped once an
+// approval goes through.
 const LIMIT = 'classbeat.studio-output-limit.'
-const today = () => new Date().toISOString().slice(0, 10)
 
 export function rememberOutputLimit(classId: string): void {
   try {
-    window.sessionStorage.setItem(LIMIT + classId, today())
+    window.sessionStorage.setItem(LIMIT + classId, '1')
   } catch {
-    // Without storage the page offers approval and the job says why it stopped.
+    // Without storage the job page still says why it stopped.
+  }
+}
+
+export function forgetOutputLimit(classId: string): void {
+  try {
+    window.sessionStorage.removeItem(LIMIT + classId)
+  } catch {
+    // Nothing to forget without storage.
   }
 }
 
 export function outputLimitReached(classId: string): boolean {
   try {
-    return window.sessionStorage.getItem(LIMIT + classId) === today()
+    return window.sessionStorage.getItem(LIMIT + classId) === '1'
   } catch {
     return false
   }

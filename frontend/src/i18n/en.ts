@@ -2191,7 +2191,7 @@ export const en = {
   'job.failure.output_limit.title':
     'Output limit reached',
   'job.failure.output_limit.detail':
-    'Nothing was created. The limit is 24 attempts per class and per day. Try tomorrow or make a new pick.',
+    'Nothing was created. At most 24 attempts per class in total, and 24 per day across all your classes.',
   'job.failure.writes_off.title':
     'SwedeBeat has writes switched off',
   'job.failure.writes_off.detail':
@@ -2205,7 +2205,7 @@ export const en = {
   'job.failure.render_not_reproducible.detail':
     'The mix did not render the same twice, so nothing more was sent. Make a new pick.',
   'studio.os.limitReached':
-    'The limit of output attempts is reached (24 per class and 24 per day). Try again tomorrow, or make a new pick.',
+    'Your last approval stopped at the limit of output attempts: at most 24 per class in total, and 24 per day across all your classes. Approving may still work for an unfinished output.',
   'studio.ended.backToClass':
     'Back to the class',
   'studio.os.category.connection_changed':
