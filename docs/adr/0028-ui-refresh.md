@@ -66,7 +66,7 @@ explored the answer. The owner reviewed it on 2026-11-09.
 ### 3. Connections (Account)
 
 A list of three rows: MOWL, Spotify, Swedebeat. Each shows a mark, the name, **Optional** where
-it is, one line (what it is for, or "Connected" and the account) and one button, **Connect** or
+it is (Swedebeat; Spotify is required for a class with music, roadmap Amendment 25), one line (what it is for, or "Connected" and the account) and one button, **Connect** or
 **Disconnect**. Connect opens a dialog for that service:
 
 - **MOWL:** "Scan code" and "Use password" tabs. Scan code is the default when

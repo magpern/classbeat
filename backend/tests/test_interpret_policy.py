@@ -1,6 +1,7 @@
 """``design.interpret_policy`` (ADR 0029 sections 4 and 5): an interpreted request to the brief, the
 music and the items a design job takes. Pure: no database, no network, no model."""
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from classbeat.agent.brief import Brief
 from classbeat.agent.interpreted import InterpretedRequest
 from classbeat.design import revision
+from classbeat.design.interpret_music_policy import without_spotify_is_refused
 from classbeat.design.interpret_policy import (
     DEFAULT_LENGTH_MIN,
     MusicOption,
@@ -62,8 +64,8 @@ def test_explicit_values_are_kept_and_stated_and_defaults_are_assumed() -> None:
     assert items["length_min"][0].quote == "60 minute"
     assert items["intensity"][0].origin == "default"
     assert items["sport"][0].origin == "default"
-    assert got.music == {"source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST}
-    assert items["music"][0].value == "first_playlist"
+    assert got.music is None  # no Spotify: never an arbitrary first playlist (Amendment 25)
+    assert items["music"][0].reason_code == "needs_spotify"
 
 
 def test_a_quote_that_is_not_in_the_request_is_dropped() -> None:
@@ -182,9 +184,16 @@ def test_a_plan_without_games_drops_every_game() -> None:
     assert [i.reason_code for i in got.items if i.path.startswith("games.")] == ["plan_no_games"]
 
 
+SPOTIFY = Offer(options=OPTIONS, spotify=True)
+PLAYLIST_CHOICE = {"source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST}
+NAMED_OTHER = {"source": "mowl_spotify_playlist", "spotify_playlist_id": OTHER}
+MIX = {"source": "mowl_swedebeat_mix", "mix_id": "mix-1"}
+
+
 @pytest.mark.parametrize(
     ("offer", "override", "named", "music", "source"),
     [
+        # The user's own choice first, "No music" included, with or without Spotify.
         (
             Offer(options=OPTIONS, pick_ready=True),
             {"source": "none"},
@@ -192,36 +201,63 @@ def test_a_plan_without_games_drops_every_game() -> None:
             {"source": "none"},
             "override",
         ),
-        (
-            Offer(options=OPTIONS, pick_ready=True),
-            None,
-            2,
-            {"source": "mowl_spotify_playlist", "spotify_playlist_id": OTHER},
-            "name_match",
-        ),
-        (
-            Offer(options=OPTIONS),
-            None,
-            1,
-            {"source": "mowl_swedebeat_mix", "mix_id": "mix-1"},
-            "name_match",
-        ),
-        (Offer(options=OPTIONS, pick_ready=True), None, None, {"source": "pick"}, "pick"),
-        (Offer(), None, None, {"source": "none"}, "soundless"),
+        (Offer(), {"source": "none"}, None, {"source": "none"}, "override"),
+        (Offer(options=OPTIONS), MIX, None, MIX, "override"),
+        (SPOTIFY, PLAYLIST_CHOICE, 2, PLAYLIST_CHOICE, "override"),
+        # A name in the request, then a song pick.
+        (replace(SPOTIFY, pick_ready=True), None, 2, NAMED_OTHER, "name_match"),
+        (Offer(options=OPTIONS), None, 1, MIX, "name_match"),  # a mix needs no Spotify
+        (replace(SPOTIFY, pick_ready=True), None, None, {"source": "pick"}, "pick"),
+        # Nothing else: no first playlist, no soundless default, for any account.
+        (SPOTIFY, None, None, None, None),
+        (Offer(), None, None, None, None),
+        (Offer(options=OPTIONS), PLAYLIST_CHOICE, None, None, None),  # a playlist needs Spotify
+        (Offer(options=OPTIONS), None, 2, None, None),
     ],
 )
 def test_music_follows_the_order(
-    offer: Offer, override: Any, named: int | None, music: dict[str, str], source: str
+    offer: Offer, override: Any, named: int | None, music: dict[str, str] | None, source: str | None
 ) -> None:
     fields = {} if named is None else {"music": stated(named)}
     got = resolve(read(**fields), REQUEST, offer, music_override=override)
     assert got.music == music
-    assert by_path(got.items)["music"][-1].value == source
+    last = by_path(got.items)["music"][-1]
+    if source is None:
+        assert (last.origin, last.reason_code) == ("not_as_asked", "needs_spotify")
+    else:
+        assert last.value == source
 
 
 def test_an_index_beyond_the_options_is_no_match() -> None:
-    got = resolve(read(music=stated(40)), REQUEST, Offer(options=OPTIONS))
-    assert by_path(got.items)["music"][-1].value == "first_playlist"
+    got = resolve(read(music=stated(40)), REQUEST, replace(SPOTIFY, pick_ready=True))
+    assert by_path(got.items)["music"][-1].value == "pick"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "refused"),
+    [
+        ({}, True),
+        ({"music_source": "mowl_spotify_playlist"}, True),
+        ({"sport_override": "cycling"}, True),
+        ({"music_source": "none"}, False),
+        ({"music_source": "mowl_swedebeat_mix"}, False),
+        ({"sport_override": "running"}, False),
+        ({"running_offered": True}, False),  # the request may be read as running
+        ({"running_offered": True, "sport_override": "cycling"}, True),
+        ({"mixes": True}, False),  # the request may name a Swedebeat mix
+        ({"mixes": True, "music_source": "mowl_spotify_playlist"}, True),
+    ],
+)
+def test_no_spotify_refuses_only_what_can_end_without_music(
+    kwargs: dict[str, Any], refused: bool
+) -> None:
+    given: dict[str, Any] = {
+        "music_source": None,
+        "sport_override": None,
+        "running_offered": False,
+        "mixes": False,
+    }
+    assert without_spotify_is_refused(**(given | kwargs)) is refused
 
 
 def test_every_resolved_brief_is_a_valid_brief() -> None:

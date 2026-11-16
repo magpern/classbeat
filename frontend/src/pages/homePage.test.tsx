@@ -78,14 +78,14 @@ describe('Home', () => {
 })
 
 describe('Get set up', () => {
-  it('lists MOWL while it is not connected, and Spotify as optional when song picking is on', async () => {
+  it('lists MOWL while it is not connected, and Spotify when song picking is on', async () => {
     home({ 'GET /api/connections/spotify': SPOTIFY('not_connected') })
     renderAt('/')
     const region = await screen.findByRole('region', { name: 'Get set up' })
     const rows = within(region).getAllByRole('listitem')
     expect(rows.map((r) => r.textContent)).toEqual([
       'MMOWLNeeded to save classes as workoutsConnect',
-      'SSpotifyOptionalPicks songs for your classesConnect',
+      'SSpotifyPicks songs for your classesConnect',
     ])
     expect(within(rows[0] as HTMLElement).getByRole('link', { name: 'Connect MOWL' })).toHaveAttribute('href', '/en/account')
     expect(within(rows[1] as HTMLElement).getByRole('link', { name: 'Connect Spotify' })).toHaveAttribute(

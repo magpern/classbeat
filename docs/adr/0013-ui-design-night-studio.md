@@ -224,7 +224,7 @@ Each item gives the content and its **primary action**, if any (at most one, §1
 - **Home.**
   - A greeting and a "Design a new class" card: **Design a class**, plus preset chips that prefill
     the form (45 min hills, 30 min intervals, 60 min endurance).
-  - A "Get set up" checklist (account, MOWL, optional Spotify), shown until it is complete.
+  - A "Get set up" checklist (account, MOWL, Spotify: required for a class with music, roadmap Amendment 25), shown until it is complete.
   - Recent classes as cards: a mini profile on the stage, title, length, TSS and song count, and a
     status chip. A TSS with any zone 7 interval shows as "≈ 52", with ADR 0012 §7's note as its
     accessible label (so on My classes too).

@@ -46,11 +46,11 @@ beforeEach(() => {
 })
 
 describe('the Spotify row', () => {
-  it('is optional, says what Spotify is for, and opens the set-up in a dialog', async () => {
+  it('is not optional (a class with music needs it), says what Spotify is for, and opens the set-up in a dialog', async () => {
     spotifyApi('not_connected')
     renderAt('/account')
     const spotify = await row()
-    expect(screen.getByTestId('connection-spotify')).toHaveTextContent('Optional')
+    expect(screen.getByTestId('connection-spotify')).not.toHaveTextContent('Optional')
     expect(screen.getByTestId('connection-spotify')).toHaveTextContent('Picks songs for your classes')
     expect(spotify.queryByRole('link')).toBeNull() // no longer a link to another page
     const connect = spotify.getByRole('button', { name: 'Connect Spotify' })

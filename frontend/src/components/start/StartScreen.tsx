@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { ApiError } from '../../api/client'
 import { createInterpretJob, type InterpretInput } from '../../api/interpret'
 import { useT } from '../../i18n/I18n'
 import { forgetExample } from '../../lib/exampleHandoff'
@@ -20,6 +21,8 @@ import { STARTERS } from './ideas'
 import { IdeasRow } from './IdeasRow'
 import { MusicSourcePicker } from './MusicSourcePicker'
 import { musicRows } from './musicSources'
+import { SpotifyPrompt } from './SpotifyPrompt'
+import { spotifyConnectionId, spotifyGate } from './spotifyGate'
 
 type Sport = 'cycling' | 'running'
 
@@ -43,6 +46,8 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
   const [musicKey, setMusicKey] = useState<string | null>(kept?.music ?? null)
   const [sport, setSport] = useState<Sport>(source.runningEnabled && kept?.sport === 'running' ? 'running' : 'cycling')
   const [problem, setProblem] = useState<string | null>(null)
+  // The server refused for want of Spotify (`needs_spotify`): the same prompt, with the link, instead of an error.
+  const [refusedForSpotify, setRefusedForSpotify] = useState(false)
   const running = sport === 'running'
   const rows = musicRows(t, {
     playlists: source.playlists,
@@ -64,7 +69,9 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
     promptRef.current?.focus()
   }, [usedExample])
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
-  const spotify = source.songs.kind === 'ready' ? source.songs.spotifyConnectionId : undefined
+  const spotify = spotifyConnectionId(source.songs)
+  // A class with music needs Spotify (roadmap Amendment 25): say so before the request is sent.
+  const gate = spotifyGate(source.songs, source.swedebeat, chosen?.override ?? null, running)
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -73,7 +80,9 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
       setProblem(t('start.error.empty'))
       return
     }
+    if (gate?.blocking) return
     setProblem(null)
+    setRefusedForSpotify(false)
     const input: InterpretInput = {
       request: words,
       mowl_connection_id: source.connection.id,
@@ -90,11 +99,14 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
         rememberRequest(job.classId, { request: words, music: chosen?.key ?? null, sport })
         navigate(`/classes/${job.classId}`)
       },
-      (error) => createError(t, error),
+      (error) => {
+        if (error instanceof ApiError && error.reason === 'needs_spotify') setRefusedForSpotify(true)
+        return createError(t, error)
+      },
     )
   }
 
-  const shown = problem ?? action.error
+  const shown = problem ?? (refusedForSpotify ? null : action.error)
   const services = [
     t('start.chip.mowl'),
     ...(source.songs.kind === 'ready' || source.songs.kind === 'needs_consent' ? [t('start.chip.spotify')] : []),
@@ -164,11 +176,12 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
           </div>
         ) : null}
         <MusicSourcePicker rows={rows} value={chosen?.key ?? null} onChange={setMusicKey} />
+        {gate !== null ? <SpotifyPrompt need={gate.need} /> : refusedForSpotify ? <SpotifyPrompt need="connect" /> : null}
         <p className="m-0 text-[0.875rem] text-muted" data-testid="destination">
           {t('start.destination')}
         </p>
         <div>
-          <Button type="submit" disabled={action.busy}>
+          <Button type="submit" disabled={action.busy || gate?.blocking === true}>
             {t('start.design')}
           </Button>
         </div>

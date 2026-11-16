@@ -35,7 +35,7 @@ async def test_admit_creates_the_class_and_the_first_message_and_takes_no_credit
     assert [(m.seq, m.role, m.body, m.job_id) for m in messages] == [(1, "user", REQUEST, job_id)]
     stored = ienv.stored_input(job_id)
     assert stored["sports"] == ["cycling"]
-    assert (stored["pick_ready"], stored["swedebeat_mixes"]) == (False, False)
+    assert stored["swedebeat_mixes"] is False
     assert stored["route_key"]
     assert stored["plan_gates"]["max_class_minutes"] >= 10
 
@@ -56,7 +56,7 @@ async def test_invalid_input_and_server_fields_are_refused(
     ienv: InterpretEnv, more: dict[str, Any]
 ) -> None:
     before = ienv.counts()
-    refused = await ienv.start(**more)
+    refused = await ienv.start(spotify=False, **more)
     assert refused.status_code == 422, refused.text
     assert ienv.counts() == before
 
@@ -75,6 +75,42 @@ async def test_a_spotify_connection_that_is_not_the_users_is_refused(ienv: Inter
     assert refused.status_code == 409
     assert refused.json()["detail"]["reason"] == "not_connected"
     assert ienv.counts() == before
+
+
+NO_SPOTIFY: list[tuple[dict[str, Any], str]] = [
+    ({}, "refused"),  # free text, no music choice
+    (
+        {"music_override": {"source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST}},
+        "refused",
+    ),
+    ({"music_override": {"source": "none"}}, "admitted"),  # "No music"
+    ({"music_override": {"source": "mowl_swedebeat_mix", "mix_id": "mix-1"}}, "admitted"),
+    ({"sport_override": "running"}, "admitted"),  # MOWL playlists only (ADR 0018)
+    ({"sport_override": "cycling"}, "refused"),
+]
+
+
+@pytest.mark.parametrize(("more", "answer"), NO_SPOTIFY)
+async def test_without_spotify_only_a_class_that_can_do_without_it_is_admitted(
+    ienv: InterpretEnv, more: dict[str, Any], answer: str
+) -> None:
+    before = ienv.counts()
+    made = await ienv.start(spotify=False, **more)
+    if answer == "admitted":
+        assert made.status_code == 201, made.text
+        return
+    assert made.status_code == 409, made.text
+    assert made.json()["detail"]["reason"] == "needs_spotify"
+    assert ienv.counts() == before  # no class, no job, no message and no credit
+
+
+async def test_a_refusal_for_no_spotify_calls_no_model(ienv: InterpretEnv) -> None:
+    fake = interpreter()
+    ienv.models(fake)
+    refused = await ienv.start(spotify=False)
+    assert refused.status_code == 409
+    assert fake.sent == []
+    assert ienv.queue_ == [fake]  # nothing took the provider
 
 
 async def test_the_cost_cap_refuses_it(ienv: InterpretEnv, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -110,7 +146,7 @@ async def test_the_worker_stores_the_interpretation_and_enqueues_nothing(
     assert stored.refusal is None
     paths = {i.path: i for i in stored.items}
     assert paths["length_min"].quote == "30 minute"
-    assert paths["music"].value == "first_playlist"
+    assert (paths["music"].origin, paths["music"].value) == ("explicit", "override")
     assert ienv.design_jobs(class_id) == []  # it never enqueues
     assert ienv.credits() == 0
     sent = ienv.renv.denv.ops.sql(

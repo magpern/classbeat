@@ -1,12 +1,15 @@
 """The music of an interpreted request (ADR 0029 section 4, rule 4; pure: no database, no network,
 no model).
 
-``choose`` follows ``request_policy.music_order``: the user's own choice (``music_override``), then
-the name the instructor wrote (the interpreter's index into ``options``, range-checked here too),
-then a song pick when Spotify is ready, then the first MOWL playlist, then no music (cycling only).
-A running class uses MOWL playlists only (ADR 0018); with none it has no music and is Not as asked
-``needs_mowl_playlist``. One ``music`` item records the source chosen (a closed value), after a Not
-as asked item for a choice a running class could not take.
+``choose`` follows ``request_policy.music_order``. A cycling class takes the user's own choice
+(``music_override``, which includes "No music"), then the name the instructor wrote (the
+interpreter's index into ``options``, range-checked here too), then a song pick when Spotify is
+ready; there is no default music (roadmap Amendment 25). A playlist, named or chosen, is Spotify's:
+without a Spotify connection (``spotify``) it is not taken, and a class with no music left is Not
+as asked ``needs_spotify``. A Swedebeat mix and "No music" need no Spotify. A running class uses
+MOWL playlists only (ADR 0018), the first one by default; with none it has no music and is Not as
+asked ``needs_mowl_playlist``. One ``music`` item records the source chosen (a closed value), after
+a Not as asked item for a choice a running class could not take.
 
 The music is the design input's own shape (``{"source": ...}``; ``{"source": "pick"}`` for a song
 pick), so the hand-off enqueues it unchanged. An id never reaches a model: the interpreter sees the
@@ -20,6 +23,7 @@ from classbeat.agent.interpreted import StatedMusic
 from classbeat.design import request_policy
 
 NEEDS_MOWL_PLAYLIST: Final = request_policy.NEEDS_MOWL_PLAYLIST
+NEEDS_SPOTIFY: Final = request_policy.NEEDS_SPOTIFY
 
 Music = dict[str, str]
 
@@ -31,6 +35,24 @@ class MusicOption(NamedTuple):
     kind: Literal["playlist", "mix"]
     name: str
     ref: str
+
+
+def without_spotify_is_refused(
+    *,
+    music_source: str | None,
+    sport_override: str | None,
+    running_offered: bool,
+    mixes: bool,
+) -> bool:
+    """Whether an interpretation with no Spotify connection can only end Not as asked
+    ``needs_spotify``, so ``admit`` refuses it before any model call. It cannot when the music is
+    "No music" or a Swedebeat mix, when the sport is (or may be read as) running, which has MOWL
+    playlists only (ADR 0018), or when the request may name a Swedebeat mix (``mixes``)."""
+    if music_source in ("none", "mowl_swedebeat_mix") or sport_override == "running":
+        return False
+    if sport_override is None and running_offered:
+        return False
+    return not (music_source is None and mixes)
 
 
 def _item(
@@ -47,33 +69,36 @@ def choose(
     sport: str,
     options: tuple[MusicOption, ...],
     pick_ready: bool,
+    spotify: bool,
     override: Music | None,
     out: list[InterpretationItem],
 ) -> Music | None:
-    """The music, or None (a running class with no MOWL playlist); the items go to ``out``."""
+    """The music, or None (nothing to take: ``needs_spotify`` for cycling, ``needs_mowl_playlist``
+    for running); the items go to ``out``."""
     running = sport == request_policy.ALL_SPORTS[1]
     available: dict[str, Music] = {}
     if override is not None:
-        if running and override.get("source") != "mowl_spotify_playlist":
-            out.append(_item("not_as_asked", override.get("source"), NEEDS_MOWL_PLAYLIST))
-        else:
+        source = override.get("source")
+        if running and source != "mowl_spotify_playlist":
+            out.append(_item("not_as_asked", source, NEEDS_MOWL_PLAYLIST))
+        elif running or source != "mowl_spotify_playlist" or spotify:
             available["override"] = override
     if named is not None and named.value < len(options):
         option = options[named.value]
         if running and option.kind != "playlist":
             if named.origin == "explicit" and "override" not in available:
                 out.append(_item("not_as_asked", "mix", NEEDS_MOWL_PLAYLIST))
-        else:
+        elif running or option.kind != "playlist" or spotify:
             available["name_match"] = _choice(option)
     if pick_ready:
         available["pick"] = {"source": "pick"}
-    first = next((o for o in options if o.kind == "playlist"), None)
-    if first is not None:
-        available["first_playlist"] = _choice(first)
-    available["soundless"] = {"source": "none"}
+    if running:
+        first = next((o for o in options if o.kind == "playlist"), None)
+        if first is not None:
+            available["first_playlist"] = _choice(first)
     chosen = request_policy.choose_music(sport, available)
     if chosen is None:
-        out.append(_item("not_as_asked", None, NEEDS_MOWL_PLAYLIST))
+        out.append(_item("not_as_asked", None, NEEDS_MOWL_PLAYLIST if running else NEEDS_SPOTIFY))
         return None
     origin: Origin = "default"
     quote = None

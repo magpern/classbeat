@@ -8,7 +8,7 @@ export type Music = 'playlist' | 'pick' | 'swedebeat_mix' | 'none'
 export type SongsAvailability =
   | { kind: 'off' }
   | { kind: 'needs_spotify' }
-  | { kind: 'needs_consent' }
+  | { kind: 'needs_consent'; spotifyConnectionId: string }
   | { kind: 'ready'; spotifyConnectionId: string }
 
 /**

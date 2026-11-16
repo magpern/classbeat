@@ -53,7 +53,7 @@ export const publicEn = {
   'how.connect.mowl.text': 'Required. We read your music from it, and save your classes to it.',
   'how.connect.spotify.name': 'Spotify',
   'how.connect.spotify.text':
-    'Optional. Only if you want us to pick songs for you. You make a Spotify app of your own, so its limits are yours. Its owner needs Spotify Premium.',
+    'Needed for any class with music: we find the songs there and save your playlist there. You make a Spotify app of your own, so its limits are yours. Its owner needs Spotify Premium.',
   'how.connect.swedebeat.name': 'Swedebeat',
   'how.connect.swedebeat.text': 'Optional. Only if you teach with Swedebeat, to design a class to one of your mixes.',
 
