@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { CLASS_PATH, REV1, REVISE_JOB, classRoutes } from '../test/classFixtures'
+import { CLASS_PATH, REV1, REVISE_JOB, classBody, classRoutes } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { CLASS_ID, SESSION_ROUTES, jobBody } from '../test/jobFixtures'
 import { renderAt } from '../test/render'
@@ -139,6 +139,21 @@ describe('a studio class on the class page', () => {
     expect(screen.queryByTestId('studio-outputs')).toBeNull()
   })
 
+  it('shows no legacy song panel on a studio class', async () => {
+    fakeApi(studioRoutes())
+    renderAt(PAGE)
+    await screen.findAllByTestId('timeline-song')
+    expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
+    expect(screen.queryByText('The songs could not be loaded. Reload the page.')).toBeNull()
+  })
+
+  it('shows no legacy song panel when the studio music needs a new analysis', async () => {
+    fakeApi(studioRoutes({ [`GET ${CLASS_PATH}/timeline`]: () => reason(409, 'music_changed') }))
+    renderAt(PAGE)
+    await screen.findByTestId('studio-music-changed')
+    expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
+  })
+
   it('shows nothing of the studio on a class that is not one', async () => {
     fakeApi({ ...SESSION_ROUTES, ...classRoutes() })
     renderAt(PAGE)
@@ -211,10 +226,79 @@ describe('a studio class on the class page', () => {
       window.sessionStorage.clear()
     })
 
+    it('shows no legacy song panel for it', async () => {
+      fakeApi(approved('studio_songs'))
+      renderAt(PAGE)
+      await screen.findByRole('button', { name: 'Start the design' })
+      expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
+    })
+
+    it('keeps the legacy song panel on a Spotify or SwedeBeat-mix class (approved songs are not a studio list)', async () => {
+      fakeApi(approved('revise_songs'))
+      renderAt(PAGE)
+      expect(await screen.findByRole('region', { name: 'Change songs' })).toBeInTheDocument()
+    })
+
+    it('asks for no legacy song list and shows no error while the studio kind is still being found', async () => {
+      let release: () => void = () => undefined
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const SONGS_PATH = `${CLASS_PATH}/revisions/${LIST}`
+      const api = fakeApi(
+        approved('studio_songs', {
+          [`GET ${CLASS_PATH}/timeline`]: () => gate.then(() => reason(409, 'no_studio_draft')),
+          [`GET ${SONGS_PATH}`]: () => reason(500, 'boom'),
+        }),
+      )
+      renderAt(PAGE)
+      await screen.findByTestId('tss')
+      expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
+      expect(screen.queryByRole('link', { name: 'Change songs' })).toBeNull()
+      release()
+      await screen.findByRole('button', { name: 'Start the design' })
+      expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
+      expect(screen.queryByText('The songs could not be loaded. Reload the page.')).toBeNull()
+      expect(api.to('GET', SONGS_PATH)).toHaveLength(0)
+      expect(api.to('GET', `/api/jobs/${SONGS_JOB}`)).toHaveLength(1)
+    })
+
+    const OPEN = { open_job_id: REVISE_JOB, open_job: { id: REVISE_JOB, kind: 'revise_draft', state: 'running' } }
+    const withOpenJob = (kind: string, extra: Record<string, unknown> = {}) => {
+      const routes = approved(kind, extra)
+      return {
+        ...routes,
+        [`GET ${CLASS_PATH}`]: classBody({ songs: { state: 'approved', job_id: SONGS_JOB, revision_id: LIST, content_hash: HASH }, ...OPEN }),
+      }
+    }
+
+    it('still shows the legacy song panel, waiting, on a Spotify class loaded with a job open', async () => {
+      fakeApi(withOpenJob('design_with_songs'))
+      renderAt(PAGE)
+      const panel = await screen.findByRole('region', { name: 'Change songs' })
+      expect(panel).toHaveTextContent(/wait/i)
+    })
+
+    it('never shows the legacy song panel on a studio class loaded with a job open', async () => {
+      const api = fakeApi(withOpenJob('studio_songs'))
+      renderAt(PAGE)
+      await screen.findByTestId('tss')
+      await waitFor(() => { expect(api.to('GET', `/api/jobs/${SONGS_JOB}`)).toHaveLength(1) })
+      expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
+      expect(api.to('GET', `${CLASS_PATH}/revisions/${LIST}`)).toHaveLength(0)
+    })
+
+    it.each([500, 404])('keeps the legacy song panel on a non-studio class when the timeline answers %i', async (status) => {
+      fakeApi(approved('design_with_songs', { [`GET ${CLASS_PATH}/timeline`]: () => reason(status, 'x') }))
+      renderAt(PAGE)
+      expect(await screen.findByRole('region', { name: 'Change songs' })).toBeInTheDocument()
+    })
+
     it('offers nothing for a class whose approved songs are not a studio list', async () => {
       fakeApi(approved('design_with_songs'))
       renderAt(PAGE)
       await screen.findByTestId('tss')
+      expect(await screen.findByRole('region', { name: 'Change songs' })).toBeInTheDocument()
       await waitFor(() => { expect(screen.queryByTestId('studio-music-changed')).toBeNull() })
       expect(screen.queryByRole('button', { name: 'Start the design' })).toBeNull()
     })

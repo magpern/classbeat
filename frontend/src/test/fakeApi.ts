@@ -128,7 +128,8 @@ export function fakeApi(routes: Record<string, Handler | object | string>) {
       return Promise.reject(new Error(`unexpected request: ${method} ${path}`))
     }
     const answer = typeof route === 'function' ? (route as Handler)(body, headers) : route
-    return Promise.resolve(answer instanceof Response ? answer.clone() : json(answer))
+    // A handler may answer late (a promise), to test what a page does while it waits.
+    return Promise.resolve(answer).then((late) => (late instanceof Response ? late.clone() : json(late)))
   })
   vi.stubGlobal('fetch', fetchMock)
   return {
