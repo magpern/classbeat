@@ -4,6 +4,8 @@ import { classReasonText, describeChange, isStale } from '../../api/classMessage
 import type { ClassMessage, ClassSummary, RevisionSummary } from '../../api/classes'
 import { getConnections } from '../../api/connections'
 import { createReviseJob, isTerminal } from '../../api/jobs'
+import { createStudioReviseJob } from '../../api/studioOutputs'
+import { studioError } from '../../api/studioSongs'
 import { useT } from '../../i18n/I18n'
 import { newIdempotencyKey } from '../../lib/submittedInput'
 import { Notice, useAction } from '../forms'
@@ -116,6 +118,7 @@ export function ChatPanel({
   revisions,
   messages,
   canChange = true,
+  studio = false,
   requestJobId = null,
   onReload,
   onView,
@@ -126,6 +129,11 @@ export function ChatPanel({
   messages: ClassMessage[]
   /** False when the class history says Change it is not available (the server would refuse it). */
   canChange?: boolean
+  /**
+   * A studio class: its changes are `studio_revise` jobs on the SwedeBeat connection, and the
+   * class history's `can_change` (false for these classes) does not apply.
+   */
+  studio?: boolean
   /** The reading job of a class started from the start screen: its message is shown by the workspace, not here. */
   requestJobId?: string | null
   onReload: () => void
@@ -142,7 +150,8 @@ export function ChatPanel({
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
   const numbers = new Map(revisions.map((r) => [r.id, r.number]))
   const running = summary.openJob
-  const revising = running?.kind === 'revise_draft' && !isTerminal(running.state)
+  const revising =
+    (running?.kind === 'revise_draft' || running?.kind === 'studio_revise') && !isTerminal(running.state)
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -163,24 +172,37 @@ export function ChatPanel({
     void action
       .run(
         async () => {
-          const connection = (await getConnections()).find((c) => c.provider === 'mowl')
+          const provider = studio ? 'swedebeat' : 'mowl'
+          const connection = (await getConnections()).find((c) => c.provider === provider)
           if (connection === undefined || connection.status !== 'connected') {
             throw new ApiError(409, 'not_connected', null, undefined)
           }
-          await createReviseJob(
-            {
-              class_id: summary.id,
-              base_revision_id: base,
-              request: text,
-              mowl_connection_id: connection.id,
-            },
-            key,
-          )
+          if (studio) {
+            await createStudioReviseJob(
+              {
+                class_id: summary.id,
+                base_revision_id: base,
+                request: text,
+                swedebeat_connection_id: connection.id,
+              },
+              key,
+            )
+          } else {
+            await createReviseJob(
+              {
+                class_id: summary.id,
+                base_revision_id: base,
+                request: text,
+                mowl_connection_id: connection.id,
+              },
+              key,
+            )
+          }
           return true
         },
         (error) => {
           if (isStale(error)) onReload()
-          return classReasonText(error)
+          return studio ? studioError(error) : classReasonText(error)
         },
       )
       .then((sent) => {
@@ -195,7 +217,7 @@ export function ChatPanel({
   const blocked =
     summary.currentRevisionId === null
       ? t('class.chat.noVersion')
-      : !canChange
+      : !canChange && !studio
         ? t('class.chat.unavailable')
         : running !== null && !revising
           ? t('class.chat.busy')

@@ -58,6 +58,13 @@ const FAILURES: Record<string, FailureKeys> = {
   // Send to player (ADR 0034 section 5): the player was ahead, or held another class under our number.
   player_ahead: { title: 'job.failure.player_ahead.title', detail: 'job.failure.player_ahead.detail' },
   player_conflict: { title: 'job.failure.player_conflict.title', detail: 'job.failure.player_conflict.detail' },
+  // The studio (ADR 0036): evidence, the approve check, a track's download and the per-class change limit.
+  suspected_unavailable: { title: 'job.failure.suspected_unavailable.title', detail: 'job.failure.suspected_unavailable.detail' },
+  list_has_gap: { title: 'job.failure.list_has_gap.title', detail: 'job.failure.list_has_gap.detail' },
+  track_too_large: { title: 'job.failure.track_too_large.title', detail: 'job.failure.track_too_large.detail' },
+  track_unavailable: { title: 'job.failure.track_unavailable.title', detail: 'job.failure.track_unavailable.detail' },
+  track_limit: { title: 'job.failure.track_limit.title', detail: 'job.failure.track_limit.detail' },
+  revision_limit: { title: 'job.failure.revision_limit.title', detail: 'job.failure.revision_limit.detail' },
 }
 
 const SOUNDLESS_INVALID: FailureKeys = {
@@ -86,6 +93,10 @@ export function failureText(
   if (category === 'feature_off' && feature !== null) return words(FEATURE_OFF[feature])
   // A class with no music is cycling only and has no songs or mix: say what to change.
   if (category === 'invalid_input' && feature === 'soundless') return words(SOUNDLESS_INVALID)
+  // A studio revise or design whose cached analysis expired: Change songs analyses again.
+  if (category === 'music_changed' && kind.startsWith('studio_')) {
+    return words({ title: 'job.failure.studioMusicChanged.title', detail: 'job.failure.studioMusicChanged.detail' })
+  }
   if (isSongKind(kind)) {
     const song = songFailure(category)
     if (song !== null) return song

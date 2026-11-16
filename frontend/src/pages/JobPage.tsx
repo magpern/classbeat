@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useT } from '../i18n/I18n'
 import { isSongKind } from '../api/songs'
+import { StudioEnded } from '../components/studio/StudioEnded'
+import { StudioSongs } from '../components/studio/StudioSongs'
+import { STUDIO_KIND } from '../api/studioSongs'
 import { SongEnded } from '../components/songs/SongEnded'
 import { SongsForApproval } from '../components/songs/SongsForApproval'
 import {
@@ -63,7 +66,7 @@ function JobView({ jobId }: { jobId: string }) {
     )
   }
   // The song list is two columns (the songs, the action bar) and uses the page's full width.
-  const wide = isSongKind(job.kind) && job.state === 'waiting_for_approval'
+  const wide = (isSongKind(job.kind) || job.kind === STUDIO_KIND) && job.state === 'waiting_for_approval'
   return (
     <div className={wide ? 'mx-auto flex w-full max-w-5xl flex-col gap-5' : 'stack'}>
       {problem === 'failed' ? (
@@ -95,6 +98,12 @@ function JobBody({
 }) {
   const t = useT()
   const song = isSongKind(job.kind)
+  if (job.kind === STUDIO_KIND) {
+    if (job.state === 'failed') return <StudioEnded job={job} />
+    if (job.approvalRevisionId !== null && ['waiting_for_approval', 'cancelled', 'expired'].includes(job.state)) {
+      return <StudioSongs job={job} />
+    }
+  }
   if (song && job.state === 'waiting_for_approval') {
     return <SongsForApproval job={job} onApproved={onApproved} />
   }
