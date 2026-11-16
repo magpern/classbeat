@@ -2246,6 +2246,8 @@ export const en = {
     'Back to the class',
   'studio.os.category.connection_changed':
     'Your SwedeBeat connection changed. Reload this page, then approve the outputs again.',
+  'studio.os.checkReason.connection_changed':
+    'Check again needs the SwedeBeat account that approved this. Connect that account again to check.',
   'studio.os.category.render_not_reproducible':
     'The mix came out differently on a second render, so nothing more was sent. Make a new pick.',
   'studio.os.category.music_changed':

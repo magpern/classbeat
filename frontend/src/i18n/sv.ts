@@ -2380,6 +2380,8 @@ const sv: Catalogue = {
     'Tillbaka till passet',
   'studio.os.category.connection_changed':
     'Din SwedeBeat-anslutning ändrades. Ladda om sidan och godkänn sedan resultaten igen.',
+  'studio.os.checkReason.connection_changed':
+    'Kontrollera igen kräver det SwedeBeat-konto som godkände detta. Anslut det kontot igen för att kontrollera.',
   'studio.os.category.render_not_reproducible':
     'Mixen blev annorlunda vid en andra rendering, så ingenting mer skickades. Gör ett nytt val.',
   'studio.os.category.music_changed':

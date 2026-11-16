@@ -53,6 +53,22 @@ describe('the per-output states', () => {
     expect(screen.queryByRole('button', { name: 'Create another anyway' })).toBeNull()
   })
 
+  it('says why Check again could not settle an output in doubt', async () => {
+    await shown(status({ check_reason: 'connection_changed' }))
+    expect(screen.getByText(/Check again needs the SwedeBeat account that approved this/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check again' })).toBeInTheDocument()
+  })
+
+  it('shows no reason for an in-doubt output without one, or with an unknown one', async () => {
+    await shown(status({ check_reason: 'something_new' }))
+    expect(screen.queryByText(/needs the SwedeBeat account/)).toBeNull()
+  })
+
+  it('does not show the check reason on an output that is not in doubt', async () => {
+    await shown(status({ state: 'failed', actions: ['retry'], category: 'writes_off', check_reason: 'connection_changed' }))
+    expect(screen.queryByText(/needs the SwedeBeat account/)).toBeNull()
+  })
+
   it('words writes_off and offers no action', async () => {
     await shown(status({ state: 'failed', actions: ['retry'], note: null, category: 'writes_off' }))
     expect(screen.getByText(/writes switched off/)).toBeInTheDocument()
