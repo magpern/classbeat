@@ -161,6 +161,35 @@ def test_compressed_bodies_are_capped_on_decoded_bytes(encoding: str, pack: Any)
     assert _decode(pack(b"y" * 100_000), encoding, 10, chunk=1 << 20) == b"y" * 11
 
 
+@pytest.mark.parametrize(
+    ("encoding", "pack"), [("gzip", gzip.compress), ("deflate", zlib.compress)]
+)
+@pytest.mark.parametrize("tail", [b"\x00", b"\x00" * 64, b'{"x": 1}'])
+@pytest.mark.parametrize("chunk", [1, 7, 1 << 20])
+def test_data_after_the_end_of_the_stream_is_refused(
+    encoding: str, pack: Any, tail: bytes, chunk: int
+) -> None:
+    assert _decode(pack(b'{"id": "a"}'), encoding, 100, chunk) == b'{"id": "a"}'
+    assert _decode(pack(b'{"id": "a"}') + tail, encoding, 100, chunk) is None
+
+
+def test_raw_bytes_far_past_the_cap_are_refused() -> None:
+    # One flushed block per byte: about ten raw bytes per decoded byte, so the raw bound trips
+    # long before the decoded cap does.
+    pack = zlib.compressobj()
+    raw = b"".join(pack.compress(b"a") + pack.flush(zlib.Z_FULL_FLUSH) for _ in range(5000))
+    capped = CappedBody("deflate", 10_000)
+    fed = [capped.feed(raw[at : at + 500]) for at in range(0, len(raw), 500)]
+    assert fed[0] is True
+    assert fed[-1] is False
+    assert capped.body() is None
+
+
+async def test_a_gzip_answer_with_trailing_bytes_is_invalid() -> None:
+    body = gzip.compress(b'{"id": "rider-one"}') + b"\x00" * 16
+    assert await _refused(_over(_Answer(body, "gzip"))) == ["invalid_response"] * 2
+
+
 def test_a_negative_cap_is_refused() -> None:
     with pytest.raises(ValueError, match="cap"):
         CappedBody(None, -1)
