@@ -1,4 +1,4 @@
-"""Which ended job discards its class (ADR 0038): the pure rule, no I/O.
+"""Which ended job discards its class (ADR 0039): the pure rule, no I/O.
 
 A class made on the start screen is created with its ``interpret_request`` job; once the reading is
 stored, the hand-off starts its first design (``design_draft`` or ``design_with_songs``). When that

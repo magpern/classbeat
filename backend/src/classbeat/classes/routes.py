@@ -3,7 +3,7 @@ and the class delete (ADR 0007 sections 2, 11 and 12; issue C2).
 
 Signed in; the ``POST`` and ``DELETE`` are CSRF-checked by the middleware. Another user's id, an
 unknown id and a malformed one are the same 404 ``not_found``; the user's own class that a failed
-first creation discarded is 404 ``class_discarded`` with that job's id (ADR 0038). Errors carry a
+first creation discarded is 404 ``class_discarded`` with that job's id (ADR 0039). Errors carry a
 reason code only.
 409 reasons: ``limit_exceeded`` (the 33rd dismissed rule, ADR 0017), ``class_busy``,
 ``hash_mismatch`` (the pick), ``stale_match`` (the Swedebeat selection) and
@@ -150,7 +150,7 @@ async def get_class(
     factory = request.app.state.session_factory
     enabled = await swedebeat_enabled(request.app.state.settings, factory)
     found = await service.get_class_detail(factory, ctx, wanted, with_match=enabled)
-    if found is None:  # a discarded class says so, with its ended job (ADR 0038)
+    if found is None:  # a discarded class says so, with its ended job (ADR 0039)
         return await not_found_answer(factory, ctx, wanted)
     beats = await beat_one.view(factory, ctx, wanted)
     playlists = found.playlists

@@ -1,4 +1,4 @@
-"""The discard's table lists against the migrated schema (ADR 0038, ``classbeat.jobs.discard``).
+"""The discard's table lists against the migrated schema (ADR 0039, ``classbeat.jobs.discard``).
 
 Every table with a foreign key to ``classes`` or ``jobs``, and every table with a column that
 names a class (``*class_id``), is either one whose row keeps the class (``KEEPING``,

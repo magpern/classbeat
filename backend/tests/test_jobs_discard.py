@@ -1,4 +1,4 @@
-"""The discard of a failed first creation's class (ADR 0038, ``classbeat.jobs.discard``) against the
+"""The discard of a failed first creation's class (ADR 0039, ``classbeat.jobs.discard``) against the
 real schema, through the worker's fenced ending, the settle step and the discard itself.
 
 - A failed or stopped first reading, and the reading's failed first design, discard the class: the
@@ -264,7 +264,7 @@ async def test_a_second_design_attempt_keeps_the_class(jenv: JobsEnv) -> None:
         "UPDATE jobs SET state = 'failed', error_category = 'internal', finished_at = now() "
         "WHERE id = :j",
         j=first,
-    )  # an earlier attempt the discard did not take (before ADR 0038, or the reaper's)
+    )  # an earlier attempt the discard did not take (before ADR 0039, or the reaper's)
     second = new_job(jenv.admin, owner, class_id, kind="design_draft")
     await _run(jenv, "design_draft")
     assert jenv.row(second).state == "failed"

@@ -7,7 +7,7 @@ import { Link } from '../../router/Router'
 import { Card, Notice } from '../forms'
 
 /**
- * A class whose first creation failed or was stopped before it made anything (ADR 0038): the server
+ * A class whose first creation failed or was stopped before it made anything (ADR 0039): the server
  * removed the empty class and kept the ended job. The page says why it stopped, from that job, and
  * offers the start screen with the request this tab kept for the class.
  */

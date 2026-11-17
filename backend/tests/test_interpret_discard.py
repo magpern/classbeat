@@ -1,4 +1,4 @@
-"""A start-screen class whose first creation fails is discarded (ADR 0038), end to end: the jobs
+"""A start-screen class whose first creation fails is discarded (ADR 0039), end to end: the jobs
 API, the worker side with the fake MOWL and ``FakeProvider`` models, the class and job pages' reads.
 Never the network, a real account or a model.
 

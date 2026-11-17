@@ -4,7 +4,7 @@ import { Link } from '../../router/Router'
 import { Card, Notice } from '../forms'
 import { DiscardedClass } from './DiscardedClass'
 
-/** The class page while there is no class to show: loading, not found, discarded (ADR 0038) or not loaded. */
+/** The class page while there is no class to show: loading, not found, discarded (ADR 0039) or not loaded. */
 export function ClassUnavailable({
   classId,
   state,

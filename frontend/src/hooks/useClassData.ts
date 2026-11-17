@@ -20,7 +20,7 @@ export interface ClassData {
 export type ClassState =
   | { status: 'loading' }
   | { status: 'not_found' }
-  // ADR 0038: the class's first creation failed and the empty class was removed; the ended job says why.
+  // ADR 0039: the class's first creation failed and the empty class was removed; the ended job says why.
   | { status: 'discarded'; jobId: string }
   | { status: 'failed' }
   | { status: 'ready'; data: ClassData }

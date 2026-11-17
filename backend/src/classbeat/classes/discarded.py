@@ -1,4 +1,4 @@
-"""The class page's answer for a class a failed first creation discarded (ADR 0038).
+"""The class page's answer for a class a failed first creation discarded (ADR 0039).
 
 ``GET /api/classes/{id}`` of a class that is not there asks here: when the user's own ended job
 names it as ``discarded_class_id`` (``classbeat.jobs.discard``), the 404 says ``class_discarded``

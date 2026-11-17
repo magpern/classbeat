@@ -1,4 +1,4 @@
-"""The discard of a failed first creation's empty class (ADR 0038), in the ending's transaction.
+"""The discard of a failed first creation's empty class (ADR 0039), in the ending's transaction.
 
 ``discard_first_creation(db, owner_id, job_id)`` runs in the transaction that ends the job, after
 the job row is ``failed`` or ``cancelled`` and while that row is locked: the worker's fenced

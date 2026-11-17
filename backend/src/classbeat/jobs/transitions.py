@@ -7,7 +7,7 @@ a job with a cancel requested ends it ``cancelled`` instead (cancel-on-requeue).
 raises ``lease_version``, so nothing the old holder still tries can pass the fence.
 
 A ``failed`` or ``cancelled`` ending also discards the class of a first creation that made
-nothing, in the same transaction (``classbeat.jobs.discard``, ADR 0038). The user's transitions
+nothing, in the same transaction (``classbeat.jobs.discard``, ADR 0039). The user's transitions
 (cancel, approve) are in ``classbeat.jobs.user``.
 """
 

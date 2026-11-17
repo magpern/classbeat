@@ -1,4 +1,4 @@
-"""``classbeat.jobs.discard_policy`` (ADR 0038): the allowlist of the empty first creation, on its
+"""``classbeat.jobs.discard_policy`` (ADR 0039): the allowlist of the empty first creation, on its
 own facts. No database."""
 
 from dataclasses import replace

@@ -1,4 +1,4 @@
-"""``jobs.discarded_class_id``: a failed first creation leaves no empty class (ADR 0038)
+"""``jobs.discarded_class_id``: a failed first creation leaves no empty class (ADR 0039)
 
 Revision ID: 0058_discarded_first_creation
 Revises: 0057_swedebeat_account_ref

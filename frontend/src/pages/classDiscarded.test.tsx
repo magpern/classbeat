@@ -6,7 +6,7 @@ import { CLASS_ID, JOB_ID, SESSION_ROUTES, jobBody } from '../test/jobFixtures'
 import { renderAt } from '../test/render'
 import { rememberRequest } from '../lib/startRequest'
 
-// ADR 0038: a class whose first creation failed or was stopped is removed by the server, which keeps
+// ADR 0039: a class whose first creation failed or was stopped is removed by the server, which keeps
 // the ended job. The class page says why and offers the request again, never a bare "not found".
 
 const PAGE = `/classes/${CLASS_ID}`

@@ -1,4 +1,4 @@
-# ADR 0038: a class whose first creation failed is discarded; its ended job stays readable
+# ADR 0039: a class whose first creation failed is discarded; its ended job stays readable
 
 Status: Proposed (owner decision 2026-11-17: "If the first design failed, why save it?"; subject to
 review). Amends ADR 0029 section 5 (the hand-off), ADR 0005 section 1 (`jobs.class_id`) and its check
@@ -66,6 +66,34 @@ and turn into a bare 404.
    credit on the detached job and the settle step releases it once, like any ended job (ADR 0011 section
    3). `agent_runs` keep their rows (ADR 0007 section 10): the design's stay linked, the reading's lose
    their job id (`SET NULL`), as on any class delete.
+
+## The composer flow (ADR 0038)
+
+[ADR 0038](0038-composer-flow.md) (roadmap Amendment 29) adds a composer behind the flag
+`composer_flow`, off by default until the owner's live check. Its implementation (#1185, #1186, #1188 to
+#1191) is not on `main` yet: on 2026-11-17 `main` holds only that ADR, with no composer code, migration or
+flag. What follows is how this rule, as the code stands, applies to the flow ADR 0038 describes.
+
+- **A failed or stopped first composer reading** is rule (a): the class goes when the reading was its only
+  job and stored no interpretation.
+- **A failed or stopped first sketch** is rule (b), *if* the sketch is the `design_draft` the ADR 0029
+  section 5 hand-off enqueues (ADR 0038 section 4) with the hand-off key `interpret-<reading id hex>`, and no
+  revision exists yet. Then the class goes, and its credit is released by settle as for any failed design.
+  If the sketch job carries any other key, the check `readings == 1` fails and the class is **kept**.
+- **Anything after a sketch exists keeps the class.** The sketch is a revision (`origin = "sketch"`), so the
+  `revisions == 0` rule refuses every later ending: a failed fill, swap, change or phase 2. The fill's own key
+  (a hash of the class, the sketch and an attempt, ADR 0038 section 5) never matches the hand-off key either.
+- **Chat messages are not looked at today.** `class_messages` is in `DISCARDED_WITH`: a discarded class's
+  messages go with it, whatever they say and whatever their state. The composer stores a message the user
+  sends while a job runs as `pending` (ADR 0038 section 8, storage in #1186). Today, a first sketch that fails
+  with such a message waiting would discard the class and that message with it.
+- **The implementers must re-check this rule**, in the PR that adds pending messages at the latest: either
+  keep a class with any message beyond the request (or any `pending` one), or show the user the message
+  that goes. New columns on `classes` (the fill `attempt`, `save_pending`) are not seen by
+  `tests/test_jobs_discard_schema.py`, which lists tables that name a class or a job; they only exist after
+  a sketch, which already keeps the class. A new table that names a class fails that test until it is
+  listed. After merging `main` (2026-11-17) there is none: `main` adds no migration after 0057.
+- Keeping is the safe default: every mismatch above keeps the class, and the user can delete it by hand.
 
 ## Alternatives
 

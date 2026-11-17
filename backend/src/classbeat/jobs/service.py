@@ -52,7 +52,7 @@ class JobView:
     state: str
     stage: str | None
     # None only for a ``player_remove`` or ``spotify_sync`` (migrations 0052, 0056); a job whose
-    # class was discarded (ADR 0038) names the class it had, so "Try again" finds its request.
+    # class was discarded (ADR 0039) names the class it had, so "Try again" finds its request.
     class_id: UUID | None
     cancel_requested: bool
     approval_revision_id: UUID | None
@@ -187,7 +187,7 @@ async def get(factory: Factory, ctx: UserContext, job_id: UUID) -> JobView | Non
 
 
 async def cancel(factory: Factory, ctx: UserContext, job_id: UUID) -> JobView | None:
-    """A queued job cancelled now ends here, so the discard of an empty first creation (ADR 0038)
+    """A queued job cancelled now ends here, so the discard of an empty first creation (ADR 0039)
     runs in this transaction, under the job's row lock; a running one ends in the worker's."""
     async with user_session(factory, ctx) as db:
         state = await user.cancel(db, ctx, job_id)
