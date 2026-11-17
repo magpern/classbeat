@@ -137,17 +137,40 @@ describe('the attached-music tags', () => {
     expect(within(panel).getByText('Nothing matches.')).toBeInTheDocument()
   })
 
-  it('closes the menu with Escape and with a click outside', async () => {
+  // The app has no Tailwind preflight, so a `hidden` attribute beside a `flex` class would not hide the panel
+  // (jsdom has no CSS): the panel is not rendered at all while the menu is closed.
+  const panelOf = () => screen.queryByRole('group', { name: 'Add music to your request' })
+
+  it('does not render the panel before the menu is opened', async () => {
+    fakeApi(routes())
+    renderAt('/classes/new')
+    await prompt()
+    expect(panelOf()).toBeNull()
+    expect(screen.queryByRole('searchbox')).toBeNull()
+    expect(screen.getByRole('button', { name: /Add music/ })).not.toHaveAttribute('aria-controls')
+    fireEvent.click(screen.getByRole('button', { name: /Add music/ }))
+    expect(panelOf()).not.toBeNull()
+    expect(screen.getByRole('button', { name: /Add music/ })).toHaveAttribute('aria-controls', panelOf()?.id)
+  })
+
+  it('removes the panel again with Escape, with a click outside and with the button', async () => {
     fakeApi(routes())
     renderAt('/classes/new')
     await openMenu()
     const button = screen.getByRole('button', { name: /Add music/ })
+    expect(panelOf()).not.toBeNull()
     fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search your playlists' }), { key: 'Escape' })
     expect(button).toHaveAttribute('aria-expanded', 'false')
+    expect(panelOf()).toBeNull()
     fireEvent.click(button)
     expect(button).toHaveAttribute('aria-expanded', 'true')
+    expect(panelOf()).not.toBeNull()
     fireEvent.pointerDown(await prompt())
     expect(button).toHaveAttribute('aria-expanded', 'false')
+    expect(panelOf()).toBeNull()
+    fireEvent.click(button)
+    fireEvent.click(button)
+    expect(panelOf()).toBeNull()
   })
 
   it('returns focus to "Add music" after Escape and after a tag is removed', async () => {
