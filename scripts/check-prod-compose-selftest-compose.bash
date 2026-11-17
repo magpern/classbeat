@@ -98,6 +98,14 @@ done
 sb_app='.secrets.swedebeat_app = {"file": (.secrets.app_secret_key.file | rtrimstr("app_secret_key") + "swedebeat_app")}'
 expect_refused shared "$shared" "$sb_app | .services.web.secrets += [{\"source\":\"swedebeat_app\"}]" "swedebeat_app"
 expect_refused shared "$shared" "$sb_app" "swedebeat_app"
+# ADR 0038 section 2 (#1185): the composer flow is not set in production at all, on any service,
+# whatever its value (refused by its own rule, before the variable allow-list).
+for m in \
+  '.services.web.environment.CLASSBEAT_COMPOSER_FLOW = "true"' \
+  '.services.worker.environment.CLASSBEAT_COMPOSER_FLOW = "false"' \
+  '.services.migrate.environment.CLASSBEAT_COMPOSER_FLOW = ""'; do
+  expect_refused shared "$shared" "$m" "CLASSBEAT_COMPOSER_FLOW is not set in production"
+done
 # Secret files (#511): the group, the users, one name per file, no other way into secrets/.
 for m in \
   'del(.services.web.group_add)' \

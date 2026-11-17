@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { NO_EXTRAS } from '../../api/readingExtras'
 import type { Handoff } from '../../hooks/useHandoff'
 import { I18nProvider } from '../../i18n/I18n'
 import { RouterProvider } from '../../router/Router'
@@ -9,6 +10,7 @@ function show(refusal: string, language: 'en' | 'sv' | 'da' = 'en') {
   const handoff: Handoff = {
     phase: 'refused',
     items: [],
+    extras: NO_EXTRAS,
     interpretJobId: null,
     refusal,
     held: null,

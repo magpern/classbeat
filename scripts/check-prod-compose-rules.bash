@@ -64,6 +64,10 @@ check_common() {
     || fail "soundless classes must be off by default" || return 1
   q '.services.worker.environment.CLASSBEAT_SOUNDLESS_ENABLED == "false"' \
     || fail "soundless classes must be off by default on the worker too" || return 1
+  # ADR 0038 section 2 (#1185): the composer flow waits for the owner's live check, so no service
+  # sets CLASSBEAT_COMPOSER_FLOW at all, not even to "false".
+  q '[.services[] | .environment // {} | has("CLASSBEAT_COMPOSER_FLOW")] | any | not' \
+    || fail "CLASSBEAT_COMPOSER_FLOW is not set in production (ADR 0038; the composer waits for the owner's live check)" || return 1
   q '.services.web.environment.CLASSBEAT_MOWL_QR_ENABLED == "true"' \
     || fail "the MOWL QR sign-in must be on by default (ADR 0028)" || return 1
   q '.services.worker.environment | has("CLASSBEAT_MOWL_QR_ENABLED") | not' \
