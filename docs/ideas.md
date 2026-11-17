@@ -110,3 +110,59 @@ terms must re-read [ADR 0010](adr/0010-live-activation-permissions.md) first.
 - Passkeys with cross-device sign-in: issue #311, after M6.
 - Swedebeat connection and music features: milestone S1, issues #362 and #363.
 - Ideas derived from flywheel live in the mowl-workouts repo notes, not here.
+
+## 4. SwedeBeat as the song source when Spotify is not connected (Amendment 28, parked 2026-11-17)
+
+- **Description:** a class with music could use a connected SwedeBeat account when Spotify is not
+  connected: the model proposes songs, SwedeBeat's `/catalog/match` verifies them (score 0.85 or more, only
+  title and artist sent), and the approved list stays in classbeat with no playlist written anywhere.
+- **Status:** idea, **parked**. It was planned (PR #1181, issues #1176 to #1180), then parked by the owner
+  after an Opus review (FAIL) showed it deviates from the architecture more than first said. The owner's
+  condition was "only if our architecture does not deviate too much".
+- **Notes/constraints (from that review):**
+  - **The design needs music facts a match does not give.** `choose_songs` and `fit_to_music` run on a
+    per-track map with sections, drops and breakdowns, from MOWL's analysis of a Spotify playlist
+    (`pool_write`, `pool_analyse`). A match gives title, length and sometimes BPM. Options: the studio's
+    download-and-analyse path (`track_analysis`, a separate music kind, and it needs the owner gate **L4a**,
+    the rights decision to download catalogue tracks), or a new class shape for a map without sections.
+  - **Songs are identified by Spotify id** in about 28 backend modules and in the approval hash. A neutral
+    `SongRef` would be needed (the planned #1177), with the source in the hashed bytes and never in the
+    class API (ADR 0036 §3.4).
+  - **Gates:** the existing `song_picking_admits` check (the `CLASSBEAT_SONG_PICKING` kill switch) would
+    gate it too; "SwedeBeat usable" means the effective `swedebeat_enabled` flag, the gateway URL and key,
+    the user's "I use Swedebeat" preference and a connection that is not `needs_reconnect`; a stored Spotify
+    connection would always mean the Spotify source. A named Spotify playlist still needs Spotify
+    (Amendment 25).
+  - **Outage rule:** its own, not ADR 0036 §3.2's: count all-missing across the whole stage (at least 3
+    songs sent), and end the stage on a 401 (the ADR 0035 §5 check, then `needs_reconnect`), a 403 or unknown
+    client (`app_misconfigured`), a 429 (`rate_limited`) and a malformed answer (`invalid_response`), never
+    as tool errors the model retries. `swedebeat_unavailable` would need a migration of the failure
+    categories.
+  - **Smaller:** a 200-character bound on the titles sent; what a SwedeBeat approval binds; the switch
+    `CLASSBEAT_SWEDEBEAT_SONG_SOURCE` off in `compose.prod.yaml` and `scripts/check-prod-compose.sh`.
+- **Decision needed from the owner:** L4a, or a decision to accept a map with no sections. Until then,
+  Spotify stays required for a class with songs (Amendment 25).
+
+## 5. Music providers behind one interface, or as separate services (discussed with the owner, 2026-11-17)
+
+- **Description:** a classbeat interface that every music provider implements: checking that a song exists
+  (and with which facts: duration, BPM, year), free search, playlist writes, playback, covers. Spotify and
+  SwedeBeat would be the first two, so a new provider would be one more implementation. A further step
+  would move each integration into its own service, like the SwedeBeat gateway (`sb-spotify-service`,
+  `sb-mowl-service`).
+- **Status:** idea, not planned.
+- **Notes/constraints:**
+  - The SwedeBeat gateway exists so that classbeat calls no SwedeBeat endpoint directly and holds no
+    SwedeBeat secret (the AES login key, the S3 key, the gateway's Spotify app; ADR 0035). Spotify has a
+    public API with per-user PKCE, and MOWL is reached through `mowl-workouts`.
+  - A Spotify or MOWL service would move encrypted user tokens, owner isolation and key handling behind a
+    new network boundary, with its own service-to-service authentication. External writes, which are at most
+    once with a job lease and reconcile before retry, would cross a process boundary. Each service is another
+    deploy unit on one VPS. All of that is security-critical work.
+  - MOWL is the workout store, not a music provider. A separate interface for it pays off only with a
+    second workout platform.
+  - Even with an interface, a new provider still needs its own sign-in, consent, write safety and a fake
+    for tests. Capabilities really differ: SwedeBeat gives no year, so era checks are weaker there.
+- **Decision needed from the owner:** whether to plan an in-process provider interface. The recommendation
+  is adapters in the same process, not services, unless a provider needs a proxy as SwedeBeat does.
+
