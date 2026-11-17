@@ -1,9 +1,13 @@
 import { X } from 'lucide-react'
+import { useRef } from 'react'
 import { useT } from '../../i18n/I18n'
 import { AddMusicMenu } from './AddMusicMenu'
 import { attachedPlaylists, type MusicTags, type PlaylistTag } from './musicTags'
 
-/** The attached-music tags under the text box, each with its name and a remove button, then "Add music". */
+/**
+ * The attached-music tags under the text box, each with its name and a remove button, then "Add music". The row is
+ * the positioned box the menu panel hangs from. Removing a tag returns focus to "Add music" (the tag is gone).
+ */
 export function MusicTagRow({
   offered,
   tags,
@@ -18,20 +22,25 @@ export function MusicTagRow({
   onToggleNone: () => void
 }) {
   const t = useT()
+  const addButton = useRef<HTMLButtonElement>(null)
+  const removed = (remove: () => void) => () => {
+    remove()
+    addButton.current?.focus()
+  }
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="relative flex flex-wrap items-center gap-2">
       <ul className="m-0 flex min-w-0 list-none flex-wrap gap-2 p-0" aria-label={t('composer.music.attached')}>
         {tags.kind === 'none' ? (
-          <Tag name={t('music.none')} onRemove={onToggleNone} />
+          <Tag name={t('music.none')} onRemove={removed(onToggleNone)} />
         ) : (
           attachedPlaylists(tags).map((tag) => (
             <Tag
               key={tag.id}
               name={tag.name}
               source={t('composer.music.source')}
-              onRemove={() => {
+              onRemove={removed(() => {
                 onTogglePlaylist(tag)
-              }}
+              })}
             />
           ))
         )}
@@ -42,6 +51,7 @@ export function MusicTagRow({
         noMusicOffered={noMusicOffered}
         onTogglePlaylist={onTogglePlaylist}
         onToggleNone={onToggleNone}
+        buttonRef={addButton}
       />
     </div>
   )

@@ -1,5 +1,5 @@
 import { Check, ChevronDown, Plus } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type RefObject } from 'react'
 import { useT } from '../../i18n/I18n'
 import { cn } from '../../lib/cn'
 import { MAX_MUSIC_TAGS, canAttach, isAttached, searchPlaylists, type MusicTags, type PlaylistTag } from './musicTags'
@@ -8,7 +8,9 @@ import { MAX_MUSIC_TAGS, canAttach, isAttached, searchPlaylists, type MusicTags,
  * "Add music" (ADR 0038 section 10.1): a closed disclosure with a search box over the user's Spotify playlists
  * and, where it is offered, "No music". Several playlists can be chosen (at most MAX_MUSIC_TAGS); the menu stays
  * open while the instructor chooses, and Escape or a click outside closes it. Choosing an attached playlist
- * again removes it. No SwedeBeat mix or playlist is listed (ADR 0038 section 3).
+ * again removes it. No SwedeBeat mix or playlist is listed (ADR 0038 section 3). The panel is anchored to the
+ * nearest positioned ancestor (the tag row) and spans it up to a maximum width, so it never passes the screen's
+ * edge at phone width. Escape returns focus to the button.
  */
 export function AddMusicMenu({
   offered,
@@ -16,12 +18,15 @@ export function AddMusicMenu({
   noMusicOffered,
   onTogglePlaylist,
   onToggleNone,
+  buttonRef,
 }: {
   offered: readonly PlaylistTag[]
   tags: MusicTags
   noMusicOffered: boolean
   onTogglePlaylist: (tag: PlaylistTag) => void
   onToggleNone: () => void
+  /** The "Add music" button, so the row can return focus to it after a tag is removed. */
+  buttonRef: RefObject<HTMLButtonElement | null>
 }) {
   const t = useT()
   const panelId = useId()
@@ -43,15 +48,16 @@ export function AddMusicMenu({
   return (
     <div
       ref={root}
-      className="relative"
       onKeyDown={(event) => {
         if (event.key === 'Escape' && open) {
           event.stopPropagation()
           setOpen(false)
+          buttonRef.current?.focus()
         }
       }}
     >
       <button
+        ref={buttonRef}
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
@@ -69,7 +75,7 @@ export function AddMusicMenu({
         hidden={!open}
         role="group"
         aria-label={t('composer.music.panel')}
-        className="absolute left-0 top-full z-20 mt-2 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 rounded-lg border border-line bg-surface p-3 shadow-lg"
+        className="absolute inset-x-0 top-full z-20 mt-2 flex max-w-[22rem] flex-col gap-2 rounded-lg border border-line bg-surface p-3 shadow-lg"
       >
         <input
           type="search"
@@ -110,13 +116,11 @@ function Option({
   checked,
   disabled = false,
   label,
-  meta,
   onSelect,
 }: {
   checked: boolean
   disabled?: boolean
   label: string
-  meta?: string
   onSelect: () => void
 }) {
   return (
@@ -140,7 +144,6 @@ function Option({
         {checked ? <Check size={12} strokeWidth={3} /> : null}
       </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {meta ? <span className="shrink-0 text-[0.8125rem] text-muted">{meta}</span> : null}
     </button>
   )
 }

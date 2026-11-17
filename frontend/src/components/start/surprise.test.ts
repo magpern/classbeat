@@ -27,22 +27,22 @@ describe('Surprise me', () => {
   it('always picks a table entry in the language asked for', () => {
     for (const locale of LOCALES) {
       for (let i = 0; i < SURPRISES.length * 2; i++) {
-        const picked = pickSurprise(locale, 180, () => i / (SURPRISES.length * 2))
+        const picked = pickSurprise(locale, 180, 'cycling', () => i / (SURPRISES.length * 2))
         expect(SURPRISES.map((entry) => entry.text[locale])).toContain(picked)
       }
     }
   })
 
   it('reaches every entry the plan allows, with the first and the last random values', () => {
-    const picks = new Set([0, 0.2, 0.4, 0.6, 0.8, 0.9999].map((r) => pickSurprise('en', 180, () => r)))
-    expect(picks.size).toBe(SURPRISES.length)
+    const picks = new Set([0, 0.2, 0.4, 0.6, 0.8, 0.9999].map((r) => pickSurprise('en', 180, 'cycling', () => r)))
+    expect(picks.size).toBe(SURPRISES.filter((e) => e.sport === 'cycling').length)
   })
 
   it('stays within the plan length', () => {
     for (const max of [20, 30, 45, 60, 180]) {
       for (const entry of fittingSurprises(max)) expect(entry.minutes).toBeLessThanOrEqual(max)
     }
-    const picked = new Set([0, 0.5, 0.99].map((r) => pickSurprise('en', 30, () => r)))
+    const picked = new Set([0, 0.5, 0.99].map((r) => pickSurprise('en', 30, 'cycling', () => r)))
     for (const text of picked) {
       const entry = SURPRISES.find((e) => e.text.en === text)
       expect(entry?.minutes).toBeLessThanOrEqual(30)
@@ -51,8 +51,25 @@ describe('Surprise me', () => {
 
   it('assumes a short class while the plan is unknown, and falls back to the shortest when none fits', () => {
     for (const entry of fittingSurprises(null)) expect(entry.minutes).toBeLessThanOrEqual(SAFE_MINUTES)
-    const shortest = Math.min(...SURPRISES.map((entry) => entry.minutes))
+    const shortest = Math.min(...SURPRISES.filter((e) => e.sport === 'cycling').map((entry) => entry.minutes))
     expect(fittingSurprises(5).every((entry) => entry.minutes === shortest)).toBe(true)
+  })
+
+  it('gives a running class running descriptions only, never a ride, within the plan length', () => {
+    const running = SURPRISES.filter((entry) => entry.sport === 'running')
+    expect(running.length).toBeGreaterThanOrEqual(2)
+    for (const locale of LOCALES) {
+      for (const max of [null, 20, 30, 180]) {
+        for (let i = 0; i < 10; i++) {
+          const picked = pickSurprise(locale, max, 'running', () => i / 10)
+          const entry = running.find((e) => e.text[locale] === picked)
+          expect(entry, `${locale} ${String(max)}`).toBeDefined()
+          if (max !== null) expect(entry?.minutes).toBeLessThanOrEqual(max)
+        }
+      }
+    }
+    for (const entry of running) expect(entry.text.en).not.toMatch(/\b(ride|cycling|bike)\b/i)
+    for (const entry of SURPRISES.filter((e) => e.sport === 'cycling')) expect(running).not.toContain(entry)
   })
 
   it('reads English for a language it has no table for', () => {

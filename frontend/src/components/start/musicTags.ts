@@ -55,12 +55,12 @@ export function musicInput(state: MusicTags): { music_sources?: MusicSource[]; m
 /**
  * The override the Spotify gate reads (`spotifyGate.ts`). In the composer "favoured, not limited" means classbeat
  * may search beyond the attached playlists, so every class but "No music" is a song pick: it needs the Spotify
- * connection and the working-playlist consent, with or without attached playlists (owner's Architect, #1190).
- * Only "No music" is exempt. The old start screen's own rule is unchanged.
+ * connection and the working-playlist consent, with or without attached playlists, empty tags included (the gate's
+ * carve-out for `null` is for a SwedeBeat mix, which the composer cannot attach; Architect, #1190). Only "No music"
+ * is exempt. The old start screen's own rule is unchanged.
  */
-export function gateOverride(state: MusicTags): MusicOverride | null {
-  if (state.kind === 'none') return { source: 'none' }
-  return state.tags.length === 0 ? null : { source: 'pick' }
+export function gateOverride(state: MusicTags): MusicOverride {
+  return state.kind === 'none' ? { source: 'none' } : { source: 'pick' }
 }
 
 /** The tags again from kept ids (a "Try again" hand-off): only playlists still on offer, at most the cap. */

@@ -102,13 +102,12 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
   }
   // "Surprise me" starts at once, as if the words had been typed: they are shown in the box and sent as they are.
   const surprise = () => {
-    const words = pickSurprise(locale, allowed?.maxMinutes ?? null)
+    const words = pickSurprise(locale, allowed?.maxMinutes ?? null, sport)
     setRequest(words)
     start(words)
   }
 
   const shown = problem ?? (refusedForSpotify !== null ? null : action.error)
-  const soundless = source.soundlessEnabled && !running
   const busy = action.busy || gate?.blocking === true
   return (
     <form
@@ -153,9 +152,9 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
           }}
         />
         {gate !== null ? (
-          <SpotifyPrompt need={gate.need} soundless={soundless} />
+          <SpotifyPrompt need={gate.need} soundless={noMusicOffered} />
         ) : refusedForSpotify !== null ? (
-          <SpotifyPrompt need={refusedForSpotify} soundless={soundless} />
+          <SpotifyPrompt need={refusedForSpotify} soundless={noMusicOffered} />
         ) : null}
         <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
           {source.runningEnabled ? (

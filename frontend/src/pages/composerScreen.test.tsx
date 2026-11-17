@@ -150,6 +150,37 @@ describe('the attached-music tags', () => {
     expect(button).toHaveAttribute('aria-expanded', 'false')
   })
 
+  it('returns focus to "Add music" after Escape and after a tag is removed', async () => {
+    fakeApi(routes())
+    renderAt('/classes/new')
+    await openMenu()
+    const button = screen.getByRole('button', { name: /Add music/ })
+    choose('Hill climbs')
+    fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search your playlists' }), { key: 'Escape' })
+    expect(button).toHaveFocus()
+    screen.getByRole('button', { name: 'Remove Hill climbs' }).focus()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Hill climbs' }))
+    expect(button).toHaveFocus()
+  })
+
+  // jsdom has no layout: this guards the classes that keep the panel inside the screen at phone width (the real
+  // layout was measured in headless Chromium, see the PR). The panel hangs from the whole tag row, not from the
+  // shrink-wrapped button, and has no fixed offset or width of its own.
+  it('anchors the panel to the whole tag row, with no fixed left offset or width', async () => {
+    fakeApi(routes())
+    renderAt('/classes/new')
+    await openMenu()
+    choose('Hill climbs')
+    const panel = screen.getByRole('group', { name: 'Add music to your request' })
+    expect(panel).toHaveClass('absolute', 'inset-x-0', 'max-w-[22rem]')
+    expect(panel.className).not.toMatch(/(^|\s)(left-|right-|w-)/)
+    const row = screen.getByRole('list', { name: 'Attached music' }).parentElement
+    expect(row).toHaveClass('relative')
+    const wrapper = panel.parentElement
+    expect(wrapper).not.toHaveClass('relative')
+    expect(row).toContainElement(wrapper)
+  })
+
   it('offers "No music" only when it is enabled, as a tag that clears the playlists, and the other way round', async () => {
     fakeApi(routes({}, { soundless_enabled: true }))
     renderAt('/classes/new')
@@ -319,6 +350,20 @@ describe('Surprise me', () => {
     const request = (sent(api) as { input: { request: string } }).input.request
     const entry = SURPRISES.find((e) => e.text.en === request)
     expect(entry?.minutes).toBeLessThanOrEqual(30)
+  })
+
+  it('gives a running class a running description, never a ride', async () => {
+    const api = fakeApi(routes({}, { running_enabled: true }))
+    renderAt('/classes/new')
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Sport' }), { target: { value: 'running' } })
+    fireEvent.click(screen.getByRole('button', { name: /Surprise me/ }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    const input = (sent(api) as { input: { request: string; sport_override: string } }).input
+    const entry = SURPRISES.find((e) => e.text.en === input.request)
+    expect(entry?.sport).toBe('running')
+    expect(input.sport_override).toBe('running')
   })
 
   it('speaks the page language', async () => {
