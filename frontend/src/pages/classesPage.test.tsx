@@ -67,8 +67,8 @@ describe('My classes', () => {
       },
     })
     renderAt('/classes')
-    expect(await screen.findByRole('button', { name: 'Delete Hills' })).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Delete Failed' }))
+    expect(await screen.findByRole('button', { name: 'Delete class Hills' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Delete class Failed' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Yes, delete' }))
     await waitFor(() => {
       expect(screen.queryByRole('link', { name: 'Failed' })).toBeNull()
