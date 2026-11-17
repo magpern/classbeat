@@ -30,6 +30,17 @@ def submission(case: InterpretCase) -> dict[str, Any]:
         out["remove_games"] = True
     if e.taste is not None:
         out["music_taste"] = _taste(e.taste)
+    if e.pinned:
+        out["pinned_songs"] = [
+            {
+                "song": p.title,
+                **p.model_dump(exclude_none=True, exclude={"title"}),
+                "origin": "explicit",
+            }
+            for p in e.pinned
+        ]
+    if e.asks:
+        out["questions"] = [{"path": p} for p in e.asks]
     return out
 
 

@@ -40,6 +40,7 @@ SETTING_KEYS = (
     "song_picking",
     "swedebeat_enabled",
     "running_enabled",
+    "composer_flow",
     "trial",
     "banner",
     "mail_sender_name",

@@ -76,6 +76,8 @@ RELEASED: dict[int, str] = {
     24: "1b0dcb38043e7a472c42a59db253fa1e1a64ceadb57e116a418dc09105760826",
     # #1140: the music taste cases (interpret and song choice), the split of suite.py and pick.py.
     25: "c40b21cfc2b6bd63cc9971ddec65826ccde8ebb443fb9f6488d6bff55caa2733",
+    # #1185: the composer's reading (pinned songs, questions, attached music) and its cases.
+    26: "a7f6b3eab941b70baf5b87308b00e28c581459ce3e9563ff09b7c73370c2f6aa",
 }
 
 SUITE = load_suite()
@@ -198,12 +200,13 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 69, 3 + 15 + 1 + 1 + 1)
     # #880: eight interpret cases, of their own kind (neither design nor song cases); #904: three
     # revise readings, #908: one (remove_games), #1023: one (a Change songs request), #1140: two
-    # (the music taste: three eras, a long range split)
-    assert len(SUITE.interpret_cases) == 8 + 3 + 1 + 1 + 2
+    # (the music taste: three eras, a long range split), #1185: four (pinned songs in English and
+    # Swedish, attached music, questions)
+    assert len(SUITE.interpret_cases) == 8 + 3 + 1 + 1 + 2 + 4
     assert set(SUITE.interpret_cases) == set(MANIFEST.cases_of("interpret", "design")) | {
         "interpret_playlist_injection"
     }  # the injection is judged in adversarial: every run
-    assert len(index) == 30 + 69 + 3 + 15 + 1 + 1 + 1 + 8 + 3 + 1 + 1 + 2
+    assert len(index) == 30 + 69 + 3 + 15 + 1 + 1 + 1 + 8 + 3 + 1 + 1 + 2 + 4
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)

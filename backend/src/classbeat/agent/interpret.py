@@ -68,6 +68,20 @@ than 4, keep the first 4; language: the songs' language as a two-letter ISO 639-
 letter from the request ("disco", "rock"); hits: true when the request asks for hits or \
 well-known songs. A playlist or mix name is not a taste.
 
+A message with "attached_playlists" says how many playlists the instructor attached to the \
+request. Words about them ("my attached playlist", "these songs") are not a music name: then \
+leave music out unless the request also names one of the numbered names.
+
+pinned_songs: one entry for each song the instructor names by its title ("Africa by Toto as the \
+last climb"), at most 10; never a song you would suggest. song (the title) and artist exactly as \
+the request writes them (leave the artist out if it is not given); at: the shortest words of \
+the request that say where the song goes ("warm-up", "the last climb", "climb 3"), copied \
+letter for letter, at most 40 characters, or leave it out; origin "explicit".
+
+questions: for a new class only (no "current"), at most 2 entries, each a path, length_min or \
+intensity, that the request does not state but that shapes the class; ask about the length first. \
+Never for a field the request states. The app assumes a value and does not wait for an answer.
+
 A message with "current" holds a change to an existing class whose values are "current". Then \
 report only the fields the request changes, each with the value it should have after the change \
 ("ten minutes longer" on a 45-minute class is 55, "one more sprint" on 3 sprints is 4), and leave \
@@ -102,6 +116,8 @@ class InterpretContext:
     # A revise: the class's values as they stand (``interpret_input.current_values``); None for a
     # new class.
     current: Mapping[str, Any] | None = None
+    # The composer's attached Spotify playlists (ADR 0038 section 3): only how many, never an id.
+    attached: int = 0
 
     def first_message(self) -> str:
         return interpret_input.first_message(
@@ -111,6 +127,7 @@ class InterpretContext:
             games_allowed=self.games_allowed,
             music=self.music,
             current=self.current,
+            attached=self.attached,
         )
 
 

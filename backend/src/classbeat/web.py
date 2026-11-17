@@ -51,7 +51,7 @@ from classbeat.connections.routes import router as connections_router
 from classbeat.connections.swedebeat_routes import router as swedebeat_router
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import create_engine, create_session_factory, verify_database_role
-from classbeat.design import configure_limits, mixadmit, music_kind, sport
+from classbeat.design import composer, configure_limits, mixadmit, music_kind, sport
 from classbeat.design.mixes import router as mixes_router
 from classbeat.design.routes import router as music_router  # registers design_draft (J3)
 from classbeat.emails.handoff import HandoffConsumer
@@ -220,6 +220,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ... and the soundless switch, with the web's own ``fake`` counting as covering only outside
     # prod (ADR 0007 amendment of 2026-11-03, #527).
     music_kind.configure(music_kind.SoundlessGate.from_settings(settings))
+    # ... and the composer flow's switch (ADR 0038 section 2): interpret_request's admit.
+    composer.configure(composer.ComposerGate.from_settings(settings))
     # swedebeat_match's admit reads the Swedebeat switch (ADR 0016 section 2); importing
     # classbeat.swedebeat_match registered the kind. The web never opens the token for it.
     swedebeat_match.configure(swedebeat_match.MatchConfig.from_settings(settings))

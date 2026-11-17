@@ -199,6 +199,7 @@ async def test_the_read_shows_each_flag_with_its_effective_value_and_source(
         "song_picking",
         "swedebeat_enabled",
         "running_enabled",  # ADR 0018 section 5
+        "composer_flow",  # ADR 0038 section 2
         "trial",  # no soundless_enabled: retired by ADR 0007's amendment of 2026-11-08 (#824)
         "banner",
     ]

@@ -1,0 +1,16 @@
+{
+ "kind": "interpret",
+ "name": "interpret_questions",
+ "about": "A request that states neither the length nor the effort asks about both and states neither.",
+ "request": "A climbing class to 80s rock with a few hills",
+ "expect": {
+  "absent": [
+   "length_min",
+   "music"
+  ],
+  "asks": [
+   "length_min",
+   "intensity"
+  ]
+ }
+}

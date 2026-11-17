@@ -1,12 +1,13 @@
 """The ``interpret_request`` job kind (ADR 0029 section 5, MA1b-3): one free-text request in, the
 brief, the music and the interpretation items out, stored on the class it creates. No design.
 
-Input: ``{request, music_override?, sport_override?, mowl_connection_id, spotify_connection_id?,
-title?}`` (``InterpretRequestInput``). The request is 1 to 2000 visible characters, and is refused
-(422) when even the largest brief it could make (``interpret_policy.worst_case_brief``) would not
-fit ``classes.brief``. It always creates a new class: ``class_id`` is refused, and a missing title
-is taken from the request's first words (``interpret_policy.title_for``; a model never sees a
-title).
+Input: ``{request, music_override?, music_sources?, sport_override?, mowl_connection_id,
+spotify_connection_id?, title?}`` (``InterpretRequestInput``; ``music_sources`` is the
+composer's attached music, ``design.music_sources``). The request is 1 to 2000 visible
+characters, and is refused (422) when even the largest brief it could make
+(``interpret_policy.worst_case_brief``) would not fit ``classes.brief``. It always creates a new
+class: ``class_id`` is refused, and a missing title is taken from the request's first words
+(``interpret_policy.title_for``; a model never sees a title).
 
 **Admit** (``POST /api/jobs``, in the create transaction, under the owner lock, after the generic
 checks: the MOWL connection is the user's current one, the per-user limit), reading only, in this
@@ -18,12 +19,15 @@ song picking is off for the user, before any model call and with no credit, a re
 Spotify connection and can only end without music: roadmap Amendment 25,
 ``interpret_music_policy.without_spotify_is_refused``): ``sports`` (running only when the running
 gate admits the user, ``sport.admit_running``), ``pick_ready`` (a Spotify connection is named and
-song picking admits the user), ``song_picking`` (song picking admits the user) and
-``swedebeat_mixes`` (the Swedebeat flag is on and the user uses Swedebeat). After the job row is
-inserted, the request is stored as the class's first message (seq 1, role ``user``). The kind
-takes **no class credit** (``consumes_credit=False``): the class credit is the design job's, taken
-by the hand-off. It counts toward the per-user limit like any job, and its model cost toward the
-cost cap through its ``agent_runs``.
+song picking admits the user), ``song_picking`` (song picking admits the user), ``swedebeat_mixes``
+(the Swedebeat flag is on and the user uses Swedebeat) and ``composer`` (the ``composer_flow`` flag,
+``design.composer``; ADR 0038 section 2). With the flag off a request with ``music_sources`` is
+refused ``feature_off``, and the reading is exactly as before: only a job admitted with ``composer``
+stores pinned songs and questions (``interpret_composer_policy``). After the job row is inserted,
+the request is stored as the class's first message (seq 1, role ``user``). The kind takes **no class
+credit** (``consumes_credit=False``): the class credit is the design job's, taken by the hand-off.
+It counts toward the per-user limit like any job, and its model cost toward the cost cap through its
+``agent_runs``.
 
 **Worker**: the ``design`` stage group's model first (an unusable route fails ``model_config``
 before any call), then the ``interpret`` stage: the user's music names (``interpret_music``), the
@@ -49,7 +53,16 @@ from classbeat.agent.interpret import InterpretContext, InterpretResult, interpr
 from classbeat.agent.interpret_input import MusicName
 from classbeat.agent.records import JobStageHost
 from classbeat.context import UserContext
-from classbeat.design import chat, interpret_policy, interpretation_row, mixadmit, revision, sport
+from classbeat.design import (
+    chat,
+    composer,
+    interpret_composer_policy,
+    interpret_policy,
+    interpretation_row,
+    mixadmit,
+    revision,
+    sport,
+)
 from classbeat.design.interpret_music import music_options
 from classbeat.design.interpret_music_policy import no_music_reason, without_spotify_is_refused
 from classbeat.design.kind import (
@@ -60,6 +73,7 @@ from classbeat.design.kind import (
     group_model,
 )
 from classbeat.design.kind_music import song_picking
+from classbeat.design.music_sources import MusicSources, check_sources
 from classbeat.design.revise import Request
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import ModelJobInput, Title, jsonb_size
@@ -89,6 +103,7 @@ class InterpretRequestInput(ModelJobInput):
 
     request: Request
     music_override: MusicOverride | None = None
+    music_sources: MusicSources | None = None
     sport_override: Sport | None = None
     mowl_connection_id: UUID
     spotify_connection_id: UUID | None = None
@@ -100,6 +115,7 @@ class InterpretRequestInput(ModelJobInput):
         None  # song picking admits the user (None: a job queued before this field)
     )
     swedebeat_mixes: bool | None = None
+    composer: bool | None = None  # the composer flow was on at admit (None: before #1185)
 
     @model_validator(mode="after")
     def _one_class(self) -> Self:
@@ -117,6 +133,8 @@ class InterpretRequestInput(ModelJobInput):
             raise ValueError("the request is too long")
         if isinstance(self.music_override, PickChoice) and self.spotify_connection_id is None:
             raise ValueError("a song pick needs the Spotify connection")
+        override = None if self.music_override is None else self.music_override.source
+        check_sources(self.music_sources, override, self.spotify_connection_id)
         return self
 
 
@@ -129,6 +147,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     spotify = parsed.spotify_connection_id
     if spotify is not None and ctx.connection("spotify") != spotify:
         return Refused("not_connected")
+    composing = await composer.composer_on(db)
+    if parsed.music_sources is not None and not composing:
+        return Refused("feature_off")
     await quota.check_cost(db, ctx)  # QuotaRefused ``cost``: 409 ``quota`` (ADR 0011 section 4)
     running = await sport.admit_running(db, ctx) is None
     sports = ["cycling", "running"] if running else ["cycling"]
@@ -168,6 +189,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         "pick_ready": pick_ready,
         "song_picking": picking,
         "swedebeat_mixes": mixes,
+        "composer": composing,
     }
     return Admitted(fields, after_insert)
 
@@ -195,6 +217,7 @@ async def run(job_run: JobRun) -> Complete:
         max_class_minutes=None if gates is None else gates.max_class_minutes,
         games_allowed=True if gates is None else gates.games,
         music=tuple(MusicName(o.kind, o.name) for o in options),
+        attached=len(given.music_sources or ()) if given.composer else 0,
     )
     outcome = await run_stage(
         JobStageHost(job_run),
@@ -221,11 +244,18 @@ async def run(job_run: JobRun) -> Complete:
         sport_override=given.sport_override,
         music_override=override,
     )
+    pins, questions = (
+        interpret_composer_policy.composer_reading(outcome.output.request, resolved.brief)
+        if given.composer
+        else ([], [])
+    )
     stored = interpretation_row.StoredInterpretation(
         job_id=job_run.lease.job_id,
         brief=resolved.brief.stored(),
         music=resolved.music,
         items=resolved.items,
+        pinned_songs=pins,
+        questions=questions,
     )
 
     async def store(fs: FencedSession) -> None:
@@ -243,7 +273,15 @@ INTERPRET_REQUEST: Final = KINDS.register(
         consumes_credit=False,
         admit=with_plan(admit),
         server_fields=frozenset(
-            {"route_key", "plan_gates", "sports", "pick_ready", "song_picking", "swedebeat_mixes"}
+            {
+                "route_key",
+                "plan_gates",
+                "sports",
+                "pick_ready",
+                "song_picking",
+                "swedebeat_mixes",
+                "composer",
+            }
         ),
     )
 )

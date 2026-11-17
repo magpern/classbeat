@@ -29,6 +29,7 @@ def context_for(case: InterpretCase) -> InterpretContext:
         games_allowed=case.games_allowed,
         music=tuple(m.named() for m in case.music),
         current=None if case.current is None else current_values(case.current),
+        attached=case.attached,
     )
 
 

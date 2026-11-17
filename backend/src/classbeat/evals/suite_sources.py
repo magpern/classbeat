@@ -96,6 +96,9 @@ RULE_SOURCES: Final = (
     # The music taste (issue #1133): the closed form the interpreter returns and the song stages
     # are told. Added with suite version 24.
     "agent/music_taste.py",
+    # The composer's part of a reading (ADR 0038 section 3, issue #1185): pinned songs and
+    # follow-up questions. Added with suite version 26.
+    "agent/interpreted_composer.py",
 )
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")

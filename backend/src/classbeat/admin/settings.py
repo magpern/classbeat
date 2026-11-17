@@ -33,10 +33,13 @@ read only.
   as no row: maint has no ``DELETE`` on ``app_settings``), so the environment's value applies
   (404 ``not_found`` when nothing was stored).
 
+``composer_flow`` (ADR 0038 section 2) is ``off`` or ``on``, effective only under
+``CLASSBEAT_COMPOSER_FLOW``, and needs no coverage check.
+
 The mail settings (``mail_sender_name``, ``mail_support_email``, ``mail_footer`` and
 ``mail_kinds_disabled``, #653) use the same two routes and are shown by
-``classbeat.admin.mail``, not in ``GET /settings``; their audit ``params`` are the key with the
-text's length, or the kind ids.
+``classbeat.admin.mail`` (built in ``classbeat.admin.settings_mail``), not in ``GET /settings``;
+their audit ``params`` are the key with the text's length, or the kind ids.
 
 The audit ``params`` of a write hold the key and what the value means (the mode, a plan and days,
 a banner's level and length), never free text.
@@ -62,18 +65,17 @@ from classbeat.admin.settings_checks import (
     covered,
     trial_plan_refusal,
 )
+from classbeat.admin.settings_mail import ALL_SETTINGS, mail_flags, person, stored_valid
 from classbeat.admin.settings_models import (
     BoundsOut,
     FlagOut,
-    PersonOut,
     ReadOnlyOut,
     SettingIn,
     SettingsOut,
 )
 from classbeat.admin.settings_trial import effective_trial
 from classbeat.config import Settings
-from classbeat.emails.dispatch import DEFAULT_SENDER_NAME
-from classbeat.emails.live import config_from, kind_switches
+from classbeat.emails.live import kind_switches
 from classbeat.flags import core
 from classbeat.flags.effective import environment_signup_held, environment_signup_mode
 
@@ -83,7 +85,6 @@ SETTINGS = "/settings"
 
 MAX_VALUE_BYTES = 2048  # app_settings_value
 
-_ALL_SETTINGS = text("SELECT key, value, updated_at, updated_by FROM app_settings")
 _UPSERT = text(
     "INSERT INTO app_settings (key, value, updated_by) VALUES (:k, CAST(:v AS jsonb), :by) "
     "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now(), "
@@ -97,20 +98,6 @@ _CLEAR = text(
 )
 
 KeyPath = Annotated[str, Path(pattern=r"^[a-z][a-z_]{0,39}$")]
-
-
-def _person(user_id: UUID | None, emails: dict[UUID, str]) -> PersonOut | None:
-    return None if user_id is None else PersonOut(id=user_id, email=emails.get(user_id))
-
-
-def _stored_valid(key: str, value: Any) -> bool:
-    if value is None:
-        return True
-    try:
-        core.validate_for_write(key, value, trial_days_max=10**9, mail_kinds=kind_switches())
-    except core.FlagRefused:
-        return False
-    return True
 
 
 def _flag(
@@ -140,6 +127,10 @@ def _flag(
         switch = core.running_switch(settings.running_enabled, stored)
         effective = "on" if switch and running_covered else "off"
         source = "database" if settings.running_enabled and stored is not None else "environment"
+    elif key == "composer_flow":  # ADR 0038 section 2: the switch and a stored ``on``
+        environment = "on" if settings.composer_flow else "off"
+        effective = "on" if core.composer_switch(settings.composer_flow, stored) else "off"
+        source = "database" if settings.composer_flow and stored is not None else "environment"
     elif key == "trial":
         environment = {"plan": None, "days": 0}
         trial = core.trial_setting(stored)
@@ -156,15 +147,15 @@ def _flag(
         effective=effective,
         environment=environment,
         stored=stored,
-        stored_valid=_stored_valid(key, stored),
+        stored_valid=stored_valid(key, stored),
         environment_note=note,
         updated_at=None if row is None else row.updated_at,
-        updated_by=None if row is None else _person(row.updated_by, emails),
+        updated_by=None if row is None else person(row.updated_by, emails),
     )
 
 
 async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
-    rows = {r.key: r for r in (await session.execute(_ALL_SETTINGS)).all()}
+    rows = {r.key: r for r in (await session.execute(ALL_SETTINGS)).all()}
     plans = await all_plans(session)
     people = [r.updated_by for r in (*rows.values(), *plans) if r.updated_by is not None]
     emails = await auth.account_emails(session, people)
@@ -189,42 +180,6 @@ async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
     )
 
 
-def _mail_flag(key: str, settings: Settings, row: Any, emails: dict[UUID, str]) -> FlagOut:
-    """A mail setting as the Mail page shows it: what the send path uses and the environment's
-    value (``classbeat.emails.live``)."""
-    stored = None if row is None else row.value
-    config = config_from(settings, {key: stored})
-    environment: Any
-    effective: Any
-    if key == "mail_sender_name":
-        environment, effective = DEFAULT_SENDER_NAME, config.branding.sender_name
-    elif key == "mail_support_email":
-        environment, effective = settings.mail_support_address, config.branding.support_address
-    elif key == "mail_footer":
-        environment, effective = None, config.branding.footer
-    else:  # mail_kinds_disabled
-        environment, effective = [], sorted(config.disabled)
-    return FlagOut(
-        key=key,
-        source="database" if effective != environment else "environment",
-        effective=effective,
-        environment=environment,
-        stored=stored,
-        stored_valid=_stored_valid(key, stored),
-        updated_at=None if row is None else row.updated_at,
-        updated_by=None if row is None else _person(row.updated_by, emails),
-    )
-
-
-async def mail_flags(session: AsyncSession, settings: Settings) -> list[FlagOut]:
-    """The four mail settings with their effective values, for ``GET /api/admin/mail``."""
-    rows = {r.key: r for r in (await session.execute(_ALL_SETTINGS)).all()}
-    emails = await auth.account_emails(
-        session, [r.updated_by for r in rows.values() if r.updated_by is not None]
-    )
-    return [_mail_flag(k, settings, rows.get(k), emails) for k in core.MAIL_KEYS]
-
-
 async def _flag_view(session: AsyncSession, settings: Settings, key: str) -> FlagOut:
     if key in core.MAIL_KEYS:
         (mail,) = [f for f in await mail_flags(session, settings) if f.key == key]
@@ -235,7 +190,7 @@ async def _flag_view(session: AsyncSession, settings: Settings, key: str) -> Fla
 
 def _set_params(key: str, value: Any) -> dict[str, Any]:
     """The audit params of a validated write: what it means, never free text."""
-    if key in ("signup_mode", "song_picking", "swedebeat_enabled", "running_enabled"):
+    if key in core.KEYS and key not in ("trial", "banner"):  # a closed mode or off/on
         return {"key": key, "value": value}
     if key == "trial":
         return {"key": key, "plan": value["plan"], "days": value["days"]}

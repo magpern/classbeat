@@ -1,0 +1,26 @@
+{
+ "kind": "interpret",
+ "name": "interpret_attached_music",
+ "about": "Words about the attached playlists are not a music name, even with a similar name in the list.",
+ "request": "45 minutes with two sprints, use songs from the playlist I attached",
+ "attached": 2,
+ "music": [
+  {"kind": "playlist", "name": "My playlist"},
+  {"kind": "playlist", "name": "Attached favourites"}
+ ],
+ "expect": {
+  "values": {
+   "length_min": 45,
+   "sprints": 2
+  },
+  "origins": {
+   "length_min": "explicit",
+   "sprints": "explicit"
+  },
+  "absent": [
+   "music",
+   "climbs"
+  ],
+  "pinned": []
+ }
+}
