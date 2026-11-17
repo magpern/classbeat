@@ -20,9 +20,9 @@ by the owner the same day; see [ideas.md](ideas.md) §4.)
 - **Songs in place.**
   - Songs are filled into the sketch automatically: pinned songs at their places, attached playlists
     favoured, search for the rest.
-  - The class is designed **before** the approval, so the user approves the class they see. That draft is
-    `pending_approval`: a shared server-side rule (`revision_ready`) refuses to save, update, send, duplicate
-    or make current any revision that is not ready.
+  - The class is designed **before** the approval, so the user approves the class they see. That draft has the
+    origin `composer_preview` and is never ready: a shared server-side rule (`revision_ready`) refuses to
+    save, update, send, duplicate or make current a preview or a sketch. Revisions stay immutable.
   - Swap and chat changes **replace** the waiting version in one transaction, at no credit. If the
     replacement is refused, the waiting version is kept.
 - **Approve and save.**
