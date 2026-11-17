@@ -59,6 +59,7 @@ from classbeat.design.kind import (
     current_runtime,
     group_model,
 )
+from classbeat.design.kind_music import song_picking
 from classbeat.design.revise import Request
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import ModelJobInput, Title, jsonb_size
@@ -131,7 +132,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     await quota.check_cost(db, ctx)  # QuotaRefused ``cost``: 409 ``quota`` (ADR 0011 section 4)
     running = await sport.admit_running(db, ctx) is None
     sports = ["cycling", "running"] if running else ["cycling"]
-    picking = await _song_picking(db, ctx)
+    picking = await song_picking(db, ctx)
     pick_ready = spotify is not None and picking
     mixes = await mixadmit.flag_on(db, mixadmit.current().enabled) and await _uses_swedebeat(
         db, ctx
@@ -169,14 +170,6 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         "swedebeat_mixes": mixes,
     }
     return Admitted(fields, after_insert)
-
-
-async def _song_picking(db: AsyncSession, ctx: UserContext) -> bool:
-    # Imported here: ``classbeat.songs`` imports this package.
-    from classbeat.flags import effective
-    from classbeat.songs import config
-
-    return await effective.song_picking_admits(db, ctx, config.current().enabled)
 
 
 async def _uses_swedebeat(db: AsyncSession, ctx: UserContext) -> bool:

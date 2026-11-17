@@ -1,13 +1,11 @@
 """The design kind the interpretation hand-off enqueues for each stored music
-(``classbeat.classes.interpretation._design_input``; ADR 0029 section 5, roadmap Amendment 26).
+(``classbeat.classes.interpretation_design.design_input``; ADR 0029 section 5, Amendment 26).
 No database, no network, no model."""
 
 import uuid
 from typing import Any
 
-from classbeat.classes.interpretation import (
-    _design_input,  # pyright: ignore[reportPrivateUsage]
-)
+from classbeat.classes.interpretation_design import design_input
 from classbeat.design import DESIGN_DRAFT
 from classbeat.design.interpretation_row import StoredInterpretation
 from classbeat.design.kind import DesignDraftInput
@@ -29,7 +27,7 @@ def planned(
     given: dict[str, Any] = {"request": "A class, please", "mowl_connection_id": str(MOWL)}
     if spotify:
         given["spotify_connection_id"] = str(SPOTIFY)
-    return _design_input(row, given, CLASS, song_picking=song_picking)
+    return design_input(row, given, CLASS, song_picking=song_picking)
 
 
 def test_a_cycling_class_on_the_users_playlist_is_the_pick_pipeline_with_that_source() -> None:
@@ -67,6 +65,8 @@ def test_without_spotify_or_song_picking_a_running_class_or_a_mix_stays_design_d
         assert kind is DESIGN_DRAFT
         assert isinstance(made, DesignDraftInput)
         assert made.music.model_dump() == music
+        # Only a playlist stored with no Spotify (before Amendment 25) skips the connection check.
+        assert made.spotify_optional is (True if music == PLAYLIST and not spotify else None)
 
 
 def test_a_cycling_class_with_no_music_stores_the_reason_its_interpretation_gave() -> None:
@@ -78,6 +78,6 @@ def test_a_cycling_class_with_no_music_stores_the_reason_its_interpretation_gave
             music=None,
             items=[item],  # pyright: ignore[reportArgumentType]
         )
-        assert _design_input(row, {}, CLASS, song_picking=True) == reason
+        assert design_input(row, {}, CLASS, song_picking=True) == reason
     running = StoredInterpretation(job_id=uuid.uuid4(), brief=RUNNING, music=None, items=[])
-    assert _design_input(running, {}, CLASS, song_picking=False) == "needs_mowl_playlist"
+    assert design_input(running, {}, CLASS, song_picking=False) == "needs_mowl_playlist"
