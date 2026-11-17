@@ -2,7 +2,9 @@
 and the class delete (ADR 0007 sections 2, 11 and 12; issue C2).
 
 Signed in; the ``POST`` and ``DELETE`` are CSRF-checked by the middleware. Another user's id, an
-unknown id and a malformed one are the same 404 ``not_found``. Errors carry a reason code only.
+unknown id and a malformed one are the same 404 ``not_found``; the user's own class that a failed
+first creation discarded is 404 ``class_discarded`` with that job's id (ADR 0038). Errors carry a
+reason code only.
 409 reasons: ``limit_exceeded`` (the 33rd dismissed rule, ADR 0017), ``class_busy``,
 ``hash_mismatch`` (the pick), ``stale_match`` (the Swedebeat selection) and
 ``call_may_be_running``, ``uncertain_write`` (the delete), and ``quota`` (the pick, #496: the
@@ -15,11 +17,8 @@ A ``swedebeat_match`` revision (ADR 0016 section 6) is read only while the effec
 read, and the class detail carries no match pointer.
 """
 
-import base64
-import json
 import re
 from dataclasses import asdict
-from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -39,6 +38,8 @@ from classbeat.classes import (
     song_list_out,
     song_views,
 )
+from classbeat.classes.discarded import not_found_answer
+from classbeat.classes.list_cursor import decode_cursor, encode_cursor
 from classbeat.classes.music_playlists_out import MosaicSongOut, MusicPlaylistOut, MusicPlaylistsOut
 from classbeat.classes.provenance_out import ProvenanceOut
 from classbeat.classes.schemas import (
@@ -93,24 +94,6 @@ def _uuid(raw: str) -> UUID | None:
         return None
 
 
-def _encode_cursor(after: service.Cursor) -> str:
-    raw = json.dumps([after[0].isoformat(), str(after[1])]).encode()
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
-
-
-def _decode_cursor(cursor: str) -> service.Cursor | None:
-    try:
-        at, class_id = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
-        when = datetime.fromisoformat(at)
-        parsed = UUID(class_id)
-    except (ValueError, TypeError):  # bad base64, JSON, shape, timestamp or uuid
-        return None
-    # A cursor names an instant: a naive timestamp would be read in the session's time zone.
-    if when.utcoffset() is None:
-        return None
-    return when, parsed
-
-
 @router.get("", response_model=ClassesOut, responses={422: {}})
 async def list_classes(
     request: Request,
@@ -120,7 +103,7 @@ async def list_classes(
 ) -> ClassesOut | JSONResponse:
     """Newest first, at most ``limit`` (default and maximum 500) per page; ``next_cursor`` goes
     back as ``cursor`` for the next one."""
-    after = None if cursor is None else _decode_cursor(cursor)
+    after = None if cursor is None else decode_cursor(cursor)
     if cursor is not None and after is None:
         return _refuse("invalid_cursor", 422)
     page = await service.list_classes(
@@ -128,7 +111,7 @@ async def list_classes(
     )
     return ClassesOut(
         classes=[ClassOut.of(r) for r in page.rows],
-        next_cursor=None if page.next_after is None else _encode_cursor(page.next_after),
+        next_cursor=None if page.next_after is None else encode_cursor(page.next_after),
     )
 
 
@@ -167,8 +150,8 @@ async def get_class(
     factory = request.app.state.session_factory
     enabled = await swedebeat_enabled(request.app.state.settings, factory)
     found = await service.get_class_detail(factory, ctx, wanted, with_match=enabled)
-    if found is None:
-        return _not_found()
+    if found is None:  # a discarded class says so, with its ended job (ADR 0038)
+        return await not_found_answer(factory, ctx, wanted)
     beats = await beat_one.view(factory, ctx, wanted)
     playlists = found.playlists
     match = found.match
