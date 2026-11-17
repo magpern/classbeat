@@ -10,9 +10,13 @@ from urllib.parse import urlencode
 
 from classbeat.spotify.http import AUTHORIZE_URL
 
-# Section 1: exactly these, never ``playlist-modify-public``, ``user-read-private`` or
-# ``user-read-email``.
-SCOPES: Final = ("playlist-read-private", "playlist-modify-private")
+# Section 1: exactly these are asked for, never ``user-read-private`` or ``user-read-email``.
+# ``playlist-modify-public`` since roadmap Amendment 27 (#1155): Spotify may make a playlist
+# classbeat creates public, and writing its items then needs it. A grant needs only
+# ``REQUIRED_SCOPES`` (the original two), so a connection made before still connects and works
+# for a private playlist.
+REQUIRED_SCOPES: Final = ("playlist-read-private", "playlist-modify-private")
+SCOPES: Final = (*REQUIRED_SCOPES, "playlist-modify-public")
 SCOPE: Final = " ".join(SCOPES)
 CLIENT_ID: Final = re.compile(r"[0-9a-fA-F]{32}")
 CLIENT_ID_INPUT_MAX: Final = 256
@@ -69,5 +73,6 @@ def authorize_url(*, client_id: str, redirect_uri: str, state: str, verifier: st
 
 
 def scope_granted(granted: str) -> bool:
-    """The token answer's ``scope`` holds both scopes (a smaller grant is ``scope_mismatch``)."""
-    return set(SCOPES) <= set(granted.split())
+    """The token answer's ``scope`` holds both ``REQUIRED_SCOPES`` (a smaller grant is
+    ``scope_mismatch``); ``playlist-modify-public`` is asked for but not required."""
+    return set(REQUIRED_SCOPES) <= set(granted.split())

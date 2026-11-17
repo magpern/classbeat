@@ -21,6 +21,13 @@ of a deal"* (relayed by the Architect on 2026-11-17; the owner confirms it on th
   public. Residual risk: it may then show on the user's profile and in search, and anyone with its
   link can open it (its tracks and the class's name). MOWL workouts stay private; Amendment 24 is
   unchanged. ADR 0008 §2 and ADR 0009 §1 carry the note.
+- **The connection also asks for `playlist-modify-public`.** Spotify documents that writing the items
+  (or the details) of a *public* playlist needs it, so a playlist Spotify made public could not be
+  filled with the two private scopes alone. A grant still needs only the original two
+  (`playlist-read-private playlist-modify-private`): every existing connection stays connected and
+  works for a private playlist. An item write refused with 403 to a playlist the owner check read as
+  public fails the job with `scope_mismatch` ("Spotify did not give the access we need. Connect
+  again and allow it."), nothing written; reconnecting grants the new scope.
 
 ## Amendment 26 (2026-11-16, owner decision: a new playlist also from an existing one; issue #1132)
 

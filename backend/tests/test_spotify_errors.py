@@ -14,7 +14,7 @@ from mowl.errors import MowlError
 from classbeat.connections import ConnectionFailure
 from classbeat.spotify import CATEGORIES, SENTENCES, sentence, spotify_call
 from classbeat.spotify.errors import QUOTA_THRESHOLD_SECONDS, classify_use, sentence_of
-from spotifycore import FakeSpotify
+from spotifycore import PRIVATE_SCOPES, FakeSpotify
 from spotifyfake import CLIENT_A, USER_A, USER_B
 from spotifytools import STATUS, Spot
 
@@ -183,6 +183,13 @@ async def test_connect_not_allowlisted(spot: Spot) -> None:
     spot.fake.apps[CLIENT_A].owner_premium = False
     actor = await spot.actor("second@example.com")
     assert await spot.connect(actor) == {"result": "not_allowlisted"}
+
+
+async def test_a_grant_of_only_the_two_private_scopes_still_connects(spot: Spot) -> None:
+    """``playlist-modify-public`` is asked for (Amendment 27) but not required: a user who grants
+    only the original two, like every connection made before, is connected."""
+    spot.fake.apps[CLIENT_A].grant_scope = PRIVATE_SCOPES
+    assert await _connect_result(spot) == {"result": "connected"}
 
 
 async def test_connect_scope_mismatch_and_no_refresh_token(

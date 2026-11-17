@@ -110,6 +110,10 @@ them, ADR 0009 M-2).
 >   or false (null or missing is refused). The create's reconciler accepts a listed playlist with its
 >   `ref` either way. "classbeat never flips a user's privacy itself" still holds for every playlist
 >   it did not just create.
+> - *A public playlist's writes need `playlist-modify-public`* (now asked for, ADR 0009 §1 note): an
+>   item write answered 403 after the owner check read `public: true` is `failed` `scope_mismatch`
+>   (`playlists/replace_failures.py`); the write is absolute, so the row is safe to send again after
+>   the user reconnects.
 > - *Owner-check failures.* Only two outcomes of the owner check prove that nothing was written and are
 >   `failed`: the request was never sent (a `NEVER_SENT` category), or Spotify answered it with a 4xx. A 404 and
 >   a 403 have the categories above; any other 4xx is `failed` with the connection's own category

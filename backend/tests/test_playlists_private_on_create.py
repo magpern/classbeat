@@ -2,16 +2,19 @@
 pool's and a final playlist's. classbeat asks for private once more (``PUT /playlists/{id}``) only
 for the id its own create returned, then writes either way; a collaborative or another user's
 playlist is still refused with nothing written, and an existing playlist's privacy is never
-changed. Fakes only (``spotifycore``): no network, no real account.
+changed. A token without ``playlist-modify-public`` cannot write a public playlist:
+``scope_mismatch``. Fakes only (``spotifycore``): no network, no real account.
 """
 
 from typing import Any
 
 import pytest
 
+from classbeat.jobs.sentences import failure_sentence
 from classbeat.playlists import common
 from jobtools import new_class
 from playlisttools import MANY, TRACKS, PlayEnv
+from spotifycore import PRIVATE_SCOPES
 
 ONE = r"/v1/playlists/[0-9A-Za-z]{22}"
 
@@ -188,3 +191,46 @@ async def test_a_new_collaborative_playlist_is_made_private_and_not_collaborativ
     assert (playlist.public, playlist.collaborative) == (False, False)
     assert details(penv) == [made.playlist_id]
     assert (await fill(penv, owner, class_id, made)).state == "completed"
+
+
+# --- a connection without ``playlist-modify-public`` -------------------------------------------
+
+
+def only_private_scopes(penv: PlayEnv) -> None:
+    """Every token the fake issued so far grants only the two private scopes (a connection made
+    before Amendment 27)."""
+    for grant in (*penv.fake.access.values(), *penv.fake.refresh.values()):
+        grant.scope = PRIVATE_SCOPES
+
+
+@pytest.mark.parametrize("purpose", ["pool", "final"])
+async def test_a_public_playlist_without_the_public_scope_asks_to_reconnect(
+    penv: PlayEnv, purpose: str
+) -> None:
+    owner = await penv.user()
+    only_private_scopes(penv)
+    penv.fake.create_public = True  # and the change is refused: it needs the public scope too
+    if purpose == "pool":
+        row = await penv.run(penv.job(owner, tracks=TRACKS))
+        playlist_id = penv.pool(owner).playlist_id
+    else:
+        class_id, made = await final_playlist(penv, owner)
+        playlist_id = made.playlist_id
+        row = await fill(penv, owner, class_id, made)
+    assert (row.state, row.error_category) == ("failed", "scope_mismatch")
+    assert penv.fake.playlists[playlist_id].public is True
+    assert penv.entries(playlist_id) == []  # nothing written, nothing deleted
+    [replace] = penv.operations(owner, "spotify_replace_items")
+    assert (replace.state, replace.error_category) == ("failed", "scope_mismatch")
+    assert failure_sentence("scope_mismatch") == (
+        "Spotify did not give the access we need. Connect again and allow it."
+    )
+
+
+async def test_a_private_playlist_still_works_with_only_the_private_scopes(penv: PlayEnv) -> None:
+    owner = await penv.user()
+    only_private_scopes(penv)
+    row = await penv.run(penv.job(owner, tracks=MANY))
+    assert (row.state, row.error_category) == ("completed", None)
+    assert penv.entries(penv.pool(owner).playlist_id) == uris(MANY)
+    assert details(penv) == []
