@@ -11,7 +11,8 @@ ending job is kept, detached from the class, so its owner can still read why it 
 
 - ``jobs.discarded_class_id``: the id the class had. No foreign key (the class is gone); the
   owner's ``GET /api/classes/{id}`` finds the job by it (``jobs_owner_discarded``).
-- ``jobs_class_id`` (migration 0052) also allows a NULL ``class_id`` for a detached job, and
+- ``jobs_class_id`` (migration 0052, widened by 0056 for ``spotify_sync``) also allows a NULL
+  ``class_id`` for a detached job, and
   ``jobs_discarded`` holds the shape: a detached job has no class, is one of the three kinds and
   ended ``failed`` or ``cancelled``. ``jobs_one_open_per_class`` never sees it (it is ended).
 
@@ -33,7 +34,9 @@ down_revision: str | Sequence[str] | None = "0057_swedebeat_account_ref"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-OLD_CLASS_CHECK = "class_id IS NOT NULL OR kind = 'player_remove'"
+# The check as migration 0056 left it (0052 made it, 0056 added ``spotify_sync``; no other
+# migration touches it). ``tests/test_jobs_discard_schema.py`` inserts each class-less kind.
+OLD_CLASS_CHECK = "class_id IS NOT NULL OR kind IN ('player_remove', 'spotify_sync')"
 CLASS_CHECK = f"{OLD_CLASS_CHECK} OR discarded_class_id IS NOT NULL"
 DISCARDED_CHECK = (
     "discarded_class_id IS NULL OR (class_id IS NULL "

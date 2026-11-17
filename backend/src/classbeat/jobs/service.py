@@ -51,8 +51,8 @@ class JobView:
     kind: str
     state: str
     stage: str | None
-    # None only for a ``player_remove`` (ADR 0034 section 5); a job whose class was discarded
-    # (ADR 0038) names the class it had, so "Try again" finds the request kept for it.
+    # None only for a ``player_remove`` or ``spotify_sync`` (migrations 0052, 0056); a job whose
+    # class was discarded (ADR 0038) names the class it had, so "Try again" finds its request.
     class_id: UUID | None
     cancel_requested: bool
     approval_revision_id: UUID | None

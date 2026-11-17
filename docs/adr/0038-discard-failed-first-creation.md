@@ -1,8 +1,9 @@
 # ADR 0038: a class whose first creation failed is discarded; its ended job stays readable
 
 Status: Proposed (owner decision 2026-11-17: "If the first design failed, why save it?"; subject to
-review). Amends ADR 0029 section 5 (the hand-off), ADR 0005 section 1 (`jobs.class_id`) and ADR 0034
-section 5's check on it.
+review). Amends ADR 0029 section 5 (the hand-off), ADR 0005 section 1 (`jobs.class_id`) and its check
+`jobs_class_id` as ADR 0034 section 5 (migration 0052, `player_remove`) and ADR 0036 section 9
+(migration 0056, `spotify_sync`) left it.
 
 Related: ADR 0005 sections 2, 3 and 7, ADR 0007 sections 8, 10 and 11, ADR 0011 section 3, ADR 0029
 section 5.
@@ -83,5 +84,6 @@ and turn into a bare 404.
   removes it. This is rare (three lost leases) and safe (nothing is removed).
 - A refused reading (`not_connected`, `out_of_scope`) completes, so it is not a failure and its class
   stays with its "Interpret again" and "Try again" offers.
-- Detached jobs live until the account goes, like `player_remove` jobs; they hold no content.
+- Detached jobs live until the account goes, like the class-less `player_remove` and `spotify_sync`
+  jobs (migrations 0052 and 0056); they hold no content.
 - The downgrade of 0058 deletes the detached jobs.

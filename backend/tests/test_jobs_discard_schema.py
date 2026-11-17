@@ -6,14 +6,16 @@ names a class (``*class_id``), is either one whose row keeps the class (``KEEPIN
 a class therefore fails here until someone decides, in its PR, whether it keeps a class.
 """
 
+import secrets
 from collections.abc import Iterator
 
 import pytest
 from sqlalchemy import TextClause, text
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import IntegrityError
 
 from classbeat.jobs.discard import DISCARDED_WITH, KEEPING, KEEPING_BY_JOB
-from jobtools import engine_for
+from jobtools import digest, engine_for, new_user
 
 _REFERENCING = text(
     "SELECT DISTINCT c.conrelid::regclass::text FROM pg_constraint c "
@@ -56,3 +58,32 @@ def test_the_listed_tables_and_columns_exist(admin: Connection) -> None:
         assert (table, "job_id") in columns
     for table in DISCARDED_WITH:
         assert any(t == table for t, _ in columns)
+
+
+_CLASSLESS = text(
+    "INSERT INTO jobs (owner_id, kind, state, class_id, input, idempotency_key, request_hash) "
+    "VALUES (:o, :k, 'queued', NULL, '{}'::jsonb, :key, :h)"
+)
+
+
+@pytest.mark.parametrize(
+    ("kind", "allowed"),
+    [
+        ("player_remove", True),
+        ("spotify_sync", True),
+        ("design_draft", False),
+        ("test_kind", False),
+    ],
+)
+def test_only_the_classless_kinds_have_no_class_without_a_discard(
+    admin: Connection, kind: str, allowed: bool
+) -> None:
+    """``jobs_class_id`` as migrations 0052, 0056 and 0058 leave it: a job without a class is a
+    ``player_remove`` or a ``spotify_sync`` (or a detached discarded job, ``jobs_discarded``)."""
+    owner = new_user(admin)
+    params = {"o": owner, "k": kind, "key": secrets.token_urlsafe(18), "h": digest("r")}
+    if allowed:
+        admin.execute(_CLASSLESS, params)
+        return
+    with pytest.raises(IntegrityError, match="jobs_class_id"):
+        admin.execute(_CLASSLESS, params)
