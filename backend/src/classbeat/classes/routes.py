@@ -39,6 +39,7 @@ from classbeat.classes import (
     song_list_out,
     song_views,
 )
+from classbeat.classes.music_playlists_out import MosaicSongOut, MusicPlaylistOut, MusicPlaylistsOut
 from classbeat.classes.provenance_out import ProvenanceOut
 from classbeat.classes.schemas import (
     BeatOneIn,
@@ -49,9 +50,6 @@ from classbeat.classes.schemas import (
     DismissedRulesOut,
     MessageOut,
     MessagesOut,
-    MosaicSongOut,
-    MusicPlaylistOut,
-    MusicPlaylistsOut,
     PickIn,
     PlayerStateOut,
     PlaylistOut,

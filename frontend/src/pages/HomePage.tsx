@@ -67,8 +67,8 @@ export function HomePage() {
               <ClassRow
                 key={c.id}
                 cls={c}
-                // A class not saved to MOWL can be discarded from here; a saved one is deleted from its page.
-                actions={c.saved.count === 0 ? <DeleteClassFromList summary={c} onDeleted={retry} /> : undefined}
+                // The confirmation says what stays in MOWL and in Swedebeat: classbeat deletes neither.
+                actions={<DeleteClassFromList summary={c} onDeleted={retry} />}
               />
             ))}
           </ClassList>

@@ -1988,6 +1988,8 @@ export const en = {
   'player.state.sent': 'On the player: version {number}.',
   'player.state.newer': 'On the player: version {number}. Version {current} is newer.',
   'class.delete.player': 'This class is on the player. Deleting it removes it there too.',
+  'class.delete.swedebeat':
+    'What we saved in Swedebeat (a playlist or a mix) cannot be deleted from here. It stays in Swedebeat.',
   'player.remove.run': 'Removing it from the player…',
   'player.remove.uncertain': 'We could not tell if the player removed it. Check your account page.',
   'player.reason.not_connected': 'classbeat-player is not connected. Connect it on your account page first.',

@@ -65,6 +65,9 @@ class ClassOut(BaseModel):
     # ADR 0007 amendment of 2026-11-03, item 10 (#530): true only when the class's
     # ``music_source`` is ``{"source": "none"}`` (a soundless class); false for every older class.
     soundless: bool = False
+    # ADR 0036 section 6: an output was written to SwedeBeat (a playlist or a mix); a class delete
+    # cannot take it back, so the delete card says so.
+    swedebeat_written: bool = False
 
     @classmethod
     def of(cls, row: Any) -> "ClassOut":
@@ -100,6 +103,7 @@ class ClassOut(BaseModel):
             tss_approximate=bool(row.tss_approximate),
             sport="running" if row.sport == "running" else "cycling",
             soundless=row.soundless is True,
+            swedebeat_written=row.swedebeat_written is True,
         )
 
 
@@ -223,31 +227,6 @@ class ClassDetailOut(ClassOut):
     swedebeat_match: SwedebeatMatchPointerOut | None = None
     # ADR 0007 amendment "beat-one corrections": the per-song correction control's data.
     beat_one: BeatOneOut = BeatOneOut(available=False)
-
-
-class MosaicSongOut(BaseModel):
-    """One of the up to four songs of a playlist's mosaic: its title (for the initials tile) and
-    its album cover on the pinned host, or null. No Spotify id."""
-
-    title: str
-    cover: str | None = None
-
-
-class MusicPlaylistOut(BaseModel):
-    """A playlist classbeat made in the owner's own Spotify, for the Music page. ``link`` is the
-    owner's own, built by the API from the stored id of a verified playlist (ADR 0013 section 4)."""
-
-    class_id: UUID
-    class_title: str
-    name: str
-    link: str | None = None
-    detached: bool = False
-    note: str | None = None
-    songs: list[MosaicSongOut]
-
-
-class MusicPlaylistsOut(BaseModel):
-    playlists: list[MusicPlaylistOut]
 
 
 class ClassesOut(BaseModel):

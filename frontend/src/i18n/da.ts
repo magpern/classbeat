@@ -2110,6 +2110,8 @@ const da: Catalogue = {
   'player.state.sent': 'Sendt til afspilleren: version {number}.',
   'player.state.newer': 'Sendt til afspilleren: version {number}. Version {current} er nyere.',
   'class.delete.player': 'Holdet findes på afspilleren. Når du sletter det, sendes en fjernelse til afspilleren.',
+  'class.delete.swedebeat':
+    'Det, vi gemte i Swedebeat (en afspilningsliste eller en mix), kan ikke slettes herfra. Det bliver i Swedebeat.',
   'player.remove.run': 'Fjerner holdet fra classbeat-player…',
   'player.remove.uncertain': 'Vi kunne ikke se, om afspilleren fjernede det. Afgør det på din kontoside.',
   'player.reason.not_connected': 'classbeat-player er ikke tilsluttet. Tilslut det på din kontoside først.',

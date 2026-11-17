@@ -38,10 +38,15 @@ describe('Home', () => {
     expect(within(recent).getByRole('link', { name: 'See all' })).toHaveAttribute('href', '/en/classes')
   })
 
-  it('puts a trash can on a class not saved to MOWL, also one with no version, and discards it', async () => {
+  it('puts a trash can on every class, with what stays in MOWL and Swedebeat in the confirmation', async () => {
     const SECOND = '22222222-2222-4222-8222-222222222222'
     const empty = classBody({ id: SECOND, title: 'Never designed', current_revision_id: null, current_revision_number: null, profile: [] })
-    const saved = classBody({ id: '33333333-3333-4333-8333-333333333333', title: 'Saved one', saved: { count: 1, latest_revision_number: 1, latest_saved_at: '2026-10-30T10:00:00Z', latest_up_to_date: true } })
+    const saved = classBody({
+      id: '33333333-3333-4333-8333-333333333333',
+      title: 'Saved one',
+      saved: { count: 1, latest_revision_number: 1, latest_saved_at: '2026-10-30T10:00:00Z', latest_up_to_date: true },
+      swedebeat_written: true,
+    })
     let remaining = [empty, saved]
     const api = home({
       'GET /api/classes': () => ({ classes: remaining }),
@@ -51,8 +56,14 @@ describe('Home', () => {
       },
     })
     renderAt('/')
-    await userEvent.click(await screen.findByRole('button', { name: 'Delete class Never designed' }))
-    expect(screen.queryByRole('button', { name: 'Delete class Saved one' })).toBeNull()
+    // A saved, Swedebeat-written class: the dialog says both stay; nothing is deleted yet.
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete class Saved one' }))
+    expect(await screen.findByText(/stays there; delete it in MOWL/)).toBeInTheDocument()
+    expect(screen.getByText(/cannot be deleted from here/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Keep it' }))
+    // An unsaved class with nothing in Swedebeat: no Swedebeat warning; it is discarded.
+    await userEvent.click(screen.getByRole('button', { name: 'Delete class Never designed' }))
+    expect(screen.queryByText(/cannot be deleted from here/)).toBeNull()
     await userEvent.click(await screen.findByRole('button', { name: 'Yes, delete' }))
     await waitFor(() => {
       expect(screen.queryByRole('link', { name: 'Never designed' })).toBeNull()
