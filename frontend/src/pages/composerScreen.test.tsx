@@ -365,6 +365,25 @@ describe('the Spotify gate in the composer', () => {
     })
   })
 
+  it('needs the working-playlist consent for attached playlists too, and lets "No music" through', async () => {
+    const api = fakeApi(
+      routes({ 'GET /api/connections/spotify': { ...SPOTIFY_STATUS_OK, pool_consent: false } }, { soundless_enabled: true }),
+    )
+    renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: 'An easy ride' } })
+    fireEvent.click(screen.getByRole('button', { name: /Add music/ }))
+    choose('Hill climbs')
+    expect(await screen.findByTestId('spotify-prompt')).toHaveAttribute('data-need', 'consent')
+    expect(screen.getByRole('button', { name: /^Start/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Surprise me/ })).toBeDisabled()
+    choose('No music')
+    expect(screen.queryByTestId('spotify-prompt')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /^Start/ }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+  })
+
   it('shows the prompt for a server refusal instead of an error', async () => {
     fakeApi(routes({ 'POST /api/jobs': () => reason(409, 'needs_spotify') }))
     renderAt('/classes/new')

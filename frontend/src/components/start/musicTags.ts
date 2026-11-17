@@ -53,13 +53,14 @@ export function musicInput(state: MusicTags): { music_sources?: MusicSource[]; m
 }
 
 /**
- * The override the Spotify gate reads (`spotifyGate.ts`): the gate treats an attached playlist like a chosen
- * one (it needs the connection) and "No music" as exempt, as on the old start screen.
+ * The override the Spotify gate reads (`spotifyGate.ts`). In the composer "favoured, not limited" means classbeat
+ * may search beyond the attached playlists, so every class but "No music" is a song pick: it needs the Spotify
+ * connection and the working-playlist consent, with or without attached playlists (owner's Architect, #1190).
+ * Only "No music" is exempt. The old start screen's own rule is unchanged.
  */
 export function gateOverride(state: MusicTags): MusicOverride | null {
   if (state.kind === 'none') return { source: 'none' }
-  const [first] = state.tags
-  return first === undefined ? null : { source: 'mowl_spotify_playlist', spotify_playlist_id: first.id }
+  return state.tags.length === 0 ? null : { source: 'pick' }
 }
 
 /** The tags again from kept ids (a "Try again" hand-off): only playlists still on offer, at most the cap. */

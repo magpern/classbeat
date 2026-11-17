@@ -78,9 +78,9 @@ describe('the music tags', () => {
     }
   })
 
-  it('tells the Spotify gate what it reads: no choice, a playlist, or "No music"', () => {
+  it('tells the Spotify gate what it reads: no choice, a song pick for attached playlists, or "No music"', () => {
     expect(gateOverride(NO_TAGS)).toBeNull()
-    expect(gateOverride(addPlaylist(NO_TAGS, tag(1)))).toEqual({ source: 'mowl_spotify_playlist', spotify_playlist_id: 'playlist1' })
+    expect(gateOverride(addPlaylist(NO_TAGS, tag(1)))).toEqual({ source: 'pick' })
     expect(gateOverride({ kind: 'none' })).toEqual({ source: 'none' })
   })
 
