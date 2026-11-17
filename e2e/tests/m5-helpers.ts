@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import { PLAYLISTS, connectMowl, getJob } from './design-helpers'
+import { withSpotify } from './spotify-helpers'
 import { PASSWORD, nextTotp, passCaptcha, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
 
 // Shared by m5-quota.spec.ts and m5-admin.spec.ts (M5 T1, #228): parallel API calls from several
@@ -134,7 +135,11 @@ function randomAddress(): string {
   return `192.0.${1 + Math.floor(Math.random() * 254)}.${1 + Math.floor(Math.random() * 254)}`
 }
 
-/** A user's page in a context of its own, signed up and signed in, with the fake MOWL connected. */
+/**
+ * A user's page in a context of its own, signed up and signed in, with the fake MOWL and the fake
+ * Spotify connected (`mowl`): a cycling design on a Spotify playlist needs the Spotify connection, or
+ * the server refuses it with `needs_spotify` (roadmap Amendment 25), which these specs are not about.
+ */
 export async function newUser(browser: Browser, baseURL: string | undefined, tag: string, mowl = true, admin = false) {
   const context = await browser.newContext({ baseURL, extraHTTPHeaders: { 'X-Forwarded-For': randomAddress() } })
   const page = await context.newPage()
@@ -150,7 +155,10 @@ export async function newUser(browser: Browser, baseURL: string | undefined, tag
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
     await expect(page).not.toHaveURL(/\/signin/)
   } else await signInThroughUi(page, email)
-  if (mowl) await connectMowl(page)
+  if (mowl) {
+    await connectMowl(page)
+    await withSpotify(page)
+  }
   return { page, context, email, connectionId: mowl ? await mowlConnectionId(page) : '' }
 }
 
