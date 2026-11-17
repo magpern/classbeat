@@ -6,6 +6,7 @@ import { Notice } from '../components/forms'
 import { Button } from '../components/ui/button'
 import { useClassList } from '../hooks/useClassList'
 import { PRESETS, presetLink } from '../lib/presets'
+import { DeleteClassFromList } from '../components/classes/DeleteClassFromList'
 import { Link } from '../router/Router'
 
 const RECENT = 6
@@ -63,7 +64,12 @@ export function HomePage() {
         {listing.status === 'ready' && listing.classes.length > 0 ? (
           <ClassList>
             {listing.classes.slice(0, RECENT).map((c) => (
-              <ClassRow key={c.id} cls={c} />
+              <ClassRow
+                key={c.id}
+                cls={c}
+                // A class not saved to MOWL can be discarded from here; a saved one is deleted from its page.
+                actions={c.saved.count === 0 ? <DeleteClassFromList summary={c} onDeleted={retry} /> : undefined}
+              />
             ))}
           </ClassList>
         ) : null}
