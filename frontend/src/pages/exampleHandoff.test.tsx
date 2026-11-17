@@ -7,7 +7,7 @@ import { EXAMPLES, exampleKey } from '../publicSite/examples'
 import { SIGNED_IN, fakeApi, json } from '../test/fakeApi'
 import { SESSION_ROUTES, jobBody } from '../test/jobFixtures'
 import { renderAt } from '../test/render'
-import { connectionsBody } from '../test/songFixtures'
+import { SPOTIFY_STATUS_OK, connectionsBody } from '../test/songFixtures'
 
 // PP6 (#895): "Create a class like this" hands an example's slug to the designer. The API is faked.
 
@@ -19,7 +19,8 @@ const PROMPT = translate('en', exampleKey(SLUG, 'prompt'))
 const KEY = 'classbeat.example'
 const READY = {
   ...SESSION_ROUTES,
-  'GET /api/connections': connectionsBody(false),
+  'GET /api/connections': connectionsBody(true),
+  'GET /api/connections/spotify': SPOTIFY_STATUS_OK,
   'GET /api/music/mowl-playlists': { playlists: [] },
   'POST /api/jobs': () => json(jobBody('queued', { kind: 'interpret_request' }), 201),
 }

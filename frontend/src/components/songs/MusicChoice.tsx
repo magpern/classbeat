@@ -4,9 +4,12 @@ import { SegmentedControl, type SegmentedOption } from '../ui/segmented-control'
 
 export type Music = 'playlist' | 'pick' | 'swedebeat_mix' | 'none'
 
-/** What "Pick for me" needs (ADR 0008 section 9). `off`: the feature is hidden. */
+/**
+ * What "Pick for me" needs (ADR 0008 section 9). `off`: the feature is hidden (song picking is off on this
+ * server or for this user); `unreachable`: it is not known, because the status could not be read.
+ */
 export type SongsAvailability =
-  | { kind: 'off' }
+  | { kind: 'off'; unreachable?: true }
   | { kind: 'needs_spotify' }
   | { kind: 'needs_consent'; spotifyConnectionId: string }
   | { kind: 'ready'; spotifyConnectionId: string }

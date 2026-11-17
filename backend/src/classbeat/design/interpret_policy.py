@@ -56,6 +56,8 @@ class Offer:
     options: tuple[MusicOption, ...] = ()
     pick_ready: bool = False
     spotify: bool = False  # a Spotify connection is named: a cycling class may use a playlist
+    # song picking admits the user; without it a class with no music is ``song_picking_unavailable``
+    song_picking: bool = True
 
 
 @dataclass(frozen=True)
@@ -178,7 +180,15 @@ def resolve(
     fields["explicit"] = explicit + stated_games
     override = dict(music_override or {}) or None
     music = choose(
-        read.music, request, sport, offer.options, offer.pick_ready, offer.spotify, override, items
+        read.music,
+        request,
+        sport,
+        offer.options,
+        offer.pick_ready,
+        offer.spotify,
+        override,
+        items,
+        picking=offer.song_picking,
     )
     taste = resolve_taste(read.music_taste, request, music, items)
     if taste is not None:

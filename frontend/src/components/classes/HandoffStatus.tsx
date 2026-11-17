@@ -39,18 +39,23 @@ export function HandoffStatus({ classId, handoff }: { classId: string; handoff: 
   }
   const notConnected = phase === 'refused' && refusal === 'not_connected'
   const needsSpotify = phase === 'refused' && refusal === 'needs_spotify'
+  // Song picking is not available to the user: nothing to connect, so no link to the Spotify page.
+  const unavailable = phase === 'refused' && refusal === 'song_picking_unavailable'
+  const message = notConnected
+    ? t('ws.refused.notConnected')
+    : needsSpotify
+      ? t('interp.reason.needs_spotify')
+      : unavailable
+        ? t('interp.reason.song_picking_unavailable')
+        : phase === 'refused'
+          ? t('start.handoff.refused')
+          : phase === 'failed'
+            ? t('start.handoff.failed')
+            : t('start.handoff.error')
   return (
     <div className="flex flex-col gap-3" data-testid="handoff-stopped">
       <Notice kind="error">
-        {notConnected
-          ? t('ws.refused.notConnected')
-          : needsSpotify
-            ? t('interp.reason.needs_spotify')
-            : phase === 'refused'
-            ? t('start.handoff.refused')
-            : phase === 'failed'
-              ? t('start.handoff.failed')
-              : t('start.handoff.error')}
+        {message}
       </Notice>
       {again.error ? <Notice kind="error">{again.error}</Notice> : null}
       <p className="m-0 flex flex-wrap items-center gap-3">

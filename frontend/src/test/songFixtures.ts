@@ -4,6 +4,16 @@ export const LIST_ID = '55555555-5555-4555-8555-555555555555'
 export const HASH = 'ab'.repeat(32)
 export const MOWL_ID = 'c0000000-0000-4000-8000-000000000001'
 export const SPOTIFY_ID = 'c0000000-0000-4000-8000-000000000002'
+/** `GET /api/connections/spotify` for a connected account with the working playlist allowed. */
+export const SPOTIFY_STATUS_OK = {
+  status: 'connected',
+  last_error: null,
+  last_error_message: null,
+  callback_url: 'http://127.0.0.1:8000/oauth/spotify/callback',
+  pool_consent: true,
+  consent_version: 1,
+  consent_text: 'x',
+}
 export const CLASS_PATH = `/api/classes/${CLASS_ID}`
 export const LIST_PATH = `${CLASS_PATH}/revisions/${LIST_ID}`
 export const NEW_JOB = {

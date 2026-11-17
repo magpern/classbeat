@@ -64,4 +64,12 @@ describe('interpretationNote', () => {
     ])
     expect(note.asked.map((l) => l.text)).toEqual(['Music from', 'Song language', 'Something in your request'])
   })
+
+  it.each([
+    ['needs_spotify', 'Music. A class with music needs your Spotify account.'],
+    ['song_picking_unavailable', 'Music. Choosing songs is not available on your account, so a class with music cannot be made.'],
+  ] as const)('words the music reason %s from the catalogue', (code, text) => {
+    const note = interpretationNote([item('music', 'not_as_asked', null, { reasonCode: code })])
+    expect(note.notAsked.map((l) => l.text)).toEqual([text])
+  })
 })

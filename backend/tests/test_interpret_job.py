@@ -9,6 +9,7 @@ from uuid import UUID
 
 import pytest
 
+from classbeat.design import interpret_kind
 from classbeat.design import sport as sport_module
 from classbeat.design.interpret_kind import InterpretRequestInput
 from classbeat.design.interpretation_row import StoredInterpretation
@@ -47,6 +48,7 @@ async def test_admit_creates_the_class_and_the_first_message_and_takes_no_credit
         {"route_key": "default"},
         {"sports": ["cycling", "running"]},
         {"pick_ready": True},
+        {"song_picking": True},
         {"music_override": {"source": "pick"}},  # a pick needs the Spotify connection
         {"request": " "},
         {"request": "x" * 2001},
@@ -90,17 +92,34 @@ NO_SPOTIFY: list[tuple[dict[str, Any], str]] = [
 ]
 
 
+@pytest.mark.parametrize(
+    ("picking", "reason"),
+    [
+        (True, "needs_spotify"),  # the account can pick songs: the Spotify connection is missing
+        (False, "song_picking_unavailable"),  # nothing to connect: the Spotify page is hidden
+    ],
+)
 @pytest.mark.parametrize(("more", "answer"), NO_SPOTIFY)
 async def test_without_spotify_only_a_class_that_can_do_without_it_is_admitted(
-    ienv: InterpretEnv, more: dict[str, Any], answer: str
+    ienv: InterpretEnv,
+    monkeypatch: pytest.MonkeyPatch,
+    more: dict[str, Any],
+    answer: str,
+    picking: bool,
+    reason: str,
 ) -> None:
+    async def admits(*_args: Any) -> bool:
+        return picking
+
+    monkeypatch.setattr(interpret_kind, "_song_picking", admits)
     before = ienv.counts()
     made = await ienv.start(spotify=False, **more)
     if answer == "admitted":
         assert made.status_code == 201, made.text
+        assert ienv.stored_input(UUID(made.json()["id"]))["song_picking"] is picking
         return
     assert made.status_code == 409, made.text
-    assert made.json()["detail"]["reason"] == "needs_spotify"
+    assert made.json()["detail"]["reason"] == reason
     assert ienv.counts() == before  # no class, no job, no message and no credit
 
 
