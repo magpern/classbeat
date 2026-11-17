@@ -280,9 +280,12 @@ async def test_the_class_detail_points_at_the_newest_match_and_says_if_it_is_app
     clean(shown)
     for song in songs():  # the detail carries no title or artist of the match
         assert song.wanted.title not in shown.text
-    # The class list gains nothing.
+    # The class list gains no match pointer and no match id; its one Swedebeat key is the delete
+    # card's ``swedebeat_written`` flag (ADR 0036 section 6), which says nothing about a match.
     listed = await mine.browser.get("/api/classes")
-    assert "swedebeat" not in listed.text
+    assert "swedebeat_match" not in listed.text
+    assert str(newer) not in listed.text
+    assert str(mine.match) not in listed.text
 
     # A class without a match has a null pointer; theirs never points at mine.
     bare = new_class(mine.admin, mine.owner, "Bare")

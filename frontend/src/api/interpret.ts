@@ -16,10 +16,18 @@ export type MusicOverride =
   | { source: 'none' }
   | { source: 'pick' }
 
+/** An attached Spotify playlist (ADR 0038 section 3): favoured by the design, never a limit. */
+export interface MusicSource {
+  kind: 'spotify_playlist'
+  id: string
+}
+
 /** What `POST /api/jobs` takes for `interpret_request`. */
 export interface InterpretInput {
   request: string
   music_override?: MusicOverride
+  /** At most 5 (ADR 0038 section 3); never together with `music_override`. */
+  music_sources?: MusicSource[]
   sport_override?: 'cycling' | 'running'
   mowl_connection_id: string
   spotify_connection_id?: string

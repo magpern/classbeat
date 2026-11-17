@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0058_composer_flag"]
+    assert script.get_heads() == ["0059_composer_flag"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0058_composer_flag"]
+        assert applied_revisions(database_url) == ["0059_composer_flag"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -841,7 +841,7 @@ def test_0042_plan_save_caps_up_and_down(
         command.downgrade(config, "base")
 
 
-def test_0058_admits_the_composer_flag_and_the_downgrade_removes_it(
+def test_0059_admits_the_composer_flag_and_the_downgrade_removes_it(
     owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """#1185: the upgrade lets ``composer_flow`` be stored and keeps every other row; the
@@ -863,14 +863,14 @@ def test_0058_admits_the_composer_flag_and_the_downgrade_removes_it(
         return [row[0] for row in rows]
 
     try:
-        command.upgrade(config, "0057_swedebeat_account_ref")
+        command.upgrade(config, "0058_discarded_first_creation")
         put("running_enabled")
         with pytest.raises(IntegrityError):
             put("composer_flow")
-        command.upgrade(config, "0058_composer_flag")
+        command.upgrade(config, "0059_composer_flag")
         put("composer_flow")
         assert keys() == ["composer_flow", "running_enabled"]
-        command.downgrade(config, "0057_swedebeat_account_ref")
+        command.downgrade(config, "0058_discarded_first_creation")
         assert keys() == ["running_enabled"]  # only the composer row is gone
         with pytest.raises(IntegrityError):
             put("composer_flow")

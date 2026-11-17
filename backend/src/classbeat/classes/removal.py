@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.classes import seams, song_views
-from classbeat.classes.class_sql import LOCK_CLASS, OPEN_JOB_SQL
+from classbeat.classes.class_sql import DELETE_CLASS, LOCK_CLASS, OPEN_JOB_SQL
 from classbeat.classes.schemas import PlaylistNameOut
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
@@ -31,7 +31,6 @@ _KEPT = text(
     "SELECT count(*) FROM saved_workouts WHERE owner_id = :owner_id AND class_id = :class_id "
     "AND detached_at IS NULL"
 )
-_DELETE = text("DELETE FROM classes WHERE id = :class_id AND owner_id = :owner_id")
 
 
 class DeletedOut(BaseModel):
@@ -93,7 +92,7 @@ async def delete(
         kept = int((await db.execute(_KEPT, _ids(ctx, class_id))).scalar_one())
         left = (await song_views.playlists_of(db, ctx.user_id, class_id)).all
         job_id = await on_class_delete(db, ctx.user_id, class_id)  # ADR 0034 section 5
-        await db.execute(_DELETE, _ids(ctx, class_id))
+        await db.execute(DELETE_CLASS, _ids(ctx, class_id))
     return DeleteOutcome(None, kept, left, job_id)
 
 

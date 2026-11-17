@@ -1,7 +1,7 @@
 """The ``composer_flow`` flag (ADR 0038 section 2; #1185)
 
-Revision ID: 0058_composer_flag
-Revises: 0057_swedebeat_account_ref
+Revision ID: 0059_composer_flag
+Revises: 0058_discarded_first_creation
 Create Date: 2026-11-17
 
 Widens the ``app_settings.key`` check (migrations 0007, 0016, 0025, 0027, 0035 and 0043) so an
@@ -14,8 +14,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0058_composer_flag"
-down_revision: str | Sequence[str] | None = "0057_swedebeat_account_ref"
+revision: str = "0059_composer_flag"
+down_revision: str | Sequence[str] | None = "0058_discarded_first_creation"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

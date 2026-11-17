@@ -20,6 +20,8 @@ export interface ClassData {
 export type ClassState =
   | { status: 'loading' }
   | { status: 'not_found' }
+  // ADR 0039: the class's first creation failed and the empty class was removed; the ended job says why.
+  | { status: 'discarded'; jobId: string }
   | { status: 'failed' }
   | { status: 'ready'; data: ClassData }
 
@@ -29,10 +31,18 @@ export type RevisionState =
   | { status: 'failed' }
   | { status: 'ready'; revision: Revision }
 
+/** The ended job of a class its failed first creation discarded (a 404 `class_discarded`), or null. */
+export function discardedJobId(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.status !== 404 || error.reason !== 'class_discarded') return null
+  const detail = (error.body as { detail?: { job_id?: unknown } } | undefined)?.detail
+  return typeof detail?.job_id === 'string' ? detail.job_id : null
+}
+
 /**
  * Loads one class with its revisions and conversation. `reload` reads all three again and keeps
  * showing the old data meanwhile; only the newest read may set the state, so a slow answer never
- * replaces a newer one. A foreign or unknown id is the same `not_found`.
+ * replaces a newer one. A foreign or unknown id is the same `not_found`; the user's own class that a
+ * failed first creation removed is `discarded`, with that job.
  */
 export function useClassData(classId: string): { state: ClassState; reload: () => void } {
   const [state, setState] = useState<ClassState>({ status: 'loading' })
@@ -46,16 +56,19 @@ export function useClassData(classId: string): { state: ClassState; reload: () =
     const { signal } = abort
     void (async () => {
       try {
-        const [summary, revisions, messages] = await Promise.all([
-          getClass(classId, signal),
-          listRevisions(classId, signal),
-          listMessages(classId, signal),
-        ])
+        // All three at once; the class's own answer is awaited first, so its 404 is the one seen.
+        const rest = Promise.all([listRevisions(classId, signal), listMessages(classId, signal)])
+        rest.catch(() => undefined)
+        const summary = await getClass(classId, signal)
+        const [revisions, messages] = await rest
         if (!signal.aborted) setState({ status: 'ready', data: { summary, revisions, messages } })
       } catch (error) {
         if (signal.aborted) return
+        const jobId = discardedJobId(error)
         setState(
-          error instanceof ApiError && error.status === 404
+          jobId !== null
+            ? { status: 'discarded', jobId }
+            : error instanceof ApiError && error.status === 404
             ? { status: 'not_found' }
             : // Keep what is shown on a failed reload; the first load has nothing to keep.
               (previous) => (previous.status === 'ready' ? previous : { status: 'failed' }),

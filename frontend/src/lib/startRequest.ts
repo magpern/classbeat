@@ -9,6 +9,8 @@ export interface KeptRequest {
   request: string
   /** The picker row's key (`musicSources.ts`), or null for "classbeat chooses". */
   music: string | null
+  /** The composer's attached Spotify playlist ids (ADR 0038 section 10.1), in order; absent for the old start screen. */
+  playlists?: string[]
   sport: 'cycling' | 'running'
 }
 
@@ -29,6 +31,7 @@ export function recallRequest(classId: string): KeptRequest | null {
     return {
       request: parsed.request,
       music: typeof parsed.music === 'string' ? parsed.music : null,
+      ...(Array.isArray(parsed.playlists) ? { playlists: parsed.playlists.filter((id): id is string => typeof id === 'string') } : {}),
       sport: parsed.sport === 'running' ? 'running' : 'cycling',
     }
   } catch {

@@ -116,6 +116,8 @@ export async function getConnectionsView(): Promise<{
   soundlessEnabled: boolean
   /** Whether the page may offer "Scan with the MOWL app" (ADR 0024); an answer without it means off. */
   mowlQrEnabled: boolean
+  /** The effective `composer_flow` flag (ADR 0038 section 2); an answer without it means off. */
+  composerFlow: boolean
 }> {
   const body = object(await get('/api/connections'), 'connections')
   const access = body.swedebeat === undefined ? null : object(body.swedebeat, 'swedebeat')
@@ -124,6 +126,7 @@ export async function getConnectionsView(): Promise<{
     runningEnabled: body.running_enabled === true,
     soundlessEnabled: body.soundless_enabled === true,
     mowlQrEnabled: body.mowl_qr_enabled === true,
+    composerFlow: body.composer_flow === true,
     swedebeat:
       access === null
         ? { enabled: false, available: false, usesSwedebeat: false }

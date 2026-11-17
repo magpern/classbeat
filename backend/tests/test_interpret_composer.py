@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from classbeat.agent.interpret import InterpretContext, InterpretResult, interpret_stage
 from classbeat.agent.interpret_input import first_message
 from classbeat.agent.interpreted import InterpretedRequest
+from classbeat.agent.interpreted_composer import from_request
 from classbeat.agent.stage import ToolAnswer
 from classbeat.design.interpret_composer_policy import composer_reading
 from classbeat.design.interpret_kind import InterpretRequestInput
@@ -301,3 +302,38 @@ def test_a_change_of_songs_never_stores_the_composers_part() -> None:
         REQUEST, {"pinned_songs": [pin("Africa")], "questions": [{"path": "intensity"}]}
     )
     assert storable(read) == {"games": []}
+
+
+@pytest.mark.parametrize(
+    ("words", "text", "expected"),
+    [
+        ("africa", "Make Africa the last climb", "Africa"),
+        ("a", "Make Africa the last climb", None),  # a lone letter is never a pin
+        ("  ", "Make Africa the last climb", None),
+        ("fri", "Make Africa the last climb", None),  # inside a word
+        ("Afric", "Make Africa the last climb", None),  # ends inside a word
+        ("U2", "One by U2 for the warm-up", "U2"),
+        ("warm-up", "One by U2 for the warm-up.", "warm-up"),
+        ("the last climb", "Africa, the last climb!", "the last climb"),
+        # a fold that changes the length elsewhere in the request changes nothing
+        ("Africa", "Straße climb, then Africa", "Africa"),
+        ("straße", "Ride to Straße by Kraftwerk", "Straße"),
+        ("Strasse", "Ride to Straße by Kraftwerk", None),  # the request's own spelling only
+        ("Mamma Mia", "låten MAMMA MIA ska vara backe 3", "MAMMA MIA"),
+    ],
+)
+def test_pin_words_are_whole_words_of_the_request(
+    words: str, text: str, expected: str | None
+) -> None:
+    assert from_request(words, text, 100) == expected
+
+
+def test_the_composer_flow_is_off_by_default() -> None:
+    from classbeat.config import Settings
+    from classbeat.design import composer
+
+    settings = Settings(environment="test")
+    assert settings.composer_flow is False
+    assert composer.ComposerGate.from_settings(settings).enabled is False
+    assert composer.ComposerGate().enabled is False
+    assert core.composer_switch(settings.composer_flow, "on") is False

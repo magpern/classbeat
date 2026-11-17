@@ -23,6 +23,7 @@ from classbeat.db import user_session
 from classbeat.flags import effective as flags
 from classbeat.jobs import user
 from classbeat.jobs.credits import CreditLedger, QuotaRefused
+from classbeat.jobs.discard import discard_first_creation
 from classbeat.jobs.hold import CreateHold
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import POOL_KIND_NAMES, Approving, KindRegistry
@@ -34,7 +35,8 @@ KEY_UNIQUE = "jobs_owner_id_idempotency_key_key"
 INPUT_SIZE = "jobs_input"
 
 _VIEW = text(
-    "SELECT id, kind, state, stage, class_id, cancel_requested_at IS NOT NULL AS "
+    "SELECT id, kind, state, stage, coalesce(class_id, discarded_class_id) AS class_id, "
+    "cancel_requested_at IS NOT NULL AS "
     "cancel_requested, approval_revision_id, expires_at, approved_at, error_category, "
     "created_at, updated_at, finished_at, available_at, spotify_failure, spotify_retry_after "
     "FROM jobs WHERE id = :job_id AND owner_id = :owner_id"
@@ -49,7 +51,9 @@ class JobView:
     kind: str
     state: str
     stage: str | None
-    class_id: UUID | None  # None only for a ``player_remove`` (ADR 0034 section 5)
+    # None only for a ``player_remove`` or ``spotify_sync`` (migrations 0052, 0056); a job whose
+    # class was discarded (ADR 0039) names the class it had, so "Try again" finds its request.
+    class_id: UUID | None
     cancel_requested: bool
     approval_revision_id: UUID | None
     expires_at: datetime | None
@@ -183,9 +187,14 @@ async def get(factory: Factory, ctx: UserContext, job_id: UUID) -> JobView | Non
 
 
 async def cancel(factory: Factory, ctx: UserContext, job_id: UUID) -> JobView | None:
+    """A queued job cancelled now ends here, so the discard of an empty first creation (ADR 0039)
+    runs in this transaction, under the job's row lock; a running one ends in the worker's."""
     async with user_session(factory, ctx) as db:
-        if await user.cancel(db, ctx, job_id) is None:
+        state = await user.cancel(db, ctx, job_id)
+        if state is None:
             return None
+        if state == "cancelled":
+            await discard_first_creation(db, ctx.user_id, job_id)
         return await _view(db, ctx, job_id)
 
 

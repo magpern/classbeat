@@ -33,6 +33,7 @@ MAX_QUESTIONS: Final = 2
 TITLE_CHARS: Final = 100
 ARTIST_CHARS: Final = 100
 AT_CHARS: Final = 40
+MIN_LETTERS: Final = 2  # a pin's title, artist or place: never a lone letter ("a")
 QuestionPath = Literal["length_min", "intensity"]
 QUESTION_PATHS: Final[tuple[QuestionPath, ...]] = ("length_min", "intensity")
 
@@ -73,17 +74,23 @@ class InterpretedQuestion(BaseModel):
 
 
 def from_request(words: str | None, request: str, limit: int) -> str | None:
-    """The request's own spelling of ``words`` (cleaned, at most ``limit`` characters) when the
-    request holds them, case aside; ``None`` otherwise."""
+    """The request's own spelling of ``words`` (cleaned, at most ``limit`` characters, with at
+    least ``MIN_LETTERS`` letters or digits) when the request holds them as whole words, case
+    aside; ``None`` otherwise. Each candidate slice of the request is case-folded on its own, so a
+    character whose fold changes its length ("ß") elsewhere in the request changes nothing."""
     wanted = clean_text(words or "")
-    if not wanted or len(wanted) > limit:
+    if not wanted or len(wanted) > limit or sum(c.isalnum() for c in wanted) < MIN_LETTERS:
         return None
-    if len(request.casefold()) != len(request) or len(wanted.casefold()) != len(wanted):
-        return None  # a fold that changes the length ("ß") would cut the wrong slice
-    at = request.casefold().find(wanted.casefold())
-    if at < 0:
-        return None
-    return request[at : at + len(wanted)].strip() or None
+    folded, size = wanted.casefold(), len(wanted)
+    for at in range(len(request) - size + 1):
+        if at > 0 and request[at - 1].isalnum() and wanted[0].isalnum():
+            continue  # starts inside a word
+        end = at + size
+        if end < len(request) and request[end].isalnum() and wanted[-1].isalnum():
+            continue  # ends inside a word
+        if request[at:end].casefold() == folded:
+            return request[at:end].strip() or None
+    return None
 
 
 def sanitised_pins(pins: list[InterpretedPin], request: str) -> list[InterpretedPin]:

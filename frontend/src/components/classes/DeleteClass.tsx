@@ -69,6 +69,7 @@ export function DeleteClass({
         {kept > 0 ? t('class.delete.kept', { count: kept }) : t('class.delete.keptNone')}
       </Notice>
       {summary.player !== null ? <Notice>{t('class.delete.player')}</Notice> : null}
+      {summary.swedebeatWritten ? <Notice kind="error">{t('class.delete.swedebeat')}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <p>
         <Button

@@ -23,6 +23,7 @@ import { useHandoff } from '../hooks/useHandoff'
 import { NotCurrent, PlaylistLine } from '../components/classes/ClassNotes'
 import { JobNotice } from '../components/classes/JobNotice'
 import { ClassHeader } from '../components/classes/ClassHeader'
+import { ClassUnavailable } from '../components/classes/ClassUnavailable'
 import { UncertainWrite } from '../components/classes/UncertainWrite'
 import { useSaveFlow } from '../components/classes/useSaveFlow'
 import { useSendToPlayer } from '../components/classes/useSendToPlayer'
@@ -30,7 +31,7 @@ import { sendOf } from '../components/player/operations'
 import { BeatOnePanel } from '../components/classes/BeatOnePanel'
 import { RevisionView } from '../components/classes/RevisionView'
 import { SwedebeatSection } from '../components/swedebeat/SwedebeatSection'
-import { Card, Notice } from '../components/forms'
+import { Notice } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { useClassData, useRevision, type ClassData } from '../hooks/useClassData'
 import { Link } from '../router/Router'
@@ -48,7 +49,6 @@ export function ClassPage({ classId }: { classId: string }) {
 }
 
 function ClassView({ classId }: { classId: string }) {
-  const t = useT()
   const { state, reload } = useClassData(classId)
   const [deleted, setDeleted] = useState<Deleted | null>(null)
   if (deleted !== null) {
@@ -58,35 +58,7 @@ function ClassView({ classId }: { classId: string }) {
       </Suspense>
     )
   }
-  if (state.status === 'loading') {
-    return (
-      <Card title={t('class.page.loadingTitle')}>
-        <p>{t('class.page.loading')}</p>
-      </Card>
-    )
-  }
-  if (state.status === 'not_found') {
-    return (
-      <Card title={t('class.page.notFoundTitle')}>
-        <p>{t('class.page.notFound')}</p>
-        <p>
-          <Link to="/classes">{t('class.list.title')}</Link>
-        </p>
-      </Card>
-    )
-  }
-  if (state.status === 'failed') {
-    return (
-      <Card title={t('class.page.failedTitle')}>
-        <Notice kind="error">{t('class.page.failed')}</Notice>
-        <p>
-          <button type="button" className="button" onClick={reload}>
-            {t('class.tryAgain')}
-          </button>
-        </p>
-      </Card>
-    )
-  }
+  if (state.status !== 'ready') return <ClassUnavailable classId={classId} state={state} onRetry={reload} />
   return <ClassBody classId={classId} data={state.data} reload={reload} onDeleted={setDeleted} />
 }
 

@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { PRESETS, presetLink, readPreset } from '../lib/presets'
@@ -36,6 +36,40 @@ describe('Home', () => {
     const recent = screen.getByRole('region', { name: 'Recent classes' })
     expect(within(recent).getAllByRole('listitem')).toHaveLength(1)
     expect(within(recent).getByRole('link', { name: 'See all' })).toHaveAttribute('href', '/en/classes')
+  })
+
+  it('puts a trash can on every class, with what stays in MOWL and Swedebeat in the confirmation', async () => {
+    const SECOND = '22222222-2222-4222-8222-222222222222'
+    const empty = classBody({ id: SECOND, title: 'Never designed', current_revision_id: null, current_revision_number: null, profile: [] })
+    const saved = classBody({
+      id: '33333333-3333-4333-8333-333333333333',
+      title: 'Saved one',
+      saved: { count: 1, latest_revision_number: 1, latest_saved_at: '2026-10-30T10:00:00Z', latest_up_to_date: true },
+      swedebeat_written: true,
+    })
+    let remaining = [empty, saved]
+    const api = home({
+      'GET /api/classes': () => ({ classes: remaining }),
+      [`DELETE /api/classes/${SECOND}`]: () => {
+        remaining = remaining.filter((c) => c.id !== SECOND)
+        return { deleted: true, mowl_workouts_kept: 0, note: 'x' }
+      },
+    })
+    renderAt('/')
+    // A saved, Swedebeat-written class: the dialog says both stay; nothing is deleted yet.
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete class Saved one' }))
+    expect(await screen.findByText(/stays there; delete it in MOWL/)).toBeInTheDocument()
+    expect(screen.getByText(/cannot be deleted from here/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Keep it' }))
+    // An unsaved class with nothing in Swedebeat: no Swedebeat warning; it is discarded.
+    await userEvent.click(screen.getByRole('button', { name: 'Delete class Never designed' }))
+    expect(screen.queryByText(/cannot be deleted from here/)).toBeNull()
+    await userEvent.click(await screen.findByRole('button', { name: 'Yes, delete' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: 'Never designed' })).toBeNull()
+    })
+    expect(api.calls.filter((c) => c.method === 'DELETE')).toHaveLength(1)
+    expect(screen.getByRole('link', { name: 'Saved one' })).toBeInTheDocument()
   })
 
   it('has one primary Design a class action and quick starts that link to the form', async () => {
