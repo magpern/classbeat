@@ -381,7 +381,7 @@ describe('the class page', () => {
     expect(screen.queryByRole('link', { name: 'Open in Spotify' })).toBeNull()
   })
 
-  it('has no Change songs for a class whose music Claude did not pick', async () => {
+  it('has no Change songs for a class whose music AI did not pick', async () => {
     fakeApi({ ...SESSION_ROUTES, ...classRoutes() })
     renderAt(`/classes/${CLASS_ID}`)
     await screen.findByText('Tuesday climb')
@@ -437,7 +437,7 @@ describe('the class page', () => {
     await screen.findByRole('button', { name: 'Change all songs' })
     fireEvent.change(region.querySelector('textarea')!, { target: { value: 'Everything new' } })
     fireEvent.click(screen.getByRole('button', { name: 'Change all songs' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(/was not picked by Claude/)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/was not picked by AI/)
     const input = (api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input
     expect(input.replace).toBe('all')
   })
@@ -619,7 +619,7 @@ describe('the refusals of starting a song job', () => {
   const REFUSALS: [string, RegExp][] = [
     ['stale_base', /class changed in the meantime/],
     ['revision_limit', /most versions/],
-    ['not_song_picked', /not picked by Claude/],
+    ['not_song_picked', /not picked by AI/],
     ['receipt_invalid', /cannot be turned into a playlist again/],
     ['chat_full', /conversation of this class is full/],
     ['consent_missing', /Allow the working playlist/],
