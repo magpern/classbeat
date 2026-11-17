@@ -10,8 +10,8 @@ Amends:
   the list and the design. Phase 2 fits instead of designing (§7). §5's Ask for changes is replaced by §6
   below. §6 (Resume) gets the rules of §7 and §9. §7 (waiting, expiry, cancel) is unchanged.
 - [ADR 0007](0007-classes-revisions-and-saving.md) §5: a save normally approves one revision by the user's
-  click on Save. Here the click on Approve covers the save of the **refit** of the approved draft, which has
-  a different hash (§7).
+  click on Save. Here the click on Approve covers the save of **the first draft**, stored in phase 2 from the approved design
+  (§7). It has a different hash from anything the user saw, and its hash is checked against `save_pending`.
 - [ADR 0029](0029-ai-first-class-design.md) §5: the hand-off can start a sketch (§4), and more web-side
   hand-offs follow the same pattern (§5, §7, §8).
 
@@ -109,14 +109,17 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
   - **A guard test** lists every route and job kind that takes a revision id, and enumerates every origin
     literal. It fails when a route does not call `revision_ready` and is not on a reviewed allowlist, or when
     an origin is neither classified ready nor not ready. The allowlist records why each entry is safe: the
-    studio outputs, `spotify-sync`, `studio-songs` and `swedebeat_match` are unreachable for a non-studio
-    class (`current_draft.py`).
+    studio outputs, `spotify-sync` and `studio-songs` are unreachable for a non-studio class
+    (`current_draft.py`); `swedebeat_match` is reachable for a composer song list and is safe because it
+    writes nothing and sends only titles and artists through the owner's gateway, as for any song list
+    today.
   - Every hard-coded list of revision origins gets `sketch`, or a test showing it doesn't need it. If the
     origin is constrained in the database, a migration adds the value (an insert-time change only).
   - Revisions stay immutable (ADR 0007 §2, `revisions_immutable`): nothing here updates one.
 - **Chat changes on a sketch.** `revise_draft` accepts a `sketch` base (the sketch is current, so its base is
   never stale) and produces a `sketch`. It follows the soundless revise rules, takes no credit, and counts
-  toward the class's revise limit (§9).
+  toward the class's revise limit (§9). `Provenance`'s lineage rule (`agent/records.py`, `_lineage`) is
+  extended so that origin `sketch` may name a base and a request, as a revise does.
 - **A soundless class ("No music")** has no sketch: its first design is the class, as today, and its
   approve-and-save is the save alone.
 
@@ -159,8 +162,16 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
     becomes `v: 3` with a `preview`: `{content, music}`, the draft's content and the `music` object (with
     the pool analysis it was fitted to) exactly as a draft would store them, and a reference to the
     `design` stage's `agent_runs` row. The revision stays what ADR 0008 §5 says: immutable, never current,
-    never revised or saved as a draft. It is bounded as a draft is, within the 64 KB of the song list plus
-    the draft's own limit.
+    never revised or saved as a draft. **The whole canonical `content` stays at or under 64 KB**:
+    migration 0004's single check on every revision's `content` (`class_revisions_content`,
+    `MAX_CONTENT_BYTES`) is not raised. So `preview.music` is **not** the full pool analysis: it holds only
+    what the fit compares (the track-id fingerprint and per-song `start` and `end`, §7), and it stays inside
+    `content`, so the hash covers exactly what the fit compares against. The size is checked **before the
+    insert**: an over-size result fails the job with the existing `invalid_output` category (no credit, and
+    the user can **Find songs again**), never as a database error in the middle of the job. A maximum-size
+    case is tested.
+  - **Every reader of a `v: 3` list handles `preview`** (the songs view, the seed of a replace, `revise_songs`,
+    `swedebeat_match`, `prepare`), and the hash is always computed over the full stored content.
   - So nothing before the approval can be saved, updated or sent: there is no revision to name.
 - **`AwaitApproval`.** The wait, its expiry and cancel are as in ADR 0008 §7.
 - **The approval's identity is ADR 0008 §5's, unchanged.** `POST /api/jobs/{id}/approve` names the job and
@@ -192,7 +203,12 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
     class's length differs from the songs' total by more than 10%, the change produces a new `sketch`
     revision (the songs dropped) through the ordinary sketch revise, and the fill hand-off (§5) starts again
     for it.
-- Swap and change count toward the class's revise limit and take no credit (§9).
+- Swap and change count toward the class's revise limit and take no credit (§9). Their input carries the
+  sketch as `base_revision_id` (§5), so every `design_with_songs` job names the sketch it started from.
+- **What a change changes lives in the waiting song list's preview only.** If that list expires, is cancelled
+  or its replacement fails, the sketch is back to the shape it had before the fill, and changes made since
+  are not kept as a revision. They stay in the chat, and the user can send them again. This is accepted,
+  rare (the wait is up to 7 days) and shown by the chat history.
 - **A swap or change that fails while running** leaves no approvable list, because the waiting job was
   already cancelled. The class keeps its sketch, the page offers **Find songs again**, and the user's change
   stays in the chat. This is tested.
@@ -215,7 +231,8 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
       compared: the same recording analyses the same way.
   - **Within both:** the preview is re-timed to the final analysis with `fit_to_music`, with no model and no
     change of shape.
-  - **Otherwise:** the design stage runs as today, with a model.
+  - **Otherwise:** the design stage runs with a model, with **the approved preview's content as its base**
+    (not "as today" with no base), so the shape the user approved is kept.
   - **Either way the first real draft is stored in phase 2's final transaction** with
     `origin = design_with_songs` (as today's phase 2 design), `music.song_list_id` as today, and ADR 0007 §2's
     compare-and-set from the sketch, which is still the current revision. Its provenance names the model
@@ -244,6 +261,9 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
   - **The resume reads the approved list, hash and `save` from the receipt**, never from the browser's
     request. `prepare` revalidates them and the sketch's currency, then runs `fit` as above and sets
     `save_pending` when the approval had `save: true`.
+  - **The resume's base comes from the receipt**, not from the browser (ADR 0008 §6). After a revise of the
+    sketch the sketch is no longer the approved list's base, so `prepare` refuses the resume `stale_base`,
+    and the chip stops offering **Create the playlist again**.
   - It takes **no credit** (§9). The resume stays available until a newer song list exists, as in ADR 0008
     §6.
 - **What the click authorises.** One click approves both writes: the final Spotify playlist, and the MOWL
@@ -261,7 +281,7 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
   | State when the job ends | The message becomes |
   |---|---|
   | a song list is waiting for approval | a **change**, which replaces the waiting job (§6) |
-  | the current revision is a sketch and no song list waits (expired, cancelled, failed or replaced) | an ordinary revise of the sketch (§4); a fill is then started by the user's **Find songs again** |
+  | the current revision is a sketch and no song list waits (expired, cancelled, failed or replaced) | an ordinary revise of the sketch (§4); the new sketch has no fill started for it, so driver rule 1 starts one. **Find songs again** is only for a fill that failed, was replaced or expired for the *same* sketch |
   | the current revision is a draft (after phase 2, or a soundless class) | an ordinary revise of the saved class |
   | anything else | `failed` with `not_changeable` |
 
