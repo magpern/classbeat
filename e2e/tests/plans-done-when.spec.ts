@@ -1,7 +1,7 @@
 import type { APIResponse, Browser, BrowserContext, Page } from '@playwright/test'
 import { expect, nextTotp, test } from './helpers'
 import { PLAYLISTS } from './design-helpers'
-import { holdHandoff, pickMusic, say, withSpotify } from './ai-first-helpers'
+import { holdHandoff, pickMusic, say } from './ai-first-helpers'
 import { audit } from './mu-helpers'
 import { useModelScript } from './model-script'
 import { sql } from './song-helpers'
@@ -210,7 +210,6 @@ test('1. Free is told why before any job, and offered Individual', async () => {
   // reason, offers Individual, and the design job has not started.
   useModelScript('ai_first_read_pull')
   const held = await holdHandoff(free.page) // the hand-off waits for the choice, so nothing designs
-  await withSpotify(free.page) // a class with music needs Spotify (roadmap Amendment 25)
   await say(free.page, 'A 30 minute ride with two climbs and a Power Pull after climb 2.')
   await pickMusic(free.page, PLAYLISTS.draft.name)
   await free.page.getByRole('button', { name: 'Design my class' }).click()
