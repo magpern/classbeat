@@ -139,6 +139,30 @@ describe('a song job that failed', () => {
     })
   })
 
+  it('makes the list from the same own playlist again when the job had a source (#1138)', async () => {
+    const source = { source: 'mowl_spotify_playlist', spotify_playlist_id: 'AbCdEfGhIjKlMnOpQrStUv' }
+    window.sessionStorage.setItem(
+      `classbeat.pick-input.${JOB_ID}`,
+      JSON.stringify({ class_id: CLASS_ID, brief: BRIEF, mode: 'pick', source, mowl_connection_id: 'old', spotify_connection_id: 'old' }),
+    )
+    const api = fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: songJob('failed', { error_category: 'upstream_unavailable' }),
+      'GET /api/connections': connectionsBody(),
+      'POST /api/jobs': () => json(NEW_JOB, 201),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Pick songs again' }))
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
+    })
+    const [call] = api.to('POST', '/api/jobs')
+    expect(call?.body).toEqual({
+      kind: 'design_with_songs',
+      input: { class_id: CLASS_ID, brief: BRIEF, mode: 'pick', source, mowl_connection_id: MOWL_ID, spotify_connection_id: SPOTIFY_ID },
+    })
+  })
+
   it('after the approval creates the playlist again with a resume job and no new approval', async () => {
     const api = fakeApi({
       ...SESSION_ROUTES,

@@ -103,6 +103,8 @@ function usePickAgain(job: Job) {
         class_id: job.classId,
         brief: kept.brief,
         mode: 'pick',
+        // A list made from the user's own playlist (Amendment 26) is made from it again, not picked.
+        ...(kept.source === undefined ? {} : { source: kept.source }),
         mowl_connection_id: ids.mowl,
         spotify_connection_id: ids.spotify,
       }

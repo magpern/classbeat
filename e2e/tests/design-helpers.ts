@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { expect, type Locator, type Page } from '@playwright/test'
+import { withSpotify } from './spotify-helpers'
 
 // Shared by design-draft.spec.ts: connect the fake MOWL account, fill the new-class form, and read
 // or steer the fake MOWL (e2e/fake-mowl/server.py). Public test values only.
@@ -92,10 +93,22 @@ export async function chooseLength(form: Locator, minutes: number): Promise<void
   await form.getByLabel('Length in minutes').fill(String(minutes))
 }
 
+/** Open the Advanced form. A cycling class on a playlist needs Spotify (roadmap Amendment 25): when
+ *  the form asks for it, the fake Spotify is connected first and the form opened again. */
+async function openAdvancedForCycling(page: Page): Promise<Locator> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await page.getByRole('link', { name: 'New class' }).click()
+    await page.getByRole('link', { name: /^Advanced/ }).click()
+    const form = page.getByRole('form', { name: 'New class' })
+    await expect(form.getByLabel('Class name')).toBeVisible()
+    if ((await form.getByTestId('spotify-prompt').count()) === 0) return form
+    await withSpotify(page)
+  }
+  throw new Error('the Advanced form still asks for Spotify')
+}
+
 export async function startDesign(page: Page, title: string, playlistName: string, climbs = '1'): Promise<string> {
-  await page.getByRole('link', { name: 'New class' }).click()
-  await page.getByRole('link', { name: /^Advanced/ }).click()
-  const form = page.getByRole('form', { name: 'New class' })
+  const form = await openAdvancedForCycling(page)
   await form.getByLabel('Class name').fill(title)
   await choosePlaylist(form, playlistName)
   await chooseLength(form, 30)

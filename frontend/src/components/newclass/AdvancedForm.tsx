@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useT } from '../../i18n/I18n'
-import { createDesignJob, type Brief, type DesignInput, type Playlist } from '../../api/jobs'
+import type { Brief, Playlist } from '../../api/jobs'
 import { startError } from '../../api/songMessages'
-import { createPickJob, type PickInput } from '../../api/songs'
 import type { SwedebeatMix } from '../../api/swedebeatMixes'
 import type { Connection } from '../../api/connections'
 import { MusicChoice, type Music, type SongsAvailability, type SwedebeatMixAvailability } from '../songs/MusicChoice'
 import { MixTiles } from './MixTiles'
 import { Choice } from './Choice'
 import { createError } from './createError'
+import { formGate, planJob } from './jobPlan'
+import { startPlanned, type AttemptKeys } from './startJob'
+import { SpotifyPrompt } from '../start/SpotifyPrompt'
 import { PlanNudge } from '../plans/PlanNudge'
 import { UpgradeLink } from '../plans/UpgradeLink'
 import { leftOut, validateForm, whole } from './formModel'
@@ -23,7 +25,7 @@ import { usePlanAllowance } from './usePlanAllowance'
 import { Notice, useAction } from '../forms'
 import { Card, CardTitle } from '../ui/card'
 import { EFFORTS, sketchProfile } from '../../lib/sketch'
-import { newIdempotencyKey, rememberInput, rememberPick } from '../../lib/submittedInput'
+import { newIdempotencyKey } from '../../lib/submittedInput'
 import { readPreset } from '../../lib/presets'
 import { useQuery, useRouter } from '../../router/Router'
 
@@ -86,7 +88,9 @@ export function AdvancedForm({
   ])
   // One key per user action: the same form values keep the key, so a repeated click or a retry
   // after a lost answer returns the same job instead of starting a second one.
-  const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
+  const attempt = useRef<{ fingerprint: string; keys: AttemptKeys } | null>(null)
+  // A class with music needs Spotify (roadmap Amendment 25): say so before anything is sent.
+  const gate = formGate({ music, running, noMusic, playlist, mixId, songs }, swedebeat)
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -97,50 +101,33 @@ export function AdvancedForm({
       maxMinutes: allowed?.maxMinutes ?? null,
     })
     setProblem('problem' in checked ? checked.problem : null)
-    if ('problem' in checked) return
-    const fullBrief = checked.brief
-    const name = title.trim()
-    if (!running && !noMusic && 'climbs' in fullBrief && music === 'pick' && songs.kind === 'ready') {
-      const pickInput: PickInput = {
-        title: name,
-        brief: fullBrief,
-        mode: 'pick',
-        mowl_connection_id: connection.id,
-        spotify_connection_id: songs.spotifyConnectionId,
-      }
-      const pickFingerprint = JSON.stringify(pickInput)
-      if (attempt.current?.fingerprint !== pickFingerprint) {
-        attempt.current = { fingerprint: pickFingerprint, key: newIdempotencyKey() }
-      }
-      const pickKey = attempt.current.key
-      void action.run(async () => {
-        const job = await createPickJob(pickInput, pickKey)
-        rememberPick(job.id, pickInput)
-        navigate(`/jobs/${job.id}`)
-      }, startError)
-      return
-    }
-    const musicInput: DesignInput['music'] = noMusic
-      ? { source: 'none' }
-      : !running && music === 'swedebeat_mix'
-        ? { source: 'mowl_swedebeat_mix', mix_id: mixId }
-        : { source: 'mowl_spotify_playlist', spotify_playlist_id: playlist }
-    const input: DesignInput = {
-      title: name,
-      brief: fullBrief,
-      music: musicInput,
-      mowl_connection_id: connection.id,
-    }
-    const fingerprint = JSON.stringify(input)
+    if ('problem' in checked || gate?.blocking === true) return
+    const plan = planJob({
+      title: title.trim(),
+      brief: checked.brief,
+      music,
+      running,
+      noMusic,
+      playlist,
+      mixId,
+      songs,
+      mowlConnectionId: connection.id,
+    })
+    const fingerprint = JSON.stringify(plan)
     if (attempt.current?.fingerprint !== fingerprint) {
-      attempt.current = { fingerprint, key: newIdempotencyKey() }
+      attempt.current = { fingerprint, keys: { songs: newIdempotencyKey(), draft: newIdempotencyKey() } }
     }
-    const key = attempt.current.key
-    void action.run(async () => {
-      const job = await createDesignJob(input, key)
-      rememberInput(job.id, input)
-      navigate(`/jobs/${job.id}`)
-    }, (error) => createError(t, error, noMusic))
+    const keys = attempt.current.keys
+    let asDraft = plan.kind === 'draft'
+    void action.run(
+      async () => {
+        const id = await startPlanned(plan, keys, () => {
+          asDraft = true
+        })
+        navigate(`/jobs/${id}`)
+      },
+      (error) => (asDraft ? createError(t, error, noMusic) : startError(error)),
+    )
   }
 
   const summary = summaryRows(t, {
@@ -229,6 +216,7 @@ export function AdvancedForm({
               songs={songs}
               swedebeat={swedebeat}
               soundless={soundlessEnabled}
+              spotifyNoted={gate?.need === 'connect'}
               value={music}
               onChange={setMusic}
             />
@@ -237,6 +225,7 @@ export function AdvancedForm({
             <PlaylistTiles playlists={playlists} value={playlist} onChange={setPlaylist} covers={covers} />
           ) : null}
           {onSwedebeatMix ? <MixTiles mixes={mixes} value={mixId} onChange={setMixId} /> : null}
+          {gate !== null ? <SpotifyPrompt need={gate.need} /> : null}
           <StylePicker value={style} onChange={setStyle} />
         </Card>
         <Card className={section}>
@@ -276,7 +265,13 @@ export function AdvancedForm({
         </Card>
       </div>
       <div className="min-w-0 lg:self-stretch">
-        <SideCard profile={profile} summary={summary} busy={action.busy} classesLeft={classesLeft} />
+        <SideCard
+          profile={profile}
+          summary={summary}
+          busy={action.busy}
+          blocked={gate?.blocking === true}
+          classesLeft={classesLeft}
+        />
       </div>
     </form>
   )

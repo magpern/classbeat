@@ -2,7 +2,10 @@ import { expect, type Page } from '@playwright/test'
 import { signedInWithMowl } from './class-helpers'
 import { useModelScript, type ModelScript } from './model-script'
 import { sql } from './song-helpers'
-import { CLIENT_A, connectSpotify, playSpotify, spotifyDialog } from './spotify-helpers'
+import { withSpotify } from './spotify-helpers'
+
+// Kept here for the specs that import it from this file.
+export { withSpotify }
 
 // Shared by the ai-first*.spec.ts files (MA5, ADR 0029, plan "Verification"): the free-text start
 // screen, the hand-off to the design and the workspace, against the fake model, MOWL and Spotify.
@@ -19,18 +22,6 @@ export async function instructorWithMowl(page: Page, tag: string): Promise<void>
   if (id === undefined || !/^[0-9a-f-]{36}$/.test(id)) throw new Error('no signed-in user id')
   sql(`INSERT INTO entitlements (owner_id, plan_id, source) VALUES ('${id}', 'instructor', 'grant')`)
   await withSpotify(page)
-}
-
-/**
- * Connect the fake Spotify (CLIENT_A) to the signed-in user. A class with music needs Spotify (roadmap
- * Amendment 25): the start screen asks for it before it sends a request that is not "No music".
- */
-export async function withSpotify(page: Page): Promise<void> {
-  await playSpotify(page)
-  await connectSpotify(page, CLIENT_A)
-  await expect(page.getByText('Spotify is connected.')).toBeVisible()
-  await spotifyDialog(page).getByRole('button', { name: 'Close' }).click()
-  await expect(spotifyDialog(page)).toHaveCount(0)
 }
 
 export interface Held {

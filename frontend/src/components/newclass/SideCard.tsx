@@ -13,11 +13,14 @@ export function SideCard({
   profile,
   summary,
   busy,
+  blocked = false,
   classesLeft,
 }: {
   profile: [number, number][]
   summary: { label: string; value: string }[]
   busy: boolean
+  /** The class cannot be started yet (the form says why, e.g. Spotify is needed). */
+  blocked?: boolean
   /** Classes left this month from the plan API; null hides the line. */
   classesLeft: number | null
 }) {
@@ -42,7 +45,7 @@ export function SideCard({
           {classesLeft > 0 ? t('newclass.side.classesLeft', { count: classesLeft }) : t('newclass.side.noClassesLeft')}
         </p>
       )}
-      <Button type="submit" disabled={busy} className="w-full max-lg:w-auto max-lg:shrink-0">
+      <Button type="submit" disabled={busy || blocked} className="w-full max-lg:w-auto max-lg:shrink-0">
         {t('newclass.side.submit')}
       </Button>
     </StickyActionBar>
