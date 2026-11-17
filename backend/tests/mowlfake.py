@@ -30,6 +30,7 @@ connection is cut before the answer, ``"garbled"``: it happens and the answer ha
 listing fail after that many calls.
 """
 
+import hashlib
 import json
 import threading
 import urllib.request
@@ -53,6 +54,13 @@ EXCHANGE = f"/v1/Authentication/Ticket/{TICKET}/{api.TICKET_GUID}"
 
 
 DROP = -1  # an answer code meaning: cut the connection without answering
+
+
+def mix_suffix(token: str, name: str) -> str:
+    """Six digits that depend only on the token and name: the builtin ``hash`` of a str is
+    randomised per process, so it made ids that could by chance hold any fixed substring."""
+    digest = hashlib.sha256(f"{token}|{name}".encode()).hexdigest()
+    return f"{int(digest, 16) % 10**6:06d}"
 
 
 @dataclass
@@ -109,9 +117,7 @@ class FakeMowl:
     ) -> str:
         """A Swedebeat mix of ``token``'s account; ``audio_seconds`` is what its file holds.
         ``mix_id`` names it (the same id under two tokens is two mixes of two accounts)."""
-        mix_id = mix_id or (
-            f"{len(self.mixes.get(token, [])) + 1:08d}-mix-{abs(hash((token, name))) % 10**6:06d}"
-        )
+        mix_id = mix_id or f"{len(self.mixes.get(token, [])) + 1:08d}-mix-{mix_suffix(token, name)}"
         listed = Mix(
             mix_id, name, int(listed_seconds * 1000),
             listed_seconds if audio_seconds is None else audio_seconds,

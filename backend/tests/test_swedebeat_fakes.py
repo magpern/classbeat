@@ -25,7 +25,7 @@ from classbeat.egress import (
     mowl_media_test_client,
 )
 from mediafake import OTHER_HOST, FakeMedia, wav_bytes
-from mowlfake import TOKEN, FakeMowl
+from mowlfake import TOKEN, FakeMowl, mix_suffix
 
 pytestmark = pytest.mark.usefixtures("mowl_api")
 OTHER_TOKEN = "00000000-1111-2222-3333-444444444444"  # another account (a public test value)
@@ -349,3 +349,9 @@ async def test_the_fake_flow_leaves_no_signature_in_the_records(mowl_api: FakeMo
     seen = repr((mowl_api.media.requests, mowl_api.requests))
     assert mowl_api.media.signatures
     assert all(s not in seen for s in mowl_api.media.signatures)
+
+
+def test_a_generated_mix_id_does_not_depend_on_the_process_hash_seed() -> None:
+    # A literal: the builtin ``hash`` would give a different value in every process.
+    assert mix_suffix("t", "Mix") == "067354"
+    assert mix_suffix("t", "Mix") != mix_suffix("u", "Mix")
