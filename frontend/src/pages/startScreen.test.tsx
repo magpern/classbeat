@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { MOWL_ID, SPOTIFY_ID, connectionsBody } from '../test/songFixtures'
+import { MOWL_ID, SPOTIFY_ID, SPOTIFY_STATUS_OK, connectionsBody } from '../test/songFixtures'
 import { fakeApi, json, PLAN_FREE, reason } from '../test/fakeApi'
 import { CLASS_ID, SESSION_ROUTES, jobBody } from '../test/jobFixtures'
 import { renderAt } from '../test/render'
@@ -9,15 +9,6 @@ import { renderAt } from '../test/render'
 
 const PLAYLIST_A = 'AbCdEfGhIjKlMnOpQrStUv'
 const PLAYLIST_B = 'ZyXwVuTsRqPoNmLkJiHgFe'
-const SPOTIFY_OK = {
-  status: 'connected',
-  last_error: null,
-  last_error_message: null,
-  callback_url: 'http://127.0.0.1:8000/oauth/spotify/callback',
-  pool_consent: true,
-  consent_version: 1,
-  consent_text: 'x',
-}
 const INTERPRET_JOB = jobBody('queued', { kind: 'interpret_request' })
 
 function routes(extra: Record<string, unknown> = {}, connections: Record<string, unknown> = connectionsBody(false)) {
@@ -35,7 +26,7 @@ function routes(extra: Record<string, unknown> = {}, connections: Record<string,
   }
 }
 
-const withSpotify = () => ({ 'GET /api/connections/spotify': SPOTIFY_OK })
+const withSpotify = () => ({ 'GET /api/connections/spotify': SPOTIFY_STATUS_OK })
 const plan = (games: boolean) => ({ 'GET /api/account/plan': { ...PLAN_FREE, gates: { ...PLAN_FREE.gates, games } } })
 const prompt = () => screen.findByLabelText('Describe your class')
 const openIdeas = async () => {
@@ -62,8 +53,8 @@ describe('the start screen', () => {
     expect(screen.getByRole('button', { name: 'Music' })).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('sends an interpret_request job with the own connection id, a key and CSRF, then opens the class', async () => {
-    const api = fakeApi(routes())
+  it('sends an interpret_request job with the own connection ids, a key and CSRF, then opens the class', async () => {
+    const api = fakeApi(routes(withSpotify(), connectionsBody(true)))
     renderAt('/classes/new')
     fireEvent.change(await prompt(), { target: { value: '  45 minutes, three climbs  ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
@@ -73,14 +64,14 @@ describe('the start screen', () => {
     const [call] = api.to('POST', '/api/jobs')
     expect(call?.body).toEqual({
       kind: 'interpret_request',
-      input: { request: '45 minutes, three climbs', mowl_connection_id: MOWL_ID },
+      input: { request: '45 minutes, three climbs', mowl_connection_id: MOWL_ID, spotify_connection_id: SPOTIFY_ID },
     })
     expect(call?.headers.get('X-CSRF-Token')).toBe('csrf-session')
     expect(call?.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
   })
 
   it('wants some words first and sends nothing without them', async () => {
-    const api = fakeApi(routes())
+    const api = fakeApi(routes(withSpotify(), connectionsBody(true)))
     renderAt('/classes/new')
     await prompt()
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
@@ -89,7 +80,7 @@ describe('the start screen', () => {
   })
 
   it('words a refusal in plain language and stays on the page', async () => {
-    fakeApi(routes({ 'POST /api/jobs': () => reason(409, 'not_connected') }))
+    fakeApi(routes({ ...withSpotify(), 'POST /api/jobs': () => reason(409, 'not_connected') }, connectionsBody(true)))
     renderAt('/classes/new')
     fireEvent.change(await prompt(), { target: { value: 'An easy ride' } })
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
@@ -133,6 +124,78 @@ describe('the start screen', () => {
     renderAt(`/classes/new?from=${CLASS_ID}`)
     expect(await prompt()).toHaveValue('Hard hills for Thursday')
     expect(screen.getByRole('button', { name: 'Music: Sprint set' })).toBeInTheDocument()
+  })
+})
+
+describe('a class with music and song picking', () => {
+  const featureOff = { 'GET /api/connections/spotify': () => reason(404, 'feature_off') }
+  const soundless = (on: boolean, connections = connectionsBody(true)) => ({ ...connections, soundless_enabled: on })
+  const start = async () => {
+    fireEvent.change(await prompt(), { target: { value: 'An easy ride' } })
+    return screen.getByRole('button', { name: 'Design my class' })
+  }
+
+  it('explains, before anything is sent and with no link, that song picking is not available', async () => {
+    const api = fakeApi(routes(featureOff, soundless(false)))
+    renderAt('/classes/new')
+    const button = await start()
+    const note = await screen.findByTestId('spotify-prompt')
+    expect(note).toHaveAttribute('data-need', 'unavailable')
+    expect(note).toHaveTextContent('Choosing songs is not available on your account')
+    expect(note).not.toHaveTextContent('No music')
+    expect(within(note).queryByRole('link')).toBeNull()
+    expect(button).toBeDisabled()
+    fireEvent.click(button)
+    expect(api.to('POST', '/api/jobs')).toHaveLength(0)
+  })
+
+  it('points to "No music" when it is offered, and sends that class', async () => {
+    const api = fakeApi(routes(featureOff, soundless(true)))
+    renderAt('/classes/new')
+    const button = await start()
+    expect(await screen.findByTestId('spotify-prompt')).toHaveTextContent('choose "No music" in the music list')
+    fireEvent.click(screen.getByRole('button', { name: 'Music' }))
+    fireEvent.click(screen.getByRole('radio', { name: /No music/ }))
+    expect(screen.queryByTestId('spotify-prompt')).toBeNull()
+    fireEvent.click(button)
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    expect(api.to('POST', '/api/jobs')[0]?.body).toMatchObject({ input: { music_override: { source: 'none' } } })
+  })
+
+  it('still connects Spotify when song picking is available but no account is connected', async () => {
+    fakeApi(routes(withSpotify(), soundless(false, connectionsBody(false))))
+    renderAt('/classes/new')
+    await start()
+    const note = await screen.findByTestId('spotify-prompt')
+    expect(note).toHaveAttribute('data-need', 'connect')
+    expect(within(note).getByRole('link', { name: 'Connect Spotify' })).toHaveAttribute('href', '/en/account/spotify')
+  })
+
+  it('lets the server answer when the song picking status could not be read', async () => {
+    const api = fakeApi(routes({ 'GET /api/connections/spotify': () => reason(500, 'internal') }, soundless(false)))
+    renderAt('/classes/new')
+    const button = await start()
+    expect(screen.queryByTestId('spotify-prompt')).toBeNull()
+    fireEvent.click(button)
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+  })
+
+  it.each([
+    ['needs_spotify', 'connect', 'Connect Spotify'],
+    ['song_picking_unavailable', 'unavailable', null],
+  ] as const)('shows the prompt for a refusal %s, with a link only when there is something to connect', async (why, need, link) => {
+    fakeApi(routes({ ...withSpotify(), 'POST /api/jobs': () => reason(409, why) }, connectionsBody(true)))
+    renderAt('/classes/new')
+    fireEvent.click(await start())
+    const note = await screen.findByTestId('spotify-prompt')
+    expect(note).toHaveAttribute('data-need', need)
+    if (link === null) expect(within(note).queryByRole('link')).toBeNull()
+    else expect(within(note).getByRole('link', { name: link })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
 
@@ -196,7 +259,7 @@ describe('the music picker', () => {
   })
 
   it('sends a chosen MOWL playlist by id', async () => {
-    const api = fakeApi(routes())
+    const api = fakeApi(routes(withSpotify(), connectionsBody(true)))
     renderAt('/classes/new')
     fireEvent.change(await prompt(), { target: { value: 'Easy ride' } })
     fireEvent.click(screen.getByRole('button', { name: 'Music' }))

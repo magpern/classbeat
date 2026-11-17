@@ -42,7 +42,7 @@ async function songsAvailability(connections: Connection[], signal: AbortSignal)
   try {
     status = await getSpotifyStatus(signal)
   } catch {
-    return { kind: 'off' }
+    return { kind: 'off', unreachable: true }
   }
   if (status === null) return { kind: 'off' }
   const spotify = connections.find((c) => c.provider === 'spotify')

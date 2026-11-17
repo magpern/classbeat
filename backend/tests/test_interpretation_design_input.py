@@ -67,3 +67,17 @@ def test_without_spotify_or_song_picking_a_running_class_or_a_mix_stays_design_d
         assert kind is DESIGN_DRAFT
         assert isinstance(made, DesignDraftInput)
         assert made.music.model_dump() == music
+
+
+def test_a_cycling_class_with_no_music_stores_the_reason_its_interpretation_gave() -> None:
+    for reason in ("needs_spotify", "song_picking_unavailable"):
+        item = {"path": "music", "origin": "not_as_asked", "reason_code": reason, "value": None}
+        row = StoredInterpretation(
+            job_id=uuid.uuid4(),
+            brief=CYCLING,
+            music=None,
+            items=[item],  # pyright: ignore[reportArgumentType]
+        )
+        assert _design_input(row, {}, CLASS, song_picking=True) == reason
+    running = StoredInterpretation(job_id=uuid.uuid4(), brief=RUNNING, music=None, items=[])
+    assert _design_input(running, {}, CLASS, song_picking=False) == "needs_mowl_playlist"

@@ -4,7 +4,7 @@ import { CLASS_PATH, classRoutes } from '../test/classFixtures'
 import { resetNudge } from '../lib/nudge'
 import { fakeApi, json, PLAN_FREE } from '../test/fakeApi'
 import { CLASS_ID, SESSION_ROUTES, jobBody } from '../test/jobFixtures'
-import { connectionsBody } from '../test/songFixtures'
+import { SPOTIFY_STATUS_OK, connectionsBody } from '../test/songFixtures'
 import { renderAt } from '../test/render'
 
 // M7a-4 (#949): limits that say why. The API is faked; nothing here reaches a network.
@@ -112,7 +112,8 @@ const INTERPRET_JOB = jobBody('queued', { kind: 'interpret_request' })
 function startRoutes(plan: object, extra: Record<string, unknown> = {}) {
   return {
     ...SESSION_ROUTES,
-    'GET /api/connections': connectionsBody(false),
+    'GET /api/connections': connectionsBody(true),
+    'GET /api/connections/spotify': SPOTIFY_STATUS_OK,
     'GET /api/music/mowl-playlists': { playlists: [] },
     'GET /api/account/plan': plan,
     'POST /api/jobs': () => json(INTERPRET_JOB, 201),

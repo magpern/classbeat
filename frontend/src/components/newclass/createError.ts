@@ -8,6 +8,7 @@ import { MAX_BRIEF_BYTES } from '../../lib/brief'
 const CREATE_ERRORS: Record<string, CatalogueKey> = {
   not_connected: 'newclass.createError.not_connected',
   needs_spotify: 'interp.reason.needs_spotify',
+  song_picking_unavailable: 'interp.reason.song_picking_unavailable',
   class_busy: 'newclass.createError.class_busy',
   idempotency_mismatch: 'newclass.createError.idempotency_mismatch',
   feature_off: 'newclass.createError.feature_off',

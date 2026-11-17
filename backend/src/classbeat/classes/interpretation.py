@@ -25,8 +25,8 @@ So two calls at the same time are serialized by the owner lock: the second sees 
 first created (the same key and body: the same job id and state, no second credit) or the refusal
 the first stored, and answers it. A call after a reopened tab is the same call. A class whose
 music could not be chosen (a running class with no MOWL playlist, or a cycling class with no Spotify
-connection that can use one) stores ``needs_mowl_playlist`` or ``needs_spotify``
-the same way, under the owner lock, without a create.
+connection that can use one) stores ``needs_mowl_playlist``, ``needs_spotify`` or
+``song_picking_unavailable`` the same way, under the owner lock, without a create.
 
 Two answers are never stored (#904): a class that already has a revision and no design job of this
 hand-off (designed through ``POST /api/jobs`` with its ``class_id``) is refused ``class_designed``,
@@ -52,7 +52,7 @@ from classbeat.db import user_session
 from classbeat.design import DESIGN_DRAFT, interpretation_row
 from classbeat.design.interpret_kind import KIND as INTERPRET_KIND
 from classbeat.design.interpret_kind import InterpretRequestInput
-from classbeat.design.interpret_music_policy import NEEDS_MOWL_PLAYLIST, NEEDS_SPOTIFY
+from classbeat.design.interpret_music_policy import NEEDS_MOWL_PLAYLIST, stored_no_music_reason
 from classbeat.design.interpretation_row import Refusal, StoredInterpretation
 from classbeat.design.kind import DesignDraftInput, SpotifyMusicChoice
 from classbeat.flags import effective as flags
@@ -167,7 +167,9 @@ def _design_input(
     """The design kind and its unchanged input, or the reason there is none. ``song_picking``:
     the flag admits the user, so a playlist class may get its new playlist (Amendment 26)."""
     if row.music is None:  # a running class has MOWL playlists only; a cycling one needs Spotify
-        return NEEDS_MOWL_PLAYLIST if row.brief.get("sport") == "running" else NEEDS_SPOTIFY
+        if row.brief.get("sport") == "running":
+            return NEEDS_MOWL_PLAYLIST
+        return stored_no_music_reason(row.items)
     if not isinstance(job_input, dict):
         return "not_ready"
     try:

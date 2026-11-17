@@ -9,6 +9,7 @@ with one credit, or both getting the same stored refusal; the first design's rev
 ``request_message_id`` while ``chat_full`` counts message seq 1."""
 
 import asyncio
+import json
 from typing import Any
 from uuid import UUID
 
@@ -165,23 +166,51 @@ async def test_a_quota_refusal_rolls_back_the_create_and_is_stored(ienv: Interpr
 
 
 @pytest.mark.parametrize(
-    ("sport", "reason"), [("cycling", "needs_spotify"), ("running", "needs_mowl_playlist")]
+    ("sport", "item_reason", "reason"),
+    [
+        ("cycling", "needs_spotify", "needs_spotify"),
+        ("cycling", "song_picking_unavailable", "song_picking_unavailable"),
+        ("cycling", None, "needs_spotify"),  # an interpretation stored with no code
+        ("running", "needs_mowl_playlist", "needs_mowl_playlist"),
+    ],
 )
 async def test_a_class_with_no_music_stores_what_it_needs(
-    ienv: InterpretEnv, sport: str, reason: str
+    ienv: InterpretEnv, sport: str, item_reason: str | None, reason: str
 ) -> None:
     class_id, _ = await ienv.interpreted()
+    items = [{"path": "music", "origin": "not_as_asked", "reason_code": item_reason, "value": None}]
     ienv.sql(
-        "UPDATE classes SET interpretation = jsonb_set(jsonb_set(interpretation, '{music}', "
-        "'null'), '{brief,sport}', CAST(:s AS jsonb)) WHERE id = :c",
+        "UPDATE classes SET interpretation = jsonb_set(jsonb_set(jsonb_set(interpretation, "
+        "'{music}', 'null'), '{brief,sport}', CAST(:s AS jsonb)), '{items}', "
+        "CAST(:i AS jsonb)) WHERE id = :c",
         c=class_id,
         s=f'"{sport}"',
+        i=json.dumps(items if item_reason is not None else []),
     )
     before = ienv.counts()
     refused = await ienv.handoff(class_id)
     assert refused.json()["detail"]["reason"] == reason
     assert ienv.interpretation(class_id)["refusal"]["reason"] == reason
     assert ienv.counts() == before  # no job, no credit
+
+
+async def test_a_connected_user_without_song_picking_and_no_music_is_told_it_is_unavailable(
+    ienv: InterpretEnv,
+) -> None:
+    """The interpretation itself ends ``song_picking_unavailable`` (Spotify connected, song
+    picking off for the user, no playlist named): the hand-off answers it, with no connect."""
+    class_id, _ = await ienv.interpreted(music_override=None)
+    stored = ienv.interpretation(class_id)
+    assert stored["music"] is None
+    codes = [i["reason_code"] for i in stored["items"] if i["path"] == "music"]
+    assert codes == ["song_picking_unavailable"]
+    before = ienv.counts()
+    refused = await ienv.handoff(class_id)
+    assert (refused.status_code, refused.json()["detail"]["reason"]) == (
+        409,
+        "song_picking_unavailable",
+    )
+    assert ienv.counts() == before
 
 
 async def test_another_users_class_and_an_unknown_one_are_not_found(

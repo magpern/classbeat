@@ -6,16 +6,18 @@ no model).
 interpreter's index into ``options``, range-checked here too), then a song pick when Spotify is
 ready; there is no default music (roadmap Amendment 25). A playlist, named or chosen, is Spotify's:
 without a Spotify connection (``spotify``) it is not taken, and a class with no music left is Not
-as asked ``needs_spotify``. A Swedebeat mix and "No music" need no Spotify. A running class uses
-MOWL playlists only (ADR 0018), the first one by default; with none it has no music and is Not as
-asked ``needs_mowl_playlist``. One ``music`` item records the source chosen (a closed value), after
-a Not as asked item for a choice a running class could not take.
+as asked ``needs_spotify``, or ``song_picking_unavailable`` when song picking is off for the user
+(nothing to connect: the Spotify page is hidden). A Swedebeat mix and "No music" need no Spotify. A
+running class uses MOWL playlists only (ADR 0018), the first one by default; with none it has no
+music and is Not as asked ``needs_mowl_playlist``. One ``music`` item records the source chosen (a
+closed value), after a Not as asked item for a choice a running class could not take.
 
 The music is the design input's own shape (``{"source": ...}``; ``{"source": "pick"}`` for a song
 pick), so the hand-off enqueues it unchanged. An id never reaches a model: the interpreter sees the
 names only (``interpret_input.music_list``).
 """
 
+from collections.abc import Iterable
 from typing import Final, Literal, NamedTuple
 
 from classbeat.agent.interpretation_record import InterpretationItem, Origin, keep_quote
@@ -24,6 +26,7 @@ from classbeat.design import request_policy
 
 NEEDS_MOWL_PLAYLIST: Final = request_policy.NEEDS_MOWL_PLAYLIST
 NEEDS_SPOTIFY: Final = request_policy.NEEDS_SPOTIFY
+SONG_PICKING_UNAVAILABLE: Final = request_policy.SONG_PICKING_UNAVAILABLE
 
 Music = dict[str, str]
 
@@ -55,6 +58,21 @@ def without_spotify_is_refused(
     return not (music_source is None and mixes)
 
 
+def no_music_reason(picking: bool) -> str:
+    """Why a cycling class has no music: the Spotify connection is missing (``needs_spotify``, when
+    song picking admits the user, so the connection can be made) or song picking is not available
+    to the user at all (``song_picking_unavailable``, so there is nothing to connect)."""
+    return NEEDS_SPOTIFY if picking else SONG_PICKING_UNAVAILABLE
+
+
+def stored_no_music_reason(items: Iterable[InterpretationItem]) -> str:
+    """The reason a stored cycling interpretation has no music: its music item's closed code."""
+    for item in items:
+        if item.path == "music" and item.reason_code in (NEEDS_SPOTIFY, SONG_PICKING_UNAVAILABLE):
+            return item.reason_code
+    return NEEDS_SPOTIFY
+
+
 def _item(
     origin: Origin, value: str | None, reason: str | None = None, quote: str | None = None
 ) -> InterpretationItem:
@@ -72,9 +90,12 @@ def choose(
     spotify: bool,
     override: Music | None,
     out: list[InterpretationItem],
+    *,
+    picking: bool = True,
 ) -> Music | None:
-    """The music, or None (nothing to take: ``needs_spotify`` for cycling, ``needs_mowl_playlist``
-    for running); the items go to ``out``."""
+    """The music, or None (nothing to take: ``needs_spotify`` or, with ``picking`` off,
+    ``song_picking_unavailable`` for cycling; ``needs_mowl_playlist`` for running); the items go to
+    ``out``."""
     running = sport == request_policy.ALL_SPORTS[1]
     available: dict[str, Music] = {}
     if override is not None:
@@ -98,7 +119,11 @@ def choose(
             available["first_playlist"] = _choice(first)
     chosen = request_policy.choose_music(sport, available)
     if chosen is None:
-        out.append(_item("not_as_asked", None, NEEDS_MOWL_PLAYLIST if running else NEEDS_SPOTIFY))
+        out.append(
+            _item(
+                "not_as_asked", None, NEEDS_MOWL_PLAYLIST if running else no_music_reason(picking)
+            )
+        )
         return None
     origin: Origin = "default"
     quote = None

@@ -1881,6 +1881,8 @@ const sv: Catalogue = {
   'start.music.src.playlist': 'Spotify-spellista · i MOWL',
   'start.music.src.mix': 'Swedebeat-mix',
   'start.spotify.needed': 'Ett pass med musik kräver Spotify: classbeat hittar låtarna där och sparar spellistan där. {link} först.',
+  'start.spotify.unavailable': 'Att välja låtar är inte tillgängligt för ditt konto, så ett pass med musik kan inte startas här.',
+  'start.spotify.noMusicHint': 'Vill du köra utan musik, välj "{name}" i musiklistan.',
   'start.destination':
     'Passet sparas i ditt MOWL-konto, som ett privat träningspass, först när du har godkänt det.',
   'start.design': 'Utforma mitt pass',
@@ -1966,6 +1968,7 @@ const sv: Catalogue = {
   'interp.reason.game_duration': 'Speltiden passade inte.',
   'interp.reason.needs_mowl_playlist': 'Löppass kräver en spellista från din MOWL-musik.',
   'interp.reason.needs_spotify': 'Ett pass med musik kräver ditt Spotify-konto.',
+  'interp.reason.song_picking_unavailable': 'Att välja låtar är inte tillgängligt för ditt konto, så ett pass med musik kan inte skapas.',
   'interp.reason.taste_needs_pick': 'Bara låtar vi väljer åt dig kan följa musiken du bad om.',
   'interp.reason.taste_on_revise': 'En ändring behåller musiken; använd Byt låtar för att välja andra låtar.',
   'interp.reason.era_too_few': 'Vi hittade för få låtar från de här åren på Spotify.',
