@@ -75,7 +75,7 @@ RELEASED: dict[int, str] = {
     23: "33234cb612a181069de990247af8041e983db2d5fe80cf7c925c106fccad0684",
     24: "1b0dcb38043e7a472c42a59db253fa1e1a64ceadb57e116a418dc09105760826",
     # #1140: the music taste cases (interpret and song choice), the split of suite.py and pick.py.
-    25: "0e451edb22d04ec3bb83ae509dc0b3f67decb43292e8b89585fb818df3d69744",
+    25: "c40b21cfc2b6bd63cc9971ddec65826ccde8ebb443fb9f6488d6bff55caa2733",
 }
 
 SUITE = load_suite()

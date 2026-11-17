@@ -1,7 +1,8 @@
 """``design.revise_layer_policy`` and ``agent.stated_layer`` (ADR 0029 section 4, #904): a revise
 request's stated values layered onto the class's, and the layer a revision records. Pure."""
 
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
@@ -12,8 +13,10 @@ from classbeat.agent.interpreted import InterpretedRequest
 from classbeat.agent.music_taste import EraRange, MusicTaste
 from classbeat.agent.records import Provenance
 from classbeat.agent.stated_layer import LAYER_KEYS, StatedLayer, applied, layer_of
+from classbeat.design import revise_stated
 from classbeat.design.revise_layer_policy import layer
 from classbeat.plan_gates import PlanGates
+from classbeat.songs import revise_reading
 
 RACETRACK = {
     "type": "racetrack",
@@ -282,38 +285,105 @@ def test_the_revise_interpreter_is_told_closed_current_values_only() -> None:
     assert '"current"' not in plain  # a new request's message is as before
 
 
-# --- the music taste (issue #1140): kept, and a stated change says so -------------------------
+# --- the music taste (issue #1140): kept; a design revise says so, Change songs does not -------
 
 NINETIES = {"year_from": 1990, "year_to": 1999, "origin": "explicit", "quote": "90s"}
 TASTED = BASE.model_copy(
-    update={"music_taste": MusicTaste(eras=[EraRange(year_from=1980, year_to=1989)], hits=True)}
+    update={
+        "music_taste": MusicTaste(
+            eras=[EraRange(year_from=1980, year_to=1989)], language="sv", genres=["pop"], hits=True
+        )
+    }
+)
+CHANGED = read(
+    music_taste={
+        "eras": [NINETIES],
+        "language": {"value": "da", "origin": "explicit"},
+        "genres": [
+            {"value": "rock", "origin": "explicit"},
+            {"value": "disco", "origin": "inferred"},
+        ],
+    }
 )
 
 
-def test_a_stated_taste_change_is_not_as_asked_and_the_base_taste_stays() -> None:
-    asked = read(
-        music_taste={
-            "eras": [NINETIES],
-            "language": {"value": "sv", "origin": "explicit"},
-            "genres": [{"value": "rock", "origin": "inferred"}],
-        }
-    )
-    done = layer(TASTED, asked, gates())
+def items_of(done: Any) -> list[tuple[Any, ...]]:
+    return [(i.path, i.origin, i.reason_code, i.value, i.quote) for i in done.items]
+
+
+def test_a_design_revise_records_a_stated_taste_change_and_keeps_the_base_taste() -> None:
+    done = layer(TASTED, CHANGED, gates(), taste_note=True)
     assert done.brief.music_taste == TASTED.music_taste
-    assert [(i.path, i.origin, i.reason_code, i.value, i.quote) for i in done.items] == [
+    assert items_of(done) == [
         ("music_era.0", "not_as_asked", "taste_on_revise", {"from": 1990, "to": 1999}, None),
-        ("music_language", "not_as_asked", "taste_on_revise", "sv", None),
+        ("music_language", "not_as_asked", "taste_on_revise", "da", None),
+        ("music_genre.0", "not_as_asked", "taste_on_revise", None, "rock"),  # the word shows
     ]  # the inferred style word is left out quietly, as at interpret time
 
 
 def test_a_taste_on_a_class_without_one_is_not_as_asked_too() -> None:
-    done = layer(BASE, read(music_taste={"eras": [NINETIES]}), gates())
-    assert done.brief.music_taste is None
-    assert [(i.path, i.reason_code) for i in done.items] == [("music_era.0", "taste_on_revise")]
-
-
-def test_a_reading_that_repeats_the_base_taste_changes_nothing() -> None:
-    eighties = {"year_from": 1980, "year_to": 1989, "origin": "explicit"}
     hits = {"value": True, "origin": "explicit"}
-    done = layer(TASTED, read(music_taste={"eras": [eighties], "hits": hits}), gates())
+    done = layer(
+        BASE, read(music_taste={"eras": [NINETIES], "hits": hits}), gates(), taste_note=True
+    )
+    assert done.brief.music_taste is None
+    assert [(i.path, i.reason_code) for i in done.items] == [
+        ("music_era.0", "taste_on_revise"),
+        ("music_hits", "taste_on_revise"),
+    ]
+
+
+def test_only_what_differs_from_the_base_taste_is_reported() -> None:
+    # "keep it Swedish, 80s hits, more pop": a partial restatement of the base's own taste.
+    same = read(
+        music_taste={
+            "eras": [{"year_from": 1980, "year_to": 1989, "origin": "explicit"}],
+            "language": {"value": "sv", "origin": "explicit"},
+            "genres": [{"value": "pop", "origin": "explicit"}],
+            "hits": {"value": True, "origin": "explicit"},
+        }
+    )
+    assert layer(TASTED, same, gates(), taste_note=True) == layer(TASTED, read(), gates())
+    partly = read(
+        music_taste={
+            "language": {"value": "sv", "origin": "explicit"},
+            "eras": [{"year_from": 1980, "year_to": 1989, "origin": "explicit"}, NINETIES],
+        }
+    )
+    done = layer(TASTED, partly, gates(), taste_note=True)
+    assert [(i.path, i.reason_code) for i in done.items] == [("music_era.1", "taste_on_revise")]
+
+
+def test_change_songs_records_no_taste_item_and_keeps_the_taste_as_before() -> None:
+    done = layer(TASTED, CHANGED, gates())  # the songs path: ``taste_note`` is off
     assert (done.brief, done.items) == (TASTED, ())
+
+
+async def test_the_change_songs_path_layers_a_stored_taste_reading_without_a_taste_item() -> None:
+    """Change songs re-picks with the request's words first in the brief's text
+    (``songs.revise_brief.pick_brief``): its phase 2 layers the stored reading with no
+    ``taste_on_revise`` item and the base taste kept, as before #1140. A pure step: the stored
+    reading needs no model, job or database."""
+    provenance = {revise_reading.KEY: revise_reading.storable(CHANGED)}
+    given = SimpleNamespace(catalogue_fact=None, plan_gates=None)
+    unused: Any = None
+    done = await revise_reading.phase_two(
+        unused, cast(Any, given), unused, unused, TASTED, "make it Danish rock", provenance
+    )
+    assert done.brief.music_taste == TASTED.music_taste
+    assert [i.reason_code for i in done.items] == []
+
+
+async def test_the_design_revise_path_records_the_taste_items(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``revise_stated.layered`` (the design, soundless and studio revises) turns the note on."""
+
+    async def reading(*_: Any) -> InterpretedRequest:
+        return CHANGED
+
+    monkeypatch.setattr(revise_stated, "read", reading)
+    model: Any = SimpleNamespace(provider=None, agent=None)
+    done = await revise_stated.layered(cast(Any, None), model, TASTED, "Danish rock", gates())
+    assert [i.reason_code for i in done.items] == ["taste_on_revise"] * 3
+    assert done.brief.music_taste == TASTED.music_taste

@@ -62,11 +62,8 @@ def resolve_taste(
     for path, stated, value in held:
         if pick or stated.origin == "explicit":
             out.append(_item(path, stated, value, request, pick))
-    return closed_taste(read) if pick else None
-
-
-def closed_taste(read: InterpretedTaste) -> MusicTaste | None:
-    """The closed taste the reading names (None when it names nothing)."""
+    if not pick:
+        return None
     taste = MusicTaste(
         eras=[e.closed() for e in read.eras],
         language=read.language.value if read.language is not None else None,
