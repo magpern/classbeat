@@ -48,6 +48,14 @@ export function watchConsole(page: Page): string[] {
     const closedBilling =
       /status of 403/.test(message.text()) && message.location().url.endsWith('/api/account/billing')
     if (closedBilling) return
+    // The class page reads GET /api/classes/{id}/timeline to learn whether the class is a studio
+    // class (the summary carries no studio status); every class that is not one answers 409
+    // `no_studio_draft`, which the page handles (`getTimeline`: `none`) and shows nothing for. The
+    // browser logs that answer when it lands, which can be inside a page's audit window (#1169).
+    // Only a 409 of exactly this URL is expected; any other 409 stays a console error.
+    const noStudioDraft =
+      /status of 409/.test(message.text()) && /\/api\/classes\/[0-9a-f-]{36}\/timeline$/.test(message.location().url)
+    if (noStudioDraft) return
     if (message.type() === 'error' || /Content Security Policy|Refused to/.test(message.text())) {
       seen.push(`${message.type()}: ${message.text()}`)
     }
