@@ -13,15 +13,17 @@ checks: the MOWL connection is the user's current one, the per-user limit), read
 order: the plan's gates and the route key (``with_plan``: the request has no brief to check yet),
 ``not_connected`` for a Spotify connection id that is not the user's current one, then the period's
 cost cap (``quota.check_cost``, 409 ``quota`` ``cost``). It then resolves, as server fields, what
-the interpreter may be offered (and refuses ``needs_spotify``, before any model call and with no
-credit, a request that has no Spotify connection and can only end without music: roadmap
-Amendment 25, ``interpret_music_policy.without_spotify_is_refused``): ``sports`` (running only when
-the running gate admits the user, ``sport.admit_running``), ``pick_ready`` (a Spotify connection is
-named and song picking admits the user) and ``swedebeat_mixes`` (the Swedebeat flag is on and the
-user uses Swedebeat). After the job row is inserted, the request is stored as the class's first
-message (seq 1, role ``user``). The kind takes **no class credit** (``consumes_credit=False``): the
-class credit is the design job's, taken by the hand-off. It counts toward the per-user limit like
-any job, and its model cost toward the cost cap through its ``agent_runs``.
+the interpreter may be offered (and refuses ``needs_spotify``, or ``song_picking_unavailable`` when
+song picking is off for the user, before any model call and with no credit, a request that has no
+Spotify connection and can only end without music: roadmap Amendment 25,
+``interpret_music_policy.without_spotify_is_refused``): ``sports`` (running only when the running
+gate admits the user, ``sport.admit_running``), ``pick_ready`` (a Spotify connection is named and
+song picking admits the user), ``song_picking`` (song picking admits the user) and
+``swedebeat_mixes`` (the Swedebeat flag is on and the user uses Swedebeat). After the job row is
+inserted, the request is stored as the class's first message (seq 1, role ``user``). The kind
+takes **no class credit** (``consumes_credit=False``): the class credit is the design job's, taken
+by the hand-off. It counts toward the per-user limit like any job, and its model cost toward the
+cost cap through its ``agent_runs``.
 
 **Worker**: the ``design`` stage group's model first (an unusable route fails ``model_config``
 before any call), then the ``interpret`` stage: the user's music names (``interpret_music``), the
@@ -49,7 +51,7 @@ from classbeat.agent.records import JobStageHost
 from classbeat.context import UserContext
 from classbeat.design import chat, interpret_policy, interpretation_row, mixadmit, revision, sport
 from classbeat.design.interpret_music import music_options
-from classbeat.design.interpret_music_policy import without_spotify_is_refused
+from classbeat.design.interpret_music_policy import no_music_reason, without_spotify_is_refused
 from classbeat.design.kind import (
     NoMusicChoice,
     SpotifyMusicChoice,
@@ -93,6 +95,9 @@ class InterpretRequestInput(ModelJobInput):
     # Server fields, set only by ``admit``.
     sports: list[Sport] | None = Field(default=None, max_length=2)
     pick_ready: bool | None = None
+    song_picking: bool | None = (
+        None  # song picking admits the user (None: a job queued before this field)
+    )
     swedebeat_mixes: bool | None = None
 
     @model_validator(mode="after")
@@ -126,7 +131,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     await quota.check_cost(db, ctx)  # QuotaRefused ``cost``: 409 ``quota`` (ADR 0011 section 4)
     running = await sport.admit_running(db, ctx) is None
     sports = ["cycling", "running"] if running else ["cycling"]
-    pick_ready = spotify is not None and await _song_picking(db, ctx)
+    picking = await _song_picking(db, ctx)
+    pick_ready = spotify is not None and picking
     mixes = await mixadmit.flag_on(db, mixadmit.current().enabled) and await _uses_swedebeat(
         db, ctx
     )
@@ -137,7 +143,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         running_offered=running,
         mixes=mixes,
     ):
-        return Refused("needs_spotify")  # Amendment 25: no model call and no credit
+        # Amendment 25: no model call and no credit. With song picking off for the user there is
+        # nothing to connect (the Spotify page is hidden): say so, without a link.
+        return Refused(no_music_reason(picking))
     request = parsed.request
 
     async def after_insert(db: AsyncSession, job_id: UUID) -> None:
@@ -154,7 +162,12 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
             base_revision_id=None,
         )
 
-    fields = {"sports": sports, "pick_ready": pick_ready, "swedebeat_mixes": mixes}
+    fields = {
+        "sports": sports,
+        "pick_ready": pick_ready,
+        "song_picking": picking,
+        "swedebeat_mixes": mixes,
+    }
     return Admitted(fields, after_insert)
 
 
@@ -200,7 +213,12 @@ async def run(job_run: JobRun) -> Complete:
     if not isinstance(outcome.output, InterpretResult):
         raise JobFailure("internal")
     offer = interpret_policy.Offer(
-        sports, gates, options, bool(given.pick_ready), given.spotify_connection_id is not None
+        sports,
+        gates,
+        options,
+        bool(given.pick_ready),
+        given.spotify_connection_id is not None,
+        given.song_picking is not False,
     )
     override = None if given.music_override is None else given.music_override.model_dump()
     resolved = interpret_policy.resolve(
@@ -232,7 +250,7 @@ INTERPRET_REQUEST: Final = KINDS.register(
         consumes_credit=False,
         admit=with_plan(admit),
         server_fields=frozenset(
-            {"route_key", "plan_gates", "sports", "pick_ready", "swedebeat_mixes"}
+            {"route_key", "plan_gates", "sports", "pick_ready", "song_picking", "swedebeat_mixes"}
         ),
     )
 )

@@ -22,7 +22,7 @@ import { IdeasRow } from './IdeasRow'
 import { MusicSourcePicker } from './MusicSourcePicker'
 import { musicRows } from './musicSources'
 import { SpotifyPrompt } from './SpotifyPrompt'
-import { spotifyConnectionId, spotifyGate } from './spotifyGate'
+import { spotifyConnectionId, spotifyGate, type SpotifyGate } from './spotifyGate'
 
 type Sport = 'cycling' | 'running'
 
@@ -46,8 +46,9 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
   const [musicKey, setMusicKey] = useState<string | null>(kept?.music ?? null)
   const [sport, setSport] = useState<Sport>(source.runningEnabled && kept?.sport === 'running' ? 'running' : 'cycling')
   const [problem, setProblem] = useState<string | null>(null)
-  // The server refused for want of Spotify (`needs_spotify`): the same prompt, with the link, instead of an error.
-  const [refusedForSpotify, setRefusedForSpotify] = useState(false)
+  // The server refused for want of Spotify (`needs_spotify`, or `song_picking_unavailable`: nothing to
+  // connect): the same prompt, with the link only when there is something to connect, instead of an error.
+  const [refusedForSpotify, setRefusedForSpotify] = useState<SpotifyGate['need'] | null>(null)
   const running = sport === 'running'
   const rows = musicRows(t, {
     playlists: source.playlists,
@@ -82,7 +83,7 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
     }
     if (gate?.blocking) return
     setProblem(null)
-    setRefusedForSpotify(false)
+    setRefusedForSpotify(null)
     const input: InterpretInput = {
       request: words,
       mowl_connection_id: source.connection.id,
@@ -100,13 +101,14 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
         navigate(`/classes/${job.classId}`)
       },
       (error) => {
-        if (error instanceof ApiError && error.reason === 'needs_spotify') setRefusedForSpotify(true)
+        if (error instanceof ApiError && error.reason === 'needs_spotify') setRefusedForSpotify('connect')
+        if (error instanceof ApiError && error.reason === 'song_picking_unavailable') setRefusedForSpotify('unavailable')
         return createError(t, error)
       },
     )
   }
 
-  const shown = problem ?? (refusedForSpotify ? null : action.error)
+  const shown = problem ?? (refusedForSpotify !== null ? null : action.error)
   const services = [
     t('start.chip.mowl'),
     ...(source.songs.kind === 'ready' || source.songs.kind === 'needs_consent' ? [t('start.chip.spotify')] : []),
@@ -176,7 +178,11 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
           </div>
         ) : null}
         <MusicSourcePicker rows={rows} value={chosen?.key ?? null} onChange={setMusicKey} />
-        {gate !== null ? <SpotifyPrompt need={gate.need} /> : refusedForSpotify ? <SpotifyPrompt need="connect" /> : null}
+        {gate !== null ? (
+          <SpotifyPrompt need={gate.need} soundless={source.soundlessEnabled && !running} />
+        ) : refusedForSpotify !== null ? (
+          <SpotifyPrompt need={refusedForSpotify} soundless={source.soundlessEnabled && !running} />
+        ) : null}
         <p className="m-0 text-[0.875rem] text-muted" data-testid="destination">
           {t('start.destination')}
         </p>

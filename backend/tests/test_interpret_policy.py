@@ -7,9 +7,13 @@ from typing import Any
 import pytest
 
 from classbeat.agent.brief import Brief
+from classbeat.agent.interpretation_record import InterpretationItem
 from classbeat.agent.interpreted import InterpretedRequest
 from classbeat.design import revision
-from classbeat.design.interpret_music_policy import without_spotify_is_refused
+from classbeat.design.interpret_music_policy import (
+    stored_no_music_reason,
+    without_spotify_is_refused,
+)
 from classbeat.design.interpret_policy import (
     DEFAULT_LENGTH_MIN,
     MusicOption,
@@ -277,3 +281,52 @@ def test_the_title_is_the_requests_first_words() -> None:
     assert len(long) <= 60
     assert long.endswith("…")
     assert not long.endswith(" …")
+
+
+@pytest.mark.parametrize(
+    ("offer", "reason"),
+    [
+        # Song picking admits the user: the Spotify connection is what is missing, or it is there.
+        (Offer(options=OPTIONS, song_picking=True), "needs_spotify"),
+        (Offer(options=OPTIONS, song_picking=True, spotify=True), "needs_spotify"),
+        # Song picking is off for the user: nothing to connect, connected or not.
+        (Offer(options=OPTIONS, song_picking=False), "song_picking_unavailable"),
+        (Offer(options=OPTIONS, song_picking=False, spotify=True), "song_picking_unavailable"),
+    ],
+)
+def test_a_cycling_class_with_no_music_says_whether_spotify_could_help(
+    offer: Offer, reason: str
+) -> None:
+    got = resolve(read(), REQUEST, offer)
+    assert got.music is None
+    assert by_path(got.items)["music"][-1].reason_code == reason
+
+
+def test_a_running_class_with_no_playlist_is_never_a_spotify_matter() -> None:
+    offer = Offer(sports=("cycling", "running"), song_picking=False)
+    got = resolve(read(), REQUEST, offer, sport_override="running")
+    assert by_path(got.items)["music"][-1].reason_code == "needs_mowl_playlist"
+
+
+@pytest.mark.parametrize(
+    ("reasons", "expected"),
+    [
+        (["needs_spotify"], "needs_spotify"),
+        (["song_picking_unavailable"], "song_picking_unavailable"),
+        ([None], "needs_spotify"),  # no code: the older wording
+        ([], "needs_spotify"),
+    ],
+)
+def test_the_stored_reason_is_the_music_items_closed_code(
+    reasons: list[str | None], expected: str
+) -> None:
+    items = [
+        InterpretationItem(
+            path="music",
+            origin="default" if code is None else "not_as_asked",
+            reason_code=code,
+            value=None,
+        )
+        for code in reasons
+    ]
+    assert stored_no_music_reason(items) == expected

@@ -35,6 +35,9 @@ CYCLING_MUSIC: Final = ("override", "name_match", "pick")
 RUNNING_MUSIC: Final = ("override", "name_match", "first_playlist")
 NEEDS_MOWL_PLAYLIST: Final = "needs_mowl_playlist"
 NEEDS_SPOTIFY: Final = "needs_spotify"
+# The same Not as asked for a cycling class with no music, when the account cannot pick songs at all
+# (song picking is off for the user, so the Spotify page is hidden): nothing to connect, no link.
+SONG_PICKING_UNAVAILABLE: Final = "song_picking_unavailable"
 # Stated, sent to the model, but not checked against the draft (no closed comparison exists):
 # recorded as an assumption, never as "As you asked".
 UNVERIFIED: Final = ("intensity", "class_type")
@@ -83,7 +86,8 @@ def music_order(sport: str) -> tuple[str, ...]:
 
 def choose_music(sport: str, available: Collection[str]) -> str | None:
     """The first source of the sport's order that is available; ``None`` when there is none (Not
-    as asked: ``needs_spotify`` for cycling, ``needs_mowl_playlist`` for running)."""
+    as asked: ``needs_spotify`` or ``song_picking_unavailable`` for cycling, ``needs_mowl_playlist``
+    for running)."""
     return next((s for s in music_order(sport) if s in available), None)
 
 

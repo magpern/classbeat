@@ -212,7 +212,10 @@ The fields are:
    Spotify is ready). There is no default music (roadmap Amendment 25, 2026-11-16: this replaced
    "then the first MOWL playlist, then soundless"). A playlist, named or chosen, needs a Spotify
    connection; with nothing left the class is Not as asked `needs_spotify`, and `admit` refuses it
-   with that code when it can only end that way. For running (ADR 0018): MOWL playlists only,
+   with that code when it can only end that way. *(Issue #1137: when song picking is not available
+   to the user at all, so the Spotify page is hidden and there is nothing to connect, the code is
+   `song_picking_unavailable` instead, with plain wording and no connect link. Free-text "no music"
+   is not read as soundless: the message points to the "No music" choice.)* For running (ADR 0018): MOWL playlists only,
    otherwise Not as asked `needs_mowl_playlist`. *(Roadmap Amendment 26, 2026-11-16: the order is
    unchanged. When a cycling class's music is a playlist and song picking admits the user, the
    hand-off designs it through the song pick's approval on a new private playlist in that
