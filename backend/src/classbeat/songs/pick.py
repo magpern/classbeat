@@ -61,6 +61,7 @@ from classbeat.agent.limits import Limits
 from classbeat.agent.provider import ModelProvider
 from classbeat.agent.schemas import SONG_SCHEMA_VERSION
 from classbeat.agent.songs import analysed_pool
+from classbeat.agent.taste_check_policy import list_unmet
 from classbeat.connections import OpenConnection, hold
 from classbeat.crypto.keks import KeyRing
 from classbeat.design.music import MusicStep, load_music
@@ -180,6 +181,7 @@ async def run_phase_one(
             provenance={**stored[1], **(extra_provenance or {})},
             parent_id=seeded.revision_id if seeded is not None else None,
             generations=generations(spotify, step),
+            unmet=list_unmet(plan.brief.music_taste, pool.picks, stored[0]),  # issue #1133
         )
     except BaseException:
         step.close()

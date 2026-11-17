@@ -3,6 +3,7 @@ import type { CatalogueKey } from '../i18n/en'
 import { t } from '../i18n/t'
 import { gameLabel, gameLength } from './games'
 import type { DraftGame } from '../api/draftTypes'
+import { getActiveLocale } from '../i18n/locales'
 
 // The three-part note of how a request was read (ADR 0029 section 4): "As you asked", "Not as
 // asked" and "Assumed". Pure: every sentence is built from catalogue keys, a path and a reason
@@ -33,6 +34,13 @@ const LABELS: Record<string, CatalogueKey> = {
   ftp_test: 'interp.path.ftp_test',
   class_type: 'interp.path.class_type',
   music: 'interp.path.music',
+  // The music taste (issue #1133): a path per kind; eras and style words carry their number.
+  music_era: 'interp.path.music_era',
+  music_language: 'interp.path.music_language',
+  music_genre: 'interp.path.music_genre',
+  music_hits: 'interp.path.music_hits',
+  music_taste: 'interp.path.music_taste',
+  music_length: 'interp.path.music_length',
 }
 
 const EFFORT: Record<string, CatalogueKey> = {
@@ -79,6 +87,10 @@ export const REASONS: Record<string, CatalogueKey> = {
   game_duration: 'interp.reason.game_duration',
   needs_mowl_playlist: 'interp.reason.needs_mowl_playlist',
   needs_spotify: 'interp.reason.needs_spotify',
+  taste_needs_pick: 'interp.reason.taste_needs_pick',
+  era_too_few: 'interp.reason.era_too_few',
+  songs_outside_eras: 'interp.reason.songs_outside_eras',
+  songs_too_short: 'interp.reason.songs_too_short',
 }
 
 const GAMES: readonly string[] = ['racetrack', 'power_pull', 'fast_lane', 'overflow', 'ghost_target']
@@ -95,10 +107,44 @@ function whole(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+/** A language's name in the page's language (`sv` is "Swedish"), or the code when unknown. */
+function languageName(code: string): string {
+  try {
+    return new Intl.DisplayNames([getActiveLocale()], { type: 'language' }).of(code) ?? code
+  } catch {
+    return code
+  }
+}
+
+/** The kind of a path: `music_era.1` is `music_era`, `length_min` stays. */
+function kindOf(path: string): string {
+  return path.startsWith('music_') ? path.replace(/\.[0-9]+$/, '') : path
+}
+
+/** A music taste item's value in words, or null. */
+function tasteText(kind: string, value: unknown): string | null {
+  const from = whole(field(value, 'from'))
+  const to = whole(field(value, 'to'))
+  switch (kind) {
+    case 'music_era':
+      return from === null || to === null ? null : t('interp.value.years', { from, to })
+    case 'music_language':
+      return typeof value === 'string' && /^[a-z]{2}$/.test(value) ? languageName(value) : null
+    case 'music_length': {
+      const total = whole(field(value, 'total_min'))
+      const target = whole(field(value, 'target_min'))
+      return total === null || target === null ? null : t('interp.value.songsLength', { total, target })
+    }
+    default:
+      return null
+  }
+}
+
 /** What the item asks for, in words, or null when its value is not one the page knows. */
 function valueText(item: InterpretationItem): string | null {
   const { path, value } = item
   const number = whole(value)
+  if (path.startsWith('music_')) return tasteText(kindOf(path), value)
   switch (path) {
     case 'length_min':
       return number === null ? null : t('interp.value.minutes', { count: number })
@@ -131,7 +177,8 @@ function gameText(item: InterpretationItem): string {
 
 function what(item: InterpretationItem): string {
   if (item.path.startsWith('games.')) return gameText(item)
-  const label = Object.hasOwn(LABELS, item.path) ? t(LABELS[item.path]!) : t('interp.path.other')
+  const kind = kindOf(item.path)
+  const label = Object.hasOwn(LABELS, kind) ? t(LABELS[kind]!) : t('interp.path.other')
   const value = valueText(item)
   return value === null ? label : t('interp.line', { what: label, value })
 }

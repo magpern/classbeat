@@ -11,6 +11,7 @@ import { Card, CardTitle } from '../ui/card'
 import { Ended, FinalActions, Heading, PickAgain, RefreshButton } from './ApprovalEnded'
 import { StickyActionBar } from '../ui/sticky-action-bar'
 import { CoverMosaic } from './CoverArt'
+import { MusicNotAsked } from './MusicNotAsked'
 import { SongRows } from './SongRows'
 import { SpotifyAttribution } from './SpotifyAttribution'
 import { useNewPick } from './useNewPick'
@@ -196,6 +197,7 @@ function Approval({
           </div>
         </header>
         {list.note !== '' ? <p className="m-0 text-muted">{list.note}</p> : null}
+        <MusicNotAsked items={list.unmet} />
         {list.omittedNoBpm > 0 ? (
           <Notice>{t('songs.approval.omittedNoBpm', { count: list.omittedNoBpm })}</Notice>
         ) : null}

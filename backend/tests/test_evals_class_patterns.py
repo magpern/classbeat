@@ -303,6 +303,8 @@ def test_the_digest_sources_include_every_rule_source() -> None:
         "agent/section_energy.py", "agent/song_input.py",
         # #1040: the tempo relation of adjacent songs
         "agent/tempo_policy.py",
+        # #1133: the music taste the interpreter returns and the song stages are told
+        "agent/music_taste.py",
     }  # fmt: skip
 
 

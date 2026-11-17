@@ -25,7 +25,7 @@ from classbeat.db import create_session_factory, user_session
 from classbeat.jobs.sentences import SONG_SENTENCES, failure_sentence
 from ctx import make_context
 from jobtools import new_class, new_job
-from songtools import NARROW_SONG, Rider, SongEnv, song_id
+from songtools import BRIEF, NARROW_SONG, Rider, SongEnv, song_id
 from spotifycore import NARROW_ALBUM, album_images
 from spotifyfake import USER_A
 from test_classes_api import content_digest, insert, make_current, revision
@@ -108,9 +108,36 @@ async def test_a_waiting_list_is_reported_on_the_class_and_shown_without_ids(
             assert cover_url(kept["cover"]) == kept["cover"]
     assert song_id(NARROW_SONG) in [s["spotify_id"] for s in stored["songs"]]
     assert body["omitted_no_bpm"] == stored["omitted_no_bpm"]
+    assert (body["unmet"], "unmet" in stored) == ([], False)  # issue #1133: it kept to the request
     # the only place an id may appear is inside the server-built link (ADR 0008 section 9)
     unlinked = SimpleNamespace(text=re.sub(r"https://open\.spotify\.com/track/\w+", "", got.text))
     clean(songenv, unlinked)
+
+
+async def test_a_list_that_misses_the_stated_era_says_so_before_approval(
+    songenv: SongEnv,
+) -> None:
+    """Issue #1133: the fake catalogue's songs are from 2000 to 2024, the brief asks for the 50s.
+    The pick still waits for the user, and the list says it is not what was asked."""
+    rider = await songenv.rider()
+    fifties = {"eras": [{"year_from": 1950, "year_to": 1959}]}
+    job_id, revision_id, digest = await songenv.waiting(
+        rider, brief={**BRIEF, "music_taste": fifties}
+    )
+    got = await rider.browser.get(
+        f"/api/classes/{class_of(songenv, job_id)}/revisions/{revision_id}"
+    )
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert body["content_hash"] == digest
+    assert [(i["path"], i["origin"], i["reason_code"]) for i in body["unmet"]] == [
+        ("music_era.0", "not_as_asked", "era_too_few"),
+        ("music_taste", "not_as_asked", "songs_outside_eras"),
+    ]
+    assert body["unmet"][0]["value"] == {"from": 1950, "to": 1959, "found": 0}
+    assert body["unmet"][1]["value"] == {"songs": len(body["songs"])}
+    stored = songenv.revision(revision_id).content
+    assert [i["reason_code"] for i in stored["unmet"]] == ["era_too_few", "songs_outside_eras"]
 
 
 async def test_a_notes_markup_and_control_characters_arrive_as_plain_text(

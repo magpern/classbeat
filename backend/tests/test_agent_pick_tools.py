@@ -62,7 +62,8 @@ def test_the_stages_have_read_and_compute_tools_only_and_their_limits() -> None:
     w = world()
     pool = pool_stage(w.pool)
     assert [(t.name, t.kind) for t in pool.tools] == [
-        ("search_tracks", "read"), ("check_pool", "compute"), ("submit_pool", "compute"),
+        ("search_tracks", "read"), ("find_songs", "read"), ("check_pool", "compute"),
+        ("submit_pool", "compute"),
     ]  # fmt: skip
     assert pool.final_tool == "submit_pool"
     choose = choose_stage(w.choose_context(POOL_14))

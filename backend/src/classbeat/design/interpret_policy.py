@@ -16,7 +16,8 @@
   to keep them) but are recorded as Assumed, as ``request_policy.UNVERIFIED`` says: nothing
   checks them against the draft, so the page never shows them under "As you asked" (the
   ``stated_unchecked`` decision of ADR 0029 section 4, settled here for the page's catalogue);
-- the music as ``interpret_music_policy.choose`` picks it.
+- the music as ``interpret_music_policy.choose`` picks it, and the music taste as
+  ``interpret_taste_policy.resolve_taste`` reads it (a song pick only).
 
 Every value an item carries is closed (numbers,
 short enums, a game as a small object, the music's source); a quote is kept only if it is a
@@ -32,8 +33,10 @@ from classbeat.agent.explicit_check import MIN_GAME_SEC
 from classbeat.agent.interpret_input import clean_request
 from classbeat.agent.interpretation_record import InterpretationItem, Origin, keep_quote
 from classbeat.agent.interpreted import InterpretedRequest, Reading
+from classbeat.agent.music_taste import largest
 from classbeat.design import request_policy
 from classbeat.design.interpret_music_policy import Music, MusicOption, choose
+from classbeat.design.interpret_taste_policy import resolve_taste
 from classbeat.plan_gates import PlanGates
 
 DEFAULT_LENGTH_MIN: Final = 45
@@ -177,6 +180,9 @@ def resolve(
     music = choose(
         read.music, request, sport, offer.options, offer.pick_ready, offer.spotify, override, items
     )
+    taste = resolve_taste(read.music_taste, request, music, items)
+    if taste is not None:
+        fields["music_taste"] = taste
     return Resolved(Brief.model_validate(fields), music, items)
 
 
@@ -192,7 +198,8 @@ def title_for(request: str) -> str:
 
 def worst_case_brief(text: str) -> Brief:
     """The largest brief ``resolve`` can make of this request (every knob, six games at a relative
-    placement, every path explicit): the request is admitted only if this one fits the class."""
+    placement, every path explicit, the largest music taste): the request is admitted only if
+    this one fits the class."""
     game = {
         "type": "any",
         "placement": {"relation": "replaces", "anchor": "interval", "ordinal": 20},
@@ -208,5 +215,6 @@ def worst_case_brief(text: str) -> Brief:
             "text": clean_request(text),
             "games": [game] * 6,
             "explicit": explicit,
+            "music_taste": largest(),
         }
     )

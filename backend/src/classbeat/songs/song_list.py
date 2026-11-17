@@ -16,7 +16,9 @@ class's current revision, never revised or saved as a draft.
   kept song's stored one), kept only when ``classbeat.covers.cover_url`` accepts it and ``null``
   otherwise; it is checked again whenever content is parsed, so a stored URL that no longer
   passes reads as ``null``. ``v: 1`` content (no ``cover`` key) stays readable and reads as no
-  cover. The hash covers ``cover`` like every other field.
+  cover. The hash covers ``cover`` like every other field. ``unmet`` (issue #1133) is the list's
+  Not as asked items (``agent.taste_check_policy``), written only when there is one, so every
+  other list is stored and hashed as before.
 
   Built from ``classbeat.agent.ChosenList``, which ``choose_songs`` builds from the analysed pool:
   every id, title, artist, BPM and length is MOWL's analysis or a kept song's stored value, never
@@ -46,6 +48,7 @@ without ids).
 import hashlib
 import json
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, Final, Literal
 from uuid import UUID
@@ -55,6 +58,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent.choose_songs import ChosenList
+from classbeat.agent.interpretation_record import InterpretationItem
 from classbeat.agent.schemas import MAX_SONGS, Role
 from classbeat.covers import cover_url
 from classbeat.design.revision import MAX_CONTENT_BYTES, canonical
@@ -65,6 +69,7 @@ VERSION: Final = 2
 MUSIC_SOURCE: Final = "claude_pick"
 MAX_TEXT: Final = 200
 MAX_NOTE: Final = 300
+MAX_UNMET: Final = 8
 
 SpotifyId = Annotated[str, Field(pattern=r"^[0-9A-Za-z]{22}$")]
 
@@ -101,11 +106,17 @@ class SongListContent(BaseModel):
     songs: list[Song] = Field(min_length=1, max_length=MAX_SONGS)
     omitted_no_bpm: int = Field(ge=0)
     note: str = Field(max_length=MAX_NOTE)
+    # Left out of the dump when empty, so a list that keeps to the request hashes as before.
+    unmet: list[InterpretationItem] = Field(
+        default_factory=lambda: [], max_length=MAX_UNMET, exclude_if=lambda v: not v
+    )
 
     @model_validator(mode="after")
     def _cover_is_v2(self) -> "SongListContent":
         if self.v == 1 and any("cover" in s.model_fields_set for s in self.songs):
             raise ValueError("cover is a v: 2 field")
+        if any(i.origin != "not_as_asked" for i in self.unmet):
+            raise ValueError("unmet holds Not as asked items only")
         return self
 
     def track_ids(self) -> tuple[str, ...]:
@@ -218,6 +229,7 @@ def build(
     provenance: dict[str, Any],
     parent_id: UUID | None = None,
     generations: Generations | None = None,
+    unmet: Sequence[InterpretationItem] = (),
 ) -> SongListRevision:
     """The revision of ``chosen`` for the Spotify account ``account``; ``invalid_output`` if it
     does not fit the content's rules or 64 KB."""
@@ -243,6 +255,7 @@ def build(
             ],
             omitted_no_bpm=chosen.omitted_no_bpm,
             note=chosen.note[:MAX_NOTE],
+            unmet=list(unmet),
         )
         dumped = content.model_dump(mode="json")
         music = SongListMusic(

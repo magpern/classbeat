@@ -59,6 +59,13 @@ say where: either a position (start, early, middle, late or before_cooldown), or
 or cooldown), for example after the 2nd climb. Add duration_sec only if they \
 give a length. A race is not a game.
 
+music_taste: only what the request says about the songs themselves. eras: one entry per era \
+it names, as years (the 80s are 1980 to 1989, "the 80s, 90s and 00s" are three entries, the 2000s \
+are 2000 to 2009); language: the songs' language as a two-letter ISO 639-1 code ("Swedish songs" \
+or "Swedish artists" is sv); genres: up to three style words copied letter for letter from the \
+request ("disco", "rock"); hits: true when the request asks for hits or well-known songs. A \
+playlist or mix name is not a taste.
+
 A message with "current" holds a change to an existing class whose values are "current". Then \
 report only the fields the request changes, each with the value it should have after the change \
 ("ten minutes longer" on a 45-minute class is 55, "one more sprint" on 3 sprints is 4), and leave \
