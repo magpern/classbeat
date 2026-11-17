@@ -2,6 +2,7 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test'
 import { PASSWORD, passCaptcha, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
 import { PLAYLISTS, connectMowl, fakeMowl, getJob, jobId } from './design-helpers'
 import { useModelScript } from './model-script'
+import { withSpotify } from './spotify-helpers'
 import { designRunningAndOpen, reviseByChat, storeRunning } from './class-helpers'
 import {
   audit,
@@ -75,6 +76,8 @@ test('the signed-in pages: home, classes, new class, designing, ready, class', a
   await signUpThroughUi(page, email)
   await signInThroughUi(page, email)
   await connectMowl(page)
+  // A cycling class on a playlist needs Spotify (roadmap Amendment 25): the form below starts one.
+  await withSpotify(page)
 
   await visit('/', page.getByRole('link', { name: 'Design a class' }))
   await check('home', page.getByRole('link', { name: 'Design a class' }))
