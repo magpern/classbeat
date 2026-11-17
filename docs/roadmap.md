@@ -20,20 +20,23 @@ by the owner the same day; see [ideas.md](ideas.md) §4.)
 - **Songs in place.**
   - Songs are filled into the sketch automatically: pinned songs at their places, attached playlists
     favoured, search for the rest.
-  - The class is designed **before** the approval, so the user approves the class they see. That draft has the
-    origin `composer_preview` and is never ready: a shared server-side rule (`revision_ready`) refuses to
-    save, update, send, duplicate or make current a preview or a sketch. Revisions stay immutable.
+  - The class is designed **before** the approval, so the user approves the class they see. The design is
+    stored **inside the immutable song-list revision** (`v: 3`, with a `preview`), not as a draft revision:
+    nothing before the approval can be saved, and the sketch stays the current revision until phase 2.
+    A shared server-side rule (`revision_ready`) keeps the sketch from being written. Revisions stay
+    immutable.
   - Swap and chat changes **replace** the waiting version in one transaction, at no credit. If the
     replacement is refused, the waiting version is kept.
 - **Approve and save.**
-  - One click creates the final playlist, fits the approved draft to it with no model (same tracks, each
-    length within 2 s, total drift within 5 s), and saves exactly that refit to MOWL.
+  - One click creates the final playlist, fits the approved design to it with no model (same tracks, each
+    length within 2 s, total drift within 5 s), stores the first real draft, and saves exactly that draft
+    to MOWL.
   - If the final songs differ, nothing is saved and the user checks the class first.
 - **Architect defaults** (the owner may revisit them): the sketch comes before the songs, questions never
   block, a message sent during a job waits as pending and disables Approve, and the pool analysis is not
   stored separately.
 - **Amends** ADR 0008 §4, §5 and §6 for composer classes, ADR 0007 §5 (the click on Approve covers the save
-  of the refit) and ADR 0029 §5 (more web-side hand-offs). The worker still never enqueues, and every
+  of the re-timed draft) and ADR 0029 §5 (more web-side hand-offs). The worker still never enqueues, and every
   external write still follows a user's approval.
 - **Behind `composer_flow`** (environment switch `CLASSBEAT_COMPOSER_FLOW`, off by default, not set in the
   production compose) until the owner's live check. The old screens stay until a cleanup issue after that.

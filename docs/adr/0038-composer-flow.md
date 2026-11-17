@@ -5,10 +5,10 @@ Implementation: #1185, #1186, #1188, #1189, #1190, #1191. Behind the `composer_f
 live check.
 
 Amends:
-- [ADR 0008](0008-song-picking.md) §4 (phase 1 ends with the song list; phase 2 designs) for composer
-  classes: phase 1 also designs the class, the approval covers the list and the draft, and phase 2 fits
-  instead of designing (§5, §7 below). §5 (Ask for changes) is replaced by §6 below for composer classes.
-  §6 (Resume) gets the rules of §9. §7 (waiting, expiry, cancel) is unchanged except for §6 and §12 below.
+- [ADR 0008](0008-song-picking.md) §4 and §5 for composer classes: phase 1 also designs the class, and the
+  design is stored **inside the `song_list` revision** (content `v: 3`, §5), so the approval's hash covers
+  the list and the design. Phase 2 fits instead of designing (§7). §5's Ask for changes is replaced by §6
+  below. §6 (Resume) gets the rules of §7 and §9. §7 (waiting, expiry, cancel) is unchanged.
 - [ADR 0007](0007-classes-revisions-and-saving.md) §5: a save normally approves one revision by the user's
   click on Save. Here the click on Approve covers the save of the **refit** of the approved draft, which has
   a different hash (§7).
@@ -99,46 +99,40 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
   - The design runs with no songs: time-based segments, the soundless design's rules.
   - The revision has `origin = "sketch"`.
   - It takes the class credit. Two concurrent hand-offs admit one job and one credit, as today.
-- **A revision that is not ready is never written anywhere (one shared rule).**
-  - Readiness is carried by the revision's `origin`, which is fixed when the row is inserted. **Revisions
-    stay immutable** (ADR 0007 §2, migration 0004's `revisions_immutable`): nothing here updates one.
-  - A revision is *not ready* when its origin is **`sketch`** or **`composer_preview`** (§5). A preview is
-    never ready, for good: not while its job waits, and not after the job was approved, replaced, cancelled
-    or expired. Only phase 2's refit or re-design (`origin = design_with_songs`) is ready.
-  - One server-side helper, `revision_ready`, refuses a not-ready revision with the closed reason code
-    `not_ready`. Every route and job that takes a revision id calls it:
-    - `save_workout` and `update_workout`;
-    - Send to player;
-    - duplicate;
-    - `POST /api/classes/{id}/current`;
-    - `refit_draft`, `revise_songs` and `studio_revise` on it;
-    - `revise_draft` on a `composer_preview` (a `sketch` is revised by `revise_draft`; a preview is changed
-      through §6, never by a plain revise).
-  - A guard test lists every route and job kind that takes a revision id and fails when one does not call
-    `revision_ready` or is not on a short reviewed allowlist.
-  - Every hard-coded list of revision origins gets `sketch` and `composer_preview`, or a test showing it
-    doesn't need them. If the origin is constrained in the database, a migration adds the two values (an
-    insert-time change only).
-- **Chat changes on a sketch.** `revise_draft` accepts a `sketch` base and produces a `sketch`. It follows
-  the soundless revise rules, takes no credit, and counts toward the class's revise limit (§9).
+- **The sketch stays the class's current revision until phase 2.** Nothing before the approval inserts a
+  draft revision (§5), so there is no preview revision, no readiness state and no current-pointer question
+  while songs are found, swapped or changed, replaced, expired or failed.
+- **A sketch is never written anywhere.** One server-side helper, `revision_ready`, refuses an origin that
+  is not ready with the closed reason code `not_ready`. The only not-ready origin is `sketch`.
+  - Every route and job that takes a revision id calls it: `save_workout`, `update_workout`, Send to
+    player, duplicate, `POST /api/classes/{id}/current`, `refit_draft`, `revise_songs`, `studio_revise`.
+  - **A guard test** lists every route and job kind that takes a revision id, and enumerates every origin
+    literal. It fails when a route does not call `revision_ready` and is not on a reviewed allowlist, or when
+    an origin is neither classified ready nor not ready. The allowlist records why each entry is safe: the
+    studio outputs, `spotify-sync`, `studio-songs` and `swedebeat_match` are unreachable for a non-studio
+    class (`current_draft.py`).
+  - Every hard-coded list of revision origins gets `sketch`, or a test showing it doesn't need it. If the
+    origin is constrained in the database, a migration adds the value (an insert-time change only).
+  - Revisions stay immutable (ADR 0007 §2, `revisions_immutable`): nothing here updates one.
+- **Chat changes on a sketch.** `revise_draft` accepts a `sketch` base (the sketch is current, so its base is
+  never stale) and produces a `sketch`. It follows the soundless revise rules, takes no credit, and counts
+  toward the class's revise limit (§9).
 - **A soundless class ("No music")** has no sketch: its first design is the class, as today, and its
   approve-and-save is the save alone.
 
 ### 5. Songs into the sketch (`design_with_songs`, mode `fill`)
 
 - **Start.**
-  - A new web hand-off, `POST /api/classes/{id}/fill-songs`, starts it automatically when a sketch is the
-    class's current revision, it has no open job and no fill has been started for it. The user starts it by
-    **Find songs again** after a failed, replaced or expired fill: then the current revision is a sketch or a
-    preview whose job is no longer waiting.
-  - The input's `base_revision_id` must be **the class's latest sketch**. The new draft is inserted with
-    ADR 0007 §2's compare-and-set on the class's current revision, whatever that is. Anything else is
-    `stale_base`.
+  - A new web hand-off, `POST /api/classes/{id}/fill-songs`, starts it automatically when the class's
+    current revision is a sketch with no open job and no fill started for it. The user starts it by **Find
+    songs again** after a failed, replaced or expired fill.
+  - The input's `base_revision_id` must be the class's current revision, which is a sketch; anything else
+    is `stale_base`.
   - **Idempotency key** = a hash of the class id, the sketch's **revision** id and an `attempt` number stored
-    on the class. A new sketch (a pending shape change) gets a new key. A retry after a refusal or failure
-    increments `attempt`.
-  - **A refusal or failure** is stored on the class (the ADR 0029 §5 pattern) and shown with a **Find songs
-    again** button that retries with the next `attempt`. No credit is used.
+    on the class. A new sketch (a shape change made before the fill) gets a new key. A retry after a
+    refusal or failure increments `attempt`.
+  - **A refusal or failure** is stored on the class (the ADR 0029 §5 pattern) and shown with **Find songs
+    again**. No credit is used.
 - **Credit.** `consumes_credit` is false in this mode, because the sketch took the class credit. The job
   counts toward the cost cap and the per-user job limit. It is **exempt from the class's revise limit**, so a
   user who used the limit on the sketch is never left with a spent credit and no way to get songs (§9).
@@ -161,17 +155,19 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
 - **`design` (new, before the wait).**
   - The design runs on the chosen songs' pool analysis, with the sketch as its base. It keeps the shape the
     user agreed to and re-times it to the songs.
-  - **The draft is stored with `origin = "composer_preview"`.** It becomes the class's current revision (so
-    the page shows it), but it is *not ready* (§4): nothing can save, update or send it, and nothing ever
-    updates it. The pool analysis it was fitted to is stored in the draft's own `music` object, as every
-    draft's is (§7 uses it).
-- **`AwaitApproval`.** The wait, its expiry and cancel are as in ADR 0008 §7, with §12 below.
-- **The approval's identity.**
-  - `POST /api/jobs/{id}/approve` names the job, the `song_list` revision and the draft revision.
-  - **`approval_hash`** = SHA-256 over the canonical bytes of `{song_list_content_hash, draft_content_hash}`,
-    each as ADR 0008 §4 and ADR 0007 §5 define them. A different list or draft is `hash_mismatch`.
-  - Phase 2's `prepare` revalidates, fenced, as ADR 0008 §6 does: the list is still the class's newest
-    `song_list` revision, the draft is still this job's draft, and the hash is computed again.
+  - **Its result is not a draft revision.** It is stored in the **`song_list` revision**, whose content
+    becomes `v: 3` with a `preview`: `{content, music}`, the draft's content and the `music` object (with
+    the pool analysis it was fitted to) exactly as a draft would store them, and a reference to the
+    `design` stage's `agent_runs` row. The revision stays what ADR 0008 §5 says: immutable, never current,
+    never revised or saved as a draft. It is bounded as a draft is, within the 64 KB of the song list plus
+    the draft's own limit.
+  - So nothing before the approval can be saved, updated or sent: there is no revision to name.
+- **`AwaitApproval`.** The wait, its expiry and cancel are as in ADR 0008 §7.
+- **The approval's identity is ADR 0008 §5's, unchanged.** `POST /api/jobs/{id}/approve` names the job and
+  the `song_list` revision, and `content_hash` covers the whole `v: 3` content, so the approval covers the
+  songs **and** the design. A different list or design is `hash_mismatch`. Phase 2's `prepare` revalidates,
+  fenced, as ADR 0008 §6 does: the list is still the class's newest `song_list` revision, and its hash is
+  computed again.
 
 ### 6. Refining while it waits (swap and change)
 
@@ -183,77 +179,103 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
   - **if the create is refused** (`revision_limit`, `quota` with detail `cost` for the cost cap,
     `pool_busy`), the transaction rolls back and the waiting job and its approvable list are kept; the
     refusal is shown on the chat message;
-  - the replaced job's status is `cancelled`, so approving it is refused (`superseded`). Its preview is not
-    touched and is never ready (§4).
-- **A swap** of one song is replace mode, as `revise_songs` does today. It stores a new `song_list`
-  revision, then runs the `design` stage.
+  - the replaced job's status is `cancelled`, so approving it is refused (`superseded`).
+- **A swap** of one song is replace mode, as `revise_songs` does today. It stores a new `song_list` revision
+  (with a new preview).
 - **A change** keeps the songs and runs `design` again.
-  - It **always stores a new `song_list` revision** with the same content, so ADR 0008 §5's test "the newest
-    `song_list` revision" still tells an old job from a new one.
+  - It **always stores a new `song_list` revision** with the same songs and a new preview, so ADR 0008 §5's
+    test "the newest `song_list` revision" still tells an old job from a new one.
   - It runs `pool_write` and `pool_analyse` again on the kept songs (a new run: the working copy's consent
-    stands, and it takes its own analysis slot under the daily limit), so no analysis needs to be stored
-    beyond the draft's own `music` (§5).
+    stands, and it takes its own analysis slot under the daily limit), so no analysis is stored beyond the
+    preview's own `music`.
   - **A change that does not fit the kept songs** is decided by the server, by number: when the re-designed
-    class's length differs from the songs' total by more than 10%, the change is stored as a new `sketch`
-    revision (the songs dropped), the waiting job is cancelled, and the fill hand-off (§5) starts again for
-    the new sketch. The model does not decide this.
+    class's length differs from the songs' total by more than 10%, the change produces a new `sketch`
+    revision (the songs dropped) through the ordinary sketch revise, and the fill hand-off (§5) starts again
+    for it.
 - Swap and change count toward the class's revise limit and take no credit (§9).
+- **A swap or change that fails while running** leaves no approvable list, because the waiting job was
+  already cancelled. The class keeps its sketch, the page offers **Find songs again**, and the user's change
+  stays in the chat. This is tested.
 
 ### 7. Approve and save, in one step
 
 - **Approval.** The approval route takes `save: true`, valid only for a `fill`, `swap` or `change` job, and
-  stores it on the approval receipt. Anything else is `invalid_input`.
+  stores it, with the approved `song_list` revision id and `content_hash`, on the **approval receipt**.
+  Anything else is `invalid_input`.
 - **Phase 2** runs `prepare`, `create`, `fill`, `attach` and `music` as today: the final playlist (asked for
   private; Amendment 27), verified by id, attached in MOWL and analysed.
-- **`fit` replaces phase 2's `design` step.**
-  - The final analysis is compared, like with like, with the pool analysis stored in the approved draft's
-    `music` object. A draft's `music.songs[]` holds each song as heard in the class (`start`, `end`, `bpm`),
-    so the same function builds `songs[]` from the final analysis, and:
+- **`fit` replaces phase 2's `design` step.** The worker calls the fit function directly. It does **not**
+  enqueue a `refit_draft` job, so Beat One's origin and its `refit_limit` are not involved.
+  - The final analysis is compared, like with like, with the pool analysis in the approved list's `preview`:
+    `songs[]` is built from the final analysis by the same function as the preview's, and
     - **the same tracks in the same order** (the fingerprint here is of track ids only, so `refit_draft`'s
-      `music_changed` guard does not trip on a different playlist id);
+      `music_changed` guard does not apply);
     - **every song's heard length, `end - start`, within `CLASSBEAT_FIT_TOLERANCE_SECONDS`** (default 2)
       **and the last song's `end` (the music's total length) within 5 seconds**. BPM and beat one are not
       compared: the same recording analyses the same way.
-  - **Within both:** the approved draft is refitted with the refit rules (`refit_draft`), with no model and
-    no change of shape. The refit is a new revision with `origin = design_with_songs` (ready) and becomes the
-    class's current revision.
-  - **Otherwise:** the design runs as today and stores a revision with `origin = design_with_songs`. It is
-    **not** saved by the flow, and the class says "the final songs differed; check the class and save". The
-    user's own Save is the only way it is written.
+  - **Within both:** the preview is re-timed to the final analysis with `fit_to_music`, with no model and no
+    change of shape.
+  - **Otherwise:** the design stage runs as today, with a model.
+  - **Either way the first real draft is stored in phase 2's final transaction** with
+    `origin = design_with_songs` (as today's phase 2 design), `music.song_list_id` as today, and ADR 0007 §2's
+    compare-and-set from the sketch, which is still the current revision. Its provenance names the model
+    run that produced the design: the preview's `design` run on a fit, the new run otherwise. That is
+    ≥ 1 run, as `Provenance` requires, and a non-revise origin names no base, as it does today. If
+    `Provenance`'s validation cannot express "a run of this job's earlier stage", the Developer of #1189
+    extends it for exactly this case.
+  - **If the fit did not keep the preview** the class says "the final songs differed; check the class and
+    save", and the flow does not save: only the user's own Save writes it.
 - **`save_pending`.** The worker never enqueues (`test_session_guard.py`). When phase 2 completes with
-  `save: true` and the fit kept the draft, the class stores `save_pending = {revision_id, content_hash}` of
-  the refit.
+  `save: true` and the fit kept the preview, the class stores `save_pending = {revision_id, content_hash}` of
+  the draft just stored.
   - The browser calls the existing save route for **exactly that revision and hash**, never for "the current
     revision". The request carries `save_pending_job_id`, and the save admit checks the revision and hash
     against `save_pending` **only when that parameter is present**: a user's manual Save is unaffected.
   - The idempotency key is derived from the phase-2 job id. After a closed tab, the class page resumes it.
-  - **`save_pending` is cleared** in the same transaction that makes any newer revision current, and when
-    the save job reaches any terminal state. A failed save shows its own error and the ordinary **Save**
-    button, and the driver (§8) does not try again by itself.
+  - **`save_pending` is cleared** when a save or update job for the class is admitted (by either route), in
+    the same transaction that makes any newer revision current, and when the save job reaches any terminal
+    state. While it is set the page shows "Saving…" and not the Save button, so a manual Save and the driver
+    can never both save. A failed save shows its own error and the ordinary **Save** button, and the driver
+    (§8) does not try again by itself.
   - `save_workout` and its operation are unchanged: at most once, and reconcile before a retry.
-- **A resume** (ADR 0008 §6) of a failed phase 2 of a composer approval keeps the approval's `save` flag, so
-  it sets `save_pending` when it completes. It takes **no credit** (§9).
+- **A failed phase 2 and its resume** (ADR 0008 §6).
+  - The page shows "The playlist was not created" with **Create the playlist again** (a resume), not "Songs
+    expired".
+  - **The resume reads the approved list, hash and `save` from the receipt**, never from the browser's
+    request. `prepare` revalidates them and the sketch's currency, then runs `fit` as above and sets
+    `save_pending` when the approval had `save: true`.
+  - It takes **no credit** (§9). The resume stays available until a newer song list exists, as in ADR 0008
+    §6.
 - **What the click authorises.** One click approves both writes: the final Spotify playlist, and the MOWL
-  workout of the class the user saw (refitted by §7). The approve bar says this before the click (§10.2).
+  workout of the class the user saw (re-timed by §7). The approve bar says this before the click (§10.2).
   Every later change is saved only with **Update workout**, as today.
 
 ### 8. Changes sent while a job runs
 
 - There is still one open job per class.
-- A chat message sent while a sketch, fill, swap, change or phase-2 job runs is stored with status `pending`
-  (storage and the idempotent submit by message id are built in #1186; each later job kind uses them).
+- A chat message sent while a sketch, fill, swap, change or phase-2 job runs is stored as the next message,
+  with status `pending` (storage and the idempotent submit by message id are built in #1186; each later job
+  kind uses them).
+- **A pending message is submitted by the state of the class**, never by a guess:
+
+  | State when the job ends | The message becomes |
+  |---|---|
+  | a song list is waiting for approval | a **change**, which replaces the waiting job (§6) |
+  | the current revision is a sketch and no song list waits (expired, cancelled, failed or replaced) | an ordinary revise of the sketch (§4); a fill is then started by the user's **Find songs again** |
+  | the current revision is a draft (after phase 2, or a soundless class) | an ordinary revise of the saved class |
+  | anything else | `failed` with `not_changeable` |
+
 - **The web's one driver.** When the class has no **queued or running** job (a job waiting for approval does
   not count: a submit replaces it, §6), the class page does the first of these:
-  1. a sketch is current with no fill: if a message is pending, submit it as a sketch change, else start the
-     fill (§5). A shape change made while the sketch job ran is therefore applied **before** songs are
-     chosen;
+  1. a sketch is current with no fill started for it: if a message is pending, submit it as a sketch revise,
+     else start the fill (§5). A shape change made while the sketch job ran is therefore applied **before**
+     songs are chosen;
   2. `save_pending` is set: save exactly that revision (§7);
-  3. a pending message exists: submit it. After a fill, swap or change it is a **change** that replaces the
-     waiting job (§6). After a phase 2 it is an ordinary revise of the saved class.
+  3. a pending message exists: submit it as the table says.
 - **Approve is disabled while a message is pending**, so the user never approves something older than their
   last instruction.
-- **A refused submit** (`revision_limit`, `quota`, `chat_full`) marks the message `failed` with
-  the reason and puts its text back in the message box. It never stays pending.
+- **A refused submit** (`revision_limit`, `quota`, `chat_full`) marks the message `failed` with the reason
+  and puts its text back in the message box. It never stays pending.
 
 ### 9. Credits and limits
 
@@ -290,7 +312,9 @@ class credit.
 - **The chat, left:** the request with its tags, the reading with its questions and quick answers, the
   replies, and a message box with add-music and Send. Pending and failed messages show their state.
 - **The class, right:**
-  - a state chip: "Rough: songs not in yet", "Ready to approve", "Songs expired" or "Saved";
+  - a state chip, derived from the current revision and the songs' state: "Rough: songs not in yet",
+    "Ready to approve", "Songs expired" (**Find songs again**), "The playlist was not created" (**Create the
+    playlist again**), "Saving…" or "Saved";
   - the profile;
   - the segments, each with its song, artist and source ("Pinned by you", the playlist's name, "Found by
     classbeat"), and Swap before approval;
@@ -311,12 +335,10 @@ class credit.
 ### 12. Expiry
 
 - When the waiting job expires (`queue_expire`, ADR 0008 §7), nothing about a revision changes: revisions
-  are immutable and `queue_expire` moves no pointer.
-  - The class's current revision stays the preview, which is never ready (§4). The page derives the state
-    from the job: a current `composer_preview` whose job is expired, cancelled or replaced shows the chip
-    "Songs expired".
-  - **Find songs again** starts a new fill (no credit, §5, with the next `attempt`) from the class's latest
-    sketch.
+  are immutable, `queue_expire` moves no pointer, and the sketch was current all along.
+  - The page derives "Songs expired" from the songs' state. **Find songs again** starts a new fill (no
+    credit, §5, with the next `attempt`) from the current sketch.
+  - Chat still works: the sketch is current, so a message is an ordinary sketch revise (§8).
   - A swap or a change cannot start from an expired job: ADR 0008 §5's seed rule applies to a waiting list
     only.
 
@@ -332,7 +354,11 @@ class credit.
   still precedes every external write, and it covers exactly what the user saw.
 - **New job kinds instead of modes.** They would duplicate `design_with_songs`'s phases, its waiting and its
   approval checks. Modes keep one security-reviewed path.
-- **Store the pool analysis separately** (ADR 0008 §4 stores none). Not needed: the draft's own `music`
+- **Store the pre-approval design as a draft revision** (an earlier version of this ADR). It needed a
+  not-ready state or origin for the draft, a current pointer that moved before the approval, and special
+  cases for expiry, replacement and failure, and two review rounds found gaps in each. Storing it inside the
+  immutable `song_list` revision needs none of them.
+- **Store the pool analysis separately** (ADR 0008 §4 stores none). Not needed: the preview's own `music`
   holds the analysis it was fitted to, and a change analyses the kept songs again.
 
 ## Consequences
@@ -342,9 +368,10 @@ class credit.
   stage.
 - Phase 2 normally needs no model call (`fit`), so the time after Approve is shorter than today.
 - A sketch can be abandoned with the class credit used.
+- The `song_list` revision grows by the design (`v: 3`), within a stated bound. Everything before the
+  approval is inside it, so nothing can be saved early and the sketch stays current until phase 2.
 - The shared `revision_ready` rule and its guard test add a small cost to every route that takes a revision
-  id, and close the path by which a draft made before the approval could be saved. Readiness is carried by
-  the origin, so revisions stay immutable and no migration of their state is needed.
+  id, and keep the sketch from being written.
 - Three hand-offs (fill, pending submit, save) make the class page resumable in more states. Each is
   idempotent, runs in a fixed order (§8) and is tested with two concurrent callers.
 - The old flow and the new one live side by side behind `composer_flow` until the cleanup issue.
