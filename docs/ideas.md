@@ -110,3 +110,30 @@ terms must re-read [ADR 0010](adr/0010-live-activation-permissions.md) first.
 - Passkeys with cross-device sign-in: issue #311, after M6.
 - Swedebeat connection and music features: milestone S1, issues #362 and #363.
 - Ideas derived from flywheel live in the mowl-workouts repo notes, not here.
+
+## 4. Music providers behind one interface, or as separate services (discussed with the owner, 2026-11-17)
+
+- **Description:** a classbeat interface that every music provider implements: checking that a song exists
+  (and with which facts: duration, BPM, year), free search, playlist writes, playback, covers. Spotify and
+  SwedeBeat would be the first two, so a new provider would be one more implementation. A further step
+  would move each integration into its own service, like the SwedeBeat gateway (`sb-spotify-service`,
+  `sb-mowl-service`).
+- **Status:** idea, not planned. The owner chose roadmap Amendment 28 alone for now ("most people will go
+  with spotify anyway").
+- **Notes/constraints:**
+  - The interface is cheap once Amendment 28 lands: its `SongRef` (#1177) and the `find_songs` source
+    (#1178) are most of it. The flow would then ask a provider what it can do instead of asking "is it
+    Spotify?". A guard test would keep provider modules from being imported around the interface.
+  - Separate services are a different trade-off. The SwedeBeat gateway exists because SwedeBeat has no
+    public API and its login has to stay on the owner's LAN. Spotify has a public API with per-user PKCE,
+    and MOWL is reached through `mowl-workouts`.
+  - A Spotify or MOWL service would move encrypted user tokens, owner isolation and key handling behind a
+    new network boundary. It would need its own service-to-service authentication. External writes, which
+    are at most once with a job lease and reconcile before retry, would cross a process boundary. Each
+    service is another deploy unit on one VPS. All of that is security-critical work.
+  - MOWL is the workout store, not a music provider. A separate interface for it pays off only with a
+    second workout platform.
+  - Even with an interface, a new provider still needs its own sign-in, consent, write safety and a fake
+    for tests. Capabilities really differ: SwedeBeat gives no year, so era checks are weaker there.
+- **Decision needed from the owner:** whether to plan the interface after Amendment 28. The recommendation
+  is in-process adapters, not services, unless a provider needs a proxy as SwedeBeat does.

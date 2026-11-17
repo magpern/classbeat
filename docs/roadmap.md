@@ -1,5 +1,54 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 28 (2026-11-17, owner decision: SwedeBeat as the song source when Spotify is not connected; issue #1176)
+
+Owner decision (2026-11-17, chat): *"Spotify is optional. You might want to create a soundless class. If
+spotify is not connected, but swedebeat is, our searches should go through swedebeat, and we create a pseudo
+playlist in our app. But this only if our architecture does not deviate too much."* After a provider interface
+and separate provider services had been discussed: *"maybe we stick with amendment 28 for now. I think most
+people will go with spotify anyway."*
+
+This amends Amendment 25's rule "a cycling class that is not soundless needs a Spotify connection". MOWL stays
+required. Running (ADR 0018), soundless classes, SwedeBeat mixes and the SwedeBeat studio (ADR 0036, which
+still searches on Spotify) are unchanged.
+
+- **One song source per class, chosen at admission and kept for its revisions and Change songs.**
+  - Spotify connected: `spotify`, as today. Spotify wins when both are connected.
+  - Otherwise, SwedeBeat connected and usable, and `CLASSBEAT_SWEDEBEAT_SONG_SOURCE` on: `swedebeat`.
+  - Otherwise only "No music" and a SwedeBeat mix are possible, and `needs_spotify` is refused as
+    Amendment 25 says (before any model call or credit).
+- **Verification goes only through the open `/catalog/match`.**
+  - The model proposes songs from its own knowledge, as `find_songs` does today. Each call sends one match
+    with those songs' title and artist (`include_unsure: false`).
+  - A song counts only when it is `found` with a score of at least 0.85 (`SAME_SONG`, ADR 0035 §6).
+  - Only title and artist leave. No new gateway path: `/catalog/search` and the match's `playlist` mode stay
+    forbidden (ADR 0036 §8). The free `search_tracks` tool is not offered. The search budget counts each song
+    sent.
+  - Outages follow ADR 0036 §3.2: an all-missing call (at least 3 sent) is retried once. A stage in which
+    every call stayed all-missing fails `swedebeat_unavailable`.
+- **Facts.** Duration and BPM come from the match. SwedeBeat gives no year, so era checks use the model's
+  stated year, and a request that states an era gets the Not as asked note `eras_unverified` before Approve.
+  There is no cover art.
+- **The song list stays in classbeat (the "pseudo playlist").** The approval stays: the same screen and the
+  same hash. After it, nothing is written to Spotify or SwedeBeat. The design starts from the approved list,
+  which is the class's music on the class page. MOWL gets the workout without a playlist link. Send to player
+  is not offered (the player plays Spotify).
+- **Identity.** A song is a source-neutral `SongRef {source, id}`: a Spotify track id or a SwedeBeat
+  catalogue `reference`. It stays in the backend, is never a model input and is covered by the approval hash.
+  Stored rows are `spotify`, and an approval made before the change still verifies.
+- **Gates.** The plan's `song_picking` feature admits a SwedeBeat pick as it admits a Spotify one.
+  `CLASSBEAT_SONG_PICKING` stays the Spotify-write kill switch and does not gate this path, which writes
+  nothing. `CLASSBEAT_SWEDEBEAT_SONG_SOURCE` is off by default. Agents never call a real gateway; the live
+  check (one class through the real gateway, no Spotify) is the owner's.
+- **Issues, in order:**
+  1. #1177, the source-neutral song reference (Opus);
+  2. #1178, `find_songs` verified by `/catalog/match` (Opus);
+  3. #1179, admission and an approval with no external write (Opus);
+  4. #1180, the start screen and class page, plus an e2e (Sonnet).
+- **Not planned:** a common provider interface for every music provider, and separate provider services
+  (`sb-spotify-service`, `sb-mowl-service`). They are recorded in [ideas.md](ideas.md) §4. Also not planned:
+  letting the user choose the source when both are connected.
+
 ## Amendment 27 (2026-11-17, owner decision: a playlist classbeat creates may be public; issue #1155)
 
 The owner decided, after a live run in which Spotify made the new working playlist public although
@@ -57,6 +106,9 @@ Owner decision (2026-11-16, chat): "Unless you do a soundless class, Spotify is 
 theory we could search in Swedebeat too. In general: create a playlist in Spotify with the songs the user
 wants. If the user picks an existing playlist, a new playlist is still created with the correct order of
 the songs. Reinstate Spotify."
+
+*(Amended by Amendment 28 on 2026-11-17: without Spotify, a connected SwedeBeat account can be the song
+source.)*
 
 This replaces the account-level wording "Spotify and Swedebeat are optional per user" (ADR 0015's
 amendment of 2026-11-03, ADR 0028 section 3, ADR 0013) for classes that have music. MOWL stays required;
