@@ -114,6 +114,7 @@ async def test_the_image_is_fetched_without_any_token(image_host: FakeImageHost)
     [request] = image_host.requests
     assert str(request.url) == f"https://media.mowl.com/qr/ticket/{TICKET_ID}"
     assert "authorization" not in request.headers
+    assert request.headers["accept-encoding"] == "identity"
     assert all(secret not in str(request.url) for secret in SECRETS)
 
 

@@ -78,7 +78,15 @@ async def test_login_sends_exactly_the_body_and_headers_of_the_adr(gateway: Fake
         "device_id": DEVICE_ID,
         "force": True,
     }
-    assert set(sent.headers) == {"host", "accept", "content-type", "content-length", "x-api-key"}
+    assert set(sent.headers) == {
+        "host",
+        "accept",
+        "accept-encoding",
+        "content-type",
+        "content-length",
+        "x-api-key",
+    }
+    assert sent.headers["accept-encoding"] == "identity"
     assert sent.headers["x-api-key"] == CLIENT_KEY
     assert sent.headers["accept"] == "application/json"
     assert sent.headers["content-type"] == "application/json"
@@ -133,7 +141,13 @@ async def test_session_sends_the_key_and_the_bearer_and_no_body(gateway: FakeGat
         assert await session(client, KEY, bearer) is None
     sent = gateway.requests[-1]
     assert (sent.method, sent.path, sent.body) == ("GET", "/auth/session", None)
-    assert set(sent.headers) == {"host", "accept", "x-api-key", "authorization"}
+    assert set(sent.headers) == {
+        "host",
+        "accept",
+        "accept-encoding",
+        "x-api-key",
+        "authorization",
+    }
     assert sent.headers["authorization"] == f"Bearer {bearer}"
 
 
@@ -151,6 +165,7 @@ async def test_match_sends_titles_and_artists_only_in_tracks_mode(gateway: FakeG
     assert set(sent.headers) == {
         "host",
         "accept",
+        "accept-encoding",
         "content-type",
         "content-length",
         "x-api-key",

@@ -108,6 +108,7 @@ async def test_the_download_sends_one_get_with_the_key_the_bearer_and_no_query(
     assert sent.headers == {
         "host": "192.168.1.222:7355",
         "accept": "audio/mpeg",
+        "accept-encoding": "identity",
         "x-api-key": CLIENT_KEY,
         "authorization": f"Bearer {bearer}",
     }

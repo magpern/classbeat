@@ -73,7 +73,9 @@ async def test_a_good_link_is_written_to_the_private_directory(tmp_path: Path) -
     assert path.stat().st_size > 8000
     assert [m for m, _h, _p in media.requests] == ["GET"]
     (sent,) = media.headers
-    assert set(sent) <= {"host"}  # none of our headers
+    # none of our headers; the one coding we can read, said outright (RFC 9110 12.5.3)
+    assert set(sent) == {"host", "accept-encoding"}
+    assert sent["accept-encoding"] == "identity"
 
 
 async def test_the_content_type_is_not_trusted(tmp_path: Path) -> None:

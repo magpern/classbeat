@@ -114,7 +114,11 @@ class _Answer:
 
 
 def _headers(key: SecretStr, bearer: str | None, *, sends_body: bool) -> dict[str, str]:
-    headers = {"Accept": _JSON, "X-API-Key": key.get_secret_value()}
+    headers = {
+        "Accept": _JSON,
+        "Accept-Encoding": "identity",
+        "X-API-Key": key.get_secret_value(),
+    }
     if sends_body:
         headers["Content-Type"] = _JSON
     if bearer is not None:

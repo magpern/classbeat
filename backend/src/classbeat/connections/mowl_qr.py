@@ -201,7 +201,11 @@ def image_type(content: bytes) -> str | None:
 
 async def _read_image(url: str) -> QrImage | str:
     """The image, or the failure category."""
-    headers = {"User-Agent": mowl_api.HEADERS["User-Agent"], "Accept": "image/*"}
+    headers = {
+        "User-Agent": mowl_api.HEADERS["User-Agent"],
+        "Accept": "image/*",
+        "Accept-Encoding": "identity",
+    }
     async with (
         egress.mowl_qr_image_async_client() as client,
         client.stream("GET", url, headers=headers) as response,

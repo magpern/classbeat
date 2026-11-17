@@ -124,6 +124,10 @@ def link_host(link: str) -> str:
     return host if _HOST_SHAPE.fullmatch(host) else "invalid"
 
 
+# Raw bytes are read and any other coding is refused, so say so (RFC 9110 12.5.3: no header = any).
+_ACCEPT_IDENTITY = {"Accept-Encoding": "identity"}
+
+
 def _identity(headers: httpx.Headers) -> bool:
     """Whether the answer declares no content coding (or only ``identity``)."""
     for value in headers.get_list("content-encoding"):
@@ -150,7 +154,7 @@ async def _fetch(
     max_bytes: int,
     clock: Callable[[], float],
 ) -> int:
-    async with client.stream("GET", link) as response:
+    async with client.stream("GET", link, headers=_ACCEPT_IDENTITY) as response:
         status = response.status_code
         if status != 200:
             if status == 429 or status >= 500:
