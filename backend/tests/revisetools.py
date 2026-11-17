@@ -175,6 +175,7 @@ async def renv(browsers: Any, denv: DesignEnv, fake_mowl: Any) -> AsyncIterator[
     browser: Browser = await browsers()
     denv.app.app.dependency_overrides.clear()  # the real registry, as in production
     await denv.ops.connect(browser.user_id, TOKEN_A)  # in place: the same connection id
+    await denv.ops.connect_spotify(browser.user_id)
     made = ReviseEnv(denv, browser)
     try:
         yield made

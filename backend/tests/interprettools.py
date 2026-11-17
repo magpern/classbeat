@@ -174,6 +174,8 @@ class InterpretEnv:
 
 @pytest.fixture
 async def ienv(renv: ReviseEnv) -> AsyncIterator[InterpretEnv]:
+    # The user starts with no Spotify connection; ``connect_spotify`` makes one when asked.
+    renv.sql("DELETE FROM connections WHERE owner_id = :o AND provider = 'spotify'", o=renv.owner)
     made = InterpretEnv(renv)
     try:
         yield made

@@ -198,6 +198,7 @@ async def test_m4_style_design_on_a_playlist_touches_no_swedebeat_row_or_host(
     superuser: Any,
 ) -> None:
     browser = await rider(browsers, mixenv)
+    await mixenv.ops.connect_spotify(browser.user_id)  # Amendment 25
     flag(mixenv, "off")
     try:
         body = design_body(browser)
