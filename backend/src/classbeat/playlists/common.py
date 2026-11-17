@@ -20,6 +20,7 @@ Nothing here logs a playlist id, a track id or a provider text.
 
 import hashlib
 import json
+import logging
 import math
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -34,6 +35,7 @@ from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.jobs import JobFailure
 from classbeat.operations.kinds import Factory
+from classbeat.playlists.owner_check_policy import refusal
 from classbeat.spotify.access import DEFAULT_REFRESH_MARGIN_SECONDS, spotify_call
 from classbeat.spotify.http import SpotifyHttp
 
@@ -48,6 +50,8 @@ MAX_LIST_PAGES: Final = spotify_web.MAX_LIST_PAGES  # the reconciler's listing: 
 POOL_NAME: Final = "classbeat working copy"  # ADR 0009 section 9's wording
 MAX_NAME: Final = 100
 MAX_SNAPSHOT: Final = 200
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +147,18 @@ def owned(found: object, playlist_id: str, account: str | None) -> bool:
         and playlist.get("public") is False
         and playlist.get("collaborative") is False
     )
+
+
+def checked_owner(
+    found: object, playlist_id: str, account: str | None, purpose: str, step: str
+) -> bool:
+    """``owned``, and on a refusal one warning naming the failed conditions as flags and value
+    kinds only (``owner_check_policy.refusal``, #1153); ``step`` is ``write`` or ``reconcile``."""
+    if owned(found, playlist_id, account):
+        return True
+    fields = refusal(found, playlist_id, account, purpose)
+    logger.warning("spotify owner check refused", extra={**fields, "step": step})
+    return False
 
 
 def observed_ids(entries: object) -> list[str | None] | None:
