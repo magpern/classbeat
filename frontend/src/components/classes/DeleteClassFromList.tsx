@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { ClassSummary } from '../../api/classes'
 import { useT } from '../../i18n/I18n'
 import { Button } from '../ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '../ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogTrigger } from '../ui/dialog'
 import { DeleteClass } from './DeleteClass'
 
 /**
@@ -27,8 +27,8 @@ export function DeleteClassFromList({ summary, onDeleted }: { summary: ClassSumm
           <Trash2 aria-hidden="true" size={18} strokeWidth={2} />
         </Button>
       </DialogTrigger>
-      <DialogContent>
-        <DialogTitle className="sr-only">{t('class.delete.title')}</DialogTitle>
+      {/* DeleteClass's visible h2 is the dialog's one title; the dialog is named by it. */}
+      <DialogContent aria-labelledby="delete-title">
         <DialogDescription className="sr-only">{summary.title}</DialogDescription>
         <DeleteClass
           summary={summary}

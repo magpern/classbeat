@@ -4,6 +4,7 @@ decompression bomb is refused without being read whole. The fake Spotify only, n
 network."""
 
 import gzip
+import random
 import zlib
 from collections.abc import AsyncIterator
 from typing import Any
@@ -16,7 +17,7 @@ from mowl import spotify_web
 from classbeat.connections import ConnectionFailure
 from classbeat.egress import spotify_async_client
 from classbeat.spotify import spotify_call
-from classbeat.spotify.answer_body import CappedBody
+from classbeat.spotify.answer_body import RAW_SLACK, RAW_SLACK_DIVISOR, CappedBody
 from classbeat.spotify.http import AUTHORIZE_URL, SpotifyHttp
 from spotifycore import ACCOUNTS_HOST, API_HOST, SCOPES, FakeSpotify, challenge_of
 from spotifyfake import CALLBACK, CLIENT_A, USER_A, spotify_client
@@ -181,6 +182,59 @@ def test_raw_bytes_far_past_the_cap_are_refused() -> None:
     capped = CappedBody("deflate", 10_000)
     fed = [capped.feed(raw[at : at + 500]) for at in range(0, len(raw), 500)]
     assert fed[0] is True
+    assert fed[-1] is False
+    assert capped.body() is None
+
+
+@pytest.mark.parametrize(
+    ("encoding", "pack"), [("gzip", gzip.compress), ("deflate", zlib.compress)]
+)
+@pytest.mark.parametrize("chunk", [1, 7, 1 << 20])
+def test_an_empty_chunk_after_the_end_of_the_stream_is_not_data(
+    encoding: str, pack: Any, chunk: int
+) -> None:
+    raw = pack(b'{"id": "a"}')
+    for tail in ([b""], [b"", b""]):
+        capped = CappedBody(encoding, 100)
+        fed = [capped.feed(raw[at : at + chunk]) for at in range(0, len(raw), chunk)]
+        fed += [capped.feed(empty) for empty in tail]
+        assert all(fed)
+        assert capped.body() == b'{"id": "a"}'
+
+
+_CAP = 1 << 16
+_RAW_LIMIT = _CAP + _CAP // RAW_SLACK_DIVISOR + RAW_SLACK
+
+
+def _incompressible() -> bytes:
+    return random.Random(7).randbytes(_CAP)  # noqa: S311 - a fixed, reproducible test payload
+
+
+def _flushed(data: bytes, period: int, mem_level: int) -> bytes:
+    """``data`` as a valid deflate stream with a sync flush every ``period`` bytes."""
+    pack = zlib.compressobj(6, zlib.DEFLATED, zlib.MAX_WBITS, mem_level)
+    out = b""
+    for at in range(0, len(data), period):
+        out += pack.compress(data[at : at + period]) + pack.flush(zlib.Z_SYNC_FLUSH)
+    return out + pack.flush()
+
+
+def test_an_encoder_with_large_overhead_is_accepted() -> None:
+    # Incompressible data of exactly the cap, flushed every 512 bytes with memLevel 1: the
+    # overhead (about 3 kB) is past the old fixed slack and inside the one that scales.
+    data = _incompressible()
+    raw = _flushed(data, 512, 1)
+    assert RAW_SLACK < len(raw) - _CAP < _RAW_LIMIT - _CAP  # old bound refused it, new one not
+    assert _decode(raw, "deflate", _CAP, chunk=1000) == data
+
+
+def test_an_encoder_past_the_scaled_raw_bound_is_still_refused() -> None:
+    # The same data flushed every 64 bytes: the overhead (about 10 kB) is past the bound.
+    data = _incompressible()
+    raw = _flushed(data, 64, 1)
+    assert len(raw) > _RAW_LIMIT
+    capped = CappedBody("deflate", _CAP)
+    fed = [capped.feed(raw[at : at + 1000]) for at in range(0, len(raw), 1000)]
     assert fed[-1] is False
     assert capped.body() is None
 

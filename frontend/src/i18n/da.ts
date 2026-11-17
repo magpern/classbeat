@@ -888,7 +888,7 @@ const da: Catalogue = {
   'newclass.notes.hint': 'Fortæl, hvordan holdet skal føles.',
   'newclass.notes.hintNoGames': 'Fortæl, hvordan det skal føles. Spil indgår ikke i din plan.',
   'newclass.side.title': 'Dit hold indtil videre',
-  'newclass.side.sketchNote': 'En grov skitse af dine tal. Claude designer det rigtige hold.',
+  'newclass.side.sketchNote': 'En grov skitse af dine tal. AI designer det rigtige hold.',
   'newclass.side.classesLeft': 'Bruger 1 af dine {count} resterende hold denne måned',
   'newclass.side.noClassesLeft': 'Du har ingen hold tilbage denne måned.',
   'newclass.side.submit': 'Design mit hold',
@@ -1089,7 +1089,7 @@ const da: Catalogue = {
   'songs.start.revision_limit': 'Dette hold har nået det højeste antal versioner, det kan have.',
   'songs.start.chat_full': 'Samtalen for dette hold er fuld, så det kan ikke ændres mere.',
   'songs.start.not_song_picked':
-    'Musikken til dette hold blev ikke valgt af Claude, så dets sange kan ikke ændres her.',
+    'Musikken til dette hold blev ikke valgt af AI, så dets sange kan ikke ændres her.',
   'songs.start.invalid_input': 'Anmodningen blev ikke accepteret. Tjek felterne, og prøv igen.',
   'songs.start.not_connected': 'Spotify eller MOWL er ikke tilsluttet. Tilslut det først på din kontoside.',
   'songs.start.receipt_invalid':
@@ -1209,7 +1209,7 @@ const da: Catalogue = {
   'music.connectSpotify': 'Tilslut Spotify',
   'music.needsConsent': 'Tillad først arbejdsplaylisten i dine Spotify-indstillinger. {link}',
   'music.openSettings': 'Åbn Spotify-indstillingerne',
-  'music.pickHint': 'Claude foreslår sange, og du godkender listen først.',
+  'music.pickHint': 'AI foreslår sange, og du godkender listen først.',
   'music.noneHint': 'Du får intervaller og instruktioner og spiller din egen musik.',
   'music.swedebeatHint': 'Designes efter sangene og beatsene i dit mix.',
   'songs.change.writeRequest': 'Skriv, hvad du vil have anderledes ved sangene.',

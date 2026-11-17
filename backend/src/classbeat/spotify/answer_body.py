@@ -10,15 +10,18 @@ whole before any cap could be checked.
 Identity, ``gzip`` (``x-gzip``) and ``deflate`` (zlib format, as RFC 9110 defines it) are
 decoded; any other or a stacked encoding, a broken or a truncated compressed body is refused.
 So is a compressed body with anything after the end of its stream (padding, or bytes after a
-gzip member), and one whose raw size passes ``cap + RAW_SLACK`` (#1152): the read stops there
-instead of going on to the end of the answer.
+gzip member), and one whose raw size passes ``cap + cap // 16 + RAW_SLACK`` (#1152, #1171): the
+read stops there instead of going on to the end of the answer. The slack grows with the cap
+because an exotic encoder (small memLevel, a sync flush every few hundred bytes) adds overhead
+in proportion to the body; the raw bound stays a hard bound.
 """
 
 import zlib
 from typing import Final
 
 _GZIP_WBITS: Final = 16 + zlib.MAX_WBITS
-RAW_SLACK: Final = 1024  # raw bytes a compressed body may carry beyond the decoded cap
+RAW_SLACK: Final = 1024  # fixed part of the raw bytes a compressed body may carry beyond the cap
+RAW_SLACK_DIVISOR: Final = 16  # the part that scales with the cap: ``cap // 16``
 _WBITS: Final = {"gzip": _GZIP_WBITS, "x-gzip": _GZIP_WBITS, "deflate": zlib.MAX_WBITS}
 
 
@@ -34,6 +37,7 @@ class CappedBody:
         self._parts: list[bytes] = []
         self._size = 0
         self._raw = 0
+        self._raw_limit = cap + cap // RAW_SLACK_DIVISOR + RAW_SLACK
         self._refused = coding != "identity" and coding not in _WBITS
         self._inflate = zlib.decompressobj(_WBITS[coding]) if coding in _WBITS else None
 
@@ -49,7 +53,7 @@ class CappedBody:
             self._keep(chunk[: self._cap + 1 - self._size])
             return self._size <= self._cap
         self._raw += len(chunk)
-        if self._raw > self._cap + RAW_SLACK or (self._inflate.eof and chunk):
+        if self._raw > self._raw_limit or (self._inflate.eof and chunk):
             self._refused = True  # too much raw, or data after the end of the stream
             return False
         data = chunk
@@ -68,8 +72,10 @@ class CappedBody:
         return True
 
     def body(self) -> bytes | None:
-        """The decoded body, or ``None``: a refused encoding, a broken compressed body, or one
-        that ended before its end (unless it was already past the cap) or had data after it."""
+        """The decoded body, or ``None``: a refused encoding, a broken compressed body, one that
+        ended before its end (unless it was already past the cap), one with data after its end,
+        or one whose raw size passed the raw bound. The two overflows differ: a raw-bound
+        refusal returns ``None``, while a decoded-size overflow returns ``cap + 1`` bytes."""
         if self._refused:
             return None
         truncated = self._inflate is not None and not self._inflate.eof
