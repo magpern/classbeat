@@ -2,7 +2,7 @@ import { expect, signInThroughUi, signUpThroughUi, test, uniqueEmail } from './h
 import { getJob } from './design-helpers'
 import { useModelScript } from './model-script'
 import { fakePlaylists, sql } from './song-helpers'
-import { control as spotifyControl, resetSpotify } from './spotify-helpers'
+import { control as spotifyControl, fakeState, resetSpotify } from './spotify-helpers'
 import {
   catalogueWithout,
   ownerId,
@@ -134,14 +134,19 @@ test('a studio class from the description to its outputs, with no MOWL connectio
 test('a working playlist that did not sync is shown, and Sync again writes it', async ({ page }) => {
   const owner = await newStudioUser(page, 'studio-sync')
   catalogueWithout()
-  // The replace's owner check of the new working playlist is refused once: nothing is written.
-  spotifyControl('POST', 'inject?kind=status&status=403&method=GET&times=1&path=' + encodeURIComponent('/v1/playlists/[0-9A-Za-z]{22}'))
+  // The replace's owner check of the new working playlist is refused: nothing is written. The fake
+  // has no "skip the first n" option and the same path is read twice, in this order: the best-effort
+  // privacy read right after the create (privacy.ensure_private, #1156; a refused read is ignored)
+  // and then the replace's owner check. So two refusals, one per read, leave the owner check refused.
+  spotifyControl('POST', 'inject?kind=status&status=403&method=GET&times=2&path=' + encodeURIComponent('/v1/playlists/[0-9A-Za-z]{22}'))
   const pickId = await startStudioPick(page, owner, 'Studio e2e sync')
   await untilJob(page, pickId, 'waiting_for_approval') // the pick still waits for its approval
   await page.goto(`/jobs/${pickId}`)
   const sync = page.getByTestId('studio-sync-working_copy')
   await expect(syncState(page, 'working_copy')).toHaveText('not updated', LONG)
   await expect(sync).toContainText('This never stops the SwedeBeat outputs.')
+  // Nothing was written to the working playlist: no item write reached the fake Spotify.
+  expect(fakeState().requests.filter((r) => r.method !== 'GET' && /^\/v1\/playlists\/[^/]+\/items$/.test(r.path))).toEqual([])
   await expect(page.getByRole('button', { name: 'Approve songs' })).toBeVisible()
   await sync.getByRole('button', { name: 'Sync again' }).click()
   await expect(syncState(page, 'working_copy')).toHaveText('up to date', LONG)
