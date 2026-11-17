@@ -94,6 +94,15 @@ async def running_class(renv: ReviseEnv) -> tuple[UUID, UUID, UUID]:
     return UUID(made.json()["class_id"]), job_id, renv.denv.revisions(job_id)[0].id
 
 
+async def test_a_running_class_on_a_mowl_playlist_needs_no_spotify_connection(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    """Amendment 25's ``needs_spotify`` is for cycling: running uses MOWL playlists only."""
+    renv.sql("DELETE FROM connections WHERE owner_id = :o AND provider = 'spotify'", o=renv.owner)
+    made = await create(renv, design_body(renv, RUN))
+    assert made.status_code == 201, made.text
+
+
 # --- the flag ------------------------------------------------------------------------------------
 
 

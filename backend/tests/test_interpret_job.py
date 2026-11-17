@@ -111,7 +111,7 @@ async def test_without_spotify_only_a_class_that_can_do_without_it_is_admitted(
     async def admits(*_args: Any) -> bool:
         return picking
 
-    monkeypatch.setattr(interpret_kind, "_song_picking", admits)
+    monkeypatch.setattr(interpret_kind, "song_picking", admits)
     before = ienv.counts()
     made = await ienv.start(spotify=False, **more)
     if answer == "admitted":

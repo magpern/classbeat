@@ -47,10 +47,10 @@ from the claimed row) and the job's input; everything it writes goes through ``J
 """
 
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, Literal, Self
+from typing import ClassVar, Final, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, model_validator
+from pydantic import BaseModel, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent import AgentConfig, Brief, DesignContext, JobStageHost, run_stage
@@ -63,6 +63,18 @@ from classbeat.crypto.keks import KeyRing
 from classbeat.design import corrections, kind_music, mixadmit, music_kind, revision, sport
 from classbeat.design.interpreted import with_interpretation
 from classbeat.design.music import MusicStep, load_music
+from classbeat.design.music_choice import (
+    CLASS_MUSIC_SOURCE as CLASS_MUSIC_SOURCE,
+)
+from classbeat.design.music_choice import (
+    ClassSpotifyMusic as ClassSpotifyMusic,
+)
+from classbeat.design.music_choice import (
+    MusicChoice,
+    NoMusicChoice,
+    SpotifyMusicChoice,
+    SwedebeatMusicChoice,
+)
 from classbeat.design.sport_rules import rules_for
 from classbeat.design.swedebeat_music import swedebeat_step
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
@@ -75,58 +87,6 @@ from classbeat.quota.route import with_plan, with_plan_run
 KIND: Final = "design_draft"
 STAGES: Final = ("music", "design")
 
-SpotifyPlaylistId = Annotated[str, StringConstraints(pattern=r"^[0-9A-Za-z]{22}$")]
-# The opaque ``ID`` of MOWL's Swedebeat listing (the ``mowl_playlist_links`` check).
-MixId = Annotated[str, StringConstraints(pattern=r"^[0-9A-Za-z_-]{1,64}$")]
-
-
-class SpotifyMusicChoice(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    source: Literal["mowl_spotify_playlist"]
-    spotify_playlist_id: SpotifyPlaylistId
-
-
-class SwedebeatMusicChoice(BaseModel):
-    """The user's Swedebeat mix (ADR 0016 section 3): ``admit`` checks it is in their own
-    listing (``classbeat.design.mixadmit``)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    source: Literal["mowl_swedebeat_mix"]
-    mix_id: MixId
-
-
-class NoMusicChoice(BaseModel):
-    """A cycling class with no music (ADR 0007 amendment of 2026-11-03, item 1; #527). Also the
-    class's stored ``music_source`` (``{"source": "none"}``)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    source: Literal["none"]
-
-
-MusicChoice = Annotated[
-    SpotifyMusicChoice | SwedebeatMusicChoice | NoMusicChoice, Field(discriminator="source")
-]
-
-
-class ClassSpotifyMusic(SpotifyMusicChoice):
-    """``classes.music_source`` of a class on a Spotify playlist, and for a class designed on
-    picked songs (ADR 0008 section 4) ``origin = "song_pick"`` and its ``class_playlists`` row.
-    Never a job input: ``design_draft`` takes ``MusicChoice``, which forbids both fields."""
-
-    origin: Literal["song_pick"] | None = None
-    class_playlist_id: UUID | None = None
-
-
-ClassMusicSource = Annotated[
-    ClassSpotifyMusic | SwedebeatMusicChoice | NoMusicChoice, Field(discriminator="source")
-]
-CLASS_MUSIC_SOURCE: Final = TypeAdapter[ClassSpotifyMusic | SwedebeatMusicChoice | NoMusicChoice](
-    ClassMusicSource
-)
-
 
 class DesignDraftInput(ModelJobInput):
     CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl",)
@@ -136,6 +96,9 @@ class DesignDraftInput(ModelJobInput):
     mowl_connection_id: UUID
     # Set by the Swedebeat hand-off (ADR 0016 section 7). A browser sending it is refused.
     handoff_id: UUID | None = None
+    # Set by the interpretation hand-off for a playlist stored with no Spotify connection before
+    # roadmap Amendment 25: ``admit`` then does not ask for one. A browser sending it is refused.
+    spotify_optional: bool | None = None
 
     @model_validator(mode="after")
     def _brief_fits_the_class(self) -> Self:
@@ -247,6 +210,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         mix_id=parsed.music.mix_id if isinstance(parsed.music, SwedebeatMusicChoice) else None,
         class_id=parsed.class_id,
         mowl_connection_id=parsed.mowl_connection_id,
+        spotify_playlist=parsed.brief.sport == "cycling"
+        and isinstance(parsed.music, SpotifyMusicChoice),
+        spotify_optional=bool(parsed.spotify_optional),
     )
     if refused is not None:
         return refused
@@ -372,6 +338,6 @@ DESIGN_DRAFT: Final = KINDS.register(
         STAGES,
         with_plan_run(run),  # the current plan's gates for an input without any (#496)
         admit=with_plan(admit),  # the plan's gates, a mix's checks, the route key (AD5, #496)
-        server_fields=frozenset({"route_key", "plan_gates", "handoff_id"}),
+        server_fields=frozenset({"route_key", "plan_gates", "handoff_id", "spotify_optional"}),
     )
 )

@@ -60,6 +60,7 @@ async def test_the_job_carries_the_effective_plans_route_key_and_a_change_applie
 ) -> None:
     browser: Browser = await browsers()
     denv.app.app.dependency_overrides.clear()
+    await denv.ops.connect_spotify(browser.user_id)  # Amendment 25
     await denv.ops.connect(browser.user_id, TOKEN_A)
     set_plan_keys(denv, pro="pro_route", free="free_route")
     first = await create(browser, "route-key-first-0001")
@@ -148,6 +149,7 @@ async def test_a_route_set_for_pro_applies_to_a_pro_users_job_and_not_to_a_free_
     job gets the bootstrap choice."""
     browser: Browser = await browsers()
     denv.app.app.dependency_overrides.clear()
+    await denv.ops.connect_spotify(browser.user_id)  # Amendment 25
     await denv.ops.connect(browser.user_id, TOKEN_A)
     add_result(denv.admin)
     web = denv.app.settings

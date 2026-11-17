@@ -141,6 +141,20 @@ class OpsEnv:
     def sql(self, statement: str, **params: Any) -> Any:
         return self.admin.execute(text(statement), params)
 
+    async def connect_spotify(self, owner: UUID) -> UUID:
+        """A Spotify connection (fake tokens; nothing reaches Spotify): a cycling class on a
+        Spotify playlist needs one (roadmap Amendment 25)."""
+        tokens = {"access_token": "a", "refresh_token": "r", "expires_at": 4_000_000_000}
+        return await connections.save(
+            self.factory,
+            self.keyring,
+            make_context(owner),
+            "spotify",
+            tokens,
+            public={"client_id": "c" * 32, "spotify_user_id": "rider"},
+            confirm_account_change=True,
+        )
+
     async def user(self) -> UUID:
         return await self.app.user(f"ops-{uuid.uuid4().hex[:10]}@example.com")
 

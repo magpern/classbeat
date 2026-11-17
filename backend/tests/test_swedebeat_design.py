@@ -521,6 +521,7 @@ async def test_a_spotify_playlist_is_admitted_as_before_with_swedebeat_off(
 ) -> None:
     """A user with no Swedebeat designs as before: the Spotify source never reads the flag."""
     browser = await rider(browsers, menv)
+    await menv.ops.connect_spotify(browser.user_id)  # Amendment 25
     flag(menv, "off")
     try:
         body = design_body(browser)

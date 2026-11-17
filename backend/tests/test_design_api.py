@@ -53,6 +53,7 @@ async def test_a_job_created_through_the_api_is_designed_by_the_worker(
 ) -> None:
     browser: Browser = await browsers()
     denv.app.app.dependency_overrides.clear()  # the real registry, as in production
+    await denv.ops.connect_spotify(browser.user_id)  # Amendment 25
     await denv.ops.connect(browser.user_id, TOKEN_A)  # a reconnect in place: the same id
     key = {"Idempotency-Key": "d1-design-draft-key-0001"}
     created = await browser.post("/api/jobs", body(browser), key)
@@ -109,6 +110,7 @@ async def test_the_route_key_is_fixed_at_creation_and_never_from_the_browser(
     M5 fills it from the plan); a browser that sends one is refused and nothing is created."""
     browser: Browser = await browsers()
     denv.app.app.dependency_overrides.clear()
+    await denv.ops.connect_spotify(browser.user_id)  # Amendment 25
     for value in ("pro", "default"):
         sent = body(browser)
         sent["input"]["route_key"] = value
