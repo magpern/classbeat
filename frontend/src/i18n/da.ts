@@ -565,6 +565,7 @@ const da: Catalogue = {
   'class.delete.anyway': 'Slet alligevel',
   'class.delete.confirm': 'Ja, slet',
   'class.delete.keep': 'Behold det',
+  'class.list.delete': 'Slet {title}',
 
   // Duplicate a class.
   'class.duplicate.label': 'Duplikér',

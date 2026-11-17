@@ -573,6 +573,7 @@ const sv: Catalogue = {
   'class.delete.anyway': 'Radera ändå',
   'class.delete.confirm': 'Ja, radera',
   'class.delete.keep': 'Behåll det',
+  'class.list.delete': 'Radera {title}',
 
   // Duplicate a class.
   'class.duplicate.label': 'Duplicera',
