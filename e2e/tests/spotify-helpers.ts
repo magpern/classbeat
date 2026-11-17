@@ -135,3 +135,16 @@ export async function connectSpotify(page: Page, clientId: string): Promise<void
   await dialog.getByLabel('Spotify Client ID').fill(clientId)
   await dialog.getByRole('button', { name: /^Connect Spotify/ }).click()
 }
+
+/**
+ * Connect the fake Spotify (CLIENT_A) to the signed-in user. A class with music needs Spotify (roadmap
+ * Amendment 25): the start screen and the Advanced form ask for it before they send a class that is
+ * not "No music" or a Swedebeat mix.
+ */
+export async function withSpotify(page: Page): Promise<void> {
+  await playSpotify(page)
+  await connectSpotify(page, CLIENT_A)
+  await expect(page.getByText('Spotify is connected.')).toBeVisible()
+  await spotifyDialog(page).getByRole('button', { name: 'Close' }).click()
+  await expect(spotifyDialog(page)).toHaveCount(0)
+}

@@ -35,6 +35,7 @@ export function MusicChoice({
   songs,
   swedebeat,
   soundless = false,
+  spotifyNoted = false,
   value,
   onChange,
 }: {
@@ -42,6 +43,8 @@ export function MusicChoice({
   swedebeat: SwedebeatMixAvailability
   /** Whether "No music" is offered: the effective `soundless_enabled` flag, cycling only. */
   soundless?: boolean
+  /** The page already says the class needs Spotify, with the link (roadmap Amendment 25): no second line. */
+  spotifyNoted?: boolean
   value: Music
   onChange: (music: Music) => void
 }) {
@@ -60,7 +63,7 @@ export function MusicChoice({
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <SegmentedControl aria-label={t('music.label')} options={options} value={value} onValueChange={onChange} className="max-w-full" />
-      {songs.kind === 'needs_spotify' ? (
+      {songs.kind === 'needs_spotify' && !spotifyNoted ? (
         <p className="m-0 text-[0.9375rem] text-muted">
           <Trans
             id="music.needsSpotify"

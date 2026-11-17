@@ -147,6 +147,11 @@ export interface PickInput {
   seed?: { song_list_revision_id: string; replace: number[] }
   /** Create the playlist again: the approved list to run phase 2 for. */
   resume?: { song_list_revision_id: string }
+  /**
+   * The user's own Spotify playlist (roadmap Amendment 26): its tracks in order are the list to
+   * approve, and phase 2 makes a new private playlist. Only with mode `pick` and no `seed`.
+   */
+  source?: { source: 'mowl_spotify_playlist'; spotify_playlist_id: string }
   mowl_connection_id: string
   spotify_connection_id: string
 }
