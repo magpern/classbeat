@@ -490,6 +490,9 @@ export const en = {
   'class.page.loading': 'Loading your class',
   'class.page.notFoundTitle': 'Class not found',
   'class.page.notFound': 'This class does not exist, or it is not yours.',
+  'class.page.discardedTitle': 'Class not kept',
+  'class.page.discarded': 'It never got a version, so the empty class was removed.',
+  'class.page.discardedStopped': 'The design was stopped.',
   'class.page.failedTitle': 'The class could not be loaded',
   'class.page.failed': 'The server could not be reached or did not answer as expected.',
   'class.page.running': 'Running',
@@ -2002,6 +2005,8 @@ export const en = {
   'player.state.sent': 'On the player: version {number}.',
   'player.state.newer': 'On the player: version {number}. Version {current} is newer.',
   'class.delete.player': 'This class is on the player. Deleting it removes it there too.',
+  'class.delete.swedebeat':
+    'What we saved in Swedebeat (a playlist or a mix) cannot be deleted from here. It stays in Swedebeat.',
   'player.remove.run': 'Removing it from the player…',
   'player.remove.uncertain': 'We could not tell if the player removed it. Check your account page.',
   'player.reason.not_connected': 'classbeat-player is not connected. Connect it on your account page first.',

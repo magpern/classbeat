@@ -535,6 +535,9 @@ const sv: Catalogue = {
   'class.page.loading': 'Laddar ditt pass',
   'class.page.notFoundTitle': 'Passet hittades inte',
   'class.page.notFound': 'Det här passet finns inte, eller så är det inte ditt.',
+  'class.page.discardedTitle': 'Passet sparades inte',
+  'class.page.discarded': 'Det fick aldrig någon version, så det tomma passet togs bort.',
+  'class.page.discardedStopped': 'Utformningen stoppades.',
   'class.page.failedTitle': 'Passet kunde inte laddas',
   'class.page.failed': 'Det gick inte att nå servern, eller så svarade den inte som väntat.',
   'class.page.running': 'Löpning',
@@ -2136,6 +2139,8 @@ const sv: Catalogue = {
   'player.state.sent': 'Skickad till spelaren: version {number}.',
   'player.state.newer': 'Skickad till spelaren: version {number}. Version {current} är nyare.',
   'class.delete.player': 'Passet finns på spelaren. När du tar bort det skickas en borttagning till spelaren.',
+  'class.delete.swedebeat':
+    'Det vi sparade i Swedebeat (en spellista eller en mix) går inte att radera härifrån. Det blir kvar i Swedebeat.',
   'player.remove.run': 'Tar bort passet från classbeat-player…',
   'player.remove.uncertain': 'Vi kunde inte se om spelaren tog bort det. Avgör det på din kontosida.',
   'player.reason.not_connected': 'classbeat-player är inte anslutet. Anslut det på din kontosida först.',

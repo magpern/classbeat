@@ -198,10 +198,11 @@ async def test_a_failed_interpret_stores_nothing_and_uses_no_credit(ienv: Interp
     assert row.state == "failed"
     assert ienv.interpretation(class_id) is None
     assert ienv.credits() == 0
+    # ADR 0039: the empty class is discarded with the failure, so nothing can be designed from it.
     answer = await ienv.handoff(class_id)
-    assert (answer.status_code, answer.json()["detail"]["reason"]) == (409, "not_ready")
+    assert (answer.status_code, answer.json()["detail"]["reason"]) == (404, "not_found")
     view = await ienv.renv.browser.get(f"/api/classes/{class_id}/interpretation")
-    assert (view.status_code, view.json()["detail"]["reason"]) == (409, "not_ready")
+    assert (view.status_code, view.json()["detail"]["reason"]) == (404, "not_found")
     assert ienv.design_jobs(class_id) == []
 
 

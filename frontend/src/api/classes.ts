@@ -167,6 +167,8 @@ export interface ClassSummary {
   beatOne: BeatOne
   /** What the player holds (#1068); null: never sent, or not connected. */
   player: ClassPlayer | null
+  /** A SwedeBeat playlist or mix was written for the class; a class delete cannot take it back. */
+  swedebeatWritten: boolean
 }
 
 function decodeClass(value: unknown): ClassSummary {
@@ -207,6 +209,7 @@ function decodeClass(value: unknown): ClassSummary {
     swedebeatMatch: decodeMatchPointer(item.swedebeat_match),
     beatOne: decodeBeatOne(item.beat_one),
     player: decodeClassPlayer(item.player),
+    swedebeatWritten: item.swedebeat_written === true,
   }
 }
 
