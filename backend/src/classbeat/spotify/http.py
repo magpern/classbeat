@@ -9,6 +9,8 @@ the token endpoint; the library never does (``spotify_refresh_enabled=False``).
 - Errors become ``ConnectionFailure(category)`` with no chained exception and no message: the
   token endpoint's JSON ``error`` code is read (a short enumerated value) and the body is parsed
   and discarded, never logged and never put in an exception. ``Retry-After`` is kept.
+- Requests ask for ``Accept-Encoding: identity``; an answer compressed anyway is decoded with
+  the ``BODY_MAX`` cap on the decoded bytes (``classbeat.spotify.answer_body``, #1149).
 - Answers are validated: the access token and refresh token are non-empty strings of a bounded
   length, ``expires_in`` a positive integer, the Spotify user id 1 to 100 printable characters.
 """
@@ -24,6 +26,7 @@ import httpx
 from classbeat import egress
 from classbeat.connections import ConnectionFailure, RefreshedTokens
 from classbeat.connections.errors import MAX_RETRY_AFTER
+from classbeat.spotify.answer_body import CappedBody
 from classbeat.spotify.errors import by_oauth_code, by_status
 
 logger = logging.getLogger(__name__)
@@ -32,8 +35,9 @@ ACCOUNTS: Final = f"https://{egress.SPOTIFY_ACCOUNTS_HOST}"
 AUTHORIZE_URL: Final = f"{ACCOUNTS}/authorize"
 TOKEN_URL: Final = f"{ACCOUNTS}/api/token"
 ME_URL: Final = f"https://{egress.SPOTIFY_API_HOST}/v1/me"
-FORM: Final = {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"}
-BODY_MAX: Final = 64 * 1024  # bytes read from an answer; more is an invalid answer
+ACCEPT: Final = {"Accept": "application/json", "Accept-Encoding": "identity"}
+FORM: Final = {"Content-Type": "application/x-www-form-urlencoded", **ACCEPT}
+BODY_MAX: Final = 64 * 1024  # decoded bytes read from an answer; more is an invalid answer
 TOKEN_MAX: Final = 2048
 EXPIRES_MAX: Final = 86_400
 USER_ID_MAX: Final = 100
@@ -121,11 +125,12 @@ class SpotifyHttp:
         form: dict[str, str] | None = None,
         bearer: str | None = None,
     ) -> tuple[int, bytes, int | None]:
-        """Status, body (at most ``BODY_MAX`` + 1 bytes) and ``Retry-After``. A transport
-        failure or a deadline is ``upstream_unavailable``; nothing is chained."""
+        """Status, decoded body (at most ``BODY_MAX`` + 1 bytes; empty for an encoding it
+        cannot decode) and ``Retry-After``. A transport failure or a deadline is
+        ``upstream_unavailable``; nothing is chained."""
         failed = False
         status, body, hint = 0, b"", None
-        headers = dict(FORM) if form is not None else {"Accept": "application/json"}
+        headers = dict(FORM) if form is not None else dict(ACCEPT)
         if bearer is not None:
             headers["Authorization"] = f"Bearer {bearer}"
         try:
@@ -134,14 +139,11 @@ class SpotifyHttp:
                 response = await client.send(request, stream=True)
                 try:
                     status, hint = response.status_code, _retry_after(response)
-                    chunks: list[bytes] = []
-                    size = 0
+                    capped = CappedBody(response.headers.get("content-encoding"), BODY_MAX)
                     async for chunk in response.aiter_raw():
-                        chunks.append(chunk)
-                        size += len(chunk)
-                        if size > BODY_MAX:
+                        if not capped.feed(chunk):
                             break
-                    body = b"".join(chunks)
+                    body = capped.body() or b""
                 finally:
                     await response.aclose()
         except egress.OutboundBlocked:
