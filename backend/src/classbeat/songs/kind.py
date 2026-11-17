@@ -10,6 +10,9 @@
   ``account_changed``.
 - **Phase 1** (``classbeat.songs.pick``): stages ``pool_search``, ``pool_write``,
   ``pool_analyse``, ``choose``; it ends with ``AwaitApproval`` and the ``song_list`` revision.
+  With ``source`` (the user's own Spotify playlist, roadmap Amendment 26) it is
+  ``classbeat.songs.from_playlist`` instead: ``pool_analyse`` of that playlist only (read, never
+  written), the list in its order, no model; then the same wait and the same phase 2.
 - **The wait** (ADR 0005 sections 2 and 3, ADR 0008 section 7): the runner moves the job to
   ``waiting_for_approval`` in the same transaction as the revision and clears the lease, so the
   worker holds no slot for it and the per-user limit (``queued`` and ``running``) does not count
@@ -39,6 +42,7 @@ from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun, Outcome
 from classbeat.quota.route import with_plan, with_plan_run
 from classbeat.songs import config
 from classbeat.songs.admit import admit, approve_check
+from classbeat.songs.from_playlist import run_source_phase_one
 from classbeat.songs.inputs import DesignWithSongsInput
 from classbeat.songs.phase2 import PHASE_TWO, run_phase_two
 from classbeat.songs.pick import SeedSpec, run_phase_one
@@ -78,6 +82,8 @@ async def run(job_run: JobRun) -> Outcome:
         if job_run.approved and given.mode != "pick":
             raise JobFailure("internal")  # a resume never waits
         return await phase_two(job_run, given)
+    if given.source is not None:  # the user's own playlist: no model, no pool (Amendment 26)
+        return await run_source_phase_one(job_run, given, given.source, keyring=runtime.keyring)
     # Phase 1 runs the ``songs`` group, before any Spotify or MOWL call; its own provider.
     model = await group_model(runtime, job_run, given.route_key, "songs")
     return await run_phase_one(

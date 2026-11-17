@@ -4,6 +4,8 @@ Status: Accepted (#198, 2026-10-31; amended, see the dated amendments)
 
 *(2026-11-15, [ADR 0036](0036-swedebeat-studio.md) §6 and §9: for a SwedeBeat studio class, the final Spotify playlist is an output of the approved draft, in its order, and Spotify writes are serialized per playlist and read back.)*
 
+*(2026-11-16, roadmap Amendment 26: a cycling class on the user's own Spotify playlist also gets a new private playlist in class order, after the same approval; see the amendment of 2026-11-16 at the end.)*
+
 > **Amendment, 2026-10-31 (issue #198 item 6): accepted.** M4 was built to this ADR on fakes (#173 to
 > #185, and #186's first part, #302), with the dated amendments in its sections; it is accepted as
 > amended, and roadmap Amendment 5 is in effect. The live activation (§11,
@@ -376,7 +378,8 @@ mode, resume?, mowl_connection_id, spotify_connection_id}`, `consumes_credit = F
 `invalid_input` for a base that is not a draft of the class, the user's message row) plus the
 song-picking checks of §4 and `not_song_picked` when the base draft's `music.song_list_id` is absent
 (a class designed on the user's own playlist keeps using `revise_draft`; changing its music is a new
-class). Phase 1 is §4's with the current picked songs as `kept` (those not in `replace`; `"all"` keeps
+class; *since the amendment of 2026-11-16 a cycling class on the user's playlist is designed on a
+`song_list`, so it has one*). Phase 1 is §4's with the current picked songs as `kept` (those not in `replace`; `"all"` keeps
 none) and the same limits; the approval page marks the changed songs `new`. Phase 2 creates a **new**
 final playlist with the full list (kept and new, in the approved order; the earlier playlist stays in
 the user's Spotify and its `class_playlists` row stays as history, listed on the page), attaches it,
@@ -429,6 +432,9 @@ it instead of from browser storage; the job inputs keep `brief` as in §4.
 
 **Music the user already has** (a MOWL playlist, a Swedebeat mix) skips all of this: `design_draft`
 is unchanged, needs no Spotify connection, and `song_picking` being off affects nothing there.
+*(Superseded for a cycling class on the user's own Spotify playlist by the amendment of 2026-11-16
+below: while `song_picking` admits the user, that playlist is copied into a new private playlist in
+class order, after the approval. A Swedebeat mix and a running class's playlist are unchanged.)*
 
 **Resume.** `mode = "resume"` (both kinds) starts at phase 2 for a list the user **already approved**:
 for failures after approval (a Do-it-anyway on an uncertain create or fill, `playlist_mismatch`, a MOWL
@@ -749,6 +755,59 @@ tempo and effort") and no check on adjacent BPM. This amendment adds a **soft** 
 - **Eval.** Suite version 23 adds the case `tempo_adjacent_30` with the check `tempo_flow` (no jump
   between two adjacent songs of the same role); `agent/tempo_policy.py` joins the digest's rule
   sources. The `choose_songs` prompt version is re-pinned.
+
+## Amendment of 2026-11-16: a new playlist also from the user's own playlist (issue #1132)
+
+Owner decision (2026-11-16, roadmap Amendment 26): *"Create a playlist in Spotify with the songs the
+user wants. If the user picks an existing playlist, a new playlist is still created with the correct
+order of the songs."* This supersedes §6's "Music the user already has … skips all of this" for a
+**cycling** class on the user's own Spotify playlist (named in the request, chosen by the user, or the
+interpretation's default). A Swedebeat mix, a soundless class and a running class (ADR 0018: no song
+picking) are unchanged and stay `design_draft`.
+
+- **One pipeline, not a fork.** The class is a `design_with_songs` job whose input names
+  `source: {source: "mowl_spotify_playlist", spotify_playlist_id}` (only with `mode = "pick"` and no
+  `seed`). The interpretation hand-off (ADR 0029 §5) enqueues it when the interpret request named a
+  Spotify connection **and** `song_picking_admits` admits the user (`CLASSBEAT_SONG_PICKING` and the
+  stored `song_picking` flag, the kill switch of classbeat's Spotify writes, ADR 0009 §2, ADR 0011
+  §7). Otherwise it still enqueues the write-free `design_draft`. Since roadmap Amendment 25
+  (issue #1131) a cycling playlist is only chosen with a Spotify connection; one stored without it
+  before then keeps its `design_draft`.
+- **Phase 1 with a source** (`songs/from_playlist.py`) has one stage, `pool_analyse`. It runs the
+  design music step on the user's playlist exactly as `design_draft` does: the stored MOWL link or
+  the MOWL attach, then read-only analysis. There is **no model, no search, no pool and no Spotify
+  write**. The `song_list` is that analysis in the playlist's order (`songs/playlist_list_policy.py`,
+  pure). A track listed twice stays twice. A track without a Spotify track id or without a BPM is
+  left out and counted in `omitted_no_bpm`. No usable track, or more than 40, is `invalid_input`.
+  Roles are positional (`warmup`, then `interval`, last `cooldown`), `new` is false, there is no cover.
+  The provenance says `music_from: "spotify_playlist"`, with no run and no cost.
+  `music.source` stays `claude_pick`, since the revision's shape is the pick's.
+- **The same approval and phase 2.** Phase 1 ends with the pick's own wait (`pick.await_approval`):
+  Spotify held, the MOWL link still current, the revision and its hash. So §5's hash covers the ids,
+  texts, numbers and order, and the approval rules apply unchanged: `hash_mismatch`, `account_changed`,
+  `not_connected`, replay and double click as one approval, `not_found` for another user. Phase 2 is
+  §4 and §6 unchanged: a **new** playlist created by id (`public: false`, `collaborative: false`, key
+  `<job_id>:final-create`), filled in the approved order, read back and verified, attached in MOWL,
+  and designed on. `music_source` names that playlist (`origin: "song_pick"`), so the class has a
+  `song_list` and Change songs works on it as on a pick.
+- **The user's playlist is read-only.** No Spotify request ever writes it. It is read only through
+  MOWL. The tests assert that no write request names it and that its items and version are
+  unchanged (`tests/test_design_with_songs_own_playlist.py`).
+- **`admit`** (§4) for a source: `song_picking_off` (the kill switch gates this new-playlist path
+  as it gates every Spotify write, as the studio's Spotify output does, ADR 0036), the soundless and
+  sport rules and `not_connected` as for a pick. `consent_missing` and `pool_busy` do not apply,
+  because nothing is picked and the pool is never touched. Such a job does not count for another
+  pick's `pool_busy`. The new playlist is covered by the user's Approve, as every final playlist is.
+- **Recovery and change follow the same rule.** A source job that fails after the approval is
+  resumed by a `mode = "resume"` job (no `source`): it needs `song_picking` and Spotify and no pool
+  consent, so a user the source path admitted can always finish the class. Change songs
+  (`revise_songs`) is a Claude pick and needs `song_picking` and the pool consent, as on any class.
+- **Not changed:** the "Advanced" new-class form still creates `design_draft` on a chosen playlist
+  directly. Moving it to this path is a separate, frontend issue. The Designing page shows the pick's
+  phase-1 checklist for such a job.
+
+The ADR 0036 §9 principle "the user's own playlist is never modified, the final playlist is fresh
+and private" now holds for every class with Spotify music, not only studio classes.
 
 ## Amendment of 2026-11-17: the music taste of the request (issue #1133)
 
