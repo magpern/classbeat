@@ -18,7 +18,7 @@ from classbeat.agent.loop import RunInfo, StageOutcome
 from classbeat.agent.provider import Usage
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.soundless import check_soundless
-from classbeat.evals import suite
+from classbeat.evals import suite, suite_sources
 from classbeat.evals.cases import Case, load_cases
 from classbeat.evals.checks import MUSIC_WORDS, names_music, run_checks
 from classbeat.evals.runner import CaseResult, run_case
@@ -258,8 +258,8 @@ def test_a_music_case_still_takes_those_settings() -> None:
 def test_the_digest_records_a_pattern_with_its_flags() -> None:
     import re
 
-    plain = suite._plain("X", re.compile("music"))  # pyright: ignore[reportPrivateUsage]
-    loose = suite._plain("X", re.compile("music", re.IGNORECASE))  # pyright: ignore[reportPrivateUsage]
+    plain = suite_sources.plain("X", re.compile("music"))
+    loose = suite_sources.plain("X", re.compile("music", re.IGNORECASE))
     assert plain != loose
     assert loose["pattern"] == "music"
     assert suite.check_constants()["checks.MUSIC_WORDS"]["flags"] & re.IGNORECASE
@@ -313,7 +313,7 @@ def test_a_soundless_run_that_fails_its_music_check_is_a_failed_case() -> None:
 
 
 def test_the_suite_is_current_and_its_digest_covers_the_soundless_parts() -> None:
-    assert SUITE.manifest.suite_version == 24
+    assert SUITE.manifest.suite_version == 25
     assert "agent/soundless_input.py" in suite.RULE_SOURCES
     data, cases, sources, constants = (
         suite.read_manifest_data(),

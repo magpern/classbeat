@@ -22,7 +22,7 @@ from classbeat.design.guidance import rule_set_for
 from classbeat.design.rules import default_registry, evaluate
 from classbeat.design.selection import select_profile_for_brief
 from classbeat.design.sport_rules import rules_for, select_profile_for
-from classbeat.evals import suite
+from classbeat.evals import suite_sources
 from classbeat.evals.cases import Case, PatternExpect
 from classbeat.evals.music import build_music
 from classbeat.evals.runner import CaseResult, run_case
@@ -269,11 +269,11 @@ def test_the_run_gets_the_rules_a_production_job_builds() -> None:
 
 
 def _copy_sources(root: Path) -> None:
-    for name in suite.DIGEST_SOURCES:
+    for name in suite_sources.DIGEST_SOURCES:
         (root / "classbeat" / "evals").mkdir(parents=True, exist_ok=True)
-        shutil.copy(Path(suite.__file__).parent / name, root / "classbeat" / "evals" / name)
-    package = Path(suite.__file__).parent.parent
-    for name in suite.RULE_SOURCES:
+        shutil.copy(Path(suite_sources.__file__).parent / name, root / "classbeat" / "evals" / name)
+    package = Path(suite_sources.__file__).parent.parent
+    for name in suite_sources.RULE_SOURCES:
         target = root / "classbeat" / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(package / name, target)
@@ -283,14 +283,14 @@ def _digest_in(root: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     def files(name: str) -> Path:
         return root / name.replace(".", "/")
 
-    monkeypatch.setattr(suite.resources, "files", files)
-    return suite_digest({}, {}, suite.digest_sources(), {})
+    monkeypatch.setattr(suite_sources.resources, "files", files)
+    return suite_digest({}, {}, suite_sources.digest_sources(), {})
 
 
 def test_the_digest_sources_include_every_rule_source() -> None:
-    keys = set(suite.digest_sources())
-    assert {f"classbeat/{n}" for n in suite.RULE_SOURCES} <= keys
-    assert set(suite.RULE_SOURCES) == {
+    keys = set(suite_sources.digest_sources())
+    assert {f"classbeat/{n}" for n in suite_sources.RULE_SOURCES} <= keys
+    assert set(suite_sources.RULE_SOURCES) == {
         "agent/guidance.py", "agent/model_input.py", "design/guidance.py", "design/selection.py",
         "design/rules/__init__.py", "design/rules/engine.py", "design/rules/enums.py",
         "design/rules/profile.py", "design/rules/rationales.py", "design/profiles/index.json",
@@ -314,20 +314,20 @@ RULES_EXCLUDED: dict[str, str] = {}
 
 
 def test_every_module_under_design_rules_is_covered_or_excluded_on_purpose() -> None:
-    package = Path(suite.__file__).parent.parent
+    package = Path(suite_sources.__file__).parent.parent
     modules = {p.relative_to(package).as_posix() for p in (package / "design/rules").glob("*.py")}
-    covered = set(suite.RULE_SOURCES) | set(RULES_EXCLUDED)
+    covered = set(suite_sources.RULE_SOURCES) | set(RULES_EXCLUDED)
     assert modules <= covered, (
         f"not in RULE_SOURCES nor excluded with a reason: {modules - covered}"
     )
-    assert not set(RULES_EXCLUDED) & set(suite.RULE_SOURCES)
+    assert not set(RULES_EXCLUDED) & set(suite_sources.RULE_SOURCES)
     assert all(RULES_EXCLUDED.values()), "an exclusion needs its reason"
     assert covered - set(RULES_EXCLUDED) <= {
         p.relative_to(package).as_posix() for p in package.rglob("*") if p.is_file()
     }  # no stale entry
 
 
-@pytest.mark.parametrize("name", suite.RULE_SOURCES)
+@pytest.mark.parametrize("name", suite_sources.RULE_SOURCES)
 def test_one_changed_byte_of_a_rule_source_changes_the_digest(
     name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -343,9 +343,9 @@ def test_dropping_a_rule_source_from_the_list_changes_the_digest(
 ) -> None:
     _copy_sources(tmp_path)
     full = _digest_in(tmp_path, monkeypatch)
-    for name in suite.RULE_SOURCES:
+    for name in suite_sources.RULE_SOURCES:
         monkeypatch.setattr(
-            suite, "RULE_SOURCES", tuple(n for n in suite.RULE_SOURCES if n != name)
+            suite_sources, "RULE_SOURCES", tuple(n for n in suite_sources.RULE_SOURCES if n != name)
         )
         assert _digest_in(tmp_path, monkeypatch) != full
         monkeypatch.undo()

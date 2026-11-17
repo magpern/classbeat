@@ -1967,6 +1967,7 @@ const sv: Catalogue = {
   'interp.reason.needs_mowl_playlist': 'Löppass kräver en spellista från din MOWL-musik.',
   'interp.reason.needs_spotify': 'Ett pass med musik kräver ditt Spotify-konto.',
   'interp.reason.taste_needs_pick': 'Bara låtar vi väljer åt dig kan följa musiken du bad om.',
+  'interp.reason.taste_on_revise': 'En ändring behåller musiken; använd Byt låtar för att välja andra låtar.',
   'interp.reason.era_too_few': 'Vi hittade för få låtar från de här åren på Spotify.',
   'interp.reason.songs_outside_eras': 'Några låtar är från andra år än du bad om.',
   'interp.reason.songs_too_short': 'Låtarna är kortare än passet.',

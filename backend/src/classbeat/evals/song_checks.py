@@ -24,7 +24,7 @@ The hard checks, each one ``(name, ok, detail)``; a case passes when all of them
   are within-track ranks, so no check compares one song's energy with another's.
 
 The total within +-10 %, the order (open on a warmup or build, end on a cooldown), no track twice
-and a replace keeping its kept songs are checked beside these in ``pick.pick_checks``.
+and a replace keeping its kept songs are checked beside these in ``pick_checks.pick_checks``.
 
 The **scores** (numbers in [0, 1] or a share, written to the results so ``compare`` can rank
 models): ``bpm_in_band`` (the share of judged songs inside their band, 1 when none is judged) and

@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from classbeat.agent.brief import Brief, BriefGame
 from classbeat.agent.interpret_input import current_values, first_message
 from classbeat.agent.interpreted import InterpretedRequest
+from classbeat.agent.music_taste import EraRange, MusicTaste
 from classbeat.agent.records import Provenance
 from classbeat.agent.stated_layer import LAYER_KEYS, StatedLayer, applied, layer_of
 from classbeat.design.revise_layer_policy import layer
@@ -279,3 +280,40 @@ def test_the_revise_interpreter_is_told_closed_current_values_only() -> None:
         "x", sports=("cycling",), max_class_minutes=None, games_allowed=True, music=()
     )
     assert '"current"' not in plain  # a new request's message is as before
+
+
+# --- the music taste (issue #1140): kept, and a stated change says so -------------------------
+
+NINETIES = {"year_from": 1990, "year_to": 1999, "origin": "explicit", "quote": "90s"}
+TASTED = BASE.model_copy(
+    update={"music_taste": MusicTaste(eras=[EraRange(year_from=1980, year_to=1989)], hits=True)}
+)
+
+
+def test_a_stated_taste_change_is_not_as_asked_and_the_base_taste_stays() -> None:
+    asked = read(
+        music_taste={
+            "eras": [NINETIES],
+            "language": {"value": "sv", "origin": "explicit"},
+            "genres": [{"value": "rock", "origin": "inferred"}],
+        }
+    )
+    done = layer(TASTED, asked, gates())
+    assert done.brief.music_taste == TASTED.music_taste
+    assert [(i.path, i.origin, i.reason_code, i.value, i.quote) for i in done.items] == [
+        ("music_era.0", "not_as_asked", "taste_on_revise", {"from": 1990, "to": 1999}, None),
+        ("music_language", "not_as_asked", "taste_on_revise", "sv", None),
+    ]  # the inferred style word is left out quietly, as at interpret time
+
+
+def test_a_taste_on_a_class_without_one_is_not_as_asked_too() -> None:
+    done = layer(BASE, read(music_taste={"eras": [NINETIES]}), gates())
+    assert done.brief.music_taste is None
+    assert [(i.path, i.reason_code) for i in done.items] == [("music_era.0", "taste_on_revise")]
+
+
+def test_a_reading_that_repeats_the_base_taste_changes_nothing() -> None:
+    eighties = {"year_from": 1980, "year_to": 1989, "origin": "explicit"}
+    hits = {"value": True, "origin": "explicit"}
+    done = layer(TASTED, read(music_taste={"eras": [eighties], "hits": hits}), gates())
+    assert (done.brief, done.items) == (TASTED, ())

@@ -26,7 +26,12 @@ it names what the class should have after the change, for what the request chang
   games, is Not as asked (``game_missing``, the base's game as the value, numbered after the
   reported games). A game is held as at interpret time (dropped
   on a running class or a plan without games, held to MOWL's 10 s floor, never swapped), with Not
-  as asked for a stated one.
+  as asked for a stated one;
+- the music taste (``music_taste``, issue #1140): a revise keeps the base's taste, since the songs
+  change only with Change songs. A reading whose taste differs from the base's records each value
+  the request states as Not as asked ``taste_on_revise`` (as at interpret time, an inferred one is
+  left out quietly), so a taste change is never dropped silently; one that repeats the base's
+  taste changes nothing.
 
 Every value is closed (numbers, short enums, a game as a small object). No quote is kept: a quote
 must be a substring of ``brief.text``, the first request, and these are the revise request's.
@@ -42,9 +47,11 @@ from classbeat.agent.interpretation_record import InterpretationItem
 from classbeat.agent.interpreted import InterpretedRequest
 from classbeat.design import request_policy
 from classbeat.design.interpret_policy import KNOBS, Offer, held
+from classbeat.design.interpret_taste_policy import closed_taste, resolve_taste
 from classbeat.plan_gates import PlanGates
 
 _ORDER: Final = ("sport", *KNOBS, *(f"games.{n}" for n in range(6)))
+TASTE_ON_REVISE: Final = "taste_on_revise"
 
 
 @dataclass(frozen=True)
@@ -118,6 +125,16 @@ def _omitted(
         out.append(_not_as_asked(f"games.{reported + k}", unmatched[n], "game_missing"))
 
 
+def _taste(base: Brief, read: InterpretedRequest, out: list[InterpretationItem]) -> None:
+    """A stated taste change is Not as asked: the revise keeps the base's taste."""
+    taste = read.music_taste
+    if taste is None or closed_taste(taste) == base.music_taste:
+        return
+    stated: list[InterpretationItem] = []
+    resolve_taste(taste, "", None, stated)  # no song pick: the stated values only, Not as asked
+    out.extend(_not_as_asked(i.path, i.value, TASTE_ON_REVISE) for i in stated)
+
+
 def _ordered(paths: Sequence[str]) -> list[str]:
     wanted = set(paths)
     return [p for p in _ORDER if p in wanted]
@@ -151,5 +168,6 @@ def layer(base: Brief, read: InterpretedRequest, gates: PlanGates | None) -> Lay
         explicit.update(game_paths)
     else:
         _games(base, read, gates, items)  # every game of a running class is Not as asked
+    _taste(base, read, items)
     fields["explicit"] = _ordered(sorted(explicit))
     return Layered(Brief.model_validate(fields), tuple(items))

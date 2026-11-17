@@ -1,0 +1,29 @@
+{
+ "kind": "interpret",
+ "name": "interpret_swedish_hits_eras",
+ "about": "The request of a live miss (#1140): Swedish hits from three decades are three eras, the language and hits.",
+ "request": "45 minute class, 3 hills, flat tempo between hill 2 and 3, only Swedish hit songs from the 80s, 90s and 00s",
+ "expect": {
+  "values": {
+   "length_min": 45,
+   "climbs": 3
+  },
+  "origins": {
+   "length_min": "explicit",
+   "climbs": "explicit"
+  },
+  "absent": [
+   "races",
+   "music"
+  ],
+  "taste": {
+   "eras": [
+    [1980, 1989],
+    [1990, 1999],
+    [2000, 2009]
+   ],
+   "language": "sv",
+   "hits": true
+  }
+ }
+}

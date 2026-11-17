@@ -51,8 +51,9 @@ PINNED = {
     "soundless_design": "19f070f1f62b715453650b64380c1dce53fd39c7e3e9791fd9ed433a69da295f",
     "soundless_revise": "8279c4a6a9750c9ff238bbd7db5c915e9b9a8dc44f1b16e7fbbcae502fdfdc7b",
     # The interpret stage (MA1b-2, #880), under its own key. #1133 changed it and pick_pool on
-    # purpose: the music taste (interpret) and the find_songs tool (pick_pool).
-    "interpret": "a94daa2a2e7231d600ed21ecf2c52c4067444326acadad304bc0585771df9d00",
+    # purpose: the music taste (interpret) and the find_songs tool (pick_pool). #1140 changed
+    # interpret once more, on purpose: the era caps (4 eras, 30 years each) in the prompt.
+    "interpret": "d82bf39182e61772a01ed6c6d4f874a93f6cced007bc0dd74f9a52ac5211765f",
 }
 PLANTED = "Zq9 planted brief text"
 PLANTED_STYLE = "Zq9 planted style"

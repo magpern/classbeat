@@ -88,6 +88,7 @@ export const REASONS: Record<string, CatalogueKey> = {
   needs_mowl_playlist: 'interp.reason.needs_mowl_playlist',
   needs_spotify: 'interp.reason.needs_spotify',
   taste_needs_pick: 'interp.reason.taste_needs_pick',
+  taste_on_revise: 'interp.reason.taste_on_revise',
   era_too_few: 'interp.reason.era_too_few',
   songs_outside_eras: 'interp.reason.songs_outside_eras',
   songs_too_short: 'interp.reason.songs_too_short',

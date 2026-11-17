@@ -5,7 +5,9 @@ keeps. Split from ``pick`` (the cases, the runner and the checks), which re-expo
 - ``CatalogueSpec`` / ``ReplaceSpec``: the parts of a case file that describe the world (titles,
   artists and albums, tracks without a BPM, search hits that are broken, a replace case's seed).
 - ``SyntheticCatalogue``: the ``Searcher`` the pool stage is given. A query matches a track when
-  every word is in its title or artist; ``year:A-B`` in the query filters on the release year.
+  every word is in its title or artist; ``year:A-B`` in the query filters on the release year, and
+  ``track:"..."`` and ``artist:"..."`` (the queries ``find_songs`` builds, #1140) on every word of
+  the phrase being a word of the title or the artist.
 - ``analysis_map``: the MOWL analysis the choose stage reads, in the library's own format.
 """
 
@@ -27,6 +29,7 @@ LOUDNESS: Final = (-12.0, -6.0, -11.0, -5.0)
 CATALOGUE_ID: Final = "SmokePick{:013d}"  # 22 characters
 KEPT_ID: Final = "SmokeKept{:013d}"
 YEAR_FILTER: Final = re.compile(r"\byear:(\d{4})(?:-(\d{4}))?\b")
+FIELD_FILTER: Final = re.compile(r'\b(track|artist):"([^"]*)"')
 
 
 Malformed = Literal["no_title", "no_artist", "bad_id", "title_not_text"]
@@ -36,6 +39,9 @@ class CatalogueSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     size: int = Field(ge=10, le=120)
+    # Track ``i`` is from ``first_year + i % year_span`` (#1140: a case can span several eras).
+    first_year: int = Field(default=2000, ge=1900, le=2100)
+    year_span: int = Field(default=25, ge=1, le=100)
     titles: dict[str, str] = Field(default_factory=lambda: dict[str, str]())  # index -> title
     artists: dict[str, str] = Field(default_factory=lambda: dict[str, str]())
     albums: dict[str, str] = Field(default_factory=lambda: dict[str, str]())
@@ -93,7 +99,8 @@ class CatalogueTrack:
 
 
 class SyntheticCatalogue:
-    """Invented tracks: ``Smoke Song N`` by ``Smoke Artist N // 10``, 240 s, years 2000 to 2024."""
+    """Invented tracks: ``Smoke Song N`` by ``Smoke Artist N // 10``, 240 s, years 2000 to 2024
+    unless the spec says otherwise."""
 
     def __init__(self, spec: CatalogueSpec) -> None:
         self.tracks = [
@@ -101,7 +108,7 @@ class SyntheticCatalogue:
                 CATALOGUE_ID.format(i),
                 spec.titles.get(str(i), f"Smoke Song {i}"),
                 spec.artists.get(str(i), f"Smoke Artist {i // 10}"),
-                2000 + i % 25,
+                spec.first_year + i % spec.year_span,
                 TRACK_SEC,
                 0 if i in spec.no_bpm else FIRST_BPM + BPM_STEP * (i % 40),
                 f"group{i // 10}",
@@ -116,10 +123,13 @@ class SyntheticCatalogue:
         """The ``Searcher``: the library's track dicts for at most ten matches."""
         self.queries.append(query)
         years = YEAR_FILTER.search(query)
-        words = YEAR_FILTER.sub(" ", query).lower().split()
+        fields = [(f, phrase.lower().split()) for f, phrase in FIELD_FILTER.findall(query)]
+        words = FIELD_FILTER.sub(" ", YEAR_FILTER.sub(" ", query)).lower().split()
         out = []
         for t in self.tracks:
             if years and not int(years[1]) <= t.year <= int(years[2] or years[1]):
+                continue
+            if not all(_has_words(t.title if f == "track" else t.artist, w) for f, w in fields):
                 continue
             if all(w in f"{t.title} {t.artist} {t.group}".lower() for w in words):
                 out.append(t.hit())
@@ -127,6 +137,11 @@ class SyntheticCatalogue:
 
     def by_id(self) -> dict[str, CatalogueTrack]:
         return {t.spotify_id: t for t in self.tracks}
+
+
+def _has_words(text: str, words: Sequence[str]) -> bool:
+    own = text.lower().split()
+    return all(w in own for w in words)
 
 
 def analysis_map(tracks: Sequence[CatalogueTrack]) -> dict[str, Any]:
