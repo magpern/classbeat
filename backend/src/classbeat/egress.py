@@ -46,7 +46,8 @@ Swedebeat mix from the temporary link MOWL returns (A3, worker only). Its list i
 confirmed host (``users-playlists.s3-accelerate.amazonaws.com``, #524); nothing else's does: the
 library's MOWL opener, with its ``authorization`` header, cannot reach the media host (it is on no
 urllib list), and this client
-sends none of our headers. It follows no redirect at all, ends every request within
+sends none of our headers (the call site adds only ``Accept-Encoding: identity``). It follows
+no redirect at all, ends every request within
 ``MOWL_MEDIA_TOTAL_SECONDS`` and takes **no argument** (a list and a transport come only from
 tests, through ``mowl_media_test_client``, which the guard refuses in ``classbeat``). The body is
 read raw and any ``Content-Encoding`` but identity is refused (``classbeat.design.mixfetch``).
@@ -748,7 +749,8 @@ def mowl_media_async_client() -> httpx.AsyncClient:
     response for the caller to refuse. ``trust_env=False`` (no proxy, ``NETRC`` or cookie jar from
     the environment), and **no default header**: httpx's ``User-Agent``, ``Accept`` and
     ``Accept-Encoding`` are cleared, so a request carries only what the call site sets (never the
-    MOWL ``authorization``). That does **not** make the answer uncompressed: a server may send a
+    MOWL ``authorization``); the call site sets ``Accept-Encoding: identity`` (RFC 9110 12.5.3: none
+    means any coding). That does **not** make the answer uncompressed: a server may send a
     ``Content-Encoding`` anyway, and httpx would decode it on read (a compression bomb). The call
     site therefore reads the raw bytes (``aiter_raw``) and refuses any encoding but identity
     (``classbeat.design.mixfetch``). Every request, its body included, ends within
