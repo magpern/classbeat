@@ -254,12 +254,13 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
+      # npm audit --audit-level=high with one dated exception (GHSA-fc5q-39xc-vjpf, ADR 0037):
+      # the allowlist and its expiry live in scripts/npm-audit-gate-policy.mjs.
+      - name: npm audit gate tests
+        run: node --test scripts/npm-audit-gate.test.mjs
+
       - name: npm audit
-        run: |
-          set -euo pipefail
-          for dir in frontend e2e; do
-            (cd "$dir" && npm audit --audit-level=high)
-          done
+        run: node scripts/npm-audit-gate.mjs frontend e2e
 
       # Trivy fails on HIGH and CRITICAL findings that have a fix available (--ignore-unfixed):
       # an accepted risk, see AGENTS.md. Exceptions go in .trivyignore with a reason and an
