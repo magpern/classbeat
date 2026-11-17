@@ -23,12 +23,14 @@ the user's own Spotify account, as an external operation. Create only: the track
   playlist's description carries ``classbeat ref <ref>``.
 - **The call** is one request (``single_request``): ``POST /me/playlists`` through the library's
   ``create_playlist`` with no tracks, which sends ``public: false`` and ``collaborative: false``.
+  Spotify may make it public anyway (#1155): ``privacy.ensure_private`` then asks once more.
   A request refused before it left, or answered with a refusal (4xx), is ``failed``; anything
   else (dropped after sending, a 5xx, an answer without a valid id) is ``uncertain``.
 - **On success** (``create_record``): the pool's ``spotify_pool.playlist_id``, or the final
   playlist's ``class_playlists`` row of the operation's own class and revision.
 - **The reconciler** lists the user's playlists (at most 20 pages of 50) for exactly one owned
-  by the connected user, not public, whose description names this row's ``ref``:
+  by the connected user (public either way, Amendment 27), whose description names this
+  row's ``ref``:
 
   ======================================================  ===================================
   exactly one                                             ``succeeded`` with its id
@@ -263,7 +265,7 @@ async def _reconcile(check: ReconcileInput) -> Reconciliation:
             isinstance(playlist_id, str)
             and common.SPOTIFY_ID.fullmatch(playlist_id) is not None
             and playlist.get("owner_id") == opened.account
-            and playlist.get("public") is False
+            and isinstance(playlist.get("public"), bool)  # Amendment 27
             and ref in common.refs_in(playlist.get("description"))
         ):
             found.append(playlist_id)

@@ -29,6 +29,18 @@ logger = logging.getLogger(__name__)
 KIND: Final = SPOTIFY_CREATE_KIND
 
 
+_CREATED = text(
+    "SELECT external_id FROM external_operations WHERE owner_id = :owner_id AND kind = :kind "
+    "AND idempotency_key = :key AND state = 'succeeded'"
+)
+
+
+async def created_id(db: AsyncSession, owner_id: UUID, key: str) -> str | None:
+    """The playlist id the create of ``key`` returned; None unless that row ``succeeded``."""
+    row = (await db.execute(_CREATED, {"owner_id": owner_id, "kind": KIND, "key": key})).first()
+    return None if row is None else row.external_id
+
+
 def purpose_fits(operation: Operation) -> bool:
     purpose = spotify_purpose(operation.kind, operation.idempotency_key)
     return purpose is not None and (purpose == "final") == (operation.class_id is not None)

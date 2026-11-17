@@ -10,8 +10,8 @@ ordered list of tracks, then read it back. Absolute, so repeating it is safe (un
   taken before the ``pending`` row is written plus the bound, so no request of it is sent after
   ``pending_at + bound``, and ``call_may_be_running`` and ``actionable_at`` apply to its row.
 - **The call** (one worker task, each step through ``spotify_call`` with the held connection):
-  the **owner check** ``GET /playlists/{id}`` (the connected user owns it, ``public`` and
-  ``collaborative`` exactly ``false``), then ``PUT /items`` with the first 100 URIs (an empty
+  the **owner check** ``GET /playlists/{id}`` (``common.owned``: the connected user owns it,
+  not collaborative), then ``PUT /items`` with the first 100 URIs (an empty
   list clears) and ``POST /items`` for the rest, then **the read-back** of every item and an
   exact comparison of the ordered track ids.
 
@@ -21,22 +21,23 @@ ordered list of tracks, then read it back. Absolute, so repeating it is safe (un
   owner check answered 403                                    ``failed`` ``forbidden``
   owner check answered another 4xx, or not sent at all       ``failed`` with its category
   (the connection is no longer the one the decide step held)
-  readable, but not owned, public or collaborative            ``failed`` ``pool_unusable``
+  readable, but not owned or collaborative                    ``failed`` ``pool_unusable``
                                                               (final: ``forbidden``)
   the read-back equals the list                               ``succeeded`` (``external_id`` =
                                                               the playlist id, ``result``
                                                               ``{snapshot_id, count}``)
   the read-back is a different list                           ``failed`` ``playlist_mismatch``
+  a write answered 403 to a playlist read as public           ``failed`` ``scope_mismatch``
   anything else (refused, dropped, a 5xx, a partial write,   ``uncertain``
   an unreadable read-back), before or after a write
   =========================================================  ================================
 
   In each ``failed`` row before the writes nothing was written: no write request is sent unless
-  the owner check passed. classbeat never changes a playlist's privacy itself.
+  the owner check passed. The replace never changes a playlist's privacy (``privacy`` may, once).
 - **The reconciler** reads the playlist the same way (owner check, then items): the list equals
   the one written, ``succeeded``; readable and different, ``failed`` once the call is over (it
-  returned, or ``actionable_at`` passed), inconclusive before; unreadable or no longer owned and
-  private, inconclusive.
+  returned, or ``actionable_at`` passed), inconclusive before; unreadable or no longer owned (or
+  collaborative), inconclusive.
 - **On success** (same transaction): pool, ``spotify_pool.last_hash`` and ``last_written_at``
   while the pool row still holds this playlist; final, the class's live ``class_playlists`` row of
   this playlist becomes ``verified`` with ``content_hash`` and ``track_count``.
@@ -54,10 +55,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.connections import ConnectionFailure, OpenConnection, open_connection
-from classbeat.connections.errors import NEVER_SENT
 from classbeat.crypto.keks import KeyRing
 from classbeat.egress import OutboundBlocked
-from classbeat.jobs import JobFailure, JobRun, failure_of
+from classbeat.jobs import JobFailure, JobRun
 from classbeat.operations import (
     INCONCLUSIVE,
     OPERATION_KINDS,
@@ -81,15 +81,12 @@ from classbeat.operations.kinds import (
 )
 from classbeat.operations.requests import Guard
 from classbeat.playlists import common
+from classbeat.playlists.replace_failures import UNUSABLE, owner_check_failure, write_failure
 
 logger = logging.getLogger(__name__)
 
 KIND: Final = SPOTIFY_REPLACE_KIND
 HASH_PREFIX: Final = 16
-# The categories of a failed owner check, by purpose (ADR 0008 section 2): the pool's own words
-# for "gone" and "changed"; a final playlist is one classbeat just created for the class.
-MISSING: Final = {"pool": "pool_missing", "final": "not_found"}
-UNUSABLE: Final = {"pool": "pool_unusable", "final": "forbidden"}
 
 
 def bound_seconds(count: int) -> float:
@@ -140,23 +137,6 @@ def replace_request(
     )
 
 
-def _owner_check_failure(failure: ConnectionFailure, purpose: str) -> str | None:
-    """The category of an owner check that proves nothing was written: Spotify answered it with a
-    refusal (4xx), or the connection was not the held one and nothing was sent at all
-    (``NEVER_SENT``). None for anything else (refused before sending, dropped, a 5xx), which is
-    uncertain."""
-    if failure.category in NEVER_SENT:
-        return failure.category
-    status = failure.http_status
-    if status is None or not 400 <= status <= 499:
-        return None
-    if status == 404:
-        return MISSING[purpose]
-    if status == 403:
-        return "forbidden"
-    return failure_of(failure).category
-
-
 async def replace(
     run: JobRun,
     keyring: KeyRing,
@@ -186,7 +166,7 @@ async def replace(
                 deadline_at=deadline_at,
             )
         except ConnectionFailure as failure:
-            refused = _owner_check_failure(failure, purpose)
+            refused = owner_check_failure(failure, purpose)
             if refused is not None:
                 raise NotWritten(refused) from None
             raise UncertainAnswer from None
@@ -202,6 +182,12 @@ async def replace(
                 write=True,
                 deadline_at=deadline_at,
             )
+        except ConnectionFailure as failure:
+            refused = write_failure(failure, found)  # a public playlist, no public scope
+            if refused is not None:
+                raise NotWritten(refused) from None
+            raise UncertainAnswer from None  # a write may have been sent: never ``failed``
+        try:
             entries = await common.call(
                 run.factory,
                 keyring,
@@ -211,9 +197,7 @@ async def replace(
                 deadline_at=deadline_at,
             )
         except ConnectionFailure:
-            # After a write request may have been sent: never ``failed`` (not even a category
-            # that says the connection could not be opened, since an earlier step wrote).
-            raise UncertainAnswer from None
+            raise UncertainAnswer from None  # after a write: never ``failed``
         observed = common.observed_ids(entries)
         if observed is None:
             raise UncertainAnswer
@@ -267,7 +251,7 @@ async def _reconcile(check: ReconcileInput) -> Reconciliation:
             lambda c: spotify_web.get_playlist(c, playlist_id),
         )
         if not common.checked_owner(found, playlist_id, opened.account, purpose, "reconcile"):
-            return INCONCLUSIVE  # not ours to read, or no longer private: the user decides
+            return INCONCLUSIVE  # not ours to read, or collaborative: the user decides
         entries = await common.call(
             check.factory,
             check.keyring,

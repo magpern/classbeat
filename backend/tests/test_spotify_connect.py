@@ -56,7 +56,12 @@ async def test_happy_path_connects_and_stores_ciphertext_only(
     }  # fmt: skip
     assert params["client_id"] == CLIENT_A
     assert params["redirect_uri"] == CALLBACK_URL
-    assert params["scope"] == SCOPES == "playlist-read-private playlist-modify-private"
+    # Roadmap Amendment 27 (#1155): the public scope too, for a playlist Spotify made public.
+    assert (
+        params["scope"]
+        == SCOPES
+        == ("playlist-read-private playlist-modify-private playlist-modify-public")
+    )
     assert (params["response_type"], params["code_challenge_method"]) == ("code", "S256")
     assert params["show_dialog"] == "true"
     # The flow row holds hashes of the state and session and the verifier of the challenge.

@@ -95,7 +95,8 @@ async def test_a_category_that_ends_the_pick_shows_its_sentence(
 async def test_not_found_on_the_final_playlist_ends_the_second_phase(songenv: SongEnv) -> None:
     rider = await songenv.rider()
     job_id, _ = await songenv.approved(rider)
-    songenv.fake.inject("status", method="GET", path=ONE, status=404)  # the fill's owner check
+    # the read after the create (#1155), then the fill's owner check
+    songenv.fake.inject("status", method="GET", path=ONE, status=404, times=2)
     row = await songenv.run(job_id)
     assert (row.state, row.error_category) == ("failed", "not_found")
     view = await shown(rider, job_id)
@@ -182,7 +183,6 @@ async def test_the_quota_sentence_names_the_hours_spotify_asked_for(songenv: Son
 @pytest.mark.parametrize(
     ("spoil", "category"),
     [
-        ("public", "pool_unusable"),
         ("collaborative", "pool_unusable"),
         ("revoke", "consent_missing"),
     ],

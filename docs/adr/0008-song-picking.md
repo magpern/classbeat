@@ -93,6 +93,27 @@ them, ADR 0009 M-2).
 >   playlist that is readable but not owned by the connected user, public or collaborative, to `forbidden`
 >   (`replace.py:91-92`, `:155-156`, `:194`). The pool keeps `pool_missing`, `pool_unusable` and `forbidden`.
 >   `not_found` is as in ADR 0009 (404 on a playlist addressed by id).
+
+> **Amendment, 2026-11-17 (roadmap Amendment 27, issue #1155):** a live run read a newly created pool
+> playlist back as `public: true` although the create sent `public: false`; the owner check refused
+> it (`pool_unusable`), and a final playlist the same way (`forbidden`). Now:
+> - *After a create* (`playlists/privacy.py`), only for the id the create operation itself returned
+>   (the pool's, also on a retried attempt of the same job whose create row `succeeded`, and a final
+>   playlist's): `GET /playlists/{id}`; if it is the connected user's but not exactly private, a decide
+>   step (the held connection, the pool or `class_playlists` row naming that id, fenced), then `PUT
+>   /playlists/{id}` `{public: false, collaborative: false}` and one read-back, logged with the
+>   purpose and outcome only. Best effort: it never fails the job. No operation row: the call only
+>   moves this job's own new playlist towards private and is absolute; a retry replays the create's
+>   `succeeded` row and runs it again.
+> - *The owner check* (`common.owned`, used only on ids from the pool row and `class_playlists`)
+>   requires the id, the connected user as owner, `collaborative == false` and `public` exactly true
+>   or false (null or missing is refused). The create's reconciler accepts a listed playlist with its
+>   `ref` either way. "classbeat never flips a user's privacy itself" still holds for every playlist
+>   it did not just create.
+> - *A public playlist's writes need `playlist-modify-public`* (now asked for, ADR 0009 §1 note): an
+>   item write answered 403 after the owner check read `public: true` is `failed` `scope_mismatch`
+>   (`playlists/replace_failures.py`); the write is absolute, so the row is safe to send again after
+>   the user reconnects.
 > - *Owner-check failures.* Only two outcomes of the owner check prove that nothing was written and are
 >   `failed`: the request was never sent (a `NEVER_SENT` category), or Spotify answered it with a 4xx. A 404 and
 >   a 403 have the categories above; any other 4xx is `failed` with the connection's own category

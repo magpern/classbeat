@@ -2,7 +2,8 @@
 with an operation row as the protocol hands it, against the fake Spotify. Read-only: no reconciler
 ever writes to Spotify.
 
-- ``spotify_create_playlist``: exactly one owned, non-public playlist naming the row's ``ref``
+- ``spotify_create_playlist``: exactly one owned playlist naming the row's ``ref`` (public either
+  way, roadmap Amendment 27)
   -> ``succeeded`` with its id; none with every page read and the listing lag off -> inconclusive,
   on and passed since the call returned -> ``failed``; two, a failed listing or 20 full pages ->
   inconclusive; a same-named playlist without the ``ref`` is never adopted.
@@ -133,16 +134,21 @@ async def test_create_two_matches_are_inconclusive(penv: PlayEnv, lag: Any) -> N
     assert await reconcile_create(penv, owner, operation) == INCONCLUSIVE
 
 
-async def test_create_a_public_or_another_owners_playlist_with_the_ref_is_not_ours(
-    penv: PlayEnv,
-) -> None:
+async def test_create_another_owners_playlist_with_the_ref_is_not_ours(penv: PlayEnv) -> None:
     owner = await penv.user()
     operation = create_row()
-    ours(penv, operation, public=True)
     theirs = ours(penv, operation, owner=USER_B)
     penv.fake.playlists[theirs].collaborators.add(USER_A)  # listed for A, owned by B
     assert await reconcile_create(penv, owner, operation) == INCONCLUSIVE
     found = ours(penv, operation)
+    assert await reconcile_create(penv, owner, operation) == Reconciliation("succeeded", found)
+
+
+async def test_create_a_public_playlist_with_the_ref_is_ours(penv: PlayEnv) -> None:
+    """Spotify may make the new playlist public (#1155, Amendment 27): it is still found."""
+    owner = await penv.user()
+    operation = create_row()
+    found = ours(penv, operation, public=True)
     assert await reconcile_create(penv, owner, operation) == Reconciliation("succeeded", found)
 
 
@@ -274,8 +280,8 @@ async def test_replace_unreadable_is_inconclusive(
     assert await reconcile_replace(penv, owner, operation) == INCONCLUSIVE
 
 
-@pytest.mark.parametrize("change", ["public", "collaborative", "owner"])
-async def test_replace_a_playlist_no_longer_owned_and_private_is_inconclusive(
+@pytest.mark.parametrize("change", ["collaborative", "owner"])
+async def test_replace_a_playlist_no_longer_owned_or_collaborative_is_inconclusive(
     penv: PlayEnv, change: str
 ) -> None:
     owner = await penv.user()
