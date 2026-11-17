@@ -77,6 +77,15 @@ describe('My classes', () => {
     expect(screen.getByRole('link', { name: 'Hills' })).toBeInTheDocument()
   })
 
+  it('names the delete dialog by the confirmation heading, the only title in it', async () => {
+    renderAtWith([classBody({ title: 'Hills' })])
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete class Hills' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete class' })
+    expect(dialog).toHaveAttribute('aria-labelledby', 'delete-title')
+    expect(within(dialog).getAllByRole('heading')).toHaveLength(1)
+    expect(document.querySelectorAll('#delete-title')).toHaveLength(1)
+  })
+
   it('shows a mini profile, the length and the TSS on a card', async () => {
     renderAtWith([classBody()])
     expect(await screen.findByRole('img', { name: /Class profile, 17 min, 3 intervals/ })).toBeInTheDocument()

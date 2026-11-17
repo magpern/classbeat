@@ -374,6 +374,7 @@ def _bodies_carry_titles_only(requests: list[Any], rider: Rider) -> None:
         for secret in forbidden:
             assert str(secret).lower() not in dumped
         assert set(request.headers) == SENT_HEADERS
+        assert request.headers["accept-encoding"] == "identity"
         assert request.headers["authorization"] == f"Bearer {rider.bearer}"
         assert request.headers["x-api-key"] == CLIENT_KEY
         assert request.email is not None
