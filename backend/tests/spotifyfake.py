@@ -10,12 +10,14 @@ classbeat uses, so each test runs the real allowlist code with the fake in place
   the opener's error processor, as the library expects.
 - ``SpotifyTransport``: an ``httpx`` transport, given to ``spotify_async_client(inner=)``
   (``classbeat.spotify.http``). A refusal raises ``httpx.ConnectError``, a drop
-  ``httpx.RemoteProtocolError``.
+  ``httpx.RemoteProtocolError``. With ``fake.gzip`` every answer is gzip-compressed with
+  ``Content-Encoding: gzip`` (a server that ignores ``Accept-Encoding: identity``).
 
 Each answers only the two Spotify hosts. ``trickle`` answers arrive one byte per pause.
 """
 
 import asyncio
+import gzip
 import http.client
 import io
 import time
@@ -126,12 +128,14 @@ class SpotifyTransport(httpx.AsyncBaseTransport):
             raise httpx.RemoteProtocolError(
                 "Server disconnected without sending a response.", request=request
             )
+        body, headers = answer.body, dict(answer.headers)
+        if self.fake.gzip:
+            body = gzip.compress(body)
+            headers["Content-Encoding"] = "gzip"
         stream: httpx.AsyncByteStream = (
-            _AsyncTrickle(answer.body, answer.trickle)
-            if answer.trickle
-            else httpx.ByteStream(answer.body)
+            _AsyncTrickle(body, answer.trickle) if answer.trickle else httpx.ByteStream(body)
         )
-        return httpx.Response(answer.status, headers=answer.headers, stream=stream, request=request)
+        return httpx.Response(answer.status, headers=headers, stream=stream, request=request)
 
 
 def worker_opener(fake: FakeSpotify) -> urllib.request.OpenerDirector:

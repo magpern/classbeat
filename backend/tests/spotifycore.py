@@ -131,6 +131,7 @@ class Seen:
     client_secret: bool = False
     outcome: str = "answered"  # answered, refused, dropped
     status: int | None = None
+    accept_encoding: str | None = None  # the header as sent
 
 
 @dataclass
@@ -350,6 +351,9 @@ class FakeSpotify:
         self.injections: list[Injection] = []
         self.item_shape = "item"  # or "track", the legacy name of an entry's track
         self.foreign = "404"  # or "visible"
+        # The httpx transport sends every answer gzip-compressed, whatever the request's
+        # ``Accept-Encoding`` (a server that compresses anyway, #1149).
+        self.gzip = False
         self._count = 0
         self._next_playlist = 0
 
@@ -497,6 +501,7 @@ class FakeSpotify:
             seen = Seen(
                 self._count, method, host, parts.path, query, authorization, query.get("client_id")
             )
+            seen.accept_encoding = lowered.get("accept-encoding")
             self.seen.append(seen)
             grant = self._bearer(host, authorization)
             if grant is not None:
