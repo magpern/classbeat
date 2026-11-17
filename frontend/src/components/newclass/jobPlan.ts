@@ -41,11 +41,17 @@ export function formOverride(v: Pick<PlanValues, 'music' | 'running' | 'noMusic'
   return { source: 'mowl_spotify_playlist', spotify_playlist_id: v.playlist }
 }
 
-/** What stops the form for want of Spotify, or null: the start screen's rule for the chosen music. */
+/**
+ * What stops the form for want of Spotify, or null: the start screen's rule for the chosen music, except
+ * that song picking not being offered (`off`) never stops the form: there is nothing to connect, and the
+ * form starts the write-free `design_draft` on the chosen playlist (the start screen's own "unavailable"
+ * line is for a request classbeat has to turn into songs; this form names the music itself).
+ */
 export function formGate(
   v: Pick<PlanValues, 'music' | 'running' | 'noMusic' | 'playlist' | 'mixId' | 'songs'>,
   swedebeat: SwedebeatMixAvailability,
 ): SpotifyGate | null {
+  if (v.songs.kind === 'off') return null
   return spotifyGate(v.songs, swedebeat, formOverride(v), v.running)
 }
 
