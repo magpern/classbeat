@@ -26,6 +26,10 @@ What it encodes, from ADR 0009 (assumptions to verify at the first live run, ADR
 - **API**: ``GET /v1/me``; ``GET /v1/search`` over an invented catalogue (``limit`` at most 10);
   ``POST /v1/me/playlists`` (``public`` defaults to true when omitted, as Spotify's does);
   ``GET /v1/playlists/{id}`` (``fields`` is recorded, not applied: readers ignore extra keys);
+  ``PUT /v1/playlists/{id}`` (change details: ``public``, ``collaborative``, ``name``,
+  ``description``; the owner only, 200 with an empty body). ``create_public`` makes every create
+  answer and keep ``public: true`` whatever was sent, and ``ignore_privacy`` makes a change of
+  ``public`` answer 200 but keep the old value (Spotify's behaviour seen live, #1155);
   ``GET``, ``PUT`` and ``POST /v1/playlists/{id}/items`` (pages of at most 50, writes of at most
   100 URIs; entries name the track ``item``, or the legacy ``track`` with ``item_shape``);
   ``GET /v1/me/playlists`` (pages of at most 50; each playlist's ``images`` from
@@ -354,6 +358,10 @@ class FakeSpotify:
         # The httpx transport sends every answer gzip-compressed, whatever the request's
         # ``Accept-Encoding`` (a server that compresses anyway, #1149).
         self.gzip = False
+        # #1155: a create that ends up public although ``public: false`` was sent, and a change
+        # of ``public`` that is answered 200 and not applied.
+        self.create_public = False
+        self.ignore_privacy = False
         self._count = 0
         self._next_playlist = 0
 
@@ -684,11 +692,11 @@ class FakeSpotify:
         if not mine and self.foreign == "404":
             return _error(404, "Resource not found")
         if not items:
-            return (
-                _json(200, self._playlist(playlist, with_total=mine))
-                if method == "GET"
-                else (_error(405, "Method not allowed"))
-            )
+            if method == "GET":
+                return _json(200, self._playlist(playlist, with_total=mine))
+            if method == "PUT":
+                return self._details(user, playlist, body)
+            return _error(405, "Method not allowed")
         if not mine:
             return _error(403, "You cannot access this playlist's items")
         if method == "GET":
@@ -793,11 +801,35 @@ class FakeSpotify:
             user,
             name,
             description if isinstance(description, str) else "",
-            public,
+            public or self.create_public,
             collaborative,
             (),
         )
         return _json(201, self._playlist(playlist, with_total=True))
+
+    def _details(self, user: str, playlist: Playlist, body: bytes) -> Answer:
+        if user != playlist.owner:
+            return _error(403, "You cannot change this playlist")
+        try:
+            data = json.loads(body)
+        except ValueError:
+            return _error(400, "Error parsing JSON")
+        if not isinstance(data, dict):
+            return _error(400, "Error parsing JSON")
+        public = data.get("public", playlist.public)
+        collaborative = data.get("collaborative", playlist.collaborative)
+        if not isinstance(public, bool) or not isinstance(collaborative, bool):
+            return _error(400, "Invalid boolean")
+        if collaborative and public:
+            return _error(400, "Collaborative playlists cannot be public")
+        if not self.ignore_privacy:
+            playlist.public = public
+        playlist.collaborative = collaborative
+        for key in ("name", "description"):
+            if isinstance(data.get(key), str):
+                setattr(playlist, key, data[key])
+        playlist.version += 1
+        return Answer(200, b"")
 
     def _playlist(self, playlist: Playlist, *, with_total: bool) -> dict[str, Any]:
         items: dict[str, Any] = {"href": f"{API}/playlists/{playlist.id}/items"}

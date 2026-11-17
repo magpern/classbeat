@@ -65,7 +65,7 @@ def test_owner_form_compares_without_values(owner: object, account: str | None, 
     ("changes", "account", "expected"),
     [
         ({"public": None}, ACCOUNT, {"public_kind": "null", "owner_ok": True}),
-        ({"public": True}, ACCOUNT, {"public_kind": "true"}),
+        ({"public": "yes"}, ACCOUNT, {"public_kind": "other"}),
         ({"public": ...}, ACCOUNT, {"public_kind": "missing"}),
         ({"collaborative": None}, ACCOUNT, {"collaborative_kind": "null"}),
         ({"collaborative": True}, ACCOUNT, {"collaborative_kind": "true"}),

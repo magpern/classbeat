@@ -66,7 +66,11 @@ Facts about the Spotify API this relies on, and how sure they are:
 Exactly `playlist-read-private playlist-modify-private`. Not `playlist-modify-public` (the library's
 default includes it; classbeat makes nothing public), not `user-read-private` or `user-read-email`
 (`GET /me` returns the account's `id` without them; classbeat then has no email, country or product
-field to hold). The consent screen therefore shows only playlist access. No Client Secret is ever
+field to hold). The consent screen therefore shows only playlist access.
+*(2026-11-17, roadmap Amendment 27, #1155: Spotify may make a playlist classbeat creates public
+although `public: false` is sent; classbeat asks once more to make it private and otherwise keeps
+using it, see ADR 0008 §2's amendment of that date. The scopes are unchanged; whether Spotify then
+needs `playlist-modify-public` to write a public playlist is unverified.)* No Client Secret is ever
 requested, stored, logged or accepted (AGENTS.md): the form has no such field and a test posts one and
 expects 422. The granted `scope` in the token answer must contain both scopes (a smaller grant is
 `scope_mismatch`, nothing stored).

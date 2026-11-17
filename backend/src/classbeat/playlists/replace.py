@@ -10,8 +10,8 @@ ordered list of tracks, then read it back. Absolute, so repeating it is safe (un
   taken before the ``pending`` row is written plus the bound, so no request of it is sent after
   ``pending_at + bound``, and ``call_may_be_running`` and ``actionable_at`` apply to its row.
 - **The call** (one worker task, each step through ``spotify_call`` with the held connection):
-  the **owner check** ``GET /playlists/{id}`` (the connected user owns it, ``public`` and
-  ``collaborative`` exactly ``false``), then ``PUT /items`` with the first 100 URIs (an empty
+  the **owner check** ``GET /playlists/{id}`` (``common.owned``: the connected user owns it,
+  not collaborative), then ``PUT /items`` with the first 100 URIs (an empty
   list clears) and ``POST /items`` for the rest, then **the read-back** of every item and an
   exact comparison of the ordered track ids.
 
@@ -21,7 +21,7 @@ ordered list of tracks, then read it back. Absolute, so repeating it is safe (un
   owner check answered 403                                    ``failed`` ``forbidden``
   owner check answered another 4xx, or not sent at all       ``failed`` with its category
   (the connection is no longer the one the decide step held)
-  readable, but not owned, public or collaborative            ``failed`` ``pool_unusable``
+  readable, but not owned or collaborative                    ``failed`` ``pool_unusable``
                                                               (final: ``forbidden``)
   the read-back equals the list                               ``succeeded`` (``external_id`` =
                                                               the playlist id, ``result``
@@ -32,11 +32,11 @@ ordered list of tracks, then read it back. Absolute, so repeating it is safe (un
   =========================================================  ================================
 
   In each ``failed`` row before the writes nothing was written: no write request is sent unless
-  the owner check passed. classbeat never changes a playlist's privacy itself.
+  the owner check passed. The replace never changes a playlist's privacy (``privacy`` may, once).
 - **The reconciler** reads the playlist the same way (owner check, then items): the list equals
   the one written, ``succeeded``; readable and different, ``failed`` once the call is over (it
-  returned, or ``actionable_at`` passed), inconclusive before; unreadable or no longer owned and
-  private, inconclusive.
+  returned, or ``actionable_at`` passed), inconclusive before; unreadable or no longer owned (or
+  collaborative), inconclusive.
 - **On success** (same transaction): pool, ``spotify_pool.last_hash`` and ``last_written_at``
   while the pool row still holds this playlist; final, the class's live ``class_playlists`` row of
   this playlist becomes ``verified`` with ``content_hash`` and ``track_count``.
@@ -267,7 +267,7 @@ async def _reconcile(check: ReconcileInput) -> Reconciliation:
             lambda c: spotify_web.get_playlist(c, playlist_id),
         )
         if not common.checked_owner(found, playlist_id, opened.account, purpose, "reconcile"):
-            return INCONCLUSIVE  # not ours to read, or no longer private: the user decides
+            return INCONCLUSIVE  # not ours to read, or collaborative: the user decides
         entries = await common.call(
             check.factory,
             check.keyring,

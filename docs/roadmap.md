@@ -1,5 +1,27 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 27 (2026-11-17, owner decision: a playlist classbeat creates may be public; issue #1155)
+
+The owner decided, after a live run in which Spotify made the new working playlist public although
+`public: false` was sent: *"if creating private playlist is a problem, work with public, not that big
+of a deal"* (relayed by the Architect on 2026-11-17; the owner confirms it on the PR).
+
+- **Still asked for private.** Every create still sends `public: false` and `collaborative: false`.
+  Right after a create, and only for the id that create itself returned, classbeat reads the playlist
+  back; if it is not private it asks once more with Spotify's change-details call (`PUT
+  /playlists/{id}` `{public: false, collaborative: false}`) and reads it back. If it stays public the
+  job goes on.
+- **The owner check accepts `public` true or false** for the playlists classbeat tracks as its own (the
+  pool in `spotify_pool`, a final playlist in `class_playlists`), so a pick or a fill writes to it.
+  Still required: the id, the connected user as owner, `collaborative` exactly `false`; a `public` that
+  is null or missing is refused. A user's own playlist (a source the user picked) is still only read,
+  never written, never made private.
+- **Amends the AGENTS.md rule "Everything we create in a user's accounts is private"** for Spotify
+  playlists: classbeat asks for private, but a working or final playlist Spotify made public stays
+  public. Residual risk: it may then show on the user's profile and in search, and anyone with its
+  link can open it (its tracks and the class's name). MOWL workouts stay private; Amendment 24 is
+  unchanged. ADR 0008 §2 and ADR 0009 §1 carry the note.
+
 ## Amendment 26 (2026-11-16, owner decision: a new playlist also from an existing one; issue #1132)
 
 The owner decided: *"Create a playlist in Spotify with the songs the user wants. If the user picks

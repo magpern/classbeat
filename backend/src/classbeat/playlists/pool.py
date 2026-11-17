@@ -47,7 +47,8 @@ from classbeat.crypto.keks import KeyRing
 from classbeat.jobs import JobFailure, JobRun
 from classbeat.operations.kinds import SPOTIFY_CREATE_KIND, SPOTIFY_REPLACE_KIND
 from classbeat.operations.requests import NOT_ACTIONABLE_SQL, Guard
-from classbeat.playlists import common, create, replace
+from classbeat.playlists import common, create, privacy, replace
+from classbeat.playlists.create_record import created_id
 from classbeat.playlists.lock import WORKING_COPY, playlist_lock
 
 PROVIDER: Final = "spotify"
@@ -208,7 +209,36 @@ async def create_pool(
     key = create.pool_key(run.lease.job_id)
     guard = _guard(run, opened, pool, SPOTIFY_CREATE_KIND, key, None, recheck)
     request = create.pool_request(run.lease.owner_id, run.lease.job_id, pool.id, guard)
-    return await create.create(run, keyring, opened, request, common.POOL_NAME)
+    playlist_id = await create.create(run, keyring, opened, request, common.POOL_NAME)
+    await _ensure_private(run, keyring, opened, pool, playlist_id)
+    return playlist_id
+
+
+async def _created_here(run: JobRun, playlist_id: str) -> bool:
+    """The pool's playlist is the one this job's own create returned (an earlier attempt of the
+    job created it and stopped before its first write)."""
+    key = create.pool_key(run.lease.job_id)
+    async with run.fenced() as fs:
+        return await created_id(fs.db, run.lease.owner_id, key) == playlist_id
+
+
+async def _ensure_private(
+    run: JobRun, keyring: KeyRing, opened: OpenConnection, pool: Pool, playlist_id: str
+) -> None:
+    """``privacy.ensure_private`` for the id this job's own create returned; its decide step
+    holds the connection and finds the pool row still naming that playlist."""
+
+    async def guard(db: AsyncSession) -> bool:
+        if not await hold(db, run.ctx, opened):
+            return False
+        found = await read_pool(db, run.lease.owner_id)
+        if found is None or found.id != pool.id or found.account != opened.account:
+            raise JobFailure("consent_missing")
+        if found.playlist_id != playlist_id:
+            raise JobFailure("pool_missing")
+        return True
+
+    await privacy.ensure_private(run, keyring, opened, playlist_id, "pool", guard)
 
 
 async def replace_pool(
@@ -254,5 +284,7 @@ async def write_pool(
             playlist_id = await create_pool(run, keyring, opened, pool, recheck)
             pool = Pool(pool.id, playlist_id, pool.account)
             created = True
+        elif await _created_here(run, playlist_id):
+            await _ensure_private(run, keyring, opened, pool, playlist_id)  # an earlier attempt's
         await replace_pool(run, keyring, opened, pool, playlist_id, ids, recheck)
     return PoolWrite(pool.id, playlist_id, created, len(ids))

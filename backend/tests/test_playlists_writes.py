@@ -1,12 +1,14 @@
 """The two Spotify writes through a job (ADR 0008 section 2; issue OP1, #178): the pool's create and
 replace, the final playlist's create and fill, their outcomes under failure injection at every
-request, and the owner check that sends no write to a playlist that is not the user's own private
-one. Fakes only (``spotifycore``): no network, no real account.
+request, and the owner check that sends no write to a playlist that is not the user's own, or is
+collaborative (a public one is accepted since roadmap Amendment 27,
+``test_playlists_private_on_create``). Fakes only (``spotifycore``): no network, no real account.
 
 Criteria of #178 covered here: the failure-injection matrix (refuse before send, drop after send,
-answer without id, partial write; read-back mismatch), "a write to a playlist that is public,
-collaborative, another user's, gone, or whose stored id was edited to another user's id sends no
-write request", and a take-over resetting ``pending_at``, ``call_ended_at`` and the context.
+answer without id, partial write; read-back mismatch), "a write to a playlist that is
+public (now: has no boolean ``public``), collaborative, another user's, gone, or whose stored id
+was edited to another user's id sends no write request", and a take-over resetting
+``pending_at``, ``call_ended_at`` and the context.
 """
 
 from datetime import datetime, timedelta
@@ -64,9 +66,11 @@ async def test_a_pool_write_creates_once_then_replaces_by_id_and_reads_back(
     assert replace.request_context["count"] == 120
     assert replace.request_context["bound_seconds"] == 30 * (3 + 2 * 2 + 3)
     assert replace.result["count"] == 120
-    # one create, the owner check, a PUT of 100, a POST of 20, three pages read back
+    # one create, its read-back (#1155: private, so no change), the owner check, a PUT of 100,
+    # a POST of 20, three pages read back
     assert [(s.method, s.path.rsplit("/", 1)[-1]) for s in penv.api()] == [
-        ("POST", "playlists"), ("GET", written.playlist_id), ("PUT", "items"),
+        ("POST", "playlists"), ("GET", written.playlist_id), ("GET", written.playlist_id),
+        ("PUT", "items"),
         ("POST", "items"), ("GET", "items"), ("GET", "items"), ("GET", "items"),
     ]  # fmt: skip
     assert all(s.token_user == "rider-one" for s in penv.api())
@@ -452,13 +456,13 @@ def foreign_playlist(penv: PlayEnv, *, visible: bool) -> str:
 @pytest.mark.parametrize(
     ("make", "category"),
     [
-        (lambda penv, mine: penv.fake.playlists[mine].__setattr__("public", True), "pool_unusable"),
+        (lambda penv, mine: penv.fake.playlists[mine].__setattr__("public", None), "pool_unusable"),
         (lambda penv, mine: penv.fake.playlists[mine].__setattr__("collaborative", True),
          "pool_unusable"),
         (lambda penv, mine: penv.fake.playlists.pop(mine), "pool_missing"),
     ],
 )  # fmt: skip
-async def test_no_write_reaches_a_pool_playlist_that_is_public_collaborative_or_gone(
+async def test_no_write_reaches_a_pool_playlist_with_no_privacy_collaborative_or_gone(
     penv: PlayEnv, make: Any, category: str
 ) -> None:
     owner = await penv.user()

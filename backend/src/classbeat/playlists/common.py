@@ -5,7 +5,9 @@ the track-list hash, the owner check and the read-back, and the one way they cal
   pool row, a ``class_playlists`` row, or the create's own answer) and is validated as 22 letters
   and digits before it goes into a path; URIs are rebuilt from validated track ids.
 - **The owner check** (``owned``): ``GET /playlists/{id}`` must name the connected user as the
-  owner, with ``public`` and ``collaborative`` exactly ``false``.
+  owner, with ``collaborative`` exactly ``false`` and ``public`` exactly ``true`` or ``false``
+  (roadmap Amendment 27: Spotify may make a playlist classbeat created public; null or missing
+  is refused). Used only on ids from classbeat's own rows, never on a user's source playlist.
 - **The read-back** (``observed_ids``): every entry of the playlist in order; anything that is
   not a playable track with a valid id is a marker (``None``), so a playlist holding it never
   equals a list classbeat wrote.
@@ -136,15 +138,15 @@ def refs_in(text: object) -> set[str]:
 
 
 def owned(found: object, playlist_id: str, account: str | None) -> bool:
-    """The owner check of ADR 0008 section 2: this playlist, owned by the connected user, not
-    public and not collaborative (both exactly ``false``)."""
+    """The owner check of ADR 0008 section 2 (Amendment 27): this playlist, owned by the
+    connected user, ``collaborative`` exactly ``false``, ``public`` exactly a boolean."""
     if account is None or not isinstance(found, Mapping):
         return False
     playlist = cast(Mapping[str, Any], found)
     return (
         playlist.get("id") == playlist_id
         and playlist.get("owner_id") == account
-        and playlist.get("public") is False
+        and isinstance(playlist.get("public"), bool)
         and playlist.get("collaborative") is False
     )
 
