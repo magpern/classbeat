@@ -897,7 +897,7 @@ const sv: Catalogue = {
   'newclass.notes.hint': 'Berätta hur passet ska kännas.',
   'newclass.notes.hintNoGames': 'Berätta hur passet ska kännas. Spel ingår inte i din plan.',
   'newclass.side.title': 'Ditt pass hittills',
-  'newclass.side.sketchNote': 'En grov skiss av dina siffror. Claude utformar det riktiga passet.',
+  'newclass.side.sketchNote': 'En grov skiss av dina siffror. AI utformar det riktiga passet.',
   'newclass.side.classesLeft': 'Använder 1 av dina {count} återstående pass den här månaden',
   'newclass.side.noClassesLeft': 'Du har inga pass kvar den här månaden.',
   'newclass.side.submit': 'Utforma mitt pass',
@@ -1098,7 +1098,7 @@ const sv: Catalogue = {
   'songs.start.revision_limit': 'Det här passet har nått det högsta antal versioner det kan ha.',
   'songs.start.chat_full': 'Konversationen för det här passet är full, så det kan inte ändras längre.',
   'songs.start.not_song_picked':
-    'Musiken i det här passet valdes inte av Claude, så dess låtar kan inte ändras här.',
+    'Musiken i det här passet valdes inte av AI, så dess låtar kan inte ändras här.',
   'songs.start.invalid_input': 'Begäran accepterades inte. Kontrollera fälten och försök igen.',
   'songs.start.not_connected': 'Spotify eller MOWL är inte anslutet. Anslut det först på din kontosida.',
   'songs.start.receipt_invalid':
@@ -1218,7 +1218,7 @@ const sv: Catalogue = {
   'music.connectSpotify': 'Anslut Spotify',
   'music.needsConsent': 'Tillåt först arbetsspellistan i dina Spotify-inställningar. {link}',
   'music.openSettings': 'Öppna Spotify-inställningarna',
-  'music.pickHint': 'Claude föreslår låtar och du godkänner listan först.',
+  'music.pickHint': 'AI föreslår låtar och du godkänner listan först.',
   'music.noneHint': 'Du får intervaller och instruktioner och spelar egen musik.',
   'music.swedebeatHint': 'Utformas efter låtarna och beaten i din mix.',
   'songs.change.writeRequest': 'Skriv vad du vill ha annorlunda med låtarna.',
