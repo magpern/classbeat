@@ -14,6 +14,8 @@ from uuid import UUID
 
 import pytest
 
+from classbeat.agent.search_budget import MAX_STAGE_SEARCHES
+from classbeat.config_agent import AgentSettings
 from classbeat.jobs import settle
 from classbeat.jobs.credits import UnmeteredLedger
 from ctx import make_context
@@ -253,3 +255,21 @@ async def test_spotify_not_answering_has_spotify_s_sentence_and_mowl_s_does_not(
         None,
     )
     assert await message(mowl_rider, other) is None  # the page's own wording
+
+
+async def test_every_attempt_at_the_pick_search_cap_still_leaves_room_for_the_rest(
+    songenv: SongEnv,
+) -> None:
+    """Issue #1140: one ``pick_pool`` stage sends at most ``MAX_STAGE_SEARCHES`` searches. Even if
+    every attempt the job may make spent the whole cap besides everything an ordinary pick sends
+    (the refreshes, its own searches, the pool write and the analysis, measured here), the job
+    stays within the default ``CLASSBEAT_SPOTIFY_CALLS_PER_JOB``: no ``limit_exceeded`` mid-write.
+    """
+    budget = AgentSettings.model_fields["spotify_calls_per_job"].default
+    assert songenv.calls_per_job == budget  # the worker side's default, as the fixture runs it
+    rider = await songenv.rider()
+    before = sent(songenv)
+    job_id, _, _ = await songenv.waiting(rider)
+    ordinary = sent(songenv) - before
+    attempts = songenv.row(job_id).max_attempts
+    assert attempts * (MAX_STAGE_SEARCHES + ordinary) <= budget

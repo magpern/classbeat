@@ -1,0 +1,27 @@
+{
+ "name": "taste_eras_45",
+ "about": "Swedish hits from the 80s, 90s and 00s (#1140): found per era with find_songs, the chosen list keeps every era.",
+ "brief": {
+  "length_min": 45,
+  "intensity": "moderate",
+  "climbs": 3,
+  "text": "45 minute class, 3 hills, only Swedish hit songs from the 80s, 90s and 00s",
+  "music_taste": {
+   "eras": [
+    {"year_from": 1980, "year_to": 1989},
+    {"year_from": 1990, "year_to": 1999},
+    {"year_from": 2000, "year_to": 2009}
+   ],
+   "language": "sv",
+   "hits": true
+  }
+ },
+ "catalogue": {
+  "size": 60,
+  "first_year": 1980,
+  "year_span": 30,
+  "titles": {"3": "Sommar i Malmö", "14": "Ända hit"},
+  "artists": {"3": "Fjällbandet", "14": "Åsa och Örjan"}
+ },
+ "quality": true
+}

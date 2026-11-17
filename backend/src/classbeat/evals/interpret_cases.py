@@ -33,6 +33,28 @@ class MusicEntry(BaseModel):
         return MusicName(self.kind, self.name)
 
 
+Years = list[int]  # [from, to]
+
+
+class TasteExpect(BaseModel):
+    """The music taste (#1140): the eras in order, or the years they must cover between them (a
+    range longer than an era, split); the language; hits. ``None``: not judged."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    eras: list[Years] | None = None
+    span: Years | None = Field(default=None, min_length=2, max_length=2)
+    language: str | None = Field(default=None, pattern=r"^[a-z]{2}$")
+    hits: bool | None = None
+
+    @model_validator(mode="after")
+    def _years(self) -> "TasteExpect":
+        ranges = [*(self.eras or []), *([self.span] if self.span else [])]
+        if any(len(r) != 2 or r[0] > r[1] for r in ranges):
+            raise ValueError("a range is [from, to], the earlier year first")
+        return self
+
+
 class InterpretExpect(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -44,6 +66,7 @@ class InterpretExpect(BaseModel):
     absent: list[str] = Field(default_factory=lambda: list[str]())
     games: list[BriefGame] | None = None  # in order; ``None``: the games are not judged
     remove_games: bool = False  # a revise that takes out every game says so (#908)
+    taste: TasteExpect | None = None  # ``None``: the music taste is not judged (#1140)
     forbidden_text: list[str] = Field(default_factory=lambda: list[str]())  # case-insensitive
 
     @model_validator(mode="after")

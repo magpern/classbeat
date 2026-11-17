@@ -26,10 +26,19 @@ it names what the class should have after the change, for what the request chang
   games, is Not as asked (``game_missing``, the base's game as the value, numbered after the
   reported games). A game is held as at interpret time (dropped
   on a running class or a plan without games, held to MOWL's 10 s floor, never swapped), with Not
-  as asked for a stated one.
+  as asked for a stated one;
+- the music taste (``music_taste``, issue #1140): every revise keeps the base's taste. A design
+  revise (``taste_note=True``: ``revise_stated.layered``) never changes the songs, so each value
+  the request states that the base's taste does not already hold is Not as asked
+  ``taste_on_revise`` (the songs change with Change songs); an inferred value, and one the base
+  already holds ("keep it Swedish"), are left out quietly. Change songs (``songs.revise_reading``,
+  the default ``taste_note=False``) records no taste item: its pick already gets the request's own
+  words first in the brief's text (``songs.revise_brief.pick_brief``), as before #1140.
 
-Every value is closed (numbers, short enums, a game as a small object). No quote is kept: a quote
-must be a substring of ``brief.text``, the first request, and these are the revise request's.
+Every value is closed (numbers, short enums, a game as a small object). No quote is kept (a quote
+must be a substring of ``brief.text``, the first request, and these are the revise request's),
+except a style word's: the word is its item's only content, and the interpreter kept it only when
+the revise request holds it (``music_taste.keep_word``).
 """
 
 from collections.abc import Sequence
@@ -39,12 +48,13 @@ from typing import Any, Final
 from classbeat.agent.brief import Brief, BriefGame
 from classbeat.agent.explicit_check import MIN_GAME_SEC
 from classbeat.agent.interpretation_record import InterpretationItem
-from classbeat.agent.interpreted import InterpretedRequest
+from classbeat.agent.interpreted import InterpretedRequest, InterpretedTaste
 from classbeat.design import request_policy
 from classbeat.design.interpret_policy import KNOBS, Offer, held
 from classbeat.plan_gates import PlanGates
 
 _ORDER: Final = ("sport", *KNOBS, *(f"games.{n}" for n in range(6)))
+TASTE_ON_REVISE: Final = "taste_on_revise"
 
 
 @dataclass(frozen=True)
@@ -118,13 +128,43 @@ def _omitted(
         out.append(_not_as_asked(f"games.{reported + k}", unmatched[n], "game_missing"))
 
 
+def _taste(base: Brief, taste: InterpretedTaste, out: list[InterpretationItem]) -> None:
+    """The stated taste values the base's taste does not hold, Not as asked (see the module)."""
+    have = base.music_taste
+    eras = {(e.year_from, e.year_to) for e in have.eras} if have is not None else set()
+    for n, era in enumerate(taste.eras):
+        if era.origin == "explicit" and (era.year_from, era.year_to) not in eras:
+            out.append(_not_as_asked(f"music_era.{n}", era.closed().view(), TASTE_ON_REVISE))
+    language = taste.language
+    held_language = have.language if have is not None else None
+    if language is not None and language.origin == "explicit" and held_language != language.value:
+        out.append(_not_as_asked("music_language", language.value, TASTE_ON_REVISE))
+    for n, genre in enumerate(taste.genres):
+        if genre.origin == "explicit" and (have is None or genre.value not in have.genres):
+            out.append(
+                InterpretationItem(
+                    path=f"music_genre.{n}",
+                    origin="not_as_asked",
+                    reason_code=TASTE_ON_REVISE,
+                    value=None,
+                    quote=genre.value,  # the request's own word (see the module)
+                )
+            )
+    hits = taste.hits
+    if hits is not None and hits.origin == "explicit" and (have is None or not have.hits):
+        out.append(_not_as_asked("music_hits", True, TASTE_ON_REVISE))
+
+
 def _ordered(paths: Sequence[str]) -> list[str]:
     wanted = set(paths)
     return [p for p in _ORDER if p in wanted]
 
 
-def layer(base: Brief, read: InterpretedRequest, gates: PlanGates | None) -> Layered:
-    """The module's rules: the brief the revise keeps and the items it records."""
+def layer(
+    base: Brief, read: InterpretedRequest, gates: PlanGates | None, *, taste_note: bool = False
+) -> Layered:
+    """The module's rules: the brief the revise keeps and the items it records. ``taste_note``: a
+    design revise, which records a stated taste change as Not as asked (Change songs does not)."""
     offer = Offer(sports=(base.sport,), gates=gates)
     fields: dict[str, Any] = base.model_dump(mode="python")
     explicit = set(base.explicit)
@@ -151,5 +191,7 @@ def layer(base: Brief, read: InterpretedRequest, gates: PlanGates | None) -> Lay
         explicit.update(game_paths)
     else:
         _games(base, read, gates, items)  # every game of a running class is Not as asked
+    if taste_note and read.music_taste is not None:
+        _taste(base, read.music_taste, items)
     fields["explicit"] = _ordered(sorted(explicit))
     return Layered(Brief.model_validate(fields), tuple(items))

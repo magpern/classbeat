@@ -12,14 +12,16 @@ from pydantic import ValidationError
 
 from classbeat.agent.brief import Brief
 from classbeat.agent.dispatcher import dispatch, dispatch_async
-from classbeat.agent.find_songs import FindSongsInput, WantedSong, song_query
+from classbeat.agent.find_songs import MAX_SONGS, FindSongsInput, WantedSong, song_query
 from classbeat.agent.music_taste import EraRange, MusicTaste
-from classbeat.agent.pick_pool import PoolContext, SearchUnavailable, pool_stage
+from classbeat.agent.pick_pool import MAX_TOOL_CALLS, PoolContext, SearchUnavailable, pool_stage
 from classbeat.agent.provider import ToolCall
 from classbeat.agent.registry import SearchRegistry
+from classbeat.agent.search_budget import MAX_STAGE_SEARCHES
 from classbeat.agent.song_match_policy import is_match, title_core
 from classbeat.agent.songs import PickPlan
 from classbeat.agent.stage import Stage
+from classbeat.config_agent import AgentSettings
 
 # --- the match rule -------------------------------------------------------------------------
 
@@ -251,3 +253,75 @@ def test_a_valid_pool_counts_its_candidates_per_stated_era_as_a_note() -> None:
     plain.registry.add_hits([hit(10 + n, chr(65 + n), ["X"], 1991) for n in range(8)])
     without = run(pool_stage(plain), "check_pool", {"entries": entries})
     assert "by_era" not in without
+
+
+# --- issue #1140: the next valid hit, and the stage's search budget ---------------------------
+
+
+def test_a_matching_hit_the_registry_refuses_gives_way_to_the_next_valid_one() -> None:
+    bad_id = {**hit(4, "Joyride", ["Roxette"], 1991), "id": "not-a-spotify-id"}
+    too_long = hit(5, "Joyride", ["Roxette"], 1991, sec=5000)
+    good = hit(6, "Joyride - Remastered", ["Roxette"], 1991)
+    query = 'track:"Joyride" artist:"Roxette" year:1990-1999'
+    ctx = PoolContext(
+        PickPlan.build(Brief(length_min=30)),
+        SearchRegistry(),
+        lambda q: [bad_id, too_long, good] if q == query else [],
+    )
+    answer = run(pool_stage(ctx), "find_songs", {"songs": [SONGS["songs"][0]], **NINETIES})
+    assert [f["song"] for f in answer["found"]] == [0]
+    assert answer["missing"] == []
+    assert len(ctx.registry) == 1
+    assert ctx.registry.spotify_id(0) == ID.format(6)
+
+
+def test_a_song_is_missing_when_no_matching_hit_is_accepted() -> None:
+    query = 'track:"Joyride" artist:"Roxette" year:1990-1999'
+    refused = [hit(7, "Joyride", ["Roxette"], 1991, sec=5), hit(8, "The Look", ["Roxette"], 1991)]
+    ctx = PoolContext(
+        PickPlan.build(Brief(length_min=30)),
+        SearchRegistry(),
+        lambda q: refused if q == query else [],
+    )
+    answer = run(pool_stage(ctx), "find_songs", {"songs": [SONGS["songs"][0]], **NINETIES})
+    assert (answer["found"], answer["missing"]) == ([], [0])
+    assert len(ctx.registry) == 0  # the other song in the answer was never registered
+
+
+def test_one_stage_sends_at_most_its_search_budget_whatever_the_model_asks() -> None:
+    searches = Searches()
+    stage = pool_stage(context(searches))
+    ten = {"songs": [{"artist": "A", "track": f"Song {n}"} for n in range(MAX_SONGS)]}
+    answers = [run(stage, "find_songs", ten) for _ in range(MAX_TOOL_CALLS)]
+    assert len(searches.queries) == MAX_STAGE_SEARCHES
+    over = answers[MAX_STAGE_SEARCHES // MAX_SONGS]
+    assert over["error"] == "limit_exceeded"
+    assert over["messages"] == [
+        "no Spotify searches are left in this step; build the pool from what you have"
+    ]
+    done = run(stage, "search_tracks", {"query": "anything"})
+    assert done["error"] == "limit_exceeded"
+    assert len(searches.queries) == MAX_STAGE_SEARCHES  # the refused calls sent nothing
+
+
+def test_a_call_larger_than_what_is_left_sends_nothing_and_says_how_many_are_left() -> None:
+    searches = Searches()
+    stage = pool_stage(context(searches))
+    for n in range(MAX_STAGE_SEARCHES - 3):
+        run(stage, "search_tracks", {"query": f"word {n}"})
+    ten = {"songs": [{"artist": "A", "track": f"Song {n}"} for n in range(MAX_SONGS)]}
+    over = run(stage, "find_songs", ten)
+    assert over["error"] == "limit_exceeded"
+    assert "only 3 Spotify searches are left" in over["messages"][0]
+    assert len(searches.queries) == MAX_STAGE_SEARCHES - 3
+    three = {"songs": ten["songs"][:3]}
+    assert "error" not in run(stage, "find_songs", three)
+    assert len(searches.queries) == MAX_STAGE_SEARCHES
+
+
+def test_three_attempts_at_the_stage_cap_leave_the_job_room_for_the_pool_write() -> None:
+    # The job's Spotify budget covers every attempt (``jobs.max_attempts`` defaults to 3); the
+    # write, the analysis and the token refreshes of an ordinary pick send far fewer than this.
+    job_budget = AgentSettings.model_fields["spotify_calls_per_job"].default
+    attempts = 3
+    assert job_budget - attempts * MAX_STAGE_SEARCHES >= 100

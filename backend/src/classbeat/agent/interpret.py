@@ -61,10 +61,12 @@ give a length. A race is not a game.
 
 music_taste: only what the request says about the songs themselves. eras: one entry per era \
 it names, as years (the 80s are 1980 to 1989, "the 80s, 90s and 00s" are three entries, the 2000s \
-are 2000 to 2009); language: the songs' language as a two-letter ISO 639-1 code ("Swedish songs" \
-or "Swedish artists" is sv); genres: up to three style words copied letter for letter from the \
-request ("disco", "rock"); hits: true when the request asks for hits or well-known songs. A \
-playlist or mix name is not a taste.
+are 2000 to 2009); at most 4 eras, each at most 30 years: split a longer range into eras of at \
+most 30 years ("1960 to 2000" is 1960 to 1989 and 1990 to 2000), and if the request names more \
+than 4, keep the first 4; language: the songs' language as a two-letter ISO 639-1 code \
+("Swedish songs" or "Swedish artists" is sv); genres: up to three style words copied letter for \
+letter from the request ("disco", "rock"); hits: true when the request asks for hits or \
+well-known songs. A playlist or mix name is not a taste.
 
 A message with "current" holds a change to an existing class whose values are "current". Then \
 report only the fields the request changes, each with the value it should have after the change \

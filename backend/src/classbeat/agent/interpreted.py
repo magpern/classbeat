@@ -101,7 +101,8 @@ class StatedMusic(Stated):
 
 
 class StatedEra(Stated):
-    """Songs from these years ("the 80s": 1980 to 1989); one entry per era the request names."""
+    """Songs from these years ("the 80s": 1980 to 1989); one entry per era the request names, at
+    most 30 years each (a longer range is split: "1960 to 2000" is 1960-1989 and 1990-2000)."""
 
     year_from: Year
     year_to: Year

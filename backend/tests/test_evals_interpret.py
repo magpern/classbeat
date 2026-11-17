@@ -22,7 +22,7 @@ SUITE = load_suite()
 CASES = SUITE.interpret_cases
 
 
-def test_the_suite_holds_the_eight_interpret_cases_in_their_own_category() -> None:
+def test_the_suite_holds_the_interpret_cases_in_their_own_category() -> None:
     own = SUITE.manifest.cases_of("interpret", "design")
     assert sorted(CASES) == sorted([*own, "interpret_playlist_injection"])
     assert {SUITE.category_of(n) for n in own} == {"interpret"}
@@ -92,6 +92,44 @@ async def test_an_injection_that_is_obeyed_fails_the_case() -> None:
         "quotes",
         "forbidden_text",
     ]
+
+
+async def test_the_music_taste_is_judged_where_the_case_says(  # issue #1140
+) -> None:
+    case = CASES["interpret_swedish_hits_eras"]
+    eras = case.expect.taste.eras if case.expect.taste else None
+    assert eras == [[1980, 1989], [1990, 1999], [2000, 2009]]
+    two = _with(case, lambda d: d["music_taste"]["eras"].pop())
+    assert await _failed(case, two) == ["taste"]
+    danish = _with(case, lambda d: d["music_taste"]["language"].update(value="da"))
+    assert await _failed(case, danish) == ["taste"]
+    assert await _failed(case, _with(case, lambda d: d["music_taste"].pop("hits"))) == ["taste"]
+    assert await _failed(case, _with(case, lambda d: d.pop("music_taste"))) == ["taste"]
+
+
+async def test_a_long_range_is_judged_by_the_years_its_eras_cover() -> None:
+    case = CASES["interpret_era_split"]
+    assert [[e["year_from"], e["year_to"]] for e in submission(case)["music_taste"]["eras"]] == [
+        [1960, 1989],
+        [1990, 2000],
+    ]
+
+    def other_split(d: dict[str, Any]) -> None:
+        d["music_taste"]["eras"] = [
+            {"year_from": 1960, "year_to": 1979, "origin": "explicit"},
+            {"year_from": 1980, "year_to": 2000, "origin": "explicit"},
+        ]
+
+    assert await _failed(case, _with(case, other_split)) == []  # any split that covers the years
+
+    def gap(d: dict[str, Any]) -> None:
+        d["music_taste"]["eras"][1]["year_from"] = 1991
+
+    def short(d: dict[str, Any]) -> None:
+        d["music_taste"]["eras"].pop()
+
+    assert await _failed(case, _with(case, gap)) == ["taste"]
+    assert await _failed(case, _with(case, short)) == ["taste"]
 
 
 async def test_a_run_that_never_submits_is_a_failed_outcome_not_a_pass() -> None:

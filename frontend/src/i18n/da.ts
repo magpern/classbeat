@@ -1957,6 +1957,7 @@ const da: Catalogue = {
   'interp.reason.needs_spotify': 'Et hold med musik kræver din Spotify-konto.',
   'interp.reason.song_picking_unavailable': 'Valg af sange er ikke tilgængeligt for din konto, så et hold med musik kan ikke laves.',
   'interp.reason.taste_needs_pick': 'Kun sange, vi vælger for dig, kan følge den musik, du bad om.',
+  'interp.reason.taste_on_revise': 'En ændring beholder musikken; brug Skift sange for at vælge andre sange.',
   'interp.reason.era_too_few': 'Vi fandt for få sange fra de år på Spotify.',
   'interp.reason.songs_outside_eras': 'Nogle sange er fra andre år, end du bad om.',
   'interp.reason.songs_too_short': 'Sangene er kortere end holdet.',

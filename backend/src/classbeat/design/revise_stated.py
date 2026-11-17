@@ -77,4 +77,6 @@ async def layered(
     job_run: JobRun, model: GroupModel, brief: Brief, request: str, gates: PlanGates | None
 ) -> Layered:
     reading = await read(job_run, model.provider, model.agent, brief, request, gates)
-    return Layered(brief) if reading is None else layer(brief, reading, gates)
+    if reading is None:
+        return Layered(brief)
+    return layer(brief, reading, gates, taste_note=True)  # a design revise keeps the songs (#1140)

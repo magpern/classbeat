@@ -960,6 +960,7 @@ export const en = {
   'interp.reason.needs_spotify': 'A class with music needs your Spotify account.',
   'interp.reason.song_picking_unavailable': 'Choosing songs is not available on your account, so a class with music cannot be made.',
   'interp.reason.taste_needs_pick': 'Only songs we pick for you can follow the music you asked for.',
+  'interp.reason.taste_on_revise': 'A change keeps the music; use Change songs to pick other songs.',
   'interp.reason.era_too_few': 'We found too few songs from these years on Spotify.',
   'interp.reason.songs_outside_eras': 'Some songs are from other years than you asked for.',
   'interp.reason.songs_too_short': 'The songs are shorter than the class.',

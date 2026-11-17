@@ -8,14 +8,20 @@ the list. ``script_for(case, flaw=...)`` is the same with one flaw the stages do
 
 - ``"band"``: the first climb is a track far outside the climb band;
 - ``"years"``: the searches carry no year filter, so the pool holds candidates out of the era.
+
+A brief with stated eras (``music_taste``, #1140) finds its candidates with ``find_songs``: one call
+per era and ten songs, naming the catalogue's tracks of that era by artist and title, as a model
+that knows them would.
 """
 
 from typing import Any
 
+from classbeat.agent.find_songs import MAX_SONGS, FindSongsInput, song_query
 from classbeat.agent.pick_pool import build_query
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
 from classbeat.agent.registry import SearchRegistry
 from classbeat.agent.schemas import SearchInput
+from classbeat.agent.song_match_policy import matching_hits
 from classbeat.agent.songs import PickPlan
 from classbeat.evals import suite
 from classbeat.evals.pick import CatalogueTrack, PickCase, SyntheticCatalogue, plan_for
@@ -59,6 +65,9 @@ def _found(
     """The search calls of the pool turn and the tracks they find, in ref order."""
     catalogue = SyntheticCatalogue(case.catalogue)
     registry = SearchRegistry()
+    taste = case.brief.music_taste
+    if taste is not None and taste.eras:
+        return _found_by_name(catalogue, registry, [(e.year_from, e.year_to) for e in taste.eras])
     calls = []
     for g in range((case.catalogue.size + 9) // 10):
         args: dict[str, Any] = {"query": f"group{g}"}
@@ -69,6 +78,30 @@ def _found(
     by_id = catalogue.by_id()
     ordered = [by_id[registry.spotify_id(r) or ""] for r in range(len(registry))]
     return calls, ordered
+
+
+def _found_by_name(
+    catalogue: SyntheticCatalogue, registry: SearchRegistry, eras: list[tuple[int, int]]
+) -> tuple[list[dict[str, Any]], list[CatalogueTrack]]:
+    calls = []
+    for low, high in eras:
+        era = [t for t in catalogue.tracks if low <= t.year <= high]
+        for at in range(0, len(era), MAX_SONGS):
+            chunk = era[at : at + MAX_SONGS]
+            args = {
+                "songs": [{"artist": t.artist, "track": t.title} for t in chunk],
+                "year_from": low,
+                "year_to": high,
+            }
+            calls.append(call("find_songs", args))
+            held = FindSongsInput.model_validate(args)
+            for song in held.songs:  # as the tool registers: the first accepted matching hit
+                hits = catalogue.search(song_query(song, held.years()))
+                for hit in matching_hits(song.artist, song.track, hits, held.years()):
+                    if registry.add_hits([hit]):
+                        break
+    by_id = catalogue.by_id()
+    return calls, [by_id[registry.spotify_id(r) or ""] for r in range(len(registry))]
 
 
 def _fits(role: str, t: CatalogueTrack) -> bool:

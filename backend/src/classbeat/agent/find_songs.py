@@ -5,14 +5,16 @@ The model proposes songs from its own knowledge (an artist and a ``track``, the 
 per song (``track:"<title>" artist:"<artist>"`` and ``year:`` when years are given, built here from
 the cleaned words: the model supplies no filter syntax) through the ``Searcher`` the stage was lent,
 and keeps a song only when a hit **is** that song (``song_match_policy``: the same artist, the same
-title, not a live or cover version, within the years). A kept hit goes into the job's
-``SearchRegistry`` and comes back with its ``ref``; a song without a match is only listed as missing
-(its position in the call), and nothing of it can enter the pool. So the pool never holds a song
-the model remembered but Spotify does not have.
+title, not a live or cover version, within the years). The first such hit the job's
+``SearchRegistry`` accepts (a later one when it refuses one, issue #1140) comes back with its
+``ref``; a song without a match is only listed as missing (its position in the call), and nothing
+of it can enter the pool. So the pool never holds a song the model remembered but Spotify does not
+have.
 
 The answer is ``{found: [{song, ref, title, artist, album, year, duration_sec}], missing: [song],
 candidates_found}``; the text is Spotify's, cleaned by the registry. A search that cannot run is the
-same fixed ``upstream_unavailable`` sentence as ``search_tracks``.
+same fixed ``upstream_unavailable`` sentence as ``search_tracks``. A call sends one search per song,
+counted against the stage's ``SearchBudget``; a call over it sends nothing (``limit_exceeded``).
 """
 
 import inspect
@@ -23,7 +25,8 @@ from pydantic import AfterValidator, BaseModel, Field, model_validator
 
 from classbeat.agent.registry import SearchRegistry
 from classbeat.agent.schemas import SEARCH_DROPPED, STRICT, clean_text
-from classbeat.agent.song_match_policy import first_match
+from classbeat.agent.search_budget import SearchBudget
+from classbeat.agent.song_match_policy import matching_hits
 from classbeat.agent.stage import Tool, ToolAnswer, ToolError
 
 NAME: Final = "find_songs"
@@ -103,10 +106,14 @@ def song_query(song: WantedSong, years: tuple[int, int] | None) -> str:
 
 
 def find_songs_tool(
-    source: Source, unavailable: type[Exception], refused: Callable[[], ToolError]
+    source: Source,
+    unavailable: type[Exception],
+    refused: Callable[[], ToolError],
+    budget: SearchBudget,
 ) -> Tool:
     """The tool, reading through ``source.searcher``; ``unavailable`` is the searcher's "could not
-    run" exception, answered with ``refused()`` (the stage's fixed sentence)."""
+    run" exception, answered with ``refused()`` (the stage's fixed sentence). ``budget`` is the
+    stage's searches (``search_budget``): a call it cannot hold sends nothing."""
 
     def answer(args: FindSongsInput, results: Sequence[Hits]) -> ToolAnswer:
         registry = source.registry
@@ -114,10 +121,14 @@ def find_songs_tool(
         found: list[dict[str, Any]] = []
         missing: list[int] = []
         for n, (song, hits) in enumerate(zip(args.songs, results, strict=True)):
-            hit = first_match(song.artist, song.track, list(hits)[:MAX_RESULTS], years)
-            entries = registry.add_hits([hit]) if hit is not None else []
-            if entries:
-                found.append({"song": n, **entries[0].shown()})
+            entry = None
+            for hit in matching_hits(song.artist, song.track, list(hits)[:MAX_RESULTS], years):
+                entries = registry.add_hits([hit])  # one at a time: a rejected hit tries the next
+                if entries:
+                    entry = entries[0]
+                    break
+            if entry is not None:
+                found.append({"song": n, **entry.shown()})
             else:
                 missing.append(n)
         if not found and registry.full:
@@ -143,6 +154,7 @@ def find_songs_tool(
 
     def handler(args: FindSongsInput) -> ToolAnswer | Awaitable[ToolAnswer]:
         years = args.years()
+        budget.take(len(args.songs))
         pending: list[Hits | Awaitable[Hits]] = []
         try:
             for song in args.songs:

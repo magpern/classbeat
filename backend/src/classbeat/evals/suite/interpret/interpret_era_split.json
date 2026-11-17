@@ -1,0 +1,21 @@
+{
+ "kind": "interpret",
+ "name": "interpret_era_split",
+ "about": "A range longer than an era (#1140) is split into eras of at most 30 years, never refused.",
+ "request": "A moderate 40 minute ride to songs from 1960 to 2000",
+ "expect": {
+  "values": {
+   "length_min": 40,
+   "intensity": "moderate"
+  },
+  "origins": {
+   "length_min": "explicit"
+  },
+  "absent": [
+   "music"
+  ],
+  "taste": {
+   "span": [1960, 2000]
+  }
+ }
+}

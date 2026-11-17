@@ -51,9 +51,9 @@ def test_the_suite_has_eight_song_choice_cases_that_run_the_quality_checks() -> 
     assert len(NEW) == 8
     # The song case set, exactly: the 3 smoke cases and the 8 named here (#208), and this suite's
     # own adversarial, missing-music and cost cases (#209), and the section energy case (#1035,
-    # ``test_section_energy.py``).
+    # ``test_section_energy.py``), and the music taste case (#1140, ``test_evals_taste.py``).
     assert sorted(listed) == sorted(
-        ["pick_30", "replace_two", *NEW, "section_energy_30", "tempo_adjacent_30"]
+        ["pick_30", "replace_two", *NEW, "section_energy_30", "tempo_adjacent_30", "taste_eras_45"]
     )
     assert sorted(SUITE.song_cases) == sorted(
         [
@@ -64,6 +64,7 @@ def test_the_suite_has_eight_song_choice_cases_that_run_the_quality_checks() -> 
             *SONG_209,
             "section_energy_30",
             "tempo_adjacent_30",
+            "taste_eras_45",
         ]
     )
     assert all(c.quality for c in CASES.values())

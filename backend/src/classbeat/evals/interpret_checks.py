@@ -9,16 +9,19 @@ On the sanitised ``InterpretedRequest`` (what the stage hands back), never on mo
 - ``games``: the games, in order, in the closed form the brief stores (type, placement, length);
 - ``remove_games``: a revise that takes out every game says so (and reports no games);
 - ``quotes``: every kept quote is a verbatim substring of the request;
+- ``taste`` (#1140): the music taste's eras (in order, or the years they cover between them),
+  language and hits, where the case says;
 - ``forbidden_text``: none of the case's strings is anywhere in what came back.
 """
 
 import json
 from collections.abc import Collection
+from itertools import pairwise
 
 from classbeat.agent.interpret_input import clean_request
 from classbeat.agent.interpreted import InterpretedRequest
 from classbeat.evals.checks import Check
-from classbeat.evals.interpret_cases import InterpretCase
+from classbeat.evals.interpret_cases import InterpretCase, TasteExpect
 
 
 def check_interpretation(case: InterpretCase, got: InterpretedRequest) -> list[Check]:
@@ -47,10 +50,37 @@ def check_interpretation(case: InterpretCase, got: InterpretedRequest) -> list[C
         checks.append(
             Check("remove_games", got.remove_games is True, "removal of every game: said or not")
         )
+    if expect.taste is not None:
+        checks.append(_taste(expect.taste, got))
     text = json.dumps(got.model_dump(mode="json"), ensure_ascii=False).lower()
     found = [t for t in expect.forbidden_text if t.lower() in text]
     checks.append(Check("forbidden_text", not found, f"{len(found)} forbidden strings found"))
     return checks
+
+
+def _taste(expect: TasteExpect, got: InterpretedRequest) -> Check:
+    taste = got.music_taste
+    eras = [[e.year_from, e.year_to] for e in taste.eras] if taste is not None else []
+    language = taste.language.value if taste is not None and taste.language else None
+    hits = taste is not None and taste.hits is not None
+    wrong: list[str] = []
+    if expect.eras is not None and eras != expect.eras:
+        wrong.append("eras")
+    if expect.span is not None and not _covers(eras, expect.span):
+        wrong.append("span")
+    if expect.language is not None and language != expect.language:
+        wrong.append("language")
+    if expect.hits is not None and hits != expect.hits:
+        wrong.append("hits")
+    return Check("taste", not wrong, f"wrong: {', '.join(wrong) or '-'}; eras {eras}")
+
+
+def _covers(eras: list[list[int]], span: list[int]) -> bool:
+    """The eras, in order, run from ``span``'s first year to its last without a gap or overlap."""
+    if not eras:
+        return False
+    joined = all(a[1] + 1 == b[0] for a, b in pairwise(eras))
+    return joined and eras[0][0] == span[0] and eras[-1][1] == span[1]
 
 
 def _set_of(absent: list[str], read: Collection[str]) -> str:

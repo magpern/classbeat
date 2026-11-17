@@ -84,18 +84,20 @@ def _artists(value: Any) -> list[str]:
     return [a for a in items if isinstance(a, str)]
 
 
-def first_match(
+def matching_hits(
     artist: str,
     title: str,
     hits: Sequence[Mapping[str, Any]],
     years: tuple[int, int] | None,
-) -> Mapping[str, Any] | None:
-    """The first hit of the search (the library's track dicts) that is the named song, or None."""
+) -> list[Mapping[str, Any]]:
+    """The hits of the search (the library's track dicts) that are the named song, in the search's
+    order: the caller keeps the first one its registry accepts (issue #1140)."""
+    out: list[Mapping[str, Any]] = []
     for hit in hits:
         hit_title = hit.get("title")
         if not isinstance(hit_title, str):
             continue
         year = _year(hit.get("year"))
         if is_match(artist, title, hit_title, _artists(hit.get("artists")), year, years):
-            return hit
-    return None
+            out.append(hit)
+    return out

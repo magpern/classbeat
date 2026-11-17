@@ -18,7 +18,9 @@ corrections.
 
 The stage has no write tool and no network client of its own: the ``Searcher`` is the one read the
 backend lends it, and it answers with the library's track dicts. Its failure is
-``upstream_unavailable`` with a fixed sentence (never the provider's text).
+``upstream_unavailable`` with a fixed sentence (never the provider's text). Both search tools draw
+on one ``SearchBudget`` per stage (``search_budget``, issue #1140), so the stage cannot spend the
+job's Spotify budget before the pool write.
 """
 
 import inspect
@@ -30,6 +32,7 @@ from classbeat.agent import song_input
 from classbeat.agent.find_songs import find_songs_tool
 from classbeat.agent.registry import SearchRegistry
 from classbeat.agent.schemas import PoolEntry, SearchInput, SongPool
+from classbeat.agent.search_budget import SearchBudget
 from classbeat.agent.songs import CROSSFADE_SEC, PickPlan, kept_view, key_of
 from classbeat.agent.stage import Stage, Tool, ToolAnswer, ToolError
 
@@ -203,6 +206,8 @@ def check_entries(ctx: PoolContext, entries: Sequence[PoolEntry]) -> PoolResult:
 
 
 def pool_stage(ctx: PoolContext) -> Stage:
+    budget = SearchBudget()  # both search tools draw on it (``search_budget``)
+
     def answer(hits: Hits) -> ToolAnswer:
         entries = ctx.registry.add_hits(list(hits)[:MAX_RESULTS])
         if not entries and ctx.registry.full:
@@ -224,6 +229,7 @@ def pool_stage(ctx: PoolContext) -> Stage:
         return answer(hits)
 
     def search_tracks(args: SearchInput) -> ToolAnswer | Awaitable[ToolAnswer]:
+        budget.take(1)
         try:
             hits = ctx.searcher(build_query(args))
         except SearchUnavailable:
@@ -256,7 +262,7 @@ def pool_stage(ctx: PoolContext) -> Stage:
         system=SYSTEM_PROMPT,
         tools=(
             Tool("search_tracks", "read", SEARCH_DESCRIPTION, SearchInput, search_tracks),
-            find_songs_tool(ctx, SearchUnavailable, unavailable),
+            find_songs_tool(ctx, SearchUnavailable, unavailable, budget),
             Tool("check_pool", "compute", CHECK_DESCRIPTION, SongPool, check_pool),
             Tool(FINAL_TOOL, "compute", SUBMIT_DESCRIPTION, SongPool, submit_pool),
         ),

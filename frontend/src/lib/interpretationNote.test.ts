@@ -56,6 +56,15 @@ describe('interpretationNote', () => {
     ])
   })
 
+  it('words a taste change a revise keeps out (issue #1140)', () => {
+    const note = interpretationNote([
+      item('music_era.0', 'not_as_asked', { from: 1990, to: 1999 }, { reasonCode: 'taste_on_revise' }),
+    ])
+    expect(note.notAsked.map((l) => l.text)).toEqual([
+      'Music from: 1990 to 1999. A change keeps the music; use Change songs to pick other songs.',
+    ])
+  })
+
   it('shows no taste value it does not know', () => {
     const note = interpretationNote([
       item('music_era.0', 'explicit', { from: '<b>', to: 1989 }),
