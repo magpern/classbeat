@@ -62,7 +62,15 @@ UNSURE_ASKED = "Bizarre"
 ARTIST = "New Order"
 MISSING_TITLE = "Not In The Catalogue"
 # What a match request carries: the client's own headers and the four the call sets.
-SENT_HEADERS = {"host", "content-length", "accept", "content-type", "x-api-key", "authorization"}
+SENT_HEADERS = {
+    "host",
+    "content-length",
+    "accept",
+    "accept-encoding",
+    "content-type",
+    "x-api-key",
+    "authorization",
+}
 
 
 @pytest.fixture

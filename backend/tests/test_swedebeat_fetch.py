@@ -186,9 +186,10 @@ async def test_the_fake_mix_is_fetched_analysed_cached_and_its_audio_deleted(
     (song,) = result.music_map["songs"]
     assert song["bpm"] == pytest.approx(124.0, abs=0.5)
     assert result.music_map["version"] == music.MAP_VERSION
-    # One GET to the media host; none of our headers; the audio is gone.
+    # One GET to the media host; none of our headers but identity coding; the audio is gone.
     assert [m for m, _h, _p in harness.media.requests] == ["GET"]
-    assert set(harness.media.headers[0]) <= {"host"}
+    assert set(harness.media.headers[0]) == {"host", "accept-encoding"}
+    assert harness.media.headers[0]["accept-encoding"] == "identity"
     assert leftovers(work) == []
     # The cache row.
     (stored,) = harness.maps(owner)

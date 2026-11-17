@@ -78,6 +78,7 @@ async def test_a_create_sends_the_body_and_answers_the_new_id(
     assert sent.headers["authorization"] == f"Bearer {bearer}"
     assert sent.headers["content-type"] == "application/json"
     assert sent.headers["accept"] == "application/json"
+    assert sent.headers["accept-encoding"] == "identity"
     assert not {"cookie", "x-forwarded-for"} & set(sent.headers)
 
 

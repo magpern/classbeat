@@ -76,6 +76,7 @@ def _headers(
         raise ValueError("the bearer is 16 to 4096 printable ASCII characters")
     headers = {
         "Accept": _JSON,
+        "Accept-Encoding": "identity",
         "X-API-Key": key.get_secret_value(),
         "Authorization": f"Bearer {bearer}",
     }
