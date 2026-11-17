@@ -68,6 +68,20 @@
   }
 }
 
+/*
+ * Without the preflight nothing makes the `hidden` attribute win over a display utility: the browser's own
+ * `[hidden] { display: none }` is a user-agent rule, so `class="flex"` (or grid, block, ...) beats it and
+ * an element with `hidden` stays on screen. This is Tailwind's own preflight rule, kept alone: `!important`
+ * in the base layer outranks every normal declaration, utilities included (important declarations reverse
+ * the layer order), and `hidden="until-found"` keeps its meaning. jsdom applies no CSS, so only a real
+ * browser shows it; styles/hiddenAttribute.test.ts guards the rule itself.
+ */
+@layer base {
+  [hidden]:where(:not([hidden='until-found'])) {
+    display: none !important;
+  }
+}
+
 /* Reduced motion turns every animation and transition off (ADR 0013 section 2). */
 @media (prefers-reduced-motion: reduce) {
   *,
