@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { classBody } from '../test/classFixtures'
@@ -53,6 +53,28 @@ describe('My classes', () => {
     const button = await screen.findByRole('button', { name: 'Duplicate Hills' })
     expect(button.textContent).toBe('Duplicate')
     expect(screen.queryByRole('button', { name: 'Duplicate Second' })).toBeNull()
+  })
+
+  it('offers Delete on every card, a failed one with no version included, and removes it', async () => {
+    const failed = classBody({ id: SECOND, title: 'Failed', current_revision_id: null, current_revision_number: null, profile: [] })
+    let remaining = [classBody({ title: 'Hills' }), failed]
+    const api = fakeApi({
+      ...SESSION_ROUTES,
+      'GET /api/classes': () => ({ classes: remaining }),
+      [`DELETE /api/classes/${SECOND}`]: () => {
+        remaining = remaining.filter((c) => c.id !== SECOND)
+        return { deleted: true, mowl_workouts_kept: 0, note: 'x' }
+      },
+    })
+    renderAt('/classes')
+    expect(await screen.findByRole('button', { name: 'Delete class Hills' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Delete class Failed' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Yes, delete' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: 'Failed' })).toBeNull()
+    })
+    expect(api.calls.filter((c) => c.method === 'DELETE')).toHaveLength(1)
+    expect(screen.getByRole('link', { name: 'Hills' })).toBeInTheDocument()
   })
 
   it('shows a mini profile, the length and the TSS on a card', async () => {

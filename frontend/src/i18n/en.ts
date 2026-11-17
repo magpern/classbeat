@@ -525,6 +525,7 @@ export const en = {
   'class.delete.anyway': 'Delete anyway',
   'class.delete.confirm': 'Yes, delete',
   'class.delete.keep': 'Keep it',
+  'class.list.delete': 'Delete class {title}',
 
   // Duplicate a class.
   'class.duplicate.label': 'Duplicate',

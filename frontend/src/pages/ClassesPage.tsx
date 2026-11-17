@@ -9,6 +9,7 @@ import { Card, CardContent, CardTitle } from '../components/ui/card'
 import { ChipButton } from '../components/ui/chip'
 import { useClassList } from '../hooks/useClassList'
 import { matchesFilter, type ClassFilter } from '../lib/classCards'
+import { DeleteClassFromList } from '../components/classes/DeleteClassFromList'
 import { DuplicateClass } from '../components/classes/DuplicateClass'
 import { Link } from '../router/Router'
 import { useT } from '../i18n/I18n'
@@ -115,12 +116,15 @@ function Classes() {
                   key={c.id}
                   cls={c}
                   actions={
-                    <DuplicateClass
-                      classId={c.id}
-                      title={c.title}
-                      revisionId={c.currentRevisionId}
-                      versionNumber={c.currentRevisionNumber}
-                    />
+                    <div className="flex flex-wrap gap-2">
+                      <DuplicateClass
+                        classId={c.id}
+                        title={c.title}
+                        revisionId={c.currentRevisionId}
+                        versionNumber={c.currentRevisionNumber}
+                      />
+                      <DeleteClassFromList summary={c} onDeleted={retry} />
+                    </div>
                   }
                 />
               ))}
