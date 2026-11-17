@@ -291,3 +291,13 @@ def test_a_reading_without_pins_or_questions_is_stored_exactly_as_before() -> No
         {"path": "intensity", "question": "how_hard", "assumed": "moderate"}
     ]
     assert StoredInterpretation.model_validate(stored) == full  # it reads back
+
+
+def test_a_change_of_songs_never_stores_the_composers_part() -> None:
+    """``songs.revise_reading.storable``: a list's provenance keeps the keys it had before."""
+    from classbeat.songs.revise_reading import storable
+
+    read = submitted(
+        REQUEST, {"pinned_songs": [pin("Africa")], "questions": [{"path": "intensity"}]}
+    )
+    assert storable(read) == {"games": []}

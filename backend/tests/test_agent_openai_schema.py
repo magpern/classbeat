@@ -36,6 +36,19 @@ SAMPLES: dict[str, list[dict[str, Any]]] = {
     "GetPoolInput": [{}],
     "InterpretedRequest": [
         {},
+        {  # the composer's part (#1185): a pin with only its song, and one with every field
+            "pinned_songs": [
+                {"song": "Africa", "origin": "explicit"},
+                {
+                    "song": "Mamma Mia",
+                    "artist": "ABBA",
+                    "at": "climb 3",
+                    "origin": "explicit",
+                    "quote": "Mamma Mia",
+                },
+            ],
+            "questions": [{"path": "length_min"}, {"path": "intensity"}],
+        },
         {
             "sport": {"value": "cycling", "origin": "explicit", "quote": "spin"},
             "length_min": {"value": 45, "origin": "inferred"},

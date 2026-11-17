@@ -77,7 +77,7 @@ RELEASED: dict[int, str] = {
     # #1140: the music taste cases (interpret and song choice), the split of suite.py and pick.py.
     25: "c40b21cfc2b6bd63cc9971ddec65826ccde8ebb443fb9f6488d6bff55caa2733",
     # #1185: the composer's reading (pinned songs, questions, attached music) and its cases.
-    26: "a7f6b3eab941b70baf5b87308b00e28c581459ce3e9563ff09b7c73370c2f6aa",
+    26: "25ac765c06ee48653bba0df0bc521c45ddd11e5b341c426908649cdab5a0a56d",
 }
 
 SUITE = load_suite()

@@ -31,8 +31,8 @@ from classbeat.agent.brief import Brief
 from classbeat.agent.interpretation_record import InterpretationItem
 from classbeat.classes import interpret_again, interpretation
 from classbeat.classes.handoff_routes import job_enqueue
-from classbeat.design.interpret_composer_policy import PinnedSong, Question
 from classbeat.context import UserContext
+from classbeat.design.interpret_composer_policy import PinnedSong, Question
 from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.http import credit_ledger, job_limit
 from classbeat.jobs.user import JobLimitPolicy
