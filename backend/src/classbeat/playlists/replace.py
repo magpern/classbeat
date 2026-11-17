@@ -190,7 +190,7 @@ async def replace(
             if refused is not None:
                 raise NotWritten(refused) from None
             raise UncertainAnswer from None
-        if not common.owned(found, playlist_id, opened.account):
+        if not common.checked_owner(found, playlist_id, opened.account, purpose, "write"):
             raise NotWritten(UNUSABLE[purpose])
         try:
             snapshot = await common.call(
@@ -266,7 +266,7 @@ async def _reconcile(check: ReconcileInput) -> Reconciliation:
             opened,
             lambda c: spotify_web.get_playlist(c, playlist_id),
         )
-        if not common.owned(found, playlist_id, opened.account):
+        if not common.checked_owner(found, playlist_id, opened.account, purpose, "reconcile"):
             return INCONCLUSIVE  # not ours to read, or no longer private: the user decides
         entries = await common.call(
             check.factory,
