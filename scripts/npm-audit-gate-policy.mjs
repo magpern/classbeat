@@ -20,6 +20,18 @@ export const ALLOWLIST = [
 const SEVERITIES = new Set(['info', 'low', 'moderate', 'high', 'critical'])
 const GATED = new Set(['high', 'critical'])
 const DATE = /^\d{4}-\d{2}-\d{2}$/
+// An expiry may be at most this many days after the day the gate runs (a typo or a far-future date
+// would silently turn the exception into a permanent one).
+export const MAX_DAYS_AHEAD = 60
+
+// Days since the epoch of a real calendar date 'YYYY-MM-DD', or NaN (2026-02-30 and 2026-99-99 are not dates).
+function dayNumber(date) {
+  if (typeof date !== 'string' || !DATE.test(date)) return NaN
+  const [y, m, d] = date.split('-').map(Number)
+  const t = new Date(Date.UTC(y, m - 1, d))
+  const same = t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d
+  return same ? t.getTime() / 86400000 : NaN
+}
 
 const advisoryId = (url) => (/\/advisories\/(GHSA-[a-z0-9-]+)$/i.exec(String(url)) || [])[1]
 
@@ -41,9 +53,15 @@ function leaves(name, vulns, seen = new Set()) {
 export function decide(audit, allowlist, today) {
   const lines = []
   try {
+    const now = dayNumber(today)
+    if (Number.isNaN(now)) throw new Error(`today "${today}" is not a date (YYYY-MM-DD)`)
     for (const e of allowlist) {
-      if (!/^GHSA-/.test(e.id) || !DATE.test(e.expires) || !e.reason) {
-        throw new Error(`allowlist entry "${e.id}" needs an id, an expiry (YYYY-MM-DD) and a reason`)
+      const end = dayNumber(e.expires)
+      if (!/^GHSA-/.test(e.id) || Number.isNaN(end) || !e.reason) {
+        throw new Error(`allowlist entry "${e.id}" needs an id, a real expiry date (YYYY-MM-DD) and a reason`)
+      }
+      if (end - now > MAX_DAYS_AHEAD) {
+        throw new Error(`allowlist entry "${e.id}" expires ${e.expires}, more than ${MAX_DAYS_AHEAD} days from ${today}`)
       }
     }
     if (!audit || audit.auditReportVersion !== 2 || typeof audit.vulnerabilities !== 'object' || !audit.vulnerabilities) {
@@ -55,6 +73,8 @@ export function decide(audit, allowlist, today) {
     for (const [name, pkg] of Object.entries(vulns)) {
       if (!SEVERITIES.has(pkg.severity)) throw new Error(`unknown severity under "${name}"`)
       if (!GATED.has(pkg.severity)) continue
+      // A package that is itself critical never passes, whatever its high advisories are.
+      if (pkg.severity === 'critical') failed.add(`${name}: the package itself is critical`)
       const gated = leaves(name, vulns).filter((l) => GATED.has(l.severity))
       if (gated.length === 0) throw new Error(`"${name}" is ${pkg.severity} but no high advisory explains it`)
       for (const l of gated) {
