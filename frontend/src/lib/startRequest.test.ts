@@ -23,4 +23,14 @@ describe('the kept request', () => {
     expect(recallRequest('c2')).toBeNull()
     expect(startAgainPath('c1')).toBe('/classes/new?from=c1')
   })
+
+  it('keeps the composer\'s playlist ids, and drops anything that is not an id', () => {
+    rememberRequest('c1', { request: 'A ride', music: 'playlist:a', playlists: ['a', 'b'], sport: 'cycling' })
+    expect(recallRequest('c1')?.playlists).toEqual(['a', 'b'])
+    sessionStorage.setItem('classbeat.start-request.c3', JSON.stringify({ request: 'x', playlists: ['a', 3, null] }))
+    expect(recallRequest('c3')?.playlists).toEqual(['a'])
+    expect(recallRequest('c3')).not.toBeNull()
+    rememberRequest('c4', { request: 'Old', music: null, sport: 'cycling' })
+    expect(recallRequest('c4')).not.toHaveProperty('playlists')
+  })
 })

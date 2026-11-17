@@ -1,12 +1,16 @@
 import { useEffect, useMemo } from 'react'
 import { useT } from '../i18n/I18n'
 import { SourceGate } from '../components/newclass/SourceGate'
+import { ComposerScreen } from '../components/start/ComposerScreen'
 import { StartScreen } from '../components/start/StartScreen'
 import { RequireAuth } from '../components/RequireAuth'
 import { forgetExample, recallExample, rememberExample, validExample } from '../lib/exampleHandoff'
 import { useQuery } from '../router/Router'
 
-/** `/classes/new`: the free-text start screen. The form with every setting is `/classes/new/advanced`. */
+/**
+ * `/classes/new`: the composer with the `composer_flow` flag on (ADR 0038 section 10.1), else the free-text start
+ * screen. The form with every setting is `/classes/new/advanced`.
+ */
 export function NewClassPage() {
   const t = useT()
   const fromLink = validExample(useQuery().get('example'))
@@ -23,7 +27,15 @@ export function NewClassPage() {
     <RequireAuth>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
         <h1 className="m-0 font-display text-3xl font-extrabold">{t('newclass.title')}</h1>
-        <SourceGate>{(source) => <StartScreen source={source} example={example} />}</SourceGate>
+        <SourceGate>
+          {(source) =>
+            source.composerFlow ? (
+              <ComposerScreen source={source} example={example} />
+            ) : (
+              <StartScreen source={source} example={example} />
+            )
+          }
+        </SourceGate>
       </div>
     </RequireAuth>
   )

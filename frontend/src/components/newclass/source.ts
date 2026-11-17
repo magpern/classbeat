@@ -20,6 +20,8 @@ export type Source =
       mixes: SwedebeatMix[]
       runningEnabled: boolean
       soundlessEnabled: boolean
+      /** The effective `composer_flow` flag (ADR 0038 section 2): the composer replaces the start screen. */
+      composerFlow: boolean
     }
 
 const PLAYLIST_ERRORS: Record<string, CatalogueKey> = {
@@ -56,7 +58,7 @@ async function songsAvailability(connections: Connection[], signal: AbortSignal)
 /** Asks for the connections, the playlists, song picking and the Swedebeat mixes; `null` once aborted. */
 export async function loadSource(signal: AbortSignal): Promise<Source | null> {
   try {
-    const { connections, swedebeat: swedebeatAccess, runningEnabled, soundlessEnabled } = await getConnectionsView()
+    const { connections, swedebeat: swedebeatAccess, runningEnabled, soundlessEnabled, composerFlow } = await getConnectionsView()
     const mowl = connections.find((c) => c.provider === 'mowl')
     if (mowl === undefined || mowl.status !== 'connected') return { status: 'no_mowl', reconnect: mowl !== undefined }
     const playlists = await getMowlPlaylists(signal)
@@ -75,7 +77,7 @@ export async function loadSource(signal: AbortSignal): Promise<Source | null> {
         if (!signal.aborted) swedebeat = { kind: 'failed', message: swedebeatMixListError(error) }
       }
     }
-    return { status: 'ready', connection: mowl, playlists, songs, swedebeat, mixes, runningEnabled, soundlessEnabled }
+    return { status: 'ready', connection: mowl, playlists, songs, swedebeat, mixes, runningEnabled, soundlessEnabled, composerFlow }
   } catch (error) {
     if (signal.aborted) return null
     if (error instanceof ApiError && error.status === 409) {
