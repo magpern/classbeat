@@ -91,3 +91,15 @@ def test_favoured_tracks_are_chosen_over_search_hits_where_they_fit(
     out = prefer_favoured(listed, tracks, {t.spotify_id for t in favoured}, set(fixed))
     assert [s.spotify_id for s in out.songs] == expected
     assert [s.role for s in out.songs] == [s.role for s in listed.songs]  # the slots keep roles
+
+
+def test_a_swap_is_never_undone_by_the_favoured_rule() -> None:
+    """#1188 review B2: the favoured song a swap took out is in the pool again (the playlists are
+    read again), and the model chose a search hit for its slot; it is never put back."""
+    swapped_out = track("fav_out", 126)
+    listed = chosen(song("s0", 100), song("hit", 128), song("s2", 140, new=False), song("s3", 120))
+    tracks = [track("s0", 100), track("hit", 128), track("s3", 120), swapped_out]
+    out = prefer_favoured(listed, tracks, {"fav_out"}, set(), {"fav_out"})
+    assert [s.spotify_id for s in out.songs] == ["s0", "hit", "s2", "s3"]
+    back = prefer_favoured(listed, tracks, {"fav_out"}, set())  # without the exclusion: back
+    assert "fav_out" in [s.spotify_id for s in back.songs]

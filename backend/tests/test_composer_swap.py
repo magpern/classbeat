@@ -5,12 +5,13 @@ approvable; an accepted one cancels it in the same transaction, approving it is 
 swap that fails while running leaves the sketch current and Find songs again available; no credit
 is used. Never the network, a real account or a model."""
 
+import uuid
 from uuid import UUID
 
 import pytest
 
 from classbeat.design import limits
-from composertools import ComposerEnv, swap, swap_script
+from composertools import SKETCH, ComposerEnv, swap, swap_script
 from songtools import failing_script
 
 pytestmark = pytest.mark.usefixtures("jenv")
@@ -97,3 +98,31 @@ async def test_a_stored_swap_counts_toward_the_revise_limit_and_a_fill_does_not(
     again = await swap(rider, class_id, row.approval_revision_id)
     assert (again.status_code, again.json()["detail"]["reason"]) == (409, "revision_limit")
     assert again.json()["detail"]["count"] == 1
+
+
+async def test_a_fill_is_admitted_at_the_revise_limit_while_a_swap_and_a_change_are_not(
+    cenv: ComposerEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR 0038 sections 5 and 9 (#1188 review B3): the sketch's revises used the class's revise
+    limit; the fill is exempt, so the user still gets songs, and a swap or change is refused."""
+    monkeypatch.setattr(
+        limits, "_limits", limits.ChatLimits(policy=limits.SettingRevisionPolicy(1))
+    )
+    rider = await cenv.songenv.rider()
+    class_id, first = await cenv.sketched(rider)
+    revised = uuid.uuid4()  # a sketch revise (a sketch with a parent): one chat revision
+    cenv.insert_sketch(rider.user_id, class_id, revised, {**SKETCH, "name": "Revised"}, number=2)
+    cenv.sql("UPDATE class_revisions SET parent_id = :p WHERE id = :r", p=first, r=revised)
+    cenv.sql("UPDATE classes SET current_revision_id = :r WHERE id = :c", r=revised, c=class_id)
+    job_id, list_id, _ = await cenv.waiting(rider, class_id)  # the fill: admitted, at the limit
+    assert cenv.songenv.row(job_id).state == "waiting_for_approval"
+    refused = await swap(rider, class_id, list_id)
+    assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "revision_limit")
+    assert refused.json()["detail"]["count"] == 1
+    message = str(uuid.uuid4())
+    base = f"/api/classes/{class_id}/pending-messages"
+    stored = await rider.browser.post(base, {"message_id": message, "body": "Harder, please."})
+    assert stored.status_code == 201, stored.text
+    changed = await rider.browser.post(f"{base}/{message}/submit", None)
+    assert (changed.status_code, changed.json()["detail"]["reason"]) == (409, "revision_limit")
+    assert cenv.songenv.row(job_id).state == "waiting_for_approval"  # still approvable

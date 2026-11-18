@@ -10,6 +10,7 @@ not pinned or kept) is swapped for an unused favoured pool track **where it fits
 
 Among the fitting tracks the closest BPM wins, then the pool's order. Slots are visited in play
 order; a favoured track is used once. Nothing else of the list changes: the slot keeps its role.
+The songs a swap took out of the list are never candidates (#1188 review B2).
 """
 
 from collections.abc import Collection, Sequence
@@ -26,12 +27,18 @@ def prefer_favoured(
     tracks: Sequence[PoolTrack],
     favoured: Collection[str],
     fixed: Collection[int],
+    excluded: Collection[str] = (),
 ) -> ChosenList:
     """``chosen`` with search hits swapped for fitting favoured tracks (module docstring).
     ``favoured``: the Spotify ids of the attached playlists' tracks; ``fixed``: the positions
-    that never change (pinned and kept songs)."""
+    that never change (pinned and kept songs); ``excluded``: ids never put in (the songs a swap
+    just took out: a swap is never undone by a favoured track)."""
     used = {s.spotify_id for s in chosen.songs}
-    spare = [t for t in tracks if t.spotify_id in favoured and t.spotify_id not in used]
+    spare = [
+        t
+        for t in tracks
+        if t.spotify_id in favoured and t.spotify_id not in used and t.spotify_id not in excluded
+    ]
     songs = list(chosen.songs)
     for at, song in enumerate(songs):
         if at in fixed or song.spotify_id in favoured or not song.new:

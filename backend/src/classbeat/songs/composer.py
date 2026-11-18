@@ -154,6 +154,12 @@ async def _swap(
     brief = brief_of(sketch)
     content = waiting.content
     plan = PickPlan(brief, content.target_sec, len(content.songs), seeded.roles, seeded.kept)
+    seed = given.seed
+    removed = frozenset(
+        content.songs[slot].spotify_id
+        for slot in (seed.replace if seed is not None else [])
+        if slot < len(content.songs)
+    )  # the songs the swap takes out: never put back by the favoured rule (#1188 review B2)
     picked, step = await pick_composer(
         run,
         given,
@@ -168,6 +174,7 @@ async def _swap(
         provider=model.provider,
         agent=model.agent,
         config=songs,
+        excluded=removed,
     )
     step.close()
     preview = content.preview

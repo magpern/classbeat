@@ -132,6 +132,7 @@ async def pick_composer(
     provider: ModelProvider,
     agent: AgentConfig,
     config: SongConfig,
+    excluded: frozenset[str] = frozenset(),
 ) -> tuple[Picked, MusicStep]:
     """Steps 1 to 3; ``pin_slots`` maps a pin's index to its slot. The pool's music step is
     returned for the caller to close."""
@@ -175,6 +176,7 @@ async def pick_composer(
             provider,
             agent,
             config,
+            excluded,
         ), step
     except BaseException:
         step.close()
@@ -194,6 +196,7 @@ async def _choose(
     provider: ModelProvider,
     agent: AgentConfig,
     config: SongConfig,
+    excluded: frozenset[str],
 ) -> Picked:
     analysis_map = step.data.analysis["map"]
     wanted = [(p.spotify_id, p.role) for p in picks]
@@ -248,9 +251,8 @@ async def _choose(
     if not isinstance(outcome.output, ChosenList):
         raise JobFailure("internal")
     fixed = {k.slot for k in plan.kept}
-    chosen = prefer_favoured(
-        outcome.output, tracks, {e.spotify_id for e in favoured.entries}, fixed
-    )
+    favourite_ids = {e.spotify_id for e in favoured.entries}
+    chosen = prefer_favoured(outcome.output, tracks, favourite_ids, fixed, excluded)
     made = provenance(
         [pool_outcome, outcome],
         analysis_map,
