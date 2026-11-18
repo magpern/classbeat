@@ -10,9 +10,10 @@ the one planned (else the call reads it again, once); a created or repeated job 
 ``submitted`` with its job id in that transaction (``created``); a refusal of the create
 (``revision_limit``, ``quota``, ``chat_full`` and every other) marks it ``failed`` with that code
 in that transaction. So two concurrent submits make one job, and a refused submit never stays
-pending. A waiting song list would make it a **change** (ADR 0038 section 6), which has no job
-kind before #1188 and #1189: until then it is ``failed`` with ``not_changeable``, as every state
-outside the table is.
+pending. A composer's song list **waiting** (a live ``fill``, ``swap`` or ``change`` job waiting
+for approval, ``song_replace.WAITING_SQL``; any other wait, and one past its expiry, is not this
+row) makes it a **change** that replaces the waiting job (``pending_change``, ADR 0038 section
+6, #1188); its refusal rolls the replace back and then marks the message ``failed``.
 """
 
 import hashlib
@@ -25,7 +26,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.classes import pending_policy
+from classbeat.classes import pending_change, pending_policy
 from classbeat.classes.pending import (
     CLASS_SQL,
     MISMATCH,
@@ -62,7 +63,8 @@ _STATE = text(
     "EXISTS (SELECT 1 FROM jobs j WHERE j.owner_id = c.owner_id AND j.class_id = c.id "
     "AND j.state IN ('queued', 'running')) AS running, "
     "EXISTS (SELECT 1 FROM jobs j WHERE j.owner_id = c.owner_id AND j.class_id = c.id "
-    "AND j.state = 'waiting_for_approval') AS waiting "
+    "AND j.state = 'waiting_for_approval' AND j.kind = 'design_with_songs' "
+    "AND j.expires_at > now() AND j.input ->> 'mode' IN ('fill', 'swap', 'change')) AS waiting "
     "FROM classes c LEFT JOIN class_revisions r ON r.owner_id = c.owner_id AND r.class_id = c.id "
     "AND r.id = c.current_revision_id WHERE c.owner_id = :owner_id AND c.id = :class_id"
 )
@@ -77,7 +79,7 @@ _LOCK_ROW = text(ROW_SQL.text + " FOR UPDATE")
 # The hold's own answers: never stored, never shown.
 _SUBMITTED: Final = "_submitted"
 _DECIDED: Final = "_decided"
-_REPLAN: Final = "_replan"
+_REPLAN: Final = pending_change.REPLAN
 
 
 def submit_key(class_id: UUID, message_id: UUID) -> str:
@@ -221,6 +223,18 @@ async def _create(
     enqueue: JobEnqueue,
 ) -> Held | None:
     """The job of the plan (None: created or repeated), or the hold's answer."""
+    if hold.planned == "change":  # a composer's list waits: replace it (#1188)
+        return await pending_change.create_change(
+            factory,
+            ctx,
+            hold,
+            body,
+            key=submit_key(hold.class_id, hold.message_id),
+            decided=lambda reason: _decided(factory, ctx, hold, reason),
+            ledger=ledger,
+            limit=limit,
+            enqueue=enqueue,
+        )
     if hold.planned not in ("sketch_revise", "revise") or hold.base is None:
         return await _decided(factory, ctx, hold, pending_policy.NOT_CHANGEABLE)
     connection = ctx.connection("mowl")
