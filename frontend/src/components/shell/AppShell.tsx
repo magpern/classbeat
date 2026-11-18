@@ -1,110 +1,22 @@
 import { LegalFooter } from '../../pages/legal/LegalFooter'
-import { Home, Library, Music, Plus, User, type LucideIcon } from 'lucide-react'
 import { useRef, type ReactNode } from 'react'
 import { logout } from '../../api/auth'
 import { useSession } from '../../auth/SessionContext'
 import { useT } from '../../i18n/I18n'
-import type { CatalogueKey } from '../../i18n/en'
-import { useLayout, type Layout } from '../../hooks/useLayout'
+import { useLayout } from '../../hooks/useLayout'
 import { useSpotlight } from '../../hooks/useSpotlight'
-import { cn } from '../../lib/cn'
 import { forgetExample } from '../../lib/exampleHandoff'
 import { Link, useRouter } from '../../router/Router'
 import { useAction } from '../forms'
 import { AvatarMenu } from './AvatarMenu'
-import { ClassesThisMonth } from './ClassesThisMonth'
 import { PhoneSignInNotice } from './PhoneSignInNotice'
 import { BrandLink } from './BrandLink'
 import { SignedOutHeader } from './SignedOutHeader'
-
-const JOB_PAGE = /^\/jobs\/[0-9a-fA-F-]{36}$/
-
-/** New class (the start screen and the advanced form) and Designing hide the navigation so nothing distracts mid-task (ADR 0013 section 4). */
-export function isFocusRoute(pathname: string): boolean {
-  const path = pathname.replace(/\/+$/, '') || '/'
-  return path === '/classes/new' || path === '/classes/new/advanced' || JOB_PAGE.test(path)
-}
-
-interface Item {
-  to: string
-  label: CatalogueKey
-  icon: LucideIcon
-  primary?: boolean
-}
-
-const HOME: Item = { to: '/', label: 'shell.nav.home', icon: Home }
-const CLASSES: Item = { to: '/classes', label: 'shell.nav.classes', icon: Library }
-const NEW: Item = { to: '/classes/new', label: 'shell.nav.new', icon: Plus, primary: true }
-const MUSIC: Item = { to: '/music', label: 'shell.nav.music', icon: Music }
-const ACCOUNT: Item = { to: '/account', label: 'shell.nav.account', icon: User }
-
-function itemsFor(layout: Layout): Item[] {
-  // The DOM order is the visual order: the pill first in the sidebar and rail, in the middle of the tab bar.
-  return layout === 'phone' ? [HOME, CLASSES, NEW, MUSIC, ACCOUNT] : [NEW, HOME, CLASSES, MUSIC, ACCOUNT]
-}
-
-function isActive(item: Item, pathname: string): boolean {
-  const path = pathname.replace(/\/+$/, '') || '/'
-  if (item.to === '/') return path === '/'
-  if (item.to === '/classes') return path === '/classes' || (path.startsWith('/classes/') && path !== '/classes/new' && !path.startsWith('/classes/new/'))
-  return path === item.to || path.startsWith(`${item.to}/`)
-}
-
-function lookOf(item: Item, layout: Layout, active: boolean): string {
-  if (item.primary) {
-    if (layout === 'phone') return 'size-14 -mt-6 justify-center rounded-full border-4 border-bg bg-brand text-on-brand'
-    if (layout === 'rail') return 'size-12 justify-center self-center rounded-full bg-brand text-on-brand'
-    return 'justify-center gap-2 rounded-full bg-brand px-5 font-medium text-on-brand'
-  }
-  if (layout === 'phone') return cn('flex-col justify-center gap-0.5 text-[0.6875rem]', active ? 'text-brand' : 'text-muted')
-  return cn(
-    'gap-3 rounded-md px-3 font-medium',
-    layout === 'rail' && 'justify-center',
-    active ? 'bg-raised text-text' : 'text-muted hover:bg-raised hover:text-text',
-  )
-}
-
-function NavLink({ item, layout, pathname }: { item: Item; layout: Layout; pathname: string }) {
-  const t = useT()
-  const Icon = item.icon
-  const active = isActive(item, pathname)
-  const iconOnly = layout === 'rail' || (item.primary === true && layout === 'phone')
-  return (
-    <Link
-      to={item.to}
-      aria-current={active ? 'page' : undefined}
-      aria-label={iconOnly ? t(item.label) : undefined}
-      className={cn(
-        'inline-flex min-h-11 min-w-11 items-center no-underline transition-colors duration-150',
-        lookOf(item, layout, active),
-      )}
-    >
-      <Icon aria-hidden="true" size={item.primary === true && layout !== 'sidebar' ? 28 : 22} strokeWidth={2} />
-      {iconOnly ? null : <span>{t(item.label)}</span>}
-    </Link>
-  )
-}
-
-function PrimaryNav({ layout, pathname }: { layout: Layout; pathname: string }) {
-  const t = useT()
-  return (
-    <nav
-      aria-label={t('shell.nav.main')}
-      className={
-        layout === 'phone'
-          ? 'fixed inset-x-0 bottom-0 z-30 flex items-end justify-around border-t border-line bg-surface px-2 pb-2'
-          : 'flex flex-col gap-1'
-      }
-    >
-      {itemsFor(layout).map((item) => (
-        <NavLink key={item.to} item={item} layout={layout} pathname={pathname} />
-      ))}
-    </nav>
-  )
-}
+import { TabBar } from './TabBar'
+import { TopBar } from './TopBar'
+import { isFocusRoute } from './navItems'
 
 interface FrameProps {
-  rootClass?: string
   top: ReactNode
   mainClass: string
   alert: ReactNode
@@ -117,13 +29,20 @@ interface FrameProps {
  * main keeps its state when the session arrives or the width changes: a mail-link page reads and
  * strips its token once and must not be mounted again.
  */
-function Frame({ rootClass, top, mainClass, alert, bottom, children }: FrameProps) {
+function Frame({ top, mainClass, alert, bottom, children }: FrameProps) {
+  const t = useT()
   const root = useRef<HTMLDivElement>(null)
   useSpotlight(root) // the pointer's light on every `.glow-card` (motion.css)
   return (
-    <div ref={root} className={rootClass}>
+    <div ref={root}>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-full focus:bg-heat focus:px-5 focus:py-3 focus:font-medium focus:text-on-heat focus:no-underline"
+      >
+        {t('shell.skip')}
+      </a>
       {top}
-      <main className={mainClass}>
+      <main id="main-content" tabIndex={-1} className={mainClass}>
         <div className="mx-auto max-w-5xl">
           {alert}
           {children}
@@ -203,14 +122,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     )
   }
 
-  const menu = (showName: boolean, side: 'top' | 'bottom') => (
+  const menu = (
     <AvatarMenu
       email={email}
       isAdmin={session.user?.role === 'admin' || session.session?.adminPendingMfa === true}
       busy={action.busy}
       onSignOut={signOut}
-      showName={showName}
-      side={side}
     />
   )
 
@@ -218,42 +135,22 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <Frame
         top={
-          <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-surface px-4 py-2">
+          <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-bg px-4 py-2">
             <BrandLink />
-            {menu(false, 'bottom')}
+            {menu}
           </header>
         }
         mainClass="px-4 pt-6 pb-28"
         alert={alert}
-        bottom={<PrimaryNav layout={layout} pathname={pathname} />}
+        bottom={<TabBar pathname={pathname} />}
       >
         {children}
       </Frame>
     )
   }
 
-  const sidebar = layout === 'sidebar'
   return (
-    <Frame
-      rootClass="flex min-h-screen"
-      top={
-        <aside
-          className={cn(
-            'sticky top-0 flex h-screen shrink-0 flex-col gap-4 border-r border-line bg-surface p-3',
-            sidebar ? 'w-64' : 'w-20 items-center',
-          )}
-        >
-          <BrandLink compact={!sidebar} />
-          <PrimaryNav layout={layout} pathname={pathname} />
-          <div className="mt-auto flex flex-col gap-3">
-            <ClassesThisMonth compact={!sidebar} />
-            {menu(sidebar, 'top')}
-          </div>
-        </aside>
-      }
-      mainClass="min-w-0 flex-1 px-6 py-8"
-      alert={alert}
-    >
+    <Frame top={<TopBar pathname={pathname} menu={menu} />} mainClass="min-w-0 px-6 py-8" alert={alert}>
       {children}
     </Frame>
   )

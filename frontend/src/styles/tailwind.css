@@ -22,6 +22,7 @@
   --color-heat-from: var(--cb-heat-from);
   --color-heat-mid: var(--cb-heat-mid);
   --color-heat-to: var(--cb-heat-to);
+  --color-tab-mark: var(--cb-tab-mark);
   --color-ok: var(--cb-ok);
   --color-ok-soft: var(--cb-ok-soft);
   --color-warn: var(--cb-warn);
