@@ -34,6 +34,104 @@ exists today (2026-10-30):
 
 ## Decision
 
+> **Amendment, 2026-11-18: Afterburn (issue #1219; owner decision).** The owner found the
+> signed-in pages (Account, My classes, Design a class, Music) "not very sexy and modern" and asked
+> for "a common theme that is hot and sexy … high end, professional, something people would pay
+> money for". They approved the Afterburn design canvas with "Everything looks perfect. Implement."
+> Where this amendment and §1, §2, §3, §4, §5 or §10 below differ, this amendment wins. Amended:
+> §1's "one big next step" (A5) and "New class, Account and usage are in the same place on every
+> page" (usage moves out of the shell, A2); §2's tokens, type, shape and the logo (A1); §3's "stay
+> violet" (A4); §4 (A2); §5 (A3); §10's contrast pairs are those of A1. §6 (wording), §7 (the
+> profile) and §9 are unchanged.
+>
+> **A1. Tokens** (`tokens.css`, both themes; zone and stage colours unchanged):
+>
+> | Token | Dark | Light |
+> |---|---|---|
+> | `bg` | `#0A0910` | `#F6F4FA` |
+> | `surface` | `#14121B` | `#FFFFFF` |
+> | `raised` | `#1E1B27` | `#EFECF5` |
+> | `line` | `#2B2836` | `#E3DFEB` |
+> | `text` | `#F6F4FA` | `#15121C` |
+> | `muted` | `#ABA6BA` | `#5C576D` |
+> | `brand` (links, focus, selection) | `#B9A2FF` | `#5A36E0` |
+> | `ok` / `warn` / `bad` | unchanged | `#0F7A4A` / `#9A5B00` / `#B32D24` |
+> | `on-brand` | `#0A0910` | `#FFFFFF` |
+> | `ok-soft` / `warn-soft` / `bad-soft` | the status colour at 12 % over `surface` | `#E1F5EA` / `#FCEFD6` / `#FBE0DD` |
+> | `heat-from` / `heat-mid` / `heat-to` | `#6D4AFF` / `#A12FC4` / `#D61A72` | the same |
+> | `on-heat` | `#FFFFFF` | the same |
+> | `tab-mark` (active tab underline) | `#D61A72` | the same |
+>
+> Checked pairs (WCAG): `text` on `surface` / `raised` 17.0 / 15.5:1 dark, 18.5 / 15.8:1 light;
+> `muted` on `surface` / `raised` 7.9 / 7.2:1 dark, 6.9 / 5.9:1 light; `brand` on `surface` 8.6:1
+> dark, 6.9:1 light; `tab-mark` at least 3:1 against `surface` in both themes.
+>
+> **The heat line** is classbeat's signature: a 110° gradient `#6D4AFF` → `#A12FC4` → `#D61A72`
+> (`--cb-heat`), with white text (`--cb-on-heat`; 5.1:1 on `#6D4AFF`, 5.6:1 on `#A12FC4`, 4.9:1 on
+> `#D61A72`) and a soft violet-pink glow (`--cb-glow`). It is used only where something matters: the
+> primary button, the active tab's underline, the current plan's border and badge, progress (meters,
+> rings, steps), the avatar ring, the logo bars and a 4 px line on top of a hero card. Never as a
+> page or section background, never on zone bars or the stage, never on Spotify data.
+>
+> **Type:** titles Archivo at its widest (`wdth` 125, weight 800); page titles 40–56 px, section
+> titles 22–30 px. Small labels are "eyebrows": 12 px, weight 600, `0.14em` tracked capitals in
+> `muted`. Inter for everything else, `tabular-nums` for numbers. **Shape:** cards 24 px radius
+> (hero cards 28 px), pills 999 px, targets ≥ 44 px; cover art keeps §3's 4 px (8 px large) radius. Status is a pill with a dot (Connected,
+> Needs reconnecting, Not connected). Segmented controls and tabs are a pill track on `raised`
+> with the active item on `surface` and a 2 px `tab-mark` underline.
+>
+> **Logo** (replaces §2's "rounded violet tile with four bars"): three rising bars in the heat
+> gradient beside the wordmark in Archivo.
+>
+> **Motion.** The new motion (a draft card's shimmer, the brief box's glow on focus, a tile's lift,
+> the code's countdown ring) follows the 2026-11-11 motion amendment: rules 3 to 5 hold (nothing
+> moves under reduced motion, text is moved never faded, tokens only).
+>
+> **A2. Navigation** (replaces §4's desktop sidebar and tablet rail): at 640 px and wider a **top
+> bar**: the logo (three heat bars and the wordmark, linking Home), My classes and Music as pill
+> links, the **New class** heat button, and the avatar in a heat ring opening the avatar menu
+> (Account, Admin for admins, Sign out). Phones keep §4's bottom tab bar, restyled. Focus mode is
+> unchanged. The "Classes this month" meter leaves the shell: it is on Account and My classes.
+>
+> **A3. Screens** (replaces the matching items of §5):
+> - **Account.** A profile card (heat line on top, avatar, name in Archivo, email, and three tiles:
+>   plan, classes this month, required connections linked), then the tabs as a pill track.
+>   *Connections:* while MOWL or Spotify is missing, a "One step left" strip with a meter and the
+>   connect action; each service as a tile (monogram, status pill, Required or Optional, one line
+>   of purpose, one action). The MOWL dialog shows the steps beside the code, which sits on a dark
+>   panel in a heat frame with a countdown ring. *Plan and usage:* a usage ring, the plan with a
+>   "Your plan" badge, the budget bar and its reset date, and the plans side by side, the current
+>   one with a heat border.
+> - **My classes.** A large title with **Design a class**, a stats strip, the filters and a pill
+>   search, the newest class with a version as a feature card (large profile on the stage with a
+>   zone legend, status, title, the request quoted, Time / TSS / Songs, Open class, Duplicate),
+>   then the other classes as a card grid. A draft with no version shows a ghost profile with a slow
+>   shimmer (off under reduced motion) and "Continue".
+> - **Design a class.** Two columns (one on a phone): the title, the brief box in a heat frame that
+>   glows on focus, chips, length and music-source cards, **Design my class** with the classes-left
+>   line; beside it the sketch on the stage and "What happens next" in three steps. A missing
+>   connection is a warning card inside "Music from" with its connect action, not a bare sentence.
+> - **Music.** A title block with the Spotify attribution, "Playlists we made" as a tile grid and
+>   "Your playlists in MOWL" as a grid or, when it cannot be shown, an empty-state card with ghost
+>   tiles and the connect action.
+>
+> **A4. Rules kept from §3, where the canvas differed.** Cover art stays unaltered: the canvas's
+> play button over a playlist mosaic is **not** built; OPEN SPOTIFY stays a link beside the art.
+> The Spotify logo is the bundled official one. classbeat's own controls are violet or the heat
+> gradient, never Spotify green (§3). **SwedeBeat has no logo rule of the kind Spotify's
+> guidelines impose** (classbeat reaches it only through the owner's gateway, ADR 0035), so it is
+> treated like MOWL: named in text with classbeat's own "Sb" monogram, and no SwedeBeat logo or
+> artwork unless SwedeBeat grants it (a provider agreement, owner only).
+>
+> **A5. One big next step, relaxed.** The New class button in the top bar is on every page, and
+> Account shows the connect action of a missing required connection; neither counts against §1's
+> "at most one primary button" on the page's own content.
+>
+> **Delivery:** #1220 (tokens and shared components), #1221 (top bar shell), #1222 (Account),
+> #1223 (My classes), #1224 (Design a class), #1225 (Music), in that order. Short class names
+> instead of the cut-off request (shown on the canvas) need a change to the interpret prompt and
+> so a live eval re-record by the owner; they are not part of this amendment.
+
 ### 1. Principles
 
 - **Instructor words.** Climbs, sprints, zones, RPM, songs, versions. Never jobs, tokens, credits,
