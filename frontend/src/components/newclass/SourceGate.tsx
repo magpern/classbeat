@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Trans, useT } from '../../i18n/I18n'
+import { useT } from '../../i18n/I18n'
 import { Notice } from '../forms'
 import { Button } from '../ui/button'
-import { Link } from '../../router/Router'
+import { MusicWarning } from './MusicWarning'
 import { loadSource, type Source } from './source'
 
 export type ReadySource = Extract<Source, { status: 'ready' }>
@@ -31,18 +31,7 @@ export function SourceGate({ children }: { children: (source: ReadySource) => Re
     <>
       {source.status === 'loading' ? <p className="m-0 text-muted">{t('newclass.loading')}</p> : null}
       {source.status === 'no_mowl' ? (
-        <Notice>
-          <Trans
-            id={source.reconnect ? 'newclass.noMowl.reconnect' : 'newclass.noMowl.connect'}
-            slots={{
-              link: (
-                <Link to="/account">
-                  {t(source.reconnect ? 'newclass.noMowl.reconnectLink' : 'newclass.noMowl.connectLink')}
-                </Link>
-              ),
-            }}
-          />
-        </Notice>
+        <MusicWarning reconnect={source.reconnect} />
       ) : null}
       {source.status === 'playlists_failed' ? (
         <>
