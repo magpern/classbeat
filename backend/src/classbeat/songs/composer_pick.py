@@ -83,18 +83,17 @@ def _message(ctx: PoolContext, slots: list[str], favoured: Favoured, pinned: Pin
 def _with_extras(
     pool: PoolResult, favoured: Favoured, pinned: Pinned, pin_roles: dict[int, str]
 ) -> tuple[PoolPick, ...]:
-    """The model's picks plus every pinned and favoured track (module docstring, step 1)."""
+    """The model's picks, in its order, then every pinned and favoured track it left out (module
+    docstring, step 1), at most ``MAX_POOL``: the model's last picks make room first."""
     extras: list[PoolPick] = []
-    for ref_role, entry in [(pin_roles.get(e.ref, FAVOURED_ROLE), e) for _, e in pinned.found] + [
-        (FAVOURED_ROLE, e) for e in favoured.entries
-    ]:
-        extras.append(PoolPick(entry.ref, ref_role, entry.spotify_id, entry.cover, entry.year))
-    ids = {p.spotify_id for p in extras}
-    model = [p for p in pool.picks if p.spotify_id not in ids]
-    seen: set[str] = set()
-    unique = [p for p in extras if not (p.spotify_id in seen or seen.add(p.spotify_id))]
-    room = max(0, MAX_POOL - len(unique))
-    return tuple(unique[:MAX_POOL] + model[:room])
+    seen = {p.spotify_id for p in pool.picks}
+    pins = [(pin_roles.get(e.ref, FAVOURED_ROLE), e) for _, e in pinned.found]
+    for role, entry in [*pins, *((FAVOURED_ROLE, e) for e in favoured.entries)]:
+        if entry.spotify_id not in seen:
+            seen.add(entry.spotify_id)
+            extras.append(PoolPick(entry.ref, role, entry.spotify_id, entry.cover, entry.year))
+    extras = extras[:MAX_POOL]
+    return (*pool.picks[: MAX_POOL - len(extras)], *extras)
 
 
 async def pick_composer(
