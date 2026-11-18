@@ -8,12 +8,13 @@ import asyncio
 import hashlib
 import secrets
 import uuid
+from typing import Any
 from uuid import UUID
 
 import pytest
 
-from classbeat.songs import song_list
-from composertools import SKETCH, ComposerEnv
+from classbeat.songs import composer_design, song_list
+from composertools import SKETCH, ComposerEnv, fill_script
 from songtools import CHOSEN
 
 pytestmark = pytest.mark.usefixtures("jenv")
@@ -227,3 +228,43 @@ async def test_a_refused_fill_is_stored_answered_again_and_retried_by_find_songs
     view = (await rider.browser.get(f"/api/classes/{second}/fill-songs")).json()
     assert (view["attempt"], view["refusal"]) == (1, None)
     assert view["job"]["job_id"] == retried.json()["job_id"]
+
+
+async def test_a_composer_list_is_never_the_seed_of_an_old_pick(cenv: ComposerEnv) -> None:
+    """#1188 review: Ask for changes of the old flow (a ``seed``) never takes a composer's list:
+    it would take a credit and run the old phase 2 on a composer class. ``not_changeable``."""
+    rider = await cenv.songenv.rider()
+    class_id, _ = await cenv.sketched(rider)
+    job_id, list_id, _ = await cenv.waiting(rider, class_id)
+    cancelled = await rider.browser.post(f"/api/jobs/{job_id}/cancel", None)
+    assert cancelled.status_code == 200, cancelled.text
+    seed = {"song_list_revision_id": str(list_id), "replace": [2]}
+    refused = await rider.create(class_id=str(class_id), seed=seed)
+    assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "not_changeable")
+
+
+async def test_a_list_is_never_stored_once_another_sketch_is_current(
+    cenv: ComposerEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The store's safety net (``composer_common.still_current``): a new sketch became current
+    while the fill ran (the class's routes refuse that while a job is open, so it is staged
+    here); the fill fails ``invalid_input`` and stores no list."""
+    rider = await cenv.songenv.rider()
+    class_id, sketch = await cenv.sketched(rider)
+    newer = uuid.uuid4()
+    cenv.insert_sketch(rider.user_id, class_id, newer, {**SKETCH, "name": "Newer"}, number=2)
+    real = composer_design.design_preview
+
+    async def moved(*args: Any, **kwargs: Any) -> Any:
+        cenv.sql("UPDATE classes SET current_revision_id = :r WHERE id = :c", r=newer, c=class_id)
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(composer_design, "design_preview", moved)
+    made = await cenv.fill(rider, class_id)
+    job_id = UUID(made.json()["job_id"])
+    cenv.songenv.script = fill_script()
+    row = await cenv.songenv.run(job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    lists = "SELECT count(*) FROM class_revisions WHERE class_id = :c AND kind = 'song_list'"
+    assert cenv.sql(lists, c=class_id).scalar_one() == 0
+    assert sketch != newer

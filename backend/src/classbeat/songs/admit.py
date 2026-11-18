@@ -38,7 +38,8 @@ job, the per-user limit), in this order, each refusal writing nothing:
    of the class, made by a ``design_with_songs`` job (a song change's list is changed again by
    ``revise_songs``) that ended ``cancelled`` or ``expired`` and was never approved, its
    stored hash still matches its content (``song_list.load``), and every ``replace`` slot is a
-   position in it;
+   position in it; a composer's list (``v: 3``) is never a seed (``not_changeable``: it is swapped
+   or changed, ADR 0038 section 6, #1188);
 7. with ``source`` (the user's own Spotify playlist, roadmap Amendment 26) steps 4 and 5 do not
    apply: no song is picked and the pool is never touched, so the pool consent is not needed and
    such a job never counts for another pick's ``pool_busy``. Step 1 applies unchanged:
@@ -193,6 +194,8 @@ async def seed_list(
     found = await song_list.load(db, owner_id, class_id, seed.song_list_revision_id)
     if found is None or any(slot >= len(found.content.songs) for slot in seed.replace):
         return None
+    if found.content.preview is not None:
+        return None  # a composer's list is swapped or changed, never seeded (ADR 0038 section 6)
     return found
 
 
@@ -226,8 +229,16 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         if parsed.class_id is None:  # the input model refuses it already
             return Refused("invalid_input")
         if await seed_list(db, ctx.user_id, parsed.class_id, parsed.seed) is None:
+            if await composer_list(db, ctx.user_id, parsed.class_id, parsed.seed):
+                return Refused("not_changeable")  # swap or change it instead (#1188)
             return Refused("invalid_input")
     return Admitted()
+
+
+async def composer_list(db: AsyncSession, owner_id: UUID, class_id: UUID, seed: Seed) -> bool:
+    """Whether the seed names a composer's list (``v: 3``, ADR 0038 section 5)."""
+    found = await song_list.load(db, owner_id, class_id, seed.song_list_revision_id)
+    return found is not None and found.content.preview is not None
 
 
 async def approve_check(db: AsyncSession, ctx: UserContext, approving: Approving, /) -> str | None:

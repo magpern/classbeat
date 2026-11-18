@@ -92,10 +92,11 @@ class SongListContent(BaseModel):
             raise ValueError("a song's source is a v: 3 field")
         if (self.v == PREVIEW_VERSION) != (self.preview is not None):
             raise ValueError("a preview is in v: 3 and only there")
-        if self.preview is not None and self.preview.music.fingerprint != fingerprint(
-            self.track_ids()
+        if self.preview is not None and (
+            self.preview.music.fingerprint != fingerprint(self.track_ids())
+            or len(self.preview.music.songs) != len(self.songs)
         ):
-            raise ValueError("the preview is of these songs")
+            raise ValueError("the preview is of these songs, one span each")
         return self
 
     def track_ids(self) -> tuple[str, ...]:

@@ -15,7 +15,10 @@ rewrites ``<h16>:<n>``, ``n`` from 1), newest first:
 - the newest is not ``succeeded`` (``pending``, ``uncertain``, ``failed``): that key, so the
   protocol reconciles or retries it exactly as before (at most once, reconcile before retry);
 - the newest ``succeeded``, the pool's ``last_hash`` (set by every succeeded pool write, under
-  the working copy's lock) is this list, and it is this job's newest pool write of **any** list:
+  the working copy's lock) is this list, and it is this job's newest pool write row of **any**
+  list, by the row's creation (a row taken over by a later attempt keeps its creation time, so it
+  may not count as the newest; that costs one more absolute write of the same list, never a
+  reuse):
   that key, reused with no call (the playlist holds it). A later write of another list that did
   not end ``succeeded`` (a crash in the middle of it: ``pending`` or ``uncertain``) may have
   reached the playlist while ``last_hash`` still names this list, so that is never trusted;
@@ -40,7 +43,7 @@ _ROWS = text(
     "SELECT idempotency_key, state FROM external_operations WHERE owner_id = :owner_id "
     "AND kind = :kind AND (idempotency_key = :key OR idempotency_key LIKE :like)"
 )
-# This job's newest pool write of any list (its key), by creation.
+# This job's newest pool write row of any list (its key), by the row's creation.
 _NEWEST_OF_JOB = text(
     "SELECT idempotency_key FROM external_operations WHERE owner_id = :owner_id "
     "AND kind = :kind AND idempotency_key LIKE :job_like ORDER BY created_at DESC, id DESC LIMIT 1"

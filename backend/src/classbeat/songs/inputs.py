@@ -29,8 +29,9 @@ spotify_playlist_id}, mowl_connection_id, spotify_connection_id}``.
   the hand-offs (``classbeat.classes.song_fill``, ``song_swap``, the pending submit) set them, with
   no credit, so ``POST /api/jobs`` can never create a composer mode.
 
-No field is a server field, and nothing in the input reaches a Spotify or MOWL request: the pool,
-the playlists and every id written come from the user's own rows.
+The composer's fields (``COMPOSER_FIELDS``) are server fields; the others are not. Nothing in the
+input reaches a Spotify or MOWL request: the pool, the playlists and every id written come from
+the user's own rows.
 """
 
 from typing import Annotated, ClassVar, Final, Literal, Protocol, Self

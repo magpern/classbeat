@@ -196,3 +196,16 @@ def test_a_list_that_fits_fits_postgres_check_too(database_url: str) -> None:
     assert size == song_list.stored_bytes(dumped)
     assert len(canonical(dumped)) < size <= MAX_CONTENT_BYTES
     assert size > MAX_CONTENT_BYTES - 4096  # the search really found the edge
+
+
+def test_a_preview_with_another_number_of_spans_is_refused() -> None:
+    """#1188 review: the fingerprint of these songs and one span per song, never fewer."""
+    p = preview()
+    short = p.model_copy(update={"music": p.music.model_copy(update={"songs": p.music.songs[:2]})})
+    with pytest.raises(JobFailure) as failed:
+        built(short)
+    assert failed.value.category == "invalid_output"
+    dumped = built(p).content.model_dump(mode="json")
+    dumped["preview"]["music"]["songs"] = dumped["preview"]["music"]["songs"][:2]
+    with pytest.raises(ValidationError):
+        song_list.SongListContent.model_validate(dumped)
