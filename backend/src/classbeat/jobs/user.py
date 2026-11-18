@@ -19,7 +19,8 @@ still under the owner lock and before anything is inserted, in a savepoint: a re
 whatever ``admit`` wrote and creates no class and no job. A job of a kind that consumes no credit
 is inserted with ``credit_state = 'none'`` and the ledger is not called.
 
-``approve`` checks what the job row can tell: the wait, its expiry, the revision (the newest
+``approve`` (``classbeat.jobs.approval``, split out of this module) checks what the job row can
+tell: the wait, its expiry, the revision (the newest
 ``song_list`` of the class; a revision id that is not one of the user's own song lists of that
 class is ``not_found``, like a foreign job; this applies only while the job waits: a job that is
 no longer ``waiting_for_approval`` answers ``not_waiting`` or ``expired`` for any revision, and a
@@ -34,7 +35,7 @@ import json
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Final, Protocol
+from typing import Final, Protocol
 from uuid import UUID
 
 from sqlalchemy import text
@@ -67,7 +68,7 @@ _NEW_JOB = text(
     "request_hash, credit_state, next_seq) VALUES (:id, :owner_id, :kind, 'queued', :class_id, "
     "CAST(:input AS jsonb), :key, :request_hash, :credit_state, 1)"
 )
-_LOCK = text(
+LOCK_SQL = text(
     "SELECT state, kind, input, class_id, cancel_requested_at, approval_revision_id, "
     "approval_hash, approved_at, credit_state, "
     "expires_at IS NOT NULL AND expires_at > now() AS live "
@@ -84,28 +85,11 @@ _REQUEST_CANCEL = text(
     "WHERE id = :job_id AND owner_id = :owner_id AND state = 'running' "
     "AND cancel_requested_at IS NULL RETURNING next_seq"
 )
-_NEWEST_LIST = text(
-    "SELECT id FROM class_revisions WHERE owner_id = :owner_id AND class_id = :class_id "
-    "AND kind = 'song_list' ORDER BY number DESC LIMIT 1"
-)
-# The approved revision must be one of the user's own song lists of the job's class: anything else
-# (another user's, another class's, an unknown id) is answered like an unknown job (ADR 0008
-# section 12: a foreign revision is 404, never "superseded").
-_OWN_LIST = text(
-    "SELECT 1 FROM class_revisions WHERE owner_id = :owner_id AND class_id = :class_id "
-    "AND id = :revision_id AND kind = 'song_list'"
-)
-_APPROVE = text(
-    "UPDATE jobs SET state = 'queued', attempt = 0, approved_at = now(), available_at = now(), "
-    "next_seq = next_seq + 1, updated_at = now() "
-    "WHERE id = :job_id AND owner_id = :owner_id AND state = 'waiting_for_approval' "
-    "RETURNING next_seq"
-)
 _EVENT = text(
     "INSERT INTO job_events (id, owner_id, job_id, seq, kind, payload, lease_version) "
     "VALUES (:id, :owner_id, :job_id, :seq, :kind, CAST(:payload AS jsonb), :v)"
 )
-_NOTIFY_QUEUED = text("SELECT pg_notify('jobs_queued', '')")
+NOTIFY_QUEUED = text("SELECT pg_notify('jobs_queued', '')")
 
 
 async def lock_owner(db: AsyncSession, ctx: UserContext) -> None:
@@ -128,7 +112,7 @@ async def job_limit(db: AsyncSession, ctx: UserContext, limit: "int | JobLimitPo
     return limit if isinstance(limit, int) else await limit.limit_for(db, ctx)
 
 
-async def _event(db: AsyncSession, ctx: UserContext, job_id: UUID, seq: int, kind: str) -> None:
+async def user_event(db: AsyncSession, ctx: UserContext, job_id: UUID, seq: int, kind: str) -> None:
     await db.execute(
         _EVENT,
         {
@@ -252,8 +236,8 @@ async def create(
     if new.consumes_credit:
         # After the insert, so a metered ledger (M5) can refer to the job; the same transaction.
         await ledger.reserve(db, ctx, job_id)
-    await _event(db, ctx, job_id, 1, "queued")
-    await db.execute(_NOTIFY_QUEUED)
+    await user_event(db, ctx, job_id, 1, "queued")
+    await db.execute(NOTIFY_QUEUED)
     return Created(job_id, created=True)
 
 
@@ -263,97 +247,14 @@ async def cancel(db: AsyncSession, ctx: UserContext, job_id: UUID) -> str | None
     afterwards, or ``None`` if the user has no such job."""
     require_context(ctx)
     params = {"job_id": job_id, "owner_id": ctx.user_id}
-    row = (await db.execute(_LOCK, params)).first()
+    row = (await db.execute(LOCK_SQL, params)).first()
     if row is None:
         return None
     if row.state in ("queued", "waiting_for_approval"):
         seq = (await db.execute(_CANCEL_NOW, params)).scalar_one()
-        await _event(db, ctx, job_id, seq, "cancelled")
+        await user_event(db, ctx, job_id, seq, "cancelled")
         return "cancelled"
     if row.state == "running" and row.cancel_requested_at is None:
         seq = (await db.execute(_REQUEST_CANCEL, params)).scalar_one()
-        await _event(db, ctx, job_id, seq, "cancel_requested")
+        await user_event(db, ctx, job_id, seq, "cancel_requested")
     return row.state
-
-
-@dataclass(frozen=True, slots=True)
-class Waiting:
-    """What ``admit`` sees of a job that passed the row checks of an approval."""
-
-    job_id: UUID
-    kind: str
-    input: Mapping[str, Any]
-    credit_state: str  # the job row's: 'reserved' when it consumes a credit, else 'none'
-    class_id: UUID
-    revision_id: UUID  # the job's approval revision, the class's newest song list
-    content_hash: bytes  # the approved hash, equal to the job's approval_hash
-
-
-# The jobs API's checks at approval (connections, per-user limit, credit): a refusal reason, or
-# None to accept. Runs in the approval's transaction, after the owner lock and the row lock.
-Admit = Callable[[AsyncSession, Waiting], Awaitable[str | None]]
-
-
-@dataclass(frozen=True, slots=True)
-class Approval:
-    accepted: bool
-    state: str | None
-    # not_found (also for a revision that is not one of the user's song lists of the job's
-    # class), not_waiting, expired, superseded, hash_mismatch, or the reason ``admit`` gave
-    reason: str | None = None
-
-
-async def approve(
-    db: AsyncSession,
-    ctx: UserContext,
-    job_id: UUID,
-    revision_id: UUID,
-    content_hash: bytes,
-    *,
-    admit: Admit,
-) -> Approval:
-    """``admit`` is required (#115 item 7): it holds the connection, per-user limit and credit
-    checks, and leaving it out would skip them."""
-    require_context(ctx)
-    params = {"job_id": job_id, "owner_id": ctx.user_id}
-    await lock_owner(db, ctx)  # before anything is counted (ADR 0005 section 2, #87)
-    row = (await db.execute(_LOCK, params)).first()
-    if row is None:
-        return Approval(False, None, "not_found")
-    same = row.approval_revision_id == revision_id and (
-        row.approval_hash is not None and bytes(row.approval_hash) == content_hash
-    )
-    if row.state != "waiting_for_approval":
-        if row.approved_at is not None and same:
-            return Approval(True, row.state)  # a repeated approval: no second event
-        if row.state == "expired":  # the sweep got there first: same reason as a late approval
-            return Approval(False, row.state, "expired")
-        return Approval(False, row.state, "not_waiting")
-    if not row.live:
-        return Approval(False, row.state, "expired")
-    newest = (
-        await db.execute(_NEWEST_LIST, {"owner_id": ctx.user_id, "class_id": row.class_id})
-    ).scalar_one_or_none()
-    if row.approval_revision_id != revision_id:
-        own = await db.execute(
-            _OWN_LIST,
-            {"owner_id": ctx.user_id, "class_id": row.class_id, "revision_id": revision_id},
-        )
-        if own.first() is None:
-            return Approval(False, row.state, "not_found")
-    if row.approval_revision_id != revision_id or newest != revision_id:
-        return Approval(False, row.state, "superseded")
-    if not same:
-        return Approval(False, row.state, "hash_mismatch")
-    reason = await admit(
-        db,
-        Waiting(
-            job_id, row.kind, row.input, row.credit_state, row.class_id, revision_id, content_hash
-        ),
-    )
-    if reason is not None:
-        return Approval(False, row.state, reason)
-    seq = (await db.execute(_APPROVE, params)).scalar_one()
-    await _event(db, ctx, job_id, seq, "approved")
-    await db.execute(_NOTIFY_QUEUED)
-    return Approval(True, "queued")

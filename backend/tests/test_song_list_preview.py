@@ -69,7 +69,8 @@ def built(p: Preview | None, n: int = 3) -> song_list.SongListRevision:
 
 def test_v1_and_v2_still_parse_and_hash_as_stored() -> None:
     v2 = built(None).content.model_dump(mode="json")
-    assert v2["v"] == 2 and "preview" not in v2
+    assert v2["v"] == 2
+    assert "preview" not in v2
     v1 = {
         **v2,
         "v": 1,
@@ -176,9 +177,11 @@ def test_a_list_that_fits_fits_postgres_check_too(database_url: str) -> None:
     for intervals in range(60, 0, -1):
         try:
             fits = maximum("C" * 120, segments=5, intervals=intervals)
-            break
         except JobFailure as failure:
-            assert failure.category == "invalid_output"
+            refused = failure.category
+            assert refused == "invalid_output"
+            continue
+        break
     assert fits is not None
     dumped = fits.content.model_dump(mode="json")
     engine = create_engine(database_url)

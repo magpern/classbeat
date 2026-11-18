@@ -156,7 +156,7 @@ async def store_draft(fs: FencedSession) -> UUID | None:
 
 
 async def admit_all(db: AsyncSession, waiting: Any) -> str | None:
-    """An ``admit`` that accepts (tests of ``classbeat.jobs.user.approve`` alone)."""
+    """An ``admit`` that accepts (tests of ``classbeat.jobs.approval.approve`` alone)."""
     return None
 
 

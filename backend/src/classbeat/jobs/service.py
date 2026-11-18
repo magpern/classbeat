@@ -21,7 +21,7 @@ from classbeat import connections
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.flags import effective as flags
-from classbeat.jobs import user
+from classbeat.jobs import approval, user
 from classbeat.jobs.credits import CreditLedger, QuotaRefused
 from classbeat.jobs.discard import discard_first_creation
 from classbeat.jobs.hold import CreateHold
@@ -221,13 +221,13 @@ async def approve(
     ledger: CreditLedger,
 ) -> ApproveResult:
     """Approve with every check of ADR 0005 section 2, in one transaction: the owner lock, the
-    job row lock and its checks (``user.approve``), then ``admit`` below: the connections of the
+    job row lock and its checks (``approval.approve``), then ``admit`` below: the connections of the
     kind's ``CONNECTIONS``, the kind's ``approve_check`` (ADR 0008 section 5), the per-user limit
     and the credit seam, in that order. ``busy`` carries the limit; a ledger's ``QuotaRefused``
     (the cost cap) answers ``quota`` with its numbers and rolls the transaction back."""
     counts: dict[str, int | str] = {}
 
-    async def admit(db: AsyncSession, waiting: user.Waiting) -> str | None:
+    async def admit(db: AsyncSession, waiting: approval.Waiting) -> str | None:
         kind = kinds.get(waiting.kind)
         if kind is None or not issubclass(kind.input_model, JobInput):
             return "invalid_input"  # fail closed: the needed connections are unknown
@@ -250,7 +250,7 @@ async def approve(
             if reason is not None:
                 return reason
         allowed = await user.job_limit(db, ctx, limit)
-        if await user.active_jobs(db, ctx) >= allowed:  # the owner lock is held (user.approve)
+        if await user.active_jobs(db, ctx) >= allowed:  # the owner lock is held (approval.approve)
             counts["limit"] = allowed
             return "busy"
         if waiting.credit_state == "reserved" and not await ledger.allows(db, ctx, waiting.job_id):
@@ -259,7 +259,7 @@ async def approve(
 
     try:
         async with user_session(factory, ctx) as db:
-            done = await user.approve(db, ctx, job_id, revision_id, content_hash, admit=admit)
+            done = await approval.approve(db, ctx, job_id, revision_id, content_hash, admit=admit)
             if done.state is None:
                 return ApproveResult(False, None, done.reason)
             return ApproveResult(

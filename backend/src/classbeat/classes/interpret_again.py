@@ -8,9 +8,9 @@ a **new** ``interpret_request`` from the same request, with the user's current c
 - only for a class of the user's whose stored interpretation has the ``not_connected`` refusal
   (else ``not_ready``; another user's class or an unknown one ``not_found``);
 - the new job's input is the completed interpret job's own browser fields (the request, the music
-  and sport overrides, the composer's attached music, the title), never its server fields, with the user's current MOWL
-  connection (``not_connected`` when there is none) and the current Spotify one where the first
-  request named one;
+  and sport overrides, the composer's attached music, the title), never its server fields, with
+  the user's current MOWL connection (``not_connected`` when there is none) and the current
+  Spotify one where the first request named one;
 - it goes through the jobs API's create (``JobEnqueue``) with the kind's own ``admit``, the
   per-user limit and no credit, under an idempotency key derived from the first interpret job, so
   a second call or a reopened tab gets the same new job. It starts a new class, as every

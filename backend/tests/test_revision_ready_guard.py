@@ -63,7 +63,7 @@ ROUTES_THAT_CALL: Final = frozenset(
 _STUDIO: Final = "a studio class only: unreachable for a non-studio class (current_draft.py)"
 ROUTES_ALLOWED: Final = {
     ("POST", "/api/jobs/{job_id}/approve"): "approves the waiting job's own song_list revision "
-    "(jobs.user.approve); a sketch is a draft and is never a job's song list",
+    "(jobs.approval.approve); a sketch is a draft and is never a job's song list",
     ("GET", "/api/classes/{class_id}/revisions/{revision_id}"): "a read: writes nothing and "
     "calls nothing outside classbeat",
     ("GET", "/api/classes/{class_id}/studio-songs/{revision_id}"): _STUDIO,
