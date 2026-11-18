@@ -50,7 +50,7 @@ const TIMELINE = {
 function studioRoutes(extra: Record<string, unknown> = {}) {
   return {
     ...SESSION_ROUTES,
-    ...classRoutes(),
+    ...classRoutes({ cls: { studio: true } }),
     'GET /api/connections': SWEDEBEAT,
     [`GET ${CLASS_PATH}/timeline`]: TIMELINE,
     [`GET ${CLASS_PATH}/outputs`]: {
@@ -154,12 +154,20 @@ describe('a studio class on the class page', () => {
     expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
   })
 
-  it('shows nothing of the studio on a class that is not one', async () => {
-    fakeApi({ ...SESSION_ROUTES, ...classRoutes() })
+  it('shows nothing of the studio on a class that is not one, and never asks for its timeline', async () => {
+    const api = fakeApi({ ...SESSION_ROUTES, ...classRoutes() })
     renderAt(PAGE)
     await screen.findByTestId('tss')
     expect(screen.queryByTestId('studio-timeline')).toBeNull()
     expect(screen.queryByTestId('studio-outputs')).toBeNull()
+    expect(api.to('GET', `${CLASS_PATH}/timeline`)).toHaveLength(0)
+  })
+
+  it('asks for the timeline once of a class the summary says is a studio class', async () => {
+    const api = fakeApi(studioRoutes())
+    renderAt(PAGE)
+    await screen.findAllByTestId('timeline-song')
+    expect(api.to('GET', `${CLASS_PATH}/timeline`)).toHaveLength(1)
   })
 
   it('sends a chat change as studio_revise on the SwedeBeat connection, though Change it is off', async () => {
@@ -197,7 +205,8 @@ describe('a studio class on the class page', () => {
         cls: { songs: { state: 'approved', job_id: SONGS_JOB, revision_id: LIST, content_hash: HASH } },
       }),
       'GET /api/connections': SWEDEBEAT,
-      [`GET ${CLASS_PATH}/timeline`]: () => reason(409, 'no_studio_draft'),
+      // No `studio` flag: the stored music is set by the first studio design, so the timeline is not asked
+      // for and the kind is found by the approved list's job.
       [`GET /api/jobs/${SONGS_JOB}`]: jobBody('completed', { id: SONGS_JOB, kind }),
       ...extra,
     })
@@ -247,7 +256,7 @@ describe('a studio class on the class page', () => {
       const SONGS_PATH = `${CLASS_PATH}/revisions/${LIST}`
       const api = fakeApi(
         approved('studio_songs', {
-          [`GET ${CLASS_PATH}/timeline`]: () => gate.then(() => reason(409, 'no_studio_draft')),
+          [`GET /api/jobs/${SONGS_JOB}`]: () => gate.then(() => jobBody('completed', { id: SONGS_JOB, kind: 'studio_songs' })),
           [`GET ${SONGS_PATH}`]: () => reason(500, 'boom'),
         }),
       )
@@ -288,10 +297,11 @@ describe('a studio class on the class page', () => {
       expect(api.to('GET', `${CLASS_PATH}/revisions/${LIST}`)).toHaveLength(0)
     })
 
-    it.each([500, 404])('keeps the legacy song panel on a non-studio class when the timeline answers %i', async (status) => {
-      fakeApi(approved('design_with_songs', { [`GET ${CLASS_PATH}/timeline`]: () => reason(status, 'x') }))
+    it('keeps the legacy song panel on a non-studio class without asking for its timeline', async () => {
+      const api = fakeApi(approved('design_with_songs'))
       renderAt(PAGE)
       expect(await screen.findByRole('region', { name: 'Change songs' })).toBeInTheDocument()
+      expect(api.to('GET', `${CLASS_PATH}/timeline`)).toHaveLength(0)
     })
 
     it('offers nothing for a class whose approved songs are not a studio list', async () => {

@@ -88,7 +88,8 @@ export const SIGNED_IN = {
  * defaults to anonymous, `/api/connections` and `/api/external-operations` to none, `/api/connections/player` to off, `/api/connections/spotify` to
  * 404 `feature_off`, `/api/account/billing` to 403 `billing_closed` and
  * `/api/mail/preferences` to everything on, `/api/usage` to an empty month, `/api/music/playlist-covers` and
- * `/api/auth/events` to none, and a class's `/timeline` to 409 `no_studio_draft` (not a studio class).
+ * `/api/auth/events` to none. A class's `/timeline` has no default: the page asks for it only when the
+ * class summary says `studio` (#1173), so a test that sets that flag names the route.
  */
 export function fakeApi(routes: Record<string, Handler | object | string>) {
   rememberCsrfToken(null)
@@ -118,12 +119,7 @@ export function fakeApi(routes: Record<string, Handler | object | string>) {
     const headers = new Headers(init?.headers)
     const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined
     calls.push({ method, path, body, headers })
-    // A class page asks for the studio timeline; a class that is not a studio class answers 404.
-    const route =
-      table[`${method} ${path}`] ??
-      (method === 'GET' && /^\/api\/classes\/[^/]+\/timeline$/.test(path)
-        ? () => json({ detail: { reason: 'no_studio_draft' } }, 409)
-        : undefined)
+    const route = table[`${method} ${path}`]
     if (route === undefined) {
       return Promise.reject(new Error(`unexpected request: ${method} ${path}`))
     }

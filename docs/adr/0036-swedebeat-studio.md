@@ -166,6 +166,14 @@ The owner's direction (2026-11-15):
 - The timeline shows the songs, the cut points, the crossfades and the intervals, all from the composed map.
 - A playable audio preview is **deferred**. Nothing suggests the user can audition the mix.
 - The approval is shown together with the output choice (§6).
+- **Amendment of 2026-11-18 (#1173): the `studio` flag of the class summary.** The class list and the class
+  detail carry `studio: bool` (`ClassOut.studio`), true exactly when the class's `music_source ->> 'source'`
+  is `swedebeat_studio` and false for every other class (Spotify, MOWL, soundless, no source yet, every older
+  class). It is read-only, computed by the same owner-scoped statement as the other flags (`owner_id` and
+  `UserContext`, no new query), and says nothing the class's owner could not already infer from the class. The
+  page's `useStudioTimeline` reads `GET /api/classes/{id}/timeline` only for a class whose summary says
+  `studio`; for any other class it answers `none` without a request, so the designed `409 no_studio_draft` of a
+  non-studio class no longer reaches the browser (and the e2e `watchConsole` no longer exempts that URL).
 
 ### 6. Outputs
 

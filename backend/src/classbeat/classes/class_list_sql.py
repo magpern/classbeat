@@ -5,6 +5,7 @@ from sqlalchemy import text
 
 from classbeat.classes.class_sql import OPEN_JOB
 from classbeat.classes.kinds import CLASS_SPORT_SQL
+from classbeat.swedebeat_studio.song_list_model import SOURCE as STUDIO_SOURCE
 
 CLASSES = text(f"""
 SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
@@ -22,6 +23,8 @@ SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
     {CLASS_SPORT_SQL} AS sport,
     -- ADR 0007 amendment item 10 (#530): only a stored source 'none' is soundless.
     coalesce(c.music_source ->> 'source' = 'none', false) AS soundless,
+    -- ADR 0036 section 5 (#1173): only a stored source 'swedebeat_studio' is a studio class.
+    coalesce(c.music_source ->> 'source' = '{STUDIO_SOURCE}', false) AS studio,
     -- ADR 0036 section 6: a SwedeBeat playlist or mix was (or may have been) written for the class.
     EXISTS (SELECT 1 FROM class_outputs o WHERE o.owner_id = c.owner_id AND o.class_id = c.id
         AND o.output IN ('swedebeat_playlist', 'swedebeat_mix')

@@ -67,6 +67,10 @@ class ClassOut(BaseModel):
     # ADR 0007 amendment of 2026-11-03, item 10 (#530): true only when the class's
     # ``music_source`` is ``{"source": "none"}`` (a soundless class); false for every older class.
     soundless: bool = False
+    # ADR 0036 section 5 (#1173): true only when the class's ``music_source`` is the studio source
+    # (``swedebeat_studio``); false for every other and every older class. The client reads it to
+    # skip ``GET /classes/{id}/timeline`` for a class that cannot have a studio draft.
+    studio: bool = False
     # ADR 0036 section 6: an output was written to SwedeBeat (a playlist or a mix); a class delete
     # cannot take it back, so the delete card says so.
     swedebeat_written: bool = False
@@ -105,6 +109,7 @@ class ClassOut(BaseModel):
             tss_approximate=bool(row.tss_approximate),
             sport="running" if row.sport == "running" else "cycling",
             soundless=row.soundless is True,
+            studio=row.studio is True,
             swedebeat_written=row.swedebeat_written is True,
         )
 
