@@ -32,11 +32,11 @@ SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
             OR o.external_id IS NOT NULL)) AS swedebeat_written,
     -- #1234: the user's own request text. ``classes.brief`` once the class has a design; before
     -- that the newest song-design job's brief (as ``service.stored_brief``), looked up only for
-    -- such a class. NULL when blank or absent.
-    nullif(btrim(CASE WHEN c.brief IS NOT NULL THEN c.brief ->> 'text'
+    -- such a class. NULL when blank or absent; cut to 280 characters (the card shows two lines).
+    left(nullif(btrim(CASE WHEN c.brief IS NOT NULL THEN c.brief ->> 'text'
         ELSE (SELECT j.input -> 'brief' ->> 'text' FROM jobs j
             WHERE j.owner_id = c.owner_id AND j.class_id = c.id AND j.kind = '{SONG_DESIGN_KIND}'
-            ORDER BY j.created_at DESC LIMIT 1) END), '') AS request,
+            ORDER BY j.created_at DESC LIMIT 1) END), ''), 280) AS request,
     -- #1234: the songs the current revision plays (``music.songs``); NULL for a soundless or
     -- studio class, a revision made before the field existed, or no current revision.
     CASE WHEN jsonb_typeof(cur.music -> 'songs') = 'array'

@@ -66,6 +66,16 @@ async def test_the_request_is_the_stored_brief_text(two: tuple[Plant, Plant]) ->
     assert detail.json()["request"] == "A hilly 45 minutes, 80s rock"
 
 
+async def test_a_long_request_is_cut_to_280_characters_after_the_trim(
+    two: tuple[Plant, Plant],
+) -> None:
+    mine, _ = two
+    set_brief(mine, {"length_min": 45, "text": "  " + "a" * 300})
+    assert (await listed(mine))["request"] == "a" * 280
+    set_brief(mine, {"length_min": 45, "text": "b" * 280})
+    assert (await listed(mine))["request"] == "b" * 280
+
+
 @pytest.mark.parametrize("blank", ["", "   "])
 async def test_a_blank_request_reads_null(two: tuple[Plant, Plant], blank: str) -> None:
     mine, _ = two
