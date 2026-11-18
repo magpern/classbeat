@@ -7,11 +7,12 @@ the interpreter may propose for a new class (issue #1233).
 - ``proposed_name``: the interpreter's ``name`` as a title, or ``None``. It is the model's text,
   so it is display text only: it never decides anything and never goes back to a model. Emoji and
   other symbols (Unicode ``So`` and ``Sk``), variation selectors (and their supplement), the
-  combining keycap and the Hangul fillers that look blank are dropped, and every quote mark but an
-  apostrophe, and any quote around it, then ``clean_title``. What is left must hold a letter or a
-  digit, be at most ``NAME_MAX`` characters **after** the cleaning (so quotes or emoji alone never
-  make a name too long) and look like no link (``LINK``: a scheme, ``www.``, an ``@`` or a
-  ``word.tld`` domain, #1237). Apostrophes inside it stay ("Don't stop").
+  combining keycap, the Hangul fillers that look blank and control and format characters are
+  dropped, and every quote mark but an apostrophe, then any quote around it, then ``clean_title``;
+  so the result is its own cleaning (``proposed_name`` is idempotent, #1237). What is left must
+  hold a letter or a digit, be at most ``NAME_MAX`` characters **after** the cleaning (so quotes
+  or emoji alone never make a name too long) and look like no link (``LINK``: a scheme,
+  ``www.``, an ``@`` or a ``word.tld`` domain, #1237). Apostrophes inside it stay ("Don't stop").
 """
 
 import re
@@ -51,8 +52,9 @@ def _quote(ch: str) -> bool:
 def _shown(ch: str) -> bool:
     if ch in INVISIBLE or "\ufe00" <= ch <= "\ufe0f" or "\U000e0100" <= ch <= "\U000e01ef":
         return False
-    if unicodedata.category(ch) in DROPPED_CATEGORIES:
-        return False
+    category = unicodedata.category(ch)
+    if category in DROPPED_CATEGORIES or (category[0] == "C" and not ch.isspace()):
+        return False  # control and format characters go first, so a quote beside one is stripped
     return ch in APOSTROPHES or not _quote(ch)
 
 

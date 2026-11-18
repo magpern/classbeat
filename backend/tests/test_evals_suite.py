@@ -82,7 +82,7 @@ RELEASED: dict[int, str] = {
     27: "57d564bea0282681c91fdb2db7823fa55b82f69139f4302394fc0237fade63dd",
     # #1233: a new class's short name in the interpret prompt, its cleaning and the name check,
     # the composer docstring the #1206 leftovers waited on, and the #1237 hardening.
-    28: "afeb954aeef7b0516405466ab2aba709c817291172dba6bafdd6fca15f16c69a",
+    28: "85ed6dcb5c31ced0353a00630a4db2bc4c72fe2a0cf50587f8f55cf2f9a13acf",
 }
 
 SUITE = load_suite()

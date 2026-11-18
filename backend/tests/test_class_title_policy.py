@@ -1,6 +1,8 @@
 """``classbeat.class_title_policy`` (issue #1233; pure): the title cleaner and the interpreter's
 short name for a new class, and how ``InterpretedRequest.sanitised`` keeps it."""
 
+import unicodedata
+
 import pytest
 from pydantic import ValidationError
 
@@ -107,3 +109,39 @@ def test_a_link_like_name_is_dropped(raw: str) -> None:
 )
 def test_a_dot_in_words_is_no_link(raw: str) -> None:
     assert proposed_name(raw) == raw
+
+
+TRICKY = [
+    "\"'Spin ride' \U0001f6b4\u200d\u2640\ufe0f\"",  # the review's case: a quote beside a ZWJ emoji
+    "'Spin ride'\u200d",
+    '\u200e"Hills"\u200f',  # bidi marks around quotes
+    "\u202a\u201cTre backar\u201d\u202c",
+    "\u2066'Tempo'\u2069 ride",
+    "Ride '\u200b'",
+    "\u3164'Hills'\u3164",  # fillers around quotes
+    "'\u115f\u1160'",
+    "1\ufe0f\u20e3 '2\ufe0f\u20e3' climbs",  # keycaps
+    "\u20e3'Ride'\u20e3",
+    "  \u00a0 'Spaced'\u2003 \t\n",  # spaces of every kind
+    "\u00ab \u2039'x'\u203a \u00bb",
+    "Don\u2019t stop\u2019",
+    '"""',
+    "'" + "x" * 60 + "'\u200d",
+    "Rock 'n' roll\u00ad'",  # a soft hyphen (a format character) beside a quote
+    "\ufeff'Ride'\ufeff",
+]
+
+
+@pytest.mark.parametrize("raw", TRICKY)
+def test_the_cleaning_is_idempotent(raw: str) -> None:
+    # #1237: the eval's backstop compares a kept name with its own cleaning.
+    once = proposed_name(raw)
+    assert proposed_name(once) == once
+    if once is not None:
+        assert once == once.strip("'\u2019\" ")
+        assert not any(unicodedata.category(c)[0] == "C" for c in once)
+
+
+def test_a_quote_beside_a_format_character_is_stripped() -> None:
+    assert proposed_name(TRICKY[0]) == "Spin ride"
+    assert proposed_name("'Spin ride'\u200d") == "Spin ride"
