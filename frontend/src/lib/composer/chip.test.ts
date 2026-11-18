@@ -15,7 +15,7 @@ const SAVED_NONE: ClassSummary['saved'] = {
   latestVerified: null,
 }
 
-function input(over: Partial<ChipInput> & { composer?: Partial<ComposerState> } = {}): ChipInput {
+function input(over: Omit<Partial<ChipInput>, 'composer'> & { composer?: Partial<ComposerState> } = {}): ChipInput {
   const { composer, ...rest } = over
   return {
     currentRevisionId: SKETCH_ID,
