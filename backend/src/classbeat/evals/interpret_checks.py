@@ -15,7 +15,9 @@ On the sanitised ``InterpretedRequest`` (what the stage hands back), never on mo
   says, artist and place (case aside);
 - ``questions`` (#1185): every path the case ``asks`` is asked, and no question is asked of a
   field the reading states explicitly;
-- ``forbidden_text``: none of the case's strings is anywhere in what came back.
+- ``name`` (#1233): a case that expects the class ``named`` got a short name that survived the
+  cleaning (``InterpretedRequest.sanitised`` drops one that does not);
+- ``forbidden_text``: none of the case's strings is anywhere in what came back, the name included.
 """
 
 import json
@@ -69,6 +71,8 @@ def check_interpretation(case: InterpretCase, got: InterpretedRequest) -> list[C
             f"{', '.join(stated) or '-'}",
         )
     )
+    if expect.named:
+        checks.append(Check("name", got.name is not None, "a short name: given or not"))
     text = json.dumps(got.model_dump(mode="json"), ensure_ascii=False).lower()
     found = [t for t in expect.forbidden_text if t.lower() in text]
     checks.append(Check("forbidden_text", not found, f"{len(found)} forbidden strings found"))

@@ -22,7 +22,8 @@ if the request holds it (``music_taste.keep_word``), so it is the instructor's t
 model's; ``classbeat.design.interpret_taste_policy`` turns it into ``Brief.music_taste``.
 
 ``pinned_songs`` and ``questions`` (ADR 0038 section 3, #1185) are the composer's:
-``classbeat.agent.interpreted_composer``.
+``classbeat.agent.interpreted_composer``. ``name`` (#1233) is a new class's short title, the one
+model text kept: display text only, cleaned by ``class_title_policy.proposed_name`` (``sanitised``).
 """
 
 from typing import Annotated, Any, Final, Literal, NamedTuple, Self
@@ -56,6 +57,7 @@ from classbeat.agent.music_taste import (
     keep_word,
 )
 from classbeat.agent.schemas import STRICT, Game
+from classbeat.class_title_policy import NAME_MAX, proposed_name
 
 MAX_NAMES: Final = 50  # playlist and mix names sent to the model, so the largest valid index + 1
 MAX_GAMES: Final = 6
@@ -259,10 +261,11 @@ class InterpretedRequest(BaseModel):
     questions: list[InterpretedQuestion] = Field(
         default_factory=lambda: list[InterpretedQuestion](), max_length=MAX_QUESTIONS
     )
+    name: str | None = Field(default=None, min_length=1, max_length=NAME_MAX)
 
     def sanitised(self, request: str, names: int) -> Self:
         """A copy that keeps a quote only if it is a substring of ``request`` and a music index
-        only if it points into the ``names`` that were sent."""
+        only if it points into the ``names`` that were sent; the name cleaned or dropped."""
         update: dict[str, Any] = {}
         for field in SCALARS:
             held: Stated | None = getattr(self, field)
@@ -274,6 +277,7 @@ class InterpretedRequest(BaseModel):
         if self.music_taste is not None:
             update["music_taste"] = self.music_taste.sanitised(request)
         update["pinned_songs"] = sanitised_pins(self.pinned_songs, request)
+        update["name"] = proposed_name(self.name)
         return self.model_copy(update=update)
 
     def readings(self) -> list[Reading]:
