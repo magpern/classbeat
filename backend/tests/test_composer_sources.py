@@ -40,8 +40,6 @@ def script() -> dict[str, Any]:
         ("pool", at(11), "recovery"), ("pool", at(12), "cooldown"),
     ]  # fmt: skip
     turns = [*pool_turns(pool), *choose_turns(listed), *design_turns()]
-    from composertools import REVISED
-
     return {"model": "fake-model", "drafts": {"revised": REVISED}, "turns": turns}
 
 
