@@ -79,7 +79,7 @@ export const publicDa: Catalogue = {
   'feat.playlist.text': 'Vælg en playliste fra din MOWL-musik, så afstemmes holdet efter dens sange.',
   'feat.songs.title': 'Lad os vælge sangene',
   'feat.songs.text':
-    'Bed om sange, og godkend listen først. De sange, du godkender, kommer i en privat playliste i din Spotify.',
+    'Bed om sange, og godkend listen først. De kommer i en playliste i din Spotify. Vi beder om privat, men Spotify kan gøre den offentlig.',
   'feat.swedebeat.title': 'Design til et Swedebeat-mix',
   'feat.swedebeat.text': 'Afstem holdet efter et af dine Swedebeat-mix.',
   'feat.noMusic.title': 'Hold uden musik',

@@ -28,7 +28,7 @@ export const helpEn = {
     'A Spotify connection with your own Client ID, and song picking on your plan. Available once we switch it on. Until then you can still design a class to a playlist from your MOWL music.',
   'help.design.saved.q': 'What is saved, and when?',
   'help.design.saved.a':
-    'The assistant only proposes. When you approve a song list, we create a private playlist with those songs in your Spotify and add it to your MOWL music. The workout itself goes to your MOWL account, private, only when you press Save to MOWL on the class. If you do not approve a list in time, nothing is written to your Spotify.',
+    'The assistant only proposes. When you approve a song list, we create a playlist with those songs in your Spotify and add it to your MOWL music. We ask for private, but Spotify may make it public. The workout itself goes to your MOWL account, private, only when you press Save to MOWL on the class. If you do not approve a list in time, nothing is written to your Spotify.',
   'help.design.change.q': 'Can I change a class afterwards?',
   'help.design.change.a':
     'Yes. Describe what should be different on the class page, or use Change songs to replace some of the songs. Every change makes a new version. Earlier versions stay, and you can make one of them current with Use this version. Save to MOWL again to update the workout there.',

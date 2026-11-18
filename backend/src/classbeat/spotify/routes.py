@@ -40,9 +40,10 @@ ACCOUNT_PAGE: Final = "/account/spotify"
 # Section 9: the wording the user consents to, and its version (``spotify_pool.consent_version``).
 CONSENT_VERSION: Final = 1
 CONSENT_TEXT: Final = (
-    "classbeat manages one private working playlist in your Spotify account, named classbeat "
-    "working copy, to ask for song candidates and have MOWL analyse them. It is overwritten on "
-    "each pick; anyone with its link could open it."
+    "classbeat manages one working playlist in your Spotify account, named classbeat "
+    "working copy, to ask for song candidates and have MOWL analyse them. We ask Spotify for a "
+    "private playlist, but Spotify may make it public, and anyone with its link could then open "
+    "it. It is overwritten on each pick, and classbeat keeps using it either way."
 )
 
 

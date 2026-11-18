@@ -56,7 +56,7 @@ export const legalDa: Catalogue = {
   'privacy.model.p1':
     'For at udforme et hold sender vi til en udbyder af AI-modeller det, du har skrevet om det, dine ændringsønsker og tidligere ønsker, de udkast og tidslinjer, der er lavet indtil nu, og et resumé af sangene (afspilningslistens navn og for hver sang oplysninger som titel, kunstner, tempo og længde).',
   'privacy.model.p2':
-    "Vi sender aldrig din e-mailadresse, dit navn, adgangskoder, tokens eller konto- eller tjeneste-id'er. Assistenten foreslår kun: classbeat gemmer kun i MOWL eller Spotify det, du godkender, eller det, du på forhånd har tilladt med dit engangssamtykke til en privat sangpulje i din Spotify.",
+    "Vi sender aldrig din e-mailadresse, dit navn, adgangskoder, tokens eller konto- eller tjeneste-id'er. Assistenten foreslår kun: classbeat gemmer kun i MOWL eller Spotify det, du godkender, eller det, du på forhånd har tilladt med dit engangssamtykke til en arbejdsplayliste i din Spotify.",
 
   'privacy.processors.title': 'Hvem andre håndterer dine oplysninger',
   'privacy.processors.p1':

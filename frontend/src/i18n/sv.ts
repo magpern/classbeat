@@ -275,7 +275,7 @@ const sv: Catalogue = {
   'sentence.spotify.unknown': 'Något gick fel med Spotify. Försök igen senare.',
   'sentence.job.consent_missing': 'Tillåt arbetsspellistan i dina Spotify-inställningar först.',
   'sentence.job.pool_unusable':
-    'Din arbetsspellista har ändrats: gör den privat igen eller ställ in den på nytt.',
+    'Din arbetsspellista har ändrats i Spotify och kan inte användas. Ställ in den på nytt.',
   'sentence.job.pool_missing': 'Din arbetsspellista saknades i Spotify; försöker igen av sig själv.',
   'sentence.job.pool_not_synced': 'MOWL har inte hunnit ikapp med arbetsspellistan; försök igen om en minut.',
   'sentence.job.playlist_mismatch':
@@ -1254,7 +1254,7 @@ const sv: Catalogue = {
   'songs.ended.pickAgain': 'Välj låtar igen',
   'songs.ended.startNew': 'Starta nytt pass',
   'songs.ended.backToClass': 'Tillbaka till passet',
-  'songs.approval.privacy': 'Privat spellista i ditt Spotify. Alla med länken kan öppna den.',
+  'songs.approval.privacy': 'Spotify kan göra den offentlig; alla med länken kan öppna den.',
   'songs.approval.stopped': 'Låtarna stoppades, men vi kunde inte läsa passet. Tryck på Be om ändringar igen.',
   'songs.approval.cannotChange': 'Låtarna kan inte ändras längre, så inget startades. Välj låtar igen.',
   'songs.approval.loading': 'Laddar låtarna',
@@ -1455,7 +1455,7 @@ const sv: Catalogue = {
 
   // Account: Spotify working-playlist consent switch.
   'consent.revokeText': 'Vi glömmer arbetsspellistan och slutar använda den. Nästa låtval skapar en ny, när du samtycker igen.',
-  'consent.revokeDetails': 'Den gamla spellistan finns kvar i ditt Spotify, privat, med sina senaste låtar. Radera den där om du inte vill ha den.',
+  'consent.revokeDetails': 'Den gamla spellistan finns kvar i ditt Spotify, kanske offentlig: alla med länken kan öppna den. Radera den där om du inte vill ha den.',
   'consent.given': 'Tack. Vi får använda arbetsspellistan.',
   'consent.withdrawn': 'Ditt samtycke är återkallat. Spellistan finns kvar i ditt Spotify.',
   'consent.label': 'Tillåt arbetsspellistan',
@@ -2349,7 +2349,7 @@ const sv: Catalogue = {
   'studio.out.spotify_playlist':
     'Spotify-spellista',
   'studio.out.spotify_playlist.desc':
-    'En ny privat spellista i ditt Spotify-konto, i den godkända ordningen.',
+    'En ny spellista i ditt Spotify-konto, i den godkända ordningen. Vi ber om privat, men Spotify kan göra den offentlig.',
   'studio.out.swedebeat_playlist':
     'SwedeBeat-spellista',
   'studio.out.swedebeat_playlist.desc':

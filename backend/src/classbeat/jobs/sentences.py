@@ -25,7 +25,7 @@ from classbeat.spotify.errors import sentence_of as spotify_sentence_of
 SONG_SENTENCES: Final[dict[str, str]] = {
     "consent_missing": "Allow the working playlist in your Spotify settings first.",
     "pool_unusable": (
-        "Your working playlist was changed: make it private again or set it up again."
+        "Your working playlist was changed in Spotify and cannot be used. Set it up again."
     ),
     "pool_missing": "Your working playlist was gone from Spotify; trying again by itself.",
     "pool_not_synced": ("MOWL has not caught up with the working playlist; try again in a minute."),

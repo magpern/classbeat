@@ -56,7 +56,7 @@ export const legalSv: Catalogue = {
   'privacy.model.p1':
     'För att utforma ett pass skickar vi till en leverantör av AI-modeller det du skrivit om det, dina ändringsönskemål och tidigare önskemål, de utkast och tidslinjer som gjorts hittills och en sammanfattning av låtarna (spellistans namn och för varje låt uppgifter som titel, artist, tempo och längd).',
   'privacy.model.p2':
-    'Vi skickar aldrig din e-postadress, ditt namn, lösenord, tokens eller några konto- eller tjänst-ID:n. Assistenten föreslår bara: classbeat sparar i MOWL eller Spotify bara det du godkänner, eller det du tillåtit i förväg genom ditt engångssamtycke till en privat låtpool i ditt Spotify.',
+    'Vi skickar aldrig din e-postadress, ditt namn, lösenord, tokens eller några konto- eller tjänst-ID:n. Assistenten föreslår bara: classbeat sparar i MOWL eller Spotify bara det du godkänner, eller det du tillåtit i förväg genom ditt engångssamtycke till en arbetsspellista i ditt Spotify.',
 
   'privacy.processors.title': 'Vilka andra hanterar dina uppgifter',
   'privacy.processors.p1':

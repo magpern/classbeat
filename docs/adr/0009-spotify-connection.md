@@ -336,10 +336,12 @@ note of the stage; over it the job fails `limit_exceeded`) and the library never
 Consent is a row, not a flag on the connection: `spotify_pool` (ADR 0008 §2) with `consented_at` and
 `consent_version` (the wording's version). `PUT /api/connections/spotify/pool-consent` (recent auth,
 CSRF, needs `connected`) inserts it with `playlist_id NULL` and the connection's Spotify user id. The
-wizard's last step shows the sentence: "classbeat manages one private working playlist in your Spotify
-account, named *classbeat working copy*, to ask for song candidates and have MOWL analyse them. It is
-overwritten on each pick; anyone with its link could open it." (the wording T25 requires about
-non-public playlists). `DELETE` revokes, in **one transaction**: the row is deleted and `forget_pool`
+wizard's last step shows the sentence: "classbeat manages one working playlist in your Spotify
+account, named *classbeat working copy*, to ask for song candidates and have MOWL analyse them. We ask
+Spotify for a private playlist, but Spotify may make it public, and anyone with its link could then open
+it. It is overwritten on each pick, and classbeat keeps using it either way." (the wording T25 requires
+about non-public playlists, as clarified by roadmap Amendment 27, issue #1162: same `consent_version` 1,
+see ADR 0008 §2). `DELETE` revokes, in **one transaction**: the row is deleted and `forget_pool`
 (ADR 0008 §2) deletes the user's pool operation rows, the succeeded create that holds the old id and
 the replace rows whose hash covers it included. The playlist id is therefore forgotten and **never
 touched again** (no row is left from which a later pick could reuse it; the page tells the user the

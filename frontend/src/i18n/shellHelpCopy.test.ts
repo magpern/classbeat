@@ -242,7 +242,7 @@ describe('shell, cookie notice, help and activity copy', () => {
   it('keeps what the help page says is saved and deleted', () => {
     // Nothing safety-relevant was dropped from the disclosures: what is written to Spotify and MOWL,
     // what a deletion removes, and what stays behind.
-    expect(en['help.design.saved.a']).toMatch(/private playlist.*Spotify.*MOWL.*private.*Save to MOWL/s)
+    expect(en['help.design.saved.a']).toMatch(/playlist.*Spotify.*may make it public.*MOWL.*private.*Save to MOWL/s)
     expect(en['help.data.delete.a']).toMatch(/cannot be undone.*MOWL.*Spotify stay there/s)
     expect(sv['help.data.delete.a']).toMatch(/Det går inte att ångra.*MOWL.*Spotify finns kvar/s)
     expect(da['help.data.delete.a']).toMatch(/Det kan ikke fortrydes.*MOWL.*Spotify bliver dér/s)
