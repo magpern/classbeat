@@ -1,8 +1,8 @@
 """The consent sentence and the pool failure sentence do not promise a private playlist.
 
-Roadmap Amendment 27 (issue #1162): a playlist classbeat creates is asked for private, but Spotify may
-make it public, and classbeat keeps using it. The clarification keeps ``CONSENT_VERSION`` at 1 (ADR 0008
-section 2), so existing consents stand.
+Roadmap Amendment 27 (issue #1162): a playlist classbeat creates is asked for private, but Spotify
+may make it public, and classbeat keeps using it. The clarification keeps ``CONSENT_VERSION`` at 1
+(ADR 0008 section 2), so existing consents stand.
 """
 
 from classbeat.jobs.sentences import SONG_SENTENCES
