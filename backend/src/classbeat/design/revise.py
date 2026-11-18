@@ -89,7 +89,7 @@ from classbeat.design.kind import (
     group_model,
     music_step,
 )
-from classbeat.design.revise_sketch import admit_base
+from classbeat.design.revise_sketch import SketchBaseField, admit_base
 from classbeat.design.revise_soundless import run_soundless
 from classbeat.design.sport_rules import rules_for
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
@@ -113,7 +113,7 @@ Request = Annotated[str, Field(min_length=1, max_length=MAX_REQUEST), AfterValid
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 
 
-class ReviseDraftInput(ModelJobInput):
+class ReviseDraftInput(SketchBaseField, ModelJobInput):
     CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl",)
 
     base_revision_id: UUID
@@ -122,7 +122,6 @@ class ReviseDraftInput(ModelJobInput):
     # Server fields: only ``admit`` sets them (a browser sending one is refused).
     base_revision_hash: Sha256Hex | None = None
     request_message_id: UUID | None = None
-    sketch_base: bool | None = None  # ADR 0038 section 4: the base is a sketch (``revise_sketch``)
 
     @model_validator(mode="after")
     def _a_class_of_its_own(self) -> Self:

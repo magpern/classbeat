@@ -2,9 +2,11 @@
 section 4, #1186), against Postgres as ``classbeat_app`` and the fakes: Save, Update, Send to
 player, Refit, Change songs and a studio revise through ``POST /api/jobs``; duplicate, the pick
 of the current revision and the beat-one correction through their own routes. Nothing is created
-and the fake MOWL is asked nothing: no job, no operation, no class, no correction. Never the
+and nothing goes out: the fake MOWL is asked nothing and no request leaves for Spotify, the
+player or a gateway; no job, no operation, no class, no correction. Never the
 network, a real account or a model."""
 
+import urllib.request
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -13,6 +15,7 @@ from uuid import UUID
 import httpx
 import pytest
 
+from authtools import ORIGIN
 from classbeat import connections
 from ctx import make_context
 from designtools import FakeMowlMusic
@@ -20,6 +23,34 @@ from jobapi import new_key
 from sketchtools import SketchEnv
 
 pytestmark = pytest.mark.usefixtures("jenv")
+
+
+@pytest.fixture
+def outbound(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Every request that leaves for anything but the app under test (Spotify, the player, a
+    gateway; ``httpx`` and ``urllib`` alike), recorded and refused, whatever client sends it."""
+    sent: list[str] = []
+    app_host = httpx.URL(ORIGIN).host
+    real_send = httpx.AsyncClient.send
+
+    async def send(self: httpx.AsyncClient, request: httpx.Request, **kw: Any) -> httpx.Response:
+        if request.url.host == app_host:
+            return await real_send(self, request, **kw)
+        sent.append(str(request.url))
+        raise httpx.ConnectError("a refused route sends nothing", request=request)
+
+    def sync_send(self: httpx.Client, request: httpx.Request, **kw: Any) -> httpx.Response:
+        sent.append(str(request.url))
+        raise httpx.ConnectError("a refused route sends nothing", request=request)
+
+    def urlopen(self: urllib.request.OpenerDirector, url: Any, *a: Any, **kw: Any) -> Any:
+        sent.append(url if isinstance(url, str) else url.full_url)
+        raise OSError("a refused route sends nothing")
+
+    monkeypatch.setattr(httpx.AsyncClient, "send", send)
+    monkeypatch.setattr(httpx.Client, "send", sync_send)
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", urlopen)
+    return sent
 
 
 def written(skenv: SketchEnv) -> tuple[int, ...]:
@@ -121,7 +152,7 @@ CASES = [
 
 @pytest.mark.parametrize("case", CASES)
 async def test_every_route_refuses_a_sketch_before_anything_else(
-    skenv: SketchEnv, fake_mowl: FakeMowlMusic, case: str
+    skenv: SketchEnv, fake_mowl: FakeMowlMusic, outbound: list[str], case: str
 ) -> None:
     class_id, sketch = await skenv.sketched()
     before, mowl = written(skenv), len(fake_mowl.requests)
@@ -130,4 +161,5 @@ async def test_every_route_refuses_a_sketch_before_anything_else(
     assert answer.json()["detail"]["reason"] == "not_ready"
     assert written(skenv) == before  # no job, no operation, no copy, no correction
     assert len(fake_mowl.requests) == mowl  # nothing reached MOWL
+    assert outbound == []  # nor Spotify, the player or a gateway
     assert skenv.renv.current(class_id) == sketch  # the sketch stays current

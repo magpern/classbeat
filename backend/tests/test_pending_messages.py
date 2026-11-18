@@ -134,7 +134,7 @@ async def test_on_a_draft_it_becomes_an_ordinary_revise(skenv: SketchEnv) -> Non
     assert made.status_code == 201, made.text
     [job] = revise_jobs(skenv, class_id)
     assert job.input["base_revision_id"] == str(draft)
-    assert job.input.get("sketch_base") is None  # stored as null for an ordinary revise
+    assert "sketch_base" not in job.input
 
 
 async def test_while_a_job_is_queued_it_stays_pending(skenv: SketchEnv) -> None:

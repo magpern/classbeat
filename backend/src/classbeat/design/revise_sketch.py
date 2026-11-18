@@ -13,8 +13,10 @@ source (a duplicate of a class on picked songs, #536), the running gate (``sport
 ADR 0018, #509), the soundless gate of a soundless class (``music_kind.admit_class``, #528).
 """
 
+from typing import Any
 from uuid import UUID
 
+from pydantic import BaseModel, SerializerFunctionWrapHandler, model_serializer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.context import UserContext
@@ -22,6 +24,20 @@ from classbeat.design import music_kind, sport
 from classbeat.design.kind_music import has_music_source
 from classbeat.design.revision_ready import is_sketch
 from classbeat.jobs.kinds import Refused
+
+
+class SketchBaseField(BaseModel):
+    """``revise_draft``'s server field ``sketch_base`` (``admit`` sets it on a sketch base). An
+    ordinary revise does not write it, so its stored input and request hash are as before."""
+
+    sketch_base: bool | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_sketch_base(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        out: dict[str, Any] = handler(self)
+        if out.get("sketch_base") is None:
+            out.pop("sketch_base", None)
+        return out
 
 
 async def admit_base(
