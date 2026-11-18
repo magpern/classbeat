@@ -5,15 +5,14 @@ is written and also with ``overwrite``. The in-process fake MOWL (``savetools``)
 network.
 """
 
-from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
 from classbeat import mowl_state
 from classbeat.jobs import CATEGORIES, RETRYABLE
 from classbeat.saving import approval
-from classbeat.saving import update as update_kind
+from classbeat.saving.read_first_policy import program_refusal
 from optools import TOKEN_A
 from savetools import LINKED_PLAYLIST, FakeMowlPrograms, spec_of
 from updatetools import DRAFT_2, UpdateEnv
@@ -51,9 +50,9 @@ def test_the_class_sport_is_its_stored_briefs_absent_is_cycling() -> None:
         assert approval.sport_of_brief(odd) is None
 
 
-def _plan(sport: str, program_id: int = 7) -> Any:
-    target = SimpleNamespace(program_id=program_id, state_hash=None)
-    return SimpleNamespace(revision=SimpleNamespace(spec={}, sport=sport), target=target)
+def _rule(program: Any, sport: str, overwrite: bool) -> tuple[str | None, str | None]:
+    """The read-first rule (``saving.read_first_policy``) for saved program 7, no state yet."""
+    return program_refusal(program, 7, None, sport, overwrite)
 
 
 @pytest.mark.parametrize("overwrite", [False, True])
@@ -69,18 +68,18 @@ def test_the_rule_refuses_a_mismatch_either_way_before_overwrite(
     program: dict[str, Any] = {"ProgramID": 7, "Name": "x", "IsPublic": False, "Segments": []}
     if activity is not None:
         program["ActivityTypeID"] = activity
-    _, refusal = update_kind._refusal(program, cast(Any, _plan(class_sport)), overwrite)  # pyright: ignore[reportPrivateUsage]
+    _, refusal = _rule(program, class_sport, overwrite)
     assert refusal == "program_other_sport"
     # A matching sport gets past the sport check (overwrite then skips the comparison).
     program["ActivityTypeID"] = 1 if class_sport == "running" else 0
     if class_sport in ("cycling", "running"):
-        _, refusal = update_kind._refusal(program, cast(Any, _plan(class_sport)), True)  # pyright: ignore[reportPrivateUsage]
+        _, refusal = _rule(program, class_sport, True)
         assert refusal is None
 
 
 def test_a_missing_program_stays_missing_whatever_its_sport() -> None:
     other = {"ProgramID": 8, "ActivityTypeID": 1}
-    found = update_kind._refusal(other, cast(Any, _plan("cycling")), True)  # pyright: ignore[reportPrivateUsage]
+    found = _rule(other, "cycling", True)
     assert found == (None, "program_missing")
 
 
