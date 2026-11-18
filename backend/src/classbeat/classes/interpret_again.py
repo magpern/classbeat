@@ -8,7 +8,7 @@ a **new** ``interpret_request`` from the same request, with the user's current c
 - only for a class of the user's whose stored interpretation has the ``not_connected`` refusal
   (else ``not_ready``; another user's class or an unknown one ``not_found``);
 - the new job's input is the completed interpret job's own browser fields (the request, the music
-  and sport overrides, the title), never its server fields, with the user's current MOWL
+  and sport overrides, the composer's attached music, the title), never its server fields, with the user's current MOWL
   connection (``not_connected`` when there is none) and the current Spotify one where the first
   request named one;
 - it goes through the jobs API's create (``JobEnqueue``) with the kind's own ``admit``, the
@@ -37,7 +37,14 @@ from classbeat.jobs.user import JobLimitPolicy
 
 Factory = async_sessionmaker[AsyncSession]
 RESTARTABLE: Final = "not_connected"
-BROWSER_FIELDS: Final = ("request", "music_override", "sport_override", "title")
+# ``music_sources`` (ADR 0038 section 3): a composer request keeps its attached music (#1188).
+BROWSER_FIELDS: Final = (
+    "request",
+    "music_override",
+    "music_sources",
+    "sport_override",
+    "title",
+)
 
 _EXISTS = text("SELECT 1 FROM classes WHERE owner_id = :owner_id AND id = :class_id")
 _INTERPRET_JOB = text(
