@@ -44,7 +44,7 @@ from classbeat.classes.history_compare import (
 from classbeat.classes.service import REVISION_LIMIT, stored_brief
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.design import diff, music_kind
+from classbeat.design import diff, revise_sketch
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -59,8 +59,8 @@ _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 _UUID_SQL: Final = "'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'"
 
 _CLASS = text(
-    "SELECT (brief IS NOT NULL AND music_source IS NOT NULL) AS can_change FROM classes "
-    "WHERE owner_id = :owner_id AND id = :class_id"
+    "SELECT brief IS NOT NULL AS briefed, music_source IS NOT NULL AS sourced, current_revision_id "
+    "AS base FROM classes WHERE owner_id = :owner_id AND id = :class_id"
 )
 
 # ``{music}``: the timeline reads only whether a draft names a song list (``class_revisions.music``
@@ -144,8 +144,8 @@ class HistoryOut(BaseModel):
     sport: Literal["cycling", "running"]
     # A revise would be admitted now as far as the music goes: a stored brief, a music source (a
     # duplicate of a class on picked songs has none, ADR 0007 amendment of 2026-11-03 part D item 5)
-    # and ``design.music_kind.admit_class`` admitting it (for a soundless class, the soundless
-    # gate for this user, SL2): the function the revise's ``admit`` calls, so the two agree.
+    # and ``design.music_kind.admit_class`` admitting it (for a soundless class, the soundless gate
+    # for this user, SL2; a sketch, ADR 0038: that gate alone), as the revise's ``admit``.
     can_change: bool
     revisions: list[TimelineEntryOut]
     # Drafts that no longer validate under the class's sport: left out of ``revisions``, so one
@@ -244,8 +244,8 @@ async def history(factory: Factory, ctx: UserContext, class_id: UUID) -> History
             return None
         sport = _sport(await stored_brief(db, ctx.user_id, class_id))
         rows = (await db.execute(_ROWS, _params(ctx, class_id))).all()
-        can_change = bool(found.can_change) and (
-            await music_kind.admit_class(db, ctx, class_id) is None
+        can_change = found.briefed and await revise_sketch.can_revise(
+            db, ctx, class_id, found.base, found.sourced
         )
     entries: list[TimelineEntryOut] = []
     unreadable = 0

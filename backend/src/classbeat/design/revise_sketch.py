@@ -37,3 +37,14 @@ async def admit_base(
     if running is not None:
         return False, running
     return False, await music_kind.admit_class(db, ctx, class_id)
+
+
+async def can_revise(
+    db: AsyncSession, ctx: UserContext, class_id: UUID, current: UUID | None, sourced: bool
+) -> bool:
+    """What the history says of a revise of the class now (``can_change``), as ``admit_base``
+    decides it: a sketch through the soundless gate, any other class with a music source through
+    ``music_kind.admit_class``."""
+    if current is not None and await is_sketch(db, ctx.user_id, class_id, current):
+        return await music_kind.admit_soundless(db, ctx) is None
+    return sourced and await music_kind.admit_class(db, ctx, class_id) is None
