@@ -82,8 +82,9 @@ transaction the row's `playlist_id` and `last_hash` are set NULL conditionally (
 AND id = :pool_id AND playlist_id = :old`) and **`forget_pool`** (below) deletes the user's pool
 operation rows, so the retry creates a new pool under a new key and `ref` instead of reusing the
 deleted playlist's id; anything else wrong is
-`pool_unusable` ("make it private again or stop and set up the working playlist again"; classbeat
-never flips a user's privacy itself); 403 is `forbidden`. All three are `failed` with nothing written.
+`pool_unusable` ("your working playlist was changed in Spotify and cannot be used. Set it up
+again", since Amendment 27 reached only for a collaborative playlist, another owner or an unreadable
+privacy value; classbeat never flips the privacy of a playlist it did not just create); 403 is `forbidden`. All three are `failed` with nothing written.
 `public: false` and `collaborative: false` are sent explicitly on every create (the library fixes
 them, ADR 0009 M-2).
 
@@ -232,7 +233,14 @@ code, the old one left in the user's Spotify), recorded in Alternatives.
 > *(2026-11-16, [ADR 0036](0036-swedebeat-studio.md) §9: for a SwedeBeat studio list, a failed working-playlist write, including a retryable category, is no longer retried by the job: it becomes the list's sync state, and the user retries it with "Sync again".)*
 
 **Privacy wording** (roadmap §2): the page and the consent say a non-public playlist does not appear on
-the profile or in search but anyone with its link can open it. Playlist URLs and ids are never in
+the profile or in search but anyone with its link can open it. *(2026-11-18, roadmap Amendment 27, issue
+#1162: the wording no longer promises a private playlist. It says classbeat asks Spotify for a private one,
+Spotify may make it public, anyone with its link can then open it, and classbeat keeps using it. This covers
+the consent sentence, the approval page, the Spotify output description, the revoke details, the help and
+public pages and the `pool_unusable` sentence, in English, Swedish and Danish. **Consent version:** the
+new sentence is a clarification of the same consent (the playlist, its name, its purpose and its overwrite
+are unchanged; classbeat still asks for private), so `CONSENT_VERSION` stays 1 and existing users are not
+asked again. A later change to what classbeat manages, not to how Spotify may treat its privacy, bumps it.)* Playlist URLs and ids are never in
 events, SSE, logs or model input; the owner sees a link to their own final playlist on their class page
 only (`https://open.spotify.com/playlist/<id>` built by the page from the id, never from Spotify data).
 
@@ -546,7 +554,7 @@ token in any body except where noted; ADR 0009 §2 has the connection routes):
 > never inlined) beside Spotify's songs and covers, as the guidelines ask.
 
 Plain sentences added for the page: `consent_missing` ("allow the working playlist in your Spotify
-settings first"), `pool_unusable` ("your working playlist was changed: make it private again or set it
+settings first"), `pool_unusable` ("your working playlist was changed in Spotify and cannot be used. Set it
 up again"), `pool_missing` (retried by itself), `pool_not_synced` ("MOWL has not caught up with the
 working playlist; try again in a minute"), `playlist_mismatch` ("Spotify's playlist did not match the
 approved songs; nothing was designed. Create it again"), `pool_too_small` ("not enough usable songs

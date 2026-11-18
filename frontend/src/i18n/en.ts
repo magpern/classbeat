@@ -277,7 +277,8 @@ export const en = {
   'sentence.spotify.access_denied': 'Spotify was not connected.',
   'sentence.spotify.unknown': 'Something went wrong with Spotify. Try again later.',
   'sentence.job.consent_missing': 'Allow the working playlist in your Spotify settings first.',
-  'sentence.job.pool_unusable': 'Your working playlist was changed: make it private again or set it up again.',
+  'sentence.job.pool_unusable':
+    'Your working playlist was changed in Spotify and cannot be used. Set it up again.',
   'sentence.job.pool_missing': 'Your working playlist was gone from Spotify; trying again by itself.',
   'sentence.job.pool_not_synced': 'MOWL has not caught up with the working playlist; try again in a minute.',
   'sentence.job.playlist_mismatch': "Spotify's playlist did not match the approved songs; nothing was designed. Create it again.",
@@ -1338,7 +1339,7 @@ export const en = {
   'songs.ended.pickAgain': 'Pick songs again',
   'songs.ended.startNew': 'Start new class',
   'songs.ended.backToClass': 'Back to class',
-  'songs.approval.privacy': 'Private playlist in your Spotify. Anyone with its link can open it.',
+  'songs.approval.privacy': 'Spotify may make it public; anyone with its link can open it.',
   'songs.approval.stopped': 'The songs were stopped, but we could not read the class. Press Ask for changes again.',
   'songs.approval.cannotChange': 'These songs can no longer be changed, so nothing was started. Pick songs again.',
   'songs.approval.loading': 'Loading the songs',
@@ -1596,7 +1597,7 @@ export const en = {
 
   // Account: Spotify working-playlist consent switch.
   'consent.revokeText': 'We forget the working playlist and stop using it. The next song pick creates a new one, once you consent again.',
-  'consent.revokeDetails': 'The old playlist stays in your Spotify, private, with its last songs. Delete it there if you do not want it.',
+  'consent.revokeDetails': 'The old playlist stays in your Spotify, possibly public: anyone with its link can open it. Delete it there if you do not want it.',
   'consent.given': 'Thanks. We may use the working playlist.',
   'consent.withdrawn': 'Your consent is withdrawn. The playlist stays in your Spotify.',
   'consent.label': 'Allow the working playlist',
@@ -2216,7 +2217,7 @@ export const en = {
   'studio.out.spotify_playlist':
     'Spotify playlist',
   'studio.out.spotify_playlist.desc':
-    'A new private playlist in your Spotify account, in the approved order.',
+    'A new playlist in your Spotify account, in the approved order. We ask for private; Spotify may make it public.',
   'studio.out.swedebeat_playlist':
     'SwedeBeat playlist',
   'studio.out.swedebeat_playlist.desc':

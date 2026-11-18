@@ -57,7 +57,7 @@ export const legalEn = {
   'privacy.model.p1':
     'To design a class we send an AI model provider what you wrote about it, your change requests and earlier requests, the drafts and timelines made so far, and a summary of the songs (the playlist name, and for each song details such as its title, artist, tempo and length).',
   'privacy.model.p2':
-    'We never send it your email address, name, passwords, tokens or any account or service IDs. The assistant only proposes: classbeat saves to MOWL or Spotify only what you approve, or what you have allowed in advance by giving your one-time consent for a private song pool in your Spotify.',
+    'We never send it your email address, name, passwords, tokens or any account or service IDs. The assistant only proposes: classbeat saves to MOWL or Spotify only what you approve, or what you have allowed in advance by giving your one-time consent for a working playlist in your Spotify.',
 
   'privacy.processors.title': 'Who else handles your data',
   'privacy.processors.p1':

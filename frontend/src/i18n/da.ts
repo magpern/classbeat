@@ -276,7 +276,7 @@ const da: Catalogue = {
   'sentence.spotify.unknown': 'Noget gik galt med Spotify. Prøv igen senere.',
   'sentence.job.consent_missing': 'Tillad arbejdsplaylisten i dine Spotify-indstillinger først.',
   'sentence.job.pool_unusable':
-    'Din arbejdsplayliste er blevet ændret: gør den privat igen, eller sæt den op igen.',
+    'Din arbejdsplayliste er ændret i Spotify og kan ikke bruges. Sæt den op igen.',
   'sentence.job.pool_missing': 'Din arbejdsplayliste var væk fra Spotify; prøver igen af sig selv.',
   'sentence.job.pool_not_synced':
     'MOWL er ikke nået til at følge med arbejdsplaylisten; prøv igen om et minut.',
@@ -1244,7 +1244,7 @@ const da: Catalogue = {
   'songs.ended.pickAgain': 'Vælg sange igen',
   'songs.ended.startNew': 'Start nyt hold',
   'songs.ended.backToClass': 'Tilbage til holdet',
-  'songs.approval.privacy': 'Privat playliste i din Spotify. Alle med linket kan åbne den.',
+  'songs.approval.privacy': 'Spotify kan gøre den offentlig; alle med linket kan åbne den.',
   'songs.approval.stopped': 'Sangene blev stoppet, men vi kunne ikke læse holdet. Tryk på Bed om ændringer igen.',
   'songs.approval.cannotChange': 'Disse sange kan ikke ændres mere, så intet blev startet. Vælg sange igen.',
   'songs.approval.loading': 'Indlæser sangene',
@@ -1445,7 +1445,7 @@ const da: Catalogue = {
 
   // Account: Spotify working-playlist consent switch.
   'consent.revokeText': 'Vi glemmer arbejdsplaylisten og holder op med at bruge den. Næste sangvalg opretter en ny, når du samtykker igen.',
-  'consent.revokeDetails': 'Den gamle playliste bliver i din Spotify, privat, med de seneste sange. Slet den dér, hvis du ikke vil have den.',
+  'consent.revokeDetails': 'Den gamle playliste bliver i din Spotify, måske offentlig: alle med linket kan åbne den. Slet den dér, hvis du ikke vil have den.',
   'consent.given': 'Tak. Vi må bruge arbejdsplaylisten.',
   'consent.withdrawn': 'Dit samtykke er trukket tilbage. Playlisten bliver i din Spotify.',
   'consent.label': 'Tillad arbejdsplaylisten',
@@ -2338,7 +2338,7 @@ const da: Catalogue = {
   'studio.out.spotify_playlist':
     'Spotify-playliste',
   'studio.out.spotify_playlist.desc':
-    'En ny privat playliste på din Spotify-konto, i den godkendte rækkefølge.',
+    'En ny playliste på din Spotify-konto, i den godkendte rækkefølge. Vi beder om privat, men Spotify kan gøre den offentlig.',
   'studio.out.swedebeat_playlist':
     'SwedeBeat-playliste',
   'studio.out.swedebeat_playlist.desc':

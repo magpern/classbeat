@@ -32,7 +32,7 @@ const DEVICES = [
   },
 ]
 const CONSENT_TEXT =
-  'classbeat manages one private working playlist in your Spotify account, named classbeat working copy, to ask for song candidates and have MOWL analyse them. It is overwritten on each pick; anyone with its link could open it.'
+  'classbeat manages one working playlist in your Spotify account, named classbeat working copy, to ask for song candidates and have MOWL analyse them. We ask Spotify for a private playlist, but Spotify may make it public, and anyone with its link could then open it. It is overwritten on each pick, and classbeat keeps using it either way.'
 
 const base = {
   'GET /api/auth/session': SIGNED_IN,

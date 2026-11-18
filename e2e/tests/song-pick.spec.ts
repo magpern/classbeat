@@ -96,7 +96,7 @@ test('a pick, one Approve, and a private playlist of exactly the approved songs 
   const titles = await listedTitles(page)
   expect(titles).toHaveLength(8)
   await expect(page.getByText(/8 songs, \d+:\d+ in total\. You asked for 30:00\./)).toBeVisible()
-  await expect(page.getByText(/Private playlist in your Spotify\. Anyone with its link can open it\./)).toBeVisible()
+  await expect(page.getByText(/Spotify may make it public; anyone with its link can open it\./)).toBeVisible()
   await expect(page.getByTestId('expiry')).toContainText('Approve by')
   expect(await page.getByRole('main').innerText()).not.toMatch(/FakeTrack|FakeList|spotify:/)
   const writesBefore = spotifyWrites().length

@@ -844,7 +844,7 @@ resources, never a name match. Each create/replace is an `external_operations` r
 partial failure (created but not filled, filled but not attached in MOWL) is visible and
 reconciled.
 
-**Privacy.** All playlists are created with explicit `public: false` and
+**Privacy.** *(Since Amendment 27 the wording says a playlist is asked for private but Spotify may make it public; see ADR 0008 §2.)* All playlists are created with explicit `public: false` and
 `collaborative: false`; MOWL workouts private. Playlist URLs are never shown to or shared
 with other users. The privacy wording says what Spotify's setting means: a non-public
 playlist doesn't appear on the profile or in search, but anyone with its link can open it.

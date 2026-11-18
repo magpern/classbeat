@@ -96,7 +96,7 @@ describe('a song job that failed', () => {
       pool_too_small: /try a wider style or era/,
       pool_not_synced: /try again in a minute/,
       consent_missing: /Allow the working playlist in your Spotify settings first/,
-      pool_unusable: /make it private again or set it up again/,
+      pool_unusable: /cannot be used\. Set it up again/,
     }
     for (const [category, pattern] of Object.entries(expected)) {
       fakeApi({ ...SESSION_ROUTES, [`GET ${JOB}`]: songJob('failed', { error_category: category }) })

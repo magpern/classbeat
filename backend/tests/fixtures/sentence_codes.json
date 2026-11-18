@@ -97,7 +97,7 @@
   {
     "code": "job.pool_unusable",
     "params": {},
-    "english": "Your working playlist was changed: make it private again or set it up again."
+    "english": "Your working playlist was changed in Spotify and cannot be used. Set it up again."
   },
   {
     "code": "job.pool_missing",
