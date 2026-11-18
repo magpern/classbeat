@@ -18,7 +18,10 @@ class's current revision, never revised or saved as a draft.
   passes reads as ``null``. ``v: 1`` content (no ``cover`` key) stays readable and reads as no
   cover. The hash covers ``cover`` like every other field. ``unmet`` (issue #1133) is the list's
   Not as asked items (``agent.taste_check_policy``), written only when there is one, so every
-  other list is stored and hashed as before.
+  other list is stored and hashed as before. ``v: 3`` (ADR 0038 section 5, #1188) is a composer's
+  list (``fill``, ``swap``, ``change``): ``v: 2`` plus ``preview``, the class designed on these
+  songs before the approval (``songs.preview_model``), so the hash covers the songs and the
+  design. ``preview`` is required in ``v: 3`` and refused in ``v: 1`` and ``v: 2``.
 
   Built from ``classbeat.agent.ChosenList``, which ``choose_songs`` builds from the analysed pool:
   every id, title, artist, BPM and length is MOWL's analysis or a kept song's stored value, never
@@ -45,113 +48,37 @@ Nothing here is logged; the ids never reach a model, an event or a page (CL1 sho
 without ids).
 """
 
-import hashlib
 import json
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Annotated, Any, Final, Literal
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent.choose_songs import ChosenList
 from classbeat.agent.interpretation_record import InterpretationItem
-from classbeat.agent.schemas import MAX_SONGS, Role
 from classbeat.covers import cover_url
 from classbeat.design.revision import MAX_CONTENT_BYTES, canonical
 from classbeat.jobs import FencedSession, JobFailure
-from classbeat.playlists import common
-
-VERSION: Final = 2
-MUSIC_SOURCE: Final = "claude_pick"
-MAX_TEXT: Final = 200
-MAX_NOTE: Final = 300
-MAX_UNMET: Final = 8
-
-SpotifyId = Annotated[str, Field(pattern=r"^[0-9A-Za-z]{22}$")]
-
-
-class Song(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    spotify_id: SpotifyId
-    title: str = Field(max_length=MAX_TEXT)
-    artist: str = Field(max_length=MAX_TEXT)
-    role: Role
-    bpm: float = Field(gt=0, le=400)
-    length_sec: int = Field(ge=1, le=7200)
-    new: bool
-    cover: str | None = None  # v: 2 (ADR 0013 section 9); absent in v: 1
-
-    @field_validator("cover", mode="before")
-    @classmethod
-    def _pinned_host(cls, value: object) -> str | None:
-        """Anything but an album cover URL on the pinned host is ``None``, never an error."""
-        return cover_url(value)
-
-
-class SongListContent(BaseModel):
-    """``class_revisions.content`` of a ``song_list``."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    v: Literal[1, 2]
-    mode: Literal["pick", "replace"]
-    target_sec: int = Field(ge=1)
-    total_sec: int = Field(ge=0)
-    crossfade_sec: float = Field(ge=0, le=12)
-    songs: list[Song] = Field(min_length=1, max_length=MAX_SONGS)
-    omitted_no_bpm: int = Field(ge=0)
-    note: str = Field(max_length=MAX_NOTE)
-    # Left out of the dump when empty, so a list that keeps to the request hashes as before.
-    unmet: list[InterpretationItem] = Field(
-        default_factory=lambda: [], max_length=MAX_UNMET, exclude_if=lambda v: not v
-    )
-
-    @model_validator(mode="after")
-    def _cover_is_v2(self) -> "SongListContent":
-        if self.v == 1 and any("cover" in s.model_fields_set for s in self.songs):
-            raise ValueError("cover is a v: 2 field")
-        if any(i.origin != "not_as_asked" for i in self.unmet):
-            raise ValueError("unmet holds Not as asked items only")
-        return self
-
-    def track_ids(self) -> tuple[str, ...]:
-        return tuple(s.spotify_id for s in self.songs)
-
-
-class Generations(BaseModel):
-    """The ``generation`` of each connection the list was made with (ADR 0009 section 5.4)."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    mowl: int = Field(ge=0)
-    spotify: int = Field(ge=0)
-
-
-class SongListMusic(BaseModel):
-    """``class_revisions.music`` of a ``song_list``."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    source: Literal["claude_pick"]
-    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
-    spotify_user_id: str = Field(min_length=1, max_length=100)
-    # The connections phase 1 used; the approved phase 2 refuses (``not_connected``) when either
-    # was reconnected since. A resume uses the connections as they are now (section 6).
-    generations: Generations | None = None
-
-
-def content_hash(content: dict[str, Any]) -> bytes:
-    return hashlib.sha256(canonical(content)).digest()
-
-
-def fingerprint(track_ids: tuple[str, ...]) -> str:
-    """The ordered ids' SHA-256 (hex): what the final playlist must hold, in this order."""
-    return common.ids_hash(common.check_track_ids(track_ids)).hex()
+from classbeat.songs.preview_model import Preview
+from classbeat.songs.song_list_model import MAX_NOTE as MAX_NOTE
+from classbeat.songs.song_list_model import MAX_TEXT as MAX_TEXT
+from classbeat.songs.song_list_model import MAX_UNMET as MAX_UNMET
+from classbeat.songs.song_list_model import MUSIC_SOURCE as MUSIC_SOURCE
+from classbeat.songs.song_list_model import PREVIEW_VERSION as PREVIEW_VERSION
+from classbeat.songs.song_list_model import VERSION as VERSION
+from classbeat.songs.song_list_model import Generations as Generations
+from classbeat.songs.song_list_model import Song as Song
+from classbeat.songs.song_list_model import SongListContent as SongListContent
+from classbeat.songs.song_list_model import SongListMusic as SongListMusic
+from classbeat.songs.song_list_model import SpotifyId as SpotifyId
+from classbeat.songs.song_list_model import content_hash as content_hash
+from classbeat.songs.song_list_model import fingerprint as fingerprint
+from classbeat.songs.song_list_model import stored_bytes as stored_bytes
 
 
 @dataclass(frozen=True)
@@ -230,12 +157,14 @@ def build(
     parent_id: UUID | None = None,
     generations: Generations | None = None,
     unmet: Sequence[InterpretationItem] = (),
+    preview: Preview | None = None,
 ) -> SongListRevision:
-    """The revision of ``chosen`` for the Spotify account ``account``; ``invalid_output`` if it
-    does not fit the content's rules or 64 KB."""
+    """The revision of ``chosen`` for the Spotify account ``account`` (``v: 3`` with
+    ``preview``); ``invalid_output`` if it does not fit the content's rules or 64 KB, checked on
+    the whole canonical content before anything is inserted."""
     try:
         content = SongListContent(
-            v=VERSION,
+            v=VERSION if preview is None else PREVIEW_VERSION,
             mode="replace" if chosen.mode == "replace" else "pick",
             target_sec=chosen.target_sec,
             total_sec=chosen.total_sec,
@@ -256,6 +185,7 @@ def build(
             omitted_no_bpm=chosen.omitted_no_bpm,
             note=chosen.note[:MAX_NOTE],
             unmet=list(unmet),
+            preview=preview,
         )
         dumped = content.model_dump(mode="json")
         music = SongListMusic(
@@ -266,8 +196,8 @@ def build(
         )
     except ValidationError:
         raise JobFailure("invalid_output") from None
-    if len(canonical(dumped)) > MAX_CONTENT_BYTES:
-        raise JobFailure("invalid_output")
+    if max(len(canonical(dumped)), stored_bytes(dumped)) > MAX_CONTENT_BYTES:
+        raise JobFailure("invalid_output")  # before the insert, never the database's check
     return SongListRevision(content, content_hash(dumped), music, provenance, parent_id)
 
 

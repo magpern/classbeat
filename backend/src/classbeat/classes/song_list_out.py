@@ -5,7 +5,8 @@ them field by field. Nothing here names a Spotify or catalogue id, a URL other t
 song link and the pinned cover, a hash other than the approval's ``content_hash``, or a token.
 
 A song list's ``unmet`` (issue #1133) is its Not as asked items: closed paths, reason codes and
-small numbers (``agent.taste_check_policy``); the page words them from its catalogue.
+small numbers (``agent.taste_check_policy``); the page words them from its catalogue. A composer's
+list (``v: 3``, #1188) adds its ``preview``: the class designed on the songs, and each song's span.
 """
 
 from datetime import datetime
@@ -49,6 +50,19 @@ class SongOut(BaseModel):
     open_spotify: str | None = None
 
 
+class PreviewSongOut(BaseModel):
+    start: float
+    end: float
+
+
+class PreviewOut(BaseModel):
+    """A composer list's ``preview`` (ADR 0038 section 5): the class designed on these songs, and
+    each song's span in it. Not the fingerprint or the run id."""
+
+    content: dict[str, Any]
+    songs: list[PreviewSongOut]
+
+
 class SongListOut(BaseModel):
     id: UUID
     number: int
@@ -69,6 +83,7 @@ class SongListOut(BaseModel):
     omitted_no_bpm: int
     note: str
     unmet: list[InterpretationItem] = []
+    preview: PreviewOut | None = None  # v: 3 only (#1188)
 
 
 class MatchWantedOut(BaseModel):
@@ -161,6 +176,12 @@ async def song_list(
         omitted_no_bpm=c.omitted_no_bpm,
         note=song_views.plain(c.note),
         unmet=list(c.unmet),
+        preview=None
+        if c.preview is None
+        else PreviewOut(
+            content=c.preview.content,
+            songs=[PreviewSongOut(start=t.start, end=t.end) for t in c.preview.music.songs],
+        ),
     )
 
 
