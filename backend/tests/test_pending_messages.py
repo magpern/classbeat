@@ -153,14 +153,15 @@ async def test_while_a_job_is_queued_it_stays_pending(skenv: SketchEnv) -> None:
     assert (await submit(skenv, class_id, message)).status_code == 201
 
 
-async def test_with_a_song_list_waiting_it_fails_not_changeable_for_now(skenv: SketchEnv) -> None:
-    """A change replaces the waiting job (ADR 0038 section 6); it has no job kind before #1188
-    and #1189, so the message is refused and never stays pending."""
+async def test_a_wait_that_is_not_a_composer_list_is_no_change(skenv: SketchEnv) -> None:
+    """Only a composer's live song list waiting (a ``fill``, ``swap`` or ``change``) makes a
+    message a change (#1188, ``tests/test_composer_change.py``). Any other job waiting keeps the
+    class's one open job, so the message is no change and makes no job."""
     class_id, _ = await skenv.sketched()
     job = skenv.sql(
         "SELECT id FROM jobs WHERE class_id = :c AND kind = 'design_draft'", c=class_id
     ).scalar_one()
-    skenv.sql(  # stands in for a song list waiting for approval (the kinds of #1188)
+    skenv.sql(  # a wait of another kind, not the composer's song list
         "UPDATE jobs SET state = 'waiting_for_approval', approval_hash = sha256('list'), "
         "expires_at = now() + interval '1 hour', finished_at = NULL WHERE id = :j",
         j=job,
@@ -168,9 +169,12 @@ async def test_with_a_song_list_waiting_it_fails_not_changeable_for_now(skenv: S
     message = uuid.uuid4()
     await send(skenv, class_id, message)
     refused = await submit(skenv, class_id, message)
-    assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "not_changeable")
-    assert tuple(stored(skenv, message)) == ("failed", "not_changeable", None)
+    assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "class_busy")
     assert revise_jobs(skenv, class_id) == []
+    changes = skenv.sql(
+        "SELECT count(*) FROM jobs WHERE class_id = :c AND kind = 'design_with_songs'", c=class_id
+    ).scalar_one()
+    assert changes == 0
 
 
 async def test_with_no_current_revision_it_fails_not_changeable(skenv: SketchEnv) -> None:

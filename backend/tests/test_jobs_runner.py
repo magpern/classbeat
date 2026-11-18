@@ -13,8 +13,8 @@ from classbeat.connections import ConnectionFailure
 from classbeat.db import DatabaseRoleError, user_session
 from classbeat.egress import OutboundBlocked
 from classbeat.jobs import AwaitApproval, Complete, JobFailure, JobRun, queue, settle, settle_one
+from classbeat.jobs.approval import approve
 from classbeat.jobs.runner import RunConfig, execute
-from classbeat.jobs.user import approve
 from ctx import make_context
 from jobcore import (
     SONG_LIST,

@@ -38,7 +38,8 @@ job, the per-user limit), in this order, each refusal writing nothing:
    of the class, made by a ``design_with_songs`` job (a song change's list is changed again by
    ``revise_songs``) that ended ``cancelled`` or ``expired`` and was never approved, its
    stored hash still matches its content (``song_list.load``), and every ``replace`` slot is a
-   position in it;
+   position in it; a composer's list (``v: 3``) is never a seed (``not_changeable``: it is swapped
+   or changed, ADR 0038 section 6, #1188);
 7. with ``source`` (the user's own Spotify playlist, roadmap Amendment 26) steps 4 and 5 do not
    apply: no song is picked and the pool is never touched, so the pool consent is not needed and
    such a job never counts for another pick's ``pool_busy``. Step 1 applies unchanged:
@@ -80,24 +81,19 @@ from classbeat import connections
 from classbeat.context import UserContext
 from classbeat.design import music_kind, sport
 from classbeat.flags import effective as flags
-from classbeat.jobs.kinds import POOL_KIND_NAMES, SONG_KIND_NAMES, Admitted, Approving, Refused
+from classbeat.jobs.kinds import SONG_KIND_NAMES, Admitted, Approving, Refused
 from classbeat.operations import orphans
 from classbeat.quota.gates import brief_of, check_brief, current_gates
 from classbeat.songs import config, song_list
+from classbeat.songs.composer_admit import admit_composer
 from classbeat.songs.inputs import DesignWithSongsInput, ReviseSongsInput, Seed
+from classbeat.songs.pick_checks import pick_checks as pick_checks
+from classbeat.songs.pick_checks import pool_busy as pool_busy
 
 KIND: Final = "design_with_songs"
 
 SEED_ENDED: Final = ("cancelled", "expired")
 
-# Another pick of the user that may still write or read the pool: not yet approved, still queued
-# or running. ``revise_songs`` (SJ3) stores ``mode`` the same way.
-_PICK_OPEN = text(
-    "SELECT 1 FROM jobs WHERE owner_id = :owner_id AND kind = ANY(:kinds) "
-    "AND state IN ('queued', 'running') AND approved_at IS NULL "
-    "AND coalesce(input ->> 'mode', 'pick') = 'pick' "
-    "AND jsonb_typeof(input -> 'source') IS DISTINCT FROM 'object' LIMIT 1"
-)
 # The class's newest song list and the job that made it.
 _NEWEST_LIST = text(
     "SELECT r.id, j.kind, j.state, j.approved_at FROM class_revisions r "
@@ -179,11 +175,6 @@ async def _admit_resume(
     return Admitted()
 
 
-async def pool_busy(db: AsyncSession, owner_id: UUID) -> bool:
-    found = await db.execute(_PICK_OPEN, {"owner_id": owner_id, "kinds": list(POOL_KIND_NAMES)})
-    return found.first() is not None
-
-
 async def seed_list(
     db: AsyncSession, owner_id: UUID, class_id: UUID, seed: Seed, *, newest: bool = True
 ) -> song_list.SongListRevision | None:
@@ -203,21 +194,9 @@ async def seed_list(
     found = await song_list.load(db, owner_id, class_id, seed.song_list_revision_id)
     if found is None or any(slot >= len(found.content.songs) for slot in seed.replace):
         return None
+    if found.content.preview is not None:
+        return None  # a composer's list is swapped or changed, never seeded (ADR 0038 section 6)
     return found
-
-
-async def pick_checks(
-    db: AsyncSession, ctx: UserContext, spotify_connection_id: UUID
-) -> Refused | None:
-    """Steps 3 to 5 (both kinds' picks): ``not_connected``, ``consent_missing``, ``pool_busy``."""
-    account = await connections.spotify_account_in(db, ctx, spotify_connection_id)
-    if account is None:
-        return Refused("not_connected")
-    if not await connections.pool_consent_in(db, ctx, account):
-        return Refused("consent_missing")
-    if await pool_busy(db, ctx.user_id):
-        return Refused("pool_busy")
-    return None
 
 
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Admitted | Refused:
@@ -238,6 +217,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     fixed = await sport.admit_brief(db, ctx, parsed.brief, parsed.class_id)
     if fixed is not None:
         return fixed
+    if parsed.composer:  # ADR 0038: fill, swap and change (``composer_admit``)
+        return await admit_composer(db, ctx, parsed)
     if own:
         found = await connections.spotify_account_in(db, ctx, parsed.spotify_connection_id)
         return Admitted() if found is not None else Refused("not_connected")
@@ -248,8 +229,16 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         if parsed.class_id is None:  # the input model refuses it already
             return Refused("invalid_input")
         if await seed_list(db, ctx.user_id, parsed.class_id, parsed.seed) is None:
+            if await composer_list(db, ctx.user_id, parsed.class_id, parsed.seed):
+                return Refused("not_changeable")  # swap or change it instead (#1188)
             return Refused("invalid_input")
     return Admitted()
+
+
+async def composer_list(db: AsyncSession, owner_id: UUID, class_id: UUID, seed: Seed) -> bool:
+    """Whether the seed names a composer's list (``v: 3``, ADR 0038 section 5)."""
+    found = await song_list.load(db, owner_id, class_id, seed.song_list_revision_id)
+    return found is not None and found.content.preview is not None
 
 
 async def approve_check(db: AsyncSession, ctx: UserContext, approving: Approving, /) -> str | None:

@@ -35,11 +35,13 @@ _BASE = text(
     "WHERE id = :base AND owner_id = :owner_id AND class_id = :class_id"
 )
 # A chat revision: a revise, a song change, or a revise of a sketch (ADR 0038 section 4: a sketch
-# with a parent; the composer's first sketch has none and is the class's design, not a revise).
+# with a parent; the composer's first sketch has none and is the class's design, not a revise),
+# and a composer's swap or change (ADR 0038 section 9: their song lists; a fill is exempt).
 _CHAT_REVISIONS = text(
     "SELECT count(*) FROM class_revisions WHERE owner_id = :owner_id AND class_id = :class_id "
-    "AND kind = 'draft' AND (provenance ->> 'origin' IN ('revise_draft', 'revise_songs') "
-    "OR (provenance ->> 'origin' = 'sketch' AND parent_id IS NOT NULL))"
+    "AND ((kind = 'draft' AND (provenance ->> 'origin' IN ('revise_draft', 'revise_songs') "
+    "OR (provenance ->> 'origin' = 'sketch' AND parent_id IS NOT NULL))) "
+    "OR (kind = 'song_list' AND provenance ->> 'composer' IN ('swap', 'change')))"
 )
 _REQUESTS = text(
     "SELECT count(*) FROM class_messages WHERE owner_id = :owner_id AND class_id = :class_id "

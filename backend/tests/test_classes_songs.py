@@ -87,8 +87,9 @@ async def test_a_waiting_list_is_reported_on_the_class_and_shown_without_ids(
     for shown_song, kept in zip(body["songs"], stored["songs"], strict=True):
         assert set(shown_song) == {
             "position", "title", "artist", "role", "bpm", "length_sec", "new", "cover",
-            "open_spotify",
+            "open_spotify", "source",
         }  # fmt: skip
+        assert shown_song["source"] is None  # a composer's list (v: 3) only (#1188)
         assert (shown_song["title"], shown_song["new"]) == (kept["title"], kept["new"])
         assert shown_song["cover"] == kept["cover"]
         # no bare id field; only the server-built link back (ADR 0008 section 9, amendment)

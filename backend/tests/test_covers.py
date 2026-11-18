@@ -220,6 +220,6 @@ def test_a_stored_cover_that_no_longer_passes_reads_as_null() -> None:
 
 def test_another_version_is_refused() -> None:
     raw = v1_content()
-    raw["v"] = 3
+    raw["v"] = 4  # v: 3 is the composer's list with a preview (#1188, test_song_list_preview)
     with pytest.raises(ValueError, match="literal_error"):
         SongListContent.model_validate(raw)

@@ -43,6 +43,8 @@ DIGEST_SOURCES: Final = (
     # pick.py (CLAUDE.md rule 2).
     "suite_sources.py",
     "pick_checks.py",
+    # #1188: the kept_shape revision check of the composer's design on the songs.
+    "shape_checks.py",
     "gate.py",
     # The interpret category (issue #880): its case model, checks and runner. Kept out until the
     # suite held interpret cases, so the earlier digests stayed valid.

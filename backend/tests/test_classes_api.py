@@ -263,6 +263,7 @@ async def test_the_views_show_what_the_page_needs_and_no_provider_ids(
     texts.append(shown.text)
     # The single class adds these (``beat_one``: ADR 0007 amendment "beat-one corrections").
     extra = {"songs", "playlist", "spotify_playlists", "brief", "beat_one", "player"}
+    extra |= {"composer", "fill_songs"}  # ADR 0038 (#1188): false and null for this class
     assert {k: v for k, v in shown.json().items() if k not in extra} == row
     assert shown.json()["songs"] == {
         "state": "none", "job_id": None, "revision_id": None, "content_hash": None,

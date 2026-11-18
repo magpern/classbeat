@@ -19,12 +19,22 @@ spotify_playlist_id}, mowl_connection_id, spotify_connection_id}``.
   and no ``seed``.
 - ``resume`` names an approved list to start phase 2 for (section 6): exactly when
   ``mode = "resume"``, and only with an existing class; ``admit`` checks the receipt.
+- **The composer's modes** (ADR 0038 sections 5 and 6, #1188): ``fill`` puts songs into the
+  class's current sketch, ``swap`` replaces songs of the waiting list (``seed``), ``change``
+  keeps its songs and designs again with ``request``. Each names the sketch it started from as
+  ``base_revision_id``; ``swap`` and ``change`` also the waiting job they replace
+  (``replaces_job_id``) and the list it waits on (``seed``; a change keeps every song, so its
+  ``replace`` is empty). ``sources`` (the attached Spotify playlists) and ``pinned`` (the reading's
+  pinned songs) come from the class's stored request. All of these are **server fields**: only
+  the hand-offs (``classbeat.classes.song_fill``, ``song_swap``, the pending submit) set them, with
+  no credit, so ``POST /api/jobs`` can never create a composer mode.
 
-No field is a server field, and nothing in the input reaches a Spotify or MOWL request: the pool,
-the playlists and every id written come from the user's own rows.
+The composer's fields (``COMPOSER_FIELDS``) are server fields; the others are not. Nothing in the
+input reaches a Spotify or MOWL request: the pool, the playlists and every id written come from
+the user's own rows.
 """
 
-from typing import Annotated, ClassVar, Literal, Protocol, Self
+from typing import Annotated, ClassVar, Final, Literal, Protocol, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -32,7 +42,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from classbeat.agent.brief import Brief
 from classbeat.agent.schemas import MAX_SONGS
 from classbeat.design import revision
+from classbeat.design.interpret_composer_policy import PinnedList
 from classbeat.design.kind import SpotifyMusicChoice
+from classbeat.design.music_sources import MusicSources
 from classbeat.design.revise import Request, Sha256Hex
 from classbeat.jobs.inputs import ModelJobInput, jsonb_size
 
@@ -40,11 +52,19 @@ Slot = Annotated[int, Field(ge=0, lt=MAX_SONGS)]
 Slots = Annotated[list[Slot], Field(max_length=MAX_SONGS)]
 
 
+Mode = Literal["pick", "resume", "fill", "swap", "change"]
+COMPOSER_MODES: Final = ("fill", "swap", "change")
+REPLACING_MODES: Final = ("swap", "change")
+COMPOSER_FIELDS: Final = frozenset(
+    {"base_revision_id", "replaces_job_id", "sources", "pinned", "request", "request_message_id"}
+)
+
+
 class Seed(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     song_list_revision_id: UUID
-    replace: list[Slot] = Field(min_length=1, max_length=MAX_SONGS)
+    replace: list[Slot] = Field(max_length=MAX_SONGS)  # empty only for a change (``_composer``)
 
     @model_validator(mode="after")
     def _each_once(self) -> Self:
@@ -63,12 +83,23 @@ class DesignWithSongsInput(ModelJobInput):
     CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl", "spotify")
 
     brief: Brief
-    mode: Literal["pick", "resume"] = "pick"
+    mode: Mode = "pick"
     resume: Resume | None = None
     seed: Seed | None = None
     source: SpotifyMusicChoice | None = None
     mowl_connection_id: UUID
     spotify_connection_id: UUID
+    # The composer's modes (module docstring); server fields, set by the hand-offs only.
+    base_revision_id: UUID | None = None
+    replaces_job_id: UUID | None = None
+    sources: MusicSources | None = None
+    pinned: PinnedList | None = None
+    request: Request | None = None
+    request_message_id: UUID | None = None
+
+    @property
+    def composer(self) -> bool:
+        return self.mode in COMPOSER_MODES
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
@@ -80,10 +111,32 @@ class DesignWithSongsInput(ModelJobInput):
             raise ValueError("resume names its list exactly in mode resume")
         if self.resume is not None and self.class_id is None:
             raise ValueError("a resume belongs to an existing class")
-        if self.seed is not None and (self.mode != "pick" or self.class_id is None):
-            raise ValueError("a seed belongs to a pick of an existing class")
+        seeded = ("pick", *REPLACING_MODES)
+        if self.seed is not None and (self.mode not in seeded or self.class_id is None):
+            raise ValueError("a seed belongs to a pick, swap or change of an existing class")
         if self.source is not None and (self.mode != "pick" or self.seed is not None):
             raise ValueError("a source playlist belongs to a pick without a seed")
+        return self._composer()
+
+    def _composer(self) -> Self:
+        composer = self.mode in COMPOSER_MODES
+        if not composer:
+            if any(getattr(self, name) is not None for name in COMPOSER_FIELDS):
+                raise ValueError("these fields belong to the composer's modes")
+            if self.seed is not None and not self.seed.replace:
+                raise ValueError("a seed replaces at least one slot")
+            return self
+        if self.class_id is None or self.base_revision_id is None or self.source is not None:
+            raise ValueError("a composer job names its class and its sketch")
+        replacing = self.mode in REPLACING_MODES
+        if replacing != (self.replaces_job_id is not None) or replacing != (self.seed is not None):
+            raise ValueError("a swap or change names the waiting job and its list")
+        if self.seed is not None and (self.mode == "change") == bool(self.seed.replace):
+            raise ValueError("a swap replaces slots; a change keeps every song")
+        if (self.mode == "change") != (self.request is not None):
+            raise ValueError("a change, and only a change, carries the request")
+        if (self.request is None) != (self.request_message_id is None):
+            raise ValueError("a request comes with its message")
         return self
 
 

@@ -7,8 +7,9 @@ import pytest
 
 from classbeat.db import user_session
 from classbeat.jobs import AwaitApproval, Complete, JobFailure, JobRun, queue, settle
+from classbeat.jobs.approval import Approval, approve
 from classbeat.jobs.runner import RunConfig, execute
-from classbeat.jobs.user import Approval, approve, cancel
+from classbeat.jobs.user import cancel
 from ctx import make_context
 from jobcore import (
     SONG_LIST,

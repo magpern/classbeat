@@ -143,3 +143,23 @@ async def test_the_interpreter_is_told_how_many_playlists_are_attached(
     assert json.loads(message)["attached_playlists"] == 1
     assert PLAYLIST not in message  # never an id
     assert UUID(made.json()["class_id"])
+
+
+async def test_interpret_again_keeps_the_attached_music(ienv: InterpretEnv) -> None:
+    """#1188: a composer request retried after a stored ``not_connected`` keeps ``music_sources``
+    (it was dropped before: the restart copied the browser fields without it)."""
+    turn_on(ienv.renv)
+    class_id, _ = await ienv.interpreted(
+        COMPOSED, music_sources=SOURCES, music_override={"source": "pick"}
+    )
+    stored = ienv.interpretation(class_id)
+    stored["refusal"] = {"reason": "not_connected", "counts": {}}
+    ienv.renv.sql(
+        "UPDATE classes SET interpretation = CAST(:v AS jsonb) WHERE id = :c",
+        v=json.dumps(stored),
+        c=class_id,
+    )
+    made = await ienv.renv.browser.post(f"/api/classes/{class_id}/interpret-again", None)
+    assert made.status_code == 201, made.text
+    given = ienv.stored_input(UUID(made.json()["job_id"]))
+    assert (given["music_sources"], given["composer"]) == (SOURCES, True)

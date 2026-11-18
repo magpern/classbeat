@@ -1,0 +1,233 @@
+{
+ "name": "rev_sketch_fill_30",
+ "about": "The composer's design on the songs: the sketch's shape kept and re-timed to the songs chosen for it.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2
+ },
+ "music": {
+  "tracks": 8
+ },
+ "revise": {
+  "request": "Put these songs into this class: keep its shape (its segments, efforts and order) and re-time its intervals to the songs.",
+  "earlier_requests": [],
+  "base": {
+   "name": "Invented sketch",
+   "description": "The sketch, with no songs yet.",
+   "segments": [
+    {
+     "name": "Warm-up",
+     "kind": "warmup",
+     "intervals": [
+      {
+       "sec": 200,
+       "zone": 2,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false
+      },
+      {
+       "sec": 100,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Climb 1",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 150,
+       "zone": 4,
+       "rpm": [
+        68,
+        76
+       ],
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 5,
+       "rpm": [
+        65,
+        75
+       ],
+       "standing": true
+      },
+      {
+       "sec": 90,
+       "zone": 4,
+       "rpm": [
+        68,
+        76
+       ],
+       "standing": false
+      },
+      {
+       "sec": 60,
+       "zone": 1,
+       "rpm": [
+        75,
+        85
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Sprint 1",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 120,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        90,
+        100
+       ],
+       "standing": false
+      },
+      {
+       "sec": 60,
+       "zone": 1,
+       "rpm": [
+        75,
+        85
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Sprint 2",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 120,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        90,
+        100
+       ],
+       "standing": false
+      },
+      {
+       "sec": 60,
+       "zone": 1,
+       "rpm": [
+        75,
+        85
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Tempo 1",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 210,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false
+      },
+      {
+       "sec": 90,
+       "zone": 2,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Tempo 2",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 120,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false
+      },
+      {
+       "sec": 60,
+       "zone": 2,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Cooldown",
+     "kind": "cooldown",
+     "intervals": [
+      {
+       "sec": 150,
+       "zone": 2,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false
+      },
+      {
+       "sec": 120,
+       "zone": 1,
+       "rpm": [
+        70,
+        80
+       ],
+       "standing": false
+      }
+     ]
+    }
+   ]
+  },
+  "songs_changed": true
+ },
+ "expect": {
+  "revision": {
+   "kind": "kept_shape"
+  }
+ }
+}

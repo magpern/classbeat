@@ -22,7 +22,7 @@ from dataclasses import asdict
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -43,7 +43,6 @@ from classbeat.classes.list_cursor import decode_cursor, encode_cursor
 from classbeat.classes.music_playlists_out import MosaicSongOut, MusicPlaylistOut, MusicPlaylistsOut
 from classbeat.classes.provenance_out import ProvenanceOut
 from classbeat.classes.schemas import (
-    BeatOneIn,
     BeatOneOut,
     ClassDetailOut,
     ClassesOut,
@@ -166,6 +165,8 @@ async def get_class(
         if match is None
         else SwedebeatMatchPointerOut(revision_id=match.revision_id, approved=match.approved),
         beat_one=BeatOneOut(available=False) if beats is None else BeatOneOut.of(beats),
+        composer=found.composer.composer,
+        fill_songs=found.composer.fill_songs,
     )
     if enabled:
         return detail
@@ -393,94 +394,3 @@ async def show_rule_again(
 ) -> DismissedRulesOut | JSONResponse:
     """Undo a dismissal. Idempotent: a rule that is not dismissed stays so."""
     return await _dismissal(class_id, rule_id, request, ctx, dismissed=False)
-
-
-def _beat_one_answer(done: beat_one.Changed) -> BeatOneOut | JSONResponse:
-    if done.reason == "not_found":
-        return _not_found()
-    if done.reason == "invalid_input":
-        return _refuse("invalid_input", 422)
-    if done.reason is not None:
-        return _refuse(done.reason)
-    return BeatOneOut.of(done.view)
-
-
-async def _beat_one(
-    class_id: str, song: int, revision_id: UUID, beats: int | None, request: Request,
-    ctx: UserContext,
-) -> BeatOneOut | JSONResponse:  # fmt: skip
-    wanted = _uuid(class_id)
-    if wanted is None:
-        return _not_found()
-    done = await beat_one.change(
-        request.app.state.session_factory, ctx, wanted, revision_id, song, beats
-    )
-    return _beat_one_answer(done)
-
-
-@router.put(
-    "/{class_id}/beat-one/{song}",
-    response_model=BeatOneOut,
-    responses={404: {}, 409: {}, 422: {}},
-)
-async def set_beat_one(
-    class_id: str,
-    song: Annotated[int, Path(ge=1, le=500)],
-    body: BeatOneIn,
-    request: Request,
-    ctx: Annotated[UserContext, Depends(auth.require_user)],
-) -> BeatOneOut | JSONResponse:
-    """Set one song's beat-one correction for the class's current revision's music (ADR 0007
-    amendment "beat-one corrections"). It reaches MOWL only through a new revision."""
-    return await _beat_one(class_id, song, body.revision_id, body.beats, request, ctx)
-
-
-@router.delete(
-    "/{class_id}/beat-one/rows/{row_id}",
-    response_model=BeatOneOut,
-    responses={404: {}},
-)
-async def clear_beat_one_row(
-    class_id: str,
-    row_id: str,
-    request: Request,
-    ctx: Annotated[UserContext, Depends(auth.require_user)],
-) -> BeatOneOut | JSONResponse:
-    """Clear any row of the class by its id: one for earlier music or for a song the current
-    revision does not play. Another class's row is 404."""
-    wanted, row = _uuid(class_id), _uuid(row_id)
-    if wanted is None or row is None:
-        return _not_found()
-    done = await beat_one.clear_row(request.app.state.session_factory, ctx, wanted, row)
-    return _beat_one_answer(done)
-
-
-@router.delete(
-    "/{class_id}/beat-one/{song}",
-    response_model=BeatOneOut,
-    responses={404: {}, 409: {}, 422: {}},
-)
-async def clear_beat_one(
-    class_id: str,
-    song: Annotated[int, Path(ge=1, le=500)],
-    revision_id: UUID,
-    request: Request,
-    ctx: Annotated[UserContext, Depends(auth.require_user)],
-) -> BeatOneOut | JSONResponse:
-    """Clear one song's correction for the current revision's music. Idempotent; a revision that
-    is not current is 409 ``stale_base`` and nothing is deleted."""
-    return await _beat_one(class_id, song, revision_id, None, request, ctx)
-
-
-@router.delete("/{class_id}/beat-one", response_model=BeatOneOut, responses={404: {}})
-async def clear_all_beat_one(
-    class_id: str,
-    request: Request,
-    ctx: Annotated[UserContext, Depends(auth.require_user)],
-) -> BeatOneOut | JSONResponse:
-    """Clear every beat-one correction of the class. Idempotent."""
-    wanted = _uuid(class_id)
-    if wanted is None:
-        return _not_found()
-    done = await beat_one.clear_all(request.app.state.session_factory, ctx, wanted)
-    return _beat_one_answer(done)

@@ -750,7 +750,10 @@ class FakeSpotify:
     def _search(self, query: dict[str, str]) -> Answer:
         if "track" not in query.get("type", "").split(","):
             return _error(400, "Missing or bad type")
-        words = query.get("q", "").lower().split()
+        # Field filters (``track:"..." artist:"..." year:...``, as ``find_songs`` builds them)
+        # search their words; the year is not applied.
+        q = re.sub(r"\byear:\S+", " ", query.get("q", "").lower())
+        words = re.sub(r"\b(?:track|artist|album):", " ", q).replace('"', " ").split()
         if not words:
             return _error(400, "No search query")
         limit, offset, problem = _paging(query, SEARCH_LIMIT, SEARCH_LIMIT)

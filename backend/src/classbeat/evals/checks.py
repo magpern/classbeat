@@ -86,7 +86,7 @@ from classbeat.agent.loop import StageOutcome
 from classbeat.design.revision import canonical, fitted_draft
 from classbeat.design.rules import evaluate
 from classbeat.design.sport_rules import select_profile_for
-from classbeat.evals import game_checks
+from classbeat.evals import game_checks, shape_checks
 from classbeat.evals.cases import Case, PatternExpect, Range, RevisionExpect
 
 DURATION_TOLERANCE: Final = 0.05
@@ -489,10 +489,6 @@ def _efforts(spec: dict[str, Any]) -> tuple[int, int, int, int]:
     return _climbs(spec), races, ftp, len(bursts) - races
 
 
-def _mains(spec: dict[str, Any]) -> list[dict[str, Any]]:
-    return [s for s in spec["segments"] if s["kind"] == "main"]
-
-
 def _predicate(
     want: RevisionExpect, spec: dict[str, Any], base: dict[str, Any], tss: float
 ) -> tuple[bool, str]:
@@ -512,7 +508,9 @@ def _predicate(
         asked = (want.length_min or 0) * 60
         total = workout.total_seconds(spec)
         return abs(total - asked) <= DURATION_TOLERANCE * asked, f"{total} s for {asked} s asked"
-    mains = _mains(spec)
+    if want.kind == "kept_shape":  # the composer's design on the songs (#1188)
+        return shape_checks.kept_shape(spec, base)
+    mains = [s for s in spec["segments"] if s["kind"] == "main"]
     at = mains[0] if want.climb_at == "start" else mains[-1]
     return bool(mains) and _is_climb(
         at
