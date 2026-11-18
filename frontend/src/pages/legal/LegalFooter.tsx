@@ -8,19 +8,19 @@ export function LegalFooter({ published }: { published?: readonly string[] }) {
   return (
     <nav
       aria-label={t('legal.footer.label')}
-      className="mt-12 flex flex-wrap gap-x-6 border-t border-line pt-4 text-[0.9375rem]"
+      className="mt-12 flex flex-wrap gap-x-6 border-t border-line pt-4 text-sm text-muted"
     >
-      <Link to="/privacy" className="inline-flex min-h-11 items-center">
+      <Link to="/privacy" className="inline-flex min-h-11 items-center text-muted no-underline hover:text-text">
         {t('legal.link.privacy')}
       </Link>{' '}
-      <Link to="/terms" className="inline-flex min-h-11 items-center">
+      <Link to="/terms" className="inline-flex min-h-11 items-center text-muted no-underline hover:text-text">
         {t('legal.link.terms')}
       </Link>{' '}
-      <Link to="/help" className="inline-flex min-h-11 items-center">
+      <Link to="/help" className="inline-flex min-h-11 items-center text-muted no-underline hover:text-text">
         {t('help.link')}
       </Link>{' '}
       {visibleSiteLinks(published).map((link) => (
-        <Link key={link.path} to={link.path} className="inline-flex min-h-11 items-center">
+        <Link key={link.path} to={link.path} className="inline-flex min-h-11 items-center text-muted no-underline hover:text-text">
           {t(link.label)}
         </Link>
       ))}

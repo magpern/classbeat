@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-/** ADR 0013 section 4: a sidebar from 1024 px, an icon rail from 640 px, a tab bar below. */
+/** ADR 0013 section 4 and Afterburn A2: a top bar from 640 px (the shell does not tell 'rail' from 'sidebar'), a tab bar below. */
 export type Layout = 'phone' | 'rail' | 'sidebar'
 
 const SIDEBAR = '(min-width: 1024px)'
