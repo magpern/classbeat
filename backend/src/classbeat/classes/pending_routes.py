@@ -5,7 +5,8 @@ Only while ``composer_flow`` is on: 409 ``feature_off`` otherwise.
 - ``GET .../pending-messages``: the class's stored messages, oldest first.
 - ``POST .../pending-messages`` ``{message_id, body}``: 201 with the stored ``pending`` message,
   200 with the same one for the same id and body; 409 ``idempotency_mismatch`` for the same id with
-  another body, 409 ``message_pending`` while another message of the class is pending.
+  another body, 409 ``message_pending`` while another message of the class is pending, 409
+  ``pending_full`` (``limit``, ``count``) once the class holds ``pending.MAX_STORED`` messages.
 - ``POST .../pending-messages/{message_id}/submit``: 201 when it became a job now, 200 with the
   message as it is (``submitted`` with its ``job_id``, or ``failed`` with its ``reason``) for a
   message submitted or refused earlier; 409 ``class_busy`` while a job of the class is queued or

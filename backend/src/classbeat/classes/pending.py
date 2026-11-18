@@ -7,7 +7,10 @@ that is not the user's). Every statement filters on
 - ``store``: the browser's message ``{message_id, body}`` is stored on the class as ``pending``,
   under the class row's lock. The same id with the same body is the same row (a repeated send);
   with another body it is ``idempotency_mismatch``. A class holds at most one pending message
-  (``message_pending`` for a second one; the partial unique index of migration 0060 backs it).
+  (``message_pending`` for a second one; the partial unique index of migration 0060 backs it),
+  and at most ``MAX_STORED`` messages of any status (``pending_full`` with ``limit`` and
+  ``count``), so store, a refused submit and store again cannot grow without bound; the list
+  answers all of them.
 - ``submit`` (``classbeat.classes.pending_submit``): the class's state decides what it becomes.
 """
 
@@ -25,7 +28,8 @@ from classbeat.db import user_session
 from classbeat.design import composer
 
 Factory = async_sessionmaker[AsyncSession]
-MAX_LISTED: Final = 50
+MAX_STORED: Final = 50  # a class's stored messages, of any status
+MAX_LISTED: Final = MAX_STORED
 MISMATCH: Final = "idempotency_mismatch"
 
 _COLUMNS = "message_id, body, status, reason, job_id, created_at"
@@ -42,6 +46,10 @@ _LIST = text(
 _OTHER_PENDING = text(
     "SELECT 1 FROM class_pending_messages WHERE owner_id = :owner_id AND class_id = :class_id "
     "AND status = 'pending'"
+)
+_COUNT = text(
+    "SELECT count(*) FROM class_pending_messages "
+    "WHERE owner_id = :owner_id AND class_id = :class_id"
 )
 _INSERT = text(
     "INSERT INTO class_pending_messages (owner_id, class_id, message_id, body, status) "
@@ -95,6 +103,9 @@ async def store(
             return Answer(message_of(found)) if same else Answer(reason=MISMATCH)
         if (await db.execute(_OTHER_PENDING, ids_of(ctx, class_id))).first() is not None:
             return Answer(reason="message_pending")
+        count = (await db.execute(_COUNT, ids_of(ctx, class_id))).scalar_one()
+        if count >= MAX_STORED:
+            return Answer(reason="pending_full", counts={"limit": MAX_STORED, "count": count})
         await db.execute(_INSERT, {**ids, "body": body})
         row = (await db.execute(ROW_SQL, ids)).one()
     return Answer(message_of(row), created=True)

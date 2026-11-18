@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy import text
 
 from classbeat.classes import pending_policy
+from classbeat.classes.pending import MAX_STORED
 from classbeat.classes.pending_policy import ClassState
 from classbeat.classes.pending_submit import submit_key
 from classbeat.design import limits as design_limits
@@ -62,10 +63,12 @@ async def submit(skenv: SketchEnv, class_id: UUID, message_id: UUID) -> httpx.Re
     return await skenv.renv.browser.post(path)
 
 
-def stored(skenv: SketchEnv, message_id: UUID) -> Any:
+def stored(skenv: SketchEnv, message_id: UUID, class_id: UUID | None = None) -> Any:
+    where = "message_id = :m" + ("" if class_id is None else " AND class_id = :c")
     return skenv.sql(
-        "SELECT status, reason, job_id FROM class_pending_messages WHERE message_id = :m",
+        f"SELECT status, reason, job_id FROM class_pending_messages WHERE {where}",  # noqa: S608
         m=message_id,
+        c=class_id,
     ).one()
 
 
@@ -112,7 +115,7 @@ async def test_on_a_sketch_it_becomes_a_sketch_revise_once(skenv: SketchEnv) -> 
     assert again.status_code == 200
     assert made.json()["job_id"] == again.json()["job_id"]
     [job] = revise_jobs(skenv, class_id)
-    assert job.idempotency_key == submit_key(message)
+    assert job.idempotency_key == submit_key(class_id, message)
     assert (job.input["base_revision_id"], job.input["request"]) == (str(sketch), BODY)
     assert job.input["sketch_base"] is True
     assert tuple(stored(skenv, message)) == ("submitted", None, job.id)
@@ -238,3 +241,65 @@ async def test_two_submits_at_once_make_one_job(skenv: SketchEnv, database_url: 
     assert answers[0].json()["job_id"] == answers[1].json()["job_id"]
     [job] = revise_jobs(skenv, class_id)
     assert tuple(stored(skenv, message)) == ("submitted", None, job.id)
+
+
+async def test_the_same_message_id_in_two_classes_makes_a_job_for_each(skenv: SketchEnv) -> None:
+    """A message id is unique only within its class: the job's key and its lookup name both."""
+    first, _ = await skenv.sketched()
+    second, _ = await skenv.sketched()
+    message = uuid.uuid4()
+    for class_id in (first, second):
+        await send(skenv, class_id, message)
+        made = await submit(skenv, class_id, message)
+        assert made.status_code == 201, made.text
+    [one], [two] = revise_jobs(skenv, first), revise_jobs(skenv, second)
+    assert one.id != two.id
+    assert one.idempotency_key != two.idempotency_key
+    assert tuple(stored(skenv, message, first)) == ("submitted", None, one.id)
+    assert tuple(stored(skenv, message, second)) == ("submitted", None, two.id)
+
+
+async def test_a_class_holds_at_most_max_stored_messages(skenv: SketchEnv) -> None:
+    """Store, a refused submit and store again cannot grow the table without bound."""
+    class_id, _ = await skenv.sketched()
+    owner = skenv.renv.owner
+    for _ in range(MAX_STORED):
+        skenv.sql(
+            "INSERT INTO class_pending_messages (owner_id, class_id, message_id, body, status, "
+            "reason) VALUES (:o, :c, gen_random_uuid(), 'earlier', 'failed', 'not_changeable')",
+            o=owner,
+            c=class_id,
+        )
+    full = await send(skenv, class_id, uuid.uuid4())
+    detail = full.json()["detail"]
+    assert (full.status_code, detail["reason"]) == (409, "pending_full")
+    assert (detail["limit"], detail["count"]) == (MAX_STORED, MAX_STORED)
+    count = "SELECT count(*) FROM class_pending_messages WHERE class_id = :c"
+    assert skenv.sql(count, c=class_id).scalar_one() == MAX_STORED
+    listed = await skenv.renv.browser.get(f"/api/classes/{class_id}/pending-messages")
+    assert len(listed.json()["messages"]) == MAX_STORED  # the list answers every one
+
+
+async def test_another_user_reaches_nothing_with_the_flag_on(
+    skenv: SketchEnv, browsers: Any
+) -> None:
+    """With ``composer_flow`` on, another user's class or message is ``not_found`` on all three
+    routes, and nothing of the owner's changes (``test_m6_security_routes`` runs them flag off)."""
+    class_id, _ = await skenv.sketched()
+    message = uuid.uuid4()
+    await send(skenv, class_id, message)
+    stranger = await browsers()
+    base = f"/api/classes/{class_id}/pending-messages"
+    payload = {"message_id": str(uuid.uuid4()), "body": BODY}
+    answers = [
+        await stranger.get(base),
+        await stranger.post(base, payload),
+        await stranger.post(base, {"message_id": str(message), "body": BODY}),
+        await stranger.post(f"{base}/{message}/submit"),
+    ]
+    for answer in answers:
+        assert (answer.status_code, answer.json()["detail"]["reason"]) == (404, "not_found")
+    rows = "SELECT count(*) FROM class_pending_messages WHERE class_id = :c"
+    assert skenv.sql(rows, c=class_id).scalar_one() == 1
+    assert tuple(stored(skenv, message)) == ("pending", None, None)
+    assert revise_jobs(skenv, class_id) == []

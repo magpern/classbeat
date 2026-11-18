@@ -4,16 +4,18 @@
 The class's state decides (``pending_policy``). A queued or running job leaves the message pending
 (``class_busy``). A revise (of a sketch or a draft) is created through the jobs API
 (``JobEnqueue``) as ``revise_draft`` on the current revision, under the idempotency key of the
-message id, with a ``CreateHold``: in the create transaction, under the owner lock, the message row
-is locked and must still be pending and the class's state still the one planned (else the call
-reads it again, once); a created or repeated job marks it ``submitted`` with its job id in that
-transaction (``created``); a refusal of the create (``revision_limit``, ``quota``, ``chat_full`` and
-every other) marks it ``failed`` with that code in that transaction. So two concurrent submits
-make one job, and a refused submit never stays pending. A waiting song list would make it a
-**change** (ADR 0038 section 6), which has no job kind before #1188 and #1189: until then it is
-``failed`` with ``not_changeable``, as every state outside the table is.
+class and message id (``submit_key``), with a ``CreateHold``: in the create transaction, under
+the owner lock, the message row is locked and must still be pending and the class's state still
+the one planned (else the call reads it again, once); a created or repeated job marks it
+``submitted`` with its job id in that transaction (``created``); a refusal of the create
+(``revision_limit``, ``quota``, ``chat_full`` and every other) marks it ``failed`` with that code
+in that transaction. So two concurrent submits make one job, and a refused submit never stays
+pending. A waiting song list would make it a **change** (ADR 0038 section 6), which has no job
+kind before #1188 and #1189: until then it is ``failed`` with ``not_changeable``, as every state
+outside the table is.
 """
 
+import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
@@ -65,7 +67,10 @@ _STATE = text(
     "AND r.id = c.current_revision_id WHERE c.owner_id = :owner_id AND c.id = :class_id"
 )
 
-_JOB_OF_KEY = text("SELECT id FROM jobs WHERE owner_id = :owner_id AND idempotency_key = :key")
+_JOB_OF_KEY = text(
+    "SELECT id FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "
+    "AND idempotency_key = :key"
+)
 
 _LOCK_ROW = text(ROW_SQL.text + " FOR UPDATE")
 
@@ -75,9 +80,11 @@ _DECIDED: Final = "_decided"
 _REPLAN: Final = "_replan"
 
 
-def submit_key(message_id: UUID) -> str:
-    """The job's idempotency key: one per message, whoever submits it."""
-    return f"pending-{message_id.hex}"
+def submit_key(class_id: UUID, message_id: UUID) -> str:
+    """The job's idempotency key: one per message of a class, whoever submits it. A message id is
+    unique only within its class, so the key names both (a digest: the key is at most 64)."""
+    digest = hashlib.sha256(class_id.bytes + message_id.bytes).hexdigest()
+    return f"pending-{digest[:56]}"
 
 
 async def _state(db: AsyncSession, ctx: UserContext, class_id: UUID) -> tuple[Any, str] | None:
@@ -131,8 +138,9 @@ class _Hold:
         self, db: AsyncSession, reason: str, counts: Mapping[str, int | str], /
     ) -> Held:
         if reason == MISMATCH:
-            key = {"owner_id": self.ctx.user_id, "key": submit_key(self.message_id)}
-            job = (await db.execute(_JOB_OF_KEY, key)).scalar_one_or_none()
+            key = submit_key(self.class_id, self.message_id)
+            ids = {"owner_id": self.ctx.user_id, "class_id": self.class_id, "key": key}
+            job = (await db.execute(_JOB_OF_KEY, ids)).scalar_one_or_none()
             if job is not None:  # this message's job exists: it is the answer, not a refusal
                 await self.created(db, job)
                 return Held(_SUBMITTED)
@@ -232,7 +240,7 @@ async def _create(
         ctx,
         parsed,
         REVISE_DRAFT,
-        idempotency_key=submit_key(hold.message_id),
+        idempotency_key=submit_key(hold.class_id, hold.message_id),
         ledger=ledger,
         limit=limit,
         consumes_credit=False,
