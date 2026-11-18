@@ -203,7 +203,10 @@ The fields are:
   title); a title the user chose, a duplicate's or any other title is never overwritten, and
   with no name, or one the cleaning drops, the title stays. A revise's or a song pool's reading
   never names the class. Existing classes keep their titles. As any title, it is also the name of
-  the class's private Spotify playlist after the song approval (`songs.phase2.playlist_name`).
+  the class's private Spotify playlist after the song approval (`songs.phase2.playlist_name`),
+  owner decision 2026-11-18: the name is cleaned and bounded as above before it is stored, and it
+  is the class title the user sees on the class page and in the class list before they approve,
+  so that write follows the user's approval of a class whose title they saw.
   Only a class started from a request (the start screen, the composer) is named: an Advanced
   class has the title the user typed, and a studio class starts with its own title.
 
