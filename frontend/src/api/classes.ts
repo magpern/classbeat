@@ -11,6 +11,8 @@ import {
 } from './decode'
 import { decodeBrief, decodeMatchPointer, decodeProfile } from './classBrief'
 import { decodeBeatOne, type BeatOne } from './beatOneTypes'
+import { decodeComposerState, type ComposerState } from './composerState'
+import { decodePlaylist, decodeSongs, type ClassPlaylist, type ClassSongs } from './classSongs'
 import { decodeDraftContent, decodeUnknownBpm } from './draftTypes'
 import { decodeInterpretationItems } from './interpretationItems'
 import type { Brief } from './jobs'
@@ -25,6 +27,7 @@ import {
 
 export * from './beatOneTypes'
 export * from './revisionTypes'
+export * from './classSongs'
 
 // The class API (ADR 0007 section 12, backend/src/classbeat/classes/routes.py). Server text is
 // data: decoded into typed fields and rendered as text by React, never as HTML.
@@ -54,60 +57,6 @@ export interface SavedSummary {
    * row, or an answer without the field; neither is ever worded as a match.
    */
   latestVerified: boolean | null
-}
-
-/** The class's newest song list (ADR 0008 section 9). */
-export interface ClassSongs {
-  /** `none`, `waiting`, `approved`, `expired`, `superseded` or `cancelled`. */
-  state: string
-  jobId: string | null
-  revisionId: string | null
-  contentHash: string | null
-  expiresAt: string | null
-}
-
-export interface ClassPlaylist {
-  name: string
-  /** The owner's own link, only when the server built it from a verified playlist. */
-  link: string | null
-}
-
-const SPOTIFY_PLAYLIST_LINK = /^https:\/\/open\.spotify\.com\/playlist\/[A-Za-z0-9]{22}$/
-
-const SPOTIFY_TRACK_LINK = /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]{22}$/
-
-/** Whether a link from the API is a Spotify track link; the frontend never builds one. */
-export function isTrackLink(link: string): boolean {
-  return SPOTIFY_TRACK_LINK.test(link)
-}
-
-/** Whether a link from the API is a Spotify playlist link; the frontend never builds one. */
-export function isPlaylistLink(link: string): boolean {
-  return SPOTIFY_PLAYLIST_LINK.test(link)
-}
-
-function decodePlaylist(value: unknown): ClassPlaylist | null {
-  if (value === null || value === undefined) return null
-  const item = object(value, 'playlist')
-  const link = optionalText(item, 'link')
-  return {
-    name: text(item, 'name'),
-    link: link !== null && SPOTIFY_PLAYLIST_LINK.test(link) ? link : null,
-  }
-}
-
-function decodeSongs(value: unknown): ClassSongs {
-  if (value === null || value === undefined) {
-    return { state: 'none', jobId: null, revisionId: null, contentHash: null, expiresAt: null }
-  }
-  const item = object(value, 'songs')
-  return {
-    state: text(item, 'state'),
-    jobId: optionalText(item, 'job_id'),
-    revisionId: optionalText(item, 'revision_id'),
-    contentHash: optionalText(item, 'content_hash'),
-    expiresAt: optionalText(item, 'expires_at'),
-  }
 }
 
 export interface ClassPlayer {
@@ -169,6 +118,8 @@ export interface ClassSummary {
   player: ClassPlayer | null
   /** A SwedeBeat playlist or mix was written for the class; a class delete cannot take it back. */
   swedebeatWritten: boolean
+  /** The composer flow's stored state (ADR 0038 sections 5 and 7); empty without the flag. */
+  composer: ComposerState
 }
 
 function decodeClass(value: unknown): ClassSummary {
@@ -210,6 +161,7 @@ function decodeClass(value: unknown): ClassSummary {
     beatOne: decodeBeatOne(item.beat_one),
     player: decodeClassPlayer(item.player),
     swedebeatWritten: item.swedebeat_written === true,
+    composer: decodeComposerState(item),
   }
 }
 
