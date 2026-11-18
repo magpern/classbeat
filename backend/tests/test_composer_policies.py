@@ -6,8 +6,12 @@ from typing import Any
 import pytest
 
 from classbeat.agent.choose_songs import ChosenList, ChosenSong
+from classbeat.agent.pick_pool import PoolPick, PoolResult
+from classbeat.agent.registry import Entry
 from classbeat.agent.songs import PoolTrack
+from classbeat.songs.composer_pick import candidate_set
 from classbeat.songs.composer_slots_policy import pin_slots, slot_roles
+from classbeat.songs.composer_sources import Favoured, Pinned
 from classbeat.songs.favoured_policy import prefer_favoured
 
 
@@ -103,3 +107,18 @@ def test_a_swap_is_never_undone_by_the_favoured_rule() -> None:
     assert [s.spotify_id for s in out.songs] == ["s0", "hit", "s2", "s3"]
     back = prefer_favoured(listed, tracks, {"fav_out"}, set())  # without the exclusion: back
     assert "fav_out" in [s.spotify_id for s in back.songs]
+
+
+def test_the_candidate_set_never_holds_an_excluded_song() -> None:
+    """#1188 review F1: the one set the pool write, the analysis and the choice use."""
+
+    def entry(ref: int, tid: str) -> Entry:
+        return Entry(ref, tid, "A", "B", None, 240, tid)
+
+    model = PoolResult((PoolPick(0, "build", "out"), PoolPick(1, "build", "hit")))
+    favoured = Favoured((entry(0, "out"), entry(2, "fav")), ())
+    pinned = Pinned(((0, entry(3, "pin")),), ())
+    picked = candidate_set(model, favoured, pinned, {}, frozenset({"out"}))
+    assert [p.spotify_id for p in picked] == ["hit", "pin", "fav"]
+    unfiltered = candidate_set(model, favoured, pinned, {}, frozenset())
+    assert "out" in [p.spotify_id for p in unfiltered]

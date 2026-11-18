@@ -4,6 +4,7 @@ is Not as asked ``source_unreadable``; a pinned song Spotify has is placed at it
 does not have is ``pinned_not_found``; neither is a failure; the favoured track takes a search
 hit's slot where it fits; each song says where it came from. Never the network or a model."""
 
+import json
 from typing import Any
 from uuid import UUID
 
@@ -84,12 +85,22 @@ async def test_attached_playlists_and_pinned_songs_fill_the_sketch(cenv: Compose
     assert cenv.current(class_id) == sketch
 
 
-async def test_a_swap_never_brings_back_the_favoured_song_it_took_out(cenv: ComposerEnv) -> None:
-    """#1188 review B2 and D1, through the swap: the fill puts the favoured track 15 at slot 6;
-    the user swaps slot 6; the swap reads the attached playlist again, so track 15 is in its pool,
-    and the choice takes a search hit of a close BPM (track 16). The favoured rule must not put
-    track 15 back."""
+async def test_a_swap_never_offers_the_favoured_song_it_took_out(
+    cenv: ComposerEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1188 reviews B2, D1 and F1, through the swap: the fill puts the favoured track 15 at slot
+    6, and the user swaps slot 6. The swap reads the attached playlist again, and the model even
+    puts track 15 first in its pool; the choice is scripted to take the first candidate, so it
+    would take track 15 if it were offered. It is not: it is never written to the working copy,
+    never among the choice's candidates, and not in the new list."""
     fake = cenv.songenv.fake
+    written: list[list[str]] = []
+    real_write = fake._write  # pyright: ignore[reportPrivateUsage]
+
+    def recording(playlist: Any, method: str, body: bytes, partial: Any) -> Any:
+        written.append(list(json.loads(body).get("uris") or []))
+        return real_write(playlist, method, body, partial)
+
     mine = fake.add_playlist(USER_A, "Mine", [f"spotify:track:{song_id(FAVOURED)}"])
     rider = await cenv.songenv.rider()
     class_id, _ = await cenv.sketched(
@@ -101,9 +112,9 @@ async def test_a_swap_never_brings_back_the_favoured_song_it_took_out(cenv: Comp
     made = await swap(rider, class_id, list_id, 6)
     assert made.status_code == 201, made.text
     # The registry: track 15 (favoured) is ref 0, then ``beta`` 10 to 19 without it: refs 1 to 9.
-    pool = entries(*[(r, "recovery") for r in range(4, 10)])  # tracks 13, 14, 16 to 19
+    pool = entries(*[(r, "recovery") for r in (0, 4, 5, 6, 7, 8, 9)])  # 15 first, then 13 to 19
     listed = [("kept", i, role) for i, role in enumerate(KEPT_ROLES[:6])]
-    listed += [("pool", 2, "recovery"), ("kept", 6, "cooldown")]  # pool 2: track 16, a hit
+    listed += [("pool", 0, "recovery"), ("kept", 6, "cooldown")]  # the first candidate
     cenv.songenv.script = {
         "model": "fake-model",
         "drafts": {"revised": REVISED},
@@ -119,8 +130,21 @@ async def test_a_swap_never_brings_back_the_favoured_song_it_took_out(cenv: Comp
             *design_turns(),
         ],
     }
+    monkeypatch.setattr(fake, "_write", recording)
+    earlier = len(cenv.songenv.providers)  # the fill's own stages offered track 15, rightly
     row = await cenv.songenv.run(UUID(made.json()["job_id"]))
     assert row.state == "waiting_for_approval", (row.state, row.error_category)
+    removed = f"spotify:track:{song_id(FAVOURED)}"
+    assert written  # the swap's pool write and its songs write
+    assert all(removed not in uris for uris in written)  # never written to the working copy
+    chose = [
+        sent
+        for provider in cenv.songenv.providers[earlier:]
+        for sent in provider.sent
+        if sent.spec.stage == "choose_songs"
+    ]
+    assert chose
+    assert all(f"Ride Song {FAVOURED} " not in str(sent.turns) for sent in chose)  # never offered
     ids = [s["spotify_id"] for s in cenv.content(row.approval_revision_id)["songs"]]
-    assert ids[6] == song_id(16)  # the swap stands
+    assert ids[6] == song_id(13)  # the first candidate once track 15 is out
     assert song_id(FAVOURED) not in ids

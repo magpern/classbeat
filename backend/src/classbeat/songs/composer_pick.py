@@ -6,7 +6,8 @@
    message adds, as facts, the sketch's song slots and which refs are favoured and pinned. After
    the stage the backend adds every pinned and favoured track the model left out (at most
    ``MAX_POOL`` in all; model picks are dropped from the end first): a favoured or pinned song is
-   always a candidate, whatever the model did.
+   always a candidate, whatever the model did, except a song a swap takes out, which is never one
+   (``candidate_set``: the one set the write, the analysis and the choice use).
 2. **pool_write** and **pool_analyse**: as a pick's (``pick``'s ``_write`` and the music step).
 3. **choose**: the ``choose_songs`` stage. A fill with pinned songs is a replace-mode choice: the
    pinned songs, analysed, are kept at their slots (``composer_slots_policy.pin_slots``) and the
@@ -101,20 +102,29 @@ def pool_message(ctx: PoolContext, slots: list[str], favoured: Favoured, pinned:
     )
 
 
-def _with_extras(
-    pool: PoolResult, favoured: Favoured, pinned: Pinned, pin_roles: dict[int, str]
+def candidate_set(
+    pool: PoolResult,
+    favoured: Favoured,
+    pinned: Pinned,
+    pin_roles: dict[int, str],
+    excluded: frozenset[str],
 ) -> tuple[PoolPick, ...]:
-    """The model's picks, in its order, then every pinned and favoured track it left out (module
-    docstring, step 1), at most ``MAX_POOL``: the model's last picks make room first."""
+    """**The** candidates of a fill or swap, the one set every later step uses: the pool write,
+    the analysis, the choice, the favoured rule (module docstring, step 1). The model's picks in
+    its order, then every pinned and favoured track it left out, at most ``MAX_POOL`` (the
+    model's last picks make room first). ``excluded``, the songs a swap takes out of the list, is
+    removed from all of them, so a swapped-out song is never written, analysed or offered again,
+    whoever proposed it (#1188 review F1)."""
     extras: list[PoolPick] = []
-    seen = {p.spotify_id for p in pool.picks}
+    seen = {p.spotify_id for p in pool.picks} | set(excluded)
     pins = [(pin_roles.get(e.ref, FAVOURED_ROLE), e) for _, e in pinned.found]
     for role, entry in [*pins, *((FAVOURED_ROLE, e) for e in favoured.entries)]:
         if entry.spotify_id not in seen:
             seen.add(entry.spotify_id)
             extras.append(PoolPick(entry.ref, role, entry.spotify_id, entry.cover, entry.year))
     extras = extras[:MAX_POOL]
-    return (*pool.picks[: MAX_POOL - len(extras)], *extras)
+    model = [p for p in pool.picks if p.spotify_id not in excluded]
+    return (*model[: MAX_POOL - len(extras)], *extras)
 
 
 async def pick_composer(
@@ -150,7 +160,7 @@ async def pick_composer(
     if not isinstance(pool_outcome.output, PoolResult) or not pool_outcome.output.picks:
         raise JobFailure("internal")
     pin_roles = {e.ref: slots[pin_slots[i]] for i, e in pinned.found if i in pin_slots}
-    picks = _with_extras(pool_outcome.output, favoured, pinned, pin_roles)
+    picks = candidate_set(pool_outcome.output, favoured, pinned, pin_roles, excluded)
     track_ids = tuple(p.spotify_id for p in picks)
     playlist_id = await write_pool_playlist(run, keyring, spotify, given, track_ids)
     await run.stage("pool_analyse")
@@ -252,6 +262,8 @@ async def _choose(
         raise JobFailure("internal")
     fixed = {k.slot for k in plan.kept}
     favourite_ids = {e.spotify_id for e in favoured.entries}
+    # ``tracks`` come from ``candidate_set`` and hold no excluded song; ``excluded`` here is
+    # defence in depth.
     chosen = prefer_favoured(outcome.output, tracks, favourite_ids, fixed, excluded)
     made = provenance(
         [pool_outcome, outcome],
