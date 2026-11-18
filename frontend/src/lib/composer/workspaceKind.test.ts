@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { isComposerClass } from './workspaceKind'
 
-const cycling = { sport: 'cycling' as const, soundless: false, currentRevisionId: 'r1' }
+import { NO_COMPOSER_STATE } from '../../api/composerState'
+
+const cycling = { sport: 'cycling' as const, soundless: false, currentRevisionId: 'r1', composer: NO_COMPOSER_STATE }
 const sketch = [{ origin: 'sketch' }]
 const designed = [{ origin: 'design_draft' }]
 
@@ -13,6 +15,9 @@ describe('which class page a class gets', () => {
     ['an older class with no sketch', true, cycling, designed, false],
     ['no version yet, cycling', true, { ...cycling, currentRevisionId: null }, [], true],
     ['no version yet, soundless', true, { ...cycling, currentRevisionId: null, soundless: true }, [], false],
+    ['the server says composer', true, { ...cycling, composer: { ...NO_COMPOSER_STATE, composer: true } }, designed, true],
+    ['the server says not composer, whatever the history holds', true, { ...cycling, composer: { ...NO_COMPOSER_STATE, composer: false } }, sketch, false],
+    ['the server says composer for a soundless class', true, { ...cycling, soundless: true, composer: { ...NO_COMPOSER_STATE, composer: true } }, designed, false],
     ['no version yet, running', true, { ...cycling, currentRevisionId: null, sport: 'running' }, [], false],
   ]
   it.each(rows)('%s', (_name, flag, summary, revisions, expected) => {

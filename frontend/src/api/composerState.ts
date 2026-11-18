@@ -32,9 +32,15 @@ export interface ComposerState {
   savePending: SavePending | null
   /** `failed` when the newest phase-2 job of the class failed; null otherwise. */
   phase2: 'failed' | null
+  /**
+   * The class answer's `composer` boolean (true when the interpret job was admitted with the flag
+   * on; #1188 adds it); null while the server does not send it, and the page then falls back to the
+   * sketch in the history (`lib/composer/workspaceKind.ts`).
+   */
+  composer: boolean | null
 }
 
-export const NO_COMPOSER_STATE: ComposerState = { fill: null, savePending: null, phase2: null }
+export const NO_COMPOSER_STATE: ComposerState = { fill: null, savePending: null, phase2: null, composer: null }
 
 function fillOf(value: unknown): FillState | null {
   if (!isObject(value)) return null
@@ -57,5 +63,6 @@ export function decodeComposerState(item: JsonObject): ComposerState {
     fill: fillOf(item.fill_songs),
     savePending: savePendingOf(item.save_pending),
     phase2: phase2 === 'failed' ? 'failed' : null,
+    composer: typeof item.composer === 'boolean' ? item.composer : null,
   }
 }

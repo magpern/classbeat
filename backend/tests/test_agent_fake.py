@@ -79,6 +79,12 @@ COVERED = {
     "e2e_studio_swap",
     # its edit loop: a chat revise that cuts the last song (the backend's revise test's script)
     "e2e_studio_revise",
+    # the composer flow's e2e (e2e/tests/composer-workspace.spec.ts, ADR 0038, #1191), pinned by
+    # tests/test_composer_scripts.py: the reading with a pinned song and a question, the sketch
+    # (the soundless design: no songs) and a chat change of it
+    "composer_read",
+    "composer_sketch",
+    "composer_sketch_revised",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")

@@ -13,6 +13,11 @@ import { fakeState } from './spotify-helpers'
 // answered, the shape is changed, a song is swapped, and the class is approved and saved. Exactly
 // one MOWL save and one final Spotify playlist may result, and nothing is written before Approve.
 //
+// The reading, sketch and first change scripts are in `backend/tests/agent_scripts`
+// (`composer_read`, `composer_sketch`, `composer_sketch_revised`, pinned by
+// `backend/tests/test_composer_scripts.py`). The order of the script switches against the fill that
+// starts by itself after the sketch is finished when the routes of #1188 and #1189 are there.
+//
 // It needs what #1188 (the fill hand-off, swap and change) and #1189 (approve with `save: true`,
 // `save_pending`) add: the `fill-songs` route and the fake model scripts named in `SCRIPTS`. Until
 // both exist the spec skips itself with that reason (a runtime probe, not a flag): the assertions
@@ -78,7 +83,7 @@ test('describe with a playlist and a pinned song, shape it, swap a song, approve
   await page.goto('/classes/new')
   await page
     .getByLabel('Describe your class')
-    .fill(`45 minutes, three climbs and a hard finish. Start with ${PINNED}.`)
+    .fill(`A hard climbing ride. Start with ${PINNED} by ABBA.`)
   await page.getByRole('button', { name: /^Add music/ }).click()
   await page.getByRole('button', { name: new RegExp(PLAYLISTS.draft.name) }).click()
   useModelScript('composer_sketch')
@@ -103,7 +108,8 @@ test('describe with a playlist and a pinned song, shape it, swap a song, approve
   await reading.getByRole('button', { name: '60 minutes' }).click()
   await expect(page.getByText('Make the class 60 minutes long.')).toBeVisible(LONG)
 
-  // Change the shape in the chat.
+  // Change the shape in the chat (the second revise: the script chains from the first).
+  useModelScript('soundless_revise_second')
   await page.getByLabel('Tell classbeat what to change').fill('Make the last climb longer.')
   await page.getByRole('button', { name: 'Send' }).click()
   await expect(page.getByText('Make the last climb longer.')).toBeVisible(LONG)

@@ -1,0 +1,22 @@
+{
+ "model": "fake-model",
+ "turns": [
+  {
+   "calls": [
+    {
+     "name": "submit_brief",
+     "input": {
+      "length_min": {"value": 30, "origin": "inferred"},
+      "climbs": {"value": 1, "origin": "inferred"},
+      "sprints": {"value": 2, "origin": "inferred"},
+      "pinned_songs": [
+       {"song": "Dancing Queen", "artist": "ABBA", "at": "Start", "origin": "explicit"}
+      ],
+      "questions": [{"path": "length_min"}]
+     },
+     "expect": {"accepted": true}
+    }
+   ]
+  }
+ ]
+}
