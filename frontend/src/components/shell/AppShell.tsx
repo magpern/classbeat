@@ -42,7 +42,7 @@ function Frame({ top, mainClass, alert, bottom, children }: FrameProps) {
         {t('shell.skip')}
       </a>
       {top}
-      <main id="main-content" tabIndex={-1} className={mainClass}>
+      <main id="main-content" tabIndex={-1} className={`${mainClass} focus:outline-none`}>
         <div className="mx-auto max-w-5xl">
           {alert}
           {children}

@@ -87,6 +87,9 @@ describe('keyboard', () => {
     expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveFocus()
     expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveAttribute('href', '#main-content')
     expect(document.getElementById('main-content')?.tagName).toBe('MAIN')
+    // A skip-link jump focuses the whole page; no ring is drawn around it (other focus is unchanged).
+    expect(document.getElementById('main-content')).toHaveClass('focus:outline-none')
+    expect(document.getElementById('main-content')).toHaveAttribute('tabindex', '-1')
     const reached: string[] = []
     for (let i = 0; i < 12 && reached.length < 5; i++) {
       await userEvent.tab()
