@@ -3,8 +3,8 @@ import type { ButtonHTMLAttributes } from 'react'
 import { cn } from '../../lib/cn'
 
 const variants = {
-  primary: 'bg-brand text-on-brand hover:opacity-90 hover:shadow-[0_8px_22px_-10px_var(--cb-brand)]',
-  secondary: 'bg-raised text-text hover:bg-line',
+  primary: 'bg-heat text-on-heat shadow-glow hover:brightness-110',
+  secondary: 'border border-solid border-line bg-raised text-text hover:bg-line',
   ghost: 'bg-transparent text-text hover:bg-raised',
   danger: 'bg-bad text-on-brand hover:opacity-90',
 } as const

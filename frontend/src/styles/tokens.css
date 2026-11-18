@@ -9,22 +9,34 @@
   color-scheme: dark;
 
   /* Colour: dark (default) */
-  --cb-bg: #0e0f13;
-  --cb-surface: #17181e;
-  --cb-raised: #20222b;
-  --cb-line: #2c2f3b;
-  --cb-text: #f4f5f8;
-  --cb-muted: #a6abbb;
-  --cb-brand: #8b7bff;
-  --cb-on-brand: #0e0f13;
+  --cb-bg: #0a0910;
+  --cb-surface: #14121b;
+  --cb-raised: #1e1b27;
+  --cb-line: #2b2836;
+  --cb-text: #f6f4fa;
+  --cb-muted: #aba6ba;
+  --cb-brand: #b9a2ff;
+  --cb-on-brand: #0a0910;
   --cb-ok: #3ddc97;
-  --cb-ok-soft: #10301f;
+  --cb-ok-soft: #192a2a;
   --cb-warn: #ffb547;
-  --cb-warn-soft: #34270f;
+  --cb-warn-soft: #302620;
   --cb-bad: #ff7a7a;
-  --cb-bad-soft: #381a1c;
+  --cb-bad-soft: #301e26;
   --cb-scrim: rgb(0 0 0 / 0.6);
   --cb-paper: #ffffff;
+
+  /* The heat line (ADR 0013 Afterburn amendment A1): classbeat's signature. Only for what matters:
+     the primary button, the active tab, progress, the current plan, the avatar ring. Never a page
+     background, never on zone bars, the stage or Spotify data. White on both ends is >= 4.5:1. */
+  --cb-heat-from: #6d4aff;
+  --cb-heat-mid: #a12fc4;
+  --cb-heat-to: #d61a72;
+  --cb-heat: linear-gradient(110deg, var(--cb-heat-from), var(--cb-heat-mid), var(--cb-heat-to));
+  --cb-on-heat: #ffffff;
+  --cb-tab-mark: #d61a72; /* the active tab's and segment's 2px underline; >= 3:1 on surface, both themes */
+  --cb-glow: 0 8px 24px -8px rgb(161 47 196 / 0.55);
+  --cb-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -16px rgb(0 0 0 / 0.5);
 
   /* Imagery (issue 854): how much of --cb-bg lies over a photo. The hero scrim keeps the text
      readable whatever the photo (tokens test: worst-case contrast); the dim darkens a light photo
@@ -99,6 +111,7 @@
   --cb-radius-sm: 0.5rem;
   --cb-radius-md: 0.75rem;
   --cb-radius-lg: 1.5rem;
+  --cb-radius-xl: 1.75rem; /* hero cards */
   --cb-radius-full: 999px;
   --cb-target: 2.75rem;
   --cb-content-width: 64rem;
@@ -118,21 +131,22 @@
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --cb-bg: #f5f5f8;
+  --cb-bg: #f6f4fa;
   --cb-surface: #ffffff;
-  --cb-raised: #eeeff4;
-  --cb-line: #dadce5;
-  --cb-text: #15161b;
-  --cb-muted: #5a6072;
-  --cb-brand: #5b4bdb;
+  --cb-raised: #efecf5;
+  --cb-line: #e3dfeb;
+  --cb-text: #15121c;
+  --cb-muted: #5c576d;
+  --cb-brand: #5a36e0;
   --cb-on-brand: #ffffff;
-  --cb-ok: #0f6e43;
-  --cb-ok-soft: #ddf3e8;
+  --cb-ok: #0f7a4a;
+  --cb-ok-soft: #e1f5ea;
   --cb-warn: #9a5b00;
-  --cb-warn-soft: #fbebcf;
+  --cb-warn-soft: #fcefd6;
   --cb-bad: #b32d24;
   --cb-bad-soft: #fbe0dd;
   --cb-scrim: rgb(20 22 30 / 0.5);
+  --cb-shadow: 0 1px 2px rgb(21 18 28 / 0.06), 0 12px 32px -16px rgb(21 18 28 / 0.18);
   --cb-hero-scrim: 0.94;
   --cb-image-dim: 0;
 }
@@ -140,21 +154,22 @@
 @media (prefers-color-scheme: light) {
   :root[data-theme='system'] {
     color-scheme: light;
-    --cb-bg: #f5f5f8;
+    --cb-bg: #f6f4fa;
     --cb-surface: #ffffff;
-    --cb-raised: #eeeff4;
-    --cb-line: #dadce5;
-    --cb-text: #15161b;
-    --cb-muted: #5a6072;
-    --cb-brand: #5b4bdb;
+    --cb-raised: #efecf5;
+    --cb-line: #e3dfeb;
+    --cb-text: #15121c;
+    --cb-muted: #5c576d;
+    --cb-brand: #5a36e0;
     --cb-on-brand: #ffffff;
-    --cb-ok: #0f6e43;
-    --cb-ok-soft: #ddf3e8;
+    --cb-ok: #0f7a4a;
+    --cb-ok-soft: #e1f5ea;
     --cb-warn: #9a5b00;
-    --cb-warn-soft: #fbebcf;
+    --cb-warn-soft: #fcefd6;
     --cb-bad: #b32d24;
     --cb-bad-soft: #fbe0dd;
     --cb-scrim: rgb(20 22 30 / 0.5);
+    --cb-shadow: 0 1px 2px rgb(21 18 28 / 0.06), 0 12px 32px -16px rgb(21 18 28 / 0.18);
     --cb-hero-scrim: 0.94;
     --cb-image-dim: 0;
   }
