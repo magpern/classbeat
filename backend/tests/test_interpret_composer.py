@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from classbeat.agent.interpret import InterpretContext, InterpretResult, interpret_stage
 from classbeat.agent.interpret_input import first_message
 from classbeat.agent.interpreted import InterpretedRequest
-from classbeat.agent.interpreted_composer import from_request
+from classbeat.agent.interpreted_composer import MIN_LETTERS, from_request
 from classbeat.agent.stage import ToolAnswer
 from classbeat.design.interpret_composer_policy import composer_reading
 from classbeat.design.interpret_kind import InterpretRequestInput
@@ -326,6 +326,42 @@ def test_pin_words_are_whole_words_of_the_request(
     words: str, text: str, expected: str | None
 ) -> None:
     assert from_request(words, text, 100) == expected
+
+
+@pytest.mark.parametrize(
+    ("words", "text", "expected"),
+    [
+        ("Africa", "Africa", "Africa"),  # the whole request: no neighbour on either side
+        ("Africa", "Africa then a climb", "Africa"),  # at the very start
+        ("climb", "Africa then a climb", "climb"),  # at the very end
+        ("U2", "Two by U22 tonight", None),  # a digit after it: inside a word
+        ("U2", "Two by 2U2 tonight", None),  # a digit before it: inside a word
+        ("U2", "Two by U2, then more", "U2"),  # punctuation is a boundary
+        ("a.", "Make a. climb", None),  # one letter and a full stop is still one letter
+        ("é", "Make é climb", None),  # one non-ASCII letter is a lone letter too
+        ("(live)", "Africa (live) at the end", "(live)"),  # no word edge to respect on a bracket
+        ("Mia", "Mamma Mia!", "Mia"),
+        ("Mam", "Mamma Mia!", None),
+    ],
+)
+def test_pin_words_respect_word_edges_and_the_letter_floor(
+    words: str, text: str, expected: str | None
+) -> None:
+    assert from_request(words, text, 100) == expected
+
+
+def test_pin_words_need_exactly_the_minimum_letters_or_digits() -> None:
+    below = "x" * (MIN_LETTERS - 1)
+    at = "x" * MIN_LETTERS
+    assert from_request(below, f"play {below} now", 100) is None
+    assert from_request(at, f"play {at} now", 100) == at
+    # punctuation never counts towards the floor
+    assert from_request("-" + below + "-", f"play -{below}- now", 100) is None
+
+
+def test_pin_words_longer_than_the_limit_are_dropped_not_cut() -> None:
+    assert from_request("Africa", "Make Africa the last climb", 6) == "Africa"
+    assert from_request("Africa", "Make Africa the last climb", 5) is None
 
 
 def test_the_composer_flow_is_off_by_default() -> None:

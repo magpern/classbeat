@@ -24,7 +24,12 @@ from classbeat.agent.providers.openai_arguments import parse_arguments
 _DROPPED: Final = frozenset({"default", "title"})
 # Keywords whose value maps names (a property's, a definition's) to schemas: the names are kept
 # as they are, whatever they are (#1197: a property named ``title`` was dropped as the keyword).
-_NAME_MAPS: Final = frozenset({"properties", "$defs", "definitions"})
+_NAME_MAPS: Final = frozenset(
+    {"properties", "$defs", "definitions", "patternProperties", "dependentSchemas"}
+)
+# Keywords whose value is data, not a schema (an ``enum`` or ``const`` value may be an object with
+# keys named ``title`` or ``anyOf``): kept exactly as it is and never walked.
+_DATA: Final = frozenset({"enum", "const"})
 _LENGTHS: Final = (("minLength", "at least {} characters"), ("maxLength", "at most {} characters"))
 
 
@@ -61,8 +66,12 @@ def _check_unions(node: Any, root: Mapping[str, Any]) -> None:
     if isinstance(node, dict):
         if _object_branches(node, root) > 1:  # pyright: ignore[reportUnknownArgumentType]
             raise ValueError("a tool schema may not have a union of two object types")
-        for value in node.values():  # pyright: ignore[reportUnknownVariableType]
-            _check_unions(value, root)
+        for key, value in node.items():  # pyright: ignore[reportUnknownVariableType]
+            if key in _DATA:
+                continue
+            parts = value.values() if key in _NAME_MAPS and isinstance(value, dict) else [value]  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+            for part in parts:  # pyright: ignore[reportUnknownVariableType]
+                _check_unions(part, root)
     elif isinstance(node, list):
         for value in node:  # pyright: ignore[reportUnknownVariableType]
             _check_unions(value, root)
@@ -81,7 +90,7 @@ def _strict(node: Any) -> Any:
     if not isinstance(node, dict):
         return node
     out: dict[str, Any] = {
-        key: _named(value) if key in _NAME_MAPS else _strict(value)
+        key: value if key in _DATA else _named(value) if key in _NAME_MAPS else _strict(value)
         for key, value in node.items()  # pyright: ignore[reportUnknownVariableType]
         if key not in _DROPPED
     }

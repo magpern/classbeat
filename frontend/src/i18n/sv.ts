@@ -622,6 +622,7 @@ const sv: Catalogue = {
   'class.asked.request': 'Du bad om: ”{request}”',
   'class.asked.changed': 'Ändrad på begäran',
   'class.asked.songs': 'Låtar ändrade',
+  'class.asked.beatOne': 'Beat 1 justerad',
   'class.asked.first': 'Första utformningen',
   'class.compare.segments': 'Segment: {added} tillagda, {removed} borttagna.',
   'class.compare.intervalsChanged': { one: '{count} intervall ändrat', other: '{count} intervaller ändrade' },
