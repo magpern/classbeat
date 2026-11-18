@@ -38,7 +38,7 @@ export const workspaceEn = {
   'cw.chat.messagePending': 'Your last message is still waiting to be sent.',
   'cw.chat.pendingFull': 'This class holds as many messages as it can. Design a new class to keep going.',
   'cw.chat.noVersion': 'The class has no version to change yet.',
-  'cw.chip.reading': 'Reading your request',
+  'cw.chip.reading': 'No sketch yet',
   'cw.chip.rough': 'Rough: songs not in yet',
   'cw.chip.ready': 'Ready to approve',
   'cw.chip.expired': 'Songs expired',

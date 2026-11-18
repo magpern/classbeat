@@ -38,7 +38,7 @@ export const workspaceSv: Catalogue = {
   'cw.chat.messagePending': 'Ditt senaste meddelande väntar fortfarande på att skickas.',
   'cw.chat.pendingFull': 'Passet rymmer inte fler meddelanden. Skapa ett nytt pass för att gå vidare.',
   'cw.chat.noVersion': 'Passet har ingen version att ändra än.',
-  'cw.chip.reading': 'Läser din begäran',
+  'cw.chip.reading': 'Ingen skiss än',
   'cw.chip.rough': 'Skiss: låtarna är inte på plats än',
   'cw.chip.ready': 'Redo att godkännas',
   'cw.chip.expired': 'Låtarna har gått ut',

@@ -55,7 +55,7 @@ describe('the composer workspace while the request is being read', () => {
     expect(await screen.findByTestId('composer-workspace')).toBeInTheDocument()
     expect(screen.getByTestId('request-block')).toHaveTextContent('Forty-five minutes, three climbs')
     expect(await screen.findByTestId('job-status')).toHaveTextContent('Reading your request…')
-    expect(screen.getByText('Reading your request', { selector: 'span' })).toBeInTheDocument()
+    expect(screen.getByText('No sketch yet')).toBeInTheDocument()
     expect(screen.queryByText('Rough: songs not in yet')).toBeNull()
     expect(screen.queryByTestId('reading-card')).toBeNull()
     expect(screen.getByText('The class has no version to change yet.')).toBeInTheDocument()

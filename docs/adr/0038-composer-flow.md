@@ -373,7 +373,7 @@ class credit.
   music" class and a reading that ended without a stored interpretation (failed, cancelled, expired) answer
   `composer: false` and keep the page they had; once the interpretation is stored the answer follows its job
   input as before. In the window the workspace shows the request, the job status line ("Reading your
-  request…") and a "Reading your request" chip (state `reading`, no version yet) in place of "Rough"; the
+  request…") and a "No sketch yet" chip (state `reading`, no version yet) in place of "Rough: songs not in yet"; the
   chat box says there is no version to change yet, and the page's one hand-off (`useHandoff`) starts the
   sketch when the reading is stored, in the same mounted workspace.
 
