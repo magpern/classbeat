@@ -3,8 +3,8 @@
 ``write_pool(run, keyring, opened, track_ids)``: the pool row is read; when it has no playlist
 yet, a ``spotify_create_playlist`` (key ``<job_id>:pool-create``) makes one and its
 ``on_succeeded`` stores the id on the pool row; then a ``spotify_replace_items`` (key
-``<job_id>:pool:<h16>``) writes exactly ``track_ids`` to **the id stored on the pool row**, never
-one from anywhere else.
+``<job_id>:pool:<h16>``, or a rewrite of it, ``pool_keys``) writes exactly ``track_ids`` to **the
+id stored on the pool row**, never one from anywhere else.
 
 **The decide step** of both (``_guard``, inside the operation's fenced transaction, before its row
 is written):
@@ -50,6 +50,7 @@ from classbeat.operations.requests import NOT_ACTIONABLE_SQL, Guard
 from classbeat.playlists import common, create, privacy, replace
 from classbeat.playlists.create_record import created_id
 from classbeat.playlists.lock import WORKING_COPY, playlist_lock
+from classbeat.playlists.pool_keys import write_key
 
 PROVIDER: Final = "spotify"
 
@@ -250,7 +251,7 @@ async def replace_pool(
     track_ids: tuple[str, ...],
     recheck: Guard | None = None,
 ) -> None:
-    key = replace.pool_key(run.lease.job_id, common.ids_hash(track_ids))
+    key = await write_key(run, pool.id, track_ids)  # a rewrite after another list: #1188 B1
     guard = _guard(run, opened, pool, SPOTIFY_REPLACE_KIND, key, playlist_id, recheck)
     request = replace.replace_request(key, "pool", playlist_id, track_ids, guard, pool_id=pool.id)
     try:

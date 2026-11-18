@@ -67,7 +67,7 @@ KIND_NAMES: Final = frozenset(
     {*ATTACH_KINDS, *CLASS_WRITE_KINDS, *SPOTIFY_WRITE_KINDS, *PLAYER_KINDS, *STUDIO_OUTPUT_KINDS}
 )
 # A Spotify write's key names its purpose (ADR 0008 section 2): ``<job_id>:pool-create``,
-# ``<job_id>:final-create``, ``<job_id>:pool:<h16>`` and ``<job_id>:final-fill``. The job part is
+# ``<job_id>:final-create``, ``<job_id>:pool:<h16>[:<n>]`` and ``<job_id>:final-fill``. The job is
 # a UUID; ``h16`` is the first 16 hex characters of the track-list hash. A studio class's final
 # playlist (ADR 0036 section 6) is keyed by its approval: ``out:<class>:<revision>:
 # spotify_playlist:<attempt>:spotify_create`` and ``...:spotify_fill`` (``output_key_policy``).
@@ -79,7 +79,7 @@ _SPOTIFY_KEYS: Final = {
         (re.compile(_OUT + "spotify_create"), "final"),
     ),
     SPOTIFY_REPLACE_KIND: (
-        (re.compile(r"[0-9a-f-]{36}:pool:[0-9a-f]{16}"), "pool"),
+        (re.compile(r"[0-9a-f-]{36}:pool:[0-9a-f]{16}(:[1-9][0-9]{0,3})?"), "pool"),
         (re.compile(r"[0-9a-f-]{36}:final-fill"), "final"),
         (re.compile(_OUT + "spotify_fill"), "final"),
     ),
