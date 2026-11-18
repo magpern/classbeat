@@ -24,7 +24,6 @@ An approved composer job's phase 2 (``fit``, ``save_pending``) is #1189; until t
 closed in ``kind.run`` before any Spotify or MOWL call.
 """
 
-from dataclasses import replace
 from typing import Any, Final
 from uuid import UUID
 
@@ -177,7 +176,7 @@ async def _swap(
     earlier = sources_of_list(content)
     kept = {k.spotify_id: earlier[k.spotify_id] for k in seeded.kept if k.spotify_id in earlier}
     sources = sources_of(picked.chosen, favoured, Pinned((), ()), kept)
-    picked = replace(picked, sources=sources)
+    picked = Picked(picked.chosen, picked.provenance, picked.unmet, sources)
     return picked, seeded.revision_id, preview.content
 
 

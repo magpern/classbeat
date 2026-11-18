@@ -206,6 +206,9 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/classes/{class_id}/pending-messages"): "owned",
     ("POST", "/api/classes/{class_id}/pending-messages"): "owned",
     ("POST", "/api/classes/{class_id}/pending-messages/{message_id}/submit"): "owned",
+    ("GET", "/api/classes/{class_id}/fill-songs"): "owned",
+    ("POST", "/api/classes/{class_id}/fill-songs"): "owned",
+    ("POST", "/api/classes/{class_id}/swap-songs"): "owned",
     ("DELETE", "/api/classes/{class_id}"): "owned",
     ("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
     ("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
@@ -879,6 +882,18 @@ OWNED_ROUTES = [
         "POST",
         "/api/classes/{class_id}/pending-messages/{message_id}/submit",
         control=frozenset({409}),
+    ),
+    # ADR 0038 section 5 (#1188): the planted class has no sketch (``not_ready``) and
+    # composer_flow is off (``feature_off``), so the owner's calls are 409; another user's class
+    # is 404 like an unknown one.
+    OwnedRoute("GET", "/api/classes/{class_id}/fill-songs", control=frozenset({409})),
+    OwnedRoute("POST", "/api/classes/{class_id}/fill-songs", control=frozenset({409})),
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/swap-songs",
+        lambda rows: {"song_list_revision_id": str(rows.revision_id), "replace": [0]},
+        frozenset({409}),
+        {"Idempotency-Key": "swap-songs-owned-0001"},
     ),
     # #904: the planted class has no stored ``not_connected``, so the owner's call is 409.
     OwnedRoute("POST", "/api/classes/{class_id}/interpret-again", control=frozenset({409})),

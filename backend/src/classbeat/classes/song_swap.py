@@ -12,6 +12,7 @@ The idempotency key is the browser's. Every read filters on ``owner_id`` and run
 from uuid import UUID
 
 from pydantic import ValidationError
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.classes.interpretation import Handoff
@@ -26,6 +27,7 @@ from classbeat.songs.inputs import DesignWithSongsInput, Seed
 from classbeat.songs.kind import DESIGN_WITH_SONGS
 
 Factory = async_sessionmaker[AsyncSession]
+_EXISTS = text("SELECT 1 FROM classes WHERE owner_id = :owner_id AND id = :class_id")
 
 
 async def swap(
@@ -42,6 +44,9 @@ async def swap(
 ) -> Handoff:
     require_context(ctx)
     async with user_session(factory, ctx) as db:
+        ids = {"owner_id": ctx.user_id, "class_id": class_id}
+        if (await db.execute(_EXISTS, ids)).first() is None:
+            return Handoff(reason="not_found")  # another user's class like an unknown one
         if not await composer.composer_on(db):
             return Handoff(reason="feature_off")
         row = (

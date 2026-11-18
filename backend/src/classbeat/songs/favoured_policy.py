@@ -13,7 +13,6 @@ order; a favoured track is used once. Nothing else of the list changes: the slot
 """
 
 from collections.abc import Collection, Sequence
-from dataclasses import replace
 from typing import Final
 
 from classbeat.agent.choose_songs import ChosenList, ChosenSong
@@ -65,4 +64,12 @@ def prefer_favoured(
     if songs == list(chosen.songs):
         return chosen
     total = round(total_sec([s.length_sec for s in songs]))
-    return replace(chosen, songs=tuple(songs), total_sec=total)
+    return ChosenList(
+        tuple(songs),
+        total,
+        chosen.target_sec,
+        chosen.crossfade_sec,
+        chosen.mode,
+        chosen.omitted_no_bpm,
+        chosen.note,
+    )
