@@ -10,8 +10,10 @@ from uuid import UUID
 import pytest
 
 from classbeat.operations.kinds import SPOTIFY_REPLACE_KIND, spotify_purpose
+from classbeat.playlists import common
 from composertools import ComposerEnv, choose_turns, design_turns, fill_script, pool_turns
 from pickfake import POOL_14
+from songtools import POOL
 
 pytestmark = pytest.mark.usefixtures("jenv")
 
@@ -73,3 +75,39 @@ async def test_a_retry_after_the_songs_write_writes_again_and_waits(
 def test_a_rewrite_key_is_still_a_pool_write(suffix: str, purpose: str | None) -> None:
     key = f"{UUID(int=1)}:pool:{'a' * 16}{suffix}"
     assert spotify_purpose(SPOTIFY_REPLACE_KIND, key) == purpose
+
+
+async def test_a_crash_in_the_songs_write_never_lets_the_retry_trust_the_pool(
+    cenv: ComposerEnv,
+) -> None:
+    """#1188 delta review: the songs write's call reached the playlist, then the worker crashed
+    before the row ended (``uncertain``), so ``last_hash`` still names the pool. The retried
+    attempt must write the pool again (the playlist holds the songs), not reuse it."""
+    rider = await cenv.songenv.rider()
+    class_id, _ = await cenv.sketched(rider)
+    made = await cenv.fill(rider, class_id)
+    job_id = UUID(made.json()["job_id"])
+    cenv.songenv.script = overloaded_design()
+    first = await cenv.songenv.run(job_id)
+    assert first.state == "queued", first.error_category
+    rows = cenv.sql(
+        "SELECT * FROM external_operations WHERE owner_id = :o "
+        "AND kind = 'spotify_replace_items' ORDER BY created_at",
+        o=rider.user_id,
+    ).all()
+    assert len(rows) == 2  # the pool, then the songs
+    cenv.sql(  # the songs write's row as a crash leaves it, long past its bound
+        "UPDATE external_operations SET state = 'uncertain', "
+        "pending_at = now() - interval '2 hours' WHERE id = :r",
+        r=rows[1].id,
+    )
+    cenv.sql(  # and the pool row still named as what the playlist holds
+        "UPDATE spotify_pool SET last_hash = :h WHERE owner_id = :o",
+        h=common.ids_hash(tuple(POOL)),
+        o=rider.user_id,
+    )
+    before = item_writes(cenv)
+    cenv.songenv.script = fill_script()
+    row = await cenv.songenv.run(job_id)
+    assert row.state == "waiting_for_approval", (row.state, row.error_category)
+    assert item_writes(cenv) >= before + 2  # the pool and the songs, both written again

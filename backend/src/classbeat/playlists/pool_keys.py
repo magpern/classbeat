@@ -14,8 +14,11 @@ rewrites ``<h16>:<n>``, ``n`` from 1), newest first:
 - none: the base key, a first write;
 - the newest is not ``succeeded`` (``pending``, ``uncertain``, ``failed``): that key, so the
   protocol reconciles or retries it exactly as before (at most once, reconcile before retry);
-- the newest ``succeeded`` and the pool's ``last_hash`` (set by every succeeded pool write, under
-  the working copy's lock) is this list: that key, reused with no call (the playlist holds it);
+- the newest ``succeeded``, the pool's ``last_hash`` (set by every succeeded pool write, under
+  the working copy's lock) is this list, and it is this job's newest pool write of **any** list:
+  that key, reused with no call (the playlist holds it). A later write of another list that did
+  not end ``succeeded`` (a crash in the middle of it: ``pending`` or ``uncertain``) may have
+  reached the playlist while ``last_hash`` still names this list, so that is never trusted;
 - the newest ``succeeded`` but the pool holds another list since: the next rewrite key
   ``<h16>:<n + 1>``, a new write of the same list (an absolute replace, safe to repeat).
 
@@ -37,6 +40,11 @@ _ROWS = text(
     "SELECT idempotency_key, state FROM external_operations WHERE owner_id = :owner_id "
     "AND kind = :kind AND (idempotency_key = :key OR idempotency_key LIKE :like)"
 )
+# This job's newest pool write of any list (its key), by creation.
+_NEWEST_OF_JOB = text(
+    "SELECT idempotency_key FROM external_operations WHERE owner_id = :owner_id "
+    "AND kind = :kind AND idempotency_key LIKE :job_like ORDER BY created_at DESC, id DESC LIMIT 1"
+)
 _LAST_HASH = text("SELECT last_hash FROM spotify_pool WHERE owner_id = :owner_id AND id = :pool_id")
 
 
@@ -52,13 +60,22 @@ async def write_key(run: JobRun, pool_id: UUID, track_ids: tuple[str, ...]) -> s
     async with run.fenced() as fs:
         params = {"owner_id": owner, "kind": SPOTIFY_REPLACE_KIND, "key": base, "like": f"{base}:%"}
         rows = (await fs.db.execute(_ROWS, params)).all()
+        job_like = {
+            "owner_id": owner,
+            "kind": SPOTIFY_REPLACE_KIND,
+            "job_like": f"{run.lease.job_id}:pool:%",
+        }
+        newest_of_job = (await fs.db.execute(_NEWEST_OF_JOB, job_like)).scalar_one_or_none()
         held = (
             await fs.db.execute(_LAST_HASH, {"owner_id": owner, "pool_id": pool_id})
         ).scalar_one_or_none()
     if not rows:
         return base
     newest = max(rows, key=lambda r: _rewrite(r.idempotency_key, base))
-    if newest.state != "succeeded" or (held is not None and bytes(held) == digest):
-        return newest.idempotency_key
+    if newest.state != "succeeded":
+        return newest.idempotency_key  # the protocol reconciles or retries it, as ever
+    holds = held is not None and bytes(held) == digest
+    if holds and newest_of_job == newest.idempotency_key:
+        return newest.idempotency_key  # the playlist holds it: reused, no call
     following = _rewrite(newest.idempotency_key, base) + 1
     return f"{base}:{min(following, MAX_REWRITES)}"
