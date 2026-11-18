@@ -1,8 +1,9 @@
 """``OpenAIProvider``: OpenAI's Responses API behind the loop's interface (ADR 0012 §3, M3c P2).
 
-Built on ``classbeat.agent.providers.openai_common`` (client, errors, usage, strict schemas,
-effort). The request rules come from OpenAI's API reference and its reasoning, function-calling
-and prompt-caching guides, read 2026-10-31 (docs only; nothing here was learned by calling the API).
+Built on ``classbeat.agent.providers.openai_common`` (client, errors, usage, effort) and
+``openai_strict`` (strict schemas). The request rules come from OpenAI's API reference and its
+reasoning, function-calling and prompt-caching guides, read 2026-10-31 (docs only; nothing here
+was learned by calling the API).
 
 - **Request** (one ``responses.create`` per turn, not streamed): ``model``; ``instructions`` = the
   stage's system prompt; ``input`` = the conversation's own history; ``tools`` = the stage's tools
@@ -63,9 +64,8 @@ from classbeat.agent.providers.openai_common import (
     provider_effort,
     read_answer,
     responses_usage,
-    strict_schema,
-    tool_input,
 )
+from classbeat.agent.providers.openai_strict import strict_schema, tool_input
 from classbeat.agent.stage import prompt_version
 
 CACHE_KEY_VERSION_CHARS: Final = 40
