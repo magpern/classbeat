@@ -30,7 +30,9 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
   const { state, reload, replace } = useBilling()
   const action = useAction()
   const [choice, setChoice] = useState<Choice | null>(null)
-  const [done, setDone] = useState<string | null>(null)
+  // The plan id, not its text: the name is looked up when the note renders, so a payment that lands
+  // before the catalogue or the billing has loaded still names the plan (not its id).
+  const [done, setDone] = useState<Choice | null>(null)
   // One key per attempt: a retry after a lost answer is the same request, a refusal starts a new one.
   const attempt = useRef<string | null>(null)
 
@@ -42,7 +44,7 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
 
   // A Paddle checkout completes when the signed notification lands, not when the server answers (ADR 0032 section 7).
   const wait = useCheckoutWait(reload, (paid) => {
-    setDone(t(doneKey(paid.kind), { name: nameOf(paid.plan) }))
+    setDone({ kind: paid.kind, plan: paid.plan })
     onChanged()
   })
   const away = wait.status === 'redirecting' || wait.status === 'waiting'
@@ -98,7 +100,7 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
         }
         replace(next)
         setChoice(null)
-        setDone(t(doneKey(chosen.kind), { name: nameOf(chosen.plan) }))
+        setDone(chosen)
         onChanged()
       })
   }
@@ -124,7 +126,9 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
           })}
         </p>
       ) : null}
-      {done !== null ? <Notice kind="success">{done}</Notice> : null}
+      {done !== null ? (
+        <Notice kind="success">{t(doneKey(done.kind), { name: nameOf(done.plan) })}</Notice>
+      ) : null}
       <CheckoutStatus status={wait.status} onAgain={wait.again} onDismiss={wait.dismiss} />
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {open === null ? null : (
