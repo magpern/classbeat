@@ -25,7 +25,8 @@ from uuid import UUID
 import httpx
 import pytest
 
-from composertools import SKETCH, ComposerEnv, change_script
+from classbeat.songs import composer_design, composer_draft
+from composertools import SKETCH, ComposerEnv, change_script, fill_script
 from songtools import Rider
 
 pytestmark = pytest.mark.usefixtures("jenv")
@@ -215,6 +216,91 @@ async def test_a_sketch_that_is_no_longer_current_makes_prepare_refuse(
     assert cenv.songenv.class_playlists(rider.user_id) == []
     assert cenv.current(class_id) == other
     assert cenv.drafts(class_id) == 2  # the two sketches: no draft stored
+
+
+# The step each path runs after ``read_sketch`` and before the final store: the kept fit's re-time
+# and the re-design's model call. Moving the pointer there leaves only the store's compare-and-set
+# from the sketch (``composer_draft.adopt``) to refuse.
+WINDOW = {"kept fit": (composer_draft, "retimed"), "re-design": (composer_design, "design_on")}
+
+
+@pytest.mark.parametrize("path", list(WINDOW.values()), ids=list(WINDOW))
+async def test_a_sketch_replaced_after_it_was_read_fails_the_store_by_compare_and_set(
+    cenv: ComposerEnv, monkeypatch: pytest.MonkeyPatch, path: tuple[Any, str]
+) -> None:
+    rider, class_id, _, job_id, list_id, digest = await waiting(cenv)
+    answer = await approve(rider, job_id, list_id, digest)
+    assert answer.status_code == 200, answer.text
+    other = uuid.uuid4()
+    cenv.insert_sketch(rider.user_id, class_id, other, copy.deepcopy(SKETCH), number=99)
+    module, name = path
+    inner = getattr(module, name)
+    moved: list[bool] = []
+
+    def move() -> None:
+        cenv.sql("UPDATE classes SET current_revision_id = :r WHERE id = :c", r=other, c=class_id)
+        moved.append(True)
+
+    if name == "retimed":
+
+        def retimed(*args: Any, **kwargs: Any) -> Any:
+            move()
+            return inner(*args, **kwargs)
+
+        monkeypatch.setattr(module, name, retimed)
+    else:
+        stretch(cenv, list_id, {2: 3_000})  # the final songs differ: the re-design path
+        cenv.songenv.script = change_script()
+
+        async def design_on(*args: Any, **kwargs: Any) -> Any:
+            made = await inner(*args, **kwargs)
+            move()
+            return made
+
+        monkeypatch.setattr(module, name, design_on)
+    row = await cenv.songenv.run(job_id)
+    assert moved == [True]
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert cenv.current(class_id) == other
+    stored = cenv.sql(
+        "SELECT count(*) FROM class_revisions WHERE class_id = :c AND kind = 'draft' "
+        "AND provenance ->> 'origin' = 'design_with_songs'",
+        c=class_id,
+    )
+    assert stored.scalar_one() == 0  # the store rolled back
+    pending = cenv.sql("SELECT save_pending FROM classes WHERE id = :c", c=class_id).scalar_one()
+    assert pending is None
+    ledger = cenv.sql("SELECT count(*) FROM credit_ledger WHERE job_id = :j", j=job_id)
+    assert ledger.scalar_one() == 0
+
+
+async def test_a_design_run_of_another_song_list_job_is_no_proof(cenv: ComposerEnv) -> None:
+    """The preview's run must be a run of the job that stored the approved list: a submitted
+    ``revise`` run of an earlier fill of the same class does not prove it."""
+    rider, class_id, _, first_job, first_list, _ = await waiting(cenv)
+    earlier_run = cenv.content(first_list)["preview"]["design_run_id"]
+    cenv.sql("UPDATE jobs SET state = 'cancelled', finished_at = now() WHERE id = :j", j=first_job)
+    again = await cenv.fill(rider, class_id, retry=True)
+    assert again.status_code == 201, again.text
+    job_id = UUID(again.json()["job_id"])
+    cenv.songenv.script = fill_script()
+    row = await cenv.songenv.run(job_id)
+    assert row.state == "waiting_for_approval", (row.state, row.error_category)
+    list_id, digest = row.approval_revision_id, bytes(row.approval_hash).hex()
+    answer = await approve(rider, job_id, list_id, digest)
+    assert answer.status_code == 200, answer.text
+    own_run = UUID(cenv.content(list_id)["preview"]["design_run_id"])
+    # The approved list's own run becomes the earlier fill's: no longer this list's job's run.
+    cenv.sql("UPDATE agent_runs SET job_id = :j WHERE id = :r", j=first_job, r=own_run)
+    assert str(own_run) != earlier_run
+    cenv.songenv.script = change_script()
+    done = await cenv.songenv.run(job_id)
+    assert (done.state, done.error_category) == ("completed", None)
+    draft_id = cenv.current(class_id)
+    assert draft_id is not None
+    draft = cenv.songenv.revision(draft_id)
+    assert draft.provenance["fit"] == "redesigned"
+    assert str(own_run) not in draft.provenance["agent_run_ids"]
 
 
 async def test_save_is_refused_for_any_other_job(cenv: ComposerEnv) -> None:
