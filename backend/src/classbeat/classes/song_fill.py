@@ -151,7 +151,7 @@ class _Hold:
 
 
 async def _plan(
-    factory: Factory, ctx: UserContext, class_id: UUID, retry: bool
+    factory: Factory, ctx: UserContext, class_id: UUID, retry: bool, base: UUID | None
 ) -> tuple[_Plan, DesignWithSongsInput] | Handoff:
     owner = {"owner_id": ctx.user_id, "class_id": class_id}
     async with user_session(factory, ctx) as db:
@@ -166,6 +166,8 @@ async def _plan(
         params = {**owner, "job_id": row.job_id, "kind": INTERPRET_KIND}
         first = (await db.execute(_INTERPRET_JOB, params)).scalar_one_or_none()
     sketch = found.current_revision_id
+    if base is not None and base != sketch:
+        return Handoff(reason="stale_base")  # the page shows an older sketch: it reads again
     fill = fill_of(row, sketch)
     mowl, spotify = ctx.connection("mowl"), ctx.connection("spotify")
     if mowl is None or spotify is None:
@@ -194,6 +196,7 @@ async def start(
     class_id: UUID,
     *,
     retry: bool,
+    base: UUID | None = None,
     ledger: CreditLedger,
     limit: JobLimitPolicy,
     enqueue: JobEnqueue,
@@ -202,7 +205,7 @@ async def start(
     refusal (stored on the class unless transient)."""
     require_context(ctx)
     for _ in range(2):  # a second plan only when the sketch or the attempt moved meanwhile
-        planned = await _plan(factory, ctx, class_id, retry)
+        planned = await _plan(factory, ctx, class_id, retry, base)
         if isinstance(planned, Handoff):
             return planned
         plan, parsed = planned

@@ -43,8 +43,10 @@ COVERED = {
     "e2e_change",
     # the composer's fill and swap (ADR 0038 sections 5 and 6, #1188) for the e2e stack (#1191):
     # e2e_pick's and e2e_change's pick, each turn tagged with its stage, then the design on the
-    # songs (the ``revise`` stage); tests/test_composer_scripts_1188.py checks their design turns
-    # are the ones the pipeline tests run
+    # songs (the ``revise`` stage); tests/test_composer_scripts_1188.py runs their design turns
+    # through the pipeline. Their pick turns are e2e_pick's refs and a pick-mode choice: with a
+    # pinned song Spotify finds or an attached playlist, the refs shift and the choice is in
+    # replace mode, so the e2e of #1191 needs pick turns for its own catalogue and pins
     "composer_fill",
     "composer_swap",
     # used by the e2e specs (e2e/tests/swedebeat-mix.spec.ts): a design on a Swedebeat mix

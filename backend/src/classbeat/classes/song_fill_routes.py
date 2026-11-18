@@ -3,12 +3,13 @@
 - ``GET .../fill-songs``: the fill of the class's current sketch: ``{sketch_revision_id, attempt,
   refusal, job}`` (``job`` is ``{job_id, kind, state}`` of the attempt's key, null before the first
   call). 404 ``not_found``; 409 ``not_ready`` while the current revision is no sketch.
-- ``POST .../fill-songs`` with an optional ``{"retry": true}`` (**Find songs again**): 201 with the
-  new fill job ``{job_id, kind, state}``, 200 with the same job for every later call of that
-  attempt; 409 ``{reason, ...counts}`` with the refusal, stored and answered again until a call
-  with ``retry``; 409 ``not_ready``, ``feature_off``, ``not_connected``, ``class_busy`` (never
-  stored); 404 ``not_found``. No ``Idempotency-Key`` header: the key is derived from the class,
-  the sketch and the attempt. No credit is used.
+- ``POST .../fill-songs`` with an optional ``{"retry": true, "base_revision_id": <the sketch>}``
+  (**Find songs again**; a named sketch that is not the current one is 409 ``stale_base``): 201
+  with the new fill job ``{job_id, kind, state}``, 200 with the same job for every later call
+  of that attempt; 409 ``{reason, ...counts}`` with the refusal, stored and answered again
+  until a call with ``retry``; 409 ``not_ready``, ``feature_off``, ``not_connected``,
+  ``class_busy`` (never stored), ``stale_base``; 404 ``not_found``. No ``Idempotency-Key``
+  header: the key is derived from the class, the sketch and the attempt. No credit is used.
 
 - ``POST .../swap-songs`` ``{song_list_revision_id, replace: [position]}`` with an
   ``Idempotency-Key`` header (``classbeat.classes.song_swap``): the swap that replaces the waiting
@@ -31,7 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from classbeat import auth
 from classbeat.classes import song_fill, song_swap
 from classbeat.classes.handoff_routes import job_enqueue
-from classbeat.classes.interpretation_routes import DesignJobOut, HandoffIn, RefusalOut
+from classbeat.classes.interpretation_routes import DesignJobOut, RefusalOut
 from classbeat.context import UserContext
 from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.http import IDEMPOTENCY_KEY, credit_ledger, job_limit
@@ -50,6 +51,16 @@ def _uuid(raw: str) -> UUID | None:
         return UUID(raw)
     except ValueError:
         return None
+
+
+class FillIn(BaseModel):
+    """``retry``: Find songs again. ``base_revision_id``: the sketch the page shows; when given and
+    not the class's current sketch, 409 ``stale_base`` (the page reads the class again)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    retry: bool = False
+    base_revision_id: UUID | None = None
 
 
 class FillOut(BaseModel):
@@ -100,7 +111,7 @@ async def fill_songs(
         return _refuse("not_found")
     try:
         raw = await request.body()
-        body = HandoffIn.model_validate_json(raw or b"{}")
+        body = FillIn.model_validate_json(raw or b"{}")
     except ValidationError:
         return JSONResponse({"detail": {"reason": "invalid_input"}}, status_code=422)
     done = await song_fill.start(
@@ -108,6 +119,7 @@ async def fill_songs(
         ctx,
         wanted,
         retry=body.retry,
+        base=body.base_revision_id,
         ledger=ledger,
         limit=limit,
         enqueue=job_enqueue(),

@@ -71,6 +71,9 @@ ROUTES_ALLOWED: Final = {
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/another"): _STUDIO,
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/swap-anyway"): _STUDIO,
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/design"): _STUDIO,
+    ("POST", "/api/classes/{class_id}/fill-songs"): "names the sketch on purpose: the fill puts "
+    "songs into the current sketch (classes.song_fill: stale_base for any other id) and writes "
+    "only the private working copy; nothing is saved or sent before the approval",
     ("POST", "/api/classes/{class_id}/swap-songs"): "names the waiting song_list revision of "
     "a composer job (classes.song_swap, song_replace.ReplaceHold: the job's own approval list), "
     "never a sketch (a draft); its design_with_songs swap writes only the private working copy, "

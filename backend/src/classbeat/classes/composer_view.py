@@ -7,7 +7,8 @@
   (``classbeat.classes.song_fill``): ``{sketch_revision_id, attempt, failure}``; ``failure`` is the
   stored refusal of that attempt, or the way its job ended when it failed (its error category),
   was cancelled (``cancelled``: replaced or cancelled) or expired (``expired``); null while it
-  runs or waits. Null when the current revision is no sketch or no fill was started for it.
+  runs or waits. Null when the current revision is no sketch or no fill was started for it (no
+  job of the attempt and no stored refusal).
 
 Every read filters on ``owner_id`` and runs in the caller's ``user_session``. Codes only.
 """
@@ -70,7 +71,9 @@ async def composer_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Co
     if failure is None:
         key = fill_key(class_id, fill.sketch_revision_id, fill.attempt)
         job = (await db.execute(_JOB_OF_KEY, {**ids, "key": key})).first()
-        if job is not None and job.state == "failed":
+        if job is None:  # recorded, but no job and no refusal (a transient class_busy): none
+            return ComposerState(composer)
+        if job.state == "failed":
             failure = job.error_category or "internal"
         elif job is not None and job.state in ("cancelled", "expired"):
             failure = job.state

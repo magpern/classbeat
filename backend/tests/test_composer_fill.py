@@ -133,3 +133,32 @@ async def test_a_class_of_the_old_flow_is_not_a_composer_class(cenv: ComposerEnv
     class_id = made.json()["class_id"]
     answer = (await rider.browser.get(f"/api/classes/{class_id}")).json()
     assert (answer["composer"], answer["fill_songs"]) == (False, None)
+
+
+async def test_the_page_names_the_sketch_it_shows(cenv: ComposerEnv) -> None:
+    rider = await cenv.songenv.rider()
+    class_id, sketch = await cenv.sketched(rider)
+    path = f"/api/classes/{class_id}/fill-songs"
+    stale = await rider.browser.post(path, {"base_revision_id": str(UUID(int=9))})
+    assert (stale.status_code, stale.json()["detail"]["reason"]) == (409, "stale_base")
+    made = await rider.browser.post(path, {"base_revision_id": str(sketch)})
+    assert made.status_code == 201, made.text
+    assert set(made.json()) == {"job_id", "kind", "state"}
+
+
+async def test_a_transient_class_busy_leaves_no_fill_on_the_class_answer(
+    cenv: ComposerEnv,
+) -> None:
+    rider = await cenv.songenv.rider()
+    class_id, _ = await cenv.sketched(rider)
+    interpret = cenv.sql(
+        "SELECT id FROM jobs WHERE class_id = :c AND kind = 'interpret_request'", c=class_id
+    ).scalar_one()
+    cenv.sql("UPDATE jobs SET state = 'queued', finished_at = NULL WHERE id = :j", j=interpret)
+    busy = await cenv.fill(rider, class_id)
+    assert (busy.status_code, busy.json()["detail"]["reason"]) == (409, "class_busy")
+    answer = (await rider.browser.get(f"/api/classes/{class_id}")).json()
+    assert answer["fill_songs"] is None  # the page starts the fill again once the class is free
+    cenv.sql("UPDATE jobs SET state = 'completed', finished_at = now() WHERE id = :j", j=interpret)
+    made = await cenv.fill(rider, class_id)
+    assert made.status_code == 201, made.text

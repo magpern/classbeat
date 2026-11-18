@@ -7,10 +7,11 @@ turns read from the file. No network, no model."""
 import json
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 
-from composertools import ComposerEnv, choose_turns, pool_turns
+from composertools import ComposerEnv, choose_turns, pool_turns, swap, swap_script
 
 SCRIPTS = Path(__file__).parent / "agent_scripts"
 STAGES = {"pick_pool", "choose_songs", "revise"}
@@ -44,3 +45,15 @@ async def test_the_fill_scripts_design_turns_run_through_the_pipeline(cenv: Comp
     class_id, _ = await cenv.sketched(rider)
     _, list_id, _ = await cenv.waiting(rider, class_id, script)
     assert cenv.content(list_id)["v"] == 3
+
+
+async def test_the_swap_scripts_design_turns_run_through_the_pipeline(cenv: ComposerEnv) -> None:
+    rider = await cenv.songenv.rider()
+    class_id, _ = await cenv.sketched(rider)
+    _, list_id, _ = await cenv.waiting(rider, class_id)
+    made = await swap(rider, class_id, list_id)
+    assert made.status_code == 201, made.text
+    design = [t for t in load("composer_swap")["turns"] if t["only_in"] == "revise"]
+    cenv.songenv.script = swap_script(design=design)
+    row = await cenv.songenv.run(UUID(made.json()["job_id"]))
+    assert row.state == "waiting_for_approval", (row.state, row.error_category)
