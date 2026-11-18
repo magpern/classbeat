@@ -495,6 +495,7 @@ export const en = {
   'class.list.latest': 'Latest design',
   'class.list.time': 'Time',
   'class.list.tss': 'TSS',
+  'class.list.songs': 'Songs',
   'class.list.open': 'Open class',
   'class.list.continue': 'Continue',
   'class.list.zones': 'Zones',

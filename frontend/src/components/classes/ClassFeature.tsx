@@ -11,8 +11,8 @@ import { ZoneLegend } from './ZoneLegend'
 
 /**
  * The newest class with a version, large (ADR 0013 Afterburn A3): the profile on the stage with a
- * zone legend, the status, the title, Time and TSS, Open class and the row's other actions. The
- * request is not quoted: the class list does not carry the brief.
+ * zone legend, the status, the title, the user's request as a quote (two lines at most, #1234),
+ * Time, TSS and Songs, Open class and the row's other actions.
  */
 export function ClassFeature({ cls, actions }: { cls: ClassSummary; actions?: ReactNode }) {
   const t = useT()
@@ -39,7 +39,12 @@ export function ClassFeature({ cls, actions }: { cls: ClassSummary; actions?: Re
             {cls.title}
           </Link>
         </h2>
-        <ClassFacts cls={cls} />
+        {cls.request !== null && (
+          <blockquote className="m-0 line-clamp-2 border-l-2 border-line pl-3 text-sm text-muted italic">
+            {cls.request}
+          </blockquote>
+        )}
+        <ClassFacts cls={cls} showSongs />
         <div className="mt-auto flex flex-wrap gap-2 pt-2">
           <Button asChild variant="ghost" className="bg-text text-bg hover:bg-text hover:opacity-90">
             <Link to={`/classes/${cls.id}`}>
