@@ -161,6 +161,9 @@ services:
       # ADR 0007 amendment of 2026-11-03 (SL7, #533): soundless classes are on in the e2e stack only
       # (the default stack keeps them off).
       CLASSBEAT_SOUNDLESS_ENABLED: "true"
+      # ADR 0038 section 2 (#1191): the composer flow switch is on in the e2e stack only; the flag is
+      # still off until a spec stores `composer_flow` as `on` (composer-workspace.spec.ts).
+      CLASSBEAT_COMPOSER_FLOW: "true"
       # ADR 0018 amendment of 2026-11-04 (#509): running is on only with a stored `on` and every
       # plan's route covering running; soundless classes (ADR 0007 amendments, #533 and #824) need
       # no stored value, only the routes. The web's own `fake` outside prod counts as covering
@@ -332,6 +335,7 @@ services:
       CLASSBEAT_SWEDEBEAT_STUDIO: design,swedebeat_playlist,swedebeat_mix  # as web's (SR C8)
       CLASSBEAT_RUNNING_ENABLED: "true"
       CLASSBEAT_SOUNDLESS_ENABLED: "true"
+      CLASSBEAT_COMPOSER_FLOW: "true"
       SSL_CERT_FILE: /fake-ca/bundle.pem
     volumes:
       # The last bundle: the other fakes' CAs and the gateway's (the match calls it).
