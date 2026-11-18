@@ -50,7 +50,7 @@ without ids).
 
 import json
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -75,6 +75,7 @@ from classbeat.songs.song_list_model import Generations as Generations
 from classbeat.songs.song_list_model import Song as Song
 from classbeat.songs.song_list_model import SongListContent as SongListContent
 from classbeat.songs.song_list_model import SongListMusic as SongListMusic
+from classbeat.songs.song_list_model import SongSource as SongSource
 from classbeat.songs.song_list_model import SpotifyId as SpotifyId
 from classbeat.songs.song_list_model import content_hash as content_hash
 from classbeat.songs.song_list_model import fingerprint as fingerprint
@@ -158,6 +159,7 @@ def build(
     generations: Generations | None = None,
     unmet: Sequence[InterpretationItem] = (),
     preview: Preview | None = None,
+    sources: Mapping[str, SongSource] | None = None,
 ) -> SongListRevision:
     """The revision of ``chosen`` for the Spotify account ``account`` (``v: 3`` with
     ``preview``); ``invalid_output`` if it does not fit the content's rules or 64 KB, checked on
@@ -179,6 +181,7 @@ def build(
                     length_sec=int(s.length_sec),
                     new=s.new,
                     cover=cover_url(s.cover),
+                    source=None if preview is None else (sources or {}).get(s.spotify_id),
                 )
                 for s in chosen.songs
             ],

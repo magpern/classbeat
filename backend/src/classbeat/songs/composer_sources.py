@@ -19,7 +19,7 @@ Nothing here reaches a model but registry text, and nothing is logged.
 """
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Final
 
 from mowl import spotify_web
@@ -70,6 +70,7 @@ def _hit(entry: Mapping[str, Any]) -> dict[str, Any] | None:
 class Favoured:
     entries: tuple[Entry, ...]
     unmet: tuple[InterpretationItem, ...]
+    playlist_of: Mapping[str, int] = field(default_factory=dict[str, int])  # id -> source index
 
 
 async def read_sources(
@@ -82,6 +83,7 @@ async def read_sources(
     """The attached playlists' tracks, registered (module docstring)."""
     found: list[Entry] = []
     unmet: list[InterpretationItem] = []
+    playlist_of: dict[str, int] = {}
     for at, source in enumerate(sources):
         playlist_id = common.check_playlist_id(source.id)
         try:
@@ -104,7 +106,8 @@ async def read_sources(
                 break
             if entry.spotify_id not in {f.spotify_id for f in found}:
                 found.append(entry)
-    return Favoured(tuple(found), tuple(unmet))
+                playlist_of[entry.spotify_id] = at
+    return Favoured(tuple(found), tuple(unmet), playlist_of)
 
 
 def _query(pin: PinnedSong) -> str:

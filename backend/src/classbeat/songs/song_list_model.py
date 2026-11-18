@@ -26,6 +26,23 @@ MAX_UNMET: Final = 8
 SpotifyId = Annotated[str, Field(pattern=r"^[0-9A-Za-z]{22}$")]
 
 
+class SongSource(BaseModel):
+    """Where a composer's song came from (``v: 3``, ADR 0038 section 10.2): ``pinned`` by the user,
+    one of the attached ``playlist``s (``playlist``: its position in the request's
+    ``music_sources``; the page names it), or ``search``."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    kind: Literal["pinned", "playlist", "search"]
+    playlist: int | None = Field(default=None, ge=0, le=4, exclude_if=lambda v: v is None)
+
+    @model_validator(mode="after")
+    def _playlist_named(self) -> "SongSource":
+        if (self.kind == "playlist") != (self.playlist is not None):
+            raise ValueError("a playlist song names its playlist, and only it")
+        return self
+
+
 class Song(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -37,6 +54,7 @@ class Song(BaseModel):
     length_sec: int = Field(ge=1, le=7200)
     new: bool
     cover: str | None = None  # v: 2 (ADR 0013 section 9); absent in v: 1
+    source: SongSource | None = Field(default=None, exclude_if=lambda v: v is None)  # v: 3
 
     @field_validator("cover", mode="before")
     @classmethod
@@ -70,6 +88,8 @@ class SongListContent(BaseModel):
             raise ValueError("cover is a v: 2 field")
         if any(i.origin != "not_as_asked" for i in self.unmet):
             raise ValueError("unmet holds Not as asked items only")
+        if self.v != PREVIEW_VERSION and any(s.source is not None for s in self.songs):
+            raise ValueError("a song's source is a v: 3 field")
         if (self.v == PREVIEW_VERSION) != (self.preview is not None):
             raise ValueError("a preview is in v: 3 and only there")
         if self.preview is not None and self.preview.music.fingerprint != fingerprint(

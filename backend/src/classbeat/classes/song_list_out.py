@@ -33,6 +33,11 @@ def _internal() -> JSONResponse:
     return _refuse("internal", 500)
 
 
+class SongSourceOut(BaseModel):
+    kind: Literal["pinned", "playlist", "search"]
+    playlist: int | None = None
+
+
 class SongOut(BaseModel):
     """A song of a list as the page shows it: no bare Spotify id. ``cover`` is the album cover URL
     on the pinned host (ADR 0013 section 9, checked again just before it is returned) or null.
@@ -48,6 +53,9 @@ class SongOut(BaseModel):
     new: bool
     cover: str | None = None
     open_spotify: str | None = None
+    # A composer's list (v: 3): pinned, an attached playlist (its position in the request's
+    # music_sources) or search (ADR 0038 section 10.2).
+    source: SongSourceOut | None = None
 
 
 class PreviewSongOut(BaseModel):
@@ -170,6 +178,9 @@ async def song_list(
                 new=s.new,
                 cover=cover_url(s.cover),  # the pinned host only, again (ADR 0013 section 9)
                 open_spotify=song_views.track_link(s.spotify_id),
+                source=None
+                if s.source is None
+                else SongSourceOut(kind=s.source.kind, playlist=s.source.playlist),
             )
             for i, s in enumerate(c.songs, start=1)
         ],

@@ -41,6 +41,12 @@ COVERED = {
     # used by the e2e specs (e2e/tests/song-pick.spec.ts): a song pick and a change of one song
     "e2e_pick",
     "e2e_change",
+    # the composer's fill and swap (ADR 0038 sections 5 and 6, #1188) for the e2e stack (#1191):
+    # e2e_pick's and e2e_change's pick, each turn tagged with its stage, then the design on the
+    # songs (the ``revise`` stage); tests/test_composer_scripts_1188.py checks their design turns
+    # are the ones the pipeline tests run
+    "composer_fill",
+    "composer_swap",
     # used by the e2e specs (e2e/tests/swedebeat-mix.spec.ts): a design on a Swedebeat mix
     "e2e_swedebeat_mix",
     # used by the e2e specs (e2e/tests/swedebeat-match.spec.ts): the catalogue replace of two songs

@@ -18,7 +18,7 @@ Nothing here stores anything: the caller designs on the chosen songs and stores 
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from classbeat.agent import (
@@ -53,7 +53,7 @@ from classbeat.songs.favoured_policy import prefer_favoured
 from classbeat.songs.inputs import DesignWithSongsInput
 from classbeat.songs.pick import stage_config, write_pool_playlist
 from classbeat.songs.search import job_searcher
-from classbeat.songs.song_list import MAX_UNMET
+from classbeat.songs.song_list import MAX_UNMET, SongSource
 
 FAVOURED_ROLE = "build"  # a hint only: the choice gives every song its role
 
@@ -63,6 +63,27 @@ class Picked:
     chosen: ChosenList
     provenance: dict[str, Any]
     unmet: tuple[InterpretationItem, ...]
+    sources: dict[str, SongSource] = field(default_factory=dict[str, SongSource])
+
+
+def sources_of(
+    chosen: ChosenList, favoured: Favoured, pinned: Pinned, kept: dict[str, SongSource]
+) -> dict[str, SongSource]:
+    """Each chosen song's source: kept from the earlier list, pinned, an attached playlist's, or
+    found by search."""
+    pins = {e.spotify_id for _, e in pinned.found}
+    out: dict[str, SongSource] = {}
+    for song in chosen.songs:
+        tid = song.spotify_id
+        if tid in kept:
+            out[tid] = kept[tid]
+        elif tid in pins:
+            out[tid] = SongSource(kind="pinned")
+        elif tid in favoured.playlist_of:
+            out[tid] = SongSource(kind="playlist", playlist=favoured.playlist_of[tid])
+        else:
+            out[tid] = SongSource(kind="search")
+    return out
 
 
 def _message(ctx: PoolContext, slots: list[str], favoured: Favoured, pinned: Pinned) -> str:
@@ -237,4 +258,5 @@ async def _choose(
         schema_version=SONG_SCHEMA_VERSION,
     )
     unmet += list_unmet(plan.brief.music_taste, picks, chosen)
-    return Picked(chosen, made.model_dump(mode="json"), tuple(unmet[:MAX_UNMET]))
+    sources = sources_of(chosen, favoured, pinned, {})
+    return Picked(chosen, made.model_dump(mode="json"), tuple(unmet[:MAX_UNMET]), sources)
