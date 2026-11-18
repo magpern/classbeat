@@ -62,6 +62,10 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
             "content music provenance", "kind content_hash", "class", "account"
         ),
         "class_messages": _entry("body change", "role", "class", "account"),
+        # ADR 0038 section 8 (#1186): a chat message sent while a job ran, before it is submitted.
+        "class_pending_messages": _entry(
+            "body", "message_id status reason job_id", "class", "account"
+        ),
         "saved_workouts": _entry(
             "name program_id playlist_id",
             "content_hash state_hash",

@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0059_composer_flag"]
+    assert script.get_heads() == ["0060_class_pending_messages"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0059_composer_flag"]
+        assert applied_revisions(database_url) == ["0060_class_pending_messages"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -138,6 +138,7 @@ JOBS = [
     "mowl_playlist_links",
     "agent_runs",
     "class_messages",
+    "class_pending_messages",  # ADR 0038 section 8 (0060, #1186)
     "saved_workouts",
     "spotify_oauth_flows",
     "spotify_pool",

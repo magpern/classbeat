@@ -13,12 +13,16 @@ create transaction, under the owner lock, which it takes first:
   savepoint is committed as it is. It returns what the caller answers, normally the refusal it
   stored.
 
-An accepted or repeated creation calls neither again. Nothing here opens a session.
+An accepted or repeated creation calls neither again. A hold that also has ``created(db,
+job_id)`` (``CreatedHook``) is called with the job in that same transaction, for a new and for a
+repeated creation alike, so two concurrent callers record the same job (the pending chat message
+of ADR 0038 section 8). Nothing here opens a session.
 """
 
 from collections.abc import Awaitable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +31,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class Held:
     reason: str
     counts: Mapping[str, int | str] = field(default_factory=dict[str, int | str])
+
+
+class CreatedHook(Protocol):
+    def created(self, db: AsyncSession, job_id: UUID, /) -> Awaitable[None]: ...
 
 
 class CreateHold(Protocol):

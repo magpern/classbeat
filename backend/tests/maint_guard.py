@@ -60,6 +60,7 @@ SECRET_COLUMNS: dict[str, frozenset[str]] = {
         "classes": "title brief music_source",
         "class_revisions": "content content_hash music provenance",
         "class_messages": "body change",
+        "class_pending_messages": "body",
         "saved_workouts": "name program_id playlist_id content_hash state_hash",
         "class_playlists": "playlist_id spotify_user_id name content_hash",
         "mowl_playlist_links": "source_id playlist_id",

@@ -644,6 +644,9 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     insert(admin, "class_outputs", owner_id=owner, class_id=class_id, revision_id=rev,
            output="swedebeat_mix", attempt=1, state="in_doubt", detail={"name": "x"})  # fmt: skip
     insert(admin, "studio_output_starts", owner_id=owner)
+    # ADR 0038 section 8 (migration 0060): a chat message waiting for a running job.
+    insert(admin, "class_pending_messages", owner_id=owner, class_id=class_id,
+           message_id=uuid.uuid4(), body="a longer warm-up", status="pending")  # fmt: skip
     # ADR 0036 section 9 (migration 0056): a revision's working-copy sync state.
     insert(admin, "spotify_syncs", owner_id=owner, class_id=class_id, revision_id=rev,
            target="working_copy", lock_key="working_copy", track_ids=["0vvXsWCC9xrXsKd4FyS8kM"],

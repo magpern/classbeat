@@ -100,6 +100,13 @@ class Person:
             u=u,
             c=class_id,
         )
+        # ADR 0038 section 8 (migration 0060): a chat message waiting for the running job.
+        self.sql(
+            "INSERT INTO class_pending_messages (owner_id, class_id, message_id, body, status) "
+            "VALUES (:u, :c, gen_random_uuid(), 'a longer warm-up', 'pending')",
+            u=u,
+            c=class_id,
+        )
         self.sql(
             "INSERT INTO saved_workouts (owner_id, class_id, program_id, revision_number, "
             "content_hash, name) VALUES (:u, :c, 4242, 1, :hash, 'Tuesday climb')",
