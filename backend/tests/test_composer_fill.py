@@ -10,7 +10,7 @@ from uuid import UUID
 import pytest
 
 from classbeat.songs import song_list
-from composertools import ComposerEnv
+from composertools import SKETCH, ComposerEnv
 from songtools import CHOSEN
 
 pytestmark = pytest.mark.usefixtures("jenv")
@@ -77,8 +77,6 @@ async def test_a_retry_and_a_new_sketch_use_new_keys(cenv: ComposerEnv) -> None:
     # A new sketch (a shape change before the fill): attempt 0 again, a key of its own.
     cenv.sql("UPDATE jobs SET state = 'cancelled', finished_at = now() WHERE id = :j", j=second)
     newer = UUID(int=sketch.int + 1)
-    from composertools import SKETCH
-
     cenv.insert_sketch(rider.user_id, class_id, newer, {**SKETCH, "name": "Other"}, number=2)
     cenv.sql("UPDATE classes SET current_revision_id = :r WHERE id = :c", r=newer, c=class_id)
     third = await cenv.fill(rider, class_id)
