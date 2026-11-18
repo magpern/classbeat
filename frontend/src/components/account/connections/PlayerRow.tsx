@@ -4,12 +4,10 @@ import { useT } from '../../../i18n/I18n'
 import { useRouter } from '../../../router/Router'
 import { Button } from '../../ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../ui/dialog'
-import { ConnectionRow } from './ConnectionRow'
+import { ConnectionTile } from './ConnectionTile'
 
 // The dialog's body loads when the dialog opens.
-const PlayerConnection = lazy(() =>
-  import('./PlayerConnection').then((m) => ({ default: m.PlayerConnection })),
-)
+const PlayerConnection = lazy(() => import('./PlayerConnection').then((m) => ({ default: m.PlayerConnection })))
 
 /**
  * The classbeat-player row of Account, Connections (ADR 0034 section 6) and its dialog. The row is
@@ -54,20 +52,22 @@ export function PlayerRow() {
   return (
     <>
       {offered ? (
-        <ConnectionRow
+        <ConnectionTile
           testId="connection-player"
           mark="P"
           name={t('player.name')}
           optional
-          status={
+          state={notConnected ? 'none' : status.status === 'connected' ? 'connected' : 'again'}
+          pill={
             notConnected ? (
-              t('conn.player.purpose')
+              t('conn.notConnected')
             ) : (
               <span data-testid="player-status">
                 {status.status === 'connected' ? t('mowl.statusConnected') : t('mowl.statusAgain')}
               </span>
             )
           }
+          detail={t('conn.player.purpose')}
           action={
             <Button
               variant="secondary"

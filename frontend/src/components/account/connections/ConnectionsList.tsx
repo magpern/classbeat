@@ -9,42 +9,21 @@ import {
 } from '../../../api/connections'
 import { useGuard } from '../../../auth/prompts'
 import { useLayout } from '../../../hooks/useLayout'
-import type { CatalogueKey } from '../../../i18n/en'
+import { useRouter } from '../../../router/Router'
+import type { SpotifyStatus } from '../../../api/spotify'
 import { useT } from '../../../i18n/I18n'
-import { t as translate } from '../../../i18n/t'
 import { Notice, useAction } from '../../forms'
 import { Button } from '../../ui/button'
 import { forgetWarning } from '../mowlWarning'
 import { ConfirmDisconnect } from './ConfirmDisconnect'
-import { ConnectionRow } from './ConnectionRow'
+import { describeConnection, type Which } from './connectionStatus'
+import { ConnectionTile } from './ConnectionTile'
 import { MowlDialog } from './MowlDialog'
+import { OneStepLeft } from './OneStepLeft'
 import { PlayerRow } from './PlayerRow'
-import { SpotifyRow } from './SpotifyRow'
+import { SPOTIFY_PATH, SpotifyRow } from './SpotifyRow'
 import { SwedebeatDialog } from './SwedebeatDialog'
 
-type Which = 'mowl' | 'swedebeat'
-
-const LAST: Record<Which, Record<string, CatalogueKey>> = {
-  mowl: {
-    needs_reconnect: 'mowl.last.needs_reconnect',
-    decrypt_failed: 'mowl.last.decrypt_failed',
-    rate_limited: 'mowl.last.rate_limited',
-    upstream_unavailable: 'mowl.last.upstream_unavailable',
-  },
-  swedebeat: {
-    needs_reconnect: 'swed.last.needs_reconnect',
-    decrypt_failed: 'swed.last.decrypt_failed',
-    rate_limited: 'swed.last.rate_limited',
-    upstream_unavailable: 'swed.last.upstream_unavailable',
-  },
-}
-
-/** The plain words for an ADR 0004 section 5 category; the raw code is never shown. */
-function lastProblem(provider: string, category: string): string {
-  const table = provider === 'swedebeat' ? LAST.swedebeat : LAST.mowl
-  const known = Object.hasOwn(table, category) ? table[category] : undefined
-  return translate(known ?? (provider === 'swedebeat' ? 'swed.last.other' : 'mowl.last.other'))
-}
 type Open = { kind: 'connect' | 'disconnect'; which: Which } | null
 
 interface View {
@@ -61,8 +40,9 @@ interface View {
  * (SpotifyRow). classbeat-player has its own row and dialog (PlayerRow), opened by /account/player.
  * Swedebeat is always listed, as optional.
  */
-export function ConnectionsList() {
+export function ConnectionsList({ onLinked }: { onLinked?: (count: number) => void }) {
   const t = useT()
+  const { navigate } = useRouter()
   const guard = useGuard()
   const layout = useLayout()
   const action = useAction()
@@ -70,6 +50,12 @@ export function ConnectionsList() {
   const [loadFailed, setLoadFailed] = useState(false)
   const [open, setOpen] = useState<Open>(null)
   const [note, setNote] = useState<string | null>(null)
+  // Spotify's row loads its own status; null while unknown or when song picking is off.
+  const [spotify, setSpotify] = useState<SpotifyStatus['status'] | null>(null)
+  const mowlLinked = view === null ? null : view.mowl?.status === 'connected'
+  useEffect(() => {
+    if (mowlLinked !== null) onLinked?.((mowlLinked ? 1 : 0) + (spotify === 'connected' ? 1 : 0))
+  }, [mowlLinked, spotify, onLinked])
 
   const show = useCallback((all: Awaited<ReturnType<typeof getConnectionsView>>) => {
     setView({
@@ -133,11 +119,11 @@ export function ConnectionsList() {
     // return from Spotify) still opens it when the list could not be loaded.
     return (
       <section aria-labelledby="connections-title" className="flex flex-col gap-3">
-        <h2 id="connections-title" className="m-0 font-display text-xl font-bold">
+        <h2 id="connections-title" className="m-0 font-display text-2xl font-extrabold">
           {t('conn.title')}
         </h2>
         <Notice kind="error">{t('mowl.loadFailed')}</Notice>
-        <ul className="m-0 flex list-none flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface p-0 empty:hidden">
+        <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(18rem,100%),1fr))] gap-4 p-0 empty:hidden">
           <SpotifyRow />
           <PlayerRow />
         </ul>
@@ -146,27 +132,11 @@ export function ConnectionsList() {
   if (view === null) return <p>{t('common.loading')}</p>
 
   const { mowl, swedebeat, access } = view
-  const status = (found: Connection | null, purpose: string) =>
-    found === null ? (
-      purpose
-    ) : found.status === 'connected' ? (
-      <>
-        <span className="font-medium text-ok" data-testid={`${found.provider}-status`}>
-          {t('mowl.statusConnected')}
-        </span>
-        {found.account !== null ? (
-          <>
-            {' · '}
-            <span data-testid={`${found.provider}-account`}>{found.account}</span>
-          </>
-        ) : null}
-      </>
-    ) : (
-      <span data-testid={`${found.provider}-status`}>
-        {t('mowl.statusAgain')}
-        {found.lastError !== null ? ` · ${lastProblem(found.provider, found.lastError)}` : ''}
-      </span>
-    )
+  const words = {
+    connected: t('mowl.statusConnected'),
+    again: t('mowl.statusAgain'),
+    none: t('conn.notConnected'),
+  }
   const askDisconnect = (which: Which, label: string) => (
     <Button
       variant="secondary"
@@ -191,42 +161,61 @@ export function ConnectionsList() {
     </Button>
   )
   const mowlOn = mowl?.status === 'connected'
+  // The first required connection still missing (MOWL, then Spotify when it is offered).
+  const step = !mowlOn
+    ? {
+        missing: t('conn.mowl.name'),
+        linked: spotify === 'connected' ? 1 : 0,
+        onConnect: () => {
+          setOpen({ kind: 'connect', which: 'mowl' })
+        },
+      }
+    : spotify !== null && spotify !== 'connected'
+      ? {
+          missing: t('spot.title'),
+          linked: 1,
+          onConnect: () => {
+            navigate(SPOTIFY_PATH)
+          },
+        }
+      : null
   const sbOn = swedebeat?.status === 'connected'
   // The flag is on and the server holds Swedebeat's app key (ADR 0015); otherwise the row says so.
   const canConnectSwedebeat = access.enabled && access.available
 
   return (
     <section aria-labelledby="connections-title" className="flex flex-col gap-3">
-      <h2 id="connections-title" className="m-0 font-display text-xl font-bold">
+      {step !== null ? <OneStepLeft {...step} /> : null}
+      <h2 id="connections-title" className="m-0 font-display text-2xl font-extrabold">
         {t('conn.title')}
       </h2>
       {note ? <Notice kind="success">{note}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      <ul className="m-0 flex list-none flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface p-0">
-        <ConnectionRow
+      <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(18rem,100%),1fr))] gap-4 p-0">
+        <ConnectionTile
           testId="connection-mowl"
           mark="M"
           name={t('conn.mowl.name')}
           optional={false}
-          status={status(mowl, t('conn.mowl.purpose'))}
+          {...describeConnection(mowl, t('conn.mowl.purpose'), words)}
           action={
             mowlOn
               ? askDisconnect('mowl', t('mowl.disconnect'))
               : askConnect('mowl', mowl ? t('mowl.connectAgainButton') : t('mowl.connectButton'), t('conn.connect'))
           }
         />
-        <SpotifyRow />
+        <SpotifyRow onStatus={setSpotify} />
         <PlayerRow />
-        <ConnectionRow
+        <ConnectionTile
           testId="connection-swedebeat"
           mark="Sb"
           name={t('swed.title')}
           optional
-          status={
-            !canConnectSwedebeat && swedebeat === null
-              ? t('conn.swedebeat.unavailable')
-              : status(swedebeat, t('conn.swedebeat.purpose'))
-          }
+          {...describeConnection(
+            swedebeat,
+            !canConnectSwedebeat && swedebeat === null ? t('conn.swedebeat.unavailable') : t('conn.swedebeat.purpose'),
+            words,
+          )}
           action={
             sbOn
               ? askDisconnect('swedebeat', t('swed.disconnect'))

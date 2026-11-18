@@ -14,6 +14,7 @@ import type { CatalogueKey } from '../../i18n/en'
 import { useT } from '../../i18n/I18n'
 import { t as translate } from '../../i18n/t'
 import { Notice, useAction } from '../forms'
+import { CountdownRing } from './CountdownRing'
 
 // "Scan with the MOWL app" (ADR 0024). The page polls classbeat's own API; it never talks to MOWL
 // or its broker, and it never sees MOWL's ticket, the topic key or the token.
@@ -57,7 +58,7 @@ export function MowlQr({
   autoStart = false,
 }: {
   onConnected: (connection: Connection) => void
-  /** Show the code as soon as the panel opens (the dialog's Scan tab), without the intro. */
+  /** Show the code as soon as the panel opens (the dialog's Scan tab). */
   autoStart?: boolean
 }) {
   const t = useT()
@@ -66,6 +67,8 @@ export function MowlQr({
   const [ticket, setTicket] = useState<MowlQrTicket | null>(null)
   const [ended, setEnded] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  // How long the code lives from when it was shown, for the ring.
+  const [span, setSpan] = useState(1)
   // The running ticket: cancelled on the server when it is stopped or the panel goes away.
   const live = useRef<string | null>(null)
 
@@ -145,6 +148,7 @@ export function MowlQr({
       }
       live.current = started.ticketId
       setNow(Date.now())
+      setSpan(Math.max(1, new Date(started.expiresAt).getTime() - Date.now()))
       setTicket(started)
     }, startError)
   }
@@ -165,16 +169,24 @@ export function MowlQr({
   }
 
   return (
-    <div data-testid="mowl-qr">
-      {autoStart ? null : <h3>{t('mowlqr.title')}</h3>}
+    <div
+      data-testid="mowl-qr"
+      className="flex flex-col items-center justify-center gap-5 rounded-xl bg-stage p-6 text-stage-text [&_.notice]:w-full"
+    >
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {ticket ? (
         <>
-          <p>{t('mowlqr.how')}</p>
-          <img className="qr" src={ticket.image} alt={t('mowlqr.alt')} />
-          <p className="muted" aria-live="polite" data-testid="mowl-qr-countdown">
-            {t('mowlqr.countdown', { time: left(ticket.expiresAt, now) })}
-          </p>
+          <div className="rounded-2xl bg-heat p-[3px] shadow-glow">
+            <div className="rounded-[calc(var(--cb-radius-lg)-0.25rem)] bg-[var(--cb-paper)] p-3.5">
+              <img className="qr" src={ticket.image} alt={t('mowlqr.alt')} />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <CountdownRing remaining={Math.max(0, new Date(ticket.expiresAt).getTime() - now)} span={span} />
+            <p className="m-0 text-stage-muted" aria-live="polite" data-testid="mowl-qr-countdown">
+              {t('mowlqr.countdown', { time: left(ticket.expiresAt, now) })}
+            </p>
+          </div>
           <button className="button button--secondary" type="button" onClick={stop}>
             {t('mowlqr.stop')}
           </button>
@@ -182,7 +194,6 @@ export function MowlQr({
       ) : (
         <>
           {ended ? <Notice kind="info">{ended}</Notice> : null}
-          {autoStart ? null : <p>{t('mowlqr.intro')}</p>}
           <button className="button" type="button" disabled={action.busy} onClick={start}>
             {ended ? t('mowlqr.showNew') : t('mowlqr.show')}
           </button>
