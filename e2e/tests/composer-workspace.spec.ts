@@ -72,6 +72,9 @@ test.beforeEach(() => {
 test.afterEach(() => {
   storeComposer(null)
   resetSpotify()
+  // The worker's script link is shared by the whole stack: put it back on the default that the
+  // specs which never set a script (design-draft.spec.ts) rely on.
+  useModelScript('good_first_draft')
 })
 
 test.afterAll(() => {
