@@ -493,7 +493,8 @@ describe('the composer workspace page', () => {
       expect(api.to('POST', `${CLASS_PATH}/swap-songs`)).toHaveLength(1)
     })
     const call = api.to('POST', `${CLASS_PATH}/swap-songs`)[0]!
-    expect(call.body).toEqual({ song_list_revision_id: LIST_ID, replace: [1] })
+    // Hills is shown as position 1; the API takes slots counted from 0 (ADR 0008 section 6).
+    expect(call.body).toEqual({ song_list_revision_id: LIST_ID, replace: [0] })
     expect(call.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
     expect(api.to('POST', '/api/jobs')).toHaveLength(0)
     expect(api.calls.some((c) => c.method === 'POST' && c.path.endsWith('/cancel'))).toBe(false)

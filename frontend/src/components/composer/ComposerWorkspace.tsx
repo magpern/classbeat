@@ -113,7 +113,7 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
         classId,
         listRevisionId: list.id,
         listJobId: list.jobId ?? summary.songs.jobId ?? list.id,
-        position: song.position,
+        slot: song.position - 1,
       }),
     )
   }
