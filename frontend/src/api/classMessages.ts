@@ -2,6 +2,7 @@ import { ApiError } from './client'
 import { errorMessage } from './messages'
 import { planRefusalText, quotaText } from './planMessages'
 import type { ChangeSummary } from './classes'
+import type { CatalogueKey } from '../i18n/en'
 import { t } from '../i18n/t'
 import { clock } from '../lib/workout'
 
@@ -73,10 +74,27 @@ export function kindLabel(kind: string): string {
   }
 }
 
+/**
+ * Every `provenance.origin` the server stores (`backend/tests/fixtures/revision_origins.json`, checked
+ * against the server's classified origins there and against this map in `classMessages.test.ts`), with its label. A sketch
+ * (ADR 0038 section 4) is labelled as one, first or changed; a revision with no origin or one this page
+ * does not know reads "Version".
+ */
+export const ORIGIN_LABELS = {
+  design_draft: 'class.origin.design_draft',
+  revise_draft: 'class.origin.revise_draft',
+  sketch: 'class.origin.sketch',
+  design_with_songs: 'class.origin.other',
+  revise_songs: 'class.origin.other',
+  studio_songs: 'class.origin.other',
+  duplicate: 'class.origin.other',
+  beat_one: 'class.origin.other',
+  swedebeat_match: 'class.origin.other',
+} as const satisfies Record<string, CatalogueKey>
+
 export function originLabel(origin: string): string {
-  if (origin === 'design_draft') return t('class.origin.design_draft')
-  if (origin === 'revise_draft') return t('class.origin.revise_draft')
-  return t('class.origin.other')
+  if (!Object.hasOwn(ORIGIN_LABELS, origin)) return t('class.origin.other')
+  return t(ORIGIN_LABELS[origin as keyof typeof ORIGIN_LABELS])
 }
 
 /** The backend's change summary in the page's own words; it is data, not text (ADR 0007 section 3). */

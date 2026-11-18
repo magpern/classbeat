@@ -6,7 +6,8 @@ completes without enqueuing anything. ``design_from_interpretation`` then enqueu
 1. one read (no lock) of the stored interpretation and of the completed interpret job's input,
    which is all written once: the brief and the music become an **unchanged** ``design_draft``
    (a Swedebeat mix, no music, a running class's playlist) or ``design_with_songs`` (a song
-   pick) input for the class, with the connection ids the interpret request named. A cycling
+   pick) input for the class, with the connection ids the interpret request named (a composer
+   class with music, ADR 0038 section 4: a ``design_draft`` in mode ``sketch``). A cycling
    class on the user's own Spotify playlist is a ``design_with_songs`` with that playlist as its
    ``source`` (roadmap Amendment 26: a new private playlist in class order, after the approval)
    when the ``song_picking`` flag and its environment switch admit the user (the kill switch of
@@ -48,7 +49,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat.classes.interpretation_design import design_input
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.design import interpretation_row
+from classbeat.design import composer, interpretation_row
 from classbeat.design.interpret_kind import KIND as INTERPRET_KIND
 from classbeat.design.interpretation_row import Refusal, StoredInterpretation
 from classbeat.flags import effective as flags
@@ -190,8 +191,9 @@ async def design_from_interpretation(
         params = {**owner, "job_id": row.job_id, "kind": INTERPRET_KIND}
         job_input = (await db.execute(_INTERPRET_JOB, params)).scalar_one_or_none()
         picking = await flags.song_picking_admits(db, ctx, songs_config.current().enabled)
+        composing = await composer.composer_on(db)  # ADR 0038 section 4: the flag, now
     hold = _Hold(ctx.user_id, class_id, row.job_id, retry)
-    planned = design_input(row, job_input, class_id, song_picking=picking)
+    planned = design_input(row, job_input, class_id, song_picking=picking, composer=composing)
     if isinstance(planned, str):
         return await _store_refusal(factory, ctx, hold, planned)
     kind, parsed = planned

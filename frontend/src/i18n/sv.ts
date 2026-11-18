@@ -375,6 +375,7 @@ const sv: Catalogue = {
   'class.reason.changedMeanwhile': 'Det här passet ändrades under tiden. Sidan har laddats om.',
   'class.origin.design_draft': 'Första utformningen',
   'class.origin.revise_draft': 'Ändrad på begäran',
+  'class.origin.sketch': 'Skiss',
   'class.origin.other': 'Version',
   'class.change.segments': 'Segment: {added} tillagda, {removed} borttagna.',
   'class.change.intervals': 'Intervaller: {added} tillagda, {removed} borttagna, {changed} ändrade.',

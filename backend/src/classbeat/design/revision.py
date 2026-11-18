@@ -370,7 +370,7 @@ def build(
     step: MusicStep | NoMusicStep,
     *,
     origin: Literal[
-        "design_draft", "revise_draft", "design_with_songs", "revise_songs"
+        "design_draft", "revise_draft", "design_with_songs", "revise_songs", "sketch"
     ] = "design_draft",
     base_revision_id: UUID | None = None,
     base_hash: bytes | None = None,

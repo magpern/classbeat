@@ -62,6 +62,7 @@ from classbeat.design.kind import (
     current_runtime,
     music_step,
 )
+from classbeat.design.revision_ready import revision_ready
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import Admitted, Refused
@@ -125,6 +126,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     state = await chat.create_state(db, ctx.user_id, class_id, parsed.base_revision_id)
     if not state.exists:
         return Refused("invalid_input")  # a foreign or unknown id answers like any other
+    not_ready = await revision_ready(db, ctx.user_id, class_id, parsed.base_revision_id)
+    if not_ready is not None:
+        return Refused(not_ready)  # a sketch is never refitted (ADR 0038 section 4)
     # The class row is locked now (create_state). The music kind first, read here and never
     # through music_kind.admit_class / admit_music (they follow the soundless gate).
     source = (await db.execute(_SOURCE, ids)).scalar_one_or_none()

@@ -10,6 +10,8 @@ against the authenticated user and failing closed:
 - the class and the revision are the user's own and the revision belongs to that class (looked
   up with ``owner_id`` and ``class_id`` together: a foreign or unknown id, or a revision of
   another class, is ``invalid_input``, never a different answer), and it is a ``draft``;
+- it is ready (``design.revision_ready``, ADR 0038 section 4): a sketch is ``not_ready``, before
+  any other check;
 - its stored ``content_hash`` equals the approved one (``hash_mismatch``) and the SHA-256 of its
   canonical content recomputed now (``invalid_input``: the row is not what was hashed);
 - no interval names a game MOWL no longer offers (``game_retired``, ADR 0029 section 3), checked
@@ -76,6 +78,7 @@ from classbeat.design.revision import (
     SpotifyRevisionMusic,
     canonical,
 )
+from classbeat.design.revision_ready import revision_ready
 from classbeat.operations.attach import SOURCE
 from classbeat.operations.swedebeat import SOURCE as MIX_LINK_SOURCE
 
@@ -177,6 +180,9 @@ async def revision(
     db: AsyncSession, ctx: UserContext, class_id: UUID, revision_id: UUID, content_hash: bytes
 ) -> Revision | Refusal:
     """The revision checks of the module docstring (all but the link)."""
+    not_ready = await revision_ready(db, ctx.user_id, class_id, revision_id)
+    if not_ready is not None:
+        return Refusal(not_ready)  # a sketch is never written (ADR 0038 section 4)
     row = (
         await db.execute(
             _REVISION,

@@ -375,6 +375,7 @@ const da: Catalogue = {
   'class.reason.changedMeanwhile': 'Dette hold blev ændret i mellemtiden. Siden er indlæst igen.',
   'class.origin.design_draft': 'Første design',
   'class.origin.revise_draft': 'Ændret efter ønske',
+  'class.origin.sketch': 'Skitse',
   'class.origin.other': 'Version',
   'class.change.segments': 'Segmenter: {added} tilføjet, {removed} fjernet.',
   'class.change.intervals': 'Intervaller: {added} tilføjet, {removed} fjernet, {changed} ændret.',

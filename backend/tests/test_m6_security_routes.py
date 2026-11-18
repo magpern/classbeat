@@ -203,6 +203,9 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/classes/{class_id}/interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/design-from-interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/interpret-again"): "owned",
+    ("GET", "/api/classes/{class_id}/pending-messages"): "owned",
+    ("POST", "/api/classes/{class_id}/pending-messages"): "owned",
+    ("POST", "/api/classes/{class_id}/pending-messages/{message_id}/submit"): "owned",
     ("DELETE", "/api/classes/{class_id}"): "owned",
     ("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
     ("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
@@ -596,6 +599,7 @@ async def test_routes_that_need_a_session_refuse_an_anonymous_caller(
 # --- owned routes -------------------------------------------------------------------------------
 
 OWNED_PATH_PARAMS = (
+    "message_id",
     "session_id",
     "identity_id",
     "passkey_id",
@@ -644,6 +648,7 @@ class Rows:
             "identity_id": self.identity_id,
             "row_id": self.row_id,
             "passkey_id": self.passkey_id,
+            "message_id": PENDING_MESSAGE,
         }
 
 
@@ -738,6 +743,7 @@ def _pick(rows: Rows) -> dict[str, str]:
     return {"revision_id": str(rows.revision_id), "content_hash": rows.digest}
 
 
+PENDING_MESSAGE = uuid.uuid4()  # a pending message id no user has (ADR 0038 section 8)
 # One key for every call of the duplicate case (made per run, not a literal).
 DUPLICATE_KEY = uuid.uuid4().hex
 STUDIO_KEY = uuid.uuid4().hex
@@ -859,6 +865,20 @@ OWNED_ROUTES = [
     OwnedRoute("GET", "/api/classes/{class_id}/interpretation", control=frozenset({409})),
     OwnedRoute(
         "POST", "/api/classes/{class_id}/design-from-interpretation", control=frozenset({409})
+    ),
+    # ADR 0038 section 8: composer_flow is off in this app, so the owner's calls are 409
+    # ``feature_off``; another user's class is 404 like an unknown one.
+    OwnedRoute("GET", "/api/classes/{class_id}/pending-messages", control=frozenset({409})),
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/pending-messages",
+        lambda rows: {"message_id": str(PENDING_MESSAGE), "body": "a longer warm-up"},
+        frozenset({409}),
+    ),
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/pending-messages/{message_id}/submit",
+        control=frozenset({409}),
     ),
     # #904: the planted class has no stored ``not_connected``, so the owner's call is 409.
     OwnedRoute("POST", "/api/classes/{class_id}/interpret-again", control=frozenset({409})),

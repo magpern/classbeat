@@ -175,6 +175,9 @@ async def create_held(
         else:
             await savepoint.commit()
             if done.job_id is not None:
+                created = getattr(hold, "created", None)  # ``CreatedHook``: new or repeated
+                if created is not None:
+                    await created(db, done.job_id)
                 return CreateResult(done.created, await _view(db, ctx, done.job_id))
             reason, counts = done.reason or "invalid_input", done.counts
         held = await hold.refused(db, reason, counts)

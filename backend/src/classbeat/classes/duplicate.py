@@ -52,7 +52,6 @@ class on picked songs, which cannot be refitted) or is soundless. At most ``MAX_
 
 import hashlib
 import json
-import unicodedata
 import uuid
 from dataclasses import dataclass
 from typing import Annotated, Any, Final
@@ -74,14 +73,17 @@ from classbeat.classes.duplicate_music import (
     music_source_copy,
 )
 from classbeat.classes.duplicate_provenance import provenance_copy
+from classbeat.classes.duplicate_request import clean_title as clean_title
+from classbeat.classes.duplicate_request import request_digest
 from classbeat.config import Settings
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design import chat
 from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.design.music_kind import is_studio
+from classbeat.design.revision_ready import revision_ready
 from classbeat.jobs.credits import QuotaRefused
-from classbeat.jobs.http import IDEMPOTENCY_KEY, canonical_json
+from classbeat.jobs.http import IDEMPOTENCY_KEY
 from classbeat.jobs.user import lock_owner
 from classbeat.quota.gates import check_brief, check_content, current_gates
 from classbeat.saving.approval import spec_of, sport_of_brief
@@ -91,7 +93,6 @@ Factory = async_sessionmaker[AsyncSession]
 router = APIRouter(prefix="/api/classes", tags=["classes"])
 
 STUDIO: Final = "studio_not_duplicable"  # a SwedeBeat studio class (ADR 0036)
-TITLE_MAX: Final = 100  # the classes_title check of migration 0004
 
 _SOURCE = text(
     "SELECT r.id, r.number, r.content, r.content_hash, r.music, r.provenance, c.brief, "
@@ -154,31 +155,8 @@ class Outcome:
     replay: bool = False  # an earlier request with the same key made this class
 
 
-def clean_title(raw: str) -> str | None:
-    """The title with line breaks, tabs and other blanks turned into spaces, control and format
-    characters removed and blanks collapsed, 1 to 100 characters; ``None`` otherwise."""
-    kept = "".join(
-        " " if ch.isspace() else ch
-        for ch in raw
-        if ch.isspace() or unicodedata.category(ch)[0] != "C"
-    )
-    title = " ".join(kept.split())
-    return title if 1 <= len(title) <= TITLE_MAX else None
-
-
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, ensure_ascii=False)
-
-
-def request_digest(class_id: UUID, revision_id: UUID, content_hash: bytes, title: str) -> str:
-    """The SHA-256 (hex) of the canonical request a key stands for."""
-    request = {
-        "class_id": str(class_id),
-        "revision_id": str(revision_id),
-        "content_hash": content_hash.hex(),
-        "title": title,
-    }
-    return hashlib.sha256(canonical_json(request)).hexdigest()
 
 
 async def duplicate(
@@ -205,6 +183,9 @@ async def duplicate(
             if earlier.request_hash != request_hash:
                 return Outcome("idempotency_mismatch")
             return Outcome(None, earlier.class_id, earlier.id, replay=True)
+        not_ready = await revision_ready(db, ctx.user_id, class_id, revision_id)
+        if not_ready is not None:
+            return Outcome(not_ready)  # a sketch is never copied (ADR 0038 section 4)
         row = (await db.execute(_SOURCE, ids)).first()
         if row is None:
             return Outcome("not_found")

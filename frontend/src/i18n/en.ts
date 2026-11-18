@@ -364,6 +364,7 @@ export const en = {
   'class.reason.changedMeanwhile': 'This class changed meanwhile. The page has been reloaded.',
   'class.origin.design_draft': 'First design',
   'class.origin.revise_draft': 'Changed on request',
+  'class.origin.sketch': 'Sketch',
   'class.origin.other': 'Version',
   'class.change.segments': 'Segments: {added} added, {removed} removed.',
   'class.change.intervals': 'Intervals: {added} added, {removed} removed, {changed} changed.',

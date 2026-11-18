@@ -47,6 +47,8 @@ SECTIONS: tuple[Section, ...] = (
     _section("classes"),
     _section("class_revisions", "class_id, number", "content_hash"),
     _section("class_messages", "class_id, seq"),
+    # ADR 0038 section 8: a chat message waiting to be submitted, or what became of it.
+    _section("class_pending_messages", "class_id, created_at, id"),
     # ADR 0007 amendment "beat-one corrections": the fingerprint is bookkeeping, already in the
     # exported revision's ``music``.
     _section("beat_one_corrections", "class_id, song, id", "fingerprint"),

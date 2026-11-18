@@ -6,7 +6,7 @@ unknown id and a malformed one are the same 404 ``not_found``; the user's own cl
 first creation discarded is 404 ``class_discarded`` with that job's id (ADR 0039). Errors carry a
 reason code only.
 409 reasons: ``limit_exceeded`` (the 33rd dismissed rule, ADR 0017), ``class_busy``,
-``hash_mismatch`` (the pick), ``stale_match`` (the Swedebeat selection) and
+``hash_mismatch``, ``not_ready`` (the pick), ``stale_match`` (the Swedebeat selection) and
 ``call_may_be_running``, ``uncertain_write`` (the delete), and ``quota`` (the pick, #496: the
 chosen draft has a game, an FTP test or a length the user's current plan does not include; the
 jobs API's body, ``{reason: "quota", quota: "feature" | "length", feature | limit and used, plan}``,

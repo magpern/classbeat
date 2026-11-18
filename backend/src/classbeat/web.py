@@ -37,6 +37,7 @@ from classbeat.classes.handoff_routes import install_job_enqueue
 from classbeat.classes.handoff_routes import router as handoff_router
 from classbeat.classes.history import router as history_router
 from classbeat.classes.interpretation_routes import router as interpretation_router
+from classbeat.classes.pending_routes import router as pending_router
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.classes.studio_design_routes import router as studio_design_router
@@ -268,6 +269,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(studio_output_actions_router)  # SR C7: output states and their actions
     app.include_router(studio_sync_router)  # SR C8: Spotify sync state and Sync again
     app.include_router(interpretation_router)
+    app.include_router(pending_router)  # ADR 0038 section 8: pending chat messages
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():

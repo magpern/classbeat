@@ -6,6 +6,7 @@ lease-lost job storing nothing; an unchanged draft; a retry restarting the stage
 fingerprint fact; the requests along the parent chain and never a note; the planted-value test.
 """
 
+import hashlib
 import json
 from typing import Any
 
@@ -16,6 +17,8 @@ from classbeat import design
 from classbeat.agent import Provenance
 from classbeat.design import limits as design_limits
 from classbeat.design import revise as revise_mod
+from classbeat.jobs.http import canonical_json
+from classbeat.jobs.inputs import DEFAULT_ROUTE_KEY
 from designtools import FakeMowlMusic
 from optools import PLAYLIST, TOKEN_A
 from revisetools import ReviseEnv
@@ -419,3 +422,30 @@ async def test_a_request_that_only_asks_for_other_songs_points_to_change_songs(
     assert current is not None
     refused = await renv.ask(class_id, current)
     assert refused.json() == {"detail": {"reason": "revision_limit", "limit": 1, "count": 1}}
+
+
+async def test_with_the_composer_flag_off_an_ordinary_revise_is_stored_as_before(
+    renv: ReviseEnv,
+) -> None:
+    """#1186: the sketch's server field ``sketch_base`` is never written for an ordinary revise,
+    so its stored input has exactly the fields it had and its request hash is the one of the
+    browser's input with today's defaults."""
+    class_id, base = await renv.design()
+    made = await renv.ask(class_id, base, "Make the start easier.")
+    assert made.status_code == 201, made.text
+    job_id = made.json()["id"]
+    browser_input = {
+        "class_id": str(class_id),
+        "title": None,
+        "route_key": DEFAULT_ROUTE_KEY,
+        "plan_gates": None,
+        "base_revision_id": str(base),
+        "request": "Make the start easier.",
+        "mowl_connection_id": str(renv.browser.connection_id),
+        "base_revision_hash": None,
+        "request_message_id": None,
+    }
+    row = renv.sql("SELECT input, request_hash FROM jobs WHERE id = :j", j=job_id).one()
+    assert set(row.input) == set(browser_input)  # no ``sketch_base``, nothing else new
+    wanted = canonical_json({"kind": design.REVISE_KIND, "input": browser_input})
+    assert bytes(row.request_hash) == hashlib.sha256(wanted).digest()

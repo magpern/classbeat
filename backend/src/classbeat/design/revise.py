@@ -16,6 +16,8 @@ for a class designed on a Swedebeat mix ``feature_off`` and ``analysis_limit``
 (``mixadmit.admit_class_mix``, ADR 0016 sections 2 and 7).
 It stores the base's hash and inserts the user's ``class_messages`` row with the job.
 
+A **sketch** base (ADR 0038 section 4, ``revise_sketch``) is revised as a sketch: the soundless
+gate and run, a ``sketch`` revision with its base and request; the server field ``sketch_base``.
 A class whose ``music_source`` is ``none`` (a soundless class, ADR 0007 amendment of 2026-11-03;
 #528) is admitted through ``music_kind.admit_class`` (the three-condition gate: ``feature_off`` or
 ``soundless_not_evaluated``, before the job row) and runs ``revise_soundless.run_soundless``
@@ -87,7 +89,7 @@ from classbeat.design.kind import (
     group_model,
     music_step,
 )
-from classbeat.design.kind_music import has_music_source
+from classbeat.design.revise_sketch import SketchBaseField, admit_base
 from classbeat.design.revise_soundless import run_soundless
 from classbeat.design.sport_rules import rules_for
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
@@ -111,7 +113,7 @@ Request = Annotated[str, Field(min_length=1, max_length=MAX_REQUEST), AfterValid
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 
 
-class ReviseDraftInput(ModelJobInput):
+class ReviseDraftInput(SketchBaseField, ModelJobInput):
     CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl",)
 
     base_revision_id: UUID
@@ -137,17 +139,11 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("invalid_input")  # a foreign or unknown id answers like any other
     if state.current != given.base_revision_id:
         return Refused("stale_base")
-    # ADR 0007 amendment of 2026-11-03 (#536, D item 5): a duplicate of a class on picked songs has
-    # a brief but no music source of its own. Refused before anything is written (no message, no
-    # job); the worker's ``invalid_input`` for a missing source stays as the second line.
-    if not await has_music_source(db, ctx.user_id, class_id):
-        return Refused("not_changeable")
-    running = await sport.admit_class(db, ctx, class_id)  # ADR 0018 (#509): the running gate
-    if running is not None:
-        return running
-    soundless = await music_kind.admit_class(db, ctx, class_id)  # #528: the soundless gate
-    if soundless is not None:
-        return soundless
+    # A sketch base (ADR 0038), or the music source (#536), running (#509) and soundless (#528)
+    # gates, before anything is written (no message, no job).
+    sketch, refused = await admit_base(db, ctx, class_id, given.base_revision_id)
+    if refused is not None:
+        return refused
     chat_limits = limits.current()
     allowed = await chat_limits.policy.limit_for(db, ctx, class_id)
     if state.chat_revisions >= allowed:
@@ -175,10 +171,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         except chat.MessageRefused:
             raise RuntimeError("the job is not a job of this class") from None
 
-    return Admitted(
-        {"base_revision_hash": state.base_hash.hex(), "request_message_id": message_id},
-        after_insert,
-    )
+    fields = {"base_revision_hash": state.base_hash.hex(), "request_message_id": message_id}
+    return Admitted({**fields, "sketch_base": True} if sketch else fields, after_insert)
 
 
 async def run(job_run: JobRun) -> Complete:
@@ -196,13 +190,14 @@ async def run(job_run: JobRun) -> Complete:
         raise JobFailure("internal")
     class_id, base_id = given.class_id, given.base_revision_id
     request_message_id = given.request_message_id
+    sketch = given.sketch_base is True
     loaded = await revise_base.load(
-        job_run, base_id, given.base_revision_hash, runtime.context_requests
+        job_run, base_id, given.base_revision_hash, runtime.context_requests, sketch=sketch
     )
     base, base_hash, brief, music = loaded.row, loaded.base_hash, loaded.brief, loaded.music
     base_draft = loaded.draft  # strict, a retired game already a regular interval (ADR 0029)
     if isinstance(music, NoMusicChoice):
-        return await run_soundless(job_run, given, loaded, runtime)
+        return await run_soundless(job_run, given, loaded, runtime, sketch=sketch)
     if brief.sport == sport.RUNNING:
         if isinstance(music, SwedebeatMusicChoice):
             raise JobFailure("internal")  # running v1 has no mix (ADR 0018)
@@ -316,7 +311,7 @@ REVISE_DRAFT: Final = KINDS.register(
         consumes_credit=False,
         admit=with_plan(admit),
         server_fields=frozenset(
-            {"base_revision_hash", "request_message_id", "route_key", "plan_gates"}
+            {"base_revision_hash", "request_message_id", "route_key", "plan_gates", "sketch_base"}
         ),
     )
 )
