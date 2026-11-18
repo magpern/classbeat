@@ -36,7 +36,8 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
 
   const billing: Billing | null = state.status === 'ready' ? state.billing : null
   const sub = billing?.subscription ?? null
-  const nameOf = (id: string) => catalogue?.find((p) => p.id === id)?.name ?? billing?.offers.find((o) => o.plan === id)?.name ?? id
+  const nameOf = (id: string) =>
+    catalogue?.find((p) => p.id === id)?.name ?? billing?.offers.find((o) => o.plan === id)?.name ?? id
   const offerOf = (id: string) => billing?.offers.find((o) => o.plan === id) ?? null
 
   // A Paddle checkout completes when the signed notification lands, not when the server answers (ADR 0032 section 7).
@@ -110,7 +111,9 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
       {loading ? <p className="m-0">{t('common.loading')}</p> : null}
       {catalogueFailed ? <Notice kind="error">{t('plan.billing.loadFailed')}</Notice> : null}
       {!loading && state.status === 'closed' ? <Notice>{t('plan.options.closed')}</Notice> : null}
-      {!loading && !catalogueFailed && state.status === 'failed' ? <Notice kind="error">{t('plan.billing.loadFailed')}</Notice> : null}
+      {!loading && !catalogueFailed && state.status === 'failed' ? (
+        <Notice kind="error">{t('plan.billing.loadFailed')}</Notice>
+      ) : null}
       {!loading && billing !== null ? <Notice>{t('plan.options.testing')}</Notice> : null}
       {sub !== null && sub.status === 'active' ? (
         <p className="m-0" data-testid="plan-subscription">
@@ -138,7 +141,7 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
           }}
         />
       )}
-      <ul className="m-0 flex list-none flex-col gap-4 p-0">
+      <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(15rem,100%),1fr))] gap-4 p-0">
         {(loading ? [] : (catalogue ?? [])).map((cat) => (
           <PlanCard
             key={cat.id}

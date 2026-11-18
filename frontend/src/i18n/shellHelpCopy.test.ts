@@ -38,8 +38,7 @@ const LIMITS: readonly [CatalogueKey, number][] = [
   // labels and chips
   ['shell.nav.main', 4],
   ['shell.brandHome', 4],
-  ['shell.classesThisMonth', 4],
-  ['shell.classesThisMonthLine', 6],
+  ['shell.skip', 4],
   ['cookies.label', 4],
   ['legal.footer.label', 4],
   ['legal.inline.privacy', 4],
