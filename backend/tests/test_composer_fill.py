@@ -169,6 +169,8 @@ async def test_a_transient_class_busy_leaves_no_fill_on_the_class_answer(
     assert (busy.status_code, busy.json()["detail"]["reason"]) == (409, "class_busy")
     answer = (await rider.browser.get(f"/api/classes/{class_id}")).json()
     assert answer["fill_songs"] is None  # the page starts the fill again once the class is free
+    view = (await rider.browser.get(f"/api/classes/{class_id}/fill-songs")).json()
+    assert view["refusal"] is None  # class_busy is never stored
     cenv.sql("UPDATE jobs SET state = 'cancelled', finished_at = now() WHERE id = :j", j=other)
     made = await cenv.fill(rider, class_id)
     assert made.status_code == 201, made.text
@@ -184,3 +186,44 @@ async def test_a_queued_fill_makes_another_classs_fill_pool_busy(cenv: ComposerE
     assert made.status_code == 201, made.text
     busy = await cenv.fill(rider, second)
     assert (busy.status_code, busy.json()["detail"]["reason"]) == (409, "pool_busy")
+
+
+async def test_a_refused_fill_is_stored_answered_again_and_retried_by_find_songs_again(
+    cenv: ComposerEnv,
+) -> None:
+    """ADR 0038 section 5 (the ADR 0029 section 5 pattern; #1188 review F2): the refusal of a
+    fill's create is stored on the class, the fill view and the class answer show it, the next
+    automatic call answers the same refusal and makes no job, even once the cause is gone; Find
+    songs again moves to the next attempt and makes the job."""
+    rider = await cenv.songenv.rider()
+    first, _ = await cenv.sketched(rider)
+    second, sketch = await cenv.sketched(rider)
+    other = await cenv.fill(rider, first)  # this fill holds the working copy: pool_busy
+    busy = await cenv.fill(rider, second)
+    assert (busy.status_code, busy.json()["detail"]["reason"]) == (409, "pool_busy")
+    view = (await rider.browser.get(f"/api/classes/{second}/fill-songs")).json()
+    assert (view["attempt"], view["refusal"], view["job"]) == (
+        0,
+        {"reason": "pool_busy", "counts": {}},
+        None,
+    )
+    shown = (await rider.browser.get(f"/api/classes/{second}")).json()
+    assert shown["fill_songs"] == {
+        "sketch_revision_id": str(sketch),
+        "attempt": 0,
+        "failure": "pool_busy",
+    }
+    cenv.sql(  # the cause is gone: the other fill ended
+        "UPDATE jobs SET state = 'cancelled', finished_at = now() WHERE id = :j",
+        j=UUID(other.json()["job_id"]),
+    )
+    again = await cenv.fill(rider, second)  # the automatic call: the stored answer, no job
+    assert (again.status_code, again.json()["detail"]["reason"]) == (409, "pool_busy")
+    jobs = "SELECT count(*) FROM jobs WHERE class_id = :c AND kind = 'design_with_songs'"
+    assert cenv.sql(jobs, c=second).scalar_one() == 0
+    retried = await cenv.fill(rider, second, retry=True)  # Find songs again
+    assert retried.status_code == 201, retried.text
+    assert cenv.sql(jobs, c=second).scalar_one() == 1
+    view = (await rider.browser.get(f"/api/classes/{second}/fill-songs")).json()
+    assert (view["attempt"], view["refusal"]) == (1, None)
+    assert view["job"]["job_id"] == retried.json()["job_id"]
