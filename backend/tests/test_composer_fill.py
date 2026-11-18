@@ -94,3 +94,42 @@ async def test_the_composer_fields_are_server_fields(cenv: ComposerEnv) -> None:
     class_id, sketch = await cenv.sketched(rider)
     refused = await rider.create(class_id=str(class_id), mode="fill", base_revision_id=str(sketch))
     assert refused.status_code == 422, refused.text  # POST /api/jobs never makes a composer job
+
+
+async def test_the_class_answer_says_composer_and_the_fill_of_its_sketch(
+    cenv: ComposerEnv,
+) -> None:
+    rider = await cenv.songenv.rider()
+    class_id, sketch = await cenv.sketched(rider)
+    before = (await rider.browser.get(f"/api/classes/{class_id}")).json()
+    assert (before["composer"], before["fill_songs"]) == (True, None)  # no fill started yet
+    made = await cenv.fill(rider, class_id)
+    job_id = UUID(made.json()["job_id"])
+    started = (await rider.browser.get(f"/api/classes/{class_id}")).json()
+    assert started["fill_songs"] == {
+        "sketch_revision_id": str(sketch),
+        "attempt": 0,
+        "failure": None,
+    }
+    cenv.sql(
+        "UPDATE jobs SET state = 'failed', error_category = 'pool_too_small', "
+        "finished_at = now() WHERE id = :j",
+        j=job_id,
+    )
+    failed = (await rider.browser.get(f"/api/classes/{class_id}")).json()
+    assert failed["fill_songs"]["failure"] == "pool_too_small"  # Find songs again is offered
+    cenv.sql(
+        "UPDATE jobs SET input = jsonb_set(input, '{composer}', 'false') "
+        "WHERE class_id = :c AND kind = 'interpret_request'",
+        c=class_id,
+    )
+    other = (await rider.browser.get(f"/api/classes/{class_id}")).json()
+    assert other["composer"] is False
+
+
+async def test_a_class_of_the_old_flow_is_not_a_composer_class(cenv: ComposerEnv) -> None:
+    rider = await cenv.songenv.rider()
+    made = await rider.create()
+    class_id = made.json()["class_id"]
+    answer = (await rider.browser.get(f"/api/classes/{class_id}")).json()
+    assert (answer["composer"], answer["fill_songs"]) == (False, None)

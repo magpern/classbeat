@@ -5,7 +5,7 @@ One ``user_session`` per call. Reads are fixed-size: a listing is one statement 
 classes and revisions the user has (no per-class query).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final
 from uuid import UUID
@@ -18,6 +18,7 @@ from classbeat.agent.brief import Brief
 from classbeat.classes import match_view, seams, song_views
 from classbeat.classes.class_list_sql import CLASSES
 from classbeat.classes.class_sql import LOCK_CLASS, OPEN_JOB_SQL
+from classbeat.classes.composer_view import ComposerState, composer_state
 from classbeat.classes.dismissals import set_dismissed as set_dismissed  # the routes' name
 from classbeat.classes.kinds import SONG_DESIGN_KIND
 from classbeat.classes.messages import list_messages as list_messages  # the routes' name
@@ -134,6 +135,7 @@ class ClassDetail:
     brief: Brief | None
     match: match_view.MatchPointer | None = None  # only read while the Swedebeat flag is on
     player: SentState | None = None  # the revision the connected player holds (#1068)
+    composer: ComposerState = field(default_factory=ComposerState)  # ADR 0038 (#1188)
 
 
 async def stored_brief(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Brief | None:
@@ -169,7 +171,8 @@ async def get_class_detail(
         brief = await stored_brief(db, ctx.user_id, class_id)
         match = await match_view.newest_match(db, ctx.user_id, class_id) if with_match else None
         player = await sent_state(db, ctx.user_id, class_id)
-        return ClassDetail(row, songs, playlists, brief, match, player)
+        composer = await composer_state(db, ctx.user_id, class_id)
+        return ClassDetail(row, songs, playlists, brief, match, player, composer)
 
 
 _DISMISSED = text(

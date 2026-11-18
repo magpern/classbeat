@@ -27,7 +27,6 @@ No credit is used either way. Every statement filters on ``owner_id`` as well as
 another user's class is ``not_found`` like an unknown one. Only codes and numbers are stored.
 """
 
-import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
@@ -39,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.agent.brief import Brief
 from classbeat.classes.interpretation import Handoff
+from classbeat.classes.song_fill_keys import fill_key
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design import composer, interpretation_row
@@ -73,14 +73,6 @@ _JOB_OF_KEY = text(
     "SELECT id, kind, state FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "
     "AND idempotency_key = :key"
 )
-
-
-def fill_key(class_id: UUID, sketch_revision_id: UUID, attempt: int) -> str:
-    """The fill job's idempotency key: one per class, sketch and attempt (at most 64 characters)."""
-    digest = hashlib.sha256(
-        class_id.bytes + sketch_revision_id.bytes + attempt.to_bytes(4, "big")
-    ).hexdigest()
-    return f"fill-{digest[:59]}"
 
 
 def fill_of(row: interpretation_row.StoredInterpretation, sketch: UUID) -> FillState:
