@@ -266,6 +266,11 @@ def test_a_revise_that_stops_telling_a_sketch_base_fails(monkeypatch: pytest.Mon
         "class P:\n    origin: Literal['design_draft', 'brand_new'] | None = None",
         "Q = text(\"SELECT 1 WHERE provenance ->> 'origin' IN ('revise_draft', 'brand_new')\")",
         "if row.origin == 'brand_new':\n    pass",
+        "if row.origin in ('revise_draft', 'brand_new'):\n    pass",
+        "if row.origin not in {'brand_new'}:\n    pass",
+        "Q = text(\"SELECT 1 WHERE provenance ->> 'origin' NOT IN ('brand_new')\")",
+        "Q = text(\"SELECT 1 WHERE provenance ->> 'origin' <> 'brand_new'\")",
+        "Q = text(\"SELECT 1 WHERE r.provenance ->> 'origin' IS DISTINCT FROM 'brand_new'\")",
         "ORIGIN: Final = 'brand_new'",
     ],
 )

@@ -10,8 +10,9 @@ test can prove each one fails (as ``session_scan`` does for the fence guard).
   wrapper's closure), a few levels deep;
 - ``origin_literals``: every revision origin the source spells (an ``origin=`` keyword, a dict's
   ``"origin"`` key, an ``origin`` annotation or ``Origin`` alias of ``Literal`` values, a
-  comparison with ``.origin``, an SQL ``provenance ->> 'origin'`` test, a module constant
-  ``ORIGIN``), with the module that spells it.
+  comparison with ``.origin`` or its membership in a tuple, list or set, an SQL
+  ``provenance ->> 'origin'`` test (``=``, ``<>``, ``!=``, ``IS [NOT] DISTINCT FROM``,
+  ``[NOT] IN``), a module constant ``ORIGIN``), with the module that spells it.
 """
 
 import ast
@@ -31,7 +32,11 @@ from classbeat.jobs.kinds import JobKind
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 SUFFIX = "revision_id"
-_SQL_ORIGIN = re.compile(r"->>\s*'origin'\s*(?:=\s*'([a-z_]+)'|IN\s*\(([^)]*)\))")
+_SQL_ORIGIN = re.compile(
+    r"->>\s*'origin'\s*"
+    r"(?:(?:=|<>|!=|IS\s+(?:NOT\s+)?DISTINCT\s+FROM)\s*'([a-z_]+)'|(?:NOT\s+)?IN\s*\(([^)]*)\))",
+    re.IGNORECASE,
+)
 
 
 def _revision_fields(model: Any) -> list[str]:
@@ -170,6 +175,11 @@ def _literal_values(node: ast.expr | None) -> list[str]:
     return out
 
 
+def _members(node: ast.expr) -> list[ast.expr]:
+    """A compared side, or the elements of a tuple, list or set it tests membership in."""
+    return list(node.elts) if isinstance(node, ast.Tuple | ast.List | ast.Set) else [node]
+
+
 def origin_literals(source: str) -> set[str]:
     """Every origin value ``source`` spells (the module docstring's forms)."""
     tree = ast.parse(source)
@@ -202,7 +212,8 @@ def origin_literals(source: str) -> set[str]:
         elif isinstance(node, ast.Compare):
             sides = [node.left, *node.comparators]
             if any(isinstance(s, ast.Attribute) and s.attr == "origin" for s in sides):
-                found.update(v for s in sides for v in [value_of(s)] if v is not None)
+                spelled = [e for s in sides for e in _members(s)]
+                found.update(v for e in spelled for v in [value_of(e)] if v is not None)
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             for one, many in _SQL_ORIGIN.findall(node.value):
                 found.update([one] if one else re.findall(r"'([a-z_]+)'", many))
