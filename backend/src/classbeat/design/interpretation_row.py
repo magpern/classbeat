@@ -13,13 +13,18 @@
   reading (``interpret_composer_policy``), only for a class started with ``composer_flow`` on.
   They are left out of the stored value when empty, so every other row is as before;
 - ``refusal``: the hand-off's stored refusal (a reason code and whole numbers or short codes), so
-  every caller after it, a second tab or a reopened one, gets the same answer.
+  every caller after it, a second tab or a reopened one, gets the same answer;
+- ``fill`` (ADR 0038 section 5, #1188): the song fill of the composer's current sketch,
+  ``{sketch_revision_id, attempt, refusal}``: the fill hand-off's key is derived from the class,
+  the sketch and ``attempt`` (``classbeat.classes.song_fill``), Find songs again moves to the next
+  attempt, and a refusal of the fill's create is stored here as the design hand-off's is. Left out
+  when there is none, so every other row is as before.
 
 The worker writes it once, in its final fenced transaction, on its own class while the class has
-no interpretation and no revision (``store``); after that only the hand-off changes ``refusal``,
-under the owner lock (``classbeat.classes.interpretation``). Every statement filters on
-``owner_id`` as well as running under RLS. The size is checked here with the jsonb measure, and the
-column's ``octet_length`` check is the backstop.
+no interpretation and no revision (``store``); after that only the hand-offs change ``refusal``
+and ``fill``, under the owner lock (``classbeat.classes.interpretation``, ``song_fill``). Every
+statement filters on ``owner_id`` as well as running under RLS. The size is checked here with
+the jsonb measure, and the column's ``octet_length`` check is the backstop.
 """
 
 import json
@@ -47,6 +52,14 @@ class Refusal(BaseModel):
     counts: dict[Code, CountValue] = Field(default_factory=dict[str, CountValue], max_length=8)
 
 
+class FillState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sketch_revision_id: UUID
+    attempt: int = Field(ge=0, le=10_000)
+    refusal: Refusal | None = None
+
+
 class StoredInterpretation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -58,9 +71,10 @@ class StoredInterpretation(BaseModel):
     pinned_songs: PinnedList = Field(default_factory=lambda: [])
     questions: QuestionList = Field(default_factory=lambda: [])
     refusal: Refusal | None = None
+    fill: FillState | None = None
 
     def dumped(self) -> str:
-        empty = {k for k in ("pinned_songs", "questions") if not getattr(self, k)}
+        empty = {k for k in ("pinned_songs", "questions", "fill") if not getattr(self, k)}
         value = self.model_dump(mode="json", exclude=empty)
         for key in ("pinned_songs", "questions"):  # a pin's or question's own None fields go
             for entry in value.get(key, []):

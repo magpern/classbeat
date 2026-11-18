@@ -80,24 +80,19 @@ from classbeat import connections
 from classbeat.context import UserContext
 from classbeat.design import music_kind, sport
 from classbeat.flags import effective as flags
-from classbeat.jobs.kinds import POOL_KIND_NAMES, SONG_KIND_NAMES, Admitted, Approving, Refused
+from classbeat.jobs.kinds import SONG_KIND_NAMES, Admitted, Approving, Refused
 from classbeat.operations import orphans
 from classbeat.quota.gates import brief_of, check_brief, current_gates
 from classbeat.songs import config, song_list
+from classbeat.songs.composer_admit import admit_composer
 from classbeat.songs.inputs import DesignWithSongsInput, ReviseSongsInput, Seed
+from classbeat.songs.pick_checks import pick_checks as pick_checks
+from classbeat.songs.pick_checks import pool_busy as pool_busy
 
 KIND: Final = "design_with_songs"
 
 SEED_ENDED: Final = ("cancelled", "expired")
 
-# Another pick of the user that may still write or read the pool: not yet approved, still queued
-# or running. ``revise_songs`` (SJ3) stores ``mode`` the same way.
-_PICK_OPEN = text(
-    "SELECT 1 FROM jobs WHERE owner_id = :owner_id AND kind = ANY(:kinds) "
-    "AND state IN ('queued', 'running') AND approved_at IS NULL "
-    "AND coalesce(input ->> 'mode', 'pick') = 'pick' "
-    "AND jsonb_typeof(input -> 'source') IS DISTINCT FROM 'object' LIMIT 1"
-)
 # The class's newest song list and the job that made it.
 _NEWEST_LIST = text(
     "SELECT r.id, j.kind, j.state, j.approved_at FROM class_revisions r "
@@ -179,11 +174,6 @@ async def _admit_resume(
     return Admitted()
 
 
-async def pool_busy(db: AsyncSession, owner_id: UUID) -> bool:
-    found = await db.execute(_PICK_OPEN, {"owner_id": owner_id, "kinds": list(POOL_KIND_NAMES)})
-    return found.first() is not None
-
-
 async def seed_list(
     db: AsyncSession, owner_id: UUID, class_id: UUID, seed: Seed, *, newest: bool = True
 ) -> song_list.SongListRevision | None:
@@ -206,20 +196,6 @@ async def seed_list(
     return found
 
 
-async def pick_checks(
-    db: AsyncSession, ctx: UserContext, spotify_connection_id: UUID
-) -> Refused | None:
-    """Steps 3 to 5 (both kinds' picks): ``not_connected``, ``consent_missing``, ``pool_busy``."""
-    account = await connections.spotify_account_in(db, ctx, spotify_connection_id)
-    if account is None:
-        return Refused("not_connected")
-    if not await connections.pool_consent_in(db, ctx, account):
-        return Refused("consent_missing")
-    if await pool_busy(db, ctx.user_id):
-        return Refused("pool_busy")
-    return None
-
-
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Admitted | Refused:
     if not isinstance(parsed, DesignWithSongsInput):
         return Refused("invalid_input")
@@ -238,6 +214,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     fixed = await sport.admit_brief(db, ctx, parsed.brief, parsed.class_id)
     if fixed is not None:
         return fixed
+    if parsed.composer:  # ADR 0038: fill, swap and change (``composer_admit``)
+        return await admit_composer(db, ctx, parsed)
     if own:
         found = await connections.spotify_account_in(db, ctx, parsed.spotify_connection_id)
         return Admitted() if found is not None else Refused("not_connected")

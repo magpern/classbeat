@@ -40,6 +40,7 @@ from classbeat.classes.interpretation_routes import router as interpretation_rou
 from classbeat.classes.pending_routes import router as pending_router
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
+from classbeat.classes.song_fill_routes import router as song_fill_router
 from classbeat.classes.studio_design_routes import router as studio_design_router
 from classbeat.classes.studio_output_actions_routes import router as studio_output_actions_router
 from classbeat.classes.studio_outputs_routes import router as studio_outputs_router
@@ -270,6 +271,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(studio_sync_router)  # SR C8: Spotify sync state and Sync again
     app.include_router(interpretation_router)
     app.include_router(pending_router)  # ADR 0038 section 8: pending chat messages
+    app.include_router(song_fill_router)  # ADR 0038 section 5: songs into the sketch
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():
