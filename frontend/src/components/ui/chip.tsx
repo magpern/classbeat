@@ -8,17 +8,26 @@ const tones = {
   bad: 'bg-bad-soft text-bad',
 } as const
 
-/** A status label (not interactive). */
+/**
+ * A status label (not interactive). With `dot` it is a status pill: a small dot in the tone's
+ * colour (currentColor) before the text, for Connected, Needs reconnecting and Not connected.
+ * The dot is decoration; the text carries the meaning.
+ */
 export function Chip({
   tone = 'neutral',
+  dot = false,
   className,
+  children,
   ...props
-}: HTMLAttributes<HTMLSpanElement> & { tone?: keyof typeof tones }) {
+}: HTMLAttributes<HTMLSpanElement> & { tone?: keyof typeof tones; dot?: boolean }) {
   return (
     <span
-      className={cn('inline-flex items-center gap-1 rounded-full px-3 py-1 text-[0.8125rem] font-medium', tones[tone], className)}
+      className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[0.8125rem] font-medium', tones[tone], className)}
       {...props}
-    />
+    >
+      {dot ? <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-current" /> : null}
+      {children}
+    </span>
   )
 }
 

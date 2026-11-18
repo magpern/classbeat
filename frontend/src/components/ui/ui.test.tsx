@@ -80,6 +80,31 @@ describe('Chip', () => {
     render(<Chip tone="ok">Version 3 saved to MOWL</Chip>)
     expect(screen.getByText('Version 3 saved to MOWL')).toBeInTheDocument()
   })
+
+  it('Chip with dot is a status pill: a decorative dot, the text unchanged', () => {
+    const { container } = render(<Chip tone="ok" dot>Connected</Chip>)
+    expect(screen.getByText('Connected')).toBeInTheDocument()
+    const dot = container.querySelector('span > span[aria-hidden="true"]')
+    expect(dot).not.toBeNull()
+    expect(dot?.className).toContain('bg-current')
+    expect(render(<Chip>Plain</Chip>).container.querySelector('[aria-hidden]')).toBeNull()
+  })
+
+  it('Button primary is the heat gradient with white text and glow; secondary is raised with a line', () => {
+    render(
+      <>
+        <Button>Go</Button>
+        <Button variant="secondary">Back</Button>
+      </>,
+    )
+    const primary = screen.getByRole('button', { name: 'Go' }).className
+    expect(primary).toContain('bg-heat')
+    expect(primary).toContain('text-on-heat')
+    expect(primary).toContain('shadow-glow')
+    const secondary = screen.getByRole('button', { name: 'Back' }).className
+    expect(secondary).toContain('bg-raised')
+    expect(secondary).toContain('border-line')
+  })
 })
 
 describe('Dialog', () => {

@@ -18,6 +18,10 @@
   --color-muted: var(--cb-muted);
   --color-brand: var(--cb-brand);
   --color-on-brand: var(--cb-on-brand);
+  --color-on-heat: var(--cb-on-heat);
+  --color-heat-from: var(--cb-heat-from);
+  --color-heat-mid: var(--cb-heat-mid);
+  --color-heat-to: var(--cb-heat-to);
   --color-ok: var(--cb-ok);
   --color-ok-soft: var(--cb-ok-soft);
   --color-warn: var(--cb-warn);
@@ -50,7 +54,15 @@
   --radius-sm: var(--cb-radius-sm);
   --radius-md: var(--cb-radius-md);
   --radius-lg: var(--cb-radius-lg);
+  --radius-xl: var(--cb-radius-xl);
+  --shadow-glow: var(--cb-glow);
+  --shadow-card: var(--cb-shadow);
   --radius-full: var(--cb-radius-full);
+}
+
+/* The heat gradient (ADR 0013 Afterburn): `bg-heat` paints it, `text-on-heat` is the text on it. */
+@utility bg-heat {
+  background-image: var(--cb-heat);
 }
 
 /*

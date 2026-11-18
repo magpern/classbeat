@@ -160,6 +160,30 @@ describe('contrast', () => {
     }
   })
 
+  it.each([
+    ['dark', dark],
+    ['light', light],
+  ])('%s: white on both ends and the middle of the heat line is >= 4.5:1', (_name, t) => {
+    for (const stop of ['heat-from', 'heat-mid', 'heat-to']) {
+      expect(contrast(t['on-heat'] as string, t[stop] as string), stop).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('the heat line is the owner-approved gradient and is the same in both themes', () => {
+    expect([dark['heat-from'], dark['heat-mid'], dark['heat-to']]).toEqual(['#6d4aff', '#a12fc4', '#d61a72'])
+    expect(light['heat-to']).toBe(dark['heat-to'])
+    expect(tokensCss).toMatch(/--cb-heat:\s*linear-gradient\(110deg,/)
+    expect(tokensCss).toMatch(/--cb-glow:/)
+    expect(tokensCss).toMatch(/--cb-radius-xl:/)
+    expect(tailwindCss).toMatch(/@utility bg-heat/)
+  })
+
+  it('the Afterburn surfaces are the approved values', () => {
+    expect([dark.bg, dark.surface, dark.raised, dark.line]).toEqual(['#0a0910', '#14121b', '#1e1b27', '#2b2836'])
+    expect([light.bg, light.surface, light.raised, light.line]).toEqual(['#f6f4fa', '#ffffff', '#efecf5', '#e3dfeb'])
+    expect([dark.brand, light.brand]).toEqual(['#b9a2ff', '#5a36e0'])
+  })
+
   it('the system theme (light device) has the same values as light', () => {
     for (const key of ['bg', 'surface', 'raised', 'text', 'muted', 'brand', 'on-brand']) {
       expect(system[key], key).toBe(light[key])
