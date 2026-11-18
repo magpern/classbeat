@@ -124,7 +124,7 @@ async def _run_stage(
     zone7_tss_margin: float,
 ) -> CaseResult:
     # A soundless case (ADR 0007 amendment of 2026-11-03, issue #531) is given the soundless stages
-    # as a soundless job gets them (``design.kind_nomusic``, ``design.revise``): the brief
+    # as a soundless job gets them (``design.kind._run_soundless``, ``design.revise``): the brief
     # and no music, no rules section, no music map, no gates.
     music_sec = math.inf  # a soundless class is not bounded by any music
     music_map: dict[str, Any] | None = None
