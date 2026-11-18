@@ -25,8 +25,8 @@ from classbeat.agent.catalog import CATALOG, EFFORTS, models_of
 from classbeat.agent.prices import DEFAULT_PRICES, OPENAI_LONG_CONTEXT_TOKENS, PRICES_VERSION
 from classbeat.agent.provider import ProviderError, StageSpec, ToolDef, ToolResult, Usage
 from classbeat.agent.providers import OpenAIProvider
-from classbeat.agent.providers.openai_strict import strict_schema
 from classbeat.agent.providers.openai_responses import request_shape
+from classbeat.agent.providers.openai_strict import strict_schema
 from classbeat.agent.stage import prompt_version
 from classbeat.evals.cases import load_cases
 from classbeat.evals.pick import load_pick_cases, run_pick_case

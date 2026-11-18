@@ -96,8 +96,16 @@ def _objects(node: Any) -> Iterator[Mapping[str, Any]]:
 
 
 def _keys(node: Any) -> set[str]:
+    """Every schema keyword in ``node``; the names of a name map (a property's, a definition's)
+    are not keywords (#1197), but the schemas under them are walked."""
     if isinstance(node, dict):
-        return set(node) | {k for v in node.values() for k in _keys(v)}  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+        names = {"properties", "$defs", "definitions"}
+        under = [
+            schema
+            for key, value in node.items()  # pyright: ignore[reportUnknownVariableType]
+            for schema in (value.values() if key in names and isinstance(value, dict) else [value])  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        ]
+        return set(node) | {k for v in under for k in _keys(v)}  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
     if isinstance(node, list):
         return {k for v in node for k in _keys(v)}  # pyright: ignore[reportUnknownVariableType]
     return set()

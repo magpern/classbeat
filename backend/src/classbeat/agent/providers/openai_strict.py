@@ -22,6 +22,9 @@ from classbeat.agent.providers.openai_arguments import parse_arguments
 # Keywords strict mode does not take; their rule stays with the loop's validation. Length limits
 # are said in the description instead, so the model still sees them.
 _DROPPED: Final = frozenset({"default", "title"})
+# Keywords whose value maps names (a property's, a definition's) to schemas: the names are kept
+# as they are, whatever they are (#1197: a property named ``title`` was dropped as the keyword).
+_NAME_MAPS: Final = frozenset({"properties", "$defs", "definitions"})
 _LENGTHS: Final = (("minLength", "at least {} characters"), ("maxLength", "at most {} characters"))
 
 
@@ -65,13 +68,20 @@ def _check_unions(node: Any, root: Mapping[str, Any]) -> None:
             _check_unions(value, root)
 
 
+def _named(names: Any) -> Any:
+    """A name map's schemas made strict; its names are never read as keywords."""
+    if not isinstance(names, dict):
+        return _strict(names)
+    return {name: _strict(schema) for name, schema in names.items()}  # pyright: ignore[reportUnknownVariableType]
+
+
 def _strict(node: Any) -> Any:
     if isinstance(node, list):
         return [_strict(item) for item in node]  # pyright: ignore[reportUnknownVariableType]
     if not isinstance(node, dict):
         return node
     out: dict[str, Any] = {
-        key: _strict(value)
+        key: _named(value) if key in _NAME_MAPS else _strict(value)
         for key, value in node.items()  # pyright: ignore[reportUnknownVariableType]
         if key not in _DROPPED
     }
