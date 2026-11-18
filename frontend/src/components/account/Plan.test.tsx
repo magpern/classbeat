@@ -156,10 +156,13 @@ describe('the plan panel on the account page', () => {
       },
     })
     renderAt('/account#plan')
-    await screen.findByText('1 of 3 classes in October')
+    await screen.findByTestId('plan-classes')
+    expect(screen.getByTestId('plan-classes')).toHaveTextContent('1 of 3 classes in October')
     fireEvent.change(screen.getByLabelText('Redeem a code'), { target: { value: ' ABC123 ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Redeem' }))
-    await screen.findByText('2 of 3 classes in October')
+    await waitFor(() => {
+      expect(screen.getByTestId('plan-classes')).toHaveTextContent('2 of 3 classes in October')
+    })
     const [call] = api.to('POST', '/api/account/redeem')
     expect(call?.body).toEqual({ code: 'ABC123' })
     expect(call?.headers.get('X-CSRF-Token')).toBeTruthy()

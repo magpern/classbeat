@@ -109,7 +109,8 @@ describe('account tabs', () => {
     renderAt('/account')
     expect(await screen.findByRole('heading', { level: 1, name: 'ann' })).toBeInTheDocument()
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
-    expect(screen.queryByText('Your account')).toBeNull()
+    // The eyebrow above the name is a label, not a second heading.
+    expect(screen.getByText('Your account').tagName).toBe('P')
     expect(screen.getByTestId('account-email')).toHaveTextContent('ann@example.test')
     // Changing the address is not part of the header: it sits in Sign-in and security.
     expect(screen.queryByLabelText('New email address')).toBeNull()
