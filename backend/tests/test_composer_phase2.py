@@ -3,7 +3,8 @@
 On ``composertools``' world (the fake Spotify with an invented catalogue, ``FakeMowlPool``, the real
 ``design_with_songs`` kind, ``FakeProvider``, Postgres as ``classbeat_app``):
 
-- before the approval nothing is written for the class (no final playlist, no MOWL attach of one);
+- before the approval nothing is written for the class (no final playlist, no MOWL attach of one;
+  the fakes' own logs show only the pool's private working copy, ADR 0008 section 2);
 - approved with ``save: true`` and the final songs as approved, phase 2 re-times the preview with
   no model and stores the first real draft (``origin = design_with_songs``, provenance ``fit:
   kept`` naming the preview's design run, ``music.song_list_id``) by compare-and-set from the
@@ -67,18 +68,27 @@ async def test_approve_and_save_keeps_the_preview_and_sets_save_pending(
 ) -> None:
     rider, class_id, sketch, job_id, list_id, digest = await waiting(cenv)
     owner = rider.user_id
-    # Before the approval: no final playlist, nothing of the class written anywhere.
+    # Before the approval: no final playlist, nothing of the class written anywhere. The fakes'
+    # own logs: phase 1's only writes are the pool's private working copy (ADR 0008 section 2).
     assert final_creates(cenv, owner) == 0
     assert cenv.songenv.class_playlists(owner) == []
+    spotify_creates, mowl_attaches = cenv.songenv.creates(), len(cenv.songenv.mowl.attaches)
     answer = await approve(rider, job_id, list_id, digest)
     assert answer.status_code == 200, answer.text
     assert cenv.songenv.row(job_id).approval_save is True
+    assert (cenv.songenv.creates(), len(cenv.songenv.mowl.attaches)) == (
+        spotify_creates,
+        mowl_attaches,
+    )  # the approval itself writes nothing
     before = turns(cenv)
     row = await cenv.songenv.run(job_id)
     assert (row.state, row.error_category) == ("completed", None)
     assert turns(cenv) == before  # the fit: no model
     assert "fit" in cenv.songenv.stages(job_id)
     assert final_creates(cenv, owner) == 1
+    # Phase 2: exactly one more Spotify create (the final playlist) and one more MOWL attach.
+    assert cenv.songenv.creates() == spotify_creates + 1
+    assert len(cenv.songenv.mowl.attaches) == mowl_attaches + 1
     [playlist] = cenv.songenv.class_playlists(owner)
     assert playlist.state == "verified"
 
@@ -158,6 +168,36 @@ async def test_final_songs_that_differ_are_re_designed_with_no_save_pending(
     view = (await rider.browser.get(f"/api/classes/{class_id}")).json()
     assert view["save_pending"] is None
     assert view["phase2"] == {"state": "differed"}
+
+
+UNPROVEN = {
+    "the design run is gone": "DELETE FROM agent_runs WHERE id = :r",
+    "the design run is another job's": (
+        "UPDATE agent_runs SET job_id = (SELECT j.id FROM jobs j WHERE j.class_id = :c "
+        "AND j.kind = 'interpret_request') WHERE id = :r"
+    ),
+}
+
+
+@pytest.mark.parametrize("statement", list(UNPROVEN.values()), ids=list(UNPROVEN))
+async def test_a_design_run_that_cannot_be_proven_is_re_designed_with_no_save_pending(
+    cenv: ComposerEnv, statement: str
+) -> None:
+    rider, class_id, _, job_id, list_id, digest = await waiting(cenv)
+    preview = cenv.content(list_id)["preview"]
+    answer = await approve(rider, job_id, list_id, digest)
+    assert answer.status_code == 200, answer.text
+    cenv.sql(statement, r=UUID(preview["design_run_id"]), c=class_id)
+    cenv.songenv.script = change_script()
+    row = await cenv.songenv.run(job_id)
+    assert (row.state, row.error_category) == ("completed", None)
+    draft_id = cenv.current(class_id)
+    assert draft_id is not None
+    draft = cenv.songenv.revision(draft_id)
+    assert draft.provenance["fit"] == "redesigned"
+    assert preview["design_run_id"] not in draft.provenance["agent_run_ids"]
+    pending = cenv.sql("SELECT save_pending FROM classes WHERE id = :c", c=class_id).scalar_one()
+    assert pending is None
 
 
 async def test_a_sketch_that_is_no_longer_current_makes_prepare_refuse(

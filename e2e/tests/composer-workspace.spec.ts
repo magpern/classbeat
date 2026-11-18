@@ -21,8 +21,9 @@ import { fakeState } from './spotify-helpers'
 // It needs what #1188 (the fill hand-off, swap and change) and #1189 (approve with `save: true`,
 // `save_pending`) add: the `fill-songs` route, the fake model scripts named in `SCRIPTS` and the
 // class answer's `save_pending`. Until all exist the spec skips itself with that reason (a probe,
-// not a flag): the assertions below are the ones the issue asks for and are not weakened. #1188 is
-// on main; the approval's phase 2 (#1189) is not, so the spec still skips.
+// not a flag): the assertions below are the ones the issue asks for and are not weakened. #1188 and
+// #1189 are on main; the spec still skips until the #1191 follow-up adapts the workspace (it
+// switches Create the playlist again to `resume-songs`, the last probe).
 
 const SCRIPTS: ModelScript[] = ['composer_read', 'composer_sketch', 'composer_sketch_revised', 'composer_fill', 'composer_swap']
 const NO_CLASS = '00000000-0000-4000-8000-000000000000'
@@ -51,6 +52,17 @@ function classAnswerHasSavePending(): boolean {
     .some((name) => /\bsave_pending\s*:/.test(readFileSync(new URL(name, dir), 'utf8')))
 }
 
+/**
+ * Whether the web's Create the playlist again uses the composer's resume hand-off
+ * (`POST /api/classes/{id}/resume-songs`, #1189), which only the #1191 follow-up wires in
+ * (`frontend/src/api/resumePlaylist.ts`): until then the workspace and its e2e flow are not adapted
+ * to the real backend shapes. Remove with the skip in that PR.
+ */
+function webUsesTheResumeHandOff(): boolean {
+  const file = new URL('../../frontend/src/api/resumePlaylist.ts', import.meta.url)
+  return existsSync(file) && readFileSync(file, 'utf8').includes('/resume-songs')
+}
+
 /** Why the spec cannot run yet, or null. A missing route is FastAPI's own `{"detail":"Not Found"}`; the app's answers carry a reason. */
 async function missing(page: Page): Promise<string | null> {
   const absent = SCRIPTS.filter(
@@ -59,6 +71,9 @@ async function missing(page: Page): Promise<string | null> {
   if (absent.length > 0) return `the fake model scripts ${absent.join(', ')} are not in backend/tests/agent_scripts yet (#1188, #1189)`
   if (!classAnswerHasSavePending()) {
     return 'the approval\'s phase 2 (approve and save, `save_pending` on the class answer) is not on main yet (#1189)'
+  }
+  if (!webUsesTheResumeHandOff()) {
+    return 'the workspace is not adapted to the approve-and-save backend yet: it waits for the #1191 e2e follow-up'
   }
   const session = (await (await page.request.get('/api/auth/session')).json()) as { csrf_token: string }
   const probe = await page.request.post(`/api/classes/${NO_CLASS}/fill-songs`, {
