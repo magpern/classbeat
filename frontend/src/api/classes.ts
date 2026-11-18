@@ -92,6 +92,8 @@ export interface ClassSummary {
   sport: 'cycling' | 'running'
   /** ADR 0007 amendment item 10 (#530): a class with no music; an answer without it is not. */
   soundless: boolean
+  /** ADR 0036 section 5 (#1173): the class's stored music is the SwedeBeat studio's; an answer without it is not. */
+  studio: boolean
   createdAt: string
   updatedAt: string
   currentRevisionId: string | null
@@ -136,6 +138,7 @@ function decodeClass(value: unknown): ClassSummary {
     title: text(item, 'title'),
     sport: item.sport === 'running' ? 'running' : 'cycling',
     soundless: item.soundless === true,
+    studio: item.studio === true,
     createdAt: text(item, 'created_at'),
     updatedAt: text(item, 'updated_at'),
     currentRevisionId: optionalText(item, 'current_revision_id'),

@@ -64,8 +64,9 @@ export function ClassBody({
   const [deleting, setDeleting] = useState(false)
   // Whether the class's history says Change it works (true until it says otherwise).
   const [canChange, setCanChange] = useState(true)
-  // A studio class is found by its timeline (the summary carries no studio status).
-  const studioView = useStudioTimeline(classId, summary.currentRevisionId, summary.openJob === null)
+  // A studio class is found by its timeline; the summary's `studio` flag keeps the call off every
+  // other class (#1173).
+  const studioView = useStudioTimeline(classId, summary.currentRevisionId, summary.openJob === null, summary.studio)
   // A studio class's songs are the studio's own; the legacy song panels do not apply (#1119).
   const kind = useClassKind(summary, studioView)
   const studio = kind === 'studio'
