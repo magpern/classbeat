@@ -108,6 +108,33 @@ describe('the composer workspace driver (ADR 0038 section 8)', () => {
     expect(submits(api)[0]!.path).toBe(`${PENDING}/${MSG_ID}/submit`)
   })
 
+  it('reads the class again when the fill job reaches the approval wait, so the list shows', async () => {
+    let waiting = false
+    const running = { id: JOB_ID, kind: 'design_with_songs', state: 'running' }
+    const { api } = setup({
+      extraRoutes: {
+        [`GET ${CLASS_PATH}`]: () =>
+          classBody({
+            sport: 'cycling',
+            composer: true,
+            fill_songs: FILL,
+            ...(waiting
+              ? { songs: { state: 'waiting', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null }, open_job_id: JOB_ID, open_job: { ...running, state: 'waiting_for_approval' } }
+              : { open_job_id: JOB_ID, open_job: running }),
+          }),
+        [`GET /api/jobs/${JOB_ID}`]: () => {
+          waiting = true
+          return json(jobBody('waiting_for_approval', { kind: 'design_with_songs' }))
+        },
+        [`GET /api/jobs/${JOB_ID}/events`]: () => openStream(),
+      },
+    })
+    renderAt(PAGE)
+    expect(await screen.findByText('Ready to approve')).toBeInTheDocument()
+    expect(screen.queryByText('Finding songs for this shape…')).toBeNull()
+    expect(api.to('GET', CLASS_PATH).length).toBeGreaterThan(1)
+  })
+
   it('does nothing while a job runs, and does not start a fill again for a sketch whose fill was started', async () => {
     const { api } = setup({
       cls: { open_job_id: JOB_ID, open_job: { id: JOB_ID, kind: 'design_with_songs', state: 'running' }, fill_songs: FILL },
