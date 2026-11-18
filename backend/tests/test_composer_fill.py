@@ -5,6 +5,9 @@ stored, no credit is used, two calls make one job, a retry and a new sketch use 
 the network, a real account or a model."""
 
 import asyncio
+import hashlib
+import secrets
+import uuid
 from uuid import UUID
 
 import pytest
@@ -151,14 +154,21 @@ async def test_a_transient_class_busy_leaves_no_fill_on_the_class_answer(
 ) -> None:
     rider = await cenv.songenv.rider()
     class_id, _ = await cenv.sketched(rider)
-    interpret = cenv.sql(
-        "SELECT id FROM jobs WHERE class_id = :c AND kind = 'interpret_request'", c=class_id
-    ).scalar_one()
-    cenv.sql("UPDATE jobs SET state = 'queued', finished_at = NULL WHERE id = :j", j=interpret)
+    other = uuid.uuid4()  # another job of the class, still queued (a sketch revise, say)
+    cenv.sql(
+        "INSERT INTO jobs (id, owner_id, kind, state, class_id, input, idempotency_key, "
+        "request_hash, credit_state) VALUES (:j, :o, 'revise_draft', 'queued', :c, "
+        "CAST('{}' AS jsonb), :k, :h, 'none')",
+        j=other,
+        o=rider.user_id,
+        c=class_id,
+        k=secrets.token_urlsafe(18),
+        h=hashlib.sha256(b"other").digest(),
+    )
     busy = await cenv.fill(rider, class_id)
     assert (busy.status_code, busy.json()["detail"]["reason"]) == (409, "class_busy")
     answer = (await rider.browser.get(f"/api/classes/{class_id}")).json()
     assert answer["fill_songs"] is None  # the page starts the fill again once the class is free
-    cenv.sql("UPDATE jobs SET state = 'completed', finished_at = now() WHERE id = :j", j=interpret)
+    cenv.sql("UPDATE jobs SET state = 'cancelled', finished_at = now() WHERE id = :j", j=other)
     made = await cenv.fill(rider, class_id)
     assert made.status_code == 201, made.text
