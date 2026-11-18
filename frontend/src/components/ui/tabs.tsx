@@ -13,7 +13,7 @@ export function TabsTrigger({ className, ...props }: ComponentProps<typeof TabsP
     <TabsPrimitive.Trigger
       className={cn(
         'min-h-11 cursor-pointer rounded-full border-0 bg-transparent px-4 text-[0.9375rem] font-medium whitespace-nowrap text-muted',
-        'hover:text-text data-[state=active]:bg-surface data-[state=active]:text-text data-[state=active]:shadow-[inset_0_-2px_0_var(--cb-heat-to)]',
+        'hover:text-text data-[state=active]:bg-surface data-[state=active]:text-text data-[state=active]:shadow-[inset_0_-2px_0_var(--cb-tab-mark)]',
         'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand',
         className,
       )}

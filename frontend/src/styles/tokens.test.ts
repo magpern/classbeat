@@ -178,6 +178,19 @@ describe('contrast', () => {
     expect(tailwindCss).toMatch(/@utility bg-heat/)
   })
 
+  it.each([
+    ['dark', dark],
+    ['light', light],
+  ])('%s: the tab mark is >= 3:1 on surface and the same colour', (_name, t) => {
+    expect(t['tab-mark']).toBe('#d61a72')
+    expect(contrast(t['tab-mark'] as string, t.surface as string)).toBeGreaterThanOrEqual(3)
+  })
+
+  it('on-brand and the light soft backgrounds are the approved values', () => {
+    expect([dark['on-brand'], light['on-brand']]).toEqual(['#0a0910', '#ffffff'])
+    expect([light['ok-soft'], light['warn-soft'], light['bad-soft']]).toEqual(['#e1f5ea', '#fcefd6', '#fbe0dd'])
+  })
+
   it('the Afterburn surfaces are the approved values', () => {
     expect([dark.bg, dark.surface, dark.raised, dark.line]).toEqual(['#0a0910', '#14121b', '#1e1b27', '#2b2836'])
     expect([light.bg, light.surface, light.raised, light.line]).toEqual(['#f6f4fa', '#ffffff', '#efecf5', '#e3dfeb'])
