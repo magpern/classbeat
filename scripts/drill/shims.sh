@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Sourced by scripts/backup-restore-drill.sh (not run on its own): the hardening cases' shims (#364).
 # Needs $work, and defines real_cp, real_docker and real_openssl for the cases that use the shims.
 real_cp="$(command -v cp)"; real_docker="$(command -v docker)"; real_openssl="$(command -v openssl)"

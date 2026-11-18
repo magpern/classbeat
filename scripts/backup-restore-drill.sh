@@ -275,6 +275,7 @@ cp "$plain" "$work/attack/badsig.dump"
 flip "$plain.sig" "$work/attack/badsig.dump.sig" 10
 refused "plain archive with a tampered signature" "does not verify" scripts/restore.sh --verify-only --verify-key "$work/keys/sign.pub" "$work/attack/badsig.dump"
 # Hardening cases (#364). Tools that are made to misbehave are shims first on PATH for one command.
+# shellcheck source=drill/shims.sh
 source scripts/drill/shims.sh
 accepted() { # accepted <label> <command...>: the command must succeed and say it validated the archive
   local label="$1"; shift
