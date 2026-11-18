@@ -66,6 +66,7 @@ async def test_the_fill_places_the_pin_and_the_attached_playlists_song(cenv: Com
     songs = songs_of(cenv, list_id)
     assert len(songs) == 8
     assert songs[2] == (PINNED[0], {"kind": "pinned"})  # "the climb": the third slot
+    assert songs[SWAPPED][0] == "Summit Neon 1"  # the song the e2e clicks Swap on, by name
     assert (title(cenv.songenv, FAVOURED), {"kind": "playlist", "playlist": 0}) in songs
     assert [s for s in songs if s[1]["kind"] == "search"]  # the rest are classbeat's finds
     assert cenv.current(class_id) == sketch  # nothing replaced the sketch yet

@@ -32,7 +32,8 @@ const PIN_URI = 'spotify:track:FakeTrack0000000000018'
 const FAVOURED_URI = 'spotify:track:FakeTrack0000000000031'
 const ANSWER = 'Make the class 60 minutes long.'
 const CHANGE = 'Make the last climb longer.'
-const SWAPPED = 3 // the song row the swap script replaces (0-based)
+// The song the swap script replaces: slot 4 (position 3, 0-based). Found by name: the rows need not follow the slots.
+const SWAPPED = 'Summit Neon 1'
 const WORKING_COPY = 'classbeat working copy'
 
 /** The stored admin flag `composer_flow` (ADR 0038 section 2): only a stored `on` switches it on under the switch. */
@@ -201,14 +202,13 @@ test('describe with a playlist and a pinned song, shape it, swap a song, approve
   // Swap one song: the waiting version is replaced, still not written to MOWL or made a final playlist.
   const swaps = page.getByRole('button', { name: /^Swap / })
   const rows = await swaps.count()
-  expect(rows).toBeGreaterThan(SWAPPED)
-  const swap = swaps.nth(SWAPPED)
-  const swapped = (await swap.getAttribute('aria-label')) ?? ''
-  expect(swapped).toMatch(/^Swap /)
+  expect(rows).toBeGreaterThan(0)
+  const swap = page.getByRole('button', { name: `Swap ${SWAPPED}`, exact: true })
+  await expect(swap).toBeVisible()
   useModelScript('composer_swap')
   await swap.click()
   // The new list is in when the old song is gone and the rows are back (never while the job runs).
-  await expect(page.getByRole('button', { name: swapped })).toHaveCount(0, LONG)
+  await expect(swap).toHaveCount(0, LONG)
   await expect(swaps).toHaveCount(rows, LONG)
   await expect(page.getByText('Ready to approve').first()).toBeVisible(LONG)
   await expect(list.getByText(PINNED).first()).toBeVisible()
