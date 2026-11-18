@@ -1,0 +1,23 @@
+{
+ "kind": "interpret",
+ "name": "interpret_pinned_songs",
+ "about": "Songs named with a place are pinned in the request's words; a stated length gets no question.",
+ "request": "A 45 minute class with three climbs. Warm up to Dancing Queen by ABBA and make Africa by Toto the last climb.",
+ "expect": {
+  "values": {
+   "length_min": 45,
+   "climbs": 3
+  },
+  "origins": {
+   "length_min": "explicit",
+   "climbs": "explicit"
+  },
+  "absent": [
+   "music"
+  ],
+  "pinned": [
+   {"title": "Dancing Queen", "artist": "ABBA", "at": "Warm up"},
+   {"title": "Africa", "artist": "Toto", "at": "the last climb"}
+  ]
+ }
+}

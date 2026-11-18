@@ -9,7 +9,9 @@ games, in order, in the closed form the brief stores. A request beyond the plan 
 with a game) still expects what was *asked*: the policy, not the interpreter, records "Not as
 asked". A revise case (#904) also holds ``current``: the class's brief, of which the interpreter
 is told the closed values (``interpret_input.current_values``), and expects only what the request
-changes. Pure: no I/O.
+changes. A composer case (ADR 0038 section 3, #1185) may say how many playlists are
+``attached`` and expect the ``pinned`` songs (title, artist and place, case aside, in order) and the
+questions it ``asks`` (paths that must be among them). Pure: no I/O.
 """
 
 from typing import Final, Literal
@@ -19,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from classbeat.agent.brief import Brief, BriefGame, Sport
 from classbeat.agent.interpret_input import MusicName
 from classbeat.agent.interpreted import MAX_NAMES, SCALARS, StatedOrigin
+from classbeat.agent.interpreted_composer import MAX_PINNED, MAX_QUESTIONS, QuestionPath
 
 MAX_REQUEST: Final = 2000
 
@@ -55,6 +58,16 @@ class TasteExpect(BaseModel):
         return self
 
 
+class PinExpect(BaseModel):
+    """A song the instructor named: its title, and its artist and place where the case says."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    title: str = Field(min_length=1, max_length=100)
+    artist: str | None = Field(default=None, min_length=1, max_length=100)
+    at: str | None = Field(default=None, min_length=1, max_length=40)
+
+
 class InterpretExpect(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -68,6 +81,10 @@ class InterpretExpect(BaseModel):
     remove_games: bool = False  # a revise that takes out every game says so (#908)
     taste: TasteExpect | None = None  # ``None``: the music taste is not judged (#1140)
     forbidden_text: list[str] = Field(default_factory=lambda: list[str]())  # case-insensitive
+    pinned: list[PinExpect] | None = Field(default=None, max_length=MAX_PINNED)  # #1185
+    asks: list[QuestionPath] = Field(
+        default_factory=lambda: list[QuestionPath](), max_length=MAX_QUESTIONS
+    )
 
     @model_validator(mode="after")
     def _removal_leaves_no_games(self) -> "InterpretExpect":
@@ -83,6 +100,8 @@ class InterpretExpect(BaseModel):
             raise ValueError(
                 "expect names the scalar fields of a request only; games have their own"
             )
+        if set(self.asks) & {p for p, o in self.origins.items() if o == "explicit"}:
+            raise ValueError("a question is never asked of a stated field")
         if set(self.values) & set(self.absent):
             raise ValueError("a field is expected set or absent, not both")
         if not set(self.origins) <= set(self.values):
@@ -104,6 +123,7 @@ class InterpretCase(BaseModel):
         default_factory=lambda: list[MusicEntry](), max_length=MAX_NAMES
     )
     current: Brief | None = None  # a revise: the class as it stands
+    attached: int = Field(default=0, ge=0, le=5)  # the composer's attached playlists (#1185)
     expect: InterpretExpect
 
     @model_validator(mode="after")

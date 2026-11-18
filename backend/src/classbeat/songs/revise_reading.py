@@ -48,8 +48,14 @@ def _without_quotes(value: Any) -> Any:
     return value
 
 
+# The composer's part of a reading (ADR 0038 section 3) is a new class's only: a change of songs
+# never stores it, so a list's provenance keeps exactly the keys it had before #1185.
+_NOT_STORED: Final = frozenset({"pinned_songs", "questions"})
+
+
 def storable(reading: InterpretedRequest) -> dict[str, Any]:
-    return _without_quotes(reading.model_dump(mode="json", exclude_none=True))
+    dumped = reading.model_dump(mode="json", exclude_none=True, exclude=set(_NOT_STORED))
+    return _without_quotes(dumped)
 
 
 def stored(provenance: dict[str, Any]) -> InterpretedRequest | None:

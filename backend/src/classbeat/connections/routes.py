@@ -111,6 +111,9 @@ class ConnectionsOut(BaseModel):
     # ADR 0024 (#647): whether the desktop page may offer "Scan with the MOWL app"
     # (``CLASSBEAT_MOWL_QR_ENABLED``). Nothing here says anything about the user's own account.
     mowl_qr_enabled: bool = False
+    # ADR 0038 section 2 (#1185): the effective ``composer_flow`` (the environment's switch and a
+    # stored ``on``), so the web shows the composer only when it is on.
+    composer_flow: bool = False
 
 
 def failure_response(failure: ConnectionFailure) -> JSONResponse:
@@ -144,10 +147,11 @@ async def get_connections(
     async with system_session(factory) as db:
         # Imported here: ``classbeat.design`` imports this package (its music step opens the
         # MOWL connection), so the routes module must not import it at its own import time.
-        from classbeat.design import music_kind, sport
+        from classbeat.design import composer, music_kind, sport
 
         running = await sport.running_on(db)
         soundless = await music_kind.soundless_on(db)
+        composing = await composer.composer_on(db)
     return ConnectionsOut(
         connections=[
             ConnectionOut.of(row, email if row.provider == "swedebeat" else None) for row in rows
@@ -160,6 +164,7 @@ async def get_connections(
         running_enabled=running,
         soundless_enabled=soundless,
         mowl_qr_enabled=request.app.state.settings.mowl_qr_enabled,
+        composer_flow=composing,
     )
 
 

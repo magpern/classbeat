@@ -1,8 +1,9 @@
 """``/api/classes/{id}/interpretation`` and ``/api/classes/{id}/design-from-interpretation`` (ADR
 0029 section 5; ``classbeat.classes.interpretation``).
 
-- ``GET .../interpretation``: how the request was read (the items, the sport, the music's source),
-  the stored hand-off refusal and the design job of the hand-off, if any. 404 ``not_found`` while
+- ``GET .../interpretation``: how the request was read (the items, the sport, the music's source,
+  and for a composer class its pinned songs and questions, ADR 0038 section 3), the stored hand-off
+  refusal and the design job of the hand-off, if any. 404 ``not_found`` while
   for no such class of the user's; 409 ``not_ready`` while the interpret job has stored none.
 - ``POST .../design-from-interpretation`` with an optional ``{"retry": true}``: 201 with the new
   design job ``{job_id, kind, state}``, 200 with the same job for every later call; 409
@@ -31,6 +32,7 @@ from classbeat.agent.interpretation_record import InterpretationItem
 from classbeat.classes import interpret_again, interpretation
 from classbeat.classes.handoff_routes import job_enqueue
 from classbeat.context import UserContext
+from classbeat.design.interpret_composer_policy import PinnedSong, Question
 from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.http import credit_ledger, job_limit
 from classbeat.jobs.user import JobLimitPolicy
@@ -60,6 +62,10 @@ class InterpretationOut(BaseModel):
     sport: str
     music: str | None  # the music's source; None for a class with no music that could be chosen
     items: list[InterpretationItem]
+    # ADR 0038 section 3: empty for every class but a composer one. A pin's words are the
+    # instructor's own (substrings of the request); a question is a closed path and code.
+    pinned_songs: list[PinnedSong] = []
+    questions: list[Question] = []
     refusal: RefusalOut | None = None
     design_job: DesignJobOut | None = None
 
@@ -105,6 +111,8 @@ async def get_interpretation(
         sport=sport,
         music=None if row.music is None else row.music.get("source"),
         items=list(row.items),
+        pinned_songs=list(row.pinned_songs),
+        questions=list(row.questions),
         refusal=refusal,
         design_job=job,
     )

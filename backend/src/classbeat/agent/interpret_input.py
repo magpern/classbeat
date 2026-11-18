@@ -14,6 +14,11 @@ they stand (``current_values``: the brief's closed numbers and enums and its gam
 so a relative change ("ten minutes longer") is read as the value it leads to. A message without it
 is byte-identical to before.
 
+A composer request with attached Spotify playlists (ADR 0038 section 3, #1185) also holds
+``attached_playlists``: how many, never an id or a name, so a reference to them ("the playlist I
+attached") is not read as one of the numbered names. A message without it is byte-identical to
+before.
+
 Never an id, a title, a token, a URL or a song. A name is the instructor's own text and is passed
 as data in a JSON string, never joined into a sentence of the prompt.
 """
@@ -83,6 +88,7 @@ def first_message(
     games_allowed: bool,
     music: Sequence[MusicName],
     current: Mapping[str, Any] | None = None,
+    attached: int = 0,
 ) -> str:
     body: dict[str, Any] = {
         "request": clean_request(request),
@@ -93,4 +99,6 @@ def first_message(
     }
     if current is not None:
         body["current"] = {k: current[k] for k in CURRENT_KEYS if k in current}
+    if attached > 0:
+        body["attached_playlists"] = attached
     return json.dumps(body, separators=(",", ":"), ensure_ascii=False)

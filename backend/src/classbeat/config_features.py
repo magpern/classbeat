@@ -76,6 +76,10 @@ class FeatureSettings(BaseSettings):
     # admin flag ``running_enabled`` can only tighten it), read by the web (admit) and the worker
     # (a queued running job checks it again).
     running_enabled: bool = False
+    # ADR 0038 section 2 (#1185): the composer flow. The environment's switch (off by default);
+    # only a stored admin flag ``composer_flow`` of ``on`` turns it on under it. Not set in
+    # ``compose.prod.yaml`` until the owner's live check (``scripts/check-prod-compose.sh``).
+    composer_flow: bool = False
     # ADR 0007 amendments of 2026-11-03 (soundless classes, #527) and 2026-11-08 (#824): the
     # environment's kill switch (off by default). There is no admin flag; every plan's model route
     # must also cover soundless (``classbeat.flags.effective``).

@@ -2,6 +2,7 @@ import { get, post } from './client'
 import { decodeInterpretationItems, type InterpretationItem } from './interpretationItems'
 import { decodeJob, getJob, type Job } from './jobs'
 import { isObject, object, optionalText, text } from './decode'
+import { decodeReadingExtras, type ReadingExtras } from './readingExtras'
 
 // The free-text start (ADR 0029 section 5, backend/src/classbeat/design/interpret_kind.py and
 // classes/interpretation_routes.py): an `interpret_request` job reads the request, then the
@@ -46,6 +47,8 @@ export interface Interpretation {
   refusal: string | null
   /** The design job the hand-off started, if any. */
   designJobId: string | null
+  /** The composer's pinned songs and questions (ADR 0038 section 3); empty for any other class. */
+  extras: ReadingExtras
 }
 
 export async function getInterpretation(classId: string, signal?: AbortSignal): Promise<Interpretation> {
@@ -57,6 +60,7 @@ export async function getInterpretation(classId: string, signal?: AbortSignal): 
     items: decodeInterpretationItems(body.items) ?? [],
     refusal,
     designJobId: design,
+    extras: decodeReadingExtras(body),
   }
 }
 

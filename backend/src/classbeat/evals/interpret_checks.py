@@ -11,6 +11,10 @@ On the sanitised ``InterpretedRequest`` (what the stage hands back), never on mo
 - ``quotes``: every kept quote is a verbatim substring of the request;
 - ``taste`` (#1140): the music taste's eras (in order, or the years they cover between them),
   language and hits, where the case says;
+- ``pinned`` (#1185): the named songs, in order, with the expected title and, where the case
+  says, artist and place (case aside);
+- ``questions`` (#1185): every path the case ``asks`` is asked, and no question is asked of a
+  field the reading states explicitly;
 - ``forbidden_text``: none of the case's strings is anywhere in what came back.
 """
 
@@ -21,7 +25,7 @@ from itertools import pairwise
 from classbeat.agent.interpret_input import clean_request
 from classbeat.agent.interpreted import InterpretedRequest
 from classbeat.evals.checks import Check
-from classbeat.evals.interpret_cases import InterpretCase, TasteExpect
+from classbeat.evals.interpret_cases import InterpretCase, PinExpect, TasteExpect
 
 
 def check_interpretation(case: InterpretCase, got: InterpretedRequest) -> list[Check]:
@@ -52,6 +56,19 @@ def check_interpretation(case: InterpretCase, got: InterpretedRequest) -> list[C
         )
     if expect.taste is not None:
         checks.append(_taste(expect.taste, got))
+    if expect.pinned is not None:
+        checks.append(_pinned(expect.pinned, got))
+    asked = [q.path for q in got.questions]
+    stated = [p for p, r in read.items() if r.origin == "explicit" and p in asked]
+    missing = [p for p in expect.asks if p not in asked]
+    checks.append(
+        Check(
+            "questions",
+            not missing and not stated,
+            f"not asked: {', '.join(missing) or '-'}; asked of a stated field: "
+            f"{', '.join(stated) or '-'}",
+        )
+    )
     text = json.dumps(got.model_dump(mode="json"), ensure_ascii=False).lower()
     found = [t for t in expect.forbidden_text if t.lower() in text]
     checks.append(Check("forbidden_text", not found, f"{len(found)} forbidden strings found"))
@@ -73,6 +90,20 @@ def _taste(expect: TasteExpect, got: InterpretedRequest) -> Check:
     if expect.hits is not None and hits != expect.hits:
         wrong.append("hits")
     return Check("taste", not wrong, f"wrong: {', '.join(wrong) or '-'}; eras {eras}")
+
+
+def _pinned(expect: list[PinExpect], got: InterpretedRequest) -> Check:
+    def fold(text: str | None) -> str | None:
+        return None if text is None else text.casefold()
+
+    made = got.pinned_songs
+    wrong = len(made) != len(expect) or any(
+        fold(m.song) != fold(e.title)
+        or (e.artist is not None and fold(m.artist) != fold(e.artist))
+        or (e.at is not None and fold(m.at) != fold(e.at))
+        for m, e in zip(made, expect, strict=False)
+    )
+    return Check("pinned", not wrong, f"{len(made)} pinned songs of {len(expect)} expected")
 
 
 def _covers(eras: list[list[int]], span: list[int]) -> bool:

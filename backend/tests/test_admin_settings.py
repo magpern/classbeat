@@ -199,6 +199,7 @@ async def test_the_read_shows_each_flag_with_its_effective_value_and_source(
         "song_picking",
         "swedebeat_enabled",
         "running_enabled",  # ADR 0018 section 5
+        "composer_flow",  # ADR 0038 section 2
         "trial",  # no soundless_enabled: retired by ADR 0007's amendment of 2026-11-08 (#824)
         "banner",
     ]
@@ -320,6 +321,36 @@ async def test_running_is_a_real_flag_on_under_the_environment_and_off_when_stor
     store(superuser, "running_enabled", "maybe")  # an invalid stored value reads as off
     bad_view = flag(await actor.get(SETTINGS), "running_enabled")
     assert (bad_view["stored_valid"], bad_view["effective"]) == (False, "off")
+
+
+async def test_the_composer_flag_is_on_only_stored_on_under_the_environment(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    """ADR 0038 section 2 (#1185): ``composer_flow`` follows ``running_enabled``'s switch rule,
+    with no coverage check."""
+    actor = await stepped_admin(env, make_actor)
+    off_env = flag(await actor.get(SETTINGS), "composer_flow")  # the default: off
+    assert (off_env["effective"], off_env["source"], off_env["environment"]) == (
+        "off", "environment", "off",
+    )  # fmt: skip
+    assert (await put(actor, "composer_flow", "on")).status_code == 200
+    still = flag(await actor.get(SETTINGS), "composer_flow")
+    assert (still["effective"], still["source"]) == ("off", "environment")  # never past it
+    env.app.state.settings = env.settings.model_copy(update={"composer_flow": True})
+    assert flag(await actor.get(SETTINGS), "composer_flow")["effective"] == "on"
+    assert (await put(actor, "composer_flow", "off")).status_code == 200
+    assert stored(superuser, "composer_flow") == "off"
+    rows = [r for r in rows_of(superuser, actor.user_id) if r.action == "setting.set"]
+    assert given(rows[-1].params) == {"key": "composer_flow", "value": "off"}
+    for bad in ("yes", True):
+        refused = await put(actor, "composer_flow", bad)
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["detail"]["reason"] == "invalid_value"
+    store(superuser, "composer_flow", "maybe")  # an invalid stored value reads as off
+    bad_view = flag(await actor.get(SETTINGS), "composer_flow")
+    assert (bad_view["stored_valid"], bad_view["effective"]) == (False, "off")
+    assert (await send(actor, "DELETE", f"{SETTINGS}/composer_flow")).status_code == 200
+    assert flag(await actor.get(SETTINGS), "composer_flow")["effective"] == "off"
 
 
 @pytest.fixture(autouse=True)

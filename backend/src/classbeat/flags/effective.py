@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.config import Settings
 from classbeat.context import UserContext
-from classbeat.flags import core
+from classbeat.flags import core, mail_settings
 from classbeat.flags.core import Banner, SignupMode, SongPicking, TrialSetting
 from classbeat.flags.signup_policy import HeldReason, environment_mode, held_reason
 
@@ -31,13 +31,18 @@ async def stored_all(db: AsyncSession) -> dict[str, Any]:
 async def mail_support_address(db: AsyncSession, environment: str) -> str:
     """The support address people are told to write to: the admin's ``mail_support_email`` when it
     is a valid bare address, else the environment's (the same rule as the mail branding, #653)."""
-    return core.mail_support_email_setting(await _stored(db, "mail_support_email")) or environment
+    return (
+        mail_settings.mail_support_email_setting(await _stored(db, "mail_support_email"))
+        or environment
+    )
 
 
 async def mail_kinds_disabled(db: AsyncSession, can_disable: frozenset[str]) -> frozenset[str]:
     """The kinds of ``can_disable`` the admin switched off (``mail_kinds_disabled``; #653). For
     the worker's "class ready" hand-off (ME5), which may not load the mail registry."""
-    return core.mail_kinds_disabled_setting(await _stored(db, "mail_kinds_disabled"), can_disable)
+    return mail_settings.mail_kinds_disabled_setting(
+        await _stored(db, "mail_kinds_disabled"), can_disable
+    )
 
 
 def _signup_fields(settings: Settings) -> dict[str, Any]:
@@ -99,6 +104,14 @@ async def running_switch(db: AsyncSession, environment_on: bool) -> bool:
     if not environment_on:
         return False
     return core.running_switch(environment_on, await _stored(db, "running_enabled"))
+
+
+async def composer_flow(db: AsyncSession, environment_on: bool) -> bool:
+    """``CLASSBEAT_COMPOSER_FLOW`` and a stored ``composer_flow`` of exactly ``on`` (ADR 0038
+    section 2; ``core.composer_switch``: missing, ``null`` or invalid is off)."""
+    if not environment_on:
+        return False
+    return core.composer_switch(environment_on, await _stored(db, "composer_flow"))
 
 
 async def running_enabled(db: AsyncSession, environment_on: bool, *, fake_covers: bool) -> bool:

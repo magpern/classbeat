@@ -27,7 +27,7 @@ from classbeat.emailnorm import normalize_email
 from classbeat.emails.dispatch import DEFAULT_SENDER_NAME, MailPrefs, PrefsLookup, send
 from classbeat.emails.layout import Branding
 from classbeat.emails.registry import REGISTRY
-from classbeat.flags import core, effective
+from classbeat.flags import effective, mail_settings
 from classbeat.mail import Mailer
 
 
@@ -43,13 +43,13 @@ def kind_switches() -> dict[str, bool]:
 
 
 def config_from(settings: Settings, stored: Mapping[str, Any]) -> MailConfig:
-    name = core.mail_sender_name_setting(stored.get("mail_sender_name"))
-    address = core.mail_support_email_setting(stored.get("mail_support_email"))
-    footer = core.mail_footer_setting(stored.get("mail_footer"))
+    name = mail_settings.mail_sender_name_setting(stored.get("mail_sender_name"))
+    address = mail_settings.mail_support_email_setting(stored.get("mail_support_email"))
+    footer = mail_settings.mail_footer_setting(stored.get("mail_footer"))
     can_disable = frozenset(k for k, ok in kind_switches().items() if ok)
     return MailConfig(
         Branding(name or DEFAULT_SENDER_NAME, address or settings.mail_support_address, footer),
-        core.mail_kinds_disabled_setting(stored.get("mail_kinds_disabled"), can_disable),
+        mail_settings.mail_kinds_disabled_setting(stored.get("mail_kinds_disabled"), can_disable),
     )
 
 

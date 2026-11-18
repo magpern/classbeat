@@ -1,0 +1,15 @@
+{
+ "kind": "interpret",
+ "name": "interpret_questions",
+ "about": "A request that does not state the length asks about it and leaves the length unset.",
+ "request": "A climbing class to 80s rock with a few hills",
+ "expect": {
+  "absent": [
+   "length_min",
+   "music"
+  ],
+  "asks": [
+   "length_min"
+  ]
+ }
+}

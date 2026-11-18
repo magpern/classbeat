@@ -20,6 +20,9 @@ are then the whole list after the change, and ``remove_games`` says the request 
 language (ISO 639-1), style words and "hits", each ``{origin, quote?}``. A style word is kept only
 if the request holds it (``music_taste.keep_word``), so it is the instructor's text, never the
 model's; ``classbeat.design.interpret_taste_policy`` turns it into ``Brief.music_taste``.
+
+``pinned_songs`` and ``questions`` (ADR 0038 section 3, #1185) are the composer's:
+``classbeat.agent.interpreted_composer``.
 """
 
 from typing import Annotated, Any, Final, Literal, NamedTuple, Self
@@ -36,6 +39,13 @@ from classbeat.agent.brief import (
     Sport,
 )
 from classbeat.agent.interpretation_record import MAX_QUOTE, keep_quote
+from classbeat.agent.interpreted_composer import (
+    MAX_PINNED,
+    MAX_QUESTIONS,
+    InterpretedPin,
+    InterpretedQuestion,
+    sanitised_pins,
+)
 from classbeat.agent.music_taste import (
     MAX_ERAS,
     MAX_GENRES,
@@ -243,6 +253,12 @@ class InterpretedRequest(BaseModel):
     # A closed flag, so "no games reported" (nothing said of them) stays apart from "remove them".
     remove_games: bool | None = None
     music_taste: InterpretedTaste | None = None
+    pinned_songs: list[InterpretedPin] = Field(
+        default_factory=lambda: list[InterpretedPin](), max_length=MAX_PINNED
+    )
+    questions: list[InterpretedQuestion] = Field(
+        default_factory=lambda: list[InterpretedQuestion](), max_length=MAX_QUESTIONS
+    )
 
     def sanitised(self, request: str, names: int) -> Self:
         """A copy that keeps a quote only if it is a substring of ``request`` and a music index
@@ -257,6 +273,7 @@ class InterpretedRequest(BaseModel):
         update["games"] = [_with_quote(g, request) for g in self.games]
         if self.music_taste is not None:
             update["music_taste"] = self.music_taste.sanitised(request)
+        update["pinned_songs"] = sanitised_pins(self.pinned_songs, request)
         return self.model_copy(update=update)
 
     def readings(self) -> list[Reading]:

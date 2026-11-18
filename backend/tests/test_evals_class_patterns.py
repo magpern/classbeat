@@ -305,6 +305,8 @@ def test_the_digest_sources_include_every_rule_source() -> None:
         "agent/tempo_policy.py",
         # #1133: the music taste the interpreter returns and the song stages are told
         "agent/music_taste.py",
+        # #1185: the pinned songs and questions the interpreter returns and how they are kept
+        "agent/interpreted_composer.py",
     }  # fmt: skip
 
 

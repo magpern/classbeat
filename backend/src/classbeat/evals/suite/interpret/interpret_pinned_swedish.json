@@ -1,0 +1,22 @@
+{
+ "kind": "interpret",
+ "name": "interpret_pinned_swedish",
+ "about": "A Swedish request names one song without an artist for the third climb.",
+ "request": "Ett hårt pass på 50 minuter med fyra backar, och låten Mamma Mia ska vara backe 3",
+ "expect": {
+  "values": {
+   "length_min": 50,
+   "climbs": 4
+  },
+  "origins": {
+   "length_min": "explicit",
+   "climbs": "explicit"
+  },
+  "absent": [
+   "music"
+  ],
+  "pinned": [
+   {"title": "Mamma Mia", "at": "backe 3"}
+  ]
+ }
+}

@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from classbeat.flags import core
+from classbeat.flags import core, mail_settings
 
 INVITE_ONLY: Any = None  # a missing row
 
@@ -226,7 +226,7 @@ def test_swedebeat_writes_are_off_or_on_only() -> None:
     [("Studio", "Studio"), (None, None), ("", None), ("x" * 61, None), ("a\nb", None), (5, None)],
 )
 def test_mail_sender_name_is_short_plain_text(stored: Any, expected: Any) -> None:
-    assert core.mail_sender_name_setting(stored) == expected
+    assert mail_settings.mail_sender_name_setting(stored) == expected
 
 
 @pytest.mark.parametrize(
@@ -239,19 +239,19 @@ def test_mail_sender_name_is_short_plain_text(stored: Any, expected: Any) -> Non
     ],
 )
 def test_mail_support_email_is_a_bare_address(stored: Any, expected: Any) -> None:
-    assert core.mail_support_email_setting(stored) == expected
+    assert mail_settings.mail_support_email_setting(stored) == expected
 
 
 def test_mail_footer_has_a_length_limit() -> None:
-    assert core.mail_footer_setting("y" * 280) == "y" * 280
-    assert core.mail_footer_setting("y" * 281) is None
+    assert mail_settings.mail_footer_setting("y" * 280) == "y" * 280
+    assert mail_settings.mail_footer_setting("y" * 281) is None
 
 
 def test_stored_kinds_keep_only_those_an_admin_may_disable() -> None:
     can = frozenset({"a"})
-    assert core.mail_kinds_disabled_setting(["a", "b", "zz"], can) == frozenset({"a"})
-    assert core.mail_kinds_disabled_setting("a", can) == frozenset()
-    assert core.mail_kinds_disabled_setting(None, can) == frozenset()
+    assert mail_settings.mail_kinds_disabled_setting(["a", "b", "zz"], can) == frozenset({"a"})
+    assert mail_settings.mail_kinds_disabled_setting("a", can) == frozenset()
+    assert mail_settings.mail_kinds_disabled_setting(None, can) == frozenset()
 
 
 def test_kind_writes_refuse_essential_and_unknown_ids() -> None:

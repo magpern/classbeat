@@ -13,6 +13,7 @@ import { UpgradeLink } from '../components/plans/UpgradeLink'
 import { HandoffStatus } from '../components/classes/HandoffStatus'
 import { HistoryPanel } from '../components/classes/HistoryPanel'
 import { RequestBlock } from '../components/classes/RequestBlock'
+import { readingOf, requestOf } from '../lib/requestReading'
 import { Workspace, type WorkspaceTab } from '../components/classes/Workspace'
 import { CHANGE_SONGS_ID, ChangeSongs } from '../components/songs/ChangeSongs'
 import { useGoToPanel } from '../hooks/useGoToPanel'
@@ -119,13 +120,8 @@ function ClassBody({
 
   const viewing = revisions.find((r) => r.id === viewingId)
   const answeredBy = messages.find((m) => m.resultRevisionId === viewingId && m.role === 'assistant')
-  // The first message of a class made on the start screen is the request itself (no base version).
-  const first = messages.at(0)
-  const request = first?.role === 'user' && first.baseRevisionId === null ? first : null
-  // A revise version keeps the reading of its change request, not of the request above: only a
-  // designed version's reading belongs under it (a revised-only view shows none, by design).
-  const designedRevision = shown.status === 'ready' && shown.revision.origin === 'design_draft'
-  const items = (designedRevision ? shown.revision.interpretation : null) ?? handoff.items
+  const request = requestOf(messages)
+  const items = readingOf(shown.status === 'ready' ? shown.revision : null, handoff.items)
   const job = summary.openJob
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
@@ -170,7 +166,7 @@ function ClassBody({
         onTab={setTab}
         chat={
           <>
-            <RequestBlock request={request} items={items} />
+            <RequestBlock request={request} items={items} extras={handoff.extras} />
             <ChatPanel
               summary={summary}
               revisions={revisions}

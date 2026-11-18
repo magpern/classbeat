@@ -3,6 +3,7 @@ import { ApiError } from '../api/client'
 import type { ClassSummary } from '../api/classes'
 import { designFromInterpretation, getInterpretation } from '../api/interpret'
 import type { InterpretationItem } from '../api/interpretationItems'
+import { NO_EXTRAS, type ReadingExtras } from '../api/readingExtras'
 import { heldNeed, type Need } from '../lib/planUpgrade'
 import { recallRequest } from '../lib/startRequest'
 
@@ -12,6 +13,8 @@ export interface Handoff {
   phase: HandoffPhase
   /** How the request was read, once the reading is stored (also after a refusal); null before. */
   items: InterpretationItem[] | null
+  /** The composer's pinned songs and questions (ADR 0038 section 3); empty for any other class. */
+  extras: ReadingExtras
   /** The `interpret_request` job that read the request: the class's first message belongs to it. */
   interpretJobId: string | null
   /** The stored refusal's reason code (`not_connected`, say); null when none or not coded. */
@@ -43,6 +46,7 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
   const interpreting = summary.openJob !== null
   const [phase, setPhase] = useState<HandoffPhase>('idle')
   const [items, setItems] = useState<InterpretationItem[] | null>(null)
+  const [extras, setExtras] = useState<ReadingExtras>(NO_EXTRAS)
   const [interpretJobId, setInterpretJobId] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [round, setRound] = useState(0)
@@ -66,6 +70,7 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
         const found = await getInterpretation(classId, abort.signal)
         if (abort.signal.aborted) return
         setItems(found.items)
+        setExtras(found.extras)
         setInterpretJobId(found.interpretJobId)
         if (found.designJobId !== null) {
           // Started already (another tab, or before a reload): the class shows its job.
@@ -123,5 +128,5 @@ export function useHandoff(summary: ClassSummary, reload: () => void): Handoff {
     setPhase('starting')
     setRound((n) => n + 1)
   }, [])
-  return { phase: active ? phase : 'idle', items, interpretJobId, refusal, held, designWithinPlan, retry }
+  return { phase: active ? phase : 'idle', items, extras, interpretJobId, refusal, held, designWithinPlan, retry }
 }

@@ -9,6 +9,9 @@
   a song pick, ``None`` for a running class with no MOWL playlist): what the hand-off enqueues,
   unchanged;
 - ``items``: the interpretation items (``agent.interpretation_record``, bounded there);
+- ``pinned_songs`` and ``questions`` (ADR 0038 section 3, #1185): the composer's part of the
+  reading (``interpret_composer_policy``), only for a class started with ``composer_flow`` on.
+  They are left out of the stored value when empty, so every other row is as before;
 - ``refusal``: the hand-off's stored refusal (a reason code and whole numbers or short codes), so
   every caller after it, a second tab or a reopened one, gets the same answer.
 
@@ -28,6 +31,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent.interpretation_record import InterpretationList
+from classbeat.design.interpret_composer_policy import PinnedList, QuestionList
 from classbeat.jobs import FencedSession, JobFailure
 from classbeat.jobs.inputs import jsonb_size
 
@@ -51,10 +55,17 @@ class StoredInterpretation(BaseModel):
     brief: dict[str, Any]
     music: dict[str, str] | None
     items: InterpretationList
+    pinned_songs: PinnedList = Field(default_factory=lambda: [])
+    questions: QuestionList = Field(default_factory=lambda: [])
     refusal: Refusal | None = None
 
     def dumped(self) -> str:
-        value = self.model_dump(mode="json")
+        empty = {k for k in ("pinned_songs", "questions") if not getattr(self, k)}
+        value = self.model_dump(mode="json", exclude=empty)
+        for key in ("pinned_songs", "questions"):  # a pin's or question's own None fields go
+            for entry in value.get(key, []):
+                for name in [n for n, v in entry.items() if v is None]:
+                    del entry[name]
         if jsonb_size(value) > MAX_BYTES:
             raise ValueError("the interpretation is too large")
         return json.dumps(value, sort_keys=True, ensure_ascii=False)

@@ -20,21 +20,21 @@ The database can tighten what the environment allows, never loosen it:
   (``classbeat.flags.effective.running_enabled``). Soundless classes have no stored key (ADR 0007
   amendments of 2026-11-03 and 2026-11-08, #824): ``classbeat.flags.effective.soundless_enabled``
   is the environment's switch and coverage only.
+- ``composer_flow`` (ADR 0038 section 2, #1185): the ``running_enabled`` switch's rule under
+  ``CLASSBEAT_COMPOSER_FLOW`` (off by default): only a stored ``on`` switches it on, and no
+  coverage is checked (``composer_switch``).
 - ``trial``: ``{plan, days}``; absent or invalid is off.
 - ``banner``: ``{text, level}``; absent or invalid is none. Its text is plain text: no control
   character (``Cc``), no format character (``Cf``: the bidi embeddings, overrides and isolates,
   zero-width characters, the soft hyphen, the BOM) and no line or paragraph separator (``Zl``,
   ``Zp``), on the write side and again when it is read for ``/api/settings/public`` (#227).
 
-- ``mail_sender_name``, ``mail_support_email``, ``mail_footer`` and ``mail_kinds_disabled``
-  (ADR 0022 sections 2 and 6, #653): the mail branding and the admin's switched-off kinds. They
-  are no flags (``MAIL_KEYS``, not ``KEYS``): the Mail page edits them. A missing, ``null`` or
-  invalid stored value means the environment's value (branding) or nothing disabled; only an
-  ``admin_can_disable`` kind id counts as disabled.
+The mail settings' rules are ``classbeat.flags.mail_settings``.
 
 A stored value that does not validate falls back to the key's default, which is its stricter
-choice (``invite``, ``granted``, Swedebeat off, running off, trial off, no banner), and is logged
-by key only: the value is never logged, since it may hold an admin's free text.
+choice (``invite``, ``granted``, Swedebeat off, running off, composer off, trial off, no
+banner), and is logged by key only: the value is never logged, since it may hold an admin's free
+text.
 """
 
 import logging
@@ -55,7 +55,7 @@ _STRICTNESS: Final[dict[str, int]] = {"open": 0, "invite": 1, "closed": 2}
 _SIGNUP_STORED: Final = ("invite", "closed")
 _SONG_STORED: Final = ("off", "granted", "on")
 _SWEDEBEAT_STORED: Final = ("off", "on")
-_RUNNING_STORED: Final = ("off", "on")
+_ON_OFF: Final = ("off", "on")  # running_enabled and composer_flow
 _LEVELS: Final = ("info", "warning")
 # What banner text may not hold (#227, the #303 review's note 5 for the admin's free text): the
 # control characters, the format characters (bidi controls such as U+202E, which reorder what
@@ -64,7 +64,7 @@ _LEVELS: Final = ("info", "warning")
 _NOT_PLAIN_TEXT: Final = frozenset({"Cc", "Cf", "Zl", "Zp"})
 
 
-def _plain_text(text: str) -> bool:
+def plain_text(text: str) -> bool:
     return not any(unicodedata.category(c) in _NOT_PLAIN_TEXT for c in text)
 
 
@@ -80,7 +80,7 @@ class TrialSetting:
     days: int
 
 
-def _invalid(key: str) -> None:
+def invalid(key: str) -> None:
     logger.warning("flag %s holds an invalid value; its stricter default applies", key)
 
 
@@ -89,7 +89,7 @@ def stricter_signup(environment: SignupMode, stored: Any) -> SignupMode:
     if stored is None:
         return environment
     if not isinstance(stored, str) or stored not in _SIGNUP_STORED:
-        _invalid("signup_mode")
+        invalid("signup_mode")
         stored = "invite"
     pick = stored if _STRICTNESS[stored] > _STRICTNESS[environment] else environment
     return pick  # pyright: ignore[reportReturnType]
@@ -103,7 +103,7 @@ def song_picking_setting(environment_on: bool, stored: Any) -> SongPicking:
     if stored is None:
         return "granted"
     if not isinstance(stored, str) or stored not in _SONG_STORED:
-        _invalid("song_picking")
+        invalid("song_picking")
         return "granted"
     return stored  # pyright: ignore[reportReturnType]
 
@@ -116,7 +116,7 @@ def swedebeat_setting(environment_on: bool, stored: Any) -> bool:
     if stored is None:
         return True
     if not isinstance(stored, str) or stored not in _SWEDEBEAT_STORED:
-        _invalid("swedebeat_enabled")
+        invalid("swedebeat_enabled")
         return False
     return stored == "on"
 
@@ -126,10 +126,19 @@ def running_switch(environment_on: bool, stored: Any) -> bool:
     environment's switch is on **and** the stored value is exactly ``on``. Absent (``None``, also
     the cleared JSON ``null``) is off; an invalid value is off and logged by key. Coverage is not
     checked here (``flags.effective``)."""
+    return _stored_on("running_enabled", environment_on, stored)
+
+
+def composer_switch(environment_on: bool, stored: Any) -> bool:
+    """``composer_flow`` (ADR 0038 section 2): ``running_switch``'s rule, its own key."""
+    return _stored_on("composer_flow", environment_on, stored)
+
+
+def _stored_on(key: str, environment_on: bool, stored: Any) -> bool:
     if not environment_on or stored is None:
         return False
-    if not isinstance(stored, str) or stored not in _RUNNING_STORED:
-        _invalid("running_enabled")
+    if not isinstance(stored, str) or stored not in _ON_OFF:
+        invalid(key)
         return False
     return stored == "on"
 
@@ -142,7 +151,7 @@ def trial_setting(stored: Any) -> TrialSetting | None:
         plan, days = stored.get("plan"), stored.get("days")  # pyright: ignore[reportUnknownMemberType]
         if isinstance(plan, str) and plan and type(days) is int and days >= 0:
             return TrialSetting(plan, days) if days > 0 else None
-    _invalid("trial")
+    invalid("trial")
     return None
 
 
@@ -157,60 +166,11 @@ def banner_setting(stored: Any) -> Banner | None:
             isinstance(text, str)
             and level in _LEVELS
             and len(text) <= BANNER_MAX_CHARS
-            and _plain_text(text)
+            and plain_text(text)
         ):
             return Banner(text, level) if text.strip() else None  # pyright: ignore[reportArgumentType]
-    _invalid("banner")
+    invalid("banner")
     return None
-
-
-def _short_text(value: Any, limit: int) -> str | None:
-    """``value`` when it is non-blank plain text of at most ``limit`` characters, else ``None``."""
-    if isinstance(value, str) and value.strip() and len(value) <= limit and _plain_text(value):
-        return value
-    return None
-
-
-def mail_sender_name_setting(stored: Any) -> str | None:
-    """The stored From display name; ``None`` (the default name) when absent or invalid."""
-    if stored is None:
-        return None
-    text = _short_text(stored, MAIL_SENDER_NAME_MAX)
-    if text is None:
-        _invalid("mail_sender_name")
-    return text
-
-
-def mail_support_email_setting(stored: Any) -> str | None:
-    """The stored support address; ``None`` (the environment's) when absent or invalid."""
-    if stored is None:
-        return None
-    if isinstance(stored, str) and _SUPPORT_ADDRESS.fullmatch(stored):
-        return stored
-    _invalid("mail_support_email")
-    return None
-
-
-def mail_footer_setting(stored: Any) -> str | None:
-    """The stored footer line; ``None`` (no footer) when absent or invalid."""
-    if stored is None:
-        return None
-    text = _short_text(stored, MAIL_FOOTER_MAX)
-    if text is None:
-        _invalid("mail_footer")
-    return text
-
-
-def mail_kinds_disabled_setting(stored: Any, can_disable: frozenset[str]) -> frozenset[str]:
-    """The stored kind ids that are switched off: only ids in ``can_disable`` (the registry's
-    ``admin_can_disable`` kinds) count, so a stale or invalid row never silences a mail that must
-    go out. Absent is none."""
-    if stored is None:
-        return frozenset()
-    if not isinstance(stored, list) or not all(isinstance(i, str) for i in stored):  # pyright: ignore[reportUnknownVariableType]
-        _invalid("mail_kinds_disabled")
-        return frozenset()
-    return frozenset(stored) & can_disable  # pyright: ignore[reportUnknownArgumentType]
 
 
 # --- validation at write time (the admin area, ADR 0011 section 6) ---------------------------
@@ -229,15 +189,11 @@ KEYS: Final = (
     "song_picking",
     "swedebeat_enabled",
     "running_enabled",
+    "composer_flow",
     "trial",
     "banner",
 )
 MAIL_KEYS: Final = ("mail_sender_name", "mail_support_email", "mail_footer", "mail_kinds_disabled")
-MAIL_SENDER_NAME_MAX: Final = 60
-MAIL_FOOTER_MAX: Final = 280
-_KIND_ID: Final = re.compile(r"^[a-z][a-z_]{0,39}$")
-# The same shape as ``Settings.mail_support_address``: a bare address, no display name.
-_SUPPORT_ADDRESS: Final = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
 _PLAN_ID: Final = re.compile(r"^[a-z_]{1,30}$")
 
 
@@ -254,7 +210,7 @@ def validate_for_write(
     - ``signup_mode``: ``invite`` or ``closed``; ``open`` comes only from the environment
       (``environment_only``).
     - ``song_picking``: ``off``, ``granted`` or ``on``.
-    - ``swedebeat_enabled`` and ``running_enabled``: ``off`` or ``on``.
+    - ``swedebeat_enabled``, ``running_enabled`` and ``composer_flow``: ``off`` or ``on``.
     - ``trial``: exactly ``{plan, days}``, a plan code and ``days`` from 0 to ``trial_days_max``
       (``above_environment_bound`` over it). Whether the plan exists and ranks at most
       ``instructor`` is checked against ``plans`` by the caller.
@@ -279,8 +235,8 @@ def validate_for_write(
         if value not in _SWEDEBEAT_STORED:
             raise FlagRefused("invalid_value")
         return value
-    if key == "running_enabled":
-        if not isinstance(value, str) or value not in _RUNNING_STORED:
+    if key in ("running_enabled", "composer_flow"):
+        if not isinstance(value, str) or value not in _ON_OFF:
             raise FlagRefused("invalid_value")
         return value
     if key == "trial":
@@ -300,40 +256,11 @@ def validate_for_write(
         text, level = value["text"], value["level"]
         if not isinstance(text, str) or level not in _LEVELS or not text.strip():
             raise FlagRefused("invalid_value")
-        if len(text) > BANNER_MAX_CHARS or not _plain_text(text):
+        if len(text) > BANNER_MAX_CHARS or not plain_text(text):
             raise FlagRefused("invalid_value")
         return {"text": text, "level": level}
-    if key == "mail_sender_name":
-        return _mail_text(value, MAIL_SENDER_NAME_MAX)
-    if key == "mail_footer":
-        return _mail_text(value, MAIL_FOOTER_MAX)
-    if key == "mail_support_email":
-        if not isinstance(value, str) or not _SUPPORT_ADDRESS.fullmatch(value):
-            raise FlagRefused("invalid_value")
-        return value
-    if key == "mail_kinds_disabled":
-        return _mail_kinds(value, mail_kinds or {})
+    if key in MAIL_KEYS:
+        from classbeat.flags.mail_settings import validate_mail  # it imports this module
+
+        return validate_mail(key, value, mail_kinds or {})
     raise FlagRefused("unknown_key")
-
-
-def _mail_text(value: Any, limit: int) -> str:
-    text = _short_text(value, limit)
-    if text is None:
-        raise FlagRefused("invalid_value")
-    return text
-
-
-def _mail_kinds(value: Any, kinds: Mapping[str, bool]) -> list[str]:
-    if not isinstance(value, list) or len(value) > 100:  # pyright: ignore[reportUnknownArgumentType]
-        raise FlagRefused("invalid_value")
-    ids: list[Any] = value  # pyright: ignore[reportUnknownVariableType]
-    if not all(isinstance(i, str) and _KIND_ID.fullmatch(i) for i in ids) or len(set(ids)) != len(
-        ids
-    ):
-        raise FlagRefused("invalid_value")
-    for kind_id in ids:
-        if kind_id not in kinds:
-            raise FlagRefused("unknown_kind")
-        if not kinds[kind_id]:
-            raise FlagRefused("essential_kind")
-    return sorted(ids)
