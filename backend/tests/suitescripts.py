@@ -228,6 +228,8 @@ REVISED: dict[str, dict[str, Any]] = {
     "rev_shorter_75_to_60": dict(total=3600, intensity="hard", climbs=1, sprints=2),
     "rev_climb_to_end_45": dict(total=2700, intensity="moderate", climbs=1, sprints=2),
     "rev_climb_to_start_40": dict(total=2400, intensity="moderate", climbs=1, sprints=2),
+    # #1188: the composer's design on the songs, the sketch's shape kept.
+    "rev_sketch_fill_30": dict(total=1800, intensity="moderate", climbs=1, sprints=2),
 }
 NOTES: dict[str, str] = {
     "rev_more_sprints_30": "Added two sprints.",
@@ -248,6 +250,7 @@ NOTES: dict[str, str] = {
     "rev_chain_length_45_to_30": "Cut the class to 30 minutes.",
     "rev_stated_game_type_40": "Changed the game to Fast Lane.",
     "rev_stated_keep_40": "Set the game to zone 5.",
+    "rev_sketch_fill_30": "Timed the class to the songs.",
 }
 
 

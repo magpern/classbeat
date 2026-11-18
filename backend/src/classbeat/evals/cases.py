@@ -39,6 +39,8 @@ class RevisionExpect(BaseModel):
     - ``easier``: a TSS at most 95 % of the base's and no larger share at zone 5 or above;
     - ``shorter``: within 5 % of ``length_min``;
     - ``climb_moved``: a climb is the first (``climb_at: start``) or last main segment;
+    - ``kept_shape`` (#1188): the composer's design on the songs keeps the sketch's segments in
+      their order (``evals.shape_checks``);
     - a game edit (ADR 0029 section 2, G11), ``at`` being the base's interval (counted from 0 over
       the whole class): ``game_added`` (a ``game`` inserted before ``at``), ``game_replaced``
       (that interval becomes ``game``, same length and zone), ``game_type`` (its game becomes
@@ -63,6 +65,7 @@ class RevisionExpect(BaseModel):
         "game_removed",
         "game_length",
         "game_zone",
+        "kept_shape",  # the composer's design on the songs keeps the sketch's shape (#1188)
     ]
     by: int = Field(default=1, ge=1, le=10)
     length_min: int | None = Field(default=None, ge=10, le=180)
@@ -168,6 +171,11 @@ class ReviseSpec(BaseModel):
     # (``evals.revise_chain``), as a revise job of a class that states values does. The case's
     # ``brief`` is the class before the request; the checks run against the layered brief.
     interpret: bool = False
+    # The composer's design on the songs (ADR 0038 section 5, #1188): ``base`` is the sketch (the
+    # design with no songs), the music is the songs chosen for it, and the stage runs as the fill's
+    # does (``songs.composer_design``: ``songs_changed``, the fixed request to keep the shape and
+    # re-time it). The checks run on the designed class against the case's brief.
+    songs_changed: bool = False
 
 
 class Case(BaseModel):

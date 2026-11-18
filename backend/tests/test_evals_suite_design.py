@@ -46,7 +46,7 @@ COUNTS = {
     "standard": 7,
     "music_sync": 7,
     "games_ftp": 11,
-    "revisions": 18,
+    "revisions": 19,  # #1188: rev_sketch_fill_30
 }  # #904: three stated, #908: one chained
 ALL = [c for cat in CATEGORIES for c in OWN[cat]]
 BY_NAME = {c.name: c for c in ALL}
@@ -98,7 +98,8 @@ def test_the_cases_cover_lengths_intensities_games_ftp_tests_and_revision_kinds(
     assert {"power_pull", "overflow", "fast_lane"} <= edits  # types the revision cases move to
     assert {c.brief.ftp_test for c in OWN["games_ftp"]} == {None, 3, 5, 20}
     kinds = {c.expect.revision.kind for c in OWN["revisions"] if c.expect.revision}
-    assert kinds == {"more_sprints", "easier", "shorter", "climb_moved", *game_checks.EDITS}
+    kinds_asked = {"more_sprints", "easier", "shorter", "climb_moved", "kept_shape"}
+    assert kinds == kinds_asked | game_checks.EDITS
     assert all(c.revise is not None and c.expect.revision for c in OWN["revisions"])
     assert all(c.expect.music_sync is not None for c in OWN["music_sync"])
     assert sum(c.brief.sprints + c.brief.races > 0 for c in OWN["music_sync"]) == 6

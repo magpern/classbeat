@@ -146,7 +146,8 @@ async def _run_stage(
                 case.revise.base,
                 tuple(case.revise.earlier_requests),
                 case.revise.request,
-                music_changed=False,
+                music_changed=case.revise.songs_changed,
+                songs_changed=case.revise.songs_changed,
                 rules=rules,
             )
             stage, first = revise_stage_for(revise), revise.first_message()
