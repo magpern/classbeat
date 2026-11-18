@@ -7,9 +7,10 @@ import { object, text } from './decode'
 // class, so a reopened tab, or two tabs, get the same job. "Find songs again" sends `retry: true`
 // (a failed, replaced or expired fill of the same sketch), which makes the next attempt.
 //
-// Assumed shape (not fixed by the ADR): the body is `{ base_revision_id, retry? }` and the answer
-// names the job as `{ job_id }`, like `design-from-interpretation`. `base_revision_id` is the
-// sketch the page shows; the server refuses another current revision with 409 `stale_base`.
+// The body is `{ base_revision_id, retry? }` and the answer `{ job_id, kind, state }` (201 for a new
+// job, 200 for the same attempt again). `base_revision_id` is the sketch the page shows; the server
+// refuses another current revision with 409 `stale_base`. A refusal of the create is stored and
+// answered again until a call with `retry`; the class answer's `fill_songs.failure` carries it.
 
 export interface FillRequest {
   classId: string

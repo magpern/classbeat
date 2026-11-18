@@ -1,6 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { StrictMode } from 'react'
 import { describe, expect, it } from 'vitest'
+import { App } from '../App'
+import { localize } from '../router/paths'
 import { CLASS_PATH, CONTENT, MOWL_CONNECTION, REV1, classBody, message, revisionBody, summaryBody } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { CLASS_ID, JOB_ID, SESSION_ROUTES, jobBody, openStream } from '../test/jobFixtures'
@@ -23,7 +26,16 @@ const CONNECTIONS = {
   composer_flow: true,
 }
 const FILL = { sketch_revision_id: REV1, attempt: 1, failure: null }
-const SONG_SOURCE = (kind: string, name?: string) => ({ kind, ...(name ? { name } : {}) })
+const SONG_SOURCE = (kind: string, playlist?: number) => ({ kind, ...(playlist !== undefined ? { playlist } : {}) })
+// What the design heard: the first song in the warm up, the next two in the climb (CONTENT's segments).
+const PREVIEW = {
+  content: CONTENT,
+  songs: [
+    { start: 0, end: 240 },
+    { start: 300, end: 540 },
+    { start: 540, end: 780 },
+  ],
+}
 
 interface Setup {
   cls?: Record<string, unknown>
@@ -44,7 +56,7 @@ function setup(over: Setup = {}) {
   const api = fakeApi({
     ...SESSION_ROUTES,
     'GET /api/connections': CONNECTIONS,
-    [`GET ${CLASS_PATH}`]: () => classBody({ sport: 'cycling', ...over.cls }),
+    [`GET ${CLASS_PATH}`]: () => classBody({ sport: 'cycling', composer: true, ...over.cls }),
     [`GET ${CLASS_PATH}/revisions`]: {
       // After phase 2 the sketch stays in the history: that is what marks a composer class.
       revisions: origin === 'sketch' ? [summaryBody(REV1, 1, { origin })] : [summaryBody(DRAFT_ID, 2, { origin }), summaryBody(REV1, 1, { origin: 'sketch', is_current: false })],
@@ -137,6 +149,26 @@ describe('the composer workspace driver (ADR 0038 section 8)', () => {
     expect(screen.queryByRole('button', { name: 'Save to MOWL' })).toBeNull()
   })
 
+  it('saves the revision save_pending names even when it is not the current revision', async () => {
+    const stored_revision = 'c9999999-9999-4999-8999-999999999999'
+    const stored_hash = '0f'.repeat(32)
+    const { api } = setup({
+      origin: 'design_with_songs',
+      cls: { current_revision_id: DRAFT_ID, save_pending: { revision_id: stored_revision, content_hash: stored_hash, job_id: PHASE2_JOB } },
+      extraRoutes: {
+        [`GET ${CLASS_PATH}/revisions/${DRAFT_ID}`]: revisionBody(DRAFT_ID, 2, CONTENT, { origin: 'design_with_songs' }),
+        'POST /api/jobs': () => json(jobBody('queued', { kind: 'save_workout', id: JOB_ID }), 201),
+      },
+    })
+    renderAt(PAGE)
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    expect(api.to('POST', '/api/jobs')[0]!.body).toMatchObject({
+      input: { revision_id: stored_revision, content_hash: stored_hash, save_pending_job_id: PHASE2_JOB },
+    })
+  })
+
   it('resumes after a reload: the same state gives the same save and the same key', async () => {
     const routes = {
       origin: 'design_with_songs',
@@ -176,10 +208,10 @@ describe('the composer workspace page', () => {
       list: {
         songs: [
           { position: 1, title: 'Dancing Queen', artist: 'ABBA', role: 'warm_up', bpm: 100, length_sec: 240, new: false, source: SONG_SOURCE('pinned') },
-          { position: 2, title: 'The Look', artist: 'Roxette', role: 'climb', bpm: 120, length_sec: 240, new: false, source: SONG_SOURCE('playlist', 'Walk-in-musik') },
+          { position: 2, title: 'The Look', artist: 'Roxette', role: 'climb', bpm: 120, length_sec: 240, new: false, source: SONG_SOURCE('playlist', 0) },
           { position: 3, title: 'Show Me Love', artist: 'Robyn', role: 'climb', bpm: 120, length_sec: 240, new: true, source: SONG_SOURCE('search') },
         ],
-        preview: { content: CONTENT },
+        preview: PREVIEW,
       },
       extraRoutes: { [`POST /api/jobs/${JOB_ID}/approve`]: jobBody('running', { kind: 'design_with_songs' }) },
     })
@@ -191,7 +223,7 @@ describe('the composer workspace page', () => {
       ),
     ).toBeInTheDocument()
     expect(await screen.findByText('Pinned by you')).toBeInTheDocument()
-    expect(screen.getByText('Walk-in-musik')).toBeInTheDocument()
+    expect(screen.getByText('From your playlist')).toBeInTheDocument()
     expect(screen.getByText('Found by classbeat')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Swap Dancing Queen' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Approve and save' }))
@@ -211,7 +243,7 @@ describe('the composer workspace page', () => {
         open_job_id: JOB_ID,
         open_job: { id: JOB_ID, kind: 'design_with_songs', state: 'running' },
       },
-      list: { preview: { content: CONTENT } },
+      list: { preview: PREVIEW },
       stored: [stored('pending')],
       extraRoutes: { [`GET /api/jobs/${JOB_ID}`]: jobBody('running'), [`GET /api/jobs/${JOB_ID}/events`]: () => openStream() },
     })
@@ -227,7 +259,7 @@ describe('the composer workspace page', () => {
   it('holds Approve while a message waits for a list that is waiting', async () => {
     setup({
       cls: { songs: { state: 'waiting', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null }, fill_songs: FILL },
-      list: { preview: { content: CONTENT } },
+      list: { preview: PREVIEW },
       stored: [stored('pending')],
       // The submit is refused as busy, so the message stays pending.
       extraRoutes: { [`POST ${PENDING}/${MSG_ID}/submit`]: () => reason(409, 'class_busy') },
@@ -235,6 +267,58 @@ describe('the composer workspace page', () => {
     renderAt(PAGE)
     expect(await screen.findByRole('button', { name: 'Approve and save' })).toBeDisabled()
     expect(screen.getByText('Approve waits until your message has been sent.')).toBeInTheDocument()
+  })
+
+  it('keeps Approve disabled until the stored messages have been read', async () => {
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    setup({
+      cls: { songs: { state: 'waiting', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null }, fill_songs: FILL },
+      list: { preview: PREVIEW },
+      extraRoutes: { [`GET ${PENDING}`]: () => gate.then(() => json({ messages: [] })) },
+    })
+    renderAt(PAGE)
+    const approve = await screen.findByRole('button', { name: 'Approve and save' })
+    expect(approve).toBeDisabled()
+    expect(screen.getByText('Checking for messages not sent yet…')).toBeInTheDocument()
+    release()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Approve and save' })).toBeEnabled()
+    })
+  })
+
+  it('offers another read when the stored messages could not be read, and enables Approve after it', async () => {
+    const user = userEvent.setup()
+    let reads = 0
+    setup({
+      cls: { songs: { state: 'waiting', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null }, fill_songs: FILL },
+      list: { preview: PREVIEW },
+      extraRoutes: { [`GET ${PENDING}`]: () => (++reads === 1 ? reason(500, 'internal') : json({ messages: [] })) },
+    })
+    renderAt(PAGE)
+    expect(await screen.findByText('We could not check for messages not sent yet.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve and save' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Approve and save' })).toBeEnabled()
+    })
+  })
+
+  it('says the playlist and the draft are being created while phase 2 runs after Approve', async () => {
+    setup({
+      cls: {
+        fill_songs: FILL,
+        songs: { state: 'approved', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null },
+        open_job_id: JOB_ID,
+        open_job: { id: JOB_ID, kind: 'design_with_songs', state: 'running' },
+      },
+      extraRoutes: { [`GET /api/jobs/${JOB_ID}`]: jobBody('running', { kind: 'design_with_songs' }), [`GET /api/jobs/${JOB_ID}/events`]: () => openStream() },
+    })
+    renderAt(PAGE)
+    expect(await screen.findByText('Creating your playlist and saving…')).toBeInTheDocument()
+    expect(screen.queryByText('Rough: songs not in yet')).toBeNull()
   })
 
   it('shows a refused message as not sent, with the reason, and puts its text back in the box', async () => {
@@ -278,6 +362,40 @@ describe('the composer workspace page', () => {
       expect(api.to('POST', PENDING)).toHaveLength(1)
     })
     expect(api.to('POST', PENDING)[0]!.body).toMatchObject({ body: 'Make the class 60 minutes long.' })
+  })
+
+  it('keeps a question open when its answer could not be stored', async () => {
+    const user = userEvent.setup()
+    const { api } = setup({ cls: { fill_songs: FILL }, extraRoutes: { [`POST ${PENDING}`]: () => reason(409, 'pending_full') } })
+    renderAt(PAGE)
+    await user.click(await screen.findByRole('button', { name: '60 minutes' }))
+    await waitFor(() => {
+      expect(api.to('POST', PENDING)).toHaveLength(1)
+    })
+    expect(await screen.findByText('This class holds as many messages as it can. Design a new class to keep going.')).toBeInTheDocument()
+    expect(screen.getByText(/How long should the class be\? For now: 45 minutes\./)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '60 minutes' })).toBeEnabled()
+  })
+
+  it('closes a question once its answer is stored', async () => {
+    const user = userEvent.setup()
+    setup({ cls: { fill_songs: FILL } })
+    renderAt(PAGE)
+    await user.click(await screen.findByRole('button', { name: '60 minutes' }))
+    await waitFor(() => {
+      expect(screen.queryByText(/How long should the class be\? For now: 45 minutes\./)).toBeNull()
+    })
+  })
+
+  it('disables the quick answers while the message box is blocked', async () => {
+    setup({
+      cls: { fill_songs: FILL, open_job_id: JOB_ID, open_job: { id: JOB_ID, kind: 'design_with_songs', state: 'running' } },
+      stored: [stored('pending')],
+      extraRoutes: { [`GET /api/jobs/${JOB_ID}`]: jobBody('running', { kind: 'design_with_songs' }), [`GET /api/jobs/${JOB_ID}/events`]: () => openStream() },
+    })
+    renderAt(PAGE)
+    expect(await screen.findByRole('button', { name: '60 minutes' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '30 minutes' })).toBeDisabled()
   })
 
   it('says Songs expired with Find songs again, which asks for the next attempt', async () => {
@@ -330,7 +448,7 @@ describe('the composer workspace page', () => {
     expect(screen.queryByRole('button', { name: 'Save to MOWL' })).toBeNull()
   })
 
-  it('swaps one song with a replace-mode job, without cancelling the waiting job first', async () => {
+  it('swaps one song through swap-songs with an Idempotency-Key, without cancelling the waiting job first', async () => {
     const user = userEvent.setup()
     const { api } = setup({
       cls: {
@@ -339,19 +457,39 @@ describe('the composer workspace page', () => {
         open_job_id: JOB_ID,
         open_job: { id: JOB_ID, kind: 'design_with_songs', state: 'waiting_for_approval' },
       },
-      list: { preview: { content: CONTENT } },
-      extraRoutes: { 'POST /api/jobs': () => json(jobBody('queued', { kind: 'design_with_songs', id: 'e1111111-1111-4111-8111-111111111111' }), 201) },
+      list: { preview: PREVIEW },
+      extraRoutes: { [`POST ${CLASS_PATH}/swap-songs`]: () => json({ job_id: 'e1111111-1111-4111-8111-111111111111', kind: 'design_with_songs', state: 'queued' }, 201) },
     })
     renderAt(PAGE)
     await user.click(await screen.findByRole('button', { name: /^Swap Hills/ }))
     await waitFor(() => {
-      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+      expect(api.to('POST', `${CLASS_PATH}/swap-songs`)).toHaveLength(1)
     })
-    expect(api.to('POST', '/api/jobs')[0]!.body).toMatchObject({
-      kind: 'design_with_songs',
-      input: { class_id: CLASS_ID, mode: 'swap', base_revision_id: REV1, seed: { song_list_revision_id: LIST_ID, replace: [1] } },
-    })
+    const call = api.to('POST', `${CLASS_PATH}/swap-songs`)[0]!
+    expect(call.body).toEqual({ song_list_revision_id: LIST_ID, replace: [1] })
+    expect(call.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
+    expect(api.to('POST', '/api/jobs')).toHaveLength(0)
     expect(api.calls.some((c) => c.method === 'POST' && c.path.endsWith('/cancel'))).toBe(false)
+  })
+
+  it('keeps the waiting list approvable and shows the refusal when a swap is refused', async () => {
+    const user = userEvent.setup()
+    const { api } = setup({
+      cls: {
+        songs: { state: 'waiting', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null },
+        fill_songs: FILL,
+        open_job_id: JOB_ID,
+        open_job: { id: JOB_ID, kind: 'design_with_songs', state: 'waiting_for_approval' },
+      },
+      list: { preview: PREVIEW },
+      extraRoutes: { [`POST ${CLASS_PATH}/swap-songs`]: () => reason(409, 'revision_limit') },
+    })
+    renderAt(PAGE)
+    await user.click(await screen.findByRole('button', { name: /^Swap Hills/ }))
+    await waitFor(() => {
+      expect(api.to('POST', `${CLASS_PATH}/swap-songs`)).toHaveLength(1)
+    })
+    expect(await screen.findByRole('button', { name: 'Approve and save' })).toBeEnabled()
   })
 
   it('creates the playlist again with a resume of the approved list', async () => {
@@ -381,5 +519,91 @@ describe('the composer workspace page', () => {
     await user.click(more)
     expect(await screen.findByRole('menuitem', { name: 'Versions' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Delete class' })).toBeInTheDocument()
+  })
+})
+
+describe('the driver under StrictMode', () => {
+  // StrictMode runs every effect twice on mount; each step still reaches the server once.
+  const strict = () => {
+    window.history.replaceState(null, '', localize(PAGE, 'en'))
+    return render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    )
+  }
+
+  it('starts the fill once', async () => {
+    const { api } = setup()
+    strict()
+    await waitFor(() => {
+      expect(fills(api)).toHaveLength(1)
+    })
+    expect(await screen.findByText('Rough: songs not in yet')).toBeInTheDocument()
+    expect(fills(api)).toHaveLength(1)
+  })
+
+  it('submits a pending message once', async () => {
+    const { api } = setup({ stored: [stored('pending')], extraRoutes: { [`POST ${PENDING}/${MSG_ID}/submit`]: stored('submitted', { job_id: JOB_ID }) } })
+    strict()
+    await waitFor(() => {
+      expect(submits(api)).toHaveLength(1)
+    })
+    expect(await screen.findByText('Rough: songs not in yet')).toBeInTheDocument()
+    expect(submits(api)).toHaveLength(1)
+    expect(fills(api)).toHaveLength(0)
+  })
+
+  it('saves what save_pending names once', async () => {
+    const { api } = setup({
+      origin: 'design_with_songs',
+      cls: { current_revision_id: DRAFT_ID, save_pending: { revision_id: DRAFT_ID, content_hash: HASH, job_id: PHASE2_JOB } },
+      extraRoutes: {
+        [`GET ${CLASS_PATH}/revisions/${DRAFT_ID}`]: revisionBody(DRAFT_ID, 2, CONTENT, { origin: 'design_with_songs' }),
+        'POST /api/jobs': () => json(jobBody('queued', { kind: 'save_workout', id: JOB_ID }), 201),
+      },
+    })
+    strict()
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    expect(await screen.findByText('Saving…')).toBeInTheDocument()
+    expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+  })
+})
+
+describe('which class page renders, and what it waits for', () => {
+  it('shows an older class without waiting for the connections call', async () => {
+    const { api } = setup({
+      cls: { composer: false },
+      // The call never answers: the page must not depend on it to render.
+      extraRoutes: { 'GET /api/connections': () => new Promise(() => undefined) },
+    })
+    renderAt(PAGE)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Tuesday climb/ })).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('composer-workspace')).toBeNull()
+    expect(fills(api)).toHaveLength(0)
+  })
+
+  it('shows the old page for a composer class when the flag is off', async () => {
+    const { api } = setup({ extraRoutes: { 'GET /api/connections': () => json({ connections: [], composer_flow: false }) } })
+    renderAt(PAGE)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Tuesday climb/ })).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('composer-workspace')).toBeNull()
+    expect(fills(api)).toHaveLength(0)
+  })
+
+  it('shows the old page for a composer class when the flag cannot be read', async () => {
+    const { api } = setup({ extraRoutes: { 'GET /api/connections': () => json({ detail: { reason: 'internal' } }, 500) } })
+    renderAt(PAGE)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Tuesday climb/ })).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('composer-workspace')).toBeNull()
+    expect(fills(api)).toHaveLength(0)
   })
 })

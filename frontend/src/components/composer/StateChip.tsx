@@ -16,6 +16,8 @@ export function StateChip({ state, summary }: { state: WorkspaceState; summary: 
       return <Chip tone="warn">{t('cw.chip.expired')}</Chip>
     case 'playlistNotCreated':
       return <Chip tone="bad">{t('cw.chip.playlistNotCreated')}</Chip>
+    case 'creating':
+      return <Chip tone="warn">{t('cw.chip.creating')}</Chip>
     case 'saving':
       return <Chip tone="warn">{t('cw.chip.saving')}</Chip>
     case 'saved':

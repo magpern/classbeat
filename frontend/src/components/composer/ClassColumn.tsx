@@ -20,6 +20,7 @@ export interface ClassColumnProps {
   segments: readonly DraftSegment[] | null
   songs: readonly Song[] | null
   hasList: boolean
+  attached: number
   currentOrigin: string | null
   /** The More menu, in the title line. */
   menu: ReactNode
@@ -85,6 +86,7 @@ export function ClassColumn(p: ClassColumnProps) {
             segments={p.segments}
             songs={p.songs}
             hasList={p.hasList}
+            attached={p.attached}
             canSwap={p.canSwap}
             swapping={p.swapping}
             onSwap={p.onSwap}

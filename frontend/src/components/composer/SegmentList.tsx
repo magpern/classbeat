@@ -7,22 +7,25 @@ import { songRows } from '../../lib/composer/songRows'
 import { clock } from '../../lib/workout'
 import { Button } from '../ui/button'
 
-function sourceText(source: SongSource | null | undefined, t: ReturnType<typeof useT>): string | null {
+// The server stores no playlist names: an attached playlist is "your playlist", numbered when more
+// than one is attached (the position in the request).
+function sourceText(source: SongSource | null | undefined, attached: number, t: ReturnType<typeof useT>): string | null {
   if (source === null || source === undefined) return null
   if (source.kind === 'pinned') return t('cw.source.pinned')
   if (source.kind === 'search') return t('cw.source.found')
-  return source.name
+  return attached > 1 ? t('cw.source.playlistN', { number: source.index + 1 }) : t('cw.source.playlist')
 }
 
 /**
  * The class's segments, each with the songs that start in it (ADR 0038 section 10.2): title,
- * artist and where it came from, and Swap before the approval. Song titles and playlist names are
- * server text, shown as plain text.
+ * artist and where it came from, and Swap before the approval. Song titles are server text, shown
+ * as plain text.
  */
 export function SegmentList({
   segments,
   songs,
   hasList,
+  attached,
   canSwap,
   swapping,
   onSwap,
@@ -31,6 +34,8 @@ export function SegmentList({
   songs: readonly Song[] | null
   /** A song list is shown: a segment without a starting song then plays on the one before. */
   hasList: boolean
+  /** How many Spotify playlists the request attached (from this tab's kept request; 0 when unknown). */
+  attached: number
   canSwap: boolean
   swapping: boolean
   onSwap: (song: Song) => void
@@ -54,7 +59,7 @@ export function SegmentList({
             <p className="m-0 pl-15 text-[0.9375rem] text-muted">{t(hasList ? 'cw.row.continues' : 'cw.row.picks')}</p>
           ) : (
             row.songs.map((song) => {
-              const source = sourceText(song.source, t)
+              const source = sourceText(song.source, attached, t)
               return (
                 <div key={song.position} className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-15">
                   <p className="m-0 flex min-w-0 flex-1 basis-56 flex-col text-[0.9375rem]">

@@ -16,7 +16,15 @@ function answerSentence(answer: QuickAnswer, t: ReturnType<typeof useT>): string
     : t(`cw.answer.sentence.${answer.effort}`)
 }
 
-function Question({ question, onAnswer, busy }: { question: ReadingQuestion; onAnswer: (sentence: string) => void; busy: boolean }) {
+function Question({
+  question,
+  onAnswer,
+  disabled,
+}: {
+  question: ReadingQuestion
+  onAnswer: (sentence: string) => Promise<boolean>
+  disabled: boolean
+}) {
   const t = useT()
   const [kept, setKept] = useState(false)
   if (kept) return null
@@ -42,10 +50,12 @@ function Question({ question, onAnswer, busy }: { question: ReadingQuestion; onA
           <button
             key={answerLabel(answer, t)}
             type="button"
-            disabled={busy}
+            disabled={disabled}
             onClick={() => {
-              onAnswer(answerSentence(answer, t))
-              setKept(true)
+              // The question closes only when the answer was stored; a refusal keeps it open.
+              void onAnswer(answerSentence(answer, t)).then((stored) => {
+                if (stored) setKept(true)
+              })
             }}
             className="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line bg-surface px-4 text-sm text-text disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -67,12 +77,13 @@ export function ReadingCard({
   items,
   extras,
   onAnswer,
-  busy,
+  disabled,
 }: {
   items: readonly InterpretationItem[] | null
   extras: ReadingExtras
-  onAnswer: (sentence: string) => void
-  busy: boolean
+  onAnswer: (sentence: string) => Promise<boolean>
+  /** A send runs, a message is pending, or the box is blocked: the answers wait. */
+  disabled: boolean
 }) {
   const t = useT()
   const read = (items !== null && items.length > 0) || extras.pinnedSongs.length > 0 || extras.questions.length > 0
@@ -89,7 +100,7 @@ export function ReadingCard({
       {extras.questions.length > 0 ? (
         <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {extras.questions.map((question) => (
-            <Question key={question.question} question={question} onAnswer={onAnswer} busy={busy} />
+            <Question key={question.question} question={question} onAnswer={onAnswer} disabled={disabled} />
           ))}
         </ul>
       ) : null}
