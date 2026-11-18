@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import type { Page } from '@playwright/test'
 import { expect, test } from './helpers'
 import { PLAYLISTS, fakeMowl } from './design-helpers'
@@ -40,16 +40,25 @@ function storeComposer(value: 'on' | null): void {
   )
 }
 
+/**
+ * Whether the class answer carries `save_pending` (a field of a model in `backend/src/classbeat/classes`),
+ * which only #1189 adds: without it the approval cannot finish. Remove with the skip when #1189 is on main.
+ */
+function classAnswerHasSavePending(): boolean {
+  const dir = new URL('../../backend/src/classbeat/classes/', import.meta.url)
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.py'))
+    .some((name) => /\bsave_pending\s*:/.test(readFileSync(new URL(name, dir), 'utf8')))
+}
+
 /** Why the spec cannot run yet, or null. A missing route is FastAPI's own `{"detail":"Not Found"}`; the app's answers carry a reason. */
 async function missing(page: Page): Promise<string | null> {
   const absent = SCRIPTS.filter(
     (name) => !existsSync(new URL(`../../backend/tests/agent_scripts/${name}.json`, import.meta.url)),
   )
   if (absent.length > 0) return `the fake model scripts ${absent.join(', ')} are not in backend/tests/agent_scripts yet (#1188, #1189)`
-  // The class answer's `save_pending` is phase 2's (#1189): without it the approval cannot finish.
-  const view = new URL('../../backend/src/classbeat/classes/composer_view.py', import.meta.url)
-  if (!existsSync(view) || !readFileSync(view, 'utf8').includes('save_pending')) {
-    return 'the approval\'s phase 2 (approve and save, `save_pending`) is not on main yet (#1189)'
+  if (!classAnswerHasSavePending()) {
+    return 'the approval\'s phase 2 (approve and save, `save_pending` on the class answer) is not on main yet (#1189)'
   }
   const session = (await (await page.request.get('/api/auth/session')).json()) as { csrf_token: string }
   const probe = await page.request.post(`/api/classes/${NO_CLASS}/fill-songs`, {
