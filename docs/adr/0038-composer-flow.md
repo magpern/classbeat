@@ -87,7 +87,8 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
   - Pinned songs are model output and only a proposal. Each is verified by search before it is used (§5).
 - **Follow-up questions**: at most 2 items `{path, question, assumed}`.
   - They are asked only for a brief field with no explicit value whose default changes the class's shape:
-    length, intensity, warm-up.
+    length and intensity. The brief has no warm-up field yet, so a question about the warm-up needs a later
+    brief change (a design decision of its own); the reading never asks one.
   - **They never block.** The brief uses `assumed`, and the chat says so ("I used 5 minutes").
   - An answer is an ordinary chat change. A quick-answer button sends a prepared sentence.
 - The interpret prompt and schema change, so `suite_version` is bumped and eval cases are added (ADR 0012).
@@ -159,8 +160,9 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
   - The design runs on the chosen songs' pool analysis, with the sketch as its base. It keeps the shape the
     user agreed to and re-times it to the songs.
   - **Its result is not a draft revision.** It is stored in the **`song_list` revision**, whose content
-    becomes `v: 3` with a `preview`: `{content, music}`, the draft's content and the `music` object (with
-    the pool analysis it was fitted to) exactly as a draft would store them, and a reference to the
+    becomes `v: 3` with a `preview`: `{content, music}`: the draft's content and a **small** `music`
+    (only what the fit compares: the track-id fingerprint and each song's `start` and `end`, below), and a
+    reference to the
     `design` stage's `agent_runs` row. The revision stays what ADR 0008 §5 says: immutable, never current,
     never revised or saved as a draft. **The whole canonical `content` stays at or under 64 KB**:
     migration 0004's single check on every revision's `content` (`class_revisions_content`,
@@ -222,8 +224,9 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
   private; Amendment 27), verified by id, attached in MOWL and analysed.
 - **`fit` replaces phase 2's `design` step.** The worker calls the fit function directly. It does **not**
   enqueue a `refit_draft` job, so Beat One's origin and its `refit_limit` are not involved.
-  - The final analysis is compared, like with like, with the pool analysis in the approved list's `preview`:
-    `songs[]` is built from the final analysis by the same function as the preview's, and
+  - The final analysis is compared, like with like, with the track-id fingerprint and the per-song `start` and
+    `end` in the approved list's `preview.music`: `songs[]` is built from the final analysis by the same
+    function as the preview's, and
     - **the same tracks in the same order** (the fingerprint here is of track ids only, so `refit_draft`'s
       `music_changed` guard does not apply);
     - **every song's heard length, `end - start`, within `CLASSBEAT_FIT_TOLERANCE_SECONDS`** (default 2)
@@ -379,7 +382,8 @@ class credit.
   cases for expiry, replacement and failure, and two review rounds found gaps in each. Storing it inside the
   immutable `song_list` revision needs none of them.
 - **Store the pool analysis separately** (ADR 0008 §4 stores none). Not needed: the preview's own `music`
-  holds the analysis it was fitted to, and a change analyses the kept songs again.
+  holds the little the fit compares (the fingerprint and each song's `start` and `end`), and a change
+  analyses the kept songs again.
 
 ## Consequences
 
