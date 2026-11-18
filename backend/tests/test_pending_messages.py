@@ -118,7 +118,8 @@ async def test_on_a_sketch_it_becomes_a_sketch_revise_once(skenv: SketchEnv) -> 
     skenv.renv.use("soundless_revise_good")
     await skenv.renv.run("revise_draft")
     new = skenv.renv.current(class_id)
-    assert new is not None and new != sketch
+    assert new is not None
+    assert new != sketch
     assert skenv.revision(new).provenance["origin"] == "sketch"
     assert (await submit(skenv, class_id, message)).json()["status"] == "submitted"
 
@@ -132,7 +133,7 @@ async def test_on_a_draft_it_becomes_an_ordinary_revise(skenv: SketchEnv) -> Non
     assert made.status_code == 201, made.text
     [job] = revise_jobs(skenv, class_id)
     assert job.input["base_revision_id"] == str(draft)
-    assert "sketch_base" not in job.input
+    assert job.input.get("sketch_base") is None  # stored as null for an ordinary revise
 
 
 async def test_while_a_job_is_queued_it_stays_pending(skenv: SketchEnv) -> None:
@@ -155,7 +156,11 @@ async def test_with_a_song_list_waiting_it_fails_not_changeable_for_now(skenv: S
     job = skenv.sql(
         "SELECT id FROM jobs WHERE class_id = :c AND kind = 'design_draft'", c=class_id
     ).scalar_one()
-    skenv.sql("UPDATE jobs SET state = 'waiting_for_approval' WHERE id = :j", j=job)
+    skenv.sql(  # stands in for a song list waiting for approval (the kinds of #1188)
+        "UPDATE jobs SET state = 'waiting_for_approval', approval_hash = sha256('list'), "
+        "expires_at = now() + interval '1 hour', finished_at = NULL WHERE id = :j",
+        j=job,
+    )
     message = uuid.uuid4()
     await send(skenv, class_id, message)
     refused = await submit(skenv, class_id, message)

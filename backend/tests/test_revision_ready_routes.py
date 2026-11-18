@@ -1,9 +1,9 @@
-"""Every route and job that takes a revision id refuses a sketch with ``not_ready`` (ADR 0038 section
-4, #1186), against Postgres as ``classbeat_app`` and the fakes: Save, Update, Send to player,
-Refit, Change songs and a studio revise through ``POST /api/jobs``; duplicate, the pick of the
-current revision and the beat-one correction through their own routes. Nothing is created and the
-fake MOWL is asked nothing: no job, no operation, no class, no correction. Never the network, a
-real account or a model."""
+"""Every route and job that takes a revision id refuses a sketch with ``not_ready`` (ADR 0038
+section 4, #1186), against Postgres as ``classbeat_app`` and the fakes: Save, Update, Send to
+player, Refit, Change songs and a studio revise through ``POST /api/jobs``; duplicate, the pick
+of the current revision and the beat-one correction through their own routes. Nothing is created
+and the fake MOWL is asked nothing: no job, no operation, no class, no correction. Never the
+network, a real account or a model."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -75,7 +75,12 @@ async def call(skenv: SketchEnv, case: str, class_id: UUID, sketch: UUID) -> htt
         return await job(skenv, case, base | {"mowl_connection_id": mowl})
     if case == "revise_songs":
         spotify = str(await skenv.ienv.connect_spotify())
-        more = {"mowl_connection_id": mowl, "spotify_connection_id": spotify, "request": "Faster", "replace": "all"}
+        more = {
+            "mowl_connection_id": mowl,
+            "spotify_connection_id": spotify,
+            "request": "Faster",
+            "replace": "all",
+        }
         return await job(skenv, case, base | more)
     if case == "studio_revise":
         more = {"swedebeat_connection_id": str(await connect_swedebeat(skenv)), "request": "Up"}
@@ -93,7 +98,9 @@ async def call(skenv: SketchEnv, case: str, class_id: UUID, sketch: UUID) -> htt
         body = {"revision_id": str(sketch), "beats": 1}
         answer = await browser.client.put(path, headers=headers, json=body)
     else:
-        answer = await browser.client.delete(path, headers=headers, params={"revision_id": sketch})
+        answer = await browser.client.delete(
+            path, headers=headers, params={"revision_id": str(sketch)}
+        )
     browser.client.cookies.clear()
     return answer
 

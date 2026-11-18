@@ -1,9 +1,9 @@
 """The composer's sketch (ADR 0038 section 4, #1186) through the interpretation hand-off and the
 worker side, against Postgres as ``classbeat_app``, the fake MOWL and ``FakeProvider``: with the
-flag on, a class with music is sketched (no songs, ``origin = "sketch"``, the class credit, its music
-source left unset); a "No music" class keeps its soundless design; with the flag off nothing
-changes. A chat change of a sketch is a sketch, with no credit, counted toward the revise limit.
-Never the network, a real account or a model."""
+flag on, a class with music is sketched (no songs, ``origin = "sketch"``, the class credit, its
+music source left unset); a "No music" class keeps its soundless design; with the flag off
+nothing changes. A chat change of a sketch is a sketch, with no credit, counted toward the
+revise limit. Never the network, a real account or a model."""
 
 import asyncio
 import json
@@ -81,9 +81,11 @@ async def test_a_sketch_class_is_never_read_as_soundless_or_studio(skenv: Sketch
         await db.execute(text("SELECT set_config('app.user_id', :u, true)"), {"u": str(owner)})
         assert await music_kind.refuse_soundless(db, owner, class_id) is None  # songs can fill it
         studio = await music_kind.admit_studio(db, owner, class_id)
-        assert studio is not None and studio.reason == "invalid_input"
+        assert studio is not None
+        assert studio.reason == "invalid_input"
         soundless = await music_kind.admit_music(db, owner, True, class_id)
-        assert soundless is not None and soundless.reason == "invalid_input"
+        assert soundless is not None
+        assert soundless.reason == "invalid_input"
 
 
 async def test_a_sketch_class_reads_back_on_the_class_page_and_its_history(
@@ -165,7 +167,8 @@ async def test_a_revise_of_a_sketch_is_a_sketch_with_no_credit(
     assert (row.state, row.error_category, row.credit_state) == ("completed", None, "none")
     assert skenv.ienv.credits() == credits
     new = skenv.renv.current(class_id)
-    assert new is not None and new != sketch
+    assert new is not None
+    assert new != sketch
     revised = skenv.revision(new)
     assert (revised.parent_id, revised.music) == (sketch, SKETCH_MUSIC)
     made_by = Provenance.model_validate_json(json.dumps(revised.provenance))
