@@ -71,6 +71,10 @@ ROUTES_ALLOWED: Final = {
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/another"): _STUDIO,
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/swap-anyway"): _STUDIO,
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/design"): _STUDIO,
+    ("POST", "/api/classes/{class_id}/swap-songs"): "names the waiting song_list revision of "
+    "a composer job (classes.song_swap, song_replace.ReplaceHold: the job's own approval list), "
+    "never a sketch (a draft); its design_with_songs swap writes only the private working copy, "
+    "and its base is the current sketch on purpose (songs.composer_admit), as the fill's is",
     ("POST", "/api/classes/{class_id}/outputs"): _STUDIO,
     ("POST", "/api/classes/{class_id}/outputs/{output}/{action}"): _STUDIO,
     ("GET", "/api/classes/{class_id}/spotify-sync/{revision_id}"): _STUDIO,
