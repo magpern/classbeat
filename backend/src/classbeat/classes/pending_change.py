@@ -94,7 +94,9 @@ async def create_change(
         ).first()
     parts = None if row is None else waiting_parts(row.input)
     if row is None or parts is None or row.approval_revision_id is None:
-        return await decided("not_changeable")
+        # The list expired, was approved or replaced since the plan: plan again from the state
+        # of the class (a sketch revise once the wait is over), never ``not_changeable``.
+        return Held(REPLAN)
     base, stored = parts
     mowl, spotify = ctx.connection("mowl"), ctx.connection("spotify")
     if mowl is None or spotify is None:

@@ -172,3 +172,15 @@ async def test_a_transient_class_busy_leaves_no_fill_on_the_class_answer(
     cenv.sql("UPDATE jobs SET state = 'cancelled', finished_at = now() WHERE id = :j", j=other)
     made = await cenv.fill(rider, class_id)
     assert made.status_code == 201, made.text
+
+
+async def test_a_queued_fill_makes_another_classs_fill_pool_busy(cenv: ComposerEnv) -> None:
+    """The composer's modes write the user's one working copy, so they count for ``pool_busy``
+    (``songs.pick_checks``) like a pick does."""
+    rider = await cenv.songenv.rider()
+    first, _ = await cenv.sketched(rider)
+    second, _ = await cenv.sketched(rider)
+    made = await cenv.fill(rider, first)
+    assert made.status_code == 201, made.text
+    busy = await cenv.fill(rider, second)
+    assert (busy.status_code, busy.json()["detail"]["reason"]) == (409, "pool_busy")

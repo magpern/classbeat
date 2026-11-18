@@ -51,7 +51,7 @@
   "revisions": {
    "design": [
     "revise_easier", "revise_more_sprints", "revise_other_songs",
-        "rev_sketch_fill_30",
+    "rev_sketch_fill_30",
     "rev_climb_to_end_45", "rev_climb_to_start_40", "rev_easier_40", "rev_easier_50_to_easy",
     "rev_more_sprints_30", "rev_more_sprints_60", "rev_shorter_45_to_30", "rev_shorter_75_to_60",
     "rev_game_add_40", "rev_game_replace_40", "rev_game_type_40", "rev_game_remove_40",

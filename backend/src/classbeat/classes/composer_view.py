@@ -7,8 +7,9 @@
   (``classbeat.classes.song_fill``): ``{sketch_revision_id, attempt, failure}``; ``failure`` is the
   stored refusal of that attempt, or the way its job ended when it failed (its error category),
   was cancelled (``cancelled``: replaced or cancelled) or expired (``expired``); null while it
-  runs or waits. Null when the current revision is no sketch or no fill was started for it (no
-  job of the attempt and no stored refusal).
+  runs or waits, and while a swap or change that replaced it runs or waits. Null when the
+  current revision is no sketch or no fill was started for it (no job of the attempt and no
+  stored refusal).
 
 Every read filters on ``owner_id`` and runs in the caller's ``user_session``. Codes only.
 """
@@ -33,6 +34,12 @@ _COMPOSER = text(
     "SELECT coalesce(input ->> 'composer' = 'true', false) FROM jobs "
     "WHERE owner_id = :owner_id AND class_id = :class_id AND id = :job_id "
     "AND kind = 'interpret_request'"
+)
+# A composer song job of the class still running or waiting: a swap or change replacing the fill.
+_LIVE_REPLACEMENT = text(
+    "SELECT 1 FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "
+    "AND kind = 'design_with_songs' AND input ->> 'mode' IN ('swap', 'change') "
+    "AND state IN ('queued', 'running', 'waiting_for_approval') LIMIT 1"
 )
 _JOB_OF_KEY = text(
     "SELECT state, error_category FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "
@@ -76,7 +83,8 @@ async def composer_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Co
         if job.state == "failed":
             failure = job.error_category or "internal"
         elif job is not None and job.state in ("cancelled", "expired"):
-            failure = job.state
+            live = (await db.execute(_LIVE_REPLACEMENT, ids)).first() is not None
+            failure = None if live else job.state  # a swap or change of it runs or waits
     return ComposerState(
         composer,
         FillSongsOut(

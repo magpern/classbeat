@@ -86,7 +86,7 @@ def sources_of(
     return out
 
 
-def _message(ctx: PoolContext, slots: list[str], favoured: Favoured, pinned: Pinned) -> str:
+def pool_message(ctx: PoolContext, slots: list[str], favoured: Favoured, pinned: Pinned) -> str:
     facts = {
         "sketch_slots": slots,
         "favoured_refs": [e.ref for e in favoured.entries],
@@ -144,7 +144,7 @@ async def pick_composer(
         JobStageHost(run, "pool_search"),
         provider,
         pool_stage(ctx),
-        _message(ctx, slots, favoured, pinned),
+        pool_message(ctx, slots, favoured, pinned),
         pool_config,
     )
     if not isinstance(pool_outcome.output, PoolResult) or not pool_outcome.output.picks:

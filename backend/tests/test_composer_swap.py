@@ -44,6 +44,8 @@ async def test_a_swap_replaces_the_waiting_job_and_waits_on_a_new_list(cenv: Com
     assert made.status_code == 201, made.text
     swap_id = UUID(made.json()["job_id"])
     assert cenv.songenv.row(job_id).state == "cancelled"
+    shown = (await rider.browser.get(f"/api/classes/{class_id}")).json()
+    assert shown["fill_songs"]["failure"] is None  # the replacing swap is live: no failure
     late = await rider.approve(job_id, list_id, digest)
     assert (late.status_code, late.json()["detail"]["reason"]) == (409, "superseded")
     cenv.songenv.script = swap_script()

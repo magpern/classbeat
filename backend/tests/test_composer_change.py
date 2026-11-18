@@ -15,7 +15,7 @@ import pytest
 
 from classbeat.design import limits, music_kind
 from composertools import SKETCH, ComposerEnv, change_script
-from songtools import Rider
+from songtools import Rider, failing_script
 
 pytestmark = pytest.mark.usefixtures("jenv")
 
@@ -125,3 +125,22 @@ async def test_a_refused_change_keeps_the_list_approvable(
     ]
     approved = await rider.approve(job_id, list_id, digest)
     assert approved.status_code == 200, approved.text
+
+
+async def test_a_change_that_fails_while_running_leaves_the_sketch_and_find_songs_again(
+    cenv: ComposerEnv,
+) -> None:
+    rider = await cenv.songenv.rider()
+    class_id, sketch = await cenv.sketched(rider)
+    await cenv.waiting(rider, class_id)
+    submitted = await send(rider, class_id)
+    change_id = UUID(submitted.json()["job_id"])
+    cenv.songenv.script = failing_script("auth")  # model_config: not retried
+    row = await cenv.songenv.run(change_id)
+    assert row.state == "failed", row.state
+    assert cenv.current(class_id) == sketch
+    assert cenv.drafts(class_id) == 1
+    shown = (await rider.browser.get(f"/api/classes/{class_id}")).json()
+    assert shown["fill_songs"]["failure"] == "cancelled"  # the replaced fill: Find songs again
+    again = await cenv.fill(rider, class_id, retry=True)
+    assert again.status_code == 201, again.text
