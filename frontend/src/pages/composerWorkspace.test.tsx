@@ -114,7 +114,7 @@ describe('the composer workspace driver (ADR 0038 section 8)', () => {
       cls: { current_revision_id: DRAFT_ID, save_pending: { revision_id: DRAFT_ID, content_hash: HASH, job_id: PHASE2_JOB } },
       extraRoutes: {
         [`GET ${CLASS_PATH}/revisions/${DRAFT_ID}`]: revisionBody(DRAFT_ID, 2, CONTENT, { origin: 'design_with_songs' }),
-        'POST /api/jobs': (body) => json({ ...jobBody('queued', { kind: 'save_workout', id: JOB_ID }), body }, 201),
+        'POST /api/jobs': () => json(jobBody('queued', { kind: 'save_workout', id: JOB_ID }), 201),
       },
     })
     renderAt(PAGE)
