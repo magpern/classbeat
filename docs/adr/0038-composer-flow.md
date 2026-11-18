@@ -363,6 +363,19 @@ class credit.
   this order (we ask Spotify for private)." and **Approve and save**. After the save: **Update workout**.
 - **A "More" menu** holds Beat One, Send to player, the SwedeBeat section, versions and delete.
 - **Phone width:** the class first, and the message box sticky at the bottom.
+- *As built (2026-11-18, #1206): the reading window.* The workspace shows from the first second after
+  Start, not when the reading lands. Until the class has a stored interpretation, `composer` in the class
+  answer (`classes/composer_view.py`) is true only while the class's `interpret_request` job is **queued or
+  running**, its input says `composer: true` (the server field set at admit, #1185) with a music choice other
+  than "No music", **and** the `composer_flow` gate is on now. The rule reads the job through the owner-scoped
+  class read (`owner_id` and `class_id`, the job's own columns; no change to the jobs table, the queue or the
+  lease code). A class whose job input has no marker, every older class, a class with the flag off, a "No
+  music" class and a reading that ended without a stored interpretation (failed, cancelled, expired) answer
+  `composer: false` and keep the page they had; once the interpretation is stored the answer follows its job
+  input as before. In the window the workspace shows the request, the job status line ("Reading your
+  request…") and a "Reading your request" chip (state `reading`, no version yet) in place of "Rough"; the
+  chat box says there is no version to change yet, and the page's one hand-off (`useHandoff`) starts the
+  sketch when the reading is stored, in the same mounted workspace.
 
 ### 11. Unchanged, and out of scope
 
