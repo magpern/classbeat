@@ -11,6 +11,7 @@ export function MiniProfile({
   profile,
   tall = false,
   motion,
+  className,
 }: {
   profile: [number, number][]
   tall?: boolean
@@ -19,6 +20,8 @@ export function MiniProfile({
    * across it all the time; `hover` runs the playhead while the pointer is on its card or row.
    */
   motion?: 'play' | 'hover'
+  /** Extra classes on the picture (a taller stage on the feature card). */
+  className?: string
 }) {
   const t = useT() // renders again when the language changes: the length is looked up on each render
   const total = profileSeconds(profile)
@@ -33,7 +36,7 @@ export function MiniProfile({
       <div
         role="img"
         aria-label={label}
-        className={`w-full rounded-md border border-dashed border-line ${tall ? 'h-40' : 'h-14'}`}
+        className={cn('w-full rounded-md border border-dashed border-line', tall ? 'h-40' : 'h-14', className)}
       />
     )
   }
@@ -48,6 +51,7 @@ export function MiniProfile({
         tall ? 'h-40' : 'h-14',
         motion === 'play' && 'mini-profile--play draw-in',
         motion === 'hover' && 'mini-profile--hover',
+        className,
       )}
     >
       {bars.map(([zone, sec], i) => {
