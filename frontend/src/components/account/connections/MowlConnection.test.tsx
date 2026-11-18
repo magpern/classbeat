@@ -140,7 +140,7 @@ describe('connect MOWL', () => {
     renderAt('/account')
     const status = await screen.findByTestId('mowl-status')
     expect(status).toHaveTextContent('Needs reconnecting')
-    expect(status).toHaveTextContent('MOWL no longer accepts the stored sign-in')
+    expect(screen.getByTestId('connection-mowl')).toHaveTextContent('MOWL no longer accepts the stored sign-in')
     expect(screen.getByRole('button', { name: 'Connect MOWL again' })).toBeInTheDocument()
   })
 })

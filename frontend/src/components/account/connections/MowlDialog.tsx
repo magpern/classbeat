@@ -11,6 +11,7 @@ import { Button } from '../../ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/tabs'
 import { MowlQr } from '../MowlQr'
+import { MowlSteps } from './MowlSteps'
 import { forgetWarning } from '../mowlWarning'
 
 // Plain words for the ADR 0004 section 5 categories. The raw code is never shown.
@@ -103,6 +104,16 @@ export function MowlDialog({
     </form>
   )
 
+  const header = (
+    <div className="flex flex-col gap-2">
+      <DialogTitle className="font-display text-3xl font-extrabold">{t('mowl.connectButton')}</DialogTitle>
+      <DialogDescription>
+        {again ? t('mowl.reconnectWarning', { warning: forgetWarning() }) : t('conn.noPassword')}
+      </DialogDescription>
+      {action.error ? <Notice kind="error">{action.error}</Notice> : null}
+    </div>
+  )
+
   return (
     <Dialog
       open={open}
@@ -113,30 +124,39 @@ export function MowlDialog({
         }
       }}
     >
-      <DialogContent>
-        <DialogTitle>{t('mowl.connectButton')}</DialogTitle>
-        <DialogDescription>
-          {again ? t('mowl.reconnectWarning', { warning: forgetWarning() }) : t('conn.noPassword')}
-        </DialogDescription>
-        {action.error ? <Notice kind="error">{action.error}</Notice> : null}
+      <DialogContent className={qr ? 'w-[min(46rem,calc(100%-2rem))] p-0' : undefined}>
         {qr ? (
           <Tabs
             value={tab}
             onValueChange={(value) => {
               setTab(value === 'password' ? 'password' : 'scan')
             }}
+            className="grid md:grid-cols-2"
           >
-            <TabsList aria-label={t('conn.mowl.ways')}>
-              <TabsTrigger value="scan">{t('conn.tab.scan')}</TabsTrigger>
-              <TabsTrigger value="password">{t('conn.tab.password')}</TabsTrigger>
-            </TabsList>
-            <TabsContent value="scan" className="flex flex-col items-center gap-3">
-              <MowlQr autoStart onConnected={connected} />
-            </TabsContent>
-            <TabsContent value="password">{form}</TabsContent>
+            <div className="flex flex-col gap-5 p-6 sm:p-8">
+              {header}
+              <TabsList aria-label={t('conn.mowl.ways')} className="w-fit">
+                <TabsTrigger value="scan">{t('conn.tab.scan')}</TabsTrigger>
+                <TabsTrigger value="password">{t('conn.tab.password')}</TabsTrigger>
+              </TabsList>
+              <TabsContent value="scan" className="p-0">
+                <MowlSteps />
+              </TabsContent>
+              <TabsContent value="password" className="p-0">
+                {form}
+              </TabsContent>
+            </div>
+            {tab === 'scan' ? (
+              <div className="p-6 pt-0 sm:p-8 md:pt-8">
+                <MowlQr autoStart onConnected={connected} />
+              </div>
+            ) : null}
           </Tabs>
         ) : (
-          form
+          <div className="flex flex-col gap-5">
+            {header}
+            {form}
+          </div>
         )}
       </DialogContent>
     </Dialog>
