@@ -73,6 +73,8 @@ export const workspaceEn = {
   'cw.approve.button': 'Approve and save',
   'cw.approve.hold': 'Approve waits until your message has been sent.',
   'cw.approve.checking': 'Checking for messages not sent yet…',
+  'cw.approve.checkFailed': 'We could not check for messages not sent yet.',
+  'cw.approve.checkRetry': 'Try again',
   'cw.approve.differed': 'The final songs differed. Check the class and save.',
   'cw.save.region': 'Save',
   'cw.more': 'More',

@@ -289,6 +289,23 @@ describe('the composer workspace page', () => {
     })
   })
 
+  it('offers another read when the stored messages could not be read, and enables Approve after it', async () => {
+    const user = userEvent.setup()
+    let reads = 0
+    setup({
+      cls: { songs: { state: 'waiting', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null }, fill_songs: FILL },
+      list: { preview: PREVIEW },
+      extraRoutes: { [`GET ${PENDING}`]: () => (++reads === 1 ? reason(500, 'internal') : json({ messages: [] })) },
+    })
+    renderAt(PAGE)
+    expect(await screen.findByText('We could not check for messages not sent yet.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve and save' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Approve and save' })).toBeEnabled()
+    })
+  })
+
   it('says the playlist and the draft are being created while phase 2 runs after Approve', async () => {
     setup({
       cls: {

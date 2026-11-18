@@ -73,6 +73,8 @@ export const workspaceDa: Catalogue = {
   'cw.approve.button': 'Godkend og gem',
   'cw.approve.hold': 'Godkendelsen venter, til din besked er sendt.',
   'cw.approve.checking': 'Tjekker for beskeder, der ikke er sendt endnu…',
+  'cw.approve.checkFailed': 'Vi kunne ikke tjekke, om der er beskeder, der ikke er sendt.',
+  'cw.approve.checkRetry': 'Prøv igen',
   'cw.approve.differed': 'De endelige sange afveg. Tjek holdet og gem.',
   'cw.save.region': 'Gem',
   'cw.more': 'Mere',

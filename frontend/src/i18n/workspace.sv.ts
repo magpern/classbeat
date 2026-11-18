@@ -73,6 +73,8 @@ export const workspaceSv: Catalogue = {
   'cw.approve.button': 'Godkänn och spara',
   'cw.approve.hold': 'Godkännandet väntar tills ditt meddelande har skickats.',
   'cw.approve.checking': 'Kontrollerar meddelanden som inte skickats än…',
+  'cw.approve.checkFailed': 'Vi kunde inte kontrollera om det finns meddelanden som inte skickats.',
+  'cw.approve.checkRetry': 'Försök igen',
   'cw.approve.differed': 'De slutliga låtarna skilde sig. Kontrollera passet och spara.',
   'cw.save.region': 'Spara',
   'cw.more': 'Mer',

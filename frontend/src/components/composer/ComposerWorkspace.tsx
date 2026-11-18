@@ -146,7 +146,7 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
       ) : null}
       {using.error !== null ? <p className="notice" data-kind="error" role="alert">{using.error}</p> : null}
       {ready ? (
-        <ApproveBar holding={pending !== null} checking={stored.messages === null} busy={approve.busy || running} error={approve.error} onApprove={onApprove} />
+        <ApproveBar holding={pending !== null} checking={stored.messages === null} checkFailed={stored.failed} onRetryCheck={stored.refresh} busy={approve.busy || running} error={approve.error} onApprove={onApprove} />
       ) : (
         <SaveArea flow={save} chip={chip.state} currentOrigin={currentOrigin} />
       )}
