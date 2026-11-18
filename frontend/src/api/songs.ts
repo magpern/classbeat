@@ -21,11 +21,12 @@ export type ListStatus = 'waiting' | 'approved' | 'expired' | 'superseded' | 'ca
 const STATUSES: readonly string[] = ['waiting', 'approved', 'expired', 'superseded', 'cancelled']
 
 /**
- * Where a song came from (ADR 0038 section 10.2), assumed as `source: {kind, name?}` on each song of
- * a composer list: `pinned` (named by the instructor), `playlist` (an attached one, with its name)
- * or `search` (found by classbeat). Absent on older lists.
+ * Where a song came from (ADR 0038 section 10.2), as `source: {kind, playlist?}` on each song of a
+ * composer list (#1188): `pinned` (named by the instructor), `playlist` (an attached one: `index` is
+ * its position in the request's attached playlists, which the server stores without names) or
+ * `search` (found by classbeat). Absent on older lists.
  */
-export type SongSource = { kind: 'pinned' } | { kind: 'playlist'; name: string } | { kind: 'search' }
+export type SongSource = { kind: 'pinned' } | { kind: 'playlist'; index: number } | { kind: 'search' }
 
 export interface Song {
   position: number
@@ -79,16 +80,27 @@ function decodeSource(value: unknown): SongSource | null {
   const item = value as Record<string, unknown>
   if (item.kind === 'pinned') return { kind: 'pinned' }
   if (item.kind === 'search') return { kind: 'search' }
-  if (item.kind === 'playlist' && typeof item.name === 'string' && item.name !== '') {
-    return { kind: 'playlist', name: item.name }
+  if (item.kind === 'playlist' && typeof item.playlist === 'number' && Number.isInteger(item.playlist) && item.playlist >= 0) {
+    return { kind: 'playlist', index: item.playlist }
   }
   return null
 }
 
-function decodePreview(value: unknown): DraftContent | null {
+interface Preview {
+  content: DraftContent
+  /** Each song's heard start and end in the designed class, in play order. */
+  spans: { start: number; end: number }[]
+}
+
+function decodePreview(value: unknown): Preview | null {
   if (typeof value !== 'object' || value === null) return null
+  const item = value as Record<string, unknown>
   try {
-    return decodeDraftContent((value as Record<string, unknown>).content)
+    const spans = list(item, 'songs').map((span) => {
+      const one = object(span, 'span')
+      return { start: count(one, 'start'), end: count(one, 'end') }
+    })
+    return { content: decodeDraftContent(item.content), spans }
   } catch {
     return null
   }
@@ -126,9 +138,22 @@ export function withStartTimes(songs: Omit<Song, 'startSec'>[], crossfadeSec: nu
   })
 }
 
+/**
+ * A composer list's songs start where its preview heard them (the design placed them); any other
+ * list, or a preview that does not match, falls back to the picker's rule.
+ */
+function placedSongs(songs: Omit<Song, 'startSec'>[], crossfadeSec: number, preview: Preview | null): Song[] {
+  const spans = preview?.spans
+  if (spans === undefined || spans.length !== songs.length) return withStartTimes(songs, crossfadeSec)
+  return songs.map((song, i) => ({ ...song, startSec: spans[i]!.start }))
+}
+
 export function decodeSongList(value: unknown): SongList {
   const item = object(value, 'song list')
   const status = text(item, 'status')
+  const preview = decodePreview(item.preview)
+  const crossfade = optionalCount(item, 'crossfade_sec') ?? 0
+  const songs = list(item, 'songs').map(decodeSong)
   return {
     id: text(item, 'id'),
     number: count(item, 'number'),
@@ -140,11 +165,11 @@ export function decodeSongList(value: unknown): SongList {
     mode: text(item, 'mode'),
     targetSec: count(item, 'target_sec'),
     totalSec: count(item, 'total_sec'),
-    songs: withStartTimes(list(item, 'songs').map(decodeSong), optionalCount(item, 'crossfade_sec') ?? 0),
+    songs: placedSongs(songs, crossfade, preview),
     omittedNoBpm: optionalCount(item, 'omitted_no_bpm') ?? 0,
     note: optionalText(item, 'note') ?? '',
     unmet: (decodeInterpretationItems(item.unmet) ?? []).filter((i) => i.origin === 'not_as_asked'),
-    preview: decodePreview(item.preview),
+    preview: preview?.content ?? null,
   }
 }
 

@@ -17,6 +17,7 @@ import { useHandoff } from '../../hooks/useHandoff'
 import { useUseRevision } from '../../hooks/useUseRevision'
 import { useT } from '../../i18n/I18n'
 import { deriveChip } from '../../lib/composer/chip'
+import { recallRequest } from '../../lib/startRequest'
 import { requestOf } from '../../lib/requestReading'
 import { sendOf } from '../player/operations'
 import { Link } from '../../router/Router'
@@ -106,14 +107,12 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
     })
   const sketchId = summary.currentRevisionId
   const onSwap = (song: Song) => {
-    if (list === null || sketchId === null) return
+    if (list === null) return
     run(() =>
       swapSong({
         classId,
-        sketchRevisionId: sketchId,
         listRevisionId: list.id,
         listJobId: list.jobId ?? summary.songs.jobId ?? list.id,
-        targetSec: list.targetSec,
         position: song.position,
       }),
     )
@@ -147,7 +146,7 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
       ) : null}
       {using.error !== null ? <p className="notice" data-kind="error" role="alert">{using.error}</p> : null}
       {ready ? (
-        <ApproveBar holding={pending !== null} busy={approve.busy || running} error={approve.error} onApprove={onApprove} />
+        <ApproveBar holding={pending !== null} checking={stored.messages === null} checkFailed={stored.failed} onRetryCheck={stored.refresh} busy={approve.busy || running} error={approve.error} onApprove={onApprove} />
       ) : (
         <SaveArea flow={save} chip={chip.state} currentOrigin={currentOrigin} />
       )}
@@ -200,6 +199,7 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
             segments={segments}
             songs={list?.songs ?? null}
             hasList={list !== null}
+            attached={recallRequest(classId)?.playlists?.length ?? 0}
             currentOrigin={currentOrigin}
             menu={
               <MoreMenu

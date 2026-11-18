@@ -83,7 +83,9 @@ async function run(classId: string, current: string | null, step: DriverStep): P
     try {
       await fillSongs({ classId, sketchRevisionId: current, retry: false })
     } catch (error) {
-      // The refusal is stored on the class and shown there with Find songs again.
+      // `class_busy` is the one refusal the server does not store: try again at the next reload.
+      if (error instanceof ApiError && error.reason === 'class_busy') return 'busy'
+      // Any other refusal is stored on the class and shown there with Find songs again.
       if (error instanceof ApiError && error.status === 409) return 'done'
       throw error
     }

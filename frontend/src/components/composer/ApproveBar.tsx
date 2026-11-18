@@ -9,12 +9,20 @@ import { Button } from '../ui/button'
  */
 export function ApproveBar({
   holding,
+  checking,
+  checkFailed,
+  onRetryCheck,
   busy,
   error,
   onApprove,
 }: {
   /** A chat message is pending. */
   holding: boolean
+  /** The stored messages have not been read yet, so a pending one is not ruled out. */
+  checking: boolean
+  /** The read of the stored messages failed: say so, and offer another. */
+  checkFailed: boolean
+  onRetryCheck: () => void
   busy: boolean
   error: string | null
   onApprove: () => void
@@ -28,9 +36,18 @@ export function ApproveBar({
     >
       <p className="m-0 text-[0.9375rem] text-muted">{t('cw.approve.text')}</p>
       {holding ? <p className="m-0 text-sm text-muted">{t('cw.approve.hold')}</p> : null}
+      {checking && !checkFailed ? <p className="m-0 text-sm text-muted">{t('cw.approve.checking')}</p> : null}
+      {checking && checkFailed ? (
+        <p className="m-0 flex flex-wrap items-center gap-2 text-sm text-muted">
+          {t('cw.approve.checkFailed')}
+          <Button variant="secondary" className="min-h-11 px-3 text-[0.8125rem]" onClick={onRetryCheck}>
+            {t('cw.approve.checkRetry')}
+          </Button>
+        </p>
+      ) : null}
       {error !== null ? <Notice kind="error">{error}</Notice> : null}
       <div>
-        <Button disabled={holding || busy} onClick={onApprove}>
+        <Button disabled={holding || checking || busy} onClick={onApprove}>
           {t('cw.approve.button')}
         </Button>
       </div>

@@ -1,27 +1,15 @@
-import type { ClassSummary, RevisionSummary } from '../../api/classes'
+import type { ClassSummary } from '../../api/classes'
 
 /** The revision origin of a sketch (ADR 0038 section 4). */
 export const SKETCH = 'sketch'
 
 /**
- * Which class page a class gets (ADR 0038 section 10.2). Pure. The workspace is for a composer
- * class: the flag is on, and the class has a sketch among its versions (it stays in the history
- * after phase 2), or it has no version yet and could still get one from the composer's hand-off.
- * A soundless class has no sketch (its first design is the class), a running class is not the
- * composer's, and a studio class has its own page; all keep the page they have.
- *
- * Until #1188 adds a `composer` boolean to the class answer, the server does not say "made on the composer", so the sketch in the
- * history is the mark. A class with no version yet that was made on the Advanced form shows the
- * workspace while its first design runs, and the old page once that design arrives.
+ * Which class page a class gets (ADR 0038 section 10.2). Pure. The workspace is for a class the
+ * server says was made on the composer (`composer` in the class answer, #1188): it was read with
+ * the flag on, so it has a sketch or will get one. The flag must be on too, and a soundless class
+ * ("No music": no sketch, its first design is the class) keeps the page it has, as does every older
+ * class (the answer says `composer: false`) and a running or studio class.
  */
-export function isComposerClass(
-  flag: boolean,
-  summary: Pick<ClassSummary, 'sport' | 'soundless' | 'currentRevisionId' | 'composer'>,
-  revisions: readonly Pick<RevisionSummary, 'origin'>[],
-): boolean {
-  if (!flag) return false
-  // The server's own answer wins once it sends one (#1188): the one place the heuristic below goes.
-  if (summary.composer.composer !== null) return summary.composer.composer && !summary.soundless
-  if (revisions.some((r) => r.origin === SKETCH)) return true
-  return summary.currentRevisionId === null && revisions.length === 0 && summary.sport === 'cycling' && !summary.soundless
+export function isComposerClass(flag: boolean, summary: Pick<ClassSummary, 'soundless' | 'composer'>): boolean {
+  return flag && summary.composer.composer && !summary.soundless
 }
