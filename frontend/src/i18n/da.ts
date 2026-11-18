@@ -1309,6 +1309,8 @@ const da: Catalogue = {
   'unsub.stopAll': 'Stop valgfri mail',
 
   // Music page.
+  'music.page.eyebrow': 'Din musik',
+  'music.page.subtitle': 'Playlisterne der er lavet til dine hold, og de MOWL-playlister som sange kan vælges fra.',
   'music.page.title': 'Musik',
   'music.page.connectTitle': 'Tilslut Spotify',
   'music.page.connectText': 'Tilslut Spotify, så vi kan vælge sange til dig og lave playlister til dine hold.',
@@ -1320,9 +1322,8 @@ const da: Catalogue = {
     'Ingen playlister endnu. Når du godkender sange til et hold, vises dets playliste her.',
   'music.page.mowlTitle': 'Dine playlister i MOWL',
   'music.page.mowlLoading': 'Indlæser din MOWL-musik',
-  'music.page.mowlFailed':
-    'Dine MOWL-playlister kunne ikke indlæses. Tilslut MOWL på {link}, eller prøv igen om nogle minutter.',
-  'music.page.mowlFailedLink': 'din kontoside',
+  'music.page.mowlFailed': 'Dine MOWL-playlister kunne ikke indlæses. Tilslut MOWL, eller prøv igen om nogle minutter.',
+  'music.page.mowlConnect': 'Tilslut MOWL',
   'music.page.mowlEmpty': 'MOWL viser ingen Spotify-playlister for din konto.',
   'music.page.untitled': 'Unavngiven playliste',
   'music.page.forClass': 'Til {link}',
