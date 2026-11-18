@@ -36,8 +36,8 @@ from classbeat.agent.providers.openai_common import (
     normalise_usage,
     read_answer,
     responses_usage,
-    tool_input,
 )
+from classbeat.agent.providers.openai_strict import tool_input
 from classbeat.egress import MODEL_HOSTS, ModelProviderName
 from classbeat.jobs.errors import JobFailure
 from deepseekfake import DEEPSEEK_EFFORT, DEEPSEEK_MODEL, scripted_deepseek

@@ -68,8 +68,8 @@ class WantedSong(BaseModel):
     model_config = STRICT
 
     artist: Annotated[str, Field(min_length=1, max_length=100), AfterValidator(_words)]
-    # The song's title. Not named ``title``: the strict tool form drops a property of that name
-    # (``openai_common._DROPPED``, the JSON schema's own ``title`` keyword).
+    # The song's title, named ``track`` while the strict tool form dropped a property named
+    # ``title`` (the JSON schema's own keyword); #1197 fixed that, the name stays.
     track: Annotated[str, Field(min_length=1, max_length=120), AfterValidator(_words)]
 
 
