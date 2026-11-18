@@ -17,6 +17,7 @@ from classbeat.classes import pending_policy
 from classbeat.classes.pending_policy import ClassState
 from classbeat.classes.pending_submit import submit_key
 from classbeat.design import limits as design_limits
+from classbeat.jobs.credits import QuotaRefused
 from jobapi import owner_lock_key
 from jobtools import engine_for
 from sketchtools import SketchEnv, composer_on
@@ -201,6 +202,23 @@ async def test_a_refused_revise_marks_it_failed_with_the_reason(
     assert tuple(stored(skenv, message)) == ("failed", reason, None)
     # The next message can be stored: a failed one no longer holds the class's pending slot.
     assert (await send(skenv, class_id, uuid.uuid4(), "Try again")).status_code == 201
+
+
+async def test_a_revise_over_the_cost_cap_marks_it_failed_with_quota(
+    skenv: SketchEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class_id, _ = await skenv.sketched()
+
+    async def capped(db: Any, ctx: Any, limits: Any = None) -> None:
+        raise QuotaRefused("cost", limit=1, used=1, plan="pro")
+
+    monkeypatch.setattr("classbeat.quota.check_cost", capped)
+    message = uuid.uuid4()
+    await send(skenv, class_id, message)
+    refused = await submit(skenv, class_id, message)
+    assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "quota")
+    assert tuple(stored(skenv, message)) == ("failed", "quota", None)
+    assert revise_jobs(skenv, class_id) == []
 
 
 async def test_two_submits_at_once_make_one_job(skenv: SketchEnv, database_url: str) -> None:
