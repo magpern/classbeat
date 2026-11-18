@@ -81,8 +81,8 @@ RELEASED: dict[int, str] = {
     # #1188: rev_sketch_fill_30, the composer's design on the songs with a sketch as its base.
     27: "57d564bea0282681c91fdb2db7823fa55b82f69139f4302394fc0237fade63dd",
     # #1233: a new class's short name in the interpret prompt, its cleaning and the name check,
-    # and the composer docstring the #1206 leftovers waited on.
-    28: "c826413450e26e2e7e531430bcb41a1d0be59b56f20f1d2165ff2b18a41aabb1",
+    # the composer docstring the #1206 leftovers waited on, and the #1237 hardening.
+    28: "afeb954aeef7b0516405466ab2aba709c817291172dba6bafdd6fca15f16c69a",
 }
 
 SUITE = load_suite()

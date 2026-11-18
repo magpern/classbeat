@@ -195,9 +195,12 @@ The fields are:
   title of the ride (not the music) in the request's language, at most 60 characters, no quotes
   or emoji. It is the one piece of model text that is kept, as **display text only**: never a
   brief value, never used for authorization, never sent to a model again, and rendered escaped.
-  `InterpretedRequest.sanitised` cleans it (`class_title_policy.proposed_name`: emoji, symbols
-  and quote marks dropped, then the title cleaner of a duplicate, at most 60 characters, at least
-  one letter or digit) or drops it. In the `interpret_request` job's final fenced transaction,
+  `InterpretedRequest.sanitised` cleans it (`class_title_policy.proposed_name`: emoji, symbols,
+  quote marks, variation selectors, the combining keycap and the blank-looking Hangul fillers
+  dropped, then the title cleaner of a duplicate; at most 60 characters after the cleaning, at
+  least one letter or digit, and nothing link-like: no scheme, `www.`, `@` or `word.tld`) or drops
+  it. The schema does not bound it, so a name never costs a correction round, and a revise's
+  reading, which ignores it, never stores it (`songs.revise_reading`, #1237). In the `interpret_request` job's final fenced transaction,
   `design.class_name.adopt` makes it `classes.title` **only while the title is still the
   request's first words** (`interpret_policy.title_for`, set at admit when the client sent no
   title); a title the user chose, a duplicate's or any other title is never overwritten, and
@@ -363,7 +366,9 @@ The fields are:
 - `suite_version` is bumped. The cycling prompt pins change on purpose.
 - Suite version 28 (#1233): `class_title_policy.py` joins the rule sources, the interpret case
   `interpret_class_name` and the Swedish and Danish cases expect a `named` class (the `name`
-  check: a name that survives the cleaning), and `forbidden_text` covers the name too.
+  check: a name that survives the cleaning; any name that comes back must be one the cleaning
+  keeps as it is), `forbidden_text` covers the name too, and the playlist injection case carries a
+  link to name the class by (#1237).
 - **Stale routes are served, with a warning (ADR 0012 §5, `models/routes.py:376-394`).** Until the
   owner's live suite run, a route whose prompt versions were not recorded is still used for
   cycling and is flagged stale. Only `newer_failure` makes a route unusable. Running and soundless

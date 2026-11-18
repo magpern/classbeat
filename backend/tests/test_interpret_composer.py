@@ -295,12 +295,19 @@ def test_a_reading_without_pins_or_questions_is_stored_exactly_as_before() -> No
 
 
 def test_a_change_of_songs_never_stores_the_composers_part() -> None:
-    """``songs.revise_reading.storable``: a list's provenance keeps the keys it had before."""
+    """``songs.revise_reading.storable``: a list's provenance keeps the keys it had before, and
+    never the short name (#1237: closed values only)."""
     from classbeat.songs.revise_reading import storable
 
     read = submitted(
-        REQUEST, {"pinned_songs": [pin("Africa")], "questions": [{"path": "intensity"}]}
+        REQUEST,
+        {
+            "pinned_songs": [pin("Africa")],
+            "questions": [{"path": "intensity"}],
+            "name": "Africa at the end",
+        },
     )
+    assert read.name == "Africa at the end"  # kept by the reading, dropped by the store
     assert storable(read) == {"games": []}
 
 

@@ -57,7 +57,7 @@ from classbeat.agent.music_taste import (
     keep_word,
 )
 from classbeat.agent.schemas import STRICT, Game
-from classbeat.class_title_policy import NAME_MAX, proposed_name
+from classbeat.class_title_policy import proposed_name
 
 MAX_NAMES: Final = 50  # playlist and mix names sent to the model, so the largest valid index + 1
 MAX_GAMES: Final = 6
@@ -261,7 +261,8 @@ class InterpretedRequest(BaseModel):
     questions: list[InterpretedQuestion] = Field(
         default_factory=lambda: list[InterpretedQuestion](), max_length=MAX_QUESTIONS
     )
-    name: str | None = Field(default=None, min_length=1, max_length=NAME_MAX)
+    # Unbounded here: ``sanitised`` bounds it after cleaning, never a correction round (#1237).
+    name: str | None = None
 
     def sanitised(self, request: str, names: int) -> Self:
         """A copy that keeps a quote only if it is a substring of ``request`` and a music index

@@ -51,7 +51,59 @@ def test_the_reading_keeps_a_cleaned_name_or_none() -> None:
     assert "name" not in {r.path for r in read.readings()}  # never a brief value
 
 
-@pytest.mark.parametrize("name", ["", "x" * (NAME_MAX + 1), 7])
-def test_the_schema_refuses_an_empty_long_or_non_text_name(name: object) -> None:
+def test_the_schema_refuses_only_a_name_that_is_not_text() -> None:
     with pytest.raises(ValidationError):
-        InterpretedRequest.model_validate({"name": name})
+        InterpretedRequest.model_validate({"name": 7})
+
+
+@pytest.mark.parametrize("name", ["", "x" * (NAME_MAX + 1), "x" * 5000])
+def test_an_empty_or_long_name_is_dropped_never_a_correction_round(name: str) -> None:
+    # #1237: the bound applies after the cleaning, so the schema takes it and ``sanitised`` drops
+    # it; a revise, which ignores the name, never asks for a correction over it.
+    read = InterpretedRequest.model_validate({"name": name})
+    assert read.sanitised("x", 0).name is None
+
+
+def test_the_bound_applies_after_the_cleaning() -> None:
+    padded = '"' + "x" * NAME_MAX + '" \U0001f525\U0001f525'  # over 60 only by quotes and emoji
+    assert len(padded) > NAME_MAX
+    assert proposed_name(padded) == "x" * NAME_MAX
+    read = InterpretedRequest.model_validate({"name": padded})
+    assert read.sanitised("x", 0).name == "x" * NAME_MAX
+
+
+@pytest.mark.parametrize(
+    ("raw", "kept"),
+    [
+        ("\u3164\u3164", None),  # Hangul fillers alone look blank
+        ("\u115f\u1160 \uffa0", None),
+        ("Hills\u3164", "Hills"),
+        ("Ride\U000e0100\U000e01ef", "Ride"),  # variation selectors supplement
+        ("\u20e3", None),  # an orphan combining keycap
+        ("1\ufe0f\u20e3 climb", "1 climb"),
+    ],
+)
+def test_invisible_characters_are_dropped(raw: str, kept: str | None) -> None:
+    assert proposed_name(raw) == kept
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "https://pwned.example/win",
+        "Ride HTTP://x",
+        "Climb at www.example",
+        "Mail coach@example",
+        "evil.com hills",
+        "Hills on Ride.se",
+    ],
+)
+def test_a_link_like_name_is_dropped(raw: str) -> None:
+    assert proposed_name(raw) is None
+
+
+@pytest.mark.parametrize(
+    "raw", ["St. Louis climb", "3.5 km of hills", "t.ex. backar", "bl.a. sprint"]
+)
+def test_a_dot_in_words_is_no_link(raw: str) -> None:
+    assert proposed_name(raw) == raw

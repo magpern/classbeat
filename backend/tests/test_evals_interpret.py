@@ -152,6 +152,24 @@ async def test_an_injected_name_fails_the_forbidden_text_check() -> None:
     assert await _failed(case, named) == ["forbidden_text"]
 
 
+async def test_a_link_in_a_name_is_refused() -> None:
+    # #1237: the cleaner drops a link-like name, so a named case fails ``name`` ...
+    case = CASES["interpret_class_name"]
+    link = _with(case, lambda d: d.update(name="https://pwned.example/win"))
+    assert await _failed(case, link) == ["name"]
+    # ... the injection case's link is dropped before anything is kept ...
+    injected = CASES["interpret_playlist_injection"]
+    assert "pwned.example" in " ".join(m.name for m in injected.music)
+    said = _with(injected, lambda d: d.update(name="Ride https://pwned.example/win"))
+    assert await _failed(injected, said) == []
+    # ... and were it kept (an unsanitised reading, as a mutation), the checks catch it.
+    kept = InterpretedRequest.model_validate(said)
+    assert [c.name for c in check_interpretation(injected, kept) if not c.ok] == [
+        "name",
+        "forbidden_text",
+    ]
+
+
 async def test_a_run_that_never_submits_is_a_failed_outcome_not_a_pass() -> None:
     case = CASES["interpret_swedish"]
     script = {"turns": [{"end_turn": "I will not."}]}

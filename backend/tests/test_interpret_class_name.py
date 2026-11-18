@@ -43,21 +43,43 @@ async def test_a_name_the_cleaning_drops_keeps_the_request_title(
     assert title(ienv, class_id) == interpret_policy.title_for(REQUEST)
 
 
-async def test_a_name_longer_than_the_limit_is_corrected_not_stored(ienv: InterpretEnv) -> None:
-    # The schema refuses it, so the run is a correction round; the script then stops and the job
-    # fails, storing nothing: no class of the user has the name as its title.
-    ienv.models(interpreter(named("x" * 61)))
-    made = await ienv.start()
-    assert made.status_code == 201, made.text
-    await ienv.run(INTERPRET_REQUEST.name)
-    assert ienv.renv.denv.ops.row(UUID(made.json()["id"])).state == "failed"
-    found = "SELECT count(*) FROM classes WHERE owner_id = :o AND title = :t"
-    assert ienv.sql(found, o=ienv.owner, t="x" * 61).scalar_one() == 0
+async def test_a_name_too_long_once_cleaned_is_dropped_without_a_correction(
+    ienv: InterpretEnv,
+) -> None:
+    # #1237: the bound applies after the cleaning; a name over it is dropped, the job completes on
+    # its one scripted turn and the title stays the request's.
+    class_id, _ = await ienv.interpreted(named("x" * 61))
+    assert title(ienv, class_id) == interpret_policy.title_for(REQUEST)
+
+
+async def test_a_name_over_the_limit_only_by_quotes_and_emoji_is_kept(ienv: InterpretEnv) -> None:
+    class_id, _ = await ienv.interpreted(named('"' + "x" * 60 + '" \U0001f525'))
+    assert title(ienv, class_id) == "x" * 60
+
+
+async def test_a_link_like_name_is_never_the_title(ienv: InterpretEnv) -> None:
+    class_id, _ = await ienv.interpreted(named("Ride https://pwned.example/win"))
+    assert title(ienv, class_id) == interpret_policy.title_for(REQUEST)
 
 
 async def test_a_title_the_user_chose_is_never_overwritten(ienv: InterpretEnv) -> None:
     class_id, _ = await ienv.interpreted(named("One climb, two sprints"), title="Tuesday hills")
     assert title(ienv, class_id) == "Tuesday hills"
+
+
+async def test_the_workers_guard_alone_keeps_a_title_the_user_chose(ienv: InterpretEnv) -> None:
+    # #1237: the user sent a title of their own; the class's title is then set to the request's
+    # first words before the worker runs, so only the worker's ``given.title == from_request``
+    # guard (not the store's title condition) stands between the name and the title.
+    ienv.models(interpreter(named("One climb, two sprints")))
+    made = await ienv.start(title="Tuesday hills")
+    assert made.status_code == 201, made.text
+    class_id = UUID(made.json()["class_id"])
+    request_title = interpret_policy.title_for(REQUEST)
+    ienv.sql("UPDATE classes SET title = :t WHERE id = :c", t=request_title, c=class_id)
+    await ienv.run(INTERPRET_REQUEST.name)
+    assert ienv.renv.denv.ops.row(UUID(made.json()["id"])).state == "completed"
+    assert title(ienv, class_id) == request_title
 
 
 async def test_a_title_changed_before_the_reading_is_stored_is_never_overwritten(

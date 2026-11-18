@@ -55,8 +55,8 @@ PINNED = {
     # interpret once more, on purpose: the era caps (4 eras, 30 years each) in the prompt. #1185
     # changed interpret once more, on purpose: the composer's pinned songs, questions and attached
     # playlists (ADR 0038 section 3; suite version 26). #1233 changed interpret once more, on
-    # purpose: a new class's short name (suite version 28).
-    "interpret": "abcbf62dd6ab89baf674fc6916d5b98faf70c62cb5b0d89c77e55863a008a5c6",
+    # purpose: a new class's short name (suite version 28; #1237 unbounded it in the schema).
+    "interpret": "050a864d8efb4b3aa89ae2e1ff2e4f9ecb72803a5f596cb3b1a20eed91a01b92",
 }
 PLANTED = "Zq9 planted brief text"
 PLANTED_STYLE = "Zq9 planted style"

@@ -48,9 +48,10 @@ def _without_quotes(value: Any) -> Any:
     return value
 
 
-# The composer's part of a reading (ADR 0038 section 3) is a new class's only: a change of songs
-# never stores it, so a list's provenance keeps exactly the keys it had before #1185.
-_NOT_STORED: Final = frozenset({"pinned_songs", "questions"})
+# The composer's part of a reading (ADR 0038 section 3) and the short name (#1233) are a new
+# class's only: a change of songs never stores them, so a list's provenance keeps exactly the
+# keys it had before #1185 and holds closed values only (ADR 0029 section 4).
+_NOT_STORED: Final = frozenset({"pinned_songs", "questions", "name"})
 
 
 def storable(reading: InterpretedRequest) -> dict[str, Any]:
