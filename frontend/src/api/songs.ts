@@ -3,6 +3,7 @@ import { count, flag, list, object, optionalCount, optionalText, text } from './
 import { isTrackLink } from './classes'
 import { decodeInterpretationItems, type InterpretationItem } from './interpretationItems'
 import { decodeJob, type Brief, type Job } from './jobs'
+import { decodeDraftContent, type DraftContent } from './draftTypes'
 
 // Song picking (ADR 0008 sections 4 to 6 and 9): the song list a job waits on, the approval, and
 // the jobs that pick, change or resume. Server text is data: it is decoded into typed fields and
@@ -19,6 +20,13 @@ export type ListStatus = 'waiting' | 'approved' | 'expired' | 'superseded' | 'ca
 
 const STATUSES: readonly string[] = ['waiting', 'approved', 'expired', 'superseded', 'cancelled']
 
+/**
+ * Where a song came from (ADR 0038 section 10.2), assumed as `source: {kind, name?}` on each song of
+ * a composer list: `pinned` (named by the instructor), `playlist` (an attached one, with its name)
+ * or `search` (found by classbeat). Absent on older lists.
+ */
+export type SongSource = { kind: 'pinned' } | { kind: 'playlist'; name: string } | { kind: 'search' }
+
 export interface Song {
   position: number
   title: string
@@ -33,6 +41,8 @@ export interface Song {
   cover: string | null
   /** The server-built link back to Spotify (ADR 0008 section 9), only when it is a track link. */
   openSpotify: string | null
+  /** Composer lists only; absent or null for an older list. */
+  source?: SongSource | null
 }
 
 export interface SongList {
@@ -52,11 +62,36 @@ export interface SongList {
   note: string
   /** What the list could not do as asked (issue #1133): Not as asked items, worded by code. */
   unmet: InterpretationItem[]
+  /**
+   * A `v: 3` list's designed class (ADR 0038 section 5, `preview.content`): what the approval covers
+   * with the songs. Absent or null for a `v: 1` or `v: 2` list.
+   */
+  preview?: DraftContent | null
 }
 
 /** A link from the API is kept only when it is a Spotify track link. */
 function trackLink(link: string | null): string | null {
   return link !== null && isTrackLink(link) ? link : null
+}
+
+function decodeSource(value: unknown): SongSource | null {
+  if (typeof value !== 'object' || value === null) return null
+  const item = value as Record<string, unknown>
+  if (item.kind === 'pinned') return { kind: 'pinned' }
+  if (item.kind === 'search') return { kind: 'search' }
+  if (item.kind === 'playlist' && typeof item.name === 'string' && item.name !== '') {
+    return { kind: 'playlist', name: item.name }
+  }
+  return null
+}
+
+function decodePreview(value: unknown): DraftContent | null {
+  if (typeof value !== 'object' || value === null) return null
+  try {
+    return decodeDraftContent((value as Record<string, unknown>).content)
+  } catch {
+    return null
+  }
 }
 
 function decodeSong(value: unknown): Omit<Song, 'startSec'> {
@@ -72,6 +107,7 @@ function decodeSong(value: unknown): Omit<Song, 'startSec'> {
     // Older lists (v: 1) have no cover; CoverArt checks the host again before it shows one.
     cover: optionalText(item, 'cover'),
     openSpotify: trackLink(optionalText(item, 'open_spotify')),
+    source: decodeSource(item.source),
   }
 }
 
@@ -108,6 +144,7 @@ export function decodeSongList(value: unknown): SongList {
     omittedNoBpm: optionalCount(item, 'omitted_no_bpm') ?? 0,
     note: optionalText(item, 'note') ?? '',
     unmet: (decodeInterpretationItems(item.unmet) ?? []).filter((i) => i.origin === 'not_as_asked'),
+    preview: decodePreview(item.preview),
   }
 }
 
