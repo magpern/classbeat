@@ -492,21 +492,41 @@ describe('the composer workspace page', () => {
     expect(await screen.findByRole('button', { name: 'Approve and save' })).toBeEnabled()
   })
 
-  it('creates the playlist again with a resume of the approved list', async () => {
+  it('creates the playlist again through resume-songs: an Idempotency-Key, no body, no jobs call', async () => {
     const user = userEvent.setup()
     const { api } = setup({
       cls: { fill_songs: FILL, songs: { state: 'approved', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null }, phase2: { state: 'failed' } },
-      extraRoutes: { 'POST /api/jobs': () => json(jobBody('queued', { kind: 'design_with_songs', id: 'e2222222-2222-4222-8222-222222222222' }), 201) },
+      extraRoutes: { [`POST ${CLASS_PATH}/resume-songs`]: () => json({ job_id: 'e2222222-2222-4222-8222-222222222222', kind: 'design_with_songs', state: 'queued' }, 201) },
     })
     renderAt(PAGE)
     await user.click(await screen.findByRole('button', { name: 'Create the playlist again' }))
     await waitFor(() => {
-      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+      expect(api.to('POST', `${CLASS_PATH}/resume-songs`)).toHaveLength(1)
     })
-    expect(api.to('POST', '/api/jobs')[0]!.body).toMatchObject({
-      kind: 'design_with_songs',
-      input: { class_id: CLASS_ID, mode: 'resume', resume: { song_list_revision_id: LIST_ID } },
+    const call = api.to('POST', `${CLASS_PATH}/resume-songs`)[0]!
+    expect(call.body).toEqual({})
+    expect(call.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
+    expect(api.to('POST', '/api/jobs')).toHaveLength(0)
+  })
+
+  it('asks to check the class when the final songs differed, until that draft is saved and up to date', async () => {
+    const draft = {
+      origin: 'design_with_songs',
+      extraRoutes: { [`GET ${CLASS_PATH}/revisions/${DRAFT_ID}`]: revisionBody(DRAFT_ID, 2, CONTENT, { origin: 'design_with_songs' }) },
+    }
+    const unsaved = { current_revision_id: DRAFT_ID, current_revision_number: 2, phase2: { state: 'differed' } }
+    setup({ ...draft, cls: unsaved })
+    const view = renderAt(PAGE)
+    expect(await screen.findByText('The final songs differed. Check the class and save.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save to MOWL' })).toBeInTheDocument()
+    view.unmount()
+    setup({
+      ...draft,
+      cls: { ...unsaved, saved: { count: 1, latest_revision_number: 2, latest_saved_at: '2026-11-18T10:00:00Z', latest_up_to_date: true, latest_saved_workout_id: 'w1' } },
     })
+    renderAt(PAGE)
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+    expect(screen.queryByText('The final songs differed. Check the class and save.')).toBeNull()
   })
 
   it('keeps the More menu closed until it is opened, and lists its sections', async () => {
