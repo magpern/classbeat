@@ -33,6 +33,9 @@ const running = (kind: string) => ({ id: 'j', kind, state: 'running' })
 
 describe('the workspace state chip', () => {
   const rows: [string, ChipInput, string, boolean, boolean][] = [
+    ['the reading runs, no version yet (#1206)', input({ currentRevisionId: null, currentOrigin: null, openJob: running('interpret_request') }), 'reading', false, false],
+    ['the reading is queued, no version yet', input({ currentRevisionId: null, currentOrigin: null, openJob: { id: 'j', kind: 'interpret_request', state: 'queued' } }), 'reading', false, false],
+    ['no version and no reading job running', input({ currentRevisionId: null, currentOrigin: null }), 'rough', false, false],
     ['a sketch with no fill started', input(), 'rough', false, false],
     ['a sketch while the fill runs', input({ openJob: running('design_with_songs'), composer: { fill: FILL } }), 'rough', false, false],
     ['a list waits for approval', input({ songs: { ...NO_SONGS, state: 'waiting' }, composer: { fill: FILL } }), 'ready', false, false],

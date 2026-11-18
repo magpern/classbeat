@@ -2,7 +2,11 @@
 
 - ``composer``: the class was read with the composer flow on (its interpret job, named by the
   stored interpretation, was admitted with ``composer``: true, #1185). False for every other class,
-  so the page never guesses from the version history.
+  so the page never guesses from the version history. **Reading window** (#1206): while the class
+  has no interpretation yet, it is true only while its ``interpret_request`` job is still queued or
+  running, was admitted with ``composer``: true and a music choice other than "No music", **and**
+  the ``composer_flow`` gate is on now; the workspace then shows from the first second. A job that
+  ended without storing a reading (failed, cancelled, expired) gives false again, as before.
 - ``fill_songs``: the song fill of the class's **current sketch**, once one was started for it
   (``classbeat.classes.song_fill``): ``{sketch_revision_id, attempt, failure}``; ``failure`` is the
   stored refusal of that attempt, or the way its job ended when it failed (its error category),
@@ -34,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.classes.song_fill_keys import fill_key
 from classbeat.design import interpretation_row
+from classbeat.design.composer import composer_on
 from classbeat.design.revision_ready_policy import SKETCH
 from classbeat.saving import save_pending
 from classbeat.songs.admit import RECEIPT_ENDED, receipt_valid
@@ -44,6 +49,14 @@ _STATE = text(
     "r.provenance ->> 'fit' AS fit FROM classes c "
     "LEFT JOIN class_revisions r ON r.owner_id = c.owner_id AND r.class_id = c.id "
     "AND r.id = c.current_revision_id WHERE c.owner_id = :owner_id AND c.id = :class_id"
+)
+# The class's reading while it runs: a composer job (admitted with ``composer``: true, and not for
+# "No music", which has no sketch) that is queued or running, before any interpretation is stored.
+_READING = text(
+    "SELECT 1 FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "
+    "AND kind = 'interpret_request' AND state IN ('queued', 'running') "
+    "AND coalesce(input ->> 'composer' = 'true', false) "
+    "AND coalesce(input #>> '{music_override,source}', '') <> 'none' LIMIT 1"
 )
 _COMPOSER = text(
     "SELECT coalesce(input ->> 'composer' = 'true', false) FROM jobs "
@@ -103,9 +116,9 @@ class ComposerState:
 
 async def composer_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> ComposerState:
     row = await interpretation_row.read(db, owner_id, class_id)
-    if row is None:  # not read by the composer; ``save_pending`` follows its own rule
-        return await _after_phase_two(db, owner_id, class_id, False, None)
     ids = {"owner_id": owner_id, "class_id": class_id}
+    if row is None:  # no reading stored yet; ``save_pending`` follows its own rule
+        return await _after_phase_two(db, owner_id, class_id, await _reading(db, ids), None)
     composer = bool((await db.execute(_COMPOSER, {**ids, "job_id": row.job_id})).scalar())
     now = (await db.execute(_STATE, ids)).first()
     if now is not None and now.origin != SKETCH:
@@ -137,6 +150,14 @@ async def composer_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Co
         ),
         phase2=phase2,
     )
+
+
+async def _reading(db: AsyncSession, ids: dict[str, UUID]) -> bool:
+    """The reading window (#1206): the composer's reading of this class runs and the flow is on.
+    The job is read first, so a class that was never read (every old one) costs no flag read."""
+    if (await db.execute(_READING, ids)).first() is None:
+        return False
+    return await composer_on(db)
 
 
 async def _after_phase_two(

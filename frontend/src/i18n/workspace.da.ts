@@ -38,6 +38,7 @@ export const workspaceDa: Catalogue = {
   'cw.chat.messagePending': 'Din seneste besked venter stadig på at blive sendt.',
   'cw.chat.pendingFull': 'Holdet kan ikke rumme flere beskeder. Lav et nyt hold for at komme videre.',
   'cw.chat.noVersion': 'Holdet har ingen version at ændre endnu.',
+  'cw.chip.reading': 'Ingen skitse endnu',
   'cw.chip.rough': 'Skitse: sangene er ikke på plads endnu',
   'cw.chip.ready': 'Klar til godkendelse',
   'cw.chip.expired': 'Sangene er udløbet',

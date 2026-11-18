@@ -87,11 +87,19 @@ def sources_of(
     return out
 
 
-def pool_message(ctx: PoolContext, slots: list[str], favoured: Favoured, pinned: Pinned) -> str:
+def pool_message(
+    ctx: PoolContext,
+    slots: list[str],
+    favoured: Favoured,
+    pinned: Pinned,
+    excluded: frozenset[str] = frozenset(),
+) -> str:
+    """The pool stage's first message. A song a swap takes out (``excluded``) is named in neither
+    ref list: ``candidate_set`` would drop it anyway."""
     facts = {
         "sketch_slots": slots,
-        "favoured_refs": [e.ref for e in favoured.entries],
-        "pinned_refs": [e.ref for _, e in pinned.found],
+        "favoured_refs": [e.ref for e in favoured.entries if e.spotify_id not in excluded],
+        "pinned_refs": [e.ref for _, e in pinned.found if e.spotify_id not in excluded],
     }
     return (
         ctx.first_message()
@@ -159,7 +167,7 @@ async def pick_composer(
         JobStageHost(run, "pool_search"),
         provider,
         pool_stage(ctx),
-        pool_message(ctx, slots, favoured, pinned),
+        pool_message(ctx, slots, favoured, pinned, excluded),
         pool_config,
     )
     if not isinstance(pool_outcome.output, PoolResult) or not pool_outcome.output.picks:
