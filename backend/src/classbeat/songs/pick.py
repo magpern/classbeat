@@ -112,7 +112,7 @@ async def _pool(
     return outcome.output, outcome
 
 
-async def _write(
+async def write_pool_playlist(
     run: JobRun,
     keyring: KeyRing,
     spotify: OpenConnection,
@@ -160,7 +160,7 @@ async def run_phase_one(
         run, provider, plan, job_searcher(run, keyring, spotify), pool_config
     )
     track_ids = tuple(p.spotify_id for p in pool.picks)
-    playlist_id = await _write(run, keyring, spotify, given, track_ids)
+    playlist_id = await write_pool_playlist(run, keyring, spotify, given, track_ids)
 
     await run.stage("pool_analyse")
     step = await load_music(

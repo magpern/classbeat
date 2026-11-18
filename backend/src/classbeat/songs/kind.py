@@ -27,6 +27,11 @@
   with ``Complete``: the final private playlist, verified, analysed in MOWL, and the class's
   first design (a job waits at most once). ``phase_two`` is the seam the tests replace.
 
+- **The composer's modes** (ADR 0038 sections 5 and 6, #1188): ``fill``, ``swap`` and ``change``
+  (``classbeat.songs.composer``) end phase 1 with a ``v: 3`` list whose ``preview`` is the class
+  designed on its songs; their fields are server fields, set only by the hand-offs, which create
+  them with no credit. An approved composer job fails closed until #1189 builds its phase 2.
+
 Registered in ``classbeat.jobs.KINDS`` on import, by the worker (which runs it) and the web app
 (the jobs API validates with the same registry). The worker's runtime is ``design_draft``'s
 (``classbeat.design.current_runtime``: the key ring, the model of each stage group from the job's
@@ -42,8 +47,9 @@ from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun, Outcome
 from classbeat.quota.route import with_plan, with_plan_run
 from classbeat.songs import config
 from classbeat.songs.admit import admit, approve_check
+from classbeat.songs.composer import run_composer
 from classbeat.songs.from_playlist import run_source_phase_one
-from classbeat.songs.inputs import DesignWithSongsInput
+from classbeat.songs.inputs import COMPOSER_FIELDS, DesignWithSongsInput
 from classbeat.songs.phase2 import PHASE_TWO, run_phase_two
 from classbeat.songs.pick import SeedSpec, run_phase_one
 
@@ -78,6 +84,12 @@ async def run(job_run: JobRun) -> Outcome:
     given = job_run.input
     if runtime is None or not isinstance(given, DesignWithSongsInput):
         raise JobFailure("internal")
+    if job_run.approved and given.composer:
+        # The approved composer list's phase 2 (``fit``, ``save_pending``) is #1189: until then
+        # it fails closed here, before any Spotify or MOWL call, and the sketch stays current.
+        raise JobFailure("internal")
+    if given.composer:  # ADR 0038: fill, swap and change (``classbeat.songs.composer``)
+        return await run_composer(job_run, given, runtime)
     if job_run.approved or given.mode == "resume":
         if job_run.approved and given.mode != "pick":
             raise JobFailure("internal")  # a resume never waits
@@ -108,6 +120,6 @@ DESIGN_WITH_SONGS: Final = KINDS.register(
         consumes_credit=True,
         admit=with_plan(admit),
         approve_check=approve_check,
-        server_fields=frozenset({"route_key", "plan_gates"}),
+        server_fields=frozenset({"route_key", "plan_gates", *COMPOSER_FIELDS}),
     )
 )
