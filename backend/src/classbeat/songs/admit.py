@@ -25,7 +25,9 @@ job, the per-user limit), in this order, each refusal writing nothing:
    ``write_unresolved`` while a final-playlist write of the class is ``pending`` or ``uncertain``
    (``classbeat.operations.orphans.playlist_unresolved``, after ``resolve``): a resume never makes
    another playlist before the user's Check again or Do it anyway on it. The new job reserves the
-   credit again (the failed one released it);
+   credit again (the failed one released it). A **composer's** receipt (ADR 0038 section 7) is
+   resumed only by its own hand-off, with no credit, after ``composer_admit.admit_composer_resume``
+   (``receipt_invalid``, ``stale_base``, the cost cap);
 3. ``not_connected`` unless the Spotify row is ``connected`` with a Spotify user id (share-locked
    for the rest of the transaction);
 4. ``consent_missing`` unless the user's pool consent is given for that Spotify account;
@@ -85,7 +87,7 @@ from classbeat.jobs.kinds import SONG_KIND_NAMES, Admitted, Approving, Refused
 from classbeat.operations import orphans
 from classbeat.quota.gates import brief_of, check_brief, current_gates
 from classbeat.songs import config, song_list
-from classbeat.songs.composer_admit import admit_composer
+from classbeat.songs.composer_admit import admit_composer, admit_composer_resume
 from classbeat.songs.inputs import DesignWithSongsInput, ReviseSongsInput, Seed
 from classbeat.songs.pick_checks import pick_checks as pick_checks
 from classbeat.songs.pick_checks import pool_busy as pool_busy
@@ -106,7 +108,8 @@ _NEWEST_LIST = text(
 # Jobs of the class that approved or resumed the list ``revision_id``, by state; ``approved`` only
 # for a job of the resuming kind (a list is resumed by the kind that made it), newest first.
 _FOR_LIST = text(
-    "SELECT state, input, approved_at IS NOT NULL AND approval_revision_id = :revision_id "
+    "SELECT state, input, approval_save, "
+    "approved_at IS NOT NULL AND approval_revision_id = :revision_id "
     "AND kind = :kind AS approved "
     "FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id AND ("
     "(approval_revision_id = :revision_id AND approved_at IS NOT NULL) OR "
@@ -122,6 +125,7 @@ class Receipt:
 
     stored: song_list.SongListRevision
     approved_input: dict[str, Any]
+    save: bool = False  # the approval's ``save`` (ADR 0038 section 7)
 
 
 async def receipt_valid(
@@ -152,7 +156,7 @@ async def receipt_valid(
     stored = await song_list.load(db, owner_id, class_id, revision_id)
     if stored is None:
         return None
-    return Receipt(stored, approved.input)  # pyright: ignore[reportUnknownArgumentType]
+    return Receipt(stored, approved.input, bool(approved.approval_save))  # pyright: ignore[reportUnknownArgumentType]
 
 
 async def _admit_resume(
@@ -168,6 +172,9 @@ async def _admit_resume(
     )
     if found is None:
         return Refused("receipt_invalid")
+    refused = await admit_composer_resume(db, ctx, parsed, found.approved_input, found.save)
+    if refused is not None:
+        return refused  # a composer's receipt: its hand-off only, the sketch still current
     if found.stored.account != account:
         return Refused("account_changed")
     if await orphans.playlist_unresolved(db, ctx, parsed.class_id):

@@ -51,8 +51,12 @@ def _entry(columns: str, reviewed: str, *deleted_with: DeletionPath) -> Retentio
 
 RETENTION: Mapping[str, Retention] = MappingProxyType(
     {
+        # ``save_pending`` (ADR 0038 section 7): a revision id, a job id and a hash, no content.
         "classes": _entry(
-            "title brief music_source interpretation", "dismissed_rules", "class", "account"
+            "title brief music_source interpretation",
+            "dismissed_rules save_pending",
+            "class",
+            "account",
         ),
         # ``content`` of a ``song_list`` (ADR 0008 sections 5 and 8) holds the chosen songs'
         # Spotify ids, titles, artists and, from ``v: 2``, their album cover URLs (``cover``, ADR

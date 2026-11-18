@@ -12,6 +12,7 @@ from classbeat.config import Settings
 
 DEFAULT_COST_MICROS: Final = 3_000_000
 DEFAULT_SYNC_WAIT_SECONDS: Final = 120.0
+DEFAULT_FIT_TOLERANCE_SECONDS: Final = 2.0  # ADR 0038 section 7 (``songs.fit_policy``)
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +20,7 @@ class SongConfig:
     enabled: bool = False  # CLASSBEAT_SONG_PICKING
     cost_micros: int = DEFAULT_COST_MICROS  # CLASSBEAT_SONG_JOB_COST_MICROS
     sync_wait_seconds: float = DEFAULT_SYNC_WAIT_SECONDS  # ..._SPOTIFY_POOL_SYNC_WAIT_SECONDS
+    fit_tolerance_seconds: float = DEFAULT_FIT_TOLERANCE_SECONDS  # CLASSBEAT_FIT_TOLERANCE_SECONDS
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "SongConfig":
@@ -26,6 +28,7 @@ class SongConfig:
             enabled=settings.song_picking,
             cost_micros=settings.song_job_cost_micros,
             sync_wait_seconds=settings.spotify_pool_sync_wait_seconds,
+            fit_tolerance_seconds=settings.fit_tolerance_seconds,
         )
 
 

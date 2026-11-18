@@ -30,7 +30,10 @@
 - **The composer's modes** (ADR 0038 sections 5 and 6, #1188): ``fill``, ``swap`` and ``change``
   (``classbeat.songs.composer``) end phase 1 with a ``v: 3`` list whose ``preview`` is the class
   designed on its songs; their fields are server fields, set only by the hand-offs, which create
-  them with no credit. An approved composer job fails closed until #1189 builds its phase 2.
+  them with no credit. The approved job, and a composer resume (the hand-off
+  ``classes.song_resume``, no credit), run ``classbeat.songs.composer_phase2``: the final playlist,
+  then ``fit`` instead of ``design``, the first real draft and ``save_pending`` (#1189). Only a
+  composer list's approval may carry ``save: true`` (``saves_on_approval``).
 
 Registered in ``classbeat.jobs.KINDS`` on import, by the worker (which runs it) and the web app
 (the jobs API validates with the same registry). The worker's runtime is ``design_draft``'s
@@ -42,12 +45,15 @@ Registered in ``classbeat.jobs.KINDS`` on import, by the worker (which runs it) 
 from collections.abc import Awaitable, Callable
 from typing import Final
 
-from classbeat.design.kind import current_runtime, group_model
+from pydantic import BaseModel
+
+from classbeat.design.kind import Runtime, current_runtime, group_model
 from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun, Outcome
 from classbeat.quota.route import with_plan, with_plan_run
 from classbeat.songs import config
 from classbeat.songs.admit import admit, approve_check
 from classbeat.songs.composer import run_composer
+from classbeat.songs.composer_phase2 import run_composer_phase_two
 from classbeat.songs.from_playlist import run_source_phase_one
 from classbeat.songs.inputs import COMPOSER_FIELDS, DesignWithSongsInput
 from classbeat.songs.phase2 import PHASE_TWO, run_phase_two
@@ -55,9 +61,10 @@ from classbeat.songs.pick import SeedSpec, run_phase_one
 
 KIND: Final = "design_with_songs"
 PHASE_ONE: Final = ("pool_search", "pool_write", "pool_analyse", "choose")
-STAGES: Final = PHASE_ONE + PHASE_TWO
+STAGES: Final = (*PHASE_ONE, *PHASE_TWO, "fit")  # ``fit``: a composer's phase 2 (ADR 0038)
 
 PhaseTwo = Callable[[JobRun, DesignWithSongsInput], Awaitable[Complete]]
+ComposerPhaseTwo = Callable[[JobRun, DesignWithSongsInput, Runtime], Awaitable[Complete]]
 
 
 async def _phase_two(run: JobRun, given: DesignWithSongsInput) -> Complete:
@@ -77,6 +84,12 @@ async def _phase_two(run: JobRun, given: DesignWithSongsInput) -> Complete:
 
 
 phase_two: PhaseTwo = _phase_two
+composer_phase_two: ComposerPhaseTwo = run_composer_phase_two  # a seam the tests replace
+
+
+def saves_on_approval(parsed: BaseModel) -> bool:
+    """An approval with ``save: true`` is a composer list's only (ADR 0038 section 7)."""
+    return isinstance(parsed, DesignWithSongsInput) and parsed.composer
 
 
 async def run(job_run: JobRun) -> Outcome:
@@ -84,10 +97,9 @@ async def run(job_run: JobRun) -> Outcome:
     given = job_run.input
     if runtime is None or not isinstance(given, DesignWithSongsInput):
         raise JobFailure("internal")
-    if job_run.approved and given.composer:
-        # The approved composer list's phase 2 (``fit``, ``save_pending``) is #1189: until then
-        # it fails closed here, before any Spotify or MOWL call, and the sketch stays current.
-        raise JobFailure("internal")
+    if (job_run.approved and given.composer) or given.composer_resume:
+        # ADR 0038 section 7: the approved composer list's phase 2 (``fit``, ``save_pending``)
+        return await composer_phase_two(job_run, given, runtime)
     if given.composer:  # ADR 0038: fill, swap and change (``classbeat.songs.composer``)
         return await run_composer(job_run, given, runtime)
     if job_run.approved or given.mode == "resume":
@@ -120,6 +132,7 @@ DESIGN_WITH_SONGS: Final = KINDS.register(
         consumes_credit=True,
         admit=with_plan(admit),
         approve_check=approve_check,
+        saves_on_approval=saves_on_approval,
         server_fields=frozenset({"route_key", "plan_gates", *COMPOSER_FIELDS}),
     )
 )

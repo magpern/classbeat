@@ -18,6 +18,14 @@
   the rest of the create's refusals, each leaving the waiting list approvable; 422 for a body or
   key that does not parse.
 
+- ``POST .../resume-songs`` with an ``Idempotency-Key`` header and no body (any body is ignored;
+  ``classbeat.classes.song_resume``): **Create the playlist again** after a composer's phase 2
+  failed, from the approval receipt alone, with no credit (ADR 0038 section 7): 201 ``{job_id,
+  kind, state}``, 200 with the same job for the same key; 409 ``receipt_invalid``,
+  ``stale_base`` (the sketch was revised), ``account_changed``, ``write_unresolved``,
+  ``not_connected``, ``quota``, ``class_busy`` and the create's other refusals; 422 for a key that
+  does not parse.
+
 Only while ``composer_flow`` is on. The body is a reason code and whole numbers only; another
 user's class is 404 like an unknown one.
 """
@@ -30,7 +38,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from classbeat import auth
-from classbeat.classes import song_fill, song_swap
+from classbeat.classes import song_fill, song_resume, song_swap
 from classbeat.classes.handoff_routes import job_enqueue
 from classbeat.classes.interpretation_routes import DesignJobOut, RefusalOut
 from classbeat.context import UserContext
@@ -168,6 +176,42 @@ async def swap_songs(
         wanted,
         body.song_list_revision_id,
         body.replace,
+        idempotency_key=idempotency_key,
+        ledger=ledger,
+        limit=limit,
+        enqueue=job_enqueue(),
+    )
+    if done.job_id is None or done.kind is None or done.state is None:
+        return _refuse(done.reason or "invalid_input", dict(done.counts))
+    out = DesignJobOut(job_id=done.job_id, kind=done.kind, state=done.state)
+    if not done.created:
+        return JSONResponse(out.model_dump(mode="json"), status_code=200)
+    return out
+
+
+@router.post(
+    "/{class_id}/resume-songs",
+    status_code=201,
+    response_model=DesignJobOut,
+    responses={200: {"model": DesignJobOut}, 404: {}, 409: {}, 422: {}},
+)
+async def resume_songs(
+    class_id: str,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)],
+    ledger: Annotated[CreditLedger, Depends(credit_ledger)],
+    limit: Annotated[JobLimitPolicy, Depends(job_limit)],
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> DesignJobOut | JSONResponse:
+    wanted = _uuid(class_id)
+    if wanted is None:
+        return _refuse("not_found")
+    if idempotency_key is None or not IDEMPOTENCY_KEY.fullmatch(idempotency_key):
+        return JSONResponse({"detail": {"reason": "invalid_input"}}, status_code=422)
+    done = await song_resume.resume(
+        request.app.state.session_factory,
+        ctx,
+        wanted,
         idempotency_key=idempotency_key,
         ledger=ledger,
         limit=limit,

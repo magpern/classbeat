@@ -2,8 +2,10 @@
 workout in the user's MOWL account from one approved revision.
 
 Input ``{class_id, revision_id, content_hash, mowl_connection_id}`` (``SaveWorkoutInput``): ids
-and a hash only, never a body, a program or playlist id or a name. ``consumes_credit = False``:
-no ledger call, no model call, no ``agent_runs``.
+and a hash only, never a body, a program or playlist id or a name. The composer's driver adds
+``save_pending_job_id`` (ADR 0038 section 7): its admit rule and the clear of ``save_pending`` that
+every admitted Save and Update does are ``classbeat.saving.save_pending.guarded``.
+``consumes_credit = False``: no ledger call, no model call, no ``agent_runs``.
 
 **``admit``** (the jobs API's create transaction, under the owner lock): first the caps on Save
 and Update per user and hour or day (#577, ``classbeat.saving.caps``: 409 ``quota`` ``saves``),
@@ -50,7 +52,6 @@ the fence); everything written goes through ``JobRun.fenced`` and ``perform``. O
 are logged.
 """
 
-import logging
 import time
 from dataclasses import dataclass
 from typing import Annotated, Any, ClassVar, Final, Self, cast
@@ -62,7 +63,7 @@ from pydantic import BaseModel, StringConstraints, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat import connections, egress, mowl_state
+from classbeat import connections, egress
 from classbeat.connections import Credentials, OpenConnection, call_opened, hold, open_connection
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
@@ -73,8 +74,8 @@ from classbeat.operations import CallResult, OperationRequest, UncertainAnswer, 
 from classbeat.quota.gates import check_stored_draft
 from classbeat.saving import approval, operation
 from classbeat.saving.caps import check_write_caps
-
-logger = logging.getLogger(__name__)
+from classbeat.saving.save_pending import guarded
+from classbeat.saving.verify import verify_program
 
 KIND: Final = "save_workout"
 STAGES: Final = ("prepare", "save", "verify")
@@ -98,6 +99,7 @@ class SaveWorkoutInput(JobInput):
     revision_id: UUID
     content_hash: ContentHash
     mowl_connection_id: UUID
+    save_pending_job_id: UUID | None = None  # the composer's phase 2 (``saving.save_pending``)
 
     @model_validator(mode="after")
     def _names_its_class(self) -> Self:
@@ -135,7 +137,7 @@ def current_runtime() -> Runtime | None:
     return _runtime
 
 
-async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
+async def _admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
     """Section 5.1, inside the create transaction; nothing is stored on a refusal."""
     if not isinstance(parsed, SaveWorkoutInput):
         return Refused("invalid_input")
@@ -160,6 +162,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     # #496: no model runs, so the revision must fit the user's current plan (409 ``quota``).
     await check_stored_draft(db, ctx, found.spec)
     return Admitted()
+
+
+admit = guarded(_admit)  # ``classbeat.saving.save_pending``: the check and the clear
 
 
 @dataclass(frozen=True)
@@ -313,58 +318,11 @@ async def save(run: JobRun, keyring: KeyRing, plan: Plan) -> int:
     return int(done.external_id)
 
 
-_STATE = text(
-    "UPDATE saved_workouts SET state_hash = :state_hash, updated_at = now() "
-    "WHERE owner_id = :owner_id AND class_id = :class_id AND program_id = :program_id "
-    "AND detached_at IS NULL AND state_hash IS NULL"
-)
-
-
 async def verify(run: JobRun, plan: Plan, program_id: int) -> bool:
     """Stage ``verify``: best effort. True when the read-back matched and was recorded."""
     return await verify_program(
         run, plan.opened, plan.revision.spec, plan.playlist_id, plan.revision.class_id, program_id
     )
-
-
-async def verify_program(
-    run: JobRun,
-    opened: OpenConnection,
-    spec: dict[str, Any],
-    playlist_id: int,
-    class_id: UUID,
-    program_id: int,
-) -> bool:
-    """Read the written program back and, when it holds exactly ``spec`` with ``playlist_id``,
-    record its normalized state on the live saved row of ``class_id`` whose state is not yet
-    recorded (Save's new row; Update's row, whose state ``on_succeeded`` cleared). Best effort:
-    any failure leaves the row "saved, not checked"."""
-    try:
-        program = await call_opened(
-            run.factory,
-            run.ctx,
-            opened,
-            lambda c: mowl_api.get_workout(c, program_id),
-        )
-        if mowl_state.program_id_of(program) != program_id:
-            return False
-        if not mowl_state.matches(spec, program, playlist_id=playlist_id):
-            return False
-        digest = mowl_state.state_hash(mowl_state.normalized_program(program))
-    except Exception as exc:  # a failed read leaves the row "saved, not checked"
-        logger.info("save not verified", extra={"error_type": type(exc).__name__})
-        return False
-    async with run.fenced() as fs:
-        await fs.db.execute(
-            _STATE,
-            {
-                "state_hash": digest,
-                "owner_id": run.lease.owner_id,
-                "class_id": class_id,
-                "program_id": program_id,
-            },
-        )
-    return True
 
 
 async def run(job_run: JobRun) -> Complete:

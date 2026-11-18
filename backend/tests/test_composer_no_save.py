@@ -1,8 +1,9 @@
 """While a fill waits, is approved, replaced, cancelled or expires, the class's current revision is
 still the sketch and there is no draft revision to save (ADR 0038 sections 4, 5 and 12, #1188):
 Save, Update, Send to player, duplicate and the pick of the current revision refuse, and the fake
-MOWL is asked nothing (zero writes). An approved composer job fails closed before any Spotify or
-MOWL call until #1189 builds its phase 2. Expiry moves nothing and Find songs again starts a new
+MOWL is asked nothing (zero writes). An approved list whose phase 2 has not run yet is the
+same (its job is queued); phase 2 itself, the first writes, is ``test_composer_phase2.py``
+(#1189). Expiry moves nothing and Find songs again starts a new
 fill; a swap cannot start from an expired list. Never the network, a real account or a model."""
 
 import uuid
@@ -48,10 +49,7 @@ async def reach(cenv: ComposerEnv, rider: Rider, class_id: UUID, state: str) -> 
     if state == "approved":
         answer = await rider.approve(job_id, list_id, digest)
         assert answer.status_code == 200, answer.text
-        before = len(cenv.songenv.mowl.requests), len(cenv.songenv.api())
-        row = await cenv.songenv.run(job_id)
-        assert (row.state, row.error_category) == ("failed", "internal")  # until #1189
-        assert (len(cenv.songenv.mowl.requests), len(cenv.songenv.api())) == before
+        assert cenv.songenv.row(job_id).state == "queued"  # phase 2 has not run (#1189)
     elif state == "replaced":
         made = await swap(rider, class_id, list_id)
         assert made.status_code == 201, made.text
@@ -82,7 +80,9 @@ async def test_nothing_can_be_saved_while_the_songs_are_found(
         assert answer.status_code == 409, (case, answer.text)
         # A job of the class still open (waiting, or the swap queued) refuses a new job first.
         refusals = (
-            {"not_ready", "class_busy"} if state in ("waiting", "replaced") else {"not_ready"}
+            {"not_ready", "class_busy"}
+            if state in ("waiting", "approved", "replaced")
+            else {"not_ready"}
         )
         assert answer.json()["detail"]["reason"] in refusals, case
     assert len(cenv.songenv.mowl.requests) == mowl  # zero MOWL calls, so zero writes

@@ -73,7 +73,7 @@ from pydantic import BaseModel, StrictBool, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat import connections, mowl_state
+from classbeat import connections
 from classbeat.connections import (
     ConnectionFailure,
     OpenConnection,
@@ -97,9 +97,11 @@ from classbeat.saving.kind import (
     current_runtime,
     preflight,
     program_id_of_answer,
-    verify_program,
     write_program,
 )
+from classbeat.saving.read_first_policy import program_refusal
+from classbeat.saving.save_pending import guarded
+from classbeat.saving.verify import verify_program
 
 KIND: Final = "update_workout"
 STAGES: Final = ("prepare", "read", "save", "verify")
@@ -137,7 +139,7 @@ class UpdateWorkoutInput(JobInput):
         return bytes.fromhex(self.content_hash)
 
 
-async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
+async def _admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
     """Section 5.1, inside the create transaction; nothing is stored on a refusal."""
     if not isinstance(parsed, UpdateWorkoutInput):
         return Refused("invalid_input")
@@ -164,6 +166,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     # #496: no model runs, so the revision must fit the user's current plan (409 ``quota``).
     await check_stored_draft(db, ctx, found.spec)
     return Admitted()
+
+
+admit = guarded(_admit)  # ``classbeat.saving.save_pending``: the check and the clear
 
 
 @dataclass(frozen=True)
@@ -235,31 +240,6 @@ class Read:
     refusal: str | None = None
 
 
-def _refusal(program: object, plan: Plan, overwrite: bool) -> tuple[str | None, str | None]:
-    """The read-first rule on a read program: ``(before_hash, refusal)``. The sport check comes
-    before ``overwrite``: "Update anyway" replaces the user's changes, never the sport."""
-    if mowl_state.program_id_of(program) != plan.target.program_id:
-        return None, "program_missing"  # an empty answer, or another program
-    try:
-        normal = mowl_state.normalized_program(program)
-    except ValueError:
-        normal = None
-    before = None if normal is None else mowl_state.state_hash(normal).hex()
-    sport = mowl_state.program_sport(program)
-    if sport is None or sport != plan.revision.sport:
-        # Another sport, or one we cannot tell (missing or unknown ``ActivityTypeID``): the
-        # library would rewrite it with this class's sport and bodies (issue #485).
-        return before, "program_other_sport"
-    if overwrite:
-        return before, None
-    if normal is None or normal["public"] is not False:
-        return before, "program_changed"  # the library writes it private: changed in MOWL
-    recorded = plan.target.state_hash
-    if recorded is None or before is None or bytes.fromhex(before) != recorded:
-        return before, "program_changed"
-    return before, None
-
-
 # This job's own operation row (its key is per job): an earlier attempt's write.
 _OWN_ROW = text(
     "SELECT state FROM external_operations "
@@ -296,7 +276,14 @@ async def read_first(run: JobRun, plan: Plan, overwrite: bool) -> Read:
         failure = error
     if failure is not None and failure.category not in MISSING_CATEGORIES:
         raise failure  # an outage, a rate limit, a token MOWL refused: the usual retry classes
-    before, refusal = (None, "program_missing") if failure else _refusal(program, plan, overwrite)
+    target = plan.target
+    before, refusal = (
+        (None, "program_missing")
+        if failure
+        else program_refusal(
+            program, target.program_id, target.state_hash, plan.revision.sport, overwrite
+        )
+    )
     if refusal is None:
         return Read(before)
     # A crash or lost lease mid-call left this job's own row: the program may differ because of
