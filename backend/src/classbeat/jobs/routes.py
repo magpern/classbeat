@@ -27,7 +27,7 @@
   provenance, link id, fingerprint or hash.
 - ``POST /api/jobs/{id}/cancel``: 200 with the state (idempotent); 409 ``not_cancellable`` for a
   job that ended otherwise.
-- ``POST /api/jobs/{id}/approve`` with ``{revision_id, content_hash}`` (64 hex characters): 200
+- ``POST /api/jobs/{id}/approve`` with ``{revision_id, content_hash, save?}`` (64 hex): 200
   with the state (a repeated approval too); 409 with ``not_waiting``, ``expired``,
   ``superseded``, ``hash_mismatch``, ``not_connected``, ``invalid_input``, ``quota`` or the
   kind's own reason (``approve_check``: ``account_changed`` for ``design_with_songs``); 429
@@ -52,7 +52,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from classbeat import auth
-from classbeat.agent.stored_draft import stored_draft
 from classbeat.context import UserContext
 from classbeat.jobs import service
 from classbeat.jobs.bound_admit import INPUT_MAX_BYTES, bound_admit
@@ -69,6 +68,7 @@ from classbeat.jobs.http import (
 from classbeat.jobs.inputs import JobInput, jsonb_size
 from classbeat.jobs.kinds import KIND_NAME, KINDS, JobKind, KindRegistry
 from classbeat.jobs.progress import read_revision
+from classbeat.jobs.revision_out import RevisionOut, revision_out
 from classbeat.jobs.sentences import job_sentence_of
 from classbeat.jobs.user import JobLimitPolicy, NewJob
 from classbeat.usage import job_usage
@@ -103,6 +103,7 @@ class ApproveIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     revision_id: UUID
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    save: bool = False  # ADR 0038 section 7: a composer list's approval covers the save
 
 
 class JobUsageOut(BaseModel):
@@ -152,20 +153,6 @@ class JobOut(BaseModel):
             out.sentence = found.code
             out.sentence_params = found.params
         return out
-
-
-class UnknownBpmOut(BaseModel):
-    index: int
-    title: str
-
-
-class RevisionOut(BaseModel):
-    revision_id: UUID
-    number: int
-    kind: str
-    content: dict[str, Any]
-    unknown_bpm: list[UnknownBpmOut]
-    created_at: datetime
 
 
 def _refuse(
@@ -353,20 +340,8 @@ async def get_revision(
     stored = found.revision
     if stored is None:
         return _refuse("no_revision")
-    try:
-        draft = stored_draft(stored.content, stored.sport)  # the class's sport's schema
-        raw: Any = stored.music.get("unknown_bpm", [])
-        unknown = [UnknownBpmOut(index=int(u["index"]), title=str(u["title"])) for u in raw]
-    except (ValidationError, KeyError, TypeError, ValueError):
-        return JSONResponse({"detail": {"reason": "internal"}}, status_code=500)
-    return RevisionOut(
-        revision_id=stored.id,
-        number=stored.number,
-        kind=stored.kind,
-        content=draft.model_dump(mode="json", exclude_none=True),
-        unknown_bpm=unknown,
-        created_at=stored.created_at,
-    )
+    out = revision_out(stored)
+    return out or JSONResponse({"detail": {"reason": "internal"}}, status_code=500)
 
 
 @router.post("/{job_id}/cancel", response_model=JobOut, responses={404: {}, 409: {}})
@@ -415,6 +390,7 @@ async def approve_job(
         kinds=kinds,
         limit=limit,
         ledger=ledger,
+        save=body.save,
     )
     if result.job is None:
         return _refuse(result.reason or "not_found", counts=result.counts)

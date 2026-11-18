@@ -59,3 +59,6 @@ class AgentSettings(BaseSettings):
     # ADR 0008 section 2: how long a pick waits for MOWL's track list of the pool playlist to
     # show exactly the candidates just written (``pool_not_synced`` after it).
     spotify_pool_sync_wait_seconds: float = Field(default=120.0, ge=0, le=600)
+    # ADR 0038 section 7: how far each song's heard length on the final playlist may be from the
+    # approved composer list's for phase 2 to keep the approved design (re-timed, no model).
+    fit_tolerance_seconds: float = Field(default=2.0, ge=0, le=30)

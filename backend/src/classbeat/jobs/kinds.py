@@ -48,6 +48,9 @@ And one for approvals (ADR 0008 sections 4 and 5, M4 SJ1):
   It only reads: it may never write, since a later check can still refuse. ``design_with_songs``
   uses it for ``account_changed`` (the connected Spotify account is not the one the list was
   made for).
+- ``saves_on_approval(parsed_input) -> bool`` (optional; ADR 0038 section 7, #1189): whether an
+  approval of this job may carry ``save: true``. Without it, or when it answers false, such an
+  approval is refused ``invalid_input``; ``design_with_songs`` answers true for a composer mode.
 """
 
 import re
@@ -153,6 +156,7 @@ class JobKind:
     admit: Admit | None = None
     server_fields: frozenset[str] = frozenset()
     approve_check: ApproveCheck | None = None
+    saves_on_approval: Callable[[BaseModel], bool] | None = None
 
     def __post_init__(self) -> None:
         if not KIND_NAME.match(self.name):

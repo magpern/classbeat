@@ -5,6 +5,11 @@ A job **replaced** by a composer's swap or change (ADR 0038 section 6, #1188) is
 and the job that replaced it names it in its input (``replaces_job_id``, a server field): approving
 the replaced job is refused ``superseded``, not ``not_waiting``, from the moment of the replace,
 before the replacing job has stored a newer list.
+
+``save`` (ADR 0038 section 7, #1189) is stored with the approval as ``approval_save``, the
+receipt's part a resume reads; the jobs API's ``admit`` refuses it for a job whose kind does not
+save on approval (``JobKind.saves_on_approval``). A repeated approval is the no-op only with the
+same ``save``: one that asks otherwise is ``not_waiting``, never a silently dropped save.
 """
 
 from collections.abc import Awaitable, Callable, Mapping
@@ -31,6 +36,7 @@ _OWN_LIST = text(
 )
 _APPROVE = text(
     "UPDATE jobs SET state = 'queued', attempt = 0, approved_at = now(), available_at = now(), "
+    "approval_save = :save, "
     "next_seq = next_seq + 1, updated_at = now() "
     "WHERE id = :job_id AND owner_id = :owner_id AND state = 'waiting_for_approval' "
     "RETURNING next_seq"
@@ -77,6 +83,7 @@ async def approve(
     content_hash: bytes,
     *,
     admit: Admit,
+    save: bool = False,
 ) -> Approval:
     """``admit`` is required (#115 item 7): it holds the connection, per-user limit and credit
     checks, and leaving it out would skip them."""
@@ -90,7 +97,7 @@ async def approve(
         row.approval_hash is not None and bytes(row.approval_hash) == content_hash
     )
     if row.state != "waiting_for_approval":
-        if row.approved_at is not None and same:
+        if row.approved_at is not None and same and bool(row.approval_save) == save:
             return Approval(True, row.state)  # a repeated approval: no second event
         if row.state == "expired":  # the sweep got there first: same reason as a late approval
             return Approval(False, row.state, "expired")
@@ -121,7 +128,7 @@ async def approve(
     )
     if reason is not None:
         return Approval(False, row.state, reason)
-    seq = (await db.execute(_APPROVE, params)).scalar_one()
+    seq = (await db.execute(_APPROVE, {**params, "save": save})).scalar_one()
     await user_event(db, ctx, job_id, seq, "approved")
     await db.execute(NOTIFY_QUEUED)
     return Approval(True, "queued")

@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from classbeat.agent.brief import Brief
 from classbeat.classes.beat_one_schemas import BeatOneIn as BeatOneIn
 from classbeat.classes.beat_one_schemas import BeatOneOut as BeatOneOut
-from classbeat.classes.composer_view import FillSongsOut
+from classbeat.classes.composer_view import FillSongsOut, Phase2Out, SavePendingOut
 from classbeat.classes.provenance_out import ProvenanceOut
 
 
@@ -171,6 +171,8 @@ class ClassDetailOut(ClassOut):
     # ADR 0038 (#1188): a class read with the composer flow on, and the fill of its sketch.
     composer: bool = False
     fill_songs: FillSongsOut | None = None
+    save_pending: SavePendingOut | None = None  # ADR 0038 section 7 (#1189)
+    phase2: Phase2Out | None = None
 
 
 class ClassesOut(BaseModel):

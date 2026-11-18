@@ -219,12 +219,15 @@ async def approve(
     kinds: KindRegistry,
     limit: int | user.JobLimitPolicy,
     ledger: CreditLedger,
+    save: bool = False,
 ) -> ApproveResult:
     """Approve with every check of ADR 0005 section 2, in one transaction: the owner lock, the
     job row lock and its checks (``approval.approve``), then ``admit`` below: the connections of the
     kind's ``CONNECTIONS``, the kind's ``approve_check`` (ADR 0008 section 5), the per-user limit
-    and the credit seam, in that order. ``busy`` carries the limit; a ledger's ``QuotaRefused``
-    (the cost cap) answers ``quota`` with its numbers and rolls the transaction back."""
+    and the credit seam, in that order; first ``invalid_input`` for a ``save`` the kind does not
+    take (``JobKind.saves_on_approval``, ADR 0038 section 7). ``busy`` carries the limit; a
+    ledger's ``QuotaRefused`` (the cost cap) answers ``quota`` with its numbers and rolls the
+    transaction back."""
     counts: dict[str, int | str] = {}
 
     async def admit(db: AsyncSession, waiting: approval.Waiting) -> str | None:
@@ -236,6 +239,8 @@ async def approve(
         except ValidationError:
             return "invalid_input"
         assert isinstance(parsed, JobInput)  # noqa: S101 - parse_input returns input_model
+        if save and (kind.saves_on_approval is None or not kind.saves_on_approval(parsed)):
+            return "invalid_input"
         for provider, connection_id in parsed.connection_ids().items():
             if ctx.connection(provider) != connection_id:
                 return "not_connected"
@@ -259,7 +264,9 @@ async def approve(
 
     try:
         async with user_session(factory, ctx) as db:
-            done = await approval.approve(db, ctx, job_id, revision_id, content_hash, admit=admit)
+            done = await approval.approve(
+                db, ctx, job_id, revision_id, content_hash, admit=admit, save=save
+            )
             if done.state is None:
                 return ApproveResult(False, None, done.reason)
             return ApproveResult(

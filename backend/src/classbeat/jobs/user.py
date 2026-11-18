@@ -70,7 +70,7 @@ _NEW_JOB = text(
 )
 LOCK_SQL = text(
     "SELECT state, kind, input, class_id, cancel_requested_at, approval_revision_id, "
-    "approval_hash, approved_at, credit_state, "
+    "approval_hash, approved_at, approval_save, credit_state, "
     "expires_at IS NOT NULL AND expires_at > now() AS live "
     "FROM jobs WHERE id = :job_id AND owner_id = :owner_id FOR UPDATE"
 )

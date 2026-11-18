@@ -11,10 +11,21 @@
   current revision is no sketch or no fill was started for it (no job of the attempt and no
   stored refusal).
 
+- ``save_pending`` (ADR 0038 section 7, #1189): ``{revision_id, content_hash, job_id}`` of the
+  draft phase 2 stored for Approve and save, while it counts (``saving.save_pending.current``: it
+  names the current and newest revision); the page saves exactly that revision. Null otherwise.
+- ``phase2`` (#1189): ``{state: "failed"}`` while the current sketch's approved list can be resumed
+  (**Create the playlist again**: the newest list's composer job was approved and ended without
+  completing, the receipt is still valid, ``songs.admit.receipt_valid``, and its sketch is the
+  current revision); ``{state: "differed"}`` while the current revision is a phase-2 draft whose
+  final songs differed from the approved ones (``provenance.fit = "redesigned"``: re-designed, not
+  saved by itself; the page asks the user to check the class and save). Null otherwise.
+
 Every read filters on ``owner_id`` and runs in the caller's ``user_session``. Codes only.
 """
 
 from dataclasses import dataclass
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -24,9 +35,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat.classes.song_fill_keys import fill_key
 from classbeat.design import interpretation_row
 from classbeat.design.revision_ready_policy import SKETCH
+from classbeat.saving import save_pending
+from classbeat.songs.admit import RECEIPT_ENDED, receipt_valid
+from classbeat.songs.inputs import COMPOSER_MODES
 
 _STATE = text(
-    "SELECT c.current_revision_id, r.provenance ->> 'origin' AS origin FROM classes c "
+    "SELECT c.current_revision_id, r.provenance ->> 'origin' AS origin, "
+    "r.provenance ->> 'fit' AS fit FROM classes c "
     "LEFT JOIN class_revisions r ON r.owner_id = c.owner_id AND r.class_id = c.id "
     "AND r.id = c.current_revision_id WHERE c.owner_id = :owner_id AND c.id = :class_id"
 )
@@ -47,25 +62,54 @@ _JOB_OF_KEY = text(
 )
 
 
+# The class's newest song list and the job that stored it (``songs.admit``'s receipt rule).
+_NEWEST_LIST = text(
+    "SELECT r.id, j.state, j.approved_at, j.input ->> 'mode' AS mode, "
+    "j.input ->> 'base_revision_id' AS base FROM class_revisions r "
+    "JOIN jobs j ON j.owner_id = r.owner_id AND j.id = r.job_id "
+    "WHERE r.owner_id = :owner_id AND r.class_id = :class_id AND r.kind = 'song_list' "
+    "AND j.kind = 'design_with_songs' ORDER BY r.number DESC LIMIT 1"
+)
+
+
 class FillSongsOut(BaseModel):
     sketch_revision_id: UUID
     attempt: int
     failure: str | None = None
 
 
+class SavePendingOut(BaseModel):
+    revision_id: UUID
+    content_hash: str
+    job_id: UUID
+
+
+class Phase2Out(BaseModel):
+    state: Literal["failed", "differed"]
+
+
 @dataclass(frozen=True, slots=True)
 class ComposerState:
     composer: bool = False
     fill_songs: FillSongsOut | None = None
+    save_pending: SavePendingOut | None = None
+    phase2: Phase2Out | None = None
+
+    def fields(self) -> dict[str, Any]:
+        """The class answer's composer fields (``ClassDetailOut``)."""
+        names = ("composer", "fill_songs", "save_pending", "phase2")
+        return {name: getattr(self, name) for name in names}
 
 
 async def composer_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> ComposerState:
     row = await interpretation_row.read(db, owner_id, class_id)
-    if row is None:
-        return ComposerState()
+    if row is None:  # not read by the composer; ``save_pending`` follows its own rule
+        return await _after_phase_two(db, owner_id, class_id, False, None)
     ids = {"owner_id": owner_id, "class_id": class_id}
     composer = bool((await db.execute(_COMPOSER, {**ids, "job_id": row.job_id})).scalar())
     now = (await db.execute(_STATE, ids)).first()
+    if now is not None and now.origin != SKETCH:
+        return await _after_phase_two(db, owner_id, class_id, composer, now.fit)
     fill = row.fill
     if (
         now is None
@@ -74,6 +118,7 @@ async def composer_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Co
         or fill.sketch_revision_id != now.current_revision_id
     ):
         return ComposerState(composer)
+    phase2 = await _failed(db, owner_id, class_id, now.current_revision_id)
     failure = None if fill.refusal is None else fill.refusal.reason
     if failure is None:
         key = fill_key(class_id, fill.sketch_revision_id, fill.attempt)
@@ -90,4 +135,31 @@ async def composer_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Co
         FillSongsOut(
             sketch_revision_id=fill.sketch_revision_id, attempt=fill.attempt, failure=failure
         ),
+        phase2=phase2,
     )
+
+
+async def _after_phase_two(
+    db: AsyncSession, owner_id: UUID, class_id: UUID, composer: bool, fit: str | None
+) -> ComposerState:
+    """A draft is current: the save phase 2 asked for, and whether its songs differed."""
+    pending = await save_pending.current(db, owner_id, class_id)
+    return ComposerState(
+        composer,
+        save_pending=None if pending is None else SavePendingOut(**pending.model_dump()),
+        phase2=Phase2Out(state="differed") if fit == "redesigned" else None,
+    )
+
+
+async def _failed(
+    db: AsyncSession, owner_id: UUID, class_id: UUID, sketch: UUID
+) -> Phase2Out | None:
+    """``failed`` while the newest list's approval of this sketch can be resumed."""
+    ids = {"owner_id": owner_id, "class_id": class_id}
+    newest = (await db.execute(_NEWEST_LIST, ids)).first()
+    if newest is None or newest.mode not in COMPOSER_MODES or newest.base != str(sketch):
+        return None
+    if newest.state not in RECEIPT_ENDED or newest.approved_at is None:
+        return None
+    found = await receipt_valid(db, owner_id, class_id, newest.id)
+    return None if found is None else Phase2Out(state="failed")

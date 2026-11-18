@@ -28,6 +28,9 @@ spotify_playlist_id}, mowl_connection_id, spotify_connection_id}``.
   pinned songs) come from the class's stored request. All of these are **server fields**: only
   the hand-offs (``classbeat.classes.song_fill``, ``song_swap``, the pending submit) set them, with
   no credit, so ``POST /api/jobs`` can never create a composer mode.
+- **A composer resume** (ADR 0038 section 7, #1189): ``mode = "resume"`` with the receipt's sketch
+  as ``base_revision_id`` and its ``save`` (both server fields, ``RESUME_FIELDS``), set only by the
+  hand-off ``classbeat.classes.song_resume`` from the approved job's row, never from the browser.
 
 The composer's fields (``COMPOSER_FIELDS``) are server fields; the others are not. Nothing in the
 input reaches a Spotify or MOWL request: the pool, the playlists and every id written come from
@@ -56,8 +59,18 @@ Mode = Literal["pick", "resume", "fill", "swap", "change"]
 COMPOSER_MODES: Final = ("fill", "swap", "change")
 REPLACING_MODES: Final = ("swap", "change")
 COMPOSER_FIELDS: Final = frozenset(
-    {"base_revision_id", "replaces_job_id", "sources", "pinned", "request", "request_message_id"}
+    {
+        "base_revision_id",
+        "replaces_job_id",
+        "sources",
+        "pinned",
+        "request",
+        "request_message_id",
+        "save",
+    }
 )
+# A composer resume (ADR 0038 section 7, #1189): ``mode = "resume"`` with these, from the receipt.
+RESUME_FIELDS: Final = frozenset({"base_revision_id", "save"})
 
 
 class Seed(BaseModel):
@@ -96,10 +109,16 @@ class DesignWithSongsInput(ModelJobInput):
     pinned: PinnedList | None = None
     request: Request | None = None
     request_message_id: UUID | None = None
+    save: bool | None = None  # a composer resume only: the receipt's ``save``
 
     @property
     def composer(self) -> bool:
         return self.mode in COMPOSER_MODES
+
+    @property
+    def composer_resume(self) -> bool:
+        """A resume of a composer's approved list (the hand-off ``classes.song_resume``)."""
+        return self.mode == "resume" and self.base_revision_id is not None
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
@@ -121,13 +140,18 @@ class DesignWithSongsInput(ModelJobInput):
     def _composer(self) -> Self:
         composer = self.mode in COMPOSER_MODES
         if not composer:
-            if any(getattr(self, name) is not None for name in COMPOSER_FIELDS):
+            allowed = RESUME_FIELDS if self.mode == "resume" else frozenset[str]()
+            if any(getattr(self, name) is not None for name in COMPOSER_FIELDS - allowed):
                 raise ValueError("these fields belong to the composer's modes")
+            if (self.base_revision_id is None) != (self.save is None):
+                raise ValueError("a composer resume names its sketch and its save")
             if self.seed is not None and not self.seed.replace:
                 raise ValueError("a seed replaces at least one slot")
             return self
         if self.class_id is None or self.base_revision_id is None or self.source is not None:
             raise ValueError("a composer job names its class and its sketch")
+        if self.save is not None:
+            raise ValueError("a composer job's save is its approval's")
         replacing = self.mode in REPLACING_MODES
         if replacing != (self.replaces_job_id is not None) or replacing != (self.seed is not None):
             raise ValueError("a swap or change names the waiting job and its list")

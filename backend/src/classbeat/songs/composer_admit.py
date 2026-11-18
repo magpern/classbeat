@@ -24,8 +24,18 @@ each refusal writing nothing:
    (``classbeat.classes.song_replace``), so the waiting job stays approvable.
 
 A change's request is inserted as the user's chat message with the job (``after_insert``).
+
+**``admit_composer_resume``** (ADR 0038 sections 7 and 9, #1189), called by ``admit``'s resume
+rule after the receipt is found valid: a list a composer job approved is resumed **only** by the
+hand-off ``classbeat.classes.song_resume`` (``receipt_invalid`` for a resume without the receipt's
+sketch: ``POST /api/jobs`` cannot set it, and its job would reserve a credit), and a composer
+resume only for such a list. Its sketch and ``save`` must be the receipt's (``receipt_invalid``),
+the sketch must still be the class's current revision (``stale_base``: after a revise of the sketch
+the receipt's base is gone), and the cost cap applies (``quota`` ``cost``). No credit.
 """
 
+from collections.abc import Mapping
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
@@ -121,3 +131,28 @@ async def admit_composer(
             raise RuntimeError("the job is not a job of this class") from None
 
     return Admitted({}, after_insert)
+
+
+async def admit_composer_resume(
+    db: AsyncSession,
+    ctx: UserContext,
+    given: DesignWithSongsInput,
+    approved: Mapping[str, Any],
+    save: bool,
+) -> Refused | None:
+    """The module docstring's ``admit_composer_resume``; None to go on with the resume rule."""
+    made_by_composer = approved.get("mode") in COMPOSER_MODES
+    if made_by_composer != given.composer_resume:
+        return Refused("receipt_invalid")
+    if not made_by_composer:
+        return None
+    class_id, base, owner = given.class_id, given.base_revision_id, ctx.user_id
+    if class_id is None or base is None or str(base) != approved.get("base_revision_id"):
+        return Refused("receipt_invalid")
+    if given.save is not save:
+        return Refused("receipt_invalid")
+    state = await chat.create_state(db, owner, class_id, base)  # the class row, locked
+    if not state.exists or state.current != base or not await is_sketch(db, owner, class_id, base):
+        return Refused("stale_base")
+    await quota.check_cost(db, ctx)  # QuotaRefused ``cost``: 409 ``quota`` (ADR 0011 section 4)
+    return None

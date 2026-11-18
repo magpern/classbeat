@@ -24,7 +24,7 @@ total, more than ``RESHAPE_TOLERANCE`` (10 %) apart is a reshape.
 """
 
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 
 from pydantic import ValidationError
 
@@ -54,6 +54,10 @@ FILL_REQUEST: Final = (
 )
 SWAP_REQUEST: Final = (
     "Some songs were swapped: keep the class as it is and re-time its intervals to the songs."
+)
+FIT_REQUEST: Final = (  # phase 2's re-design (ADR 0038 section 7, ``composer_phase2``)
+    "The final playlist's songs are timed a little differently: keep the class as it is and "
+    "re-time its intervals to the songs."
 )
 RESHAPE_TOLERANCE: Final = 0.10
 
@@ -114,6 +118,38 @@ async def design_preview(
 ) -> Designed:
     """Steps 2 and 3 of the module docstring; the caller owns ``step``."""
     await run.stage("design")
+    outcome, revised, music_map = await design_on(
+        run, step, brief, base_content, request, provider, agent, config, gates, dismissed
+    )
+    content = revision.content_and_music(revised.result, music_map, step, None)[0]
+    try:
+        preview = Preview(
+            content=content,
+            music=PreviewMusic(
+                fingerprint=song_list.fingerprint(track_ids),
+                songs=song_times(step.data.analysis["map"]),
+            ),
+            design_run_id=outcome.run_id,
+        )
+    except (ValidationError, ValueError):
+        raise JobFailure("invalid_output") from None
+    return Designed(preview, step, outcome, revised.note)
+
+
+async def design_on(
+    run: JobRun,
+    step: MusicStep,
+    brief: Brief,
+    base_content: dict[str, object],
+    request: str,
+    provider: ModelProvider,
+    agent: AgentConfig,
+    config: SongConfig,
+    gates: PlanGates | None,
+    dismissed: tuple[str, ...],
+) -> tuple[StageOutcome, ReviseResult, dict[str, Any]]:
+    """Step 2: the ``revise`` stage on ``step``'s music with ``base_content`` as its base (also
+    phase 2's re-design, ``composer_phase2``); the run, its result and the map it fitted to."""
     try:
         base_draft = stored_draft(base_content, "cycling")
     except ValidationError:
@@ -139,20 +175,7 @@ async def design_preview(
     )
     if not isinstance(outcome.output, ReviseResult):
         raise JobFailure("internal")
-    revised = outcome.output
-    content = revision.content_and_music(revised.result, ctx.map, step, None)[0]
-    try:
-        preview = Preview(
-            content=content,
-            music=PreviewMusic(
-                fingerprint=song_list.fingerprint(track_ids),
-                songs=song_times(step.data.analysis["map"]),
-            ),
-            design_run_id=outcome.run_id,
-        )
-    except (ValidationError, ValueError):
-        raise JobFailure("invalid_output") from None
-    return Designed(preview, step, outcome, revised.note)
+    return outcome, outcome.output, ctx.map
 
 
 def fits_songs(preview: Preview, songs_total_sec: int) -> bool:

@@ -18,6 +18,12 @@ ADR 0007 section 2 adds where a revision came from: ``origin`` (``design_draft``
 ``null`` for a design and set for a revise. A ``sketch`` (ADR 0038 section 4) names both when it
 is a chat change of a sketch and neither when it is the composer's first design. A revision stored
 before them has none of the three and still validates.
+
+ADR 0038 section 7 (#1189): a composer's first real draft (``origin = "design_with_songs"``, made
+in phase 2 from the approved ``song_list``'s preview) records ``fit``: ``kept`` when the approved
+design was only re-timed to the final playlist with no model (its ``agent_run_ids`` then name the
+run of the job's earlier ``design`` stage that designed the preview), ``redesigned`` when the final
+songs differed and a new run designed it on the approved preview. No other origin carries it.
 """
 
 import re
@@ -108,6 +114,14 @@ class Provenance(BaseModel):
     # ADR 0029 section 4 (#904): the brief's stated values after a revise layered its request's
     # (``agent.stated_layer``); absent when no layering ran, and on every revision before it.
     stated: StatedLayer | None = None
+    # ADR 0038 section 7: how a composer's first draft was made in phase 2 (module docstring).
+    fit: Literal["kept", "redesigned"] | None = None
+
+    @model_validator(mode="after")
+    def _fit(self) -> Self:
+        if self.fit is not None and self.origin != "design_with_songs":
+            raise ValueError("only a composer's first draft records its fit")
+        return self
 
     @model_validator(mode="after")
     def _duplicate(self) -> Self:
@@ -149,6 +163,7 @@ class Provenance(BaseModel):
             "duplicated_from",
             "interpretation",
             "stated",
+            "fit",
         ):
             if out.get(key) is None:
                 out.pop(key, None)
