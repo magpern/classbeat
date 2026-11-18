@@ -236,6 +236,15 @@ describe('contrast', () => {
   })
 })
 
+describe('focus ring', () => {
+  const appCss = readFileSync(join(srcDir, 'styles', 'app.css'), 'utf8')
+
+  it('is drawn on every focus-visible element except the skip-link target main', () => {
+    expect(block(appCss, ':focus-visible')).toMatch(/outline:\s*2px solid var\(--cb-brand\)/)
+    expect(block(appCss, '#main-content:focus-visible')).toMatch(/outline:\s*none/)
+  })
+})
+
 describe('reduced motion', () => {
   it('turns animations and transitions off', () => {
     const start = tailwindCss.indexOf('@media (prefers-reduced-motion: reduce)')

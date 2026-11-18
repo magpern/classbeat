@@ -21,6 +21,11 @@ body {
   outline-offset: 2px;
 }
 
+/* main is a programmatic skip-link target (tabindex -1): no ring around the whole page. */
+#main-content:focus-visible {
+  outline: none;
+}
+
 .app-header {
   background: var(--cb-surface);
   border-bottom: 1px solid var(--cb-line);
