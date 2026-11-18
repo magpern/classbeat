@@ -25,6 +25,7 @@ from classbeat.classes.selection import belongs_to_draft
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design.games_policy import RETIRED, has_retired_game
+from classbeat.design.revision_ready import revision_ready
 from classbeat.player_send.class_state import SentState, sent_state
 from classbeat.quota.gates import check_stored_draft
 
@@ -219,7 +220,8 @@ async def pick(
     """ADR 0007 section 2: one transaction, the class row locked, so a pick can't race a store.
 
     ``not_found`` (the class, or a revision that is not a draft of this class), ``hash_mismatch``,
-    ``class_busy`` (an open job), ``game_retired`` (a game MOWL no longer offers). Picking the
+    ``class_busy`` (an open job), ``game_retired`` (a game MOWL no longer offers), ``not_ready``
+    (a sketch, ``design.revision_ready``, before anything else is read). Picking the
     current revision again writes nothing.
 
     No model runs here, so the draft is checked against the user's **current** plan (#496): an
@@ -235,6 +237,9 @@ async def pick(
         locked = (await db.execute(LOCK_CLASS, _ids(ctx, class_id))).first()
         if locked is None:
             return Outcome("not_found")
+        not_ready = await revision_ready(db, ctx.user_id, class_id, revision_id)
+        if not_ready is not None:
+            return Outcome(not_ready)  # a sketch is never picked, current or not (ADR 0038)
         found = (await db.execute(_PICKABLE, _ids(ctx, class_id, revision_id=revision_id))).first()
         if found is None:
             return Outcome("not_found")

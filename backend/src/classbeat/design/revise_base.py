@@ -33,6 +33,7 @@ from classbeat.design.kind import (
     NoMusicChoice,
     SwedebeatMusicChoice,
 )
+from classbeat.design.revision_ready import is_sketch
 from classbeat.jobs import JobFailure, JobRun
 
 # The change summary's key for what the revision did not do as asked (MA1b-1 moves it to the
@@ -79,12 +80,22 @@ def noted(change: dict[str, Any], retired: bool) -> dict[str, Any]:
     return {**change, NOT_AS_ASKED: [RETIRED]} if retired else change
 
 
-async def load(job_run: JobRun, base_id: UUID, base_hash_hex: str, context: int) -> RunBase:
+async def load(
+    job_run: JobRun, base_id: UUID, base_hash_hex: str, context: int, *, sketch: bool = False
+) -> RunBase:
     """Step 1 of the run: ``invalid_input`` for a base that is not a draft of a class with a brief
-    and a music source, ``internal`` for one that no longer checks."""
+    and a music source, ``internal`` for one that no longer checks. A ``sketch`` base (ADR 0038
+    section 4: ``admit`` found one) must still be one, and its class has no music source yet: its
+    music is ``none`` for the run (the soundless revise), never the class's."""
     async with job_run.fenced() as fs:
         row = await chat.load_base(fs.db, fs.lease.owner_id, fs.lease.job_id, base_id, context)
-    if row is None or row.kind != "draft" or not row.brief or not row.music_source:
+        if row is not None and sketch:
+            owner, class_id = fs.lease.owner_id, row.class_id
+            if class_id is None or not await is_sketch(fs.db, owner, class_id, base_id):
+                raise JobFailure("internal")  # immutable: admit's reading must hold
+            if row.music_source:
+                raise JobFailure("invalid_input")  # the class has its music by now (phase 2)
+    if row is None or row.kind != "draft" or not row.brief or not (row.music_source or sketch):
         raise JobFailure("invalid_input")
     base_hash = bytes.fromhex(base_hash_hex)
     if (
@@ -94,7 +105,11 @@ async def load(job_run: JobRun, base_id: UUID, base_hash_hex: str, context: int)
         raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
     try:
         brief = Brief.model_validate(row.brief)
-        music = CLASS_MUSIC_SOURCE.validate_python(row.music_source)
+        music = (
+            NoMusicChoice(source="none")
+            if sketch
+            else CLASS_MUSIC_SOURCE.validate_python(row.music_source)
+        )
         draft, retired = without_retired_games(stored_draft(row.content, brief.sport))
     except ValidationError:
         raise JobFailure("internal") from None

@@ -196,6 +196,8 @@ export function askedFor(entry: TimelineEntry): string {
   if (entry.origin === 'revise_draft') {
     return entry.request !== null ? t('class.asked.request', { request: entry.request }) : t('class.asked.changed')
   }
+  // ADR 0038 section 4: a chat change of a sketch names its request; the first sketch is the class's first version.
+  if (entry.origin === 'sketch' && entry.request !== null) return t('class.asked.request', { request: entry.request })
   if (entry.origin === 'revise_songs') return t('class.asked.songs')
   return t('class.asked.first')
 }

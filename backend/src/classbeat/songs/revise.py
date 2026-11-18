@@ -66,6 +66,7 @@ from classbeat.context import UserContext
 from classbeat.design import chat, limits, music_kind
 from classbeat.design.games_policy import RETIRED
 from classbeat.design.kind import current_runtime, group_model
+from classbeat.design.revision_ready import revision_ready
 from classbeat.flags import effective as flags
 from classbeat.jobs import KINDS, JobFailure, JobKind, JobRun, Outcome
 from classbeat.jobs.kinds import Admitted, Refused
@@ -103,6 +104,9 @@ async def _base_list(db: AsyncSession, owner_id: UUID, class_id: UUID, base: UUI
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Admitted | Refused:
     if not isinstance(parsed, ReviseSongsInput) or parsed.class_id is None:
         return Refused("invalid_input")
+    not_ready = await revision_ready(db, ctx.user_id, parsed.class_id, parsed.base_revision_id)
+    if not_ready is not None:
+        return Refused(not_ready)  # a sketch's songs are filled, never changed (ADR 0038)
     # A catalogue replace checks the Swedebeat flag before the class or the match is read.
     connection_id: UUID | None = None
     if parsed.match_revision_id is not None:

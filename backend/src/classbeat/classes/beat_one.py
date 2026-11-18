@@ -27,6 +27,7 @@ from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design import music_kind
 from classbeat.design.revision import REVISION_MUSIC, RevisionMusic
+from classbeat.design.revision_ready import revision_ready
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -199,6 +200,9 @@ async def change(
         found = (await db.execute(_REVISION, _ids(ctx, class_id, revision_id=revision_id))).first()
         if found is None:  # not one of this class's own revisions: as an unknown id
             return Changed("not_found")
+        not_ready = await revision_ready(db, ctx.user_id, class_id, revision_id)
+        if not_ready is not None:
+            return Changed(not_ready)  # a sketch has no music to correct (ADR 0038 section 4)
         if music_kind.is_none(locked.music_source):  # soundless: nothing to correct
             return Changed("no_beat_data")
         if locked.music_source is None:  # a #550 copy of picked songs: no music to fit to

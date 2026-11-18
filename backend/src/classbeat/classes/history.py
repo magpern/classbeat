@@ -219,7 +219,7 @@ def entry(row: Any, sport: str) -> TimelineEntryOut:
         ),
         tss=_tss(spec),
         tss_approximate=_approximate(_dict(row.provenance), spec),
-        request=row.request if row.origin == "revise_draft" else None,
+        request=row.request if row.origin in ("revise_draft", "sketch") else None,
         saved=saved,
         from_songs=bool(row.from_songs),
         duplicated_from=_duplicated_from(row),

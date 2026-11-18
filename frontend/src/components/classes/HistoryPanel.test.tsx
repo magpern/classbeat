@@ -318,6 +318,8 @@ describe('history words', () => {
     expect(askedFor(entry(1))).toBe('First design')
     expect(askedFor(entry(2, { request: 'Easier' }))).toBe('You asked: “Easier”')
     expect(askedFor(entry(2))).toBe('Changed on request')
+    expect(askedFor(entry(1, { origin: 'sketch' }))).toBe('First design')
+    expect(askedFor(entry(2, { origin: 'sketch', request: 'Longer warm-up' }))).toBe('You asked: “Longer warm-up”')
     const dup = { classId: 'c0', classTitle: 'Tuesday climb', number: 3 }
     expect(askedFor(entry(1, { origin: 'duplicate', duplicatedFrom: dup }))).toBe(
       'Duplicated from “Tuesday climb”, version 3',

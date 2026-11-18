@@ -29,6 +29,7 @@ the switch again and that the attempt's model covers soundless, before any call.
 ``music`` stage and no MOWL or Spotify call: the ``design`` stage is ``classbeat.agent.soundless``
 over the brief alone, the step is a ``NoMusicStep``, the revision's music ``{"source": "none"}``,
 the class's first ``music_source`` the same, and ``music_kind.check_stored`` runs in the store.
+A composer's **sketch** (``mode``, ADR 0038 section 4) runs the same way (``kind_nomusic``).
 
 It consumes the class's credit (``consumes_credit``, ADR 0007 section 3). Its ``admit`` sets the
 ``route_key`` of the user's effective plan (``classbeat.quota.route``, AD5 #223); on a mix it first
@@ -47,7 +48,7 @@ from the claimed row) and the job's input; everything it writes goes through ``J
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Self
+from typing import ClassVar, Final, Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, model_validator
@@ -56,12 +57,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat.agent import AgentConfig, Brief, DesignContext, JobStageHost, run_stage
 from classbeat.agent.design import DesignResult
 from classbeat.agent.running import design_stage_for
-from classbeat.agent.soundless import SoundlessContext, soundless_design_stage
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import corrections, kind_music, mixadmit, music_kind, revision, sport
 from classbeat.design.interpreted import with_interpretation
+from classbeat.design.kind_nomusic import run_no_music
 from classbeat.design.music import MusicStep, load_music
 from classbeat.design.music_choice import (
     CLASS_MUSIC_SOURCE as CLASS_MUSIC_SOURCE,
@@ -99,6 +100,9 @@ class DesignDraftInput(ModelJobInput):
     # Set by the interpretation hand-off for a playlist stored with no Spotify connection before
     # roadmap Amendment 25: ``admit`` then does not ask for one. A browser sending it is refused.
     spotify_optional: bool | None = None
+    # ADR 0038 section 4: set only by the interpretation hand-off of a composer class with music
+    # (``kind_nomusic``: a design with no songs, origin ``sketch``). A browser may not send it.
+    mode: Literal["sketch"] | None = None
 
     @model_validator(mode="after")
     def _brief_fits_the_class(self) -> Self:
@@ -119,6 +123,10 @@ class DesignDraftInput(ModelJobInput):
         """A hand-off designs on a mix (ADR 0016 section 7), never on no music."""
         if self.handoff_id is not None and isinstance(self.music, NoMusicChoice):
             raise ValueError("a hand-off designs on a mix")
+        if self.mode is not None and not (
+            isinstance(self.music, NoMusicChoice) and self.class_id and self.handoff_id is None
+        ):
+            raise ValueError("a sketch is designed with no music, on its own class")
         return self
 
 
@@ -237,7 +245,7 @@ async def run(job_run: JobRun) -> Complete:
         sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)
     if isinstance(given.music, NoMusicChoice):
         music_kind.require_covered(model)  # a model evaluated for soundless only (#527)
-        return await _run_soundless(job_run, given, model)
+        return await run_no_music(job_run, given, model)  # soundless, or a sketch (ADR 0038)
     await job_run.stage("music")
     step = await music_step(job_run, runtime, given.music, given.mowl_connection_id)
     handed_over = False  # the outcome's ``release`` closes the step from then on
@@ -294,43 +302,6 @@ async def run(job_run: JobRun) -> Complete:
             step.close()
 
 
-async def _run_soundless(job_run: JobRun, given: DesignDraftInput, model: GroupModel) -> Complete:
-    """A soundless design (#527): no ``music`` stage and no MOWL or Spotify call; the soundless
-    ``design`` stage over the brief, then the store with a ``NoMusicStep``. No rules section
-    (``classbeat.agent.soundless_input`` says why)."""
-    if given.brief.sport != sport.CYCLING:
-        raise JobFailure("internal")  # the input refuses a running brief with no music
-    step = music_kind.NoMusicStep()
-    ctx = SoundlessContext(given.brief, given.plan_gates)  # #496
-    outcome = await run_stage(
-        JobStageHost(job_run),
-        model.provider,
-        soundless_design_stage(ctx),
-        ctx.first_message(),
-        model.agent,
-    )
-    if not isinstance(outcome.output, DesignResult):
-        raise JobFailure("internal")
-    draft = revision.build(outcome.output, outcome, None, step)
-    draft = with_interpretation(draft, given.brief, outcome.output.unmet, given.plan_gates)
-
-    async def store(fs: FencedSession) -> UUID:
-        """In the final fenced transaction: the revision, the music kind checked, the class's first
-        ``music_source`` of ``none``, then the sport and the music kind checked again (any of
-        them rolls it all back)."""
-        await step.still_current(fs)
-        revision_id = await draft.store(fs)
-        # A music source is refused before ``adopt_first`` can overwrite it (#589); an unset one
-        # is the first design, which ``adopt_first`` sets to ``none``.
-        await music_kind.check_stored(fs, soundless=True, before_adopt=True)
-        await revision.adopt_first(fs, revision_id, given.brief.stored(), dict(music_kind.NO_MUSIC))
-        await sport.check_stored(fs, given.brief.sport)
-        await music_kind.check_stored(fs, soundless=True)  # strict, for a class already adopted
-        return revision_id
-
-    return Complete(store, release=step.close)
-
-
 DESIGN_DRAFT: Final = KINDS.register(
     JobKind(
         KIND,
@@ -338,6 +309,8 @@ DESIGN_DRAFT: Final = KINDS.register(
         STAGES,
         with_plan_run(run),  # the current plan's gates for an input without any (#496)
         admit=with_plan(admit),  # the plan's gates, a mix's checks, the route key (AD5, #496)
-        server_fields=frozenset({"route_key", "plan_gates", "handoff_id", "spotify_optional"}),
+        server_fields=frozenset(
+            {"route_key", "plan_gates", "handoff_id", "spotify_optional", "mode"}
+        ),
     )
 )

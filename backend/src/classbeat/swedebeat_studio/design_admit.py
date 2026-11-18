@@ -34,6 +34,7 @@ from classbeat import quota
 from classbeat.connections.preferences import uses_swedebeat_in
 from classbeat.context import UserContext
 from classbeat.design import chat, limits, music_kind
+from classbeat.design.revision_ready import revision_ready
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.swedebeat_studio import design_step
 from classbeat.swedebeat_studio.admit import studio_on, swedebeat_connected
@@ -91,6 +92,9 @@ async def admit_revise(db: AsyncSession, ctx: UserContext, parsed: BaseModel) ->
     if not isinstance(parsed, StudioReviseInput):
         return Refused("invalid_input")
     class_id, base_id = parsed.the_class, parsed.base_revision_id
+    not_ready = await revision_ready(db, ctx.user_id, class_id, base_id)
+    if not_ready is not None:
+        return Refused(not_ready)  # ADR 0038 section 4: a sketch is never a studio base
     state = await chat.create_state(db, ctx.user_id, class_id, base_id)
     if not state.exists or state.base_kind != "draft" or state.base_hash is None:
         return Refused("invalid_input")

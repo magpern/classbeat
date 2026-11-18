@@ -15,8 +15,9 @@ on (``RunInfo``, from the job's ``AgentConfig``), both NULL for the bootstrap ch
 ADR 0007 section 2 adds where a revision came from: ``origin`` (``design_draft`` or
 ``revise_draft``), ``base_revision_id`` (the revision a revise started from) and
 ``request_message_id`` (the user's ``class_messages`` row that asked for it); both ids are
-``null`` for a design and set for a revise. A revision stored before them has none of the three
-and still validates.
+``null`` for a design and set for a revise. A ``sketch`` (ADR 0038 section 4) names both when it
+is a chat change of a sketch and neither when it is the composer's first design. A revision stored
+before them has none of the three and still validates.
 """
 
 import re
@@ -78,6 +79,7 @@ class Provenance(BaseModel):
             "revise_songs",
             "studio_songs",
             "duplicate",
+            "sketch",
         ]
         | None
     ) = None
@@ -121,6 +123,10 @@ class Provenance(BaseModel):
     @model_validator(mode="after")
     def _lineage(self) -> Self:
         if self.origin == "revise_songs":  # a song change names what the revision started from
+            return self
+        if self.origin == "sketch":  # ADR 0038 section 4: a sketch, or a chat change of one
+            if (self.base_revision_id is None) != (self.request_message_id is None):
+                raise ValueError("a sketch revise names its base and request; a sketch neither")
             return self
         revise = self.origin == "revise_draft"
         if revise != (self.base_revision_id is not None) or revise != (
@@ -171,7 +177,12 @@ def provenance(
     music_map: Mapping[str, Any] | None,
     *,
     origin: Literal[
-        "design_draft", "revise_draft", "design_with_songs", "revise_songs", "studio_songs"
+        "design_draft",
+        "revise_draft",
+        "design_with_songs",
+        "revise_songs",
+        "studio_songs",
+        "sketch",
     ] = "design_draft",
     base_revision_id: UUID | None = None,
     request_message_id: UUID | None = None,

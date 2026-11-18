@@ -34,9 +34,12 @@ _BASE = text(
     "SELECT kind, content_hash, content FROM class_revisions "
     "WHERE id = :base AND owner_id = :owner_id AND class_id = :class_id"
 )
+# A chat revision: a revise, a song change, or a revise of a sketch (ADR 0038 section 4: a sketch
+# with a parent; the composer's first sketch has none and is the class's design, not a revise).
 _CHAT_REVISIONS = text(
     "SELECT count(*) FROM class_revisions WHERE owner_id = :owner_id AND class_id = :class_id "
-    "AND kind = 'draft' AND provenance ->> 'origin' IN ('revise_draft', 'revise_songs')"
+    "AND kind = 'draft' AND (provenance ->> 'origin' IN ('revise_draft', 'revise_songs') "
+    "OR (provenance ->> 'origin' = 'sketch' AND parent_id IS NOT NULL))"
 )
 _REQUESTS = text(
     "SELECT count(*) FROM class_messages WHERE owner_id = :owner_id AND class_id = :class_id "
@@ -174,6 +177,7 @@ class BaseForRun:
     fingerprint: str | None
     earlier_requests: tuple[str, ...]
     dismissed_rules: tuple[str, ...] = ()  # ADR 0017 section 4; ids the user dismissed
+    class_id: UUID | None = None  # the job's own class
 
 
 async def stated_layer(
@@ -212,6 +216,7 @@ async def load_base(
         row.fingerprint,
         tuple(r.body for r in chain),
         tuple(r for r in (row.dismissed_rules or []) if isinstance(r, str)),
+        row.class_id,
     )
 
 

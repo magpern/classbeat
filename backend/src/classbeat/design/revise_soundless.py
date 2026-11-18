@@ -4,9 +4,11 @@ No ``music`` stage and no MOWL or Spotify call: the switch and the model's cover
 first (the worker's backstop to ``admit``), then the request's stated values are layered onto the
 brief (``revise_stated``, #904), then the soundless ``revise`` stage over the brief, the base draft
 and the requests, then the store with a ``NoMusicStep``. No ``songs_requested`` exit, no
-``music_changed``, no rules section.
+``music_changed``, no rules section. A sketch base (ADR 0038 section 4) is revised the same way and
+gives a ``sketch``.
 """
 
+import dataclasses
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -17,6 +19,8 @@ from classbeat.agent.soundless import SoundlessReviseContext, soundless_revise_s
 from classbeat.design import chat, diff, music_kind, revise_base, revise_stated, revision, sport
 from classbeat.design.interpreted import with_interpretation
 from classbeat.design.kind import Runtime, group_model
+from classbeat.design.kind_nomusic import SKETCH_MUSIC
+from classbeat.design.revision_ready_policy import SKETCH
 from classbeat.jobs import Complete, FencedSession, JobFailure, JobRun
 
 if TYPE_CHECKING:
@@ -24,8 +28,15 @@ if TYPE_CHECKING:
 
 
 async def run_soundless(
-    job_run: JobRun, given: "ReviseDraftInput", loaded: revise_base.RunBase, runtime: Runtime
+    job_run: JobRun,
+    given: "ReviseDraftInput",
+    loaded: revise_base.RunBase,
+    runtime: Runtime,
+    *,
+    sketch: bool = False,
 ) -> Complete:
+    """``sketch``: the base is a sketch (ADR 0038 section 4), so the revision is a ``sketch`` too
+    (its base and request named, its music ``SKETCH_MUSIC``), on a class that is not soundless."""
     if (
         given.class_id is None
         or given.request_message_id is None
@@ -63,7 +74,7 @@ async def run_soundless(
         outcome,
         None,
         step,
-        origin="revise_draft",
+        origin=SKETCH if sketch else "revise_draft",
         base_revision_id=base_id,
         base_hash=base_hash,
         request_message_id=request_message_id,
@@ -76,6 +87,8 @@ async def run_soundless(
         extra=stated.items,
         stated=bool(brief.explicit),
     )
+    if sketch:
+        draft = dataclasses.replace(draft, music=dict(SKETCH_MUSIC))
     change = revise_base.noted(
         diff.summarize(base.content, draft.content, brief.sport), loaded.retired
     )
@@ -83,7 +96,7 @@ async def run_soundless(
     async def store(fs: FencedSession) -> UUID:
         """The music kind, the revision, the compare-and-set, the assistant message."""
         try:
-            await music_kind.check_stored(fs, soundless=True)  # the kind never changes
+            await music_kind.check_stored(fs, soundless=not sketch)  # the kind never changes
             revision_id = await draft.store(fs)
             params = {
                 "revision_id": revision_id,
