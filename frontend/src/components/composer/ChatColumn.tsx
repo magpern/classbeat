@@ -83,7 +83,7 @@ export function ChatColumn({
           </li>
         ) : null}
         <li className="m-0 flex flex-col">
-          <ReadingCard items={items} extras={extras} onAnswer={(sentence) => void send.run(sentence)} busy={send.busy || pending !== null} />
+          <ReadingCard items={items} extras={extras} onAnswer={send.run} disabled={send.busy || blocked !== null} />
         </li>
         {messages.map((m) => {
           if (m.role === 'user') {

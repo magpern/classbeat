@@ -1,15 +1,16 @@
 import { isObject, optionalCount, optionalText, type JsonObject } from './decode'
 
-// The composer flow's part of a class answer (ADR 0038 sections 5, 7 and 8). The backend builds of
-// #1188 and #1189 fix the final shapes; these are the minimal ones the web needs, and every key is
-// optional so a class without the flag, or a server without them, reads as the empty state:
+// The composer flow's part of a class answer (ADR 0038 sections 5, 7 and 8). Every key is optional
+// so a class without the flag reads as the empty state:
 //
-//   fill_songs:   { sketch_revision_id, attempt, failure }  the fill started for a sketch (ADR section 5):
-//                 `failure` is the stored refusal or failure code, null while it runs or waits;
+//   composer:     boolean   the class was read with the composer flow on (#1188; `classes/composer_view.py`);
+//   fill_songs:   { sketch_revision_id, attempt, failure }  the fill of the current sketch (#1188):
+//                 `failure` is the stored refusal, the error category of the failed job, `cancelled`
+//                 or `expired`; null while it runs or waits;
 //   save_pending: { revision_id, content_hash, job_id }     the draft phase 2 stored and the phase-2
-//                 job that asked for the save (ADR section 7);
+//                 job that asked for the save (ADR section 7; assumed until #1189 merges);
 //   phase2:       { state }                                  the last phase-2 job's state, so a failed
-//                 one reads "The playlist was not created" (ADR section 7).
+//                 one reads "The playlist was not created" (ADR section 7; assumed until #1189 merges).
 
 export interface FillState {
   /** The sketch revision the fill was started for. */
@@ -32,15 +33,11 @@ export interface ComposerState {
   savePending: SavePending | null
   /** `failed` when the newest phase-2 job of the class failed; null otherwise. */
   phase2: 'failed' | null
-  /**
-   * The class answer's `composer` boolean (true when the interpret job was admitted with the flag
-   * on; #1188 adds it); null while the server does not send it, and the page then falls back to the
-   * sketch in the history (`lib/composer/workspaceKind.ts`).
-   */
-  composer: boolean | null
+  /** The class answer's `composer`: the interpret job was admitted with the flag on (#1188). */
+  composer: boolean
 }
 
-export const NO_COMPOSER_STATE: ComposerState = { fill: null, savePending: null, phase2: null, composer: null }
+export const NO_COMPOSER_STATE: ComposerState = { fill: null, savePending: null, phase2: null, composer: false }
 
 function fillOf(value: unknown): FillState | null {
   if (!isObject(value)) return null
@@ -63,6 +60,6 @@ export function decodeComposerState(item: JsonObject): ComposerState {
     fill: fillOf(item.fill_songs),
     savePending: savePendingOf(item.save_pending),
     phase2: phase2 === 'failed' ? 'failed' : null,
-    composer: typeof item.composer === 'boolean' ? item.composer : null,
+    composer: item.composer === true,
   }
 }

@@ -21,14 +21,17 @@ export function ClassPage({ classId }: { classId: string }) {
 }
 
 /**
- * The class page. With `composer_flow` on, a composer class (ADR 0038 section 10.2) gets the
- * workspace; every other class, and every class with the flag off, gets the page it had. The flag
- * is read before either body mounts, so the two never both run their hand-off.
+ * The class page. With `composer_flow` on, a class the server says is a composer class (ADR 0038
+ * section 10.2) gets the workspace; every other class, and every class with the flag off, gets the
+ * page it had. The flag is read, only for a composer class, before either body mounts, so the two
+ * never both run their hand-off; any other class does not wait for it.
  */
 function ClassView({ classId }: { classId: string }) {
   const t = useT()
   const { state, reload } = useClassData(classId)
-  const flag = useComposerFlag()
+  const summary = state.status === 'ready' ? state.data.summary : null
+  const composer = summary !== null && summary.composer.composer && !summary.soundless
+  const flag = useComposerFlag(composer)
   const [deleted, setDeleted] = useState<Deleted | null>(null)
   if (deleted !== null) {
     return (
@@ -38,8 +41,7 @@ function ClassView({ classId }: { classId: string }) {
     )
   }
   if (state.status !== 'ready') return <ClassUnavailable classId={classId} state={state} onRetry={reload} />
-  if (flag === null) return <p className="m-0">{t('common.loading')}</p>
-  const { summary, revisions } = state.data
-  const Body = isComposerClass(flag, summary, revisions) ? ComposerWorkspace : ClassBody
+  if (composer && flag === null) return <p className="m-0">{t('common.loading')}</p>
+  const Body = isComposerClass(flag === true, state.data.summary) ? ComposerWorkspace : ClassBody
   return <Body classId={classId} data={state.data} reload={reload} onDeleted={setDeleted} />
 }

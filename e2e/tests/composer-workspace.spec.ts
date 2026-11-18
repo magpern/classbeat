@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import type { Page } from '@playwright/test'
 import { expect, test } from './helpers'
 import { PLAYLISTS, fakeMowl } from './design-helpers'
@@ -19,9 +19,10 @@ import { fakeState } from './spotify-helpers'
 // starts by itself after the sketch is finished when the routes of #1188 and #1189 are there.
 //
 // It needs what #1188 (the fill hand-off, swap and change) and #1189 (approve with `save: true`,
-// `save_pending`) add: the `fill-songs` route and the fake model scripts named in `SCRIPTS`. Until
-// both exist the spec skips itself with that reason (a runtime probe, not a flag): the assertions
-// below are the ones the issue asks for and are not weakened.
+// `save_pending`) add: the `fill-songs` route, the fake model scripts named in `SCRIPTS` and the
+// class answer's `save_pending`. Until all exist the spec skips itself with that reason (a probe,
+// not a flag): the assertions below are the ones the issue asks for and are not weakened. #1188 is
+// on main; the approval's phase 2 (#1189) is not, so the spec still skips.
 
 const SCRIPTS: ModelScript[] = ['composer_read', 'composer_sketch', 'composer_sketch_revised', 'composer_fill', 'composer_swap']
 const NO_CLASS = '00000000-0000-4000-8000-000000000000'
@@ -45,6 +46,11 @@ async function missing(page: Page): Promise<string | null> {
     (name) => !existsSync(new URL(`../../backend/tests/agent_scripts/${name}.json`, import.meta.url)),
   )
   if (absent.length > 0) return `the fake model scripts ${absent.join(', ')} are not in backend/tests/agent_scripts yet (#1188, #1189)`
+  // The class answer's `save_pending` is phase 2's (#1189): without it the approval cannot finish.
+  const view = new URL('../../backend/src/classbeat/classes/composer_view.py', import.meta.url)
+  if (!existsSync(view) || !readFileSync(view, 'utf8').includes('save_pending')) {
+    return 'the approval\'s phase 2 (approve and save, `save_pending`) is not on main yet (#1189)'
+  }
   const session = (await (await page.request.get('/api/auth/session')).json()) as { csrf_token: string }
   const probe = await page.request.post(`/api/classes/${NO_CLASS}/fill-songs`, {
     data: {},

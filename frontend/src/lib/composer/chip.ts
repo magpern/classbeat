@@ -9,10 +9,11 @@ import { SKETCH } from './workspaceKind'
 //   expired             the list ended (expired, cancelled, replaced or failed) for the same sketch: Find songs again
 //   playlistNotCreated  phase 2 failed after the approval: Create the playlist again
 //   saving              the save of `save_pending` is queued or running, or `save_pending` is set
+//   creating            the list is approved and phase 2 runs: the playlist and the draft
 //   saved               a draft, saved and up to date
 //   draft               a draft that is not saved (or changed since): the ordinary Save and Update
 
-export type WorkspaceState = 'rough' | 'ready' | 'expired' | 'playlistNotCreated' | 'saving' | 'saved' | 'draft'
+export type WorkspaceState = 'rough' | 'ready' | 'expired' | 'playlistNotCreated' | 'creating' | 'saving' | 'saved' | 'draft'
 
 export interface WorkspaceChip {
   state: WorkspaceState
@@ -49,6 +50,8 @@ export function deriveChip(input: ChipInput): WorkspaceChip {
   const running = isRunning(openJob)
   // The fill belongs to this sketch only: a revise made a new sketch, which has none started.
   const forThis = composer.fill !== null && composer.fill.sketchRevisionId === input.currentRevisionId
+  // After Approve, phase 2 creates the playlist and the draft: not "songs not in yet".
+  if (running && forThis && songs.state === 'approved') return { state: 'creating', ...none }
   if (!running && forThis && songs.state === 'approved' && composer.phase2 === 'failed') {
     return { state: 'playlistNotCreated', findAgain: false, createAgain: true }
   }
