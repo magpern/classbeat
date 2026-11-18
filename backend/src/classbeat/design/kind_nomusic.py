@@ -18,7 +18,6 @@ soundless (``music_kind.require_covered``), and store with a ``NoMusicStep``.
   No ``class_ready`` mail: a sketch is not a class ready to teach.
 """
 
-import dataclasses
 import json
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
@@ -39,6 +38,15 @@ if TYPE_CHECKING:
     from classbeat.design.kind import DesignDraftInput
 
 SKETCH_MUSIC: Final[dict[str, str]] = {"source": SKETCH}  # a sketch revision's ``music``
+
+
+def sketched(draft: revision.DraftRevision) -> revision.DraftRevision:
+    """``draft`` with the sketch's music (``SKETCH_MUSIC``), everything else as built."""
+    music = dict(SKETCH_MUSIC)
+    return revision.DraftRevision(
+        draft.content, draft.content_hash, music, draft.provenance, draft.parent_id
+    )
+
 
 # The job's own class (read from the fenced job row, never from the input), only while it has no
 # current revision and no music source: the composer's first design.
@@ -85,7 +93,7 @@ async def run_no_music(job_run: JobRun, given: "DesignDraftInput", model: GroupM
     draft = with_interpretation(draft, given.brief, outcome.output.unmet, given.plan_gates)
     brief = given.brief.stored()
     if sketch:
-        draft = dataclasses.replace(draft, music=dict(SKETCH_MUSIC))
+        draft = sketched(draft)
 
         async def store_sketch(fs: FencedSession) -> UUID:
             revision_id = await draft.store(fs)

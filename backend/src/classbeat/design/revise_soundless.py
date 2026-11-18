@@ -8,7 +8,6 @@ and the requests, then the store with a ``NoMusicStep``. No ``songs_requested`` 
 gives a ``sketch``.
 """
 
-import dataclasses
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -19,7 +18,7 @@ from classbeat.agent.soundless import SoundlessReviseContext, soundless_revise_s
 from classbeat.design import chat, diff, music_kind, revise_base, revise_stated, revision, sport
 from classbeat.design.interpreted import with_interpretation
 from classbeat.design.kind import Runtime, group_model
-from classbeat.design.kind_nomusic import SKETCH_MUSIC
+from classbeat.design.kind_nomusic import sketched
 from classbeat.design.revision_ready_policy import SKETCH
 from classbeat.jobs import Complete, FencedSession, JobFailure, JobRun
 
@@ -88,7 +87,7 @@ async def run_soundless(
         stated=bool(brief.explicit),
     )
     if sketch:
-        draft = dataclasses.replace(draft, music=dict(SKETCH_MUSIC))
+        draft = sketched(draft)
     change = revise_base.noted(
         diff.summarize(base.content, draft.content, brief.sport), loaded.retired
     )

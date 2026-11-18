@@ -52,9 +52,18 @@ KEEPING: Final = (
     ("player_publications", "source_class_id"),
 )
 KEEPING_BY_JOB: Final = ("external_operations", "mail_handoff")
-# Rows that go with the discarded class or its reading (or outlive it, as the usage does).
+# Rows that go with the discarded class or its reading (or outlive it, as the usage does); a
+# pending chat message (ADR 0038 section 8) is chat, like ``class_messages``.
 DISCARDED_WITH: Final = frozenset(
-    {"jobs", "class_messages", "class_revisions", "job_events", "agent_runs", "credit_ledger"}
+    {
+        "jobs",
+        "class_messages",
+        "class_pending_messages",
+        "class_revisions",
+        "job_events",
+        "agent_runs",
+        "credit_ledger",
+    }
 )
 
 _JOB = text(

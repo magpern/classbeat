@@ -3,7 +3,7 @@ section 4, #1186).
 
 Every route and job that takes a revision id calls ``revision_ready`` with that id before it does
 anything else with the revision, and so before any MOWL, Spotify or player call: ``save_workout``,
-``update_workout`` and ``send_to_player`` (through ``classbeat.saving.approval.revision``),
+``update_workout`` and Send to player (through ``classbeat.saving.approval.revision``),
 ``duplicate``, ``POST /api/classes/{id}/current``, the beat-one correction, ``refit_draft``,
 ``revise_songs`` and ``studio_revise``. A revision whose origin is not ready
 (``revision_ready_policy``: ``sketch``) answers the closed code ``not_ready``. A revision the

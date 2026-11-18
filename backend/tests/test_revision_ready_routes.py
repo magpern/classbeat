@@ -25,10 +25,10 @@ from sketchtools import SketchEnv
 pytestmark = pytest.mark.usefixtures("jenv")
 
 
-@pytest.fixture
-def outbound(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Every request that leaves for anything but the app under test (Spotify, the player, a
-    gateway; ``httpx`` and ``urllib`` alike), recorded and refused, whatever client sends it."""
+def refuse_outbound(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """From now on, every request that leaves for anything but the app under test (Spotify, the
+    player, a gateway; ``httpx`` and ``urllib`` alike), recorded and refused, whatever client
+    sends it. Armed after the sketch is made, whose design reaches the fakes."""
     sent: list[str] = []
     app_host = httpx.URL(ORIGIN).host
     real_send = httpx.AsyncClient.send
@@ -152,9 +152,10 @@ CASES = [
 
 @pytest.mark.parametrize("case", CASES)
 async def test_every_route_refuses_a_sketch_before_anything_else(
-    skenv: SketchEnv, fake_mowl: FakeMowlMusic, outbound: list[str], case: str
+    skenv: SketchEnv, fake_mowl: FakeMowlMusic, monkeypatch: pytest.MonkeyPatch, case: str
 ) -> None:
     class_id, sketch = await skenv.sketched()
+    outbound = refuse_outbound(monkeypatch)
     before, mowl = written(skenv), len(fake_mowl.requests)
     answer = await call(skenv, case, class_id, sketch)
     assert answer.status_code == 409, answer.text
