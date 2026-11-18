@@ -126,6 +126,13 @@ async function settled(page: Page, id: string, revisions: number): Promise<void>
 /** The playlists the fake Spotify holds that are not classbeat's working copy. */
 const kept = (): FakePlaylist[] => fakePlaylists().filter((p) => p.name !== WORKING_COPY)
 const finals = (): FakePlaylist[] => kept().filter((p) => p.id !== PLAYLISTS.draft.id)
+/** Everything classbeat made in the user's Spotify is private (AGENTS.md), the working copy too. */
+const allPrivate = (): void => {
+  for (const p of fakePlaylists().filter((q) => q.id !== PLAYLISTS.draft.id)) {
+    expect(p.public, p.name).toBe(false)
+    expect(p.collaborative, p.name).toBe(false)
+  }
+}
 
 test('describe with a playlist and a pinned song, shape it, swap a song, approve and save: one MOWL save, one Spotify playlist, no write before Approve', async ({
   page,
@@ -152,10 +159,10 @@ test('describe with a playlist and a pinned song, shape it, swap a song, approve
 
   // The reading with its pinned song and its question; then the sketch.
   const reading = page.getByTestId('reading-card')
-  await expect(reading.getByText(PINNED)).toBeVisible(LONG)
+  await expect(reading.getByText(PINNED).first()).toBeVisible(LONG)
   useModelScript('composer_sketch')
   held.release()
-  await expect(page.getByText('Rough: songs not in yet')).toBeVisible(LONG)
+  await expect(page.getByText('Rough: songs not in yet').first()).toBeVisible(LONG)
   await settled(page, id, 1)
 
   // Nothing is written before the approval: no MOWL program, no final playlist, the attached one untouched.
@@ -184,22 +191,27 @@ test('describe with a playlist and a pinned song, shape it, swap a song, approve
   useModelScript('composer_fill')
   fill.open()
   await page.reload()
-  await expect(page.getByText('Ready to approve')).toBeVisible(LONG)
+  await expect(page.getByText('Ready to approve').first()).toBeVisible(LONG)
   const list = page.getByTestId('segment-list')
-  await expect(list.getByText(PINNED)).toBeVisible()
+  await expect(list.getByText(PINNED).first()).toBeVisible()
   await expect(list.getByText('Pinned by you')).toBeVisible()
   await expect(list.getByText('From your playlist')).toBeVisible()
   nothingYet()
 
   // Swap one song: the waiting version is replaced, still not written to MOWL or made a final playlist.
-  const swap = page.getByRole('button', { name: /^Swap / }).nth(SWAPPED)
+  const swaps = page.getByRole('button', { name: /^Swap / })
+  const rows = await swaps.count()
+  expect(rows).toBeGreaterThan(SWAPPED)
+  const swap = swaps.nth(SWAPPED)
   const swapped = (await swap.getAttribute('aria-label')) ?? ''
   expect(swapped).toMatch(/^Swap /)
   useModelScript('composer_swap')
   await swap.click()
+  // The new list is in when the old song is gone and the rows are back (never while the job runs).
   await expect(page.getByRole('button', { name: swapped })).toHaveCount(0, LONG)
-  await expect(page.getByText('Ready to approve')).toBeVisible(LONG)
-  await expect(list.getByText(PINNED)).toBeVisible()
+  await expect(swaps).toHaveCount(rows, LONG)
+  await expect(page.getByText('Ready to approve').first()).toBeVisible(LONG)
+  await expect(list.getByText(PINNED).first()).toBeVisible()
   nothingYet()
 
   // Approve and save: the bar's copy, then one click. Phase 2 makes the playlist; the web saves.
@@ -218,8 +230,7 @@ test('describe with a playlist and a pinned song, shape it, swap a song, approve
   const [made, ...others] = finals()
   expect(others).toHaveLength(0)
   expect(made).toBeDefined()
-  expect(made?.public).toBe(false)
-  expect(made?.collaborative).toBe(false)
+  allPrivate()
   expect(made?.entries).toContain(PIN_URI)
   expect(made?.entries).toContain(FAVOURED_URI)
   expect(kept().find((p) => p.id === PLAYLISTS.draft.id)?.entries).toEqual([FAVOURED_URI])

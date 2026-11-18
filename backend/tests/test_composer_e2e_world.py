@@ -83,6 +83,9 @@ async def test_the_swap_replaces_the_row_the_e2e_clicks_and_no_other(cenv: Compo
     after = songs_of(cenv, row.approval_revision_id)
     assert [i for i, (a, b) in enumerate(zip(before, after, strict=True)) if a != b] == [SWAPPED]
     assert after[2] == (PINNED[0], {"kind": "pinned"})
+    favoured = (title(cenv.songenv, FAVOURED), {"kind": "playlist", "playlist": 0})
+    assert favoured in after  # the e2e's final playlist still holds it
+    assert after.index(favoured) != SWAPPED
 
 
 async def test_the_approval_of_the_swapped_list_keeps_the_preview_and_asks_for_the_save(
@@ -103,6 +106,9 @@ async def test_the_approval_of_the_swapped_list_keeps_the_preview_and_asks_for_t
     assert cenv.songenv.revision(draft).provenance["fit"] == "kept"
     [playlist] = cenv.songenv.class_playlists(owner)
     assert playlist.state == "verified"
+    entries = cenv.songenv.fake.playlists[playlist.playlist_id].entries
+    assert f"spotify:track:{spotifycore.track_id(18)}" in entries  # the pin
+    assert f"spotify:track:{spotifycore.track_id(FAVOURED)}" in entries
     view = (await rider.browser.get(f"/api/classes/{class_id}")).json()
     assert view["save_pending"]["revision_id"] == str(draft)
     assert (view["save_pending"]["job_id"], view["phase2"]) == (str(row.id), None)
