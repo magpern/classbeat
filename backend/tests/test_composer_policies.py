@@ -9,6 +9,7 @@ from classbeat.agent.choose_songs import ChosenList, ChosenSong
 from classbeat.agent.pick_pool import PoolPick, PoolResult
 from classbeat.agent.registry import Entry
 from classbeat.agent.songs import PoolTrack
+from classbeat.jobs import JobFailure
 from classbeat.songs.composer_pick import candidate_set
 from classbeat.songs.composer_slots_policy import pin_slots, slot_roles
 from classbeat.songs.composer_sources import Favoured, Pinned
@@ -122,3 +123,14 @@ def test_the_candidate_set_never_holds_an_excluded_song() -> None:
     assert [p.spotify_id for p in picked] == ["hit", "pin", "fav"]
     unfiltered = candidate_set(model, favoured, pinned, {}, frozenset())
     assert "out" in [p.spotify_id for p in unfiltered]
+
+
+def test_an_empty_candidate_set_is_pool_too_small_not_a_failed_write() -> None:
+    """Every pick was a song the swap takes out and nothing is pinned or favoured: an explicit
+    ``pool_too_small`` before the pool write, not an empty write or a later failure."""
+    model = PoolResult((PoolPick(0, "build", "out"), PoolPick(1, "build", "gone")))
+    with pytest.raises(JobFailure) as failure:
+        candidate_set(model, Favoured((), ()), Pinned((), ()), {}, frozenset({"out", "gone"}))
+    assert failure.value.args == ("pool_too_small",)
+    kept = candidate_set(model, Favoured((), ()), Pinned((), ()), {}, frozenset({"out"}))
+    assert [p.spotify_id for p in kept] == ["gone"]  # one pick left: no failure

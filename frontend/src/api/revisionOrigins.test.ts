@@ -31,7 +31,7 @@ const ASKED: Record<string, [string, string]> = {
   revise_songs: ['Songs changed', 'Songs changed'],
   studio_songs: ['First design', 'First design'],
   duplicate: ['Duplicated from a class that is gone', 'Duplicated from a class that is gone'],
-  beat_one: ['First design', 'First design'],
+  beat_one: ['Beat 1 adjusted', 'Beat 1 adjusted'],
   swedebeat_match: ['First design', 'First design'],
 }
 

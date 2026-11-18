@@ -114,7 +114,9 @@ def candidate_set(
     its order, then every pinned and favoured track it left out, at most ``MAX_POOL`` (the
     model's last picks make room first). ``excluded``, the songs a swap takes out of the list, is
     removed from all of them, so a swapped-out song is never written, analysed or offered again,
-    whoever proposed it (#1188 review F1)."""
+    whoever proposed it (#1188 review F1). A set left empty by that (every pick was a song the
+    swap took out, and no pinned or favoured track to add) is ``pool_too_small``, here and not at
+    the pool write."""
     extras: list[PoolPick] = []
     seen = {p.spotify_id for p in pool.picks} | set(excluded)
     pins = [(pin_roles.get(e.ref, FAVOURED_ROLE), e) for _, e in pinned.found]
@@ -124,7 +126,10 @@ def candidate_set(
             extras.append(PoolPick(entry.ref, role, entry.spotify_id, entry.cover, entry.year))
     extras = extras[:MAX_POOL]
     model = [p for p in pool.picks if p.spotify_id not in excluded]
-    return (*model[: MAX_POOL - len(extras)], *extras)
+    picks = (*model[: MAX_POOL - len(extras)], *extras)
+    if not picks:
+        raise JobFailure("pool_too_small")
+    return picks
 
 
 async def pick_composer(
