@@ -78,3 +78,22 @@ async def test_a_swap_that_fails_while_running_leaves_the_sketch_and_find_songs_
     assert cenv.drafts(class_id) == 1
     again = await cenv.fill(rider, class_id, retry=True)  # Find songs again
     assert again.status_code == 201, again.text
+
+
+async def test_a_stored_swap_counts_toward_the_revise_limit_and_a_fill_does_not(
+    cenv: ComposerEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        limits, "_limits", limits.ChatLimits(policy=limits.SettingRevisionPolicy(1))
+    )
+    rider = await cenv.songenv.rider()
+    class_id, _ = await cenv.sketched(rider)
+    _, list_id, _ = await cenv.waiting(rider, class_id)  # the fill: exempt, the limit is unused
+    made = await swap(rider, class_id, list_id)
+    assert made.status_code == 201, made.text
+    cenv.songenv.script = swap_script()
+    row = await cenv.songenv.run(UUID(made.json()["job_id"]))
+    assert row.state == "waiting_for_approval", (row.state, row.error_category)
+    again = await swap(rider, class_id, row.approval_revision_id)
+    assert (again.status_code, again.json()["detail"]["reason"]) == (409, "revision_limit")
+    assert again.json()["detail"]["count"] == 1
