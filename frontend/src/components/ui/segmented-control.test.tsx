@@ -118,7 +118,7 @@ describe('SegmentedControl', () => {
     const radio = screen.getByRole('radio', { name: 'Easy' })
     expect(radio.className).toContain('aria-checked:bg-surface')
     expect(radio.className).toContain('aria-checked:text-text')
-    expect(radio.className).toContain('var(--cb-heat-to)')
+    expect(radio.className).toContain('var(--cb-tab-mark)')
     expect(radio.className).toContain('focus-visible:outline-brand')
     expect(group.outerHTML).not.toMatch(/style=|#[0-9a-f]{3,8}\b|rgb\(/i)
   })

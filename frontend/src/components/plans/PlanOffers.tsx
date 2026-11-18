@@ -30,18 +30,21 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
   const { state, reload, replace } = useBilling()
   const action = useAction()
   const [choice, setChoice] = useState<Choice | null>(null)
-  const [done, setDone] = useState<string | null>(null)
+  // The plan id, not its text: the name is looked up when the note renders, so a payment that lands
+  // before the catalogue or the billing has loaded still names the plan (not its id).
+  const [done, setDone] = useState<Choice | null>(null)
   // One key per attempt: a retry after a lost answer is the same request, a refusal starts a new one.
   const attempt = useRef<string | null>(null)
 
   const billing: Billing | null = state.status === 'ready' ? state.billing : null
   const sub = billing?.subscription ?? null
-  const nameOf = (id: string) => catalogue?.find((p) => p.id === id)?.name ?? billing?.offers.find((o) => o.plan === id)?.name ?? id
+  const nameOf = (id: string) =>
+    catalogue?.find((p) => p.id === id)?.name ?? billing?.offers.find((o) => o.plan === id)?.name ?? id
   const offerOf = (id: string) => billing?.offers.find((o) => o.plan === id) ?? null
 
   // A Paddle checkout completes when the signed notification lands, not when the server answers (ADR 0032 section 7).
   const wait = useCheckoutWait(reload, (paid) => {
-    setDone(t(doneKey(paid.kind), { name: nameOf(paid.plan) }))
+    setDone({ kind: paid.kind, plan: paid.plan })
     onChanged()
   })
   const away = wait.status === 'redirecting' || wait.status === 'waiting'
@@ -97,7 +100,7 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
         }
         replace(next)
         setChoice(null)
-        setDone(t(doneKey(chosen.kind), { name: nameOf(chosen.plan) }))
+        setDone(chosen)
         onChanged()
       })
   }
@@ -110,7 +113,9 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
       {loading ? <p className="m-0">{t('common.loading')}</p> : null}
       {catalogueFailed ? <Notice kind="error">{t('plan.billing.loadFailed')}</Notice> : null}
       {!loading && state.status === 'closed' ? <Notice>{t('plan.options.closed')}</Notice> : null}
-      {!loading && !catalogueFailed && state.status === 'failed' ? <Notice kind="error">{t('plan.billing.loadFailed')}</Notice> : null}
+      {!loading && !catalogueFailed && state.status === 'failed' ? (
+        <Notice kind="error">{t('plan.billing.loadFailed')}</Notice>
+      ) : null}
       {!loading && billing !== null ? <Notice>{t('plan.options.testing')}</Notice> : null}
       {sub !== null && sub.status === 'active' ? (
         <p className="m-0" data-testid="plan-subscription">
@@ -121,7 +126,9 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
           })}
         </p>
       ) : null}
-      {done !== null ? <Notice kind="success">{done}</Notice> : null}
+      {done !== null ? (
+        <Notice kind="success">{t(doneKey(done.kind), { name: nameOf(done.plan) })}</Notice>
+      ) : null}
       <CheckoutStatus status={wait.status} onAgain={wait.again} onDismiss={wait.dismiss} />
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {open === null ? null : (
@@ -138,7 +145,7 @@ export function PlanOffers({ plan, onChanged }: { plan: Plan; onChanged: () => v
           }}
         />
       )}
-      <ul className="m-0 flex list-none flex-col gap-4 p-0">
+      <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(15rem,100%),1fr))] gap-4 p-0">
         {(loading ? [] : (catalogue ?? [])).map((cat) => (
           <PlanCard
             key={cat.id}
