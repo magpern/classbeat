@@ -10,6 +10,8 @@ export interface SaveInput {
   /** Lower-case hex SHA-256 of the revision's canonical content, as the page shows it. */
   content_hash: string
   mowl_connection_id: string
+  /** Set only by the composer page's save of `save_pending` (ADR 0038 section 7): the phase-2 job. */
+  save_pending_job_id?: string
 }
 
 export interface UpdateInput extends SaveInput {

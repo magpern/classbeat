@@ -31,6 +31,11 @@ export type ModelScript =
   | 'ai_first_design_long' // its design: 60 minutes with no music
   | 'e2e_studio_swap' // a studio pick with swaps: 10 of its 14 candidates missing (SR C8)
   | 'e2e_studio_revise' // its edit loop: a chat revise that cuts the last song at 230 s (SR C8)
+  | 'composer_read' // composer-workspace.spec.ts: pins "Dancing Queen" as the last climb, asks how long (not on main until #1188/#1189)
+  | 'composer_sketch' // its sketch design: no songs, time-based segments
+  | 'composer_sketch_revised' // the sketch after "make the last climb longer"
+  | 'composer_fill' // the fill: choose, then the design stage on the chosen songs
+  | 'composer_swap' // the swap of one song
   | 'e2e_studio_design' // a studio design and mix on the seeded analyses (SR C8; backend design_script(MIX_8))
 
 export function useModelScript(name: ModelScript): void {
