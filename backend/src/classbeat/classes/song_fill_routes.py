@@ -10,6 +10,13 @@
   stored); 404 ``not_found``. No ``Idempotency-Key`` header: the key is derived from the class,
   the sketch and the attempt. No credit is used.
 
+- ``POST .../swap-songs`` ``{song_list_revision_id, replace: [position]}`` with an
+  ``Idempotency-Key`` header (``classbeat.classes.song_swap``): the swap that replaces the waiting
+  list's job (ADR 0038 section 6): 201 ``{job_id, kind, state}``, 200 with the same job for the
+  same key; 409 ``not_waiting``, ``expired``, ``revision_limit``, ``quota``, ``pool_busy`` and
+  the rest of the create's refusals, each leaving the waiting list approvable; 422 for a body or
+  key that does not parse.
+
 Only while ``composer_flow`` is on. The body is a reason code and whole numbers only; another
 user's class is 404 like an unknown one.
 """
@@ -17,17 +24,17 @@ user's class is 404 like an unknown one.
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from classbeat import auth
-from classbeat.classes import song_fill
+from classbeat.classes import song_fill, song_swap
 from classbeat.classes.handoff_routes import job_enqueue
 from classbeat.classes.interpretation_routes import DesignJobOut, HandoffIn, RefusalOut
 from classbeat.context import UserContext
 from classbeat.jobs.credits import CreditLedger
-from classbeat.jobs.http import credit_ledger, job_limit
+from classbeat.jobs.http import IDEMPOTENCY_KEY, credit_ledger, job_limit
 from classbeat.jobs.user import JobLimitPolicy
 
 router = APIRouter(prefix="/api/classes", tags=["classes"])
@@ -101,6 +108,55 @@ async def fill_songs(
         ctx,
         wanted,
         retry=body.retry,
+        ledger=ledger,
+        limit=limit,
+        enqueue=job_enqueue(),
+    )
+    if done.job_id is None or done.kind is None or done.state is None:
+        return _refuse(done.reason or "invalid_input", dict(done.counts))
+    out = DesignJobOut(job_id=done.job_id, kind=done.kind, state=done.state)
+    if not done.created:
+        return JSONResponse(out.model_dump(mode="json"), status_code=200)
+    return out
+
+
+class SwapIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    song_list_revision_id: UUID
+    replace: list[int] = Field(min_length=1, max_length=40)
+
+
+@router.post(
+    "/{class_id}/swap-songs",
+    status_code=201,
+    response_model=DesignJobOut,
+    responses={200: {"model": DesignJobOut}, 404: {}, 409: {}, 422: {}},
+)
+async def swap_songs(
+    class_id: str,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)],
+    ledger: Annotated[CreditLedger, Depends(credit_ledger)],
+    limit: Annotated[JobLimitPolicy, Depends(job_limit)],
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> DesignJobOut | JSONResponse:
+    wanted = _uuid(class_id)
+    if wanted is None:
+        return _refuse("not_found")
+    if idempotency_key is None or not IDEMPOTENCY_KEY.fullmatch(idempotency_key):
+        return JSONResponse({"detail": {"reason": "invalid_input"}}, status_code=422)
+    try:
+        body = SwapIn.model_validate_json(await request.body())
+    except ValidationError:
+        return JSONResponse({"detail": {"reason": "invalid_input"}}, status_code=422)
+    done = await song_swap.swap(
+        request.app.state.session_factory,
+        ctx,
+        wanted,
+        body.song_list_revision_id,
+        body.replace,
+        idempotency_key=idempotency_key,
         ledger=ledger,
         limit=limit,
         enqueue=job_enqueue(),

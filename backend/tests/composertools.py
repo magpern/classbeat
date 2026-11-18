@@ -250,3 +250,35 @@ async def cenv(songenv: SongEnv) -> AsyncIterator[ComposerEnv]:
     finally:
         composer.configure(None)
         composer_flag(songenv, None)
+
+
+# The 8 songs of ``songtools.CHOSEN``; slot 2 (a climb) is the one swapped (``revisesongtools``).
+_KEPT_REST = [(2, "recovery"), (3, "sprint"), (4, "sprint"), (5, "recovery"), (6, "cooldown")]
+
+
+def swap_script(*, design: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """A swap of slot 2: ``beta`` finds tracks 10 to 19 (refs 0 to 9; 10 to 12 are kept, so the
+    pool is refs 3 to 8) and ref 0 of the pool takes the slot; then the design."""
+    pool = entries(
+        (3, "climb"), (4, "climb"), (5, "climb"), (6, "build"), (7, "build"), (8, "climb")
+    )
+    listed = [("kept", 0, "warmup"), ("kept", 1, "build"), ("pool", 0, "climb")]
+    listed += [("kept", i, role) for i, role in _KEPT_REST]
+    turns = [
+        *staged(
+            "pick_pool",
+            [
+                turn(call("search_tracks", {"query": "beta"}, expect={"ok": True})),
+                turn(call("submit_pool", pool, expect={"accepted": True})),
+            ],
+        ),
+        *choose_turns(listed),
+        *(design or design_turns()),
+    ]
+    return {"model": "fake-model", "drafts": {"revised": REVISED}, "turns": turns}
+
+
+async def swap(rider: Rider, class_id: UUID, list_id: UUID, *slots: int) -> httpx.Response:
+    body = {"song_list_revision_id": str(list_id), "replace": list(slots or (2,))}
+    key = {"Idempotency-Key": secrets.token_urlsafe(18)}
+    return await rider.browser.post(f"/api/classes/{class_id}/swap-songs", body, key)
