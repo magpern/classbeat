@@ -11,7 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from agentfake import good_draft
-from classbeat.agent.providers.openai_common import strict_schema, strip_added_nulls, tool_input
+from classbeat.agent.providers.openai_strict import strict_schema, strip_added_nulls, tool_input
 from classbeat.agent.stage import Stage, Tool
 from pickfake import entries, songs
 from stagetools import all_stages
