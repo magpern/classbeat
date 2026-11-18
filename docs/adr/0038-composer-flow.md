@@ -254,7 +254,15 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
   - The idempotency key is derived from the phase-2 job id. After a closed tab, the class page resumes it.
   - **`save_pending` is cleared** when a save or update job for the class is admitted (by either route), in
     the same transaction that makes any newer revision current, and when the save job reaches any terminal
-    state. While it is set the page shows "Saving…" and not the Save button, so a manual Save and the driver
+    state. *As built (#1189):* the admit clears it; "a newer revision" is a **read rule**, not a write in
+    every transaction that moves the pointer: `save_pending` counts only while it names the class's current
+    **and newest** revision (`saving/save_pending.current`, the only reader: the save admit and the class
+    answer), so the transaction that inserts any newer revision voids it, whether that revision becomes
+    current or not, and a pointer moved back to the draft does not revive it. A later `song_list` revision
+    (Change songs before the save) voids it too, and the user saves by hand. A trigger was not used: the
+    queue check admits no user function other than the pinned guard triggers. The terminal-state clear
+    holds by construction: the admit cleared it, and no phase 2 can set it again while the save job is the
+    class's one open job. While it is set the page shows "Saving…" and not the Save button, so a manual Save and the driver
     can never both save. A failed save shows its own error and the ordinary **Save** button, and the driver
     (§8) does not try again by itself.
   - `save_workout` and its operation are unchanged: at most once, and reconcile before a retry.
@@ -269,6 +277,15 @@ The songs start by themselves when the sketch is ready. The user can keep shapin
     and the chip stops offering **Create the playlist again**.
   - It takes **no credit** (§9). The resume stays available until a newer song list exists, as in ADR 0008
     §6.
+  - *As built (#1189):* the resume is the hand-off `POST /api/classes/{id}/resume-songs` (an
+    `Idempotency-Key`, no body: whatever the browser sends is ignored), which builds the `resume` input from
+    the receipt and creates it with no credit; `POST /api/jobs` mode `resume` for a composer list is
+    `receipt_invalid`, since that kind's static credit would be reserved.
+- **The class answer** (#1189): `save_pending {revision_id, content_hash, job_id}` (null while it does not
+  count) and `phase2`: `{state: "failed"}` while the newest list's approval can be resumed and its sketch is
+  current, `{state: "differed"}` while the current revision is a phase-2 draft whose final songs differed
+  (provenance `fit: "redesigned"`, not saved by itself), else null. The draft's provenance records
+  `fit: "kept" | "redesigned"`.
 - **What the click authorises.** One click approves both writes: the final Spotify playlist, and the MOWL
   workout of the class the user saw (re-timed by §7). The approve bar says this before the click (§10.2).
   Every later change is saved only with **Update workout**, as today.

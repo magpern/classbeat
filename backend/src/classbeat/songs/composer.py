@@ -20,8 +20,8 @@ The store (``AwaitApproval``, one fenced transaction): the Spotify connection st
 pick used, the songs' music step still current, the sketch **still the class's current revision**
 (``invalid_input`` otherwise), then the list. **No draft revision is stored and no pointer moves**:
 the sketch stays current while the list waits, is approved, replaced, cancelled or expires.
-An approved composer job's phase 2 (``fit``, ``save_pending``) is #1189; until then it fails
-closed in ``kind.run`` before any Spotify or MOWL call.
+An approved composer job's phase 2 (the final playlist, ``fit``, the first real draft and
+``save_pending``) is ``classbeat.songs.composer_phase2`` (#1189).
 """
 
 from typing import Any, Final
