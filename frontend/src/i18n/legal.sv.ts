@@ -135,6 +135,8 @@ export const legalSv: Catalogue = {
     'classbeat hjälper instruktörer i inomhuscykling att utforma pass med hjälp av en AI-assistent och, när du godkänner, spara dem i ditt MOWL-konto och skapa spellistor i ditt Spotify-konto. Det är en beta enbart för inbjudna, som den är, och den kan ändras eller upphöra.',
   'terms.service.p2':
     'classbeat är inte gjort av eller knutet till MOWL, Spotify eller Swedebeat. Din användning av de tjänsterna sker enligt deras egna villkor.',
+  'terms.service.p3':
+    'MOWL, Intelligent Cycling, Spotify och Swedebeat är varumärken som tillhör respektive ägare. De används bara för att tala om vad classbeat fungerar med och innebär inte att företagen står bakom classbeat.',
 
   'terms.account.title': 'Ditt konto',
   'terms.account.li1': 'Ange en riktig e-postadress och håll dina inloggningsuppgifter för dig själv.',

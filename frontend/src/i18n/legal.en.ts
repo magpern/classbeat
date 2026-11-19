@@ -135,6 +135,9 @@ export const legalEn = {
     'classbeat helps indoor-cycling instructors design classes with the help of an AI assistant and, when you approve, save them to your MOWL account and create playlists on your Spotify account. It is an invite-only beta, offered as it is, and it can change or stop.',
   'terms.service.p2':
     'classbeat is not made by or affiliated with MOWL, Spotify or Swedebeat. Your use of those services is under their own terms.',
+  // Draft wording, awaiting the owner (#1268). The site footer shows this same key (LegalFooter.tsx).
+  'terms.service.p3':
+    'MOWL, Intelligent Cycling, Spotify and Swedebeat are trademarks of their respective owners. They are used only to say what classbeat works with, and do not mean that those companies endorse classbeat.',
 
   'terms.account.title': 'Your account',
   'terms.account.li1': 'Give a real email address and keep your sign-in details to yourself.',
