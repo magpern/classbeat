@@ -28,7 +28,8 @@ export function SignedOutHeader({ ready, offered }: { ready: boolean; offered: r
             <Button asChild variant="ghost" className={SIGN_IN_PADDING}>
               <Link to="/signin">{t('auth.signIn')}</Link>
             </Button>
-            <Button asChild className={SIGN_UP_PADDING}>
+            {/* Flat heat: the glow would spill below the header and the prerender placeholder cannot carry it (takeover gate). */}
+            <Button asChild variant="flat" className={SIGN_UP_PADDING}>
               <Link to="/signup">{t('shell.signUp')}</Link>
             </Button>
           </nav>

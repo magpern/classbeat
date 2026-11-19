@@ -13,6 +13,8 @@ describe("the signed-out header", () => {
     const signUp = within(account).getByRole("link", { name: "Sign up" });
     expect(signUp).toHaveClass("bg-heat", "text-on-heat");
     expect(signUp).not.toHaveClass("bg-brand");
+    // Takeover gate: the prerender placeholder cannot carry the glow, so the header button has none.
+    expect(signUp).not.toHaveClass("shadow-glow")
     const signIn = within(account).getByRole("link", { name: "Sign in" });
     expect(signIn).toHaveClass("bg-transparent");
     expect(signIn).not.toHaveClass("bg-heat");
