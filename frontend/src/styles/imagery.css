@@ -88,19 +88,43 @@
   padding: var(--cb-space-7) var(--cb-space-6);
 }
 
+/*
+ * On a phone the whole first screen (badge, title, lead, button) must be in view without a scroll
+ * (issue 1270). The browser's header above the hero is one to three rows (the Swedish nav wraps to
+ * three on 360 px), so the hero is sized from the small viewport (`svh`: the browser toolbar counts)
+ * minus a header allowance, between 25rem (the scrim stays solid under the title) and 32rem; the text
+ * block is as short as it can be and the hero grows to it, so the photo and the flywheel take what is
+ * left above it. `100vh` is the fallback where `svh` is unknown. The Landing's top padding is cut so
+ * the hero starts under the header.
+ */
 @media (max-width: 40rem) {
+  .app-main:has(.hero) {
+    padding-top: var(--cb-space-4);
+  }
   .hero {
+    --hero-chrome: 12rem; /* the tallest header (three rows) and the Landing's top padding */
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    min-height: 32rem;
+    min-height: clamp(25rem, calc(100vh - var(--hero-chrome)), 32rem);
+    min-height: clamp(25rem, calc(100svh - var(--hero-chrome)), 32rem);
   }
   .hero::after {
     background: linear-gradient(to top, var(--hero-solid) 0%, var(--hero-solid) 58%, var(--hero-clear) 100%);
   }
   .hero__text {
     max-width: none;
-    padding: var(--cb-space-6) var(--cb-space-4) var(--cb-space-5);
+    gap: var(--cb-space-3);
+    padding: var(--cb-space-5) var(--cb-space-4);
+  }
+  .hero__text .badge {
+    margin-bottom: 0;
+  }
+  .hero__title {
+    font-size: var(--cb-text-3xl);
+  }
+  .hero__lead {
+    font-size: var(--cb-text-md);
   }
 }
 
