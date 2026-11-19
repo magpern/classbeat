@@ -1336,6 +1336,7 @@ const da: Catalogue = {
   // Music page.
   'music.page.eyebrow': 'Din musik',
   'music.page.subtitle': 'Playlisterne der er lavet til dine hold, og de MOWL-playlister som sange kan vælges fra.',
+  'music.page.attribution': 'Sange og omslag fra Spotify',
   'music.page.title': 'Musik',
   'music.page.connectTitle': 'Tilslut Spotify',
   'music.page.connectText': 'Tilslut Spotify, så vi kan vælge sange til dig og lave playlister til dine hold.',

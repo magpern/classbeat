@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { cleanup, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { fakeApi, json, SIGNED_IN } from '../test/fakeApi'
 import { connectionsBody } from '../test/songFixtures'
@@ -37,8 +37,65 @@ describe('the Music page', () => {
     expect(screen.getByRole('link', { name: 'Hill day' })).toHaveAttribute('href', '/en/classes/c1')
     const mowl = await screen.findByRole('heading', { name: 'Your playlists in MOWL' })
     expect(within(mowl.parentElement!).getByText('Warm up')).toBeInTheDocument()
-    expect(screen.getAllByAltText('Spotify')[0]).toBeInTheDocument()
-    expect(screen.getAllByTestId('spotify-attribution').length).toBeGreaterThan(0)
+  })
+
+  it('shows the Spotify attribution once, under the intro and above both lists', async () => {
+    fakeApi(routes())
+    renderAt('/music')
+    const mowl = await screen.findByRole('heading', { name: 'Your playlists in MOWL' })
+    await screen.findByText('Warm up')
+    const pill = screen.getByTestId('spotify-attribution-pill')
+    expect(screen.getAllByTestId('spotify-attribution')).toHaveLength(1)
+    // The logo keeps its alt text (one file per theme) and a caption follows it.
+    expect(within(pill).getAllByAltText('Spotify')).toHaveLength(2)
+    expect(within(pill).getByText('Songs and art from Spotify')).toBeInTheDocument()
+    const intro = screen.getByText(/The playlists made for your classes/)
+    const made = screen.getByRole('heading', { name: 'Playlists we made' })
+    const after = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(after(intro, pill)).toBe(true)
+    expect(after(pill, made)).toBe(true)
+    expect(after(pill, mowl)).toBe(true)
+  })
+
+  it('shows the attribution when only one of the two lists has items', async () => {
+    fakeApi(routes({ 'GET /api/music/mowl-playlists': { playlists: [] } }))
+    renderAt('/music')
+    await screen.findByText('Hill day by classbeat')
+    expect(screen.getAllByTestId('spotify-attribution')).toHaveLength(1)
+    cleanup()
+    fakeApi(routes({ 'GET /api/music/class-playlists': { playlists: [] } }))
+    renderAt('/music')
+    await screen.findByText('Warm up')
+    expect(screen.getAllByTestId('spotify-attribution')).toHaveLength(1)
+  })
+
+  it('shows no attribution while loading, when both lists are empty, or when both fail', async () => {
+    fakeApi(routes())
+    renderAt('/music')
+    expect(screen.queryByTestId('spotify-attribution')).toBeNull()
+    await screen.findByText('Warm up')
+    cleanup()
+    fakeApi(
+      routes({
+        'GET /api/connections': connectionsBody(false),
+        'GET /api/music/mowl-playlists': { playlists: [] },
+        'GET /api/music/class-playlists': { playlists: [] },
+      }),
+    )
+    renderAt('/music')
+    await screen.findByText(/No playlists yet/)
+    await screen.findByText('MOWL lists no Spotify playlists for your account.')
+    expect(screen.queryByTestId('spotify-attribution')).toBeNull()
+    cleanup()
+    fakeApi(
+      routes({
+        'GET /api/music/mowl-playlists': json({ detail: 'down' }, 502),
+        'GET /api/music/class-playlists': json({ detail: 'down' }, 502),
+      }),
+    )
+    renderAt('/music')
+    await screen.findByText(/Your MOWL playlists could not be loaded\./)
+    expect(screen.queryByTestId('spotify-attribution')).toBeNull()
   })
 
   it('offers no link for a playlist without one, and drops a link that is not a playlist link', async () => {
