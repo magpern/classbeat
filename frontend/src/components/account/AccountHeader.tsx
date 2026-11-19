@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useT } from '../../i18n/I18n'
+import { PageHeading } from '../ui/page-heading'
 import type { AccountStats } from './useAccountStats'
 
 function initial(text: string): string {
@@ -41,8 +42,11 @@ export function AccountHeader({ email, stats }: { email: string; stats?: Account
         </span>
       </span>
       <div className="flex min-w-0 flex-[1_1_16rem] flex-col gap-1.5">
-        <p className="m-0 text-xs font-semibold tracking-[0.14em] text-muted uppercase">{t('account.eyebrow')}</p>
-        <h1 className="m-0 font-display text-4xl leading-tight font-extrabold break-words">{name}</h1>
+        <PageHeading
+          eyebrow={t('account.eyebrow')}
+          title={name}
+          titleClassName="text-4xl sm:text-4xl leading-tight break-words"
+        />
         <p className="m-0 break-words text-muted" data-testid="account-email">
           {email}
         </p>

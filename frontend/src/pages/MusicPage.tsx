@@ -9,6 +9,7 @@ import { MadeCard, MowlEmptyState, MowlTiles } from '../components/music/MusicTi
 import { SpotifyAttribution } from '../components/songs/SpotifyAttribution'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardTitle } from '../components/ui/card'
+import { PageHeading } from '../components/ui/page-heading'
 import { Link } from '../router/Router'
 
 type Load<T> = { status: 'loading' } | { status: 'failed' } | { status: 'ready'; items: T }
@@ -67,11 +68,7 @@ function Music() {
   const connected = mowlOn.status === 'ready' && mowlOn.items
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
-      <header className="flex flex-col gap-2">
-        <p className="m-0 text-xs font-semibold uppercase tracking-[0.14em] text-muted">{t('music.page.eyebrow')}</p>
-        <h1 className="m-0 font-display text-4xl font-extrabold sm:text-5xl">{t('music.page.title')}</h1>
-        <p className="m-0 max-w-xl text-base text-muted">{t('music.page.subtitle')}</p>
-      </header>
+      <PageHeading eyebrow={t('music.page.eyebrow')} title={t('music.page.title')} intro={t('music.page.subtitle')} />
       {connect.status === 'ready' && connect.items ? (
         <Card role="region" aria-labelledby="connect-title" className="flex flex-col gap-3">
           <CardTitle id="connect-title" className="mb-0">
@@ -86,9 +83,7 @@ function Music() {
         </Card>
       ) : null}
       <section aria-labelledby="made-title" className="flex flex-col gap-4">
-        <h2 id="made-title" className="m-0 font-display text-2xl font-extrabold">
-          {t('music.page.madeTitle')}
-        </h2>
+        <PageHeading as="h2" size="section" titleId="made-title" title={t('music.page.madeTitle')} />
         {made.status === 'loading' ? <p className="m-0 text-muted">{t('music.page.madeLoading')}</p> : null}
         {made.status === 'failed' ? <p className="m-0 text-muted">{t('music.page.madeFailed')}</p> : null}
         {made.status === 'ready' && made.items.length === 0 ? (
@@ -108,9 +103,7 @@ function Music() {
         ) : null}
       </section>
       <section aria-labelledby="mowl-title" className="flex flex-col gap-4">
-        <h2 id="mowl-title" className="m-0 font-display text-2xl font-extrabold">
-          {t('music.page.mowlTitle')}
-        </h2>
+        <PageHeading as="h2" size="section" titleId="mowl-title" title={t('music.page.mowlTitle')} />
         {mowl.status === 'loading' ? <p className="m-0 text-muted">{t('music.page.mowlLoading')}</p> : null}
         {mowl.status === 'failed' && mowlOn.status !== 'loading' ? <MowlEmptyState connected={connected} /> : null}
         {mowl.status === 'ready' && mowl.items.length === 0 && mowlOn.status !== 'loading' ? (
