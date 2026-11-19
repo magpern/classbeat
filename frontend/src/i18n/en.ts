@@ -2275,7 +2275,7 @@ export const en = {
   'studio.out.spotify_playlist':
     'Spotify playlist',
   'studio.out.spotify_playlist.desc':
-    'A new public playlist in your Spotify account, in the approved order, so MOWL can find it.',
+    'A new public playlist in your Spotify account, in the approved order.',
   'studio.out.swedebeat_playlist':
     'SwedeBeat playlist',
   'studio.out.swedebeat_playlist.desc':

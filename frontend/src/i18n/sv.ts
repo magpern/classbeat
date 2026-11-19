@@ -2407,7 +2407,7 @@ const sv: Catalogue = {
   'studio.out.spotify_playlist':
     'Spotify-spellista',
   'studio.out.spotify_playlist.desc':
-    'En ny offentlig spellista i ditt Spotify-konto, i den godkända ordningen, så att MOWL hittar den.',
+    'En ny offentlig spellista i ditt Spotify-konto, i den godkända ordningen.',
   'studio.out.swedebeat_playlist':
     'SwedeBeat-spellista',
   'studio.out.swedebeat_playlist.desc':

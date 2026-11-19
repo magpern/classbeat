@@ -92,7 +92,7 @@ describe('a song job that failed', () => {
       quota_exhausted: /used up its allowance/,
       upstream_unavailable: /could not be reached/,
       account_changed: /not the one these songs were chosen for/,
-      playlist_mismatch: /did not match the approved songs; nothing was designed\. Create it again\./,
+      playlist_mismatch: /did not match the approved songs.*choose Add to profile on the playlist, then create it again\./s,
       pool_too_small: /try a wider style or era/,
       pool_not_synced: /try again in a minute/,
       consent_missing: /Allow the working playlist in your Spotify settings first/,

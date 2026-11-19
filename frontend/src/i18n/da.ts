@@ -2395,7 +2395,7 @@ const da: Catalogue = {
   'studio.out.spotify_playlist':
     'Spotify-playliste',
   'studio.out.spotify_playlist.desc':
-    'En ny offentlig playliste på din Spotify-konto, i den godkendte rækkefølge, så MOWL kan finde den.',
+    'En ny offentlig playliste på din Spotify-konto, i den godkendte rækkefølge.',
   'studio.out.swedebeat_playlist':
     'SwedeBeat-playliste',
   'studio.out.swedebeat_playlist.desc':
