@@ -25,8 +25,8 @@ two requests.
 - **The call** is one request (``single_request``): ``POST /me/playlists`` with no tracks and
   ``public: true``, ``collaborative: false`` (``create_call``; Amendment 30, #1287). Nothing asks
   for private afterwards and nothing reads it back for its privacy.
-  A 403 to it is ``failed`` with ``scope_mismatch`` (a connection made before Amendment 27 has no
-  ``playlist-modify-public``; its sentence asks the user to connect again).
+  A 403 to it is ``failed`` ``forbidden`` like any refusal (a connection made before Amendment 27
+  may lack ``playlist-modify-public``; the 403 does not say so, so it is not guessed).
   A request refused before it left, or answered with a refusal (4xx), is ``failed``; anything
   else (dropped after sending, a 5xx, an answer without a valid id) is ``uncertain``.
 - **On success** (``create_record``): the pool's ``spotify_pool.playlist_id``, or the final
@@ -64,7 +64,6 @@ from classbeat.operations import (
     INCONCLUSIVE,
     OPERATION_KINDS,
     CallResult,
-    NotWritten,
     Operation,
     OperationKind,
     OperationKinds,
@@ -187,20 +186,15 @@ async def create(
 
     async def call(operation_id: UUID) -> CallResult:
         about = common.description(ref_of(operation_id), purpose)
-        try:
-            answer = await common.call(
-                run.factory,
-                keyring,
-                run.ctx,
-                opened,
-                create_call.create(name, about),
-                write=True,
-                single_request=True,  # one POST: a refusal proves it had no effect
-            )
-        except ConnectionFailure as failure:
-            if create_call.no_public_scope(failure):
-                raise NotWritten(create_call.NO_PUBLIC_SCOPE) from None
-            raise
+        answer = await common.call(
+            run.factory,
+            keyring,
+            run.ctx,
+            opened,
+            create_call.create(name, about),
+            write=True,
+            single_request=True,  # one POST: a refusal proves it had no effect
+        )
         if not isinstance(answer, str) or common.SPOTIFY_ID.fullmatch(answer) is None:
             raise UncertainAnswer
         return CallResult(answer)

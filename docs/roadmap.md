@@ -10,7 +10,7 @@ phase 2 ended `playlist_mismatch` after the pool sync wait.
 
 - **Supersedes the "Still asked for private" item of Amendment 27.** Every create of a working (pool)
   or final playlist is one `POST /me/playlists` with `public: true` and `collaborative: false`
-  (`playlists/create_call.py`). The read-back, the change-details call (`PUT /playlists/{id}`) and
+  (`playlists/create_call.py`, through the library's own create helper). The read-back, the change-details call (`PUT /playlists/{id}`) and
   `playlists/privacy.py` are removed. Nothing in classbeat changes a playlist's privacy after its
   create, and an existing playlist (a pool made before, a user's own) keeps whatever it has.
 - **The owner check is unchanged** (Amendment 27): the id, the connected user as owner,
@@ -24,9 +24,10 @@ phase 2 ended `playlist_mismatch` after the pool sync wait.
   turn on adding new playlists to the profile in Spotify's settings): on the Spotify account page under
   the working playlist, in the `playlist_mismatch` sentence and on the song page's failure detail, in
   English, Swedish and Danish.
-- **Scope.** A public create needs `playlist-modify-public` (asked for since Amendment 27). A create
-  refused with 403 is `failed` `scope_mismatch` ("Connect again and allow it"), nothing created;
-  `REQUIRED_SCOPES` is unchanged.
+- **Scope.** A public create needs `playlist-modify-public` (asked for since Amendment 27). A
+  connection made before that lacks it, and its create is refused with 403: `failed` `forbidden`,
+  nothing created (a 403 does not say which scope is missing, so `scope_mismatch` is not guessed;
+  reconnecting grants it). `REQUIRED_SCOPES` is unchanged.
 - **Amends the AGENTS.md rule "Everything we create in a user's accounts is private"** for Spotify
   playlists: they are public (on the profile, in search, and anyone with the link can open them; the
   tracks and the class's name are visible). MOWL workouts stay private; Amendment 24 is unchanged.

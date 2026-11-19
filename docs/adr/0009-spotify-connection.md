@@ -75,8 +75,9 @@ public playlist's items needs it. `scope_granted` still requires only the two sc
 (`REQUIRED_SCOPES`), so a connection made before keeps working for private playlists; whether a grant
 holds the public scope is not recorded. A 403 on an item write to a playlist read as public is
 `scope_mismatch`: the user connects again.)* *(2026-11-19, roadmap Amendment 30, #1287: classbeat
-no longer asks for private: every create sends `public: true`, so it needs `playlist-modify-public`,
-and a create refused with 403 is `scope_mismatch` too. `REQUIRED_SCOPES` is unchanged.)* No Client Secret is ever
+no longer asks for private: every create sends `public: true`, so it needs `playlist-modify-public`;
+a connection without it gets a 403 on the create, `forbidden`, nothing created. `REQUIRED_SCOPES` is
+unchanged.)* No Client Secret is ever
 requested, stored, logged or accepted (AGENTS.md): the form has no such field and a test posts one and
 expects 422. The granted `scope` in the token answer must contain both scopes (a smaller grant is
 `scope_mismatch`, nothing stored).

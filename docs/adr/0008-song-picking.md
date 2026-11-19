@@ -160,10 +160,11 @@ writes nothing more and is not retried; its next decide step re-reads `spotify_p
 > user's public playlists that are on their Spotify profile, so a private working or final playlist
 > never reached MOWL and phase 2 ended `playlist_mismatch`. Now:
 > - *The create* (`playlists/create_call.py`) is one `POST /me/playlists` with `public: true` and
->   `collaborative: false`, sent by classbeat through the library's `spotify_web.call` (the library's
->   `create_playlist` always asks for private). An answer without a valid id stays `uncertain`, a 4xx
->   `failed`; a 403 is `failed` `scope_mismatch` (a public create needs `playlist-modify-public`, which
->   a connection made before Amendment 27 lacks), nothing created.
+>   `collaborative: false`, through the library's helper `spotify_web._new_playlist` (its public
+>   `create_playlist` always asks for private; the helper's signature is pinned by a test). An answer
+>   without a valid id stays `uncertain`, a 4xx `failed`. A public create needs
+>   `playlist-modify-public`; a connection made before Amendment 27 lacks it and gets a 403, `failed`
+>   `forbidden` with nothing created (the 403 does not name the scope, so it is not guessed).
 > - *No privacy step.* No read-back and no `PUT /playlists/{id}` after a create; `playlists/privacy.py`
 >   is removed. Nothing in classbeat changes a playlist's privacy after its create; an existing
 >   playlist keeps what it has.

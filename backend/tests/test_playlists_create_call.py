@@ -1,7 +1,7 @@
 """The one request of ``spotify_create_playlist`` (``classbeat.playlists.create_call``, #1287,
 roadmap Amendment 30): ``POST me/playlists`` with ``public: true`` and ``collaborative: false``;
-an answer without a valid id is never a refusal; a 403 is the missing public scope. The library's
-``call`` is replaced: no network."""
+an answer without a valid id, or the library's own refusal, is never a refusal by Spotify. The
+library's ``call`` is replaced: no network."""
 
 from typing import Any
 from urllib.error import HTTPError
@@ -10,7 +10,6 @@ import pytest
 from mowl import spotify_web
 from mowl.errors import MowlError
 
-from classbeat.connections import ConnectionFailure
 from classbeat.playlists import create_call
 
 PID = "p" * 21 + "9"
@@ -32,9 +31,9 @@ def sent(monkeypatch: pytest.MonkeyPatch, answer: Any) -> list[tuple[Any, ...]]:
 def test_the_create_asks_for_public_and_not_collaborative(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = sent(monkeypatch, {"id": PID, "public": True})
     assert create_call.create("Class", "classbeat ref abc")(object()) == PID  # type: ignore[arg-type]
-    body = {"name": "Class", "description": "classbeat ref abc", **create_call.PUBLIC_BODY}
+    body = {"name": "Class", "description": "classbeat ref abc", "public": True,
+            "collaborative": False}  # fmt: skip
     assert calls == [("POST", "me/playlists", None, body)]
-    assert create_call.PUBLIC_BODY == {"public": True, "collaborative": False}
 
 
 @pytest.mark.parametrize("answer", [{}, {"id": "../me"}, {"id": 7}, [], "x", None])
@@ -60,15 +59,3 @@ def test_an_http_refusal_is_passed_on(monkeypatch: pytest.MonkeyPatch) -> None:
     sent(monkeypatch, error)
     with pytest.raises(MowlError):
         create_call.create("Class", "d")(object())  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize(
-    ("status", "applied", "expected"),
-    [(403, True, True), (403, False, False), (401, True, False), (400, True, False),
-     (None, True, False)],
-)  # fmt: skip
-def test_only_a_refused_403_is_the_missing_public_scope(
-    status: int | None, applied: bool, expected: bool
-) -> None:
-    failure = ConnectionFailure("forbidden", not_applied=applied, http_status=status)
-    assert create_call.no_public_scope(failure) is expected

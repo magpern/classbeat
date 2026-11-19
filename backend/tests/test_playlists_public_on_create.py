@@ -3,7 +3,8 @@
 false``, and no change-details request (``PUT /playlists/{id}``) or read-back for its privacy.
 A collaborative or another user's playlist is still refused with nothing written, an existing
 playlist's privacy is never changed, and a ``public`` that is not a boolean is refused. A token
-without ``playlist-modify-public`` cannot create (or write) a public playlist: ``scope_mismatch``.
+without ``playlist-modify-public`` cannot create a public playlist (``forbidden``) or write one
+(``scope_mismatch``).
 Fakes only (``spotifycore``): no network, no real account.
 """
 
@@ -189,9 +190,11 @@ async def test_a_final_playlist_made_collaborative_is_refused_with_nothing_writt
 
 
 @pytest.mark.parametrize("purpose", ["pool", "final"])
-async def test_a_create_without_the_public_scope_asks_to_reconnect(
+async def test_a_create_without_the_public_scope_is_refused_with_nothing_created(
     penv: PlayEnv, purpose: str
 ) -> None:
+    """Spotify refuses a public create without ``playlist-modify-public`` (403): ``forbidden``,
+    asked once, nothing created. The 403 does not name the scope, so it is not guessed."""
     owner = await penv.user()
     only_private_scopes(penv)
     if purpose == "pool":
@@ -199,12 +202,11 @@ async def test_a_create_without_the_public_scope_asks_to_reconnect(
     else:
         _, job_id = final_create_job(penv, owner)
     row = await penv.run(job_id)
-    assert (row.state, row.error_category) == ("failed", "scope_mismatch")
+    assert (row.state, row.error_category) == ("failed", "forbidden")
     assert not penv.fake.playlists  # nothing created
     assert [s.status for s in penv.api(CREATE, "POST")] == [403]  # asked once, refused
     [create] = penv.operations(owner, "spotify_create_playlist")
-    assert (create.state, create.error_category) == ("failed", "scope_mismatch")
-    assert failure_sentence("scope_mismatch") == SCOPE_SENTENCE
+    assert create.state == "failed"
 
 
 @pytest.mark.parametrize("purpose", ["pool", "final"])
@@ -228,6 +230,7 @@ async def test_a_public_playlist_without_the_public_scope_is_not_written(
     assert (row.state, row.error_category) == ("failed", "scope_mismatch")
     assert penv.fake.playlists[playlist_id].public is True
     assert penv.entries(playlist_id) == before  # nothing written, nothing deleted
+    assert failure_sentence("scope_mismatch") == SCOPE_SENTENCE
 
 
 async def test_an_existing_private_pool_still_works_with_only_the_private_scopes(
