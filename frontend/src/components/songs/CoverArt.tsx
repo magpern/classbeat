@@ -118,7 +118,7 @@ export function CoverMosaic({
   const four = [0, 1, 2, 3].map((i) => songs[i] ?? null)
   return (
     <div
-      className={cn('grid size-32 shrink-0 grid-cols-2 grid-rows-2 overflow-hidden rounded-[8px]', className)}
+      className={cn('grid shrink-0 grid-cols-2 grid-rows-2 overflow-hidden rounded-[8px]', className)}
       aria-hidden="true"
       data-testid="cover-mosaic"
     >

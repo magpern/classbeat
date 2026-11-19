@@ -18,6 +18,7 @@ import { Button } from '../ui/button'
 import { Chip, ChipButton } from '../ui/chip'
 import { BriefFrame, BRIEF_AREA } from './BriefFrame'
 import { ClassesLeft } from './ClassesLeft'
+import { PlanLength } from './PlanLength'
 import { FieldCard } from './FieldCard'
 import { STARTERS } from './ideas'
 import { IdeasRow } from './IdeasRow'
@@ -40,7 +41,7 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
   const from = useQuery().get('from')
   const kept = useMemo(() => (from === null ? null : recallRequest(from)), [from])
   const action = useAction()
-  const { allowed, plan, classesLeft } = usePlanAllowance()
+  const { allowed, plan, classesLeft, settled } = usePlanAllowance()
   // A request kept for `from` (the revise hand-off) wins over an example: then the example is not used, so it
   // is neither removed nor given focus, and stays kept for a day like any slug the start screen has not used.
   const usedExample = kept === null ? example : null
@@ -151,11 +152,7 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
       </BriefFrame>
       <div className="grid gap-3.5 sm:grid-cols-2">
         <FieldCard title={t('start.length.title')}>
-          {allowed === null ? null : (
-            <p className="m-0 text-[0.875rem] text-muted" data-testid="plan-length">
-              {t('start.planLength', { minutes: allowed.maxMinutes })}
-            </p>
-          )}
+          <PlanLength allowed={allowed} settled={settled} />
           {source.runningEnabled ? (
             <div className="flex flex-wrap gap-2" role="group" aria-label={t('newclass.sport')}>
               <ChipButton

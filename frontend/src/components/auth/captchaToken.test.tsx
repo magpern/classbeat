@@ -15,8 +15,12 @@ vi.mock('../../auth/SessionContext', () => ({ useSession: () => session.value })
 
 const FAKE = { authenticated: false, csrf_token: 'a', captcha: { kind: 'fake' } }
 
+/** `ready` of every render, to see a render an effect would otherwise hide. */
+const renders: boolean[] = []
+
 function Probe() {
   const captcha = useCaptcha('signin')
+  renders.push(captcha.ready)
   return (
     <div>
       {captcha.element}
@@ -46,6 +50,50 @@ describe('useCaptcha token', () => {
   it('says it is checking while the session loads', () => {
     session.value = { status: 'loading', session: null, refresh: vi.fn() }
     render(<Probe />)
+    expect(screen.getByRole('status')).toHaveTextContent('Checking that you are a person…')
+  })
+
+  it('starts a new configuration without the old token', () => {
+    session.value = { status: 'ready', session: FAKE, refresh: vi.fn() }
+    const { rerender } = render(<Probe />)
+    fireEvent.click(screen.getByTestId('captcha-fake'))
+    expect(screen.getByTestId('ready').textContent).toBe('true')
+
+    const real = { authenticated: false, csrf_token: 'a', captcha: { kind: 'turnstile', siteKey: 'site-b' } }
+    renders.length = 0
+    session.value = { status: 'ready', session: real, refresh: vi.fn() }
+    rerender(<Probe />)
+    expect(screen.getByTestId('token').textContent).toBe('none')
+    expect(screen.getByTestId('ready').textContent).toBe('false')
+    // Not even for one render: the widget's own effect would clear a stale token afterwards.
+    expect(renders).not.toContain(true)
+  })
+
+  it('starts without a token when the session read fails and then succeeds again', () => {
+    session.value = { status: 'ready', session: FAKE, refresh: vi.fn() }
+    const { rerender } = render(<Probe />)
+    fireEvent.click(screen.getByTestId('captcha-fake'))
+    expect(screen.getByTestId('ready').textContent).toBe('true')
+
+    session.value = { status: 'error', session: FAKE, refresh: vi.fn() }
+    rerender(<Probe />)
+    session.value = { status: 'ready', session: FAKE, refresh: vi.fn() }
+    rerender(<Probe />)
+    expect(screen.getByTestId('token').textContent).toBe('none')
+    expect(screen.getByTestId('ready').textContent).toBe('false')
+    expect(screen.getByTestId('captcha-fake')).not.toBeChecked()
+  })
+
+  it('shows the waiting text, not an old error, for a new configuration', () => {
+    session.value = { status: 'ready', session: FAKE, refresh: vi.fn() }
+    const { rerender } = render(<Probe />)
+    fireEvent.click(screen.getByTestId('captcha-fake'))
+    session.value = {
+      status: 'ready',
+      session: { authenticated: false, csrf_token: 'a', captcha: { kind: 'turnstile', siteKey: 'site-b' } },
+      refresh: vi.fn(),
+    }
+    rerender(<Probe />)
     expect(screen.getByRole('status')).toHaveTextContent('Checking that you are a person…')
   })
 })

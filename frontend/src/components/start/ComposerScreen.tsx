@@ -18,6 +18,7 @@ import { UpgradeLink } from '../plans/UpgradeLink'
 import { Button } from '../ui/button'
 import { BriefFrame, BRIEF_AREA } from './BriefFrame'
 import { ClassesLeft } from './ClassesLeft'
+import { PlanLength } from './PlanLength'
 import { FieldCard } from './FieldCard'
 import { composerInput, initialDraft, keptFromRequest, type ComposerRequest, type Sport } from './composerModel'
 import { MusicTagRow } from './MusicTagRow'
@@ -38,7 +39,7 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
   const { navigate } = useRouter()
   const from = useQuery().get('from')
   const action = useAction()
-  const { allowed, plan, classesLeft } = usePlanAllowance()
+  const { allowed, plan, classesLeft, settled } = usePlanAllowance()
   const offered = useMemo<PlaylistTag[]>(
     () => source.playlists.map((p) => ({ id: p.spotifyPlaylistId, name: p.name })),
     [source.playlists],
@@ -141,11 +142,7 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
       </BriefFrame>
       <div className="grid gap-3.5 sm:grid-cols-2">
         <FieldCard title={t('start.length.title')}>
-          {allowed === null ? null : (
-            <p className="m-0 text-[0.875rem] text-muted" data-testid="plan-length">
-              {t('start.planLength', { minutes: allowed.maxMinutes })}
-            </p>
-          )}
+          <PlanLength allowed={allowed} settled={settled} />
           {source.runningEnabled ? (
             <select
               aria-label={t('newclass.sport')}

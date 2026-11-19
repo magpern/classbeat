@@ -35,4 +35,26 @@ describe('PageHeading', () => {
     const { container } = render(<PageHeading title="T" as="h2" size="section" />)
     expect(container.firstElementChild?.tagName).toBe('H2')
   })
+
+  it('stacks the actions under a page title on a phone', () => {
+    const { container } = render(<PageHeading title="T" actions={<button type="button">New</button>} />)
+    const row = container.firstElementChild as HTMLElement
+    expect(row.className).toContain('flex-wrap')
+    expect((row.lastElementChild as HTMLElement).className).toContain('w-full')
+  })
+
+  it('keeps a section title and its actions on one row at every width', () => {
+    const { container } = render(
+      <PageHeading as="h2" size="section" title="Recent" actions={<a href="/classes">See all</a>} />,
+    )
+    const row = container.firstElementChild as HTMLElement
+    expect(row.className).toContain('flex-nowrap')
+    expect(row.className).toContain('items-baseline')
+    expect(row.className).toContain('justify-between')
+    expect(row.className).not.toContain('flex-wrap ')
+    expect((row.firstElementChild as HTMLElement).className).toContain('min-w-0')
+    const actions = row.lastElementChild as HTMLElement
+    expect(actions.className).toContain('shrink-0')
+    expect(actions.className).not.toContain('w-full')
+  })
 })

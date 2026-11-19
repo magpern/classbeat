@@ -300,3 +300,14 @@ describe('sticky action bar space', () => {
     expect(tailwindCss).toMatch(/--spacing-bar-pad:\s*var\(--cb-bar-pad\)/)
   })
 })
+
+describe('border-heat utility', () => {
+  const rule = /@utility border-heat \{([^}]*)\}/.exec(tailwindCss)?.[1] ?? ''
+
+  it('exists and paints a surface-filled heat outline from tokens only', () => {
+    expect(rule).toContain('border-color: transparent')
+    expect(rule).toContain('linear-gradient(var(--cb-surface), var(--cb-surface)) padding-box')
+    expect(rule).toContain('var(--cb-heat) border-box')
+    expect(COLOUR.test(rule)).toBe(false)
+  })
+})

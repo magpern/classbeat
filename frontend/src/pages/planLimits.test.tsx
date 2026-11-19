@@ -137,6 +137,18 @@ describe('the new class screen', () => {
     expect(await screen.findByTestId('plan-length')).toHaveTextContent('Your plan allows classes of up to 30 minutes.')
   })
 
+  it('does not leave the Length card empty while the plan loads, and says so if it cannot be read', async () => {
+    fakeApi(startRoutes(FREE_PLAN, { 'GET /api/account/plan': () => new Promise(() => undefined) }))
+    const { unmount } = renderAt('/classes/new')
+    expect(await screen.findByTestId('plan-length-loading')).toBeInTheDocument()
+    expect(screen.queryByTestId('plan-length')).toBeNull()
+    unmount()
+    fakeApi(startRoutes(FREE_PLAN, { 'GET /api/account/plan': () => json({ detail: 'down' }, 500) }))
+    renderAt('/classes/new')
+    expect(await screen.findByTestId('plan-length-unknown')).toHaveTextContent('Your class length follows your plan.')
+    expect(screen.queryByTestId('plan-length-loading')).toBeNull()
+  })
+
   it.each([
     [{ quota: 'length', limit: 30 }, /allows classes of up to 30 minutes\. Choose a shorter length\./],
     [{ quota: 'feature', feature: 'games' }, /does not include games/],

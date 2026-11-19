@@ -7,7 +7,8 @@ import { SourceGate } from '../newclass/SourceGate'
 import { MusicSourcePicker } from '../start/MusicSourcePicker'
 import { musicRows } from '../start/musicSources'
 import { Button } from '../ui/button'
-import { Card, CardTitle } from '../ui/card'
+import { Card } from '../ui/card'
+import { PageHeading } from '../ui/page-heading'
 
 /**
  * Change music from the workspace (MA4). It opens the same source-labelled picker as the start
@@ -33,7 +34,7 @@ export function ChangeMusic({
   if (summary.currentRevisionId === null) return null
   return (
     <Card role="region" aria-labelledby="change-music-title" className="flex flex-col gap-3" data-testid="change-music">
-      <CardTitle id="change-music-title">{t('music.change.title')}</CardTitle>
+      <PageHeading size="section" as="h2" titleId="change-music-title" title={t('music.change.title')} />
       {summary.openJob !== null ? <p className="m-0 text-muted">{t('music.change.wait')}</p> : null}
       {open ? (
         <SourceGate>
