@@ -122,6 +122,16 @@ describe('the class page', () => {
     expect(screen.getByTestId('tss')).toHaveTextContent(/^≈ 26\.[34]/)
   })
 
+  it('heads the page with the eyebrow, the title once and the version line', async () => {
+    fakeApi({ ...SESSION_ROUTES, ...classRoutes({}) })
+    renderAt(PAGE)
+    const header = await screen.findByTestId('class-header')
+    expect(within(header).getByText('Your class')).toBeInTheDocument()
+    expect(within(header).getByRole('heading', { level: 1, name: 'Tuesday climb' })).toBeInTheDocument()
+    expect(await within(header).findByText('Version 1, first design')).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: 'Tuesday climb' })).toHaveLength(1)
+  })
+
   it('lists two versions with the current one marked, and views the other', async () => {
     fakeApi({
       ...SESSION_ROUTES,
