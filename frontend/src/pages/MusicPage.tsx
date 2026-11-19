@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { getConnections } from '../api/connections'
+import { getConnections, type Connection } from '../api/connections'
 import { getMowlPlaylists } from '../api/jobs'
 import { getClassPlaylists } from '../api/music'
-import { getSpotifyStatus } from '../api/spotify'
+import { getSpotifyStatus, type SpotifyStatus } from '../api/spotify'
 import { useT } from '../i18n/I18n'
 import { RequireAuth } from '../components/RequireAuth'
 import { MadeCard, MowlEmptyState, MowlTiles } from '../components/music/MusicTiles'
@@ -36,18 +36,10 @@ function useLoad<T>(read: (signal: AbortSignal) => Promise<T>): Load<T> {
 }
 
 /** Whether to offer "Connect Spotify": only when song picking is on and Spotify is not connected. */
-async function spotifyNeedsConnect(signal: AbortSignal): Promise<boolean> {
-  const status = await getSpotifyStatus(signal)
+function needsSpotifyConnect(status: SpotifyStatus | null, connections: readonly Connection[]): boolean {
   if (status === null) return false
-  const connections = await getConnections()
   const spotify = connections.find((c) => c.provider === 'spotify')
   return spotify === undefined || spotify.status !== 'connected' || status.status !== 'connected'
-}
-
-/** Whether MOWL is connected: decides if the empty state offers "Connect MOWL". A failed read counts as not connected. */
-async function mowlConnected(): Promise<boolean> {
-  const connections = await getConnections()
-  return connections.some((c) => c.provider === 'mowl' && c.status === 'connected')
 }
 
 /** Music (ADR 0013 sections 4 and 9): the MOWL playlists as tiles and the ones classbeat made. */
@@ -61,15 +53,22 @@ export function MusicPage() {
 
 function Music() {
   const t = useT()
-  const connect = useLoad(spotifyNeedsConnect)
+  const connections = useLoad(getConnections) // read once: the connect card and the MOWL state share it
+  const spotify = useLoad(getSpotifyStatus)
   const made = useLoad(getClassPlaylists)
   const mowl = useLoad(getMowlPlaylists)
-  const mowlOn = useLoad(mowlConnected)
-  const connected = mowlOn.status === 'ready' && mowlOn.items
+  const mowlOn = connections
+  // A failed read counts as not connected.
+  const connected =
+    connections.status === 'ready' && connections.items.some((c) => c.provider === 'mowl' && c.status === 'connected')
+  const showConnect =
+    spotify.status === 'ready' &&
+    connections.status === 'ready' &&
+    needsSpotifyConnect(spotify.items, connections.items)
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
       <PageHeading eyebrow={t('music.page.eyebrow')} title={t('music.page.title')} intro={t('music.page.subtitle')} />
-      {connect.status === 'ready' && connect.items ? (
+      {showConnect ? (
         <Card role="region" aria-labelledby="connect-title" className="flex flex-col gap-3">
           <CardTitle id="connect-title" className="mb-0">
             {t('music.page.connectTitle')}

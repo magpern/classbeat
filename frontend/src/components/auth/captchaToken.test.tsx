@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useCaptcha } from './Turnstile'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { forgetTurnstileForTests, useCaptcha, type TurnstileApi } from './Turnstile'
 
 // ADR 0025 section 11: a token is only ever returned while the session is known. After a failed
 // session refresh the held token must not be sent, because the check's configuration is unknown.
@@ -30,7 +30,15 @@ function Probe() {
   )
 }
 
-afterEach(cleanup)
+beforeEach(() => {
+  renders.length = 0
+})
+
+afterEach(() => {
+  cleanup()
+  delete window.turnstile
+  forgetTurnstileForTests()
+})
 
 describe('useCaptcha token', () => {
   it('returns no token and is not ready while the session is unknown, even with a held token', () => {
@@ -84,15 +92,33 @@ describe('useCaptcha token', () => {
     expect(screen.getByTestId('captcha-fake')).not.toBeChecked()
   })
 
-  it('shows the waiting text, not an old error, for a new configuration', () => {
-    session.value = { status: 'ready', session: FAKE, refresh: vi.fn() }
-    const { rerender } = render(<Probe />)
-    fireEvent.click(screen.getByTestId('captcha-fake'))
-    session.value = {
-      status: 'ready',
-      session: { authenticated: false, csrf_token: 'a', captcha: { kind: 'turnstile', siteKey: 'site-b' } },
-      refresh: vi.fn(),
+  it('shows the waiting text, not an old error, for a new configuration', async () => {
+    // A real Turnstile error state: the widget's own error callback fires for the first site key.
+    const options: Parameters<TurnstileApi['render']>[1][] = []
+    window.turnstile = {
+      render: vi.fn((_box: HTMLElement, o: Parameters<TurnstileApi['render']>[1]) => {
+        options.push(o)
+        return `w${options.length}`
+      }),
+      reset: vi.fn(),
+      remove: vi.fn(),
     }
+    const turnstile = (siteKey: string) => ({
+      status: 'ready',
+      session: { authenticated: false, csrf_token: 'a', captcha: { kind: 'turnstile', siteKey } },
+      refresh: vi.fn(),
+    })
+    session.value = turnstile('site-a')
+    const { rerender } = render(<Probe />)
+    await waitFor(() => {
+      expect(options).toHaveLength(1)
+    })
+    act(() => {
+      options[0]!['error-callback']()
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('The security check ran into a problem')
+
+    session.value = turnstile('site-b')
     rerender(<Probe />)
     expect(screen.getByRole('status')).toHaveTextContent('Checking that you are a person…')
   })
