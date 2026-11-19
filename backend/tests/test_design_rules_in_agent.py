@@ -54,8 +54,9 @@ PINNED = {
     # purpose: the music taste (interpret) and the find_songs tool (pick_pool). #1140 changed
     # interpret once more, on purpose: the era caps (4 eras, 30 years each) in the prompt. #1185
     # changed interpret once more, on purpose: the composer's pinned songs, questions and attached
-    # playlists (ADR 0038 section 3; suite version 26).
-    "interpret": "24690737858d4a13758aa52d7e9b29669a1892ea7595ef9bd0091d5061295f87",
+    # playlists (ADR 0038 section 3; suite version 26). #1233 changed interpret once more, on
+    # purpose: a new class's short name (suite version 28; #1237 unbounded it in the schema).
+    "interpret": "050a864d8efb4b3aa89ae2e1ff2e4f9ecb72803a5f596cb3b1a20eed91a01b92",
 }
 PLANTED = "Zq9 planted brief text"
 PLANTED_STYLE = "Zq9 planted style"

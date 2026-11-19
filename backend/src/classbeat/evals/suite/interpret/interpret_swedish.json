@@ -1,7 +1,7 @@
 {
  "kind": "interpret",
  "name": "interpret_swedish",
- "about": "A Swedish request gives the same closed values; quotes stay verbatim.",
+ "about": "A Swedish request gives the same closed values; quotes stay verbatim; the class gets a short name.",
  "request": "Ett hårt spinningpass på 45 minuter med tre klättringar",
  "expect": {
   "values": {
@@ -16,6 +16,7 @@
   "absent": [
    "races",
    "music"
-  ]
+  ],
+  "named": true
  }
 }
