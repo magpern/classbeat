@@ -269,7 +269,7 @@ its order after that check.
   *(#639, 2026-11-05)* `complete` takes a **keep list**, `keep_methods: [id]` (required; the
   methods the page showed and the user left unticked), and deletes every other identity of the
   user, so one linked after `info` was never shown and goes; an id that is not the user's is
-  ignored. It locks the `users` row right after consuming the token (ADR 0019 §6), and every
+  ignored. It locks the `users` row before consuming the token (ADR 0019 §6; until #1265, right after it), and every
   password sign-in, re-authentication, MFA verify and OAuth sign-in, link or re-auth locks that
   row first and re-checks under it what it proved (the password hash, the session, the
   identity), so no session or identity made from the old credentials outlives the reset. The
@@ -1196,6 +1196,10 @@ back in.
     holder of a valid token gets it, so it tells nobody else anything; the token stays unused.
   - Rate limit: each request takes a slot of the sign-in IP bucket (§9) first, and only a success
     gives it back, as the reset completion does, so failures count against it.
+  - No Turnstile (ADR 0025 §1: listed in `EXEMPT`, like the reset completion): the 32-byte mailed
+    token is the proof and cannot be guessed, failures already hold sign-in IP slots, and the
+    person who opens the link is the one locked out of their account, who should not meet a
+    challenge wall (or a Turnstile outage) between them and the revert.
 - **The safe recovery (one transaction, `auth/email_revert.py`).** After consuming the token it
   takes the user row lock (ADR 0019 §6, as the reset does), rechecks the address, and then:
   restores `email` and `email_normalized`; **clears the password**; deletes **every linked
@@ -1207,6 +1211,24 @@ back in.
   essential mail `email_reverted`, which says what was removed and carries the reset link. If that
   link expires, the owner asks for a new one on the sign-in page: the address is theirs again.
   An admin-disabled account is reverted the same way; it stays disabled.
+- **Requests in flight (lock order).** Every path that consumes a token of the user, writes a
+  credential or issues a reset token takes the user row lock (ADR 0019 §6) **first** and rechecks
+  under it what it relied on, so a request the changer started before the revert cannot land
+  after it (#1265 review):
+  - the revert peeks its token, locks the user, then consumes the token and rechecks the address;
+  - the reset completion locks the user before consuming its token, and the email confirmation
+    before consuming its token (both used to consume first: against the revert, which deletes
+    those tokens under the lock, that was a deadlock and a 500);
+  - the password change locks the user and rechecks that its session is still alive before it
+    writes the hash (a revert or reset that committed while the hash ran ends it with 401);
+  - the reset request locks the user found for the address and looks the address up again under
+    the lock: after a committed revert the address no longer names the account and no token is
+    issued; a request that holds the lock first commits its token, which the waiting revert
+    deletes. This was chosen over binding reset tokens to the address (`email_at_issue`) and
+    rechecking it at completion: it is smaller, needs no change to the token rows, and closes the
+    window before a token exists rather than after one was mailed.
+  Tests: `backend/tests/test_auth_email_revert_races.py` (both orders of each race, parked, not
+  timed).
 - **Activity.** `email_reverted` joins `activity.SHOWN_KINDS` (amendment of 2026-11-07), worded in
   every catalogue.
 - **The page path.** The issue named `/email/revert`; the page is `/email-revert` instead, next to

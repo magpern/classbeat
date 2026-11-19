@@ -16,10 +16,7 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from classbeat.auth import locale as account_locale
-from classbeat.auth import mails
 from classbeat.auth.accounts import find_user
 from classbeat.auth.captcha import require_captcha
 from classbeat.auth.clientip import bucket_ip
@@ -27,7 +24,6 @@ from classbeat.auth.deps import current_session, request_ip, require_recent_auth
 from classbeat.auth.devices import forget_devices
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import EmailAddress, factory, mailer, reserve
-from classbeat.auth.hooks import ResetLinkSender
 from classbeat.auth.passkey_recovery import passkeys_for_reset, remove_passkeys_except
 from classbeat.auth.passwords import PasswordRuleError, normalize_password
 from classbeat.auth.ratelimit import (
@@ -38,23 +34,21 @@ from classbeat.auth.ratelimit import (
     SIGN_IN_IP,
     Bucket,
 )
+from classbeat.auth.reset_mail import RESET_PURPOSE, reset_mail
 from classbeat.auth.sessions import SessionInfo, revoke_user_sessions
 from classbeat.auth.signup_routes import Accepted, refuse
 from classbeat.auth.tables import identities, users
 from classbeat.auth.tokens import (
-    RESET_LIFETIME,
     consume_token,
     delete_outstanding_tokens,
-    issue_token,
     peek_token,
 )
-from classbeat.auth.userlock import lock_user
-from classbeat.config import Settings
+from classbeat.auth.userlock import lock_user, session_alive
 from classbeat.context import UserContext
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
 from classbeat.emails.notices import happened, queue
-from classbeat.mail import Mailer, send_logged
+from classbeat.mail import send_logged
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -62,7 +56,7 @@ FIELD_MAX = 1024
 # The keep list names every method the user keeps and there is no cap on linked identities, so
 # this bound is far above any real account (the page lists all of them) yet keeps the body small.
 MAX_METHODS = 100
-PURPOSE = "reset_password"
+PURPOSE = RESET_PURPOSE
 
 
 class ResetRequestIn(BaseModel):
@@ -114,31 +108,6 @@ class Done(BaseModel):
     status: str = "ok"
 
 
-async def reset_mail(
-    settings: Settings, db: AsyncSession, user_id: UUID, email: str, *, mfa_reset: bool = False
-):
-    """Issue a reset token for the user and build the mail."""
-    token = await issue_token(db, PURPOSE, user_id, RESET_LIFETIME)
-    language = await account_locale.mail_locale_of(db, settings, user_id)
-    build = mails.mfa_reset_link if mfa_reset else mails.password_reset
-    return build(settings, email, token, language)
-
-
-def make_reset_link_sender(
-    settings: Settings, session_factory: async_sessionmaker[AsyncSession], mail: Mailer
-) -> ResetLinkSender:
-    """The sender ``auth.register_reset_link_sender`` takes: ``admin mfa-reset`` mails the
-    user a reset link (awaited: the CLI has no response to send first) that says what the
-    reset removed (ADR 0019 section 9)."""
-
-    async def send(user_id: UUID, email: str) -> None:
-        async with system_session(session_factory) as db:
-            message = await reset_mail(settings, db, user_id, email, mfa_reset=True)
-        await mail.send(message)
-
-    return send
-
-
 @router.post("/password/reset/request", status_code=202)
 async def request_reset(
     body: ResetRequestIn, request: Request, background: BackgroundTasks
@@ -157,6 +126,12 @@ async def request_reset(
     async with system_session(factory(request)) as db:
         user = await find_user(db, body.email)
         message = None
+        # #1265: lock the user, then look again under it. An email revert committed meanwhile
+        # moved the account off this address; one that waits deletes the token issued here.
+        if user is not None:
+            locked = await lock_user(db, user.id)
+            again = None if locked is None else await find_user(db, body.email)
+            user = user if again is not None and again.id == user.id else None
         if user is not None and not user.disabled:
             message = await reset_mail(request.app.state.settings, db, user.id, user.email)
     if message is not None:
@@ -210,12 +185,13 @@ async def complete_reset(
     email: str | None = None
     passkeys_removed = 0
     async with system_session(factory(request)) as db:
+        # #639: the user row lock (ADR 0019 section 6), before the token since #1265: one order
+        # with the email revert, which deletes this token under that lock. A sign-in, re-auth or
+        # link that holds it commits first and is undone below; one that waits finds the new
+        # hash, its session gone or (OAuth) its identity removed.
+        await lock_user(db, live.user_id)
         token = await consume_token(db, PURPOSE, body.token)
         if token is not None:
-            # #639: the user row lock right after the token (ADR 0019 section 6). A sign-in,
-            # re-auth or link that holds it commits first and is undone below; one that waits
-            # finds the new hash, its session gone or (OAuth) its identity removed.
-            await lock_user(db, token.user_id)
             email = (
                 await db.execute(
                     update(users)
@@ -274,6 +250,11 @@ async def change_password(
     await reserve(request, [Bucket(PASSWORD_CHANGE, str(ctx.user_id))])
     password_hash = await request.app.state.password_hasher.hash(password)
     async with system_session(factory(request)) as db:
+        # #1265: the user row lock, then the session again: a revert or reset that committed
+        # while the hash ran signed this session out, and its password must not land.
+        locked = await lock_user(db, ctx.user_id)
+        if locked is None or locked.disabled or not await session_alive(db, ctx.user_id, info.id):
+            raise HTTPException(status_code=401, detail={"reason": "not_authenticated"})
         email = (
             await db.execute(
                 update(users)

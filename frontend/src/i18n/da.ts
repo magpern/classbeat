@@ -103,7 +103,7 @@ const da: Catalogue = {
   'emailChange.confirm': 'Bekræft ny e-mailadresse',
   'emailRevert.title': 'Fortryd ændringen af e-mailadressen',
   'emailRevert.noLink': 'Denne side skal bruge linket fra mailen om den ændrede adresse.',
-  'emailRevert.intro': 'Hvis du ikke har ændret e-mailadressen til din classbeat-konto, kan du fortryde det her. Den gamle adresse kommer tilbage, alle bliver logget ud af kontoen, dens adgangskode, tilknyttede loginmetoder, tofaktorgodkendelse og passkeys bliver fjernet, og vi sender dig et link til at vælge en ny adgangskode.',
+  'emailRevert.intro': 'Hvis du ikke har ændret e-mailadressen til din classbeat-konto, kan du fortryde det her. Den gamle adresse kommer tilbage, alle bliver logget ud af kontoen, dens adgangskode, tilknyttede loginmetoder, tofaktorgodkendelse, gendannelseskoder og passkeys bliver fjernet, og vi sender dig et link til at vælge en ny adgangskode.',
   'emailRevert.confirm': 'Fortryd ændringen',
   'emailRevert.doneTitle': 'E-mailadressen er gendannet',
   'emailRevert.done': 'Din gamle adresse er tilbage, og alle er blevet logget ud. Se i den indbakke efter linket til at vælge en ny adgangskode.',

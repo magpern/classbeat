@@ -122,7 +122,7 @@ export const en = {
   'emailChange.confirm': 'Confirm new email',
   'emailRevert.title': 'Undo the email change',
   'emailRevert.noLink': 'This page needs the link from the mail about the changed address.',
-  'emailRevert.intro': 'If you did not change the email address of your classbeat account, undo it here. The old address comes back, everyone is signed out of the account, its password, linked sign-in methods, two-factor authentication and passkeys are removed, and we mail you a link to choose a new password.',
+  'emailRevert.intro': 'If you did not change the email address of your classbeat account, undo it here. The old address comes back, everyone is signed out of the account, its password, linked sign-in methods, two-factor authentication, recovery codes and passkeys are removed, and we mail you a link to choose a new password.',
   'emailRevert.confirm': 'Undo the change',
   'emailRevert.doneTitle': 'Email address restored',
   'emailRevert.done': 'Your old address is back and everyone was signed out. Check that inbox for the link to choose a new password.',

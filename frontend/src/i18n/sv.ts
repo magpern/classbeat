@@ -101,7 +101,7 @@ const sv: Catalogue = {
   'emailChange.confirm': 'Bekräfta ny e-postadress',
   'emailRevert.title': 'Ångra bytet av e-postadress',
   'emailRevert.noLink': 'Den här sidan behöver länken från mejlet om den ändrade adressen.',
-  'emailRevert.intro': 'Om du inte bytte e-postadress på ditt classbeat-konto kan du ångra det här. Den gamla adressen kommer tillbaka, alla loggas ut från kontot, dess lösenord, länkade inloggningsmetoder, tvåfaktorsautentisering och passkeys tas bort, och vi mejlar dig en länk för att välja ett nytt lösenord.',
+  'emailRevert.intro': 'Om du inte bytte e-postadress på ditt classbeat-konto kan du ångra det här. Den gamla adressen kommer tillbaka, alla loggas ut från kontot, dess lösenord, länkade inloggningsmetoder, tvåfaktorsautentisering, återställningskoder och passkeys tas bort, och vi mejlar dig en länk för att välja ett nytt lösenord.',
   'emailRevert.confirm': 'Ångra ändringen',
   'emailRevert.doneTitle': 'E-postadressen är återställd',
   'emailRevert.done': 'Din gamla adress är tillbaka och alla har loggats ut. Titta i den inkorgen efter länken för att välja ett nytt lösenord.',

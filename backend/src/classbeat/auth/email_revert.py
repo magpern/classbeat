@@ -13,9 +13,9 @@ alone would leave all of that, so the revert is followed, in the same transactio
 - every outstanding mail token is deleted, the revert's own included, and one fresh
   ``reset_password`` token is issued for the mail to the restored address.
 
-The user row lock is taken right after the token is consumed (ADR 0019 section 6), as in the
-reset, so a sign-in, re-authentication or link in flight either commits first and is undone here
-or waits and finds its session, password or identity gone.
+The user row lock is taken first, before the token is consumed (ADR 0019 section 6), so a
+sign-in, re-authentication, link, password change or reset request in flight either commits first
+and is undone here or waits and finds its session gone or the address moved (#1265 review).
 """
 
 from dataclasses import dataclass
@@ -36,6 +36,7 @@ from classbeat.auth.tokens import (
     consume_token,
     delete_outstanding_tokens,
     issue_token,
+    peek_token,
 )
 from classbeat.auth.userlock import lock_user
 from classbeat.emailnorm import normalize_email
@@ -67,11 +68,15 @@ class Reverted:
 async def revert_email_change(db: AsyncSession, raw_token: str, *, ip: str | None) -> Reverted:
     """Consume the revert token, restore the address and lock the account down; raise
     ``RevertRefused`` for anything else. The caller commits, then sends the mail."""
-    token = await consume_token(db, REVERT_PURPOSE, raw_token)
+    # The user row lock before the token, as every path that consumes a token of this user now
+    # takes it (ADR 0019 section 6): taking it after would deadlock against a reset completion
+    # or an email confirmation that holds its own token row and waits for this lock.
+    live = await peek_token(db, REVERT_PURPOSE, raw_token)
+    if live is None or await lock_user(db, live.user_id) is None:
+        raise RevertRefused(*INVALID)  # unknown, used, expired, or the account was deleted
+    token = await consume_token(db, REVERT_PURPOSE, raw_token, user_id=live.user_id)
     if token is None or token.new_email is None or token.email_at_issue is None:
         raise RevertRefused(*INVALID)
-    if await lock_user(db, token.user_id) is None:
-        raise RevertRefused(*INVALID)  # the account was deleted meanwhile
     current = (
         await db.execute(select(users.c.email).where(users.c.id == token.user_id))
     ).scalar_one()

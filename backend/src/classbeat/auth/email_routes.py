@@ -34,6 +34,7 @@ from classbeat.auth.tokens import (
     delete_outstanding_tokens,
     issue_token,
 )
+from classbeat.auth.userlock import lock_user
 from classbeat.context import UserContext
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
@@ -120,6 +121,9 @@ async def confirm_email_change(
         raise HTTPException(status_code=401, detail={"reason": "not_authenticated"})
     try:
         async with system_session(factory(request)) as db:
+            # The user row lock before the token (ADR 0019 section 6): one order with the email
+            # revert (#1265), which deletes this token and moves the address under that lock.
+            await lock_user(db, ctx.user_id)
             token = await consume_token(db, PURPOSE, body.token, user_id=ctx.user_id)
             if token is None or token.new_email is None:
                 raise _Refused(400, "invalid_token")
