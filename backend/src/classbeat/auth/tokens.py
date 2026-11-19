@@ -1,4 +1,5 @@
-"""Mail tokens (reset, email change; ADR 0003 section 5).
+"""Mail tokens (reset, email change, email revert; ADR 0003 section 5 and its 2026-11-19
+amendment).
 
 32 random bytes, only the SHA-256 stored. A token is consumed by a conditional ``UPDATE ...
 RETURNING`` so it works once, whatever the number of parallel requests.
@@ -16,6 +17,10 @@ from classbeat.auth.tables import auth_tokens
 
 RESET_LIFETIME = timedelta(minutes=30)
 EMAIL_CHANGE_LIFETIME = timedelta(hours=1)
+# The "this wasn't me" link in the notice to the old address (#1265): ``new_email`` is the old
+# address to restore, ``email_at_issue`` the new one the account must still have.
+REVERT_PURPOSE = "revert_email"
+REVERT_EMAIL_LIFETIME = timedelta(days=7)
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +99,13 @@ async def consume_token(
     return None if row is None else MailToken(*row)
 
 
-async def delete_outstanding_tokens(db: AsyncSession, user_id: UUID) -> None:
-    """A password change, a reset or an email change invalidates the user's other tokens."""
-    await db.execute(delete(auth_tokens).where(auth_tokens.c.user_id == user_id))
+async def delete_outstanding_tokens(
+    db: AsyncSession, user_id: UUID, *, keep_revert: bool = False
+) -> None:
+    """A password change, a reset, an email change or a revert invalidates the user's other
+    tokens. ``keep_revert`` spares the ``revert_email`` tokens: a password change or reset made
+    by whoever took the account must not void the old address's way back (#1265)."""
+    statement = delete(auth_tokens).where(auth_tokens.c.user_id == user_id)
+    if keep_revert:
+        statement = statement.where(auth_tokens.c.purpose != REVERT_PURPOSE)
+    await db.execute(statement)

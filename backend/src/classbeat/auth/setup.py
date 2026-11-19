@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth.admin_routes import router as admin_router
 from classbeat.auth.captcha import build_verifier
+from classbeat.auth.email_revert_routes import router as email_revert_router
 from classbeat.auth.email_routes import router as email_router
 from classbeat.auth.identity_routes import router as identity_router
 from classbeat.auth.invite_request_routes import router as invite_request_router
@@ -70,6 +71,7 @@ def install(app: FastAPI) -> None:
     app.include_router(router)
     for flow in (signup_router, invite_request_router, signin_router, reset_router, email_router):
         app.include_router(flow)
+    app.include_router(email_revert_router)  # public: the old address's way back (#1265)
     app.include_router(mfa_router)
     app.include_router(mail_router)
     app.include_router(locale_router)

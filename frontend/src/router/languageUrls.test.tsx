@@ -96,6 +96,7 @@ describe('an unprefixed URL', () => {
     ['/reset#token=x', '/en/reset#token=x'],
     ['/unsubscribe#token=x', '/en/unsubscribe#token=x'],
     ['/email-change', '/en/email-change'],
+    ['/email-revert#token=x', '/en/email-revert#token=x'],
     ['/account?oauth=reauthed', '/en/account?oauth=reauthed'],
     ['/privacy', '/en/privacy'],
     ['/classes/', '/en/classes'],

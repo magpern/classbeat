@@ -74,6 +74,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/auth/password/reset/request"): "public",
     ("POST", "/api/auth/password/reset/info"): "public",
     ("POST", "/api/auth/password/reset/complete"): "public",
+    ("POST", "/api/auth/email/revert"): "public",  # #1265: the old address's way back
     # ADR 0034 (#1056): the OpenID Connect provider for classbeat-player. Discovery, the key set
     # and the token endpoint (client authentication, no session) are public; authorize starts a
     # flow for any browser, and continue reads the session to send a signed-out browser to the

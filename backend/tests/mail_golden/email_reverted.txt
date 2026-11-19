@@ -1,0 +1,16 @@
+Your email address was restored
+===============================
+
+The change of your classbeat email address was undone, and the account uses this address again. To keep out whoever changed it, we signed out every session and removed the password, the linked sign-in methods, the two-factor authentication, the recovery codes and the passkeys of the account.
+
+Choose a new password with the link below (valid for 30 minutes; after that, ask for a new one from the sign-in page). Then set up the rest again on your account page.
+
+Choose a new password:
+https://classbeat.example.test/en/reset#token=SAMPLE
+
+If you did not undo the change yourself, tell us right away. Contact us at support@classbeat.eu
+
+--
+You got this security notice because this is the email address of a classbeat account. These notices are sent for your protection.
+classbeat: https://classbeat.example.test
+Questions? Write to support@classbeat.eu
