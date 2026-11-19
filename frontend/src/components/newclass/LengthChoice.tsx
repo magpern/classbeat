@@ -7,8 +7,8 @@ import type { SegmentedOption } from '../ui/segmented-control'
 
 /**
  * The class length: the common lengths as one segmented control, and "Other" for a number of
- * minutes of one's own. The number field is there only for "Other", or when the length (a preset
- * link's, say) is not one of the common ones. `maxMinutes` is the plan's cap, null while unknown.
+ * minutes of one's own. The number field is there only for "Other", or when the length (a link's
+ * `?length=`, say) is not one of the common ones. `maxMinutes` is the plan's cap, null while unknown.
  */
 export function LengthChoice({
   length,

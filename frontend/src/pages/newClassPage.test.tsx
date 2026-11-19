@@ -308,7 +308,7 @@ describe('the new-class form', () => {
     expect(body.input.brief.style).toBe(value)
   })
 
-  it('lists the playlists as radio tiles in one group and prefills from a preset', async () => {
+  it('lists the playlists as radio tiles in one group and prefills from the query string', async () => {
     fakeApi(READY)
     renderAt('/classes/new/advanced?intensity=hard')
     await screen.findByLabelText('Class name')

@@ -13,7 +13,7 @@ import { Link } from '../router/Router'
 
 const RECENT = 6
 
-/** Home for a signed-in user (ADR 0028 section 5): one primary action, quick starts, recent classes. */
+/** Home for a signed-in user (ADR 0028 section 5): one primary action, recent classes. */
 export function HomePage() {
   const t = useT()
   const { listing, retry } = useClassList()

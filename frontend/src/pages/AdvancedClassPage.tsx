@@ -5,7 +5,7 @@ import { PageHeading } from '../components/ui/page-heading'
 import { RequireAuth } from '../components/RequireAuth'
 import { Link } from '../router/Router'
 
-/** `/classes/new/advanced`: the form with every setting (the start screen's Advanced link, and the Home presets). */
+/** `/classes/new/advanced`: the form with every setting (the start screen's Advanced link). */
 export function AdvancedClassPage() {
   const t = useT()
   return (
