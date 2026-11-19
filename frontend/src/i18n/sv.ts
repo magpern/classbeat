@@ -1495,6 +1495,7 @@ const sv: Catalogue = {
   'cred.email.sent':
     'Om {email} kan användas har vi skickat en bekräftelselänk dit. Öppna den medan du är inloggad; din adress ändras då.',
   'cred.email.newLabel': 'Ny e-postadress',
+  'cred.email.edit': 'Ändra',
   'cred.email.change': 'Ändra e-post',
   'cred.password.title': 'Lösenord',
   'cred.password.saved': 'Lösenordet sparades. Dina andra enheter loggades ut.',

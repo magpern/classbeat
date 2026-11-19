@@ -1651,6 +1651,7 @@ export const en = {
   'cred.email.sent':
     'If {email} can be used, we sent a confirmation link there. Open it while signed in; your address changes then.',
   'cred.email.newLabel': 'New email address',
+  'cred.email.edit': 'Change',
   'cred.email.change': 'Change email',
   'cred.password.title': 'Password',
   'cred.password.saved': 'Password saved. Your other devices were signed out.',

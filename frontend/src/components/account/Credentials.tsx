@@ -1,51 +1,8 @@
 import { useState, type FormEvent } from 'react'
-import { changePassword, requestEmailChange } from '../../api/auth'
+import { changePassword } from '../../api/auth'
 import { useGuard } from '../../auth/prompts'
-import { Trans, useT } from '../../i18n/I18n'
+import { useT } from '../../i18n/I18n'
 import { Field, Notice, Section, useAction } from '../forms'
-
-export function ChangeEmail({ current }: { current: string }) {
-  const t = useT()
-  const guard = useGuard()
-  const [email, setEmail] = useState('')
-  const [sentTo, setSentTo] = useState<string | null>(null)
-  const action = useAction()
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    void action.run(async () => {
-      const wanted = email.trim()
-      await guard(() => requestEmailChange(wanted))
-      setSentTo(wanted)
-      setEmail('')
-    })
-  }
-
-  return (
-    <Section title={t('cred.email.title')}>
-      <p className="wrap-anywhere">
-        <Trans id="cred.email.current" slots={{ email: <strong>{current}</strong> }} />
-      </p>
-      {sentTo ? <Notice kind="success">{t('cred.email.sent', { email: sentTo })}</Notice> : null}
-      {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      <form onSubmit={submit}>
-        <Field
-          label={t('cred.email.newLabel')}
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => {
-            setEmail(e.target.value)
-          }}
-          required
-        />
-        <button className="button" type="submit" disabled={action.busy}>
-          {t('cred.email.change')}
-        </button>
-      </form>
-    </Section>
-  )
-}
 
 export function ChangePassword() {
   const t = useT()
