@@ -325,7 +325,7 @@ describe('the connection card', () => {
     )
     const sp = await openSpotify('/account/spotify')
     expect(await sp.findByTestId('spotify-last-error')).toHaveTextContent('<img src=x')
-    expect(document.querySelector('img')).toBeNull()
+    expect(document.querySelector('img[src="x"]')).toBeNull() // the sent markup is text, not an image
   })
 
   it('offers to connect again when it needs reconnecting', async () => {

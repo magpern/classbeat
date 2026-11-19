@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useT } from '../../../i18n/I18n'
 import { cn } from '../../../lib/cn'
 import { Chip } from '../../ui/chip'
+import { ConnectionMark, type ConnectionMarkContent } from './ConnectionMark'
 
 export type ConnectionState = 'connected' | 'again' | 'none'
 
@@ -23,7 +24,8 @@ export function ConnectionTile({
   action,
   testId,
 }: {
-  mark: string
+  /** A letter monogram, or a brand icon (shown instead, decorative). */
+  mark: ConnectionMarkContent
   name: string
   optional: boolean
   state: ConnectionState
@@ -47,7 +49,7 @@ export function ConnectionTile({
             state === 'connected' ? 'bg-ok-soft text-ok' : 'bg-raised text-text',
           )}
         >
-          {mark}
+          <ConnectionMark mark={mark} />
         </span>
         <Chip tone={TONE[state]} dot className="font-semibold">
           {pill}

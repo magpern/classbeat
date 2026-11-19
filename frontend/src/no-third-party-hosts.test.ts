@@ -29,6 +29,8 @@ const REMOTE_URL = /(?:https?:)?\/\/(?!localhost\b|127\.0\.0\.1\b)[a-z0-9.-]+\.[
 const COVER_ART = './components/songs/CoverArt.tsx'
 const SPOTIFY_LOGO = './components/songs/SpotifyAttribution.tsx'
 const SLOT_PICTURE = './components/imagery/SlotPicture.tsx'
+const CONNECTION_MARK = './components/account/connections/ConnectionMark.tsx'
+const SPOTIFY_ICON = './components/account/connections/spotifyIcon.ts'
 const IMAGE_SLOTS = './components/imagery/imageSlots.ts'
 // ADR 0024: the MOWL QR code, served from our own origin (the API refuses any other path).
 const MOWL_QR = './components/account/MowlQr.tsx'
@@ -133,13 +135,13 @@ describe('no third-party hosts', () => {
     expect(naming).toEqual([])
   })
 
-  it('only CoverArt, the Spotify logo, the MOWL QR code and the slot pictures render an image element', () => {
+  it('only CoverArt, the Spotify logo and icon, the MOWL QR code and the slot pictures render an image element', () => {
     // src/test/ holds test fixtures (hostile text such as an <img> in a description), not app code.
     const withImg = Object.entries(scripts)
       .filter(([path]) => !path.startsWith('./test/'))
       .filter(([, source]) => /<img\b|createElement\(\s*['"]img['"]|new Image\(/.test(source))
       .map(([path]) => path)
-    expect(withImg.sort()).toEqual([COVER_ART, MOWL_QR, SLOT_PICTURE, SPOTIFY_LOGO].sort())
+    expect(withImg.sort()).toEqual([CONNECTION_MARK, COVER_ART, MOWL_QR, SLOT_PICTURE, SPOTIFY_LOGO].sort())
     // The QR image's one source is the ticket's path, which the API checks is ours.
     expect((scripts[MOWL_QR] ?? '').match(/src=\{[^}]+\}/g)).toEqual(['src={ticket.image}'])
     // A slot picture's files are ours: every src and srcSet is built by `fileUrl` / `srcSet` from
@@ -154,6 +156,16 @@ describe('no third-party hosts', () => {
     expect(logo.match(/from '([^']+)'/g)).toEqual([
       "from '../../assets/brand/Full_Logo_Black_RGB.svg'",
       "from '../../assets/brand/Full_Logo_White_RGB.svg'",
+    ])
+    // The icon on a connection tile: its two sources are the two files `spotifyIcon.ts` imports from the bundle.
+    const mark = scripts[CONNECTION_MARK] ?? ''
+    expect(mark.match(/src=\{[^}]+\}/g)).toEqual(['src={mark.dark}', 'src={mark.light}'])
+    // (A .ts file is served transformed, so its quotes may be either kind.)
+    const icon = (scripts[SPOTIFY_ICON] ?? '').replaceAll('"', "'")
+    expect(icon.match(/from '([^']+)'/g)).toEqual([
+      "from '../../../assets/brand/Primary_Logo_Black_RGB.svg'",
+      "from '../../../assets/brand/Primary_Logo_White_RGB.svg'",
+      "from './ConnectionMark'",
     ])
   })
 })

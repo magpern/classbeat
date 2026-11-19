@@ -106,6 +106,33 @@ describe('One step left', () => {
   })
 })
 
+describe('the monogram of a connection tile', () => {
+  it("is Spotify's official icon on the Spotify tile (both files, decorative, no letter) and a letter on the others", async () => {
+    fakeApi({
+      ...ACCOUNT,
+      'GET /api/connections': { connections: [] },
+      'GET /api/connections/spotify': spotify('connected'),
+    })
+    renderAt('/account')
+    const markOf = (id: string) => screen.getByTestId(id).querySelector('span[aria-hidden="true"]') as HTMLElement
+    await screen.findByTestId('connection-spotify')
+    const spotifyMark = markOf('connection-spotify')
+    expect(spotifyMark.textContent).toBe('')
+    const icons = [...spotifyMark.querySelectorAll('img')]
+    expect(icons.map((img) => img.getAttribute('src'))).toEqual([
+      expect.stringMatching(/Primary_Logo_White_RGB\.svg$/),
+      expect.stringMatching(/Primary_Logo_Black_RGB\.svg$/),
+    ])
+    for (const img of icons) {
+      expect(img.getAttribute('alt')).toBe('')
+      expect(img.getAttribute('aria-hidden')).toBe('true')
+    }
+    expect(markOf('connection-mowl').textContent).toBe('M')
+    expect(markOf('connection-swedebeat').textContent).toBe('Sb')
+    expect(markOf('connection-mowl').querySelector('img')).toBeNull()
+  })
+})
+
 describe('the plan hero', () => {
   it('shows the usage ring and the Your plan badge', async () => {
     fakeApi({ ...ACCOUNT, 'GET /api/account/plan': PLAN_FREE })
