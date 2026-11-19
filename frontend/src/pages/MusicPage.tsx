@@ -6,7 +6,7 @@ import { getSpotifyStatus, type SpotifyStatus } from '../api/spotify'
 import { useT } from '../i18n/I18n'
 import { RequireAuth } from '../components/RequireAuth'
 import { MadeCard, MowlEmptyState, MowlTiles } from '../components/music/MusicTiles'
-import { SpotifyAttribution } from '../components/songs/SpotifyAttribution'
+import { SpotifyAttributionPill } from '../components/music/SpotifyAttributionPill'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardTitle } from '../components/ui/card'
 import { PageHeading } from '../components/ui/page-heading'
@@ -65,9 +65,15 @@ function Music() {
     spotify.status === 'ready' &&
     connections.status === 'ready' &&
     needsSpotifyConnect(spotify.items, connections.items)
+  // The logo is shown only when the page lists Spotify content: not while loading, not when both lists are empty or failed.
+  const showsSpotifyContent =
+    (made.status === 'ready' && made.items.length > 0) || (mowl.status === 'ready' && mowl.items.length > 0)
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
-      <PageHeading eyebrow={t('music.page.eyebrow')} title={t('music.page.title')} intro={t('music.page.subtitle')} />
+      <div className="flex flex-col items-start gap-4">
+        <PageHeading eyebrow={t('music.page.eyebrow')} title={t('music.page.title')} intro={t('music.page.subtitle')} />
+        {showsSpotifyContent ? <SpotifyAttributionPill /> : null}
+      </div>
       {showConnect ? (
         <Card role="region" aria-labelledby="connect-title" className="flex flex-col gap-3">
           <CardTitle id="connect-title" className="mb-0">
@@ -89,16 +95,13 @@ function Music() {
           <p className="m-0 text-muted">{t('music.page.madeEmpty')}</p>
         ) : null}
         {made.status === 'ready' && made.items.length > 0 ? (
-          <>
-            <ul className="m-0 grid list-none grid-cols-1 gap-5 p-0 sm:grid-cols-2 lg:grid-cols-3">
-              {made.items.map((p) => (
-                <li key={`${p.classId}-${p.name}`}>
-                  <MadeCard playlist={p} />
-                </li>
-              ))}
-            </ul>
-            <SpotifyAttribution />
-          </>
+          <ul className="m-0 grid list-none grid-cols-1 gap-5 p-0 sm:grid-cols-2 lg:grid-cols-3">
+            {made.items.map((p) => (
+              <li key={`${p.classId}-${p.name}`}>
+                <MadeCard playlist={p} />
+              </li>
+            ))}
+          </ul>
         ) : null}
       </section>
       <section aria-labelledby="mowl-title" className="flex flex-col gap-4">
@@ -108,12 +111,7 @@ function Music() {
         {mowl.status === 'ready' && mowl.items.length === 0 && mowlOn.status !== 'loading' ? (
           <MowlEmptyState connected={connected} empty />
         ) : null}
-        {mowl.status === 'ready' && mowl.items.length > 0 ? (
-          <>
-            <MowlTiles playlists={mowl.items} />
-            <SpotifyAttribution />
-          </>
-        ) : null}
+        {mowl.status === 'ready' && mowl.items.length > 0 ? <MowlTiles playlists={mowl.items} /> : null}
       </section>
     </div>
   )

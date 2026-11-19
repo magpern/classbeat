@@ -1343,6 +1343,7 @@ const sv: Catalogue = {
   // Music page.
   'music.page.eyebrow': 'Din musik',
   'music.page.subtitle': 'Spellistorna som gjorts till dina pass, och de MOWL-spellistor som låtar kan väljas från.',
+  'music.page.attribution': 'Låtar och omslag från Spotify',
   'music.page.title': 'Musik',
   'music.page.connectTitle': 'Anslut Spotify',
   'music.page.connectText': 'Anslut Spotify så att vi kan välja låtar åt dig och skapa spellistor till dina pass.',

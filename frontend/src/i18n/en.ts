@@ -1438,6 +1438,7 @@ export const en = {
   // Music page.
   'music.page.eyebrow': 'Your music',
   'music.page.subtitle': 'The playlists made for your classes, and the MOWL playlists songs can be picked from.',
+  'music.page.attribution': 'Songs and art from Spotify',
   'music.page.title': 'Music',
   'music.page.connectTitle': 'Connect Spotify',
   'music.page.connectText': 'Connect Spotify so we can pick songs for you and make your class playlists.',
