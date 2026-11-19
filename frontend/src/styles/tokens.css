@@ -18,11 +18,11 @@
   --cb-brand: #b9a2ff;
   --cb-on-brand: #0a0910;
   --cb-ok: #3ddc97;
-  --cb-ok-soft: #10301f;
+  --cb-ok-soft: #192a2a;
   --cb-warn: #ffb547;
-  --cb-warn-soft: #34270f;
+  --cb-warn-soft: #302620;
   --cb-bad: #ff7a7a;
-  --cb-bad-soft: #381a1c;
+  --cb-bad-soft: #301e26;
   --cb-scrim: rgb(0 0 0 / 0.6);
   --cb-paper: #ffffff;
 
@@ -34,6 +34,7 @@
   --cb-heat-to: #d61a72;
   --cb-heat: linear-gradient(110deg, var(--cb-heat-from), var(--cb-heat-mid), var(--cb-heat-to));
   --cb-on-heat: #ffffff;
+  --cb-tab-mark: #d61a72; /* the active tab's and segment's 2px underline; >= 3:1 on surface, both themes */
   --cb-glow: 0 8px 24px -8px rgb(161 47 196 / 0.55);
   --cb-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -16px rgb(0 0 0 / 0.5);
 
@@ -139,9 +140,9 @@
   --cb-brand: #5a36e0;
   --cb-on-brand: #ffffff;
   --cb-ok: #0f7a4a;
-  --cb-ok-soft: #ddf3e8;
+  --cb-ok-soft: #e1f5ea;
   --cb-warn: #9a5b00;
-  --cb-warn-soft: #fbebcf;
+  --cb-warn-soft: #fcefd6;
   --cb-bad: #b32d24;
   --cb-bad-soft: #fbe0dd;
   --cb-scrim: rgb(20 22 30 / 0.5);
@@ -162,9 +163,9 @@
     --cb-brand: #5a36e0;
     --cb-on-brand: #ffffff;
     --cb-ok: #0f7a4a;
-    --cb-ok-soft: #ddf3e8;
+    --cb-ok-soft: #e1f5ea;
     --cb-warn: #9a5b00;
-    --cb-warn-soft: #fbebcf;
+    --cb-warn-soft: #fcefd6;
     --cb-bad: #b32d24;
     --cb-bad-soft: #fbe0dd;
     --cb-scrim: rgb(20 22 30 / 0.5);

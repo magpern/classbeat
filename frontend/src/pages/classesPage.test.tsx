@@ -131,16 +131,19 @@ describe('My classes', () => {
       classBody({ id: THIRD, title: 'Endurance ride' }),
     ])
     const titles = () =>
-      screen.getAllByRole('listitem').map((row) => within(row).getByRole('link').textContent)
+      screen.getAllByRole('link').map((link) => link.textContent).filter((text) => !text.startsWith('Open class') && /^(Hills|Intervals|Endurance ride)$/.test(text))
+    const tab = (name: string) => screen.getByRole('radio', { name: new RegExp(`^${name}`) })
     await screen.findByRole('link', { name: 'Hills' })
     expect(titles()).toEqual(['Hills', 'Intervals', 'Endurance ride'])
-    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
+    expect(tab('All')).toBeChecked()
+    expect(tab('All')).toHaveTextContent('3')
+    expect(tab('Saved to MOWL')).toHaveTextContent('1')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Saved to MOWL' }))
+    await userEvent.click(tab('Saved to MOWL'))
     expect(titles()).toEqual(['Hills'])
-    await userEvent.click(screen.getByRole('button', { name: 'Drafts' }))
+    await userEvent.click(tab('Drafts'))
     expect(titles()).toEqual(['Intervals', 'Endurance ride'])
-    await userEvent.click(screen.getByRole('button', { name: 'All' }))
+    await userEvent.click(tab('All'))
 
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search your classes' }), 'ride')
     expect(titles()).toEqual(['Endurance ride'])
@@ -149,6 +152,38 @@ describe('My classes', () => {
     expect(screen.getByText(/No class matches/)).toBeInTheDocument()
     // Searching and filtering never ask the server again.
     expect(api.to('GET', '/api/classes')).toHaveLength(1)
+  })
+
+  it('shows the newest class with a version large and the rest as cards, drafts with a ghost and Continue', async () => {
+    renderAtWith([
+      classBody({ id: SECOND, title: 'Draft one', current_revision_id: null, current_revision_number: null, profile: [], updated_at: '2026-11-09T10:00:00Z' }),
+      classBody({ title: 'Older', updated_at: '2026-11-01T10:00:00Z' }),
+      classBody({ id: THIRD, title: 'Newest', updated_at: '2026-11-05T10:00:00Z' }),
+    ])
+    const feature = await screen.findByRole('article')
+    expect(within(feature).getByRole('heading', { name: 'Newest' })).toBeInTheDocument()
+    expect(within(feature).getByRole('link', { name: 'Open class' })).toHaveAttribute('href', `/en/classes/${THIRD}`)
+    expect(within(feature).getByText('Latest design')).toBeInTheDocument()
+    expect(within(feature).getByText('Time')).toBeInTheDocument()
+    expect(within(feature).queryByText(/Make a/)).toBeNull()
+    const cards = screen.getAllByRole('listitem')
+    // The ghost cards are the ones without a version; the feature is not repeated in the grid.
+    const draft = cards.find((li) => within(li).queryByRole('link', { name: 'Draft one' }))!
+    expect(draft).toHaveTextContent('Continue')
+    expect(draft.querySelector('.ghost-shimmer')).not.toBeNull()
+    expect(cards.some((li) => within(li).queryByRole('link', { name: 'Newest' }))).toBe(false)
+    expect(within(cards.find((li) => within(li).queryByRole('link', { name: 'Older' }))!).getByRole('img')).toBeInTheDocument()
+  })
+
+  it('shows a stats strip: classes, saved to MOWL and classes left this month', async () => {
+    renderAtWith([classBody({ title: 'Hills', saved: SAVED }), classBody({ id: SECOND, title: 'Other' })])
+    await screen.findByRole('link', { name: 'Hills' })
+    const dl = document.querySelector('dl[aria-label="Your classes in numbers"]')!
+    expect(dl).toHaveTextContent(/Classes\s*2/)
+    expect(dl).toHaveTextContent(/Saved to MOWL\s*1/)
+    await waitFor(() => {
+      expect(dl).toHaveTextContent(/Left this month\s*2/)
+    })
   })
 
   it('works when the server sends no profile (an older backend)', async () => {

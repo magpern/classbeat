@@ -8,6 +8,7 @@ import { Trans, useT } from '../../i18n/I18n'
 import { Field, Notice, Section, useAction } from '../forms'
 import { Progress } from '../ui/progress'
 import { classesLine } from './classesLine'
+import { UsageRing } from './UsageRing'
 
 function planLineKey(source: string | null, end: string | null): CatalogueKey {
   if (source !== null) return end !== null ? 'plan.lineSourceEnd' : 'plan.lineSource'
@@ -18,7 +19,7 @@ function planLineKey(source: string | null, end: string | null): CatalogueKey {
  * Plan and usage (ADR 0011 section 9): the plan, its source and end, classes used this month,
  * the cost share as a bar (never a dollar figure), a redeem form and, when offered, a trial.
  */
-export function Plan() {
+export function Plan({ onChanged }: { onChanged?: () => void }) {
   const t = useT()
   const [plan, setPlan] = useState<PlanData | null>(null)
   const [failed, setFailed] = useState(false)
@@ -45,7 +46,8 @@ export function Plan() {
 
   const refresh = useCallback(() => {
     setRound((n) => n + 1)
-  }, [])
+    onChanged?.()
+  }, [onChanged])
 
   const redeem = (event: FormEvent) => {
     event.preventDefault()
@@ -102,20 +104,33 @@ export function Plan() {
   const percent = Math.round(plan.costShare * 100)
   return (
     <Section title={t('plan.title')}>
-      <p data-testid="plan-name">
-        <Trans
-          id={planLineKey(source, end)}
-          params={{ source: source ?? '', end: end ?? '' }}
-          slots={{ name: <strong>{plan.name}</strong> }}
-        />
-      </p>
-      <p data-testid="plan-classes">{classesLine(plan)}</p>
-      <PlanNudge trigger="account" plan={plan} />
-      <div>
-        <Progress value={percent} aria-label={t('plan.budgetLabel')} data-testid="plan-cost-bar" />
-        <p className="muted">
-          {t('plan.budgetText', { percent, day: dayText(plan.periodEnd) ?? t('plan.firstFallback') })}
-        </p>
+      <div className="flex flex-wrap items-center gap-6 rounded-xl bg-raised p-5">
+        <UsageRing held={plan.classesHeld} limit={plan.limits.classesPerMonth} />
+        <div className="flex min-w-0 flex-[1_1_16rem] flex-col gap-3">
+          <span className="inline-flex w-fit rounded-full bg-heat px-3 py-1 text-xs font-bold text-on-heat">
+            {t('plan.options.current')}
+          </span>
+          <p data-testid="plan-name">
+            <Trans
+              id={planLineKey(source, end)}
+              params={{ source: source ?? '', end: end ?? '' }}
+              slots={{ name: <strong>{plan.name}</strong> }}
+            />
+          </p>
+          <p data-testid="plan-classes">{classesLine(plan)}</p>
+          <PlanNudge trigger="account" plan={plan} />
+          <div className="flex flex-col gap-2">
+            <Progress
+              value={percent}
+              aria-label={t('plan.budgetLabel')}
+              data-testid="plan-cost-bar"
+              className="[&>div]:bg-heat"
+            />
+            <p className="muted">
+              {t('plan.budgetText', { percent, day: dayText(plan.periodEnd) ?? t('plan.firstFallback') })}
+            </p>
+          </div>
+        </div>
       </div>
       <PlanOffers plan={plan} onChanged={refresh} />
       {done !== null ? <Notice kind="success">{done}</Notice> : null}

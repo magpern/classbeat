@@ -7,7 +7,7 @@ import { setWidth } from '../../test/layout'
 import { renderAt } from '../../test/render'
 
 const ADMIN = { ...SIGNED_IN, user: { ...SIGNED_IN.user, role: 'admin' } }
-const ITEMS = ['Home', 'My classes', 'New class', 'Music', 'Account']
+const TABS = ['Home', 'My classes', 'New class', 'Music', 'Account']
 
 function stubApi(session: object = SIGNED_IN) {
   return fakeApi({
@@ -28,52 +28,44 @@ describe('navigation by width', () => {
     renderAt('/classes')
     await screen.findByRole('heading', { name: 'My classes' })
     const links = within(mainNav()).getAllByRole('link')
-    expect(links.map((l) => l.textContent || l.getAttribute('aria-label'))).toEqual(ITEMS)
+    expect(links.map((l) => l.textContent || l.getAttribute('aria-label'))).toEqual(TABS)
     expect(links[2]).toHaveAccessibleName('New class')
     expect(links[2]).toHaveAttribute('href', '/en/classes/new')
     expect(within(screen.getByRole('banner')).getByRole('button', { name: 'ann@example.test' })).toBeInTheDocument()
-    // Phone: no sidebar meter.
     expect(screen.queryByText('Classes this month')).toBeNull()
   })
 
-  it('800 px: an icon rail with the same items, named for assistive technology', async () => {
-    setWidth(800)
+  it.each([800, 1440])('%i px: a top bar with the logo, My classes, Music, New class and the avatar', async (width) => {
+    setWidth(width)
     stubApi()
     renderAt('/classes')
     await screen.findByRole('heading', { name: 'My classes' })
-    const links = within(mainNav()).getAllByRole('link')
-    expect(links.map((l) => l.getAttribute('aria-label'))).toEqual(['New class', 'Home', 'My classes', 'Music', 'Account'])
-    expect(within(mainNav()).queryByText('Music')).toBeNull()
-    // The rail keeps the meter, compact: the number, and the bar says the full words once.
-    const bar = await screen.findByRole('progressbar', { name: 'Classes this month: 2 of 3 classes in October' })
-    expect(bar).toHaveAttribute('aria-valuenow', '67')
-    expect(screen.getByText('2/3')).toBeInTheDocument()
-    expect(screen.queryByText('Classes this month: 2 of 3 classes in October')).toBeNull()
+    const bar = screen.getByRole('banner')
+    expect(within(mainNav()).getAllByRole('link').map((l) => l.textContent)).toEqual(['My classes', 'Music'])
+    expect(within(bar).getByRole('link', { name: 'classbeat, home' })).toHaveAttribute('href', '/en')
+    expect(within(bar).getByRole('link', { name: 'New class' })).toHaveAttribute('href', '/en/classes/new')
+    expect(within(bar).getByRole('button', { name: 'ann@example.test' })).toBeInTheDocument()
+    // The meter left the shell (it lives on Account and My classes).
+    expect(screen.queryByText('Classes this month')).toBeNull()
+    expect(screen.queryByRole('complementary')).toBeNull()
   })
 
-  it('1440 px: a sidebar with labels, the classes meter and the avatar with the name', async () => {
-    setWidth(1440)
+  it.each([800, 1440])('Account is one click away at %i px: the avatar menu', async (width) => {
+    setWidth(width)
     stubApi()
-    renderAt('/classes')
-    await screen.findByRole('heading', { name: 'My classes' })
-    const links = within(mainNav()).getAllByRole('link')
-    expect(links.map((l) => l.textContent)).toEqual(['New class', 'Home', 'My classes', 'Music', 'Account'])
-    expect(await screen.findByText('Classes this month')).toBeInTheDocument()
-    expect(screen.getByText('2 of 3 classes in October')).toBeInTheDocument()
-    expect(screen.getByRole('progressbar', { name: 'Classes this month' })).toHaveAttribute('aria-valuenow', '67')
-    expect(screen.getByRole('button', { name: 'ann@example.test' })).toHaveTextContent('ann@example.test')
+    renderAt('/music')
+    await userEvent.click(await screen.findByRole('button', { name: 'ann@example.test' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Account' }))
+    expect(window.location.pathname).toBe('/en/account')
   })
 
-  it.each([390, 800, 1440].flatMap((w) => ['/', '/classes', '/music'].map((p) => [w, p] as const)))(
-    'Account is one click away at %i px on %s',
-    async (width, path) => {
-      setWidth(width)
-      stubApi()
-      renderAt(path)
-      await screen.findByRole('navigation', { name: 'Main' })
-      expect(within(mainNav()).getByRole('link', { name: 'Account' })).toHaveAttribute('href', '/en/account')
-    },
-  )
+  it.each(['/', '/classes', '/music'])('Account is a tab at 390 px on %s', async (path) => {
+    setWidth(390)
+    stubApi()
+    renderAt(path)
+    await screen.findByRole('navigation', { name: 'Main' })
+    expect(within(mainNav()).getByRole('link', { name: 'Account' })).toHaveAttribute('href', '/en/account')
+  })
 
   it('marks the current page with aria-current, and My classes for a class page', async () => {
     setWidth(1440)
@@ -81,43 +73,43 @@ describe('navigation by width', () => {
     renderAt('/music')
     await screen.findByRole('heading', { name: 'Music' })
     expect(within(mainNav()).getByRole('link', { name: 'Music' })).toHaveAttribute('aria-current', 'page')
-    expect(within(mainNav()).getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current')
+    expect(within(mainNav()).getByRole('link', { name: 'My classes' })).not.toHaveAttribute('aria-current')
   })
 })
 
 describe('keyboard', () => {
-  it('reaches every navigation item and the avatar menu with Tab, and Enter follows a link', async () => {
+  it('puts a skip link first, then reaches every navigation item and the avatar menu with Tab', async () => {
     setWidth(1440)
     stubApi()
     renderAt('/music')
     await screen.findByRole('heading', { name: 'Music' })
+    await userEvent.tab()
+    expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveFocus()
+    expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveAttribute('href', '#main-content')
+    expect(document.getElementById('main-content')?.tagName).toBe('MAIN')
+    expect(document.getElementById('main-content')).toHaveAttribute('tabindex', '-1')
     const reached: string[] = []
-    for (let i = 0; i < 12 && reached.length < 7; i++) {
+    for (let i = 0; i < 12 && reached.length < 5; i++) {
       await userEvent.tab()
       const active = document.activeElement
-      // The sidebar's avatar button is named by its visible text (the aria-hidden initial is not part of it).
-      const name = active?.getAttribute('aria-label') ?? active?.querySelector('span:not([aria-hidden])')?.textContent ?? active?.textContent ?? ''
-      if (['classbeat, home', 'New class', 'Home', 'My classes', 'Music', 'Account', 'ann@example.test'].includes(name)) {
+      const name = active?.getAttribute('aria-label') ?? active?.textContent ?? ''
+      if (['classbeat, home', 'My classes', 'Music', 'New class', 'ann@example.test'].includes(name)) {
         reached.push(name)
       }
     }
-    expect(reached).toEqual(['classbeat, home', 'New class', 'Home', 'My classes', 'Music', 'Account', 'ann@example.test'])
+    expect(reached).toEqual(['classbeat, home', 'My classes', 'Music', 'New class', 'ann@example.test'])
     await userEvent.keyboard('{Enter}')
     expect(await screen.findByRole('menuitem', { name: 'Account' })).toBeInTheDocument()
   })
 })
 
 describe('avatar menu and Admin', () => {
-  it.each([
-    [390, 'bottom'],
-    [800, 'top'],
-    [1440, 'top'],
-  ] as const)('at %i px the menu opens %s', async (width, side) => {
+  it.each([390, 800, 1440])('at %i px the menu opens below the avatar', async (width) => {
     setWidth(width)
     stubApi()
     renderAt('/classes')
     await userEvent.click(await screen.findByRole('button', { name: 'ann@example.test' }))
-    expect(await screen.findByRole('menu')).toHaveAttribute('data-side', side)
+    expect(await screen.findByRole('menu')).toHaveAttribute('data-side', 'bottom')
   })
 
   it('has Account and Sign out, and no Admin for a normal user', async () => {
@@ -141,7 +133,7 @@ describe('avatar menu and Admin', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'ann@example.test' }))
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Admin' }))
     expect(window.location.pathname).toBe('/admin')
-    expect(within(mainNav()).getByRole('link', { name: 'Home' })).toBeInTheDocument()
+    expect(within(mainNav()).getByRole('link', { name: 'Music' })).toBeInTheDocument()
   })
 
   it('shows Admin to an admin whose TOTP check is missing or lapsed (role is still user)', async () => {

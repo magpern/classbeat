@@ -21,6 +21,11 @@ body {
   outline-offset: 2px;
 }
 
+/* main is a programmatic skip-link target (tabindex -1): no ring around the whole page. */
+#main-content:focus-visible {
+  outline: none;
+}
+
 .app-header {
   background: var(--cb-surface);
   border-bottom: 1px solid var(--cb-line);
@@ -49,17 +54,18 @@ body {
 }
 
 .logo {
-  width: 2rem;
-  height: 2rem;
+  display: flex;
+  height: 1.5rem;
   flex: none;
+  align-items: flex-end;
+  gap: 3px;
 }
 
-.logo__tile {
-  fill: var(--cb-brand);
-}
-
-.logo__bars {
-  fill: var(--cb-on-brand);
+.logo__bar {
+  width: 0.375rem;
+  border-radius: 2px;
+  background-image: var(--cb-heat);
+  transform-origin: 50% 100%;
 }
 
 .app-main {

@@ -70,7 +70,7 @@ export function SegmentedControl<T extends string>({
   return (
     <div
       role="radiogroup"
-      className={cn('inline-flex flex-wrap gap-1 rounded-full bg-raised p-1', className)}
+      className={cn('inline-flex flex-wrap gap-1 rounded-3xl bg-raised p-1', className)}
       {...name}
     >
       {options.map((option, index) => (
@@ -92,7 +92,7 @@ export function SegmentedControl<T extends string>({
           }}
           className={cn(
             'inline-flex min-h-11 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent px-4 text-[0.9375rem] font-medium text-muted transition-colors duration-150',
-            'hover:text-text aria-checked:bg-surface aria-checked:text-text aria-checked:shadow-[inset_0_-2px_0_var(--cb-heat-to)]',
+            'hover:text-text aria-checked:bg-surface aria-checked:text-text aria-checked:shadow-[inset_0_-2px_0_var(--cb-tab-mark)]',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
             'disabled:cursor-not-allowed disabled:opacity-50',
           )}
