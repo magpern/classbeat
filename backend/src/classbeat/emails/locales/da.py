@@ -253,6 +253,26 @@ CATALOGUE: dict[S, str] = {
         "Koden virker én gang og udløber om {days} dage. Hvis du ikke har bedt om en invitation, "
         "kan du se bort fra denne mail."
     ),
+    S.CHANGED_REVERT_BODY: (
+        "Hvis du selv har lavet ændringen, behøver du ikke gøre noget. Hvis ikke, skal du åbne "
+        "linket nedenfor for at få denne adresse tilbage: alle bliver logget ud af kontoen, og "
+        "du kan vælge en ny adgangskode. Linket virker én gang, i 7 dage."
+    ),
+    S.CHANGED_REVERT_BUTTON: "Fortryd ændringen",
+    S.SUBJECT_EMAIL_REVERTED: "Din e-mailadresse på classbeat er blevet gendannet",
+    S.REVERTED_HEADING: "Din e-mailadresse er blevet gendannet",
+    S.REVERTED_PRE: "Ændringen af e-mailadressen til din classbeat-konto er blevet fortrudt.",
+    S.REVERTED_BODY: (
+        "Ændringen af e-mailadressen til din classbeat-konto er blevet fortrudt, og kontoen "
+        "bruger denne adresse igen. For at holde den, der ændrede den, ude har vi logget alle "
+        "sessioner ud og fjernet kontoens adgangskode, tilknyttede loginmetoder, "
+        "tofaktorgodkendelse, gendannelseskoder og passkeys."
+    ),
+    S.REVERTED_NEXT: (
+        "Vælg en ny adgangskode med linket nedenfor (gyldigt i 30 minutter; derefter kan du bede "
+        "om et nyt på login-siden). Sæt derefter resten op igen på din kontoside."
+    ),
+    S.REVERTED_WARN: "Hvis du ikke selv fortrød ændringen, skal du give os besked med det samme.",
 }
 
 MONTHS = (

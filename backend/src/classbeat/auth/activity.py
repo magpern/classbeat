@@ -45,6 +45,7 @@ SHOWN_KINDS: frozenset[str] = frozenset(
         "password_reset",
         "email_change_requested",
         "email_changed",
+        "email_reverted",
         "identity_linked",
         "identity_unlinked",
         "totp_enrolled",

@@ -141,7 +141,7 @@ EXCLUDE: dict[str, dict[str, str]] = {
 NOT_EXPORTED: dict[str, str] = {
     "invites": "operator-issued codes (hash only); the user's link to one is not their data",
     "pending_signups": "sign-ups waiting for a mail link: no account yet; hashes only",
-    "auth_tokens": "single-use reset and email-change tokens (hash only), short-lived",
+    "auth_tokens": "single-use reset, email-change and revert tokens (hash only), at most 7 days",
     "oauth_flows": "in-flight sign-in flows: state hashes and a PKCE verifier, short-lived",
     "rate_limits": "counters keyed by an HMAC of the bucket; no user column",
     "webauthn_challenges": "in-flight passkey ceremonies: a nonce and a flow hash, five minutes",

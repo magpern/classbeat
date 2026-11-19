@@ -3,8 +3,9 @@
 The change request needs recent authentication (and step-up with a confirmed TOTP) and answers
 the same whether or not the new address is in use; only the mail differs. The confirmation needs
 a signed-in session of the user the token was issued to, so a victim clicking a link from
-someone else's account changes nothing. Account deletion moved to ``classbeat.account`` (ADR 0014:
-it needs a typed confirmation).
+someone else's account changes nothing. The notice to the old address carries a 7-day revert link
+(``email_revert_routes``, #1265). Account deletion moved to ``classbeat.account`` (ADR 0014: it
+needs a typed confirmation).
 """
 
 from typing import Annotated
@@ -27,6 +28,8 @@ from classbeat.auth.signup_routes import Accepted, refuse
 from classbeat.auth.tables import users
 from classbeat.auth.tokens import (
     EMAIL_CHANGE_LIFETIME,
+    REVERT_EMAIL_LIFETIME,
+    REVERT_PURPOSE,
     consume_token,
     delete_outstanding_tokens,
     issue_token,
@@ -143,7 +146,17 @@ async def confirm_email_change(
             if not moved:
                 raise _Refused(409, "email_taken")  # still free is rechecked by the unique key
             await revoke_user_sessions(db, ctx.user_id, except_id=info.id)
+            # Every earlier token goes, an earlier revert token too: it is stale once the address
+            # moved, and A -> B -> C -> B must not bring it back (#1265).
             await delete_outstanding_tokens(db, ctx.user_id)
+            revert = await issue_token(
+                db,
+                REVERT_PURPOSE,
+                ctx.user_id,
+                REVERT_EMAIL_LIFETIME,
+                new_email=old_email,  # the address the revert restores
+                email_at_issue=new_email,  # the address the account must still have
+            )
             await record_event(db, "email_changed", user_id=ctx.user_id)
     except _Refused as exc:
         if exc.reason == "invalid_token":
@@ -152,6 +165,6 @@ async def confirm_email_change(
     background.add_task(
         send_logged,
         mailer(request),
-        mails.email_changed_notice(request.app.state.settings, old_email, language),
+        mails.email_changed_notice(request.app.state.settings, old_email, revert, language),
     )
     return Changed(email=new_email)

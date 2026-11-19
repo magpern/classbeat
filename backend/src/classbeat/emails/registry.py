@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from classbeat.emails import invite_kinds, kinds, passkey_kinds
+from classbeat.emails import invite_kinds, kinds, passkey_kinds, revert_kinds
 from classbeat.emails.kinds import Builder
 
 
@@ -77,7 +77,9 @@ _ALL = (
         kinds.connections_wiped,
         {"providers": ("mowl", "spotify", "swedebeat"), "reset_token": "SAMPLE"},
     ),
-    _essential("email_changed", kinds.email_changed, _WHEN),
+    # #1265: the notice to the old address carries the revert link (``token``).
+    _essential("email_changed", kinds.email_changed, {**_TOKEN, **_WHEN}),
+    _essential("email_reverted", revert_kinds.email_reverted, _TOKEN),
     # ADR 0033 (#985): the code an admin issued for an invite request, when they chose to mail it.
     _essential("invite_code", invite_kinds.invite_code, {"code": "SAMPLE", "days": 14}),
     _activity("totp_enrolled", kinds.totp_enrolled, _WHEN),

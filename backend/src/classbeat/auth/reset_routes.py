@@ -237,7 +237,7 @@ async def complete_reset(
             passkeys_removed = await remove_passkeys_except(db, token.user_id, body.keep_passkeys)
             await revoke_user_sessions(db, token.user_id)
             await forget_devices(db, token.user_id)
-            await delete_outstanding_tokens(db, token.user_id)
+            await delete_outstanding_tokens(db, token.user_id, keep_revert=True)
             await record_event(
                 db,
                 "password_reset",
@@ -283,7 +283,7 @@ async def change_password(
             )
         ).scalar_one_or_none()  # None: the account was deleted meanwhile
         await revoke_user_sessions(db, ctx.user_id, except_id=info.id)
-        await delete_outstanding_tokens(db, ctx.user_id)
+        await delete_outstanding_tokens(db, ctx.user_id, keep_revert=True)
         await record_event(db, "password_changed", user_id=ctx.user_id, ip=request_ip(request))
     if email is not None:
         queue(background, request, happened("password_changed", email, ctx.user_id))

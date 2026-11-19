@@ -15,7 +15,7 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "sessions": "server-side sessions, looked up by token hash before any user is known",
         "known_devices": "device tokens (HMAC only) that exempt a user from the per-account cap",
         "pending_signups": "sign-ups waiting for a mail link; no user exists yet",
-        "auth_tokens": "single-use reset and email-change tokens (hash only), looked up by hash",
+        "auth_tokens": "single-use reset, email-change and revert tokens (hash only), by hash",
         "oauth_flows": "in-flight OAuth flows, taken by flow hash before a user is known",
         "invites": "invite codes (hash only), checked before a user exists",
         "mfa_totp": "admin and step-up TOTP secrets (AES-GCM), read during sign-in",
