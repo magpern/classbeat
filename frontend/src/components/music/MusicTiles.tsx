@@ -1,8 +1,7 @@
 import { Trans, useT } from '../../i18n/I18n'
 import { Link } from '../../router/Router'
-import type { Playlist } from '../../api/jobs'
 import type { MadePlaylist } from '../../api/music'
-import { CoverMosaic, initials } from '../songs/CoverArt'
+import { CoverMosaic } from '../songs/CoverArt'
 import { Button } from '../ui/button'
 
 const TILE = 'flex flex-col gap-3 rounded-lg border border-line bg-surface p-4 shadow-card'
@@ -30,57 +29,6 @@ export function MadeCard({ playlist }: { playlist: MadePlaylist }) {
           </a>
         </Button>
       ) : null}
-    </div>
-  )
-}
-
-/** The MOWL playlists as initials tiles. */
-export function MowlTiles({ playlists }: { playlists: Playlist[] }) {
-  const t = useT()
-  return (
-    <ul className="m-0 grid list-none grid-cols-2 gap-4 p-0 sm:grid-cols-3 lg:grid-cols-5">
-      {playlists.map((p) => {
-        const name = p.name || t('music.page.untitled')
-        return (
-          <li key={p.spotifyPlaylistId} className={`${TILE} ${LIFT} gap-2 p-3`}>
-            <span
-              aria-hidden="true"
-              className="flex aspect-square w-full items-center justify-center rounded-sm bg-raised font-display text-2xl font-extrabold text-muted"
-            >
-              {initials(name)}
-            </span>
-            <span className="break-words text-[0.9375rem] font-medium text-text">{name}</span>
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
-/**
- * Shown when there are no MOWL playlists to list: ghost tiles and one sentence. The connect link is offered only
- * when MOWL is not connected (or not known to be); a connected account just gets the plain sentence.
- */
-export function MowlEmptyState({ connected, empty = false }: { connected: boolean; empty?: boolean }) {
-  const t = useT()
-  const message = !connected
-    ? 'music.page.mowlFailed'
-    : empty
-      ? 'music.page.mowlEmpty'
-      : 'music.page.mowlFailedConnected'
-  return (
-    <div className="flex flex-wrap items-center gap-7 rounded-xl border border-line bg-surface p-6 shadow-card sm:p-9">
-      <div className="flex gap-2.5" aria-hidden="true">
-        <span className="size-16 rounded-md border border-dashed border-line bg-raised" />
-        <span className="size-16 rounded-md border border-dashed border-line bg-raised opacity-70" />
-        <span className="size-16 rounded-md border border-dashed border-line bg-raised opacity-40" />
-      </div>
-      <p className="m-0 min-w-0 flex-[1_1_16rem] text-[0.9375rem] leading-relaxed text-muted">{t(message)}</p>
-      {connected ? null : (
-        <Button asChild variant="secondary">
-          <Link to="/account">{t('music.page.mowlConnect')}</Link>
-        </Button>
-      )}
     </div>
   )
 }

@@ -1331,7 +1331,7 @@ const da: Catalogue = {
 
   // Music page.
   'music.page.eyebrow': 'Din musik',
-  'music.page.subtitle': 'Playlisterne der er lavet til dine hold, og de MOWL-playlister som sange kan vælges fra.',
+  'music.page.subtitle': 'Playlisterne der er lavet til dine hold.',
   'music.page.attribution': 'Sange og omslag fra Spotify',
   'music.page.title': 'Musik',
   'music.page.connectTitle': 'Tilslut Spotify',
@@ -1342,13 +1342,6 @@ const da: Catalogue = {
   'music.page.madeFailed': 'Dine playlister kunne ikke indlæses.',
   'music.page.madeEmpty':
     'Ingen playlister endnu. Når du godkender sange til et hold, vises dets playliste her.',
-  'music.page.mowlTitle': 'Dine playlister i MOWL',
-  'music.page.mowlLoading': 'Indlæser din MOWL-musik',
-  'music.page.mowlFailed': 'Dine MOWL-playlister kunne ikke indlæses. Tilslut MOWL, eller prøv igen om nogle minutter.',
-  'music.page.mowlFailedConnected': 'Dine MOWL-playlister kunne ikke indlæses. Prøv igen om nogle minutter.',
-  'music.page.mowlConnect': 'Tilslut MOWL',
-  'music.page.mowlEmpty': 'MOWL viser ingen Spotify-playlister for din konto.',
-  'music.page.untitled': 'Unavngiven playliste',
   'music.page.forClass': 'Til {link}',
   'music.page.openSpotify': 'ÅBN SPOTIFY',
 

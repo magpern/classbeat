@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 import { getConnections, type Connection } from '../api/connections'
-import { getMowlPlaylists } from '../api/jobs'
 import { getClassPlaylists } from '../api/music'
 import { getSpotifyStatus, type SpotifyStatus } from '../api/spotify'
 import { useT } from '../i18n/I18n'
 import { RequireAuth } from '../components/RequireAuth'
-import { MadeCard, MowlEmptyState, MowlTiles } from '../components/music/MusicTiles'
+import { MadeCard } from '../components/music/MusicTiles'
 import { SpotifyAttributionPill } from '../components/music/SpotifyAttributionPill'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardTitle } from '../components/ui/card'
@@ -42,7 +41,7 @@ function needsSpotifyConnect(status: SpotifyStatus | null, connections: readonly
   return spotify === undefined || spotify.status !== 'connected' || status.status !== 'connected'
 }
 
-/** Music (ADR 0013 sections 4 and 9): the MOWL playlists as tiles and the ones classbeat made. */
+/** Music (ADR 0013 sections 4 and 9): the playlists classbeat made, and the Spotify connect card. */
 export function MusicPage() {
   return (
     <RequireAuth>
@@ -53,21 +52,15 @@ export function MusicPage() {
 
 function Music() {
   const t = useT()
-  const connections = useLoad(getConnections) // read once: the connect card and the MOWL state share it
+  const connections = useLoad(getConnections)
   const spotify = useLoad(getSpotifyStatus)
   const made = useLoad(getClassPlaylists)
-  const mowl = useLoad(getMowlPlaylists)
-  const mowlOn = connections
-  // A failed read counts as not connected.
-  const connected =
-    connections.status === 'ready' && connections.items.some((c) => c.provider === 'mowl' && c.status === 'connected')
   const showConnect =
     spotify.status === 'ready' &&
     connections.status === 'ready' &&
     needsSpotifyConnect(spotify.items, connections.items)
-  // The logo is shown only when the page lists Spotify content: not while loading, not when both lists are empty or failed.
-  const showsSpotifyContent =
-    (made.status === 'ready' && made.items.length > 0) || (mowl.status === 'ready' && mowl.items.length > 0)
+  // The logo is shown only when the page lists Spotify content: not while loading, empty or failed.
+  const showsSpotifyContent = made.status === 'ready' && made.items.length > 0
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
       <div className="flex flex-col items-start gap-4">
@@ -103,15 +96,6 @@ function Music() {
             ))}
           </ul>
         ) : null}
-      </section>
-      <section aria-labelledby="mowl-title" className="flex flex-col gap-4">
-        <PageHeading as="h2" size="section" titleId="mowl-title" title={t('music.page.mowlTitle')} />
-        {mowl.status === 'loading' ? <p className="m-0 text-muted">{t('music.page.mowlLoading')}</p> : null}
-        {mowl.status === 'failed' && mowlOn.status !== 'loading' ? <MowlEmptyState connected={connected} /> : null}
-        {mowl.status === 'ready' && mowl.items.length === 0 && mowlOn.status !== 'loading' ? (
-          <MowlEmptyState connected={connected} empty />
-        ) : null}
-        {mowl.status === 'ready' && mowl.items.length > 0 ? <MowlTiles playlists={mowl.items} /> : null}
       </section>
     </div>
   )
