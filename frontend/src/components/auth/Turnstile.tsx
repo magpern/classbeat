@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { CaptchaAction, CaptchaConfig } from '../../api/auth'
 import { useSession } from '../../auth/SessionContext'
 import type { CatalogueKey } from '../../i18n/en'
@@ -113,17 +113,25 @@ export function useCaptcha(action: CaptchaAction): Captcha {
   const t = useT()
   const { session, status } = useSession()
   const config = session?.captcha ?? null
-  const [token, setToken] = useState<string | null>(null)
+  // A new configuration is a new check: a token belongs to the configuration that gave it, so
+  // nothing of an old check carries over. It is tied to its key here, not cleared by an effect of
+  // the box: a click between the commit and that effect would have its token wiped.
+  const configKey = config === null ? null : config.kind === 'fake' ? 'fake' : config.siteKey
+  const [held, setHeld] = useState<{ key: string | null; token: string | null }>({ key: null, token: null })
+  const token = held.key === configKey ? held.token : null
   const [problem, setProblem] = useState<Problem>('waiting')
   const [round, setRound] = useState(0)
   const statusId = useId()
 
-  const report = useCallback<Report>((next, why) => {
-    setToken(next)
-    setProblem(why ?? 'waiting')
-  }, [])
+  const report = useMemo<Report>(
+    () => (next, why) => {
+      setHeld({ key: configKey, token: next })
+      setProblem(why ?? 'waiting')
+    },
+    [configKey],
+  )
   const reset = useCallback(() => {
-    setToken(null)
+    setHeld({ key: null, token: null })
     setProblem('waiting')
     setRound((value) => value + 1)
   }, [])
@@ -140,8 +148,7 @@ export function useCaptcha(action: CaptchaAction): Captcha {
     </p>
   ) : on ? (
     <CaptchaBox
-      // A new configuration is a new check: nothing of the old one carries over.
-      key={config.kind === 'fake' ? 'fake' : config.siteKey}
+      key={configKey}
       config={config}
       action={action}
       round={round}
@@ -170,10 +177,6 @@ function CaptchaBox({
 }) {
   const t = useT()
   const labelId = useId()
-  useEffect(() => {
-    // Mounted with a new configuration: no token yet.
-    report(null)
-  }, [report])
   return (
     <div className="captcha" role="group" aria-labelledby={labelId}>
       <p id={labelId} className="captcha__label">
