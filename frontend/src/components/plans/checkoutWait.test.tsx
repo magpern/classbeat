@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PLAN_FREE, SIGNED_IN, fakeApi } from '../../test/fakeApi'
+import { PLAN_CATALOGUE, PLAN_FREE, SIGNED_IN, fakeApi } from '../../test/fakeApi'
 import { renderAt } from '../../test/render'
 import { forget, remember } from '../../lib/checkoutWait'
 
@@ -96,6 +96,40 @@ describe('the return from the hosted page', () => {
     await waitFor(() => {
       expect(screen.getByTestId('plan-name').textContent).toContain('Your plan: Individual')
     })
+  })
+
+  it('names the plan, never its id, when the payment lands before the catalogue has loaded', async () => {
+    remember({ plan: 'instructor', kind: 'buy' })
+    // The catalogue answers only when the test says so; billing lands first. Billing never lists the plan
+    // as an offer here (it is bought, or no longer offered), so only the catalogue can give its name.
+    let release: () => void = () => undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let reads = 0
+    const api = fakeApi({
+      ...ACCOUNT,
+      'GET /api/plans': () => held.then(() => PLAN_CATALOGUE),
+      'GET /api/account/plan': () => (reads >= 3 ? INDIVIDUAL : PLAN_FREE),
+      'GET /api/account/billing': () => {
+        reads += 1
+        return {
+          can_buy: true,
+          subscription: reads >= 3 ? subscription() : null,
+          offers: [offer('pro', 'Professional', 2900, 'buy', 2900)],
+        }
+      },
+    })
+    renderAt('/account?checkout=return#plan')
+    await waitFor(() => {
+      expect(api.to('GET', '/api/account/billing').length).toBeGreaterThanOrEqual(3)
+    })
+    await waitFor(() => {
+      expect(sessionStorage.getItem('classbeat.checkout.pending')).toBeNull() // the payment landed
+    })
+    release()
+    expect(await screen.findByText('Done. Your plan is now Individual.')).toBeInTheDocument()
+    expect(screen.queryByText(/instructor/)).toBeNull()
   })
 
   it('stops after the limit with a calm "still waiting", and can look again', async () => {

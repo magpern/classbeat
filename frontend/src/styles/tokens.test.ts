@@ -197,10 +197,29 @@ describe('contrast', () => {
     expect([dark.brand, light.brand]).toEqual(['#b9a2ff', '#5a36e0'])
   })
 
-  it('the system theme (light device) has the same values as light', () => {
-    for (const key of ['bg', 'surface', 'raised', 'text', 'muted', 'brand', 'on-brand']) {
-      expect(system[key], key).toBe(light[key])
+  it('the system theme (light device) has the same values as light, for every token key', () => {
+    const keys = [...new Set([...Object.keys(light), ...Object.keys(system)])]
+    expect(keys.length).toBeGreaterThan(30)
+    for (const key of keys) expect(system[key], key).toBe(light[key])
+    // The colour-only regex above skips rgb() and shadow tokens, so compare the raw declarations too.
+    const declarations = (css: string) => [...css.matchAll(/--cb-[a-z0-9-]+:[^;]+;/g)].map((m) => m[0].replace(/\s+/g, ' '))
+    const lightBlock = block(tokensCss, ":root[data-theme='light']")
+    const systemBlock = block(tokensCss, "  :root[data-theme='system']")
+    expect(declarations(systemBlock)).toEqual(declarations(lightBlock))
+  })
+
+  it('the dark soft backgrounds and the glow are the approved values', () => {
+    expect([dark['ok-soft'], dark['warn-soft'], dark['bad-soft']]).toEqual(['#192a2a', '#302620', '#301e26'])
+    expect(block(tokensCss, ':root')).toMatch(/--cb-glow:\s*0 8px 24px -8px rgb\(161 47 196 \/ 0\.55\);/)
+    // The glow is a dark-theme default that light does not override: it is the same in every theme.
+    for (const theme of [":root[data-theme='light']", "  :root[data-theme='system']"]) {
+      expect(block(tokensCss, theme)).not.toMatch(/--cb-glow:/)
     }
+  })
+
+  it('the active tab underline is drawn with the tab-mark token', () => {
+    const trigger = readFileSync(join(srcDir, 'components', 'ui', 'tabs.tsx'), 'utf8')
+    expect(trigger).toMatch(/data-\[state=active\]:shadow-\[inset_0_-2px_0_var\(--cb-tab-mark\)\]/)
   })
 
   it('zone colours and stage text meet 3:1 on the stage', () => {
@@ -214,6 +233,15 @@ describe('contrast', () => {
   it('the zones are the ADR 0013 values: one red for zones 5 to 7', () => {
     expect([dark['zone-5'], dark['zone-6'], dark['zone-7']]).toEqual(['#f0483c', '#f0483c', '#f0483c'])
     expect(dark['zone-1']).toBe('#8e99a8')
+  })
+})
+
+describe('focus ring', () => {
+  const appCss = readFileSync(join(srcDir, 'styles', 'app.css'), 'utf8')
+
+  it('is drawn on every focus-visible element except the skip-link target main', () => {
+    expect(block(appCss, ':focus-visible')).toMatch(/outline:\s*2px solid var\(--cb-brand\)/)
+    expect(block(appCss, '#main-content:focus-visible')).toMatch(/outline:\s*none/)
   })
 })
 

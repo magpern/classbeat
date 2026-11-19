@@ -87,6 +87,7 @@ describe('keyboard', () => {
     expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveFocus()
     expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveAttribute('href', '#main-content')
     expect(document.getElementById('main-content')?.tagName).toBe('MAIN')
+    expect(document.getElementById('main-content')).toHaveAttribute('tabindex', '-1')
     const reached: string[] = []
     for (let i = 0; i < 12 && reached.length < 5; i++) {
       await userEvent.tab()
