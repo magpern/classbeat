@@ -31,16 +31,30 @@ function rule(selector: string): string {
 describe('the hero on a phone', () => {
   it('is sized from the small viewport, with the large one as the fallback declared first', () => {
     const hero = rule('.hero')
-    const fallback = hero.indexOf('calc(100vh - var(--hero-chrome))')
-    const small = hero.indexOf('calc(100svh - var(--hero-chrome))')
+    const fallback = hero.indexOf('calc(100vh - var(--hero-chrome) - var(--cb-notice-h))')
+    const small = hero.indexOf('calc(100svh - var(--hero-chrome) - var(--cb-notice-h))')
     expect(fallback).toBeGreaterThanOrEqual(0)
     expect(small).toBeGreaterThan(fallback) // a browser without svh drops the second and keeps the first
   })
 
   it('stays between 25rem and 32rem, so the text block always fits and the photo never grows past what it was', () => {
-    for (const line of rule('.hero').split('\n').filter((l) => l.includes('min-height:'))) {
-      expect(line).toMatch(/clamp\(25rem, calc\(100s?vh - var\(--hero-chrome\)\), 32rem\)/)
+    const lines = rule('.hero').split('\n').filter((l) => l.includes('min-height:'))
+    expect(lines).toHaveLength(2) // the vh fallback and the svh rule
+    for (const line of lines) {
+      expect(line).toMatch(
+        /clamp\(calc\(25rem - var\(--cb-notice-h\)\), calc\(100s?vh - var\(--hero-chrome\) - var\(--cb-notice-h\)\), 32rem\)/,
+      )
     }
+  })
+
+  it('leaves room for the cookie notice bar (#1273): its height comes off the hero, and off its floor', () => {
+    // --cb-notice-h is 0 without a notice, so the rule then reads exactly as it did in #1270: the floor is
+    // 25rem and the height is 100svh - the header allowance. With the bar showing, the bar's height comes
+    // off both, so the first screen ends above it; the floor drops with it because the hero grows to its
+    // text block anyway (the photo above the text is what gives).
+    expect(rule('.hero')).toContain('calc(25rem - var(--cb-notice-h))')
+    const app = readFileSync(join(dir, 'app.css'), 'utf8')
+    expect(app).toMatch(/:root\s*\{\s*--cb-notice-h:\s*0px;/)
   })
 
   it('allows for a header of three rows (the Swedish nav on 360 px) and the Landing padding', () => {

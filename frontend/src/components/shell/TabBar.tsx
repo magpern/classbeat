@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+import { usePublishHeight } from '../../hooks/usePublishHeight'
 import { useT } from '../../i18n/I18n'
 import { cn } from '../../lib/cn'
 import { Link } from '../../router/Router'
@@ -26,11 +28,18 @@ function Tab({ item, pathname }: { item: NavItem; pathname: string }) {
   )
 }
 
-/** The phone's bottom tab bar; the + is the heat gradient (ADR 0013 Afterburn A2). */
+/**
+ * The phone's bottom tab bar; the + is the heat gradient (ADR 0013 Afterburn A2). It publishes its
+ * height (`--cb-tabbar-h`) so the cookie notice sits right above it (app.css).
+ */
 export function TabBar({ pathname }: { pathname: string }) {
   const t = useT()
+  const ref = useRef<HTMLElement>(null)
+  usePublishHeight(ref, '--cb-tabbar-h')
   return (
     <nav
+      ref={ref}
+      data-tab-bar=""
       aria-label={t('shell.nav.main')}
       className="fixed inset-x-0 bottom-0 z-30 flex items-end justify-around border-t border-line bg-surface px-2 pb-2"
     >

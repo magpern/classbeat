@@ -39,6 +39,21 @@ describe('CookieNotice', () => {
     expect(screen.queryByTestId('cookie-notice')).toBeNull()
   })
 
+  it('publishes its height for the page to leave room, and takes it back when dismissed', () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(96)
+    const root = document.documentElement.style
+    mount()
+    expect(root.getPropertyValue('--cb-notice-measured')).toBe('96px')
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    expect(root.getPropertyValue('--cb-notice-measured')).toBe('')
+  })
+
+  it('publishes nothing when it was dismissed on an earlier visit', () => {
+    window.localStorage.setItem(COOKIE_NOTICE_KEY, '1')
+    mount()
+    expect(document.documentElement.style.getPropertyValue('--cb-notice-measured')).toBe('')
+  })
+
   it('links to the privacy notice', () => {
     mount()
     expect(screen.getByRole('link', { name: 'privacy notice' })).toHaveAttribute('href', '/en/privacy')

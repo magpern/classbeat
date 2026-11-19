@@ -52,7 +52,7 @@ export function MessageBox({
       noValidate
       aria-label={t('cw.chat.form')}
       data-testid="message-box"
-      className="flex flex-col gap-2 border-line bg-surface max-lg:fixed max-lg:inset-x-0 max-lg:bottom-[3.4rem] max-lg:z-20 max-lg:border-t max-lg:px-4 max-lg:py-2 lg:border-t lg:pt-4"
+      className="flex flex-col gap-2 border-line bg-surface max-lg:fixed max-lg:inset-x-0 max-lg:bottom-[calc(3.4rem+var(--cb-notice-h))] max-lg:z-20 max-lg:border-t max-lg:px-4 max-lg:py-2 lg:border-t lg:pt-4"
     >
       {error !== null ? <Notice kind="error">{error}</Notice> : null}
       {blocked !== null ? <p className="m-0 text-sm text-muted">{blocked}</p> : null}
