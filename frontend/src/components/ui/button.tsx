@@ -4,6 +4,8 @@ import { cn } from '../../lib/cn'
 
 const variants = {
   primary: 'bg-heat text-on-heat shadow-glow hover:brightness-110',
+  // The heat fill without the glow, for places the glow would spill out of its box (the signed-out header).
+  flat: 'bg-heat text-on-heat hover:brightness-110',
   secondary: 'border border-solid border-line bg-raised text-text hover:bg-line',
   ghost: 'bg-transparent text-text hover:bg-raised',
   danger: 'bg-bad text-on-brand hover:opacity-90',

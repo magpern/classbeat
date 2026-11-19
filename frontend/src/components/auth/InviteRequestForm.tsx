@@ -7,6 +7,7 @@ import { SegmentedControl } from '../ui/segmented-control'
 import { AuthCard } from './AuthCard'
 import { AuthSplit } from './AuthSplit'
 import { useCaptcha } from './Turnstile'
+import { Button } from '../ui/button'
 
 type Answer = 'yes' | 'no' | ''
 
@@ -113,14 +114,13 @@ export function InviteRequestForm() {
             ) : null}
           </div>
           {captcha.element}
-          <button
-            className="button button--block"
+          <Button className="w-full"
             type="submit"
             disabled={action.busy || !captcha.ready}
             aria-describedby={captcha.describedBy}
           >
             {t('inviteRequest.submit')}
-          </button>
+          </Button>
         </form>
         <p className="card__links">
           <Link to="/signup">{t('inviteRequest.back')}</Link>

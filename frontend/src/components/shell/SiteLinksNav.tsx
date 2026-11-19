@@ -10,7 +10,11 @@ export function SiteLinksNav({ className, published }: { className?: string; pub
   return (
     <nav aria-label={t('pub.nav.label')} className={className}>
       {links.map((link) => (
-        <Link key={link.path} to={link.path} className="inline-flex min-h-11 items-center">
+        <Link
+          key={link.path}
+          to={link.path}
+          className="inline-flex min-h-11 items-center rounded-full px-3 text-[0.9375rem] font-medium text-muted no-underline transition-colors hover:bg-raised hover:text-text aria-[current=page]:bg-raised aria-[current=page]:text-text"
+        >
           {t(link.label)}
         </Link>
       ))}

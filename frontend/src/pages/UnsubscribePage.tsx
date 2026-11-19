@@ -6,6 +6,7 @@ import { errorMessage } from '../api/messages'
 import { useT } from '../i18n/I18n'
 import { Notice, useAction } from '../components/forms'
 import { stripFragment } from '../router/Router'
+import { Button } from '../components/ui/button'
 
 interface Tokens {
   category: string | null
@@ -66,8 +67,7 @@ export function UnsubscribePage() {
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <p className="flex flex-wrap gap-2">
         {tokens.category !== null ? (
-          <button
-            className="button"
+          <Button
             type="button"
             disabled={action.busy}
             onClick={() => {
@@ -75,11 +75,10 @@ export function UnsubscribePage() {
             }}
           >
             {t('unsub.stopCategory')}
-          </button>
+          </Button>
         ) : null}
         {tokens.all !== null ? (
-          <button
-            className="button"
+          <Button
             type="button"
             disabled={action.busy}
             onClick={() => {
@@ -87,7 +86,7 @@ export function UnsubscribePage() {
             }}
           >
             {t('unsub.stopAll')}
-          </button>
+          </Button>
         ) : null}
       </p>
     </Card>

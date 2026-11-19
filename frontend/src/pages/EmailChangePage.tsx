@@ -5,6 +5,7 @@ import { useT } from '../i18n/I18n'
 import { Notice, useAction } from '../components/forms'
 import { AuthCard as Card } from '../components/auth/AuthCard'
 import { Link, useMailToken } from '../router/Router'
+import { Button } from '../components/ui/button'
 
 /**
  * `/email-change#token=...` from the mail to the new address. Needs a signed-in session of the
@@ -29,9 +30,11 @@ export function EmailChangePage() {
       <Card title={t('emailChange.changedTitle')}>
         <Notice kind="success">{t('emailChange.changed', { email: changed })}</Notice>
         <p>
-          <Link className="button" to="/account">
-            {t('emailChange.back')}
-          </Link>
+          <Button asChild>
+            <Link to="/account">
+              {t('emailChange.back')}
+            </Link>
+          </Button>
         </p>
       </Card>
     )
@@ -50,9 +53,11 @@ export function EmailChangePage() {
           {t('emailChange.signInFirst')}
         </Notice>
         <p>
-          <Link className="button" to="/signin">
-            {t('auth.signIn')}
-          </Link>
+          <Button asChild>
+            <Link to="/signin">
+              {t('auth.signIn')}
+            </Link>
+          </Button>
         </p>
       </Card>
     )
@@ -68,9 +73,9 @@ export function EmailChangePage() {
     <Card title={t('emailChange.title')}>
       <p>{t('emailChange.confirmIntro', { email: session.user?.email ?? '' })}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      <button className="button" type="button" disabled={action.busy} onClick={confirm}>
+      <Button type="button" disabled={action.busy} onClick={confirm}>
         {t('emailChange.confirm')}
-      </button>
+      </Button>
     </Card>
   )
 }

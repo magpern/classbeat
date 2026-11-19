@@ -69,6 +69,8 @@ const da: Catalogue = {
   'auth.signIn': 'Log ind',
   'auth.createAccount': 'Opret en konto',
   'auth.createAccountSubmit': 'Opret konto',
+  'auth.eyebrow.signin': 'Velkommen tilbage',
+  'auth.eyebrow.signup': 'Vær med i betaen',
   'auth.newHere': 'Ny her? Opret en konto',
   'auth.haveAccountSignIn': 'Har du allerede en konto? Log ind',
   'auth.inviteLead': 'Kun for inviterede foreløbig. Skriv din invitationskode.',

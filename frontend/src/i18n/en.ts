@@ -75,6 +75,8 @@ export const en = {
   'auth.signIn': 'Sign in',
   'auth.createAccount': 'Create an account',
   'auth.createAccountSubmit': 'Create account',
+  'auth.eyebrow.signin': 'Welcome back',
+  'auth.eyebrow.signup': 'Join the beta',
   'auth.newHere': 'New here? Create an account',
   'auth.haveAccountSignIn': 'Already have an account? Sign in',
   'auth.inviteLead': 'Invite-only for now. Enter the invite code you were given.',

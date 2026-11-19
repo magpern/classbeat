@@ -32,6 +32,12 @@ describe('the signed-out header while the session loads', () => {
     expect(visible).toBe('')
   })
 
+  it('sizes its hidden labels like the Button that replaces them', () => {
+    const labels = header.match(/<span class="invisible[^>]*>/g) ?? []
+    expect(labels).toHaveLength(2)
+    for (const label of labels) expect(label).toContain('text-[0.9375rem]')
+  })
+
   beforeAll(async () => {
     await loadCatalogue('sv')
     await loadCatalogue('da')
