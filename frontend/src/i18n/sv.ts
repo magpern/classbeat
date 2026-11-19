@@ -1307,6 +1307,8 @@ const sv: Catalogue = {
 
   // Home, setup checklist, theme, dialog, unsubscribe page (ML5d).
   'home.welcome': 'Välkommen tillbaka',
+  'home.eyebrow': 'Hem',
+  'home.intro': 'Utforma ett pass på en minut, eller fortsätt där du slutade.',
   'home.quick': 'Snabbstart',
   'home.preset.hills': '45 min backar',
   'home.preset.intervals': '30 min intervaller',

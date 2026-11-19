@@ -1296,6 +1296,8 @@ const da: Catalogue = {
 
   // Home, setup checklist, theme, dialog, unsubscribe page (ML5d).
   'home.welcome': 'Velkommen tilbage',
+  'home.eyebrow': 'Hjem',
+  'home.intro': 'Design et hold på et minut, eller fortsæt der, hvor du slap.',
   'home.quick': 'Hurtig start',
   'home.preset.hills': '45 min bakker',
   'home.preset.intervals': '30 min intervaller',

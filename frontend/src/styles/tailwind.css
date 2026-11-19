@@ -66,6 +66,12 @@
   background-image: var(--cb-heat);
 }
 
+/* A heat outline on a surface-filled box: give it a border width (`border-2`), `border-heat` paints the line. */
+@utility border-heat {
+  border-color: transparent;
+  background: linear-gradient(var(--cb-surface), var(--cb-surface)) padding-box, var(--cb-heat) border-box;
+}
+
 /*
  * Titles are Archivo at its wide setting (ADR 0028 section 1.1): every `font-display` element gets the
  * width of --cb-font-stretch-display. It sits in the base layer, so `font-stretch-normal` (or any
