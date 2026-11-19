@@ -6,11 +6,12 @@ import { useT } from '../../i18n/I18n'
 import { useLayout } from '../../hooks/useLayout'
 import { useSpotlight } from '../../hooks/useSpotlight'
 import { forgetExample } from '../../lib/exampleHandoff'
-import { Link, useRouter } from '../../router/Router'
+import { useRouter } from '../../router/Router'
 import { useAction } from '../forms'
 import { AvatarMenu } from './AvatarMenu'
 import { PhoneSignInNotice } from './PhoneSignInNotice'
 import { BrandLink } from './BrandLink'
+import { FocusHeader } from './FocusHeader'
 import { SignedOutHeader } from './SignedOutHeader'
 import { TabBar } from './TabBar'
 import { TopBar } from './TopBar'
@@ -104,15 +105,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <Frame
         top={
-          <header className="flex items-center justify-between border-b border-line bg-surface px-4 py-2">
-            <BrandLink />
-            <Link
-              to="/"
-              className="inline-flex min-h-11 items-center rounded-full bg-raised px-5 font-medium text-text no-underline hover:bg-line"
-            >
-              {pathname.startsWith('/jobs/') ? t('shell.backHome') : t('shell.close')}
-            </Link>
-          </header>
+          <FocusHeader label={pathname.startsWith('/jobs/') ? t('shell.backHome') : t('shell.close')} />
         }
         mainClass="app-main"
         alert={alert}

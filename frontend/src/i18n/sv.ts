@@ -844,6 +844,7 @@ const sv: Catalogue = {
     'Gör det ändå: du avgör att den inte lades till. Nästa utformning lägger till den igen, så du kan få två kopior.',
   'class.attach.addAgain': 'Lägg till igen',
   'common.tryAgain': 'Försök igen',
+  'newclass.eyebrow': 'Avancerat',
   'newclass.title': 'Utforma ett pass',
   'newclass.loading': 'Laddar din MOWL-musik',
   'newclass.noMowl.reconnect': 'MOWL-inloggningen har gått ut. {link}',
@@ -1206,6 +1207,7 @@ const sv: Catalogue = {
   'job.cancelError.finished': 'Den här utformningen blev precis klar.',
   'job.yourClass': 'ditt pass',
   'job.findingSongs': 'Hittar låtar till {name}…',
+  'job.eyebrow': 'Utformar',
   'job.designing': 'Utformar {name}…',
   'job.stepOf': 'Steg {step} av {total}',
   'job.stopping': 'Stoppar. Det tar en stund.',
@@ -1290,6 +1292,7 @@ const sv: Catalogue = {
   'songs.approval.expiredText': 'Låtarna gick ut innan de godkändes. Inget skrevs till ditt Spotify.',
   'songs.approval.stoppedText': 'Låtarna stoppades. Inget skrevs till ditt Spotify.',
   'songs.approval.barLabel': 'Godkännande',
+  'songs.approval.eyebrow': 'Dina låtar',
   'songs.approval.heading': 'Låtar till ditt pass',
   'songs.approval.summary': '{count} låtar, {total} totalt. Du bad om {target}.',
   'songs.approval.omittedNoBpm': {

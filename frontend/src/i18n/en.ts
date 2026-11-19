@@ -801,6 +801,7 @@ export const en = {
     'Do it anyway: you decide it was not added. The next design adds it again, so you may get two copies.',
   'class.attach.addAgain': 'Add it again',
   'common.tryAgain': 'Try again',
+  'newclass.eyebrow': 'Advanced',
   'newclass.title': 'Design a class',
   'newclass.loading': 'Loading your MOWL music',
   'newclass.noMowl.reconnect': 'MOWL sign-in expired. {link}',
@@ -1303,6 +1304,7 @@ export const en = {
   'job.cancelError.finished': 'This design has just finished.',
   'job.yourClass': 'your class',
   'job.findingSongs': 'Finding songs for {name}…',
+  'job.eyebrow': 'Designing',
   'job.designing': 'Designing {name}…',
   'job.stepOf': 'Step {step} of {total}',
   'job.stopping': 'Stopping. This takes a moment.',
@@ -1386,6 +1388,7 @@ export const en = {
   'songs.approval.expiredText': 'These songs expired before they were approved. Nothing was written to your Spotify.',
   'songs.approval.stoppedText': 'These songs were stopped. Nothing was written to your Spotify.',
   'songs.approval.barLabel': 'Approval',
+  'songs.approval.eyebrow': 'Your songs',
   'songs.approval.heading': 'Songs for your class',
   'songs.approval.summary': '{count} songs, {total} in total. You asked for {target}.',
   'songs.approval.omittedNoBpm': {
