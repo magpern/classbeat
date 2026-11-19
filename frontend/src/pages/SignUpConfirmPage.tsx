@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react'
-import { confirmSignUp } from '../api/auth'
-import { useT } from '../i18n/I18n'
-import { Field, Notice, useAction } from '../components/forms'
-import { AuthCard as Card } from '../components/auth/AuthCard'
-import { Link, useMailToken } from '../router/Router'
+import { useState, type FormEvent } from "react";
+import { confirmSignUp } from "../api/auth";
+import { useT } from "../i18n/I18n";
+import { Field, Notice, useAction } from "../components/forms";
+import { AuthCard as Card } from "../components/auth/AuthCard";
+import { Link, useMailToken } from "../router/Router";
+import { Button } from "../components/ui/button";
 
 /**
  * The page behind the sign-up confirmation mail (`/signup/confirm#token=...`). The token is
@@ -11,70 +12,66 @@ import { Link, useMailToken } from '../router/Router'
  * in (ADR 0003 section 4): the user signs in afterwards.
  */
 export function SignUpConfirmPage() {
-  const t = useT()
-  const token = useMailToken()
-  const [password, setPassword] = useState('')
-  const [done, setDone] = useState(false)
-  const action = useAction()
+  const t = useT();
+  const token = useMailToken();
+  const [password, setPassword] = useState("");
+  const [done, setDone] = useState(false);
+  const action = useAction();
 
   if (token === null) {
     return (
-      <Card title={t('confirm.title')}>
-        <Notice kind="error">
-          {t('confirm.noLink')}
-        </Notice>
+      <Card title={t("confirm.title")}>
+        <Notice kind="error">{t("confirm.noLink")}</Notice>
         <p className="card__links">
-          <Link to="/signup">{t('auth.createAccount')}</Link>
+          <Link to="/signup">{t("auth.createAccount")}</Link>
         </p>
       </Card>
-    )
+    );
   }
 
   if (done) {
     return (
-      <Card title={t('confirm.doneTitle')}>
-        <Notice kind="success">{t('confirm.done')}</Notice>
+      <Card title={t("confirm.doneTitle")}>
+        <Notice kind="success">{t("confirm.done")}</Notice>
         <p>
-          <Link className="button" to="/signin">
-            {t('auth.signIn')}
-          </Link>
+          <Button asChild>
+            <Link to="/signin">{t("auth.signIn")}</Link>
+          </Button>
         </p>
       </Card>
-    )
+    );
   }
 
   const submit = (event: FormEvent) => {
-    event.preventDefault()
+    event.preventDefault();
     void action.run(async () => {
       // A provider sign-up has no password: the server then checks the browser instead.
-      await confirmSignUp(token, password === '' ? null : password)
-      setDone(true)
-    })
-  }
+      await confirmSignUp(token, password === "" ? null : password);
+      setDone(true);
+    });
+  };
 
   return (
-    <Card title={t('confirm.title')}>
-      <p>
-        {t('confirm.intro')}
-      </p>
+    <Card title={t("confirm.title")}>
+      <p>{t("confirm.intro")}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <form onSubmit={submit}>
         <Field
-          label={t('common.password')}
+          label={t("common.password")}
           type="password"
           autoComplete="current-password"
           value={password}
           onChange={(e) => {
-            setPassword(e.target.value)
+            setPassword(e.target.value);
           }}
         />
-        <button className="button" type="submit" disabled={action.busy}>
-          {t('confirm.submit')}
-        </button>
+        <Button type="submit" disabled={action.busy}>
+          {t("confirm.submit")}
+        </Button>
       </form>
       <p className="card__links">
-        <Link to="/signin">{t('auth.signIn')}</Link>
+        <Link to="/signin">{t("auth.signIn")}</Link>
       </p>
     </Card>
-  )
+  );
 }

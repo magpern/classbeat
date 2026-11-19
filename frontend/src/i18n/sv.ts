@@ -69,6 +69,8 @@ const sv: Catalogue = {
   'auth.signIn': 'Logga in',
   'auth.createAccount': 'Skapa ett konto',
   'auth.createAccountSubmit': 'Skapa konto',
+  'auth.eyebrow.signin': 'Välkommen tillbaka',
+  'auth.eyebrow.signup': 'Häng med i betan',
   'auth.newHere': 'Ny här? Skapa ett konto',
   'auth.haveAccountSignIn': 'Har du redan ett konto? Logga in',
   'auth.inviteLead': 'Bara för inbjudna just nu. Skriv in din inbjudningskod.',
