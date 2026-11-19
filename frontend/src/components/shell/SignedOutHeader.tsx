@@ -9,6 +9,9 @@ import { SiteLinksNav } from './SiteLinksNav'
 // The buttons' horizontal padding, shared with the placeholder so its width cannot drift from theirs.
 const SIGN_IN_PADDING = 'px-4'
 const SIGN_UP_PADDING = 'px-5'
+// The Button's type size: the placeholder must measure its labels at the same size, or the row's width
+// (and where a narrow phone wraps it) differs between the prerender and the client.
+const BUTTON_TEXT = 'text-[0.9375rem] font-medium'
 
 export function SignedOutHeader({ ready, offered }: { ready: boolean; offered: readonly string[] }) {
   const t = useT()
@@ -50,8 +53,8 @@ function NavPlaceholder() {
   return (
     <div aria-hidden="true" data-testid="nav-placeholder" className="ml-auto flex flex-wrap items-center justify-end gap-2">
       {LOCALES.length > 1 ? <span className="inline-block h-11 w-[6.5rem] rounded-md" /> : null}
-      <span className={`invisible inline-flex min-h-11 items-center ${SIGN_IN_PADDING} font-medium`}>{t('auth.signIn')}</span>
-      <span className={`invisible inline-flex min-h-11 items-center ${SIGN_UP_PADDING} font-medium`}>{t('shell.signUp')}</span>
+      <span className={`invisible inline-flex min-h-11 items-center ${SIGN_IN_PADDING} ${BUTTON_TEXT}`}>{t('auth.signIn')}</span>
+      <span className={`invisible inline-flex min-h-11 items-center ${SIGN_UP_PADDING} ${BUTTON_TEXT}`}>{t('shell.signUp')}</span>
     </div>
   )
 }
