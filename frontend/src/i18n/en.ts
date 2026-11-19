@@ -1401,6 +1401,8 @@ export const en = {
 
   // Home, setup checklist, theme, dialog, unsubscribe page (ML5d).
   'home.welcome': 'Welcome back',
+  'home.eyebrow': 'Home',
+  'home.intro': 'Design a class in a minute, then pick up where you left off.',
   'home.quick': 'Quick start',
   'home.preset.hills': '45 min hills',
   'home.preset.intervals': '30 min intervals',

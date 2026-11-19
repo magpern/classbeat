@@ -38,6 +38,22 @@ describe('Home', () => {
     expect(within(recent).getByRole('link', { name: 'See all' })).toHaveAttribute('href', '/en/classes')
   })
 
+  it('has an Afterburn title block: eyebrow, display title and one intro line', async () => {
+    home()
+    renderAt('/')
+    const title = await screen.findByRole('heading', { level: 1, name: 'Welcome back' })
+    expect(title.parentElement).toHaveTextContent('Home')
+    expect(title.parentElement).toHaveTextContent('Design a class in a minute')
+  })
+
+  it('puts the quick starts and Design a class together in the hero card', async () => {
+    home()
+    renderAt('/')
+    const hero = await screen.findByRole('region', { name: 'Design a class' })
+    expect(within(hero).getByRole('list', { name: 'Quick start' })).toBeInTheDocument()
+    expect(within(hero).getByRole('link', { name: 'Design a class' })).toHaveAttribute('href', '/en/classes/new')
+  })
+
   it('puts a trash can on every class, with what stays in MOWL and Swedebeat in the confirmation', async () => {
     const SECOND = '22222222-2222-4222-8222-222222222222'
     const empty = classBody({ id: SECOND, title: 'Never designed', current_revision_id: null, current_revision_number: null, profile: [] })
@@ -88,6 +104,10 @@ describe('Home', () => {
     home({ 'GET /api/classes': { classes: [] } })
     renderAt('/')
     expect(await screen.findByText(/No classes yet/)).toBeInTheDocument()
+    // a card like My classes, under the section heading, with no "See all"
+    const recent = screen.getByRole('region', { name: 'Recent classes' })
+    expect(within(recent).queryByRole('link', { name: 'See all' })).toBeNull()
+    expect(within(recent).queryAllByRole('listitem')).toHaveLength(0)
     // a calm decorative picture beside the text: empty alt, lazy, size set
     const img = document.querySelector('main [data-slot="emptyHome"] img')
     expect(img).toHaveAttribute('alt', '')
