@@ -13,6 +13,7 @@ import { usePlanAllowance } from '../components/newclass/usePlanAllowance'
 import { RequireAuth } from '../components/RequireAuth'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardTitle } from '../components/ui/card'
+import { PageHeading } from '../components/ui/page-heading'
 import { useClassList } from '../hooks/useClassList'
 import { matchesFilter, type ClassFilter } from '../lib/classCards'
 import { classesStats, featureClass } from '../lib/classesView'
@@ -59,18 +60,19 @@ function Classes() {
 
   return (
     <div className="flex flex-col gap-7">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-2">
-          <span className="text-xs font-semibold tracking-[0.14em] text-muted uppercase">{t('class.list.eyebrow')}</span>
-          <h1 className="m-0 font-display text-4xl leading-none font-extrabold sm:text-5xl">{t('class.list.title')}</h1>
-        </div>
-        <Button asChild className="min-h-13 px-7 text-base font-bold">
-          <Link to="/classes/new">
-            <Plus aria-hidden="true" size={18} strokeWidth={2.5} />
-            {t('class.list.design')}
-          </Link>
-        </Button>
-      </div>
+      <PageHeading
+        eyebrow={t('class.list.eyebrow')}
+        title={t('class.list.title')}
+        titleClassName="leading-none"
+        actions={
+          <Button asChild className="min-h-13 px-7 text-base font-bold">
+            <Link to="/classes/new">
+              <Plus aria-hidden="true" size={18} strokeWidth={2.5} />
+              {t('class.list.design')}
+            </Link>
+          </Button>
+        }
+      />
       {listing.status === 'loading' ? <p className="m-0 text-muted">{t('class.list.loading')}</p> : null}
       {listing.status === 'failed' ? (
         <>
@@ -99,9 +101,7 @@ function Classes() {
           {rest.length > 0 ? (
             <section aria-labelledby="more-classes" className="flex flex-col gap-4">
               {feature ? (
-                <h2 id="more-classes" className="m-0 font-display text-2xl font-extrabold">
-                  {t('class.list.othersTitle')}
-                </h2>
+                <PageHeading as="h2" size="section" titleId="more-classes" title={t('class.list.othersTitle')} />
               ) : (
                 <h2 id="more-classes" className="sr-only">
                   {t('class.list.othersTitle')}
