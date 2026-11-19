@@ -101,7 +101,7 @@ async def test_two_users_on_different_client_ids_run_the_whole_flow_at_once_and_
         assert {pool.playlist_id, final.playlist_id} == mine  # two creates, both the user's
         for pid in mine:
             playlist = songenv.fake.playlists[pid]
-            assert (playlist.owner, playlist.public, playlist.collaborative) == (user, False, False)
+            assert (playlist.owner, playlist.public, playlist.collaborative) == (user, True, False)
             # Every request that named the playlist carried its own user's token and app.
             named = [s for s in seen if pid in s.path]
             assert named

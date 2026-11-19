@@ -130,10 +130,11 @@ async function settled(page: Page, id: string, revisions: number): Promise<void>
 /** The playlists the fake Spotify holds that are not classbeat's working copy. */
 const kept = (): FakePlaylist[] => fakePlaylists().filter((p) => p.name !== WORKING_COPY)
 const finals = (): FakePlaylist[] => kept().filter((p) => p.id !== PLAYLISTS.draft.id)
-/** Everything classbeat made in the user's Spotify is private (AGENTS.md), the working copy too. */
-const allPrivate = (): void => {
+/** Everything classbeat made in the user's Spotify is public and never collaborative (roadmap Amendment 30,
+ * AGENTS.md), the working copy too. */
+const allMadePublic = (): void => {
   for (const p of fakePlaylists().filter((q) => q.id !== PLAYLISTS.draft.id)) {
-    expect(p.public, p.name).toBe(false)
+    expect(p.public, p.name).toBe(true)
     expect(p.collaborative, p.name).toBe(false)
   }
 }
@@ -220,20 +221,20 @@ test('describe with a playlist and a pinned song, shape it, swap a song, approve
   // Approve and save: the bar's copy, then one click. Phase 2 makes the playlist; the web saves.
   await expect(
     page.getByText(
-      'Approving saves a private workout to MOWL and creates a playlist in your Spotify in this order (we ask Spotify for private).',
+      'Approving saves a private workout to MOWL and creates a playlist in your Spotify in this order (a public playlist, so MOWL can find it).',
     ),
   ).toBeVisible()
   await page.getByRole('button', { name: 'Approve and save' }).click()
   await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible(LONG)
 
-  // One save to MOWL (the fake counts the programs per account) and one final, private playlist
+  // One save to MOWL (the fake counts the programs per account) and one final, public playlist
   // that holds the pinned and the favoured song; the attached playlist is as it was.
   expect(saveState().programs.reduce((sum, n) => sum + n, 0)).toBe(1)
   expect(savePrograms()).toHaveLength(1)
   const [made, ...others] = finals()
   expect(others).toHaveLength(0)
   expect(made).toBeDefined()
-  allPrivate()
+  allMadePublic()
   expect(made?.entries).toContain(PIN_URI)
   expect(made?.entries).toContain(FAVOURED_URI)
   expect(kept().find((p) => p.id === PLAYLISTS.draft.id)?.entries).toEqual([FAVOURED_URI])

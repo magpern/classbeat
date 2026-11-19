@@ -70,7 +70,7 @@ export const workspaceDa: Catalogue = {
   'cw.swap.label': 'Skift {title}',
   'cw.approve.region': 'Godkend og gem',
   'cw.approve.text':
-    'Godkendelsen gemmer et privat træningspas i MOWL og opretter en afspilningsliste i din Spotify i denne rækkefølge (vi beder Spotify om privat).',
+    'Godkendelsen gemmer et privat træningspas i MOWL og opretter en afspilningsliste i din Spotify i denne rækkefølge (en offentlig afspilningsliste, så MOWL kan finde den).',
   'cw.approve.button': 'Godkend og gem',
   'cw.approve.hold': 'Godkendelsen venter, til din besked er sendt.',
   'cw.approve.checking': 'Tjekker for beskeder, der ikke er sendt endnu…',

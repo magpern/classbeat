@@ -1,6 +1,7 @@
-"""``spotify_create_playlist`` (ADR 0008 section 2): a new private, non-collaborative playlist in
-the user's own Spotify account, as an external operation. Create only: the tracks are written by
-``spotify_replace_items`` afterwards, so the id exists on a row between the two requests.
+"""``spotify_create_playlist`` (ADR 0008 section 2): a new public, non-collaborative playlist in
+the user's own Spotify account (roadmap Amendment 30), as an external operation. Create only: the
+tracks are written by ``spotify_replace_items`` afterwards, so the id exists on a row between the
+two requests.
 
 - **Key** ``<job_id>:pool-create`` or ``<job_id>:final-create`` (a studio output's is its
   approval's, ``out:...:spotify_create``, ADR 0036 section 6): one row per job, never one per
@@ -21,9 +22,11 @@ the user's own Spotify account, as an external operation. Create only: the track
 - **Context** ``{purpose, pool_id}`` or ``{purpose, revision_id, content_hash, name,
   spotify_user_id}``, plus the protocol's ``ref`` (12 hex characters of the row's id). The
   playlist's description carries ``classbeat ref <ref>``.
-- **The call** is one request (``single_request``): ``POST /me/playlists`` through the library's
-  ``create_playlist`` with no tracks, which sends ``public: false`` and ``collaborative: false``.
-  Spotify may make it public anyway (#1155): ``privacy.ensure_private`` then asks once more.
+- **The call** is one request (``single_request``): ``POST /me/playlists`` with no tracks and
+  ``public: true``, ``collaborative: false`` (``create_call``; Amendment 30, #1287). Nothing asks
+  for private afterwards and nothing reads it back for its privacy.
+  A 403 to it is ``failed`` with ``scope_mismatch`` (a connection made before Amendment 27 has no
+  ``playlist-modify-public``; its sentence asks the user to connect again).
   A request refused before it left, or answered with a refusal (4xx), is ``failed``; anything
   else (dropped after sending, a 5xx, an answer without a valid id) is ``uncertain``.
 - **On success** (``create_record``): the pool's ``spotify_pool.playlist_id``, or the final
@@ -50,11 +53,10 @@ from typing import Any, Final, cast
 from uuid import UUID
 
 from mowl import spotify_web
-from mowl.errors import MowlError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.connections import ConnectionFailure, Credentials, OpenConnection, open_connection
+from classbeat.connections import ConnectionFailure, OpenConnection, open_connection
 from classbeat.crypto.keks import KeyRing
 from classbeat.egress import OutboundBlocked
 from classbeat.jobs import JobFailure, JobRun
@@ -62,6 +64,7 @@ from classbeat.operations import (
     INCONCLUSIVE,
     OPERATION_KINDS,
     CallResult,
+    NotWritten,
     Operation,
     OperationKind,
     OperationKinds,
@@ -74,7 +77,7 @@ from classbeat.operations import (
 )
 from classbeat.operations.kinds import REF_KEY, SPOTIFY_CREATE_KIND, ref_of
 from classbeat.operations.requests import Guard
-from classbeat.playlists import common
+from classbeat.playlists import common, create_call
 from classbeat.playlists.create_record import on_succeeded, purpose_fits
 
 logger = logging.getLogger(__name__)
@@ -82,11 +85,6 @@ logger = logging.getLogger(__name__)
 KIND: Final = SPOTIFY_CREATE_KIND
 # One request (30 s), plus a refresh before it and one after a 401 (10 s each), with room.
 TIMEOUT_SECONDS: Final = 60.0
-
-
-class _AnswerUnreadable(Exception):
-    """The library refused Spotify's answer to the create (no valid id): the playlist may exist.
-    Not the library's error type, so it is never taken for a refusal (``uncertain``)."""
 
 
 def pool_key(job_id: UUID) -> str:
@@ -149,20 +147,6 @@ def final_request(
     )
 
 
-def _create(name: str, about: str) -> Any:
-    def fn(creds: Credentials) -> str:
-        try:
-            return spotify_web.create_playlist(creds, name, (), about)
-        except MowlError as exc:
-            if exc.__cause__ is None:
-                # No HTTP cause: the library refused the answer (no valid id) or the token
-                # before sending. The first may have created the playlist: never a refusal.
-                raise _AnswerUnreadable from None
-            raise
-
-    return fn
-
-
 # This job's own create row, locked whatever its state (so a Do it anyway cannot turn it
 # ``failed`` between this check and the protocol's take-over in the same transaction).
 _OWN_ROW = text(
@@ -203,15 +187,20 @@ async def create(
 
     async def call(operation_id: UUID) -> CallResult:
         about = common.description(ref_of(operation_id), purpose)
-        answer = await common.call(
-            run.factory,
-            keyring,
-            run.ctx,
-            opened,
-            _create(name, about),
-            write=True,
-            single_request=True,  # one POST: a refusal proves it had no effect
-        )
+        try:
+            answer = await common.call(
+                run.factory,
+                keyring,
+                run.ctx,
+                opened,
+                create_call.create(name, about),
+                write=True,
+                single_request=True,  # one POST: a refusal proves it had no effect
+            )
+        except ConnectionFailure as failure:
+            if create_call.no_public_scope(failure):
+                raise NotWritten(create_call.NO_PUBLIC_SCOPE) from None
+            raise
         if not isinstance(answer, str) or common.SPOTIFY_ID.fullmatch(answer) is None:
             raise UncertainAnswer
         return CallResult(answer)

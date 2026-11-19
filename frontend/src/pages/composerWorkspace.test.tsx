@@ -246,7 +246,7 @@ describe('the composer workspace page', () => {
     expect(await screen.findByText('Ready to approve')).toBeInTheDocument()
     expect(
       await screen.findByText(
-        'Approving saves a private workout to MOWL and creates a playlist in your Spotify in this order (we ask Spotify for private).',
+        'Approving saves a private workout to MOWL and creates a playlist in your Spotify in this order (a public playlist, so MOWL can find it).',
       ),
     ).toBeInTheDocument()
     expect(await screen.findByText('Pinned by you')).toBeInTheDocument()

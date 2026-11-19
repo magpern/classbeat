@@ -282,7 +282,7 @@ export const en = {
     'Your working playlist was changed in Spotify and cannot be used. Set it up again.',
   'sentence.job.pool_missing': 'Your working playlist was gone from Spotify; trying again by itself.',
   'sentence.job.pool_not_synced': 'MOWL has not caught up with the working playlist; try again in a minute.',
-  'sentence.job.playlist_mismatch': "Spotify's playlist did not match the approved songs; nothing was designed. Create it again.",
+  'sentence.job.playlist_mismatch': "Spotify's playlist did not match the approved songs. Add it to your Spotify profile, then create it again.",
   'sentence.job.pool_too_small': 'Not enough usable songs were found; try a wider style or era.',
   'sentence.job.account_changed': 'Your Spotify account is not the one these songs were chosen for. Ask for new songs.',
   'sentence.job.pool_busy': 'Another song pick is still running.',
@@ -1263,7 +1263,7 @@ export const en = {
   'songs.failure.pool_missing.detail': 'Your working playlist was gone from Spotify. Try again.',
   'songs.failure.pool_not_synced.title': 'MOWL has not caught up yet',
   'songs.failure.playlist_mismatch.title': 'Spotify’s playlist did not match the approved songs',
-  'songs.failure.playlist_mismatch.detail': 'Spotify’s playlist did not match the approved songs; nothing was designed. Create it again.',
+  'songs.failure.playlist_mismatch.detail': 'Nothing was designed. In Spotify, choose Add to profile on the playlist, then create it again.',
   'songs.failure.pool_too_small.title': 'Not enough usable songs were found',
   'songs.uncertain.title': 'We could not confirm the playlist was written',
   'songs.uncertain.text1':
@@ -1374,7 +1374,7 @@ export const en = {
   'songs.ended.pickAgain': 'Pick songs again',
   'songs.ended.startNew': 'Start new class',
   'songs.ended.backToClass': 'Back to class',
-  'songs.approval.privacy': 'Spotify may make it public; anyone with its link can open it.',
+  'songs.approval.privacy': 'Public so MOWL finds it; anyone with the link can open it.',
   'songs.approval.stopped': 'The songs were stopped, but we could not read the class. Press Ask for changes again.',
   'songs.approval.cannotChange': 'These songs can no longer be changed, so nothing was started. Pick songs again.',
   'songs.approval.loading': 'Loading the songs',
@@ -1812,6 +1812,8 @@ export const en = {
   'spot.disconnectYes': 'Yes, disconnect Spotify',
   'spot.disconnect': 'Disconnect Spotify',
   'spot.workingTitle': 'Working playlist',
+  'spot.profileHint': 'Our playlists are public so MOWL can find them. If one is missing in MOWL, choose Add to profile on it in Spotify.',
+  'spot.profileSetting': 'Or turn on adding new playlists to your profile in Spotify’s settings.',
   'swed.err.invalid_credentials': 'Swedebeat did not accept that email and password.',
   'swed.err.upstream_unavailable': 'Swedebeat could not be reached. Try again in a few minutes.',
   'swed.err.app_key_unavailable': 'Swedebeat sign-in is not available on this server.',
@@ -2273,7 +2275,7 @@ export const en = {
   'studio.out.spotify_playlist':
     'Spotify playlist',
   'studio.out.spotify_playlist.desc':
-    'A new playlist in your Spotify account, in the approved order. We ask for private; Spotify may make it public.',
+    'A new public playlist in your Spotify account, in the approved order, so MOWL can find it.',
   'studio.out.swedebeat_playlist':
     'SwedeBeat playlist',
   'studio.out.swedebeat_playlist.desc':

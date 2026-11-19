@@ -27,7 +27,7 @@ export const helpSv: Catalogue = {
     'En Spotify-anslutning med ditt eget Client ID, och låtval i din plan. Tillgängligt när vi har aktiverat funktionen. Tills dess kan du fortfarande utforma ett pass till en spellista från din MOWL-musik.',
   'help.design.saved.q': 'Vad sparas, och när?',
   'help.design.saved.a':
-    'Assistenten föreslår bara. När du godkänner en låtlista skapar vi en spellista med de låtarna i din Spotify och lägger till den i din MOWL-musik. Vi ber om privat, men Spotify kan göra den offentlig. Själva passet hamnar i ditt MOWL-konto, privat, först när du trycker på Spara i MOWL på passet. Godkänner du inte en lista i tid skrivs ingenting till din Spotify.',
+    'Assistenten föreslår bara. När du godkänner en låtlista skapar vi en spellista med de låtarna i din Spotify och lägger till den i din MOWL-musik. Spellistan är offentlig så att MOWL hittar den. Själva passet hamnar i ditt MOWL-konto, privat, först när du trycker på Spara i MOWL på passet. Godkänner du inte en lista i tid skrivs ingenting till din Spotify.',
   'help.design.change.q': 'Kan jag ändra ett pass efteråt?',
   'help.design.change.a':
     'Ja. Beskriv vad som ska vara annorlunda på passets sida, eller använd Byt låtar för att byta ut några av låtarna. Varje ändring blir en ny version. Tidigare versioner finns kvar, och du kan göra en av dem aktuell med Använd den här versionen. Spara i MOWL igen för att uppdatera passet där.',
