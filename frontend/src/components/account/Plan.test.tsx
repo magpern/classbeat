@@ -133,6 +133,34 @@ describe('the plan panel on the account page', () => {
     expect(screen.queryByRole('button', { name: /trial/i })).toBeNull()
   })
 
+  it('lays the card out for a phone: ring beside the badge and text, nudge and budget full width below (#1277)', async () => {
+    fakeApi({ ...ACCOUNT, 'GET /api/account/plan': { ...PLAN_FREE, classes_held: 0 } })
+    renderAt('/account#plan')
+    const card = await screen.findByTestId('plan-card')
+    const ring = screen.getByTestId('usage-ring')
+    // One two-column grid, not a wrapping row: a wrapping row put the ring alone in a tall, empty row on a phone.
+    expect(card.className).toContain('grid-cols-[auto_minmax(0,1fr)]')
+    expect(card.className).not.toContain('flex-wrap')
+    expect(card.className).toContain('items-center')
+    expect(card.className).toContain('p-4')
+    expect(card.className).toContain('sm:p-5')
+    // The ring is the card's first child and compact; the badge, name and classes line share its row.
+    expect(card.firstElementChild).toBe(ring)
+    expect(ring.className).toContain('size-[5.5rem]')
+    const head = screen.getByTestId('plan-name').parentElement as HTMLElement
+    expect(card.children[1]).toBe(head)
+    expect(head.contains(screen.getByTestId('plan-classes'))).toBe(true)
+    expect(head.className).toContain('min-w-0')
+    // The nudge and the budget bar take both columns on a phone and the text column from sm.
+    const rest = screen.getByTestId('plan-cost-bar').closest('[class*="col-span-2"]') as HTMLElement
+    expect(rest.parentElement).toBe(card)
+    expect(rest.className).toContain('sm:col-span-1')
+    expect(rest.className).toContain('sm:col-start-2')
+    // Desktop keeps the ring centred against both text rows.
+    expect(ring.className).toContain('sm:row-span-2')
+    expect(ring.className).toContain('sm:size-32')
+  })
+
   it('never renders or requests a price, even if the answer carried one', async () => {
     const api = fakeApi({
       ...ACCOUNT,
