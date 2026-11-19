@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { SESSION_ROUTES } from '../test/jobFixtures'
@@ -68,8 +68,39 @@ describe('playlist covers in the New class picker', () => {
     expect(within(tile('Recovery Ride')).getByText('RR')).toBeInTheDocument()
     // The tile's name stays the radio's accessible name; the cover is decorative.
     expect(within(screen.getByRole('radiogroup', { name: 'Playlist' })).getAllByRole('radio')).toHaveLength(3)
-    expect(document.querySelectorAll('img')).toHaveLength(2)
+    expect(document.querySelectorAll('img')).toHaveLength(4)
+    expect(document.querySelectorAll('[data-testid="spotify-badge"]')).toHaveLength(2)
     expect(api.to('GET', '/api/music/playlist-covers')).toHaveLength(1)
+  })
+
+  it('puts a decorative Spotify badge on a shown cover only: none on initials, none after an image error', async () => {
+    fakeApi({
+      ...READY,
+      'GET /api/music/playlist-covers': {
+        covers: [
+          { spotify_playlist_id: HILLS, cover: MOSAIC },
+          { spotify_playlist_id: SPRINTS, cover: UPLOADED },
+        ],
+      },
+    })
+    renderAt('/classes/new/advanced')
+    await screen.findByRole('radio', { name: 'Hills' })
+    const badge = (name: string) => tile(name).querySelector('[data-testid="spotify-badge"]')
+    await waitFor(() => {
+      expect(badge('Hills')).not.toBeNull()
+    })
+    expect(badge('Hills')?.getAttribute('aria-hidden')).toBe('true')
+    expect(badge('Hills')?.getAttribute('alt')).toBe('')
+    expect(badge('Sprint Mix')).not.toBeNull()
+    expect(badge('Recovery Ride')).toBeNull()
+    // The name stays the label; the badge adds nothing to it.
+    expect(screen.getByRole('radio', { name: 'Hills' })).toBeInTheDocument()
+    fireEvent.error(tile('Hills').querySelector('img') as HTMLImageElement)
+    await waitFor(() => {
+      expect(tile('Hills').querySelector('[data-testid="cover-tile"]')).not.toBeNull()
+    })
+    expect(badge('Hills')).toBeNull()
+    expect(badge('Sprint Mix')).not.toBeNull()
   })
 
   it('renders the picker with initials at once and adds covers when the slow answer arrives', async () => {

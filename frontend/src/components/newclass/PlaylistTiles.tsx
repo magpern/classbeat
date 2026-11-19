@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { getPlaylistCovers, type Playlist } from '../../api/jobs'
 import { useT } from '../../i18n/I18n'
 import { CoverArt } from '../songs/CoverArt'
+import { SpotifyCoverBadge } from './SpotifyCoverBadge'
 
 /**
  * The covers of the user's Spotify playlists for the picker, asked once when `enabled` (ADR 0013
@@ -77,7 +78,7 @@ export function PlaylistTiles({
               />
               {covers?.has(p.spotifyPlaylistId) ? (
                 <span aria-hidden="true" className="block aspect-square w-full" data-testid="playlist-cover">
-                  <CoverArt src={covers.get(p.spotifyPlaylistId) ?? null} label={name} size="lg" kind="playlist" />
+                  <CoverArt src={covers.get(p.spotifyPlaylistId) ?? null} label={name} size="lg" kind="playlist" badge={<SpotifyCoverBadge />} />
                 </span>
               ) : (
                 <span

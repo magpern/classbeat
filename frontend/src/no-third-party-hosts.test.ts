@@ -30,6 +30,7 @@ const COVER_ART = './components/songs/CoverArt.tsx'
 const SPOTIFY_LOGO = './components/songs/SpotifyAttribution.tsx'
 const SLOT_PICTURE = './components/imagery/SlotPicture.tsx'
 const CONNECTION_MARK = './components/account/connections/ConnectionMark.tsx'
+const COVER_BADGE = './components/newclass/SpotifyCoverBadge.tsx'
 const SPOTIFY_ICON = './components/account/connections/spotifyIcon.ts'
 const IMAGE_SLOTS = './components/imagery/imageSlots.ts'
 // ADR 0024: the MOWL QR code, served from our own origin (the API refuses any other path).
@@ -141,7 +142,7 @@ describe('no third-party hosts', () => {
       .filter(([path]) => !path.startsWith('./test/'))
       .filter(([, source]) => /<img\b|createElement\(\s*['"]img['"]|new Image\(/.test(source))
       .map(([path]) => path)
-    expect(withImg.sort()).toEqual([CONNECTION_MARK, COVER_ART, MOWL_QR, SLOT_PICTURE, SPOTIFY_LOGO].sort())
+    expect(withImg.sort()).toEqual([CONNECTION_MARK, COVER_ART, COVER_BADGE, MOWL_QR, SLOT_PICTURE, SPOTIFY_LOGO].sort())
     // The QR image's one source is the ticket's path, which the API checks is ours.
     expect((scripts[MOWL_QR] ?? '').match(/src=\{[^}]+\}/g)).toEqual(['src={ticket.image}'])
     // A slot picture's files are ours: every src and srcSet is built by `fileUrl` / `srcSet` from
@@ -157,6 +158,10 @@ describe('no third-party hosts', () => {
       "from '../../assets/brand/Full_Logo_Black_RGB.svg'",
       "from '../../assets/brand/Full_Logo_White_RGB.svg'",
     ])
+    // The badge on a playlist cover: one source, the bundled green icon.
+    const badge = scripts[COVER_BADGE] ?? ''
+    expect(badge.match(/src=\{[^}]+\}/g)).toEqual(['src={greenIcon}'])
+    expect(badge.match(/from '([^']+)'/g)).toEqual(["from '../../assets/brand/Primary_Logo_Green_RGB.svg'"])
     // The icon on a connection tile: its two sources are the two files `spotifyIcon.ts` imports from the bundle.
     const mark = scripts[CONNECTION_MARK] ?? ''
     expect(mark.match(/src=\{[^}]+\}/g)).toEqual(['src={mark.dark}', 'src={mark.light}'])

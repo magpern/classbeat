@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
 
 /**
@@ -64,6 +64,7 @@ export function CoverArt({
   size = 'sm',
   kind = 'album',
   className,
+  badge,
 }: {
   /** The song's (or playlist's) `cover` from the API, or null. */
   src: string | null
@@ -73,6 +74,8 @@ export function CoverArt({
   /** Which pin the URL must match: `album` (song lists) or `playlist` (the New class picker). */
   kind?: 'album' | 'playlist'
   className?: string
+  /** Decorative overlay for a corner of the cover, shown only while the image itself shows (never on the initials tile). */
+  badge?: ReactNode
 }) {
   const [failed, setFailed] = useState<string | null>(null)
   const valid = kind === 'playlist' ? isPlaylistCoverUrl(src) : isCoverUrl(src)
@@ -88,7 +91,7 @@ export function CoverArt({
       </span>
     )
   }
-  return (
+  const image = (
     <img
       className={cn(box, 'block object-cover')}
       src={src}
@@ -101,6 +104,13 @@ export function CoverArt({
         setFailed(src)
       }}
     />
+  )
+  if (badge === undefined) return image
+  return (
+    <span className="relative block size-full">
+      {image}
+      {badge}
+    </span>
   )
 }
 

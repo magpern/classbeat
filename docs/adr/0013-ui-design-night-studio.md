@@ -710,6 +710,13 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 > - ADR 0013 §8: the guard test's allowed hosts.
 > - Threat model T72, T73 and T97.
 
+> **Spotify badge on playlist covers (#1288).** Each playlist cover in the New class picker carries
+> Spotify's official green icon (`Primary_Logo_Green_RGB.svg`, unmodified, bundled with the other brand
+> files; no new host) in its bottom-right corner, drawn by `SpotifyCoverBadge` and passed to `CoverArt`
+> as `badge`. It is decorative (`aria-hidden`, empty alt) and shown only while the cover image shows:
+> an initials tile, or a cover that failed to load, has none. The playlist name stays the tile's label.
+> The green stays inside Spotify's own icon (§3).
+
 ### 10. Accessibility and devices
 
 - **WCAG 2.2 AA:**
