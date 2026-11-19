@@ -33,4 +33,16 @@ describe('StatTile', () => {
     )
     expect(screen.getByText('left')).toBeTruthy()
   })
+
+  it('has an outlined tone with a border on the surface colour', () => {
+    render(
+      <dl>
+        <StatTile label="L" value="1" tone="outlined" data-testid="t" />
+      </dl>,
+    )
+    const cls = screen.getByTestId('t').className
+    expect(cls).toContain('border-line')
+    expect(cls).toContain('bg-surface')
+    expect(cls).not.toContain('bg-raised')
+  })
 })

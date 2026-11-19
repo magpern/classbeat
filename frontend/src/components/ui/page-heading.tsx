@@ -47,7 +47,7 @@ export function PageHeading({
         {heading}
         {intro ? <p className="m-0 max-w-xl text-base text-muted">{intro}</p> : null}
       </div>
-      {actions ? <div className="flex w-full flex-col sm:w-auto sm:items-end">{actions}</div> : null}
+      {actions ? <div className="flex w-full flex-col items-start sm:w-auto sm:items-end">{actions}</div> : null}
     </div>
   )
 }

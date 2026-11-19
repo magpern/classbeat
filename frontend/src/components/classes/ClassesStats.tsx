@@ -13,7 +13,7 @@ export function ClassesStats({ total, saved, left }: { total: number; saved: num
   return (
     <StatTiles aria-label={t('class.list.stats')}>
       {tiles.map((tile) => (
-        <StatTile key={tile.label} label={t(tile.label)} value={String(tile.value)} />
+        <StatTile key={tile.label} tone="outlined" label={t(tile.label)} value={String(tile.value)} />
       ))}
     </StatTiles>
   )
