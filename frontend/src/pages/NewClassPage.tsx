@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useT } from '../i18n/I18n'
 import { SourceGate } from '../components/newclass/SourceGate'
 import { ComposerScreen } from '../components/start/ComposerScreen'
+import { StartAside } from '../components/start/StartAside'
 import { StartScreen } from '../components/start/StartScreen'
 import { RequireAuth } from '../components/RequireAuth'
 import { forgetExample, recallExample, rememberExample, validExample } from '../lib/exampleHandoff'
@@ -25,17 +26,23 @@ export function NewClassPage() {
   }, [fromLink, kept])
   return (
     <RequireAuth>
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
-        <h1 className="m-0 font-display text-3xl font-extrabold">{t('newclass.title')}</h1>
-        <SourceGate>
-          {(source) =>
-            source.composerFlow ? (
-              <ComposerScreen source={source} example={example} />
-            ) : (
-              <StartScreen source={source} example={example} />
-            )
-          }
-        </SourceGate>
+      <div className="mx-auto grid w-full max-w-6xl gap-8 lg:grid-cols-[minmax(0,1fr)_21.5rem] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-6">
+          <header className="flex flex-col gap-2.5">
+            <h1 className="m-0 font-display text-4xl font-extrabold leading-none sm:text-5xl">{t('newclass.title')}</h1>
+            <p className="m-0 max-w-[32.5rem] text-[1.0625rem] leading-normal text-muted">{t('start.hero.intro')}</p>
+          </header>
+          <SourceGate>
+            {(source) =>
+              source.composerFlow ? (
+                <ComposerScreen source={source} example={example} />
+              ) : (
+                <StartScreen source={source} example={example} />
+              )
+            }
+          </SourceGate>
+        </div>
+        <StartAside />
       </div>
     </RequireAuth>
   )
