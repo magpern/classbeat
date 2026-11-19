@@ -35,6 +35,23 @@ describe('the bundled Spotify logo and icon', () => {
   })
 })
 
+describe('the icon on a connection tile or row', () => {
+  // Spotify's guidelines: the icon is never smaller than 21px. `.brand-icon` has a width floor, so the
+  // height cannot fall under it, however small the square gets.
+  it('has a width floor that keeps the icon at least 22px high', () => {
+    const css = readFileSync(join(import.meta.dirname, '..', '..', 'styles', 'app.css'), 'utf8')
+    const rule = /\n\.brand-icon \{([^}]*)\}/.exec(css)?.[1] ?? ''
+    const floor = /min-width:\s*([\d.]+)rem/.exec(rule)?.[1]
+    expect(rule).toMatch(/height:\s*auto/)
+    expect(floor).toBeDefined()
+    for (const name of ['Primary_Logo_Black_RGB.svg', 'Primary_Logo_White_RGB.svg']) {
+      const box = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(readFileSync(join(BRAND, name), 'utf8'))
+      const [width, height] = [Number(box?.[1]), Number(box?.[2])]
+      expect((Number(floor) * 16 * height) / width, name).toBeGreaterThanOrEqual(22)
+    }
+  })
+})
+
 describe('the logo attribution', () => {
   it('is readable as "Spotify" in either theme: neither image is aria-hidden', async () => {
     const { render } = await import('@testing-library/react')

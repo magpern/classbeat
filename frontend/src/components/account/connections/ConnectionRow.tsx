@@ -34,7 +34,7 @@ export function ConnectionRow({
       leading={
         <span
           aria-hidden="true"
-          className="inline-flex size-11 shrink-0 items-center justify-center rounded-md bg-raised font-display text-base font-bold text-text"
+          className="inline-flex size-12 shrink-0 items-center justify-center rounded-md bg-raised font-display text-base font-bold text-text"
         >
           <ConnectionMark mark={mark} />
         </span>
