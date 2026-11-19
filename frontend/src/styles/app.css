@@ -130,7 +130,23 @@ body {
   }
 }
 
-/* Cookie notice: small, bottom-left, never a modal. On the phone layout it sits above the tab bar. */
+/*
+ * Cookie notice (#715, #1273): never a modal and never over a primary action.
+ * Wide screen: a small card in the bottom-left corner.
+ * Phone (the same 40rem breakpoint as the Landing hero in imagery.css): a compact bar at the foot of the
+ * viewport, above the tab bar when there is one. A fixed bar that only floats over the page can cover
+ * the hero's sign-up button, so this one takes room instead. CookieNotice.tsx publishes its height as
+ * --cb-notice-measured and the phone rules below turn that into --cb-notice-h (0 when no notice shows,
+ * and always 0 on a wide screen), which the page leaves free:
+ *   - the body gets that much bottom padding, so the end of every page, the footer included, scrolls clear;
+ *   - the Landing hero is shortened by it (imagery.css);
+ *   - the other fixed bottom bars sit above it: SavePanel, MessageBox, StickyActionBar.
+ * The tab bar publishes --cb-tabbar-h (TabBar.tsx), so the notice sits right above it.
+ */
+:root {
+  --cb-notice-h: 0px;
+}
+
 .cookie-notice {
   position: fixed;
   left: var(--cb-space-4);
@@ -167,8 +183,35 @@ body {
   cursor: pointer;
 }
 
-@media (max-width: 639px) {
+@media (max-width: 40rem) {
+  :root {
+    --cb-notice-h: var(--cb-notice-measured, 0px);
+  }
+  body {
+    padding-bottom: var(--cb-notice-h);
+  }
   .cookie-notice {
-    bottom: 6.5rem;
+    right: 0;
+    bottom: var(--cb-tabbar-h, 0px);
+    left: 0;
+    z-index: 25; /* under the tab bar (z-30): its raised + paints over the notice's lower edge */
+    flex-direction: row;
+    gap: var(--cb-space-3);
+    align-items: center;
+    max-width: none;
+    /* without a tab bar the bar is the lowest thing on the screen: keep its button clear of the home indicator */
+    padding: var(--cb-space-2) var(--cb-space-4)
+      max(var(--cb-space-2), calc(var(--cb-safe-bottom) - var(--cb-tabbar-h, 0px)));
+    border-width: 1px 0 0;
+    border-radius: 0;
+    line-height: 1.35;
+    box-shadow: none;
+  }
+  /* above the tab bar: clear the raised + so it never touches the text */
+  :root:has([data-tab-bar]) .cookie-notice {
+    padding-bottom: var(--cb-space-4);
+  }
+  .cookie-notice__ok {
+    flex: none;
   }
 }
