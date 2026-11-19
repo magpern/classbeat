@@ -9,6 +9,7 @@ import {
 } from '../../../api/connections'
 import { useGuard } from '../../../auth/prompts'
 import { useLayout } from '../../../hooks/useLayout'
+import { isPhoneDevice } from '../../../hooks/usePhoneDevice'
 import { useRouter } from '../../../router/Router'
 import type { SpotifyStatus } from '../../../api/spotify'
 import { useT } from '../../../i18n/I18n'
@@ -228,7 +229,7 @@ export function ConnectionsList({ onLinked }: { onLinked?: (count: number) => vo
 
       <MowlDialog
         open={open?.kind === 'connect' && open.which === 'mowl'}
-        qr={view.qrEnabled && layout !== 'phone'}
+        qr={view.qrEnabled && layout !== 'phone' && !isPhoneDevice()}
         again={mowl !== null}
         onClose={close}
         onConnected={connected('mowl')}
