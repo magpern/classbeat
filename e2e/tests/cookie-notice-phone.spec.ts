@@ -133,14 +133,27 @@ test('signed in on a phone the notice sits above the tab bar and covers neither 
   await signInThroughUi(page, email)
   for (const { width, height } of [SIZES[0], SIZES[1]]) {
     await page.setViewportSize({ width, height })
-    await page.goto('/')
+    // `/en` itself: `/` redirects there with a full page load, which would swap the page (and its
+    // tab bar, which mounts only once the session is read) under the measurements below.
+    await page.goto('/en')
     const notice = page.getByTestId('cookie-notice')
     await expect(notice).toBeVisible()
     const tabs = page.getByRole('navigation', { name: 'Main' })
     await expect(tabs).toBeVisible()
+    // The tab bar mounts after the session is read and the notice follows it: wait for that to settle.
+    // The distance between the two edges must reach 0; it is never 0 with no tab bar (the box call waits for it).
+    await expect
+      .poll(
+        async () => {
+          const noticeBox = await box(page, '[data-testid="cookie-notice"]')
+          const tabBox = await box(page, '[data-tab-bar]')
+          return Math.round(noticeBox.y + noticeBox.height - tabBox.y)
+        },
+        { message: 'the notice ends where the tab bar starts' },
+      )
+      .toBe(0)
     const bar = await box(page, '[data-testid="cookie-notice"]')
     const tabBar = await box(page, '[data-tab-bar]')
-    expect(bar.y + bar.height, 'the notice ends where the tab bar starts').toBeCloseTo(tabBar.y, 0)
     expect(tabBar.y + tabBar.height).toBeCloseTo(height, 0)
 
     // Every tab, the raised + included (its top edge sticks out above the bar), is the topmost thing at its centre.
