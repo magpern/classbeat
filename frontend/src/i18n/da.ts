@@ -530,6 +530,7 @@ const da: Catalogue = {
   'class.list.latest': 'Seneste design',
   'class.list.time': 'Tid',
   'class.list.tss': 'TSS',
+  'class.list.songs': 'Sange',
   'class.list.open': 'Åbn holdet',
   'class.list.continue': 'Fortsæt',
   'class.list.zones': 'Zoner',

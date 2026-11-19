@@ -47,6 +47,8 @@ def row(**over: Any) -> SimpleNamespace:
         "soundless": False,
         "studio": False,
         "swedebeat_written": False,
+        "request": None,
+        "song_count": None,
     }
     return SimpleNamespace(**{**base, **over})
 

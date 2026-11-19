@@ -538,6 +538,7 @@ const sv: Catalogue = {
   'class.list.latest': 'Senaste design',
   'class.list.time': 'Tid',
   'class.list.tss': 'TSS',
+  'class.list.songs': 'Låtar',
   'class.list.open': 'Öppna passet',
   'class.list.continue': 'Fortsätt',
   'class.list.zones': 'Zoner',

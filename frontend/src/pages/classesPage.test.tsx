@@ -175,6 +175,30 @@ describe('My classes', () => {
     expect(within(cards.find((li) => within(li).queryByRole('link', { name: 'Older' }))!).getByRole('img')).toBeInTheDocument()
   })
 
+  it('quotes the request and shows the song count on the feature card only', async () => {
+    renderAtWith([
+      classBody({ id: THIRD, title: 'Newest', updated_at: '2026-11-05T10:00:00Z', request: 'A hilly 45 minutes <b>no</b>', song_count: 12 }),
+      classBody({ title: 'Older', updated_at: '2026-11-01T10:00:00Z', request: 'Older ask', song_count: 9 }),
+    ])
+    const feature = await screen.findByRole('article')
+    const quote = within(feature).getByText('A hilly 45 minutes <b>no</b>')
+    expect(quote.tagName).toBe('BLOCKQUOTE')
+    expect(quote).toHaveClass('line-clamp-2')
+    expect(within(feature).getByText('Songs').nextElementSibling).toHaveTextContent('12')
+    // The grid cards stay as they were: no quote, no Songs.
+    const older = screen.getAllByRole('listitem').find((li) => within(li).queryByRole('link', { name: 'Older' }))!
+    expect(within(older).queryByText('Older ask')).toBeNull()
+    expect(within(older).queryByText('Songs')).toBeNull()
+  })
+
+  it('shows no quote and no Songs on the feature card without a request or a song count', async () => {
+    renderAtWith([classBody({ title: 'Plain', request: null, song_count: null })])
+    const feature = await screen.findByRole('article')
+    expect(within(feature).getByText('Time')).toBeInTheDocument()
+    expect(feature.querySelector('blockquote')).toBeNull()
+    expect(within(feature).queryByText('Songs')).toBeNull()
+  })
+
   it('shows a stats strip: classes, saved to MOWL and classes left this month', async () => {
     renderAtWith([classBody({ title: 'Hills', saved: SAVED }), classBody({ id: SECOND, title: 'Other' })])
     await screen.findByRole('link', { name: 'Hills' })

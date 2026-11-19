@@ -107,6 +107,10 @@ export interface ClassSummary {
   tssApproximate: boolean
   /** The brief the class was designed for; null when there is none (or on the list). */
   brief: Brief | null
+  /** #1234: the user's own request text for the class; null when there is none. */
+  request: string | null
+  /** #1234: how many songs the current version plays; null for a soundless class or before songs exist. */
+  songCount: number | null
   /** Only the class page's answer has these; the list's rows read as none. */
   songs: ClassSongs
   playlist: ClassPlaylist | null
@@ -157,6 +161,8 @@ function decodeClass(value: unknown): ClassSummary {
     profile: decodeProfile(item.profile),
     tssApproximate: optionalFlag(item, 'tss_approximate') ?? false,
     brief: decodeBrief(item.brief),
+    request: optionalText(item, 'request'),
+    songCount: optionalCount(item, 'song_count'),
     songs: decodeSongs(item.songs),
     playlist: decodePlaylist(item.playlist),
     swedebeatOn: 'swedebeat_match' in item,

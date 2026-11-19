@@ -74,6 +74,10 @@ class ClassOut(BaseModel):
     # ADR 0036 section 6: an output was written to SwedeBeat (a playlist or a mix); a class delete
     # cannot take it back, so the delete card says so.
     swedebeat_written: bool = False
+    # #1234: the user's own request text for the class (null when there is none) and the number of
+    # songs the current revision plays (null: soundless, studio, no songs yet or an older revision).
+    request: str | None = None
+    song_count: int | None = None
 
     @classmethod
     def of(cls, row: Any) -> "ClassOut":
@@ -111,6 +115,8 @@ class ClassOut(BaseModel):
             soundless=row.soundless is True,
             studio=row.studio is True,
             swedebeat_written=row.swedebeat_written is True,
+            request=row.request if isinstance(row.request, str) else None,
+            song_count=row.song_count if isinstance(row.song_count, int) else None,
         )
 
 
