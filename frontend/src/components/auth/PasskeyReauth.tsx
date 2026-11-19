@@ -4,6 +4,7 @@ import { passkeyErrorMessage, reauthWithPasskey } from '../../auth/passkeyCeremo
 import { useSession } from '../../auth/SessionContext'
 import { passkeysSupported } from '../../auth/webauthn'
 import { useT } from '../../i18n/I18n'
+import { Button } from '../ui/button'
 import type { useAction } from '../forms'
 
 interface Props {
@@ -38,9 +39,8 @@ export function PasskeyReauth({ action, onDone }: Props): ReactNode {
 
   if (!offered || !has) return null
   return (
-    <button
-      className="button button--secondary"
-      type="button"
+    <Button
+      variant="secondary"
       disabled={action.busy}
       onClick={() => {
         void action.run(async () => {
@@ -50,6 +50,6 @@ export function PasskeyReauth({ action, onDone }: Props): ReactNode {
       }}
     >
       {t('guard.confirmPasskey')}
-    </button>
+    </Button>
   )
 }

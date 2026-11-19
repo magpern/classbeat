@@ -41,7 +41,7 @@ export function AccountHeader({ email, stats }: { email: string; stats?: Account
           {initial(name)}
         </span>
       </span>
-      <div className="flex min-w-0 flex-[1_1_16rem] flex-col gap-1.5">
+      <div className="flex min-w-0 flex-[1_1_16rem] flex-col gap-2">
         <PageHeading
           eyebrow={t('account.eyebrow')}
           title={name}

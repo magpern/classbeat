@@ -58,49 +58,49 @@ export function ClassHeader({
         titleClassName="break-words"
         intro={versionLine}
         actions={
-        <div className="flex flex-wrap items-center gap-2">
-          <SaveActions flow={flow} />
-          <SendToPlayerActions flow={player} />
-          {canChangeSongs ? (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                onGoTo('change-songs')
-              }}
-            >
-              {t('class.page.changeSongs')}
-            </Button>
-          ) : null}
-          <DuplicateClass
-            classId={summary.id}
-            title={summary.title}
-            revisionId={viewingId}
-            versionNumber={versionNumber}
-          />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" aria-label={t('class.page.moreActions')}>
-                <Ellipsis aria-hidden="true" size={18} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              // Delete class moves focus to its confirmation card; the menu must not take it back.
-              onCloseAutoFocus={(event) => {
-                if (deleting) event.preventDefault()
-              }}
-            >
-              <DropdownMenuItem
-                onSelect={() => {
-                  onGoTo('versions')
+          <div className="flex flex-wrap items-center gap-2">
+            <SaveActions flow={flow} />
+            <SendToPlayerActions flow={player} />
+            {canChangeSongs ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  onGoTo('change-songs')
                 }}
               >
-                {t('class.versions')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onDelete}>{t('class.page.deleteClass')}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+                {t('class.page.changeSongs')}
+              </Button>
+            ) : null}
+            <DuplicateClass
+              classId={summary.id}
+              title={summary.title}
+              revisionId={viewingId}
+              versionNumber={versionNumber}
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" aria-label={t('class.page.moreActions')}>
+                  <Ellipsis aria-hidden="true" size={18} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                // Delete class moves focus to its confirmation card; the menu must not take it back.
+                onCloseAutoFocus={(event) => {
+                  if (deleting) event.preventDefault()
+                }}
+              >
+                <DropdownMenuItem
+                  onSelect={() => {
+                    onGoTo('versions')
+                  }}
+                >
+                  {t('class.versions')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={onDelete}>{t('class.page.deleteClass')}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         }
       />
       <div className="flex flex-wrap items-center gap-2">

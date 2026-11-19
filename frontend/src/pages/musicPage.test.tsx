@@ -103,6 +103,29 @@ describe('the Music page when MOWL playlists cannot be listed', () => {
   })
 })
 
+describe('the Music page load', () => {
+  it('reads the connections once and shares them between the Spotify card and the MOWL state', async () => {
+    const api = fakeApi(
+      routes({
+        'GET /api/connections': { connections: [] },
+        'GET /api/connections/spotify': {
+          status: 'not_connected',
+          last_error: null,
+          last_error_message: null,
+          callback_url: 'https://x.test/cb',
+          pool_consent: false,
+          consent_version: null,
+          consent_text: 'x',
+        },
+      }),
+    )
+    renderAt('/music')
+    expect(await screen.findByRole('link', { name: 'Connect Spotify' })).toBeInTheDocument()
+    await screen.findByText('Warm up')
+    expect(api.to('GET', '/api/connections')).toHaveLength(1)
+  })
+})
+
 describe('the Music page when MOWL lists no playlists', () => {
   const empty = { 'GET /api/music/mowl-playlists': { playlists: [] } }
 
