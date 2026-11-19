@@ -186,7 +186,7 @@ function Approval({
               titleId="songs-title"
               as={embedded ? 'h2' : 'h1'}
               size={embedded ? 'section' : 'page'}
-              titleClassName="break-words text-text"
+              titleClassName={`break-words text-text ${embedded ? '' : 'text-3xl sm:text-4xl'}`}
             />
             <p className="m-0 text-text">
               {t('songs.approval.summary', {

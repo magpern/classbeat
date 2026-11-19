@@ -10,7 +10,7 @@ export function GhostProfile() {
       aria-hidden="true"
       viewBox="0 0 200 80"
       preserveAspectRatio="none"
-      className="ghost-bars block h-28 w-full rounded-md bg-stage motion-safe:animate-pulse"
+      className="ghost-bars block h-28 w-full rounded-md bg-raised motion-safe:animate-pulse"
     >
       {HEIGHTS.map((h, i) => (
         <rect
@@ -19,7 +19,7 @@ export function GhostProfile() {
           y={80 - h}
           width={200 / HEIGHTS.length - 1}
           height={h}
-          className={i % 3 === 1 ? 'fill-brand/60' : 'fill-brand/35'}
+          className={i % 3 === 1 ? 'fill-brand/30' : 'fill-brand/15'}
         />
       ))}
     </svg>
