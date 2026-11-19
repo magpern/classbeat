@@ -1,23 +1,6 @@
-// Home presets prefill /classes/new/advanced through query parameters. Only whole numbers in the form
+// The advanced form's starting values: the defaults, or what the page's query parameters give
+// (`/classes/new/advanced?length=45&climbs=3`, a link or bookmark). Only whole numbers in the form
 // ranges and the three intensity words are taken; anything else is ignored.
-
-import type { CatalogueKey } from '../i18n/en'
-
-export interface Preset {
-  /** The catalogue key of the label (en, sv and da). */
-  label: CatalogueKey
-  params: Record<string, string>
-}
-
-export const PRESETS: readonly Preset[] = [
-  { label: 'home.preset.hills', params: { length: '45', climbs: '3', intensity: 'moderate' } },
-  { label: 'home.preset.intervals', params: { length: '30', sprints: '6', intensity: 'hard' } },
-  { label: 'home.preset.endurance', params: { length: '60', intensity: 'easy' } },
-]
-
-export function presetLink(preset: Preset): string {
-  return `/classes/new/advanced?${new URLSearchParams(preset.params).toString()}`
-}
 
 export interface FormPreset {
   length: string

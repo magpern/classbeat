@@ -24,7 +24,7 @@ export function StickyActionBar({
         aria-label={label}
         className={cn(
           'z-20 flex flex-col gap-3 border-line bg-surface p-4',
-          'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:flex-row max-lg:items-center max-lg:justify-end max-lg:border-t max-lg:pb-bar-pad',
+          'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-[var(--cb-notice-h)] max-lg:flex-row max-lg:items-center max-lg:justify-end max-lg:border-t max-lg:pb-bar-pad',
           'lg:sticky lg:top-sticky lg:rounded-lg lg:border',
           className,
         )}

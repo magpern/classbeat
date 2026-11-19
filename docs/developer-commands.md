@@ -498,8 +498,8 @@ npm run build        # typecheck, Vite writes frontend/dist, then the prerender 
   and puts "Approve songs" and the approval deadline in `StickyActionBar`; the change request (note, "Ask for
   changes", "Stop and change") stays on the page, not in the bar. Approving and asking for new songs are
   unchanged (`approveSongs`, `useNewPick.ts`); only the layout and the words changed.
-  Home (`src/pages/HomePage.tsx`) has one primary "Design a class" button beside the title, quick-start
-  chips (`src/lib/presets.ts`, labels in the catalogue), "Get set up" (`SetupChecklist.tsx`: the missing connections
+  Home (`src/pages/HomePage.tsx`) has one primary "Design a class" button beside the title,
+  "Get set up" (`SetupChecklist.tsx`: the missing connections
   as `ConnectionRow`s) and the recent classes; Home and My classes draw a class the same way, as a `ClassRow` in a
   `ClassList` (`src/components/classes/ClassRow.tsx`). The Landing page (`LandingPage.tsx`) has the title, one line,
   one "Join the beta" button (Sign in stays in the header), the example class and three steps.

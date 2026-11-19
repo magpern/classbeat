@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { PRESETS, presetLink, readPreset } from '../lib/presets'
+import { readPreset } from '../lib/presets'
 import { classBody } from '../test/classFixtures'
 import { SIGNED_IN, fakeApi, json } from '../test/fakeApi'
 import { renderAt } from '../test/render'
@@ -46,11 +46,12 @@ describe('Home', () => {
     expect(title.parentElement).toHaveTextContent('Design a class in a minute')
   })
 
-  it('puts the quick starts and Design a class together in the hero card', async () => {
+  it('has only the Design a class action in the hero card, with no quick-start list', async () => {
     home()
     renderAt('/')
     const hero = await screen.findByRole('region', { name: 'Design a class' })
-    expect(within(hero).getByRole('list', { name: 'Quick start' })).toBeInTheDocument()
+    expect(within(hero).queryByRole('list')).toBeNull()
+    expect(within(hero).getAllByRole('link')).toHaveLength(1)
     expect(within(hero).getByRole('link', { name: 'Design a class' })).toHaveAttribute('href', '/en/classes/new')
   })
 
@@ -88,16 +89,13 @@ describe('Home', () => {
     expect(screen.getByRole('link', { name: 'Saved one' })).toBeInTheDocument()
   })
 
-  it('has one primary Design a class action and quick starts that link to the form', async () => {
+  it('has one primary Design a class action that links to the start screen', async () => {
     home()
     renderAt('/')
     const design = await screen.findByRole('link', { name: 'Design a class' })
     expect(design).toHaveAttribute('href', '/en/classes/new')
     expect(screen.getAllByRole('link', { name: 'Design a class' })).toHaveLength(1)
-    const presets = screen.getByRole('list', { name: 'Quick start' })
-    const links = within(presets).getAllByRole('link')
-    expect(links.map((l) => l.textContent)).toEqual(['45 min hills', '30 min intervals', '60 min endurance'])
-    expect(links[0]).toHaveAttribute('href', '/en/classes/new/advanced?length=45&climbs=3&intensity=moderate')
+    expect(screen.queryByRole('list', { name: 'Quick start' })).toBeNull()
   })
 
   it('says so when there are no classes yet', async () => {
@@ -183,7 +181,7 @@ describe('Get set up', () => {
   })
 })
 
-describe('presets', () => {
+describe('the form prefill', () => {
   it('readPreset takes only values in range and the three intensity words', () => {
     const q = (s: string) => new URLSearchParams(s)
     expect(readPreset(q('length=30&sprints=6&intensity=hard'))).toEqual({
@@ -194,15 +192,7 @@ describe('presets', () => {
     })
   })
 
-  it('every preset link round-trips through readPreset', () => {
-    for (const preset of PRESETS) {
-      const query = new URLSearchParams(presetLink(preset).split('?')[1])
-      const read = readPreset(query)
-      expect(read.length).toBe(preset.params.length)
-    }
-  })
-
-  it('a preset link prefills the New class form', async () => {
+  it('the query string prefills the New class form', async () => {
     fakeApi({
       'GET /api/auth/session': SIGNED_IN,
       'GET /api/connections': { connections: [MOWL] },
@@ -213,18 +203,5 @@ describe('presets', () => {
     expect(screen.getByLabelText('Sprints')).toHaveValue(6)
     expect(screen.getByLabelText('Climbs')).toHaveValue(0)
     expect(screen.getByRole('radio', { name: 'Hard' })).toBeChecked()
-  })
-
-  it('the link on Home opens the form with those values', async () => {
-    fakeApi({
-      'GET /api/auth/session': SIGNED_IN,
-      'GET /api/classes': { classes: [] },
-      'GET /api/connections': { connections: [MOWL] },
-      'GET /api/music/mowl-playlists': { playlists: [{ spotify_playlist_id: 'p1', name: 'Mix' }] },
-    })
-    renderAt('/')
-    await userEvent.click(await screen.findByRole('link', { name: '60 min endurance' }))
-    expect(await screen.findByRole('radio', { name: '60 min' })).toBeChecked()
-    expect(screen.getByRole('radio', { name: 'Easy' })).toBeChecked()
   })
 })

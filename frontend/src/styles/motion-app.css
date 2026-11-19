@@ -5,9 +5,8 @@
  * in motion.css: a staggered entrance's delay would otherwise survive tailwind.css's rule.
  */
 
-/* Buttons and chips answer a press and a hover. */
-.button,
-.chip-lift {
+/* Buttons answer a press. */
+.button {
   transition:
     scale 0.15s var(--cb-ease),
     translate 0.2s var(--cb-ease),
@@ -15,11 +14,6 @@
 }
 .button:active {
   scale: 0.97;
-}
-@media (hover: hover) {
-  .chip-lift:hover {
-    translate: 0 -2px;
-  }
 }
 
 /* Bars that beat or grow do it from their foot (the placeholder profile's; the logo's own bars set

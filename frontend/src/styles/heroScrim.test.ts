@@ -82,7 +82,7 @@ describe('the hero scrim in the stylesheet', () => {
     const column = Number(/max-width: min\([\d.]+rem, (\d+)%\)/.exec(hero)?.[1])
     expect(solid).toBeGreaterThanOrEqual(column)
     // on a phone the text sits at the bottom and the scrim rises from there: it is solid under
-    // the text block (the bottom 58% of a box at least 32rem tall is more than the text needs)
+    // the text block (the bottom 58% of a box at least 25rem tall; heroPhone.test.ts keeps the floor)
     const phone = hero.slice(hero.indexOf('@media'))
     expect(phone).toMatch(/linear-gradient\(to top, var\(--hero-solid\) 0%, var\(--hero-solid\) \d+%/)
     expect(phone).toContain('justify-content: flex-end')
