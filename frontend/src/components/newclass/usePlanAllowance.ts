@@ -7,11 +7,13 @@ export interface PlanAllowance {
   allowed: { maxMinutes: number; gates: Gates } | null
   /** The plan as read, for the gentle nudge. */
   plan: Plan | null
+  /** True once the read has finished, whether it worked or not. */
+  settled: boolean
 }
 
-/** Reads the plan once; a failed call leaves both null (no cap is shown and the server still enforces it). */
+/** Reads the plan once; a failed call leaves both null and `settled` true (no cap is shown and the server still enforces it). */
 export function usePlanAllowance(): PlanAllowance {
-  const [state, setState] = useState<PlanAllowance>({ classesLeft: null, allowed: null, plan: null })
+  const [state, setState] = useState<PlanAllowance>({ classesLeft: null, allowed: null, plan: null, settled: false })
   useEffect(() => {
     const abort = new AbortController()
     getPlan(abort.signal).then(
@@ -21,10 +23,13 @@ export function usePlanAllowance(): PlanAllowance {
             classesLeft: Math.max(0, plan.limits.classesPerMonth - plan.classesHeld),
             allowed: { maxMinutes: plan.limits.maxClassMinutes, gates: plan.gates },
             plan,
+            settled: true,
           })
         }
       },
-      () => undefined,
+      () => {
+        if (!abort.signal.aborted) setState((prev) => ({ ...prev, settled: true }))
+      },
     )
     return () => {
       abort.abort()

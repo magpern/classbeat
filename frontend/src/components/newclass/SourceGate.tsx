@@ -12,7 +12,14 @@ export type ReadySource = Extract<Source, { status: 'ready' }>
  * "playlists failed" states the start screen and the advanced form share; `children` gets the
  * ready answer.
  */
-export function SourceGate({ children }: { children: (source: ReadySource) => ReactNode }) {
+export function SourceGate({
+  children,
+  onReady,
+}: {
+  children: (source: ReadySource) => ReactNode
+  /** Told whether the answer is ready, so a page can hold back what only makes sense with it (the start aside). */
+  onReady?: (ready: boolean) => void
+}) {
   const t = useT()
   const [source, setSource] = useState<Source>({ status: 'loading' })
   const [reload, setReload] = useState(0)
@@ -26,6 +33,11 @@ export function SourceGate({ children }: { children: (source: ReadySource) => Re
       abort.abort()
     }
   }, [reload])
+
+  const ready = source.status === 'ready'
+  useEffect(() => {
+    onReady?.(ready)
+  }, [ready, onReady])
 
   return (
     <>

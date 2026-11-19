@@ -16,6 +16,10 @@ from test_classes_api import Plant, by_class
 pytestmark = pytest.mark.usefixtures("jobs_admin")
 
 
+# Fixture note: the rows below are planted with the admin connection, but the foreign keys still
+# bind them. `class_revisions` and `jobs` reference `classes` by the composite key `(owner_id,
+# class_id)` (migration 0004), so a revision or job must carry the same `owner_id` as its class;
+# `Plant` and `new_class` do, which is why each user's rows can never point at the other's class.
 @pytest.fixture
 async def two(browsers: Any, jobs_admin: Connection) -> tuple[Plant, Plant]:
     a: Browser = await browsers(mowl=False)
