@@ -107,11 +107,13 @@ describe('account tabs', () => {
     setWidth(width)
     fakeApi(base)
     renderAt('/account')
-    expect(await screen.findByRole('heading', { level: 1, name: 'ann' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'ann@example.test' })).toBeInTheDocument()
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
     // The eyebrow above the name is a label, not a second heading.
     expect(screen.getByText('Your account').tagName).toBe('P')
-    expect(screen.getByTestId('account-email')).toHaveTextContent('ann@example.test')
+    // The address is the heading, shown once (no second line, no name cut from it).
+    expect(screen.getByRole('heading', { level: 1 })).toContainElement(screen.getByTestId('account-email'))
+    expect(screen.getAllByText('ann@example.test')).toHaveLength(1)
     // Changing the address is not part of the header: it sits in Sign-in and security.
     expect(screen.queryByLabelText('New email address')).toBeNull()
     const list = screen.getByRole('tablist', { name: 'Account' })
