@@ -33,7 +33,6 @@ export function HomePage() {
               <Link to="/classes">{t('home.seeAll')}</Link>
             ) : undefined
           }
-          className="items-baseline"
         />
         {listing.status === 'loading' ? <p className="m-0 text-muted">{t('home.loading')}</p> : null}
         {listing.status === 'failed' ? (

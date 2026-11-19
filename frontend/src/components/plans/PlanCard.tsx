@@ -34,7 +34,7 @@ export function PlanCard({
       className={cn(
         'flex flex-col gap-3 rounded-lg border-2 p-5',
         current
-          ? 'border-transparent bg-[linear-gradient(var(--cb-surface),var(--cb-surface))_padding-box,var(--cb-heat)_border-box] shadow-glow'
+          ? 'border-heat shadow-glow'
           : 'border-line bg-surface',
       )}
       data-testid={`plan-card-${plan.id}`}

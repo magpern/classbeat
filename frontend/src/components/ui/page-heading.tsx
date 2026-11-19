@@ -6,6 +6,13 @@ const TITLE_SIZE = {
   section: 'text-2xl',
 } as const
 
+// A page heading stacks its actions under the title on a phone; a section heading keeps them on the
+// same row at every width ("See all" beside its title), with the title free to shrink and wrap.
+const LAYOUT = {
+  page: { row: 'flex-wrap items-end', actions: 'flex w-full flex-col items-start sm:w-auto sm:items-end' },
+  section: { row: 'flex-nowrap items-baseline', actions: 'flex shrink-0 flex-col items-end' },
+} as const
+
 /**
  * The Afterburn heading block (ADR 0013, Afterburn A3): an optional eyebrow, the display title and
  * an optional intro, with an optional `actions` slot (right-aligned from 640 px, stacked on a
@@ -41,13 +48,13 @@ export function PageHeading({
   // A bare title (a section heading) adds no wrapper, so it stays a direct child of its section.
   if (!eyebrow && !intro && !actions) return heading
   return (
-    <div className={cn('flex flex-wrap items-end justify-between gap-4', className)}>
+    <div className={cn('flex justify-between gap-4', LAYOUT[size].row, className)}>
       <div className="flex min-w-0 flex-col gap-2">
         {eyebrow ? <p className="m-0 text-xs font-semibold uppercase tracking-[0.14em] text-muted">{eyebrow}</p> : null}
         {heading}
         {intro ? <p className="m-0 max-w-xl text-base text-muted">{intro}</p> : null}
       </div>
-      {actions ? <div className="flex w-full flex-col items-start sm:w-auto sm:items-end">{actions}</div> : null}
+      {actions ? <div className={LAYOUT[size].actions}>{actions}</div> : null}
     </div>
   )
 }

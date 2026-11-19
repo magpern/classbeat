@@ -31,7 +31,7 @@ export function HomeHero() {
       </ul>
       <Button
         asChild
-        className="min-h-13 w-full px-7 text-base font-bold sm:w-fit sm:border-2 sm:border-transparent sm:[background:linear-gradient(var(--cb-surface),var(--cb-surface))_padding-box,var(--cb-heat)_border-box] sm:text-text sm:shadow-none"
+        className="min-h-13 w-full px-7 text-base font-bold sm:w-fit sm:border-2 sm:border-heat sm:text-text sm:shadow-none"
       >
         <Link to="/classes/new">
           <Plus aria-hidden="true" size={18} strokeWidth={2.5} />
