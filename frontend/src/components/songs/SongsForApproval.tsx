@@ -8,7 +8,8 @@ import { Link } from '../../router/Router'
 import { Notice } from '../forms'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
-import { Ended, FinalActions, Heading, PickAgain, RefreshButton } from './ApprovalEnded'
+import { PageHeading } from '../ui/page-heading'
+import { Ended, FinalActions, PickAgain, RefreshButton } from './ApprovalEnded'
 import { StickyActionBar } from '../ui/sticky-action-bar'
 import { CoverMosaic } from './CoverArt'
 import { MusicNotAsked } from './MusicNotAsked'
@@ -175,17 +176,18 @@ function Approval({
             </p>
           ) : null}
         </div>
-        <header className="flex flex-col items-start gap-4 rounded-lg border border-line bg-surface p-4 sm:flex-row sm:items-end sm:p-6">
+        <header className="flex flex-col items-start gap-4 rounded-3xl border border-line bg-surface p-4 shadow-card sm:flex-row sm:items-end sm:p-6">
           <CoverMosaic songs={list.songs} className={embedded ? 'size-28 shrink-0' : 'size-40 shrink-0 sm:size-48'} />
           <div className="flex min-w-0 flex-col gap-2">
             {/* The workspace page has its own h1 (the class title). */}
-            <Heading
-              id="songs-title"
+            <PageHeading
+              eyebrow={embedded ? undefined : t('songs.approval.eyebrow')}
+              title={t('songs.approval.heading')}
+              titleId="songs-title"
               as={embedded ? 'h2' : 'h1'}
-              className={`m-0 break-words font-display font-extrabold text-text ${embedded ? 'text-2xl' : 'text-3xl sm:text-4xl'}`}
-            >
-              {t('songs.approval.heading')}
-            </Heading>
+              size={embedded ? 'section' : 'page'}
+              titleClassName="break-words text-text"
+            />
             <p className="m-0 text-text">
               {t('songs.approval.summary', {
                 count: list.songs.length,
@@ -261,7 +263,7 @@ function Approval({
         </div>
       ) : (
         <div className="min-w-0 lg:self-stretch">
-          <StickyActionBar label={t('songs.approval.barLabel')} className="lg:p-5">
+          <StickyActionBar label={t('songs.approval.barLabel')} className="lg:rounded-3xl lg:p-5 lg:shadow-card">
             {expiry}
             <Button disabled={busyNow} onClick={approve} className="w-full max-lg:w-auto max-lg:shrink-0">
               {t('songs.approval.approve')}

@@ -40,11 +40,6 @@ export function RefreshButton({ onClick }: { onClick: () => void }) {
   return <Button onClick={onClick}>{t('songs.approval.refresh')}</Button>
 }
 
-/** `h1` on the job page, `h2` inside the class workspace. */
-export function Heading({ as: Tag, ...props }: { as: 'h1' | 'h2'; id: string; className: string; children: ReactNode }) {
-  return <Tag {...props} />
-}
-
 export function PickAgain({ pick }: { pick: ReturnType<typeof useNewPick> }) {
   const t = useT()
   return (

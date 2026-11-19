@@ -1,6 +1,6 @@
 import { useT } from '../../i18n/I18n'
 import { Button } from '../ui/button'
-import { CardTitle } from '../ui/card'
+import { EYEBROW } from '../start/FieldCard'
 import { StickyActionBar } from '../ui/sticky-action-bar'
 import { SketchBars } from './SketchBars'
 
@@ -26,9 +26,9 @@ export function SideCard({
 }) {
   const t = useT()
   return (
-    <StickyActionBar label={t('newclass.side.title')} className="lg:p-5">
+    <StickyActionBar label={t('newclass.side.title')} className="lg:rounded-3xl lg:p-5 lg:shadow-card">
       <div className="flex flex-col gap-4 max-lg:hidden">
-        <CardTitle className="mb-0">{t('newclass.side.title')}</CardTitle>
+        <h2 className={EYEBROW}>{t('newclass.side.title')}</h2>
         <SketchBars profile={profile} />
         <p className="m-0 text-[0.8125rem] text-muted">{t('newclass.side.sketchNote')}</p>
         <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[0.9375rem]">

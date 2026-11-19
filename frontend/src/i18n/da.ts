@@ -830,6 +830,7 @@ const da: Catalogue = {
     'Gør det alligevel: du afgør, at den ikke blev tilføjet. Det næste design tilføjer den igen, så du kan få to kopier.',
   'class.attach.addAgain': 'Tilføj igen',
   'common.tryAgain': 'Prøv igen',
+  'newclass.eyebrow': 'Avanceret',
   'newclass.title': 'Design et hold',
   'newclass.loading': 'Indlæser din MOWL-musik',
   'newclass.noMowl.reconnect': 'MOWL-login er udløbet. {link}',
@@ -1192,6 +1193,7 @@ const da: Catalogue = {
   'job.cancelError.finished': 'Dette design er lige blevet færdigt.',
   'job.yourClass': 'dit hold',
   'job.findingSongs': 'Finder sange til {name}…',
+  'job.eyebrow': 'Designer',
   'job.designing': 'Designer {name}…',
   'job.stepOf': 'Trin {step} af {total}',
   'job.stopping': 'Stopper. Det tager et øjeblik.',
@@ -1277,6 +1279,7 @@ const da: Catalogue = {
   'songs.approval.expiredText': 'Sangene udløb, før de blev godkendt. Intet blev skrevet til din Spotify.',
   'songs.approval.stoppedText': 'Sangene blev stoppet. Intet blev skrevet til din Spotify.',
   'songs.approval.barLabel': 'Godkendelse',
+  'songs.approval.eyebrow': 'Dine sange',
   'songs.approval.heading': 'Sange til dit hold',
   'songs.approval.summary': '{count} sange, {total} i alt. Du bad om {target}.',
   'songs.approval.omittedNoBpm': {
