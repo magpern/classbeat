@@ -1437,7 +1437,7 @@ export const en = {
 
   // Music page.
   'music.page.eyebrow': 'Your music',
-  'music.page.subtitle': 'The playlists made for your classes, and the MOWL playlists songs can be picked from.',
+  'music.page.subtitle': 'The playlists made for your classes.',
   'music.page.attribution': 'Songs and art from Spotify',
   'music.page.title': 'Music',
   'music.page.connectTitle': 'Connect Spotify',
@@ -1447,13 +1447,6 @@ export const en = {
   'music.page.madeLoading': 'Loading your playlists',
   'music.page.madeFailed': 'Your playlists could not be loaded.',
   'music.page.madeEmpty': 'No playlists yet. When you approve songs for a class, its playlist shows up here.',
-  'music.page.mowlTitle': 'Your playlists in MOWL',
-  'music.page.mowlLoading': 'Loading your MOWL music',
-  'music.page.mowlFailed': 'Your MOWL playlists could not be loaded. Connect MOWL, or try again in a few minutes.',
-  'music.page.mowlFailedConnected': 'Your MOWL playlists could not be loaded. Try again in a few minutes.',
-  'music.page.mowlConnect': 'Connect MOWL',
-  'music.page.mowlEmpty': 'MOWL lists no Spotify playlists for your account.',
-  'music.page.untitled': 'Untitled playlist',
   'music.page.forClass': 'For {link}',
   'music.page.openSpotify': 'OPEN SPOTIFY',
 

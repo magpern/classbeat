@@ -34,6 +34,15 @@ exists today (2026-10-30):
 
 ## Decision
 
+> **Amendment, 2026-11-19: Music no longer lists MOWL playlists (issue #1285; owner decision).** The
+> "Your playlists in MOWL" section of Music (§4, the Music row of the page table; A3's Music bullet
+> and owner question 4 of §12) is removed. It had no action, no cover and no link, repeated what the
+> New class picker's "Use my playlist" already shows, and was easy to mistake for "Playlists we made".
+> Music now has the intro, the Spotify attribution (shown only while "Playlists we made" has items),
+> the "Connect Spotify" card while Spotify is not connected, and "Playlists we made". The page makes
+> no `mowl-playlists` request. `GET /api/music/mowl-playlists` and the New class picker are unchanged;
+> the picker is the one place the MOWL list is shown.
+>
 > **Amendment, 2026-11-18: Afterburn (issue #1219; owner decision).** The owner found the
 > signed-in pages (Account, My classes, Design a class, Music) "not very sexy and modern" and asked
 > for "a common theme that is hot and sexy … high end, professional, something people would pay
@@ -111,9 +120,8 @@ exists today (2026-10-30):
 >   glows on focus, chips, length and music-source cards, **Design my class** with the classes-left
 >   line; beside it the sketch on the stage and "What happens next" in three steps. A missing
 >   connection is a warning card inside "Music from" with its connect action, not a bare sentence.
-> - **Music.** A title block with the Spotify attribution, "Playlists we made" as a tile grid and
->   "Your playlists in MOWL" as a grid or, when it cannot be shown, an empty-state card with ghost
->   tiles and the connect action.
+> - **Music.** A title block with the Spotify attribution and "Playlists we made" as a tile grid.
+>   *("Your playlists in MOWL", a grid or an empty-state card, was removed on 2026-11-19, #1285.)*
 >
 > **A4. Rules kept from §3, where the canvas differed.** Cover art stays unaltered: the canvas's
 > play button over a playlist mosaic is **not** built; OPEN SPOTIFY stays a link beside the art.
@@ -307,7 +315,7 @@ four bars.
 | `/jobs/:id` | Designing (focus mode) |
 | the approval route of ADR 0008 §9 | Songs for approval |
 | `/classes/:id` | Class |
-| `/music` | Music: the user's MOWL playlists and the playlists classbeat made (OPEN SPOTIFY where the API gives the final playlist's link); a "Connect Spotify" card while not connected. The playlists classbeat made come from a new read-only, owner-scoped class-API read (UI8) |
+| `/music` | Music: the playlists classbeat made (OPEN SPOTIFY where the API gives the final playlist's link); a "Connect Spotify" card while not connected. The playlists classbeat made come from a new read-only, owner-scoped class-API read (UI8). *(Amended 2026-11-19, #1285: the MOWL playlists are no longer listed here.)* |
 | `/account` | Account, with tabs: Connections, Plan and usage, Sign-in and security, Your data, Appearance |
 | `/account/spotify` | The Spotify wizard and settings. It stays where it is, because ADR 0009's callback ends there |
 | `/admin` | Admin (M5), in the same shell |
@@ -470,7 +478,7 @@ Only **album covers of chosen songs** are shown, and only from data classbeat al
 - **Where covers appear.** Covers show in the Songs for approval rows and its 2×2 mosaic (the first
   four songs). They also show on the Class page's song list and on the Music page's tiles for
   playlists classbeat made, as a mosaic from their `song_list`. MOWL playlists (the New class
-  picker, Music's "Your playlists") always use a neutral tile with the playlist's initials, and so
+  picker; Music's "Your playlists" was removed, #1285) always use a neutral tile with the playlist's initials, and so
   does a song without a cover or with a failed load.
 
 The request carries no referrer, no classbeat cookie and no classbeat data. The viewer's IP address
@@ -772,7 +780,8 @@ Nothing is open.
 4. **The Music page in the main navigation:** no preference. The Architect keeps it, because it is
    where playlists and song picking live, the part the owner wants to feel like Spotify. Without
    Spotify it shows the MOWL playlists and the connect card. To be revisited after the testers have
-   used it.
+   used it. *(2026-11-19, #1285: the MOWL playlists left Music; without Spotify it shows the connect
+   card and "Playlists we made".)*
 5. **Fonts:** no preference, so Inter and Archivo are kept.
 
 ## Alternatives

@@ -60,7 +60,6 @@ const LABELS: readonly CatalogueKey[] = [
   'music.openSettings',
   'music.pick',
   'music.swedebeat',
-  'music.page.untitled',
 ]
 
 const HELPERS: readonly CatalogueKey[] = [
