@@ -10,8 +10,8 @@ import { signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
 // The rules are in app.css and imagery.css (frontend/src/styles/cookieNoticePhone.test.ts, heroPhone.test.ts).
 test.use({ storageState: { cookies: [], origins: [] } })
 
-// The legal links at the foot of every page (LegalFooter.tsx): the last thing on a page.
-const FOOTER = '#main-content > div > nav:last-child'
+// The legal links and the trademark notice at the foot of every page (LegalFooter.tsx): the last thing on a page.
+const FOOTER = '#main-content > div > footer'
 
 const SIZES = [
   { width: 360, height: 640 },
