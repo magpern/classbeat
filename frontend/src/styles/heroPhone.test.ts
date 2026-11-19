@@ -5,7 +5,7 @@ import { PHONE_MEDIA } from '../components/imagery/imageSlots'
 
 // Issue 1270: on a phone the Landing's first screen (badge, title, lead, button) is in view with no
 // scroll. The rule that gives that is the hero's phone block in imagery.css: its height comes from the
-// small viewport (`svh`, so the browser toolbar counts) minus a header allowance, with a `vh` fallback,
+// small viewport (`svh`, so the browser toolbar counts) minus a header allowance (two rows, issue 1272), with a `vh` fallback,
 // and its text block is compact. The browser check is e2e/tests/landing-phone.spec.ts; this test keeps
 // the rule's shape so a later edit cannot quietly drop it.
 const dir = import.meta.dirname
@@ -57,10 +57,13 @@ describe('the hero on a phone', () => {
     expect(app).toMatch(/:root\s*\{\s*--cb-notice-h:\s*0px;/)
   })
 
-  it('allows for a header of three rows (the Swedish nav on 360 px) and the Landing padding', () => {
-    const chrome = /--hero-chrome:\s*([\d.]+)rem/.exec(rule('.hero'))?.[1]
-    // 165 px header + 16 px padding at 360 px in Swedish is 11.3rem
-    expect(Number(chrome)).toBeGreaterThanOrEqual(11.3)
+  it('allows for a header of two rows (113 px) and the Landing padding, and no more than that', () => {
+    const chrome = Number(/--hero-chrome:\s*([\d.]+)rem/.exec(rule('.hero'))?.[1])
+    // issue 1272: the signed-out header is two rows at most on a phone in every language, so 113 px of
+    // header + 16 px of padding is 8.06rem; a third row (165 px, 11.3rem) can no longer happen
+    expect(chrome).toBeGreaterThanOrEqual(8.1)
+    // a larger allowance would shrink the hero for nothing: the button must still end inside a 360x640 screen
+    expect(chrome).toBeLessThanOrEqual(9.5)
   })
 
   it('cuts the Landing top padding to a small step, for the Landing only', () => {

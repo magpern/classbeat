@@ -90,8 +90,8 @@
 
 /*
  * On a phone the whole first screen (badge, title, lead, button) must be in view without a scroll
- * (issue 1270). The browser's header above the hero is one to three rows (the Swedish nav wraps to
- * three on 360 px), so the hero is sized from the small viewport (`svh`: the browser toolbar counts)
+ * (issue 1270). The browser's header above the hero is one or two rows (issue 1272: at most two on a
+ * phone in every language, 113 px), so the hero is sized from the small viewport (`svh`: the browser toolbar counts)
  * minus a header allowance, between 25rem (the scrim stays solid under the title) and 32rem; the text
  * block is as short as it can be and the hero grows to it, so the photo and the flywheel take what is
  * left above it. `100vh` is the fallback where `svh` is unknown. The Landing's top padding is cut so
@@ -104,7 +104,7 @@
     padding-top: var(--cb-space-4);
   }
   .hero {
-    --hero-chrome: 12rem; /* the tallest header (three rows) and the Landing's top padding */
+    --hero-chrome: 9rem; /* the tallest header (two rows, 113 px) and the Landing's top padding (16 px) */
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
