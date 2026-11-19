@@ -104,9 +104,15 @@ export function Plan({ onChanged }: { onChanged?: () => void }) {
   const percent = Math.round(plan.costShare * 100)
   return (
     <Section title={t('plan.title')}>
-      <div className="flex flex-wrap items-center gap-6 rounded-xl bg-raised p-5">
+      {/* A phone: the ring beside the badge, name and classes line, the nudge and budget full width
+          below, so the ring never sits alone in a tall row (issue 1277). From sm the ring is
+          centred against the whole text column, as before. */}
+      <div
+        data-testid="plan-card"
+        className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-3 rounded-xl bg-raised p-4 sm:gap-x-6 sm:p-5"
+      >
         <UsageRing held={plan.classesHeld} limit={plan.limits.classesPerMonth} />
-        <div className="flex min-w-0 flex-[1_1_16rem] flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-2 sm:col-start-2 sm:row-start-1 sm:gap-3">
           <span className="inline-flex w-fit rounded-full bg-heat px-3 py-1 text-xs font-bold text-on-heat">
             {t('plan.options.current')}
           </span>
@@ -118,6 +124,8 @@ export function Plan({ onChanged }: { onChanged?: () => void }) {
             />
           </p>
           <p data-testid="plan-classes">{classesLine(plan)}</p>
+        </div>
+        <div className="col-span-2 flex min-w-0 flex-col gap-3 sm:col-span-1 sm:col-start-2 sm:row-start-2">
           <PlanNudge trigger="account" plan={plan} />
           <div className="flex flex-col gap-2">
             <Progress
