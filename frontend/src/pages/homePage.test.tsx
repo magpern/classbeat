@@ -139,8 +139,9 @@ describe('Get set up', () => {
     const rows = within(region).getAllByRole('listitem')
     expect(rows.map((r) => r.textContent)).toEqual([
       'MMOWLNeeded to save classes as workoutsConnect',
-      'SSpotifyPicks songs for your classesConnect',
+      'SpotifyPicks songs for your classesConnect',
     ])
+    expect(rows[1]?.querySelectorAll('img[aria-hidden="true"]')).toHaveLength(2) // the Spotify icon, not a letter
     expect(within(rows[0] as HTMLElement).getByRole('link', { name: 'Connect MOWL' })).toHaveAttribute('href', '/en/account')
     expect(within(rows[1] as HTMLElement).getByRole('link', { name: 'Connect Spotify' })).toHaveAttribute(
       'href',

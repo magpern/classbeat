@@ -5,6 +5,7 @@ import { useRouter } from '../../../router/Router'
 import { Button } from '../../ui/button'
 import { ConnectionTile } from './ConnectionTile'
 import { SpotifyDialog } from './SpotifyDialog'
+import { SPOTIFY_ICON } from './spotifyIcon'
 
 /** The address that opens the Spotify dialog, and where Spotify's callback lands (`?result=`). */
 export const SPOTIFY_PATH = '/account/spotify'
@@ -57,7 +58,7 @@ export function SpotifyRow({ onStatus }: { onStatus?: (status: SpotifyStatus['st
       {status !== null ? (
         <ConnectionTile
           testId="connection-spotify"
-          mark="S"
+          mark={SPOTIFY_ICON}
           name={t('spot.title')}
           optional={false} // a class with music needs it (roadmap Amendment 25)
           state={notConnected ? 'none' : status.status === 'connected' ? 'connected' : 'again'}

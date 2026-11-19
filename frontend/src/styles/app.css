@@ -130,6 +130,32 @@ body {
   }
 }
 
+/* A brand icon inside a connection tile or row (the Spotify icon, unmodified): half the square wide,
+   so the clear space is half the icon's height, and never below 21px (the tile is 56px, the row 44px).
+   Black file on light surfaces, white on dark ones, chosen like `.spotify-attribution`. */
+.brand-icon {
+  display: block;
+  width: 50%;
+  height: auto;
+}
+.brand-icon__light {
+  display: none !important;
+}
+:root[data-theme='light'] .brand-icon__light {
+  display: block !important;
+}
+:root[data-theme='light'] .brand-icon__dark {
+  display: none !important;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme='system'] .brand-icon__light {
+    display: block !important;
+  }
+  :root[data-theme='system'] .brand-icon__dark {
+    display: none !important;
+  }
+}
+
 /* Cookie notice: small, bottom-left, never a modal. On the phone layout it sits above the tab bar. */
 .cookie-notice {
   position: fixed;
