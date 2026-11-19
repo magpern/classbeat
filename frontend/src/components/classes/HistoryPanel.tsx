@@ -10,6 +10,7 @@ import {
   type TimelineEntry,
 } from '../../api/classHistory'
 import { clock } from '../../lib/workout'
+import { PageHeading } from '../ui/page-heading'
 import { Button } from '../ui/button'
 import { Chip, ChipButton } from '../ui/chip'
 import { ListRow } from '../ui/list-row'
@@ -149,9 +150,7 @@ export function HistoryPanel({
 
   return (
     <section className="panel" aria-labelledby="revisions-title">
-      <h2 id="revisions-title" className="panel__title">
-        {t('class.versions')}
-      </h2>
+      <PageHeading size="section" as="h2" titleId="revisions-title" title={t('class.versions')} />
       <p className="muted m-0">{t('class.history.pick')}</p>
       {history.canChange || history.revisions.length === 0 ? null : (
         <p className="m-0" data-testid="cannot-change">

@@ -559,6 +559,7 @@ const sv: Catalogue = {
   'class.page.discardedStopped': 'Utformningen stoppades.',
   'class.page.failedTitle': 'Passet kunde inte laddas',
   'class.page.failed': 'Det gick inte att nå servern, eller så svarade den inte som väntat.',
+  'class.page.eyebrow': 'Ditt pass',
   'class.page.running': 'Löpning',
   'class.page.noMusic': 'Ingen musik',
   'class.page.changeSongs': 'Byt låtar',
@@ -684,6 +685,7 @@ const sv: Catalogue = {
   // Draft summary and revision view.
   'class.draft.summary': 'Utkast {number}, {total} totalt',
   'class.revision.heading': 'Version {number}, {origin}',
+  'class.revision.stats': 'Passets nyckeltal',
   'class.revision.length': 'Längd',
   'class.revision.tss': 'TSS',
   'class.revision.segments': 'Segment',

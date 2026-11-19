@@ -515,6 +515,7 @@ export const en = {
   'class.page.discardedStopped': 'The design was stopped.',
   'class.page.failedTitle': 'The class could not be loaded',
   'class.page.failed': 'The server could not be reached or did not answer as expected.',
+  'class.page.eyebrow': 'Your class',
   'class.page.running': 'Running',
   'class.page.noMusic': 'No music',
   'class.page.changeSongs': 'Change songs',
@@ -627,6 +628,7 @@ export const en = {
   // Draft summary and revision view.
   'class.draft.summary': 'Draft {number}, {total} in total',
   'class.revision.heading': 'Version {number}, {origin}',
+  'class.revision.stats': 'Class figures',
   'class.revision.length': 'Length',
   'class.revision.tss': 'TSS',
   'class.revision.segments': 'Segments',

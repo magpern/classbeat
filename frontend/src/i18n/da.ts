@@ -551,6 +551,7 @@ const da: Catalogue = {
   'class.page.discardedStopped': 'Designet blev stoppet.',
   'class.page.failedTitle': 'Holdet kunne ikke indlæses',
   'class.page.failed': 'Serveren kunne ikke kontaktes eller svarede ikke som forventet.',
+  'class.page.eyebrow': 'Dit hold',
   'class.page.running': 'Løb',
   'class.page.noMusic': 'Ingen musik',
   'class.page.changeSongs': 'Skift sange',
@@ -670,6 +671,7 @@ const da: Catalogue = {
   // Draft summary and revision view.
   'class.draft.summary': 'Udkast {number}, {total} i alt',
   'class.revision.heading': 'Version {number}, {origin}',
+  'class.revision.stats': 'Holdets nøgletal',
   'class.revision.length': 'Længde',
   'class.revision.tss': 'TSS',
   'class.revision.segments': 'Segmenter',

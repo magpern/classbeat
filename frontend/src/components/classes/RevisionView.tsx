@@ -1,27 +1,19 @@
 import type { Revision } from '../../api/classes'
 import { isRunningDraft } from '../../api/jobs'
-import { kindLabel, originLabel } from '../../api/classMessages'
+import { kindLabel } from '../../api/classMessages'
 import type { Song } from '../../api/songs'
 import { useT } from '../../i18n/I18n'
-import { tssApproximateNote } from '../../lib/classCards'
 import { GameBadge, GameLicence } from './GameBits'
 import { segmentGames, hasGame } from '../../lib/games'
-import { cadenceText, flatten, inclineText, zoneName } from '../../lib/profile'
-import { clock, segmentSeconds, totalSeconds, tss } from '../../lib/workout'
+import { cadenceText, flatten, inclineText } from '../../lib/profile'
+import { clock, segmentSeconds } from '../../lib/workout'
 import { Card } from '../ui/card'
+import { PageHeading } from '../ui/page-heading'
+import { RevisionStats } from './RevisionStats'
+import { versionLine } from './versionLine'
 import { PatternNotes } from './PatternNotes'
 import { ProfileChart } from './ProfileChart'
-import { TssValue } from './TssValue'
 import { ZoneTime } from './ZoneTime'
-
-function Tile({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-md bg-raised px-4 py-3">
-      <dt className="text-[0.8125rem] text-muted">{label}</dt>
-      <dd className="m-0 font-display text-xl font-bold tabular-nums">{children}</dd>
-    </div>
-  )
-}
 
 /**
  * One version of the class: stat tiles, warnings, the profile on the stage, the time in each zone
@@ -35,55 +27,41 @@ export function RevisionView({
   musicChanged,
   songs = null,
   classId = null,
+  pageTitle = null,
 }: {
   revision: Revision
   musicChanged: boolean
   songs?: Song[] | null
   /** The class, for dismissing pattern notes; without it the notes block is not shown. */
   classId?: string | null
+  /**
+   * The class page's own title. When it is given, the version line is left to the page heading and
+   * the version's name is shown only when it differs from the title (an older version's name).
+   */
+  pageTitle?: string | null
 }) {
   const t = useT()
-  const seconds = totalSeconds(revision.segments)
   const bars = flatten(revision.segments)
   const running = isRunningDraft(revision.segments)
   const games = !running && hasGame(revision.segments)
-  const hardest = bars.length === 0 ? null : Math.max(...bars.map((b) => b.zone))
+  const showName = pageTitle === null || revision.name !== pageTitle
   return (
-    <article className="flex flex-col gap-5" aria-labelledby="revision-title">
-      <div className="flex flex-col gap-1">
-        <h2 id="revision-title" className="m-0 font-display text-2xl font-bold">
-          {revision.name}
-        </h2>
-        <p className="m-0 text-muted">
-          {t('class.revision.heading', {
-            number: revision.number,
-            origin: originLabel(revision.origin).toLowerCase(),
-          })}
-        </p>
-        {revision.description ? <p className="m-0">{revision.description}</p> : null}
-      </div>
-      <dl className="m-0 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Tile label={t('class.revision.length')}>
-          <span data-testid="duration">{clock(seconds)}</span>
-        </Tile>
-        {running ? null : <Tile label={t('class.revision.tss')}>
-          <span data-testid="tss">
-            <TssValue value={tss(revision.segments)} approximate={revision.tssApproximate} />
-          </span>
-          {revision.tssApproximate ? (
-            <small className="block text-[0.75rem] font-normal text-muted" data-testid="tss-note">
-              ({tssApproximateNote()})
-            </small>
+    <article
+      className="flex flex-col gap-6"
+      {...(showName ? { 'aria-labelledby': 'revision-title' } : { 'aria-label': revision.name })}
+    >
+      {showName || revision.description ? (
+        <div className="flex flex-col gap-1">
+          {showName ? (
+            <h2 id="revision-title" className="m-0 font-display text-2xl font-bold">
+              {revision.name}
+            </h2>
           ) : null}
-        </Tile>}
-        <Tile label={t('class.revision.segments')}>{revision.segments.length}</Tile>
-        {songs !== null && songs.length > 0 ? <Tile label={t('class.revision.songs')}>{songs.length}</Tile> : null}
-        {hardest !== null ? (
-          <Tile label={t('class.revision.hardest')}>
-            {t('class.zone.short', { zone: hardest })} <span className="text-[0.9375rem] font-normal text-muted">{zoneName(hardest)}</span>
-          </Tile>
-        ) : null}
-      </dl>
+          {pageTitle === null ? <p className="m-0 text-muted">{versionLine(t, revision)}</p> : null}
+          {revision.description ? <p className="m-0">{revision.description}</p> : null}
+        </div>
+      ) : null}
+      <RevisionStats revision={revision} bars={bars} running={running} songs={songs} />
       {classId !== null ? (
         <PatternNotes
           classId={classId}
@@ -108,15 +86,14 @@ export function RevisionView({
           </ul>
         </div>
       ) : null}
-      <div className="chart-in">
+      <div className="chart-in relative overflow-hidden rounded-xl border border-line bg-surface p-3 pt-4 shadow-card">
+        <div aria-hidden="true" className="absolute inset-x-0 top-0 z-10 h-1 bg-heat" />
         <ProfileChart segments={revision.segments} title={revision.name} songs={songs} />
       </div>
       <ZoneTime bars={bars} running={running} />
       {games ? <GameLicence /> : null}
       <section aria-labelledby="song-by-song-title" className="flex flex-col gap-4">
-        <h3 id="song-by-song-title" className="m-0 font-display text-lg font-bold">
-          {t('class.revision.songBySong')}
-        </h3>
+        <PageHeading size="section" as="h3" titleId="song-by-song-title" title={t('class.revision.songBySong')} />
         {revision.segments.map((segment, index) => (
           <Card key={index} role="region" aria-label={segment.name} className="flex flex-col gap-2 p-4">
             <h4 className="m-0 font-display text-base font-bold">

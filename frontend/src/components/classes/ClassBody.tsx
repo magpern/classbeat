@@ -34,6 +34,7 @@ import { Notice } from '../forms'
 import { useRevision, type ClassData } from '../../hooks/useClassData'
 import { Link } from '../../router/Router'
 import { useT } from '../../i18n/I18n'
+import { versionLine as versionLineOf } from './versionLine'
 
 // The undecided player sends load only for a user who has the player (`player.offered`).
 const UncertainPlayer = lazy(() =>
@@ -108,6 +109,7 @@ export function ClassBody({
         player={player}
         viewingId={viewingId}
         versionNumber={viewing?.number ?? null}
+        versionLine={shown.status === 'ready' ? versionLineOf(t, shown.revision) : null}
         canChangeSongs={canChangeSongs}
         deleting={deleting}
         onGoTo={goTo}
@@ -203,6 +205,7 @@ export function ClassBody({
             {shown.status === 'ready' ? (
               <RevisionView
                 revision={shown.revision}
+                pageTitle={summary.title}
                 musicChanged={!summary.soundless && answeredBy?.change?.musicChanged === true}
                 songs={songs}
                 classId={classId}
