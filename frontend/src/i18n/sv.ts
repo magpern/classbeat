@@ -1336,6 +1336,8 @@ const sv: Catalogue = {
   'unsub.stopAll': 'Stoppa valfri e-post',
 
   // Music page.
+  'music.page.eyebrow': 'Din musik',
+  'music.page.subtitle': 'Spellistorna som gjorts till dina pass, och de MOWL-spellistor som låtar kan väljas från.',
   'music.page.title': 'Musik',
   'music.page.connectTitle': 'Anslut Spotify',
   'music.page.connectText': 'Anslut Spotify så att vi kan välja låtar åt dig och skapa spellistor till dina pass.',
@@ -1347,9 +1349,8 @@ const sv: Catalogue = {
     'Inga spellistor ännu. När du godkänner låtar till ett pass visas dess spellista här.',
   'music.page.mowlTitle': 'Dina spellistor i MOWL',
   'music.page.mowlLoading': 'Laddar din MOWL-musik',
-  'music.page.mowlFailed':
-    'Dina MOWL-spellistor kunde inte laddas. Anslut MOWL på {link}, eller försök igen om några minuter.',
-  'music.page.mowlFailedLink': 'din kontosida',
+  'music.page.mowlFailed': 'Dina MOWL-spellistor kunde inte laddas. Anslut MOWL, eller försök igen om några minuter.',
+  'music.page.mowlConnect': 'Anslut MOWL',
   'music.page.mowlEmpty': 'MOWL listar inga Spotify-spellistor för ditt konto.',
   'music.page.untitled': 'Namnlös spellista',
   'music.page.forClass': 'För {link}',

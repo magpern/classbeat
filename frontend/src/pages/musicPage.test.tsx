@@ -80,3 +80,12 @@ describe('the Music page', () => {
     expect(await screen.findByRole('link', { name: 'Connect Spotify' })).toHaveAttribute('href', '/en/account/spotify')
   })
 })
+
+describe('the Music page when MOWL playlists cannot be listed', () => {
+  it('shows an empty-state card with one sentence and the connect link', async () => {
+    fakeApi(routes({ 'GET /api/music/mowl-playlists': json({ detail: 'down' }, 502) }))
+    renderAt('/music')
+    expect(await screen.findByText(/Your MOWL playlists could not be loaded\./)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Connect MOWL' })).toHaveAttribute('href', '/en/account')
+  })
+})
