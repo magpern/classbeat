@@ -2,11 +2,13 @@ import { expect, test, type Page } from '@playwright/test'
 import { WORDS, type Code } from './lang-url-helpers'
 
 // #1270: on a phone the Landing's first screen (badge, title, lead and the sign-up button) is in view
-// with no scroll. The viewports are the three the owner named; Swedish and Danish are checked at the
-// smallest one, where their longer words and the three-row Swedish header put the most pressure on it.
-// The rule itself is the hero's phone block in imagery.css (frontend/src/styles/heroPhone.test.ts).
+// with no scroll. The viewports are the three the owner named, and 320x568 (the smallest phone the signed-out
+// header is checked at); Swedish and Danish are checked at 360, where their longer words put the most pressure
+// on it. The header is two rows at most (113 px; #1272, signed-out-header-phone.spec.ts), which is what the
+// hero's `--hero-chrome` allowance in imagery.css assumes (frontend/src/styles/heroPhone.test.ts).
 
 const SIZES = [
+  { width: 320, height: 568 },
   { width: 360, height: 640 },
   { width: 390, height: 844 },
   { width: 412, height: 915 },
@@ -16,6 +18,8 @@ const CASES: { code: Code; width: number; height: number }[] = [
   ...SIZES.map((size) => ({ code: 'en' as const, ...size })),
   { code: 'sv', width: 360, height: 640 },
   { code: 'da', width: 360, height: 640 },
+  { code: 'sv', width: 320, height: 568 },
+  { code: 'da', width: 320, height: 568 },
 ]
 
 async function expectFirstScreen(page: Page, code: Code, height: number) {
