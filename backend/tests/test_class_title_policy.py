@@ -145,3 +145,30 @@ def test_the_cleaning_is_idempotent(raw: str) -> None:
 def test_a_quote_beside_a_format_character_is_stripped() -> None:
     assert proposed_name(TRICKY[0]) == "Spin ride"
     assert proposed_name("'Spin ride'\u200d") == "Spin ride"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "'Hills'\x07",
+        "\x07'Hills'",
+        "\u201cHills\x07\u201d",
+        "Hill\x07 \x0bclimbs",
+        " \x07 ",
+        "x\x07" * TITLE_MAX,
+    ],
+)
+def test_cleaning_twice_equals_cleaning_once(raw: str) -> None:
+    """A control character, even beside a quote, leaves nothing for a second pass to remove."""
+    once_title = clean_title(raw)
+    if once_title is not None:
+        assert clean_title(once_title) == once_title
+    once_name = proposed_name(raw)
+    if once_name is not None:
+        assert proposed_name(once_name) == once_name
+        assert clean_title(once_name) == once_name
+
+
+def test_a_quote_around_a_control_character_is_stripped_in_one_pass() -> None:
+    assert proposed_name("'Hills'\x07") == "Hills"
+    assert proposed_name("\x07'Hills'") == "Hills"

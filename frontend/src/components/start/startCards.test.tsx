@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { I18nProvider } from '../../i18n/I18n'
 import { RouterProvider } from '../../router/Router'
 import { MusicWarning } from '../newclass/MusicWarning'
+import { PlanLength } from './PlanLength'
 import { StartAside } from './StartAside'
 
 function show(node: React.ReactNode) {
@@ -31,5 +32,23 @@ describe('start screen cards', () => {
     expect(await screen.findByRole('img', { name: /Example class shape/ })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'What happens next' })).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(3)
+  })
+})
+
+describe('the Length note', () => {
+  it('shows a skeleton while the plan loads, the cap once known, and a plain sentence if it could not be read', async () => {
+    const { rerender } = show(<PlanLength allowed={null} settled={false} />)
+    expect(await screen.findByTestId('plan-length-loading')).toBeInTheDocument()
+    const again = (node: React.ReactNode) => {
+      rerender(
+        <I18nProvider initial="en">
+          <RouterProvider initialLocation={{ pathname: '/en/classes/new', search: '' }}>{node}</RouterProvider>
+        </I18nProvider>,
+      )
+    }
+    again(<PlanLength allowed={{ maxMinutes: 45, gates: { games: true, races: true, ftpTests: true } }} settled />)
+    expect(screen.getByTestId('plan-length')).toHaveTextContent('up to 45 minutes')
+    again(<PlanLength allowed={null} settled />)
+    expect(screen.getByTestId('plan-length-unknown')).toBeInTheDocument()
   })
 })

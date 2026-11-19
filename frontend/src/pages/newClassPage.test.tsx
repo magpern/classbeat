@@ -604,3 +604,21 @@ describe('the new-class form', () => {
     expect(screen.getByRole('radio', { name: 'Swedebeat mix' })).toBeDisabled()
   })
 })
+
+describe('the start aside', () => {
+  it('is held back while the sources load and after they fail, and shows once they are ready', async () => {
+    fakeApi({ ...READY, 'GET /api/music/mowl-playlists': () => new Promise(() => undefined) })
+    const loading = renderAt('/classes/new')
+    expect(await screen.findByText('Loading your MOWL music')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'What happens next' })).toBeNull()
+    loading.unmount()
+    fakeApi({ ...READY, 'GET /api/music/mowl-playlists': () => json({ detail: 'down' }, 502) })
+    const failed = renderAt('/classes/new')
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'What happens next' })).toBeNull()
+    failed.unmount()
+    fakeApi(READY)
+    renderAt('/classes/new')
+    expect(await screen.findByRole('heading', { name: 'What happens next' })).toBeInTheDocument()
+  })
+})

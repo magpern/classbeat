@@ -57,9 +57,17 @@ export function MowlTiles({ playlists }: { playlists: Playlist[] }) {
   )
 }
 
-/** Shown when the MOWL playlists cannot be listed: ghost tiles, one sentence and the connect link. */
-export function MowlEmptyState() {
+/**
+ * Shown when there are no MOWL playlists to list: ghost tiles and one sentence. The connect link is offered only
+ * when MOWL is not connected (or not known to be); a connected account just gets the plain sentence.
+ */
+export function MowlEmptyState({ connected, empty = false }: { connected: boolean; empty?: boolean }) {
   const t = useT()
+  const message = !connected
+    ? 'music.page.mowlFailed'
+    : empty
+      ? 'music.page.mowlEmpty'
+      : 'music.page.mowlFailedConnected'
   return (
     <div className="flex flex-wrap items-center gap-7 rounded-xl border border-line bg-surface p-6 shadow-card sm:p-9">
       <div className="flex gap-2.5" aria-hidden="true">
@@ -67,12 +75,12 @@ export function MowlEmptyState() {
         <span className="size-16 rounded-md border border-dashed border-line bg-raised opacity-70" />
         <span className="size-16 rounded-md border border-dashed border-line bg-raised opacity-40" />
       </div>
-      <p className="m-0 min-w-0 flex-[1_1_16rem] text-[0.9375rem] leading-relaxed text-muted">
-        {t('music.page.mowlFailed')}
-      </p>
-      <Button asChild variant="secondary">
-        <Link to="/account">{t('music.page.mowlConnect')}</Link>
-      </Button>
+      <p className="m-0 min-w-0 flex-[1_1_16rem] text-[0.9375rem] leading-relaxed text-muted">{t(message)}</p>
+      {connected ? null : (
+        <Button asChild variant="secondary">
+          <Link to="/account">{t('music.page.mowlConnect')}</Link>
+        </Button>
+      )}
     </div>
   )
 }

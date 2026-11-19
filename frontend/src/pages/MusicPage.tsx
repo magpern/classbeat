@@ -43,6 +43,12 @@ async function spotifyNeedsConnect(signal: AbortSignal): Promise<boolean> {
   return spotify === undefined || spotify.status !== 'connected' || status.status !== 'connected'
 }
 
+/** Whether MOWL is connected: decides if the empty state offers "Connect MOWL". A failed read counts as not connected. */
+async function mowlConnected(): Promise<boolean> {
+  const connections = await getConnections()
+  return connections.some((c) => c.provider === 'mowl' && c.status === 'connected')
+}
+
 /** Music (ADR 0013 sections 4 and 9): the MOWL playlists as tiles and the ones classbeat made. */
 export function MusicPage() {
   return (
@@ -57,6 +63,8 @@ function Music() {
   const connect = useLoad(spotifyNeedsConnect)
   const made = useLoad(getClassPlaylists)
   const mowl = useLoad(getMowlPlaylists)
+  const mowlOn = useLoad(mowlConnected)
+  const connected = mowlOn.status === 'ready' && mowlOn.items
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-10">
       <header className="flex flex-col gap-2">
@@ -104,9 +112,9 @@ function Music() {
           {t('music.page.mowlTitle')}
         </h2>
         {mowl.status === 'loading' ? <p className="m-0 text-muted">{t('music.page.mowlLoading')}</p> : null}
-        {mowl.status === 'failed' ? <MowlEmptyState /> : null}
-        {mowl.status === 'ready' && mowl.items.length === 0 ? (
-          <p className="m-0 text-muted">{t('music.page.mowlEmpty')}</p>
+        {mowl.status === 'failed' && mowlOn.status !== 'loading' ? <MowlEmptyState connected={connected} /> : null}
+        {mowl.status === 'ready' && mowl.items.length === 0 && mowlOn.status !== 'loading' ? (
+          <MowlEmptyState connected={connected} empty />
         ) : null}
         {mowl.status === 'ready' && mowl.items.length > 0 ? (
           <>
