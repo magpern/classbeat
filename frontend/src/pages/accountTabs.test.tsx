@@ -122,17 +122,20 @@ describe('account tabs', () => {
 })
 
 describe('change email', () => {
-  it('lives in Sign-in and security, outside the header', async () => {
+  it('lives in Sign-in and security, outside the header, and starts closed', async () => {
     fakeApi(base)
     renderAt('/account#security')
-    const form = (await screen.findByLabelText('New email address')).closest('section')
+    const open = await screen.findByRole('button', { name: 'Change' })
+    const form = open.closest('section')
     expect(form).not.toBeNull()
     const section = within(form as HTMLElement)
     expect(section.getByRole('heading', { level: 2, name: 'Email address' })).toBeInTheDocument()
-    expect(section.getByRole('button', { name: 'Change email' })).toBeInTheDocument()
+    expect(section.getByText('ann@example.test')).toBeInTheDocument()
+    expect(section.queryByLabelText('New email address')).toBeNull()
+    expect(section.queryByRole('button', { name: 'Change email' })).toBeNull()
     const header = screen.getByRole('heading', { level: 1 }).closest('header')
     expect(header).not.toBeNull()
-    expect(within(header as HTMLElement).queryByLabelText('New email address')).toBeNull()
+    expect(within(header as HTMLElement).queryByRole('button', { name: 'Change' })).toBeNull()
   })
 })
 

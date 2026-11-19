@@ -1,5 +1,5 @@
 import { Slot } from '@radix-ui/react-slot'
-import type { ButtonHTMLAttributes } from 'react'
+import type { ButtonHTMLAttributes, Ref } from 'react'
 import { cn } from '../../lib/cn'
 
 const variants = {
@@ -17,6 +17,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
   /** Render the child element (for example a link) with the look of a button. */
   asChild?: boolean
+  ref?: Ref<HTMLButtonElement>
 }
 
 export function Button({ variant = 'primary', asChild = false, className, type, ...props }: ButtonProps) {

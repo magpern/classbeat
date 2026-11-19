@@ -1488,6 +1488,7 @@ const da: Catalogue = {
   'cred.email.sent':
     'Hvis {email} kan bruges, har vi sendt et bekræftelseslink dertil. Åbn det, mens du er logget ind; så ændres adressen.',
   'cred.email.newLabel': 'Ny e-mailadresse',
+  'cred.email.edit': 'Skift',
   'cred.email.change': 'Skift mail',
   'cred.password.title': 'Adgangskode',
   'cred.password.saved': 'Adgangskoden er gemt. Dine andre enheder blev logget ud.',
