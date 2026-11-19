@@ -22,8 +22,14 @@ export const DIFF_LIMIT = 0.0005
  * answers). Text drawn over a slot, such as the Landing hero's heading, lead and button, is compared.
  */
 function accountArea(page: Page) {
-  // The language picker sits beside the account nav, not in it (#1272), so it is named on its own.
-  return [page.locator('[data-testid="nav-placeholder"]'), page.locator('header nav:has(a[href$="/signin"])'), page.locator('header select')]
+  // The language picker sits beside the account nav, not in it (#1272), so the picker and the room the
+  // prerender keeps for it are named on their own: both sides must mask the same area.
+  return [
+    page.locator('[data-testid="nav-placeholder"]'),
+    page.locator('header nav:has(a[href$="/signin"])'),
+    page.locator('[data-testid="picker-placeholder"]'),
+    page.locator('header select'),
+  ]
 }
 
 /** Hides every slot picture through the CSSOM (the CSP allows it) and returns the way back. */

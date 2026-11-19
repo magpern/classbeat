@@ -40,6 +40,9 @@ describe('the signed-out header on a phone', () => {
     const header = /<header[\s\S]*?<\/header>/.exec(html)?.[0] ?? ''
     const room = /<div aria-hidden="true" data-testid="nav-placeholder" class="([^"]*)"/.exec(header)?.[1] ?? ''
     expect(room).toContain(`${PHONE}w-full`)
+    // the picker's room is named, so the takeover gate masks it as it masks the real picker
+    // (e2e/tests/public-takeover-visual.ts); outside the nav's room it would be compared pixel by pixel
+    expect(header).toContain('data-testid="picker-placeholder"')
     // the group around it is the same one the real controls sit in
     expect(header).toContain(`ml-auto flex flex-wrap items-center justify-end gap-2 ${PHONE}contents`)
   })

@@ -67,7 +67,7 @@ function NavPlaceholder() {
   const t = useT()
   return (
     <>
-      {LOCALES.length > 1 ? <span aria-hidden="true" className="inline-block h-11 w-[6.5rem] rounded-md" /> : null}
+      {LOCALES.length > 1 ? <span aria-hidden="true" data-testid="picker-placeholder" className="inline-block h-11 w-[6.5rem] rounded-md" /> : null}
       <div aria-hidden="true" data-testid="nav-placeholder" className={BUTTONS}>
         <span className={`invisible inline-flex min-h-11 items-center ${SIGN_IN_PADDING} ${BUTTON_TEXT}`}>{t('auth.signIn')}</span>
         <span className={`invisible inline-flex min-h-11 items-center ${SIGN_UP_PADDING} ${BUTTON_TEXT}`}>{t('shell.signUp')}</span>
