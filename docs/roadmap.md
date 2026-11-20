@@ -12,8 +12,9 @@ classbeat's music-analysis service: [docs/plans/spotdown-integration.md](plans/s
   spotdown needs no per-user Spotify OAuth. SwedeBeat audio is preferred when the workout uses
   SwedeBeat. Today's analysis paths (MOWL sections, `mixanalysis`, `mixchild`, `track_analysis`)
   stay as fallbacks until the plan's quality gates and the owner's sign-off (#1299).
-- **Not authorized.** Every phase (SD-P0 to SD-P7, and the nonblocking SD-P2+ enhancements) is
-  **PLANNED / NOT AUTHORIZED FOR IMPLEMENTATION** until the owner authorizes it explicitly. This
+- **Authorized (owner, 2026-11-20, after the freeze).** Every phase (SD-P0 to SD-P7, and the
+  nonblocking SD-P2+ enhancements) is authorized for implementation, except the owner decisions
+  #1296 to #1299 and magpern/spotdown#1, which stay with the owner (status.md). This
   amendment changes no code, setting or runtime behaviour, and does not yet amend ADR 0010 or
   ADR 0021: that amendment is in ADR 0040 and takes effect only on the owner's acceptance (#1296).
 - **Governance for this programme, in both repositories** (owner instruction, 2026-11-20): Opus is

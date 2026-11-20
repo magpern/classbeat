@@ -1,6 +1,6 @@
 # Plan: spotdown as a music-analysis service for classbeat (Revision 2, frozen)
 
-**Status: FROZEN, 2026-11-20.** The owner approved this plan for freeze after three review rounds (Revision 1; Revision 2; Revision 2 with final corrections). It is the architectural baseline for the programme. **Every phase is PLANNED / NOT AUTHORIZED FOR IMPLEMENTATION** until the owner authorizes it explicitly. Roadmap [Amendment 31](../roadmap.md). The decision record will be ADR 0040 (#1300); where this plan and that ADR differ, the ADR wins once it is accepted, and the plan is fixed in the PR that changes it.
+**Status: FROZEN, 2026-11-20.** The owner approved this plan for freeze after three review rounds (Revision 1; Revision 2; Revision 2 with final corrections). It is the architectural baseline for the programme. **Every phase is authorized for implementation (owner, 2026-11-20, after the freeze)**, except the owner decisions #1296 to #1299 and magpern/spotdown#1. Roadmap [Amendment 31](../roadmap.md). The decision record will be ADR 0040 (#1300); where this plan and that ADR differ, the ADR wins once it is accepted, and the plan is fixed in the PR that changes it.
 
 Companion repository: [magpern/spotdown](https://github.com/magpern/spotdown), [docs/integration-plan.md](https://github.com/magpern/spotdown/blob/main/docs/integration-plan.md). Tracking issue: #1308.
 
