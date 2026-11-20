@@ -186,6 +186,8 @@ JOBS = [
     "spotdown_scope_deletions",
     # ADR 0040 section 8 (0064_track_map_provenance, #1302).
     "spotdown_studio_budgets",
+    # ADR 0040 section 8 (0066_spotdown_song_budgets, #1303).
+    "spotdown_song_budgets",
     "swedebeat_track_downloads",
     # ADR 0036 section 6 (0054_class_outputs, SR C7).
     "class_outputs",
