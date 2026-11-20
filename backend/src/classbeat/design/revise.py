@@ -208,7 +208,7 @@ async def run(job_run: JobRun) -> Complete:
     if brief.sport == sport.RUNNING:
         sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)
     await job_run.stage("music")
-    step = await music_step(job_run, runtime, music, given.mowl_connection_id)
+    step = await music_step(job_run, runtime, music, given.mowl_connection_id, base.fingerprint)
     handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
         # The stored brief only: the request text never reaches the engine (ADR 0017 section 1).

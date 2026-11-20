@@ -18,6 +18,7 @@ from classbeat.config_turnstile import check_site_key as check_turnstile_site_ke
 from classbeat.player.base_url_policy import player_base_url as check_player_base_url
 from classbeat.spotdown.sources_policy import canonical as check_spotdown_sources
 from classbeat.spotdown.studio_owners_policy import canonical as check_spotdown_studio_owners
+from classbeat.spotdown.studio_owners_policy import canonical_mix as check_spotdown_mix_owners
 from classbeat.spotdown.url_policy import spotdown_url as check_spotdown_url
 from classbeat.swedebeat_gateway.url_policy import gateway_url as check_swedebeat_gateway_url
 from classbeat.swedebeat_studio.config_policy import canonical as check_swedebeat_studio
@@ -137,6 +138,13 @@ class FeatureSettings(BaseSettings):
     # for everyone: that default waits for the studio gates (owner decision #1298).
     spotdown_studio: Literal["off", "allowlist"] = "off"
     spotdown_studio_owners: str = ""
+    # ADR 0040 section 9 (#1304): SwedeBeat mixes analysed by spotdown, worker only, its own
+    # switch: ``off`` (the default) is today's local mix analysis; ``allowlist`` makes spotdown
+    # the source of the mix's map for the owners in ``spotdown_mix_owners``, with the local
+    # analysis as the fallback (``spotdown.mix_config``). No value switches it on for everyone:
+    # that default waits for the mix gates (owner decision #1298).
+    spotdown_mix: Literal["off", "allowlist"] = "off"
+    spotdown_mix_owners: str = ""
 
     @field_validator("swedebeat_gateway_url")
     @classmethod
@@ -167,6 +175,11 @@ class FeatureSettings(BaseSettings):
     @classmethod
     def _check_spotdown_studio_owners(cls, value: str) -> str:
         return check_spotdown_studio_owners(value)
+
+    @field_validator("spotdown_mix_owners")
+    @classmethod
+    def _check_spotdown_mix_owners(cls, value: str) -> str:
+        return check_spotdown_mix_owners(value)
 
     @field_validator("oidc_player_client_id")
     @classmethod

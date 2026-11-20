@@ -39,10 +39,10 @@ from classbeat.egress_spotdown import install_spotdown
 from classbeat.log import configure_logging
 from classbeat.player.delivery import run_player_delivery
 from classbeat.playlists.runtime import playlists_runtime
-from classbeat.spotdown import shadow_config, studio_tracks_config
+from classbeat.spotdown import mix_config, shadow_config, studio_tracks_config
 from classbeat.spotdown.scope_key import scope_key
 from classbeat.spotdown.sources_policy import parse_sources
-from classbeat.spotdown.studio_owners_policy import parse_owners
+from classbeat.spotdown.studio_owners_policy import MIX_NAME, parse_owners
 from classbeat.swedebeat_studio import config as studio_config
 from classbeat.swedebeat_studio import (  # noqa: F401 - each registers its kind on import
     design_kind,  # studio_design (SR C5)
@@ -112,6 +112,16 @@ async def _run(settings: Settings, signer: EventSigner | None = None) -> None:
         studio_tracks_config.TracksConfig(
             settings.spotdown_studio,
             parse_owners(settings.spotdown_studio_owners),
+            parse_sources(settings.spotdown_sources),
+            scope_key(settings),
+        )
+    )
+    # SwedeBeat mixes analysed by spotdown (#1304): its own switch, off unless set, only for its
+    # allowlisted owners, with the local mix analysis as the fallback.
+    mix_config.configure(
+        studio_tracks_config.TracksConfig(
+            settings.spotdown_mix,
+            parse_owners(settings.spotdown_mix_owners, MIX_NAME),
             parse_sources(settings.spotdown_sources),
             scope_key(settings),
         )

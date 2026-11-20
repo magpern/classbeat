@@ -8,12 +8,13 @@ kinds' ``admit`` and their run check the flag before calling it. After ``design.
 1. **The connection.** ``connection_id`` is the job's ``mowl_connection_id``; it must be the
    context's MOWL connection (``not_connected`` before any call). It is opened (a database read
    and a decryption, no request).
-2. **The cache.** One fenced transaction share-locks the connection (``hold``, the connection
-   guard of ``design.music``) and reads the user's ``swedebeat_mix_maps`` row for the mix and their
-   stored link. It is a hit only if the row is younger than 30 days, was made for **this MOWL
-   connection** (``mowl_connection_id``: the table has no foreign key to it, so this is compared
-   here), names the link's MOWL playlist and has the library's current map version. **A hit makes
-   no request at all.**
+2. **The cache** (``mix_cache.cached``). One fenced transaction share-locks the connection
+   (``hold``, the connection guard of ``design.music``) and reads the user's ``swedebeat_mix_maps``
+   rows for the mix and their stored link. A row counts only if it is younger than 30 days, was
+   made for **this MOWL connection** (``mowl_connection_id``: the table has no foreign key to it,
+   so this is compared there), names the link's MOWL playlist and has the library's current map
+   version; a revise or refit (``prefer``) takes the row its base was designed on first. **A hit
+   makes no request at all.**
 3. **A miss.** A run without one of the worker's mix-analysis slots (#574,
    ``JobRun.require_analysis_slot``) stops here and its job is requeued with one, the attempt
    not counted; ``queue_claim`` then claims it only while a slot is free
@@ -25,8 +26,13 @@ kinds' ``admit`` and their run check the flag before calling it. After ``design.
    TemporaryLinks``, one read through the library's call); the fetch (``mixfetch``: one
    no-redirect media client, the media list, 250 MB, raw bytes only) into a private directory; the
    analysis in a limited child process (``mixanalysis``); the directory is removed on every way
-   out. The link lives in this function's local variable only.
-4. **Storing.** One fenced transaction (the connection and the link held again) upserts the row,
+   out. The link lives in this function's local variable only. **spotdown** (``mix_spotdown``,
+   SD-P7a #1304; off by default, only for the allowlisted owners of ``spotdown.mix_config``): while
+   the fetched file is on disk its bytes are relayed to spotdown (its lookup by sha256 in the
+   owner's scope, then the upload) and an ``exact`` map is used with its provenance; **any
+   spotdown failure falls back to the local analysis**. Off, nothing here differs from before.
+4. **Storing** (``mix_cache.store``, the row of the analyser that made the map). One fenced
+   transaction (the connection and the link held again) upserts the row,
    drops what is past 30 days and all but the newest 20 of the user, frees the job's analysis
    slot, marks the job as one that ran a fresh analysis (``jobs.fresh_analysis``, for the
    "class ready" mail of ME5: ``classbeat.jobs.mail_handoff``) and records how long the fetch and
@@ -42,14 +48,13 @@ Nothing in a message, a log or a row names a link, a signature or a file's text.
 logged.
 """
 
-import hashlib
-import json
 import logging
 import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Final, cast
+from pathlib import Path
+from typing import Any, Final
 from uuid import UUID
 
 import httpx
@@ -60,16 +65,22 @@ from sqlalchemy import text
 from classbeat.agent.mix_input import MixData, unsure_beat_one
 from classbeat.connections import OpenConnection, call_opened, hold, open_connection
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import mixlimit
+from classbeat.design import mix_spotdown, mixlimit
+from classbeat.design.mix_cache import MAP_TTL_DAYS as MAP_TTL_DAYS
+from classbeat.design.mix_cache import MAPS_PER_USER as MAPS_PER_USER
+from classbeat.design.mix_cache import Analyser, MixAnalysis, Timing, cached, store
+from classbeat.design.mix_cache import fingerprint as fingerprint
+from classbeat.design.mix_facts import MixFacts
 from classbeat.design.mixanalysis import (
     ANALYSIS_SECONDS,
     analyse_audio,
     decode_limit_seconds,
 )
 from classbeat.design.mixfetch import fetch_mix_audio, private_directory
-from classbeat.design.music import MixFacts, MusicStep
+from classbeat.design.music import MusicStep
+from classbeat.design.track_spotdown import Session
 from classbeat.egress import mowl_media_async_client
-from classbeat.jobs import FencedSession, JobFailure, JobRun, analysis_times, mail_handoff
+from classbeat.jobs import JobFailure, JobRun, analysis_times
 from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS
 from classbeat.operations.swedebeat import (
     SOURCE,
@@ -81,96 +92,9 @@ from classbeat.operations.swedebeat import (
 
 logger = logging.getLogger(__name__)
 
-MAPS_PER_USER: Final = 20
-MAP_TTL_DAYS: Final = 30
 LINKS_SECONDS: Final = 60.0  # the temporary-link read
 FETCH_SECONDS: Final = 300.0  # the media client's total deadline
 MAX_DURATION_SECONDS: Final = 7200.0
-
-_CACHED = text(
-    "SELECT m.mowl_connection_id, m.playlist_id, m.name, m.duration, m.listed_duration, m.map, "
-    "l.playlist_id AS linked "
-    "FROM swedebeat_mix_maps m "
-    "LEFT JOIN mowl_playlist_links l ON l.owner_id = m.owner_id AND l.source = 'swedebeat' "
-    "AND l.source_id = m.mix_id "
-    "WHERE m.owner_id = :owner_id AND m.mix_id = :mix_id "
-    "AND m.created_at > now() - make_interval(days => :days)"
-)
-_LINK = text(
-    "SELECT playlist_id FROM mowl_playlist_links "
-    "WHERE owner_id = :owner_id AND source = 'swedebeat' AND source_id = :mix_id"
-)
-_UPSERT = text(
-    "INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, name, "
-    "duration, listed_duration, map) "
-    "VALUES (:owner_id, :mix_id, :connection_id, :playlist_id, :name, :duration, :listed, "
-    "CAST(:map AS jsonb)) "
-    "ON CONFLICT (owner_id, mix_id) DO UPDATE SET "
-    "mowl_connection_id = EXCLUDED.mowl_connection_id, playlist_id = EXCLUDED.playlist_id, "
-    "name = EXCLUDED.name, duration = EXCLUDED.duration, "
-    "listed_duration = EXCLUDED.listed_duration, map = EXCLUDED.map, created_at = now()"
-)
-_EXPIRE = text(
-    "DELETE FROM swedebeat_mix_maps "
-    "WHERE owner_id = :owner_id AND created_at <= now() - make_interval(days => :days)"
-)
-_TRIM = text(
-    "DELETE FROM swedebeat_mix_maps WHERE owner_id = :owner_id AND id IN ("
-    "SELECT id FROM swedebeat_mix_maps WHERE owner_id = :owner_id "
-    "ORDER BY created_at DESC, id OFFSET :keep)"
-)
-
-
-@dataclass(frozen=True, slots=True)
-class MixAnalysis:
-    """The user's analysis of one mix. ``music_map`` is the library's map; ``fingerprint`` a hash
-    of it (a later revise notices a re-analysis); ``cached`` is whether no audio was fetched."""
-
-    mix_id: str
-    playlist_id: int
-    name: str
-    duration: float
-    listed_duration: float
-    music_map: dict[str, Any]
-    fingerprint: str
-    cached: bool
-
-
-def fingerprint(music_map: dict[str, Any]) -> str:
-    """SHA-256 of the map's canonical JSON."""
-    canonical = json.dumps(music_map, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-async def _cached(
-    run: JobRun, opened: OpenConnection, mix_id: str, connection_id: UUID
-) -> MixAnalysis | None:
-    async with run.fenced() as fs:
-        if not await hold(fs.db, run.ctx, opened):
-            raise JobFailure("not_connected")
-        params = {"owner_id": run.lease.owner_id, "mix_id": mix_id, "days": MAP_TTL_DAYS}
-        row = (await fs.db.execute(_CACHED, params)).first()
-    if (
-        row is None
-        or row.mowl_connection_id != connection_id
-        or row.linked is None
-        or row.linked != row.playlist_id
-    ):
-        return None
-    stored: object = row.map
-    if not isinstance(stored, dict) or stored.get("version") != music.MAP_VERSION:  # pyright: ignore[reportUnknownMemberType]
-        return None  # an older analysis format: redone, as the library does
-    music_map = cast(dict[str, Any], stored)
-    return MixAnalysis(
-        mix_id,
-        int(row.playlist_id),
-        str(row.name),
-        float(row.duration),
-        float(row.listed_duration),
-        music_map,
-        fingerprint(music_map),
-        cached=True,
-    )
 
 
 async def _extend(run: JobRun, seconds: float) -> None:
@@ -189,15 +113,6 @@ def _temporary_link(answer: object) -> str:
     return link
 
 
-@dataclass(frozen=True, slots=True)
-class Timing:
-    """Seconds a fresh analysis spent fetching the audio and decoding and analysing it (ADR 0026
-    stage 1, #735)."""
-
-    fetch: float
-    decode: float
-
-
 def _load_average() -> float | None:
     """The host's one-minute load average (a container sees the host's), or ``None`` where the
     platform has none: logged with each analysis so CPU pressure on the box can be read beside the
@@ -208,52 +123,31 @@ def _load_average() -> float | None:
         return None
 
 
-async def _store(
-    fs_run: JobRun,
-    opened: OpenConnection,
-    analysis: MixAnalysis,
-    connection_id: UUID,
-    timing: Timing,
-) -> None:
-    payload = json.dumps(analysis.music_map, separators=(",", ":"), allow_nan=False)
-    async with fs_run.fenced() as fs:
-        await _store_row(fs, fs_run, opened, analysis, connection_id, payload)
-        await fs_run.release_analysis_slot(fs)  # #574: the slot is free once this commits
-        await mail_handoff.note_fresh_analysis(fs)  # ME5: the job ran a fresh analysis
-        # ADR 0026 stage 1 (#735): for the p95 of ``queue_stats()``.
-        await analysis_times.note_analysis_times(fs, timing.fetch, timing.decode)
-    fs_run.slot_released()
+@dataclass(frozen=True, slots=True)
+class _Analysed:
+    music_map: dict[str, Any]
+    analyser: Analyser
+    provenance: dict[str, Any] | None
+    peak_rss: int | None
 
 
-async def _store_row(
-    fs: FencedSession,
+async def _analyse(
     run: JobRun,
-    opened: OpenConnection,
-    analysis: MixAnalysis,
-    connection_id: UUID,
-    payload: str,
-) -> None:
-    owner = run.lease.owner_id
-    if not await hold(fs.db, run.ctx, opened):
-        raise JobFailure("not_connected")
-    link = (await fs.db.execute(_LINK, {"owner_id": owner, "mix_id": analysis.mix_id})).first()
-    if link is None or link.playlist_id != analysis.playlist_id:  # a reconnect deleted it
-        raise JobFailure("not_connected")
-    await fs.db.execute(
-        _UPSERT,
-        {
-            "owner_id": owner,
-            "mix_id": analysis.mix_id,
-            "connection_id": connection_id,
-            "playlist_id": analysis.playlist_id,
-            "name": analysis.name,
-            "duration": analysis.duration,
-            "listed": analysis.listed_duration,
-            "map": payload,
-        },
+    session: Session | None,
+    mix_id: str,
+    audio: Path,
+    limit: float,
+    clock: Callable[[], float],
+) -> _Analysed:
+    """spotdown's map while it is the owner's source and gives one, else the local analysis."""
+    if session is not None:
+        mapped = await mix_spotdown.analyse(run, session, mix_id, audio)
+        if mapped is not None:
+            return _Analysed(mapped.music_map, "spotdown", mapped.provenance, None)
+    result = await analyse_audio(
+        run, audio, max_seconds=limit, map_version=music.MAP_VERSION, clock=clock
     )
-    await fs.db.execute(_EXPIRE, {"owner_id": owner, "days": MAP_TTL_DAYS})
-    await fs.db.execute(_TRIM, {"owner_id": owner, "keep": MAPS_PER_USER})
+    return _Analysed(result.music_map, "local", None, result.peak_rss)
 
 
 async def load_swedebeat_mix(
@@ -290,18 +184,22 @@ async def open_swedebeat_mix(
     client_factory: Callable[[], httpx.AsyncClient] = mowl_media_async_client,
     clock: Callable[[], float] = time.monotonic,
     index_poll_seconds: float | None = None,
+    prefer: str | None = None,
 ) -> tuple[MixAnalysis, OpenConnection]:
     """``load_swedebeat_mix`` and the MOWL connection it was read with, for the connection guard
     of the transaction that stores what was designed on it (``swedebeat_step``). A cache miss
     first takes one of the user's daily analysis slots (``mixlimit.reserve``: ``analysis_limit``,
-    before anything is listed, attached or fetched)."""
+    before anything is listed, attached or fetched). ``prefer``: the fingerprint of the map a
+    revise's or refit's base was designed on (``mix_cache.cached``)."""
     mix_id = check_mix_id(mix_id)
     if run.ctx.connection("mowl") != connection_id:
         raise JobFailure("not_connected")
     opened = await open_connection(run.factory, keyring, run.ctx, "mowl")
     if opened.id != connection_id:
         raise JobFailure("not_connected")
-    hit = await _cached(run, opened, mix_id, connection_id)
+    session = mix_spotdown.session_for(run)  # None (the default): today's local analysis
+    spotdown = session is not None
+    hit = await cached(run, opened, mix_id, connection_id, spotdown=spotdown, prefer=prefer)
     if hit is not None:
         if run.analysis_slot:  # requeued for a slot, then another job stored the analysis
             async with run.fenced() as fs:
@@ -344,15 +242,14 @@ async def open_swedebeat_mix(
     )
     link = _temporary_link(answer)
     del answer
-    await _extend(run, FETCH_SECONDS + ANALYSIS_SECONDS)
+    relayed = mix_spotdown.RELAY_SECONDS + mix_spotdown.MIX_WAIT_SECONDS if spotdown else 0.0
+    await _extend(run, FETCH_SECONDS + relayed + ANALYSIS_SECONDS)
     with private_directory() as directory:
         fetch_started = clock()
         audio = await fetch_mix_audio(run, link, directory, client_factory=client_factory)
         del link
         decode_started = clock()
-        result = await analyse_audio(
-            run, audio, max_seconds=limit, map_version=music.MAP_VERSION, clock=clock
-        )
+        result = await _analyse(run, session, mix_id, audio, limit, clock)
         timing = Timing(decode_started - fetch_started, clock() - decode_started)
     analysis = MixAnalysis(
         mix_id,
@@ -363,13 +260,16 @@ async def open_swedebeat_mix(
         result.music_map,
         fingerprint(result.music_map),
         cached=False,
+        analyser=result.analyser,
+        provenance=result.provenance,
     )
-    await _store(run, opened, analysis, connection_id, timing)
+    await store(run, opened, analysis, connection_id, timing)
     logger.info(
         "swedebeat mix analysed",
         extra={
             "job_id": str(run.lease.job_id),
             "songs": len(analysis.music_map["songs"]),
+            "analyser": analysis.analyser,
             "peak_rss_mb": None if result.peak_rss is None else result.peak_rss // (1 << 20),
             "fetch_ms": analysis_times.to_ms(timing.fetch),
             "decode_ms": analysis_times.to_ms(timing.decode),
@@ -393,12 +293,14 @@ async def swedebeat_step(
     connection_id: UUID,
     client_factory: Callable[[], httpx.AsyncClient] = mowl_media_async_client,
     index_poll_seconds: float | None = None,
+    prefer: str | None = None,
 ) -> MusicStep:
     """The music step of a design on the user's Swedebeat mix (ADR 0016 section 3, A4): the
     analysis, then its link read under ``hold`` with the connection it was read with, as
     ``design.music`` does for a playlist. ``MusicStep.still_current`` repeats that check in the
     transaction that stores the revision (``link_source = 'swedebeat'``). The model is given the
-    map only (``mix_input.mix_summary``); the name and the ids stay in ``MusicStep.mix``."""
+    map only (``mix_input.mix_summary``); the name and the ids stay in ``MusicStep.mix``, with
+    the analyser and a spotdown map's provenance (recorded with the revision)."""
     analysis, opened = await open_swedebeat_mix(
         run,
         keyring,
@@ -406,6 +308,7 @@ async def swedebeat_step(
         connection_id=connection_id,
         client_factory=client_factory,
         index_poll_seconds=index_poll_seconds,
+        prefer=prefer,
     )
     async with run.fenced() as fs:
         if not await hold(fs.db, run.ctx, opened):
@@ -433,5 +336,7 @@ async def swedebeat_step(
             duration=analysis.duration,
             listed_duration=analysis.listed_duration,
             unsure_beat_one=tuple(unsure_beat_one(m)),
+            analyser="spotdown" if analysis.analyser == "spotdown" else None,
+            provenance=analysis.provenance if analysis.analyser == "spotdown" else None,
         ),
     )

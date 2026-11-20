@@ -565,6 +565,34 @@ Notes for operators and the next phases:
 - **(d) Shadow mode** (`CLASSBEAT_SPOTDOWN_SHADOW`, off by default) and its open points are in
   [developer-commands.md](../developer-commands.md) ("spotdown shadow mode for studio tracks").
 
+### Amendment (2026-11-20, SD-P7a, #1304): the SwedeBeat mix through spotdown, as built (extends §6 to §9)
+
+- **Source and switch.** The mix keeps today's MOWL temporary-link fetch (`design.mixfetch`, 250 MB;
+  the link is never stored, logged or sent to spotdown). spotdown is the source of the mix's map only
+  with `CLASSBEAT_SPOTDOWN_MIX=allowlist` and the job's owner in `CLASSBEAT_SPOTDOWN_MIX_OWNERS`
+  (worker only, its own switch, default `off`; no value means everyone: that waits for the mix gates
+  on the owner's corpus, #1298). Off, the code path and every stored byte are today's.
+- **Lookups** (§7): the owner's `swedebeat_mix_maps` row, then `lookup_content` by sha256 in the
+  owner's `cache_scope`, then the streamed upload and the analysis. Account deletion deletes the scope
+  through the existing outbox (one scope per owner covers studio tracks and mixes).
+- **Mapping.** `timing_class_policy` path (a) (`swedebeat_mix`, the uploaded bytes are the played mix:
+  `exact`), then `mix_map_policy` (version 1): spotdown has no notion of a song, so a song starts and
+  ends at the content edges and at the **trusted** structure boundaries, and its BPM is the tempo at
+  its midpoint from `tempo.bpm` and the **trusted** change points: the reading spotdown's harness uses
+  for the §9 mix gates, restricted to trusted features. A span without a trusted beat joins its
+  neighbour; beat 1 is the first trusted downbeat, else the first beat with a zero margin (shown as an
+  estimate). The provenance record adds `mix_map_policy` to its policy versions.
+- **Rows per analyser.** `swedebeat_mix_maps` is keyed `(owner_id, mix_id, analyser)` (migration
+  0065) with the `spotdown` row's provenance; a revision designed on spotdown's map records
+  `analyser` and the provenance (kept per class, §6), and a revise or refit reads the row whose map has
+  its base's fingerprint first, whatever the switch, so a class never changes analyser silently.
+  The web app's admission counts only `local` rows as a cache hit for the daily limit (stricter).
+- **Bounds** (§8). The per-class budget and outage flag are the design job's
+  (`spotdown_studio_budgets`, shared with the studio tracks: one class, one budget); a mix also waits
+  for spotdown at most 180 s (today's local mix-analysis limit), then falls back. Every failure, and
+  an error of any type in the spotdown code, falls back to the local `mixanalysis` and `mixchild`
+  path. The local child's 180 s and 1.5 GiB limits are unchanged; spotdown's own are its sandbox's.
+
 ## Status
 
 Accepted. §12 takes effect only on the owner's acceptance of #1296.

@@ -77,6 +77,7 @@ from classbeat.agent.model_input import MusicData
 from classbeat.agent.schemas import clean_text
 from classbeat.connections import Credentials, OpenConnection, call_opened, hold, open_connection
 from classbeat.crypto.keks import KeyRing
+from classbeat.design.mix_facts import MixFacts
 from classbeat.jobs import FencedSession, JobFailure, JobRun, RunStopped
 from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS
 from classbeat.operations import attach_spotify_playlist
@@ -122,19 +123,6 @@ class _Halt(BaseException):
 class UnknownBpm:
     index: int  # the track's index in the music summary (0-based)
     title: str
-
-
-@dataclass(frozen=True, slots=True)
-class MixFacts:
-    """What the revision records of a Swedebeat mix (ADR 0016 section 3), for the user only:
-    the mix's id and name, the analysed and the listed length, and the songs (0-based) whose beat
-    1 is an estimate. Never model input."""
-
-    mix_id: str
-    name: str
-    duration: float
-    listed_duration: float
-    unsure_beat_one: tuple[int, ...]
 
 
 @dataclass(eq=False)
