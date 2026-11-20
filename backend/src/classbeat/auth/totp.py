@@ -15,6 +15,7 @@ from collections.abc import Callable
 
 import pyotp
 import segno
+from pyotp.totp import TOTP
 
 PERIOD = 30
 DIGITS = 6
@@ -37,7 +38,7 @@ def new_secret() -> str:
 
 
 def provisioning_uri(secret: str, account: str) -> str:
-    return pyotp.TOTP(secret, digits=DIGITS, interval=PERIOD).provisioning_uri(
+    return TOTP(secret, digits=DIGITS, interval=PERIOD).provisioning_uri(
         name=account, issuer_name=ISSUER
     )
 
@@ -62,7 +63,7 @@ def match_step(secret: str, code: str) -> int | None:
     if not is_totp_code(code):
         return None
     current = int(clock() // PERIOD)
-    generator = pyotp.TOTP(secret, digits=DIGITS, interval=PERIOD)
+    generator = TOTP(secret, digits=DIGITS, interval=PERIOD)
     matched: int | None = None
     for step in range(current - WINDOW, current + WINDOW + 1):
         expected = generator.at(step * PERIOD)
@@ -73,7 +74,7 @@ def match_step(secret: str, code: str) -> int | None:
 
 def code_for_step(secret: str, step: int) -> str:
     """The code for ``step`` (tests and nothing else)."""
-    return pyotp.TOTP(secret, digits=DIGITS, interval=PERIOD).at(step * PERIOD)
+    return TOTP(secret, digits=DIGITS, interval=PERIOD).at(step * PERIOD)
 
 
 def new_recovery_codes() -> list[str]:
