@@ -6,13 +6,20 @@ behaviour. It is SD-P7b of the spotdown programme (roadmap
 and §5). The implementation issues of §14 are opened only after the owner accepts it (§13, item 1).
 
 Depends on: [ADR 0040](0040-spotdown-analysis-service.md) (the boundary, timing classes, scopes, the
-v2 API) and the relay pattern proven for studio tracks (#1302).
+v2 API) and the relay pattern proven for studio tracks (#1302, still open). The web-side relay of §2
+is not the worker-side relay that #1302 proves, so the upload issue (U4, §14) waits for #1302 as
+well as for the owner's acceptance.
 
 Amends, effective on the owner's acceptance of this ADR (§13, item 1):
 - [ADR 0021](0021-use-part-of-a-song.md) §2, third bullet ("User files: not a source. Needs its own
   ADR") and §3(c) ("the owner approves a user-file source as a separate product decision"). This ADR
   is that ADR and that decision. Part of a song stays out: a user's player cannot be told to skip
   (§6), so no trim is added.
+- [ADR 0040](0040-spotdown-analysis-service.md) §7 (and plan §5), for `user_audio` only: the scope
+  bullet (an HMAC of `owner_id` as `cache_scope`) becomes a scope **per track** (§9), and the bullet
+  "spotdown's lookup by sha256 within the scope, then upload" becomes classbeat's own library check
+  only (§2 item 1). Both are stricter, not looser: no cross-user and no cross-track reuse. SwedeBeat
+  tracks and the mix keep the owner scope.
 - [ADR 0007](0007-classes-revisions-and-saving.md) the amendment of 2026-11-03 (soundless classes, #526), item 1: a class's music
   kind is `none` or not `none` and never changes; `user_audio` is a third, non-`none` kind (§3).
 
@@ -77,9 +84,10 @@ source of analysis, not of playback.
   so a trimmed timeline would be wrong.
 - **spotdown is required.** There is no local analysis fallback for user audio (the local
   `track_analysis` path is for studio tracks fetched through the gateway and stays as it is). When
-  spotdown is off or unreachable the feature says so and offers nothing else (§7). This is the one
-  place ADR 0040's "spotdown is never a hard dependency" does not apply, because there is no path
-  to fall back to; the rest of the app is unaffected.
+  spotdown is off or unreachable the feature says so and offers nothing else (§7). This is a
+  departure from ADR 0040 §8 ("spotdown is never a hard dependency"), because there is no path to
+  fall back to; the rest of the app is unaffected. The other departure is ADR 0040 §7's scope (§9
+  below). Both are named in the "Amends" list.
 
 ### 2. The upload path: browser to classbeat to spotdown, never stored
 
@@ -112,19 +120,32 @@ browser --(raw body, PUT /api/user-audio/uploads)--> classbeat web --(stream, PU
    as it follows any job.
 4. **The route is the one body-limit exception.** `bodylimit.ROUTE_LIMITS` gains exactly one entry,
    `/api/user-audio/uploads`, with the cap of §4 plus a small margin, and the reason next to it
-   (the test that fails on an undocumented entry is updated to name it). The reverse proxy needs a
-   matching larger `client_max_body_size` for that one path only; the rest of the site keeps `1m`.
-   That deploy change is the owner's (§13, item 5; runbook text in the implementation PR).
+   (the test that fails on an undocumented entry is updated to name it). The reverse proxy needs, on
+   that one `location` only (the rest of the site keeps `1m` and its defaults): a larger
+   `client_max_body_size`, a `client_body_timeout`, and **`proxy_request_buffering off`**. nginx
+   (SWAG) buffers a request body over `client_body_buffer_size` to a temp file in
+   `client_body_temp_path` before it proxies it, so without that line every upload of up to 60 MiB
+   would be written to the proxy container's disk, before the app's session check can refuse it:
+   audio at rest (§1) and a pre-authentication disk-fill. With it, the body streams to the app as it
+   arrives, and a client that is refused or goes away is cut off. The implementation PR (U4) puts
+   the location in `swag-classbeat.subdomain.conf` and the runbook (`vps-deploy.md` §10), adds a
+   runbook check (a body over the cap is refused with 413, and the proxy container's
+   `client_body_temp_path` stays empty during an upload), and teaches
+   `scripts/check-prod-compose-site.bash` to fail when the upload location lacks
+   `proxy_request_buffering off`, the way it fails an SSE location without `proxy_buffering off`.
+   Caddy, if it is ever used as the edge, does not buffer request bodies by default and needs only
+   `request_body max_size` for that path. The deploy change itself is the owner's (§13, item 5).
 5. **The web tier calls spotdown for this one path.** The service key is a worker-only secret today.
-   Relaying from the web process needs it there, a change to how a secret is mounted. Decided, as
-   the safest reversible default: mount the same `spotdown_service_key` file read-only on `web`
+   Relaying from the web process needs it there, a change to how a secret is mounted. The chosen
+   default (reversible; the upload-only key of §11 is the safer follow-up): mount the same `spotdown_service_key` file read-only on `web`
    as well; the egress builder takes a **role** (`web` or `worker`) and a role may call only its own
    paths and methods: `web` only `PUT /v2/uploads`; `worker` the rest (`POST /v2/analyses`,
    `GET /v2/jobs/{id}`, `GET /v2/analyses/{id}`, `DELETE /v2/scopes/{scope}`, and the studio
    calls); a test pins both lists, and `tests/egress_scan.py` is updated. The web process is
    internet-facing, so this widens the key's exposure; the key reaches only a service on the internal
    compose network that holds no user token, no KEK and no database access (ADR 0040 §13), and an
-   attacker with code execution in web already holds the database role and the session key. This
+   attacker with code execution in web already holds the database role and the session key; a full
+   key on web still lets a compromised web call `DELETE /v2/scopes/*` and start analyses (T142). This
    mount is the one place the ADR needs the Opus review of a secret-handling change (AGENTS.md,
    Amendment 13), and the Architect confirms it before the issue opens. §11 lists the alternatives.
 
@@ -168,7 +189,7 @@ browser.
 | Tracks in a class | **20** | admit |
 | Tracks a user holds (all states) | **100** (`library_full`; the user removes some) | the route, under the owner lock |
 | New uploads per rolling 24 hours | **30** and **1.2 GiB**; a `known` check costs none. Ledger table in the style of `swedebeat_track_downloads`: one row per upload started (so a failed one counts), per-user advisory lock, rows trimmed at 48 hours | the route, before the first byte |
-| Uploads in flight | **1 per user**, **3 for the box** (`busy`, HTTP 429, the existing shape) | the route |
+| Uploads in flight | **1 per user**, **3 for the box** (`busy`, HTTP 429, the existing shape). Both are **database counts** (there are several web processes) of `uploading` rows younger than the 10-minute relay wall budget of §10, so a crashed relay stops counting after 10 minutes, not at the 2-hour purge | the route |
 | Analysis slots | the same ADR 0026 stage 1 slots as every analysis; no priority change | the job queue |
 | Plan gate | a feature gate `user_audio_allowed` in ADR 0011's gate set, seeded **off for Free and on for the paid plans**; the admin area edits it; the admin switch `CLASSBEAT_USER_AUDIO` is **off by default** and a kill switch | admit (`409 quota` `feature`) |
 
@@ -182,7 +203,8 @@ classbeat cannot see what the user plays, so the rule is:
 
 - A track is `exact` when (i) spotdown analysed these bytes (the sha256 of the relay equals the
   sha256 in spotdown's provenance), and (ii) the user **attested at approval** that they will play
-  these files, unedited, in this order. The attestation is a required, unticked-by-default
+  these files, unedited, in this order, **gapless or with the crossfade stated on the class** (so the
+  stated crossfade is part of what is attested and of the approval hash). The attestation is a required, unticked-by-default
   statement on the approval screen, bound into the approval like the studio's consent (ADR 0036 §7),
   and stored with the revision. Without it the class cannot be approved. The stored basis is
   `user_attested_same_file`, mapped to `played_recording` by `spotdown_map_policy` (the only basis
@@ -248,10 +270,11 @@ classbeat keeps **no audio, no file name, no tag and no URL**. It keeps:
 | Counts, enums, own ids (no label, no hash) | `job_events`, logs (ADR 0004 §7, ADR 0005 §6) | the job; log retention |
 | The same derived analysis, per track | spotdown, under that track's own scope (§9) | `DELETE /v2/scopes/{scope}` |
 
-- **A track is referenced** when a revision of a class of the same owner lists its `track_id`
-  (ADR 0007 §11: every owned row that uses an analysis records its id). **Unreferenced tracks are
+- **A track is referenced** when **any stored revision** of a class of the same owner lists its
+  `track_id` (ADR 0007 §11: every owned row that uses an analysis records its id); old revisions
+  count, because they are kept and can be made current again. **Unreferenced tracks are
   purged 7 days after upload** (a track that was uploaded and never used, or whose classes were
-  revised or deleted), and a `failed` or `uploading` row after 2 hours. The purge is a fenced
+  deleted; a revision that dropped it does not free it while an older revision still lists it), and a `failed` or `uploading` row after 2 hours. The purge is a fenced
   worker sweep in the style of the queue's, in small batches; it only enqueues the scope deletion
   (§9) in the same transaction that deletes the row.
 - **Removing a track** ("My audio" list, one by one or all) deletes the row and enqueues its scope
@@ -278,12 +301,23 @@ classbeat keeps **no audio, no file name, no tag and no URL**. It keeps:
   and no cross-track reuse is possible at spotdown (decision 2 of the plan, strictly). The cost is
   that spotdown never reuses a user's analysis across tracks, which is nothing: classbeat's own
   library by sha256 (§2, step 1) already avoids re-uploading and re-analysing the same file.
-- **Deleting** a track, the unreferenced purge, a failed upload and an account deletion each insert
-  the scope into the existing outbox (`spotdown_scope_deletions`) **in the transaction that removes
-  the row**; the worker sends `DELETE /v2/scopes/{scope}` and retries until `2xx` or `404`. The
-  account deletion first reads the owner's track ids to compute their scopes, in the same
-  transaction that deletes the rows (the HMAC needs the id). Nothing depends on the web request
-  surviving.
+- **The scope is stored, not recomputed.** It is opaque and holds nothing personal, so it is a
+  column of `user_audio_tracks`, written with the row, and every deletion enqueues the **stored**
+  value. A rotation of the derived key (`scope_calc` warns it orphans old scopes) therefore does not
+  orphan user-audio scopes; the key is used only to create new ones.
+- **Deleting** a track, the unreferenced purge, a failed upload and a class deletion insert the
+  stored scope into the existing outbox (`spotdown_scope_deletions`) **in the transaction that
+  removes the row**; the worker sends `DELETE /v2/scopes/{scope}` and retries until `2xx` or `404`.
+  The **account deletion** records the owner's stored scopes just before the erasure, as it already
+  does for the owner scope (`scope_outbox.record_for`, in the erasure's own steps, not one
+  transaction with the row deletes), and the outbox row outlives the account. Nothing depends on the
+  web request surviving.
+- **A relay that outlives its row.** If the row is deleted while its relay is still streaming (an
+  account deletion, or the purge of a stale `uploading` row), the outbox may send `DELETE` before
+  spotdown stores the upload, and the `201` then leaves an upload in a scope nobody deletes. The
+  relay therefore checks, on completion, that its row still exists; if not, it enqueues the stored
+  scope again (the outbox keeps it, the sender treats `404` as done). If the process dies first, the
+  upload is deleted by spotdown's own expiry within one hour (the accepted bound).
 - **GDPR.** Erasure: the account deletion removes every classbeat row above and enqueues every scope;
   spotdown's deletion removes the analyses, jobs and run records of those scopes (ADR 0040 §5).
   Access and portability: the account export lists the library and the class snapshots (labels, durations,
@@ -355,11 +389,11 @@ New rows in `docs/security/threat-model.md`, planned until built (T138 and up, t
 
 | ID | Threat | Mitigation (planned) |
 |---|---|---|
-| T138 | A user's audio stored, served, logged or sent to a model by classbeat (a spool, a temp file, a log line, a prompt) | The relay streams chunk by chunk, no file or large buffer; no multipart framework; no audio, label or hash in logs or prompts; a test uploads a canary through the fake spotdown and scans the process's files, logs and the model request fixtures |
-| T139 | The upload route used to exhaust the box (a huge or endless body, many parallel uploads, a slow-body attack) | One route-specific cap counted as streamed; Content-Length not trusted; per-chunk and wall timeouts; 1 relay per user and 3 per box; the daily byte and count ledger; the proxy's per-path limit; the plan gate and kill switch |
+| T138 | A user's audio stored, served, logged or sent to a model by classbeat (a spool, a temp file, a log line, a prompt) | The relay streams chunk by chunk, no file or large buffer; no multipart framework; the proxy does not spool the body (`proxy_request_buffering off` on that location, asserted by the runbook check and `check-prod-compose-site.bash`, §2 item 4); no audio, label or hash in logs or prompts; a test uploads a canary through the fake spotdown and scans the process's files, logs and the model request fixtures (the proxy's `client_body_temp_path` is the runbook check) |
+| T139 | The upload route used to exhaust the box (a huge or endless body, many parallel uploads, a slow-body attack) | One route-specific cap counted as streamed; Content-Length not trusted; per-chunk and wall timeouts; 1 relay per user and 3 per box; the daily byte and count ledger; the proxy's per-path limit and body timeout, with `proxy_request_buffering off` so an unauthenticated body is not spooled to the proxy's disk before the app can refuse it; the plan gate and kill switch |
 | T140 | Hostile audio reaching a decoder in a way that reads files or the network (a playlist container, `concat`, HLS), or decodes without bound | classbeat sniffs and relays only mp3, mp4, wav; spotdown forces the demuxer, allows no protocol but `file`, reads one audio stream and caps decoded length in a subprocess (spotdown tests); classbeat never parses the body |
 | T141 | One user's track, analysis or sha256 reaching another user, or surviving a track, class or account deletion | A scope per track derived from `owner_id` and `track_id`; no lookup across scopes; the check route reads only the caller's rows; the outbox in the deleting transaction; the retention registry and plant-and-delete test; a fake spotdown test that deletes and then looks the scope up |
-| T142 | The spotdown service key exposed through the web tier | Role-limited egress (web: `PUT /v2/uploads` only), a pinned path list, the key file read-only on web, never in env, logs or errors; the Opus review of the mount |
+| T142 | The spotdown service key exposed through the web tier | Role-limited egress (web: `PUT /v2/uploads` only), a pinned path list, the key file read-only on web, never in env, logs or errors; the Opus review of the mount. **Residual:** a full key on web lets a compromised web delete scopes and start analyses; an upload-only key (§11) would remove that |
 | T143 | A track treated as `exact` when the played file differs (an edited or re-encoded file), or the model told a beat position that does not match what plays | `exact` only with equal sha256 and the stored attestation; the sheet shows the short hash; a different file is a new upload and a new approval; the crossfade is the user's stated value; the validator refuses precise cues without `exact` |
 | T144 | Copyright or rights abuse (the feature used to process content the user may not use, or as a way to share it) | The rights statement and terms; no hosting, serving or sharing of audio or analyses; private per owner; the plan gate and kill switch; deletion on complaint |
 | T145 | A label or the sha256 used for injection or tracking: prompt injection through the label, or the hash linking users | The label is untrusted user text, bounded to 80 characters and delimited like the brief; the hash is shown only to its owner, never logged with the owner, and spotdown holds it only under a per-track scope |
@@ -367,6 +401,8 @@ New rows in `docs/security/threat-model.md`, planned until built (T138 and up, t
 ### 13. What remains the owner's decision
 
 1. **Accept the product** (ADR 0021 §3(c)): user files become a music source, with the limits above.
+   Acceptance also accepts the amendments of ADR 0021, ADR 0007 and ADR 0040 §7 named in the header
+   (the Architect records a dated amendment in each, and fixes plan §5).
    Until the owner sets this ADR to Accepted, no implementation issue opens. If the owner declines,
    ADR 0021 §2 stands and this ADR is Rejected.
 2. **The legal text:** the rights statement and the terms and privacy sentences for user audio
@@ -378,8 +414,9 @@ New rows in `docs/security/threat-model.md`, planned until built (T138 and up, t
 4. **A live check of the output** (owner-authorized, never an agent): saving one `user_audio` class
    to MOWL with `PlaylistID: -1` and reading it back, after the soundless gates of §6. Until then
    no Save to MOWL for this kind.
-5. **The proxy change at deploy** (owner only): a larger `client_max_body_size` for the one upload
-   path, and the compose network and key mount of §11.
+5. **The proxy change at deploy** (owner only): for the one upload path, a larger
+   `client_max_body_size`, a body timeout and `proxy_request_buffering off` (§2 item 4), and the
+   compose network and key mount of §11.
 6. **Not asked:** cross-user reuse of user-audio analyses (no, §10); YouTube (not used);
    anything about #1296 to #1299.
 
@@ -426,8 +463,10 @@ scan (§10), the 0 s crossfade (§5), the formats of v1.
 
 - Nothing changes in code, settings, compose, the proxy or deployment with this ADR. It becomes the
   design for §14's issues once accepted.
-- ADR 0021 and ADR 0007's music-kind rule are amended on acceptance; the Architect then records a
-  dated amendment in each, pointing here (the way ADR 0040 did for 0010 and 0021).
+- ADR 0021, ADR 0007's music-kind rule and ADR 0040 §7 (the per-track scope and the library-first
+  check, for `user_audio` only) are amended on acceptance; the Architect then records a dated
+  amendment in each, pointing here (the way ADR 0040 did for 0010 and 0021). The frozen plan §5 is
+  fixed in the same PR as ADR 0040's amendment.
 - classbeat gains its first upload route, its first non-empty `bodylimit.ROUTE_LIMITS` entry, a
   second holder of the spotdown service key (the web tier, for one path), and a new class of
   personal data (a user's label and file hash) with a stated retention.
