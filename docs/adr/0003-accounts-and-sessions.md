@@ -1200,12 +1200,12 @@ back in.
     token is the proof and cannot be guessed, failures already hold sign-in IP slots, and the
     person who opens the link is the one locked out of their account, who should not meet a
     challenge wall (or a Turnstile outage) between them and the revert.
-- **The safe recovery (one transaction, `auth/email_revert.py`).** After consuming the token it
-  takes the user row lock (ADR 0019 §6, as the reset does), rechecks the address, and then:
-  restores `email` and `email_normalized`; **clears the password**; deletes **every linked
+- **The safe recovery (one transaction, `auth/email_revert.py`).** It peeks the token, takes the
+  user row lock (ADR 0019 §6, as the reset does) **before** consuming it, then consumes the token,
+  rechecks the address, and then: restores `email` and `email_normalized`; **clears the password**; deletes **every linked
   identity**, the **TOTP**, the **recovery codes** and **every passkey**; revokes **every session**
-  (`revoke_user_sessions`, which also queues the player logout event of ADR 0034 §2) and forgets
-  the **known devices**; deletes every outstanding token; records **`email_reverted`** (the
+  (`revoke_user_sessions`, which also queues the player logout event of ADR 0034 §2), forgets
+  the **known devices** and burns the user's unused **player sign-in codes** (below); deletes every outstanding token; records **`email_reverted`** (the
   request's address, `detail` = how many methods and passkeys went); and issues one
   `reset_password` token (30 minutes, §5). After the commit the restored address gets the new
   essential mail `email_reverted`, which says what was removed and carries the reset link. If that
@@ -1228,7 +1228,46 @@ back in.
     rechecking it at completion: it is smaller, needs no change to the token rows, and closes the
     window before a token exists rather than after one was mailed.
   Tests: `backend/tests/test_auth_email_revert_races.py` (both orders of each race, parked, not
-  timed).
+  timed) and `backend/tests/test_auth_revert_lock_order.py` (#1292: the revert against the email
+  confirmation and against the reset completion, each in both orders, parametrized; it fails for
+  the two mutations "the revert consumes its token before locking" and "the confirmation takes no
+  lock", which brought the deadlock and its 500 back and passed the first tests).
+- **A → B → C and the first revert link (decided in #1292: it stays stale).** Confirming the second
+  change deletes A's token, so the notice to A can no longer revert. The alternative, keeping A's
+  token and moving its `email_at_issue` to each new address, was rejected:
+  - It does not close the hole. The changer holds B's mailbox, so they receive the B → C notice
+    with a token that restores B; a revert deletes every outstanding token, A's included, so
+    changing twice and then reverting with B's own link kills A's token anyway. Making A's survive
+    would need a rule that a revert deletes only the later tokens of the chain, a new design with
+    ordering, rebinding and a state per hop, not a hardening.
+  - It moves the exposure the wrong way for the other party. The 7 days are a window in which
+    whoever holds the old mailbox can take the account (accepted limit 2). Today a later change by
+    the owner closes that window for A's link; with a chain it would stay open in every state the
+    account passes through, so an owner who moved off a mailbox they distrust could not close it by
+    changing again.
+  - What the owner of A has left is the notice itself and support (accepted limit 1). The rule is
+    unchanged: single use, 7 days, valid only while the account's address equals the token's
+    `email_at_issue`.
+  `test_a_token_is_stale_once_the_address_moved_on` (`test_auth_email_revert.py`) pins it,
+  including that A → B → C → B does not bring A's token back.
+- **Player sign-in codes (decided in #1292: revert and reset both burn them).** An `oidc_codes` row
+  (ADR 0034 §1: 60 seconds, single use, redeemed at `/oidc/token` by the player's server) was not
+  touched by a revert or a reset. A code the changer asked for in the last minute could still be
+  turned into a player session after the lockdown, next to the `sessions_revoked` event that signs
+  the player out. Both paths now call `oidc.code_store.revoke_codes` in their transaction, after
+  the session revocation: it sets `used_at` on the user's unused codes, as a failed redemption
+  does, so a later redemption gets the same `invalid_grant` as for any bad code, is written as
+  `oidc_code_refused` with `reason: used` for that user, and the purge removes the row. Other
+  users' codes are untouched; a refused revert rolls the burn back with everything else. It is
+  done for both because the cost is one statement and the reset has the same shape (whoever had
+  the old password or a session may hold a code). The other paths that end sessions (a password
+  change, an email confirmation, sign out everywhere) are not changed: they are the signed-in
+  user's own action, and the player logout event covers them.
+  *Accepted residual:* a code redeemed before the commit has its ID token already, and a request
+  that passed the session check before the revert can still insert a code after it (the
+  authorize continue and the token endpoint take no user row lock). Both are bounded by the 60
+  seconds of the code and by the `sessions_revoked` event the same transaction queued. Tests:
+  `backend/tests/test_auth_revert_player_codes.py`.
 - **Activity.** `email_reverted` joins `activity.SHOWN_KINDS` (amendment of 2026-11-07), worded in
   every catalogue.
 - **The page path.** The issue named `/email/revert`; the page is `/email-revert` instead, next to
@@ -1253,7 +1292,8 @@ back in.
 **Consequences.**
 - **Accepted limits.** (1) Moving the address twice (A → B → C) makes A's link stale, by the
   rule that a revert works only while the address is still the one the notice was about; a
-  changer who knows this can defeat it, and the owner of A then has the notice and support.
+  changer who knows this can defeat it, and the owner of A then has the notice and support (why
+  it stays so: "A → B → C and the first revert link", above).
   (2) Whoever holds the old mailbox within the 7 days can take the account: revert, then the reset
   link. A user who left a mailbox they no longer control is exposed for that week; the lifetime
   is the trade-off between that and an owner who reads their mail late.

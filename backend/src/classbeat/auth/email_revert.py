@@ -9,7 +9,8 @@ alone would leave all of that, so the revert is followed, in the same transactio
 - the password is cleared, and every linked identity, the TOTP, the recovery codes and every
   passkey are deleted;
 - every session is revoked (``revoke_user_sessions``, which also queues the player logout
-  events of ADR 0034 section 2) and the known devices are forgotten;
+  events of ADR 0034 section 2), the known devices are forgotten and the unused player sign-in
+  codes (``oidc_codes``, 60 seconds) are burned;
 - every outstanding mail token is deleted, the revert's own included, and one fresh
   ``reset_password`` token is issued for the mail to the restored address.
 
@@ -27,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.auth.devices import forget_devices
 from classbeat.auth.events import record_event
+from classbeat.auth.oidc.code_store import revoke_codes
 from classbeat.auth.passkey_recovery import remove_passkeys_except
 from classbeat.auth.sessions import revoke_user_sessions
 from classbeat.auth.tables import identities, mfa_recovery_codes, mfa_totp, users
@@ -114,4 +116,5 @@ async def _lock_down(db: AsyncSession, user_id: UUID) -> dict[str, int]:
     passkeys = await remove_passkeys_except(db, user_id, ())
     await revoke_user_sessions(db, user_id)
     await forget_devices(db, user_id)
+    await revoke_codes(db, user_id)  # a code the changer asked for must not sign in a player
     return {"methods_removed": methods, "passkeys_removed": passkeys}
