@@ -184,6 +184,8 @@ JOBS = [
     # ADR 0040 sections 7 and 9 (0063_spotdown_shadow, #1301 part 3).
     "spotdown_shadow_tracks",
     "spotdown_scope_deletions",
+    # ADR 0040 section 8 (0064_track_map_provenance, #1302).
+    "spotdown_studio_budgets",
     "swedebeat_track_downloads",
     # ADR 0036 section 6 (0054_class_outputs, SR C7).
     "class_outputs",

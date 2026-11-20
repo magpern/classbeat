@@ -49,7 +49,6 @@ check, then ``needs_reconnect`` or a retried ``upstream_unavailable``; ``app_mis
 
 import logging
 from collections.abc import Sequence
-from dataclasses import replace
 from pathlib import Path
 from typing import Final
 
@@ -60,7 +59,14 @@ from classbeat.connections.swedebeat_account import SwedebeatBearer
 from classbeat.design import track_shadow, track_spotdown, tracklimit
 from classbeat.design.mixanalysis import ANALYSIS_SECONDS, analyse_audio
 from classbeat.design.mixfetch import private_directory
-from classbeat.design.track_cache import Accept, TrackMap, cached, cached_by_sha256, store
+from classbeat.design.track_cache import (
+    Accept,
+    Stored,
+    TrackMap,
+    cached,
+    cached_by_sha256,
+    store,
+)
 from classbeat.design.track_map_policy import MAX_TRACK_SECONDS, wanted
 from classbeat.egress_gateway import DOWNLOAD_SECONDS
 from classbeat.jobs import JobFailure, JobRun
@@ -97,10 +103,14 @@ def accept(spotdown: bool) -> Accept:
     """Which cached rows are hits: ``local`` ones always, ``spotdown`` ones only while spotdown
     is the owner's source and their provenance is this build's (``current_provenance``)."""
 
-    def accepted(analyser: str, provenance: object) -> bool:
-        if analyser == "local":
+    def accepted(row: Stored) -> bool:
+        if row.analyser == "local":
             return True
-        return spotdown and analyser == "spotdown" and current_provenance(provenance)
+        return (
+            spotdown
+            and row.analyser == "spotdown"
+            and current_provenance(row.provenance, row.sha256)
+        )
 
     return accepted
 
@@ -116,7 +126,14 @@ async def _from_spotdown(
     """The owner's own analysis of the same bytes, else spotdown's; ``None``: analyse locally."""
     same = await cached_by_sha256(run, bearer.connection, reference, sha256, accept(True))
     if same is not None:
-        return replace(same, cached=False)  # no upload; stored under this reference too
+        return TrackMap(  # no upload; stored under this reference too
+            reference,
+            sha256,
+            same.music_map,
+            cached=False,
+            analyser=same.analyser,
+            provenance=same.provenance,
+        )
     mapped = await track_spotdown.analyse(run, session, reference, sha256, audio)
     if mapped is None:
         return None

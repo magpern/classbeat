@@ -3,7 +3,8 @@
 ``view`` reads, in one user transaction: the studio on (``feature_off`` otherwise), the class's
 current studio draft with its hash re-checked (``current_draft.load``: ``not_found``,
 ``no_studio_draft``, ``internal``) and the user's cached analyses of the draft's references
-(``track_cache.cached_in``; one that is gone is ``music_changed``: Change songs analyses again).
+(``track_cache.cached_in``, exactly the rows the draft recorded; one that is gone is
+``music_changed``: Change songs analyses again).
 The timeline itself is ``timeline_calc``'s, from ``compose_map`` of the stored mix spec.
 
 The answer names the draft (``revision_id``, ``content_hash``: what the output choice binds) and
@@ -16,7 +17,8 @@ from uuid import UUID
 
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.design.track_cache import cached_in
+from classbeat.design.studio_revision_model import wanted
+from classbeat.design.track_cache import cached_in, recorded
 from classbeat.studio.timeline_calc import SongFacts, timeline
 from classbeat.swedebeat_studio import current_draft
 from classbeat.swedebeat_studio.admit import studio_on
@@ -34,7 +36,9 @@ async def view(factory: Factory, ctx: UserContext, class_id: UUID) -> dict[str, 
         if isinstance(found, str):
             return found
         references = found.music.mix_spec.references()
-        maps = await cached_in(db, ctx.user_id, references)
+        maps = await cached_in(  # exactly the analyses the draft was designed on
+            db, ctx.user_id, references, recorded(wanted(found.music, references))
+        )
     if any(r not in maps for r in references):
         return "music_changed"
     by_reference = {

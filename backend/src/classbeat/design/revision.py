@@ -51,8 +51,8 @@ from classbeat.agent.loop import StageOutcome
 from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
 from classbeat.design.music_kind import NoMusicStep
+from classbeat.design.studio_revision_model import StudioRevisionMusic as StudioRevisionMusic
 from classbeat.jobs import FencedSession, JobFailure
-from classbeat.studio.mix_spec_model import MixSpec
 
 logger = logging.getLogger(__name__)
 
@@ -192,20 +192,6 @@ class NoRevisionMusic(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     source: Literal["none"]
-
-
-class StudioRevisionMusic(BaseModel):
-    """``class_revisions.music`` of a SwedeBeat studio draft (ADR 0036 section 1): the approved
-    studio ``song_list`` it was designed on, the mix spec (``studio.mix_spec_model``, made by
-    ``mix_plan_policy``) and the composed map's version. No link, fingerprint or MOWL object; its
-    ``content_hash`` is ``studio_hash``'s, so a cut, the order or a crossfade is under it."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    source: Literal["swedebeat_studio"]
-    song_list_id: UUID
-    mix_spec: MixSpec
-    map_version: int = Field(ge=1)
 
 
 def studio_hash(content: Mapping[str, Any], mix_spec: Mapping[str, Any]) -> bytes:

@@ -59,7 +59,8 @@ def test_the_played_bytes_are_exact_and_mapped_with_their_provenance() -> None:
     assert record["policy_versions"] == dict(POLICY_VERSIONS)
     assert record["source"] == {"kind": "upload", "ref": None}
     assert REFERENCE not in json.dumps(record)  # the played reference is never kept
-    assert current_provenance(record)
+    assert current_provenance(record, SHA)
+    assert not current_provenance(record, "d" * 64)  # the record of other bytes than the row's
 
 
 @pytest.mark.parametrize(
@@ -93,6 +94,23 @@ def test_what_the_map_policy_refuses_is_refused_with_its_code() -> None:
 
 
 @pytest.mark.parametrize(
+    ("timing_class", "reason"),
+    [("exact", "beat_equivalence"), ("approximate", "matched_recording"), ("unusable", "x")],
+)
+def test_only_a_played_recording_decision_is_used_whatever_the_map_policy_says(
+    monkeypatch: pytest.MonkeyPatch, timing_class: str, reason: str
+) -> None:
+    """studio_map's own check, before ``spotdown_map_policy`` (which refuses with its own code)."""
+    from classbeat.spotdown import timing_class_policy
+
+    def decided(_inputs: object) -> Any:
+        return timing_class_policy.TimingDecision(timing_class, reason, {})  # type: ignore[arg-type]
+
+    monkeypatch.setattr(timing_class_policy, "decide", decided)
+    assert studio_map(doc(), REFERENCE, SHA, 1) == StudioRefused("not_played_recording")
+
+
+@pytest.mark.parametrize(
     "change",
     [
         lambda r: r.update(record_version=2),
@@ -107,9 +125,9 @@ def test_a_stored_provenance_of_another_build_is_not_current(change: Any) -> Non
     assert isinstance(mapped, StudioMap)
     record = copy.deepcopy(mapped.provenance)
     change(record)
-    assert not current_provenance(record)
-    assert not current_provenance(None)
-    assert not current_provenance("exact")
+    assert not current_provenance(record, SHA)
+    assert not current_provenance(None, SHA)
+    assert not current_provenance("exact", SHA)
 
 
 # --- the reactions of section 8 ------------------------------------------------------------------
@@ -249,3 +267,43 @@ def test_only_an_allowlisted_owner_with_everything_set(installed: None) -> None:
 
 def test_not_without_spotdown_installed() -> None:
     assert not ON.active_for(OWNER)
+
+
+def test_the_budget_left_is_the_jobs_from_its_first_spotdown_call() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
+    assert sp.remaining(now, now) == 600.0
+    assert sp.remaining(now - timedelta(seconds=90), now) == 510.0
+    assert sp.remaining(now - timedelta(minutes=11), now) == 0.0
+    assert sp.remaining(now + timedelta(minutes=5), now) == 600.0  # a clock step never adds
+
+
+def test_a_record_wants_exactly_its_analyser_and_bytes() -> None:
+    from classbeat.design.studio_revision_model import (
+        StudioRevisionMusic,
+        Wanted,
+        map_hash,
+        wanted,
+    )
+    from classbeat.design.track_cache import Stored, recorded
+
+    spec = {"tracks": [{"reference": "a", "start_sec": 0.0, "end_sec": 60.0}], "crossfades": []}
+    base = {"source": "swedebeat_studio", "song_list_id": str(uuid4()), "map_version": 1}
+    legacy = StudioRevisionMusic.model_validate({**base, "mix_spec": spec}, strict=False)
+    assert wanted(legacy, ["a"]) == {"a": Wanted("local", None)}
+    music = StudioRevisionMusic.model_validate(
+        {**base, "mix_spec": spec, "analyses": [
+            {"reference": "a", "analyser": "spotdown", "sha256": SHA,
+             "map_hash": map_hash({"m": 1}), "provenance": {}}]},
+        strict=False,
+    )  # fmt: skip
+    want = wanted(music, ["a", "b"])
+    assert want == {"a": Wanted("spotdown", SHA, map_hash({"m": 1}))}  # "b" has no record
+    accept = recorded(want)
+    assert accept(Stored("a", "spotdown", SHA, {}, {"m": 1}))
+    assert not accept(Stored("a", "local", SHA, None, {"m": 1}))  # never the other analyser
+    assert not accept(Stored("a", "spotdown", "d" * 64, {}, {"m": 1}))  # nor other bytes
+    assert not accept(Stored("a", "spotdown", SHA, {}, {"m": 2}))  # nor another map of them
+    assert not accept(Stored("b", "local", SHA, None, {"m": 1}))
+    assert recorded(wanted(legacy, ["a"]))(Stored("a", "local", "d" * 64, None, {"m": 3}))

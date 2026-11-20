@@ -1,5 +1,5 @@
 """The user's own cache of studio track analyses (ADR 0036 section 4.1, SR C4):
-``swedebeat_track_maps``, one row per ``(owner_id, reference, analyser_version)``.
+``swedebeat_track_maps``, one row per ``(owner_id, reference, analyser_version, analyser)``.
 
 - **A hit** (``cached``) is a row of the caller's references younger than ``MAP_TTL_DAYS``, of the
   library's current ``TRACK_VERSION``, whose map still passes ``valid_track_map``. It is read in a
@@ -14,10 +14,11 @@
   its mix-analysis slot (#574).
 - **The analyser** (ADR 0040 section 6, #1302): a row is ``local`` (``mowl.music.analyze_track``)
   or ``spotdown`` (spotdown's analysis of the same bytes, with its ``provenance`` record). A
-  track has one current row, whichever analysed it. ``cached`` and ``cached_by_sha256`` take the
-  analysers the caller accepts (``track_analysis``: only ``local`` unless spotdown is the source
-  for the owner, and a ``spotdown`` row only while ``accept`` says its provenance is current);
-  without them every row is read, as the class's later steps need the map it was designed on.
+  track's two rows coexist; a store replaces only the row of its own analyser, so a class
+  designed on one analyser's map is never moved to the other's. Every read takes an ``Accept``
+  rule over the ``Stored`` row: ``track_analysis`` takes ``local`` rows and, while spotdown is
+  the owner's source, current ``spotdown`` ones (a ``spotdown`` hit before a ``local`` one);
+  revise, outputs and the timeline take exactly the row the draft recorded (``recorded``).
 
 Every statement filters on ``owner_id`` itself as well as through row security. Nothing here logs.
 """
@@ -25,7 +26,7 @@ Every statement filters on ``owner_id`` itself as well as through row security. 
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, cast
 from uuid import UUID
 
 from mowl import track
@@ -33,15 +34,28 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.connections import OpenConnection, hold
+from classbeat.design.studio_revision_model import Analyser, Wanted, map_hash
 from classbeat.design.track_map_policy import valid_track_map
 from classbeat.jobs import JobFailure, JobRun
 
 MAP_TTL_DAYS: Final = 30
 MAPS_PER_USER: Final = 200  # five classes of 40 tracks
 
-Analyser = Literal["local", "spotdown"]
 ANALYSERS: Final[frozenset[str]] = frozenset({"local", "spotdown"})
-Accept = Callable[[str, object], bool]  # (analyser, provenance) -> whether the row is a hit
+
+
+@dataclass(frozen=True, slots=True)
+class Stored:
+    """A row as an ``Accept`` rule sees it."""
+
+    reference: str
+    analyser: str
+    sha256: str
+    provenance: object
+    music_map: Mapping[str, Any]
+
+
+Accept = Callable[[Stored], bool]
 
 _COLUMNS = "reference, sha256, map, analyser, provenance FROM swedebeat_track_maps "
 _FRESH = "AND created_at > now() - make_interval(days => :days)"
@@ -58,9 +72,9 @@ _UPSERT = text(
     "(owner_id, reference, analyser_version, sha256, map, analyser, provenance) "
     "VALUES (:owner_id, :reference, :version, :sha256, CAST(:map AS jsonb), :analyser, "
     "CAST(:provenance AS jsonb)) "
-    "ON CONFLICT (owner_id, reference, analyser_version) DO UPDATE SET "
-    "sha256 = EXCLUDED.sha256, map = EXCLUDED.map, analyser = EXCLUDED.analyser, "
-    "provenance = EXCLUDED.provenance, created_at = now()"
+    "ON CONFLICT (owner_id, reference, analyser_version, analyser) DO UPDATE SET "
+    "sha256 = EXCLUDED.sha256, map = EXCLUDED.map, provenance = EXCLUDED.provenance, "
+    "created_at = now()"
 )
 _EXPIRE = text(
     "DELETE FROM swedebeat_track_maps "
@@ -87,17 +101,17 @@ class TrackMap:
     provenance: Mapping[str, object] | None = None
 
 
-def _hit(row: Any, accept: Accept | None, reference: str | None = None) -> TrackMap | None:
+def _hit(row: Any, accept: Accept, reference: str | None = None) -> TrackMap | None:
     stored: object = row.map
-    analyser, provenance = str(row.analyser), row.provenance
+    analyser, provenance, sha256 = str(row.analyser), row.provenance, bytes(row.sha256).hex()
     if analyser not in ANALYSERS or not valid_track_map(stored, track.TRACK_VERSION):
         return None  # not what this version reads: analysed again
-    if accept is not None and not accept(analyser, provenance):
-        return None
     music_map = cast(dict[str, Any], stored)
+    if not accept(Stored(str(row.reference), analyser, sha256, provenance, music_map)):
+        return None
     return TrackMap(
         reference or str(row.reference),
-        bytes(row.sha256).hex(),
+        sha256,
         music_map,
         cached=True,
         analyser=cast(Analyser, analyser),
@@ -106,11 +120,11 @@ def _hit(row: Any, accept: Accept | None, reference: str | None = None) -> Track
 
 
 async def cached_in(
-    db: AsyncSession, owner_id: UUID, references: list[str], accept: Accept | None = None
+    db: AsyncSession, owner_id: UUID, references: list[str], accept: Accept
 ) -> dict[str, TrackMap]:
-    """The user's current analyses of ``references`` (the hits only, those ``accept`` takes), in
-    the caller's transaction: a page's read (the timeline), which holds no connection and writes
-    nothing."""
+    """The user's current analyses of ``references`` (the hits only, those ``accept`` takes; a
+    ``spotdown`` one before a ``local`` one), in the caller's transaction: a page's read (the
+    timeline), which holds no connection and writes nothing."""
     params = {
         "owner_id": owner_id,
         "version": track.TRACK_VERSION,
@@ -120,13 +134,14 @@ async def cached_in(
     rows = (await db.execute(_CACHED, params)).all() if references else []
     hits: dict[str, TrackMap] = {}
     for row in rows:
-        if (hit := _hit(row, accept)) is not None:
+        hit = _hit(row, accept)
+        if hit is not None and (hit.reference not in hits or hit.analyser == "spotdown"):
             hits[hit.reference] = hit
     return hits
 
 
 async def cached(
-    run: JobRun, connection: OpenConnection, references: list[str], accept: Accept | None = None
+    run: JobRun, connection: OpenConnection, references: list[str], accept: Accept
 ) -> dict[str, TrackMap]:
     """The user's current analyses of ``references`` (the hits only), with the connection held."""
     async with run.fenced() as fs:
@@ -187,3 +202,17 @@ async def store(
             await run.release_analysis_slot(fs)  # #574: free once this commits
     if release_slot:
         run.slot_released()
+
+
+def recorded(wanted: Mapping[str, Wanted]) -> Accept:
+    """Exactly the rows a draft recorded: each reference's analyser and, when recorded, bytes."""
+
+    def accepted(row: Stored) -> bool:
+        want = wanted.get(row.reference)
+        if want is None or row.analyser != want.analyser:
+            return False
+        if want.sha256 is None:
+            return True  # a draft stored before #1302: its local row, as before
+        return want.sha256 == row.sha256 and want.map_hash == map_hash(row.music_map)
+
+    return accepted

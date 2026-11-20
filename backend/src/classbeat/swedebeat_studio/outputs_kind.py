@@ -34,7 +34,8 @@ from typing import Any, Final
 
 from sqlalchemy import text
 
-from classbeat.design.track_cache import cached
+from classbeat.design.studio_revision_model import wanted
+from classbeat.design.track_cache import cached, recorded
 from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun
 from classbeat.jobs.errors import RETRYABLE
 from classbeat.studio import output_body_policy as body
@@ -160,7 +161,8 @@ async def _producer(job_run: JobRun, given: ProduceOutputsInput) -> Producer:
         raise JobFailure("connection_changed")
     if cfg.keyring is None or cfg.swedebeat_gateway_key is None:  # checked by the open
         raise JobFailure("internal")
-    maps = await cached(job_run, bearer.connection, done.music.mix_spec.references())
+    refs = done.music.mix_spec.references()  # exactly the analyses the draft was designed on
+    maps = await cached(job_run, bearer.connection, refs, recorded(wanted(done.music, refs)))
     return Producer(
         job_run, cfg.keyring, given, done, bearer, cfg.swedebeat_gateway_key, title, maps
     )

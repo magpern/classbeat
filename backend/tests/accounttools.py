@@ -173,6 +173,12 @@ class Person:
             "ORDER BY created_at LIMIT 1",
             u=u,
         )
+        # ADR 0040 section 8 (#1302): a design job's spotdown budget.
+        self.sql(
+            "INSERT INTO spotdown_studio_budgets (owner_id, job_id) "
+            "SELECT owner_id, id FROM jobs WHERE owner_id = :u ORDER BY created_at LIMIT 1",
+            u=u,
+        )
         self.sql("INSERT INTO user_preferences (owner_id, uses_swedebeat) VALUES (:u, true)", u=u)
         # ADR 0034 section 5: a class published to the player (it outlives the class).
         self.sql(

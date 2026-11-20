@@ -54,7 +54,8 @@ KEEPING: Final = (
 KEEPING_BY_JOB: Final = ("external_operations", "mail_handoff")
 # Rows that go with the discarded class or its reading (or outlive it, as the usage does); a
 # pending chat message (ADR 0038 section 8) is chat, like ``class_messages``; a spotdown
-# shadow comparison (ADR 0040 section 9) measures a job's tracks and never keeps a class.
+# shadow comparison (ADR 0040 section 9) measures a job's tracks and never keeps a class, nor
+# does a job's spotdown budget (section 8).
 DISCARDED_WITH: Final = frozenset(
     {
         "jobs",
@@ -65,6 +66,7 @@ DISCARDED_WITH: Final = frozenset(
         "agent_runs",
         "credit_ledger",
         "spotdown_shadow_tracks",
+        "spotdown_studio_budgets",
     }
 )
 

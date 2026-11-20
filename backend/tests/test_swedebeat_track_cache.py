@@ -139,13 +139,20 @@ def test_the_checks_bound_each_row(
     assert constraint in str(raised.value)
 
 
-def test_one_row_per_owner_reference_and_analyser_version(admin: Connection) -> None:
+def test_one_row_per_owner_reference_analyser_version_and_analyser(admin: Connection) -> None:
     owner = new_user(admin)
     plant(admin, owner, "trk-1")
     plant(admin, owner, "trk-1", v=2)  # another analyser version is another row
+    admin.execute(  # another analyser (ADR 0040 section 6, #1302) is another row too
+        text(
+            "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map, "
+            "analyser, provenance) VALUES (:o, 'trk-1', 1, :h, '{}', 'spotdown', '{}')"
+        ),
+        {"o": owner, "h": bytes(32)},
+    )
     with pytest.raises(IntegrityError) as raised:
         admin.execute(text(MAP), {"o": owner, "r": "trk-1", "v": 1, "h": bytes(32), "m": "{}"})
-    assert "swedebeat_track_maps_owner_id_reference_analyser_version_key" in str(raised.value)
+    assert "swedebeat_track_maps_owner_reference_version_analyser_key" in str(raised.value)
 
 
 def test_the_rows_go_with_the_account(admin: Connection, app: Engine) -> None:

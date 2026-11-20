@@ -16,8 +16,8 @@ none). No title, file name, URL, scope or client ref; the played reference is us
 path (a) check and is not part of the record.
 
 ``current_provenance`` is the cache's rule for a stored ``spotdown`` row: the record of this
-version, ``exact`` on path (a), made under the policy versions of this build. A row of other
-policy versions is analysed again.
+version, ``exact`` on path (a), of the row's own bytes (the record's sha256 is the row's), made
+under the policy versions of this build. Any other row is analysed again.
 """
 
 from collections.abc import Mapping
@@ -78,13 +78,17 @@ def _obj(value: object, key: str) -> Mapping[str, object] | None:
     return inner if isinstance(inner, Mapping) else None  # pyright: ignore[reportUnknownVariableType]
 
 
-def current_provenance(provenance: object) -> bool:
-    """Whether a stored ``spotdown`` row's record is one this build would have made."""
+def current_provenance(provenance: object, sha256: str) -> bool:
+    """Whether a stored ``spotdown`` row's record (of bytes ``sha256``) is one this build would
+    have made."""
     if not isinstance(provenance, Mapping):
         return False
     timing, versions = _obj(provenance, "timing"), _obj(provenance, "policy_versions")
+    audio = _obj(provenance, "audio")
     return (
-        provenance.get("record_version") == RECORD_VERSION  # pyright: ignore[reportUnknownMemberType]
+        audio is not None
+        and audio.get("sha256") == sha256
+        and provenance.get("record_version") == RECORD_VERSION  # pyright: ignore[reportUnknownMemberType]
         and timing is not None
         and timing.get("class") == "exact"
         and timing.get("reason") == "played_recording"

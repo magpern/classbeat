@@ -308,6 +308,15 @@ refinement rounds ≤ 2; spotdown wait budget about 10 min, then fall back.
 A failure in one track changes only that track. Before design that is a selection change; after
 design it goes through `revise` for that part.
 
+**Amendment (2026-11-20, SD-P5, #1302; Architect decision on the review of PR #1320).** For the
+studio tracks classbeat uploads, `rate_limited` waits its `retry_after_s` **in the run** (with
+checkpoints, not counted as an attempt, with the same `Idempotency-Key`s, so the same upload is
+never sent as a new one) **within the class's wait budget**, instead of a fenced requeue. The wait
+budget (600 s) and "spotdown unreachable" hold **per class**: per design job, over all its runs
+(`spotdown_studio_budgets`, migration 0064), so an outage found by one run makes the whole class
+local and a class of many tracks never waits more than one budget. While spotdown is consulted the
+job holds its mix-analysis slot and the track's capped download stays on disk, up to that budget.
+
 ### 9. Quality gates and the rollout (plan §7)
 
 **Quality corpus.** Committed fixtures: synthetic tracks (click and structure generators with exact
