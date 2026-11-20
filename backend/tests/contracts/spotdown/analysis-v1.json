@@ -54,6 +54,188 @@
       "$ref": "#/$defs/alignment"
     }
   },
+  "allOf": [
+    {
+      "description": "A failed alignment has no top-level alignment, and its run records alignment_failed.",
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "alignment": {
+                "properties": {
+                  "result": {
+                    "const": "failed"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "alignment"
+          ]
+        },
+        "properties": {
+          "provenance": {
+            "properties": {
+              "run": {
+                "properties": {
+                  "failure_kind": {
+                    "const": "alignment_failed"
+                  }
+                },
+                "required": [
+                  "failure_kind"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "An ok alignment has the top-level alignment, and its run does not record alignment_failed.",
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "alignment": {
+                "properties": {
+                  "result": {
+                    "const": "ok"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "required": [
+          "alignment"
+        ],
+        "properties": {
+          "provenance": {
+            "properties": {
+              "run": {
+                "properties": {
+                  "failure_kind": {
+                    "not": {
+                      "const": "alignment_failed"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A top-level alignment comes with its provenance record.",
+      "if": {
+        "required": [
+          "alignment"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "alignment": {
+                "properties": {
+                  "result": {
+                    "const": "ok"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      }
+    },
+    {
+      "description": "alignment_failed in the run needs a failed alignment record.",
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "run": {
+                "properties": {
+                  "failure_kind": {
+                    "const": "alignment_failed"
+                  }
+                },
+                "required": [
+                  "failure_kind"
+                ]
+              }
+            },
+            "required": [
+              "run"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "alignment": {
+                "properties": {
+                  "result": {
+                    "const": "failed"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      }
+    }
+  ],
   "$defs": {
     "confidence": {
       "type": "number",
@@ -264,10 +446,45 @@
             },
             "ref": {
               "type": "string",
-              "description": "Never a file name or a signed URL. upload: absent. url: a normalised https URL (host and path only: no userinfo, query or fragment) or sha256:<hex digest of it>. youtube: the video id."
+              "description": "Never a file name or a signed URL. upload: absent. url: sha256:<hex digest> of the normalised URL (https, lower-case host, path and query; no userinfo, port or fragment); analyses stored before that rule carry a normalised https URL with host and path only. youtube: the video id."
             },
             "match": {
               "$ref": "#/$defs/match_record"
+            },
+            "decoded_duration_check": {
+              "description": "youtube only: the second duration check, on the decoded audio. expected_s is the requested duration from the match record (expected_from match) or the source's metadata duration (metadata); both the untrimmed file and the silence-trimmed content are compared and the closer decides. A rejected check (above 5 s) ends the job uncertain with no analysis, so a stored one is ok or tolerable.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "expected_s",
+                "expected_from",
+                "file_delta_s",
+                "content_delta_s",
+                "result"
+              ],
+              "properties": {
+                "expected_s": {
+                  "$ref": "#/$defs/seconds"
+                },
+                "expected_from": {
+                  "enum": [
+                    "match",
+                    "metadata"
+                  ]
+                },
+                "file_delta_s": {
+                  "type": "number"
+                },
+                "content_delta_s": {
+                  "type": "number"
+                },
+                "result": {
+                  "enum": [
+                    "ok",
+                    "tolerable"
+                  ]
+                }
+              }
             }
           },
           "allOf": [
@@ -474,6 +691,11 @@
               "residual_s": {
                 "type": "number",
                 "minimum": 0
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Which mapping: untrimmed (the reference starts at the file's start) or trimmed (at the content's start, the leading silence trimmed). offset_s uses the contract's sign, reference_time = file_time + offset_s. residual_s is how far the file's end (or the content's end) misses the reference's end."
               }
             }
           }
@@ -509,6 +731,11 @@
             "ok",
             "failed"
           ]
+        },
+        "chosen": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The name of the chosen hypothesis (result ok)."
         },
         "offset_s": {
           "type": "number"

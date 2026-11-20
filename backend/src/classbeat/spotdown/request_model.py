@@ -7,6 +7,9 @@ Pure: no I/O.
 - ``analysis_body``: ``POST /v2/analyses`` with **exactly one** of ``upload_id`` or
   ``source_ref``. classbeat never sends spotdown's ``url`` source (a MOWL temporary link never
   leaves classbeat), so there is no parameter for it.
+- ``source_ref`` (a body or the source lookup) is only ``youtube:<11-character video id>``, the one
+  kind spotdown's ``POST /v2/analyses`` takes; a sha256 is 64 lowercase hex digits (the content
+  lookup), as the contract says.
 - ``job_path``, ``analysis_path`` and ``scope_path``: an id or a scope from an answer or a caller
   goes into a path only when it matches the contract's pattern, so no answer can steer a request
   to another path (``..``, ``/``, ``?`` are refused).
@@ -25,9 +28,12 @@ REF_MAX: Final = 128  # client_ref, as spotdown's
 TEXT_MAX: Final = 300  # a title or an artist name
 ARTISTS_MAX: Final = 10
 SOURCE_REF_MAX: Final = 256
+REFERENCE_SECONDS_MAX: Final = 7200.0  # spotdown#21: a reference's duration_s is in (0, 7200]
 ID_PATTERN: Final = re.compile(r"[A-Za-z0-9_-]{1,64}")  # spotdown's ``ID_PATTERN``
 _ISRC: Final = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
-_SOURCE_REF: Final = re.compile(r"[a-z]+:[A-Za-z0-9_-]{1,200}")
+# The only ``source_ref`` spotdown accepts (contract v2): ``youtube:<11-character video id>``.
+# classbeat never sends spotdown's ``url`` source, so its lookup form is not built either.
+_SOURCE_REF: Final = re.compile(r"youtube:[A-Za-z0-9_-]{11}")
 _REFERENCE_KIND: Final = re.compile(r"[a-z]{1,64}")
 
 
@@ -71,6 +77,13 @@ def _duration(value: object) -> float:
     return float(value)
 
 
+def _reference_duration(value: object) -> float:
+    duration = _duration(value)
+    if not 0 < duration <= REFERENCE_SECONDS_MAX:
+        raise RequestRefused("a reference duration is above 0 and at most 7200 seconds")
+    return duration
+
+
 def check_scope(scope: str) -> str:
     """``scope`` when it is a contract ``cache_scope``; ``RequestRefused`` otherwise."""
     if not isinstance(scope, str) or not SCOPE_PATTERN.fullmatch(scope):  # pyright: ignore[reportUnnecessaryIsInstance]
@@ -86,9 +99,9 @@ def check_id(value: str) -> str:
 
 
 def check_source_ref(value: str) -> str:
-    """``<kind>:<ref>`` with a lowercase kind and an id-like ref (a YouTube video id)."""
+    """``youtube:<video id>``, the video id 11 of ``[A-Za-z0-9_-]`` (spotdown refuses any other)."""
     if not isinstance(value, str) or not _SOURCE_REF.fullmatch(value):  # pyright: ignore[reportUnnecessaryIsInstance]
-        raise RequestRefused("a source_ref is <kind>:<ref>")
+        raise RequestRefused("a source_ref is youtube:<11-character video id>")
     return value
 
 
@@ -151,7 +164,7 @@ def analysis_body(
         body["reference"] = {
             "kind": reference.kind,
             "id": _text(reference.id, SOURCE_REF_MAX, "a reference id is 1 to 256 characters"),
-            "duration_s": _duration(reference.duration_s),
+            "duration_s": _reference_duration(reference.duration_s),
         }
     return _dump(body)
 
@@ -162,6 +175,11 @@ def job_path(job_id: str) -> str:
 
 def analysis_path(analysis_id: str) -> str:
     return f"/v2/analyses/{check_id(analysis_id)}"
+
+
+def analysis_params(cache_scope: str | None) -> dict[str, str] | None:
+    """``GET /v2/analyses/{id}``'s query: the caller's scope, or none (only a global analysis)."""
+    return None if cache_scope is None else {"cache_scope": check_scope(cache_scope)}
 
 
 def scope_path(cache_scope: str) -> str:

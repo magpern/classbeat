@@ -16,7 +16,8 @@ socket, no network, deterministic. Public test values only.
   ``processing_failed:<failure kind>``, ``not_found``, ``uncertain``, ``source_unavailable``,
   ``provider_error`` or ``rate_limited``. A used upload is gone (``422``).
 - ``GET /v2/analyses/{id}``: an ``analysis-v1`` document (the vendored minimal example with this
-  id); ``GET /v2/analyses/lookup`` by ``source`` or ``sha256``, in the scope, else ``404``;
+  id) for an analysis in the ``cache_scope`` query's scope or a global one, else ``404``;
+  ``GET /v2/analyses/lookup`` by ``source`` or ``sha256``, in the scope, else ``404``;
   ``DELETE /v2/scopes/{scope}``: everything of the scope, ``204`` either way.
 - Every ``/v2`` request without ``Authorization: Bearer <SERVICE_KEY>`` is ``401``; the same
   ``Idempotency-Key`` with another body is ``409``. Errors use ``{"error": {"code", "message"}}``.
@@ -145,15 +146,20 @@ class FakeSpotdown:
         if request.method == "GET" and path == "/v2/analyses/lookup":
             return self._lookup(query)
         if request.method == "GET" and path.startswith("/v2/analyses/"):
-            analysis_id = path.removeprefix("/v2/analyses/")
-            if analysis_id not in self.analyses:
-                return _error(404, "not_found")
-            return httpx.Response(200, json=self.analysis(analysis_id))
+            return self._get_analysis(path.removeprefix("/v2/analyses/"), query.get("cache_scope"))
         if request.method == "GET" and path.startswith("/v2/jobs/"):
             return self._poll(path.removeprefix("/v2/jobs/"))
         if request.method == "DELETE" and path.startswith("/v2/scopes/"):
             return self._delete(path.removeprefix("/v2/scopes/"))
         return _error(404, "not_found")
+
+    def _get_analysis(self, analysis_id: str, scope: str | None) -> httpx.Response:
+        """An analysis held in the caller's scope or a global one; any other id is ``404``
+        (without ``cache_scope`` only a global analysis is readable)."""
+        held = self.analyses.get(analysis_id)
+        if held is None or (held[0] is not None and held[0] != scope):
+            return _error(404, "not_found")
+        return httpx.Response(200, json=self.analysis(analysis_id))
 
     def _idempotent(self, request: httpx.Request, scope: str, body: bytes, route: Any) -> Any:
         key = request.headers.get("idempotency-key")

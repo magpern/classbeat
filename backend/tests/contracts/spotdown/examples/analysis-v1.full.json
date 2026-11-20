@@ -49,12 +49,14 @@
       "alignment_version": "1",
       "hypotheses": [
         {
-          "offset_s": 0.4,
-          "residual_s": 0.3
-        },
-        {
+          "name": "untrimmed",
           "offset_s": 0.0,
           "residual_s": 1.9
+        },
+        {
+          "name": "trimmed",
+          "offset_s": -0.4,
+          "residual_s": 0.3
         }
       ],
       "anchor_agreement": 0.8,
@@ -64,6 +66,7 @@
         "duration_s": 11.9
       },
       "result": "ok",
+      "chosen": "trimmed",
       "offset_s": -0.4,
       "residual_s": 0.3,
       "confidence": 0.8
