@@ -49,6 +49,9 @@ head after the Sonnet rounds, never an Opus Developer.
 - A PR closes one issue (`Closes #n` in the body) and states its scope, its acceptance
   criteria and how they were tested.
 - A milestone is done when all its issues are closed and its "done when" in the roadmap holds.
+- **Limit: at most four open PRs at a time**, not counting PRs opened by bots (for example
+  Dependabot). Reviews and fixes come before new work: while a PR has a `FAIL` waiting, the
+  Architect starts no new Developer.
 
 ## PR loop
 
@@ -210,10 +213,11 @@ a release and still needs the owner's authorization.
     gateway; live checks are the owner's.
 - Tokens never go to a model. Model output is a proposal; the backend authorizes every write
   against the authenticated user (§2).
-- Everything we create in a user's accounts is private: playlists `public: false`,
-  `collaborative: false`; MOWL workouts private. The one exception (roadmap Amendment 24, ADR 0036 §7):
-  a SwedeBeat playlist or mix is published only when the user chose that output for that class on the
-  consent screen.
+- Everything we create in a user's accounts is private: MOWL workouts private; playlists
+  `collaborative: false`. Two exceptions: a **Spotify playlist** classbeat creates is `public: true`
+  from the start, because MOWL's Spotify import lists only public playlists on the user's profile
+  (roadmap Amendment 30, ADR 0008 §2); and a SwedeBeat playlist or mix is published only when the user
+  chose that output for that class on the consent screen (roadmap Amendment 24, ADR 0036 §7).
 - Tests and CI never touch the network or real accounts: they use fakes for MOWL, Spotify,
   Swedebeat and model APIs.
   The backend test suite enforces it: an autouse fixture (`tests/netguard.py`) makes every

@@ -1,7 +1,8 @@
 """Agent-run and Spotify settings, a field group of ``classbeat.config.Settings``.
 
-Pure: no I/O. The model API keys (secret files) and the Spotify ``localhost`` check stay on
-``Settings`` in ``classbeat.config``. Never instantiated on its own.
+Pure: no I/O. The model API keys (secret files; their check is ``check_model_api_key`` here) and
+the Spotify ``localhost`` check (``config_hosts``) stay on ``Settings`` in ``classbeat.config``.
+Never instantiated on its own.
 
 A ``BaseSettings`` (not a plain ``BaseModel``) only so its ``model_config`` type matches
 ``Settings``'; the mixin adds no config of its own and declares no ``SecretStr`` field.
@@ -10,7 +11,7 @@ A ``BaseSettings`` (not a plain ``BaseModel``) only so its ``model_config`` type
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings
 
 
@@ -62,3 +63,16 @@ class AgentSettings(BaseSettings):
     # ADR 0038 section 7: how far each song's heard length on the final playlist may be from the
     # approved composer list's for phase 2 to keep the approved design (re-timed, no model).
     fit_tolerance_seconds: float = Field(default=2.0, ge=0, le=30)
+
+
+def check_model_api_key(value: SecretStr | None, name: str) -> SecretStr | None:
+    """A model API key file's validator (``Settings``): ``None`` for a missing or empty file."""
+    if value is None:
+        return None
+    key = value.get_secret_value()
+    if not key.strip():
+        return None  # the empty placeholder: no key
+    # It goes into an HTTP header: no whitespace or control characters anywhere.
+    if not key.isascii() or any(c.isspace() or not c.isprintable() for c in key):
+        raise ValueError(f"{name} has whitespace, control or non-ASCII characters")
+    return value

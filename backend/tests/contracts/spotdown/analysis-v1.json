@@ -1,0 +1,1241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spotdown.invalid/schema/analysis-v1.json",
+  "title": "spotdown analysis v1",
+  "description": "Structured analysis of one audio file, on the file's own clock (seconds from the start of the decoded file). Source-neutral: it knows no consumer, user or catalogue. Every feature carries a confidence and a method. Fields marked optional may be absent until their quality gate passes; consumers must tolerate their absence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "analysis_id",
+    "provenance",
+    "signal",
+    "tempo",
+    "grid",
+    "structure",
+    "events"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "analysis-v1"
+    },
+    "analysis_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Opaque id of this analysis."
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "signal": {
+      "$ref": "#/$defs/signal"
+    },
+    "tempo": {
+      "$ref": "#/$defs/tempo"
+    },
+    "grid": {
+      "$ref": "#/$defs/grid"
+    },
+    "structure": {
+      "$ref": "#/$defs/structure"
+    },
+    "events": {
+      "$ref": "#/$defs/events"
+    },
+    "labels": {
+      "description": "Optional. Segment labels; always method heuristic.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/label"
+      }
+    },
+    "alignment": {
+      "description": "Optional. How the file's clock maps to a reference clock. The consumer applies it; spotdown never rewrites the file-clock times above.",
+      "$ref": "#/$defs/alignment"
+    }
+  },
+  "allOf": [
+    {
+      "description": "A failed alignment has no top-level alignment, and its run records alignment_failed.",
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "alignment": {
+                "properties": {
+                  "result": {
+                    "const": "failed"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "alignment"
+          ]
+        },
+        "properties": {
+          "provenance": {
+            "properties": {
+              "run": {
+                "properties": {
+                  "failure_kind": {
+                    "const": "alignment_failed"
+                  }
+                },
+                "required": [
+                  "failure_kind"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "An ok alignment has the top-level alignment, and its run does not record alignment_failed.",
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "alignment": {
+                "properties": {
+                  "result": {
+                    "const": "ok"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "required": [
+          "alignment"
+        ],
+        "properties": {
+          "provenance": {
+            "properties": {
+              "run": {
+                "properties": {
+                  "failure_kind": {
+                    "not": {
+                      "const": "alignment_failed"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A top-level alignment comes with its provenance record.",
+      "if": {
+        "required": [
+          "alignment"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "alignment": {
+                "properties": {
+                  "result": {
+                    "const": "ok"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      }
+    },
+    {
+      "description": "alignment_failed in the run needs a failed alignment record.",
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "run": {
+                "properties": {
+                  "failure_kind": {
+                    "const": "alignment_failed"
+                  }
+                },
+                "required": [
+                  "failure_kind"
+                ]
+              }
+            },
+            "required": [
+              "run"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "alignment": {
+                "properties": {
+                  "result": {
+                    "const": "failed"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "method": {
+      "enum": [
+        "measured",
+        "estimated",
+        "heuristic"
+      ],
+      "description": "measured: signal-derived and checkable. estimated: model or algorithm inference on measured data. heuristic: rule-based label."
+    },
+    "seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "feature": {
+      "type": "object",
+      "required": [
+        "confidence",
+        "method"
+      ],
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "method": {
+          "$ref": "#/$defs/method"
+        }
+      },
+      "unevaluatedProperties": true
+    },
+    "times": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/seconds"
+      }
+    },
+    "curve": {
+      "description": "Samples at a fixed step from time 0.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_s",
+        "values",
+        "confidence",
+        "method"
+      ],
+      "properties": {
+        "step_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "method": {
+          "$ref": "#/$defs/method"
+        }
+      }
+    },
+    "region": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/feature"
+        }
+      ],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_s",
+        "end_s",
+        "confidence",
+        "method"
+      ],
+      "properties": {
+        "start_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "end_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "method": {
+          "$ref": "#/$defs/method"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "analyzer",
+        "audio",
+        "source",
+        "run",
+        "created_at"
+      ],
+      "properties": {
+        "analyzer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "analyzer_version",
+            "component_versions",
+            "config_hash"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "analyzer_version": {
+              "type": "string"
+            },
+            "component_versions": {
+              "description": "For example librosa, numpy, ffmpeg, yt-dlp.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "config_hash": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        },
+        "audio": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sha256",
+            "fingerprint",
+            "codec",
+            "sample_rate_hz",
+            "channels",
+            "file_duration_s",
+            "content_start_s",
+            "content_end_s",
+            "content_duration_s"
+          ],
+          "properties": {
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "fingerprint": {
+              "type": "string",
+              "description": "Decoded-audio fingerprint. An equivalence signal only; never a cache key on its own."
+            },
+            "codec": {
+              "type": "string"
+            },
+            "bitrate_bps": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sample_rate_hz": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "channels": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "file_duration_s": {
+              "$ref": "#/$defs/seconds"
+            },
+            "content_start_s": {
+              "$ref": "#/$defs/seconds"
+            },
+            "content_end_s": {
+              "$ref": "#/$defs/seconds"
+            },
+            "content_duration_s": {
+              "$ref": "#/$defs/seconds"
+            }
+          }
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "upload",
+                "url",
+                "youtube"
+              ]
+            },
+            "ref": {
+              "type": "string",
+              "description": "Never a file name or a signed URL. upload: absent. url: sha256:<hex digest> of the normalised URL (https, lower-case host, path and query; no userinfo, port or fragment); analyses stored before that rule carry a normalised https URL with host and path only. youtube: the video id."
+            },
+            "match": {
+              "$ref": "#/$defs/match_record"
+            },
+            "decoded_duration_check": {
+              "description": "youtube only: the second duration check, on the decoded audio. expected_s is the requested duration from the match record (expected_from match) or the source's metadata duration (metadata); both the untrimmed file and the silence-trimmed content are compared and the closer decides. A rejected check (above 5 s) ends the job uncertain with no analysis, so a stored one is ok or tolerable.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "expected_s",
+                "expected_from",
+                "file_delta_s",
+                "content_delta_s",
+                "result"
+              ],
+              "properties": {
+                "expected_s": {
+                  "$ref": "#/$defs/seconds"
+                },
+                "expected_from": {
+                  "enum": [
+                    "match",
+                    "metadata"
+                  ]
+                },
+                "file_delta_s": {
+                  "type": "number"
+                },
+                "content_delta_s": {
+                  "type": "number"
+                },
+                "result": {
+                  "enum": [
+                    "ok",
+                    "tolerable"
+                  ]
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "kind": {
+                    "const": "upload"
+                  }
+                }
+              },
+              "then": {
+                "not": {
+                  "required": [
+                    "ref"
+                  ]
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "kind": {
+                    "const": "url"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "ref"
+                ],
+                "properties": {
+                  "ref": {
+                    "pattern": "^(https://[^/?#@\\s]+(/[^?#\\s]*)?|sha256:[0-9a-f]{64})$"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "kind": {
+                    "const": "youtube"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "ref"
+                ],
+                "properties": {
+                  "ref": {
+                    "pattern": "^[A-Za-z0-9_-]{11}$"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "alignment": {
+          "$ref": "#/$defs/alignment_record"
+        },
+        "run": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "job_id",
+            "status",
+            "timings_s"
+          ],
+          "properties": {
+            "job_id": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "done",
+                "failed"
+              ]
+            },
+            "failure_kind": {
+              "enum": [
+                null,
+                "decode_error",
+                "timeout",
+                "out_of_memory",
+                "analysis_error",
+                "alignment_failed"
+              ],
+              "description": "null when the run fully succeeded. alignment_failed: the file-clock analysis is valid and kept (status done), only the alignment failed."
+            },
+            "timings_s": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "failed"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              },
+              "then": {
+                "required": [
+                  "failure_kind"
+                ],
+                "properties": {
+                  "failure_kind": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "match_record": {
+      "description": "Kept for matched sources: how the source was chosen.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "matcher_version",
+        "normalised_query",
+        "candidates",
+        "chosen"
+      ],
+      "properties": {
+        "matcher_version": {
+          "type": "string"
+        },
+        "normalised_query": {
+          "type": "string"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ref",
+              "score",
+              "duration_delta_s"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string"
+              },
+              "score": {
+                "$ref": "#/$defs/confidence"
+              },
+              "duration_delta_s": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "chosen": {
+          "type": "string",
+          "description": "The ref of the chosen candidate."
+        }
+      }
+    },
+    "alignment_record": {
+      "description": "Provenance of an alignment attempt, successful or failed: the reference, the hypotheses tried, the chosen offset, residual and confidence (result ok), and the anchor agreement.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alignment_version",
+        "reference",
+        "result",
+        "hypotheses"
+      ],
+      "properties": {
+        "alignment_version": {
+          "type": "string"
+        },
+        "hypotheses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "offset_s",
+              "residual_s"
+            ],
+            "properties": {
+              "offset_s": {
+                "type": "number"
+              },
+              "residual_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Which mapping: untrimmed (the reference starts at the file's start) or trimmed (at the content's start, the leading silence trimmed). offset_s uses the contract's sign, reference_time = file_time + offset_s. residual_s is how far the file's end (or the content's end) misses the reference's end."
+              }
+            }
+          }
+        },
+        "anchor_agreement": {
+          "$ref": "#/$defs/confidence"
+        },
+        "reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id",
+            "duration_s"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Open set; for example spotify."
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "duration_s": {
+              "$ref": "#/$defs/seconds"
+            }
+          }
+        },
+        "result": {
+          "enum": [
+            "ok",
+            "failed"
+          ]
+        },
+        "chosen": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The name of the chosen hypothesis (result ok)."
+        },
+        "offset_s": {
+          "type": "number"
+        },
+        "residual_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "result": {
+                "const": "ok"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "offset_s",
+              "residual_s",
+              "confidence"
+            ]
+          }
+        }
+      ]
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "duration_s",
+        "content_start_s",
+        "content_end_s",
+        "silence_regions",
+        "fade_in",
+        "fade_out",
+        "energy",
+        "method",
+        "confidence"
+      ],
+      "properties": {
+        "duration_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "content_start_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "content_end_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "method": {
+          "const": "measured",
+          "description": "Covers duration, content_start_s and content_end_s."
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence",
+          "description": "Covers duration, content_start_s and content_end_s."
+        },
+        "silence_regions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/region"
+          }
+        },
+        "fade_in": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/region"
+            }
+          ]
+        },
+        "fade_out": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/region"
+            }
+          ]
+        },
+        "energy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "full",
+            "percussive",
+            "low_band"
+          ],
+          "description": "Normalised curves at 1 s steps.",
+          "properties": {
+            "full": {
+              "$ref": "#/$defs/curve"
+            },
+            "percussive": {
+              "$ref": "#/$defs/curve"
+            },
+            "low_band": {
+              "$ref": "#/$defs/curve"
+            }
+          }
+        }
+      }
+    },
+    "tempo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bpm",
+        "confidence",
+        "method",
+        "half_double_candidates",
+        "stability",
+        "change_points"
+      ],
+      "properties": {
+        "bpm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "method": {
+          "const": "estimated"
+        },
+        "half_double_candidates": {
+          "description": "The half-time and double-time readings of bpm.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "bpm",
+              "confidence",
+              "method"
+            ],
+            "properties": {
+              "bpm": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "confidence": {
+                "$ref": "#/$defs/confidence"
+              },
+              "method": {
+                "const": "estimated"
+              }
+            }
+          }
+        },
+        "stability": {
+          "$ref": "#/$defs/confidence"
+        },
+        "change_points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "time_s",
+              "bpm",
+              "confidence",
+              "method"
+            ],
+            "properties": {
+              "time_s": {
+                "$ref": "#/$defs/seconds"
+              },
+              "bpm": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "confidence": {
+                "$ref": "#/$defs/confidence"
+              },
+              "method": {
+                "const": "estimated"
+              }
+            }
+          }
+        }
+      }
+    },
+    "grid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "beats"
+      ],
+      "properties": {
+        "beats": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "times_s",
+            "confidence",
+            "method"
+          ],
+          "properties": {
+            "times_s": {
+              "$ref": "#/$defs/times"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "method": {
+              "const": "estimated"
+            }
+          }
+        },
+        "meter": {
+          "description": "Optional. Estimated, never assumed to be 4/4.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "beats_per_bar",
+            "confidence",
+            "method"
+          ],
+          "properties": {
+            "beats_per_bar": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "method": {
+              "enum": [
+                "estimated",
+                "heuristic"
+              ]
+            }
+          }
+        },
+        "downbeats": {
+          "description": "Optional. Lower confidence than beats.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "times_s",
+            "confidence",
+            "method"
+          ],
+          "properties": {
+            "times_s": {
+              "$ref": "#/$defs/times"
+            },
+            "confidence": {
+              "$ref": "#/$defs/confidence"
+            },
+            "method": {
+              "enum": [
+                "estimated",
+                "heuristic"
+              ]
+            }
+          }
+        },
+        "phrases": {
+          "description": "Optional. Groups of bars (8 or 16).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "start_s",
+              "end_s",
+              "bars",
+              "confidence",
+              "method"
+            ],
+            "properties": {
+              "start_s": {
+                "$ref": "#/$defs/seconds"
+              },
+              "end_s": {
+                "$ref": "#/$defs/seconds"
+              },
+              "bars": {
+                "enum": [
+                  8,
+                  16
+                ]
+              },
+              "confidence": {
+                "$ref": "#/$defs/confidence"
+              },
+              "method": {
+                "enum": [
+                  "estimated",
+                  "heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "structure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "segments"
+      ],
+      "properties": {
+        "segments": {
+          "description": "Novelty-based segments in time order, each with the confidence of its start boundary.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "start_s",
+              "end_s",
+              "boundary_confidence",
+              "method"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "start_s": {
+                "$ref": "#/$defs/seconds"
+              },
+              "end_s": {
+                "$ref": "#/$defs/seconds"
+              },
+              "boundary_confidence": {
+                "$ref": "#/$defs/confidence"
+              },
+              "method": {
+                "const": "estimated"
+              }
+            }
+          }
+        },
+        "repetition_groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "segment_ids",
+              "confidence",
+              "method"
+            ],
+            "properties": {
+              "segment_ids": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "confidence": {
+                "$ref": "#/$defs/confidence"
+              },
+              "method": {
+                "const": "estimated"
+              }
+            }
+          }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "start_s",
+          "strength",
+          "confidence",
+          "method"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "build_up",
+              "drop",
+              "breakdown",
+              "hard_stop",
+              "fade",
+              "tempo_change"
+            ]
+          },
+          "start_s": {
+            "$ref": "#/$defs/seconds"
+          },
+          "end_s": {
+            "$ref": "#/$defs/seconds"
+          },
+          "strength": {
+            "$ref": "#/$defs/confidence"
+          },
+          "confidence": {
+            "$ref": "#/$defs/confidence"
+          },
+          "method": {
+            "const": "estimated"
+          }
+        }
+      }
+    },
+    "label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "segment_id",
+        "label",
+        "confidence",
+        "method"
+      ],
+      "properties": {
+        "segment_id": {
+          "type": "string"
+        },
+        "label": {
+          "enum": [
+            "intro",
+            "verse",
+            "chorus",
+            "bridge",
+            "outro",
+            "breakdown"
+          ]
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "method": {
+          "const": "heuristic"
+        }
+      }
+    },
+    "alignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference",
+        "offset_s",
+        "residual_s",
+        "confidence",
+        "method"
+      ],
+      "properties": {
+        "reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id",
+            "duration_s"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Open set; for example spotify."
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "duration_s": {
+              "$ref": "#/$defs/seconds"
+            }
+          }
+        },
+        "offset_s": {
+          "type": "number",
+          "description": "reference_time = file_time + offset_s."
+        },
+        "residual_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "recording_match_confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "method": {
+          "const": "estimated"
+        }
+      }
+    }
+  }
+}

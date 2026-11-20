@@ -5,6 +5,11 @@ E-mailadressen til din classbeat-konto er blevet ændret. Dette er den gamle adr
 
 Hvornår det skete: 6. november 2026 kl. 12:30 UTC
 
+Hvis du selv har lavet ændringen, behøver du ikke gøre noget. Hvis ikke, skal du åbne linket nedenfor for at få denne adresse tilbage: alle bliver logget ud af kontoen, og du kan vælge en ny adgangskode. Linket virker én gang, i 7 dage.
+
+Fortryd ændringen:
+https://classbeat.example.test/da/email-revert#token=SAMPLE
+
 Hvis det ikke var dig, skal du give os besked med det samme. Kontakt os på support@classbeat.eu
 
 --

@@ -13,6 +13,8 @@ from classbeat.emails.layout import Ctx
 from classbeat.emails.locales.en import S
 
 Params = Mapping[str, Any]
+# #1265: the revert page. Not under ``/email/``, the asset path that is never language-prefixed.
+REVERT_PATH = "/email-revert"
 Builder = Callable[[Ctx, Params], Content]
 
 _PROVIDER_NAMES = {
@@ -124,6 +126,8 @@ def email_changed(c: Ctx, p: Params) -> Content:
             Heading(c.t(S.CHANGED_HEADING)),
             Paragraph(c.t(S.CHANGED_BODY)),
             EventTime(c.t(S.CHANGED_WHEN), _when(p)),
+            Paragraph(c.t(S.CHANGED_REVERT_BODY)),  # #1265: the old address's way back
+            Button(c.t(S.CHANGED_REVERT_BUTTON), c.url(REVERT_PATH, p["token"])),
             Note(c.t(S.CHANGED_WARN) + " " + c.t(S.CONTACT_LEAD), contact=True),
         ),
         c.t(S.REASON_SECURITY),

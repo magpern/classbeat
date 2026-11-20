@@ -76,7 +76,7 @@ export const publicEn = {
   'feat.playlist.text': 'Choose a playlist from your MOWL music, and the class is timed to its songs.',
   'feat.songs.title': 'Let us pick the songs',
   'feat.songs.text':
-    'Ask for songs and approve the list first. The songs you approve go into a private playlist in your Spotify.',
+    'Ask for songs and approve the list first. They go into a playlist in your Spotify. The playlist is public, so MOWL can find it.',
   'feat.swedebeat.title': 'Design to a Swedebeat mix',
   'feat.swedebeat.text': 'Time the class to one of your Swedebeat mixes.',
   'feat.noMusic.title': 'Classes without music',

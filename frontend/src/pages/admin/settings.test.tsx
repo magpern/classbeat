@@ -56,7 +56,7 @@ function plan(id: string, name: string, rank: number, limits: [number, number, n
 }
 
 function view(
-  overrides: { songPicking?: string; swedebeat?: string; trialDays?: number; signupStored?: string | null; signupNote?: string; signupEffective?: string; tierInvites?: number; banner?: { text: string; level: string } | null } = {},
+  overrides: { flags?: Record<string, Record<string, unknown>>; songPicking?: string; swedebeat?: string; trialDays?: number; signupStored?: string | null; signupNote?: string; signupEffective?: string; tierInvites?: number; banner?: { text: string; level: string } | null } = {},
 ) {
   const stored = overrides.signupStored ?? null
   return {
@@ -73,6 +73,8 @@ function view(
       flagRow('song_picking', { effective: 'off', environment: overrides.songPicking ?? 'off' }),
       flagRow('swedebeat_enabled', { effective: 'off', environment: overrides.swedebeat ?? 'off' }),
       flagRow('trial', { environment: { plan: null, days: 0 } }),
+      flagRow('composer_flow', { effective: 'off', environment: 'off', ...overrides.flags?.composer_flow }),
+      flagRow('running_enabled', { effective: 'off', environment: 'on', ...overrides.flags?.running_enabled }),
       flagRow(
         'banner',
         overrides.banner
@@ -576,5 +578,77 @@ describe('admin refund', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.getByRole('button', { name: 'Refund' })).toBeInTheDocument()
     expect(api.to('POST', REFUND)).toHaveLength(0)
+  })
+})
+
+describe('admin settings: composer_flow and running_enabled switches', () => {
+  const stored = (key: string, value: string, environment: string) =>
+    flagRow(key, { source: 'database', effective: value, environment, stored: value, updated_at: '2026-11-19T09:00:00Z', updated_by: ANN })
+
+  it('saves on and off for both keys and shows the new value after the reload', async () => {
+    let composer = false
+    const api = adminApi({
+      [`GET ${SETTINGS}`]: () => view({ flags: { composer_flow: composer ? { source: 'database', effective: 'on', environment: 'on', stored: 'on' } : { environment: 'on' } } }),
+      'PUT /api/admin/settings/composer_flow': () => {
+        composer = true
+        return stored('composer_flow', 'on', 'on')
+      },
+      'PUT /api/admin/settings/running_enabled': stored('running_enabled', 'on', 'on'),
+    })
+    renderAt('/admin/settings')
+    const composerSwitch = await screen.findByRole('switch', { name: 'Composer flow' })
+    expect(composerSwitch).not.toBeChecked()
+    fireEvent.click(composerSwitch)
+    await waitFor(() => { expect(screen.getByRole('switch', { name: 'Composer flow' })).toBeChecked() })
+    expect(api.to('PUT', '/api/admin/settings/composer_flow')[0]?.body).toEqual({ value: 'on' })
+    expect(within(card('Composer flow')).getByText('set here')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('switch', { name: 'Running classes' }))
+    await waitFor(() => { expect(api.to('PUT', '/api/admin/settings/running_enabled')).toHaveLength(1) })
+    expect(api.to('PUT', '/api/admin/settings/running_enabled')[0]?.body).toEqual({ value: 'on' })
+  })
+
+  it('stores off when the stored value is on', async () => {
+    const api = adminApi({
+      [`GET ${SETTINGS}`]: view({ flags: { running_enabled: { source: 'database', effective: 'on', stored: 'on' } } }),
+      'PUT /api/admin/settings/running_enabled': stored('running_enabled', 'off', 'on'),
+    })
+    renderAt('/admin/settings')
+    const toggle = await screen.findByRole('switch', { name: 'Running classes' })
+    expect(toggle).toBeChecked()
+    fireEvent.click(toggle)
+    await waitFor(() => { expect(api.to('PUT', '/api/admin/settings/running_enabled')).toHaveLength(1) })
+    expect(api.to('PUT', '/api/admin/settings/running_enabled')[0]?.body).toEqual({ value: 'off' })
+  })
+
+  it('says the server variable is needed first while the environment is off, and still allows saving', async () => {
+    adminApi({ [`GET ${SETTINGS}`]: view() })
+    renderAt('/admin/settings')
+    const toggle = await screen.findByRole('switch', { name: 'Composer flow' })
+    expect(toggle).toBeEnabled()
+    expect(toggle).toHaveAccessibleDescription(REASONS.composerFlowOff)
+    expect(REASONS.composerFlowOff).toContain('CLASSBEAT_COMPOSER_FLOW')
+    expect(screen.getByRole('switch', { name: 'Running classes' })).not.toHaveAccessibleDescription(REASONS.runningOff)
+  })
+
+  it('clears a stored value with DELETE', async () => {
+    const api = adminApi({
+      [`GET ${SETTINGS}`]: view({ flags: { composer_flow: { source: 'database', effective: 'on', environment: 'on', stored: 'on' } } }),
+      'DELETE /api/admin/settings/composer_flow': flagRow('composer_flow', { environment: 'on' }),
+    })
+    renderAt('/admin/settings')
+    await screen.findByRole('switch', { name: 'Composer flow' })
+    fireEvent.click(within(card('Composer flow')).getByRole('button', { name: "Use the environment's value" }))
+    await waitFor(() => { expect(api.to('DELETE', '/api/admin/settings/composer_flow')).toHaveLength(1) })
+  })
+
+  it('shows the reason when running_enabled is refused for missing model-route coverage', async () => {
+    adminApi({
+      [`GET ${SETTINGS}`]: view(),
+      'PUT /api/admin/settings/running_enabled': reason(422, 'running_not_evaluated'),
+    })
+    renderAt('/admin/settings')
+    fireEvent.click(await screen.findByRole('switch', { name: 'Running classes' }))
+    expect(await within(card('Running classes')).findByText(/no model route that covers them/)).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Running classes' })).not.toBeChecked()
   })
 })

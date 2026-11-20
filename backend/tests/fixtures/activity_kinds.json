@@ -1,6 +1,7 @@
 [
   "email_change_requested",
   "email_changed",
+  "email_reverted",
   "identity_linked",
   "identity_unlinked",
   "mfa_failed",

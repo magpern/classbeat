@@ -4,7 +4,8 @@ state, open job, mini-profile and flags. Split out of ``classbeat.classes.servic
 from sqlalchemy import text
 
 from classbeat.classes.class_sql import OPEN_JOB
-from classbeat.classes.kinds import CLASS_SPORT_SQL
+from classbeat.classes.kinds import CLASS_SPORT_SQL, SONG_DESIGN_KIND
+from classbeat.swedebeat_studio.song_list_model import SOURCE as STUDIO_SOURCE
 
 CLASSES = text(f"""
 SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
@@ -22,11 +23,24 @@ SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
     {CLASS_SPORT_SQL} AS sport,
     -- ADR 0007 amendment item 10 (#530): only a stored source 'none' is soundless.
     coalesce(c.music_source ->> 'source' = 'none', false) AS soundless,
+    -- ADR 0036 section 5 (#1173): only a stored source 'swedebeat_studio' is a studio class.
+    coalesce(c.music_source ->> 'source' = '{STUDIO_SOURCE}', false) AS studio,
     -- ADR 0036 section 6: a SwedeBeat playlist or mix was (or may have been) written for the class.
     EXISTS (SELECT 1 FROM class_outputs o WHERE o.owner_id = c.owner_id AND o.class_id = c.id
         AND o.output IN ('swedebeat_playlist', 'swedebeat_mix')
         AND (o.state IN ('done', 'in_doubt', 'published_not_listed')
             OR o.external_id IS NOT NULL)) AS swedebeat_written,
+    -- #1234: the user's own request text. ``classes.brief`` once the class has a design; before
+    -- that the newest song-design job's brief (as ``service.stored_brief``), looked up only for
+    -- such a class. NULL when blank or absent; cut to 280 characters (the card shows two lines).
+    left(nullif(btrim(CASE WHEN c.brief IS NOT NULL THEN c.brief ->> 'text'
+        ELSE (SELECT j.input -> 'brief' ->> 'text' FROM jobs j
+            WHERE j.owner_id = c.owner_id AND j.class_id = c.id AND j.kind = '{SONG_DESIGN_KIND}'
+            ORDER BY j.created_at DESC LIMIT 1) END), ''), 280) AS request,
+    -- #1234: the songs the current revision plays (``music.songs``); NULL for a soundless or
+    -- studio class, a revision made before the field existed, or no current revision.
+    CASE WHEN jsonb_typeof(cur.music -> 'songs') = 'array'
+        THEN nullif(jsonb_array_length(cur.music -> 'songs'), 0) END AS song_count,
     CASE WHEN jsonb_typeof(cur.provenance -> 'tss_approximate') = 'boolean'
         THEN (cur.provenance ->> 'tss_approximate')::boolean
         ELSE EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(pf.profile, '[]'::jsonb)) z

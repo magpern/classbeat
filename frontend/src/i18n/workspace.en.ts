@@ -38,6 +38,7 @@ export const workspaceEn = {
   'cw.chat.messagePending': 'Your last message is still waiting to be sent.',
   'cw.chat.pendingFull': 'This class holds as many messages as it can. Design a new class to keep going.',
   'cw.chat.noVersion': 'The class has no version to change yet.',
+  'cw.chip.reading': 'No sketch yet',
   'cw.chip.rough': 'Rough: songs not in yet',
   'cw.chip.ready': 'Ready to approve',
   'cw.chip.expired': 'Songs expired',
@@ -69,7 +70,7 @@ export const workspaceEn = {
   'cw.swap.label': 'Swap {title}',
   'cw.approve.region': 'Approve and save',
   'cw.approve.text':
-    'Approving saves a private workout to MOWL and creates a playlist in your Spotify in this order (we ask Spotify for private).',
+    'Approving saves a private workout to MOWL and creates a playlist in your Spotify in this order (a public playlist, so MOWL can find it).',
   'cw.approve.button': 'Approve and save',
   'cw.approve.hold': 'Approve waits until your message has been sent.',
   'cw.approve.checking': 'Checking for messages not sent yet…',

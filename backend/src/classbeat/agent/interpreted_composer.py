@@ -9,11 +9,13 @@ Fields of the ``submit_brief`` tool's input (``InterpretedRequest.pinned_songs``
   quote?}`` (``song`` is its title: a property named ``title`` would not survive the providers'
   strict schemas, which drop that keyword), origin ``explicit`` only (a song the model thinks would
   fit is not pinned). The title, the artist and ``at`` (the words that say where: "warm-up", "climb
-  3", "the last climb") are kept only if the request holds them, case aside, and are then stored in
-  the request's own spelling (``sanitised``), so a title or a place the model made up never reaches
-  the class. A song whose title the request does not hold is dropped; an artist or a place it does
-  not hold is left out. A pinned song is a proposal: the song fill verifies it by search before it
-  is used (ADR 0038 section 5).
+  3", "the last climb") are kept only if the request holds them as whole words, case aside, with
+  at least ``MIN_LETTERS`` letters or digits ("frica" in "Africa" and a lone "a" are not kept), and
+  are then stored in the request's own spelling (``from_request``, ``sanitised``), so a title or a
+  place the model made up never reaches the class. A song whose title the request does not hold is
+  dropped; an artist or a place it does not hold is left out; a song named twice (same title and
+  artist, case aside) is kept once, in order (``sanitised_pins``). A pinned song is a proposal: the
+  song fill verifies it by search before it is used (ADR 0038 section 5).
 - **A question** names a field whose value the request leaves open and whose default changes the
   class's shape: ``{path}``, ``length_min`` or ``intensity``. The model writes no question text
   and no assumed value: the page phrases the question from its closed path, and the assumed value

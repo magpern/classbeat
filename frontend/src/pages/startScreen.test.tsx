@@ -353,7 +353,7 @@ describe('the advanced route', () => {
     expect(screen.getByRole('link', { name: 'Back to the start' })).toHaveAttribute('href', '/en/classes/new')
   })
 
-  it('prefills the form from a Home preset link', async () => {
+  it('prefills the form from a query string', async () => {
     fakeApi(routes())
     renderAt('/classes/new/advanced?length=45&climbs=3&intensity=moderate')
     expect(await screen.findByLabelText('Climbs')).toHaveValue(3)

@@ -93,6 +93,7 @@ COVERED = {
     "composer_read",
     "composer_sketch",
     "composer_sketch_revised",
+    "composer_sketch_again",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")

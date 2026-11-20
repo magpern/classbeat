@@ -4,6 +4,7 @@ import { useT } from '../i18n/I18n'
 import { Field, Notice, useAction } from '../components/forms'
 import { AuthCard as Card } from '../components/auth/AuthCard'
 import { Link, useMailToken } from '../router/Router'
+import { Button } from '../components/ui/button'
 
 /**
  * The page behind the sign-up confirmation mail (`/signup/confirm#token=...`). The token is
@@ -35,9 +36,11 @@ export function SignUpConfirmPage() {
       <Card title={t('confirm.doneTitle')}>
         <Notice kind="success">{t('confirm.done')}</Notice>
         <p>
-          <Link className="button" to="/signin">
-            {t('auth.signIn')}
-          </Link>
+          <Button asChild>
+            <Link to="/signin">
+              {t('auth.signIn')}
+            </Link>
+          </Button>
         </p>
       </Card>
     )
@@ -68,9 +71,9 @@ export function SignUpConfirmPage() {
             setPassword(e.target.value)
           }}
         />
-        <button className="button" type="submit" disabled={action.busy}>
+        <Button type="submit" disabled={action.busy}>
           {t('confirm.submit')}
-        </button>
+        </Button>
       </form>
       <p className="card__links">
         <Link to="/signin">{t('auth.signIn')}</Link>

@@ -92,7 +92,7 @@ export function SegmentedControl<T extends string>({
           }}
           className={cn(
             'inline-flex min-h-11 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent px-4 text-[0.9375rem] font-medium text-muted transition-colors duration-150',
-            'hover:text-text aria-checked:bg-brand aria-checked:text-on-brand',
+            'hover:text-text aria-checked:bg-surface aria-checked:text-text aria-checked:shadow-[inset_0_-2px_0_var(--cb-tab-mark)]',
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
             'disabled:cursor-not-allowed disabled:opacity-50',
           )}

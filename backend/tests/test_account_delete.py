@@ -183,12 +183,12 @@ async def test_the_delete_request_ends_jobs_and_settles_credits_before_the_row_g
     seen: list[Any] = []
     original = erase.delete_row
 
-    async def spy(factory: Any, ctx: Any) -> bool:
+    async def spy(factory: Any, ctx: Any, key: Any = None) -> bool:
         seen.append(songenv.row(job_id))  # what the database holds when the row is about to go
         seen.append(
             songenv.sql("SELECT state FROM credit_ledger WHERE job_id = :j", j=job_id).scalar_one()
         )
-        return await original(factory, ctx)
+        return await original(factory, ctx, key)
 
     monkeypatch.setattr(erase, "delete_row", spy)
     assert (await erase_account(mine)).status_code == 204
@@ -239,3 +239,16 @@ async def test_no_request_leaves_for_a_provider(songenv: SongEnv) -> None:
 
 def ledger_for(songenv: SongEnv) -> Any:
     return quota.MeteredLedger(quota.Bounds.from_settings(songenv.spot.env.settings))
+
+
+async def test_the_delete_records_the_spotdown_scope_never_the_id(songenv: SongEnv) -> None:
+    """ADR 0040 section 7: the worker then sends ``DELETE /v2/scopes/{scope}``."""
+    from classbeat.spotdown.scope_calc import cache_scope
+    from classbeat.spotdown.scope_key import scope_key
+
+    mine = await person(songenv)
+    key = scope_key(songenv.spot.env.app.state.settings)
+    assert key is not None
+    assert (await erase_account(mine)).status_code == 204
+    scopes = songenv.sql("SELECT scope FROM spotdown_scope_deletions").scalars().all()
+    assert scopes == [cache_scope(key, mine.user_id)]

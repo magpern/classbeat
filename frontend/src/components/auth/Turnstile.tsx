@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { CaptchaAction, CaptchaConfig } from '../../api/auth'
 import { useSession } from '../../auth/SessionContext'
 import type { CatalogueKey } from '../../i18n/en'
@@ -104,6 +104,13 @@ export interface Captcha {
   element: ReactNode
 }
 
+interface Held {
+  key: string | null
+  token: string | null
+  problem: Problem
+}
+const NONE: Held = { key: null, token: null, problem: 'waiting' }
+
 /**
  * The security check of one form. Off (`captcha: null` in the session): no element, no script,
  * no token, and the form behaves as before. On: the submit waits for a token, and `reset` after a
@@ -113,18 +120,28 @@ export function useCaptcha(action: CaptchaAction): Captcha {
   const t = useT()
   const { session, status } = useSession()
   const config = session?.captcha ?? null
-  const [token, setToken] = useState<string | null>(null)
-  const [problem, setProblem] = useState<Problem>('waiting')
+  // A new configuration is a new check: a token belongs to the configuration that gave it, so
+  // nothing of an old check carries over. It is tied to its key here, not cleared by an effect of
+  // the box: a click between the commit and that effect would have its token wiped.
+  const configKey = config === null ? null : config.kind === 'fake' ? 'fake' : config.siteKey
+  const [held, setHeld] = useState<Held>(NONE)
+  const token = held.key === configKey ? held.token : null
+  const problem = held.key === configKey ? held.problem : 'waiting'
   const [round, setRound] = useState(0)
   const statusId = useId()
+  // Leaving the ready state (a failed refresh) ends the check it showed: coming back starts a new
+  // one, so a token cannot return while its box shows unchecked. Cleared during render, not in an
+  // effect, so a click before the passive effects is not lost.
+  if (status !== 'ready' && held !== NONE) setHeld(NONE)
 
-  const report = useCallback<Report>((next, why) => {
-    setToken(next)
-    setProblem(why ?? 'waiting')
-  }, [])
+  const report = useMemo<Report>(
+    () => (next, why) => {
+      setHeld({ key: configKey, token: next, problem: why ?? 'waiting' })
+    },
+    [configKey],
+  )
   const reset = useCallback(() => {
-    setToken(null)
-    setProblem('waiting')
+    setHeld(NONE)
     setRound((value) => value + 1)
   }, [])
 
@@ -140,8 +157,7 @@ export function useCaptcha(action: CaptchaAction): Captcha {
     </p>
   ) : on ? (
     <CaptchaBox
-      // A new configuration is a new check: nothing of the old one carries over.
-      key={config.kind === 'fake' ? 'fake' : config.siteKey}
+      key={configKey}
       config={config}
       action={action}
       round={round}
@@ -170,10 +186,6 @@ function CaptchaBox({
 }) {
   const t = useT()
   const labelId = useId()
-  useEffect(() => {
-    // Mounted with a new configuration: no token yet.
-    report(null)
-  }, [report])
   return (
     <div className="captcha" role="group" aria-labelledby={labelId}>
       <p id={labelId} className="captcha__label">

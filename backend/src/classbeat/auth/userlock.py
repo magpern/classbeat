@@ -4,8 +4,9 @@ ADR 0019 section 6: every transaction that creates or rotates a session, links a
 revokes a user's sessions on the reset, sign-out (``POST /api/auth/logout``, #646), sign out one
 session (``DELETE /api/auth/sessions/{id}``, #678), sign-out-everywhere, ``admin mfa-reset``,
 ``keys wipe`` TOTP-reset (#643) or TOTP-removal (#675) path takes ``SELECT ... FROM users WHERE id
-= ... FOR NO KEY UPDATE`` as its first lock (a reset consumes its token first, which locks only
-the token row).
+= ... FOR NO KEY UPDATE`` as its first lock. Since #1265 that includes the reset completion, the
+email confirmation and revert (before their token) and the password change and reset request;
+since #1294 the OIDC ``advance`` before it issues a player sign-in code.
 The admin disable and every account delete take the same mode through ``admin_accounts``
 (``get_account``, ``delete_account``; #675), which cannot read ``password_hash``.
 

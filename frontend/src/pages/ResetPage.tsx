@@ -7,6 +7,7 @@ import { Field, Notice, useAction } from '../components/forms'
 import { AuthCard as Card } from '../components/auth/AuthCard'
 import { useCaptcha } from '../components/auth/Turnstile'
 import { Link, useMailToken } from '../router/Router'
+import { Button } from '../components/ui/button'
 
 /** `/reset`: ask for a link. `/reset#token=...`: choose a new password. */
 export function ResetPage() {
@@ -64,14 +65,13 @@ function RequestReset() {
           required
         />
         {captcha.element}
-        <button
-          className="button"
+        <Button
           type="submit"
           disabled={action.busy || !captcha.ready}
           aria-describedby={captcha.describedBy}
         >
           {t('reset.send')}
-        </button>
+        </Button>
       </form>
       <p className="card__links">
         <Link to="/signin">{t('auth.backToSignIn')}</Link>
@@ -138,9 +138,11 @@ function ChoosePassword({ token }: { token: string }) {
       <Card title={t('reset.changedTitle')}>
         <Notice kind="success">{t('reset.changed')}</Notice>
         <p>
-          <Link className="button" to="/signin">
-            {t('auth.signIn')}
-          </Link>
+          <Button asChild>
+            <Link to="/signin">
+              {t('auth.signIn')}
+            </Link>
+          </Button>
         </p>
       </Card>
     )
@@ -214,9 +216,9 @@ function ChoosePassword({ token }: { token: string }) {
             ))}
           </fieldset>
         ) : null}
-        <button className="button" type="submit" disabled={action.busy}>
+        <Button type="submit" disabled={action.busy}>
           {t('reset.submit')}
-        </button>
+        </Button>
       </form>
     </Card>
   )

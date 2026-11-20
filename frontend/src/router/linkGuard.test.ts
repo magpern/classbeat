@@ -132,7 +132,7 @@ describe('the route table', () => {
   })
 
   it('lists the routes the app answers, mail-link pages and the legal pages included', () => {
-    for (const path of ['/', '/reset', '/unsubscribe', '/email-change', '/signup/confirm', '/privacy', '/terms', '/classes/new', '/account/spotify']) {
+    for (const path of ['/', '/reset', '/unsubscribe', '/email-change', '/email-revert', '/signup/confirm', '/privacy', '/terms', '/classes/new', '/account/spotify']) {
       expect(ROUTE_PATHS).toContain(path)
     }
   })

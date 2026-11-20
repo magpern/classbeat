@@ -7,7 +7,7 @@ Sign-out, sign-out-everywhere and signing out one session from the list write on
 ``auth_events`` row (``sign_out``, ``sign_out_all``; ADR 0003 amendments of 2026-11-06, #646, and
 2026-11-07, #678) in the revoke's own transaction, and only when the revoke deleted a session: a
 repeated call, or a session a parallel request already ended, writes none. ``GET /api/auth/events``
-lists the caller's own events (``activity``).
+lists the caller's own events (``activity``, in ``activity_routes``).
 """
 
 import logging
@@ -16,25 +16,18 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from classbeat.auth.activity import (
-    CURSOR_PATTERN,
-    OTHER_SESSION_KEY,
-    PAGE_DEFAULT,
-    PAGE_MAX,
-    decode_cursor,
-    list_activity,
-)
-from classbeat.auth.activity_schema import ActivityItemOut, ActivityOut
+from classbeat.auth.activity import OTHER_SESSION_KEY
 from classbeat.auth.captcha import captcha_config
 from classbeat.auth.cookies import CSRF_COOKIE, clear_session_cookie, set_csrf_cookie
 from classbeat.auth.deps import current_session, request_ip, require_user
 from classbeat.auth.events import record_event
 from classbeat.auth.middleware import csrf_token_for_session
+from classbeat.auth.oidc.code_store import revoke_codes
 from classbeat.auth.session_list import list_sessions
 from classbeat.auth.sessions import SessionInfo, revoke_session, revoke_user_sessions
 from classbeat.auth.userlock import lock_user
@@ -226,37 +219,6 @@ async def delete_session(
         clear_session_cookie(response)
 
 
-@router.get("/events")
-async def list_own_events(
-    request: Request,
-    ctx: Annotated[UserContext, Depends(require_user)],
-    limit: Annotated[int, Query(ge=1, le=PAGE_MAX)] = PAGE_DEFAULT,
-    before: Annotated[str | None, Query(pattern=CURSOR_PATTERN, max_length=60)] = None,
-) -> ActivityOut:
-    """The caller's own security activity, newest first (#678; ``activity``). ``before`` is the
-    ``next_before`` of the previous page; a cursor that names no time we could make is a 422."""
-    position = None if before is None else decode_cursor(before)
-    if before is not None and position is None:
-        raise HTTPException(status_code=422)
-    async with system_session(_factory(request)) as db:
-        page = await list_activity(db, ctx.user_id, limit=limit, before=position)
-    return ActivityOut(
-        events=[
-            ActivityItemOut(
-                id=item.id,
-                kind=item.kind,
-                at=item.at,
-                ip=item.ip,
-                provider=item.provider,
-                other_session=item.other_session,
-                passkey=item.passkey,
-            )
-            for item in page.items
-        ],
-        next_before=page.next_cursor,
-    )
-
-
 @router.post("/logout", status_code=204)
 async def logout(
     request: Request,
@@ -289,11 +251,13 @@ async def logout_all(
 ) -> None:
     """Sign out everywhere, this browser included. The user row lock comes first (ADR 0019
     section 6, #643): a sign-in or rotation committing meanwhile is waited for, so the delete
-    sees its session instead of letting it survive. One ``sign_out_all`` event with the number of
-    sessions ended, none when there were none left to end."""
+    sees its session instead of letting it survive. The user's unused player sign-in codes are
+    burnt with them (#1294). One ``sign_out_all`` event with the number of sessions ended, none
+    when there were none left to end."""
     async with system_session(_factory(request)) as db:
         await lock_user(db, ctx.user_id)
         ended = await revoke_user_sessions(db, ctx.user_id)
+        await revoke_codes(db, ctx.user_id)  # ADR 0003 "Requests in flight": player codes
         if ended:
             await _record_sign_out(
                 db, "sign_out_all", ctx.user_id, request_ip(request), {"sessions": ended}

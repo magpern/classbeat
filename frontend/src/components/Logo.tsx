@@ -1,14 +1,10 @@
-/** classbeat mark: four rounded bars, like beats or an effort profile. Decorative. */
+/** classbeat mark: three rising bars in the heat gradient (ADR 0013 Afterburn A1). Decorative. */
 export function Logo() {
   return (
-    <svg className="logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-      <rect className="logo__tile" width="32" height="32" rx="8" />
-      <g className="logo__bars">
-        <rect x="5.5" y="17" width="3.5" height="8" rx="1.75" />
-        <rect x="10.75" y="11" width="3.5" height="14" rx="1.75" />
-        <rect x="16" y="6" width="3.5" height="19" rx="1.75" />
-        <rect x="21.25" y="13" width="3.5" height="12" rx="1.75" />
-      </g>
-    </svg>
+    <span className="logo" aria-hidden="true">
+      <span className="logo__bar h-[40%]" />
+      <span className="logo__bar h-[70%]" />
+      <span className="logo__bar h-full" />
+    </span>
   )
 }

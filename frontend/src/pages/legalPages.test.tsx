@@ -100,3 +100,39 @@ describe('legal catalogue keys', () => {
         ).toMatch(new RegExp(`^classbeat_${cookie}:`))
   })
 })
+
+// #1268: the trademark notice (draft wording, awaiting the owner) is in the terms and in the footer of
+// every page, from the same catalogue key, so the two cannot drift apart.
+describe('the trademark notice', () => {
+  const KEY = 'terms.service.p3'
+  const MARKS = ['MOWL', 'Intelligent Cycling', 'Spotify', 'Swedebeat']
+
+  it.each([
+    ['en', legalEn as Record<string, string>],
+    ['sv', legalSv as Record<string, string>],
+    ['da', legalDa as Record<string, string>],
+  ])('%s names all four marks, and sv and da are translations', (code, catalogue) => {
+    for (const mark of MARKS) expect(catalogue[KEY]).toContain(mark)
+    if (code !== 'en') expect(catalogue[KEY]).not.toBe((legalEn as Record<string, string>)[KEY])
+  })
+
+  it('is in the terms, under "The service"', async () => {
+    fakeApi({})
+    renderAt('/terms')
+    const heading = await screen.findByRole('heading', { level: 2, name: 'The service' })
+    const section = heading.closest('section')!
+    expect(within(section).getByText(legalEn[KEY])).toBeInTheDocument()
+  })
+
+  it('is in the footer, signed out and signed in', async () => {
+    fakeApi({})
+    const out = renderAt('/signin')
+    const footer = (await screen.findByRole('navigation', { name: 'Legal' })).closest('footer')!
+    expect(within(footer).getByText(legalEn[KEY])).toBeInTheDocument()
+    out.unmount()
+    fakeApi({ 'GET /api/auth/session': SIGNED_IN })
+    renderAt('/help')
+    const signedIn = (await screen.findByRole('navigation', { name: 'Legal' })).closest('footer')!
+    expect(within(signedIn).getByText(legalEn[KEY])).toBeInTheDocument()
+  })
+})

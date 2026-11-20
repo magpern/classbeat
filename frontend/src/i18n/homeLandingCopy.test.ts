@@ -13,7 +13,6 @@ const LIMITS: readonly [CatalogueKey, number][] = [
   ['landing.signUp', 3],
   ['home.design.button', 3],
   ['home.seeAll', 3],
-  ['home.quick', 4],
   ['home.recent', 4],
   ['setup.title', 4],
   ['setup.connectNamed', 4],

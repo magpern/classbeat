@@ -18,7 +18,7 @@ fakes (the SwedeBeat gateway, Spotify), against Postgres as ``classbeat_app``; n
   any 24 hours (a rolling window), nothing sent and no attempt opened beyond them;
 - the gateway's ``403`` (writes off) is a state the user sees; a reconnect between the approval
   and the job is ``connection_changed`` with nothing written;
-- the final Spotify playlist is created private and filled in the mix's order;
+- the final Spotify playlist is created public (Amendment 30) and filled in the mix's order;
 - the generic operation views never offer an output's row (its Do it anyway is Create another).
 """
 
@@ -392,7 +392,7 @@ async def test_a_reconnect_before_the_job_writes_nothing(studio: StudioEnv) -> N
     assert rows(studio, rider.user_id) == []
 
 
-async def test_the_spotify_playlist_is_private_and_in_the_mix_order(studio: StudioEnv) -> None:
+async def test_the_spotify_playlist_is_public_and_in_the_mix_order(studio: StudioEnv) -> None:
     rider, class_id, list_id, current = await designed(studio)
     before = set(studio.songs.fake.playlists)
     done = await produce(studio, rider, class_id, current, "spotify_playlist")
@@ -405,7 +405,7 @@ async def test_the_spotify_playlist_is_private_and_in_the_mix_order(studio: Stud
     wanted = [f"spotify:track:{songs[t['reference']]}" for t in spec["tracks"]]
     (made,) = [studio.songs.fake.playlists[p] for p in set(studio.songs.fake.playlists) - before]
     assert made.entries == wanted
-    assert (made.public, made.collaborative) == (False, False)
+    assert (made.public, made.collaborative) == (True, False)  # roadmap Amendment 30
     (row,) = rows(studio, rider.user_id)
     assert (row.output, row.state) == ("spotify_playlist", "done")
     keys = [o.idempotency_key for o in operations(studio, rider.user_id)]

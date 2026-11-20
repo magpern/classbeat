@@ -15,7 +15,7 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "sessions": "server-side sessions, looked up by token hash before any user is known",
         "known_devices": "device tokens (HMAC only) that exempt a user from the per-account cap",
         "pending_signups": "sign-ups waiting for a mail link; no user exists yet",
-        "auth_tokens": "single-use reset and email-change tokens (hash only), looked up by hash",
+        "auth_tokens": "single-use reset, email-change and revert tokens (hash only), by hash",
         "oauth_flows": "in-flight OAuth flows, taken by flow hash before a user is known",
         "invites": "invite codes (hash only), checked before a user exists",
         "mfa_totp": "admin and step-up TOTP secrets (AES-GCM), read during sign-in",
@@ -52,6 +52,9 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "server, which has no user session",
         "oidc_grants": "a user's consent to a player client, read at the player's sign-in and "
         "goes with the user",
+        # ADR 0040 section 7 (#1301): only through classbeat.spotdown.scope_outbox.
+        "spotdown_scope_deletions": "spotdown scopes (an HMAC of a deleted owner's id, never the "
+        "id) still to be deleted in spotdown; written before an account goes, gone once sent",
         # ADR 0034 section 2 (#1058): only through classbeat.player.outbox.
         "player_events": "signed events to the player, keyed by a pairwise subject with no user "
         "id; written before an account goes and outlive it until delivered",

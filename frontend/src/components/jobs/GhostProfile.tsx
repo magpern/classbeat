@@ -1,5 +1,5 @@
 // A placeholder class profile on the stage while the class is being made (ADR 0013 section 5).
-// The bars are a fixed, invented silhouette in the stage's grid colour: it says nothing about the
+// The bars are a fixed, invented silhouette in brand tints: it says nothing about the
 // class. It pulses and its bars move like an equaliser (motion-app.css); still under reduced motion.
 
 const HEIGHTS = [22, 30, 38, 30, 46, 54, 38, 62, 46, 70, 54, 38, 30, 22]
@@ -10,7 +10,7 @@ export function GhostProfile() {
       aria-hidden="true"
       viewBox="0 0 200 80"
       preserveAspectRatio="none"
-      className="ghost-bars block h-28 w-full rounded-md bg-stage motion-safe:animate-pulse"
+      className="ghost-bars block h-28 w-full rounded-md bg-raised motion-safe:animate-pulse"
     >
       {HEIGHTS.map((h, i) => (
         <rect
@@ -19,7 +19,7 @@ export function GhostProfile() {
           y={80 - h}
           width={200 / HEIGHTS.length - 1}
           height={h}
-          style={{ fill: 'var(--cb-stage-grid)' }}
+          className={i % 3 === 1 ? 'fill-brand/30' : 'fill-brand/15'}
         />
       ))}
     </svg>

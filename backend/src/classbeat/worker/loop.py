@@ -32,12 +32,11 @@ import re
 import secrets
 import socket
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from classbeat import auth
 from classbeat.config import Settings
 from classbeat.db import (
     DatabaseRoleError,
@@ -49,7 +48,9 @@ from classbeat.db import (
 from classbeat.jobs import KINDS, CreditLedger, KindRegistry, queue, settle
 from classbeat.jobs.runner import Execution, RunConfig, execute, hand_back
 from classbeat.quota import MeteredLedger
+from classbeat.spotdown import scope_outbox
 from classbeat.worker.listen import listen
+from classbeat.worker.maintenance import purge_once, quietly
 
 logger = logging.getLogger(__name__)
 
@@ -73,33 +74,6 @@ def worker_id() -> str:
     """``host:pid:random``, within ``queue_claim``'s ``^[A-Za-z0-9._:-]{1,100}$``."""
     host = re.sub(r"[^A-Za-z0-9._-]", "-", socket.gethostname())[:60] or "worker"
     return f"{host}:{os.getpid()}:{secrets.token_hex(4)}"
-
-
-async def purge_once(factory: Factory, settings: Settings) -> None:
-    """Run the hourly purge of expired auth rows. A failure is logged and retried next hour;
-    ``DatabaseRoleError`` stops the worker."""
-    try:
-        counts = await auth.purge_expired(factory, settings)
-    except DatabaseRoleError:
-        raise
-    except Exception as exc:  # the worker must outlive a database blip
-        logger.warning("auth purge failed", extra={"error_type": type(exc).__name__})
-        return
-    logger.info("auth purge", extra={"deleted": counts})
-
-
-async def _quietly(name: str, step: Callable[[], Awaitable[int]]) -> None:
-    try:
-        count = await step()
-    except DatabaseRoleError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            "job maintenance failed", extra={"step": name, "error_type": type(exc).__name__}
-        )
-        return
-    if count:
-        logger.info("job maintenance", extra={"step": name, "count": count})
 
 
 class Worker:
@@ -137,10 +111,12 @@ class Worker:
         self.checks = 0  # queue-check attempts started
 
     async def maintain(self) -> None:
-        """Reap, expire and settle once (ADR 0005 sections 3 and 5)."""
-        await _quietly("reap", lambda: queue.reap(self.factory))
-        await _quietly("expire", lambda: queue.expire(self.factory))
-        await _quietly("settle", lambda: settle(self.factory, self.ledger))
+        """Reap, expire and settle once (ADR 0005 sections 3 and 5); deleted accounts' spotdown
+        scopes (ADR 0040 section 7)."""
+        await quietly("reap", lambda: queue.reap(self.factory))
+        await quietly("expire", lambda: queue.expire(self.factory))
+        await quietly("settle", lambda: settle(self.factory, self.ledger))
+        await quietly("spotdown_scopes", lambda: scope_outbox.drain(self.factory))
 
     def verified(self) -> bool:
         """The queue check passed on a connection of this engine (ADR 0005 section 3). Until it

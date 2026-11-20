@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useT } from '../../../i18n/I18n'
 import { Chip } from '../../ui/chip'
 import { ListRow } from '../../ui/list-row'
+import { ConnectionMark, type ConnectionMarkContent } from './ConnectionMark'
 
 /**
  * One line of the Connections list (ADR 0028 section 3): a mark, the name, an "Optional" chip where
@@ -17,7 +18,7 @@ export function ConnectionRow({
   testId,
   className,
 }: {
-  mark: string
+  mark: ConnectionMarkContent
   name: string
   optional: boolean
   status: ReactNode
@@ -33,9 +34,9 @@ export function ConnectionRow({
       leading={
         <span
           aria-hidden="true"
-          className="inline-flex size-11 shrink-0 items-center justify-center rounded-md bg-raised font-display text-base font-bold text-text"
+          className="inline-flex size-12 shrink-0 items-center justify-center rounded-md bg-raised font-display text-base font-bold text-text"
         >
-          {mark}
+          <ConnectionMark mark={mark} />
         </span>
       }
       title={name}

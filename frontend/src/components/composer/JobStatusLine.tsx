@@ -47,7 +47,9 @@ export function JobStatusLine({
 }) {
   const t = useT()
   const { job: followed } = useJobProgress(job.id)
-  const over = followed !== null && isTerminal(followed.state)
+  // A job that waits for the approval is over for this line too: the class is read again, which shows
+  // the waiting list (the progress hook stops following at that state, so nothing else would).
+  const over = followed !== null && (isTerminal(followed.state) || followed.state === 'waiting_for_approval')
   const told = useRef(false)
   useEffect(() => {
     if (over && !told.current) {

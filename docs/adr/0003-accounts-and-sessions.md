@@ -68,7 +68,7 @@ Every table has an `id uuid` primary key (server default) unless a key is named.
 | `sessions` | `user_id`, `token_hash` (unique), `created_at`, `last_seen_at`, `expires_at` (absolute), `reauth_at`, `mfa_at`, `stepup_at`, `user_agent` (truncated), `ip`; `seen_ip_hash`, `seen_agent`, `location_changed_at`, `location_event_at` (amendment of 2026-11-05, #632) | SHA-256 of the token; `seen_ip_hash` an HMAC (`session-client` key, §8) |
 | `known_devices` | `user_id`, `device_hash` (unique), `created_at`, `last_used_at` | HMAC (`device` key, §8) |
 | `pending_signups` | `token_hash` (unique; null until the email is entered), `email`, `email_normalized` (both null until then; not unique: each row has its own token and the first confirmation wins), `password_hash` (nullable), `provider`, `subject`, `browser_hash` (all three set together or null), `invite_id` → `invites`, `expires_at` | SHA-256; argon2id |
-| `auth_tokens` | `purpose` (`reset_password`, `change_email`), `token_hash` (unique), `user_id`, `new_email`, `email_at_issue`, `expires_at`, `used_at` | SHA-256 |
+| `auth_tokens` | `purpose` (`reset_password`, `change_email`, `revert_email` (amendment of 2026-11-19)), `token_hash` (unique), `user_id`, `new_email`, `email_at_issue`, `expires_at`, `used_at` | SHA-256 |
 | `oauth_flows` | `flow_hash` (unique), `provider`, `purpose` (`sign_in`, `sign_up` (#617), `link`, `reauth`), `state_hash`, `nonce`, `pkce_verifier`, `user_id` (for `link`/`reauth`), `invite_id` → `invites`, `return_to`, `expires_at` | the flow id and state as SHA-256; the verifier and nonce are kept as given, live ≤ 10 min and are deleted on use |
 | `invites` | `code_hash` (unique), `created_by` (*set null*; null for the CLI), `used_by` (*set null*), `expires_at`, `used_at` | SHA-256 |
 | `mfa_totp` | `user_id` (unique), `secret_ciphertext`, `nonce`, `key_id`, `confirmed_at`, `last_step` | AES-256-GCM (§8) |
@@ -269,7 +269,7 @@ its order after that check.
   *(#639, 2026-11-05)* `complete` takes a **keep list**, `keep_methods: [id]` (required; the
   methods the page showed and the user left unticked), and deletes every other identity of the
   user, so one linked after `info` was never shown and goes; an id that is not the user's is
-  ignored. It locks the `users` row right after consuming the token (ADR 0019 §6), and every
+  ignored. It locks the `users` row before consuming the token (ADR 0019 §6; until #1265, right after it), and every
   password sign-in, re-authentication, MFA verify and OAuth sign-in, link or re-auth locks that
   row first and re-checks under it what it proved (the password hash, the session, the
   identity), so no session or identity made from the old credentials outlives the reset. The
@@ -303,9 +303,9 @@ its order after that check.
   - **Confirmation:** needs a signed-in session of `auth_tokens.user_id`, so a victim clicking
     a link from someone else's account changes nothing. It rechecks that the new address is
     still free and that `users.email` still equals `email_at_issue`.
-  - **Notice:** the old address is notified.
+  - **Notice:** the old address is notified, with a 7-day revert link (amendment of 2026-11-19).
 - **Invalidation:** a password change, a reset or an email change deletes the user's
-  outstanding reset and email-change tokens.
+  outstanding reset and email-change tokens (revert tokens: amendment of 2026-11-19).
 
 **Mail delivery**
 - **Settings:** SMTP from `CLASSBEAT_SMTP_HOST`, port, sender and TLS mode (`starttls`, `tls` or
@@ -1158,3 +1158,179 @@ can add if the table grows. Tests: `backend/tests/test_auth_activity.py` (isolat
 users, the kind and field allowlists, paging with equal times, cursor checks, the new event, the
 savepoint and the catch-all branch, no deadlock with an account deletion);
 `frontend/src/components/account/SecurityActivity.test.tsx`. Threat model T4.
+
+## Amendment 2026-11-19: undoing an email change from the old address (#1265)
+
+**Context.** An email change notified the old address (§5) but gave it no way back. Whoever
+changes the address holds a session with recent authentication (and step-up with a confirmed
+TOTP), so the change is the last step of a takeover: after it, every reset link goes to the new
+address and "tell us right away" is the owner's only option. Restoring the address alone would
+not help either: in the same session the changer can have set a password they know, linked their
+own sign-in method, registered a passkey or enrolled an authenticator, and would sign straight
+back in.
+
+**Decision.**
+
+- **The token.** Confirming an email change deletes every outstanding token of the user (as
+  before) and then issues one `auth_tokens` row of the new purpose **`revert_email`** (migration
+  0062 widens `auth_tokens_purpose`): 32 random bytes, only the SHA-256 stored, single use,
+  **7 days**, bound to the user, `new_email` = the old address (the one the revert restores) and
+  `email_at_issue` = the new address (the one the account must still have). The notice to the old
+  address (`email_changed`, essential) keeps its wording for a legitimate change ("if you made this
+  change, you don't need to do anything") and adds the link `/{locale}/email-revert#token=…`.
+- **Invalidation (changes §5 "Invalidation").** A password change and a completed reset now delete
+  the user's other tokens **except** `revert_email` (`delete_outstanding_tokens(keep_revert=True)`):
+  changing the password, or resetting it through the new mailbox, is exactly what the changer does
+  next and must not void the old address's way back. An email confirmation still deletes every
+  token, earlier revert tokens included: they are stale once the address moves, and A → B → C → B
+  must not make A's token valid again. The revert itself deletes every token.
+- **The endpoint.** `POST /api/auth/email/revert` `{token}` is public (no session needed; the CSRF
+  and origin checks of §4 apply, with the anonymous double-submit cookie). There is no GET route:
+  the SPA page `/email-revert` posts the token only when its button is pressed, so a mail scanner
+  or a preview that opens the link changes nothing. It never signs the browser in (§4).
+  - Every refusal of the token is one answer, 400 `invalid_token`: unknown, used, expired, another
+    purpose, the account deleted, or **stale** (the account's address is no longer the token's
+    `email_at_issue`, checked under the user row lock).
+  - 409 `email_taken` when the old address belongs to another account now (the unique key
+    decides, in a savepoint; the error is never logged, its DETAIL holds the address). Only a
+    holder of a valid token gets it, so it tells nobody else anything; the token stays unused.
+  - Rate limit: each request takes a slot of the sign-in IP bucket (§9) first, and only a success
+    gives it back, as the reset completion does, so failures count against it.
+  - No Turnstile (ADR 0025 §1: listed in `EXEMPT`, like the reset completion): the 32-byte mailed
+    token is the proof and cannot be guessed, failures already hold sign-in IP slots, and the
+    person who opens the link is the one locked out of their account, who should not meet a
+    challenge wall (or a Turnstile outage) between them and the revert.
+- **The safe recovery (one transaction, `auth/email_revert.py`).** It peeks the token, takes the
+  user row lock (ADR 0019 §6, as the reset does) **before** consuming it, then consumes the token,
+  rechecks the address, and then: restores `email` and `email_normalized`; **clears the
+  password**; deletes **every linked identity**, the **TOTP**, the **recovery codes** and **every
+  passkey**; revokes **every session** (`revoke_user_sessions`, which also queues the player
+  logout event of ADR 0034 §2), forgets the **known devices** and burns the user's unused
+  **player sign-in codes** (below); deletes every outstanding token; records **`email_reverted`**
+  (the request's address, `detail` = how many methods and passkeys went); and issues one
+  `reset_password` token (30 minutes, §5). After the commit the restored address gets the new
+  essential mail `email_reverted`, which says what was removed and carries the reset link. If that
+  link expires, the owner asks for a new one on the sign-in page: the address is theirs again.
+  An admin-disabled account is reverted the same way; it stays disabled.
+- **Requests in flight (lock order).** Every path that consumes a token of the user, writes a
+  credential or issues a reset token takes the user row lock (ADR 0019 §6) **first** and rechecks
+  under it what it relied on, so a request the changer started before the revert cannot land
+  after it (#1265 review):
+  - the revert peeks its token, locks the user, then consumes the token and rechecks the address;
+  - the reset completion locks the user before consuming its token, and the email confirmation
+    before consuming its token (both used to consume first: against the revert, which deletes
+    those tokens under the lock, that was a deadlock and a 500);
+  - the password change locks the user and rechecks that its session is still alive before it
+    writes the hash (a revert or reset that committed while the hash ran ends it with 401);
+  - the reset request locks the user found for the address and looks the address up again under
+    the lock: after a committed revert the address no longer names the account and no token is
+    issued; a request that holds the lock first commits its token, which the waiting revert
+    deletes. This was chosen over binding reset tokens to the address (`email_at_issue`) and
+    rechecking it at completion: it is smaller, needs no change to the token rows, and closes the
+    window before a token exists rather than after one was mailed;
+  - the player sign-in code step (`oidc/advance.py`, the authorize continue and the consent POST)
+    locks the user and rechecks that its session is still alive before it inserts a code (#1294):
+    a revert, reset, password change or sign out everywhere that committed while it waited ended
+    that session and burnt the codes, so it answers as for a signed-out caller (the sign-in
+    redirect at continue, `request_expired` at consent) and inserts nothing; one that holds the
+    lock first commits its code, which the waiting path burns.
+  Tests: `backend/tests/test_auth_email_revert_races.py` (both orders of each race, parked, not
+  timed) and `backend/tests/test_auth_revert_lock_order.py` (#1292: the revert against the email
+  confirmation and against the reset completion, each in both orders, parametrized; it fails for
+  the two mutations "the revert consumes its token before locking" and "the confirmation takes no
+  lock", which brought the deadlock and its 500 back and passed the first tests) and
+  `backend/tests/test_oidc_advance_lock.py` (#1294: the code step against the revert, through
+  continue and consent, and against the reset completion, each in both orders; it fails for "the
+  code step takes no user lock" and for "it does not recheck the session").
+- **A → B → C and the first revert link (decided in #1292: it stays stale).** Confirming the
+  second change deletes A's token, so the notice to A can no longer revert. The alternative,
+  keeping A's token and moving its `email_at_issue` to each new address, was rejected:
+  - It does not close the hole. The changer holds B's mailbox, so they receive the B → C notice
+    with a token that restores B; a revert deletes every outstanding token, A's included, so
+    changing twice and then reverting with B's own link kills A's token anyway. Making A's survive
+    would need a rule that a revert deletes only the later tokens of the chain, a new design with
+    ordering, rebinding and a state per hop, not a hardening.
+  - It moves the exposure the wrong way for the other party. The 7 days are a window in which
+    whoever holds the old mailbox can take the account (accepted limit 2). Today a later change by
+    the owner closes that window for A's link; with a chain it would stay open in every state the
+    account passes through, so an owner who moved off a mailbox they distrust could not close it by
+    changing again.
+  - What the owner of A has left is the notice itself and support (accepted limit 1). The rule is
+    unchanged: single use, 7 days, valid only while the account's address equals the token's
+    `email_at_issue`.
+  `test_a_token_is_stale_once_the_address_moved_on` (`test_auth_email_revert.py`) pins it,
+  including that A → B → C → B does not bring A's token back.
+- **Player sign-in codes (decided in #1292 and #1294: revert, reset, password change and sign out
+  everywhere burn them).** An `oidc_codes` row (ADR 0034 §1: 60 seconds, single use, redeemed at
+  `/oidc/token` by the player's server) was not touched by a revert or a reset. A code the changer
+  asked for in the last minute could still be turned into a player session after the lockdown,
+  and the `sessions_revoked` event of the same transaction is no answer to it: that event is a
+  back-channel logout with no `sid` (ADR 0034 §2) and classbeat has no way to reach a player
+  session made after it was handled; whether the player ends one depends on how it applies the
+  event (player ADR 0010 §8), which classbeat does not rely on. These paths now call
+  `oidc.code_store.revoke_codes` in their transaction, after the session revocation and under the
+  user row lock: it sets `used_at` on the user's unused codes, as a failed redemption does, so a
+  later redemption gets the same `invalid_grant` as for any bad code, is written as
+  `oidc_code_refused` with `reason: used` for that user, and the purge removes the row. Other
+  users' codes are untouched; a refused revert rolls the burn back with everything else.
+  - *Why the password change and sign out everywhere too (#1294).* Both are often the owner's
+    answer to a compromise: they end the intruder's session, and a code that session asked for in
+    the last minute is the same hole as after a revert. The cost is one statement; the price is
+    that the owner's own code in flight (a player sign-in in another tab during that minute) is
+    burnt too and that sign-in starts again. Codes carry no session id, so the burn cannot spare
+    the caller's session.
+  - *Still not burnt:* the email confirmation, signing out one session (from the list or this
+    browser's sign-out), the admin disable and the other paths of ADR 0034 §2 (a role change,
+    `admin mfa-reset`, the TOTP reset or removal). The confirmation and a single sign-out are not
+    a lockdown (the latter ends one session, and codes are not bound to one), and the rest are an
+    operator's or a second-factor change, not an answer to a stolen session. Their residual is a
+    code asked for in the last 60 seconds by a session they ended; for the admin disable there is
+    none, as the token endpoint redeems only for an active user.
+  - *Codes inserted during a burn:* closed by the code step's lock and session recheck ("Requests
+    in flight" above).
+  *Accepted residual:* a code whose redemption (its one `UPDATE ... used_at`, its own transaction
+  at `/oidc/token`, which takes no user row lock) committed before the burn is outside it: the
+  token endpoint still answers with its ID token. A player session made from that answer after
+  the player handled the `sessions_revoked` event of the same lockdown is not reached by
+  classbeat (whether the player ends it is its own rule, player ADR 0010 §8), nor is one for which
+  no event was queued at all: the user's first player sign-in, when the lockdown read the grant
+  before the token endpoint set `first_issued_at` (its own transaction, after the redemption's).
+  Neither the 60 seconds of the code nor that event bounds it; it is the exposure of a player
+  sign-in that completed just before the lockdown. Tests:
+  `backend/tests/test_auth_revert_player_codes.py` and `backend/tests/test_oidc_advance_lock.py`.
+- **Activity.** `email_reverted` joins `activity.SHOWN_KINDS` (amendment of 2026-11-07), worded in
+  every catalogue.
+- **The page path.** The issue named `/email/revert`; the page is `/email-revert` instead, next to
+  `/email-change`. `/email/*` is the asset path of ADR 0022 (the mail logo, served cross-origin and
+  cached for a week) and a mail link there is never language-prefixed (`emails.layout.Ctx.url`,
+  `tests/test_mail_links.py`); a page under it would have needed an exception in that guard. The
+  path is one constant on each side (`emails.kinds.REVERT_PATH`, the route in `App.tsx`).
+
+**Alternatives.**
+- *Restore the address and revoke the sessions only:* rejected; a password, identity, passkey or
+  authenticator the changer planted would let them straight back in, and an enrolled TOTP would
+  lock the owner out of the reset.
+- *Keep the identities and let the reset's keep list (§5, #639) remove the changer's:* rejected;
+  between the revert and the reset the changer could sign in with their linked provider. The owner
+  links their own again after the reset.
+- *Disable the account until support steps in:* rejected; it needs a person for every case, and
+  the reset link through the restored mailbox is the same proof the reset already accepts.
+- *Delete revert tokens on a password change or reset, as for the other tokens:* rejected (above).
+- *A longer reset link for this mail:* not chosen; the owner has just clicked from that mailbox,
+  and a new link can be asked for at any time.
+
+**Consequences.**
+- **Accepted limits.** (1) Moving the address twice (A → B → C) makes A's link stale, by the
+  rule that a revert works only while the address is still the one the notice was about; a
+  changer who knows this can defeat it, and the owner of A then has the notice and support (why
+  it stays so: "A → B → C and the first revert link", above).
+  (2) Whoever holds the old mailbox within the 7 days can take the account: revert, then the reset
+  link. A user who left a mailbox they no longer control is exposed for that week; the lifetime
+  is the trade-off between that and an owner who reads their mail late.
+- A revert also removes the owner's own password, methods, passkeys and authenticator; the mail
+  and the page say so, and the owner sets them up again.
+- Tests: `backend/tests/test_auth_email_revert.py` (the token's fields and hash, the lockdown and
+  its event, the reset mail and recovery, the uniform answers, stale and other-purpose tokens, a
+  signed-in other user, the taken address, a GET, CSRF, the token surviving the changer's password
+  change and reset, the IP bucket); `backend/tests/test_auth_email.py`; the mail golden files;
+  `frontend/src/pages/mailPages.test.tsx`. Threat model T4.

@@ -5,6 +5,11 @@ E-postadressen för ditt classbeat-konto har ändrats. Det här är den gamla ad
 
 När det hände: 6 november 2026 kl. 12:30 UTC
 
+Om du gjorde ändringen behöver du inte göra något. Om det inte var du öppnar du länken nedan för att få tillbaka den här adressen: alla loggas då ut från kontot och du får välja ett nytt lösenord. Länken fungerar en gång, i 7 dagar.
+
+Ångra ändringen:
+https://classbeat.example.test/sv/email-revert#token=SAMPLE
+
 Om det inte var du, säg till oss direkt. Kontakta oss på support@classbeat.eu
 
 --

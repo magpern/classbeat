@@ -8,6 +8,7 @@ import { Notice, useAction } from '../components/forms'
 import { useT } from '../i18n/I18n'
 import { goToProvider } from '../lib/navigation'
 import { Link, useQuery } from '../router/Router'
+import { Button } from '../components/ui/button'
 
 // `/player-consent?r=...`: the provider's consent page (ADR 0034 section 1). The server sends a
 // signed-in browser here the first time classbeat-player asks to sign it in, and when a
@@ -44,12 +45,12 @@ function Consent({ requestId }: { requestId: string }) {
       <p>{t('playerConsent.intro', { email: session?.user?.email ?? '' })}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <p className="flex flex-wrap gap-3">
-        <button className="button" type="button" disabled={action.busy} onClick={() => { answer(true) }}>
+        <Button type="button" disabled={action.busy} onClick={() => { answer(true) }}>
           {t('playerConsent.allow')}
-        </button>
-        <button className="button button--secondary" type="button" disabled={action.busy} onClick={() => { answer(false) }}>
+        </Button>
+        <Button variant="secondary" type="button" disabled={action.busy} onClick={() => { answer(false) }}>
           {t('playerConsent.deny')}
-        </button>
+        </Button>
       </p>
     </>
   )
@@ -69,9 +70,11 @@ export function PlayerConsentPage() {
     const returnTo = encodeURIComponent(`/oidc/authorize/continue?r=${requestId}`)
     body = (
       <p>
-        <Link className="button" to={`/signin?return_to=${returnTo}`}>
-          {t('auth.signIn')}
-        </Link>
+        <Button asChild>
+          <Link to={`/signin?return_to=${returnTo}`}>
+            {t('auth.signIn')}
+          </Link>
+        </Button>
       </p>
     )
   } else {

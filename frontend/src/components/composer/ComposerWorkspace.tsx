@@ -113,7 +113,7 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
         classId,
         listRevisionId: list.id,
         listJobId: list.jobId ?? summary.songs.jobId ?? list.id,
-        position: song.position,
+        slot: song.position - 1,
       }),
     )
   }
@@ -148,7 +148,7 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
       {ready ? (
         <ApproveBar holding={pending !== null} checking={stored.messages === null} checkFailed={stored.failed} onRetryCheck={stored.refresh} busy={approve.busy || running} error={approve.error} onApprove={onApprove} />
       ) : (
-        <SaveArea flow={save} chip={chip.state} currentOrigin={currentOrigin} />
+        <SaveArea flow={save} chip={chip.state} currentOrigin={currentOrigin} differed={summary.composer.phase2 === 'differed'} />
       )}
       <MorePanel
         section={more}
@@ -223,10 +223,8 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
               if (sketchId !== null) run(() => fillSongs({ classId, sketchRevisionId: sketchId, retry: true }))
             }}
             onCreateAgain={() => {
-              const approved = list
-              const jobId = approved?.jobId ?? summary.songs.jobId
-              if (approved === null || jobId === null) return
-              run(() => resumePlaylist({ classId, listRevisionId: approved.id, listJobId: jobId, targetSec: approved.targetSec }))
+              const jobId = list?.jobId ?? summary.songs.jobId
+              if (jobId !== null) run(() => resumePlaylist({ classId, listJobId: jobId }))
             }}
             actionError={act.error}
             actionBusy={act.busy}

@@ -16,7 +16,10 @@ import { usePlanAllowance } from '../newclass/usePlanAllowance'
 import { PlanNudge } from '../plans/PlanNudge'
 import { UpgradeLink } from '../plans/UpgradeLink'
 import { Button } from '../ui/button'
-import { Card } from '../ui/card'
+import { BriefFrame, BRIEF_AREA } from './BriefFrame'
+import { ClassesLeft } from './ClassesLeft'
+import { PlanLength } from './PlanLength'
+import { FieldCard } from './FieldCard'
 import { composerInput, initialDraft, keptFromRequest, type ComposerRequest, type Sport } from './composerModel'
 import { MusicTagRow } from './MusicTagRow'
 import { forSport, gateOverride, toggleNone, togglePlaylist, type PlaylistTag } from './musicTags'
@@ -36,7 +39,7 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
   const { navigate } = useRouter()
   const from = useQuery().get('from')
   const action = useAction()
-  const { allowed, plan } = usePlanAllowance()
+  const { allowed, plan, classesLeft, settled } = usePlanAllowance()
   const offered = useMemo<PlaylistTag[]>(
     () => source.playlists.map((p) => ({ id: p.spotifyPlaylistId, name: p.name })),
     [source.playlists],
@@ -111,7 +114,7 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
   const busy = action.busy || gate?.blocking === true
   return (
     <form
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-5"
       onSubmit={(event) => {
         event.preventDefault()
         start(request)
@@ -119,44 +122,27 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
       noValidate
       aria-label={t('start.formLabel')}
     >
-      <p className="m-0 text-muted">{t('composer.intro')}</p>
       {shown ? <Notice kind="error">{shown}</Notice> : null}
       {problem === null && action.upgrade ? <UpgradeLink /> : null}
       <PlanNudge trigger="low" plan={plan} />
-      <Card className="flex flex-col gap-3 rounded-3xl">
+      <BriefFrame>
         <TextArea
           ref={promptRef}
           label={t('start.prompt.label')}
+          hint={t('composer.intro')}
           placeholder={t('start.prompt.placeholder')}
           rows={4}
           maxLength={MAX_REQUEST}
           value={request}
+          className={BRIEF_AREA}
           onChange={(e) => {
             setRequest(e.target.value)
           }}
         />
-        {allowed === null ? null : (
-          <p className="m-0 text-[0.875rem] text-muted" data-testid="plan-length">
-            {t('start.planLength', { minutes: allowed.maxMinutes })}
-          </p>
-        )}
-        <MusicTagRow
-          offered={offered}
-          tags={tags}
-          noMusicOffered={noMusicOffered}
-          onTogglePlaylist={(tag) => {
-            setTags(togglePlaylist(tags, tag))
-          }}
-          onToggleNone={() => {
-            setTags(toggleNone(tags))
-          }}
-        />
-        {gate !== null ? (
-          <SpotifyPrompt need={gate.need} soundless={noMusicOffered} />
-        ) : refusedForSpotify !== null ? (
-          <SpotifyPrompt need={refusedForSpotify} soundless={noMusicOffered} />
-        ) : null}
-        <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
+      </BriefFrame>
+      <div className="grid gap-3.5 sm:grid-cols-2">
+        <FieldCard title={t('start.length.title')}>
+          <PlanLength allowed={allowed} settled={settled} />
           {source.runningEnabled ? (
             <select
               aria-label={t('newclass.sport')}
@@ -166,23 +152,43 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
                 setSport(next)
                 setTags(forSport(tags, next === 'running'))
               }}
-              className="min-h-11 cursor-pointer rounded-full border border-line bg-raised px-4 text-[0.9375rem] text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              className="min-h-11 cursor-pointer self-start rounded-full border border-line bg-raised px-4 text-[0.9375rem] text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             >
               <option value="cycling">{t('newclass.sport.cycling')}</option>
               <option value="running">{t('newclass.sport.running')}</option>
             </select>
           ) : null}
-          <span className="flex-1" />
-          <Button variant="secondary" disabled={busy} onClick={surprise}>
-            <Shuffle aria-hidden="true" size={16} />
-            {t('composer.surprise')}
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {t('composer.start')}
-            <ArrowRight aria-hidden="true" size={16} />
-          </Button>
-        </div>
-      </Card>
+        </FieldCard>
+        <FieldCard title={t('start.music.from')} className="overflow-visible">
+          <MusicTagRow
+            offered={offered}
+            tags={tags}
+            noMusicOffered={noMusicOffered}
+            onTogglePlaylist={(tag) => {
+              setTags(togglePlaylist(tags, tag))
+            }}
+            onToggleNone={() => {
+              setTags(toggleNone(tags))
+            }}
+          />
+          {gate !== null ? (
+            <SpotifyPrompt need={gate.need} soundless={noMusicOffered} />
+          ) : refusedForSpotify !== null ? (
+            <SpotifyPrompt need={refusedForSpotify} soundless={noMusicOffered} />
+          ) : null}
+        </FieldCard>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" disabled={busy} className="min-h-14 px-8 text-[1.0625rem] font-bold">
+          {t('composer.start')}
+          <ArrowRight aria-hidden="true" size={16} />
+        </Button>
+        <Button variant="secondary" disabled={busy} onClick={surprise}>
+          <Shuffle aria-hidden="true" size={16} />
+          {t('composer.surprise')}
+        </Button>
+        <ClassesLeft count={classesLeft} />
+      </div>
       <p className="m-0 text-[0.875rem] text-muted">
         {t('composer.note')} <Link to="/classes/new/advanced">{t('composer.advanced')}</Link>
       </p>

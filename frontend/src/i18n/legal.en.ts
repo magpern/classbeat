@@ -57,7 +57,7 @@ export const legalEn = {
   'privacy.model.p1':
     'To design a class we send an AI model provider what you wrote about it, your change requests and earlier requests, the drafts and timelines made so far, and a summary of the songs (the playlist name, and for each song details such as its title, artist, tempo and length).',
   'privacy.model.p2':
-    'We never send it your email address, name, passwords, tokens or any account or service IDs. The assistant only proposes: classbeat saves to MOWL or Spotify only what you approve, or what you have allowed in advance by giving your one-time consent for a private song pool in your Spotify.',
+    'We never send it your email address, name, passwords, tokens or any account or service IDs. The assistant only proposes: classbeat saves to MOWL or Spotify only what you approve, or what you have allowed in advance by giving your one-time consent for a working playlist in your Spotify.',
 
   'privacy.processors.title': 'Who else handles your data',
   'privacy.processors.p1':
@@ -135,6 +135,9 @@ export const legalEn = {
     'classbeat helps indoor-cycling instructors design classes with the help of an AI assistant and, when you approve, save them to your MOWL account and create playlists on your Spotify account. It is an invite-only beta, offered as it is, and it can change or stop.',
   'terms.service.p2':
     'classbeat is not made by or affiliated with MOWL, Spotify or Swedebeat. Your use of those services is under their own terms.',
+  // Draft wording, awaiting the owner (#1268). The site footer shows this same key (LegalFooter.tsx).
+  'terms.service.p3':
+    'MOWL, Intelligent Cycling, Spotify and Swedebeat are trademarks of their respective owners. They are used only to say what classbeat works with, and do not mean that those companies endorse classbeat.',
 
   'terms.account.title': 'Your account',
   'terms.account.li1': 'Give a real email address and keep your sign-in details to yourself.',

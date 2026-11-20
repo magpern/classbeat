@@ -583,6 +583,9 @@ jobs:
           # mounts its public test key instead).
           [ -f secrets/swedebeat_gateway_key ] && [ ! -s secrets/swedebeat_gateway_key ] \
             || { echo "::error::init must create an empty secrets/swedebeat_gateway_key"; exit 1; }
+          # ADR 0040 section 10: spotdown's service key (empty: no key, spotdown off; worker only).
+          [ -f secrets/spotdown_service_key ] && [ ! -s secrets/spotdown_service_key ] \
+            || { echo "::error::init must create an empty secrets/spotdown_service_key"; exit 1; }
 
       - name: Start the stack
         working-directory: .
@@ -853,10 +856,11 @@ jobs:
           docker run --rm --user postgres --entrypoint sh classbeat-db-check -c \
             'for f in /queue/* /maint/* /docker-entrypoint-initdb.d/*; do test -r "$f" || { echo "unreadable: $f"; exit 1; }; done'
 
-      # The 26 fixable HIGH/CRITICAL findings of /usr/local/bin/gosu (Go standard library of the
+      # The 27 fixable HIGH/CRITICAL findings of /usr/local/bin/gosu (Go standard library of the
       # postgres:17.12 base image) are time-boxed in .trivyignore, each ID with an exp: date and a
       # reason; every other file and package stays a gate. The fix is a postgres tag whose gosu is
-      # built with a newer Go; remove the entries with it.
+      # built with a newer Go; remove the entries with it. The dev `db` service in compose.yaml sets no
+      # `user:`, so "unreachable" covers the image and prod (compose.prod.yaml sets `user: postgres`).
       - name: Scan the database image
         if: matrix.shard == 1
         working-directory: .

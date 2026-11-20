@@ -1,0 +1,16 @@
+Din e-mailadresse er blevet gendannet
+=====================================
+
+Ændringen af e-mailadressen til din classbeat-konto er blevet fortrudt, og kontoen bruger denne adresse igen. For at holde den, der ændrede den, ude har vi logget alle sessioner ud og fjernet kontoens adgangskode, tilknyttede loginmetoder, tofaktorgodkendelse, gendannelseskoder og passkeys.
+
+Vælg en ny adgangskode med linket nedenfor (gyldigt i 30 minutter; derefter kan du bede om et nyt på login-siden). Sæt derefter resten op igen på din kontoside.
+
+Vælg en ny adgangskode:
+https://classbeat.example.test/da/reset#token=SAMPLE
+
+Hvis du ikke selv fortrød ændringen, skal du give os besked med det samme. Kontakt os på support@classbeat.eu
+
+--
+Du får denne sikkerhedsbesked, fordi dette er e-mailadressen til en classbeat-konto. Sådanne beskeder sendes for at beskytte dig.
+classbeat: https://classbeat.example.test
+Spørgsmål? Skriv til support@classbeat.eu

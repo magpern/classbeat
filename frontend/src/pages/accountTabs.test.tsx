@@ -32,7 +32,7 @@ const DEVICES = [
   },
 ]
 const CONSENT_TEXT =
-  'classbeat manages one private working playlist in your Spotify account, named classbeat working copy, to ask for song candidates and have MOWL analyse them. It is overwritten on each pick; anyone with its link could open it.'
+  'classbeat manages one working playlist in your Spotify account, named classbeat working copy, to ask for song candidates and have MOWL analyse them. It is public, so MOWL can find it: it can show on your Spotify profile and in search, and anyone with its link can open it. It is overwritten on each pick.'
 
 const base = {
   'GET /api/auth/session': SIGNED_IN,
@@ -107,10 +107,13 @@ describe('account tabs', () => {
     setWidth(width)
     fakeApi(base)
     renderAt('/account')
-    expect(await screen.findByRole('heading', { level: 1, name: 'ann' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'ann@example.test' })).toBeInTheDocument()
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
-    expect(screen.queryByText('Your account')).toBeNull()
-    expect(screen.getByTestId('account-email')).toHaveTextContent('ann@example.test')
+    // The eyebrow above the name is a label, not a second heading.
+    expect(screen.getByText('Your account').tagName).toBe('P')
+    // The address is the heading, shown once (no second line, no name cut from it).
+    expect(screen.getByRole('heading', { level: 1 })).toContainElement(screen.getByTestId('account-email'))
+    expect(screen.getAllByText('ann@example.test')).toHaveLength(1)
     // Changing the address is not part of the header: it sits in Sign-in and security.
     expect(screen.queryByLabelText('New email address')).toBeNull()
     const list = screen.getByRole('tablist', { name: 'Account' })
@@ -121,17 +124,20 @@ describe('account tabs', () => {
 })
 
 describe('change email', () => {
-  it('lives in Sign-in and security, outside the header', async () => {
+  it('lives in Sign-in and security, outside the header, and starts closed', async () => {
     fakeApi(base)
     renderAt('/account#security')
-    const form = (await screen.findByLabelText('New email address')).closest('section')
+    const open = await screen.findByRole('button', { name: 'Change' })
+    const form = open.closest('section')
     expect(form).not.toBeNull()
     const section = within(form as HTMLElement)
     expect(section.getByRole('heading', { level: 2, name: 'Email address' })).toBeInTheDocument()
-    expect(section.getByRole('button', { name: 'Change email' })).toBeInTheDocument()
+    expect(section.getByText('ann@example.test')).toBeInTheDocument()
+    expect(section.queryByLabelText('New email address')).toBeNull()
+    expect(section.queryByRole('button', { name: 'Change email' })).toBeNull()
     const header = screen.getByRole('heading', { level: 1 }).closest('header')
     expect(header).not.toBeNull()
-    expect(within(header as HTMLElement).queryByLabelText('New email address')).toBeNull()
+    expect(within(header as HTMLElement).queryByRole('button', { name: 'Change' })).toBeNull()
   })
 })
 

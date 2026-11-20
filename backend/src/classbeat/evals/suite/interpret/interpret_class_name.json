@@ -1,0 +1,21 @@
+{
+ "kind": "interpret",
+ "name": "interpret_class_name",
+ "about": "A new class gets a short name of the ride (#1233), and the request's values as stated.",
+ "request": "Make a 45 minute class with 3 hills and one flat tempo section, hard at the end",
+ "expect": {
+  "values": {
+   "length_min": 45,
+   "climbs": 3
+  },
+  "origins": {
+   "length_min": "explicit",
+   "climbs": "explicit"
+  },
+  "absent": [
+   "races",
+   "music"
+  ],
+  "named": true
+ }
+}

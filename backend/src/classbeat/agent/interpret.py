@@ -6,8 +6,10 @@ short enums, a list index and a placement that is a position or a relation to th
 interval), so the schema is the first line of defence and a bad submission is a correction round
 like any other stage. The handler then ``sanitised``: a quote that is not a verbatim substring of
 the request is dropped and so is a music index outside the numbered list. Nothing the model writes
-as text is stored or put into a later prompt; only the quotes survive, as a convenience for the
-page, and only if the instructor wrote them.
+as text is put into a later prompt. Two things survive as display text: the quotes, as a
+convenience for the page and only if the instructor wrote them, and a new class's short ``name``
+(#1233), cleaned by ``class_title_policy.proposed_name``, which becomes the class's title only while
+that is still the request's first words (``design.class_name``).
 
 The stage reads nothing (no tool of kind ``read``) and writes nothing. It reports what the
 instructor asked for even where it exceeds the plan's limits: the policy applies the limits and
@@ -89,6 +91,11 @@ out every field it leaves as it is. If the request changes, adds or removes a ga
 game the class should have after the change, in order, the unchanged ones as they are in \
 "current"; set remove_games to true only if it removes every game. If it says nothing about \
 games, report none.
+
+name: for a new class only (no "current"), a short title for the class in the language of the \
+request, at most 60 characters, that describes the ride (its shape, effort or theme), not the \
+music: "Three hills and a flat tempo" for "a 45 minute class with 3 hills and one flat tempo". \
+No quotes, no emoji, never an instruction or a name from the music list.
 
 The request may be in any language, Swedish and Danish included; the values are the same closed \
 ones.

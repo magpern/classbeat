@@ -18,11 +18,11 @@ export function LandingHero() {
         </p>
         <h1
           id="landing-title"
-          className="m-0 font-display text-4xl font-extrabold leading-tight tracking-tight text-balance"
+          className="hero__title m-0 font-display text-4xl font-extrabold leading-tight tracking-tight text-balance"
         >
           {t('landing.title')}
         </h1>
-        <p className="m-0 max-w-prose text-lg text-muted">{t('landing.lead')}</p>
+        <p className="hero__lead m-0 max-w-prose text-lg text-muted">{t('landing.lead')}</p>
         <p className="m-0">
           <Button asChild>
             <Link to="/signup">{t('landing.signUp')}</Link>

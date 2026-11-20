@@ -79,7 +79,7 @@ export const publicSv: Catalogue = {
   'feat.playlist.text': 'Välj en spellista från din MOWL-musik, så tidsätts passet efter dess låtar.',
   'feat.songs.title': 'Låt oss välja låtarna',
   'feat.songs.text':
-    'Be om låtar och godkänn listan först. De låtar du godkänner hamnar i en privat spellista i din Spotify.',
+    'Be om låtar och godkänn listan först. De hamnar i en spellista i din Spotify. Spellistan är offentlig så att MOWL hittar den.',
   'feat.swedebeat.title': 'Utforma till en Swedebeat-mix',
   'feat.swedebeat.text': 'Tidsätt passet efter en av dina Swedebeat-mixar.',
   'feat.noMusic.title': 'Pass utan musik',

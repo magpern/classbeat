@@ -1,6 +1,7 @@
 import { useT } from '../../i18n/I18n'
 import { LOCALES } from '../../i18n/locales'
 import { Link } from '../../router/Router'
+import { Button } from '../ui/button'
 import { LanguagePicker } from '../LanguagePicker'
 import { BrandLink } from './BrandLink'
 import { SiteLinksNav } from './SiteLinksNav'
@@ -8,35 +9,47 @@ import { SiteLinksNav } from './SiteLinksNav'
 // The buttons' horizontal padding, shared with the placeholder so its width cannot drift from theirs.
 const SIGN_IN_PADDING = 'px-4'
 const SIGN_UP_PADDING = 'px-5'
+// The Button's type size: the placeholder must measure its labels at the same size, or the row's width
+// (and where a narrow phone wraps it) differs between the prerender and the client.
+const BUTTON_TEXT = 'text-[0.9375rem] font-medium'
+
+// Issue 1272: at 35rem and below the controls take two rows at most, in every language: the brand and the
+// language picker on the first, Sign in and Sign up on the second. The three together are 352 px wide in
+// Swedish, more than a 360 px phone has, so they used to wrap to a third row. The group of picker and
+// buttons has no box of its own there (`contents`), so the picker is a neighbour of the brand and the
+// buttons' nav has the full row, right-aligned. Above 35rem the group is the right-hand block it always
+// was (one row needs 545 px in Swedish). The prerender's room uses the same classes.
+const HEADER_ROW = 'mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 max-[35rem]:justify-between'
+const CONTROLS = 'ml-auto flex flex-wrap items-center justify-end gap-2 max-[35rem]:contents'
+const BUTTONS = 'flex flex-wrap items-center justify-end gap-2 max-[35rem]:w-full'
 
 export function SignedOutHeader({ ready, offered }: { ready: boolean; offered: readonly string[] }) {
   const t = useT()
   return (
     <header className="border-b border-line bg-surface">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
+      <div className={HEADER_ROW}>
         <BrandLink />
         {/* From sm up only: on a phone the footer carries these links, so the header row (brand and
             account controls) is the one it always was and cannot shift when the nav arrives (takeover gate). */}
-        <SiteLinksNav className="hidden flex-wrap gap-x-4 sm:flex" />
-        {ready ? (
-          <nav aria-label={t('shell.nav.account')} className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <LanguagePicker offered={offered} />
-            <Link
-              to="/signin"
-              className={`inline-flex min-h-11 items-center rounded-full ${SIGN_IN_PADDING} font-medium text-text no-underline hover:bg-raised`}
-            >
-              {t('auth.signIn')}
-            </Link>
-            <Link
-              to="/signup"
-              className={`inline-flex min-h-11 items-center rounded-full bg-brand ${SIGN_UP_PADDING} font-medium text-on-brand no-underline hover:opacity-90`}
-            >
-              {t('shell.signUp')}
-            </Link>
-          </nav>
-        ) : (
-          <NavPlaceholder />
-        )}
+        <SiteLinksNav className="hidden flex-wrap gap-x-1 sm:flex" />
+        <div className={CONTROLS}>
+          {ready ? (
+            <>
+              <LanguagePicker offered={offered} />
+              <nav aria-label={t('shell.nav.account')} className={BUTTONS}>
+                <Button asChild variant="ghost" className={SIGN_IN_PADDING}>
+                  <Link to="/signin">{t('auth.signIn')}</Link>
+                </Button>
+                {/* Flat heat: the glow would spill below the header and the prerender placeholder cannot carry it (takeover gate). */}
+                <Button asChild variant="flat" className={SIGN_UP_PADDING}>
+                  <Link to="/signup">{t('shell.signUp')}</Link>
+                </Button>
+              </nav>
+            </>
+          ) : (
+            <NavPlaceholder />
+          )}
+        </div>
       </div>
     </header>
   )
@@ -53,10 +66,12 @@ export function SignedOutHeader({ ready, offered }: { ready: boolean; offered: r
 function NavPlaceholder() {
   const t = useT()
   return (
-    <div aria-hidden="true" data-testid="nav-placeholder" className="ml-auto flex flex-wrap items-center justify-end gap-2">
-      {LOCALES.length > 1 ? <span className="inline-block h-11 w-[6.5rem] rounded-md" /> : null}
-      <span className={`invisible inline-flex min-h-11 items-center ${SIGN_IN_PADDING} font-medium`}>{t('auth.signIn')}</span>
-      <span className={`invisible inline-flex min-h-11 items-center ${SIGN_UP_PADDING} font-medium`}>{t('shell.signUp')}</span>
-    </div>
+    <>
+      {LOCALES.length > 1 ? <span aria-hidden="true" data-testid="picker-placeholder" className="inline-block h-11 w-[6.5rem] rounded-md" /> : null}
+      <div aria-hidden="true" data-testid="nav-placeholder" className={BUTTONS}>
+        <span className={`invisible inline-flex min-h-11 items-center ${SIGN_IN_PADDING} ${BUTTON_TEXT}`}>{t('auth.signIn')}</span>
+        <span className={`invisible inline-flex min-h-11 items-center ${SIGN_UP_PADDING} ${BUTTON_TEXT}`}>{t('shell.signUp')}</span>
+      </div>
+    </>
   )
 }
