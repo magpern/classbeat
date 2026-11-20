@@ -9,8 +9,8 @@ in its title). Never the network: the autouse netguard refuses any other connect
   candidates are left out while the spares fill the list, else replaced by the song agent (at
   most 3 rounds, swaps recorded); ``uncertain`` and an unresolved ``provider_error`` or
   ``rate_limited`` keep their song with MOWL's sections;
-- spotdown unreachable, a provider outage or an error of any type in the stage: today's list,
-  byte for byte, for this run and every later run of the job;
+- spotdown unreachable, a provider outage or an error of any type in the stage: today's list
+  (byte for byte when no replacement round ran), for this run and every later run of the job;
 - the wait budget is the job's over its runs; the idempotency keys are stable across runs.
 """
 
@@ -44,6 +44,7 @@ pytestmark = pytest.mark.usefixtures("songenv")
 LIST = [(0, "warmup"), (2, "build"), (4, "climb"), (10, "recovery"), (6, "sprint"),
         (7, "sprint"), (11, "recovery"), (12, "cooldown")]  # fmt: skip
 POOL = list(range(14))
+REAL_SLEEP = pick_match_batch._sleep  # pyright: ignore[reportPrivateUsage]  # before ``waits``
 ERRORS = (OSError, ValueError, KeyError, TypeError, ZeroDivisionError, AttributeError,
           LookupError, PermissionError)  # fmt: skip
 
@@ -487,6 +488,34 @@ async def test_rate_limited_waits_inside_the_jobs_budget_over_its_runs(
     assert revision.provenance[KEY]["songs"][1] == {
         "position": 1, "status": "rate_limited", "use": "sections",
     }  # fmt: skip
+
+
+async def test_a_run_stopped_during_a_wait_has_already_spent_it(
+    songenv: SongEnv,
+    spotdown: FakeSpotdown,
+    on: Callable[[Rider], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The worker shuts down during the first ``rate_limited`` wait: the real wait sees the
+    shutdown and its checkpoint stops the run, and the job's budget already holds that wait."""
+    tag(songenv, "rate_limited", 2)
+    stopped: list[float] = []
+
+    async def shut_down_then_wait(run: Any, seconds: float) -> None:
+        stopped.append(seconds)
+        run.shutdown.set()
+        await REAL_SLEEP(run, seconds)
+
+    monkeypatch.setattr(pick_match_batch, "_sleep", shut_down_then_wait)
+    rider = await songenv.rider()
+    on(rider)
+    songenv.script = script(*pool_turns(), *chosen(POOL))
+    job_id = await songenv.created(rider)
+    row = await songenv.run(job_id)
+    assert row.state == "queued"  # handed back by the shutdown, not ended
+    assert row.approval_revision_id is None
+    assert stopped == [30.0]
+    assert budget_row(songenv, job_id).spent_seconds == 30.0  # charged before the wait
 
 
 async def test_a_wait_that_does_not_fit_the_budget_is_not_made(

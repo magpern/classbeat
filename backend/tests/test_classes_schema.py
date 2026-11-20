@@ -644,7 +644,7 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     # ADR 0040 section 9 (migration 0063): a shadow comparison; it goes with its job's class.
     insert(admin, "spotdown_shadow_tracks", owner_id=owner, job_id=job_id, outcome="compared",
            metrics={"bpm_agree": True}, provenance={"record_version": 1})  # fmt: skip
-    # ADR 0040 section 8 (migration 0064): a song job's spotdown match budget; it goes with the
+    # ADR 0040 section 8 (migration 0066): a song job's spotdown match budget; it goes with the
     # class.
     insert(admin, "spotdown_song_budgets", owner_id=owner, job_id=job_id, fallback=True)
     # ADR 0036 section 6 (migration 0054): a studio output attempt and its daily-limit record.

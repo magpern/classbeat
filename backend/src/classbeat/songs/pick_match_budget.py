@@ -1,5 +1,5 @@
 """A song job's spotdown match budget (``spotdown_song_budgets``, ADR 0040 section 8; migration
-0064; SD-P6 stage A, #1303): the bounds of section 8 hold **per class**, over every run of the
+0066; SD-P6 stage A, #1303): the bounds of section 8 hold **per class**, over every run of the
 job, not per run.
 
 - ``open``: in the job's fenced transaction, the job's row (made on its first use of the match)

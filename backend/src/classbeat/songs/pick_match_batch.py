@@ -83,6 +83,10 @@ def _query(ref: str, entry: Entry) -> TrackQuery:
 def _key(
     run: JobRun, round_no: int, batch_no: int, pass_no: int, asked: Sequence[TrackQuery]
 ) -> str:
+    # spotdown replays a key's first answer for 24 h: a later run of the job that asks the
+    # identical batch gets this run's answers again on every pass, a replayed ``rate_limited`` or
+    # ``provider_error`` included, and may spend budget waiting on them (bounded by the budget and
+    # ``MAX_PASSES``; those tracks then keep MOWL's sections). ADR 0040, the match-stage amendment.
     tracks = [[q.client_ref, q.title, list(q.artists), q.duration_s] for q in asked]
     digest = hashlib.sha256(json.dumps(tracks, ensure_ascii=False).encode("utf-8")).hexdigest()
     parts = (str(run.lease.job_id), f"r{round_no}", f"b{batch_no}", f"p{pass_no}", digest)
