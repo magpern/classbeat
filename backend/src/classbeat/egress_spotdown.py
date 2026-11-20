@@ -187,8 +187,7 @@ class _SpotdownTransport(httpx.AsyncBaseTransport):
     async def _handle(self, request: httpx.Request) -> httpx.Response:
         if not same_origin(self._origin, request.url):
             raise blocked(_host(request.url))  # before the key is set: it never leaves for it
-        length = request.headers.get("content-length")
-        if length is not None and (not length.isdigit() or int(length) > self._body_cap):
+        if _declared_over(request.headers.get("content-length"), self._body_cap):
             raise BodyTooLarge  # a declared body over the cap: nothing is sent
         request.headers["Authorization"] = self._key.bearer()
         body = request.stream
@@ -198,14 +197,21 @@ class _SpotdownTransport(httpx.AsyncBaseTransport):
         if 300 <= response.status_code < 400:
             await response.aclose()
             raise blocked(_host(request.url), after_request=True)
-        declared = response.headers.get("content-length")
-        if declared is not None and (not declared.isdigit() or int(declared) > ANSWER_MAX):
+        if _declared_over(response.headers.get("content-length"), ANSWER_MAX):
             await response.aclose()
             raise AnswerTooLarge
         return response
 
     async def aclose(self) -> None:
         await self._inner.aclose()
+
+
+def _declared_over(length: str | None, cap: int) -> bool:
+    """A declared ``Content-Length`` that is not ASCII digits (Arabic-Indic digits and superscripts
+    pass ``str.isdigit``) or is over ``cap``."""
+    if length is None:
+        return False
+    return not (length.isascii() and length.isdigit()) or int(length) > cap
 
 
 def spotdown_network_transport() -> httpx.AsyncHTTPTransport:

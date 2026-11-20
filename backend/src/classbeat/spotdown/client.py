@@ -197,13 +197,17 @@ class SpotdownClient:
         refused = self._refusal("upload")
         return refused or await _lookup(params)
 
-    async def get_analysis(self, analysis_id: str) -> dict[str, object] | Failure:
-        """``GET /v2/analyses/{id}``: the ``analysis-v1`` document (the same id)."""
-        path = rq.analysis_path(analysis_id)
+    async def get_analysis(
+        self, analysis_id: str, cache_scope: str | None = None
+    ) -> dict[str, object] | Failure:
+        """``GET /v2/analyses/{id}``: the ``analysis-v1`` document (the same id). Without
+        ``cache_scope`` spotdown reads only a global (``youtube``) analysis; a private one needs
+        the scope that holds it."""
+        path, params = rq.analysis_path(analysis_id), rq.analysis_params(cache_scope)
         refused = self._refusal(None)
         if refused is not None:
             return refused
-        answer = await _get(path, ANALYSIS_ANSWER_MAX, seconds=ANALYSIS_SECONDS)
+        answer = await _get(path, ANALYSIS_ANSWER_MAX, seconds=ANALYSIS_SECONDS, params=params)
         if isinstance(answer, Unreachable):
             return answer
         if answer.status != 200:

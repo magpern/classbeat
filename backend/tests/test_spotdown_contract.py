@@ -73,7 +73,7 @@ ANALYSIS_REQUEST = {
         "cache_scope": _SCOPE,
         "client_ref": {"type": "string", "minLength": 1, "maxLength": 128},
         "upload_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
-        "source_ref": {"type": "string", "pattern": "^[a-z]+:.+$", "maxLength": 256},
+        "source_ref": {"type": "string", "pattern": "^youtube:[A-Za-z0-9_-]{11}$"},  # contract v2
         "reference": {
             "type": "object",
             "additionalProperties": False,
@@ -136,7 +136,7 @@ async def test_every_answer_of_the_fake_and_every_request_of_the_client_keep_the
             SCOPE_A,
             f"ref-{end}",
             idempotency_key(end),
-            source_ref=f"youtube:src{n}",
+            source_ref=f"youtube:src{n:08d}",
             reference=Reference("spotify", "4uLU6hMCjMI75M1A2tKUQC", 200.0),
         )
         assert isinstance(started, Pending)

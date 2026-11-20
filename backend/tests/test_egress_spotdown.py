@@ -135,6 +135,28 @@ async def test_a_declared_answer_over_the_cap_is_refused() -> None:
             await client.get("/v2/analyses/an_1")
 
 
+@pytest.mark.parametrize("declared", ["\u0661", "\u00b2", "\uff11", "1 ", "-1", ""])
+async def test_a_declared_answer_length_that_is_not_ascii_digits_is_refused(declared: str) -> None:
+    # "\u0661" (Arabic-Indic one) passes str.isdigit and int() reads it as 1: under the cap.
+    odd = httpx.Response(200, headers=[(b"content-length", declared.encode())], content=b"")
+    transport, _ = answering(odd)
+    async with spotdown_test_client(ORIGIN, KEY, transport) as client:
+        with pytest.raises(AnswerTooLarge):
+            await client.get("/v2/analyses/an_1")
+
+
+@pytest.mark.parametrize("declared", ["\u0661", "\u00b2", "\uff11"])
+async def test_a_declared_request_length_that_is_not_ascii_digits_is_refused(declared: str) -> None:
+    transport, seen = answering(httpx.Response(200))
+    async with spotdown_test_client(ORIGIN, KEY, transport) as client:
+        declared_header = httpx.Headers([(b"content-length", declared.encode())])
+        request = client.build_request("POST", "/v2/match", content=b"x", headers=declared_header)
+        assert request.headers["content-length"] == declared
+        with pytest.raises(BodyTooLarge):
+            await client.send(request)
+    assert seen == []
+
+
 async def test_a_streamed_answer_over_the_cap_is_cut_off() -> None:
     async def body() -> AsyncIterator[bytes]:
         for _ in range(ANSWER_MAX // 65536 + 2):

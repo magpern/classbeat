@@ -268,6 +268,41 @@
             },
             "match": {
               "$ref": "#/$defs/match_record"
+            },
+            "decoded_duration_check": {
+              "description": "youtube only: the second duration check, on the decoded audio. expected_s is the requested duration from the match record (expected_from match) or the source's metadata duration (metadata); both the untrimmed file and the silence-trimmed content are compared and the closer decides. A rejected check (above 5 s) ends the job uncertain with no analysis, so a stored one is ok or tolerable.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "expected_s",
+                "expected_from",
+                "file_delta_s",
+                "content_delta_s",
+                "result"
+              ],
+              "properties": {
+                "expected_s": {
+                  "$ref": "#/$defs/seconds"
+                },
+                "expected_from": {
+                  "enum": [
+                    "match",
+                    "metadata"
+                  ]
+                },
+                "file_delta_s": {
+                  "type": "number"
+                },
+                "content_delta_s": {
+                  "type": "number"
+                },
+                "result": {
+                  "enum": [
+                    "ok",
+                    "tolerable"
+                  ]
+                }
+              }
             }
           },
           "allOf": [
@@ -474,6 +509,11 @@
               "residual_s": {
                 "type": "number",
                 "minimum": 0
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Which mapping: untrimmed (the reference starts at the file's start) or trimmed (at the content's start, the leading silence trimmed). offset_s uses the contract's sign, reference_time = file_time + offset_s. residual_s is how far the file's end (or the content's end) misses the reference's end."
               }
             }
           }
@@ -509,6 +549,11 @@
             "ok",
             "failed"
           ]
+        },
+        "chosen": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The name of the chosen hypothesis (result ok)."
         },
         "offset_s": {
           "type": "number"
