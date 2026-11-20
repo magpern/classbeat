@@ -64,7 +64,9 @@ endpoint looks Spotify up again for the duration.
   Developer Policy (§12). ADR 0012 provides an eval suite.
 
 **Consequence: spotdown needs no Spotify API in the integration.** classbeat sends the title,
-artists and duration it already has, and the ISRC when it has one. The Client Credentials client
+artists and duration it already has, and the ISRC when it has one. **classbeat reads no ISRC today**
+(`isrc` appears nowhere in `backend/src`), so until a later change reads one, the ISRC signal of §3 and
+the ISRC key of §7 are inactive for classbeat's requests. The Client Credentials client
 stays an optional adapter for spotdown's standalone UI. There is no exception to this boundary.
 
 ## Decision
@@ -154,10 +156,10 @@ rules are in §8.
 `DELETE /v2/scopes/{scope}`.
 
 **Two separate lookups,** both limited to the caller's scope (§7):
-- **By source reference:** `GET /v2/analyses/lookup?source=<kind>:<ref>&scope=…` (for example
+- **By source reference:** `GET /v2/analyses/lookup?source=<kind>:<ref>&cache_scope=…` (for example
   `youtube:<video id>`) returns the cached analysis id if there is one. Used for YouTube, where
   classbeat never has the bytes. `/v2/match` also returns this id for each candidate.
-- **By content:** `GET /v2/analyses/lookup?sha256=…&scope=…` when classbeat holds the bytes
+- **By content:** `GET /v2/analyses/lookup?sha256=…&cache_scope=…` when classbeat holds the bytes
   (SwedeBeat, the mix, an upload). It runs **before** any upload.
 
 classbeat polls from its existing job steps: a checkpoint plus an extended lease, or the fenced
@@ -196,6 +198,29 @@ classbeat's backend validations use only `measured` and `estimated` features abo
 
 The schema file itself is versioned in spotdown (spotdown#3); classbeat runs a contract test against
 it (§10).
+
+**Contract details live in spotdown's `docs/contract-v2.md`** (spotdown#3), within this ADR's
+decisions. This ADR confirms the draft's choices where it goes beyond the plan:
+- **Names.** `retry_after_s` (seconds) for `rate_limited` (§8; the plan wrote `retry_after`).
+  `cache_scope` is the one name for the caller's scope everywhere, the lookups' query parameter
+  included (the plan's `scope=`); `{scope}` in `DELETE /v2/scopes/{scope}` is that value.
+- **Match answer.** The envelope is `{results: [...]}`, one entry per requested track. Besides the
+  failure statuses of §8 it has the status `matched`, and below the `uncertain` band the band
+  `not_same` (below 0.6, §3). Each candidate carries the **cached analysis id plus a short summary**
+  when one exists (plan §1 says "summary", §3 says "id": both).
+- **Limits.** At most 50 tracks per `POST /v2/match`; an idempotency window of 24 h; an upload lives
+  1 h unless an analysis uses it.
+- **Alignment.** `alignment.offset_s` with the sign `reference_time = file_time + offset_s`.
+- **Routes and headers.** An added `GET /v2/analyses/{id}`; an `Idempotency-Key` header on the
+  writes; auth `Authorization: Bearer <service key>` (§10).
+- **Errors and jobs.** Errors are `{"error": {"code", "message"}}`, including `422 source_disabled`
+  (a source that is off, such as YouTube) and `409` for an `Idempotency-Key` reused with another
+  body. A job's status is one of `queued`, `running`, `done`, `failed`, with an `outcome` and a
+  `failure_kind` (the statuses of §8).
+- **Deletion.** `DELETE /v2/scopes/{scope}` removes that scope's private analyses, jobs and run
+  records; it does **not** remove global YouTube entries (§7's known conflict).
+
+Any other envelope or limit detail is the contract's and needs no amendment here.
 
 ### 6. Provenance, kept after the audio is deleted (plan §4a)
 
@@ -242,6 +267,25 @@ evidence.
   and sha256), then spotdown's lookup by sha256 within the scope, and only then uploads. Nothing is
   analysed or uploaded twice.
 
+**Known conflict with ADR 0010 and ADR 0007 §11 (not resolved by this ADR).** The global spotdown
+entries for Spotify-catalogue tracks are derived from Spotify metadata and are not tied to any class:
+the source-match cache (keyed on the ISRC or title/artist, kept for days), the YouTube source-reference
+link and the YouTube analysis (kept until the source or the analyser version changes), and the match
+record with its normalised title and artist query that §6 keeps with each analysis. `DELETE
+/v2/scopes/{scope}` removes only scoped entries, never global ones. This contradicts two accepted
+statements:
+- ADR 0010's accepted risk, "a shared music analysis is deleted once no class of any user refers to
+  it, so nothing Spotify-derived is kept indefinitely", and its table row "Keeping track lists, timing
+  and shared analyses for saved classes: allowed while a class refers to them, then deleted";
+- ADR 0007 §11, which requires any shared analysis store to come with its own ADR, the analysis id
+  recorded on each owned row, and a purge driven by class and job references.
+
+This retention is **part of what the owner accepts in #1296** (§12 item 2); until then no YouTube
+source is enabled and no such entry is created from classbeat's traffic. The proposed resolution
+point, for the owner and the Architect to choose and not decided here: either a bounded lifetime or
+purge for the global entries in spotdown#5 (caches, lookups, provenance), or a follow-up ADR that
+applies ADR 0007 §11's reference-driven purge to them, settled before SD-P6 (#1303) starts.
+
 ### 8. Failure taxonomy and its bounds (plan §6)
 
 | Status | Meaning | Reaction (bounded) |
@@ -250,7 +294,7 @@ evidence.
 | `uncertain` | best candidate below the confident band | not used for timing. Keep the song with MOWL sections (Spotify), or replace it if `exact` timing is needed for that slot |
 | `source_unavailable` | removed, region-blocked or age-gated | next alternate (≤ 2), then replacement |
 | `provider_error` | bot challenge, 5xx, network | 1 retry with backoff. If ≥ 50 % of a batch (and ≥ 3 tracks) fail this way, it is a **provider outage**: no swaps; the class falls back to MOWL sections (Spotify), or the user gets "Try again later" or "Swap anyway" (studio, as today) |
-| `rate_limited` | with `retry_after` | fenced requeue at `retry_after`; does not count as an attempt; the total wait is capped |
+| `rate_limited` | with `retry_after_s` | fenced requeue after `retry_after_s`; does not count as an attempt; the total wait is capped |
 | `processing_failed` | decode error, timeout, out of memory | deterministic, so no retry on the same audio (except 1 retry after a timeout); then an alternate, then the MOWL sections, then replacement |
 | `alignment_failed` | analysed, but the timeline is unusable | the timing class becomes `unusable` (§3) |
 | spotdown unreachable | – | the whole class uses today's paths (MOWL sections, or the local studio and mix analysis). spotdown is never a hard dependency |
@@ -335,6 +379,12 @@ pass, a period of production use with no regression in the fallback rate, and th
 - **classbeat side:** one new egress builder (a `spotdown` origin setting, modelled on the player URL
   setting of ADR 0034 §2; `tests/egress_scan.py` updated), a fake spotdown for tests, and a contract
   test against spotdown's versioned schema file. This is the one Opus-reviewed security piece (#1301).
+  "Modelled on" means the shape (one operator-set origin, one host, no redirects, a size cap), not the
+  rule: `player/base_url_policy.py` accepts only https on port 443 with a public DNS name and refuses
+  single-label, `.internal` and localhost names (and ADR 0034 §2 refuses private addresses), so it
+  refuses an internal compose origin such as `http://spotdown-api:8000`. **P4 (#1301) needs its own
+  origin rule, for an internal origin only, and an amendment to the `egress.py` rule that "the list is
+  code, not a setting"**, as ADR 0034 §2 made for the player.
 - **YouTube:** optional, off by default, enabled per deployment by the owner. Downloading from
   YouTube breaks YouTube's terms, and using it for Spotify-catalogue classes touches Spotify's
   Developer Policy. Returning only metadata and being noncommercial do **not** remove that risk; the
@@ -370,8 +420,9 @@ records the Spotify Developer Policy risks the owner accepted for the beta circl
 §IV 2, §IV 3.1(a)) and the feature table that the live activation gate reads. ADR 0021 §2 cites both.
 
 **Until #1296 is accepted** ADR 0010 and ADR 0021 §2 stand exactly as written: no YouTube source is
-enabled, and SD-P6 (#1303) does not start. SD-P1 to SD-P5 need no YouTube and are not affected by
-this amendment; analysing SwedeBeat tracks, the mix and user audio is not processing of Spotify
+enabled, and SD-P6 (#1303) does not start. SD-P1 to SD-P5 are not affected by
+this amendment, as none needs live YouTube (SD-P3 builds the YouTube matcher on faked yt-dlp,
+with no live enablement); analysing SwedeBeat tracks, the mix and user audio is not processing of Spotify
 content.
 
 **Effective on the owner's acceptance of #1296:**
@@ -386,7 +437,11 @@ content.
    Spotify-catalogue classes touches Spotify's Developer Policy (classbeat sends spotdown the
    Spotify-derived title, artists, duration and ISRC when it has one, and spotdown searches YouTube
    with them); returning only metadata and being noncommercial do not remove that risk. The owner
-   also decides whether YouTube is enabled in production at all. Beyond the circle the row needs the
+   also decides whether YouTube is enabled in production at all. **The risk also covers retention:**
+   spotdown's global caches and match records for Spotify-catalogue tracks (§7) are kept without any
+   class reference, so ADR 0010's "nothing Spotify-derived is kept indefinitely" and ADR 0007 §11's
+   reference-driven purge do not hold for them until the resolution point named in §7 (a bounded
+   lifetime or purge in spotdown#5, or a follow-up ADR) is settled. Beyond the circle the row needs the
    providers, as the rest of ADR 0010's table does.
 
 When #1296 is accepted the Architect records the acceptance date in ADR 0010 and ADR 0021 as a dated
