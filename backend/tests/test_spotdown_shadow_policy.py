@@ -122,3 +122,12 @@ def test_an_odd_analyzer_version_is_stored_as_other() -> None:
     record = evaluate(document, REFERENCE, SHA, LOCAL, 1)
     assert record.metrics is not None
     assert record.metrics["analyzer_version"] == "other"
+
+
+def test_a_youtube_documents_video_id_is_not_kept_in_the_shadow_provenance() -> None:
+    document = doc(kind="youtube")
+    document["provenance"]["source"]["ref"] = "dQw4w9WgXcQ"
+    record = evaluate(document, REFERENCE, SHA, LOCAL, 1)
+    assert record.provenance is not None
+    assert record.provenance["source"] == {"kind": "youtube", "ref": None}
+    assert "dQw4w9WgXcQ" not in json.dumps(record.provenance)

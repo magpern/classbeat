@@ -31,6 +31,7 @@ from classbeat.design.track_analysis import analyse_tracks
 from classbeat.design.track_cache import TrackMap
 from classbeat.jobs import Complete, JobKind, JobRun, KindRegistry
 from classbeat.spotdown import shadow_config, shadow_policy
+from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.scope_calc import cache_scope
 from classbeat.swedebeat_match import gateway_match
 from ctx import make_context
@@ -348,3 +349,92 @@ async def test_a_swedebeat_disconnect_forgets_the_shadow_rows(
         await forget_swedebeat_account(db, make_context(owner))
     assert harness.shadows(owner) == []
     assert len(harness.shadows(other)) == 1
+
+
+# --- the relay runs before the track's map is stored: an error there must never escape -------
+
+
+def _raising(name: str) -> Any:
+    async def coroutine(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError(f"a bug in {name}")
+
+    async def generator(*_args: object, **_kwargs: object) -> AsyncIterator[bytes]:
+        raise RuntimeError(f"a bug in {name}")
+        yield b""  # pragma: no cover - makes this an async generator
+
+    return generator if name == "_chunks" else coroutine
+
+
+@pytest.mark.parametrize(
+    ("target", "name"),
+    [
+        (SpotdownClient, "lookup_content"),
+        (SpotdownClient, "upload"),
+        (SpotdownClient, "start_analysis"),
+        (track_shadow, "_chunks"),
+        (track_shadow, "_send"),
+    ],
+)
+async def test_an_error_in_the_relay_is_swallowed_and_every_map_is_stored(
+    harness: Harness,
+    spotdown: FakeSpotdown,
+    shadow_on: None,
+    monkeypatch: pytest.MonkeyPatch,
+    target: Any,
+    name: str,
+) -> None:
+    shadow_config.configure(None)
+    off_result, off_maps = await baseline(harness, [ONE, TWO])
+    shadow_config.configure(ON)
+    monkeypatch.setattr(target, name, _raising(name))
+    owner = await harness.user()
+    row = await harness.run(owner, [ONE, TWO])
+    assert (row.state, row.error_category) == ("completed", None)
+    assert last_result(harness) == off_result
+    assert harness.maps(owner) == off_maps  # both tracks' maps stored
+    assert [s.outcome for s in harness.shadows(owner)] == ["internal", "internal"]
+
+
+# --- each row is closed with its own record ---------------------------------------------------
+
+
+async def test_each_row_is_closed_with_its_own_tracks_record(
+    harness: Harness, spotdown: FakeSpotdown, shadow_on: None
+) -> None:
+    owner = await harness.user()
+    await harness.run(owner, [ONE, TWO])  # 30 s and 31 s of audio
+    by_bytes = {
+        s.provenance["audio"]["sha256"]: s.metrics["duration_local_s"]
+        for s in harness.shadows(owner)
+    }
+    assert set(by_bytes) == {SHA, hashlib.sha256(OTHER_AUDIO).hexdigest()}
+    assert by_bytes[SHA] == pytest.approx(30.0, abs=0.1)
+    assert by_bytes[hashlib.sha256(OTHER_AUDIO).hexdigest()] == pytest.approx(31.0, abs=0.1)
+
+
+# --- a lost lease: the late shadow write is refused, swallowed and writes nothing ---------------
+
+
+async def test_a_lost_lease_before_the_close_writes_nothing_and_raises_nothing(
+    harness: Harness, spotdown: FakeSpotdown, shadow_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = track_shadow_rows.close_rows
+    raised: list[BaseException] = []
+
+    async def stolen(run: JobRun, records: Any) -> None:
+        harness.ops.sql(
+            "UPDATE jobs SET lease_version = lease_version + 1 WHERE id = :j", j=run.lease.job_id
+        )
+        try:
+            await real(run, records)
+        except BaseException as exc:  # what the shadow step swallows
+            raised.append(exc)
+            raise
+
+    monkeypatch.setattr(track_shadow_rows, "close_rows", stolen)
+    owner = await harness.user()
+    await harness.run(owner, [ONE])
+    assert [type(e).__name__ for e in raised] == ["LeaseLost"]
+    assert len(harness.maps(owner)) == 1  # stored before the shadow step
+    [shadow] = harness.shadows(owner)
+    assert (shadow.outcome, shadow.finished_at, shadow.provenance) == ("pending", None, None)

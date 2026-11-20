@@ -11,7 +11,9 @@ equivalence (path (b) has no consumer) or anchors are given, so a document of ot
 the timing class and reason, the analyser's name and version (codes, else ``other``) and whether
 ``spotdown_map_policy`` would map it (``map``: ``ok`` or the refusal's code). The provenance is
 ``provenance_model``'s record: ids, versions, the audio identity and the timing evidence, never a
-title, a file name, a URL, a scope or a client ref.
+title, a file name, a URL, a scope or a client ref. Its ``source.ref`` is always ``None`` here:
+shadow mode relays only uploads, and a lookup by sha256 that found a ``youtube`` analysis of the
+same bytes would otherwise keep that video id.
 """
 
 import re
@@ -68,7 +70,9 @@ def evaluate(
         "analyzer_version": _version(provenance.analyzer_version),
         "map": "ok" if isinstance(mapped, spotdown_map_policy.MappedTrack) else mapped.reason,
     }
-    return ShadowRecord("compared", None, metrics, provenance.record())
+    record = provenance.record()
+    record["source"] = {"kind": provenance.source_kind, "ref": None}  # never a source ref here
+    return ShadowRecord("compared", None, metrics, record)
 
 
 def local_metrics(local_map: Mapping[str, object]) -> dict[str, Metric]:
