@@ -49,6 +49,9 @@ head after the Sonnet rounds, never an Opus Developer.
 - A PR closes one issue (`Closes #n` in the body) and states its scope, its acceptance
   criteria and how they were tested.
 - A milestone is done when all its issues are closed and its "done when" in the roadmap holds.
+- **Limit: at most four open PRs at a time**, not counting PRs opened by bots (for example
+  Dependabot). Reviews and fixes come before new work: while a PR has a `FAIL` waiting, the
+  Architect starts no new Developer.
 
 ## PR loop
 
