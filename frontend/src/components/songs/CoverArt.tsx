@@ -14,7 +14,8 @@ import { cn } from '../../lib/cn'
  * - The server checks the same before it stores or returns one; this is a second check, so a page
  *   never asks any other host or path.
  * - The image is loaded lazily, with no referrer, and shown unaltered (no crop, overlay, blur or
- *   tint) with a 4 px radius (8 px when large).
+ *   tint; the Spotify badge on a playlist tile is a separate element in a corner, `PlaylistCover`)
+ *   with a 4 px radius (8 px when large).
  * - No cover, a URL that fails the check, or an image that does not load gets a neutral tile with
  *   initials instead.
  *
@@ -64,6 +65,7 @@ export function CoverArt({
   size = 'sm',
   kind = 'album',
   className,
+  onLoadError,
 }: {
   /** The song's (or playlist's) `cover` from the API, or null. */
   src: string | null
@@ -73,6 +75,8 @@ export function CoverArt({
   /** Which pin the URL must match: `album` (song lists) or `playlist` (the New class picker). */
   kind?: 'album' | 'playlist'
   className?: string
+  /** Called when the image fails to load (the tile then shows initials), so a caller can drop what goes with the cover. */
+  onLoadError?: () => void
 }) {
   const [failed, setFailed] = useState<string | null>(null)
   const valid = kind === 'playlist' ? isPlaylistCoverUrl(src) : isCoverUrl(src)
@@ -99,6 +103,7 @@ export function CoverArt({
       draggable={false}
       onError={() => {
         setFailed(src)
+        onLoadError?.()
       }}
     />
   )

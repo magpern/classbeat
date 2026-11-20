@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import { getPlaylistCovers, type Playlist } from '../../api/jobs'
 import { useT } from '../../i18n/I18n'
-import { CoverArt } from '../songs/CoverArt'
+import { PlaylistCover } from './PlaylistCover'
 
 /**
  * The covers of the user's Spotify playlists for the picker, asked once when `enabled` (ADR 0013
@@ -60,6 +60,7 @@ export function PlaylistTiles({
       >
         {playlists.map((p) => {
           const name = p.name || t('newclass.untitledPlaylist')
+          const cover = covers?.get(p.spotifyPlaylistId)
           return (
             <label
               key={p.spotifyPlaylistId}
@@ -75,10 +76,8 @@ export function PlaylistTiles({
                 }}
                 className="sr-only"
               />
-              {covers?.has(p.spotifyPlaylistId) ? (
-                <span aria-hidden="true" className="block aspect-square w-full" data-testid="playlist-cover">
-                  <CoverArt src={covers.get(p.spotifyPlaylistId) ?? null} label={name} size="lg" kind="playlist" />
-                </span>
+              {cover !== undefined ? (
+                <PlaylistCover src={cover} name={name} />
               ) : (
                 <span
                   aria-hidden="true"
