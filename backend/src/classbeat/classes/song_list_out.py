@@ -15,7 +15,7 @@ from uuid import UUID
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from classbeat.agent.interpretation_record import InterpretationItem
 from classbeat.classes import match_view, song_views
@@ -56,6 +56,9 @@ class SongOut(BaseModel):
     # A composer's list (v: 3): pinned, an attached playlist (its position in the request's
     # music_sources) or search (ADR 0038 section 10.2).
     source: SongSourceOut | None = None
+    # ADR 0040 section 3: "approximate" for a song whose timing is approximate; left out of the
+    # answer otherwise, so every other list reads exactly as before.
+    timing: Literal["approximate"] | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class PreviewSongOut(BaseModel):
@@ -181,6 +184,7 @@ async def song_list(
                 source=None
                 if s.source is None
                 else SongSourceOut(kind=s.source.kind, playlist=s.source.playlist),
+                timing=s.timing,
             )
             for i, s in enumerate(c.songs, start=1)
         ],

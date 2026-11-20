@@ -24,7 +24,7 @@ from typing import Any, Final
 from mowl import music, sync, workout
 from mowl.workout import mmss
 
-from classbeat.agent import mix_input, model_input, running_input
+from classbeat.agent import mix_input, model_input, running_input, timing_gate
 from classbeat.agent.brief import Brief
 from classbeat.agent.explicit_check import Miss
 from classbeat.agent.explicit_input import EXPLICIT_WINS, ExplicitGate, with_explicit
@@ -179,8 +179,8 @@ def has_zone7(spec: dict[str, Any]) -> bool:
 
 
 def check(draft: WorkoutDraft, m: dict[str, Any]) -> DesignResult:
-    """validate, fit, validate again; ``ToolError('invalid_draft')`` with the library's
-    message."""
+    """validate, fit, validate again, then the cues against each track's timing class
+    (``timing_gate``); ``ToolError('invalid_draft')`` with the library's or the gate's message."""
     wanted = draft.to_spec()
     try:
         workout.validate(_placeholder_rpm(wanted))
@@ -198,6 +198,7 @@ def check(draft: WorkoutDraft, m: dict[str, Any]) -> DesignResult:
         workout.validate(fitted)
     except ValueError as exc:
         raise ToolError("invalid_draft", [f"after fitting to the music: {exc}"]) from None
+    timing_gate.refuse_precise(timing_gate.draft_cues(draft), fitted, m)  # ADR 0040 section 3
     total = workout.total_seconds(fitted)
     return DesignResult(
         draft=draft,

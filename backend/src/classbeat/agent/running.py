@@ -25,7 +25,7 @@ from typing import Any, Final
 from mowl import music, sync, workout
 from mowl.workout import mmss
 
-from classbeat.agent import mix_input
+from classbeat.agent import mix_input, timing_gate, timing_input
 from classbeat.agent.design import (
     FINAL_TOOL,
     GET_MUSIC_DESCRIPTION,
@@ -168,11 +168,12 @@ def check_running(draft: RunningDraft, m: dict[str, Any]) -> DesignResult:
         workout.validate_running(fitted)
     except ValueError as exc:
         raise ToolError("invalid_draft", [f"after fitting to the music: {exc}"]) from None
+    timing_gate.refuse_precise(timing_gate.draft_cues(draft), fitted, m)  # ADR 0040 section 3
     total = workout.total_seconds(fitted)
     return DesignResult(
         draft=draft,
         spec=fitted,
-        timeline=running_timeline_for_model(fitted, report, m),
+        timeline=timing_input.annotate_timeline(running_timeline_for_model(fitted, report, m), m),
         quality=running_quality(wanted, fitted, m, report),
         warnings=mix_input.music_warnings(m, total),
         duration_sec=total,
