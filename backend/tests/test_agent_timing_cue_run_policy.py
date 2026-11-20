@@ -1,6 +1,7 @@
 """``timing_cue_run_policy``, through ``precise_kind``: a countdown or a count up is found wherever
-it sits in a cue, also after a zone, gear, level or round number; a label's own number and a
-duration in minutes are the only numbers left out (ADR 0040 section 3). Pure, table-driven: the
+it sits in a cue, also after a zone, gear, level or round number, and two numbers are enough
+before a call ("2, 1, go!"); a label's own number and a duration in minutes are the only numbers
+left out (ADR 0040 section 3). Pure, table-driven: the
 precise rows cross label prefixes and separators with count tails in en, sv and da."""
 
 import itertools
@@ -107,6 +108,16 @@ REFUSED_ON_PURPOSE = [
     ("Zon 3 2 1 kör", C),
     ("Zone 3 2 1 kør", C),
     ("Last 4 3 2 1 minutes", C),
+    # two numbers stepping by one before a call word
+    ("Zone 3 2 push the chorus", C),
+    ("Zone 3, 2!", C),
+    ("Round 1 2 go", B),
+    ("Gear 1, 2 up", B),
+    ("Gear 3 4 sprint", B),
+    ("Zon 3 2 kör", C),
+    ("Växel 3 4 upp", B),
+    ("Gear 3 4 op", B),
+    ("Zone 2 1 nu", C),
 ]
 
 
@@ -114,6 +125,27 @@ REFUSED_ON_PURPOSE = [
 def test_a_count_after_any_prefix_is_refused(lang: str) -> None:
     missed = [(text, kind) for text, kind in _precise(lang) if precise_kind(text) != kind]
     assert missed == []
+
+
+# Two numbers stepping by one, then a call: refused wherever the run sits.
+CALLED_TAILS = {
+    "en": ("2, 1, go!", "Two, one, go", "3 2 sprint", "1, 2, go", "2 1 up!", "two, one... now"),
+    "sv": ("2, 1, kör!", "två, ett, kör", "3 2 spurta", "1, 2, kör", "två ett upp!", "2-1 nu"),
+    "da": ("2, 1, kør!", "to, en, kør", "3 2 spurt", "1, 2, kør", "to et op!", "2-1 nu"),
+}
+
+
+def _called(lang: str) -> list[str]:
+    labels = LANGUAGES[lang][0]
+    rows = list(CALLED_TAILS[lang])
+    for label, n, sep in itertools.product(labels, PREFIX_NUMBERS, SEPARATORS):
+        rows += [f"{label} {n}{sep}{tail}" for tail in CALLED_TAILS[lang]]
+    return rows
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_two_numbers_before_a_call_are_refused(lang: str) -> None:
+    assert [text for text in _called(lang) if precise_kind(text) is None] == []
 
 
 @pytest.mark.parametrize(("text", "kind"), REVIEWED + REFUSED_ON_PURPOSE)
@@ -174,6 +206,12 @@ def _plain(lang: str) -> list[str]:
 
 PLAIN = {lang: _plain(lang) for lang in LANGUAGES}
 MINUTES = [
+    "Zone 2 1 minute left",
+    "Zon 2 1 minut kvar",
+    "Zone 2 1 minut tilbage",
+    "Zone 3, 2 minutes, go",
+    "Gear 2 1 hold",
+    "Klättring 3 2 sitt",
     "Last 3 2 1 minutes",
     "3 2 1 minuter kvar",
     "sidste 3 2 1 minutter",
@@ -196,6 +234,7 @@ def test_each_language_has_a_hundred_plain_and_precise_rows() -> None:
     for lang in LANGUAGES:
         assert len(PLAIN[lang]) >= 100
         assert len(_precise(lang)) >= 100
+        assert len(_called(lang)) >= 100
 
 
 @pytest.mark.parametrize(
@@ -212,6 +251,15 @@ def test_each_language_has_a_hundred_plain_and_precise_rows() -> None:
         ("zone 4 3 2 1", C),
         ("3 2 1 minutes", None),
         ("4 3 2 1 minutes", C),
+        ("2 1 go", C),
+        ("1 2 go", B),
+        ("2 1 hold", None),
+        ("zone 2 1 minute, go", None),
+        ("round 2 - 3, 2, 1, go!", C),
+        ("zone 2 1 2 3 4 and go", B),
+        ("to, en, kør", C),
+        ("1 2 1 go", C),  # as long down as up: a countdown
+        ("3 2 3 4 go", B),  # longer up than down
     ],
 )
 def test_run_kind_reads_any_three_steps(text: str, kind: str | None) -> None:
