@@ -638,6 +638,41 @@ changes no code, setting, compose file or deployment.
   self-check: grep for the same defect pattern elsewhere, make each call inside an error-swallowing `except` raise and check the outcome, show that
   each gate can fail, and verify every claim against the code.
 
+### Amendment (2026-11-20): the match stage of the Spotify flow, as built (SD-P6 stage A, #1303; amends §8 for that stage)
+
+Recorded with the code (#1325). The owner's acceptance of #1296 (the amendment "#1296 accepted"
+above) is what allows SD-P6 to be built; the stage is off by default and allowlisted per owner
+(`CLASSBEAT_SPOTDOWN_SPOTIFY`, `CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS`), with no value that turns it on
+for everyone.
+
+1. **This supersedes §8's `rate_limited` row ("fenced requeue after `retry_after_s`") for the
+   Spotify match stage** (Architect's decision, 2026-11-20, on the review of #1325). A `rate_limited`
+   track, or a `429` for the whole request, is waited for **in the run**: the clamped `retry_after_s`
+   is charged to the job's wait budget **before** the wait, the wait is made only when it fits what is
+   left, the run checkpoints at least every 10 s while it waits (a cancel, a shutdown or a lost lease
+   stops it, the wait already counted), and at most 6 requests are made per batch. What the budget
+   cannot wait for keeps MOWL's sections. *Why:* the match is one cheap metadata request per batch, a
+   requeue would rerun the model stage before it (`pick_pool`), and the bound is the same 600 s per
+   class; it follows the precedent of shadow mode's in-run polls (§9) and SD-P5. It still "does not
+   count as an attempt". Plan §6 carries a dated note.
+2. **The wait budget counts waits, not wall time**: the 600 s are the seconds the job has waited for
+   spotdown (retry pauses and `rate_limited` waits) over all its runs (`spotdown_song_budgets`), so the
+   model stages between the match and the later analysis stage do not spend it. The analysis and
+   refinement stages share this budget.
+3. **Idempotency keys** are derived from the job, the replacement round, the batch, the pass and a hash
+   of the tracks asked: a new pass (the retry, or after a wait) is a new request, because spotdown
+   replays a repeated key's first answer for 24 hours. A later run of the job that asks the identical
+   batch therefore gets the earlier run's answers again, including a replayed `rate_limited` or
+   `provider_error`, and may spend budget waiting on them; the outcome is then MOWL's sections for
+   those tracks (bounded; a re-run `pick_pool` rarely yields the identical batch).
+4. **Per-track fallback at the match** (within §8's rows): an `uncertain` match, a `provider_error`
+   still there after its one retry and a `rate_limited` that the budget cannot wait for keep their song
+   with MOWL's sections (never used for timing); `not_found` and `source_unavailable` are missing
+   (spares, then at most 3 replacement rounds; after them MOWL's sections). A provider outage, spotdown
+   unreachable or an error in the stage give today's path for the whole class and every later run of
+   the job.
+
+
 ## Status
 
 Accepted. §12 took effect on 2026-11-20, when the owner accepted #1296.

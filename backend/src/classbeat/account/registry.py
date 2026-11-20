@@ -122,6 +122,9 @@ NOT_EXPORTED: Mapping[str, str] = MappingProxyType(
         "spotdown_shadow_tracks": "spotdown's shadow comparison of a studio track (ADR 0040 "
         "section 9): numbers, codes and the analysis's provenance, for the rollout's quality "
         "check, not something the user wrote",
+        "spotdown_song_budgets": "how long a song job has waited for spotdown's match and whether "
+        "it fell back to today's pick (ADR 0040 section 8): no content, gone with the job, "
+        "nothing the user wrote",
         "swedebeat_track_downloads": "the times track downloads started, for the daily limit "
         "(ADR 0036 section 4.1): no content, gone after two days, nothing the user wrote",
         "studio_output_starts": "the times studio output attempts started, for the daily limit "
