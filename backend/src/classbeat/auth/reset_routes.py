@@ -242,7 +242,8 @@ async def change_password(
     ctx: Annotated[UserContext, Depends(require_recent_auth)],
     info: Annotated[SessionInfo | None, Depends(current_session)],
 ) -> Done:
-    """Set or change the password. Every other session is revoked; the caller's stays."""
+    """Set or change the password. Every other session is revoked (the caller's stays) and every
+    unused player sign-in code is burnt (ADR 0003 "Requests in flight")."""
     if info is None:
         raise HTTPException(status_code=401, detail={"reason": "not_authenticated"})
     try:
@@ -266,6 +267,7 @@ async def change_password(
             )
         ).scalar_one_or_none()  # None: the account was deleted meanwhile
         await revoke_user_sessions(db, ctx.user_id, except_id=info.id)
+        await revoke_codes(db, ctx.user_id)  # #1294: often a response to a compromise
         await delete_outstanding_tokens(db, ctx.user_id, keep_revert=True)
         await record_event(db, "password_changed", user_id=ctx.user_id, ip=request_ip(request))
     if email is not None:

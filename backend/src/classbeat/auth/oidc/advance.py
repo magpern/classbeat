@@ -3,6 +3,12 @@ section 1). Shared by the continue page and the consent POST; runs in the caller
 
 The request row is taken (deleted with its browser binding) only when a code or a refusal is
 sent to the client: until then the user may still consent, re-authenticate or deny (#1056 N14).
+
+The user row lock comes first (ADR 0019 section 6, #1294), then the session again: the caller
+read it before this transaction, and an email revert, a reset or a sign out everywhere that
+committed meanwhile ended it and burnt the user's codes (ADR 0003 "Requests in flight"). Without
+the lock a code could be inserted after that burn; one that waits now finds its session gone and
+is ``SessionGone``. A revert that waits for this transaction burns the code it issued.
 """
 
 from datetime import datetime
@@ -19,12 +25,18 @@ from classbeat.auth.oidc.grant_store import can_reauthenticate, consent_at, pers
 from classbeat.auth.oidc.provider import Provider
 from classbeat.auth.oidc.request_store import StoredRequest, take_request
 from classbeat.auth.sessions import SessionInfo
+from classbeat.auth.userlock import lock_user, session_alive
 
 LOGIN_REQUIRED_HINT = "Add a password or a passkey to your classbeat account first."
 
 
 class RequestGone(Exception):
     """The request was taken or expired between reading it and finishing it."""
+
+
+class SessionGone(RequestGone):
+    """The caller's session ended (a revert, a reset, a sign-out) before the user lock was
+    taken: answered as a signed-out caller is at that route."""
 
 
 def _times(info: SessionInfo) -> SessionTimes:
@@ -53,6 +65,10 @@ async def advance(
     """The client address to redirect to, or ``"consent"`` (continue only: show the consent
     page). ``allow`` is ``None`` at continue and the user's answer at the consent POST, where a
     missing re-authentication or step-up is the guard's 403 (the page prompts and retries)."""
+    if await lock_user(db, info.user_id) is None or not await session_alive(
+        db, info.user_id, info.id
+    ):
+        raise SessionGone
     found = await person(db, info.user_id)
     if found is None or not found.active or allow is False:
         return await _refuse(db, stored, binding, "access_denied")

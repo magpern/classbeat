@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.auth.activity_routes import router as activity_router
 from classbeat.auth.admin_routes import router as admin_router
 from classbeat.auth.captcha import build_verifier
 from classbeat.auth.email_revert_routes import router as email_revert_router
@@ -69,6 +70,7 @@ SECRET_INPUT_PATHS = (
 def install(app: FastAPI) -> None:
     """Routes, the Origin/CSRF middleware and the 429 and 503 handlers."""
     app.include_router(router)
+    app.include_router(activity_router)
     for flow in (signup_router, invite_request_router, signin_router, reset_router, email_router):
         app.include_router(flow)
     app.include_router(email_revert_router)  # public: the old address's way back (#1265)

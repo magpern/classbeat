@@ -4,8 +4,9 @@ A code is 32 random bytes (base64url); only its SHA-256 is stored. It lives 60 s
 single use: ``redeem_code`` marks it used with one ``UPDATE ... WHERE used_at IS NULL RETURNING``
 before any other check, so two parallel redemptions cannot both pass, and a redemption that then
 fails (expired, wrong verifier, wrong redirect) still burns it. ``revoke_codes`` burns every unused
-code of one user the same way (the email revert and the password reset, ADR 0003 "Requests in
-flight").
+code of one user the same way: the email revert, the password reset, the password change and sign
+out everywhere (ADR 0003 "Requests in flight"). Each holds the user row lock, which ``advance``
+also takes before ``issue_code``, so no code of a session they ended is inserted after the burn.
 """
 
 from dataclasses import dataclass
