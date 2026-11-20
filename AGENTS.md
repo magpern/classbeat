@@ -64,6 +64,13 @@ issue → Developer (+ Explorer) in its own worktree → PR → CI
 If the same blocking finding survives three cycles, the Architect re-assesses the root cause,
 revises the issue or ADR, and the loop restarts with a fresh Reviewer.
 
+**Owner, 2026-11-20 (roadmap Amendment 32):** after a **second `FAIL` on the same PR**, the next fix
+round has an **Opus Developer** (the same agent resumed on Opus, or a fresh Opus Developer given the
+PR's context). Before handing back any fix, the Developer runs **every** finding through a class-wide
+self-check: grep for the same defect pattern elsewhere, make each call inside an error-swallowing
+`except` raise and check the outcome, show that each gate can fail, and verify every claim against
+the code.
+
 The Orchestrator keeps going without routine human input: it does not stop for a `FAIL` or at
 the end of a milestone. It escalates only genuine blockers (see "Escalation" below).
 
@@ -77,7 +84,8 @@ the end of a milestone. It escalates only genuine blockers (see "Escalation" bel
    and the queue SQL, approvals and external writes, Spotify OAuth, egress and model keys,
    billing); **Sonnet** is enough for the rest (UI, tests, docs, tooling; Amendment 13 for
    tooling that touches secret handling). The first review of any new security design is Opus.
-   When in doubt, Opus.
+   When in doubt, Opus. *(Owner, 2026-11-20, Amendment 32: in the spotdown (SD) programme, which
+   had Opus review every PR (Amendment 31), a **docs-only** PR may be reviewed by Sonnet.)*
 3. **A new head SHA needs a new review**, scoped as follows (roadmap Amendment 2):
    - *Merge-only update:* the only change since the reviewed head is a merge of `main` with
      no hand-resolved conflict (`git diff <reviewed>..<head>` equals `main`'s own change), and
