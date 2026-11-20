@@ -556,6 +556,27 @@ Notes for operators and the next phases:
 - **(d) Shadow mode** (`CLASSBEAT_SPOTDOWN_SHADOW`, off by default) and its open points are in
   [developer-commands.md](../developer-commands.md) ("spotdown shadow mode for studio tracks").
 
+### Amendment (2026-11-20): the match stage of the Spotify flow, as built (SD-P6 stage A, #1303; extends §2 and §8)
+
+Recorded with the code; it changes no decision of §2 or §8, only fixes three details §8 left open.
+The owner's acceptance of #1296 (2026-11-20, recorded by #1321) is what allows SD-P6 to be built;
+the stage is off by default and allowlisted per owner (`CLASSBEAT_SPOTDOWN_SPOTIFY`,
+`CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS`), with no value that turns it on for everyone.
+
+- **`rate_limited` waits in the run**, inside the job's budget, instead of a fenced requeue: each
+  wait (the clamped `retry_after_s`) is charged to the job's budget before it is made, made only when
+  it fits, with checkpoints at least every 10 s; a new request after a wait has its own
+  `Idempotency-Key` (spotdown replays the first answer for a repeated key), derived from the job,
+  round, batch, pass and tracks, so a later run that repeats a request still gets the same answer.
+- **The wait budget counts waits, not wall time**: the 600 s are the seconds the job has waited for
+  spotdown over all its runs (`spotdown_song_budgets`), so the model stages between the match and the
+  later analysis stage do not spend it. The analysis and refinement stages share this budget.
+- **Per-track fallback at the match**: an `uncertain` match, a `provider_error` still there after its
+  one retry and a `rate_limited` that the budget cannot wait for keep their song with MOWL's sections
+  (never used for timing); `not_found` and `source_unavailable` are missing (spares, then at most 3
+  replacement rounds; after them MOWL's sections). A provider outage, spotdown unreachable or an error
+  in the stage give today's path for the whole class and every later run of the job.
+
 ## Status
 
 Accepted. §12 takes effect only on the owner's acceptance of #1296.

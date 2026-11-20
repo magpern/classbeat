@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0063_spotdown_shadow"]
+    assert script.get_heads() == ["0064_spotdown_song_budgets"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0063_spotdown_shadow"]
+        assert applied_revisions(database_url) == ["0064_spotdown_song_budgets"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -184,6 +184,8 @@ JOBS = [
     # ADR 0040 sections 7 and 9 (0063_spotdown_shadow, #1301 part 3).
     "spotdown_shadow_tracks",
     "spotdown_scope_deletions",
+    # ADR 0040 section 8 (0064_spotdown_song_budgets, #1303).
+    "spotdown_song_budgets",
     "swedebeat_track_downloads",
     # ADR 0036 section 6 (0054_class_outputs, SR C7).
     "class_outputs",

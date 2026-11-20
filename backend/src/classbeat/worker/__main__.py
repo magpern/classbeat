@@ -39,7 +39,8 @@ from classbeat.egress_spotdown import install_spotdown
 from classbeat.log import configure_logging
 from classbeat.player.delivery import run_player_delivery
 from classbeat.playlists.runtime import playlists_runtime
-from classbeat.spotdown import shadow_config
+from classbeat.spotdown import shadow_config, song_match_config
+from classbeat.spotdown.owner_list_policy import parse_owners
 from classbeat.spotdown.scope_key import scope_key
 from classbeat.spotdown.sources_policy import parse_sources
 from classbeat.swedebeat_studio import config as studio_config
@@ -103,6 +104,15 @@ async def _run(settings: Settings, signer: EventSigner | None = None) -> None:
     shadow_config.configure(
         shadow_config.ShadowConfig(
             settings.spotdown_shadow, parse_sources(settings.spotdown_sources), scope_key(settings)
+        )
+    )
+    # The Spotify song pick's spotdown match (ADR 0040 sections 2 and 8, SD-P6 stage A): off
+    # unless set, only for the allowlisted owners, with today's pick as the fallback.
+    song_match_config.configure(
+        song_match_config.MatchConfig(
+            settings.spotdown_spotify,
+            parse_owners(settings.spotdown_spotify_owners, "spotdown_spotify_owners"),
+            parse_sources(settings.spotdown_sources),
         )
     )
     stop = asyncio.Event()
