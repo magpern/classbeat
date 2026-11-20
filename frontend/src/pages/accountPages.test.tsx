@@ -443,6 +443,7 @@ describe('account page', () => {
     })
     renderAt('/account#security')
     await screen.findByRole('button', { name: 'Unlink GitHub' })
+    fireEvent.click(screen.getByRole('button', { name: 'Change' }))
     type('New email address', 'new@example.test')
     fireEvent.click(screen.getByRole('button', { name: 'Change email' }))
     const dialog = await screen.findByRole('dialog')
@@ -450,6 +451,8 @@ describe('account page', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }))
     expect(await screen.findByText(/we sent a confirmation link there/)).toBeInTheDocument()
     expect(api.to('POST', '/api/auth/mfa/stepup')[0]?.body).toEqual({ code: '123456' })
+    expect(api.to('POST', '/api/auth/email/change')).toHaveLength(2)
+    expect(screen.queryByLabelText('New email address')).toBeNull()
   })
 
   it('cancelling the prompt leaves the change undone without an error', async () => {

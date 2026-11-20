@@ -108,6 +108,33 @@ describe('the composer workspace driver (ADR 0038 section 8)', () => {
     expect(submits(api)[0]!.path).toBe(`${PENDING}/${MSG_ID}/submit`)
   })
 
+  it('reads the class again when the fill job reaches the approval wait, so the list shows', async () => {
+    let waiting = false
+    const running = { id: JOB_ID, kind: 'design_with_songs', state: 'running' }
+    const { api } = setup({
+      extraRoutes: {
+        [`GET ${CLASS_PATH}`]: () =>
+          classBody({
+            sport: 'cycling',
+            composer: true,
+            fill_songs: FILL,
+            ...(waiting
+              ? { songs: { state: 'waiting', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null }, open_job_id: JOB_ID, open_job: { ...running, state: 'waiting_for_approval' } }
+              : { open_job_id: JOB_ID, open_job: running }),
+          }),
+        [`GET /api/jobs/${JOB_ID}`]: () => {
+          waiting = true
+          return json(jobBody('waiting_for_approval', { kind: 'design_with_songs' }))
+        },
+        [`GET /api/jobs/${JOB_ID}/events`]: () => openStream(),
+      },
+    })
+    renderAt(PAGE)
+    expect(await screen.findByText('Ready to approve')).toBeInTheDocument()
+    expect(screen.queryByText('Finding songs for this shape…')).toBeNull()
+    expect(api.to('GET', CLASS_PATH).length).toBeGreaterThan(1)
+  })
+
   it('does nothing while a job runs, and does not start a fill again for a sketch whose fill was started', async () => {
     const { api } = setup({
       cls: { open_job_id: JOB_ID, open_job: { id: JOB_ID, kind: 'design_with_songs', state: 'running' }, fill_songs: FILL },
@@ -219,7 +246,7 @@ describe('the composer workspace page', () => {
     expect(await screen.findByText('Ready to approve')).toBeInTheDocument()
     expect(
       await screen.findByText(
-        'Approving saves a private workout to MOWL and creates a playlist in your Spotify in this order (we ask Spotify for private).',
+        'Approving saves a private workout to MOWL and creates a playlist in your Spotify in this order (a public playlist, so MOWL can find it).',
       ),
     ).toBeInTheDocument()
     expect(await screen.findByText('Pinned by you')).toBeInTheDocument()
@@ -466,7 +493,8 @@ describe('the composer workspace page', () => {
       expect(api.to('POST', `${CLASS_PATH}/swap-songs`)).toHaveLength(1)
     })
     const call = api.to('POST', `${CLASS_PATH}/swap-songs`)[0]!
-    expect(call.body).toEqual({ song_list_revision_id: LIST_ID, replace: [1] })
+    // Hills is shown as position 1; the API takes slots counted from 0 (ADR 0008 section 6).
+    expect(call.body).toEqual({ song_list_revision_id: LIST_ID, replace: [0] })
     expect(call.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
     expect(api.to('POST', '/api/jobs')).toHaveLength(0)
     expect(api.calls.some((c) => c.method === 'POST' && c.path.endsWith('/cancel'))).toBe(false)
@@ -492,21 +520,41 @@ describe('the composer workspace page', () => {
     expect(await screen.findByRole('button', { name: 'Approve and save' })).toBeEnabled()
   })
 
-  it('creates the playlist again with a resume of the approved list', async () => {
+  it('creates the playlist again through resume-songs: an Idempotency-Key, no body, no jobs call', async () => {
     const user = userEvent.setup()
     const { api } = setup({
       cls: { fill_songs: FILL, songs: { state: 'approved', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null }, phase2: { state: 'failed' } },
-      extraRoutes: { 'POST /api/jobs': () => json(jobBody('queued', { kind: 'design_with_songs', id: 'e2222222-2222-4222-8222-222222222222' }), 201) },
+      extraRoutes: { [`POST ${CLASS_PATH}/resume-songs`]: () => json({ job_id: 'e2222222-2222-4222-8222-222222222222', kind: 'design_with_songs', state: 'queued' }, 201) },
     })
     renderAt(PAGE)
     await user.click(await screen.findByRole('button', { name: 'Create the playlist again' }))
     await waitFor(() => {
-      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+      expect(api.to('POST', `${CLASS_PATH}/resume-songs`)).toHaveLength(1)
     })
-    expect(api.to('POST', '/api/jobs')[0]!.body).toMatchObject({
-      kind: 'design_with_songs',
-      input: { class_id: CLASS_ID, mode: 'resume', resume: { song_list_revision_id: LIST_ID } },
+    const call = api.to('POST', `${CLASS_PATH}/resume-songs`)[0]!
+    expect(call.body).toEqual({})
+    expect(call.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
+    expect(api.to('POST', '/api/jobs')).toHaveLength(0)
+  })
+
+  it('asks to check the class when the final songs differed, until that draft is saved and up to date', async () => {
+    const draft = {
+      origin: 'design_with_songs',
+      extraRoutes: { [`GET ${CLASS_PATH}/revisions/${DRAFT_ID}`]: revisionBody(DRAFT_ID, 2, CONTENT, { origin: 'design_with_songs' }) },
+    }
+    const unsaved = { current_revision_id: DRAFT_ID, current_revision_number: 2, phase2: { state: 'differed' } }
+    setup({ ...draft, cls: unsaved })
+    const view = renderAt(PAGE)
+    expect(await screen.findByText('The final songs differed. Check the class and save.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save to MOWL' })).toBeInTheDocument()
+    view.unmount()
+    setup({
+      ...draft,
+      cls: { ...unsaved, saved: { count: 1, latest_revision_number: 2, latest_saved_at: '2026-11-18T10:00:00Z', latest_up_to_date: true, latest_saved_workout_id: 'w1' } },
     })
+    renderAt(PAGE)
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+    expect(screen.queryByText('The final songs differed. Check the class and save.')).toBeNull()
   })
 
   it('keeps the More menu closed until it is opened, and lists its sections', async () => {

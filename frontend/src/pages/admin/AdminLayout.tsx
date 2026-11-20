@@ -3,6 +3,7 @@ import { adminWhoami, getMfaStatus } from '../../api/auth'
 import { ApiError } from '../../api/client'
 import { MfaPrompt, TotpEnroll } from '../../components/account/TwoFactor'
 import { Card, Notice } from '../../components/forms'
+import { PageHeading } from '../../components/ui/page-heading'
 import { cn } from '../../lib/cn'
 import { Link, useRouter } from '../../router/Router'
 import { StepUpProvider } from './StepUp'
@@ -51,7 +52,7 @@ function AdminNav() {
             aria-current={active ? 'page' : undefined}
             className={cn(
               'inline-flex min-h-11 items-center border-b-2 px-4 font-medium no-underline',
-              active ? 'border-brand text-text' : 'border-transparent text-muted hover:text-text',
+              active ? 'border-tab-mark text-text' : 'border-transparent text-muted hover:text-text',
             )}
           >
             {section.label}
@@ -143,10 +144,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       return (
         <StepUpProvider onMfaRequired={recheck}>
           <div className="text-text">
-            <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-              <h1 className="m-0 font-display text-2xl font-bold">Admin</h1>
-              <p className="m-0 text-[0.9375rem] text-muted">Signed in as admin: {gate.email}</p>
-            </header>
+            <PageHeading
+              className="mb-4"
+              eyebrow="Admin"
+              title="Admin"
+              intro={`Signed in as admin: ${gate.email}`}
+            />
             <AdminNav />
             {children}
           </div>

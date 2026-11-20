@@ -83,6 +83,9 @@ because no owned table is read across users.
 - `oidc_codes`: `code_hash bytea UNIQUE` (SHA-256 of 32 random bytes), `user_id` (FK, cascade),
   `client_id`, `redirect_uri`, `code_challenge`, `nonce`, `auth_time`, `expires_at` (60 s),
   `used_at`. Single use; a second use is refused and writes `oidc_code_refused`.
+  **Amended by [ADR 0003](0003-accounts-and-sessions.md) (#1292):** an email revert and a completed
+  password reset burn the user's unused codes (`used_at`) in their transaction, so a code asked
+  for just before them is refused as used.
 - `oidc_grants`: one row per user and client. `user_id` (FK, cascade), `client_id`,
   `consent_at NULL`, `first_issued_at NULL`. `first_issued_at` is set when the first ID token is
   issued and never cleared: it is the durable marker of "this user has a player account" that §2

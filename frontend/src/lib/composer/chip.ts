@@ -4,6 +4,7 @@ import { SKETCH } from './workspaceKind'
 // The state of a composer class, derived from the current revision and the songs' state (ADR 0038
 // section 10.2). Pure. A class is in one of these states:
 //
+//   reading             the request is being read: no version yet, the reading job runs (#1206)
 //   rough               a sketch, songs not in yet (a fill runs, or none has started)
 //   ready               a song list waits for approval: Approve and save
 //   expired             the list ended (expired, cancelled, replaced or failed) for the same sketch: Find songs again
@@ -13,7 +14,7 @@ import { SKETCH } from './workspaceKind'
 //   saved               a draft, saved and up to date
 //   draft               a draft that is not saved (or changed since): the ordinary Save and Update
 
-export type WorkspaceState = 'rough' | 'ready' | 'expired' | 'playlistNotCreated' | 'creating' | 'saving' | 'saved' | 'draft'
+export type WorkspaceState = 'reading' | 'rough' | 'ready' | 'expired' | 'playlistNotCreated' | 'creating' | 'saving' | 'saved' | 'draft'
 
 export interface WorkspaceChip {
   state: WorkspaceState
@@ -41,7 +42,11 @@ export function deriveChip(input: ChipInput): WorkspaceChip {
   const saving = composer.savePending !== null || (isRunning(openJob) && openJob?.kind === 'save_workout')
   if (saving) return { state: 'saving', ...none }
   if (input.currentOrigin !== SKETCH) {
-    if (input.currentRevisionId === null) return { state: 'rough', ...none }
+    if (input.currentRevisionId === null) {
+      // The reading window: the workspace shows from the first second, before any sketch exists.
+      const reading = isRunning(openJob) && openJob?.kind === 'interpret_request'
+      return { state: reading ? 'reading' : 'rough', ...none }
+    }
     return { state: saved.count > 0 && saved.latestUpToDate === true ? 'saved' : 'draft', ...none }
   }
   if (songs.state === 'waiting' && openJob?.state !== 'queued' && openJob?.state !== 'running') {

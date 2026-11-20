@@ -11,7 +11,8 @@ asked". A revise case (#904) also holds ``current``: the class's brief, of which
 is told the closed values (``interpret_input.current_values``), and expects only what the request
 changes. A composer case (ADR 0038 section 3, #1185) may say how many playlists are
 ``attached`` and expect the ``pinned`` songs (title, artist and place, case aside, in order) and the
-questions it ``asks`` (paths that must be among them). Pure: no I/O.
+questions it ``asks`` (paths that must be among them). A new-class case may expect the class to be
+``named`` (#1233): a short name that survives ``class_title_policy.proposed_name``. Pure: no I/O.
 """
 
 from typing import Final, Literal
@@ -85,6 +86,7 @@ class InterpretExpect(BaseModel):
     asks: list[QuestionPath] = Field(
         default_factory=lambda: list[QuestionPath](), max_length=MAX_QUESTIONS
     )
+    named: bool = False  # a new class gets a short name that survives the cleaning (#1233)
 
     @model_validator(mode="after")
     def _removal_leaves_no_games(self) -> "InterpretExpect":
@@ -131,4 +133,6 @@ class InterpretCase(BaseModel):
         index = self.expect.values.get("music")
         if index is not None and not (isinstance(index, int) and 0 <= index < len(self.music)):
             raise ValueError("the expected music is an index into the case's music names")
+        if self.expect.named and self.current is not None:
+            raise ValueError("only a new class is named; a revise keeps its title")
         return self

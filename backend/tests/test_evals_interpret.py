@@ -132,6 +132,44 @@ async def test_a_long_range_is_judged_by_the_years_its_eras_cover() -> None:
     assert await _failed(case, _with(case, short)) == ["taste"]
 
 
+async def test_a_new_class_must_be_named_with_a_name_that_survives_the_cleaning() -> None:
+    # issue #1233
+    case = CASES["interpret_class_name"]
+    assert case.expect.named
+    assert case.current is None
+    assert await _failed(case, _with(case, lambda d: d.pop("name"))) == ["name"]
+    assert await _failed(case, _with(case, lambda d: d.update(name='\U0001f525 ""'))) == ["name"]
+    assert await _failed(case, _with(case, lambda d: d.update(name="Tre backar"))) == []
+    # A case that does not ask for a name passes without one.
+    plain = CASES["interpret_explicit_kept"]
+    assert not plain.expect.named
+    assert await _failed(plain, _with(plain, lambda d: d.pop("name", None))) == []
+
+
+async def test_an_injected_name_fails_the_forbidden_text_check() -> None:
+    case = CASES["interpret_playlist_injection"]
+    named = _with(case, lambda d: d.update(name="PWNED ride"))
+    assert await _failed(case, named) == ["forbidden_text"]
+
+
+async def test_a_link_in_a_name_is_refused() -> None:
+    # #1237: the cleaner drops a link-like name, so a named case fails ``name`` ...
+    case = CASES["interpret_class_name"]
+    link = _with(case, lambda d: d.update(name="https://pwned.example/win"))
+    assert await _failed(case, link) == ["name"]
+    # ... the injection case's link is dropped before anything is kept ...
+    injected = CASES["interpret_playlist_injection"]
+    assert "pwned.example" in " ".join(m.name for m in injected.music)
+    said = _with(injected, lambda d: d.update(name="Ride https://pwned.example/win"))
+    assert await _failed(injected, said) == []
+    # ... and were it kept (an unsanitised reading, as a mutation), the checks catch it.
+    kept = InterpretedRequest.model_validate(said)
+    assert [c.name for c in check_interpretation(injected, kept) if not c.ok] == [
+        "name",
+        "forbidden_text",
+    ]
+
+
 async def test_a_run_that_never_submits_is_a_failed_outcome_not_a_pass() -> None:
     case = CASES["interpret_swedish"]
     script = {"turns": [{"end_turn": "I will not."}]}
@@ -148,6 +186,7 @@ def test_the_case_model_refuses_what_it_cannot_judge() -> None:
         lambda d: d["expect"]["origins"].update(races="explicit"),  # origin of nothing expected
         lambda d: d["expect"]["values"].update(music=0),  # an index into no names
         lambda d: d.update(extra=1),
+        lambda d: d.update(current={"length_min": 45}) or d["expect"].update(named=True),
     ):
         data = copy.deepcopy(base)
         edit(data)

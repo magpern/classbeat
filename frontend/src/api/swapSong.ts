@@ -12,14 +12,15 @@ import { actionKey, dropActionKey } from '../lib/submittedInput'
 export async function swapSong(args: {
   classId: string
   listRevisionId: string
-  /** The job that made the list: with the position it names the action, so a retry reuses its key. */
+  /** The job that made the list: with the slot it names the action, so a retry reuses its key. */
   listJobId: string
-  position: number
+  /** The song's slot, counted from 0: the list shows positions from 1, the API takes slots (ADR 0008 section 6). */
+  slot: number
 }): Promise<string> {
-  const scope = `swap.${args.listJobId}.${String(args.position)}`
+  const scope = `swap.${args.listJobId}.${String(args.slot)}`
   const path = `/api/classes/${encodeURIComponent(args.classId)}/swap-songs`
   try {
-    const body = { song_list_revision_id: args.listRevisionId, replace: [args.position] }
+    const body = { song_list_revision_id: args.listRevisionId, replace: [args.slot] }
     const answer = object(await post(path, body, { 'Idempotency-Key': actionKey(scope) }), 'swap job')
     dropActionKey(scope)
     return text(answer, 'job_id')

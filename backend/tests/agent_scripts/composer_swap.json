@@ -212,28 +212,28 @@
           "input": {
             "entries": [
               {
+                "ref": 1,
+                "role": "recovery"
+              },
+              {
+                "ref": 2,
+                "role": "recovery"
+              },
+              {
                 "ref": 3,
-                "role": "climb"
+                "role": "recovery"
               },
               {
                 "ref": 4,
-                "role": "climb"
+                "role": "recovery"
               },
               {
                 "ref": 5,
-                "role": "climb"
+                "role": "recovery"
               },
               {
                 "ref": 6,
-                "role": "build"
-              },
-              {
-                "ref": 7,
-                "role": "build"
-              },
-              {
-                "ref": 8,
-                "role": "climb"
+                "role": "recovery"
               }
             ]
           },
@@ -276,13 +276,13 @@
                 "role": "build"
               },
               {
-                "source": "pool",
-                "index": 0,
+                "source": "kept",
+                "index": 2,
                 "role": "climb"
               },
               {
-                "source": "kept",
-                "index": 2,
+                "source": "pool",
+                "index": 0,
                 "role": "recovery"
               },
               {
@@ -331,13 +331,13 @@
                 "role": "build"
               },
               {
-                "source": "pool",
-                "index": 0,
+                "source": "kept",
+                "index": 2,
                 "role": "climb"
               },
               {
-                "source": "kept",
-                "index": 2,
+                "source": "pool",
+                "index": 0,
                 "role": "recovery"
               },
               {

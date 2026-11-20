@@ -201,7 +201,7 @@ async def test_two_users_pick_at_once_with_their_own_pools(songenv: SongEnv) -> 
     for pool, user in zip(pools, ("rider-one", USER_B), strict=True):
         playlist = songenv.fake.playlists[pool.playlist_id]
         assert playlist.owner == user
-        assert playlist.public is False
+        assert playlist.public is True  # Amendment 30: created public
         assert playlist.entries == [f"spotify:track:{i}" for i in POOL]
     # Every write to a pool carried the token of the pool's own user.
     for pool, user in zip(pools, ("rider-one", USER_B), strict=True):

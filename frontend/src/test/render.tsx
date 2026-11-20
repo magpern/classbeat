@@ -16,3 +16,15 @@ export function renderAtRaw(url: string) {
   window.history.replaceState(null, '', url)
   return render(<App />)
 }
+
+/**
+ * A copy of the page without its site footer, for "the page never mentions X" checks: the footer
+ * names MOWL, Intelligent Cycling, Spotify and Swedebeat on every page (trademark notice, #1268).
+ */
+export function withoutFooter(): HTMLElement {
+  const copy = document.body.cloneNode(true) as HTMLElement
+  copy.querySelectorAll('footer').forEach((footer) => {
+    footer.remove()
+  })
+  return copy
+}

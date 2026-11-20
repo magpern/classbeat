@@ -3,8 +3,9 @@ import { getSpotifyStatus, type SpotifyStatus } from '../../../api/spotify'
 import { useT } from '../../../i18n/I18n'
 import { useRouter } from '../../../router/Router'
 import { Button } from '../../ui/button'
-import { ConnectionRow } from './ConnectionRow'
+import { ConnectionTile } from './ConnectionTile'
 import { SpotifyDialog } from './SpotifyDialog'
+import { SPOTIFY_ICON } from './spotifyIcon'
 
 /** The address that opens the Spotify dialog, and where Spotify's callback lands (`?result=`). */
 export const SPOTIFY_PATH = '/account/spotify'
@@ -15,7 +16,7 @@ export const SPOTIFY_PATH = '/account/spotify'
  * screens, and the return from Spotify) opens the dialog; closing it goes back to
  * `/account#connections`, so the callback result is not shown twice.
  */
-export function SpotifyRow() {
+export function SpotifyRow({ onStatus }: { onStatus?: (status: SpotifyStatus['status'] | null) => void }) {
   const t = useT()
   const { path, navigate } = useRouter()
   const fromAddress = path === SPOTIFY_PATH
@@ -42,6 +43,10 @@ export function SpotifyRow() {
     }
   }, [])
 
+  useEffect(() => {
+    onStatus?.(status?.status ?? null)
+  }, [status, onStatus])
+
   const close = () => {
     setOpen(false)
     if (fromAddress) navigate('/account#connections', { replace: true, scroll: false })
@@ -51,20 +56,22 @@ export function SpotifyRow() {
   return (
     <>
       {status !== null ? (
-        <ConnectionRow
+        <ConnectionTile
           testId="connection-spotify"
-          mark="S"
+          mark={SPOTIFY_ICON}
           name={t('spot.title')}
           optional={false} // a class with music needs it (roadmap Amendment 25)
-          status={
+          state={notConnected ? 'none' : status.status === 'connected' ? 'connected' : 'again'}
+          pill={
             notConnected ? (
-              t('conn.spotify.purpose')
+              t('conn.notConnected')
             ) : (
               <span data-testid="spotify-summary-status">
                 {status.status === 'connected' ? t('mowl.statusConnected') : t('mowl.statusAgain')}
               </span>
             )
           }
+          detail={t('conn.spotify.purpose')}
           action={
             <Button
               variant="secondary"

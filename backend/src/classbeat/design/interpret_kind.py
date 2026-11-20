@@ -32,7 +32,9 @@ It counts toward the per-user limit like any job, and its model cost toward the 
 **Worker**: the ``design`` stage group's model first (an unusable route fails ``model_config``
 before any call), then the ``interpret`` stage: the user's music names (``interpret_music``), the
 ``interpret`` agent stage (``agent.interpret``) and ``interpret_policy.resolve``. The final fenced
-transaction stores ``classes.interpretation`` (``interpretation_row.store``) and the job completes.
+transaction stores ``classes.interpretation`` (``interpretation_row.store``), makes the reading's
+short ``name`` the class's title while the title is still the request's first words
+(``class_name.adopt``, #1233), and the job completes.
 It **never enqueues** the design: the worker cannot reach the jobs API (``tests/session_scan.py``)
 and the class's one-open-job index would refuse a design job while this one runs. The browser, or
 the class page after a reopened tab, calls ``POST /api/classes/{id}/design-from-interpretation``
@@ -55,6 +57,7 @@ from classbeat.agent.records import JobStageHost
 from classbeat.context import UserContext
 from classbeat.design import (
     chat,
+    class_name,
     composer,
     interpret_composer_policy,
     interpret_policy,
@@ -249,6 +252,7 @@ async def run(job_run: JobRun) -> Complete:
         if given.composer
         else ([], [])
     )
+    from_request = interpret_policy.title_for(given.request)
     stored = interpretation_row.StoredInterpretation(
         job_id=job_run.lease.job_id,
         brief=resolved.brief.stored(),
@@ -258,8 +262,11 @@ async def run(job_run: JobRun) -> Complete:
         questions=questions,
     )
 
+    name = outcome.output.request.name if given.title == from_request else None
+
     async def store(fs: FencedSession) -> None:
         await interpretation_row.store(fs, stored)
+        await class_name.adopt(fs, name, from_request)  # #1233: never a title the user chose
 
     return Complete(store)
 

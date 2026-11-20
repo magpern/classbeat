@@ -398,6 +398,8 @@ const ADMIN_REASONS: Record<string, string> = {
   price_incomplete:
     'An introduction price needs its end date (and the date needs the price), and any price needs a currency.',
   nothing_to_change: 'Nothing was changed.',
+  running_not_evaluated:
+    'Running classes cannot be switched on yet: a plan has no model route that covers them. Set one under Models first.',
   // Mail (#653).
   essential_kind: 'That mail is always sent and cannot be switched off.',
   unknown_kind: 'There is no such mail.',

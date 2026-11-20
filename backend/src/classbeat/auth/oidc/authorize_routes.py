@@ -8,7 +8,8 @@
 - **continue** (``?r=<id>``, a relative ``return_to`` after sign-in) needs the row **and** a flow
   cookie whose hash is its binding. A missing, unknown, expired or mismatched request is the
   "expired" page: never a redirect, an ``oidc_request_refused`` event, nothing deleted. A
-  signed-out user is sent to sign in and back. Then ``advance``: a code, or the consent page.
+  signed-out user is sent to sign in and back, as is one whose session ended while ``advance``
+  waited for the user row lock (#1294). Then ``advance``: a code, or the consent page.
 - **consent** (JSON ``{"r", "allow"}``, CSRF and Origin checked by the middleware like every
   POST) checks the binding again and answers ``{"redirect": <client address>}``.
 """
@@ -25,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat.auth.deps import current_session, request_ip, require_user
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import reserve
-from classbeat.auth.oidc.advance import RequestGone, advance
+from classbeat.auth.oidc.advance import RequestGone, SessionGone, advance
 from classbeat.auth.oidc.flow import (
     EXPIRED_PAGE,
     INVALID_PAGE,
@@ -60,6 +61,10 @@ def _factory(request: Request) -> async_sessionmaker[AsyncSession]:
 
 def _continue_path(request_id: UUID) -> str:
     return f"/oidc/authorize/continue?r={request_id}"
+
+
+def _to_sign_in(request_id: UUID) -> Response:
+    return redirect(f"/signin?return_to={quote(_continue_path(request_id), safe='')}")
 
 
 def _request_id(value: str | None) -> UUID | None:
@@ -110,7 +115,7 @@ async def continue_request(request: Request, r: str | None = None) -> Response:
         return page(EXPIRED_PAGE)
     info = await current_session(request)
     if info is None:
-        return redirect(f"/signin?return_to={quote(_continue_path(request_id), safe='')}")
+        return _to_sign_in(request_id)
     await reserve(request, authorize_user_buckets(str(info.user_id)))
     settings = request.app.state.settings
     try:
@@ -119,6 +124,8 @@ async def continue_request(request: Request, r: str | None = None) -> Response:
                 db, provider, info, stored, binding,
                 allow=None, passkeys=settings.passkeys, ip=request_ip(request),
             )  # fmt: skip
+    except SessionGone:  # ended while we waited for the user lock: as if signed out (#1294)
+        return _to_sign_in(request_id)
     except RequestGone:
         await _refused(request)
         return page(EXPIRED_PAGE)
@@ -162,7 +169,7 @@ async def consent(
                 db, provider, info, stored, binding,
                 allow=body.allow, passkeys=settings.passkeys, ip=request_ip(request),
             )  # fmt: skip
-    except RequestGone:
+    except RequestGone:  # SessionGone too: as a missing session above
         await _refused(request)
         return _expired()
     return JSONResponse({"redirect": location}, headers=NO_STORE)

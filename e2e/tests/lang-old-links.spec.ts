@@ -15,9 +15,9 @@ const TOKEN_STATE: Record<string, (page: Page, code: string) => ReturnType<Page[
   // the choose-password form, or the invalid-link card once the check answered; never the email form
   '/reset': (page, code) => page.locator(`main input[type="password"], main a[href="/${code}/reset"]`),
   // the confirm view: the button that spends the token (a link without a token has none)
-  '/unsubscribe': (page) => page.locator('main button.button'),
+  '/unsubscribe': (page) => page.locator('main button'),
   // signed out with a token: the sign-in step (without a token there is only an error notice)
-  '/email-change': (page, code) => page.locator(`main a.button[href="/${code}/signin"]`),
+  '/email-change': (page, code) => page.locator(`main a[href="/${code}/signin"]`),
   // the form that sets the password (without a token only a link to sign-up)
   '/signup/confirm': (page) => page.locator('main input[type="password"]'),
 }

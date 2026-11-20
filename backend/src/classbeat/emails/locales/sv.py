@@ -249,6 +249,26 @@ CATALOGUE: dict[S, str] = {
         "Koden fungerar en gång och slutar gälla om {days} dagar. Om du inte bad om en inbjudan "
         "kan du bortse från det här mejlet."
     ),
+    S.CHANGED_REVERT_BODY: (
+        "Om du gjorde ändringen behöver du inte göra något. Om det inte var du öppnar du länken "
+        "nedan för att få tillbaka den här adressen: alla loggas då ut från kontot och du får "
+        "välja ett nytt lösenord. Länken fungerar en gång, i 7 dagar."
+    ),
+    S.CHANGED_REVERT_BUTTON: "Ångra ändringen",
+    S.SUBJECT_EMAIL_REVERTED: "Din e-postadress på classbeat har återställts",
+    S.REVERTED_HEADING: "Din e-postadress har återställts",
+    S.REVERTED_PRE: "Ändringen av e-postadressen för ditt classbeat-konto har ångrats.",
+    S.REVERTED_BODY: (
+        "Ändringen av e-postadressen för ditt classbeat-konto har ångrats, och kontot använder "
+        "den här adressen igen. För att stänga ute den som ändrade den har vi loggat ut alla "
+        "sessioner och tagit bort kontots lösenord, länkade inloggningsmetoder, "
+        "tvåfaktorsautentisering, återställningskoder och passkeys."
+    ),
+    S.REVERTED_NEXT: (
+        "Välj ett nytt lösenord med länken nedan (giltig i 30 minuter; därefter kan du be om en "
+        "ny på inloggningssidan). Ställ sedan in resten igen på din kontosida."
+    ),
+    S.REVERTED_WARN: "Om du inte själv ångrade ändringen, säg till oss direkt.",
 }
 
 MONTHS = (

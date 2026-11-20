@@ -8,10 +8,10 @@ import { SiteLinksNav } from './SiteLinksNav'
 
 // The header and footer links of the new public pages show only for a published path (ADR 0030, PP4).
 
-function html(node: React.ReactNode): string {
+function html(node: React.ReactNode, pathname = '/en'): string {
   return renderToString(
     <I18nProvider initial="en">
-      <RouterProvider initialLocation={{ pathname: '/en', search: '' }}>{node}</RouterProvider>
+      <RouterProvider initialLocation={{ pathname, search: '' }}>{node}</RouterProvider>
     </I18nProvider>,
   )
 }
@@ -45,5 +45,17 @@ describe('the links to the new pages', () => {
     expect(footer).toContain('href="/en/features"')
     expect(footer).toContain('href="/en/how-it-works"')
     expect(footer).toContain('href="/en/privacy"')
+  })
+})
+
+describe('the current page link', () => {
+  it('is marked aria-current="page", and only that one', () => {
+    const header = html(<SiteLinksNav />, '/en/features')
+    expect(header.match(/aria-current="page"/g)).toHaveLength(1)
+    expect(header).toMatch(/aria-current="page"[^>]*href="\/en\/features"|href="\/en\/features"[^>]*aria-current="page"/)
+  })
+
+  it('marks none off those pages', () => {
+    expect(html(<SiteLinksNav />, '/en')).not.toContain('aria-current')
   })
 })

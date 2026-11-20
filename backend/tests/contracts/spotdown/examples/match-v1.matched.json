@@ -1,0 +1,35 @@
+{
+  "schema_version": "match-v1",
+  "client_ref": "track-7",
+  "status": "matched",
+  "matcher_version": "1",
+  "best": {
+    "source": "youtube:dQw4w9WgXcQ",
+    "recording_match_confidence": 0.92,
+    "band": "confident",
+    "duration_s": 213.8,
+    "duration_delta_s": 0.8,
+    "duration_check": "ok",
+    "cached_analysis_id": "an_01example",
+    "cached_summary": {
+      "analyzer_version": "1.0.0",
+      "bpm": 128.0,
+      "bpm_confidence": 0.9,
+      "duration_s": 11.1,
+      "has_beats": true,
+      "has_downbeats": true,
+      "has_events": true
+    }
+  },
+  "alternates": [
+    {
+      "source": "youtube:abcdefghijk",
+      "recording_match_confidence": 0.7,
+      "band": "uncertain",
+      "duration_s": 216.0,
+      "duration_delta_s": 3.0,
+      "duration_check": "tolerable",
+      "cached_analysis_id": "an_02example"
+    }
+  ]
+}

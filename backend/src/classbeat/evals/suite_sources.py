@@ -101,6 +101,9 @@ RULE_SOURCES: Final = (
     # The composer's part of a reading (ADR 0038 section 3, issue #1185): pinned songs and
     # follow-up questions. Added with suite version 26.
     "agent/interpreted_composer.py",
+    # The short name a new class may get from its reading (issue #1233): how the interpreter's
+    # name is cleaned before it is kept. Added with suite version 28.
+    "class_title_policy.py",
 )
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")

@@ -19,6 +19,7 @@ const LABELS: Record<ActivityKind, CatalogueKey> = {
   password_reset: 'activity.kind.password_reset',
   email_change_requested: 'activity.kind.email_change_requested',
   email_changed: 'activity.kind.email_changed',
+  email_reverted: 'activity.kind.email_reverted',
   identity_linked: 'activity.kind.identity_linked',
   identity_unlinked: 'activity.kind.identity_unlinked',
   totp_enrolled: 'activity.kind.totp_enrolled',

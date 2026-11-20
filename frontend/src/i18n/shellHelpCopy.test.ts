@@ -38,8 +38,7 @@ const LIMITS: readonly [CatalogueKey, number][] = [
   // labels and chips
   ['shell.nav.main', 4],
   ['shell.brandHome', 4],
-  ['shell.classesThisMonth', 4],
-  ['shell.classesThisMonthLine', 6],
+  ['shell.skip', 4],
   ['cookies.label', 4],
   ['legal.footer.label', 4],
   ['legal.inline.privacy', 4],
@@ -242,7 +241,7 @@ describe('shell, cookie notice, help and activity copy', () => {
   it('keeps what the help page says is saved and deleted', () => {
     // Nothing safety-relevant was dropped from the disclosures: what is written to Spotify and MOWL,
     // what a deletion removes, and what stays behind.
-    expect(en['help.design.saved.a']).toMatch(/private playlist.*Spotify.*MOWL.*private.*Save to MOWL/s)
+    expect(en['help.design.saved.a']).toMatch(/playlist.*Spotify.*is public, so MOWL can find it.*MOWL.*private.*Save to MOWL/s)
     expect(en['help.data.delete.a']).toMatch(/cannot be undone.*MOWL.*Spotify stay there/s)
     expect(sv['help.data.delete.a']).toMatch(/Det går inte att ångra.*MOWL.*Spotify finns kvar/s)
     expect(da['help.data.delete.a']).toMatch(/Det kan ikke fortrydes.*MOWL.*Spotify bliver dér/s)

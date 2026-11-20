@@ -11,6 +11,7 @@ import { newIdempotencyKey } from '../../lib/submittedInput'
 import { Notice, useAction } from '../forms'
 import { UpgradeLink } from '../plans/UpgradeLink'
 import { ReviseRun, Unanswered, type SongsWay } from './ChatRuns'
+import { PageHeading } from '../ui/page-heading'
 
 export const MAX_REQUEST_CHARS = 2000
 
@@ -225,9 +226,7 @@ export function ChatPanel({
 
   return (
     <section className="panel chat" aria-labelledby="chat-title">
-      <h2 id="chat-title" className="panel__title">
-        {t('class.chat.title')}
-      </h2>
+      <PageHeading size="section" as="h2" titleId="chat-title" title={t('class.chat.title')} />
       <History
         messages={messages.filter((m) => requestJobId === null || m.jobId !== requestJobId)}
         numbers={numbers}

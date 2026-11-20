@@ -3,7 +3,10 @@
 A code is 32 random bytes (base64url); only its SHA-256 is stored. It lives 60 seconds and is
 single use: ``redeem_code`` marks it used with one ``UPDATE ... WHERE used_at IS NULL RETURNING``
 before any other check, so two parallel redemptions cannot both pass, and a redemption that then
-fails (expired, wrong verifier, wrong redirect) still burns it.
+fails (expired, wrong verifier, wrong redirect) still burns it. ``revoke_codes`` burns every unused
+code of one user the same way: the email revert, the password reset, the password change and sign
+out everywhere (ADR 0003 "Requests in flight"). Each holds the user row lock, which ``advance``
+also takes before ``issue_code``, so no code of a session they ended is inserted after the burn.
 """
 
 from dataclasses import dataclass
@@ -85,3 +88,16 @@ async def redeem_code(db: AsyncSession, code: str) -> RedeemedCode | RefusedCode
         await db.execute(select(oidc_codes.c.user_id).where(oidc_codes.c.code_hash == digest))
     ).scalar_one_or_none()
     return RefusedCode("unknown" if used_by is None else "used", used_by)
+
+
+async def revoke_codes(db: AsyncSession, user_id: UUID) -> int:
+    """Burn the user's unused codes: the same ``used_at`` a redemption sets, so a later
+    redemption is refused as ``used`` (and written as ``oidc_code_refused`` for the user) and the
+    purge removes the row. A code already redeemed has had its ID token; this does not reach it."""
+    result = await db.execute(
+        update(oidc_codes)
+        .where(oidc_codes.c.user_id == user_id, oidc_codes.c.used_at.is_(None))
+        .values(used_at=func.now())
+        .returning(oidc_codes.c.id)
+    )
+    return len(result.all())

@@ -85,7 +85,8 @@ async def test_confirming_from_the_requesting_session_changes_the_email(
     assert await menv.scalar("SELECT email FROM users") == NEW
     assert await menv.scalar("SELECT email_normalized FROM users") == NEW
     assert await menv.scalar("SELECT count(*) FROM sessions") == 1  # every other session revoked
-    assert await menv.scalar("SELECT count(*) FROM auth_tokens") == 0
+    # The change token went; the one left is the revert token of the notice (#1265).
+    assert await menv.scalar("SELECT array_agg(purpose) FROM auth_tokens") == ["revert_email"]
     [notice] = smtp.to(EMAIL)  # the old address is notified
     assert "changed" in notice.text
     again = await confirm(browser, token)

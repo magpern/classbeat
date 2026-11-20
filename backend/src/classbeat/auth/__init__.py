@@ -134,7 +134,7 @@ if TYPE_CHECKING:
         spotify_start_buckets,
         swedebeat_mixes_buckets,
     )
-    from classbeat.auth.reset_routes import make_reset_link_sender
+    from classbeat.auth.reset_mail import make_reset_link_sender
     from classbeat.auth.session_list import list_sessions
     from classbeat.auth.sessions import (
         IssuedSession,

@@ -42,6 +42,8 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("POST", "/api/auth/signup/confirm"): "the 32-byte mailed token is the proof",
     ("POST", "/api/auth/password/reset/info"): "the 32-byte mailed token is the proof",
     ("POST", "/api/auth/password/reset/complete"): "the 32-byte mailed token is the proof",
+    # #1265: one click from the notice to the old address; failures hold sign-in IP slots.
+    ("POST", "/api/auth/email/revert"): "the 32-byte mailed token is the proof",
     ("POST", "/api/mail/unsubscribe"): "a signed token; changes only that mail preference",
     ("POST", "/api/mail/unsubscribe/confirm"): "a signed token; changes only that mail preference",
     # ADR 0019 (#773): passkey sign-in. Like the OAuth start and callback: the start touches no

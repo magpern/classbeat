@@ -382,7 +382,7 @@ def test_failure_sentences_cover_the_new_categories_and_nothing_else() -> None:
     ):  # fmt: skip
         assert failure_sentence(category) == SONG_SENTENCES[category]
     assert "Spotify" in str(failure_sentence("invalid_grant"))
-    assert "private" in str(failure_sentence("pool_unusable"))
+    assert "Set it up again" in str(failure_sentence("pool_unusable"))
     assert failure_sentence("upstream_unavailable") is None
     assert failure_sentence("internal") is None
     assert failure_sentence(None) is None

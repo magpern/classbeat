@@ -21,7 +21,7 @@ describe('StickyActionBar', () => {
   it('is a bottom bar on a phone and a sticky card in the right column on a desktop', () => {
     render(<StickyActionBar label="Actions">x</StickyActionBar>)
     const { className } = screen.getByRole('region', { name: 'Actions' })
-    for (const c of ['max-lg:fixed', 'max-lg:inset-x-0', 'max-lg:bottom-0', 'lg:sticky', 'lg:top-sticky']) {
+    for (const c of ['max-lg:fixed', 'max-lg:inset-x-0', 'max-lg:bottom-[var(--cb-notice-h)]', 'lg:sticky', 'lg:top-sticky']) {
       expect(className).toContain(c)
     }
   })

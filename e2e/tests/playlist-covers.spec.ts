@@ -61,21 +61,26 @@ test('the picker shows the covers of the pinned shapes and initials for the rest
   )
 
   const group = page.getByRole('radiogroup', { name: 'Playlist' })
-  await expect(group.locator('img')).toHaveCount(3)
+  // The cover images only: a tile with a cover also has the Spotify badge's icon images (#1288).
+  const COVER_IMG = 'img:not(.brand-icon)'
+  await expect(group.locator(COVER_IMG)).toHaveCount(3)
+  await expect(group.getByTestId('spotify-cover-badge')).toHaveCount(3)
   for (const tile of TILES) {
     const label = group.locator('label').filter({ has: page.getByRole('radio', { name: tile.name }) })
     if (tile.prefix === null) {
       await expect(label.locator('img')).toHaveCount(0)
+      await expect(label.getByTestId('spotify-cover-badge')).toHaveCount(0)
       continue
     }
-    const image = label.locator('img')
+    const image = label.locator(COVER_IMG)
+    await expect(label.getByTestId('spotify-cover-badge')).toHaveCount(1)
     await expect(image).toHaveAttribute('src', new RegExp(`^${tile.prefix.replaceAll('.', '\\.')}[0-9a-f]+$`))
     await expect(image).toHaveAttribute('referrerpolicy', 'no-referrer')
     await expect
       .poll(() => image.evaluate((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0))
       .toBe(true)
   }
-  // The names stay the radios' names; the covers are decorative.
+  // The names stay the radios' names; the covers and their badges are decorative.
   await expect(group.getByRole('radio')).toHaveCount(TILES.length)
 
   // One listing read of the user's own Spotify playlists, with their token, and no refresh.

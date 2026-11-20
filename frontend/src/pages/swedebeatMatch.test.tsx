@@ -4,7 +4,7 @@ import { timing } from '../components/swedebeat/NextStep'
 import { classBody, classRoutes, REV1 } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { CLASS_ID, SESSION_ROUTES, jobBody } from '../test/jobFixtures'
-import { renderAt } from '../test/render'
+import { renderAt, withoutFooter } from '../test/render'
 import { HASH, LIST_ID, LIST_PATH, MOWL_ID, NEW_JOB, SPOTIFY_ID, listBody } from '../test/songFixtures'
 
 const PAGE = `/classes/${CLASS_ID}`
@@ -113,7 +113,7 @@ describe('the Swedebeat part of the class page', () => {
     const api = fakeApi({ ...routes(), ...classRoutes({ cls: { songs: SONGS } }), [`GET ${LIST_PATH}`]: listBody({ status: 'approved' }) })
     renderAt(PAGE)
     await screen.findByText('Tuesday climb')
-    expect(screen.queryByText(/Swedebeat/)).toBeNull()
+    expect(within(withoutFooter()).queryByText(/Swedebeat/)).toBeNull()
     expect(api.calls.some((c) => c.path.includes('swedebeat'))).toBe(false)
   })
 

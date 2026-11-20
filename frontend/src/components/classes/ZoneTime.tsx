@@ -1,6 +1,7 @@
 import { useT } from '../../i18n/I18n'
 import { zoneNames, type Bar, zoneCount, zoneSeconds } from '../../lib/profile'
 import { zoneFill } from './zoneClasses'
+import { PageHeading } from '../ui/page-heading'
 import { clock } from '../../lib/workout'
 
 /** "Time in each zone": one row per zone with its name, a bar scaled to the largest zone and the time. */
@@ -9,10 +10,8 @@ export function ZoneTime({ bars, running = false }: { bars: Bar[]; running?: boo
   const seconds = zoneSeconds(bars)
   const most = Math.max(...seconds, 1)
   return (
-    <section aria-labelledby="zone-time-title" className="flex flex-col gap-2">
-      <h3 id="zone-time-title" className="m-0 font-display text-lg font-bold">
-        {t('class.zoneTime.title')}
-      </h3>
+    <section aria-labelledby="zone-time-title" className="flex flex-col gap-3">
+      <PageHeading size="section" as="h3" titleId="zone-time-title" title={t('class.zoneTime.title')} />
       <ul className="zone-time m-0 flex list-none flex-col gap-1 p-0">
         {zoneNames().slice(0, zoneCount(running)).map((name, i) => (
           <li key={name} className="grid grid-cols-[9rem_1fr_3.5rem] items-center gap-3 text-[0.9375rem]">

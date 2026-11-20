@@ -28,7 +28,7 @@ from classbeat.connections import OpenConnection, hold
 from classbeat.crypto.keks import KeyRing
 from classbeat.jobs import JobFailure, JobRun
 from classbeat.operations.requests import Guard
-from classbeat.playlists import common, create, privacy, replace
+from classbeat.playlists import common, create, replace
 from classbeat.playlists.lock import playlist_lock
 
 
@@ -98,23 +98,7 @@ async def create_final_playlist(
         ).first()
     if row is None:
         raise JobFailure("invalid_input")  # the revision is not this class's approved list
-    await _ensure_private(run, keyring, opened, class_id, playlist_id)
     return ClassPlaylist(row.id, row.playlist_id)
-
-
-async def _ensure_private(
-    run: JobRun, keyring: KeyRing, opened: OpenConnection, class_id: UUID, playlist_id: str
-) -> None:
-    """``privacy.ensure_private`` for the id this create returned; its decide step holds the
-    connection and finds the class's live row of that playlist."""
-    params = {"owner_id": run.lease.owner_id, "class_id": class_id, "playlist_id": playlist_id}
-
-    async def guard(db: AsyncSession) -> bool:
-        if not await hold(db, run.ctx, opened):
-            return False
-        return (await db.execute(_BY_OPERATION, params)).first() is not None
-
-    await privacy.ensure_private(run, keyring, opened, playlist_id, "final", guard)
 
 
 async def _live(db: AsyncSession, owner_id: UUID, class_id: UUID, row_id: UUID) -> tuple[str, str]:

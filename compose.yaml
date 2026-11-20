@@ -186,6 +186,7 @@ services:
       CLASSBEAT_SOUNDLESS_ENABLED: ${SOUNDLESS_ENABLED:-false}
     # The model API keys are the worker's only: web, migrate and maint never mount them
     # (ADR 0006 section 9, ADR 0012 section 2). swedebeat_gateway_key: web's and the worker's.
+    # spotdown_service_key (ADR 0040 section 10): the worker's only; empty from init (spotdown off).
     secrets:
       - database_password
       - app_secret_key
@@ -194,6 +195,7 @@ services:
       - openai_api_key
       - deepseek_api_key
       - swedebeat_gateway_key
+      - spotdown_service_key
 
   # Maintenance after a suspected KEK compromise (ADR 0004 section 2), never started by default:
   #   docker compose stop web worker
@@ -248,6 +250,10 @@ secrets:
   # ADR 0035 section 2: the SwedeBeat gateway's client key; web and worker only; empty from init.
   swedebeat_gateway_key:
     file: ./secrets/swedebeat_gateway_key
+  # ADR 0040 section 10: spotdown's shared service key; worker only; empty from init (no key, so
+  # spotdown is off even with CLASSBEAT_SPOTDOWN_URL set).
+  spotdown_service_key:
+    file: ./secrets/spotdown_service_key
   # OAuth client secrets (ADR 0003 section 5): web only; empty from init, which means that provider is off.
   oauth_google_client_secret:
     file: ./secrets/oauth_google_client_secret

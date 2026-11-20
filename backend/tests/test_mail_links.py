@@ -100,6 +100,7 @@ def test_every_path_any_mail_kind_emits_is_prefixed_or_one_of_the_fixed_exceptio
         "/signin",
         "/reset",
         "/email-change",
+        "/email-revert",  # #1265: the revert link of the email_changed notice
         "/account",
         "/unsubscribe",
     } <= seen

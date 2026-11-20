@@ -5,6 +5,7 @@ import { classStatus } from '../../lib/classCards'
 import { useT } from '../../i18n/I18n'
 import { Button } from '../ui/button'
 import { Chip } from '../ui/chip'
+import { PageHeading } from '../ui/page-heading'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu'
 import { DuplicateClass } from './DuplicateClass'
 import { SaveActions, SaveNotices, SaveStatus } from './SavePanel'
@@ -29,6 +30,7 @@ export function ClassHeader({
   player,
   viewingId,
   versionNumber,
+  versionLine = null,
   canChangeSongs,
   deleting,
   onGoTo,
@@ -39,6 +41,8 @@ export function ClassHeader({
   player: PlayerFlow
   viewingId: string | null
   versionNumber: number | null
+  /** The shown version's "Version 1, first design" line, the heading's intro. */
+  versionLine?: string | null
   canChangeSongs: boolean
   deleting: boolean
   onGoTo: (id: string) => void
@@ -48,65 +52,68 @@ export function ClassHeader({
   const status = classStatus(summary)
   return (
     <header data-testid="class-header" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        <div className="flex min-w-0 flex-1 basis-72 flex-col gap-2">
-          <h1 className="m-0 font-display text-3xl font-extrabold break-words">{summary.title}</h1>
+      <PageHeading
+        eyebrow={t('class.page.eyebrow')}
+        title={summary.title}
+        titleClassName="break-words"
+        intro={versionLine}
+        actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Chip tone={status.tone}>{status.label}</Chip>
-            {summary.sport === 'running' ? <Chip data-testid="sport">{t('class.page.running')}</Chip> : null}
-            {summary.soundless ? <Chip data-testid="soundless">{t('class.page.noMusic')}</Chip> : null}
-          </div>
-          <SaveStatus flow={flow} />
-          {player.showsState ? (
-            <Suspense fallback={null}>
-              <PlayerSentState summary={summary} />
-            </Suspense>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <SaveActions flow={flow} />
-          <SendToPlayerActions flow={player} />
-          {canChangeSongs ? (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                onGoTo('change-songs')
-              }}
-            >
-              {t('class.page.changeSongs')}
-            </Button>
-          ) : null}
-          <DuplicateClass
-            classId={summary.id}
-            title={summary.title}
-            revisionId={viewingId}
-            versionNumber={versionNumber}
-          />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" aria-label={t('class.page.moreActions')}>
-                <Ellipsis aria-hidden="true" size={18} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              // Delete class moves focus to its confirmation card; the menu must not take it back.
-              onCloseAutoFocus={(event) => {
-                if (deleting) event.preventDefault()
-              }}
-            >
-              <DropdownMenuItem
-                onSelect={() => {
-                  onGoTo('versions')
+            <SaveActions flow={flow} />
+            <SendToPlayerActions flow={player} />
+            {canChangeSongs ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  onGoTo('change-songs')
                 }}
               >
-                {t('class.versions')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onDelete}>{t('class.page.deleteClass')}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+                {t('class.page.changeSongs')}
+              </Button>
+            ) : null}
+            <DuplicateClass
+              classId={summary.id}
+              title={summary.title}
+              revisionId={viewingId}
+              versionNumber={versionNumber}
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" aria-label={t('class.page.moreActions')}>
+                  <Ellipsis aria-hidden="true" size={18} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                // Delete class moves focus to its confirmation card; the menu must not take it back.
+                onCloseAutoFocus={(event) => {
+                  if (deleting) event.preventDefault()
+                }}
+              >
+                <DropdownMenuItem
+                  onSelect={() => {
+                    onGoTo('versions')
+                  }}
+                >
+                  {t('class.versions')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={onDelete}>{t('class.page.deleteClass')}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        }
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <Chip tone={status.tone}>{status.label}</Chip>
+        {summary.sport === 'running' ? <Chip data-testid="sport">{t('class.page.running')}</Chip> : null}
+        {summary.soundless ? <Chip data-testid="soundless">{t('class.page.noMusic')}</Chip> : null}
       </div>
+      <SaveStatus flow={flow} />
+      {player.showsState ? (
+        <Suspense fallback={null}>
+          <PlayerSentState summary={summary} />
+        </Suspense>
+      ) : null}
       <SaveNotices flow={flow} />
       {player.active ? (
         <Suspense fallback={null}>

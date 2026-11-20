@@ -82,10 +82,12 @@ transaction the row's `playlist_id` and `last_hash` are set NULL conditionally (
 AND id = :pool_id AND playlist_id = :old`) and **`forget_pool`** (below) deletes the user's pool
 operation rows, so the retry creates a new pool under a new key and `ref` instead of reusing the
 deleted playlist's id; anything else wrong is
-`pool_unusable` ("make it private again or stop and set up the working playlist again"; classbeat
-never flips a user's privacy itself); 403 is `forbidden`. All three are `failed` with nothing written.
+`pool_unusable` ("your working playlist was changed in Spotify and cannot be used. Set it up
+again", since Amendment 27 reached only for a collaborative playlist, another owner or an unreadable
+privacy value; classbeat never flips the privacy of a playlist it did not just create); 403 is `forbidden`. All three are `failed` with nothing written.
 `public: false` and `collaborative: false` are sent explicitly on every create (the library fixes
-them, ADR 0009 M-2).
+them, ADR 0009 M-2). *(Superseded 2026-11-19 by roadmap Amendment 30, #1287: every create sends
+`public: true` and `collaborative: false`; see the amendment of that date below.)*
 
 > **Amendment, 2026-10-30 (Architect; issue #198 items 4 and 5):** the text above stays; this aligns it with
 > `backend/src/classbeat/playlists/replace.py`.
@@ -94,7 +96,9 @@ them, ADR 0009 M-2).
 >   (`replace.py:91-92`, `:155-156`, `:194`). The pool keeps `pool_missing`, `pool_unusable` and `forbidden`.
 >   `not_found` is as in ADR 0009 (404 on a playlist addressed by id).
 
-> **Amendment, 2026-11-17 (roadmap Amendment 27, issue #1155):** a live run read a newly created pool
+> **Amendment, 2026-11-17 (roadmap Amendment 27, issue #1155):** *(Its first item, the "after a
+> create" privacy step, is superseded by the amendment of 2026-11-19 below: `playlists/privacy.py` is
+> removed. The owner check and the scope items stand.)* A live run read a newly created pool
 > playlist back as `public: true` although the create sent `public: false`; the owner check refused
 > it (`pool_unusable`), and a final playlist the same way (`forbidden`). Now:
 > - *After a create* (`playlists/privacy.py`), only for the id the create operation itself returned
@@ -152,10 +156,35 @@ A job whose `pending` row is deleted under it cannot record its outcome (the fen
 writes nothing more and is not retried; its next decide step re-reads `spotify_pool` and ends
 `consent_missing` or creates anew.
 
+> **Amendment, 2026-11-19 (roadmap Amendment 30, issue #1287):** MOWL's Spotify import lists only a
+> user's public playlists that are on their Spotify profile, so a private working or final playlist
+> never reached MOWL and phase 2 ended `playlist_mismatch`. Now:
+> - *The create* (`playlists/create_call.py`) is one `POST /me/playlists` with `public: true` and
+>   `collaborative: false`, through the library's helper `spotify_web._new_playlist` (its public
+>   `create_playlist` always asks for private; the helper's signature is pinned by a test). An answer
+>   without a valid id stays `uncertain`, a 4xx `failed`. A public create needs
+>   `playlist-modify-public`; a connection made before Amendment 27 lacks it and gets a 403, `failed`
+>   `forbidden` with nothing created (the 403 does not name the scope, so it is not guessed).
+> - *No privacy step.* No read-back and no `PUT /playlists/{id}` after a create; `playlists/privacy.py`
+>   is removed. Nothing in classbeat changes a playlist's privacy after its create; an existing
+>   playlist keeps what it has.
+> - *The owner check and the reconciler* are unchanged (`public` exactly a boolean, `collaborative`
+>   exactly `false`).
+> - *The profile.* Spotify's Web API has no "Add to profile" field or endpoint: it documents `public` as
+>   whether the playlist is added to the user's profile (Create Playlist, Change Playlist Details,
+>   Working with Playlists, read 2026-11-19). Since a Spotify app can still keep a public playlist off
+>   the profile, the product tells the user to choose *Add to profile* on the playlist in Spotify, or to
+>   turn on adding new playlists to the profile in Spotify's settings: on the Spotify account page under
+>   the working playlist, in the `playlist_mismatch` sentence and on the song page's failure detail
+>   (en, sv, da).
+> - *Residual risk*, accepted by the owner: the playlists show on the user's profile and in search, and
+>   anyone with the link can open them (the tracks and the class's name).
+
 **Reconciler for create-then-fill (the roadmap's open point).** The create is split from the fill so
 the id exists between the two requests, and an uncertain **create** is reconciled by the one thing it
 cannot hide: listing the user's playlists (`GET /me/playlists`, 50 per page, at most 20 pages) for
-**exactly one** playlist with `owner.id` = the connected user, `public == false` and a description
+**exactly one** playlist with `owner.id` = the connected user, `public == false` (since Amendment 27
+either boolean) and a description
 containing this operation's `ref`. One found → `succeeded` with its id (it is empty or not, the fill is
 absolute and repeats safely). None, with all pages read (fewer than the cap), `call_ended_at` set and
 `now() ≥ call_ended_at + CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS` → `failed`; the setting is **unset by
@@ -232,7 +261,20 @@ code, the old one left in the user's Spotify), recorded in Alternatives.
 > *(2026-11-16, [ADR 0036](0036-swedebeat-studio.md) §9: for a SwedeBeat studio list, a failed working-playlist write, including a retryable category, is no longer retried by the job: it becomes the list's sync state, and the user retries it with "Sync again".)*
 
 **Privacy wording** (roadmap §2): the page and the consent say a non-public playlist does not appear on
-the profile or in search but anyone with its link can open it. Playlist URLs and ids are never in
+the profile or in search but anyone with its link can open it. *(2026-11-18, roadmap Amendment 27, issue
+#1162: the wording no longer promises a private playlist. It says classbeat asks Spotify for a private one,
+Spotify may make it public, anyone with its link can then open it, and classbeat keeps using it. This covers
+the consent sentence, the approval page, the Spotify output description, the revoke details, the help and
+public pages and the `pool_unusable` sentence, in English, Swedish and Danish. **Consent version:** the
+new sentence is a clarification of the same consent (the playlist, its name, its purpose and its overwrite
+are unchanged; classbeat still asks for private), so `CONSENT_VERSION` stays 1 and existing users are not
+asked again. A later change to what classbeat manages, not to how Spotify may treat its privacy, bumps it.)*
+*(2026-11-19, roadmap Amendment 30, #1287: classbeat no longer asks for private, so "We ask Spotify for a
+private playlist" became untrue. The consent says the working playlist is public, can show on the
+profile and in search, and anyone with its link can open it; `CONSENT_VERSION` is 2. A version-1 consent
+stands, since it already said the playlist may be public: nobody is asked again. The approval page, the
+Spotify output description, the help, workspace and public pages say the playlist is public so MOWL can
+find it.)* Playlist URLs and ids are never in
 events, SSE, logs or model input; the owner sees a link to their own final playlist on their class page
 only (`https://open.spotify.com/playlist/<id>` built by the page from the id, never from Spotify data).
 
@@ -546,7 +588,7 @@ token in any body except where noted; ADR 0009 §2 has the connection routes):
 > never inlined) beside Spotify's songs and covers, as the guidelines ask.
 
 Plain sentences added for the page: `consent_missing` ("allow the working playlist in your Spotify
-settings first"), `pool_unusable` ("your working playlist was changed: make it private again or set it
+settings first"), `pool_unusable` ("your working playlist was changed in Spotify and cannot be used. Set it
 up again"), `pool_missing` (retried by itself), `pool_not_synced` ("MOWL has not caught up with the
 working playlist; try again in a minute"), `playlist_mismatch` ("Spotify's playlist did not match the
 approved songs; nothing was designed. Create it again"), `pool_too_small` ("not enough usable songs

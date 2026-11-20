@@ -1,10 +1,12 @@
 import { Slot } from '@radix-ui/react-slot'
-import type { ButtonHTMLAttributes } from 'react'
+import type { ButtonHTMLAttributes, Ref } from 'react'
 import { cn } from '../../lib/cn'
 
 const variants = {
-  primary: 'bg-brand text-on-brand hover:opacity-90 hover:shadow-[0_8px_22px_-10px_var(--cb-brand)]',
-  secondary: 'bg-raised text-text hover:bg-line',
+  primary: 'bg-heat text-on-heat shadow-glow hover:brightness-110',
+  // The heat fill without the glow, for places the glow would spill out of its box (the signed-out header).
+  flat: 'bg-heat text-on-heat hover:brightness-110',
+  secondary: 'border border-solid border-line bg-raised text-text hover:bg-line',
   ghost: 'bg-transparent text-text hover:bg-raised',
   danger: 'bg-bad text-on-brand hover:opacity-90',
 } as const
@@ -15,6 +17,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
   /** Render the child element (for example a link) with the look of a button. */
   asChild?: boolean
+  ref?: Ref<HTMLButtonElement>
 }
 
 export function Button({ variant = 'primary', asChild = false, className, type, ...props }: ButtonProps) {

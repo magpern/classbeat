@@ -1,0 +1,16 @@
+Din e-postadress har återställts
+================================
+
+Ändringen av e-postadressen för ditt classbeat-konto har ångrats, och kontot använder den här adressen igen. För att stänga ute den som ändrade den har vi loggat ut alla sessioner och tagit bort kontots lösenord, länkade inloggningsmetoder, tvåfaktorsautentisering, återställningskoder och passkeys.
+
+Välj ett nytt lösenord med länken nedan (giltig i 30 minuter; därefter kan du be om en ny på inloggningssidan). Ställ sedan in resten igen på din kontosida.
+
+Välj ett nytt lösenord:
+https://classbeat.example.test/sv/reset#token=SAMPLE
+
+Om du inte själv ångrade ändringen, säg till oss direkt. Kontakta oss på support@classbeat.eu
+
+--
+Du får den här säkerhetsaviseringen för att det här är e-postadressen till ett classbeat-konto. Sådana aviseringar skickas för att skydda dig.
+classbeat: https://classbeat.example.test
+Frågor? Skriv till support@classbeat.eu

@@ -113,6 +113,18 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         "swedebeat_track_maps": _entry(
             "reference sha256 map", "", "account", "swedebeat_connection"
         ),
+        # ADR 0040 section 9 (#1301 part 3): spotdown's shadow comparison of a studio track: the
+        # outcome and detail codes, the metrics (numbers and codes) and the provenance record (ids,
+        # versions, the audio identity, the timing evidence). No title, reference, URL, scope or
+        # audio. Gone with the job (so the class) and the account, with the SwedeBeat connection
+        # (``connections.forget``) and after 90 days (``design.track_shadow_rows``).
+        "spotdown_shadow_tracks": _entry(
+            "metrics provenance",
+            "outcome detail",
+            "class",
+            "account",
+            "swedebeat_connection",
+        ),
         # The daily limit of track downloads: no content; a user's rows past 48 hours go with
         # their next one, all with the account.
         "swedebeat_track_downloads": _entry("", "", "account"),

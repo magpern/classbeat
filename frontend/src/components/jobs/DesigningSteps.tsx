@@ -1,4 +1,4 @@
-import { Check, Circle, Loader } from 'lucide-react'
+import { Check, Circle } from 'lucide-react'
 import { useT } from '../../i18n/I18n'
 
 type Step = { stage: string; label: string }
@@ -30,7 +30,9 @@ export function DesigningSteps({ steps, current }: { steps: readonly Step[]; cur
             {done ? (
               <Check aria-hidden="true" size={18} className="check-pop shrink-0 text-ok" />
             ) : now ? (
-              <Loader aria-hidden="true" size={18} className="shrink-0 text-brand motion-safe:animate-[spin_2.4s_linear_infinite]" />
+              <span aria-hidden="true" className="flex size-[18px] shrink-0 items-center justify-center">
+                <span className="size-3 rounded-full bg-heat shadow-glow motion-safe:animate-pulse" />
+              </span>
             ) : (
               <Circle aria-hidden="true" size={18} className="shrink-0" />
             )}

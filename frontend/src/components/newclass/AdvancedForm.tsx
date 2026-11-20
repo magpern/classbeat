@@ -24,6 +24,8 @@ import { summaryRows } from './summary'
 import { usePlanAllowance } from './usePlanAllowance'
 import { Notice, useAction } from '../forms'
 import { Card, CardTitle } from '../ui/card'
+import { FIELD_CARD, FieldCard } from '../start/FieldCard'
+import { cn } from '../../lib/cn'
 import { EFFORTS, sketchProfile } from '../../lib/sketch'
 import { newIdempotencyKey } from '../../lib/submittedInput'
 import { readPreset } from '../../lib/presets'
@@ -180,8 +182,7 @@ export function AdvancedForm({
           {action.upgrade ? <UpgradeLink /> : null}
           <PlanNudge trigger="low" plan={plan} />
         </div>
-        <Card className={section}>
-          <CardTitle className="mb-0">{t('newclass.basics')}</CardTitle>
+        <FieldCard title={t('newclass.basics')} className={section}>
           {runningEnabled ? (
             <Choice
               label={t('newclass.sport')}
@@ -208,9 +209,8 @@ export function AdvancedForm({
             required
           />
           <LengthChoice length={length} onChange={setLength} maxMinutes={allowed?.maxMinutes ?? null} />
-        </Card>
-        <Card className={section}>
-          <CardTitle className="mb-0">{t('newclass.music')}</CardTitle>
+        </FieldCard>
+        <FieldCard title={t('newclass.music')} className={section}>
           {running ? null : (
             <MusicChoice
               songs={songs}
@@ -227,9 +227,8 @@ export function AdvancedForm({
           {onSwedebeatMix ? <MixTiles mixes={mixes} value={mixId} onChange={setMixId} /> : null}
           {gate !== null ? <SpotifyPrompt need={gate.need} /> : null}
           <StylePicker value={style} onChange={setStyle} />
-        </Card>
-        <Card className={section}>
-          <CardTitle className="mb-0">{running ? t('newclass.theRun') : t('newclass.theRide')}</CardTitle>
+        </FieldCard>
+        <FieldCard title={running ? t('newclass.theRun') : t('newclass.theRide')} className={section}>
           <Choice
             label={t('newclass.effort')}
             options={EFFORTS.map((e) => ({ value: e.value, label: t(e.labelKey) }))}
@@ -251,8 +250,8 @@ export function AdvancedForm({
               onFtp={setFtp}
             />
           )}
-        </Card>
-        <Card className={section}>
+        </FieldCard>
+        <section className={cn(FIELD_CARD, section)}>
           <TextArea
             label={t('newclass.notes')}
             value={notes}
@@ -262,7 +261,7 @@ export function AdvancedForm({
               setNotes(e.target.value)
             }}
           />
-        </Card>
+        </section>
       </div>
       <div className="min-w-0 lg:self-stretch">
         <SideCard

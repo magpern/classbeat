@@ -250,6 +250,8 @@ export function SpotifyConnection({ onStatus }: { onStatus?: (status: SpotifySta
           <h3 id={workingId} className="m-0 font-display text-lg font-bold">
             {t('spot.workingTitle')}
           </h3>
+          <p className="m-0">{t('spot.profileHint')}</p>
+          <p className="m-0">{t('spot.profileSetting')}</p>
           <ConsentSwitch status={status} onChanged={reload} />
         </section>
       ) : null}

@@ -9,6 +9,7 @@ import { recallInput, recallPick } from '../../lib/submittedInput'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Card as Panel } from '../ui/card'
+import { PageHeading } from '../ui/page-heading'
 import { DesigningSteps, stepNumber } from './DesigningSteps'
 import { GhostProfile } from './GhostProfile'
 
@@ -53,20 +54,19 @@ export function Designing({
   const step = stepNumber(steps, current)
   return (
     <Panel
-      className={`flex w-full flex-col gap-5 ${embedded ? '' : 'mx-auto max-w-2xl'}`}
+      className={`flex w-full flex-col gap-5 rounded-3xl p-6 shadow-card ${embedded ? '' : 'mx-auto max-w-2xl'}`}
       role="region"
       aria-labelledby="designing-title"
     >
-      <div className="flex flex-col gap-1">
-        {embedded ? (
-          <h2 id="designing-title" className="m-0 font-display text-2xl font-extrabold">
-            {picking ? t('job.findingSongs', { name }) : t('job.designing', { name })}
-          </h2>
-        ) : (
-          <h1 id="designing-title" className="m-0 font-display text-3xl font-extrabold">
-            {picking ? t('job.findingSongs', { name }) : t('job.designing', { name })}
-          </h1>
-        )}
+      <div className="flex flex-col gap-2">
+        <PageHeading
+          eyebrow={embedded ? undefined : t('job.eyebrow')}
+          title={picking ? t('job.findingSongs', { name }) : t('job.designing', { name })}
+          titleId="designing-title"
+          as={embedded ? 'h2' : 'h1'}
+          size={embedded ? 'section' : 'page'}
+          titleClassName="break-words"
+        />
         {step !== null ? (
           <p className="m-0 text-muted tabular-nums">
             {t('job.stepOf', { step, total: steps.length })}

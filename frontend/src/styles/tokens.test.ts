@@ -160,10 +160,66 @@ describe('contrast', () => {
     }
   })
 
-  it('the system theme (light device) has the same values as light', () => {
-    for (const key of ['bg', 'surface', 'raised', 'text', 'muted', 'brand', 'on-brand']) {
-      expect(system[key], key).toBe(light[key])
+  it.each([
+    ['dark', dark],
+    ['light', light],
+  ])('%s: white on both ends and the middle of the heat line is >= 4.5:1', (_name, t) => {
+    for (const stop of ['heat-from', 'heat-mid', 'heat-to']) {
+      expect(contrast(t['on-heat'] as string, t[stop] as string), stop).toBeGreaterThanOrEqual(4.5)
     }
+  })
+
+  it('the heat line is the owner-approved gradient and is the same in both themes', () => {
+    expect([dark['heat-from'], dark['heat-mid'], dark['heat-to']]).toEqual(['#6d4aff', '#a12fc4', '#d61a72'])
+    expect(light['heat-to']).toBe(dark['heat-to'])
+    expect(tokensCss).toMatch(/--cb-heat:\s*linear-gradient\(110deg,/)
+    expect(tokensCss).toMatch(/--cb-glow:/)
+    expect(tokensCss).toMatch(/--cb-radius-xl:/)
+    expect(tailwindCss).toMatch(/@utility bg-heat/)
+  })
+
+  it.each([
+    ['dark', dark],
+    ['light', light],
+  ])('%s: the tab mark is >= 3:1 on surface and the same colour', (_name, t) => {
+    expect(t['tab-mark']).toBe('#d61a72')
+    expect(contrast(t['tab-mark'] as string, t.surface as string)).toBeGreaterThanOrEqual(3)
+  })
+
+  it('on-brand and the light soft backgrounds are the approved values', () => {
+    expect([dark['on-brand'], light['on-brand']]).toEqual(['#0a0910', '#ffffff'])
+    expect([light['ok-soft'], light['warn-soft'], light['bad-soft']]).toEqual(['#e1f5ea', '#fcefd6', '#fbe0dd'])
+  })
+
+  it('the Afterburn surfaces are the approved values', () => {
+    expect([dark.bg, dark.surface, dark.raised, dark.line]).toEqual(['#0a0910', '#14121b', '#1e1b27', '#2b2836'])
+    expect([light.bg, light.surface, light.raised, light.line]).toEqual(['#f6f4fa', '#ffffff', '#efecf5', '#e3dfeb'])
+    expect([dark.brand, light.brand]).toEqual(['#b9a2ff', '#5a36e0'])
+  })
+
+  it('the system theme (light device) has the same values as light, for every token key', () => {
+    const keys = [...new Set([...Object.keys(light), ...Object.keys(system)])]
+    expect(keys.length).toBeGreaterThan(30)
+    for (const key of keys) expect(system[key], key).toBe(light[key])
+    // The colour-only regex above skips rgb() and shadow tokens, so compare the raw declarations too.
+    const declarations = (css: string) => [...css.matchAll(/--cb-[a-z0-9-]+:[^;]+;/g)].map((m) => m[0].replace(/\s+/g, ' '))
+    const lightBlock = block(tokensCss, ":root[data-theme='light']")
+    const systemBlock = block(tokensCss, "  :root[data-theme='system']")
+    expect(declarations(systemBlock)).toEqual(declarations(lightBlock))
+  })
+
+  it('the dark soft backgrounds and the glow are the approved values', () => {
+    expect([dark['ok-soft'], dark['warn-soft'], dark['bad-soft']]).toEqual(['#192a2a', '#302620', '#301e26'])
+    expect(block(tokensCss, ':root')).toMatch(/--cb-glow:\s*0 8px 24px -8px rgb\(161 47 196 \/ 0\.55\);/)
+    // The glow is a dark-theme default that light does not override: it is the same in every theme.
+    for (const theme of [":root[data-theme='light']", "  :root[data-theme='system']"]) {
+      expect(block(tokensCss, theme)).not.toMatch(/--cb-glow:/)
+    }
+  })
+
+  it('the active tab underline is drawn with the tab-mark token', () => {
+    const trigger = readFileSync(join(srcDir, 'components', 'ui', 'tabs.tsx'), 'utf8')
+    expect(trigger).toMatch(/data-\[state=active\]:shadow-\[inset_0_-2px_0_var\(--cb-tab-mark\)\]/)
   })
 
   it('zone colours and stage text meet 3:1 on the stage', () => {
@@ -177,6 +233,15 @@ describe('contrast', () => {
   it('the zones are the ADR 0013 values: one red for zones 5 to 7', () => {
     expect([dark['zone-5'], dark['zone-6'], dark['zone-7']]).toEqual(['#f0483c', '#f0483c', '#f0483c'])
     expect(dark['zone-1']).toBe('#8e99a8')
+  })
+})
+
+describe('focus ring', () => {
+  const appCss = readFileSync(join(srcDir, 'styles', 'app.css'), 'utf8')
+
+  it('is drawn on every focus-visible element except the skip-link target main', () => {
+    expect(block(appCss, ':focus-visible')).toMatch(/outline:\s*2px solid var\(--cb-brand\)/)
+    expect(block(appCss, '#main-content:focus-visible')).toMatch(/outline:\s*none/)
   })
 })
 
@@ -233,5 +298,16 @@ describe('sticky action bar space', () => {
   it('tailwind maps both to utilities', () => {
     expect(tailwindCss).toMatch(/--spacing-bar:\s*var\(--cb-bar-space\)/)
     expect(tailwindCss).toMatch(/--spacing-bar-pad:\s*var\(--cb-bar-pad\)/)
+  })
+})
+
+describe('border-heat utility', () => {
+  const rule = /@utility border-heat \{([^}]*)\}/.exec(tailwindCss)?.[1] ?? ''
+
+  it('exists and paints a surface-filled heat outline from tokens only', () => {
+    expect(rule).toContain('border-color: transparent')
+    expect(rule).toContain('linear-gradient(var(--cb-surface), var(--cb-surface)) padding-box')
+    expect(rule).toContain('var(--cb-heat) border-box')
+    expect(COLOUR.test(rule)).toBe(false)
   })
 })
