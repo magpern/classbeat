@@ -3,8 +3,9 @@
 Status: Accepted. This ADR itself changes no code, setting, compose file or runtime behaviour.
 **Every phase it describes (SD-P0 to SD-P7, and the SD-P2+ enhancements) was authorized by the owner
 on 2026-11-20**, except the owner decisions #1296 to #1299 and magpern/spotdown#1; no deploy, live-account test or real YouTube, SwedeBeat, MOWL or Spotify call by any agent (roadmap
-[Amendment 31](../roadmap.md)). Its amendment to ADR 0010 and ADR 0021 §2 (§12 below) takes effect
-only on the owner's acceptance of #1296.
+[Amendment 31](../roadmap.md)). Its amendment to ADR 0010 and ADR 0021 §2 (§12 below) took effect
+on 2026-11-20, when the owner accepted #1296 (the amendment "#1296 accepted" at the end; roadmap
+[Amendment 32](../roadmap.md)).
 
 Source: the frozen plan [docs/plans/spotdown-integration.md](../plans/spotdown-integration.md)
 (Revision 2, frozen 2026-11-20; tracking issue #1308). This ADR records its decisions without
@@ -14,7 +15,7 @@ contract document and the versioned schema v1 file) is [spotdown#3](https://gith
 its own copy of the plan is
 [spotdown docs/integration-plan.md](https://github.com/magpern/spotdown/blob/main/docs/integration-plan.md).
 
-Amends (each effective on the owner's acceptance of #1296, §12):
+Amends (effective 2026-11-20, the owner's acceptance of #1296; §12 and the amendment "#1296 accepted"):
 - [ADR 0021](0021-use-part-of-a-song.md) §2, the sentence that forbids audio processing tied to
   Spotify tracks.
 - [ADR 0010](0010-live-activation-permissions.md): a new accepted-risk entry and table row for
@@ -288,6 +289,9 @@ source is enabled and no such entry is created from classbeat's traffic. The pro
 point, for the owner and the Architect to choose and not decided here: either a bounded lifetime or
 purge for the global entries in spotdown#5 (caches, lookups, provenance), or a follow-up ADR that
 applies ADR 0007 §11's reference-driven purge to them, settled before SD-P6 (#1303) starts.
+*(Settled 2026-11-20: the owner accepted #1296, and the Architect's default, a bounded lifetime of 90
+days unused or until the version changes, with an operator takedown, is item 5 of the amendment
+"#1296 accepted" at the end.)*
 
 ### 8. Failure taxonomy and its bounds (plan §6)
 
@@ -400,7 +404,7 @@ pass, a period of production use with no regression in the fallback rate, and th
 - **YouTube:** optional, off by default, enabled per deployment by the owner. Downloading from
   YouTube breaks YouTube's terms, and using it for Spotify-catalogue classes touches Spotify's
   Developer Policy. Returning only metadata and being noncommercial do **not** remove that risk; the
-  risk is the owner's to accept (§12, #1296). Licensed sources (SwedeBeat, user audio) always win when
+  risk is the owner's to accept (§12, #1296; accepted 2026-11-20). Licensed sources (SwedeBeat, user audio) always win when
   they exist. Agents and CI never call YouTube.
 
 Decided by default, and the owner can override: the same-box hosting; a single service key; relaying
@@ -413,7 +417,9 @@ policy.
 - **Roles:** Opus is the Architect and Orchestrator; Sonnet is the Developer; Haiku is the Explorer.
 - **Reviews:** **Opus reviews every PR of this programme in both repositories** (the owner's
   instruction, stricter than AGENTS.md's Sonnet review for non-security PRs; roadmap Amendment 31).
-  Each PR's first review is a fresh reviewer; later rounds resume the same reviewer.
+  Each PR's first review is a fresh reviewer; later rounds resume the same reviewer. *(Amended
+  2026-11-20, owner: docs-only PRs may be reviewed by Sonnet; see the amendment "review and developer
+  process" at the end.)*
 - **Merge controls:** a recorded `Agent review (<model>): PASS <exact head SHA>`; green required
   checks; merge only with `gh pr merge <n> --squash --match-head-commit <sha>`; never `--auto` or
   `--admin`, never an approving review.
@@ -424,20 +430,21 @@ policy.
   `main` (PR required, required checks, squash only) is set by the **owner**
   ([spotdown#1](https://github.com/magpern/spotdown/issues/1)), because agents never change rulesets.
 
-### 12. Amendment to ADR 0010 and ADR 0021 §2 (effective on the owner's acceptance, #1296)
+### 12. Amendment to ADR 0010 and ADR 0021 §2 (effective 2026-11-20: the owner accepted #1296)
 
 **Where the ban is.** The explicit ban is in **ADR 0021 §2**: "No audio processing of Spotify content
 exists or may be added (ADR 0010, Spotify Developer Policy)". ADR 0010 itself states no such ban; it
 records the Spotify Developer Policy risks the owner accepted for the beta circle (§III 14, §III 10,
 §IV 2, §IV 3.1(a)) and the feature table that the live activation gate reads. ADR 0021 §2 cites both.
 
-**Until #1296 is accepted** ADR 0010 and ADR 0021 §2 stand exactly as written: no YouTube source is
-enabled, and SD-P6 (#1303) does not start. SD-P1 to SD-P5 are not affected by
+**Accepted by the owner on 2026-11-20** (the amendment "#1296 accepted" at the end). Before that,
+ADR 0010 and ADR 0021 §2 stood exactly as written: no YouTube source was enabled, and SD-P6 (#1303)
+was held. SD-P1 to SD-P5 are not affected by
 this amendment, as none needs live YouTube (SD-P3 builds the YouTube matcher on faked yt-dlp,
 with no live enablement); analysing SwedeBeat tracks, the mix and user audio is not processing of Spotify
 content.
 
-**Effective on the owner's acceptance of #1296:**
+**Effective since the owner's acceptance of #1296 (2026-11-20):**
 1. **ADR 0021 §2** is amended to read, for Spotify tracks: classbeat processes no Spotify audio, and
    spotdown never fetches audio from Spotify. A Spotify-catalogue track may be analysed by spotdown
    **from a non-Spotify source of the same recording** (the optional YouTube source, off by default
@@ -453,11 +460,13 @@ content.
    spotdown's global caches and match records for Spotify-catalogue tracks (§7) are kept without any
    class reference, so ADR 0010's "nothing Spotify-derived is kept indefinitely" and ADR 0007 §11's
    reference-driven purge do not hold for them until the resolution point named in §7 (a bounded
-   lifetime or purge in spotdown#5, or a follow-up ADR) is settled. Beyond the circle the row needs the
+   lifetime or purge in spotdown#5, or a follow-up ADR) is settled (settled 2026-11-20: item 5 of the
+   amendment "#1296 accepted"). Beyond the circle the row needs the
    providers, as the rest of ADR 0010's table does.
 
-When #1296 is accepted the Architect records the acceptance date in ADR 0010 and ADR 0021 as a dated
-amendment that points here. If the owner declines, this section lapses and SD-P6 is not built.
+The acceptance date (2026-11-20) is recorded in ADR 0010 and ADR 0021 as dated amendments that point
+here. *(Before the answer: if the owner had declined, this section would have lapsed and SD-P6 would
+not be built.)*
 
 ### 13. ADR 0026 stage 3, option (iii), is met by spotdown
 
@@ -473,24 +482,25 @@ moves to its own host, it does so with option (iii) already in place and needs n
 
 | Phase | Issue | Repo | Depends on | Owner blocker |
 |---|---|---|---|---|
-| P0 | #1300 this ADR | classbeat | #1307 | – (§12 takes effect on #1296) |
+| P0 | #1300 this ADR | classbeat | #1307 | – (§12 took effect on #1296, 2026-11-20) |
 | P0 | [spotdown#2](https://github.com/magpern/spotdown/issues/2) governance bootstrap | spotdown | #1307 | then [spotdown#1](https://github.com/magpern/spotdown/issues/1) ruleset |
 | P0 | [spotdown#3](https://github.com/magpern/spotdown/issues/3) contract and schema v1 | spotdown | spotdown#2, with #1300 | – |
 | P1 | [spotdown#4](https://github.com/magpern/spotdown/issues/4) service mode, auth, upload, url, sandbox | spotdown | spotdown#2, spotdown#3 | merge after spotdown#1 |
 | P1 | [spotdown#5](https://github.com/magpern/spotdown/issues/5) caches, lookups, provenance | spotdown | spotdown#4 | – |
 | P2 | [spotdown#6](https://github.com/magpern/spotdown/issues/6) quality harness and baseline gates (bounded) | spotdown | spotdown#4, spotdown#5 | real-music gate runs: #1298 |
 | P2+ | [spotdown#7](https://github.com/magpern/spotdown/issues/7) labels, [spotdown#8](https://github.com/magpern/spotdown/issues/8) phrases, [spotdown#9](https://github.com/magpern/spotdown/issues/9) downbeats (never blocking) | spotdown | spotdown#6 | – |
-| P3 | [spotdown#10](https://github.com/magpern/spotdown/issues/10) YouTube matcher and source | spotdown | spotdown#4, spotdown#5 | live enablement: #1296 |
+| P3 | [spotdown#10](https://github.com/magpern/spotdown/issues/10) YouTube matcher and source | spotdown | spotdown#4, spotdown#5 | live enablement: #1296 accepted; the deployment setting is the owner's |
 | P3 | [spotdown#11](https://github.com/magpern/spotdown/issues/11) alignment layer | spotdown | spotdown#3, spotdown#5 | – |
 | P4 | #1301 client, egress, fake, policies, shadow | classbeat | #1300, spotdown#3, spotdown#4, spotdown#5 | – |
 | P5 | #1302 studio tracks via spotdown | classbeat | #1301, spotdown#6 | default switch: #1298 |
-| P6 | #1303 Spotify flow via spotdown | classbeat | #1301, spotdown#6, spotdown#10, spotdown#11 | **#1296**; default switch: #1298 |
+| P6 | #1303 Spotify flow via spotdown | classbeat | #1301, spotdown#6, spotdown#10, spotdown#11 | #1296 accepted 2026-11-20; default switch: #1298 |
 | P7 | #1304 mix via spotdown | classbeat | #1302, spotdown#6 | default switch: #1298 |
 | P7 | #1305 ADR for `user_audio` | classbeat | #1300, #1302 | – |
 | P7 | #1306 retirement review | classbeat | #1302, #1303, #1304 | **#1299** |
 
 Owner decisions: #1296 (the §12 amendment: the YouTube terms-of-service risk for Spotify-catalogue
-classes, and whether YouTube is enabled in production at all; gates P6 only); #1297 (cross-user reuse
+classes, and whether YouTube is enabled in production at all; **accepted 2026-11-20**, so P6 is no
+longer gated by it); #1297 (cross-user reuse
 of private-source analyses, a licence or entitlement question, ADR 0026 (a); default no; blocks
 nothing); #1298 (the real-music quality corpus, the annotators and the blind review; blocks the
 default switches); #1299 (retiring the local and MOWL-based paths); spotdown#1 (spotdown's ruleset).
@@ -519,6 +529,7 @@ default switches); #1299 (retiring the local and MOWL-based paths); spotdown#1 (
 
 - Nothing changes in code, settings, compose or deployment with this ADR. The phases were authorized
   on 2026-11-20 (roadmap Amendment 31; the amendment below), except the owner decisions #1296 to #1299 and magpern/spotdown#1.
+  #1296 was accepted the same day (roadmap Amendment 32; the amendment "#1296 accepted").
 - The boundary is fixed before code: spotdown gets bytes or public metadata and an opaque scope,
   never a token, a signed URL or a password, and classbeat alone decides timing classes, fitness and
   what the model may do with a track.
@@ -557,14 +568,84 @@ Notes for operators and the next phases:
 
 - **(a) Access log.** spotdown's query-string filter (`app/service/access_log.py`) must be re-checked
   if the deployment uses `--log-config` or another server than the one it was written for.
-- **(b) Retention (owner's decision pending, §7).** Global match records and alignments are bounded
+- **(b) Retention (§7).** Global match records and alignments are bounded
   by `GLOBAL_REFERENCE_TTL_S` (default 3 days). Global analyses, links and `provenance.source.match`
-  are still unbounded.
+  are still unbounded in spotdown's code; their default lifetime is settled by item 5 of the
+  amendment "#1296 accepted" below.
 - **(c) Path (b) beat equivalence** has no consumer in policy v1: `spotdown_map_policy` maps only
   `played_recording`.
 - **(d) Shadow mode** (`CLASSBEAT_SPOTDOWN_SHADOW`, off by default) and its open points are in
   [developer-commands.md](../developer-commands.md) ("spotdown shadow mode for studio tracks").
 
+### Amendment (2026-11-20, owner): #1296 accepted; YouTube for Spotify classes, analysis through spotdown, retention of the global entries
+
+The owner answered #1296 on 2026-11-20
+([comment](https://github.com/magpern/classbeat/issues/1296#issuecomment-7050972098)): "Yes, as
+owner, I accept the risk. Turn Youtube on." and, to the default "Spotify classes keep today's MOWL
+sections": "No, analysis goes through spotdown." Roadmap Amendment 32 records it. This amendment
+changes no code, setting, compose file or deployment.
+
+1. **ADR 0010 and ADR 0021 §2 are amended as §12 states** (items 1 and 2), effective 2026-11-20:
+   YouTube-derived analysis through spotdown may be used for Spotify-catalogue classes. The owner
+   accepts the terms-of-service risk: downloading from YouTube is against YouTube's terms, and using
+   the result for Spotify-catalogue classes touches Spotify's Developer Policy (§III 14). Returning only
+   metadata and being noncommercial do not remove it. Such a track is `approximate` at best (§3). Both
+   ADRs carry a dated amendment that points here.
+2. **YouTube sourcing may be enabled.** spotdown's `ALLOW_YTDLP_SOURCING` stays off by default in code.
+   The owner deploys spotdown with it switched on; that is the owner's deployment step, never an
+   agent's.
+   **Owner clarification (2026-11-20): classbeat does not police how the analysis service sources
+   audio.** classbeat treats the analysis service as an **owner-chosen external service** (spotdown is
+   the configured one) that returns the schema v1 JSON document (§5). Where that service gets its audio,
+   whether that sourcing is lawful, and its sourcing settings (`ALLOW_YTDLP_SOURCING` and the like) are
+   the owner's deployment concern, not classbeat code's; classbeat has no setting, check or gate for
+   them. The safeguards about **classbeat's own behaviour** stay unchanged: the timing classes and their
+   evidence (§3), no `exact` for an approximate or matched source, the scopes and lookups that never
+   cross users (§7), no audio kept by classbeat, the egress rule (§10), and no real call by an agent or
+   CI.
+3. **Spotify classes get their analysis through spotdown.** This replaces the default "Spotify classes
+   keep today's MOWL sections" (#1296, "Default until answered"). The MOWL sections stay as the
+   fallback, per track or for the whole class, when spotdown is unreachable, a track is `unusable`
+   (§3, §8), or spotdown is switched off in classbeat or returns no usable analysis (for example
+   because its YouTube source is off). SD-P6 (#1303) may build the
+   spotdown-first path.
+4. **Not covered by this decision:** any live call by an agent or CI (agents and CI never call
+   YouTube; tests fake yt-dlp); deploying; and the default-switch evidence gates of §9: #1298 still
+   gates making spotdown-first the shipped default for users, unless the owner says otherwise there.
+   Licensed sources (SwedeBeat, user audio) still win when they exist (§10).
+5. **Retention of the global entries (settles §7's open item; the Architect's safest reversible
+   default, the owner can override it).**
+   - Public-source (YouTube) analyses, their source-reference links and their match records (the
+     source-match cache and `provenance.source.match`) are **global**. They hold no user data: no
+     `owner_id`, no per-user link, no `cache_scope` and no reference tied to an owner.
+   - **Lifetime:** each is kept until its `analyzer_version` (for a match record, its
+     `matcher_version`) changes or it has gone **90 days unused** (not returned by a lookup or a match),
+     then purged. The 3-day bound on global match records and alignments (`GLOBAL_REFERENCE_TTL_S`,
+     the amendment above, note (b)) stays.
+   - classbeat's **per-owner record** of which analysis a class used lives only in its class
+     provenance (§6), under ADR 0007 §11's per-owner retention. Deleting a user never touches the
+     global cache, and `DELETE /v2/scopes/{scope}` stays scoped (§7).
+   - **Takedown:** the operator can purge a source reference, which removes its link, its analysis and
+     the match records that chose it, on a rights holder's or provider's request.
+   - This replaces, for these global entries only, ADR 0010's "deleted once no class of any user
+     refers to it" and ADR 0007 §11's reference-driven purge: a bounded lifetime instead of a
+     reference count, because the entries are not tied to any class. Private-source analyses keep
+     their scope and their purge (§7). The 90-day purge and the takedown are a spotdown change that the
+     Architect tracks as a spotdown issue. Until it ships, these entries are unbounded, which the
+     owner's acceptance of #1296 covers (§12 item 2).
+6. **§12's hold is lifted.** SD-P6 (#1303) is unblocked once this amendment merges (it settles §7).
+   Its other dependencies in §14 stand.
+
+### Amendment (2026-11-20, owner): review and developer process for this programme (extends §11)
+
+- **Docs-only PRs** of the SD programme may be reviewed by **Sonnet** instead of Opus (AGENTS.md
+  review gate, item 2, already allows Sonnet for non-security PRs). Code PRs keep the Opus review of §11.
+- **A Developer who gets a second `FAIL` on the same PR** is replaced for the next fix round by an
+  **Opus Developer**: the same agent resumed on Opus, or a fresh Opus Developer given the PR's context.
+- **Before handing back a fix,** the Developer runs every reviewer finding through a class-wide
+  self-check: grep for the same defect pattern elsewhere, make each call inside an error-swallowing `except` raise and check the outcome, show that
+  each gate can fail, and verify every claim against the code.
+
 ## Status
 
-Accepted. §12 takes effect only on the owner's acceptance of #1296.
+Accepted. §12 took effect on 2026-11-20, when the owner accepted #1296.
