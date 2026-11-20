@@ -52,6 +52,9 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "server, which has no user session",
         "oidc_grants": "a user's consent to a player client, read at the player's sign-in and "
         "goes with the user",
+        # ADR 0040 section 7 (#1301): only through classbeat.spotdown.scope_outbox.
+        "spotdown_scope_deletions": "spotdown scopes (an HMAC of a deleted owner's id, never the "
+        "id) still to be deleted in spotdown; written before an account goes, gone once sent",
         # ADR 0034 section 2 (#1058): only through classbeat.player.outbox.
         "player_events": "signed events to the player, keyed by a pairwise subject with no user "
         "id; written before an account goes and outlive it until delivered",

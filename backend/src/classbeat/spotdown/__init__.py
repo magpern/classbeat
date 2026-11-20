@@ -13,7 +13,11 @@ The analysis rules (SD-P4 part 2): ``timing_class_policy`` with ``timing_inputs_
 ``spotdown_map_policy`` (an analysis as the studio track map or MOWL-shaped Spotify sections),
 ``track_fit_policy`` with ``track_facts_calc`` (the bounded suitability refinement, section 2) and
 ``provenance_model`` with ``provenance_read_calc`` (the per-track record, section 6, and the reuse
-rule, section 7). Nothing calls them yet.
+rule, section 7). Shadow mode (SD-P4 part 3) uses ``timing_class_policy`` (path (a) only),
+``spotdown_map_policy.track_map`` and ``provenance_model`` through ``shadow_record_model``, with
+``shadow_compare_calc`` (the metrics), ``shadow_policy`` (budget, pace, outcomes), ``shadow_config``
+and ``scope_key``; the side effects are ``classbeat.design.track_shadow`` and ``scope_outbox`` (the
+account deletion's ``DELETE /v2/scopes``).
 Side effects: ``opener`` (the seam that opens a client of ``classbeat.egress_spotdown``),
 ``exchange`` (one capped request) and ``client`` (the calls of the contract, nothing else).
 Nothing here calls spotdown unless the setting is set: unset, ``classbeat.egress_spotdown``

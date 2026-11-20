@@ -25,7 +25,7 @@ _OWNED = (
     "code_redemptions connections credit_ledger entitlements external_operations job_events jobs "
     "mail_handoff mowl_playlist_links player_link_flows player_publications quota_periods "
     "saved_workouts "
-    "spotify_oauth_flows spotify_pool spotify_syncs "
+    "spotdown_shadow_tracks spotify_oauth_flows spotify_pool spotify_syncs "
     "security_log studio_output_starts subscriptions "
     "swedebeat_analyses "
     "swedebeat_mix_maps swedebeat_track_downloads swedebeat_track_maps "

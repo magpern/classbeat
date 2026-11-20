@@ -39,6 +39,9 @@ from classbeat.egress_spotdown import install_spotdown
 from classbeat.log import configure_logging
 from classbeat.player.delivery import run_player_delivery
 from classbeat.playlists.runtime import playlists_runtime
+from classbeat.spotdown import shadow_config
+from classbeat.spotdown.scope_key import scope_key
+from classbeat.spotdown.sources_policy import parse_sources
 from classbeat.swedebeat_studio import config as studio_config
 from classbeat.swedebeat_studio import (  # noqa: F401 - each registers its kind on import
     design_kind,  # studio_design (SR C5)
@@ -95,6 +98,13 @@ async def _run(settings: Settings, signer: EventSigner | None = None) -> None:
     # studio_songs (ADR 0036): CLASSBEAT_SWEDEBEAT_STUDIO (off unless the worker has it too: a
     # queued job then ends feature_off); it shares swedebeat_match's gateway and key ring.
     studio_config.configure(studio_config.StudioConfig.from_settings(settings))
+    # spotdown's shadow mode for studio tracks (ADR 0040 section 9): off unless set, and active
+    # only with spotdown installed (``main``) and ``upload`` among the sources.
+    shadow_config.configure(
+        shadow_config.ShadowConfig(
+            settings.spotdown_shadow, parse_sources(settings.spotdown_sources), scope_key(settings)
+        )
+    )
     stop = asyncio.Event()
     # Before "worker started" is logged, so a signal after that line is always handled.
     _install_signal_handlers(asyncio.get_running_loop(), stop)

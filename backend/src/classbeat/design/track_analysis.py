@@ -24,6 +24,10 @@ itself: the kind's ``admit`` and its run check them before calling it.
    at once**: the file right after the child, the directory with everything in it on every way
    out (a failure, a cancel, a lost lease). Then the map is stored (``track_cache.store``); a
    later failure keeps the tracks already stored, so a retry downloads only the rest.
+4. **Shadow mode** (``track_shadow``, ADR 0040 section 9; off by default): each downloaded
+   track's bytes are also relayed to spotdown before they are deleted, and once the batch is
+   stored (its slot freed) the comparisons are awaited within their budget and recorded. It
+   never changes a map or a result and never fails the step.
 
 **Named failures** (job categories): ``track_too_large`` (over 60 MB, or the gateway's ``413``),
 ``track_unavailable`` (``404``: no file for that reference), ``analysis_failed`` (the sandbox
@@ -44,7 +48,7 @@ from mowl import track
 from pydantic import SecretStr
 
 from classbeat.connections.swedebeat_account import SwedebeatBearer
-from classbeat.design import tracklimit
+from classbeat.design import track_shadow, tracklimit
 from classbeat.design.mixanalysis import ANALYSIS_SECONDS, analyse_audio
 from classbeat.design.mixfetch import private_directory
 from classbeat.design.track_cache import TrackMap, cached, store
@@ -81,7 +85,7 @@ async def _download(
 
 async def _analyse_one(
     run: JobRun, bearer: SwedebeatBearer, key: SecretStr, reference: str
-) -> tuple[TrackMap, int | None]:
+) -> tuple[TrackMap, int | None, track_shadow.Relayed | None]:
     async with run.fenced() as fs:
         await fs.extend_lease(DOWNLOAD_SECONDS + ANALYSIS_SECONDS + CALL_LEASE_MARGIN_SECONDS)
         await tracklimit.reserve(fs, 1)  # this download's daily slot, counted even if it fails
@@ -97,9 +101,14 @@ async def _analyse_one(
                 map_version=track.TRACK_VERSION,
                 mode="track",
             )
+            # Shadow mode (off by default): the same bytes to spotdown, before they are deleted.
+            shadow = await track_shadow.relay(
+                run, reference, download.sha256, audio, result.music_map
+            )
         finally:
             audio.unlink(missing_ok=True)  # at once; the directory goes on the way out
-    return TrackMap(reference, download.sha256, result.music_map, cached=False), result.peak_rss
+    analysed = TrackMap(reference, download.sha256, result.music_map, cached=False)
+    return analysed, result.peak_rss, shadow
 
 
 async def analyse_tracks(
@@ -125,12 +134,14 @@ async def analyse_tracks(
     async with run.fenced() as fs:
         await tracklimit.check(fs, len(misses))
     batch = misses[:SLOT_BATCH]
-    peak = 0
+    peak, shadows = 0, list[track_shadow.Relayed]()
     for number, reference in enumerate(batch, 1):
-        analysed, peak_rss = await _analyse_one(run, bearer, key, reference)
+        analysed, peak_rss, shadow = await _analyse_one(run, bearer, key, reference)
         await store(run, connection, analysed, release_slot=number == len(batch))
         found[reference] = analysed
         peak = max(peak, peak_rss or 0)
+        shadows += [shadow] if shadow is not None else []
+    await track_shadow.finish(run, shadows)  # the slot is free; never changes ``found``
     if len(batch) < len(misses):  # the slot is free: requeued for one, the rest from the cache
         logger.info(
             "swedebeat tracks batch analysed",

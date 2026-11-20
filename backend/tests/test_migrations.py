@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0062_revert_email_token"]
+    assert script.get_heads() == ["0063_spotdown_shadow"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0062_revert_email_token"]
+        assert applied_revisions(database_url) == ["0063_spotdown_shadow"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -181,6 +181,9 @@ JOBS = [
     "swedebeat_handoffs",
     # ADR 0036 section 4.1 (0053_swedebeat_track_maps, SR C4).
     "swedebeat_track_maps",
+    # ADR 0040 sections 7 and 9 (0063_spotdown_shadow, #1301 part 3).
+    "spotdown_shadow_tracks",
+    "spotdown_scope_deletions",
     "swedebeat_track_downloads",
     # ADR 0036 section 6 (0054_class_outputs, SR C7).
     "class_outputs",

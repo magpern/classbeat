@@ -166,6 +166,13 @@ class Person:
             "FROM jobs WHERE owner_id = :u ORDER BY created_at LIMIT 1",
             u=u,
         )
+        # ADR 0040 section 9 (#1301): a shadow comparison of one of the user's jobs' tracks.
+        self.sql(
+            "INSERT INTO spotdown_shadow_tracks (owner_id, job_id, outcome) "
+            "SELECT owner_id, id, 'compared' FROM jobs WHERE owner_id = :u "
+            "ORDER BY created_at LIMIT 1",
+            u=u,
+        )
         self.sql("INSERT INTO user_preferences (owner_id, uses_swedebeat) VALUES (:u, true)", u=u)
         # ADR 0034 section 5: a class published to the player (it outlives the class).
         self.sql(
