@@ -76,3 +76,12 @@ def check_prod_trusted_proxies(
         raise ValueError(
             "trusted_proxies must be one address (not a range or a list) when environment is prod"
         )
+
+
+def check_spotify_redirect_host(song_picking: bool, public_base_url: str) -> None:
+    """ADR 0009 section 2: Spotify does not accept ``localhost`` in a redirect URI (only the
+    loopback address), so with song picking on the fixed callback would never work."""
+    if song_picking and (urlsplit(public_base_url).hostname or "") == "localhost":
+        raise ValueError(
+            "public_base_url may not be localhost with song_picking on (use 127.0.0.1)"
+        )

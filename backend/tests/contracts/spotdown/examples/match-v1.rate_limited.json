@@ -1,0 +1,7 @@
+{
+  "schema_version": "match-v1",
+  "client_ref": "track-8",
+  "status": "rate_limited",
+  "retry_after_s": 30,
+  "alternates": []
+}

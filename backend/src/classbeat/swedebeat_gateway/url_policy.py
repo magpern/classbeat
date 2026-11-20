@@ -58,7 +58,7 @@ class GatewayOrigin:
         return f"{self.scheme}://{host}:{self.port}"
 
 
-def _private_ip(text: str) -> str | None:
+def private_ip(text: str) -> str | None:
     """The canonical text of a loopback or private address literal, else ``None``."""
     try:
         address = ipaddress.ip_address(text)
@@ -106,7 +106,7 @@ def gateway_origin(value: str) -> GatewayOrigin:
     parts, port, written = _split(value)
     if parts.scheme == "http":
         literal = written[1:-1] if written.startswith("[") and written.endswith("]") else written
-        host = _private_ip(literal) if literal == literal.lower() else None
+        host = private_ip(literal) if literal == literal.lower() else None
         if host is None:
             raise GatewayUrlRefused(
                 "a loopback or private IP address over http (not link-local, 0.0.0.0, multicast"

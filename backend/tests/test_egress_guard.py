@@ -320,3 +320,85 @@ GATEWAY_INSTALL = (
 )
 def test_only_the_entry_points_install_the_gateway_origin(module: str, refused: bool) -> None:
     assert (scan_source(GATEWAY_INSTALL, module) != []) is refused
+
+
+def test_the_spotdown_client_module_is_scanned_as_allowed_and_only_under_its_name() -> None:
+    source = (SRC / "classbeat" / "egress_spotdown.py").read_text(encoding="utf-8")
+    assert scan_source(source, "classbeat.egress_spotdown") == []
+    assert scan_source(source, "classbeat.spotdown.client") != []
+
+
+SPOTDOWN_INSTALL = (
+    "from classbeat.egress_spotdown import install_spotdown\n"
+    "install_spotdown(settings.spotdown_url, settings.spotdown_service_key)"
+)
+
+
+@pytest.mark.parametrize(
+    ("module", "refused"),
+    [
+        ("classbeat.worker.__main__", False),
+        ("classbeat.__main__", True),
+        ("classbeat.web", True),
+        ("classbeat.worker.loop", True),
+        ("classbeat.spotdown.client", True),
+    ],
+)
+def test_only_the_worker_entry_point_installs_spotdown(module: str, refused: bool) -> None:
+    assert (scan_source(SPOTDOWN_INSTALL, module) != []) is refused
+
+
+SD = "from classbeat.egress_spotdown import spotdown_async_client, spotdown_upload_client\n"
+
+
+@pytest.mark.parametrize(
+    ("source", "refused"),
+    [
+        (SD + "spotdown_async_client(10)", False),
+        (SD + "spotdown_async_client(total_seconds=10)", False),
+        (SD + "spotdown_upload_client()", False),
+        (SD + "spotdown_async_client()", True),
+        (SD + "spotdown_async_client(10, transport)", True),
+        (SD + "spotdown_async_client(*a)", True),
+        (SD + "spotdown_upload_client(600)", True),
+        (
+            "from classbeat.egress_spotdown import spotdown_test_client\n"
+            "spotdown_test_client(o, k, t)",
+            True,
+        ),
+        ("from classbeat import egress_spotdown\negress_spotdown._spotdown_client(i, t, 1)", True),
+        ("from classbeat.egress_spotdown import spotdown_network_transport as t\nt()", True),
+        (
+            "from classbeat.egress_spotdown import _SpotdownTransport\n"
+            "class T(_SpotdownTransport): ...",
+            True,
+        ),
+        # A direct httpx call to the spotdown origin, however the origin is found.
+        ("import httpx\nhttpx.AsyncClient(base_url='http://spotdown-api:8000')", True),
+        ("import httpx\nhttpx.post('http://spotdown-api:8000/v2/match')", True),
+        ("import httpx\nhttpx.AsyncClient(base_url=settings.spotdown_url)", True),
+        # The setting and the key are read nowhere else, by attribute or by name.
+        ("u = settings.spotdown_url", True),
+        ("k = settings.spotdown_service_key", True),
+        ("k = getattr(settings, 'spotdown_service_key')", True),
+        ("h = key.bearer()", True),
+        ("h = key.bearer", False),  # not a call: the gateway's bearer values are attributes
+    ],
+)
+def test_the_spotdown_rules(source: str, refused: bool) -> None:
+    assert (scan_source(source, "classbeat.spotdown.client") != []) is refused
+
+
+@pytest.mark.parametrize(
+    ("module", "refused"),
+    [
+        ("classbeat.worker.__main__", False),
+        ("classbeat.spotdown.key_policy", False),
+        ("classbeat.spotdown.client", True),
+        ("classbeat.config_features", True),
+    ],
+)
+def test_the_spotdown_url_is_read_only_where_it_is_installed_or_checked(
+    module: str, refused: bool
+) -> None:
+    assert (scan_source("u = settings.spotdown_url", module) != []) is refused

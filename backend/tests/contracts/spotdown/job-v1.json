@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spotdown.invalid/schema/job-v1.json",
+  "title": "spotdown job status v1",
+  "description": "Response of GET /v2/jobs/{id}. outcome is a per-track status once the job ended (done jobs: null, or alignment_failed when the analysis exists but alignment failed). An alignment_failed job has status done and an analysis_id; a processing_failed job has status failed and no analysis_id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "job_id",
+    "status",
+    "outcome"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "job-v1"
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "client_ref": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "queued",
+        "running",
+        "done",
+        "failed"
+      ]
+    },
+    "outcome": {
+      "enum": [
+        null,
+        "not_found",
+        "uncertain",
+        "source_unavailable",
+        "provider_error",
+        "rate_limited",
+        "processing_failed",
+        "alignment_failed"
+      ]
+    },
+    "retry_after_s": {
+      "type": "number",
+      "minimum": 0
+    },
+    "analysis_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "failure_kind": {
+      "enum": [
+        null,
+        "decode_error",
+        "timeout",
+        "out_of_memory",
+        "analysis_error",
+        "alignment_failed"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "done"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "analysis_id"
+        ],
+        "properties": {
+          "outcome": {
+            "enum": [
+              null,
+              "alignment_failed"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "type": "string"
+          }
+        },
+        "not": {
+          "required": [
+            "analysis_id"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "queued",
+              "running"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "outcome": {
+            "type": "null"
+          }
+        },
+        "not": {
+          "required": [
+            "analysis_id"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "rate_limited"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "retry_after_s"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "retry_after_s"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "processing_failed"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "failure_kind"
+        ],
+        "properties": {
+          "failure_kind": {
+            "enum": [
+              "decode_error",
+              "timeout",
+              "out_of_memory",
+              "analysis_error"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

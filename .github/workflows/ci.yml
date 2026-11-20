@@ -583,6 +583,9 @@ jobs:
           # mounts its public test key instead).
           [ -f secrets/swedebeat_gateway_key ] && [ ! -s secrets/swedebeat_gateway_key ] \
             || { echo "::error::init must create an empty secrets/swedebeat_gateway_key"; exit 1; }
+          # ADR 0040 section 10: spotdown's service key (empty: no key, spotdown off; worker only).
+          [ -f secrets/spotdown_service_key ] && [ ! -s secrets/spotdown_service_key ] \
+            || { echo "::error::init must create an empty secrets/spotdown_service_key"; exit 1; }
 
       - name: Start the stack
         working-directory: .
