@@ -1202,11 +1202,12 @@ back in.
     challenge wall (or a Turnstile outage) between them and the revert.
 - **The safe recovery (one transaction, `auth/email_revert.py`).** It peeks the token, takes the
   user row lock (ADR 0019 §6, as the reset does) **before** consuming it, then consumes the token,
-  rechecks the address, and then: restores `email` and `email_normalized`; **clears the password**; deletes **every linked
-  identity**, the **TOTP**, the **recovery codes** and **every passkey**; revokes **every session**
-  (`revoke_user_sessions`, which also queues the player logout event of ADR 0034 §2), forgets
-  the **known devices** and burns the user's unused **player sign-in codes** (below); deletes every outstanding token; records **`email_reverted`** (the
-  request's address, `detail` = how many methods and passkeys went); and issues one
+  rechecks the address, and then: restores `email` and `email_normalized`; **clears the
+  password**; deletes **every linked identity**, the **TOTP**, the **recovery codes** and **every
+  passkey**; revokes **every session** (`revoke_user_sessions`, which also queues the player
+  logout event of ADR 0034 §2), forgets the **known devices** and burns the user's unused
+  **player sign-in codes** (below); deletes every outstanding token; records **`email_reverted`**
+  (the request's address, `detail` = how many methods and passkeys went); and issues one
   `reset_password` token (30 minutes, §5). After the commit the restored address gets the new
   essential mail `email_reverted`, which says what was removed and carries the reset link. If that
   link expires, the owner asks for a new one on the sign-in page: the address is theirs again.
@@ -1226,15 +1227,24 @@ back in.
     issued; a request that holds the lock first commits its token, which the waiting revert
     deletes. This was chosen over binding reset tokens to the address (`email_at_issue`) and
     rechecking it at completion: it is smaller, needs no change to the token rows, and closes the
-    window before a token exists rather than after one was mailed.
+    window before a token exists rather than after one was mailed;
+  - the player sign-in code step (`oidc/advance.py`, the authorize continue and the consent POST)
+    locks the user and rechecks that its session is still alive before it inserts a code (#1294):
+    a revert, reset, password change or sign out everywhere that committed while it waited ended
+    that session and burnt the codes, so it answers as for a signed-out caller (the sign-in
+    redirect at continue, `request_expired` at consent) and inserts nothing; one that holds the
+    lock first commits its code, which the waiting path burns.
   Tests: `backend/tests/test_auth_email_revert_races.py` (both orders of each race, parked, not
   timed) and `backend/tests/test_auth_revert_lock_order.py` (#1292: the revert against the email
   confirmation and against the reset completion, each in both orders, parametrized; it fails for
   the two mutations "the revert consumes its token before locking" and "the confirmation takes no
-  lock", which brought the deadlock and its 500 back and passed the first tests).
-- **A → B → C and the first revert link (decided in #1292: it stays stale).** Confirming the second
-  change deletes A's token, so the notice to A can no longer revert. The alternative, keeping A's
-  token and moving its `email_at_issue` to each new address, was rejected:
+  lock", which brought the deadlock and its 500 back and passed the first tests) and
+  `backend/tests/test_oidc_advance_lock.py` (#1294: the code step against the revert, through
+  continue and consent, and against the reset completion, each in both orders; it fails for "the
+  code step takes no user lock" and for "it does not recheck the session").
+- **A → B → C and the first revert link (decided in #1292: it stays stale).** Confirming the
+  second change deletes A's token, so the notice to A can no longer revert. The alternative,
+  keeping A's token and moving its `email_at_issue` to each new address, was rejected:
   - It does not close the hole. The changer holds B's mailbox, so they receive the B → C notice
     with a token that restores B; a revert deletes every outstanding token, A's included, so
     changing twice and then reverting with B's own link kills A's token anyway. Making A's survive
@@ -1250,24 +1260,44 @@ back in.
     `email_at_issue`.
   `test_a_token_is_stale_once_the_address_moved_on` (`test_auth_email_revert.py`) pins it,
   including that A → B → C → B does not bring A's token back.
-- **Player sign-in codes (decided in #1292: revert and reset both burn them).** An `oidc_codes` row
-  (ADR 0034 §1: 60 seconds, single use, redeemed at `/oidc/token` by the player's server) was not
-  touched by a revert or a reset. A code the changer asked for in the last minute could still be
-  turned into a player session after the lockdown, next to the `sessions_revoked` event that signs
-  the player out. Both paths now call `oidc.code_store.revoke_codes` in their transaction, after
-  the session revocation: it sets `used_at` on the user's unused codes, as a failed redemption
-  does, so a later redemption gets the same `invalid_grant` as for any bad code, is written as
+- **Player sign-in codes (decided in #1292 and #1294: revert, reset, password change and sign out
+  everywhere burn them).** An `oidc_codes` row (ADR 0034 §1: 60 seconds, single use, redeemed at
+  `/oidc/token` by the player's server) was not touched by a revert or a reset. A code the changer
+  asked for in the last minute could still be turned into a player session after the lockdown,
+  and the `sessions_revoked` event of the same transaction is no answer to it: that event is a
+  back-channel logout with no `sid` (ADR 0034 §2) and classbeat has no way to reach a player
+  session made after it was handled; whether the player ends one depends on how it applies the
+  event (player ADR 0010 §8), which classbeat does not rely on. These paths now call
+  `oidc.code_store.revoke_codes` in their transaction, after the session revocation and under the
+  user row lock: it sets `used_at` on the user's unused codes, as a failed redemption does, so a
+  later redemption gets the same `invalid_grant` as for any bad code, is written as
   `oidc_code_refused` with `reason: used` for that user, and the purge removes the row. Other
-  users' codes are untouched; a refused revert rolls the burn back with everything else. It is
-  done for both because the cost is one statement and the reset has the same shape (whoever had
-  the old password or a session may hold a code). The other paths that end sessions (a password
-  change, an email confirmation, sign out everywhere) are not changed: they are the signed-in
-  user's own action, and the player logout event covers them.
-  *Accepted residual:* a code redeemed before the commit has its ID token already, and a request
-  that passed the session check before the revert can still insert a code after it (the
-  authorize continue and the token endpoint take no user row lock). Both are bounded by the 60
-  seconds of the code and by the `sessions_revoked` event the same transaction queued. Tests:
-  `backend/tests/test_auth_revert_player_codes.py`.
+  users' codes are untouched; a refused revert rolls the burn back with everything else.
+  - *Why the password change and sign out everywhere too (#1294).* Both are often the owner's
+    answer to a compromise: they end the intruder's session, and a code that session asked for in
+    the last minute is the same hole as after a revert. The cost is one statement; the price is
+    that the owner's own code in flight (a player sign-in in another tab during that minute) is
+    burnt too and that sign-in starts again. Codes carry no session id, so the burn cannot spare
+    the caller's session.
+  - *Still not burnt:* the email confirmation, signing out one session (from the list or this
+    browser's sign-out), the admin disable and the other paths of ADR 0034 §2 (a role change,
+    `admin mfa-reset`, the TOTP reset or removal). The confirmation and a single sign-out are not
+    a lockdown (the latter ends one session, and codes are not bound to one), and the rest are an
+    operator's or a second-factor change, not an answer to a stolen session. Their residual is a
+    code asked for in the last 60 seconds by a session they ended; for the admin disable there is
+    none, as the token endpoint redeems only for an active user.
+  - *Codes inserted during a burn:* closed by the code step's lock and session recheck ("Requests
+    in flight" above).
+  *Accepted residual:* a code whose redemption (its one `UPDATE ... used_at`, its own transaction
+  at `/oidc/token`, which takes no user row lock) committed before the burn is outside it: the
+  token endpoint still answers with its ID token. A player session made from that answer after
+  the player handled the `sessions_revoked` event of the same lockdown is not reached by
+  classbeat (whether the player ends it is its own rule, player ADR 0010 §8), nor is one for which
+  no event was queued at all: the user's first player sign-in, when the lockdown read the grant
+  before the token endpoint set `first_issued_at` (its own transaction, after the redemption's).
+  Neither the 60 seconds of the code nor that event bounds it; it is the exposure of a player
+  sign-in that completed just before the lockdown. Tests:
+  `backend/tests/test_auth_revert_player_codes.py` and `backend/tests/test_oidc_advance_lock.py`.
 - **Activity.** `email_reverted` joins `activity.SHOWN_KINDS` (amendment of 2026-11-07), worded in
   every catalogue.
 - **The page path.** The issue named `/email/revert`; the page is `/email-revert` instead, next to
