@@ -1,5 +1,5 @@
 """``design_with_songs`` phase 2 (ADR 0008 sections 2 and 4; issue SJ2): from one Approve to the
-final private playlist, verified, analysed in MOWL, and the class's first design. Against the
+final public playlist, verified, analysed in MOWL, and the class's first design. Against the
 fake Spotify, the fake MOWL and ``FakeProvider``; no network, no real account.
 
 The 120-track page rule of A3 is covered where it lives, the fill itself
@@ -61,7 +61,7 @@ def uris(ids: list[str]) -> list[str | None]:
     return [f"spotify:track:{i}" for i in ids]
 
 
-async def test_one_approve_gives_the_verified_private_playlist_and_the_first_design(
+async def test_one_approve_gives_the_verified_public_playlist_and_the_first_design(
     songenv: SongEnv,
 ) -> None:
     rider = await songenv.rider()
@@ -77,8 +77,8 @@ async def test_one_approve_gives_the_verified_private_playlist_and_the_first_des
 
     [final] = songenv.class_playlists(rider.user_id)
     playlist = songenv.fake.playlists[final.playlist_id]
-    # Private, not collaborative, the user's own, exactly the approved ids in order.
-    assert (playlist.public, playlist.collaborative, playlist.owner) == (False, False, USER_A)
+    # Public (Amendment 30), not collaborative, the user's own, exactly the approved ids in order.
+    assert (playlist.public, playlist.collaborative, playlist.owner) == (True, False, USER_A)
     assert playlist.entries == uris(CHOSEN)
     assert (final.class_id, final.revision_id) == (row.class_id, revision_id)
     assert final.state == "verified"

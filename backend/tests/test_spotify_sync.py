@@ -159,9 +159,9 @@ async def test_a_failed_sync_is_visible_never_fails_the_pick_and_sync_again_writ
 ) -> None:
     studio.found(*ALL_POOL)
     rider = await studio.rider()
-    # The read after the create (#1155) and the owner check of the replace are refused: nothing
-    # is written to the pool's items.
-    studio.songs.fake.inject("status", method="GET", path=ONE, status=403, times=2)
+    # The owner check of the replace (the first read after the public create, roadmap Amendment
+    # 30) is refused: nothing is written to the pool's items.
+    studio.songs.fake.inject("status", method="GET", path=ONE, status=403, times=1)
     job_id, revision_id, _ = await studio.waiting(rider)  # the list still waits for approval
     class_id = studio.songs.row(job_id).class_id
     assert state(studio, rider.user_id, revision_id) == ("failed", "forbidden")

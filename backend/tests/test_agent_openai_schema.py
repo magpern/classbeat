@@ -49,6 +49,7 @@ SAMPLES: dict[str, list[dict[str, Any]]] = {
             ],
             "questions": [{"path": "length_min"}, {"path": "intensity"}],
         },
+        {"name": "Three hills and a flat tempo"},  # a new class's short name (#1233)
         {
             "sport": {"value": "cycling", "origin": "explicit", "quote": "spin"},
             "length_min": {"value": 45, "origin": "inferred"},

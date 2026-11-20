@@ -8,6 +8,8 @@ import { Chip } from '../ui/chip'
 export function StateChip({ state, summary }: { state: WorkspaceState; summary: ClassSummary }) {
   const t = useT()
   switch (state) {
+    case 'reading':
+      return <Chip tone="warn">{t('cw.chip.reading')}</Chip>
     case 'rough':
       return <Chip tone="warn">{t('cw.chip.rough')}</Chip>
     case 'ready':

@@ -6,10 +6,12 @@ import { useSession } from '../auth/SessionContext'
 import type { CatalogueKey } from '../i18n/en'
 import { useT } from '../i18n/I18n'
 import { AccountHeader } from '../components/account/AccountHeader'
+import { useAccountStats } from '../components/account/useAccountStats'
 import { ConnectionsList } from '../components/account/connections/ConnectionsList'
 import { PLAYER_PATH } from '../api/player'
 import { SPOTIFY_PATH } from '../components/account/connections/SpotifyRow'
-import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
+import { ChangeEmail } from '../components/account/ChangeEmail'
+import { ChangePassword } from '../components/account/Credentials'
 import { DeleteAccount } from '../components/account/DeleteAccount'
 import { Devices } from '../components/account/Devices'
 import { ExportData } from '../components/account/ExportData'
@@ -91,6 +93,9 @@ function Account() {
   // undefined while loading, null when it could not be read.
   const [hasPassword, setHasPassword] = useState<boolean | null | undefined>(undefined)
   const action = useAction()
+  const stats = useAccountStats()
+  // The Connections tab reports what it sees after a connect or a disconnect.
+  const [linked, setLinked] = useState<number | null>(null)
   const email = session?.user?.email ?? ''
 
   const signOut = (everywhere: boolean) => {
@@ -145,7 +150,10 @@ function Account() {
 
   return (
     <div className="flex flex-col gap-6 text-text">
-      <AccountHeader email={email} />
+      <AccountHeader
+        email={email}
+        stats={{ planName: stats.planName, classes: stats.classes, linked: linked ?? stats.linked }}
+      />
       {outcome ? (
         Object.hasOwn(OAUTH_NOTES, outcome) ? (
           <Notice kind="success">{t(OAUTH_NOTES[outcome] ?? 'account.oauth.linked')}</Notice>
@@ -163,14 +171,14 @@ function Account() {
           ))}
         </TabsList>
         <TabsContent value="connections" className="flex flex-col gap-4">
-          <ConnectionsList />
+          <ConnectionsList onLinked={setLinked} />
           <Suspense fallback={null}>
             <PlayerConsent />
           </Suspense>
         </TabsContent>
         <TabsContent value="plan" className="flex flex-col gap-4">
-          <Plan />
-          <details className="group rounded-lg border border-line bg-surface p-4">
+          <Plan onChanged={stats.reload} />
+          <details className="group rounded-lg border border-line bg-surface p-4 shadow-card">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between font-medium [&::-webkit-details-marker]:hidden">
               {t('account.usageDetails')}
               <ChevronDown

@@ -33,7 +33,7 @@ ordered list of tracks, then read it back. Absolute, so repeating it is safe (un
   =========================================================  ================================
 
   In each ``failed`` row before the writes nothing was written: no write request is sent unless
-  the owner check passed. The replace never changes a playlist's privacy (``privacy`` may, once).
+  the owner check passed. Nothing in classbeat changes a playlist's privacy after its create.
 - **The reconciler** reads the playlist the same way (owner check, then items): the list equals
   the one written, ``succeeded``; readable and different, ``failed`` once the call is over (it
   returned, or ``actionable_at`` passed), inconclusive before; unreadable or no longer owned (or

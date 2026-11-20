@@ -5,15 +5,15 @@ import { cn } from '../../lib/cn'
 export const Tabs = TabsPrimitive.Root
 
 export function TabsList({ className, ...props }: ComponentProps<typeof TabsPrimitive.List>) {
-  return <TabsPrimitive.List className={cn('flex gap-1 overflow-x-auto border-b border-line', className)} {...props} />
+  return <TabsPrimitive.List className={cn('inline-flex max-w-full gap-1 overflow-x-auto rounded-full bg-raised p-1', className)} {...props} />
 }
 
 export function TabsTrigger({ className, ...props }: ComponentProps<typeof TabsPrimitive.Trigger>) {
   return (
     <TabsPrimitive.Trigger
       className={cn(
-        'min-h-11 cursor-pointer border-0 border-b-2 border-transparent bg-transparent px-4 text-[0.9375rem] font-medium whitespace-nowrap text-muted',
-        'hover:text-text data-[state=active]:border-brand data-[state=active]:text-text',
+        'min-h-11 cursor-pointer rounded-full border-0 bg-transparent px-4 text-[0.9375rem] font-medium whitespace-nowrap text-muted',
+        'hover:text-text data-[state=active]:bg-surface data-[state=active]:text-text data-[state=active]:shadow-[inset_0_-2px_0_var(--cb-tab-mark)]',
         'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand',
         className,
       )}

@@ -1,8 +1,9 @@
-"""Guard of ADR 0006 §9: outbound clients are built only in ``classbeat.egress`` and
-``classbeat.egress_gateway`` (the SwedeBeat gateway's client, split out of it, ADR 0035).
+"""Guard of ADR 0006 §9: outbound clients are built only in ``classbeat.egress``,
+``classbeat.egress_gateway`` (the SwedeBeat gateway's client, split out of it, ADR 0035) and
+``classbeat.egress_spotdown`` (spotdown's client, ADR 0040 section 10).
 
 ``scan_source(source, module)`` returns what ``module`` (a dotted name under ``classbeat``) may
-not do outside those two modules:
+not do outside those modules:
 
 - call anything that builds an HTTP client, an opener or a raw connection, or sends a request on
   its own: ``urllib.request.urlopen``, ``build_opener``, ``install_opener``, ``OpenerDirector``,
@@ -23,7 +24,15 @@ not do outside those two modules:
 - install the gateway's origin (``install_swedebeat_gateway_origin``, ADR 0035 section 1) anywhere
   but the web's and the worker's entry points, build the gateway client for a test's origin or
   transport (``swedebeat_gateway_test_client``), or hand ``swedebeat_gateway_async_client``
-  anything but its one deadline.
+  anything but its one deadline;
+- install spotdown's origin and key (``install_spotdown``, ADR 0040 section 10) anywhere but the
+  worker's entry point, build its client for a test's origin or transport
+  (``spotdown_test_client``), hand ``spotdown_async_client`` anything but its one deadline or
+  ``spotdown_upload_client`` any argument; read the setting ``spotdown_url`` or the key
+  ``spotdown_service_key`` (as an attribute, or by name through ``getattr``) anywhere but the
+  worker's entry point and ``classbeat.spotdown.key_policy``, or call a ``.bearer()`` (the
+  ``ServiceKey``'s) anywhere but ``classbeat.egress_spotdown``. So no other module can learn the
+  spotdown origin or the key, and a direct httpx call to spotdown is refused like any other.
 
 Names are resolved through imports and aliases (``import httpx as h``, ``from urllib import
 request``, ``from httpx import AsyncClient as C``). Like the other guards this catches accidental
@@ -38,8 +47,9 @@ import ast
 
 EGRESS = "classbeat.egress"
 EGRESS_GATEWAY = "classbeat.egress_gateway"
+EGRESS_SPOTDOWN = "classbeat.egress_spotdown"
 # The modules that build clients (each is the allowlist's own code).
-EGRESS_MODULES = frozenset({EGRESS, EGRESS_GATEWAY})
+EGRESS_MODULES = frozenset({EGRESS, EGRESS_GATEWAY, EGRESS_SPOTDOWN})
 # Packages that run in the worker: they may never import an exempt module.
 WORKER_PACKAGES = (
     "classbeat.worker",
@@ -162,6 +172,12 @@ _CALLS = frozenset(
         "classbeat.egress_gateway.gateway_network_transport",
         "classbeat.egress_gateway._gateway_client",
         "classbeat.egress_gateway._GatewayTransport",
+        # ADR 0040 section 10 (#1301): spotdown's client for an origin, a key and a transport of
+        # the caller's own, and what it is built from, are tests' only.
+        "classbeat.egress_spotdown.spotdown_test_client",
+        "classbeat.egress_spotdown.spotdown_network_transport",
+        "classbeat.egress_spotdown._spotdown_client",
+        "classbeat.egress_spotdown._SpotdownTransport",
     }
 )
 # Allowed only without an allowlist argument (the list is the function's own).
@@ -178,6 +194,8 @@ _NO_ARGUMENTS = frozenset(
         "classbeat.egress.turnstile_async_client",
         # ADR 0034 section 2 (#1058): the player client (its list is the installed host).
         "classbeat.egress.player_async_client",
+        # ADR 0040 section 10: spotdown's upload client (deadline, cap and origin its own).
+        "classbeat.egress_spotdown.spotdown_upload_client",
     }
 )
 # Allowed only in these modules: the player's one host, a setting, is installed once, at the
@@ -188,10 +206,27 @@ _ONLY_IN: dict[str, frozenset[str]] = {
     "classbeat.egress_gateway.install_swedebeat_gateway_origin": frozenset(
         {"classbeat.__main__", "classbeat.worker.__main__"}
     ),
+    # ADR 0040 section 10: spotdown's one origin and its key, at the worker's start only.
+    "classbeat.egress_spotdown.install_spotdown": frozenset({"classbeat.worker.__main__"}),
 }
+# Attributes (and ``getattr`` names) read only in these modules: spotdown's origin setting and
+# service key reach nothing but the egress builder (ADR 0040 section 10).
+_ATTRIBUTE_ONLY_IN: dict[str, frozenset[str]] = {
+    "spotdown_url": frozenset({"classbeat.worker.__main__", "classbeat.spotdown.key_policy"}),
+    "spotdown_service_key": frozenset(
+        {"classbeat.worker.__main__", "classbeat.spotdown.key_policy"}
+    ),
+}
+# Methods called only in these modules: the ``ServiceKey``'s ``bearer`` (the key's only reader).
+_METHOD_ONLY_IN: dict[str, frozenset[str]] = {"bearer": frozenset({EGRESS_SPOTDOWN})}
 # Allowed only with exactly one argument, the deadline (positional or ``total_seconds=``): the
 # origin and the transport are the function's own (ADR 0035 section 1).
-_DEADLINE_ONLY = frozenset({"classbeat.egress_gateway.swedebeat_gateway_async_client"})
+_DEADLINE_ONLY = frozenset(
+    {
+        "classbeat.egress_gateway.swedebeat_gateway_async_client",
+        "classbeat.egress_spotdown.spotdown_async_client",  # ADR 0040 section 10
+    }
+)
 
 # Any call by these attribute names, whatever the object (an event loop, a socket): raw
 # connections around both allowlisted paths.
@@ -224,6 +259,7 @@ _BASES = frozenset(
         "classbeat.egress.Allowlist",
         "classbeat.egress.AllowlistTransport",
         "classbeat.egress_gateway._GatewayTransport",
+        "classbeat.egress_spotdown._SpotdownTransport",
     }
 )
 ALLOWLISTED_CLIENT = "classbeat.egress.allowlisted_async_client"
@@ -346,6 +382,7 @@ def scan_source(source: str, module: str) -> list[tuple[int, str]]:
     for line, name in _imports(tree, module):
         if _blocked_module(name):
             found.append((line, f"imports {name}: outbound clients live in {EGRESS}"))
+    found += _restricted_names(tree, module)
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             for base in node.bases:
@@ -392,6 +429,37 @@ def scan_source(source: str, module: str) -> list[tuple[int, str]]:
             continue
         found.append((node.lineno, f"calls {name}: outbound clients live in {EGRESS}"))
     return sorted(set(found))
+
+
+def _restricted_names(tree: ast.AST, module: str) -> list[tuple[int, str]]:
+    """Reads of ``_ATTRIBUTE_ONLY_IN`` (``x.name`` or ``getattr(x, "name")``) and calls of
+    ``_METHOD_ONLY_IN`` (``x.name(...)``) outside their modules."""
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        name: str | None = None
+        if isinstance(node, ast.Attribute):
+            name = node.attr
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in ("getattr", "setattr", "hasattr")
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and isinstance(node.args[1].value, str)
+        ):
+            name = node.args[1].value
+        line: int = getattr(node, "lineno", 0)
+        if name in _ATTRIBUTE_ONLY_IN and module not in _ATTRIBUTE_ONLY_IN[name]:
+            found.append((line, f"reads {name}: only {sorted(_ATTRIBUTE_ONLY_IN[name])}"))
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in _METHOD_ONLY_IN
+            and module not in _METHOD_ONLY_IN[node.func.attr]
+        ):
+            only = sorted(_METHOD_ONLY_IN[node.func.attr])
+            found.append((node.lineno, f"calls .{node.func.attr}(): only {only}"))
+    return found
 
 
 def _deadline_only(call: ast.Call) -> bool:

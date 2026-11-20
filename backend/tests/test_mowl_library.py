@@ -44,6 +44,10 @@ def test_the_id_based_spotify_calls_exist() -> None:
         assert callable(getattr(spotify_web, name)), name
     assert spotify_web.playlist_tracks is spotify_web.playlist_items
     assert "public" not in inspect.signature(spotify_web.create_playlist).parameters
+    # ``classbeat.playlists.create_call`` creates public through the helper ``create_playlist``
+    # is built on (roadmap Amendment 30): its name and parameters are pinned here.
+    helper = spotify_web._new_playlist  # pyright: ignore[reportPrivateUsage]
+    assert list(inspect.signature(helper).parameters) == ["creds", "name", "description", "public"]
     assert inspect.signature(spotify_web.create_playlist).parameters["uris"].default == ()
     assert inspect.signature(spotify_web.search_tracks).parameters["market"].default is None
     private = ["playlist-read-private", "playlist-modify-private"]

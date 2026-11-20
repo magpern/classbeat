@@ -58,7 +58,7 @@ describe('LengthChoice', () => {
     expect(screen.getByTestId('length')).toHaveTextContent('90')
   })
 
-  it('shows the number field at once for a length that is not a common one (a preset link)', () => {
+  it('shows the number field at once for a length that is not a common one (a ?length= query)', () => {
     render(<Harness start="50" />)
     expect(screen.getByLabelText('Length in minutes')).toHaveValue(50)
     expect(screen.getByRole('radio', { name: 'Other' })).toBeChecked()

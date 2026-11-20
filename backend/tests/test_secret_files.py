@@ -55,6 +55,7 @@ def test_the_optional_secrets_are_exactly_these() -> None:
         "oauth_microsoft_client_secret",
         "paddle_webhook_secret",
         "smtp_password",
+        "spotdown_service_key",
         "swedebeat_gateway_key",
         "turnstile_secret_key",
     ]

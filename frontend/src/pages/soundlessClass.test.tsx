@@ -1,9 +1,9 @@
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { classRoutes } from '../test/classFixtures'
 import { fakeApi } from '../test/fakeApi'
 import { CLASS_ID, SESSION_ROUTES } from '../test/jobFixtures'
-import { renderAt } from '../test/render'
+import { renderAt, withoutFooter } from '../test/render'
 import { HASH, LIST_ID, LIST_PATH, listBody } from '../test/songFixtures'
 
 // ADR 0007 amendment of 2026-11-03, item 9 (#530): a soundless class has no songs and no mix, so
@@ -30,7 +30,7 @@ describe('a soundless class page', () => {
     await screen.findByText('Tuesday climb')
     expect(screen.queryByRole('button', { name: 'Change songs' })).toBeNull()
     expect(screen.queryByRole('region', { name: 'Change songs' })).toBeNull()
-    expect(screen.queryByText(/Swedebeat/)).toBeNull()
+    expect(within(withoutFooter()).queryByText(/Swedebeat/)).toBeNull()
     expect(api.calls.some((c) => c.path.includes('swedebeat'))).toBe(false)
   })
 

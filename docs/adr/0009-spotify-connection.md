@@ -74,7 +74,10 @@ using it, see ADR 0008 §2's amendment of that date. **The authorize request now
 public playlist's items needs it. `scope_granted` still requires only the two scopes above
 (`REQUIRED_SCOPES`), so a connection made before keeps working for private playlists; whether a grant
 holds the public scope is not recorded. A 403 on an item write to a playlist read as public is
-`scope_mismatch`: the user connects again.)* No Client Secret is ever
+`scope_mismatch`: the user connects again.)* *(2026-11-19, roadmap Amendment 30, #1287: classbeat
+no longer asks for private: every create sends `public: true`, so it needs `playlist-modify-public`;
+a connection without it gets a 403 on the create, `forbidden`, nothing created. `REQUIRED_SCOPES` is
+unchanged.)* No Client Secret is ever
 requested, stored, logged or accepted (AGENTS.md): the form has no such field and a test posts one and
 expects 422. The granted `scope` in the token answer must contain both scopes (a smaller grant is
 `scope_mismatch`, nothing stored).
@@ -336,10 +339,15 @@ note of the stage; over it the job fails `limit_exceeded`) and the library never
 Consent is a row, not a flag on the connection: `spotify_pool` (ADR 0008 §2) with `consented_at` and
 `consent_version` (the wording's version). `PUT /api/connections/spotify/pool-consent` (recent auth,
 CSRF, needs `connected`) inserts it with `playlist_id NULL` and the connection's Spotify user id. The
-wizard's last step shows the sentence: "classbeat manages one private working playlist in your Spotify
-account, named *classbeat working copy*, to ask for song candidates and have MOWL analyse them. It is
-overwritten on each pick; anyone with its link could open it." (the wording T25 requires about
-non-public playlists). `DELETE` revokes, in **one transaction**: the row is deleted and `forget_pool`
+wizard's last step shows the sentence: "classbeat manages one working playlist in your Spotify
+account, named *classbeat working copy*, to ask for song candidates and have MOWL analyse them. We ask
+Spotify for a private playlist, but Spotify may make it public, and anyone with its link could then open
+it. It is overwritten on each pick, and classbeat keeps using it either way." (the wording T25 requires
+about non-public playlists, as clarified by roadmap Amendment 27, issue #1162: same `consent_version` 1,
+see ADR 0008 §2). *(2026-11-19, roadmap Amendment 30, #1287: the sentence is now "... to ask for song
+candidates and have MOWL analyse them. It is public, so MOWL can find it: it can show on your Spotify
+profile and in search, and anyone with its link can open it. It is overwritten on each pick.", version
+2; a version-1 consent stands.)* `DELETE` revokes, in **one transaction**: the row is deleted and `forget_pool`
 (ADR 0008 §2) deletes the user's pool operation rows, the succeeded create that holds the old id and
 the replace rows whose hash covers it included. The playlist id is therefore forgotten and **never
 touched again** (no row is left from which a later pick could reuse it; the page tells the user the

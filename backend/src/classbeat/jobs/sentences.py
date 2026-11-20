@@ -25,13 +25,13 @@ from classbeat.spotify.errors import sentence_of as spotify_sentence_of
 SONG_SENTENCES: Final[dict[str, str]] = {
     "consent_missing": "Allow the working playlist in your Spotify settings first.",
     "pool_unusable": (
-        "Your working playlist was changed: make it private again or set it up again."
+        "Your working playlist was changed in Spotify and cannot be used. Set it up again."
     ),
     "pool_missing": "Your working playlist was gone from Spotify; trying again by itself.",
     "pool_not_synced": ("MOWL has not caught up with the working playlist; try again in a minute."),
     "playlist_mismatch": (
-        "Spotify's playlist did not match the approved songs; nothing was designed. "
-        "Create it again."
+        "Spotify's playlist did not match the approved songs. "
+        "Add it to your Spotify profile, then create it again."
     ),
     "pool_too_small": "Not enough usable songs were found; try a wider style or era.",
     "account_changed": (

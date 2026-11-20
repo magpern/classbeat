@@ -49,6 +49,8 @@ EXEMPT: dict[str, str] = {
     "test_player_link_binding.py": "a 429 from the faked classbeat-player API, not our limiter",
     "test_paddle_webhook.py": OTHER + ": WebhookLimiter keeps its window in process memory",
     "test_quota_api.py": BUSY,
+    "test_spotdown_client.py": "a 429 from the faked spotdown service (ADR 0040), not our limiter",
+    "test_spotdown_failure_policy.py": "spotdown's 429, mapped by a pure rule (ADR 0040 section 8)",
     "test_spotify_errors.py": PROVIDER,
     "test_spotify_fake.py": PROVIDER,
     "test_studio_output_policies.py": "the SwedeBeat gateway's 429, mapped by a pure rule",

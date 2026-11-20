@@ -5,8 +5,6 @@ in SQL; guard 8 (``tests/test_auth_tables_guard.py``) fails the build otherwise.
 ``0002_auth`` creates the same tables; ``tests/test_auth_schema.py`` keeps the two in step.
 """
 
-from typing import Any
-
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -25,34 +23,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
+from classbeat.auth.table_columns import id_column as _id
+from classbeat.auth.table_columns import timestamp as _ts
+from classbeat.auth.table_columns import user_fk as _user_fk
+
 metadata = MetaData()
 
 LOCALE_CHECK = "locale ~ '^[a-z]{2}$'"
-_ID = "gen_random_uuid()"
-_NOW = "now()"
-
-
-def _id() -> Column[Any]:
-    return Column("id", UUID(as_uuid=True), primary_key=True, server_default=text(_ID))
-
-
-def _user_fk(*, nullable: bool = False, set_null: bool = False) -> Column[Any]:
-    return Column(
-        "user_id",
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL" if set_null else "CASCADE"),
-        nullable=nullable or set_null,
-    )
-
-
-def _ts(name: str, *, nullable: bool = True, default_now: bool = False) -> Column[Any]:
-    return Column(
-        name,
-        DateTime(timezone=True),
-        nullable=nullable,
-        server_default=text(_NOW) if default_now else None,
-    )
-
 
 users = Table(
     "users",
@@ -184,7 +161,9 @@ auth_tokens = Table(
     _ts("created_at", nullable=False, default_now=True),
     _ts("expires_at", nullable=False),
     _ts("used_at"),
-    CheckConstraint("purpose IN ('reset_password', 'change_email')", name="auth_tokens_purpose"),
+    CheckConstraint(  # 'revert_email': migration 0062 (#1265)
+        "purpose IN ('reset_password', 'change_email', 'revert_email')", name="auth_tokens_purpose"
+    ),
     Index("auth_tokens_user_id_idx", "user_id"),
 )
 

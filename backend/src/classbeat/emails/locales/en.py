@@ -165,6 +165,15 @@ class S(Enum):
     INVITE_BODY = auto()
     INVITE_BUTTON = auto()
     INVITE_NOTE = auto()
+    # #1265: the revert link in the notice to the old address, and the mail after a revert.
+    CHANGED_REVERT_BODY = auto()
+    CHANGED_REVERT_BUTTON = auto()
+    SUBJECT_EMAIL_REVERTED = auto()
+    REVERTED_HEADING = auto()
+    REVERTED_PRE = auto()
+    REVERTED_BODY = auto()
+    REVERTED_NEXT = auto()
+    REVERTED_WARN = auto()
 
 
 CATALOGUE: dict[S, str] = {
@@ -395,6 +404,26 @@ CATALOGUE: dict[S, str] = {
         "The code works once and expires in {days} days. If you did not ask for an invite, "
         "ignore this mail."
     ),
+    S.CHANGED_REVERT_BODY: (
+        "If you made this change, you don't need to do anything. If you didn't, open the link "
+        "below to put this address back: it signs everyone out of the account and lets you "
+        "choose a new password. The link works once, for 7 days."
+    ),
+    S.CHANGED_REVERT_BUTTON: "Undo this change",
+    S.SUBJECT_EMAIL_REVERTED: "Your classbeat email address was restored",
+    S.REVERTED_HEADING: "Your email address was restored",
+    S.REVERTED_PRE: "The change of your classbeat email address was undone.",
+    S.REVERTED_BODY: (
+        "The change of your classbeat email address was undone, and the account uses this "
+        "address again. To keep out whoever changed it, we signed out every session and removed "
+        "the password, the linked sign-in methods, the two-factor authentication, the recovery "
+        "codes and the passkeys of the account."
+    ),
+    S.REVERTED_NEXT: (
+        "Choose a new password with the link below (valid for 30 minutes; after that, ask for a "
+        "new one from the sign-in page). Then set up the rest again on your account page."
+    ),
+    S.REVERTED_WARN: "If you did not undo the change yourself, tell us right away.",
 }
 
 

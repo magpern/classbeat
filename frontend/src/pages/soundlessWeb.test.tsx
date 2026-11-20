@@ -4,7 +4,7 @@ import { designSteps, failureText, reviseFailureText } from '../api/jobMessages'
 import { MOWL_CONNECTION, classRoutes, message, REV1 } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { CLASS_ID, JOB_ID, PLAYLIST_ID, SESSION_ROUTES, jobBody, openStream } from '../test/jobFixtures'
-import { renderAt } from '../test/render'
+import { renderAt, withoutFooter } from '../test/render'
 
 // SL6 (#532, ADR 0007 amendment of 2026-11-03, item 10): "No music" on New class, the class page,
 // the chat panel and the job page. The API is faked; nothing here reaches a network.
@@ -211,7 +211,7 @@ describe('the Designing page of a soundless job', () => {
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByText(title)).toBeInTheDocument()
     expect(document.body).not.toHaveTextContent(category)
-    expect(document.body).not.toHaveTextContent(/swedebeat|running/i)
+    expect(withoutFooter()).not.toHaveTextContent(/swedebeat|running/i)
   })
 })
 

@@ -1,0 +1,8 @@
+{
+  "schema_version": "job-v1",
+  "job_id": "job_03example",
+  "status": "done",
+  "outcome": "alignment_failed",
+  "analysis_id": "an_02example",
+  "failure_kind": "alignment_failed"
+}

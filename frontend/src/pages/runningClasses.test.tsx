@@ -5,7 +5,7 @@ import type { DraftSegment } from '../api/jobs'
 import { MOWL_CONNECTION, classRoutes, message, revisionBody, REV1 } from '../test/classFixtures'
 import { fakeApi, json } from '../test/fakeApi'
 import { CLASS_ID, JOB_ID, PLAYLIST_ID, SESSION_ROUTES, jobBody, openStream } from '../test/jobFixtures'
-import { renderAt } from '../test/render'
+import { renderAt, withoutFooter } from '../test/render'
 
 const MOWL = {
   id: MOWL_CONNECTION,
@@ -227,7 +227,7 @@ describe('a design that ended feature_off', () => {
     failed()
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByText('Running classes are switched off right now')).toBeInTheDocument()
-    expect(document.body).not.toHaveTextContent(/swedebeat/i)
+    expect(withoutFooter()).not.toHaveTextContent(/swedebeat/i)
   })
 
   it('keeps the Swedebeat sentence for a Swedebeat mix', async () => {
@@ -248,6 +248,6 @@ describe('a design that ended feature_off', () => {
     failed()
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByText('This is switched off right now')).toBeInTheDocument()
-    expect(document.body).not.toHaveTextContent(/swedebeat/i)
+    expect(withoutFooter()).not.toHaveTextContent(/swedebeat/i)
   })
 })

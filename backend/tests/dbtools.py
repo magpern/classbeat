@@ -132,6 +132,11 @@ def truncate_auth(admin_url: str) -> None:
             # ADR 0034 section 2 (#1058): the player events outlive their user by design.
             if connection.execute(text("SELECT to_regclass('public.player_events')")).scalar_one():
                 connection.execute(text("TRUNCATE player_events"))
+            # ADR 0040 section 7 (#1301): a deleted account's spotdown scope outlives it until sent.
+            if connection.execute(
+                text("SELECT to_regclass('public.spotdown_scope_deletions')")
+            ).scalar_one():
+                connection.execute(text("TRUNCATE spotdown_scope_deletions"))
     finally:
         engine.dispose()
 

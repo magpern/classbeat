@@ -41,6 +41,8 @@ def submission(case: InterpretCase) -> dict[str, Any]:
         ]
     if e.asks:
         out["questions"] = [{"path": p} for p in e.asks]
+    if e.named:  # a short name of the ride (#1233), in quotes as a model may write it
+        out["name"] = '"Hills and a tempo ride"'
     return out
 
 

@@ -21,7 +21,7 @@ export const PRIVACY: readonly LegalSection[] = [
 ]
 
 export const TERMS: readonly LegalSection[] = [
-  { id: 'service', parts: ['p1', 'p2'] },
+  { id: 'service', parts: ['p1', 'p2', 'p3'] },
   { id: 'account', parts: ['li1', 'li2', 'li3'] },
   { id: 'content', parts: ['p1', 'p2'] },
   { id: 'use', parts: ['li1', 'li2', 'li3'] },

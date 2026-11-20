@@ -11,6 +11,7 @@ import { AuthSplit } from './AuthSplit'
 import { PasskeySignIn } from './PasskeySignIn'
 import { ProviderButton } from './ProviderButton'
 import { useCaptcha } from './Turnstile'
+import { Button } from '../ui/button'
 
 export type AuthMode = 'signin' | 'signup'
 
@@ -40,12 +41,14 @@ interface Props {
 const COPY = {
   signin: {
     title: 'auth.signIn',
+    eyebrow: 'auth.eyebrow.signin',
     submit: 'auth.signIn',
     autoComplete: 'current-password',
     swap: { to: '/signup', text: 'auth.newHere' },
   },
   signup: {
     title: 'auth.createAccount',
+    eyebrow: 'auth.eyebrow.signup',
     submit: 'auth.createAccountSubmit',
     autoComplete: 'new-password',
     swap: { to: '/signin', text: 'auth.haveAccountSignIn' },
@@ -117,7 +120,7 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onPasskeySigned
 
   return (
     <AuthSplit>
-      <AuthCard title={t(copy.title)}>
+      <AuthCard title={t(copy.title)} eyebrow={t(copy.eyebrow)}>
         {mode === 'signup' ? <p className="auth__lead">{t('auth.inviteLead')}</p> : null}
         {notice ? <Notice kind="error">{notice}</Notice> : null}
         {notice && noticeLink ? (
@@ -191,14 +194,13 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onPasskeySigned
             required
           />
           {captcha.element}
-          <button
-            className="button button--block"
+          <Button className="w-full"
             type="submit"
             disabled={action.busy || !captcha.ready}
             aria-describedby={captcha.describedBy}
           >
             {t(copy.submit)}
-          </button>
+          </Button>
         </form>
         <p className="auth__legal">
           {t('auth.legal')}{' '}

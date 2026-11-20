@@ -74,6 +74,7 @@ from classbeat.player_send import SEND_TO_PLAYER
 from classbeat.playlists.runtime import playlists_runtime
 from classbeat.quota import PlanRevisionPolicy
 from classbeat.spa_routes import add_single_page_app
+from classbeat.spotdown.scope_key import scope_key
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
 from classbeat.swedebeat_studio import config as studio_config
@@ -155,6 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.end_account_jobs = erase.make_job_ender(
                 app.state.session_factory,
                 quota.MeteredLedger(quota.Bounds.from_settings(settings)),
+                scope_key(settings),  # ADR 0040 section 7: the spotdown scope is deleted too
             )
             app.state.keyring = await load_keyring(
                 app.state.session_factory, settings.connection_kek_id

@@ -6,6 +6,7 @@ import { Field, Notice, useAction } from '../components/forms'
 import { AuthCard as Card } from '../components/auth/AuthCard'
 import { useCaptcha } from '../components/auth/Turnstile'
 import { Link } from '../router/Router'
+import { Button } from '../components/ui/button'
 
 /**
  * The hand-off for a provider sign-in whose email is missing or unverified (ADR 0003 section
@@ -93,14 +94,13 @@ export function ProviderEmailPage() {
           required
         />
         {captcha.element}
-        <button
-          className="button"
+        <Button
           type="submit"
           disabled={action.busy || !captcha.ready}
           aria-describedby={captcha.describedBy}
         >
           {t('providerEmail.submit')}
-        </button>
+        </Button>
       </form>
     </Card>
   )

@@ -4,6 +4,7 @@ import { PasskeyCancelled } from '../../auth/webauthn'
 import { useT } from '../../i18n/I18n'
 import { Notice } from '../forms'
 import { usePasskeyAutofill } from './usePasskeyAutofill'
+import { Button } from '../ui/button'
 
 interface Props {
   /** Finishes the sign-in (refresh the session and navigate); throws on failure. */
@@ -36,16 +37,15 @@ export function PasskeySignIn({ onSignedIn }: Props) {
   return (
     <>
       {error ? <Notice kind="error">{error}</Notice> : null}
-      <button
+      <Button variant="secondary" className="w-full"
         type="button"
-        className="button button--secondary button--block"
         disabled={busy}
         onClick={() => {
           void click()
         }}
       >
         {t('passkey.signIn')}
-      </button>
+      </Button>
     </>
   )
 }

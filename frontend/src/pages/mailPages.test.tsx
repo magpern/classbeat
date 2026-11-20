@@ -210,6 +210,47 @@ describe('email change page', () => {
 })
 
 
+describe('email revert page', () => {
+  it('posts the token only on a button press, without a session, and says what happened', async () => {
+    const api = fakeApi({ 'POST /api/auth/email/revert': { status: 'reverted' } })
+    renderAt('/email-revert#token=tok')
+    expect(window.location.hash).toBe('')
+    const button = await screen.findByRole('button', { name: 'Undo the change' })
+    expect(api.to('POST', '/api/auth/email/revert')).toHaveLength(0)
+    const sessionCalls = api.to('GET', '/api/auth/session').length
+    fireEvent.click(button)
+    expect(await screen.findByText(/old address is back/)).toBeInTheDocument()
+    expect(api.to('POST', '/api/auth/email/revert')[0]?.body).toEqual({ token: 'tok' })
+    await waitFor(() => {
+      expect(api.to('GET', '/api/auth/session').length).toBeGreaterThan(sessionCalls)
+    })
+    expect(screen.getByRole('link', { name: 'Go to sign-in' })).toBeInTheDocument()
+  })
+
+  it('reports a dead link and keeps the button', async () => {
+    fakeApi({ 'POST /api/auth/email/revert': reason(400, 'invalid_token') })
+    renderAt('/email-revert#token=old')
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo the change' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/not valid any more/)
+    expect(screen.getByRole('button', { name: 'Undo the change' })).toBeEnabled()
+  })
+
+  it('explains an old address another account took meanwhile', async () => {
+    fakeApi({ 'POST /api/auth/email/revert': reason(409, 'email_taken') })
+    renderAt('/email-revert#token=tok')
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo the change' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/belongs to another classbeat account/)
+  })
+
+  it('needs the link from the mail', async () => {
+    const api = fakeApi({})
+    renderAt('/email-revert')
+    expect(await screen.findByText(/needs the link from the mail/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Undo the change' })).toBeNull()
+    expect(api.to('POST', '/api/auth/email/revert')).toHaveLength(0)
+  })
+})
+
 describe('mail links opened in an already open tab', () => {
   it('reads and strips a token that arrives as a fragment-only change', async () => {
     fakeApi({ 'POST /api/auth/password/reset/info': { methods: [], passkeys: [] } })

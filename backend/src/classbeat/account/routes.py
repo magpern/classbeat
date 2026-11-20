@@ -26,6 +26,7 @@ from classbeat.account import erase
 from classbeat.account.export import build_export
 from classbeat.context import UserContext
 from classbeat.emails.notices import Notice, queue
+from classbeat.spotdown.scope_key import scope_key
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 
@@ -78,7 +79,8 @@ async def post_delete(
         return _refusal("confirmation_mismatch", 400)
     target = await erase.mail_target(factory, ctx)  # before the cascade
     await erase.end_jobs(factory, ctx, ledger(request))
-    if not await erase.delete_row(factory, ctx):
+    key = scope_key(request.app.state.settings)  # ADR 0040 section 7: the spotdown scope too
+    if not await erase.delete_row(factory, ctx, key):
         return _refusal("not_found", 404)
     if target is not None:
         address, prefs = target

@@ -51,8 +51,19 @@ def email_change_taken(settings: Settings, to: str, locale: str | None = None) -
     return emails.render(settings, "email_change_taken", to, {}, locale=locale)
 
 
-def email_changed_notice(settings: Settings, to: str, locale: str | None = None) -> MailMessage:
-    return emails.render(settings, "email_changed", to, {"when": _now()}, locale=locale)
+def email_changed_notice(
+    settings: Settings, to: str, revert_token: str, locale: str | None = None
+) -> MailMessage:
+    """To the old address, with the "this wasn't me" revert link (#1265)."""
+    params = {"when": _now(), "token": revert_token}
+    return emails.render(settings, "email_changed", to, params, locale=locale)
+
+
+def email_reverted_notice(
+    settings: Settings, to: str, reset_token: str, locale: str | None = None
+) -> MailMessage:
+    """To the restored address after a revert, with a password-reset link (#1265)."""
+    return emails.render(settings, "email_reverted", to, {"token": reset_token}, locale=locale)
 
 
 def provider_signup_confirmation(

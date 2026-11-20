@@ -147,7 +147,8 @@ test('design with no music, change it, save it and update the same program', asy
   // The class page: the "No music" chip, no song or mix actions, nothing saved yet.
   await expect(page.getByTestId('soundless')).toHaveText('No music')
   await expect(page.getByRole('button', { name: 'Change songs' })).toHaveCount(0)
-  await expect(page.getByText(/Swedebeat/)).toHaveCount(0)
+  // The page itself, not the site footer: that names Swedebeat in its trademark notice on every page (#1268).
+  await expect(page.locator('#main-content > div > :not(footer)').getByText(/Swedebeat/)).toHaveCount(0)
   await expect(savedState(page)).toHaveText('Not saved to MOWL yet.')
 
   // Version 2 by chat: the model sees no music, and the revise makes no music call either.

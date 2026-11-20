@@ -191,6 +191,27 @@ The fields are:
   The placement is closed at interpret time: there is no draft yet, so "after climb 2" becomes
   `{relation: after, anchor: climb, ordinal: 2}`, and no model text goes into the Brief.
   `check_explicit` maps it onto the draft's segments by kind and order.
+- `name` (issue #1233, owner request 2026-11-18; suite version 28): for a new class only, a short
+  title of the ride (not the music) in the request's language, at most 60 characters, no quotes
+  or emoji. It is the one piece of model text that is kept, as **display text only**: never a
+  brief value, never used for authorization, never sent to a model again, and rendered escaped.
+  `InterpretedRequest.sanitised` cleans it (`class_title_policy.proposed_name`: emoji, symbols,
+  quote marks, variation selectors, the combining keycap and the blank-looking Hangul fillers
+  dropped, then the title cleaner of a duplicate; at most 60 characters after the cleaning, at
+  least one letter or digit, and nothing link-like: no scheme, `www.`, `@` or `word.tld`) or drops
+  it. The schema does not bound it, so a name never costs a correction round, and a revise's
+  reading, which ignores it, never stores it (`songs.revise_reading`, #1237). In the `interpret_request` job's final fenced transaction,
+  `design.class_name.adopt` makes it `classes.title` **only while the title is still the
+  request's first words** (`interpret_policy.title_for`, set at admit when the client sent no
+  title); a title the user chose, a duplicate's or any other title is never overwritten, and
+  with no name, or one the cleaning drops, the title stays. A revise's or a song pool's reading
+  never names the class. Existing classes keep their titles. As any title, it is also the name of
+  the class's private Spotify playlist after the song approval (`songs.phase2.playlist_name`),
+  owner decision 2026-11-18: the name is cleaned and bounded as above before it is stored, and it
+  is the class title the user sees on the class page and in the class list before they approve,
+  so that write follows the user's approval of a class whose title they saw.
+  Only a class started from a request (the start screen, the composer) is named: an Advanced
+  class has the title the user typed, and a studio class starts with its own title.
 
 **No model text goes back to the model.** This keeps the guard in `agent/revise.py:11-14`.
 - The Brief holds only closed enums and numbers. A placement hint becomes a segment index or a
@@ -343,6 +364,11 @@ The fields are:
   - a running request asking for a game;
   - Swedish and Danish requests.
 - `suite_version` is bumped. The cycling prompt pins change on purpose.
+- Suite version 28 (#1233): `class_title_policy.py` joins the rule sources, the interpret case
+  `interpret_class_name` and the Swedish and Danish cases expect a `named` class (the `name`
+  check: a name that survives the cleaning; any name that comes back must be one the cleaning
+  keeps as it is), `forbidden_text` covers the name too, and the playlist injection case carries a
+  link to name the class by (#1237).
 - **Stale routes are served, with a warning (ADR 0012 §5, `models/routes.py:376-394`).** Until the
   owner's live suite run, a route whose prompt versions were not recorded is still used for
   cycling and is flagged stale. Only `newer_failure` makes a route unusable. Running and soundless

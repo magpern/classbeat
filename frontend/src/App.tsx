@@ -9,6 +9,7 @@ import { RequireAuth } from './components/RequireAuth'
 import { AppShell } from './components/shell/AppShell'
 import { useT } from './i18n/I18n'
 import { EmailChangePage } from './pages/EmailChangePage'
+import { EmailRevertPage } from './pages/EmailRevertPage'
 import { UnsubscribePage } from './pages/UnsubscribePage'
 import { LandingPage } from './pages/LandingPage'
 import { HelpPage } from './pages/HelpPage'
@@ -102,6 +103,7 @@ const PAGES: Readonly<Record<string, () => ReactNode>> = {
   '/signup/confirm': () => <SignUpConfirmPage />,
   '/reset': () => <ResetPage />,
   '/email-change': () => <EmailChangePage />,
+  '/email-revert': () => <EmailRevertPage />,
   '/unsubscribe': () => <UnsubscribePage />,
   // The provider's consent step for classbeat-player (ADR 0034); the server sends the browser here.
   '/player-consent': () => <PlayerConsentPage />,

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { usePublishHeight } from '../hooks/usePublishHeight'
 import { Trans, useT } from '../i18n/I18n'
 import { Link } from '../router/Router'
 
@@ -15,12 +16,14 @@ function alreadyDismissed(): boolean {
 }
 
 /**
- * A small, non-modal notice in the bottom-left corner. The app sets only the cookies it needs to
- * sign in and the language and theme in localStorage, so this informs and does not ask for consent.
- * Dismissal is kept in localStorage; with storage blocked it shows again on each page load.
+ * A small, non-modal notice: a card in the bottom-left corner on a wide screen, a compact bar at the
+ * foot of the page on a phone (above the tab bar when there is one). The bar takes room: it publishes
+ * its height (`--cb-notice-measured`) and the page, the Landing hero and the other fixed bottom bars
+ * leave that room, so it never covers a primary action (#1273, app.css). The app sets only the cookies
+ * it needs to sign in and the language and theme in localStorage, so this informs and does not ask for
+ * consent. Dismissal is kept in localStorage; with storage blocked it shows again on each page load.
  */
 export function CookieNotice() {
-  const t = useT()
   const [open, setOpen] = useState(() => !alreadyDismissed())
   if (!open) return null
   const dismiss = () => {
@@ -31,8 +34,15 @@ export function CookieNotice() {
       /* storage blocked: the notice returns on the next page load */
     }
   }
+  return <Notice onDismiss={dismiss} />
+}
+
+function Notice({ onDismiss }: { onDismiss: () => void }) {
+  const t = useT()
+  const ref = useRef<HTMLElement>(null)
+  usePublishHeight(ref, '--cb-notice-measured')
   return (
-    <section className="cookie-notice" aria-label={t('cookies.label')} data-testid="cookie-notice">
+    <section ref={ref} className="cookie-notice" aria-label={t('cookies.label')} data-testid="cookie-notice">
       <p className="cookie-notice__text">
         {t('cookies.text')}{' '}
         <Trans
@@ -40,7 +50,7 @@ export function CookieNotice() {
           slots={{ privacy: <Link to="/privacy">{t('legal.inline.privacy')}</Link> }}
         />
       </p>
-      <button type="button" className="cookie-notice__ok" onClick={dismiss}>
+      <button type="button" className="cookie-notice__ok" onClick={onDismiss}>
         {t('cookies.ok')}
       </button>
     </section>

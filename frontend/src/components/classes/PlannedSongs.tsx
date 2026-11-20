@@ -4,6 +4,7 @@ import { kindLabel } from '../../api/classMessages'
 import { useT } from '../../i18n/I18n'
 import { planSections } from '../../lib/musicPlan'
 import { clock } from '../../lib/workout'
+import { PageHeading } from '../ui/page-heading'
 import { Card } from '../ui/card'
 import { SongStrip } from './SongStrip'
 
@@ -20,9 +21,7 @@ export function PlannedSongs({ segments, songs }: { segments: DraftSegment[]; so
   if (sections.length === 0) return null
   return (
     <Card role="region" aria-labelledby="planned-songs-title" className="flex flex-col gap-3 p-4" data-testid="planned-songs">
-      <h3 id="planned-songs-title" className="m-0 font-display text-lg font-bold">
-        {t('planned.title')}
-      </h3>
+      <PageHeading size="section" as="h3" titleId="planned-songs-title" title={t('planned.title')} />
       <p className="m-0 text-[0.9375rem] text-muted">{t('planned.hint')}</p>
       <ol className="m-0 flex list-none flex-col gap-4 p-0">
         {sections.map((section) => (

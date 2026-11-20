@@ -1,29 +1,27 @@
 import { useEffect, useState } from 'react'
 
-/** ADR 0013 section 4: a sidebar from 1024 px, an icon rail from 640 px, a tab bar below. */
-export type Layout = 'phone' | 'rail' | 'sidebar'
+/** ADR 0013 section 4 and Afterburn A2: a top bar from 640 px ('wide'), a tab bar below ('phone'). */
+export type Layout = 'phone' | 'wide'
 
-const SIDEBAR = '(min-width: 1024px)'
-const RAIL = '(min-width: 640px)'
+const WIDE = '(min-width: 640px)'
 
 function read(): Layout {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'phone'
-  if (window.matchMedia(SIDEBAR).matches) return 'sidebar'
-  return window.matchMedia(RAIL).matches ? 'rail' : 'phone'
+  return window.matchMedia(WIDE).matches ? 'wide' : 'phone'
 }
 
 export function useLayout(): Layout {
   const [layout, setLayout] = useState<Layout>(read)
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return
-    const lists = [window.matchMedia(SIDEBAR), window.matchMedia(RAIL)]
+    const list = window.matchMedia(WIDE)
     const update = () => {
       setLayout(read())
     }
     update()
-    for (const list of lists) list.addEventListener('change', update)
+    list.addEventListener('change', update)
     return () => {
-      for (const list of lists) list.removeEventListener('change', update)
+      list.removeEventListener('change', update)
     }
   }, [])
   return layout

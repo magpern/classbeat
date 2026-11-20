@@ -38,6 +38,7 @@ export const workspaceSv: Catalogue = {
   'cw.chat.messagePending': 'Ditt senaste meddelande väntar fortfarande på att skickas.',
   'cw.chat.pendingFull': 'Passet rymmer inte fler meddelanden. Skapa ett nytt pass för att gå vidare.',
   'cw.chat.noVersion': 'Passet har ingen version att ändra än.',
+  'cw.chip.reading': 'Ingen skiss än',
   'cw.chip.rough': 'Skiss: låtarna är inte på plats än',
   'cw.chip.ready': 'Redo att godkännas',
   'cw.chip.expired': 'Låtarna har gått ut',
@@ -69,7 +70,7 @@ export const workspaceSv: Catalogue = {
   'cw.swap.label': 'Byt {title}',
   'cw.approve.region': 'Godkänn och spara',
   'cw.approve.text':
-    'Godkännandet sparar ett privat träningspass i MOWL och skapar en spellista i ditt Spotify i den här ordningen (vi ber Spotify om privat).',
+    'Godkännandet sparar ett privat träningspass i MOWL och skapar en spellista i ditt Spotify i den här ordningen (en offentlig spellista, så att MOWL hittar den).',
   'cw.approve.button': 'Godkänn och spara',
   'cw.approve.hold': 'Godkännandet väntar tills ditt meddelande har skickats.',
   'cw.approve.checking': 'Kontrollerar meddelanden som inte skickats än…',

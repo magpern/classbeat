@@ -80,9 +80,9 @@ async def test_a_failed_fill_never_blocks_the_swedebeat_outputs_and_sync_again_f
 ) -> None:
     rider, class_id, list_id, current = await designed(studio)
     before = set(studio.songs.fake.playlists)
-    # The read after the create (#1155) and the fill's owner check are refused: nothing is
-    # written to the new playlist's items.
-    studio.songs.fake.inject("status", method="GET", path=ONE, status=403, times=2)
+    # The fill's owner check (the first read after the public create, roadmap Amendment 30) is
+    # refused: nothing is written to the new playlist's items.
+    studio.songs.fake.inject("status", method="GET", path=ONE, status=403, times=1)
     done = await produce(studio, rider, class_id, current, "spotify_playlist", "swedebeat_playlist")
     assert (done.state, done.error_category) == ("failed", "forbidden")
     assert {(r.output, r.state) for r in rows(studio, rider.user_id)} == {

@@ -70,13 +70,16 @@
   gap: var(--cb-space-3);
   padding: var(--cb-space-5);
   border: 1px solid var(--cb-line);
-  border-radius: var(--cb-radius-md);
+  border-radius: var(--cb-radius-lg);
   background: var(--cb-surface);
+  box-shadow: var(--cb-shadow);
 }
 
 .panel__title {
   margin: 0;
+  font-family: var(--cb-font-display);
   font-size: var(--cb-text-lg);
+  font-weight: 800;
 }
 
 .panel p {

@@ -1,31 +1,22 @@
-import { createPickJob, type PickInput } from './songs'
-import { classContext, currentConnectionIds, followUpBrief } from '../lib/songs'
+import { ApiError, post } from './client'
+import { object, text } from './decode'
 import { actionKey, dropActionKey } from '../lib/submittedInput'
 
 /**
- * "Create the playlist again" (ADR 0008 section 6, ADR 0038 section 7): a resume of the approved
- * list. The server reads the list, its hash, its base and `save` from the approval receipt and
- * ignores whatever else the browser sends, so only the list's id goes; it takes no credit. The
- * key is kept until the call succeeds, so a repeated click returns the same job.
+ * "Create the playlist again" (ADR 0038 section 7, #1189): `POST /api/classes/{id}/resume-songs`
+ * with an `Idempotency-Key` and no body. The server builds the resume from the approval receipt
+ * (the approved list, its hash, its sketch and `save`) and takes no credit; it is NOT
+ * `POST /api/jobs` mode `resume`, which is `receipt_invalid` for a composer list. The key is kept
+ * until the call succeeds, so a repeated click returns the same job.
  */
-export async function resumePlaylist(args: {
-  classId: string
-  listRevisionId: string
-  listJobId: string
-  targetSec: number
-}): Promise<string> {
-  const ids = await currentConnectionIds()
-  const context = await classContext(args.classId)
-  const input: PickInput = {
-    class_id: args.classId,
-    brief: followUpBrief(context.brief, args.targetSec, ''),
-    mode: 'resume',
-    resume: { song_list_revision_id: args.listRevisionId },
-    mowl_connection_id: ids.mowl,
-    spotify_connection_id: ids.spotify,
-  }
+export async function resumePlaylist(args: { classId: string; listJobId: string }): Promise<string> {
   const scope = `resume.${args.listJobId}`
-  const job = await createPickJob(input, actionKey(scope))
-  dropActionKey(scope)
-  return job.id
+  try {
+    const answer = object(await post(`/api/classes/${encodeURIComponent(args.classId)}/resume-songs`, {}, { 'Idempotency-Key': actionKey(scope) }), 'resume job')
+    dropActionKey(scope)
+    return text(answer, 'job_id')
+  } catch (error) {
+    if (error instanceof ApiError && error.status !== 409) dropActionKey(scope)
+    throw error
+  }
 }

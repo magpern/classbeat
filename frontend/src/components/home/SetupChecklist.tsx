@@ -3,12 +3,14 @@ import { getConnections } from '../../api/connections'
 import { getSpotifyStatus } from '../../api/spotify'
 import { useT } from '../../i18n/I18n'
 import { Link } from '../../router/Router'
+import type { ConnectionMarkContent } from '../account/connections/ConnectionMark'
 import { ConnectionRow } from '../account/connections/ConnectionRow'
+import { SPOTIFY_ICON } from '../account/connections/spotifyIcon'
 import { Button } from '../ui/button'
 
 interface Step {
   key: 'mowl' | 'spotify'
-  mark: string
+  mark: ConnectionMarkContent
   name: string
   optional: boolean
   status: string
@@ -47,7 +49,7 @@ export function SetupChecklist() {
         if (spotify !== null && spotify.status !== 'connected') {
           steps.push({
             key: 'spotify',
-            mark: 'S',
+            mark: SPOTIFY_ICON,
             name: t('spot.title'),
             optional: false,
             status: spotify.status === 'needs_reconnect' ? t('mowl.statusAgain') : t('conn.spotify.purpose'),

@@ -15,8 +15,11 @@ import { usePlanAllowance } from '../newclass/usePlanAllowance'
 import { PlanNudge } from '../plans/PlanNudge'
 import { UpgradeLink } from '../plans/UpgradeLink'
 import { Button } from '../ui/button'
-import { Card } from '../ui/card'
 import { Chip, ChipButton } from '../ui/chip'
+import { BriefFrame, BRIEF_AREA } from './BriefFrame'
+import { ClassesLeft } from './ClassesLeft'
+import { PlanLength } from './PlanLength'
+import { FieldCard } from './FieldCard'
 import { STARTERS } from './ideas'
 import { IdeasRow } from './IdeasRow'
 import { MusicSourcePicker } from './MusicSourcePicker'
@@ -38,7 +41,7 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
   const from = useQuery().get('from')
   const kept = useMemo(() => (from === null ? null : recallRequest(from)), [from])
   const action = useAction()
-  const { allowed, plan } = usePlanAllowance()
+  const { allowed, plan, classesLeft, settled } = usePlanAllowance()
   // A request kept for `from` (the revise hand-off) wins over an example: then the example is not used, so it
   // is neither removed nor given focus, and stays kept for a day like any slug the start screen has not used.
   const usedExample = kept === null ? example : null
@@ -119,7 +122,7 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
       {shown ? <Notice kind="error">{shown}</Notice> : null}
       {problem === null && action.upgrade ? <UpgradeLink /> : null}
       <PlanNudge trigger="low" plan={plan} />
-      <Card className="flex flex-col gap-4">
+      <BriefFrame>
         <TextArea
           ref={promptRef}
           label={t('start.prompt.label')}
@@ -128,15 +131,11 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
           rows={5}
           maxLength={MAX_REQUEST}
           value={request}
+          className={BRIEF_AREA}
           onChange={(e) => {
             setRequest(e.target.value)
           }}
         />
-        {allowed === null ? null : (
-          <p className="m-0 text-[0.875rem] text-muted" data-testid="plan-length">
-            {t('start.planLength', { minutes: allowed.maxMinutes })}
-          </p>
-        )}
         <div className="flex flex-wrap gap-2" role="group" aria-label={t('start.starters')}>
           {STARTERS.map((key) => (
             <ChipButton
@@ -150,48 +149,58 @@ export function StartScreen({ source, example = null }: { source: ReadySource; e
             </ChipButton>
           ))}
         </div>
-        <ul className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label={t('start.services')}>
-          {services.map((name) => (
-            <li key={name}>
-              <Chip tone="ok">{name}</Chip>
-            </li>
-          ))}
-        </ul>
-        {source.runningEnabled ? (
-          <div className="flex flex-wrap gap-2" role="group" aria-label={t('newclass.sport')}>
-            <ChipButton
-              pressed={!running}
-              onClick={() => {
-                setSport('cycling')
-              }}
-            >
-              {t('newclass.sport.cycling')}
-            </ChipButton>
-            <ChipButton
-              pressed={running}
-              onClick={() => {
-                setSport('running')
-              }}
-            >
-              {t('newclass.sport.running')}
-            </ChipButton>
-          </div>
-        ) : null}
-        <MusicSourcePicker rows={rows} value={chosen?.key ?? null} onChange={setMusicKey} />
-        {gate !== null ? (
-          <SpotifyPrompt need={gate.need} soundless={source.soundlessEnabled && !running} />
-        ) : refusedForSpotify !== null ? (
-          <SpotifyPrompt need={refusedForSpotify} soundless={source.soundlessEnabled && !running} />
-        ) : null}
-        <p className="m-0 text-[0.875rem] text-muted" data-testid="destination">
-          {t('start.destination')}
-        </p>
-        <div>
-          <Button type="submit" disabled={action.busy || gate?.blocking === true}>
-            {t('start.design')}
-          </Button>
-        </div>
-      </Card>
+      </BriefFrame>
+      <div className="grid gap-3.5 sm:grid-cols-2">
+        <FieldCard title={t('start.length.title')}>
+          <PlanLength allowed={allowed} settled={settled} />
+          {source.runningEnabled ? (
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t('newclass.sport')}>
+              <ChipButton
+                pressed={!running}
+                onClick={() => {
+                  setSport('cycling')
+                }}
+              >
+                {t('newclass.sport.cycling')}
+              </ChipButton>
+              <ChipButton
+                pressed={running}
+                onClick={() => {
+                  setSport('running')
+                }}
+              >
+                {t('newclass.sport.running')}
+              </ChipButton>
+            </div>
+          ) : null}
+        </FieldCard>
+        <FieldCard title={t('start.music.from')}>
+          <ul className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label={t('start.services')}>
+            {services.map((name) => (
+              <li key={name}>
+                <Chip tone="ok" dot>
+                  {name}
+                </Chip>
+              </li>
+            ))}
+          </ul>
+          <MusicSourcePicker rows={rows} value={chosen?.key ?? null} onChange={setMusicKey} />
+          {gate !== null ? (
+            <SpotifyPrompt need={gate.need} soundless={source.soundlessEnabled && !running} />
+          ) : refusedForSpotify !== null ? (
+            <SpotifyPrompt need={refusedForSpotify} soundless={source.soundlessEnabled && !running} />
+          ) : null}
+        </FieldCard>
+      </div>
+      <div className="flex flex-wrap items-center gap-4">
+        <Button type="submit" disabled={action.busy || gate?.blocking === true} className="min-h-14 px-8 text-[1.0625rem] font-bold">
+          {t('start.design')}
+        </Button>
+        <ClassesLeft count={classesLeft} />
+      </div>
+      <p className="m-0 text-[0.875rem] text-muted" data-testid="destination">
+        {t('start.destination')}
+      </p>
       <IdeasRow
         gamesOn={allowed?.gates.games === true}
         running={running}

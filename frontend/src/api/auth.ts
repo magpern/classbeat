@@ -194,6 +194,11 @@ export async function confirmEmailChange(token: string): Promise<string> {
   return text(body, 'email')
 }
 
+/** The "this wasn't me" link of the notice to the old address (#1265): public, POST only. */
+export async function revertEmailChange(token: string): Promise<void> {
+  await post('/api/auth/email/revert', { token })
+}
+
 // --- linked sign-in methods ------------------------------------------------------------
 
 export interface Identity {

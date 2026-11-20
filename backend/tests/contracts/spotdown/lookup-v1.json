@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spotdown.invalid/schema/lookup-v1.json",
+  "title": "spotdown lookup result v1",
+  "description": "200 response of GET /v2/analyses/lookup. A miss is 404 with the common error envelope, not this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "analysis_id"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "lookup-v1"
+    },
+    "analysis_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

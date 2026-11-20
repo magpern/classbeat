@@ -64,6 +64,7 @@ def insert(conn: Connection, table: str, **values: Any) -> uuid.UUID:
         "detail",
         "params",
         "track_ids",
+        "metrics",
     }
     params = ", ".join(f"CAST(:{k} AS jsonb)" if k in jsonb else f":{k}" for k in values)
     row = {k: json.dumps(v) if k in jsonb else v for k, v in values.items()}
@@ -640,6 +641,9 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     insert(admin, "swedebeat_track_maps", owner_id=owner, reference="trk-1", analyser_version=1,
            sha256=bytes(32), map={"track_version": 1})  # fmt: skip
     insert(admin, "swedebeat_track_downloads", owner_id=owner)
+    # ADR 0040 section 9 (migration 0063): a shadow comparison; it goes with its job's class.
+    insert(admin, "spotdown_shadow_tracks", owner_id=owner, job_id=job_id, outcome="compared",
+           metrics={"bpm_agree": True}, provenance={"record_version": 1})  # fmt: skip
     # ADR 0036 section 6 (migration 0054): a studio output attempt and its daily-limit record.
     insert(admin, "class_outputs", owner_id=owner, class_id=class_id, revision_id=rev,
            output="swedebeat_mix", attempt=1, state="in_doubt", detail={"name": "x"})  # fmt: skip

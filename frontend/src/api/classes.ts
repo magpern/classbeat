@@ -92,6 +92,8 @@ export interface ClassSummary {
   sport: 'cycling' | 'running'
   /** ADR 0007 amendment item 10 (#530): a class with no music; an answer without it is not. */
   soundless: boolean
+  /** ADR 0036 section 5 (#1173): the class's stored music is the SwedeBeat studio's; an answer without it is not. */
+  studio: boolean
   createdAt: string
   updatedAt: string
   currentRevisionId: string | null
@@ -105,6 +107,10 @@ export interface ClassSummary {
   tssApproximate: boolean
   /** The brief the class was designed for; null when there is none (or on the list). */
   brief: Brief | null
+  /** #1234: the user's own request text for the class; null when there is none. */
+  request: string | null
+  /** #1234: how many songs the current version plays; null for a soundless class or before songs exist. */
+  songCount: number | null
   /** Only the class page's answer has these; the list's rows read as none. */
   songs: ClassSongs
   playlist: ClassPlaylist | null
@@ -136,6 +142,7 @@ function decodeClass(value: unknown): ClassSummary {
     title: text(item, 'title'),
     sport: item.sport === 'running' ? 'running' : 'cycling',
     soundless: item.soundless === true,
+    studio: item.studio === true,
     createdAt: text(item, 'created_at'),
     updatedAt: text(item, 'updated_at'),
     currentRevisionId: optionalText(item, 'current_revision_id'),
@@ -154,6 +161,8 @@ function decodeClass(value: unknown): ClassSummary {
     profile: decodeProfile(item.profile),
     tssApproximate: optionalFlag(item, 'tss_approximate') ?? false,
     brief: decodeBrief(item.brief),
+    request: optionalText(item, 'request'),
+    songCount: optionalCount(item, 'song_count'),
     songs: decodeSongs(item.songs),
     playlist: decodePlaylist(item.playlist),
     swedebeatOn: 'swedebeat_match' in item,

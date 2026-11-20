@@ -221,24 +221,20 @@
           "input": {
             "entries": [
               {
-                "ref": 0,
-                "role": "warmup"
-              },
-              {
-                "ref": 1,
-                "role": "warmup"
-              },
-              {
                 "ref": 2,
-                "role": "build"
+                "role": "warmup"
               },
               {
                 "ref": 3,
-                "role": "build"
+                "role": "warmup"
               },
               {
                 "ref": 4,
-                "role": "climb"
+                "role": "build"
+              },
+              {
+                "ref": 1,
+                "role": "build"
               },
               {
                 "ref": 5,
@@ -246,7 +242,7 @@
               },
               {
                 "ref": 6,
-                "role": "sprint"
+                "role": "climb"
               },
               {
                 "ref": 7,
@@ -262,7 +258,7 @@
               },
               {
                 "ref": 10,
-                "role": "recovery"
+                "role": "sprint"
               },
               {
                 "ref": 11,
@@ -270,10 +266,14 @@
               },
               {
                 "ref": 12,
-                "role": "cooldown"
+                "role": "recovery"
               },
               {
                 "ref": 13,
+                "role": "cooldown"
+              },
+              {
+                "ref": 14,
                 "role": "cooldown"
               }
             ]
@@ -293,24 +293,20 @@
           "input": {
             "entries": [
               {
-                "ref": 0,
-                "role": "warmup"
-              },
-              {
-                "ref": 1,
-                "role": "warmup"
-              },
-              {
                 "ref": 2,
-                "role": "build"
+                "role": "warmup"
               },
               {
                 "ref": 3,
-                "role": "build"
+                "role": "warmup"
               },
               {
                 "ref": 4,
-                "role": "climb"
+                "role": "build"
+              },
+              {
+                "ref": 1,
+                "role": "build"
               },
               {
                 "ref": 5,
@@ -318,7 +314,7 @@
               },
               {
                 "ref": 6,
-                "role": "sprint"
+                "role": "climb"
               },
               {
                 "ref": 7,
@@ -334,7 +330,7 @@
               },
               {
                 "ref": 10,
-                "role": "recovery"
+                "role": "sprint"
               },
               {
                 "ref": 11,
@@ -342,10 +338,14 @@
               },
               {
                 "ref": 12,
-                "role": "cooldown"
+                "role": "recovery"
               },
               {
                 "ref": 13,
+                "role": "cooldown"
+              },
+              {
+                "ref": 14,
                 "role": "cooldown"
               }
             ]
@@ -389,14 +389,19 @@
                 "role": "build"
               },
               {
-                "source": "pool",
-                "index": 4,
+                "source": "kept",
+                "index": 0,
                 "role": "climb"
               },
               {
                 "source": "pool",
-                "index": 10,
+                "index": 9,
                 "role": "recovery"
+              },
+              {
+                "source": "pool",
+                "index": 5,
+                "role": "sprint"
               },
               {
                 "source": "pool",
@@ -405,17 +410,12 @@
               },
               {
                 "source": "pool",
-                "index": 7,
-                "role": "sprint"
-              },
-              {
-                "source": "pool",
-                "index": 11,
+                "index": 10,
                 "role": "recovery"
               },
               {
                 "source": "pool",
-                "index": 12,
+                "index": 11,
                 "role": "cooldown"
               }
             ]
@@ -444,14 +444,19 @@
                 "role": "build"
               },
               {
-                "source": "pool",
-                "index": 4,
+                "source": "kept",
+                "index": 0,
                 "role": "climb"
               },
               {
                 "source": "pool",
-                "index": 10,
+                "index": 9,
                 "role": "recovery"
+              },
+              {
+                "source": "pool",
+                "index": 5,
+                "role": "sprint"
               },
               {
                 "source": "pool",
@@ -460,17 +465,12 @@
               },
               {
                 "source": "pool",
-                "index": 7,
-                "role": "sprint"
-              },
-              {
-                "source": "pool",
-                "index": 11,
+                "index": 10,
                 "role": "recovery"
               },
               {
                 "source": "pool",
-                "index": 12,
+                "index": 11,
                 "role": "cooldown"
               }
             ],

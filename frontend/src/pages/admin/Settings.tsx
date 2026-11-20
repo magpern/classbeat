@@ -18,6 +18,7 @@ import { Button } from '../../components/ui/button'
 import { Chip } from '../../components/ui/chip'
 import { Switch } from '../../components/ui/switch'
 import { BannerForm } from './BannerForm'
+import { FlagSwitch } from './FlagSwitch'
 import { SignupForm, SongForm, SwedebeatForm } from './FlagForms'
 import { PlanLimits } from './PlanLimits'
 import { isReason, useAdminWrite, useMfaRequired } from './StepUp'
@@ -102,6 +103,8 @@ const TITLES: Record<string, string> = {
   swedebeat_enabled: 'Swedebeat',
   trial: 'Trial',
   banner: 'Banner',
+  composer_flow: 'Composer flow',
+  running_enabled: 'Running classes',
 }
 
 function FlagCard({ item, view, onChanged }: { item: Flag; view: SettingsView; onChanged: () => void }) {
@@ -139,6 +142,7 @@ function FlagCard({ item, view, onChanged }: { item: Flag; view: SettingsView; o
       {key === 'song_picking' ? <SongForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
       {key === 'swedebeat_enabled' ? <SwedebeatForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
       {key === 'trial' ? <TrialForm item={item} view={view} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
+      {key === 'composer_flow' || key === 'running_enabled' ? <FlagSwitch item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
       {key === 'banner' ? <BannerForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} onRemove={() => { save(() => clearFlag(key)) }} /> : null}
       {item.stored !== null && key !== 'banner' ? (
         <Button

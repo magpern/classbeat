@@ -233,7 +233,16 @@ refused "encrypted archive, a different expected signer" "other than" scripts/re
 refused "encrypted archive, a short expected signer" "--expect-signer must be a full 40-digit" scripts/restore.sh --verify-only --expect-signer "${S:0:16}" "$dump"
 # A swapped archive: a valid dump of this database, made by someone who knows only the PUBLIC keys.
 mkdir -p "$work/attack"
-docker compose exec -T db pg_dump -U postgres -d classbeat --format=custom > "$work/attack/their.dump"
+# Their archive must differ from $plain, or the real signature (copied below) would verify it and the
+# case would test nothing. pg_dump -Fc stamps its header with the dump time to the second, so on an idle
+# database two dumps taken in the same second are byte-identical: CI run 44270233389 (#1206) accepted
+# the "swapped" archive for that reason. Dump again in a later second until it differs, never skip.
+for _ in 1 2 3 4 5; do
+  docker compose exec -T db pg_dump -U postgres -d classbeat --format=custom > "$work/attack/their.dump"
+  cmp -s "$plain" "$work/attack/their.dump" || break
+  sleep 1
+done
+! cmp -s "$plain" "$work/attack/their.dump" || fail "the swapped archive is byte-identical to the signed one"
 gpg --batch --yes --trust-model always --encrypt --sign --local-user "$X" --recipient "$R" \
   --output "$work/attack/signed-by-x.dump.gpg" "$work/attack/their.dump"
 gpg --batch --yes --trust-model always --encrypt --recipient "$R" \
@@ -266,34 +275,8 @@ cp "$plain" "$work/attack/badsig.dump"
 flip "$plain.sig" "$work/attack/badsig.dump.sig" 10
 refused "plain archive with a tampered signature" "does not verify" scripts/restore.sh --verify-only --verify-key "$work/keys/sign.pub" "$work/attack/badsig.dump"
 # Hardening cases (#364). Tools that are made to misbehave are shims first on PATH for one command.
-real_cp="$(command -v cp)"; real_docker="$(command -v docker)"; real_openssl="$(command -v openssl)"
-mkdir -p "$work/shim-cp" "$work/shim-docker" "$work/shim-openssl" "$work/swap"
-cat > "$work/shim-cp/cp" <<'SHIM'
-#!/usr/bin/env bash
-# After the archive is copied to restore.sh's private copy, replace the ORIGINAL with garbage
-# (a swap between verification and use). Whatever reads the original afterwards gets the garbage.
-"$REAL_CP" "$@" || exit $?
-for last; do :; done
-case "$last" in */copy.dump | */copy.gpg) printf 'swapped after the copy\n' > "$DRILL_SWAP" ;; esac
-SHIM
-cat > "$work/shim-docker/docker" <<'SHIM'
-#!/usr/bin/env bash
-# pg_dump fails after writing a little; everything else is the real docker.
-case " $* " in *" pg_dump "*) echo "PGDMP partial"; echo "pg_dump: simulated failure" >&2; exit 3 ;; esac
-exec "$REAL_DOCKER" "$@"
-SHIM
-cat > "$work/shim-openssl/openssl" <<'SHIM'
-#!/usr/bin/env bash
-# `openssl dgst` fails after creating its -out file; everything else is the real openssl.
-if [ "${1:-}" = dgst ]; then
-  prev=""; out=""
-  for a in "$@"; do [ "$prev" = -out ] && out="$a"; prev="$a"; done
-  [ -z "$out" ] || echo junk > "$out"
-  echo "openssl: simulated signing failure" >&2; exit 1
-fi
-exec "$REAL_OPENSSL" "$@"
-SHIM
-chmod +x "$work"/shim-*/*
+# shellcheck source=drill/shims.sh
+source scripts/drill/shims.sh
 accepted() { # accepted <label> <command...>: the command must succeed and say it validated the archive
   local label="$1"; shift
   "$@" > "$work/out.txt" 2>&1 || { cat "$work/out.txt" >&2; fail "$label: was refused"; }

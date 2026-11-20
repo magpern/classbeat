@@ -8,9 +8,11 @@ import { isObject, optionalCount, optionalText, type JsonObject } from './decode
 //                 `failure` is the stored refusal, the error category of the failed job, `cancelled`
 //                 or `expired`; null while it runs or waits;
 //   save_pending: { revision_id, content_hash, job_id }     the draft phase 2 stored and the phase-2
-//                 job that asked for the save (ADR section 7; assumed until #1189 merges);
-//   phase2:       { state }                                  the last phase-2 job's state, so a failed
-//                 one reads "The playlist was not created" (ADR section 7; assumed until #1189 merges).
+//                 job that asked for the save (ADR section 7, #1189); null once a newer revision exists;
+//   phase2:       { state: "failed" | "differed" }           `failed`: the newest approved list can be
+//                 resumed and its sketch is still current ("The playlist was not created"); `differed`:
+//                 the current draft was re-designed on the final songs and is not saved by itself; it
+//                 stays while that draft is current, so the page hides it once the class is saved (#1189).
 
 export interface FillState {
   /** The sketch revision the fill was started for. */
@@ -31,8 +33,8 @@ export interface SavePending {
 export interface ComposerState {
   fill: FillState | null
   savePending: SavePending | null
-  /** `failed` when the newest phase-2 job of the class failed; null otherwise. */
-  phase2: 'failed' | null
+  /** See the top of the file; null when neither applies. */
+  phase2: 'failed' | 'differed' | null
   /** The class answer's `composer`: the interpret job was admitted with the flag on (#1188). */
   composer: boolean
 }
@@ -59,7 +61,7 @@ export function decodeComposerState(item: JsonObject): ComposerState {
   return {
     fill: fillOf(item.fill_songs),
     savePending: savePendingOf(item.save_pending),
-    phase2: phase2 === 'failed' ? 'failed' : null,
+    phase2: phase2 === 'failed' || phase2 === 'differed' ? phase2 : null,
     composer: item.composer === true,
   }
 }

@@ -34,6 +34,7 @@ import { Notice } from '../forms'
 import { useRevision, type ClassData } from '../../hooks/useClassData'
 import { Link } from '../../router/Router'
 import { useT } from '../../i18n/I18n'
+import { versionLine as versionLineOf } from './versionLine'
 
 // The undecided player sends load only for a user who has the player (`player.offered`).
 const UncertainPlayer = lazy(() =>
@@ -64,8 +65,9 @@ export function ClassBody({
   const [deleting, setDeleting] = useState(false)
   // Whether the class's history says Change it works (true until it says otherwise).
   const [canChange, setCanChange] = useState(true)
-  // A studio class is found by its timeline (the summary carries no studio status).
-  const studioView = useStudioTimeline(classId, summary.currentRevisionId, summary.openJob === null)
+  // A studio class is found by its timeline; the summary's `studio` flag keeps the call off every
+  // other class (#1173).
+  const studioView = useStudioTimeline(classId, summary.currentRevisionId, summary.openJob === null, summary.studio)
   // A studio class's songs are the studio's own; the legacy song panels do not apply (#1119).
   const kind = useClassKind(summary, studioView)
   const studio = kind === 'studio'
@@ -107,6 +109,7 @@ export function ClassBody({
         player={player}
         viewingId={viewingId}
         versionNumber={viewing?.number ?? null}
+        versionLine={shown.status === 'ready' ? versionLineOf(t, shown.revision) : null}
         canChangeSongs={canChangeSongs}
         deleting={deleting}
         onGoTo={goTo}
@@ -202,6 +205,7 @@ export function ClassBody({
             {shown.status === 'ready' ? (
               <RevisionView
                 revision={shown.revision}
+                pageTitle={summary.title}
                 musicChanged={!summary.soundless && answeredBy?.change?.musicChanged === true}
                 songs={songs}
                 classId={classId}

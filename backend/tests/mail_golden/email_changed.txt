@@ -5,6 +5,11 @@ The email address of your classbeat account was changed. This is the old address
 
 When it happened: 6 November 2026, 12:30 UTC
 
+If you made this change, you don't need to do anything. If you didn't, open the link below to put this address back: it signs everyone out of the account and lets you choose a new password. The link works once, for 7 days.
+
+Undo this change:
+https://classbeat.example.test/en/email-revert#token=SAMPLE
+
 If this wasn't you, tell us right away. Contact us at support@classbeat.eu
 
 --

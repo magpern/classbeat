@@ -56,7 +56,7 @@ export const legalDa: Catalogue = {
   'privacy.model.p1':
     'For at udforme et hold sender vi til en udbyder af AI-modeller det, du har skrevet om det, dine ændringsønsker og tidligere ønsker, de udkast og tidslinjer, der er lavet indtil nu, og et resumé af sangene (afspilningslistens navn og for hver sang oplysninger som titel, kunstner, tempo og længde).',
   'privacy.model.p2':
-    "Vi sender aldrig din e-mailadresse, dit navn, adgangskoder, tokens eller konto- eller tjeneste-id'er. Assistenten foreslår kun: classbeat gemmer kun i MOWL eller Spotify det, du godkender, eller det, du på forhånd har tilladt med dit engangssamtykke til en privat sangpulje i din Spotify.",
+    "Vi sender aldrig din e-mailadresse, dit navn, adgangskoder, tokens eller konto- eller tjeneste-id'er. Assistenten foreslår kun: classbeat gemmer kun i MOWL eller Spotify det, du godkender, eller det, du på forhånd har tilladt med dit engangssamtykke til en arbejdsplayliste i din Spotify.",
 
   'privacy.processors.title': 'Hvem andre håndterer dine oplysninger',
   'privacy.processors.p1':
@@ -135,6 +135,8 @@ export const legalDa: Catalogue = {
     'classbeat hjælper instruktører i indendørscykling med at udforme hold ved hjælp af en AI-assistent og, når du godkender, gemme dem i din MOWL-konto og oprette afspilningslister på din Spotify-konto. Det er en beta kun for inviterede, som den er, og den kan ændres eller ophøre.',
   'terms.service.p2':
     'classbeat er ikke lavet af eller tilknyttet MOWL, Spotify eller Swedebeat. Din brug af de tjenester sker efter deres egne vilkår.',
+  'terms.service.p3':
+    'MOWL, Intelligent Cycling, Spotify og Swedebeat er varemærker, der tilhører deres respektive ejere. De bruges kun til at sige, hvad classbeat fungerer sammen med, og betyder ikke, at virksomhederne står bag classbeat.',
 
   'terms.account.title': 'Din konto',
   'terms.account.li1': 'Angiv en rigtig e-mailadresse, og hold dine loginoplysninger for dig selv.',

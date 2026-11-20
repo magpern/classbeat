@@ -36,6 +36,20 @@ def test_the_facts_are_numbers_roles_and_fixed_text_only() -> None:
     assert facts == {"sketch_slots": slots, "favoured_refs": [3, 7], "pinned_refs": [5]}
 
 
+def test_a_swapped_out_song_is_in_neither_ref_list() -> None:
+    """#1206: ``excluded`` (the songs a swap takes out) is left out of both lists."""
+    brief = Brief.model_validate({"length_min": 30, "intensity": "moderate"})
+    ctx = PoolContext(PickPlan.build(brief), SearchRegistry(), lambda q: [])
+    other = Entry(9, "T", "A", "B", 2002, 200, "OtherSpotifyId0000002", COVER)
+    favoured = Favoured((entry(3), other), (), {PLANTED[3]: 0})
+    pinned = Pinned(((0, entry(5)), (1, other)), ())
+    message = pool_message(ctx, ["warmup"], favoured, pinned, frozenset({PLANTED[3]}))
+    facts = json.loads(message[message.index("{", len(ctx.first_message())) :])
+    assert (facts["favoured_refs"], facts["pinned_refs"]) == ([9], [9])
+    kept = pool_message(ctx, ["warmup"], favoured, pinned)
+    assert '"favoured_refs":[3,9]' in kept  # no exclusion: as before
+
+
 def test_kept_shape_refuses_a_reordered_or_shortened_class() -> None:
     base = {"segments": [{"kind": "warmup"}, {"kind": "main"}, {"kind": "cooldown"}]}
     assert kept_shape(base, base)[0]

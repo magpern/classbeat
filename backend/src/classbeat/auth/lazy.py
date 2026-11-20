@@ -117,7 +117,7 @@ EXPORTS: dict[str, str] = {
     "spotify_start_buckets": "ratelimit",
     "admin_buckets": "ratelimit",
     "admin_mail_test_buckets": "ratelimit",
-    "make_reset_link_sender": "reset_routes",
+    "make_reset_link_sender": "reset_mail",
     "IssuedSession": "sessions",
     "Resolution": "sessions",
     "SessionGone": "sessions",
