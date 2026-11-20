@@ -7,8 +7,9 @@ import { CoverArt, isPlaylistCoverUrl } from '../songs/CoverArt'
  * A playlist's cover in a picker tile, with the Spotify icon in its top-left corner while the cover
  * is really shown (ADR 0013 section 9, #1288). The badge says the cover comes from Spotify: the
  * official icon from our own bundle, unmodified, in the file for the theme (`.brand-icon` in app.css).
- * It sits on a round chip of the page's own surface colour, so it reads on any cover and keeps its
- * clear space. A cover that fails the URL check or fails to load is a neutral initials tile
+ * It sits on a round chip of the page's own surface colour, 48px wide around the 24px icon (as in a
+ * connection row), so it reads on any cover and has the clear space of about half the icon's height.
+ * The cover's pixels stay unaltered: the badge is a sibling element over the corner, not an effect on the image. A cover that fails the URL check or fails to load is a neutral initials tile
  * (`CoverArt`) and has no badge. Everything here is decorative: the tile's name is the radio's label.
  */
 export function PlaylistCover({ src, name }: { src: string; name: string }) {
@@ -27,7 +28,7 @@ export function PlaylistCover({ src, name }: { src: string; name: string }) {
       />
       {shown && (
         <span
-          className="pointer-events-none absolute top-2 left-2 flex size-9 items-center justify-center rounded-full bg-surface ring-1 ring-line"
+          className="pointer-events-none absolute top-2 left-2 flex size-12 items-center justify-center rounded-full bg-surface ring-1 ring-line"
           data-testid="spotify-cover-badge"
         >
           <ConnectionMark mark={SPOTIFY_ICON} />

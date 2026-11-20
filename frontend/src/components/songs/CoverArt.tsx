@@ -14,7 +14,8 @@ import { cn } from '../../lib/cn'
  * - The server checks the same before it stores or returns one; this is a second check, so a page
  *   never asks any other host or path.
  * - The image is loaded lazily, with no referrer, and shown unaltered (no crop, overlay, blur or
- *   tint) with a 4 px radius (8 px when large).
+ *   tint; the Spotify badge on a playlist tile is a separate element in a corner, `PlaylistCover`)
+ *   with a 4 px radius (8 px when large).
  * - No cover, a URL that fails the check, or an image that does not load gets a neutral tile with
  *   initials instead.
  *

@@ -486,7 +486,11 @@ Only **album covers of chosen songs** are shown, and only from data classbeat al
 > so it is clear where the picture comes from (Spotify's design guidelines). The icon is the
 > bundled official icon files, unmodified, the same two files and the same `.brand-icon` theme
 > switch as the connection tiles (white file on dark, black on light), on a small round chip of the
-> page's own surface colour so it reads on any cover. It adds no host and no CSP change. It is
+> page's own surface colour (48 px around the 24 px icon, so the clear space is about half the
+> icon's height, as in a connection row) so it reads on any cover. This is the one thing placed over
+> a cover, and it does not break "cover art shown unaltered (no crop, overlay, blur or tint)" (§3, A4):
+> the image's pixels are untouched and the badge is a sibling element in the corner, not an effect on
+> the picture. It adds no host and no CSP change. It is
 > decorative (`aria-hidden`, inside the aria-hidden cover): the playlist name stays the radio's
 > label and the group's keyboard behaviour is unchanged. A tile with initials, a cover URL that
 > fails the pin check, or an image that fails to load has no badge (`CoverArt` reports the load
