@@ -250,6 +250,12 @@ Per-track statuses from spotdown, and how classbeat reacts:
 | `alignment_failed` | analysed, but the timeline is unusable | the timing class becomes `unusable`, as in §2 |
 | spotdown unreachable | – | the whole class uses today's paths (MOWL sections, or the local studio and mix analysis). spotdown is never a hard dependency. |
 
+*Note 2026-11-20 (#1303, #1325; ADR 0040, the amendment "the match stage of the Spotify flow"): for the
+Spotify match stage, `rate_limited` is waited for **in the run** instead of a fenced requeue: each wait
+is charged to the class's wait budget before it is made and made only when it fits, with checkpoints at
+least every 10 s. That amendment supersedes the `rate_limited` row above for that stage; the other
+stages are unchanged by it.*
+
 **Overall bounds per class:**
 - match retry: 1;
 - alternates per track: ≤2;

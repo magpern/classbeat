@@ -18,6 +18,11 @@ rule, section 7). Shadow mode (SD-P4 part 3) uses ``timing_class_policy`` (path 
 ``shadow_compare_calc`` (the metrics), ``shadow_policy`` (budget, pace, outcomes), ``shadow_config``
 and ``scope_key``; the side effects are ``classbeat.design.track_shadow`` and ``scope_outbox`` (the
 account deletion's ``DELETE /v2/scopes``).
+The Spotify song pick's match stage (SD-P6 stage A, #1303): ``song_match_config`` with
+``owner_list_policy`` (the allowlist), ``song_match_policy`` (each match's use, the reactions,
+the outage rule and the wait budget), ``song_swap_calc`` (spares and replacement rounds) and
+``song_match_record_model`` (the list's provenance record); the side effects are
+``classbeat.songs.pick_match``, ``pick_match_batch`` and ``pick_match_budget``.
 Side effects: ``opener`` (the seam that opens a client of ``classbeat.egress_spotdown``),
 ``exchange`` (one capped request) and ``client`` (the calls of the contract, nothing else).
 Nothing here calls spotdown unless the setting is set: unset, ``classbeat.egress_spotdown``

@@ -3,7 +3,11 @@ the wait for the user's one approval. Everything runs in the worker, inside the 
 
 1. ``pool_search``: the ``pick_pool`` stage (model; ``search_tracks`` through the job's Spotify
    connection, ``classbeat.songs.search``; ``check_pool``, ``submit_pool``). The model names
-   candidates by registry ``ref`` only; the backend maps them to Spotify ids.
+   candidates by registry ``ref`` only; the backend maps them to Spotify ids. For an owner the
+   spotdown match is on for (off by default; SD-P6, #1303), ``classbeat.songs.pick_match`` then
+   matches the pool with spotdown (metadata only, nothing downloaded), leaves out the genuinely
+   missing candidates while the others can fill the list and otherwise runs bounded replacement
+   rounds; off, unreachable or on any failure of it, the pool goes on exactly as before.
 2. ``pool_write``: ``classbeat.playlists.write_pool`` (ensure the pool playlist: a
    ``spotify_create_playlist`` under this job's own key when the pool row has no playlist yet; the
    owner check; a ``spotify_replace_items`` of exactly the candidates, read back and compared),
@@ -37,6 +41,7 @@ for a kept song, from the seed list, never from the model (ADR 0013 section 9).
 """
 
 import logging
+from collections.abc import Sequence
 from typing import Any, Literal
 from uuid import UUID
 
@@ -58,6 +63,7 @@ from classbeat.agent import choose_songs as choose_module
 from classbeat.agent import pick_pool as pool_module
 from classbeat.agent.brief import Brief
 from classbeat.agent.limits import Limits
+from classbeat.agent.pick_pool import PoolPick
 from classbeat.agent.provider import ModelProvider
 from classbeat.agent.schemas import SONG_SCHEMA_VERSION
 from classbeat.agent.songs import analysed_pool
@@ -71,6 +77,7 @@ from classbeat.playlists import open_spotify, write_pool
 from classbeat.songs import song_list
 from classbeat.songs.config import SongConfig
 from classbeat.songs.inputs import SongJob
+from classbeat.songs.pick_match import MatchedPool, match_pool
 from classbeat.songs.search import job_searcher
 from classbeat.songs.seed import SeedSpec, load_seeded
 
@@ -101,9 +108,14 @@ def stage_config(agent: AgentConfig, config: SongConfig, *, turns: int, calls: i
 
 
 async def _pool(
-    run: JobRun, provider: ModelProvider, plan: PickPlan, searcher: Any, config: AgentConfig
+    run: JobRun,
+    provider: ModelProvider,
+    plan: PickPlan,
+    registry: SearchRegistry,
+    searcher: Any,
+    config: AgentConfig,
 ) -> tuple[PoolResult, Any]:
-    ctx = PoolContext(plan, SearchRegistry(), searcher)
+    ctx = PoolContext(plan, registry, searcher)
     outcome = await run_stage(
         JobStageHost(run, "pool_search"), provider, pool_stage(ctx), ctx.first_message(), config
     )
@@ -156,10 +168,11 @@ async def run_phase_one(
     pool_config = stage_config(
         agent, config, turns=pool_module.MAX_TURNS, calls=pool_module.MAX_TOOL_CALLS
     )
-    pool, pool_outcome = await _pool(
-        run, provider, plan, job_searcher(run, keyring, spotify), pool_config
-    )
-    track_ids = tuple(p.spotify_id for p in pool.picks)
+    registry, searcher = SearchRegistry(), job_searcher(run, keyring, spotify)
+    pool, pool_outcome = await _pool(run, provider, plan, registry, searcher, pool_config)
+    # SD-P6 (#1303): spotdown's match of the pool; today's pool unchanged when it is off.
+    matched = await match_pool(run, plan, pool, registry, (provider, searcher, pool_config))
+    track_ids = tuple(p.spotify_id for p in matched.playlist)
     playlist_id = await write_pool_playlist(run, keyring, spotify, given, track_ids)
 
     await run.stage("pool_analyse")
@@ -173,15 +186,16 @@ async def run_phase_one(
     )
     try:
         stored = await _choose(
-            run, provider, plan, pool, pool_outcome, step, agent, config, origin=origin
+            run, provider, plan, matched, pool_outcome, step, agent, config, origin=origin
         )
+        record = matched.record([s.spotify_id if s.new else "" for s in stored[0].songs])
         built = song_list.build(
             stored[0],
             account=account,
-            provenance={**stored[1], **(extra_provenance or {})},
+            provenance={**stored[1], **record, **(extra_provenance or {})},
             parent_id=seeded.revision_id if seeded is not None else None,
             generations=generations(spotify, step),
-            unmet=list_unmet(plan.brief.music_taste, pool.picks, stored[0]),  # issue #1133
+            unmet=list_unmet(plan.brief.music_taste, matched.eligible, stored[0]),  # issue #1133
         )
     except BaseException:
         step.close()
@@ -219,6 +233,10 @@ def await_approval(
     return AwaitApproval(store, release=step.close)
 
 
+def pairs(picks: Sequence[PoolPick]) -> list[tuple[str, str]]:
+    return [(p.spotify_id, p.role) for p in picks]
+
+
 def generations(spotify: OpenConnection, step: MusicStep) -> song_list.Generations:
     mowl = step.generation
     if mowl is None:
@@ -230,7 +248,7 @@ async def _choose(
     run: JobRun,
     provider: ModelProvider,
     plan: PickPlan,
-    pool: PoolResult,
+    matched: MatchedPool,
     pool_outcome: Any,
     step: MusicStep,
     agent: AgentConfig,
@@ -239,9 +257,11 @@ async def _choose(
     origin: Origin,
 ) -> tuple[ChosenList, dict[str, Any]]:
     analysis_map = step.data.analysis["map"]
-    wanted = [(p.spotify_id, p.role) for p in pool.picks]
-    covers = {p.spotify_id: p.cover for p in pool.picks}  # the search's, host-checked
-    tracks, omitted = analysed_pool(analysis_map, wanted, covers)
+    covers = {p.spotify_id: p.cover for p in matched.playlist}  # the search's, host-checked
+    tracks, omitted = analysed_pool(analysis_map, pairs(matched.eligible), covers)
+    if len(tracks) < plan.slots and matched.missing:  # MOWL's sections for the missing ones too
+        both = (*matched.eligible, *matched.missing)
+        tracks, omitted = analysed_pool(analysis_map, pairs(both), covers)
     ctx = ChooseContext.build(plan, tracks, omitted)  # pool_too_small
     choose_config = stage_config(
         agent, config, turns=choose_module.MAX_TURNS, calls=choose_module.MAX_TOOL_CALLS
@@ -252,7 +272,7 @@ async def _choose(
     if not isinstance(outcome.output, ChosenList):
         raise JobFailure("internal")
     made = provenance(
-        [pool_outcome, outcome],
+        [pool_outcome, *matched.runs, outcome],
         analysis_map,
         origin=origin,
         schema_version=SONG_SCHEMA_VERSION,

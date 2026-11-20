@@ -30,6 +30,7 @@ ALLOWED_IMPORTS = frozenset(
         "classbeat.config_hosts",
         "classbeat.config_turnstile",
         "classbeat.player.base_url_policy",  # pure (ADR 0034 section 2)
+        "classbeat.spotdown.owner_list_policy",  # pure (ADR 0040 section 9, #1303)
         "classbeat.spotdown.sources_policy",  # pure (ADR 0040 section 10)
         "classbeat.spotdown.url_policy",  # pure (ADR 0040 section 10)
         "classbeat.swedebeat_gateway.url_policy",  # pure (ADR 0035 section 1)
