@@ -77,10 +77,11 @@ source of analysis, not of playback.
 
 - classbeat plays no audio, serves no audio, keeps no audio and sends no audio to a model, MOWL,
   Spotify or SwedeBeat. The upload is relayed to spotdown and the bytes are gone from classbeat when
-  the request ends (§2). Only derived data is kept (§8). **"Never stored" means:** classbeat and
-  spotdown never persist the upload (no file, no database row, no volume, no cache, no log). It does
-  not promise that no byte ever touches a disk: the reverse proxy may spool the body transiently
-  (§2 item 4).
+  the request ends (§2). Only derived data is kept (§8). **"Never persisted" means no durable
+  storage:** classbeat never writes the upload anywhere (no file, no database row, no volume, no
+  cache, no log). Spotdown holds it as a temporary file plus an `uploads` row until the job ends, at
+  most one hour, then deletes both. The reverse proxy may spool the body transiently (§2 item 4).
+  No sentence of this ADR promises that no byte touches any disk.
 - No Spotify, SwedeBeat or MOWL call is made for a `user_audio` class (no match, no playlist, no
   download). Licensed sources do not apply; the user's own files are the source.
 - **No trim.** The whole file is the track. ADR 0021's reasoning stands: no player is told to skip,
@@ -130,9 +131,12 @@ browser --(raw body, PUT /api/user-audio/uploads)--> classbeat web --(stream, PU
    in `client_body_temp_path` and deletes it when the request ends. That is not storage by
    classbeat or spotdown, and this ADR does not require the proxy to avoid it: turning request
    buffering off would hold an app connection open for every slow client (owner decision,
-   2026-11-20). The spool is bounded by `client_max_body_size` on that location (60 MiB per
-   request, and the box-wide limits of §4 on parallel uploads), and an unauthenticated request
-   over the cap is refused with 413 before it is spooled. Optional hardening, not a requirement: put
+   2026-11-20). The spool is 60 MiB per request (`client_max_body_size` on that
+   location). The limits of §4 act in the app, after nginx has spooled the body, so any client can
+   spool up to that per concurrent request, and the total is bounded only by the proxy's connection
+   limits and the body timeout: an accepted risk. A 413 before spooling holds only when
+   `Content-Length` is declared; a chunked body spools up to the cap. A per-client `limit_conn` on
+   that one location may be offered as optional hardening only. Optional hardening, not a requirement: put
    `client_body_temp_path` on tmpfs, or leave it on the container's ephemeral layer (it is gone with
    the container). The implementation PR (U4) puts the location in `swag-classbeat.subdomain.conf`
    and the runbook (`vps-deploy.md` §10) with the `client_max_body_size` line, and a runbook check
@@ -208,7 +212,9 @@ classbeat cannot see what the user plays, so the rule is:
 - A track is `exact` when (i) spotdown analysed these bytes (the sha256 of the relay equals the
   sha256 in spotdown's provenance), and (ii) the user **attested at approval** that they will play
   these files, unedited, in this order, **gapless or with the crossfade stated on the class** (so the
-  stated crossfade is part of what is attested and of the approval hash). The attestation is a required, unticked-by-default
+  stated crossfade is part of what is attested and of the approval hash; cues are relative to each
+  track's start, so they hold for any placement of the track). A duplicated class is a new class: it
+  needs its own approval and its own attestation before any track is `exact`. The attestation is a required, unticked-by-default
   statement on the approval screen, bound into the approval like the studio's consent (ADR 0036 §7),
   and stored with the revision. Without it the class cannot be approved. The stored basis is
   `user_attested_same_file`, mapped to `played_recording` by `spotdown_map_policy` (the only basis
@@ -394,7 +400,7 @@ New rows in `docs/security/threat-model.md`, planned until built (T138 and up, t
 | ID | Threat | Mitigation (planned) |
 |---|---|---|
 | T138 | A user's audio stored, served, logged or sent to a model by classbeat (a spool, a temp file, a log line, a prompt) | The relay streams chunk by chunk, no file or large buffer; no multipart framework; the proxy may spool the body transiently (nginx's `client_body_temp_path`, deleted when the request ends, bounded by `client_max_body_size`; not persistence, §1 and §2 item 4); no audio, label or hash in logs or prompts; a test uploads a canary through the fake spotdown and scans the process's files, logs and the model request fixtures (the proxy's transient spool is outside this test, §2 item 4) |
-| T139 | The upload route used to exhaust the box (a huge or endless body, many parallel uploads, a slow-body attack) | One route-specific cap counted as streamed; Content-Length not trusted; per-chunk and wall timeouts; 1 relay per user and 3 per box; the daily byte and count ledger; the proxy's per-path `client_max_body_size` (413 before the body is spooled) and body timeout, which also bound the proxy's transient spool; the plan gate and kill switch |
+| T139 | The upload route used to exhaust the box (a huge or endless body, many parallel uploads, a slow-body attack) | One route-specific cap counted as streamed; Content-Length not trusted; per-chunk and wall timeouts; 1 relay per user and 3 per box; the daily byte and count ledger; the proxy's per-path `client_max_body_size` and body timeout. **Accepted risk:** the proxy spools up to 60 MiB per concurrent request before the app's limits apply, bounded in total only by the proxy's connection limits and the timeout (a 413 before spooling only when `Content-Length` is declared); optional hardening: a per-client `limit_conn` on that location; the plan gate and kill switch |
 | T140 | Hostile audio reaching a decoder in a way that reads files or the network (a playlist container, `concat`, HLS), or decodes without bound | classbeat sniffs and relays only mp3, mp4, wav; spotdown forces the demuxer, allows no protocol but `file`, reads one audio stream and caps decoded length in a subprocess (spotdown tests); classbeat never parses the body |
 | T141 | One user's track, analysis or sha256 reaching another user, or surviving a track, class or account deletion | A scope per track derived from `owner_id` and `track_id`; no lookup across scopes; the check route reads only the caller's rows; the outbox in the deleting transaction; the retention registry and plant-and-delete test; a fake spotdown test that deletes and then looks the scope up |
 | T142 | The spotdown service key exposed through the web tier | Role-limited egress (web: `PUT /v2/uploads` only), a pinned path list, the key file read-only on web, never in env, logs or errors; the Opus review of the mount. **Residual:** a full key on web lets a compromised web delete scopes and start analyses; an upload-only key (§11) would remove that |
