@@ -1296,8 +1296,8 @@ back in.
   no event was queued at all: the user's first player sign-in, when the lockdown read the grant
   before the token endpoint set `first_issued_at` (its own transaction, after the redemption's).
   Neither the 60 seconds of the code nor that event bounds it; it is the exposure of a player
-  sign-in that completed just before the lockdown. Tests: `backend/tests/test_auth_revert_player_codes.py` and
-  `backend/tests/test_oidc_advance_lock.py`.
+  sign-in that completed just before the lockdown. Tests:
+  `backend/tests/test_auth_revert_player_codes.py` and `backend/tests/test_oidc_advance_lock.py`.
 - **Activity.** `email_reverted` joins `activity.SHOWN_KINDS` (amendment of 2026-11-07), worded in
   every catalogue.
 - **The page path.** The issue named `/email/revert`; the page is `/email-revert` instead, next to
