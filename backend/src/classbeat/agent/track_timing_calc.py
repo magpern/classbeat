@@ -14,9 +14,10 @@ music data came through spotdown carries two keys there, written only by ``stamp
 - a track with neither key is ``exact``: every map made before SD-P6 (MOWL's Spotify sections, a
   Swedebeat mix, which has no ``tracks`` at all) reads exactly as before;
 - a ``timing`` that is not one of the three classes is ``unusable``, the strictest;
-- a ``youtube`` source is **at best ``approximate``**, whatever ``timing`` says (ADR 0040 section 3:
-  a confident match, an equal ISRC and agreeing anchors are no proof of identical audio), and a
-  ``timing_source`` that is not a string is treated the same way.
+- only an ``upload`` source (``EXACT_SOURCES``, an allowlist) may be ``exact``: a ``youtube`` or
+  ``url`` source, a case variant, an unknown kind or no source at all is **at best
+  ``approximate``**, whatever ``timing`` says (ADR 0040 section 3: a confident match, an equal
+  ISRC and agreeing anchors are no proof of identical audio).
 
 ``anchors`` are the times a cue on a non-``exact`` track may sit near: the track's section starts
 and ends and, for an ``approximate`` track, its drops and breakdowns (events within the ±2 s
@@ -33,18 +34,20 @@ from classbeat.spotdown.timing_inputs_model import TimingClass
 TIMING_KEY: Final = "timing"
 SOURCE_KEY: Final = "timing_source"
 CLASSES: Final[frozenset[str]] = frozenset({"exact", "approximate", "unusable"})
-NEVER_EXACT_SOURCES: Final[frozenset[str]] = frozenset({"youtube"})
+# The only source an ``exact`` class may rest on: classbeat's own upload of the played bytes
+# (ADR 0040 section 3, path (a) and (b)). An allowlist: widened only by an ADR.
+EXACT_SOURCES: Final[frozenset[str]] = frozenset({"upload"})
 EVENT_KINDS: Final = frozenset({"drop", "breakdown"})
 
 
 def capped(timing: object, source: object) -> TimingClass:
-    """The class a track's two keys give: unknown is ``unusable``; YouTube never ``exact``."""
+    """The class a track's two keys give: unknown is ``unusable``; only an upload ``exact``."""
     if timing is None and source is None:
         return "exact"
     cls: TimingClass = (
         cast(TimingClass, timing) if isinstance(timing, str) and timing in CLASSES else "unusable"
     )
-    if cls == "exact" and (not isinstance(source, str) or source in NEVER_EXACT_SOURCES):
+    if cls == "exact" and not (isinstance(source, str) and source in EXACT_SOURCES):
         return "approximate"
     return cls
 

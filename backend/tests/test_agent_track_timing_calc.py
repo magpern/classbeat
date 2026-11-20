@@ -37,6 +37,14 @@ def a_map() -> dict[str, Any]:
         ("unusable", "youtube", "unusable"),
         ("exact", None, "approximate"),  # an exact class without its source: not trusted
         ("exact", 7, "approximate"),
+        ("exact", "YouTube", "approximate"),  # an allowlist: any case variant is capped
+        ("exact", "YOUTUBE", "approximate"),
+        ("exact", "url", "approximate"),
+        ("exact", "Upload", "approximate"),
+        ("exact", "upload ", "approximate"),
+        ("exact", "spotify", "approximate"),
+        ("exact", "", "approximate"),
+        ("exact", ["upload"], "approximate"),  # not a string, never an error
         ("bogus", "upload", "unusable"),  # an unknown class is the strictest
         (None, "youtube", "unusable"),
         (3, "upload", "unusable"),

@@ -1,53 +1,12 @@
 """``timing_cue_policy``: what a cue may say and where it may sit, per timing class and per kind
-of instruction (ADR 0040 section 3). Pure, table-driven."""
+of instruction (ADR 0040 section 3). Pure, table-driven; the text table itself is
+``test_agent_timing_cue_text_policy``."""
 
 import pytest
 
-from classbeat.agent.timing_cue_policy import CUE_MARGIN_S, CueAt, precise_kind, problems
+from classbeat.agent.timing_cue_policy import CUE_MARGIN_S, CueAt, problems
 
 ANCHORS = (0.0, 60.0, 120.0)
-
-
-@pytest.mark.parametrize(
-    ("text", "kind"),
-    [
-        ("3, 2, 1, go!", "countdown"),
-        ("5-4-3 and up", "countdown"),
-        ("10, 9, 8 ...", "countdown"),
-        ("3 2 1", "countdown"),
-        ("Count down with me", "countdown"),
-        ("Up in 5 seconds", "countdown"),
-        ("Three, two, one", "countdown"),
-        ("Nedräkning nu", "countdown"),
-        ("Upp om 5 sekunder", "countdown"),
-        ("Tæl ned", "countdown"),
-        ("Push for 4 bars", "beat_or_bar"),
-        ("Hold the 8-count", "beat_or_bar"),
-        ("Stand on the downbeat", "beat_or_bar"),
-        ("Go on beat one", "beat_or_bar"),
-        ("Next bar, sprint", "beat_or_bar"),
-        ("Håll i 8 takter", "beat_or_bar"),
-        ("Upp på ettan", "beat_or_bar"),
-        ("Næste takt", "beat_or_bar"),
-        ("Sprint on the drop!", "drop_hit"),
-        ("Wait for the drop", "drop_hit"),
-        ("When the bass drops, go", "drop_hit"),
-        ("The drop hits now", "drop_hit"),
-        ("Spurta på droppen", "drop_hit"),
-        ("Når droppet kommer", "drop_hit"),
-        # Section-level wording, a cadence on the beat and plain numbers are not precise.
-        ("Stand up and climb", None),
-        ("Ride on the beat", None),
-        ("Zone 3, 4, 5", None),
-        ("90-100 rpm, zone 4", None),
-        ("2 x 30 s", None),
-        ("Raise the bar in the chorus", None),
-        ("Big build in this section", None),
-        ("", None),
-    ],
-)
-def test_precise_kind(text: str, kind: str | None) -> None:
-    assert precise_kind(text) == kind
 
 
 def cue(cls: str, text: str, start: float = 60.0) -> CueAt:

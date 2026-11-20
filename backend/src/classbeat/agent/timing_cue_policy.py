@@ -3,11 +3,8 @@ plan section 2). Pure: no I/O.
 
 The design validator (``timing_gate``) refuses, on any track whose timing class is not ``exact``:
 
-- **a beat-, bar- or drop-precise cue** (``precise_kind``): a countdown (``3, 2, 1``, "in 5
-  seconds", "count down"), a beat or bar count ("4 bars", "8 counts", "on the downbeat", "next
-  bar") or a drop hit ("on the drop", "when it drops"), in English, Swedish or Danish, the
-  languages classbeat writes in. It is a pattern list over free text, so it is the second line:
-  the first is that the model is told each track's class (``timing_input``);
+- **a beat-, bar- or drop-precise cue** (``timing_cue_text_policy.precise_kind``): a countdown,
+  a beat or bar count or a drop hit, in English, Swedish or Danish;
 - **a cue away from the track's anchors** (``track_timing_calc.anchors``): on an ``approximate``
   track a cue sits within ``CUE_MARGIN_S`` of a section start or end or of a drop or breakdown;
   on an ``unusable`` track within that margin of a section start or end only (its analysis is
@@ -18,51 +15,19 @@ before SD-P6) is accepted exactly as before. Each problem names the interval and
 says how to fix it (reword the cue, or leave it empty), so the correction round can fix it.
 """
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Final
 
 from mowl.workout import mmss
 
+from classbeat.agent.timing_cue_text_policy import PreciseKind, precise_kind
 from classbeat.spotdown.spotdown_map_policy import APPROXIMATE_WINDOW_S
 from classbeat.spotdown.timing_inputs_model import TimingClass
 
 POLICY_VERSION: Final = "1"
 CUE_MARGIN_S: Final = APPROXIMATE_WINDOW_S  # the ±2 s window of an approximate track's events
 
-PreciseKind = Literal["countdown", "beat_or_bar", "drop_hit"]
-_NUMBER_RUN: Final = re.compile(r"\d{1,2}(?:(?:\s*[,.\-\u2013\u2014\u2026!:]+\s*|\s+)\d{1,2}){2,}")
-_PATTERNS: Final[tuple[tuple[PreciseKind, re.Pattern[str]], ...]] = (
-    (
-        "countdown",
-        re.compile(
-            r"\bcount(?:ing)?[\s-]*down\b|\bcountdown\b"
-            r"|\b(?:in|om)\s+\d+\s*(?:s|sec|secs|seconds?|sek|sekund(?:er)?)\b"
-            r"|\bthree\W+two\W+one\b|\btre\W+(?:två|to)\W+(?:ett|en|et)\b"
-            r"|\bnedräkning\b|\bräkna\s+ner\b|\bnedtælling\b|\btæl\s+ned\b"
-        ),
-    ),
-    (
-        "beat_or_bar",
-        re.compile(
-            r"\bdown[\s-]*beat\b|\bbeat\s+(?:one|1)\b|\bon\s+the\s+one\b"
-            r"|\b(?:\d+|two|four|eight|sixteen)[\s-]*(?:bars?|beats?|counts?)\b"
-            r"|\b(?:next|this)\s+bar\b"
-            r"|\b\d+\s*(?:takter|takt|taktslag|slag)\b|\b(?:nästa|næste)\s+takt\b"
-            r"|\bpå\s+(?:ettan|etteren|ét-slaget|första\s+slaget|første\s+slag)\b"
-        ),
-    ),
-    (
-        "drop_hit",
-        re.compile(
-            r"\b(?:on|at|for|hit|wait\s+for)\s+the\s+drop\b|\bdrop\s+in\s+\d"
-            r"|\bdrop\s+(?:hits|lands|comes)\b|\bwhen\s+(?:it|the\s+\w+)\s+drops\b"
-            r"|\bpå\s+(?:droppen|droppet)\b|\bnär\s+(?:droppen|det\s+droppar)\b"
-            r"|\bnår\s+(?:droppet|det\s+dropper)\b"
-        ),
-    ),
-)
 _LABELS: Final[dict[PreciseKind, str]] = {
     "countdown": "a countdown",
     "beat_or_bar": "a beat or bar count",
@@ -80,26 +45,6 @@ class CueAt:
     timing_class: TimingClass
     anchors: tuple[float, ...]
     text: str
-
-
-def _countdown(text: str) -> bool:
-    """A run of three or more numbers, each one less than the one before (``3, 2, 1``)."""
-    for run in _NUMBER_RUN.finditer(text):
-        numbers = [int(n) for n in re.findall(r"\d+", run.group())]
-        if any(
-            a - b == 1 and b - c == 1
-            for a, b, c in zip(numbers, numbers[1:], numbers[2:], strict=False)
-        ):
-            return True
-    return False
-
-
-def precise_kind(text: str) -> PreciseKind | None:
-    """The kind of beat-, bar- or drop-precise instruction ``text`` gives, or ``None``."""
-    folded = text.casefold()
-    if _countdown(folded):
-        return "countdown"
-    return next((kind for kind, pattern in _PATTERNS if pattern.search(folded)), None)
 
 
 def _near_anchor(cue: CueAt) -> bool:
