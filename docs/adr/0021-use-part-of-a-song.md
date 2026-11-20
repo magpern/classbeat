@@ -175,3 +175,11 @@ relies on MOWL listing published mixes *(inferred, ADR 0016's note)*. The report
 Swedebeat are the owner's to send; agents do not contact Swedebeat. Never a route: the app's embedded AWS
 credentials, or imitating its upload or registration call. The decision is unchanged: #580 stays blocked,
 nothing is built, and T1 to T6 wait for a precondition and the owner.
+
+**Amendment 2026-11-20 (#1296; roadmap Amendment 32): §2 amended for spotdown.** The owner accepted
+[ADR 0040](0040-spotdown-analysis-service.md) §12. §2's sentence "No audio processing of Spotify
+content exists or may be added" now reads, for Spotify tracks: classbeat processes no Spotify audio
+and spotdown never fetches audio from Spotify; a Spotify-catalogue track may be analysed by spotdown
+from a non-Spotify source of the same recording (the optional YouTube source, enabled per deployment
+by the owner), with the timing class `approximate` at best. Part of a Spotify song stays not allowed,
+neither audio nor timing; the rest of this ADR is unchanged.

@@ -644,6 +644,13 @@ to users. Until M6 there are no backups of the owner's stack beyond the owner's 
 met by this section: no M3b PR stores a shared analysis; the first one that does must follow the
 last list above.
 
+**Note 2026-11-20 (#1296; roadmap Amendment 32).** spotdown's global YouTube-derived analyses and
+match records live in spotdown, not in classbeat's database, hold no user data and are tied to no
+class, so the reference-driven purge above does not apply to them: they go after 90 days unused or a
+version change, with an operator takedown ([ADR 0040](0040-spotdown-analysis-service.md), amendment
+"#1296 accepted", item 5). The per-owner record of which analysis a class used is its class provenance
+(ADR 0040 §6), under this section's retention.
+
 ### 12. API, categories, events
 
 Web (all signed in; CSRF on writes; 404 for foreign or unknown ids; no MOWL or Spotify id, key or

@@ -10,8 +10,12 @@
   `model: opus` for security-critical PRs and the first review of a new security design, Sonnet
   for the rest, for tooling (one final Opus review if it changes secret handling) and for
   delta reviews unless the fix changes security-critical application code; AGENTS.md review
-  gate, roadmap Amendments 4 and 13),
+  gate, roadmap Amendments 4 and 13; in the spotdown programme Opus for every PR except docs-only
+  ones, which may be Sonnet, Amendments 31 and 32),
   never this session. Running the review is the default; don't ask whether to skip it.
+- After a second `FAIL` on a PR, the next fix round has an Opus Developer, and every Developer runs
+  each finding through a class-wide self-check before handing back (AGENTS.md "PR loop", owner
+  2026-11-20, Amendment 32).
 - Your own check, a review skill in this session, green CI and passing tests are not a `PASS`.
   "I reviewed it" in chat is not one either: the owner can merge the PR themselves on GitHub.
 - Any push after a `PASS` invalidates it. A merge-only update of `main` with no hand-resolved

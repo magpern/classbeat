@@ -1,5 +1,30 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 32 (2026-11-20, owner decision: YouTube-derived analysis for Spotify classes; issue #1296)
+
+The owner answered #1296 ([comment](https://github.com/magpern/classbeat/issues/1296#issuecomment-7050972098)):
+"Yes, as owner, I accept the risk. Turn Youtube on." and "No, analysis goes through spotdown." Recorded
+in [ADR 0040](adr/0040-spotdown-analysis-service.md), amendment "#1296 accepted".
+
+- **Risk accepted.** ADR 0010 and ADR 0021 §2 are amended as ADR 0040 §12 states: YouTube-derived
+  analysis through spotdown may be used for Spotify-catalogue classes (YouTube's terms; Spotify
+  Developer Policy §III 14), `approximate` timing at best.
+- **YouTube on, by the owner.** `ALLOW_YTDLP_SOURCING` stays off by default in spotdown's code; the
+  owner deploys spotdown with it switched on. classbeat treats the analysis service as an owner-chosen
+  external service returning the schema v1 JSON and does not police how it sources audio; its own
+  safeguards (timing classes, no `exact` for a matched source, scopes, no audio kept, egress) stay.
+- **Spotify classes get their analysis through spotdown,** replacing "Spotify classes keep today's MOWL
+  sections". The MOWL sections stay as the fallback (spotdown unreachable or off, a track `unusable`).
+  SD-P6 (#1303) is unblocked.
+- **Retention of spotdown's global entries** (ADR 0040 §7, the Architect's reversible default): global,
+  no user data; kept until the version changes or 90 days unused, then purged; an operator takedown per
+  source; deleting a user never touches them; classbeat's per-owner record stays in class provenance.
+- **Not covered:** any agent or CI call to YouTube, deploying, and #1298's evidence gates for making
+  spotdown-first the shipped default. Licensed sources (SwedeBeat, user audio) still win.
+- **Process (owner, 2026-11-20; AGENTS.md):** docs-only PRs of the SD programme may have a Sonnet
+  review; after a second `FAIL` on a PR the next fix round has an Opus Developer; Developers run each
+  finding through a class-wide self-check before handing back.
+
 ## Amendment 31 (2026-11-20, owner decision: the spotdown integration plan is frozen; issue #1307)
 
 The owner froze the plan for integrating [magpern/spotdown](https://github.com/magpern/spotdown) as
@@ -17,8 +42,10 @@ classbeat's music-analysis service: [docs/plans/spotdown-integration.md](plans/s
   #1296 to #1299 and magpern/spotdown#1, which stay with the owner (status.md). No deploy, live-account test or real YouTube, SwedeBeat, MOWL or Spotify call by any agent. This
   amendment changes no code, setting or runtime behaviour, and does not yet amend ADR 0010 or
   ADR 0021: that amendment is in ADR 0040 and takes effect only on the owner's acceptance (#1296).
+  *(Accepted 2026-11-20: Amendment 32.)*
 - **Governance for this programme, in both repositories** (owner instruction, 2026-11-20): Opus is
-  the Architect and Orchestrator and **reviews every PR** (stricter than the Sonnet review the
+  the Architect and Orchestrator and **reviews every PR** (docs-only PRs: Sonnet allowed since
+  Amendment 32) (stricter than the Sonnet review the
   review gate allows for non-security PRs); Sonnet is the Developer; Haiku is the Explorer. The
   review gate, merge rules and safety envelope of AGENTS.md apply unchanged: a fresh first review,
   resumed later rounds, `Agent review (opus): PASS <exact head SHA>`, green `ci` and `pr-title`,
@@ -26,7 +53,7 @@ classbeat's music-analysis service: [docs/plans/spotdown-integration.md](plans/s
   (magpern/spotdown#2) and gets no weaker policy; its ruleset is the owner's action
   (magpern/spotdown#1).
 - **Owner decisions,** each blocking only what it names: #1296 (YouTube terms-of-service risk and
-  enablement; blocks SD-P6), #1297 (cross-user reuse of private-source analyses; blocks nothing),
+  enablement; blocks SD-P6; accepted 2026-11-20, Amendment 32), #1297 (cross-user reuse of private-source analyses; blocks nothing),
   #1298 (the real-music quality corpus; blocks the default switches), #1299 (retirement; blocks
   SD-P7c), magpern/spotdown#1 (the spotdown ruleset).
 
