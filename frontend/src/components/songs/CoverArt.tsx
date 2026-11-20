@@ -64,6 +64,7 @@ export function CoverArt({
   size = 'sm',
   kind = 'album',
   className,
+  onLoadError,
 }: {
   /** The song's (or playlist's) `cover` from the API, or null. */
   src: string | null
@@ -73,6 +74,8 @@ export function CoverArt({
   /** Which pin the URL must match: `album` (song lists) or `playlist` (the New class picker). */
   kind?: 'album' | 'playlist'
   className?: string
+  /** Called when the image fails to load (the tile then shows initials), so a caller can drop what goes with the cover. */
+  onLoadError?: () => void
 }) {
   const [failed, setFailed] = useState<string | null>(null)
   const valid = kind === 'playlist' ? isPlaylistCoverUrl(src) : isCoverUrl(src)
@@ -99,6 +102,7 @@ export function CoverArt({
       draggable={false}
       onError={() => {
         setFailed(src)
+        onLoadError?.()
       }}
     />
   )

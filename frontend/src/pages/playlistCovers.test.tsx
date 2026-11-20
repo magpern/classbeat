@@ -36,6 +36,9 @@ const READY = {
   },
 }
 
+// The cover images only: the Spotify badge (#1288) has icon images of its own.
+const coverImages = () => document.querySelectorAll('img[referrerpolicy]')
+
 function tile(name: string): HTMLElement {
   const label = screen.getByRole('radio', { name }).closest('label')
   if (label === null) throw new Error(`no tile for ${name}`)
@@ -57,18 +60,19 @@ describe('playlist covers in the New class picker', () => {
     renderAt('/classes/new/advanced')
     await screen.findByRole('radio', { name: 'Hills' })
     await waitFor(() => {
-      expect(tile('Hills').querySelector('img')?.getAttribute('src')).toBe(MOSAIC)
+      expect(tile('Hills').querySelector('img[referrerpolicy]')?.getAttribute('src')).toBe(MOSAIC)
     })
-    const hills = tile('Hills').querySelector('img')
+    const hills = tile('Hills').querySelector('img[referrerpolicy]')
     expect(hills?.getAttribute('referrerpolicy')).toBe('no-referrer')
     expect(hills?.getAttribute('loading')).toBe('lazy')
     expect(hills?.getAttribute('alt')).toBe('')
-    expect(tile('Sprint Mix').querySelector('img')?.getAttribute('src')).toBe(UPLOADED)
+    expect(tile('Sprint Mix').querySelector('img[referrerpolicy]')?.getAttribute('src')).toBe(UPLOADED)
     expect(tile('Recovery Ride').querySelector('img')).toBeNull()
+    expect(tile('Recovery Ride').querySelector('[data-testid="spotify-cover-badge"]')).toBeNull()
     expect(within(tile('Recovery Ride')).getByText('RR')).toBeInTheDocument()
     // The tile's name stays the radio's accessible name; the cover is decorative.
     expect(within(screen.getByRole('radiogroup', { name: 'Playlist' })).getAllByRole('radio')).toHaveLength(3)
-    expect(document.querySelectorAll('img')).toHaveLength(2)
+    expect(coverImages()).toHaveLength(2)
     expect(api.to('GET', '/api/music/playlist-covers')).toHaveLength(1)
   })
 
@@ -92,11 +96,11 @@ describe('playlist covers in the New class picker', () => {
     expect(await screen.findByRole('radio', { name: 'Hills' })).toBeInTheDocument()
     expect(within(tile('Hills')).getByText('H')).toBeInTheDocument()
     expect(within(tile('Sprint Mix')).getByText('SM')).toBeInTheDocument()
-    expect(document.querySelectorAll('img')).toHaveLength(0)
+    expect(coverImages()).toHaveLength(0)
     expect(screen.getByRole('button', { name: 'Design my class' })).toBeInTheDocument()
     answer(json({ covers: [{ spotify_playlist_id: HILLS, cover: MOSAIC }] }))
     await waitFor(() => {
-      expect(tile('Hills').querySelector('img')?.getAttribute('src')).toBe(MOSAIC)
+      expect(tile('Hills').querySelector('img[referrerpolicy]')?.getAttribute('src')).toBe(MOSAIC)
     })
     expect(within(tile('Sprint Mix')).getByText('SM')).toBeInTheDocument()
   })
@@ -117,7 +121,7 @@ describe('playlist covers in the New class picker', () => {
     await waitFor(() => {
       expect(tile('Hills').querySelector('[data-testid="cover-tile"]')).not.toBeNull()
     })
-    expect(document.querySelectorAll('img')).toHaveLength(0)
+    expect(coverImages()).toHaveLength(0)
   })
 
   it.each([
@@ -131,7 +135,7 @@ describe('playlist covers in the New class picker', () => {
     await waitFor(() => {
       expect(within(tile('Hills')).getByText('H')).toBeInTheDocument()
     })
-    expect(document.querySelectorAll('img')).toHaveLength(0)
+    expect(coverImages()).toHaveLength(0)
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByRole('button', { name: 'Design my class' })).toBeInTheDocument()
   })
@@ -145,7 +149,7 @@ describe('playlist covers in the New class picker', () => {
     renderAt('/classes/new/advanced')
     await screen.findByRole('radio', { name: 'Hills' })
     expect(api.to('GET', '/api/music/playlist-covers')).toHaveLength(0)
-    expect(document.querySelectorAll('img')).toHaveLength(0)
+    expect(coverImages()).toHaveLength(0)
   })
 
   it('asks once, after the MOWL list, and not when MOWL lists no playlists', async () => {
