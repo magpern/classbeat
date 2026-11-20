@@ -1230,10 +1230,10 @@ back in.
     window before a token exists rather than after one was mailed;
   - the player sign-in code step (`oidc/advance.py`, the authorize continue and the consent POST)
     locks the user and rechecks that its session is still alive before it inserts a code (#1294):
-    a revert, reset or sign out everywhere that committed while it waited ended that session and
-    burnt the codes, so it answers as for a signed-out caller (the sign-in redirect at continue,
-    `request_expired` at consent) and inserts nothing; one that holds the lock first commits its
-    code, which the waiting path burns.
+    a revert, reset, password change or sign out everywhere that committed while it waited ended
+    that session and burnt the codes, so it answers as for a signed-out caller (the sign-in
+    redirect at continue, `request_expired` at consent) and inserts nothing; one that holds the
+    lock first commits its code, which the waiting path burns.
   Tests: `backend/tests/test_auth_email_revert_races.py` (both orders of each race, parked, not
   timed) and `backend/tests/test_auth_revert_lock_order.py` (#1292: the revert against the email
   confirmation and against the reset completion, each in both orders, parametrized; it fails for
@@ -1264,9 +1264,10 @@ back in.
   everywhere burn them).** An `oidc_codes` row (ADR 0034 §1: 60 seconds, single use, redeemed at
   `/oidc/token` by the player's server) was not touched by a revert or a reset. A code the changer
   asked for in the last minute could still be turned into a player session after the lockdown,
-  and the `sessions_revoked` event of the same transaction does not reach it: that event is a
-  back-channel logout with no `sid` (ADR 0034 §2), which ends the player sessions that exist when
-  it arrives, and nothing in it names a session made afterwards. These paths now call
+  and the `sessions_revoked` event of the same transaction is no answer to it: that event is a
+  back-channel logout with no `sid` (ADR 0034 §2) and classbeat has no way to reach a player
+  session made after it was handled; whether the player ends one depends on how it applies the
+  event (player ADR 0010 §8), which classbeat does not rely on. These paths now call
   `oidc.code_store.revoke_codes` in their transaction, after the session revocation and under the
   user row lock: it sets `used_at` on the user's unused codes, as a failed redemption does, so a
   later redemption gets the same `invalid_grant` as for any bad code, is written as
@@ -1289,12 +1290,13 @@ back in.
     in flight" above).
   *Accepted residual:* a code whose redemption (its one `UPDATE ... used_at`, its own transaction
   at `/oidc/token`, which takes no user row lock) committed before the burn is outside it: the
-  token endpoint still answers with its ID token, and a player session made from that answer
-  after the player handled the `sessions_revoked` event of the same lockdown survives, and so
-  does one with no event at all (the user's first player sign-in, when the lockdown read the grant
-  before the token endpoint set its `first_issued_at`). Neither the 60 seconds of the code nor
-  that event bounds it; it is the exposure of a player sign-in that completed just before the
-  lockdown. Tests: `backend/tests/test_auth_revert_player_codes.py` and
+  token endpoint still answers with its ID token. A player session made from that answer after
+  the player handled the `sessions_revoked` event of the same lockdown is not reached by
+  classbeat (whether the player ends it is its own rule, player ADR 0010 §8), nor is one for which
+  no event was queued at all: the user's first player sign-in, when the lockdown read the grant
+  before the token endpoint set `first_issued_at` (its own transaction, after the redemption's).
+  Neither the 60 seconds of the code nor that event bounds it; it is the exposure of a player
+  sign-in that completed just before the lockdown. Tests: `backend/tests/test_auth_revert_player_codes.py` and
   `backend/tests/test_oidc_advance_lock.py`.
 - **Activity.** `email_reverted` joins `activity.SHOWN_KINDS` (amendment of 2026-11-07), worded in
   every catalogue.
