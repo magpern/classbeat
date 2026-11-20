@@ -4,6 +4,8 @@
 
 Companion repository: [magpern/spotdown](https://github.com/magpern/spotdown), [docs/integration-plan.md](https://github.com/magpern/spotdown/blob/main/docs/integration-plan.md). Tracking issue: #1308.
 
+**Note 2026-11-20 (#1300):** ADR 0040 §5 supersedes two names in this plan: the lookups' query parameter is `cache_scope=` (was `scope=`) and the `rate_limited` field is `retry_after_s` (was `retry_after`). They are renamed below; no decision changed.
+
 ## Issues
 
 | Phase | Issue | Repo | Depends on | Owner blocker |
@@ -149,8 +151,8 @@ Its layers:
 - `DELETE /v2/scopes/{scope}`
 
 Two separate lookups, both limited to the caller's scope (§5):
-- **By source reference:** `GET /v2/analyses/lookup?source=<kind>:<ref>&scope=…` (for example `youtube:<video id>`). It returns the cached analysis id if there is one. Used for YouTube, where classbeat never has the bytes. `/v2/match` also returns this id for each candidate.
-- **By content:** `GET /v2/analyses/lookup?sha256=…&scope=…` when classbeat holds the bytes (SwedeBeat, the mix, an upload). It runs **before** any upload.
+- **By source reference:** `GET /v2/analyses/lookup?source=<kind>:<ref>&cache_scope=…` (for example `youtube:<video id>`). It returns the cached analysis id if there is one. Used for YouTube, where classbeat never has the bytes. `/v2/match` also returns this id for each candidate.
+- **By content:** `GET /v2/analyses/lookup?sha256=…&cache_scope=…` when classbeat holds the bytes (SwedeBeat, the mix, an upload). It runs **before** any upload.
 
 classbeat polls from its existing job steps: a checkpoint plus an extended lease, or the fenced hand-back with a backoff `available_at` (`jobs/transitions.py:hand_back`). No inbound endpoint is needed in classbeat.
 
@@ -241,7 +243,7 @@ Per-track statuses from spotdown, and how classbeat reacts:
 | `uncertain` | best candidate below the confident band | not used for timing. Keep the song with MOWL sections (Spotify), or replace it if `exact` timing is needed for that slot. |
 | `source_unavailable` | removed, region-blocked or age-gated | next alternate (≤2), then replacement |
 | `provider_error` | bot challenge, 5xx, network | 1 retry with backoff. If ≥50 % of a batch (and ≥3 tracks) fail this way, it is a **provider outage**: no swaps; the class falls back to MOWL sections (Spotify), or the user gets "Try again later" or "Swap anyway" (studio, as today) |
-| `rate_limited` | with `retry_after` | fenced requeue at `retry_after`; does not count as an attempt; the total wait is capped |
+| `rate_limited` | with `retry_after_s` | fenced requeue at `retry_after_s`; does not count as an attempt; the total wait is capped |
 | `processing_failed` | decode error, timeout, out of memory | deterministic, so no retry on the same audio (except 1 retry after a timeout); then an alternate, then the MOWL sections, then replacement |
 | `alignment_failed` | analysed, but the timeline is unusable | the timing class becomes `unusable`, as in §2 |
 | spotdown unreachable | – | the whole class uses today's paths (MOWL sections, or the local studio and mix analysis). spotdown is never a hard dependency. |
