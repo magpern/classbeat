@@ -199,28 +199,29 @@ classbeat's backend validations use only `measured` and `estimated` features abo
 The schema file itself is versioned in spotdown (spotdown#3); classbeat runs a contract test against
 it (§10).
 
-**Contract details live in spotdown's `docs/contract-v2.md`** (spotdown#3), within this ADR's
-decisions. This ADR confirms the draft's choices where it goes beyond the plan:
-- **Names.** `retry_after_s` (seconds) for `rate_limited` (§8; the plan wrote `retry_after`).
-  `cache_scope` is the one name for the caller's scope everywhere, the lookups' query parameter
-  included (the plan's `scope=`); `{scope}` in `DELETE /v2/scopes/{scope}` is that value.
-- **Match answer.** The envelope is `{results: [...]}`, one entry per requested track. Besides the
-  failure statuses of §8 it has the status `matched`, and below the `uncertain` band the band
-  `not_same` (below 0.6, §3). Each candidate carries the **cached analysis id plus a short summary**
-  when one exists (plan §1 says "summary", §3 says "id": both).
-- **Limits.** At most 50 tracks per `POST /v2/match`; an idempotency window of 24 h; an upload lives
-  1 h unless an analysis uses it.
-- **Alignment.** `alignment.offset_s` with the sign `reference_time = file_time + offset_s`.
-- **Routes and headers.** An added `GET /v2/analyses/{id}`; an `Idempotency-Key` header on the
-  writes; auth `Authorization: Bearer <service key>` (§10).
-- **Errors and jobs.** Errors are `{"error": {"code", "message"}}`, including `422 source_disabled`
-  (a source that is off, such as YouTube) and `409` for an `Idempotency-Key` reused with another
-  body. A job's status is one of `queued`, `running`, `done`, `failed`, with an `outcome` and a
-  `failure_kind` (the statuses of §8).
-- **Deletion.** `DELETE /v2/scopes/{scope}` removes that scope's private analyses, jobs and run
-  records; it does **not** remove global YouTube entries (§7's known conflict).
-
-Any other envelope or limit detail is the contract's and needs no amendment here.
+**Contract details: spotdown's `docs/contract-v2.md` (spotdown#3, final at spotdown#15) is the source
+of the exact shapes,** within this ADR's decisions; this ADR confirms its choices where it goes beyond
+the plan. `retry_after_s` (seconds) for `rate_limited` (§8; the plan wrote `retry_after`).
+`cache_scope` is the one name for the caller's scope, the lookups' query parameter included (the
+plan's `scope=`). It is required for `upload` and `url` sources, for uploads and for the sha256 lookup,
+and optional for YouTube-only requests; a missing one is `422 scope_required`. The match answer is
+`{results: [...]}`, one entry per track, with the status `matched` besides those of §8 and the band
+`not_same` below `uncertain` (below 0.6, §3); each candidate carries the cached analysis id plus a
+short summary (plan §1 "summary", §3 "id": both). Limits: at most 50 tracks per match, a 24 h
+idempotency window, a 1 h upload lifetime. `alignment.offset_s` has the sign
+`reference_time = file_time + offset_s`. Added: `GET /v2/analyses/{id}`, an `Idempotency-Key` header
+(`409` when reused with another body), auth `Authorization: Bearer <service key>` (§10), and the error
+envelope `{"error": {"code", "message"}}` with `422 source_disabled` for a source that is off. Jobs
+(job-v1) are `queued`, `running`, `done` or `failed`, with an `outcome` and a `failure_kind` of
+`decode_error`, `timeout`, `out_of_memory`, `analysis_error` or `alignment_failed`. A
+`processing_failed` job has no analysis. An `alignment_failed` job is `done` with a cached analysis on
+the file's own clock whose `provenance.alignment` result is failed; classbeat classes that track
+`unusable` (§3). The alignment record carries its result and the reference. A lookup (lookup-v1)
+answers 404 on a miss. `provenance.source.ref` follows its kind: none for `upload`, the 11-character
+video id for `youtube`, and for `url` the normalised https URL without its query, or `sha256:…`, as the
+contract defines. `DELETE /v2/scopes/{scope}` removes that scope's private analyses, jobs and run
+records, and **not** the global YouTube entries (§7's known conflict). Any other detail is the
+contract's and needs no amendment here.
 
 ### 6. Provenance, kept after the audio is deleted (plan §4a)
 
