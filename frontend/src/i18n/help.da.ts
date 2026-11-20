@@ -28,7 +28,7 @@ export const helpDa: Catalogue = {
     'En Spotify-forbindelse med dit eget Client ID og sangvalg i din plan. Tilgængeligt, når vi har aktiveret funktionen. Indtil da kan du stadig designe et hold til en playliste fra din MOWL-musik.',
   'help.design.saved.q': 'Hvad bliver gemt, og hvornår?',
   'help.design.saved.a':
-    'Assistenten foreslår kun. Når du godkender en sangliste, opretter vi en playliste med de sange i din Spotify og tilføjer den til din MOWL-musik. Vi beder om privat, men Spotify kan gøre den offentlig. Selve holdet kommer først på din MOWL-konto, privat, når du trykker på Gem i MOWL på holdet. Godkender du ikke en liste i tide, bliver der ikke skrevet noget til din Spotify.',
+    'Assistenten foreslår kun. Når du godkender en sangliste, opretter vi en playliste med de sange i din Spotify og tilføjer den til din MOWL-musik. Playlisten er offentlig, så MOWL kan finde den. Selve holdet kommer først på din MOWL-konto, privat, når du trykker på Gem i MOWL på holdet. Godkender du ikke en liste i tide, bliver der ikke skrevet noget til din Spotify.',
   'help.design.change.q': 'Kan jeg ændre et hold bagefter?',
   'help.design.change.a':
     'Ja. Beskriv, hvad der skal være anderledes, på holdets side, eller brug Skift sange til at skifte nogle af sangene ud. Hver ændring giver en ny version. Tidligere versioner bliver, og du kan gøre en af dem gældende med Brug denne version. Gem i MOWL igen for at opdatere holdet dér.',

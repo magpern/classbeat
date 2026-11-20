@@ -1,6 +1,6 @@
 """A class on the user's own Spotify playlist (roadmap Amendment 26, ADR 0008 amendment of
 2026-11-16): ``design_with_songs`` with ``source``. The playlist's tracks in their order become
-the ``song_list`` the user approves; phase 2 makes a **new** private playlist in that order. The
+the ``song_list`` the user approves; phase 2 makes a **new** public playlist in that order. The
 user's playlist is only read. Against the fake Spotify, the fake MOWL and ``FakeProvider``; no
 network, no real account."""
 
@@ -88,7 +88,7 @@ async def test_the_playlist_is_the_list_to_approve_with_no_model_no_pool_and_no_
     untouched(songenv, mine, entries)
 
 
-async def test_after_approve_a_new_private_playlist_in_class_order_is_the_class_music(
+async def test_after_approve_a_new_public_playlist_in_class_order_is_the_class_music(
     songenv: SongEnv,
 ) -> None:
     rider = await songenv.rider()
@@ -105,7 +105,7 @@ async def test_after_approve_a_new_private_playlist_in_class_order_is_the_class_
         "verified",
     )
     made = songenv.fake.playlists[final.playlist_id]
-    assert (made.public, made.collaborative, made.owner) == (False, False, USER_A)
+    assert (made.public, made.collaborative, made.owner) == (True, False, USER_A)  # Amendment 30
     assert made.entries == [f"spotify:track:{i}" for i in OWN]
     assert songenv.creates() == 1  # only the class's own playlist, no pool
     keys = sorted(o.idempotency_key for o in songenv.operations(rider.user_id) if o.class_id)

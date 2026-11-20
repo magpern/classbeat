@@ -112,7 +112,7 @@
   {
     "code": "job.playlist_mismatch",
     "params": {},
-    "english": "Spotify's playlist did not match the approved songs; nothing was designed. Create it again."
+    "english": "Spotify's playlist did not match the approved songs. Add it to your Spotify profile, then create it again."
   },
   {
     "code": "job.pool_too_small",

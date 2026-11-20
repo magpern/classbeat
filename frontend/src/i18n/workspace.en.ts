@@ -70,7 +70,7 @@ export const workspaceEn = {
   'cw.swap.label': 'Swap {title}',
   'cw.approve.region': 'Approve and save',
   'cw.approve.text':
-    'Approving saves a private workout to MOWL and creates a playlist in your Spotify in this order (we ask Spotify for private).',
+    'Approving saves a private workout to MOWL and creates a playlist in your Spotify in this order (a public playlist, so MOWL can find it).',
   'cw.approve.button': 'Approve and save',
   'cw.approve.hold': 'Approve waits until your message has been sent.',
   'cw.approve.checking': 'Checking for messages not sent yet…',

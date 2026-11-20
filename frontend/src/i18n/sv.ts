@@ -288,7 +288,7 @@ const sv: Catalogue = {
   'sentence.job.pool_missing': 'Din arbetsspellista saknades i Spotify; försöker igen av sig själv.',
   'sentence.job.pool_not_synced': 'MOWL har inte hunnit ikapp med arbetsspellistan; försök igen om en minut.',
   'sentence.job.playlist_mismatch':
-    'Spotifys spellista stämde inte med de godkända låtarna; inget utformades. Skapa den igen.',
+    'Spotifys spellista stämde inte med de godkända låtarna. Lägg till den på din Spotify-profil och skapa den igen.',
   'sentence.job.pool_too_small':
     'Det hittades inte tillräckligt många användbara låtar; prova en bredare stil eller epok.',
   'sentence.job.account_changed':
@@ -1169,7 +1169,7 @@ const sv: Catalogue = {
   'songs.failure.pool_not_synced.title': 'MOWL har inte hunnit ikapp ännu',
   'songs.failure.playlist_mismatch.title': 'Spotifys spellista stämde inte med de godkända låtarna',
   'songs.failure.playlist_mismatch.detail':
-    'Spotifys spellista stämde inte med de godkända låtarna; inget utformades. Skapa den igen.',
+    'Inget utformades. Välj Lägg till i profil på spellistan i Spotify och skapa den sedan igen.',
   'songs.failure.pool_too_small.title': 'Det hittades inte tillräckligt många användbara låtar',
   'songs.uncertain.title': 'Vi kunde inte bekräfta att spellistan skrevs',
   'songs.uncertain.text1':
@@ -1285,7 +1285,7 @@ const sv: Catalogue = {
   'songs.ended.pickAgain': 'Välj låtar igen',
   'songs.ended.startNew': 'Starta nytt pass',
   'songs.ended.backToClass': 'Tillbaka till passet',
-  'songs.approval.privacy': 'Spotify kan göra den offentlig; alla med länken kan öppna den.',
+  'songs.approval.privacy': 'Offentlig, så att MOWL hittar den; alla med länken kan öppna den.',
   'songs.approval.stopped': 'Låtarna stoppades, men vi kunde inte läsa passet. Tryck på Be om ändringar igen.',
   'songs.approval.cannotChange': 'Låtarna kan inte ändras längre, så inget startades. Välj låtar igen.',
   'songs.approval.loading': 'Laddar låtarna',
@@ -1663,6 +1663,8 @@ const sv: Catalogue = {
   'spot.disconnectYes': 'Ja, frånkoppla Spotify',
   'spot.disconnect': 'Koppla från Spotify',
   'spot.workingTitle': 'Arbetsspellista',
+  'spot.profileHint': 'Våra spellistor är offentliga så att MOWL hittar dem. Saknas en i MOWL, välj Lägg till i profil på den i Spotify.',
+  'spot.profileSetting': 'Eller slå på att nya spellistor läggs till på profilen i Spotifys inställningar.',
   'swed.err.invalid_credentials': 'Swedebeat godkände inte den e-postadressen och det lösenordet.',
   'swed.err.upstream_unavailable': 'Det gick inte att nå Swedebeat. Försök igen om några minuter.',
   'swed.err.app_key_unavailable': 'Inloggning hos Swedebeat är inte tillgänglig på den här servern.',
@@ -2407,7 +2409,7 @@ const sv: Catalogue = {
   'studio.out.spotify_playlist':
     'Spotify-spellista',
   'studio.out.spotify_playlist.desc':
-    'En ny spellista i ditt Spotify-konto, i den godkända ordningen. Vi ber om privat, men Spotify kan göra den offentlig.',
+    'En ny offentlig spellista i ditt Spotify-konto, i den godkända ordningen.',
   'studio.out.swedebeat_playlist':
     'SwedeBeat-spellista',
   'studio.out.swedebeat_playlist.desc':

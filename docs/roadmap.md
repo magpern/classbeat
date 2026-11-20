@@ -1,5 +1,43 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 30 (2026-11-19, owner decision: Spotify playlists are created public; issue #1287)
+
+The owner decided, after a live finding, that classbeat creates its Spotify playlists **public from the
+start** and puts them on the user's profile where the API allows (relayed by the Architect on
+2026-11-19; the owner confirms it on the PR). The finding: MOWL's Spotify import lists only a user's
+**public** playlists that are **on their Spotify profile**. A private playlist never shows in MOWL, so
+phase 2 ended `playlist_mismatch` after the pool sync wait.
+
+- **Supersedes the "Still asked for private" item of Amendment 27.** Every create of a working (pool)
+  or final playlist is one `POST /me/playlists` with `public: true` and `collaborative: false`
+  (`playlists/create_call.py`, through the library's own create helper). The read-back, the change-details call (`PUT /playlists/{id}`) and
+  `playlists/privacy.py` are removed. Nothing in classbeat changes a playlist's privacy after its
+  create, and an existing playlist (a pool made before, a user's own) keeps whatever it has.
+- **The owner check is unchanged** (Amendment 27): the id, the connected user as owner,
+  `collaborative` exactly `false`, `public` exactly a boolean.
+- **The profile.** Spotify's Web API documents `public` as the playlist's "public/private status (if it
+  should be added to the user's profile or not)" on both the create and the change-details call, and
+  has no other field or endpoint for "Add to profile" (checked against the Create Playlist, Change
+  Playlist Details and Working with Playlists pages on 2026-11-19). So `public: true` is all the API
+  offers; classbeat invents no other call. Because the Spotify apps can keep a public playlist off the
+  profile, the product tells the user what to do in Spotify (choose *Add to profile* on the playlist, or
+  turn on adding new playlists to the profile in Spotify's settings): on the Spotify account page under
+  the working playlist, in the `playlist_mismatch` sentence and on the song page's failure detail, in
+  English, Swedish and Danish.
+- **Scope.** A public create needs `playlist-modify-public` (asked for since Amendment 27). A
+  connection made before that lacks it, and its create is refused with 403: `failed` `forbidden`,
+  nothing created (a 403 does not say which scope is missing, so `scope_mismatch` is not guessed;
+  reconnecting grants it). `REQUIRED_SCOPES` is unchanged.
+- **Amends the AGENTS.md rule "Everything we create in a user's accounts is private"** for Spotify
+  playlists: they are public (on the profile, in search, and anyone with the link can open them; the
+  tracks and the class's name are visible). MOWL workouts stay private; Amendment 24 is unchanged.
+- **Consent.** The working-playlist consent said "We ask Spotify for a private playlist", which is no
+  longer true: the wording now says the playlist is public and can show on the profile and in search,
+  and `CONSENT_VERSION` is 2. A version-1 consent stands (it already said the playlist may be public
+  and anyone with its link can open it), so nobody is asked again; the Architect or the owner may
+  decide otherwise.
+- ADR 0008 §2 and ADR 0009 §1 and §9 carry the note.
+
 ## Amendment 29 (2026-11-17, owner decision: the composer flow; ADR 0038; issue #1184)
 
 The owner found the class flow bulky. They described the flow they want (quoted in #1184), approved a
@@ -58,7 +96,8 @@ The owner decided, after a live run in which Spotify made the new working playli
 `public: false` was sent: *"if creating private playlist is a problem, work with public, not that big
 of a deal"* (relayed by the Architect on 2026-11-17; the owner confirms it on the PR).
 
-- **Still asked for private.** Every create still sends `public: false` and `collaborative: false`.
+- **Still asked for private.** *(Superseded by Amendment 30, #1287: every create sends `public: true`;
+  nothing asks for private afterwards.)* Every create still sends `public: false` and `collaborative: false`.
   Right after a create, and only for the id that create itself returned, classbeat reads the playlist
   back; if it is not private it asks once more with Spotify's change-details call (`PUT
   /playlists/{id}` `{public: false, collaborative: false}`) and reads it back. If it stays public the
@@ -844,7 +883,7 @@ resources, never a name match. Each create/replace is an `external_operations` r
 partial failure (created but not filled, filled but not attached in MOWL) is visible and
 reconciled.
 
-**Privacy.** *(Since Amendment 27 the wording says a playlist is asked for private but Spotify may make it public; see ADR 0008 §2.)* All playlists are created with explicit `public: false` and
+**Privacy.** *(Since Amendment 30 a Spotify playlist classbeat creates is public from the start, so MOWL can list it; see ADR 0008 §2. Amendment 27 had it asked for private.)* All playlists are created with explicit `public: false` and
 `collaborative: false`; MOWL workouts private. Playlist URLs are never shown to or shared
 with other users. The privacy wording says what Spotify's setting means: a non-public
 playlist doesn't appear on the profile or in search, but anyone with its link can open it.

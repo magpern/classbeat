@@ -52,7 +52,7 @@ describe('the Songs for approval page', () => {
     expect(rows[0]).not.toHaveTextContent('New')
     expect(rows[1]).toHaveTextContent('New')
     expect(screen.getByTestId('expiry')).toHaveTextContent(/^Approve by /)
-    expect(screen.getByText(/anyone with its link can open it/)).toBeInTheDocument()
+    expect(screen.getByText(/Public so MOWL finds it; anyone with the link can open it/)).toBeInTheDocument()
     expect(screen.getByText(/1 song was left out because MOWL has no BPM/)).toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/spotify:|[A-Za-z0-9]{22}/)
   })

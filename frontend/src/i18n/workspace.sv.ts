@@ -70,7 +70,7 @@ export const workspaceSv: Catalogue = {
   'cw.swap.label': 'Byt {title}',
   'cw.approve.region': 'Godkänn och spara',
   'cw.approve.text':
-    'Godkännandet sparar ett privat träningspass i MOWL och skapar en spellista i ditt Spotify i den här ordningen (vi ber Spotify om privat).',
+    'Godkännandet sparar ett privat träningspass i MOWL och skapar en spellista i ditt Spotify i den här ordningen (en offentlig spellista, så att MOWL hittar den).',
   'cw.approve.button': 'Godkänn och spara',
   'cw.approve.hold': 'Godkännandet väntar tills ditt meddelande har skickats.',
   'cw.approve.checking': 'Kontrollerar meddelanden som inte skickats än…',

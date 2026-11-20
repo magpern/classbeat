@@ -38,12 +38,14 @@ PROVIDER: Final = "spotify"
 CALLBACK_PATH: Final = "/oauth/spotify/callback"
 ACCOUNT_PAGE: Final = "/account/spotify"
 # Section 9: the wording the user consents to, and its version (``spotify_pool.consent_version``).
-CONSENT_VERSION: Final = 1
+# Version 2 (roadmap Amendment 30, #1287): the playlist is created public; version 1 said classbeat
+# asked for private. A version-1 consent stands (it already said the playlist may be public).
+CONSENT_VERSION: Final = 2
 CONSENT_TEXT: Final = (
     "classbeat manages one working playlist in your Spotify account, named classbeat "
-    "working copy, to ask for song candidates and have MOWL analyse them. We ask Spotify for a "
-    "private playlist, but Spotify may make it public, and anyone with its link could then open "
-    "it. It is overwritten on each pick, and classbeat keeps using it either way."
+    "working copy, to ask for song candidates and have MOWL analyse them. It is public, so MOWL "
+    "can find it: it can show on your Spotify profile and in search, and anyone with its link can "
+    "open it. It is overwritten on each pick."
 )
 
 

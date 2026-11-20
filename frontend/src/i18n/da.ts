@@ -290,7 +290,7 @@ const da: Catalogue = {
   'sentence.job.pool_not_synced':
     'MOWL er ikke nået til at følge med arbejdsplaylisten; prøv igen om et minut.',
   'sentence.job.playlist_mismatch':
-    'Spotifys playliste passede ikke til de godkendte sange; intet blev designet. Opret den igen.',
+    'Spotifys playliste passede ikke til de godkendte sange. Føj den til din Spotify-profil, og opret den igen.',
   'sentence.job.pool_too_small': 'Der blev ikke fundet nok brugbare sange; prøv en bredere stil eller epoke.',
   'sentence.job.account_changed':
     'Din Spotify-konto er ikke den, som disse sange blev valgt til. Bed om nye sange.',
@@ -1158,7 +1158,7 @@ const da: Catalogue = {
   'songs.failure.pool_not_synced.title': 'MOWL er ikke nået med endnu',
   'songs.failure.playlist_mismatch.title': 'Spotifys playliste stemte ikke med de godkendte sange',
   'songs.failure.playlist_mismatch.detail':
-    'Spotifys playliste stemte ikke med de godkendte sange; intet blev designet. Opret den igen.',
+    'Intet blev designet. Vælg Føj til profil på playlisten i Spotify, og opret den så igen.',
   'songs.failure.pool_too_small.title': 'Der blev ikke fundet nok brugbare sange',
   'songs.uncertain.title': 'Vi kunne ikke bekræfte, at playlisten blev skrevet',
   'songs.uncertain.text1':
@@ -1274,7 +1274,7 @@ const da: Catalogue = {
   'songs.ended.pickAgain': 'Vælg sange igen',
   'songs.ended.startNew': 'Start nyt hold',
   'songs.ended.backToClass': 'Tilbage til holdet',
-  'songs.approval.privacy': 'Spotify kan gøre den offentlig; alle med linket kan åbne den.',
+  'songs.approval.privacy': 'Offentlig, så MOWL kan finde den; alle med linket kan åbne den.',
   'songs.approval.stopped': 'Sangene blev stoppet, men vi kunne ikke læse holdet. Tryk på Bed om ændringer igen.',
   'songs.approval.cannotChange': 'Disse sange kan ikke ændres mere, så intet blev startet. Vælg sange igen.',
   'songs.approval.loading': 'Indlæser sangene',
@@ -1651,6 +1651,8 @@ const da: Catalogue = {
   'spot.disconnectYes': 'Ja, afbryd Spotify',
   'spot.disconnect': 'Afbryd Spotify',
   'spot.workingTitle': 'Arbejdsplayliste',
+  'spot.profileHint': 'Vores playlister er offentlige, så MOWL kan finde dem. Mangler en i MOWL, så vælg Føj til profil på den i Spotify.',
+  'spot.profileSetting': 'Eller slå til i Spotifys indstillinger, at nye playlister føjes til din profil.',
   'swed.err.invalid_credentials': 'Swedebeat accepterede ikke den e-mailadresse og adgangskode.',
   'swed.err.upstream_unavailable': 'Swedebeat kunne ikke nås. Prøv igen om nogle minutter.',
   'swed.err.app_key_unavailable': 'Login hos Swedebeat er ikke tilgængeligt på denne server.',
@@ -2395,7 +2397,7 @@ const da: Catalogue = {
   'studio.out.spotify_playlist':
     'Spotify-playliste',
   'studio.out.spotify_playlist.desc':
-    'En ny playliste på din Spotify-konto, i den godkendte rækkefølge. Vi beder om privat, men Spotify kan gøre den offentlig.',
+    'En ny offentlig playliste på din Spotify-konto, i den godkendte rækkefølge.',
   'studio.out.swedebeat_playlist':
     'SwedeBeat-playliste',
   'studio.out.swedebeat_playlist.desc':

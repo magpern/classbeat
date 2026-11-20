@@ -210,10 +210,11 @@ a release and still needs the owner's authorization.
     gateway; live checks are the owner's.
 - Tokens never go to a model. Model output is a proposal; the backend authorizes every write
   against the authenticated user (§2).
-- Everything we create in a user's accounts is private: playlists `public: false`,
-  `collaborative: false`; MOWL workouts private. The one exception (roadmap Amendment 24, ADR 0036 §7):
-  a SwedeBeat playlist or mix is published only when the user chose that output for that class on the
-  consent screen.
+- Everything we create in a user's accounts is private: MOWL workouts private; playlists
+  `collaborative: false`. Two exceptions: a **Spotify playlist** classbeat creates is `public: true`
+  from the start, because MOWL's Spotify import lists only public playlists on the user's profile
+  (roadmap Amendment 30, ADR 0008 §2); and a SwedeBeat playlist or mix is published only when the user
+  chose that output for that class on the consent screen (roadmap Amendment 24, ADR 0036 §7).
 - Tests and CI never touch the network or real accounts: they use fakes for MOWL, Spotify,
   Swedebeat and model APIs.
   The backend test suite enforces it: an autouse fixture (`tests/netguard.py`) makes every

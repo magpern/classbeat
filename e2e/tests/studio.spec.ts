@@ -118,7 +118,7 @@ test('a studio class from the description to its outputs, with no MOWL connectio
   ).toBe('spotify_playlist:done,swedebeat_mix:done,swedebeat_playlist:done')
   const finals = fakePlaylists().filter((p) => p.name === 'Studio e2e climb')
   expect(finals).toHaveLength(1)
-  expect(finals[0]!.public).toBe(false)
+  expect(finals[0]!.public).toBe(true) // roadmap Amendment 30
   const writes = gatewayRequests().filter((r) => r.method === 'POST' && r.path.startsWith('/playlists'))
   expect(writes.map((r) => r.path.replace(/\/playlists\/[^/]+\/publish$/, '/playlists/{id}/publish')).sort()).toEqual([
     '/playlists',
@@ -134,11 +134,10 @@ test('a studio class from the description to its outputs, with no MOWL connectio
 test('a working playlist that did not sync is shown, and Sync again writes it', async ({ page }) => {
   const owner = await newStudioUser(page, 'studio-sync')
   catalogueWithout()
-  // The replace's owner check of the new working playlist is refused: nothing is written. The fake
-  // has no "skip the first n" option and the same path is read twice, in this order: the best-effort
-  // privacy read right after the create (privacy.ensure_private, #1156; a refused read is ignored)
-  // and then the replace's owner check. So two refusals, one per read, leave the owner check refused.
-  spotifyControl('POST', 'inject?kind=status&status=403&method=GET&times=2&path=' + encodeURIComponent('/v1/playlists/[0-9A-Za-z]{22}'))
+  // The replace's owner check of the new working playlist is refused: nothing is written. It is the
+  // first read of that path (the create is public from the start and read back for nothing, roadmap
+  // Amendment 30), so one refusal leaves the owner check refused and Sync again then writes it.
+  spotifyControl('POST', 'inject?kind=status&status=403&method=GET&times=1&path=' + encodeURIComponent('/v1/playlists/[0-9A-Za-z]{22}'))
   const pickId = await startStudioPick(page, owner, 'Studio e2e sync')
   await untilJob(page, pickId, 'waiting_for_approval') // the pick still waits for its approval
   await page.goto(`/jobs/${pickId}`)

@@ -2,7 +2,7 @@
 replace, the final playlist's create and fill, their outcomes under failure injection at every
 request, and the owner check that sends no write to a playlist that is not the user's own, or is
 collaborative (a public one is accepted since roadmap Amendment 27,
-``test_playlists_private_on_create``). Fakes only (``spotifycore``): no network, no real account.
+``test_playlists_public_on_create``). Fakes only (``spotifycore``): no network, no real account.
 
 Criteria of #178 covered here: the failure-injection matrix (refuse before send, drop after send,
 answer without id, partial write; read-back mismatch), "a write to a playlist that is
@@ -49,7 +49,7 @@ async def test_a_pool_write_creates_once_then_replaces_by_id_and_reads_back(
     assert bytes(pool.last_hash) == common.ids_hash(MANY)
     assert pool.last_written_at is not None
     playlist = penv.fake.playlists[written.playlist_id]
-    assert (playlist.owner, playlist.public, playlist.collaborative) == ("rider-one", False, False)
+    assert (playlist.owner, playlist.public, playlist.collaborative) == ("rider-one", True, False)
     assert playlist.name == POOL_NAME
     assert penv.entries(written.playlist_id) == [f"spotify:track:{t}" for t in MANY]
     create, replace = penv.operations(owner)
@@ -66,11 +66,10 @@ async def test_a_pool_write_creates_once_then_replaces_by_id_and_reads_back(
     assert replace.request_context["count"] == 120
     assert replace.request_context["bound_seconds"] == 30 * (3 + 2 * 2 + 3)
     assert replace.result["count"] == 120
-    # one create, its read-back (#1155: private, so no change), the owner check, a PUT of 100,
+    # one create (public, Amendment 30: no privacy read-back), the owner check, a PUT of 100,
     # a POST of 20, three pages read back
     assert [(s.method, s.path.rsplit("/", 1)[-1]) for s in penv.api()] == [
-        ("POST", "playlists"), ("GET", written.playlist_id), ("GET", written.playlist_id),
-        ("PUT", "items"),
+        ("POST", "playlists"), ("GET", written.playlist_id), ("PUT", "items"),
         ("POST", "items"), ("GET", "items"), ("GET", "items"), ("GET", "items"),
     ]  # fmt: skip
     assert all(s.token_user == "rider-one" for s in penv.api())
@@ -444,7 +443,7 @@ async def test_a_final_fill_dropped_after_the_put_is_reconciled_from_the_read(
     assert row.state == "verified"
 
 
-# --- the owner check: no write request to a playlist that is not the user's private one ----------
+# --- the owner check: no write request to a playlist that is not the user's own one ---------------
 
 
 def foreign_playlist(penv: PlayEnv, *, visible: bool) -> str:

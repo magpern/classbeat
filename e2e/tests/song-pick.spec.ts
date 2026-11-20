@@ -81,13 +81,13 @@ function mowlTitles(playlist: FakePlaylist): string[] {
   return view.tracks.map((t) => t.Title)
 }
 
-test('a pick, one Approve, and a private playlist of exactly the approved songs in order', async ({ page }) => {
+test('a pick, one Approve, and a public playlist of exactly the approved songs in order', async ({ page }) => {
   const id = await waitingPick(page, 'pick-a1', 'E2E picked ride')
 
   // Phase 1 wrote only the working playlist (private, the user's own, 14 candidates); no final one.
   const [pool, ...none] = fakePlaylists()
   expect(none).toEqual([])
-  expect(pool).toMatchObject({ name: 'classbeat working copy', owner: USER_A, public: false, collaborative: false })
+  expect(pool).toMatchObject({ name: 'classbeat working copy', owner: USER_A, public: true, collaborative: false })
   expect(pool!.entries).toHaveLength(14)
   expect(finalPlaylists()).toEqual([])
 
@@ -96,7 +96,7 @@ test('a pick, one Approve, and a private playlist of exactly the approved songs 
   const titles = await listedTitles(page)
   expect(titles).toHaveLength(8)
   await expect(page.getByText(/8 songs, \d+:\d+ in total\. You asked for 30:00\./)).toBeVisible()
-  await expect(page.getByText(/Spotify may make it public; anyone with its link can open it\./)).toBeVisible()
+  await expect(page.getByText(/Public so MOWL finds it; anyone with the link can open it\./)).toBeVisible()
   await expect(page.getByTestId('expiry')).toContainText('Approve by')
   expect(await page.getByRole('main').innerText()).not.toMatch(/FakeTrack|FakeList|spotify:/)
   const writesBefore = spotifyWrites().length
@@ -112,7 +112,7 @@ test('a pick, one Approve, and a private playlist of exactly the approved songs 
   // the approved order, and MOWL (which follows the playlist) lists the same titles.
   const [final] = finalPlaylists()
   expect(finalPlaylists()).toHaveLength(1)
-  expect(final).toMatchObject({ name: 'E2E picked ride', owner: USER_A, public: false, collaborative: false })
+  expect(final).toMatchObject({ name: 'E2E picked ride', owner: USER_A, public: true, collaborative: false })
   expect(mowlTitles(final!)).toEqual(titles)
   expect(final!.entries).toHaveLength(8)
   expect(new Set(final!.entries).size).toBe(8)
@@ -268,7 +268,7 @@ test('a playlist that does not match the approved songs fails the job, and Creat
   await page.getByRole('button', { name: 'Approve songs' }).click()
   await untilState(page, id, 'failed')
   expect((await getJob(page, id)).error_category).toBe('playlist_mismatch')
-  await expect(page.getByText('Spotify’s playlist did not match the approved songs; nothing was designed. Create it again.')).toBeVisible()
+  await expect(page.getByText('Nothing was designed. In Spotify, choose Add to profile on the playlist, then create it again.')).toBeVisible()
   const [partial] = finalPlaylists()
   expect(partial!.entries).toHaveLength(3) // what Spotify kept; it is left alone, never reused
 
@@ -281,7 +281,7 @@ test('a playlist that does not match the approved songs fails the job, and Creat
   const made = finalPlaylists()
   expect(made).toHaveLength(2)
   const resumed = made.find((p) => p.id !== partial!.id)!
-  expect(resumed).toMatchObject({ owner: USER_A, public: false, collaborative: false })
+  expect(resumed).toMatchObject({ owner: USER_A, public: true, collaborative: false })
   expect(mowlTitles(resumed)).toEqual(titles)
 })
 
@@ -324,7 +324,7 @@ test('Change songs: one song replaced, a new playlist after one Approve, the old
   await untilState(page, job, 'completed')
   const [oldNow, changed] = finalPlaylists()
   expect(oldNow!.entries).toEqual(firstEntries) // the earlier playlist is history
-  expect(changed).toMatchObject({ owner: USER_A, public: false, collaborative: false })
+  expect(changed).toMatchObject({ owner: USER_A, public: true, collaborative: false })
   expect(mowlTitles(changed!)).toEqual(titles)
   await page.getByRole('link', { name: 'Open the class' }).click()
   await expect(page.getByTestId('playlist')).toContainText('E2E changed ride')
@@ -406,9 +406,9 @@ test('two users on different Client IDs pick at once and never mix', async ({ br
     for (const r of requests.filter((r) => r.token_user !== null)) {
       expect(r.token_app).toBe(r.token_user === USER_A ? CLIENT_A : CLIENT_B)
     }
-    // Each user's playlist is private and holds eight songs MOWL lists for it.
+    // Each user's playlist is public (roadmap Amendment 30) and holds eight songs MOWL lists for it.
     for (const p of owned) {
-      expect(p).toMatchObject({ public: false, collaborative: false })
+      expect(p).toMatchObject({ public: true, collaborative: false })
       expect(mowlTitles(p)).toHaveLength(8)
     }
   } finally {

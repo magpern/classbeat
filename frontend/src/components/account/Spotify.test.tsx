@@ -13,7 +13,7 @@ const ACCOUNT_ROUTES = {
 }
 // The wording of ADR 0009 section 9, as the server sends it.
 const CONSENT_TEXT =
-  'classbeat manages one working playlist in your Spotify account, named classbeat working copy, to ask for song candidates and have MOWL analyse them. We ask Spotify for a private playlist, but Spotify may make it public, and anyone with its link could then open it. It is overwritten on each pick, and classbeat keeps using it either way.'
+  'classbeat manages one working playlist in your Spotify account, named classbeat working copy, to ask for song candidates and have MOWL analyse them. It is public, so MOWL can find it: it can show on your Spotify profile and in search, and anyone with its link can open it. It is overwritten on each pick.'
 const CALLBACK = 'http://127.0.0.1:8000/oauth/spotify/callback'
 const GOOD_ID = '0123456789abcdef0123456789ABCDEF'
 const AUTHORIZE = 'https://accounts.example.test/authorize?state=opaque'
@@ -433,7 +433,7 @@ describe('the pool consent', () => {
     let given = false
     const api = spotifyApi(status({ status: 'connected' }), {
       'GET /api/connections/spotify': () =>
-        status({ status: 'connected', pool_consent: given, consent_version: given ? 1 : null }),
+        status({ status: 'connected', pool_consent: given, consent_version: given ? 2 : null }),
       'PUT /api/connections/spotify/pool-consent': () => {
         given = true
         return new Response(null, { status: 204 })
@@ -442,7 +442,7 @@ describe('the pool consent', () => {
     const sp = await openSpotify('/account/spotify')
     const quote = await sp.findByTestId('spotify-consent-text')
     expect(quote.textContent).toBe(CONSENT_TEXT)
-    expect(quote).toHaveTextContent('anyone with its link could then open it')
+    expect(quote).toHaveTextContent('anyone with its link can open it')
     expect(sp.getByTestId('spotify-consent-state')).toHaveTextContent('not allowed it yet')
     expect(api.to('PUT', '/api/connections/spotify/pool-consent')).toHaveLength(0)
     fireEvent.click(sp.getByRole('switch', { name: 'Allow the working playlist' }))

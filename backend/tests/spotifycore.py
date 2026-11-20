@@ -24,7 +24,8 @@ What it encodes, from ADR 0009 (assumptions to verify at the first live run, ADR
   without (no ``refresh_token`` in the answer). A ``client_secret``, in the form or as Basic
   ``Authorization``, is recorded and refused: nothing in classbeat may send one.
 - **API**: ``GET /v1/me``; ``GET /v1/search`` over an invented catalogue (``limit`` at most 10);
-  ``POST /v1/me/playlists`` (``public`` defaults to true when omitted, as Spotify's does);
+  ``POST /v1/me/playlists`` (``public`` defaults to true when omitted, as Spotify's does; a
+  public create needs ``playlist-modify-public`` in the grant, else 403);
   ``GET /v1/playlists/{id}`` (``fields`` is recorded, not applied: readers ignore extra keys);
   ``PUT /v1/playlists/{id}`` (change details: ``public``, ``collaborative``, ``name``,
   ``description``; the owner only, 200 with an empty body). ``create_public`` makes every create
@@ -681,7 +682,7 @@ class FakeSpotify:
             return self._search(seen.query)
         if path == "/v1/me/playlists":
             if method == "POST":
-                return self._create(user, body)
+                return self._create(user, body, grant.scope.split())
             if method == "GET":
                 return self._my_playlists(user, seen.query, page_kind)
         match = re.fullmatch(r"/v1/playlists/([^/]+)(/items)?", path)
@@ -793,7 +794,7 @@ class FakeSpotify:
         self.playlists[playlist.id] = playlist
         return playlist
 
-    def _create(self, user: str, body: bytes) -> Answer:
+    def _create(self, user: str, body: bytes, scopes: list[str]) -> Answer:
         try:
             data = json.loads(body)
         except ValueError:
@@ -807,6 +808,8 @@ class FakeSpotify:
             return _error(400, "Invalid boolean")
         if collaborative and public:
             return _error(400, "Collaborative playlists cannot be public")
+        if public and MODIFY_PUBLIC not in scopes:
+            return _error(403, "Insufficient client scope")  # a public create, as Spotify's
         description = data.get("description", "")
         playlist = self._new_playlist(
             user,
