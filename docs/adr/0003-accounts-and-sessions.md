@@ -1229,19 +1229,32 @@ back in.
     rechecking it at completion: it is smaller, needs no change to the token rows, and closes the
     window before a token exists rather than after one was mailed;
   - the player sign-in code step (`oidc/advance.py`, the authorize continue and the consent POST)
-    locks the user and rechecks that its session is still alive before it inserts a code (#1294):
-    a revert, reset, password change or sign out everywhere that committed while it waited ended
-    that session and burnt the codes, so it answers as for a signed-out caller (the sign-in
-    redirect at continue, `request_expired` at consent) and inserts nothing; one that holds the
-    lock first commits its code, which the waiting path burns.
+    locks the user and rechecks that its session is still alive before it inserts a code (#1294,
+    #1312). It does not matter which path ended the session: any end that commits while the step
+    waits for the lock (a revert, a reset, a password change, a sign out everywhere, a single
+    sign out, an email confirmation from another session, a TOTP change or removal, an admin
+    disable, an account delete) gets the signed-out answer and inserts nothing. That is the
+    sign-in redirect at continue and `400 request_expired` at consent, the answer the same
+    request gets a moment later once the session is gone. It holds for the paths that burn no
+    codes too (see "Still not burnt" below): there the recheck is the only thing that stops a
+    code being issued for a session that ended first. A deleted user is the same case
+    (`lock_user` finds no row, and the delete took the sessions): at continue it no longer gets
+    the `access_denied` redirect to the client, and at consent no longer
+    `200 {"redirect": ...error=access_denied}`, but `request_expired`. The request row is not
+    taken and no refusal reaches the client. A step that holds the lock first commits its code,
+    which a waiting path that burns codes then burns;
   Tests: `backend/tests/test_auth_email_revert_races.py` (both orders of each race, parked, not
   timed) and `backend/tests/test_auth_revert_lock_order.py` (#1292: the revert against the email
   confirmation and against the reset completion, each in both orders, parametrized; it fails for
   the two mutations "the revert consumes its token before locking" and "the confirmation takes no
   lock", which brought the deadlock and its 500 back and passed the first tests) and
   `backend/tests/test_oidc_advance_lock.py` (#1294: the code step against the revert, through
-  continue and consent, and against the reset completion, each in both orders; it fails for "the
-  code step takes no user lock" and for "it does not recheck the session").
+  continue and consent, and against the reset completion, each in both orders; #1312: against an
+  admin disable and a delete of the user, through both, while it waits; it fails for "the code
+  step takes no user lock", for "it does not recheck the session" and for "continue does not
+  handle `SessionGone`"). The password change and the sign out everywhere are not raced against
+  the code step: they take the same lock first, so they are covered by construction, and only
+  their burn is tested.
 - **A → B → C and the first revert link (decided in #1292: it stays stale).** Confirming the
   second change deletes A's token, so the notice to A can no longer revert. The alternative,
   keeping A's token and moving its `email_at_issue` to each new address, was rejected:
