@@ -1,8 +1,8 @@
 # ADR 0040: spotdown as classbeat's music-analysis service (#1300)
 
-Status: Proposed. Docs only: this ADR changes no code, setting, compose file or runtime behaviour.
-**Every phase it describes (SD-P0 to SD-P7, and the SD-P2+ enhancements) is PLANNED / NOT
-AUTHORIZED FOR IMPLEMENTATION** until the owner authorizes it explicitly (roadmap
+Status: Accepted. This ADR itself changes no code, setting, compose file or runtime behaviour.
+**Every phase it describes (SD-P0 to SD-P7, and the SD-P2+ enhancements) was authorized by the owner
+on 2026-11-20**, except the owner decisions #1296 to #1299 and magpern/spotdown#1; no deploy, live-account test or real YouTube, SwedeBeat, MOWL or Spotify call by any agent (roadmap
 [Amendment 31](../roadmap.md)). Its amendment to ADR 0010 and ADR 0021 §2 (§12 below) takes effect
 only on the owner's acceptance of #1296.
 
@@ -508,8 +508,8 @@ default switches); #1299 (retiring the local and MOWL-based paths); spotdown#1 (
 
 ## Consequences
 
-- Nothing changes in code, settings, compose or deployment with this ADR. Every phase waits for the
-  owner's explicit authorization (roadmap Amendment 31).
+- Nothing changes in code, settings, compose or deployment with this ADR. The phases were authorized
+  on 2026-11-20 (roadmap Amendment 31; the amendment below), except the owner decisions #1296 to #1299.
 - The boundary is fixed before code: spotdown gets bytes or public metadata and an opaque scope,
   never a token, a signed URL or a password, and classbeat alone decides timing classes, fitness and
   what the model may do with a track.
@@ -531,7 +531,31 @@ default switches); #1299 (retiring the local and MOWL-based paths); spotdown#1 (
   every stored analysis, partial replacement leaving the other tracks unchanged, and e2e against the
   fake; the §9 corpus and workout comparison before any default switch or removal.
 
+### Amendment (2026-11-20): authorization and spotdown quality-gate thresholds as built (extends §9)
+
+The phases were authorized on 2026-11-20 (status.md). spotdown's `quality_gates` file is **version 4**,
+its analyzer document **version 6.3**, its core analyzer **version 6**. The thresholds below are
+**regression checks on the committed corpus, not held-out evidence**: every confidence cap stays
+(a heuristic, 0.4) until held-out evidence exists (magpern/spotdown#20).
+
+| Claim | Gate | Cap |
+|---|---|---|
+| Labels | `label_accuracy` >= 0.70; `label_overconfidence` <= 0.10 | 0.4, heuristic |
+| Phrases | `phrase_f` >= 0.70 (`phrase_tol_beats` 2); `phrase_overconfidence` <= 0.03; a 3/4 meter claim yields no phrases | 0.4, heuristic |
+| Downbeats and meter | `downbeat_f_4_4` >= 0.85; `downbeat_f_3_4` >= 0.75; `meter_accuracy_min` >= 0.70; `downbeat_overconfidence` <= 0.03; no meter claim without accent evidence | 0.4, heuristic |
+
+Notes for operators and the next phases:
+
+- **(a) Access log.** spotdown's query-string filter (`app/service/access_log.py`) must be re-checked
+  if the deployment uses `--log-config` or another server than the one it was written for.
+- **(b) Retention (owner's decision pending, §7).** Global match records and alignments are bounded
+  by `GLOBAL_REFERENCE_TTL_S` (default 3 days). Global analyses, links and `provenance.source.match`
+  are still unbounded.
+- **(c) Path (b) beat equivalence** has no consumer in policy v1: `spotdown_map_policy` maps only
+  `played_recording`.
+- **(d) Shadow mode** (`CLASSBEAT_SPOTDOWN_SHADOW`, off by default) and its open points are in
+  [developer-commands.md](../developer-commands.md) ("spotdown shadow mode for studio tracks").
+
 ## Status
 
-Proposed. Accepted when this PR merges after an Opus `PASS`. §12 takes effect only on the owner's
-acceptance of #1296.
+Accepted. §12 takes effect only on the owner's acceptance of #1296.
