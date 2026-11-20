@@ -17,7 +17,11 @@ rule, section 7). Shadow mode (SD-P4 part 3) uses ``timing_class_policy`` (path 
 ``spotdown_map_policy.track_map`` and ``provenance_model`` through ``shadow_record_model``, with
 ``shadow_compare_calc`` (the metrics), ``shadow_policy`` (budget, pace, outcomes), ``shadow_config``
 and ``scope_key``; the side effects are ``classbeat.design.track_shadow`` and ``scope_outbox`` (the
-account deletion's ``DELETE /v2/scopes``).
+account deletion's ``DELETE /v2/scopes``). Studio tracks via spotdown (SD-P5, #1302):
+``studio_map_model`` (the map and provenance, always through ``timing_class_policy`` and
+``spotdown_map_policy``), ``studio_policy`` (the failure reactions and the budget),
+``studio_owners_policy`` and ``studio_tracks_config`` (off by default, an allowlist); the side
+effect is ``classbeat.design.track_spotdown``.
 Side effects: ``opener`` (the seam that opens a client of ``classbeat.egress_spotdown``),
 ``exchange`` (one capped request) and ``client`` (the calls of the contract, nothing else).
 Nothing here calls spotdown unless the setting is set: unset, ``classbeat.egress_spotdown``

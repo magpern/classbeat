@@ -84,7 +84,9 @@ def test_the_new_tables_meet_the_guards(admin: Connection) -> None:
         assert forced is True, table
         assert table in NOT_EXPORTED  # a count (maps) or nothing (downloads), never the rows
     assert RETENTION["swedebeat_track_maps"].deleted_with == {"account", "swedebeat_connection"}
-    assert RETENTION["swedebeat_track_maps"].columns == {"reference", "sha256", "map"}
+    # ADR 0040 section 6 (#1302, migration 0064): a spotdown row's provenance; the analyser code.
+    assert RETENTION["swedebeat_track_maps"].columns == {"reference", "sha256", "map", "provenance"}
+    assert RETENTION["swedebeat_track_maps"].reviewed == {"analyser"}
     assert RETENTION["swedebeat_track_downloads"].deleted_with == {"account"}
 
 

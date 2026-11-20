@@ -39,9 +39,10 @@ from classbeat.egress_spotdown import install_spotdown
 from classbeat.log import configure_logging
 from classbeat.player.delivery import run_player_delivery
 from classbeat.playlists.runtime import playlists_runtime
-from classbeat.spotdown import shadow_config
+from classbeat.spotdown import shadow_config, studio_tracks_config
 from classbeat.spotdown.scope_key import scope_key
 from classbeat.spotdown.sources_policy import parse_sources
+from classbeat.spotdown.studio_owners_policy import parse_owners
 from classbeat.swedebeat_studio import config as studio_config
 from classbeat.swedebeat_studio import (  # noqa: F401 - each registers its kind on import
     design_kind,  # studio_design (SR C5)
@@ -103,6 +104,16 @@ async def _run(settings: Settings, signer: EventSigner | None = None) -> None:
     shadow_config.configure(
         shadow_config.ShadowConfig(
             settings.spotdown_shadow, parse_sources(settings.spotdown_sources), scope_key(settings)
+        )
+    )
+    # Studio tracks analysed by spotdown (ADR 0040 section 9, rollout step 2): off unless set,
+    # only for the allowlisted owners, with the local analysis as the fallback.
+    studio_tracks_config.configure(
+        studio_tracks_config.TracksConfig(
+            settings.spotdown_studio,
+            parse_owners(settings.spotdown_studio_owners),
+            parse_sources(settings.spotdown_sources),
+            scope_key(settings),
         )
     )
     stop = asyncio.Event()

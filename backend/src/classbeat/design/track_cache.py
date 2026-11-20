@@ -12,13 +12,20 @@
   the SHA-256 of the analysed bytes, then the user's rows past ``MAP_TTL_DAYS`` and all but the
   newest ``MAPS_PER_USER`` dropped, as ``swedebeat_mix_maps`` does. The last store of a run frees
   its mix-analysis slot (#574).
+- **The analyser** (ADR 0040 section 6, #1302): a row is ``local`` (``mowl.music.analyze_track``)
+  or ``spotdown`` (spotdown's analysis of the same bytes, with its ``provenance`` record). A
+  track has one current row, whichever analysed it. ``cached`` and ``cached_by_sha256`` take the
+  analysers the caller accepts (``track_analysis``: only ``local`` unless spotdown is the source
+  for the owner, and a ``spotdown`` row only while ``accept`` says its provenance is current);
+  without them every row is read, as the class's later steps need the map it was designed on.
 
 Every statement filters on ``owner_id`` itself as well as through row security. Nothing here logs.
 """
 
 import json
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Final, cast
+from typing import Any, Final, Literal, cast
 from uuid import UUID
 
 from mowl import track
@@ -32,16 +39,28 @@ from classbeat.jobs import JobFailure, JobRun
 MAP_TTL_DAYS: Final = 30
 MAPS_PER_USER: Final = 200  # five classes of 40 tracks
 
+Analyser = Literal["local", "spotdown"]
+ANALYSERS: Final[frozenset[str]] = frozenset({"local", "spotdown"})
+Accept = Callable[[str, object], bool]  # (analyser, provenance) -> whether the row is a hit
+
+_COLUMNS = "reference, sha256, map, analyser, provenance FROM swedebeat_track_maps "
+_FRESH = "AND created_at > now() - make_interval(days => :days)"
 _CACHED = text(
-    "SELECT reference, sha256, map FROM swedebeat_track_maps "
-    "WHERE owner_id = :owner_id AND analyser_version = :version AND reference IN :references "
-    "AND created_at > now() - make_interval(days => :days)"
+    f"SELECT {_COLUMNS}WHERE owner_id = :owner_id AND analyser_version = :version "
+    f"AND reference IN :references {_FRESH}"
 ).bindparams(bindparam("references", expanding=True))
+_BY_SHA256 = text(
+    f"SELECT {_COLUMNS}WHERE owner_id = :owner_id AND analyser_version = :version "
+    f"AND sha256 = :sha256 {_FRESH} ORDER BY (analyser = 'spotdown') DESC, created_at DESC, id"
+)
 _UPSERT = text(
-    "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map) "
-    "VALUES (:owner_id, :reference, :version, :sha256, CAST(:map AS jsonb)) "
+    "INSERT INTO swedebeat_track_maps "
+    "(owner_id, reference, analyser_version, sha256, map, analyser, provenance) "
+    "VALUES (:owner_id, :reference, :version, :sha256, CAST(:map AS jsonb), :analyser, "
+    "CAST(:provenance AS jsonb)) "
     "ON CONFLICT (owner_id, reference, analyser_version) DO UPDATE SET "
-    "sha256 = EXCLUDED.sha256, map = EXCLUDED.map, created_at = now()"
+    "sha256 = EXCLUDED.sha256, map = EXCLUDED.map, analyser = EXCLUDED.analyser, "
+    "provenance = EXCLUDED.provenance, created_at = now()"
 )
 _EXPIRE = text(
     "DELETE FROM swedebeat_track_maps "
@@ -57,17 +76,41 @@ _TRIM = text(
 @dataclass(frozen=True, slots=True)
 class TrackMap:
     """The user's analysis of one catalogue track: the library's map, the hex SHA-256 of the
-    analysed bytes, and whether it came from the cache (no download)."""
+    analysed bytes, whether it came from the cache (no download), what analysed it and, for
+    spotdown, its provenance record."""
 
     reference: str
     sha256: str
     music_map: dict[str, Any]
     cached: bool
+    analyser: Analyser = "local"
+    provenance: Mapping[str, object] | None = None
 
 
-async def cached_in(db: AsyncSession, owner_id: UUID, references: list[str]) -> dict[str, TrackMap]:
-    """The user's current analyses of ``references`` (the hits only), in the caller's
-    transaction: a page's read (the timeline), which holds no connection and writes nothing."""
+def _hit(row: Any, accept: Accept | None, reference: str | None = None) -> TrackMap | None:
+    stored: object = row.map
+    analyser, provenance = str(row.analyser), row.provenance
+    if analyser not in ANALYSERS or not valid_track_map(stored, track.TRACK_VERSION):
+        return None  # not what this version reads: analysed again
+    if accept is not None and not accept(analyser, provenance):
+        return None
+    music_map = cast(dict[str, Any], stored)
+    return TrackMap(
+        reference or str(row.reference),
+        bytes(row.sha256).hex(),
+        music_map,
+        cached=True,
+        analyser=cast(Analyser, analyser),
+        provenance=cast(Mapping[str, object], provenance) if provenance is not None else None,
+    )
+
+
+async def cached_in(
+    db: AsyncSession, owner_id: UUID, references: list[str], accept: Accept | None = None
+) -> dict[str, TrackMap]:
+    """The user's current analyses of ``references`` (the hits only, those ``accept`` takes), in
+    the caller's transaction: a page's read (the timeline), which holds no connection and writes
+    nothing."""
     params = {
         "owner_id": owner_id,
         "version": track.TRACK_VERSION,
@@ -77,24 +120,40 @@ async def cached_in(db: AsyncSession, owner_id: UUID, references: list[str]) -> 
     rows = (await db.execute(_CACHED, params)).all() if references else []
     hits: dict[str, TrackMap] = {}
     for row in rows:
-        stored: object = row.map
-        if not valid_track_map(stored, track.TRACK_VERSION):
-            continue  # not what this version reads: analysed again
-        music_map = cast(dict[str, Any], stored)
-        hits[str(row.reference)] = TrackMap(
-            str(row.reference), bytes(row.sha256).hex(), music_map, cached=True
-        )
+        if (hit := _hit(row, accept)) is not None:
+            hits[hit.reference] = hit
     return hits
 
 
 async def cached(
-    run: JobRun, connection: OpenConnection, references: list[str]
+    run: JobRun, connection: OpenConnection, references: list[str], accept: Accept | None = None
 ) -> dict[str, TrackMap]:
     """The user's current analyses of ``references`` (the hits only), with the connection held."""
     async with run.fenced() as fs:
         if not await hold(fs.db, run.ctx, connection):
             raise JobFailure("not_connected")
-        return await cached_in(fs.db, run.lease.owner_id, references)
+        return await cached_in(fs.db, run.lease.owner_id, references, accept)
+
+
+async def cached_by_sha256(
+    run: JobRun, connection: OpenConnection, reference: str, sha256: str, accept: Accept
+) -> TrackMap | None:
+    """The user's current analysis of the same bytes under any reference (a ``spotdown`` one
+    first), as ``reference``'s, with the connection held; ``None`` when there is none."""
+    params = {
+        "owner_id": run.lease.owner_id,
+        "version": track.TRACK_VERSION,
+        "sha256": bytes.fromhex(sha256),
+        "days": MAP_TTL_DAYS,
+    }
+    async with run.fenced() as fs:
+        if not await hold(fs.db, run.ctx, connection):
+            raise JobFailure("not_connected")
+        rows = (await fs.db.execute(_BY_SHA256, params)).all()
+    for row in rows:
+        if (hit := _hit(row, accept, reference)) is not None:
+            return hit
+    return None
 
 
 async def store(
@@ -103,6 +162,10 @@ async def store(
     """Keep ``analysed`` for the user (``not_connected`` when the connection is gone)."""
     owner = run.lease.owner_id
     payload = json.dumps(analysed.music_map, separators=(",", ":"), allow_nan=False)
+    provenance = analysed.provenance
+    if (analysed.analyser == "spotdown") != (provenance is not None):
+        raise JobFailure("internal")  # the table's check, before anything is written
+    record = None if provenance is None else json.dumps(dict(provenance), allow_nan=False)
     async with run.fenced() as fs:
         if not await hold(fs.db, run.ctx, connection):
             raise JobFailure("not_connected")
@@ -114,6 +177,8 @@ async def store(
                 "version": track.TRACK_VERSION,
                 "sha256": bytes.fromhex(analysed.sha256),
                 "map": payload,
+                "analyser": analysed.analyser,
+                "provenance": record,
             },
         )
         await fs.db.execute(_EXPIRE, {"owner_id": owner, "days": MAP_TTL_DAYS})

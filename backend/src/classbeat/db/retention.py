@@ -110,8 +110,11 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # reference, the SHA-256 of the analysed bytes, the map). No audio, nothing
         # Spotify-derived. At most ``track_cache.MAPS_PER_USER`` per user and 30 days, as the mix
         # maps; gone with the account and with the SwedeBeat connection (Disconnect, a keys wipe).
+        # ADR 0040 section 6 (#1302): ``analyser`` is a code (``local`` or ``spotdown``) and a
+        # ``spotdown`` row's ``provenance`` is ids, versions, the audio identity and the timing
+        # evidence (no title, reference, URL or scope).
         "swedebeat_track_maps": _entry(
-            "reference sha256 map", "", "account", "swedebeat_connection"
+            "reference sha256 map provenance", "analyser", "account", "swedebeat_connection"
         ),
         # ADR 0040 section 9 (#1301 part 3): spotdown's shadow comparison of a studio track: the
         # outcome and detail codes, the metrics (numbers and codes) and the provenance record (ids,
