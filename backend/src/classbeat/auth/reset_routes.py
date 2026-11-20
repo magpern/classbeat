@@ -24,6 +24,7 @@ from classbeat.auth.deps import current_session, request_ip, require_recent_auth
 from classbeat.auth.devices import forget_devices
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import EmailAddress, factory, mailer, reserve
+from classbeat.auth.oidc.code_store import revoke_codes
 from classbeat.auth.passkey_recovery import passkeys_for_reset, remove_passkeys_except
 from classbeat.auth.passwords import PasswordRuleError, normalize_password
 from classbeat.auth.ratelimit import (
@@ -213,6 +214,7 @@ async def complete_reset(
             passkeys_removed = await remove_passkeys_except(db, token.user_id, body.keep_passkeys)
             await revoke_user_sessions(db, token.user_id)
             await forget_devices(db, token.user_id)
+            await revoke_codes(db, token.user_id)  # ADR 0003 "Requests in flight": player codes
             await delete_outstanding_tokens(db, token.user_id, keep_revert=True)
             await record_event(
                 db,
