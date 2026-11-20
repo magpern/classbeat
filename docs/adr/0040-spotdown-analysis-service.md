@@ -201,7 +201,7 @@ it (§10).
 
 **Contract details: spotdown's `docs/contract-v2.md` (spotdown#3, final at spotdown#15) is the source
 of the exact shapes,** within this ADR's decisions; this ADR confirms its choices where it goes beyond
-the plan. `retry_after_s` (seconds) for `rate_limited` (§8; renamed from the plan's `retry_after`, the plan updated in this PR).
+the plan. `retry_after_s` (seconds) for `rate_limited` (§8; renamed from the plan's `retry_after`; the plan now uses the new names).
 `cache_scope` is the one name for the caller's scope, the lookups' query parameter included (renamed from the
 plan's `scope=`). It is required for `upload` and `url` sources, for uploads and for the sha256 lookup,
 and optional for YouTube-only requests; a missing one is `422 scope_required`. The match answer is
