@@ -509,7 +509,7 @@ default switches); #1299 (retiring the local and MOWL-based paths); spotdown#1 (
 ## Consequences
 
 - Nothing changes in code, settings, compose or deployment with this ADR. The phases were authorized
-  on 2026-11-20 (roadmap Amendment 31; the amendment below), except the owner decisions #1296 to #1299.
+  on 2026-11-20 (roadmap Amendment 31; the amendment below), except the owner decisions #1296 to #1299 and magpern/spotdown#1.
 - The boundary is fixed before code: spotdown gets bytes or public metadata and an opaque scope,
   never a token, a signed URL or a password, and classbeat alone decides timing classes, fitness and
   what the model may do with a track.

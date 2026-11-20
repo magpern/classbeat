@@ -201,7 +201,7 @@ responses and model output alike.
 | T144 | Copyright or rights abuse (the feature used to process content the user may not use, or as a way to share it) | **Planned (ADR 0041 §10; Proposed, not accepted by the owner).** The rights statement and terms; no hosting, serving or sharing of audio or analyses; private per owner; the plan gate and kill switch; deletion on complaint | SD-P7b (planned) |
 | T145 | A label or the sha256 used for injection or tracking: prompt injection through the label, or the hash linking users | **Planned (ADR 0041 §3, §8; Proposed, not accepted by the owner).** The label is untrusted user text, bounded to 80 characters and delimited like the brief; the hash is shown only to its owner, never logged with the owner, and spotdown holds it only under a per-track scope | SD-P7b (planned) |
 
-`SD-Pn (planned)` in the last column is a phase of the spotdown integration (ADR 0040 §14): planned, not authorized for implementation, nothing built.
+`SD-Pn (planned)` in the last column is a phase of the spotdown integration (ADR 0040 §14): authorized by the owner on 2026-11-20 (roadmap Amendment 31), except the owner decisions #1296 to #1299 and magpern/spotdown#1. Built so far: P0, P1, P3 and P4 (classbeat side: the egress builder, the pure policy modules, the shadow job and the scope outbox). Shadow mode is off by default; the live paths (a deploy, the YouTube source, any real provider call) stay owner-gated, so a row marked "planned" is not yet live.
 
 New threats take T146 and up.
 
