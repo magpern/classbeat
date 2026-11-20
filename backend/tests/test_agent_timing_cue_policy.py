@@ -52,10 +52,12 @@ def test_the_table(cls: str, text: str, start: float, refused: bool) -> None:
 
 
 def test_a_precise_cue_names_its_kind() -> None:
-    (countdown,) = problems([cue("approximate", "3, 2, 1")])
+    (countdown,) = problems([cue("approximate", "Count down with me")])
     (drop,) = problems([cue("approximate", "On the drop")])
+    (number,) = problems([cue("approximate", "3, 2, 1")])
     assert "a countdown" in countdown
     assert "a drop hit" in drop
+    assert "a number that is not a zone" in number  # says which numbers a cue may hold
 
 
 def test_every_refused_cue_is_reported() -> None:

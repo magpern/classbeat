@@ -20,7 +20,9 @@ TIMING_NOTE: Final = (
     "use its BPM, sections and energy, and its drops and breakdowns as about 2 s either way. "
     'A track with "timing": "unusable" has its sections only. On either, give a cue only on an '
     "interval that starts within 2 s of a section start or end (on an approximate track also of "
-    "a drop or breakdown), and never a countdown, a beat or bar count or a drop hit there."
+    "a drop or breakdown), and never a countdown, a beat or bar count or a drop hit there. In "
+    "such a cue a number is only a zone, gear, level, round, interval or set number, minutes, "
+    "rpm, bpm, watts or percent: no seconds, counts or other numbers."
 )
 
 

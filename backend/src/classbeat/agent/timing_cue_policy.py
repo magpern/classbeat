@@ -3,8 +3,9 @@ plan section 2). Pure: no I/O.
 
 The design validator (``timing_gate``) refuses, on any track whose timing class is not ``exact``:
 
-- **a beat-, bar- or drop-precise cue** (``timing_cue_text_policy.precise_kind``): a countdown,
-  a beat or bar count or a drop hit, in English, Swedish or Danish;
+- **a beat-, bar- or drop-precise cue** (``timing_cue_text_policy.precise_kind``): a number
+  not bound to a section-level use, or a countdown, beat or bar or drop idiom, in English,
+  Swedish or Danish;
 - **a cue away from the track's anchors** (``track_timing_calc.anchors``): on an ``approximate``
   track a cue sits within ``CUE_MARGIN_S`` of a section start or end or of a drop or breakdown;
   on an ``unusable`` track within that margin of a section start or end only (its analysis is
@@ -32,6 +33,10 @@ _LABELS: Final[dict[PreciseKind, str]] = {
     "countdown": "a countdown",
     "beat_or_bar": "a beat or bar count",
     "drop_hit": "a drop hit",
+    "number": (
+        "a number that is not a zone, gear, level, round, interval or set number, a length in "
+        "minutes, or an rpm, bpm, watt or percent value (no seconds, counts or countdowns)"
+    ),
 }
 
 
