@@ -54,6 +54,188 @@
       "$ref": "#/$defs/alignment"
     }
   },
+  "allOf": [
+    {
+      "description": "A failed alignment has no top-level alignment, and its run records alignment_failed.",
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "alignment": {
+                "properties": {
+                  "result": {
+                    "const": "failed"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "alignment"
+          ]
+        },
+        "properties": {
+          "provenance": {
+            "properties": {
+              "run": {
+                "properties": {
+                  "failure_kind": {
+                    "const": "alignment_failed"
+                  }
+                },
+                "required": [
+                  "failure_kind"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "An ok alignment has the top-level alignment, and its run does not record alignment_failed.",
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "alignment": {
+                "properties": {
+                  "result": {
+                    "const": "ok"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "required": [
+          "alignment"
+        ],
+        "properties": {
+          "provenance": {
+            "properties": {
+              "run": {
+                "properties": {
+                  "failure_kind": {
+                    "not": {
+                      "const": "alignment_failed"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A top-level alignment comes with its provenance record.",
+      "if": {
+        "required": [
+          "alignment"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "alignment": {
+                "properties": {
+                  "result": {
+                    "const": "ok"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      }
+    },
+    {
+      "description": "alignment_failed in the run needs a failed alignment record.",
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "run": {
+                "properties": {
+                  "failure_kind": {
+                    "const": "alignment_failed"
+                  }
+                },
+                "required": [
+                  "failure_kind"
+                ]
+              }
+            },
+            "required": [
+              "run"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "alignment": {
+                "properties": {
+                  "result": {
+                    "const": "failed"
+                  }
+                },
+                "required": [
+                  "result"
+                ]
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      }
+    }
+  ],
   "$defs": {
     "confidence": {
       "type": "number",
@@ -264,7 +446,7 @@
             },
             "ref": {
               "type": "string",
-              "description": "Never a file name or a signed URL. upload: absent. url: a normalised https URL (host and path only: no userinfo, query or fragment) or sha256:<hex digest of it>. youtube: the video id."
+              "description": "Never a file name or a signed URL. upload: absent. url: sha256:<hex digest> of the normalised URL (https, lower-case host, path and query; no userinfo, port or fragment); analyses stored before that rule carry a normalised https URL with host and path only. youtube: the video id."
             },
             "match": {
               "$ref": "#/$defs/match_record"

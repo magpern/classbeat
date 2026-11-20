@@ -9,6 +9,7 @@ import pytest
 from classbeat.spotdown import anchor_calc
 from classbeat.spotdown.timing_class_policy import (
     EXACT_MEDIAN_MS,
+    EXACT_MIN_BEATS,
     EXACT_WITHIN_FRACTION,
     POLICY_VERSION,
     RESIDUAL_MAX_S,
@@ -36,7 +37,7 @@ UPLOADED_STUDIO = Analysed("upload", SHA, "fp-1", ("swedebeat_track", REF))
 YOUTUBE = Analysed("youtube", SHA, "fp-1", None)
 CONFIDENT = RecordingMatch("confident", 0.97, "ok", "ok", isrc_equal=True)
 ALIGNED = Alignment("ok", 0.3, -0.4)
-EQUIVALENT = BeatEquivalence("beat_grid", 5.0, 1.0, True)
+EQUIVALENT = BeatEquivalence("beat_grid", 5.0, 1.0, True, 400)
 
 YT = TimingInputs(SPOTIFY, YOUTUBE, CONFIDENT, ALIGNED)
 
@@ -151,12 +152,30 @@ def _equivalent(**changes: object) -> TimingInputs:
         ({"reference": "metadata"}, "unusable"),
         ({"median_error_ms": math.nan}, "unusable"),
         ({"within_window_fraction": math.nan}, "unusable"),
+        ({"median_error_ms": -math.inf}, "unusable"),
+        ({"median_error_ms": -500.0}, "unusable"),
+        ({"median_error_ms": 0.0}, "exact"),
+        ({"within_window_fraction": 1.5}, "unusable"),
+        ({"within_window_fraction": math.inf}, "unusable"),
+        ({"within_window_fraction": 1.0}, "exact"),
+        ({"beats_compared": EXACT_MIN_BEATS}, "exact"),
+        ({"beats_compared": EXACT_MIN_BEATS - 1}, "unusable"),
+        ({"beats_compared": 0}, "unusable"),
+        ({"beats_compared": True}, "unusable"),
+        ({"beats_compared": 400.0}, "unusable"),
     ],
 )
 def test_beat_equivalence_needs_both_numbers_over_the_whole_track(
     changes: dict[str, object], expected: str
 ) -> None:
     assert decide(_equivalent(**changes)).timing_class == expected
+
+
+@pytest.mark.parametrize("kind", ["url", "Upload", "UPLOAD", "youtube", "", "spotify"])
+def test_beat_equivalence_is_only_for_classbeats_own_upload(kind: str) -> None:
+    inputs = _equivalent()
+    inputs = replace(inputs, analysed=replace(inputs.analysed, source_kind=kind))
+    assert decide(inputs).timing_class != "exact"
 
 
 def test_beat_equivalence_against_a_spotify_track_is_not_exact_yet() -> None:
@@ -243,6 +262,7 @@ def test_the_decision_carries_its_evidence_and_version() -> None:
         "beat_median_error_ms": 5.0,
         "beats_within_window": 1.0,
         "beat_whole_track": True,
+        "beats_compared": 400,
     }
 
 

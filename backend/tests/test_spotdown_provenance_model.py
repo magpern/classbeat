@@ -10,15 +10,14 @@ from typing import Any
 import pytest
 
 from classbeat.spotdown import spotdown_map_policy, timing_class_policy, track_fit_policy
-from classbeat.spotdown.provenance_model import (
-    POLICY_VERSIONS,
+from classbeat.spotdown.provenance_model import POLICY_VERSIONS, may_reuse, provenance_of
+from classbeat.spotdown.provenance_read_calc import (
+    MALFORMED,
     AudioIdentity,
     alignment,
     analysed,
     audio_identity,
     decoded_duration_check,
-    may_reuse,
-    provenance_of,
 )
 from classbeat.spotdown.timing_class_policy import decide
 from classbeat.spotdown.timing_inputs_model import (
@@ -86,6 +85,20 @@ def test_the_decoded_duration_check_is_read() -> None:
     assert decoded_duration_check(doc) == "tolerable"
 
 
+@pytest.mark.parametrize(
+    "check", [None, "ok", {}, {"result": "rejected"}, {"result": 1}, {"result": "OK"}]
+)
+def test_a_present_but_unreadable_decoded_check_is_malformed_and_refused(check: object) -> None:
+    doc = copy.deepcopy(FULL)
+    doc["provenance"]["source"]["decoded_duration_check"] = check
+    assert decoded_duration_check(doc) == MALFORMED
+    seen = analysed(doc, None)
+    assert seen is not None
+    match = RecordingMatch("confident", 0.91, "ok", decoded_duration_check(doc))
+    decision = decide(TimingInputs(SPOTIFY, seen, match, alignment(doc)))
+    assert (decision.timing_class, decision.reason) == ("unusable", "duration_rejected")
+
+
 def test_the_record_holds_the_planned_fields() -> None:
     decision = youtube_decision(FULL)
     kept = provenance_of(FULL, decision)
@@ -150,7 +163,7 @@ def test_an_upload_keeps_no_source_ref() -> None:
         (("provenance", "analyzer", "analyzer_version"), 1),
         (("analysis_id",), ""),
     ],
-)
+)  # the record needs its identity
 def test_a_provenance_without_its_identity_is_not_kept(path: tuple[str, ...], value: Any) -> None:
     doc = copy.deepcopy(FULL)
     node = doc
@@ -159,6 +172,17 @@ def test_a_provenance_without_its_identity_is_not_kept(path: tuple[str, ...], va
     node[path[-1]] = value
     decision = timing_class_policy.TimingDecision("unusable", "no_alignment", {})
     assert provenance_of(doc, decision) is None
+
+
+@pytest.mark.parametrize(
+    "ref", ["dQw4w9WgXc", "dQw4w9WgXcQQ", "dQw4w9WgXc/", "https://youtu.be/dQw4w9WgXcQ", 7, None]
+)
+def test_only_a_youtube_video_id_is_kept_as_the_source_ref(ref: object) -> None:
+    doc = copy.deepcopy(FULL)
+    doc["provenance"]["source"]["ref"] = ref
+    kept = provenance_of(doc, youtube_decision(doc))
+    assert kept is not None
+    assert kept.record()["source"] == {"kind": "youtube", "ref": None}
 
 
 def test_the_policy_versions_are_the_modules_own() -> None:

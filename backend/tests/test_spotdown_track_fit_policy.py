@@ -113,3 +113,18 @@ def test_a_list_that_fits_is_done() -> None:
     step = plan_round([OK, OK, OK], rounds_done=0)
     assert step.done
     assert step.replace == step.fall_back == step.accept_with_warning == ()
+
+
+def test_a_hand_built_fit_ranks_worst_and_never_raises() -> None:
+    fits = [OK, bad("bpm_unusable"), Fit(False, ()), bad("not_a_reason"), OK, OK]
+    step = plan_round(fits, rounds_done=0)
+    assert step.replace == (2, 3)  # unknown or no reason first, then the known ones
+    assert step.waiting == (1,)
+
+
+def test_an_unusable_track_without_a_fallback_falls_back_after_the_last_round() -> None:
+    fits = [bad("timing_unusable"), OK, OK]
+    assert plan_round(fits, rounds_done=0).replace == (0,)  # no MOWL sections: replace first
+    final = plan_round(fits, rounds_done=MAX_ROUNDS)
+    assert final.fall_back == (0,)  # today's path for that track
+    assert final.accept_with_warning == ()

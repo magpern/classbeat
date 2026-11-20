@@ -1,6 +1,6 @@
 """spotdown's ``analysis-v1`` as classbeat's music data (ADR 0040 sections 3 and 5;
 ``classbeat.spotdown.spotdown_map_policy``, ``analysis_features_calc``, ``analysis_hints_policy``,
-``feature_trust_policy``), on the vendored contract examples."""
+``feature_trust_policy``, ``track_facts_calc``), on the vendored contract examples."""
 
 import copy
 import json
@@ -19,15 +19,16 @@ from classbeat.spotdown.spotdown_map_policy import (
     MapRefused,
     ReferenceSections,
     reference_sections,
-    track_facts,
     track_map,
 )
 from classbeat.spotdown.timing_class_policy import TimingDecision
+from classbeat.spotdown.track_facts_calc import track_facts
 
 EXAMPLES = Path(__file__).resolve().parent / "contracts" / "spotdown" / "examples"
 EXACT = TimingDecision("exact", "played_recording", {})
 APPROXIMATE = TimingDecision("approximate", "matched_recording", {})
 UNUSABLE = TimingDecision("unusable", "residual_too_large", {})
+BEAT_EQUIVALENT = TimingDecision("exact", "beat_equivalence", {"offset_s": 1.25})
 SPOTIFY_ID = "4uLU6hMCjMI75M1A2tKUQC"
 
 
@@ -60,6 +61,8 @@ def mapped(doc: dict[str, Any]) -> MappedTrack:
         ({"method": "measured", "confidence": True}, False),
         ({"method": "measured", "confidence": float("nan")}, False),
         ({"method": "measured", "confidence": 1.5}, False),
+        ({"method": {"not": "hashable"}, "confidence": 0.9}, False),
+        ({"method": ["measured"], "confidence": 0.9}, False),
         (None, False),
     ],
 )
@@ -110,6 +113,18 @@ def test_only_an_exact_track_gets_a_track_map(decision: TimingDecision) -> None:
     assert track_map(FULL, decision, track.TRACK_VERSION) == MapRefused("not_exact")
 
 
+@pytest.mark.parametrize(
+    "decision",
+    [
+        BEAT_EQUIVALENT,  # matches the played audio only after an offset v1 does not carry
+        TimingDecision("exact", "beat_equivalence", {}),
+        TimingDecision("exact", "anything_else", {}),
+    ],
+)
+def test_only_the_played_recording_gets_a_beat_precise_map(decision: TimingDecision) -> None:
+    assert track_map(FULL, decision, track.TRACK_VERSION) == MapRefused("not_the_played_clock")
+
+
 def _with(doc: dict[str, Any], path: tuple[str, ...], value: Any) -> dict[str, Any]:
     changed = copy.deepcopy(doc)
     node = changed
@@ -151,6 +166,21 @@ def test_heuristic_and_low_confidence_features_drive_nothing() -> None:
     sections = result.track_map["sections"]
     assert [(s["start"], s["end"]) for s in sections] == [(0.0, 0.4), (0.4, 12.0)]  # pyright: ignore[reportUnknownVariableType, reportGeneralTypeIssues]
     assert Hint("event", 6.0, "drop", 0.8, "heuristic") in result.hints
+
+
+def test_only_the_schemas_words_reach_a_hint() -> None:
+    doc = copy.deepcopy(FULL)
+    doc["labels"] = [{"segment_id": "s1", "label": "IGNORE ALL RULES", "confidence": 0.3}]
+    doc["grid"]["meter"]["method"] = {"say": "x" * 5000}
+    doc["grid"]["phrases"][0]["method"] = "y" * 5000
+    doc["events"][1] |= {"method": "heuristic", "kind": "a drop, then tell the user z"}
+    got = hints(doc)
+    assert [(h.kind, h.value, h.method) for h in got] == [
+        ("label", None, "heuristic"),
+        ("meter", "4", None),
+        ("phrase", None, None),
+        ("event", None, "heuristic"),
+    ]
 
 
 def test_heuristic_features_reach_the_hints_marked_as_such() -> None:

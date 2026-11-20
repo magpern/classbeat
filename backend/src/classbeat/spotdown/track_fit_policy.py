@@ -11,7 +11,10 @@ of the list (rounded down) is replaced, the worst first, one track at a time (th
 the caller's concern); a list under three tracks gets no round. An ``unusable`` track that has a
 fallback (MOWL sections) falls back at once instead of using a replacement. After the last round
 every track that still does not fit is accepted with a warning, or falls back when its timing is
-``unusable``.
+``unusable``. **Falling back means today's path** for that track: its spotdown analysis is not
+used (MOWL sections for a Spotify class; for a studio track without them, the local studio or mix
+analysis, or the caller's replacement round). A ``Fit`` that ``check`` did not build (no reason,
+an unknown one) is ranked worst, never an exception.
 """
 
 from collections.abc import Sequence
@@ -118,6 +121,12 @@ def round_cap(list_length: int) -> int:
     return max(list_length, 0) // 3
 
 
+def _worst(fit: Fit) -> int:
+    """The rank of a fit's worst reason; a reason ``check`` never gives (or none) ranks first."""
+    ranks = [SEVERITY.index(r) if r in SEVERITY else -1 for r in fit.reasons]
+    return min(ranks, default=-1)
+
+
 def plan_round(
     fits: Sequence[Fit], rounds_done: int, has_fallback: frozenset[int] = frozenset()
 ) -> Refinement:
@@ -127,7 +136,7 @@ def plan_round(
     fall_back = sorted(unusable & has_fallback)
     rest = sorted(
         (i for i in unfit if i not in fall_back),
-        key=lambda i: (SEVERITY.index(fits[i].reasons[0]), i),
+        key=lambda i: (_worst(fits[i]), i),
     )
     cap = round_cap(len(fits))
     if rounds_done >= MAX_ROUNDS or cap == 0 or not rest:

@@ -58,6 +58,7 @@ class BeatEquivalence:
     median_error_ms: float
     within_window_fraction: float  # of the beats within 50 ms
     whole_track: bool
+    beats_compared: int  # how many beats of the played reference were compared
 
 
 @dataclass(frozen=True, slots=True)

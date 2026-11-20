@@ -61,7 +61,10 @@ def confidence(feature: Mapping[str, object], key: str = "confidence") -> float 
 
 def trusted(feature: Mapping[str, object] | None, key: str = "confidence") -> bool:
     """A ``measured`` or ``estimated`` feature at or above ``TRUST_MIN``."""
-    if feature is None or feature.get("method") not in TRUSTED_METHODS:
+    if feature is None:
+        return False
+    method = feature.get("method")
+    if not isinstance(method, str) or method not in TRUSTED_METHODS:
         return False
     value = confidence(feature, key)
     return value is not None and value >= TRUST_MIN

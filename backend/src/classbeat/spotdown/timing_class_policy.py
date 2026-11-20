@@ -10,9 +10,12 @@ The backend decides the class, never the model, and the **strict ``exact`` rule*
 - **(b) verified beat-level equivalence**: a beat-level reference of the played audio (its own beat
   grid or audio fingerprint, not structure or metadata) agrees with the analysed grid, after the
   offset and over the whole track, with a median error of at most ``EXACT_MEDIAN_MS`` and at least
-  ``EXACT_WITHIN_FRACTION`` of the beats within ``EXACT_WINDOW_MS``. Only for audio classbeat
-  holds: classbeat has no beat-level reference of Spotify's audio, so (b) for a Spotify track is
-  a later enhancement with a new ``POLICY_VERSION`` (plan section 2, "Consequence").
+  ``EXACT_WITHIN_FRACTION`` of the beats within ``EXACT_WINDOW_MS``, on at least
+  ``EXACT_MIN_BEATS`` beats. Only for classbeat's own upload (``source_kind == "upload"``, an
+  allowlist) of a held kind: classbeat has no beat-level reference of Spotify's audio, so (b) for a
+  Spotify track is a later enhancement with a new ``POLICY_VERSION`` (plan section 2,
+  "Consequence"). A (b) track is ``exact`` on the played clock only after the comparison's offset,
+  which v1 does not carry, so ``spotdown_map_policy`` builds a beat-precise map only for (a).
 
 **Every YouTube analysis is at best ``approximate``**, whatever the evidence: a confident match, an
 equal ISRC, a similar duration and agreeing MOWL anchors are no proof of identical audio. The ISRC
@@ -22,7 +25,8 @@ is kept in the evidence only; nothing here reads it. MOWL anchors can only move 
 ``approximate`` needs a ``confident`` or ``uncertain`` recording match, both duration checks within
 tolerance and an ``ok`` alignment with a residual of at most ``RESIDUAL_MAX_S``. Anything else is
 ``unusable``: not the same recording, a residual above 2 s, a failed or missing alignment. Every
-threshold is phrased as the condition that must hold, so a NaN never passes one.
+threshold is phrased as the condition that must hold, with finite bounds on both sides, so a
+NaN, an infinity or an out-of-range number never passes one.
 """
 
 import math
@@ -42,6 +46,7 @@ POLICY_VERSION: Final = "1"
 EXACT_MEDIAN_MS: Final = 20.0
 EXACT_WINDOW_MS: Final = 50.0  # the window of ``within_window_fraction``
 EXACT_WITHIN_FRACTION: Final = 0.95
+EXACT_MIN_BEATS: Final = 32  # a comparison of a handful of beats verifies nothing
 RESIDUAL_MAX_S: Final = 2.0
 
 _MATCH_BANDS: Final = frozenset({"confident", "uncertain"})
@@ -69,16 +74,22 @@ def is_played_recording(played: Played, analysed: Analysed) -> bool:
 
 
 def is_beat_equivalent(inputs: TimingInputs) -> bool:
-    """Path (b): verified beat-level equivalence, never for a YouTube or Spotify track."""
+    """Path (b): verified beat-level equivalence, only for classbeat's own upload of held audio."""
     eq = inputs.equivalence
-    if eq is None or inputs.analysed.source_kind == "youtube":
+    if eq is None or inputs.analysed.source_kind != "upload":
         return False
+    beats = eq.beats_compared
     return (
         inputs.played.kind in HELD_KINDS
         and eq.reference in _BEAT_REFERENCES
         and eq.whole_track is True
-        and eq.median_error_ms <= EXACT_MEDIAN_MS
-        and eq.within_window_fraction >= EXACT_WITHIN_FRACTION
+        and isinstance(beats, int)
+        and not isinstance(beats, bool)
+        and beats >= EXACT_MIN_BEATS
+        and math.isfinite(eq.median_error_ms)
+        and 0.0 <= eq.median_error_ms <= EXACT_MEDIAN_MS
+        and math.isfinite(eq.within_window_fraction)
+        and EXACT_WITHIN_FRACTION <= eq.within_window_fraction <= 1.0
     )
 
 
@@ -107,6 +118,7 @@ def _evidence(inputs: TimingInputs) -> dict[str, object]:
             "beat_median_error_ms": eq.median_error_ms,
             "beats_within_window": eq.within_window_fraction,
             "beat_whole_track": eq.whole_track,
+            "beats_compared": eq.beats_compared,
         }
     return out
 

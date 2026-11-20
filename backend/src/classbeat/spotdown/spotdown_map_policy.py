@@ -4,14 +4,16 @@ sections 2 and 4). Pure: no I/O.
 - ``track_map``: an **``exact``** track as the studio's track map (``mowl.track.analyze_track``'s
   shape, checked by ``design.track_map_policy.valid_track_map``): one song with its BPM and first
   downbeat, the drops and breakdowns, and the sections with each one's energy rank. Only an
-  ``exact`` track gets beats and bars.
+  ``exact`` track gets beats and bars, and in policy v1 only one that **is the played recording**
+  (path (a)): its file clock is the played clock. A beat-equivalent track (path (b)) matches the
+  played audio only after the comparison's offset, which v1 does not carry, so it gets no map.
 - ``reference_sections``: an **``approximate``** track as MOWL's Spotify sections (``{start,
   duration, loudness}`` on the Spotify clock, what ``mowl.spotify.build_map`` turns into the
   playlist map of ``MusicData``), moved by the alignment's ``offset_s``; its events carry the
   ``APPROXIMATE_WINDOW_S`` window and no beat. ``loudness`` is the section's mean normalised
   energy times ``LOUDNESS_SCALE``, so that spotdown's ``ENERGY_SPREAD_MIN`` (0.05) is MOWL's
   1.5 dB spread: ``build_map`` uses only its rank and its steps.
-- ``track_facts``: the facts ``track_fit_policy`` checks.
+- the facts ``track_fit_policy`` checks are in ``track_facts_calc``.
 - the hints (``analysis_hints_policy``): every ``heuristic`` or low-confidence feature, for
   the model, marked as hints; nothing here validates with them (``feature_trust_policy``).
 
@@ -27,7 +29,6 @@ from classbeat.spotdown import analysis_features_calc as fc
 from classbeat.spotdown import analysis_hints_policy
 from classbeat.spotdown import feature_trust_policy as ft
 from classbeat.spotdown.timing_class_policy import TimingDecision
-from classbeat.spotdown.track_fit_policy import TrackFacts
 
 POLICY_VERSION: Final = "1"
 MAX_EVENTS: Final = 2000  # as ``design.track_map_policy``
@@ -35,8 +36,6 @@ MAX_SECTIONS: Final = 500
 TRACK_EVENT_KINDS: Final = frozenset({"drop", "breakdown"})  # the track map's own kinds
 APPROXIMATE_WINDOW_S: Final = 2.0
 LOUDNESS_SCALE: Final = 1.5 / fc.ENERGY_SPREAD_MIN  # MOWL's MIN_ENERGY_SPREAD_DB per spread
-OPENING_S: Final = 30.0
-LOW_START_RATIO: Final = 0.8  # a low-energy start: the opening's mean under 0.8 of the track's
 
 Document = Mapping[str, object]
 
@@ -77,6 +76,8 @@ def track_map(
     """An ``exact`` track's studio track map."""
     if decision.timing_class != "exact":
         return MapRefused("not_exact")
+    if decision.reason != "played_recording":
+        return MapRefused("not_the_played_clock")  # path (b): its offset is not carried in v1
     duration, bpm = fc.read_duration(doc), fc.read_bpm(doc)
     if duration is None:
         return MapRefused("no_duration")
@@ -165,18 +166,3 @@ def reference_sections(doc: Document, decision: TimingDecision) -> ReferenceSect
     return ReferenceSections(
         round(bpm, 3), tuple(sections), events, analysis_hints_policy.hints(doc)
     )
-
-
-def track_facts(doc: Document, decision: TimingDecision) -> TrackFacts:
-    """The facts ``track_fit_policy.check`` tests, from trusted features only."""
-    curve, duration = fc.energy_curve(doc), fc.read_duration(doc)
-    low_start: bool | None = None
-    if curve is not None and duration is not None:
-        opening, whole = (
-            fc.span_mean(curve, 0.0, min(OPENING_S, duration)),
-            fc.span_mean(curve, 0.0, duration),
-        )
-        if opening is not None and whole is not None and whole > 0:
-            low_start = opening <= LOW_START_RATIO * whole
-    kinds = frozenset(e.kind for e in fc.trusted_events(doc))
-    return TrackFacts(decision.timing_class, fc.read_bpm(doc), duration, low_start, kinds)

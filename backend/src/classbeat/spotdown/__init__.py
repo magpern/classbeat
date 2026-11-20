@@ -11,8 +11,9 @@ The analysis rules (SD-P4 part 2): ``timing_class_policy`` with ``timing_inputs_
 ``anchor_calc`` (the strict ``exact`` rule, section 3), ``feature_trust_policy``,
 ``analysis_features_calc`` and ``analysis_hints_policy`` (what may be validated with, section 5),
 ``spotdown_map_policy`` (an analysis as the studio track map or MOWL-shaped Spotify sections),
-``track_fit_policy`` (the bounded suitability refinement, section 2) and ``provenance_model``
-(the per-track record, section 6, and the reuse rule, section 7). Nothing calls them yet.
+``track_fit_policy`` with ``track_facts_calc`` (the bounded suitability refinement, section 2) and
+``provenance_model`` with ``provenance_read_calc`` (the per-track record, section 6, and the reuse
+rule, section 7). Nothing calls them yet.
 Side effects: ``opener`` (the seam that opens a client of ``classbeat.egress_spotdown``),
 ``exchange`` (one capped request) and ``client`` (the calls of the contract, nothing else).
 Nothing here calls spotdown unless the setting is set: unset, ``classbeat.egress_spotdown``
