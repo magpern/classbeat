@@ -1,8 +1,8 @@
 # ADR 0040: spotdown as classbeat's music-analysis service (#1300)
 
-Status: Proposed. Docs only: this ADR changes no code, setting, compose file or runtime behaviour.
-**Every phase it describes (SD-P0 to SD-P7, and the SD-P2+ enhancements) is PLANNED / NOT
-AUTHORIZED FOR IMPLEMENTATION** until the owner authorizes it explicitly (roadmap
+Status: Accepted. This ADR itself changes no code, setting, compose file or runtime behaviour.
+**Every phase it describes (SD-P0 to SD-P7, and the SD-P2+ enhancements) was authorized by the owner
+on 2026-11-20**, except the owner decisions #1296 to #1299 and magpern/spotdown#1; no deploy, live-account test or real YouTube, SwedeBeat, MOWL or Spotify call by any agent (roadmap
 [Amendment 31](../roadmap.md)). Its amendment to ADR 0010 and ADR 0021 §2 (§12 below) takes effect
 only on the owner's acceptance of #1296.
 
@@ -508,8 +508,8 @@ default switches); #1299 (retiring the local and MOWL-based paths); spotdown#1 (
 
 ## Consequences
 
-- Nothing changes in code, settings, compose or deployment with this ADR. Every phase waits for the
-  owner's explicit authorization (roadmap Amendment 31).
+- Nothing changes in code, settings, compose or deployment with this ADR. The phases were authorized
+  on 2026-11-20 (roadmap Amendment 31; the amendment below), except the owner decisions #1296 to #1299.
 - The boundary is fixed before code: spotdown gets bytes or public metadata and an opaque scope,
   never a token, a signed URL or a password, and classbeat alone decides timing classes, fitness and
   what the model may do with a track.
@@ -531,7 +531,7 @@ default switches); #1299 (retiring the local and MOWL-based paths); spotdown#1 (
   every stored analysis, partial replacement leaving the other tracks unchanged, and e2e against the
   fake; the §9 corpus and workout comparison before any default switch or removal.
 
-### Amendment (2026-11-20): spotdown quality-gate thresholds as built
+### Amendment (2026-11-20): authorization and spotdown quality-gate thresholds as built (extends §9)
 
 The phases were authorized on 2026-11-20 (status.md). spotdown's `quality_gates` file is **version 4**,
 its analyzer document **version 6.3**, its core analyzer **version 6**. The thresholds below are
@@ -558,5 +558,4 @@ Notes for operators and the next phases:
 
 ## Status
 
-Proposed. Accepted when this PR merges after an Opus `PASS`. §12 takes effect only on the owner's
-acceptance of #1296.
+Accepted. §12 takes effect only on the owner's acceptance of #1296.
