@@ -1,6 +1,6 @@
 # ADR 0010: Provider permissions for live activation
 
-Status: Accepted (amended 2026-10-28: owner's risk acceptance for the beta circle)
+Status: Accepted (amended 2026-10-28: owner's risk acceptance for the beta circle; amended 2026-11-20: YouTube-derived analysis of Spotify-catalogue tracks, #1296)
 
 ## Context
 
@@ -69,7 +69,8 @@ agent-run test against a real account, the owner's authorization for that specif
 | Spotify sign-in with the user's own Client ID (BYOK) | Allowed | Needs Spotify S1 |
 | Claude choosing songs from Spotify metadata and MOWL analysis | Allowed | Needs Spotify S2, S3 |
 | Creating the pool and final playlists in a user's Spotify account (private) | Allowed | Needs Spotify S1, S2, S3 |
-| Keeping track lists, timing and shared analyses for saved classes | Allowed while a class refers to them, then deleted | Needs Spotify S4 |
+| Keeping track lists, timing and shared analyses for saved classes | Allowed while a class refers to them, then deleted (except spotdown's global YouTube-derived entries: 90 days unused or a version change, [ADR 0040](0040-spotdown-analysis-service.md), amendment "#1296 accepted", item 5) | Needs Spotify S4 |
+| YouTube-derived analysis of Spotify-catalogue tracks through spotdown ([ADR 0040](0040-spotdown-analysis-service.md) §12) | Allowed (owner, 2026-11-20, #1296); YouTube sourcing is switched on per deployment by the owner, `approximate` timing at best | Needs Spotify S2, S3, S4 and YouTube's permission |
 | Any paid or public use, or users the owner doesn't know | Not allowed | Needs all of the above, S5, MOWL M3, and agreements (M7) |
 | Swedebeat connection (connect, status, disconnect) | Built against fakes (S1, ADR 0015); since SG-4 it goes through the owner's SwedeBeat gateway and classbeat holds no SwedeBeat key ([ADR 0035](0035-swedebeat-gateway.md) supersedes the baked-in app key; threat model, T104 is now the gateway client key's row); **live use only with the owner's authorization** | Needs the gateway URL, the `secrets/swedebeat_gateway_key` file and the owner's go-ahead (ADR 0035 §10) |
 | Other Swedebeat features | Not built; each needs its own issue | Needs Swedebeat S2 and later |
@@ -126,3 +127,18 @@ It adds no new field type (no text, no id) and no new provider contact. The allo
 fields and nothing else, plus one pool-answer key: `sections_omitted_from_track`, a track index (an
 int) that `get_pool` adds when a big pool is cut to fit and the last tracks lose their `sections`
 first. `tests/test_section_energy.py` pins the exact top-level keys of the answer.
+
+**Amendment 2026-11-20 (#1296; roadmap Amendment 32): YouTube-derived analysis of Spotify-catalogue
+tracks.** The owner accepted the risk ([ADR 0040](0040-spotdown-analysis-service.md) §12 item 2 and
+its amendment "#1296 accepted"). Accepted risk, for the beta circle: classbeat sends spotdown the
+Spotify-derived title, artists, duration and ISRC of a selected track; spotdown finds and analyses a
+YouTube match and returns only derived metadata, `approximate` at best. Downloading from YouTube
+breaks YouTube's terms, and using the result for Spotify-catalogue classes touches Spotify's Developer
+Policy (§III 14); returning only metadata and being noncommercial do not remove that risk. The risk
+also covers retention: spotdown's global YouTube-derived entries hold no user data and are tied to no
+class, so instead of "deleted once no class of any user refers to it" they go after 90 days unused or
+when their version changes, and the operator can purge a source on request (ADR 0040, amendment item
+5). YouTube sourcing (`ALLOW_YTDLP_SOURCING` on spotdown, off by default) is switched on only by the
+owner's deployment; agents and CI never call YouTube. Keeping the global entries for
+that bounded time is a reversible Architect default, recorded in [ADR 0040](0040-spotdown-analysis-service.md) §7. The table row above is new; beyond the circle
+it needs the providers.

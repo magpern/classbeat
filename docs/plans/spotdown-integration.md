@@ -6,6 +6,8 @@ Companion repository: [magpern/spotdown](https://github.com/magpern/spotdown), [
 
 **Note 2026-11-20 (#1300):** ADR 0040 §5 supersedes two names in this plan: the lookups' query parameter is `cache_scope=` (was `scope=`) and the `rate_limited` field is `retry_after_s` (was `retry_after`). They are renamed below; no decision changed.
 
+**Note 2026-11-20 (#1296, roadmap Amendment 32):** decision 1 of "Decisions that need the owner" is answered. The owner accepted the terms-of-service risk and deploys spotdown with YouTube switched on, and Spotify classes get their analysis through spotdown (the MOWL sections are the fallback, not the default). P6 is no longer gated by #1296; the default switch still waits for #1298. classbeat does not police how the analysis service sources audio. The retention of the global entries is settled in [ADR 0040](../adr/0040-spotdown-analysis-service.md), amendment "#1296 accepted". The issue table row for P6 below, which lists #1296 as its blocker, is superseded by this note (#1296 is answered; only the default switch, #1298, remains). The body below is frozen and unchanged.
+
 ## Issues
 
 | Phase | Issue | Repo | Depends on | Owner blocker |
