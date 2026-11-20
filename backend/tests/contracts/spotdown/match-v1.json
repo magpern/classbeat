@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spotdown.invalid/schema/match-v1.json",
+  "title": "spotdown match result v1",
+  "description": "Result of matching one track's metadata to source candidates, without downloading. POST /v2/match returns {\"results\": [match-v1, ...]} in request order. A cached analysis id is free to report; a miss never starts an analysis.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "client_ref",
+    "status",
+    "alternates"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "match-v1"
+    },
+    "client_ref": {
+      "type": "string",
+      "description": "Opaque, echoed from the request."
+    },
+    "status": {
+      "enum": [
+        "matched",
+        "not_found",
+        "uncertain",
+        "source_unavailable",
+        "provider_error",
+        "rate_limited"
+      ]
+    },
+    "retry_after_s": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Present only when status is rate_limited."
+    },
+    "best": {
+      "$ref": "#/$defs/candidate"
+    },
+    "alternates": {
+      "type": "array",
+      "maxItems": 2,
+      "items": {
+        "$ref": "#/$defs/candidate"
+      }
+    },
+    "matcher_version": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "matched",
+              "uncertain"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "best",
+          "matcher_version"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "best"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "rate_limited"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "retry_after_s"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "retry_after_s"
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "recording_match_confidence",
+        "band",
+        "duration_s",
+        "duration_delta_s",
+        "duration_check"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "pattern": "^[a-z]+:.+$",
+          "description": "<kind>:<ref>, for example youtube:<video id>."
+        },
+        "recording_match_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "band": {
+          "enum": [
+            "confident",
+            "uncertain",
+            "not_same"
+          ],
+          "description": "confident >= 0.85, uncertain 0.6 to 0.85, not_same below 0.6. Tuned on the eval set."
+        },
+        "duration_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "duration_delta_s": {
+          "type": "number",
+          "description": "Candidate minus requested duration."
+        },
+        "duration_check": {
+          "enum": [
+            "ok",
+            "tolerable",
+            "rejected"
+          ],
+          "description": "abs delta <= 2 s ok, <= 5 s tolerable, above 5 s rejected."
+        },
+        "cached_analysis_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Analysis already cached for this candidate within the caller's scope. Absent when there is none."
+        },
+        "cached_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "analyzer_version",
+            "bpm",
+            "bpm_confidence",
+            "duration_s",
+            "has_beats"
+          ],
+          "description": "Small summary of the cached analysis, free to return. Present only together with cached_analysis_id. No audio, no names.",
+          "properties": {
+            "analyzer_version": {
+              "type": "string"
+            },
+            "bpm": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "bpm_confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "duration_s": {
+              "type": "number",
+              "minimum": 0
+            },
+            "has_beats": {
+              "type": "boolean"
+            },
+            "has_downbeats": {
+              "type": "boolean"
+            },
+            "has_events": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "band": {
+                "const": "confident"
+              }
+            },
+            "required": [
+              "band"
+            ]
+          },
+          "then": {
+            "properties": {
+              "recording_match_confidence": {
+                "minimum": 0.85
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "band": {
+                "const": "uncertain"
+              }
+            },
+            "required": [
+              "band"
+            ]
+          },
+          "then": {
+            "properties": {
+              "recording_match_confidence": {
+                "minimum": 0.6,
+                "exclusiveMaximum": 0.85
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "band": {
+                "const": "not_same"
+              }
+            },
+            "required": [
+              "band"
+            ]
+          },
+          "then": {
+            "properties": {
+              "recording_match_confidence": {
+                "exclusiveMaximum": 0.6
+              }
+            }
+          }
+        }
+      ],
+      "dependentRequired": {
+        "cached_summary": [
+          "cached_analysis_id"
+        ]
+      }
+    }
+  }
+}

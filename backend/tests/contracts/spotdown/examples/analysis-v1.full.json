@@ -1,0 +1,271 @@
+{
+  "schema_version": "analysis-v1",
+  "analysis_id": "an_01example",
+  "provenance": {
+    "analyzer": {
+      "name": "spotdown",
+      "analyzer_version": "1.0.0",
+      "component_versions": {
+        "librosa": "0.10.2",
+        "numpy": "1.26.4",
+        "ffmpeg": "7.0"
+      },
+      "config_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "audio": {
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "fp-example",
+      "codec": "mp3",
+      "bitrate_bps": 320000,
+      "sample_rate_hz": 44100,
+      "channels": 2,
+      "file_duration_s": 12.0,
+      "content_start_s": 0.4,
+      "content_end_s": 11.5,
+      "content_duration_s": 11.1
+    },
+    "source": {
+      "kind": "youtube",
+      "ref": "dQw4w9WgXcQ",
+      "match": {
+        "matcher_version": "1",
+        "normalised_query": "example artist example title",
+        "candidates": [
+          {
+            "ref": "dQw4w9WgXcQ",
+            "score": 0.91,
+            "duration_delta_s": 0.8
+          },
+          {
+            "ref": "zzzzzzzzzzz",
+            "score": 0.55,
+            "duration_delta_s": 4.2
+          }
+        ],
+        "chosen": "dQw4w9WgXcQ"
+      }
+    },
+    "alignment": {
+      "alignment_version": "1",
+      "hypotheses": [
+        {
+          "offset_s": 0.4,
+          "residual_s": 0.3
+        },
+        {
+          "offset_s": 0.0,
+          "residual_s": 1.9
+        }
+      ],
+      "anchor_agreement": 0.8,
+      "reference": {
+        "kind": "spotify",
+        "id": "4uLU6hMCjMI75M1A2tKUQC",
+        "duration_s": 11.9
+      },
+      "result": "ok",
+      "offset_s": -0.4,
+      "residual_s": 0.3,
+      "confidence": 0.8
+    },
+    "run": {
+      "job_id": "job_01example",
+      "status": "done",
+      "failure_kind": null,
+      "timings_s": {
+        "decode": 0.5,
+        "analyse": 3.2
+      }
+    },
+    "created_at": "2026-11-20T10:00:00Z"
+  },
+  "signal": {
+    "duration_s": 12.0,
+    "content_start_s": 0.4,
+    "content_end_s": 11.5,
+    "method": "measured",
+    "confidence": 0.95,
+    "silence_regions": [
+      {
+        "start_s": 0.0,
+        "end_s": 0.4,
+        "confidence": 0.9,
+        "method": "measured"
+      }
+    ],
+    "fade_in": null,
+    "fade_out": {
+      "start_s": 10.0,
+      "end_s": 11.5,
+      "confidence": 0.8,
+      "method": "measured"
+    },
+    "energy": {
+      "full": {
+        "step_s": 1,
+        "values": [
+          0.2,
+          0.3,
+          0.5,
+          0.6,
+          0.7,
+          0.8,
+          0.8,
+          0.9,
+          0.9,
+          0.7,
+          0.4,
+          0.2
+        ],
+        "confidence": 0.9,
+        "method": "measured"
+      },
+      "percussive": {
+        "step_s": 1,
+        "values": [
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "confidence": 0.9,
+        "method": "measured"
+      },
+      "low_band": {
+        "step_s": 1,
+        "values": [
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3
+        ],
+        "confidence": 0.9,
+        "method": "measured"
+      }
+    }
+  },
+  "tempo": {
+    "bpm": 128.0,
+    "confidence": 0.9,
+    "method": "estimated",
+    "half_double_candidates": [
+      {
+        "bpm": 64.0,
+        "confidence": 0.2,
+        "method": "estimated"
+      },
+      {
+        "bpm": 256.0,
+        "confidence": 0.05,
+        "method": "estimated"
+      }
+    ],
+    "stability": 0.97,
+    "change_points": []
+  },
+  "grid": {
+    "beats": {
+      "times_s": [
+        0.4,
+        0.87,
+        1.34,
+        1.81
+      ],
+      "confidence": 0.88,
+      "method": "estimated"
+    },
+    "meter": {
+      "beats_per_bar": 4,
+      "confidence": 0.7,
+      "method": "heuristic"
+    },
+    "downbeats": {
+      "times_s": [
+        0.4
+      ],
+      "confidence": 0.6,
+      "method": "estimated"
+    },
+    "phrases": [
+      {
+        "start_s": 0.4,
+        "end_s": 7.9,
+        "bars": 8,
+        "confidence": 0.4,
+        "method": "heuristic"
+      }
+    ]
+  },
+  "structure": {
+    "segments": [
+      {
+        "id": "s1",
+        "start_s": 0.4,
+        "end_s": 6.0,
+        "boundary_confidence": 0.8,
+        "method": "estimated"
+      },
+      {
+        "id": "s2",
+        "start_s": 6.0,
+        "end_s": 11.5,
+        "boundary_confidence": 0.7,
+        "method": "estimated"
+      }
+    ],
+    "repetition_groups": []
+  },
+  "events": [
+    {
+      "kind": "build_up",
+      "start_s": 4.0,
+      "end_s": 6.0,
+      "strength": 0.7,
+      "confidence": 0.75,
+      "method": "estimated"
+    },
+    {
+      "kind": "drop",
+      "start_s": 6.0,
+      "strength": 0.9,
+      "confidence": 0.8,
+      "method": "estimated"
+    }
+  ],
+  "labels": [
+    {
+      "segment_id": "s1",
+      "label": "intro",
+      "confidence": 0.3,
+      "method": "heuristic"
+    }
+  ],
+  "alignment": {
+    "reference": {
+      "kind": "spotify",
+      "id": "4uLU6hMCjMI75M1A2tKUQC",
+      "duration_s": 11.9
+    },
+    "offset_s": -0.4,
+    "residual_s": 0.3,
+    "confidence": 0.8,
+    "recording_match_confidence": 0.91,
+    "method": "estimated"
+  }
+}

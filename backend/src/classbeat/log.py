@@ -34,7 +34,7 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(
             r"(?i)\b(authorization|x-csrf-token|x-api-key|x-auth-token|cookie|set-cookie|bearer"
-            r"|swedebeat_gateway_key)\b"
+            r"|swedebeat_gateway_key|spotdown_service_key)\b"
             r"([\"']?\s*[:=]\s*[\"']?)[^\r\n\"']*"
         ),
         rf"\1\2{_REDACTED}",
@@ -104,6 +104,7 @@ SECRET_KEYS = frozenset(
         # ADR 0035 section 2: the gateway's bearer and its client key.
         "bearer",
         "swedebeat_gateway_key",
+        "spotdown_service_key",  # ADR 0040 section 10
         "anthropic_api_key",
         "openai_api_key",
         "deepseek_api_key",

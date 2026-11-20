@@ -1,7 +1,7 @@
 """The outbound allowlists (ADR 0006 §9, ADR 0009 §10; threat model T19, T49, T73).
 
 The only place in ``classbeat`` that builds an HTTP client or an ``urllib`` opener, with
-``classbeat.egress_gateway`` (the SwedeBeat gateway's client, below; the guard in
+``classbeat.egress_gateway`` and ``classbeat.egress_spotdown`` (below; the guard in
 ``tests/egress_scan.py`` fails on any other module). Two paths leave the worker:
 
 - **urllib**, used by the provider library (``mowl-workouts`` calls ``urllib.request.urlopen``).
@@ -82,15 +82,12 @@ total deadline (``PLAYER_TOTAL_SECONDS``), an answer of at most ``PLAYER_ANSWER_
 (``AnswerTooLarge``) and **no argument** (a transport comes only from tests, through
 ``player_test_client``, which the guard refuses in ``classbeat``). Unset, it refuses.
 
-**The SwedeBeat gateway client** (ADR 0035 section 1, #1077; web and worker) lives in
-``classbeat.egress_gateway``: ``swedebeat_gateway_async_client(total_seconds)`` reaches exactly
-one origin (scheme, host and port), the setting ``CLASSBEAT_SWEDEBEAT_GATEWAY_URL`` checked by
-``classbeat.swedebeat_gateway.url_policy`` (``http`` only to a loopback or private IP literal,
-else ``https`` to a public name) and installed once at start by ``install_swedebeat_gateway_origin``
-in both entry points. The ``Allowlist`` here is https/443-only, so it has its own exact-origin
-check. It is on **no urllib list**; no redirect, no default header, ``trust_env=False``. No
-list in this module names a SwedeBeat host (ADR 0035 section 8): classbeat reaches SwedeBeat only
-through the gateway.
+**Two clients of one exact origin each** (scheme, host, port; a setting checked at start and
+installed once; on **no urllib list**; no redirect, no default header, ``trust_env=False``),
+outside this module because the ``Allowlist`` here is https/443-only: the **SwedeBeat gateway**'s
+(``classbeat.egress_gateway``, ADR 0035 section 1; web and worker; no list here names a SwedeBeat
+host, ADR 0035 section 8) and **spotdown**'s (``classbeat.egress_spotdown``, ADR 0040 section 10;
+the worker only, an internal origin, the service key added by its transport).
 
 All paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
 log (``SSLKEYLOGFILE`` is ignored, threat model T49).
@@ -112,9 +109,9 @@ budget in ``classbeat.egress_budget``; this module re-exports both.
 A refused request raises ``OutboundBlocked`` (the job fails ``outbound_blocked``, ADR 0005 §4)
 and logs the host only, never the URL, its path or query, or a header.
 
-Every list is code, not a setting, with two exceptions: the player's one host
-(``CLASSBEAT_PLAYER_BASE_URL``, above) and the gateway's one origin
-(``CLASSBEAT_SWEDEBEAT_GATEWAY_URL``), an operator's deploy-time values that replace nothing and
+Every list is code, not a setting, with three exceptions: the player's one host
+(``CLASSBEAT_PLAYER_BASE_URL``), the gateway's one origin (``CLASSBEAT_SWEDEBEAT_GATEWAY_URL``) and
+spotdown's (``CLASSBEAT_SPOTDOWN_URL``), an operator's deploy-time values that replace nothing and
 widen no other list, refused at startup unless they keep every rule. Nothing else in the
 environment can widen a list. This is enforced inside
 the process; code running in the worker could still open a socket around it (accepted until the

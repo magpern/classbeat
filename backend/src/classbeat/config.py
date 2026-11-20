@@ -17,12 +17,12 @@ from classbeat.config_accounts import (  # noqa: F401 (re-exported from classbea
     CONNECTION_KEK_ID,
     AccountSettings,
 )
-from classbeat.config_agent import AgentSettings
+from classbeat.config_agent import AgentSettings, check_model_api_key
 from classbeat.config_billing import check_secret as check_paddle_secret
 from classbeat.config_billing import check_settings as check_billing_settings
 from classbeat.config_database import DATABASE_DRIVER, check_database_url, with_password
 from classbeat.config_features import FeatureSettings
-from classbeat.config_hosts import check_prod_trusted_proxies
+from classbeat.config_hosts import check_prod_trusted_proxies, check_spotify_redirect_host
 from classbeat.config_jobs import JobSettings
 from classbeat.config_mail import (  # noqa: F401 (re-exported from classbeat.config)
     SUPPORT_ADDRESS,
@@ -58,6 +58,7 @@ from classbeat.config_turnstile import (  # noqa: F401 (re-exported from classbe
 )
 from classbeat.config_turnstile import check_secret_key as check_turnstile_secret_key
 from classbeat.config_turnstile import check_settings as check_turnstile_settings
+from classbeat.spotdown.key_policy import check_key as check_spotdown_service_key
 from classbeat.swedebeat_gateway.key_policy import check_key as check_swedebeat_gateway_key
 
 # Fields read from secret files, and never from the environment.
@@ -74,6 +75,7 @@ SECRET_FILE_FIELDS = (
     "openai_api_key",
     "deepseek_api_key",
     "swedebeat_gateway_key",
+    "spotdown_service_key",
     "turnstile_secret_key",
     "paddle_webhook_secret",
 )
@@ -86,6 +88,7 @@ OPTIONAL_SECRET_FILE_FIELDS = frozenset(
         "oauth_github_client_secret",
         "oauth_microsoft_client_secret",
         "swedebeat_gateway_key",
+        "spotdown_service_key",
         "turnstile_secret_key",
         "paddle_webhook_secret",
     }
@@ -190,6 +193,7 @@ class Settings(
     # own (ADR 0035 section 8): without the URL or this key, connecting answers
     # ``app_key_unavailable``.
     swedebeat_gateway_key: SecretStr | None = None
+    spotdown_service_key: SecretStr | None = None  # ADR 0040 section 10, worker only (key_policy)
     # ADR 0025 (#721): Turnstile's secret key file (web only, never the environment), needed when
     # ``turnstile_enabled`` is on and ``turnstile_fake`` is off (``config_features``).
     turnstile_secret_key: SecretStr | None = None
@@ -234,15 +238,12 @@ class Settings(
     def _check_model_api_key(
         cls, value: SecretStr | None, info: ValidationInfo
     ) -> SecretStr | None:
-        if value is None:
-            return None
-        key = value.get_secret_value()
-        if not key.strip():
-            return None  # the empty placeholder: no key
-        # It goes into an HTTP header: no whitespace or control characters anywhere.
-        if not key.isascii() or any(c.isspace() or not c.isprintable() for c in key):
-            raise ValueError(f"{info.field_name} has whitespace, control or non-ASCII characters")
-        return value
+        return check_model_api_key(value, info.field_name or "model_api_key")
+
+    @field_validator("spotdown_service_key")
+    @classmethod
+    def _check_spotdown_service_key(cls, value: SecretStr | None) -> SecretStr | None:
+        return check_spotdown_service_key(value)  # the empty placeholder becomes None
 
     @field_validator("swedebeat_gateway_key")
     @classmethod
@@ -291,12 +292,7 @@ class Settings(
 
     @model_validator(mode="after")
     def _spotify_needs_a_loopback_address(self) -> "Settings":
-        # ADR 0009 section 2: Spotify does not accept ``localhost`` in a redirect URI (only the
-        # loopback address), so the fixed callback would never work.
-        if self.song_picking and (urlsplit(self.public_base_url).hostname or "") == "localhost":
-            raise ValueError(
-                "public_base_url may not be localhost with song_picking on (use 127.0.0.1)"
-            )
+        check_spotify_redirect_host(self.song_picking, self.public_base_url)  # ADR 0009 section 2
         return self
 
     @property
