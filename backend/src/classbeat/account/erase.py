@@ -14,6 +14,9 @@
    identities, connections' ciphertext, classes with their revisions, jobs and events, Spotify
    pool and playlist rows, usage, plans, credits, quota rows, security events). A job still
    running after ``wait`` fails its next fenced write and ends; nothing it writes survives.
+   With the ``cache_scope`` key, the account's spotdown scope is recorded for deletion first, in
+   the same transaction (``spotdown.scope_outbox``; the worker sends ``DELETE /v2/scopes``); the
+   operator's delete records it in ``make_job_ender``'s step, just before its own transaction.
 
 Only the ``account_deleted`` event is kept, with no user id and no address (the 30-day purge
 removes it). Anything in the user's own MOWL or Spotify account stays there.
@@ -37,6 +40,7 @@ from classbeat.emails.notices import read_prefs
 from classbeat.jobs import credits, user
 from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.issuer import owner_context
+from classbeat.spotdown import scope_outbox
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -117,26 +121,34 @@ async def end_jobs_of(
     return await end_jobs(factory, owner_context(user_id), ledger, wait=wait)
 
 
-def make_job_ender(factory: Factory, ledger: CreditLedger) -> Callable[[UUID], Awaitable[Ended]]:
+def make_job_ender(
+    factory: Factory, ledger: CreditLedger, scope_key: bytes | None = None
+) -> Callable[[UUID], Awaitable[Ended]]:
     """``end_jobs_of`` bound to the web app's session factory and ledger. ``web`` installs it as
     ``app.state.end_account_jobs`` and the operator's delete calls it through that value: the work
     runs in the target's own ``user_session``s, never on the maint session, and guard 11 (no
     advisory lock or NOTIFY on the admin path) is about the latter."""
 
     async def end(user_id: UUID) -> Ended:
-        return await end_jobs_of(factory, user_id, ledger)
+        ended = await end_jobs_of(factory, user_id, ledger)
+        if scope_key is not None:  # ADR 0040 section 7, before the operator's delete
+            await scope_outbox.record_for(factory, scope_key, user_id)
+        return ended
 
     return end
 
 
-async def delete_row(factory: Factory, ctx: UserContext) -> bool:
-    """Delete the ``users`` row (the cascade does the rest); ``False`` when it was gone."""
+async def delete_row(factory: Factory, ctx: UserContext, scope_key: bytes | None = None) -> bool:
+    """Delete the ``users`` row (the cascade does the rest); ``False`` when it was gone. With
+    ``scope_key`` the spotdown scope is recorded for deletion in the same transaction."""
     require_context(ctx)
     async with system_session(factory) as db:
         await user.lock_owner(db, ctx)  # no job is created between the last cancel and the delete
         deleted = await auth.delete_account(db, ctx.user_id)
         if deleted:
             await auth.record_event(db, "account_deleted")
+            if scope_key is not None:  # ADR 0040 section 7: committed with the delete
+                await scope_outbox.record(db, scope_key, ctx.user_id)
         return deleted
 
 

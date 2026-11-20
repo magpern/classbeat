@@ -124,6 +124,11 @@ class FeatureSettings(BaseSettings):
     # ``spotdown_sources``, a comma list of ``upload`` and ``youtube`` (empty: none).
     spotdown_url: str | None = None
     spotdown_sources: str = ""
+    # ADR 0040 section 9 (#1301 part 3): shadow mode for studio tracks, worker only. On (and with
+    # spotdown installed and ``upload`` among the sources), each downloaded studio track is also
+    # analysed by spotdown and only the comparison is recorded (``spotdown.shadow_config``); the
+    # design keeps today's analysis. Off by default.
+    spotdown_shadow: bool = False
 
     @field_validator("swedebeat_gateway_url")
     @classmethod

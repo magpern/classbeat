@@ -37,6 +37,8 @@ OTHER_SYSTEM_TABLES = {
     "model_eval_results": "recorded eval suite runs, not per user",
     "model_routes": "which model each route uses, not per user",
     "billing_webhook_refusals": "refused provider notifications; no user (ADR 0032 section 3)",
+    "spotdown_scope_deletions": "spotdown scopes of deleted accounts still to be deleted there: an "
+    "HMAC of a gone owner's id, never the id (ADR 0040 section 7)",
     "player_events": "delivery state of the player's signed events: a pairwise subject, no user "
     "id, gone once delivered (ADR 0034 section 2)",
 }

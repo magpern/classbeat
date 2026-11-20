@@ -22,6 +22,9 @@ socket, no network, deterministic. Public test values only.
 - Every ``/v2`` request without ``Authorization: Bearer <SERVICE_KEY>`` is ``401``; the same
   ``Idempotency-Key`` with another body is ``409``. Errors use ``{"error": {"code", "message"}}``.
 
+``fake.end`` sets how every new job ends (for a caller whose ``client_ref`` it does not choose).
+A document of an analysis held for ``sha256:<hex>`` carries that sha256 in its provenance.
+
 ``fake.inject[path] = [httpx.Response, ...]`` answers the next requests to ``path`` with those
 instead (a ``503``, a ``429`` with ``Retry-After``, a redirect, an oversized or gzip body);
 ``fake.connect_error`` raises ``httpx.ConnectError``. ``fake.seen`` records every request and
@@ -98,6 +101,7 @@ class FakeSpotdown:
     answered: list[tuple[str, int, bytes]] = field(default_factory=lambda: [])  # path, status, body
     inject: dict[str, list[httpx.Response]] = field(default_factory=lambda: {})
     connect_error: bool = False
+    end: str | None = None  # every new job ends so (one of ``ENDS``), whatever its client_ref
     uploads: dict[str, tuple[str, str]] = field(default_factory=lambda: {})  # id: scope, sha
     analyses: dict[str, tuple[str | None, str]] = field(default_factory=lambda: {})  # id: scope, by
     jobs: dict[str, _Job] = field(default_factory=lambda: {})
@@ -125,8 +129,12 @@ class FakeSpotdown:
         return None
 
     def analysis(self, analysis_id: str) -> dict[str, Any]:
+        """The minimal example with this id; one held for ``sha256:<hex>`` names those bytes."""
         document = copy.deepcopy(example("analysis-v1.minimal.json"))
         document["analysis_id"] = analysis_id
+        by = self.analyses.get(analysis_id, (None, ""))[1]
+        if by.startswith("sha256:"):
+            document["provenance"]["audio"]["sha256"] = by.removeprefix("sha256:")
         return document
 
     # --- routes -----------------------------------------------------------------------------
@@ -246,7 +254,7 @@ class FakeSpotdown:
                 200, json={"job_id": job_id, "status": "done", "analysis_id": cached}
             )
         ref = str(request["client_ref"])
-        end = next((e for e in ENDS if ref.endswith(e)), "done")
+        end = self.end or next((e for e in ENDS if ref.endswith(e)), "done")
         self.jobs[job_id] = _Job(job_id, scope, ref, end)
         if end in ("done", "alignment_failed"):
             held_scope = None if by.startswith("youtube:") else scope
