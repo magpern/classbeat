@@ -83,9 +83,9 @@ the end of a milestone. It escalates only genuine blockers (see "Escalation" bel
    auth and sessions, tenant isolation and RLS, guards and roles, jobs with leases and fencing
    and the queue SQL, approvals and external writes, Spotify OAuth, egress and model keys,
    billing); **Sonnet** is enough for the rest (UI, tests, docs, tooling; Amendment 13 for
-   tooling that touches secret handling). The first review of any new security design is Opus.
+   tooling that touches secret handling). The first review of any new security design is Opus, also in the spotdown programme (note below).
    When in doubt, Opus. *(Owner, 2026-11-20, Amendment 32: in the spotdown (SD) programme, which
-   had Opus review every PR (Amendment 31), a **docs-only** PR may be reviewed by Sonnet.)*
+   had Opus review every PR (Amendment 31), a **docs-only** PR may be reviewed by Sonnet; a new security-design ADR stays Opus even there.)*
 3. **A new head SHA needs a new review**, scoped as follows (roadmap Amendment 2):
    - *Merge-only update:* the only change since the reviewed head is a merge of `main` with
      no hand-resolved conflict (`git diff <reviewed>..<head>` equals `main`'s own change), and
