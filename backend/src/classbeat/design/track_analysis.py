@@ -22,8 +22,9 @@ itself: the kind's ``admit`` and its run check them before calling it.
    sandboxed child (``mixanalysis.analyse_audio`` with ``mode="track"``: seccomp required,
    Landlock when present, 1.5 GiB, 180 s, ``mowl.music.analyze_track``), and **the audio deleted
    at once**: the file right after the child, the directory with everything in it on every way
-   out (a failure, a cancel, a lost lease). Then the map is stored (``track_cache.store``); a
-   later failure keeps the tracks already stored, so a retry downloads only the rest.
+   out (a failure, a cancel, a lost lease). Then the map is stored (``track_cache.store``) and used
+   as stored (jsonb's form, which the draft's ``map_hash`` is of); a later failure keeps the
+   tracks already stored, so a retry downloads only the rest.
 4. **spotdown as the source** (``track_spotdown``, ADR 0040 sections 7 and 9; SD-P5, off by
    default, only for the allowlisted owners of ``studio_tracks_config``): the cache's hits are
    then also the owner's ``spotdown`` rows whose provenance is current, and for each downloaded
@@ -218,8 +219,8 @@ async def analyse_tracks(
     peak, shadows, by_spotdown = 0, list[track_shadow.Relayed](), 0
     for number, reference in enumerate(batch, 1):
         analysed, peak_rss, shadow = await _analyse_one(run, bearer, key, reference, session)
-        await store(run, connection, analysed, release_slot=number == len(batch))
-        found[reference] = analysed
+        analysed = await store(run, connection, analysed, release_slot=number == len(batch))
+        found[reference] = analysed  # the stored form: what a later read hashes
         peak = max(peak, peak_rss or 0)
         by_spotdown += analysed.analyser == "spotdown"
         shadows += [shadow] if shadow is not None else []

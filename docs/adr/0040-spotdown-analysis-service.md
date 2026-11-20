@@ -321,6 +321,20 @@ budget (600 s) and "spotdown unreachable" hold **per class**: per design job, ov
 (`spotdown_studio_budgets`, migration 0064), so an outage found by one run makes the whole class
 local and a class of many tracks never waits more than one budget. While spotdown is consulted the
 job holds its mix-analysis slot and the track's capped download stays on disk, up to that budget.
+The budget is **wall-clock time since the job's first spotdown call** (`started_at`), not time spent
+waiting for spotdown: the local analyses of other tracks and the time the job waits requeued (for an
+analysis slot) count against it too. That is the safe side of "wait about 10 min": in a long class
+the later tracks can go local while spotdown is fast, so the rollout's fallback-rate statistics
+(§9) count the tracks that went local because the budget ran out apart from those spotdown failed.
+
+Two bounds that follow from keeping both analysers' rows (#1302 review): `MAPS_PER_USER` (200) in
+`swedebeat_track_maps` counts the `local` and `spotdown` rows together, so a user who switches
+analyser reaches the trim sooner, and a class whose recorded row was trimmed answers
+`music_changed` (Change songs analyses again). The provenance kept with a class in
+`class_revisions.music` (`analyses`) is at most one record per track, at most 40 (`MAX_TRACKS`,
+checked by the model), each no larger than the 64 KiB the cache table allows its `provenance`.
+A class reads back exactly the row it recorded: its analyser, its bytes and the hash of its map
+**as stored** (jsonb's form, so `-0.0` and `1e+16` hash as the stored `0.0` and integer).
 
 ### 9. Quality gates and the rollout (plan §7)
 
