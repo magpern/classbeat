@@ -139,5 +139,6 @@ also covers retention: spotdown's global YouTube-derived entries hold no user da
 class, so instead of "deleted once no class of any user refers to it" they go after 90 days unused or
 when their version changes, and the operator can purge a source on request (ADR 0040, amendment item
 5). YouTube sourcing (`ALLOW_YTDLP_SOURCING` on spotdown, off by default) is switched on only by the
-owner's deployment; agents and CI never call YouTube. The table row above is new; beyond the circle
+owner's deployment; agents and CI never call YouTube. Keeping the global entries for
+that bounded time is a reversible Architect default, recorded in [ADR 0040](0040-spotdown-analysis-service.md) §7. The table row above is new; beyond the circle
 it needs the providers.

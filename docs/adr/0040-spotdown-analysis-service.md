@@ -284,8 +284,9 @@ statements:
 - ADR 0007 §11, which requires any shared analysis store to come with its own ADR, the analysis id
   recorded on each owned row, and a purge driven by class and job references.
 
-This retention is **part of what the owner accepts in #1296** (§12 item 2); until then no YouTube
-source is enabled and no such entry is created from classbeat's traffic. The proposed resolution
+This retention is **part of what the owner accepts in #1296** (§12 item 2). The owner accepted it
+on 2026-11-20 and the hold is lifted; YouTube sourcing is the owner's deployment choice (§12), so
+such entries exist only where the owner enabled it. The proposed resolution
 point, for the owner and the Architect to choose and not decided here: either a bounded lifetime or
 purge for the global entries in spotdown#5 (caches, lookups, provenance), or a follow-up ADR that
 applies ADR 0007 §11's reference-driven purge to them, settled before SD-P6 (#1303) starts.
@@ -624,7 +625,7 @@ changes no code, setting, compose file or deployment.
      their scope and their purge (§7). The 90-day purge and the takedown are a spotdown change that the
      Architect tracks as a spotdown issue. Until it ships, these entries are unbounded, which the
      owner's acceptance of #1296 covers (§12 item 2).
-6. **§12's hold is lifted.** SD-P6 (#1303) is unblocked once this amendment merges (it settles §7).
+6. **§12's hold is lifted.** SD-P6 (#1303) is unblocked (this amendment, which settles §7, has merged).
    Its other dependencies in §14 stand.
 
 ### Amendment (2026-11-20, owner): review and developer process for this programme (extends §11)
