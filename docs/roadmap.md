@@ -1,5 +1,34 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 31 (2026-11-20, owner decision: the spotdown integration plan is frozen; issue #1307)
+
+The owner froze the plan for integrating [magpern/spotdown](https://github.com/magpern/spotdown) as
+classbeat's music-analysis service: [docs/plans/spotdown-integration.md](plans/spotdown-integration.md)
+(Revision 2, frozen 2026-11-20; tracking issue #1308). The decision record will be ADR 0040 (#1300).
+
+- **Boundary.** classbeat keeps Spotify user integration (PKCE, tokens, search, playlists), music
+  selection, workout generation and publishing. spotdown owns source matching, temporary audio
+  processing and derived analysis metadata; it never returns audio and receives no user token.
+  spotdown needs no per-user Spotify OAuth. SwedeBeat audio is preferred when the workout uses
+  SwedeBeat. Today's analysis paths (MOWL sections, `mixanalysis`, `mixchild`, `track_analysis`)
+  stay as fallbacks until the plan's quality gates and the owner's sign-off (#1299).
+- **Not authorized.** Every phase (SD-P0 to SD-P7, and the nonblocking SD-P2+ enhancements) is
+  **PLANNED / NOT AUTHORIZED FOR IMPLEMENTATION** until the owner authorizes it explicitly. This
+  amendment changes no code, setting or runtime behaviour, and does not yet amend ADR 0010 or
+  ADR 0021: that amendment is in ADR 0040 and takes effect only on the owner's acceptance (#1296).
+- **Governance for this programme, in both repositories** (owner instruction, 2026-11-20): Opus is
+  the Architect and Orchestrator and **reviews every PR** (stricter than the Sonnet review the
+  review gate allows for non-security PRs); Sonnet is the Developer; Haiku is the Explorer. The
+  review gate, merge rules and safety envelope of AGENTS.md apply unchanged: a fresh first review,
+  resumed later rounds, `Agent review (opus): PASS <exact head SHA>`, green `ci` and `pr-title`,
+  `gh pr merge --squash --match-head-commit`. `magpern/spotdown` adopts the same workflow
+  (magpern/spotdown#2) and gets no weaker policy; its ruleset is the owner's action
+  (magpern/spotdown#1).
+- **Owner decisions,** each blocking only what it names: #1296 (YouTube terms-of-service risk and
+  enablement; blocks SD-P6), #1297 (cross-user reuse of private-source analyses; blocks nothing),
+  #1298 (the real-music quality corpus; blocks the default switches), #1299 (retirement; blocks
+  SD-P7c), magpern/spotdown#1 (the spotdown ruleset).
+
 ## Amendment 30 (2026-11-19, owner decision: Spotify playlists are created public; issue #1287)
 
 The owner decided, after a live finding, that classbeat creates its Spotify playlists **public from the
