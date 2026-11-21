@@ -1,15 +1,17 @@
-"""A design job's spotdown budget for its studio tracks (``spotdown_studio_budgets``, ADR 0040
-section 8; migration 0064): the bounds of section 8 hold **per class**, over every run of the
-job, not per run.
+"""A design job's spotdown budget for its studio tracks and mixes (``spotdown_studio_budgets``,
+ADR 0040 section 8; migration 0064): the bounds of section 8 hold **per attempt**, over the runs
+of that attempt (a shutdown hand-back or an analysis-slot requeue keeps them), not per run. A run
+that ends in a retryable category deletes the row (``jobs.transitions.retry``, ADR 0040 amendment
+"spotdown is the only analysis path", item 4), so the next attempt starts with a full budget and no
+outage flag; a lease-lost requeue keeps them.
 
 - ``open``: in the job's fenced transaction, the job's row (made on its first spotdown use, so
   ``started_at`` is when the budget began), the database's ``now()`` and whether spotdown was
-  found unreachable by an earlier run;
-- ``mark_outage``: spotdown is unreachable for this job: every later track of every run is
-  analysed locally without calling it.
+  found unavailable by an earlier run of the attempt;
+- ``mark_outage``: spotdown is unavailable for this attempt: a later run of it ends
+  ``analysis_unavailable`` without calling spotdown.
 
-Filtered on ``owner_id`` itself as well as through row security, and on the job. Nothing here
-logs.
+Filtered on ``owner_id`` itself as well as through row security. Nothing here logs.
 """
 
 from datetime import datetime

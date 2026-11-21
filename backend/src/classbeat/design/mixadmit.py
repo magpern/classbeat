@@ -15,7 +15,8 @@ nothing:
    user's id, a made-up id or a URL never becomes a job. A failed listing refuses with its
    connection category. The listing has a total deadline of ``LISTING_SECONDS``, well inside the
    role's ``idle_in_transaction_session_timeout``.
-4. ``analysis_limit`` (with ``limit`` and ``used``) when the mix has no usable cached analysis and
+4. ``analysis_limit`` (with ``limit`` and ``used``) when the mix has no usable cached analysis (a
+   current ``spotdown`` row; a ``local`` row is none, #1353) and
    the user started ``mixlimit.ANALYSES_PER_DAY`` new analyses in the last 24 hours.
 
 The worker repeats what can change after creation: ``still_on`` (a queued job whose flag went off,
@@ -51,6 +52,7 @@ from classbeat.flags import effective
 from classbeat.jobs import JobFailure, JobRun
 from classbeat.jobs.kinds import Refused
 from classbeat.operations.swedebeat import parse_mixes
+from classbeat.spotdown.mix_map_model import current_mix_provenance
 
 LISTING_SECONDS: Final = 20.0
 MIX_SOURCE: Final = "mowl_swedebeat_mix"
@@ -64,14 +66,15 @@ class Listing(Protocol):
 
 # A cache hit as ``mix_cache.cached`` judges it: young enough, this connection, the stored link's
 # playlist and the library's current map version. The user's own rows only (RLS). Only a
-# ``local`` row counts (#1304): the web app does not know whether spotdown is a worker's source
-# for this owner, so a ``spotdown`` row alone never skips the daily limit here (stricter).
+# ``spotdown`` row whose provenance is this build's counts (#1353: spotdown is the only analysis
+# path; a ``local`` row is no hit), checked in ``_cached``.
 _CACHED = text(
-    "SELECT 1 FROM swedebeat_mix_maps m JOIN mowl_playlist_links l ON l.owner_id = m.owner_id "
+    "SELECT m.provenance FROM swedebeat_mix_maps m "
+    "JOIN mowl_playlist_links l ON l.owner_id = m.owner_id "
     "AND l.source = 'swedebeat' AND l.source_id = m.mix_id AND l.playlist_id = m.playlist_id "
     "WHERE m.owner_id = :owner_id AND m.mix_id = :mix_id AND m.mowl_connection_id = :connection_id "
     "AND m.created_at > now() - make_interval(days => :days) AND m.map->>'version' = :version "
-    "AND m.analyser = 'local'"
+    "AND m.analyser = 'spotdown'"
 )
 _CLASS_MIX = text(
     "SELECT music_source->>'mix_id' AS mix_id FROM classes "
@@ -125,7 +128,8 @@ async def _cached(db: AsyncSession, owner_id: UUID, mix_id: str, connection_id: 
         "days": MAP_TTL_DAYS,
         "version": str(music.MAP_VERSION),
     }
-    return (await db.execute(_CACHED, params)).first() is not None
+    rows = (await db.execute(_CACHED, params)).all()
+    return any(current_mix_provenance(r.provenance) for r in rows)
 
 
 async def _limit(

@@ -28,7 +28,7 @@ from agentfake import CONFIG, FactoryModels, from_dict
 from authtools import Env, running_env
 from classbeat import design, saving
 from classbeat.agent.providers.fake import FakeProvider
-from classbeat.design import corrections, mixadmit, mixfetch, mixlimit
+from classbeat.design import corrections, mixadmit, mixfetch, mixlimit, track_spotdown
 from classbeat.design import swedebeat_music as sbm
 from classbeat.design.revise import KIND as REVISE_KIND
 from classbeat.egress import (
@@ -41,6 +41,8 @@ from classbeat.emails import handoff
 from classbeat.jobs import JobFailure, KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.mail import Mailer
+from classbeat.spotdown import studio_tracks_config
+from classbeat.spotdown.studio_tracks_config import TracksConfig
 from designtools import BRIEF
 from jobapi import Browser, new_key
 from jobtools import new_job
@@ -50,7 +52,10 @@ from optools import TOKEN_A, TOKEN_B, OpsEnv
 from preftools import use_swedebeat
 from savetools import FakeMowlPrograms
 from smtpfake import SmtpFake
+from spotdownfake import FakeSpotdown, spotdown
+from test_spotdown_mix_policy import mix_document
 
+__all__ = ["spotdown"]  # the fixture
 pytestmark = pytest.mark.usefixtures("jenv", "mowl_api", "analysis_slot_by_default")
 
 MIX_NAME = "Planted Mix Name q9z"  # searched for in everything the model is sent
@@ -120,6 +125,28 @@ def work(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root.mkdir()
     monkeypatch.setattr(mixfetch, "work_root", lambda: root)
     return root
+
+
+@pytest.fixture(autouse=True)
+def spotdown_on(spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """spotdown is the only analysis path (#1353): the fake one answers with the 150 s fake mix as
+    one 124 bpm song, naming the bytes it was asked for, and no wait is real."""
+    real = spotdown.analysis
+
+    def analysis(analysis_id: str) -> dict[str, Any]:
+        sha = real(analysis_id)["provenance"]["audio"]["sha256"]
+        doc = mix_document([(0.0, SECONDS, 124.0)], sha=sha)
+        doc["analysis_id"] = analysis_id
+        return doc
+
+    async def pause(*_args: object) -> None:
+        return None
+
+    monkeypatch.setattr(spotdown, "analysis", analysis)
+    monkeypatch.setattr(track_spotdown, "pause", pause)
+    studio_tracks_config.configure(TracksConfig(frozenset({"upload"}), b"k" * 32))
+    yield
+    studio_tracks_config.configure(None)
 
 
 class MixEnv:
@@ -281,7 +308,10 @@ async def test_a_class_is_designed_on_a_fake_mix_and_saved_to_mowl(
         "fingerprint": sbm.fingerprint(stored_map.map),
         "link_id": str(link.id),
         "songs": music["songs"],  # ADR 0007 amendment "beat-one corrections"; no correction
+        "analyser": "spotdown",  # ADR 0040 amendment: the only analysis path
+        "provenance": music["provenance"],
     }
+    assert music["provenance"]["analyzer"]["name"] == "spotdown"
     assert music["songs"]
     assert all("title" not in s for s in music["songs"])
     assert str(link.playlist_id) not in json.dumps(music)

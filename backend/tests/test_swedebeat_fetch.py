@@ -1,7 +1,7 @@
 """A3 of ADR 0016: the music step for a Swedebeat mix (``classbeat.design.swedebeat_music``) as a
 job on the fakes: the fake MOWL (``mowlfake``, over loopback HTTP), the fake media endpoint
-(``mediafake``, in-process, an injected list) and the real limited child process on generated
-audio. Never the network.
+(``mediafake``, in-process, an injected list) and the fake spotdown (the only analysis path, #1353;
+it analyses the fetched audio). Never the network.
 
 ``# ruff: noqa`` below: the tests poll and read files from async code, as the other job tests do.
 """
@@ -10,7 +10,6 @@ import asyncio
 import io
 import json
 import logging
-import sys
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -24,17 +23,21 @@ from mowl import music
 from pydantic import BaseModel, ConfigDict
 
 from authtools import Env, running_env
-from classbeat.design import mixanalysis, mixfetch
+from classbeat.design import mix_spotdown, mixfetch, track_spotdown
 from classbeat.design.swedebeat_music import MAPS_PER_USER, MixAnalysis, load_swedebeat_mix
 from classbeat.egress import Allowlist, mowl_media_test_client
 from classbeat.jobs import Complete, JobKind, JobRun, KindRegistry
 from classbeat.log import QUIET_LOGGERS, configure_logging
+from classbeat.spotdown import studio_tracks_config
+from classbeat.spotdown.studio_tracks_config import TracksConfig
 from jobtools import new_job
 from mediafake import FakeMedia
 from mowlfake import FakeMowl
 from optools import KIND as JOB_KIND
 from optools import TOKEN_A, TOKEN_B, OpsEnv
+from spotdownfake import FakeSpotdown, spotdown
 
+__all__ = ["spotdown"]  # the fixture
 pytestmark = pytest.mark.usefixtures("mowl_api", "analysis_slot_by_default")
 SAME_ID = "shared-mix-0001"
 TABLES = (
@@ -59,6 +62,19 @@ def work(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root.mkdir()
     monkeypatch.setattr(mixfetch, "work_root", lambda: root)
     return root
+
+
+@pytest.fixture(autouse=True)
+def spotdown_on(spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """spotdown is the only analysis path (#1353): the fake one is installed, with no waits."""
+
+    async def pause(*_args: object) -> None:
+        return None
+
+    monkeypatch.setattr(track_spotdown, "pause", pause)
+    studio_tracks_config.configure(TracksConfig(frozenset({"upload"}), b"k" * 32))
+    yield
+    studio_tracks_config.configure(None)
 
 
 @pytest.fixture
@@ -184,7 +200,7 @@ async def test_the_fake_mix_is_fetched_analysed_cached_and_its_audio_deleted(
     (result,) = harness.results
     assert result.cached is False
     (song,) = result.music_map["songs"]
-    assert song["bpm"] == pytest.approx(124.0, abs=0.5)
+    assert song["bpm"] == pytest.approx(128.0, abs=0.5)  # the fake spotdown's document
     assert result.music_map["version"] == music.MAP_VERSION
     # One GET to the media host; none of our headers but identity coding; the audio is gone.
     assert [m for m, _h, _p in harness.media.requests] == ["GET"]
@@ -199,19 +215,10 @@ async def test_the_fake_mix_is_fetched_analysed_cached_and_its_audio_deleted(
     assert stored.duration == pytest.approx(60.0)
     assert stored.listed_duration == pytest.approx(60.0)
     assert stored.map == result.music_map
-    # Peak memory of the child, in the operator log's counts: under the 1.5 GiB limit.
-    peaks = [
-        json.loads(line).get("peak_rss_mb")
-        for line in operator_log.getvalue().splitlines()
-        if "swedebeat mix analysed" in line
-    ]
-    assert len(peaks) == 1
-    assert peaks[0] is not None
-    assert 0 < peaks[0] < 1536
     # ADR 0026 stage 1 (#735): the fetch and decode times, on the job and in the same log line.
     assert row.analysed_at is not None
     assert row.analysis_fetch_ms >= 0
-    assert row.analysis_decode_ms > 0  # the child process takes real time
+    assert row.analysis_decode_ms >= 0  # the time spent in spotdown's analysis
     (line,) = [
         json.loads(line)
         for line in operator_log.getvalue().splitlines()
@@ -437,11 +444,9 @@ async def test_a_mix_in_the_cache_still_works_with_the_empty_production_list(
         ({"link": "redirect_away"}, "media_host_not_allowed"),
         ({"link": "gzip"}, "media_refused"),
         ({"link": "oversize"}, "media_refused"),
-        ({"link": "undecodable"}, "analysis_failed"),
-        ({"link": "beats", "seconds": 400.0}, "analysis_failed"),  # 400 s of a listed 60 s + 5 min
     ],
 )
-async def test_every_media_refusal_and_bad_file_ends_the_job_with_one_clean_category(
+async def test_every_media_refusal_ends_the_job_with_one_clean_category(
     harness: Harness,
     mowl_api: FakeMowl,
     work: Path,
@@ -553,39 +558,33 @@ async def test_a_cancel_during_the_download_stops_it_and_deletes_the_audio(
     assert harness.maps(owner) == []
 
 
-async def test_a_cancel_during_the_analysis_kills_the_child_and_deletes_the_audio(
-    harness: Harness, mowl_api: FakeMowl, work: Path, monkeypatch: pytest.MonkeyPatch
+async def test_a_cancel_while_spotdown_analyses_stops_the_run_and_deletes_the_audio(
+    harness: Harness,
+    mowl_api: FakeMowl,
+    work: Path,
+    spotdown: FakeSpotdown,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(mixanalysis, "CHECKPOINT_SECONDS", 0.2)
-    sleeper = [sys.executable, "-c", "import time; time.sleep(120)"]
-    monkeypatch.setattr(mixanalysis, "child_argv", lambda _a, _s, _r: sleeper)
+    real_poll = spotdown._poll  # pyright: ignore[reportPrivateUsage]
+
+    def never_done(job_id: str) -> httpx.Response:
+        spotdown.jobs[job_id].polls = 1  # still queued, whatever is asked
+        return real_poll(job_id)
+
+    async def short_pause(*_args: object) -> None:
+        await asyncio.sleep(0.05)
+
+    monkeypatch.setattr(spotdown, "_poll", never_done)
+    monkeypatch.setattr(track_spotdown, "pause", short_pause)
     owner, connection = await account(harness)
-    mix = add_beats(mowl_api)
-    job_id = harness.job(owner, connection, mix)
+    job_id = harness.job(owner, connection, add_beats(mowl_api))
     task = asyncio.create_task(harness.ops.run_next())
-    await until(lambda: any(work.glob("mix-*/mix.audio")) and len(harness.media.requests) == 1)
-    await asyncio.sleep(0.5)  # the child is running
+    await until(lambda: any(s.path.startswith("/v2/jobs/") for s in spotdown.seen))
     harness.ops.sql("UPDATE jobs SET cancel_requested_at = now() WHERE id = :j", j=job_id)
     await asyncio.wait_for(task, 30)
     assert harness.ops.row(job_id).state == "cancelled"
     assert leftovers(work) == []
     assert harness.maps(owner) == []
-
-
-async def test_a_crash_of_the_child_ends_the_job_analysis_failed_and_the_worker_lives_on(
-    harness: Harness, mowl_api: FakeMowl, work: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    crash = [sys.executable, "-c", "import os; os._exit(9)"]
-    owner, connection = await account(harness)
-    mix = add_beats(mowl_api)
-    with monkeypatch.context() as patched:
-        patched.setattr(mixanalysis, "child_argv", lambda _a, _s, _r: crash)
-        row = await harness.run(owner, connection, mix)
-    assert (row.state, row.error_category) == ("failed", "analysis_failed")
-    assert leftovers(work) == []
-    # The next job, in the same process, goes through.
-    second = await harness.run(owner, connection, mix)
-    assert second.state == "completed"
 
 
 async def test_an_error_in_the_step_itself_still_deletes_the_audio(
@@ -594,7 +593,7 @@ async def test_an_error_in_the_step_itself_still_deletes_the_audio(
     async def explode(*_a: Any, **_k: Any) -> Any:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("classbeat.design.swedebeat_music.analyse_audio", explode)
+    monkeypatch.setattr(mix_spotdown, "analyse", explode)
     owner, connection = await account(harness)
     mix = add_beats(mowl_api)
     row = await harness.run(owner, connection, mix)

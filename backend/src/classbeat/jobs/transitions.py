@@ -41,6 +41,12 @@ _REQUEUE = text(
     "WHERE id = :job_id AND owner_id = :owner_id AND lease_version = :v AND state = 'running' "
     "RETURNING next_seq, available_at"
 )
+# ADR 0040 amendment "spotdown is the only analysis path", item 4 (#1353): a run that ends in a
+# retryable category starts its next attempt with a full spotdown wait budget and no outage flag
+# (``design.track_spotdown_budget`` makes the row again on its first use).
+_RESET_SPOTDOWN_BUDGET = text(
+    "DELETE FROM spotdown_studio_budgets WHERE owner_id = :owner_id AND job_id = :job_id"
+)
 # A job that must analyse a mix and was claimed without an analysis slot (#574): back to the
 # queue at once with the slot, the attempt not counted, like the shutdown hand-back.
 _REQUEUE_FOR_SLOT = text(
@@ -205,6 +211,8 @@ async def retry(fs: FencedSession, category: str, delay: float) -> str:
         return await fail(fs, category)
     if counts.attempt >= counts.max_attempts:
         return await fail(fs, category)
+    if category in RETRYABLE:  # a counted retry; not ``operation_busy`` or ``pool_not_synced``
+        await fs.db.execute(_RESET_SPOTDOWN_BUDGET, fs.lease.params())
     return await _requeue(fs, refund=False, delay=delay, kind="retry_scheduled", category=category)
 
 
