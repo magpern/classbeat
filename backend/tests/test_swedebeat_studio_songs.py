@@ -399,3 +399,23 @@ async def test_a_queued_studio_pick_holds_the_pool_for_every_pick(studio: Studio
     await studio.created(rider)  # queued: it will write the pool (the working copy)
     async with user_session(studio.songs.factory, make_context(rider.user_id)) as db:
         assert await pool_busy(db, rider.user_id)  # a song pick of any class is refused
+
+
+async def test_the_jobs_plan_gates_reach_the_song_stage_through_the_kind(
+    studio: StudioEnv,
+) -> None:
+    """The recorded list (1920 s) is whole songs inside the instructor plan, but not inside a
+    30-minute plan's bound (1890 s less 1 s a song): the job's stored ``plan_gates`` decide, so the
+    kind must hand them to ``Steps`` (a mutation dropping ``given.plan_gates`` fails this)."""
+    studio.found(*ALL_POOL)
+    rider = await studio.rider()
+    job_id = await studio.created(rider)
+    studio.songs.sql(
+        "UPDATE jobs SET input = jsonb_set(input, '{plan_gates}', "
+        '\'{"max_class_minutes": 30, "games": false, "races": false, "ftp_tests": false}\') '
+        "WHERE id = :id",
+        id=job_id,
+    )
+    row = await studio.run(job_id)
+    assert row.state == "failed"
+    assert "choose" in studio.songs.stages(job_id)
