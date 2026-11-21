@@ -647,8 +647,8 @@ showed five places where the code does not match the owner's wording; each is de
    (`tolerance=6.0`). That suits `refit_draft`'s beat-one corrections (ADR 0007 amendment "beat-one
    corrections"), not a keep-whole that moves every later song by tens of seconds or more. So the workout's
    interval boundaries are first **remapped** onto the new timeline (B4a), then fitted. No model call is needed.
-3. **The class length.** The song stage accepts a list up to 50 % over the target (`length_policy.UPPER`,
-   §3.3), "because the designed cuts can only shorten". With whole songs as the default, that list is often far
+3. **The class length.** The song stage accepts a list up to 50 % over the target (the shared `choose_songs`
+   stage with `upper=length_policy.UPPER`, measuring lengths less 9 s per change, §3.3; B6a), "because the designed cuts can only shorten". With whole songs as the default, that list is often far
    too long. And no stage refuses a composed duration outside the class's 10 % today: A6 says the tolerance
    applies "as today", but `agent/studio_design.py`, `agent/design.py`, `agent/studio_prompt.py` and
    `swedebeat_studio/` hold no such check (grep, 2026-11-21).
@@ -735,24 +735,40 @@ showed five places where the code does not match the owner's wording; each is de
 The proposal's workout was designed on the proposal's timeline. `mix_remap_calc` (pure, #1367) moves it onto
 the derived timeline by **song anchor**:
 
-1. Each interval boundary of the proposal's stored, fitted content is a mix time `t` on the proposal's
-   composed map. It belongs to the **last piece that has started** at `t` (the incoming piece inside an
-   overlap) and so to a source time `s` of that piece's track.
-2. If that piece is kept in the derived spec, the boundary moves to the derived mix time where that piece
-   plays `s`. B4 only widens a kept piece's window (a whole song contains its proposed window) and only keeps
-   a crossfade or sets it to 0, so the map is monotone: boundaries never cross (a property test).
+Both timelines are read from **checked** specs: the proposal's stored spec (checked when its draft was
+stored) and the derived spec as `mix_plan_policy.checked` returns it (B4 step 3, its cuts placed and rounded).
+A piece's **window** below is that checked `[start_sec, end_sec]`; its **own part** is the window less its
+outgoing crossfade (the part before the next piece starts).
+
+1. Each interval boundary of the proposal's stored, fitted content (the running sum of its intervals' `sec`) is
+   a mix time `t` on the proposal's composed map. It belongs to the **last piece that has started** at `t` (the
+   incoming piece inside an overlap) and so to a source time `s` of that piece's track.
+2. If that piece is kept in the derived spec, the boundary moves to the derived mix time where that piece plays
+   `s`, with `s` **clamped to the piece's derived own part**. B4 normally only widens a kept piece's window (a
+   whole song contains its proposed window) and only keeps a crossfade or sets it to 0; the clamp also covers a
+   cut that `checked` places differently because a neighbouring crossfade changed (#1330's phrase-point
+   selection at a transition). With the clamp the map is monotone whatever `checked` does: a point of one
+   piece maps inside that piece's own part, and own parts follow each other in mix order. A property test over
+   random choices shows boundaries never cross; a second shows `checked` is a fixed point on the proposal (the
+   same choices as the proposal give the proposal back, so its windows are the ones the remap reads).
 3. If the piece was dropped (a repeat collapsed, B7), the boundary moves to the derived time where the next
    kept piece starts.
-4. The workout's end moves to the derived composed end when it was within 1 s of the proposal's composed end;
-   otherwise it maps like any boundary. New music (a kept-whole intro or outro) lengthens the interval it falls
-   in.
+4. **The workout's start stays at 0**, and its end moves to the derived composed end when it was within 1 s of
+   the proposal's composed end (otherwise the end maps like any boundary). So new music before the first
+   boundary (a kept-whole first song's intro) lengthens the first interval, and a kept-whole last song's outro
+   the last one.
 5. The interval lengths are the differences of the remapped boundaries in whole seconds. If any interval comes
-   out shorter than `mowl.sync.MIN_INTERVAL` (5 s), or a game or cooldown below the library's minimum, the
-   apply refuses **`workout_does_not_fit`** (nothing stored): the remap never squeezes an interval silently.
+   out shorter than `mowl.sync.MIN_INTERVAL` (5 s), or a game or cooldown below the library's minimum
+   (`workout.validate`), the apply refuses **`workout_does_not_fit`** (nothing stored): the remap never squeezes
+   an interval silently. This is **expected** when a dropped repeat held two or more boundaries (they all land
+   on one point): keeping such a song whole always needs a re-design, and the screen's text for
+   `workout_does_not_fit` says so and offers **Re-plan** (B6).
 6. Then `agent.design.check` (the fit within 6 s, `workout.validate`, the timing gate) on the derived composed
    map; a refusal there is `workout_does_not_fit` too. Then the plan gates the studio design runs
-   (`agent.design.within_plan`, as `agent/studio_design.py` `checked` does): a class now longer than the user's
-   plan allows is refused **`plan_class_too_long`**. Then the class length (B6).
+   (`agent.design.within_plan` over `plan_gates.draft_problems`, as `agent/studio_design.py` `checked` does):
+   a fitted class over `plan_gates.max_draft_seconds` is refused **`plan_class_too_long`**, and any other plan
+   problem (a game or an FTP test after the user's plan changed) **`plan_not_allowed`**. Then the class length
+   (B6).
 
 So each effort stays on the same moment of the same song where that song still plays, the workout's total
 follows the music, and nothing drifts. What the remap cannot do is musical judgement: fill new music with a
@@ -772,11 +788,22 @@ path, "no timing decision" no longer occurs for a studio track.
 #### B6. Class length: refuse with a named reason, and offer a re-plan as the user's action
 
 - **One length measure.** Every studio length check measures the **composed duration** of the form it
-  checks: the sum of the windows less the crossfades (§4.3), and for a list before any design, its
-  **whole-songs form** (each song once, whole, crossfade 0): the plain sum of the songs' lengths. It replaces
-  `agent.songs.total_sec` (9 s less per change of song) in the studio's `length_policy.studio_total`; the
-  Spotify pick keeps `total_sec`. One function, `length_policy.within(total, target_sec)`, gives the bounds:
-  **10 % under to 10 % over** the list's `target_sec`.
+  checks: for a draft, the sum of the windows less the crossfades (§4.3, `mix_plan_policy.total_sec`), and for
+  a list before any design, its **whole-songs form** (each song once, whole, crossfade 0): the plain sum of
+  the songs' lengths. One function, `length_policy.within(total, target_sec)`, gives the bounds: **10 % under
+  to 10 % over** the list's `target_sec` (today `within` exists with the 50 % upper bound and no caller).
+- **Where the studio measures a song list today, and the change** (#1371): the studio's pick and its
+  "another song" both run the **shared** `choose_songs` stage (`swedebeat_studio/stages.py`, `choose`, building
+  `ChooseContext` with `upper=length_policy.UPPER`; called from `pick.py` and `edit.py`). That stage computes
+  `agent.songs.total_sec` (9 s less per change) and checks `within_tolerance(total, target, upper=ctx.upper)`,
+  with a model-facing error "lengths less 9 s per change of song" (`agent/choose_songs.py`, the song-list
+  check). The stored list total is `swap_policy.song_total`, that is `length_policy.studio_total`, also
+  `total_sec`. #1371 gives `ChooseContext` a **length measure** (the total function, the per-song margin and
+  the error text) with today's as the default: the Spotify pick keeps `total_sec`, `within_tolerance` and its
+  text unchanged; the studio passes the whole-songs measure (the plain sum, `within` with the margin below,
+  its own error text "the total time is N s (whole songs, no crossfade); it must be between L and H s", and
+  `crossfade_sec` 0 in the facts the model is shown and in the stored list). `studio_total` becomes the plain
+  sum, so the stored `total_sec` and the stage agree.
 - `applied` refuses a result outside them: **`class_length_out_of_tolerance`**, with the new total and the
   allowed range. The screen shows the new total for every form and the reason when it is refused.
 - **The song stage checks the default form with a margin**, so a list it accepts always passes as whole songs:
@@ -786,15 +813,18 @@ path, "no timing decision" no longer occurs for a studio track.
   bounds 2430 to 2970 s): a list summing to 2880 s is accepted (inside 2442 to 2958 s), and its whole-songs
   form composes to within 12 s of 2880 s, inside 2430 to 2970 s, so it passes `applied`; a list summing to
   2965 s is refused at the song stage, though `within` alone would let it through, because its composed form
-  could reach 2977 s.
+  could reach 2977 s. (If the fixtures of #1371 show a larger difference between `duration_sec` and the
+  analysed length, the constant grows; it never shrinks below that difference.)
 - **Decided: refuse, and offer the re-plan as a button**, never re-plan silently. Reasons: the user's explicit
   choices for the songs they touched are never changed behind their back; a fair re-plan of the other songs
   needs musical judgement (phrase points, where the workout's efforts land), which is the model's design job,
   not a deterministic rule; a model call costs time and quota and is the user's action; and a refusal
   fails closed. **Re-plan the other songs** is a `revise_draft` with the choices (#1372): the model sees, by
   list index, which songs are kept whole and which cuts are hard, and re-plans the rest. Its result is a new
-  proposal, and the same choices are applied to it again (B4), which is authoritative. It is offered only
-  while Trim songs is on and some song can still be trimmed; otherwise the screen offers **Change songs**.
+  proposal, and the same choices are applied to it again (B4), which is authoritative. For
+  `class_length_out_of_tolerance` it is offered only while Trim songs is on and some song can still be trimmed
+  (otherwise the screen offers **Change songs**); for `workout_does_not_fit`, `plan_class_too_long` and
+  `plan_not_allowed` it is always offered, because the model re-designs the workout too.
 - **The song stage fits whole songs (amends §3.3):** `length_policy.UPPER` returns from 50 % to the song
   pick's 10 % (#1371), because whole songs are now the default. Reversible: one constant.
 - **The default flow.** The screen never applies on its own (no job, no revision, without the user's action).
@@ -805,6 +835,37 @@ path, "no timing decision" no longer occurs for a studio track.
 - The new check covers a derived draft only. Whether the design stage should refuse its own proposal outside
   the tolerance (context item 3) is left to a follow-up; A6's "as today" is read as the prompt-level intent
   it is.
+
+#### B6a. Every length measure and tolerance in the code, and what this amendment does to it
+
+Checked by grep on `main` (2026-11-21) for `total_sec`, `within_tolerance`, `length_policy`, `UPPER`,
+`ctx.upper` and `studio_total`:
+
+| Place | Measures | Bound | After this amendment |
+|---|---|---|---|
+| `agent/choose_songs.py`, the song-list check (Spotify pick; studio pick and "another" through `swedebeat_studio/stages.py`) | `agent.songs.total_sec`: lengths less 9 s per change | `within_tolerance`, 10 % under, `ctx.upper` over (10 %, studio 50 %) | Spotify: unchanged. Studio: whole-songs sum, `within` with the 1 s per song margin, own text (#1371) |
+| `swedebeat_studio/length_policy.studio_total`, through `swap_policy.song_total` (the stored `total_sec` in `pick.py` and `edit.py`) | `total_sec` | none (stored only) | the whole-songs sum (#1371) |
+| `swedebeat_studio/length_policy.within` | – | 10 % under, `UPPER` (50 %) over; **no caller** | `UPPER` 10 %; called by the studio choose measure (#1371) and `mix_choice_policy` (#1367) |
+| `agent/studio_mix.py` `compose` (design and revise stages), `evals/studio.py` | `mix_plan_policy.total_sec`: windows less crossfades | none (shown to the model, scored by evals) | unchanged; the same measure `applied` checks |
+| `songs/pick_analyse.py`, `songs/favoured_policy.py`, `songs/playlist_list_policy.py`, `spotdown/song_refine_calc.py`, `evals/song_checks.py`, `evals/pick_checks.py` | `total_sec` | `within_tolerance` 10 % where checked | unchanged (Spotify and MOWL paths) |
+| `plan_gates.max_draft_seconds` (the plan's longest class, `within_plan`) | the fitted workout's total | the plan's minutes plus `LENGTH_TOLERANCE` | unchanged; now also run by `apply_mix_choices` (B4a) |
+| `design/refit.py` (`refit_draft`) | keeps the workout's total | none | unchanged and not used by this amendment |
+
+#### B6b. Every gate this amendment adds, and the test that shows it can fail
+
+| Gate | Refuses | Shown to fail by (issue) |
+|---|---|---|
+| `MixChoices` validation | `invalid_input` | a position outside the list; `blend` true with `dj_mix` false (#1367) |
+| B5 `exact`-only trims | (a forced whole song) | an `approximate` track with a proposed cut comes back whole; mutation: dropping the check fails it (#1367) |
+| `mix_plan_policy.checked` on the result | its named reason | a whole song under 60 s ends `window_too_short` (#1367) |
+| remap squeeze | `workout_does_not_fit` | keep whole on a song whose dropped repeat held two boundaries (#1367, #1369) |
+| fit and timing gate | `workout_does_not_fit` | a precise cue that lands on a non-`exact` track after the remap (#1369) |
+| plan length | `plan_class_too_long` | keep whole pushing the class over the plan's minutes (#1369) |
+| other plan rules | `plan_not_allowed` | a game in the proposal with plan gates that exclude games (#1369) |
+| class length | `class_length_out_of_tolerance` | keep whole on every song of a list designed 15 % over (#1367, #1369) |
+| song-stage margin | the choose stage's `invalid_song_list` | the 2965 s list of the example (#1371) |
+| per-proposal cap | `apply_limit` | `MAX_CHOICE_APPLIES` + 1 applies (#1369) |
+| B9 | `mix_not_chosen` | a mixed draft with `swedebeat_playlist` only, at create and when the job runs (#1370) |
 
 #### B7. Repeats and loops (amendment A)
 
@@ -868,7 +929,8 @@ New or changed keys, each in en, sv and da (#1373 and #1370): `studio.out.swedeb
 `studio.mix.total` (new total, class length, allowed range); `studio.mix.apply`, `studio.mix.applying`,
 `studio.mix.replan`; `studio.consent.playlistFollowsMix`, `studio.consent.mixChoices`; the reasons
 `studio.reason.class_length_out_of_tolerance`, `studio.reason.mix_not_chosen`, `studio.reason.apply_limit`,
-`studio.reason.workout_does_not_fit`, `studio.reason.plan_class_too_long`.
+`studio.reason.workout_does_not_fit` (it points to Re-plan, B4a step 5), `studio.reason.plan_class_too_long`,
+`studio.reason.plan_not_allowed`.
 
 #### B12. The work, the tests and who builds it
 
@@ -882,7 +944,7 @@ tests.
 | #1368 | `bass_swap` value, `render_plan` off by default (B8) | Opus / Opus | #1366 |
 | #1369 | `apply_mix_choices` job (remap, fit, plan gates), the read-only preview, the timeline fields, threat model T129 (B4, B4a, B6, B10) | Opus / Opus | #1367, #1353 |
 | #1370 | `mix_not_chosen` at create and at job time, threat model T128 (B9) | Opus / Opus | #1367 |
-| #1371 | song stage: one length measure (whole-songs form), 10 % bounds with the per-song margin (B6) | Sonnet / Sonnet | #1366 |
+| #1371 | song stage: the whole-songs measure with the per-song margin in the studio's choose path (`ChooseContext`), 10 % bounds; Spotify unchanged (B6, B6a) | Sonnet / Sonnet | #1366 |
 | #1372 | prompts as suggestions, `cut_on_inexact_track`, re-plan with the choices (B5, B6) | Sonnet / Opus | #1367, #1353, #1365 |
 | #1373 | consent screen: DJ mix opt-in, switches, per-song rows, bulk, totals, Apply then Approve; en, sv, da (B1 to B7, B11) | Sonnet / Sonnet | #1369, #1370, #1372 |
 | #1374 | e2e on fakes: whole-songs default body, per-song choices, length refusal, forged mixed playlist refused, no curve by default | Sonnet / Sonnet | #1373, #1368, #1371, #1363 |
@@ -934,7 +996,7 @@ swap is now behind B8.
   and `crossfade_sec` 0 for every track; gate L6 is unchanged (its check of cuts still covers the DJ-mix
   case).
 - New refusal reasons: `class_length_out_of_tolerance`, `mix_not_chosen`, `workout_does_not_fit`,
-  `plan_class_too_long`, `apply_limit`; new
+  `plan_class_too_long`, `plan_not_allowed`, `apply_limit`; new
   hint `cut_on_inexact_track`; new setting value `bass_swap`.
 - The threat-model row T128 (published outputs: the consent binding) gains the `mix_not_chosen` re-check
   (#1370); T129 (the model proposing cuts) gains the derived spec, re-checked by `checked` (#1369). Both in
