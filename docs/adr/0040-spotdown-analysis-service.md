@@ -80,6 +80,7 @@ temporary audio processing and derived analysis metadata. spotdown never returns
 receives a user token, a signed URL or a password, and needs no per-user Spotify OAuth. Today's
 analysis paths (MOWL sections, `mixanalysis`, `mixchild`, `track_analysis`) stay as fallbacks until
 §9's gates and the owner's sign-off (#1299). spotdown is never a hard dependency (§8).
+*Superseded 2026-11-21 (owner, #1299): spotdown is the only analysis path, with no fallback; see the amendment "spotdown is the only analysis path" at the end.*
 
 ### 2. Flow: match → select → analyse → refine → design (plan §1)
 
@@ -316,6 +317,8 @@ days unused or until the version changes, with an operator takedown, is item 5 o
 **Overall bounds per class:** match retry 1; alternates per track ≤ 2; replacement rounds ≤ 3;
 refinement rounds ≤ 2; spotdown wait budget about 10 min, then fall back.
 
+*The fallbacks of this table and of these bounds are superseded 2026-11-21 (owner, #1299): spotdown is the only analysis path; see the amendment "spotdown is the only analysis path" at the end.*
+
 A failure in one track changes only that track. Before design that is a selection change; after
 design it goes through `revise` for that part.
 
@@ -332,6 +335,7 @@ waiting for spotdown: the local analyses of other tracks and the time the job wa
 analysis slot) count against it too. That is the safe side of "wait about 10 min": in a long class
 the later tracks can go local while spotdown is fast, so the rollout's fallback-rate statistics
 (§9) count the tracks that went local because the budget ran out apart from those spotdown failed.
+*Superseded 2026-11-21 (owner, #1299): spotdown is the only analysis path; the budget is per attempt and an outage fails the job `analysis_unavailable`; see the amendment "spotdown is the only analysis path" at the end.*
 
 Two bounds that follow from keeping both analysers' rows (#1302 review): `MAPS_PER_USER` (200) in
 `swedebeat_track_maps` counts the `local` and `spotdown` rows together, so a user who switches
@@ -399,6 +403,8 @@ default (#1298). The existing implementations (MOWL sections, `mixanalysis`, `mi
 `track_analysis`) stay as fallbacks. They are removed only after the corpus and workout acceptance
 pass, a period of production use with no regression in the fallback rate, and the owner's sign-off
 (#1299). Schema compatibility or numeric parity alone is never enough.
+
+*Superseded 2026-11-21 (owner, #1299): spotdown is the only analysis path, with no rollout, shadow mode or default switch, and these gates are engineering checks, not shipping gates; see the amendment "spotdown is the only analysis path" at the end.*
 
 ### 10. Proportionate scope (plan §8)
 
@@ -525,12 +531,14 @@ longer gated by it); #1297 (cross-user reuse
 of private-source analyses, a licence or entitlement question, ADR 0026 (a); default no; blocks
 nothing); #1298 (the real-music quality corpus, the annotators and the blind review; blocks the
 default switches); #1299 (retiring the local and MOWL-based paths); spotdown#1 (spotdown's ruleset).
+*#1299 was signed off for every source on 2026-11-21 and #1298 gates nothing (owner); see the amendment "spotdown is the only analysis path" at the end.*
 
 ## Alternatives
 
 - **Keep all analysis in classbeat** (extend `track_analysis` and `mixanalysis`): rejected. It keeps
   heavy, hostile-input decoding next to the worker's KEK and tokens and gives Spotify classes nothing
   beyond MOWL's sections. The local paths stay, as fallbacks (§9).
+  *(Superseded 2026-11-21: the local paths are retired; the amendment "spotdown is the only analysis path".)*
 - **Analyse the whole pool:** rejected. Only the selected tracks are analysed (§2); the pool gets the
   free cache summary only.
 - **spotdown calls the Spotify API (Client Credentials) in the integration:** rejected. classbeat
@@ -562,6 +570,7 @@ default switches); #1299 (retiring the local and MOWL-based paths); spotdown#1 (
   programme.
 - Removing today's analysis paths is never automatic: it needs §9's evidence, production use and the
   owner's sign-off (#1299).
+  *(Superseded 2026-11-21: the owner signed off for every source; the amendment "spotdown is the only analysis path".)*
 - The tests the plan requires when built (plan, "Verification"): in spotdown, unit tests per layer,
   no audio left after a job, 401 without the key, `/files` 404 in service mode, `url` source SSRF
   tests, results valid against schema v1, the metrics runner on the committed fixtures in CI; in
@@ -630,6 +639,7 @@ changes no code, setting, compose file or deployment.
    (§3, §8), or spotdown is switched off in classbeat or returns no usable analysis (for example
    because its YouTube source is off). SD-P6 (#1303) may build the
    spotdown-first path.
+   *Superseded 2026-11-21 (owner, #1299): spotdown is the only analysis path, with no fallback; see the amendment "spotdown is the only analysis path" at the end.*
 4. **Not covered by this decision:** any live call by an agent or CI (agents and CI never call
    YouTube; tests fake yt-dlp); deploying; and the default-switch evidence gates of §9: #1298 still
    gates making spotdown-first the shipped default for users, unless the owner says otherwise there.
@@ -700,6 +710,7 @@ for everyone.
    (spares, then at most 3 replacement rounds; after them MOWL's sections). A provider outage, spotdown
    unreachable or an error in the stage give today's path for the whole class and every later run of
    the job.
+   *Superseded 2026-11-21 (owner, #1299): spotdown is the only analysis path, with no fallback; see the amendment "spotdown is the only analysis path" at the end.*
 
 ### Amendment (2026-11-20, SD-P7a, #1304): the SwedeBeat mix through spotdown, as built (extends §6 to §9)
 
@@ -739,6 +750,8 @@ no tempo change points, and the harness's recall-only edge gate cannot see that.
   ADR 0026 stage 1's decode time is the analysis that made the map; the spotdown consultation is
   logged apart (`spotdown_ms`).
 
+*Superseded 2026-11-21 (owner, #1299): spotdown is the only analysis path, with no switch and no local fallback; the 180 s cap ends in `analysis_unavailable`; see the amendment "spotdown is the only analysis path" at the end.*
+
 ### Amendment (2026-11-20): the analysis and refinement stage of the Spotify flow, as built (SD-P6 stage B, #1303; amends §8 for that stage)
 
 Recorded with the code. Behind the same allowlist as the match stage (it runs only when the match ran
@@ -774,6 +787,7 @@ for the class and did not fall back); off by default.
    `client_ref`, a URL or a job id. **Fallback** to the list as chosen and no record, for the whole
    class and every later run of the job: spotdown unreachable, an outage, or an error of any type in
    the stage.
+   *Superseded 2026-11-21 (owner, #1299): spotdown is the only analysis path, and item 2's and this item's fallbacks are replaced by its per-track rule (item 5) and failure categories (item 4); see the amendment "spotdown is the only analysis path" at the end.*
 5. **Not yet:** the design map's per-track timing class (`track_timing_calc.stamp`, SD-P6 stage C)
    and the use of spotdown's sections in the design come from this record in a later stage.
 
@@ -814,6 +828,7 @@ on for everyone. **Making it the shipped default still waits for the Spotify gat
    answer but `200` and `429`: a `5xx` outage and an analysis that is gone too), or an error of any
    type in the stage (swallowed; only its type is logged). Only `RunStopped`, `LeaseLost` and
    `DatabaseRoleError` pass, and the step is then closed.
+   *Superseded 2026-11-21 (owner, #1299): spotdown is the only analysis path, with no fallback; see the amendment "spotdown is the only analysis path" at the end.*
 5. **Not yet:** the design draft records which tracks were on spotdown's sections only through its
    `song_list_id` (the list's `spotdown_analysis` record); a refit or a revise of the design reads
    MOWL's analysis again and so designs on today's sections (no stamp), the path before SD-P6.
@@ -867,6 +882,7 @@ turns it on for everyone; **the shipped default still waits for the Spotify gate
    kept entries leaves them out (those songs keep MOWL's sections). The refit's `music_changed` check
    is unchanged (the fingerprint is MOWL's track list, the same either way), and a correction of a
    Spotify track is keyed by its track number, so it applies to the same track on either sections.
+   *Superseded 2026-11-21 (owner, #1299): spotdown is the only analysis path, with no fallback; see the amendment "spotdown is the only analysis path" at the end.*
 5. **Not carried:** the composer (ADR 0038) never runs stages A and B, so its lists have no record.
    A revise whose base was designed before this amendment (no field) designs on MOWL's sections.
 6. **Rollback:** `SpotifyRevisionMusic` forbids unknown keys (`extra="forbid"`), so a build from
@@ -971,6 +987,107 @@ reuses the first's analysis without an upload; account deletion leaves the share
 ### Amendment (2026-11-21, owner): the explicit flag, report only (#1340; extends section 6)
 
 Spotify's track `explicit` flag is kept from the search hit (classbeat reads the `search` answer through the pinned library's own reduction and keeps the one extra field, so no library bump) through the pick (`MatchedPool`) and sent to spotdown as the strict boolean `explicit` on a `/v2/match` item and on `POST /v2/analyses`, **only when known** (spotdown contract 6.4, `content.explicit`). The flag is recorded per track in the song list's provenance (`explicit`, record v1, beside `spotdown_analysis`; spotdown's own `content.explicit` is kept beside Spotify's) and a song shows a small "Explicit" tag in the class view when either source says yes. **Nothing is blocked, filtered, reordered or down-ranked, no model sees the flag, unknown shows nothing, and an error in the report never fails a pick or a job** (only RunStopped, LeaseLost and DatabaseRoleError pass). A kept song of a "Change songs" list carries its parent's evidence for its slot. Not covered, a follow-up: the composer, studio and from-playlist lists have no flag and show no tag. The tag is the Material Symbols `explicit` glyph (Apache-2.0) as an inline SVG; lucide-react has no equivalent boxed "E".
+
+### Amendment (2026-11-21, owner sign-off on #1299; #1351): spotdown is the only analysis path (supersedes the fallbacks of §1, §8, §9 and the stage amendments)
+
+The owner answered #1299 on 2026-11-21
+([comment](https://github.com/magpern/classbeat/issues/1299#issuecomment-7066271875)): "yes, for
+every source, now", and "there is no old or new way. There is one way. App has never run, so
+anything old.. well just gone with it." The Architect's removal plan is on #1306. This amendment is
+the spec for the code PRs listed there (item 8); they implement it and do not change it without the
+Architect recording why. It changes no code itself. Each decision is stated once, here; the earlier
+sections and amendments carry a one-line pointer and are otherwise kept as history.
+
+1. **One analysis path.** spotdown is the only music-analysis path for every source: SwedeBeat
+   studio tracks, SwedeBeat mixes and Spotify classes. There is no fallback, no setting that selects
+   between spotdown and a local or MOWL-based analysis, no waiting period and no evidence gate.
+   spotdown is now a hard dependency of every class with music (this replaces §1's and §8's "spotdown
+   is never a hard dependency"); a class without music never calls it and is unaffected. Tuning
+   happens after deployment on a test server, from the owner's feedback.
+2. **Settings removed, none replaced:** `CLASSBEAT_SPOTDOWN_STUDIO`, `CLASSBEAT_SPOTDOWN_STUDIO_OWNERS`,
+   `CLASSBEAT_SPOTDOWN_MIX`, `CLASSBEAT_SPOTDOWN_MIX_OWNERS`, `CLASSBEAT_SPOTDOWN_SPOTIFY`,
+   `CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS`, `CLASSBEAT_SPOTDOWN_SHADOW` and `CLASSBEAT_SPOTDOWN_SOURCES`.
+   classbeat always uses the `upload` source for SwedeBeat audio and `youtube` for Spotify picks; the
+   deploy-time switch for YouTube sourcing is spotdown's own `ALLOW_YTDLP_SOURCING`, the owner's
+   (the amendment "#1296 accepted", item 2). **Kept:** `CLASSBEAT_SPOTDOWN_URL`, the
+   `spotdown_service_key` secret, `app_secret_key` (the `cache_scope` key, §7), and
+   `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY` with the job's `analysis_slot` (ADR 0005 §2, #574). The slot
+   now bounds concurrent fetch-and-relay jobs and their disk, not a local decoder; its name is kept
+   to avoid a queue-SQL change.
+3. **The MOWL boundary.**
+   - **Kept, as data MOWL gives us (not an analysis path we own):** MOWL's map of a Spotify class's
+     playlist as the **frame** of the played recording (track order, MOWL's length, Spotify's BPM),
+     into which spotdown's sections are rebuilt by the library's `mowl.spotify.build_map` (stage D,
+     item 2; that function stays); and MOWL's sections as **anchors** for `spotdown.anchor_calc`.
+     An anchor can only move a track to `unusable` (a `disagree` makes the song missing, item 5); it
+     never makes one `exact` (§3).
+   - **Retired:** MOWL's sections as the design's timing of a track ("the MOWL-sections fallback for
+     Spotify classes", #1299's list). No design path times a track on MOWL's sections.
+   - **Retired:** the analysis of `design/mixanalysis.py`, `design/mixchild.py`, the local half of
+     `design/track_analysis.py`, the `local` branches of `track_cache`, `mix_cache`, `mixadmit` and
+     `spotdown.studio_policy`, shadow mode (`track_shadow`, `track_shadow_rows`, the `shadow_*`
+     modules, the `spotdown_shadow_tracks` table), and the `local` analyser rows. ADR 0036 A7 step
+     3's "track with no stored timing decision" (a local analysis) therefore no longer arises for a
+     new design; the rule stays as written.
+   - **Kept, not analysis:** `studio/render.py` and `studio/renderchild.py` (rendering a mix needs
+     numpy, soundfile and soxr); `design/sandbox.py`, `design/rss.py` and the child limits they use,
+     which move out of `mixanalysis` unchanged before it is deleted; the MOWL temporary-link fetch
+     (`design.mixfetch`) and the 250 MB and 60 MB caps; the queue SQL.
+4. **Outage and failure behaviour: no silent degraded analysis.**
+   - **`analysis_unavailable`**, a new job category, **retryable**: in `jobs.errors.RETRYABLE`, with
+     ADR 0005 §4's backoff and the job's attempts. The user sees "Music analysis is not available
+     right now" with the automatic-retry and try-again copy (en, sv, da). It is the outcome, for the
+     whole job, of:
+     - spotdown not installed in the worker (no URL or no key) or unreachable (any `Unreachable`
+       reason);
+     - a provider outage (§8's threshold: ≥ 50 % of a batch and ≥ 3 tracks), a `provider_error`
+       still there after its one retry on a studio track or a mix, a `rate_limited` wait that does
+       not fit the budget, the wait budget spent, or the mix's 180 s wait cap;
+     - on a Spotify class, a `rate_limited` or unreachable read in phase 2 or in a revise carry
+       (stage D item 4, stage E item 4).
+   - **A fresh budget per attempt.** Each counted attempt of the job (ADR 0005 §2) starts with a
+     fresh wait budget (600 s) and a cleared outage flag. Today both span every run of the job
+     (`spotdown_studio_budgets`, `spotdown_song_budgets`), which would make a retry fail at once. A
+     run that does not count as an attempt (a hand-back, an analysis-slot requeue) keeps its
+     attempt's budget.
+   - **`analysis_failed`** (existing, not retried) is the outcome when spotdown answered but the
+     music cannot be analysed: a studio track or a mix refused (`processing_failed` after its retry,
+     unsupported, too large, a refused or unmappable document); on a Spotify class, too few songs
+     with a usable spotdown timing after the spares and the 3 replacement rounds (item 5), or a
+     recorded analysis that is gone or no longer verifies at phase 2 (the user changes songs).
+   - **Any other exception** in the spotdown code is no longer swallowed into a fallback: it is
+     `internal`, as everywhere. `RunStopped`, `LeaseLost` and `DatabaseRoleError` pass as before.
+   - Every category is logged by name only (never a URL, a scope, a sha256 or a title) and counted in
+     the admin failure view (`admin/jobs.py`, which already groups by category).
+5. **The Spotify per-track rule.** A song is usable only with a `matched` spotdown result whose
+   analysis gives an `approximate` timing (stage B). `uncertain`, `not_found`, `source_unavailable`,
+   a single track's `provider_error` after its retry, an anchor `disagree` and an `unusable` timing
+   all make the song **missing**: spares first, then at most 3 replacement rounds (the existing
+   `song_swap_calc` machinery), then `analysis_failed` (item 4). "MOWL leaves too few, so the missing
+   ones are offered too" is removed. A stage whose output changes for the same input bumps its record
+   or stage version.
+6. **Versions.** The provenance's `POLICY_VERSIONS` (`spotdown_map_policy`, `timing_class_policy`,
+   `track_fit_policy`, `mix_map_policy`) cover a map's content. Removing a fallback does not change a
+   spotdown map, so the retirement does not bump them. The rows of the `local` analyser are deleted
+   by migration, and the `analyser` checks narrowed to `spotdown`, in the deletion PRs.
+7. **Evidence.** The quality gates of §9 and plan §7 are engineering checks on the fixtures, not
+   gates on shipping: none blocks a default (there is none left to switch) or a removal. The two hard
+   rules of §9 stay rules of the code: no `exact` for a matched or YouTube source (§3), and no audio
+   kept after a job. **Accepted loss:** spotdown's baseline-comparison mode ("≥ the baseline", the
+   per-source table of §9) loses its classbeat baseline once the local path is deleted. CC-licensed
+   fixtures with published annotations are a low-priority engineering check (the recommendation on
+   #1306), not owner work; nothing waits on them.
+8. **The PR plan** is on #1306, one issue per PR, in order: #1351 (this amendment), #1337 (a fake
+   spotdown in the e2e stack), #1352 (`analysis_unavailable`), #1353 (studio tracks and mixes),
+   #1354 (Spotify classes), #1355 (shadow mode and `CLASSBEAT_SPOTDOWN_SOURCES`), #1356 (the local
+   studio-track analysis and its `local` rows), #1357 (`mixanalysis` and `mixchild`), #1358
+   (librosa and numba, after a mowl-workouts change).
+
+**What it supersedes** (each carries a pointer here): §1's "stay as fallbacks"; §8's fallback
+reactions, its "spotdown unreachable" row and the SD-P5 note's local fallback; §9's rollout per
+source and its removal conditions; §14's #1298 and #1299 blockers; the "#1296 accepted" item 3; the
+stage A item 4, SD-P7a, stage B items 2 and 4, stage D item 4 and stage E item 4 fallbacks; and the
+Alternatives and Consequences lines on the local paths. #1298 gates nothing (owner, 2026-11-21).
 
 ## Status
 

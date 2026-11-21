@@ -348,6 +348,12 @@ Two gates are **hard and never relaxed**: false `exact` = 0, and no audio kept a
 
 The existing implementations (MOWL sections, `mixanalysis`, `mixchild`, `track_analysis`) stay as fallbacks. They are removed only after the corpus and workout acceptance pass, a period of production use with no regression in the fallback rate, and the owner's sign-off. Schema compatibility or numeric parity alone is never enough.
 
+*Note 2026-11-21 (owner, #1299; ADR 0040, the amendment "spotdown is the only analysis path", #1351): the
+owner replaced the rollout per source above. spotdown is the only analysis path for every source, with no
+shadow stage, no allowlist, no default switch, no fallback and no evidence gate; the quality gates of this
+section are engineering checks on the fixtures, not gates on shipping. Tuning happens after deployment on
+a test server, from the owner's feedback. The rest of this plan stays frozen.*
+
 ## 8. Proportionate scope
 
 - **Hosting:** spotdown runs as extra services in classbeat's compose (api, worker, redis) on the same box, with ADR 0026 stage 1 CPU and memory ceilings. No new hosting environment.
