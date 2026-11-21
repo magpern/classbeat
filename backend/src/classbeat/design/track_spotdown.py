@@ -95,7 +95,8 @@ async def begin(run: JobRun, session: Session) -> None:
 
 async def note_outage(run: JobRun, session: Session) -> None:
     """spotdown is unavailable: the flag is the job's until a retry resets it (a lease-lost
-    requeue keeps it, ``outage_policy``)."""
+    requeue keeps it, ``outage_policy``). By design a retryable ending deletes the budget row
+    and with it this flag (``jobs.transitions.retry``): the next attempt asks spotdown afresh."""
     session.outage = True
     await budget.mark_outage(run)
 

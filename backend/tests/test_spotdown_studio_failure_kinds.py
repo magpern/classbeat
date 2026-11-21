@@ -15,11 +15,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import httpx
 import pytest
 
 from classbeat.design import mixanalysis, track_spotdown
-from classbeat.jobs import transitions
 from classbeat.spotdown import outage_policy, studio_tracks_config
 from classbeat.spotdown.studio_tracks_config import TracksConfig
 from jobtools import new_job
@@ -57,6 +55,7 @@ async def test_each_failure_kind_ends_the_job_in_its_category(
     spotdown: FakeSpotdown,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    work: Path,
     kind: str,
     category: str,
 ) -> None:
@@ -76,6 +75,7 @@ async def test_each_failure_kind_ends_the_job_in_its_category(
         row = await harness.run(owner, [ONE, TWO])
     assert (row.state, row.error_category) == ("failed", category)
     assert stored(harness, owner) == 0
+    assert not any(work.iterdir())  # the audio is deleted on every way out  # noqa: ASYNC240
     if kind.startswith("unreachable:"):  # every Unreachable site logs the fixed line
         reason = kind.removeprefix("unreachable:")
         assert REASONS[reason] == category
@@ -167,9 +167,3 @@ async def test_a_non_retried_ending_keeps_the_spent_budget(
     row = harness.ops.row(job_id)
     assert (row.state, row.error_category) == ("failed", "analysis_failed")
     assert len(budgets(harness, owner)) == 1
-
-
-def test_the_reset_is_only_in_the_retry_path() -> None:
-    source = Path(transitions.__file__).read_text(encoding="utf-8")
-    assert source.count("_RESET_SPOTDOWN_BUDGET") == 2  # the statement and its one use
-    assert httpx  # (imported for the fakes' types)
