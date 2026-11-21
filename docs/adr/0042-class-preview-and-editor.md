@@ -13,16 +13,23 @@ Amends, when accepted:
 - [ADR 0036](0036-swedebeat-studio.md):
   - §5 ("A playable audio preview is **deferred**") and amendment B3 ("the owner designs it
     separately"). This ADR is that design.
-  - §4.2 and A7: the mix spec gains cut pins (§5 below).
+  - §4.2 and A7: the mix spec gains cut pins (§5 below), which also amends **A1** ("no spec-shape change"),
+    and amendment **B4, B9 and B10** (§8 below: what an edited draft is, `applied_form`, and the hash).
+  - §1 (the studio draft's `content_hash` is `studio_hash`): a draft with an edit overlay is hashed over the
+    overlay too (§3, "Where the overlay lives").
   - Alternatives ("Rendering before approval to preview the exact mix. Rejected"): preview **windows** are
     rendered before approval. The output render is unchanged: once per merge attempt, after approval, from
     fresh downloads.
   - Consequences ("It never keeps it"): a preview cache, scoped per owner, may keep source tracks and clips
     (§6.5).
 - [ADR 0016](0016-swedebeat-music.md): the same exception to "never keeps audio", for the preview cache only.
-- [ADR 0007](0007-classes-revisions-and-saving.md): user-edit revisions, the edit overlay in the draft, and
-  optimistic concurrency on revision writes and `POST /classes/{id}/current` (§4).
-- [ADR 0009](0009-spotify-connection.md) §1: two optional preview scopes and `preview_granted` (§7).
+- [ADR 0007](0007-classes-revisions-and-saving.md): user-edit revisions with their own write path, the edit
+  overlay and §2's `content_hash`, the revision cap, and optimistic concurrency on revision writes, approval
+  and `POST /classes/{id}/current` (§3, §4).
+- [ADR 0009](0009-spotify-connection.md): §1, two optional preview scopes and `preview_granted`; §10, the
+  playback calls and their egress paths, with the rule that a browser-sent id is never used (§7).
+- [ADR 0036](0036-swedebeat-studio.md) §4.1 ("the audio is deleted at once"): the same exception as ADR 0016,
+  for the preview cache (§6.5).
 - [ADR 0021](0021-use-part-of-a-song.md): **no change to its Spotify rule.**
   - Spotify songs still play whole, in MOWL and everywhere.
   - A Spotify "start position" in the editor is only an audition position.
@@ -62,8 +69,8 @@ one hard limit: classbeat is **not** a gym player, so it has no class-performanc
   `progress_ms`, `is_playing` and `timestamp`. That needs `user-modify-playback-state`,
   `user-read-playback-state` and Premium. Spotify documents neither latency nor ordering ("The order of
   execution is not guaranteed").
-- `mix_cut_policy.placed()` always replaces a proposed cut with a trusted candidate or the bar grid, so a
-  manual cut would be moved silently today.
+- `mix_cut_policy.placed()` snaps a proposed cut to a trusted candidate on an `exact` track, and only rounds it on
+  an `approximate` one, so on an `exact` track a manual cut would be moved silently today.
 - Workout edits go only through the model today. The beat-1 correction (migration 0029) is the one direct,
   per-song correction.
 
@@ -110,7 +117,8 @@ one hard limit: classbeat is **not** a gym player, so it has no class-performanc
   number, and a correction never writes an analysis.
 
 **Studio mapping.**
-- `classMs → [(piece, sourceMs, gain)]` comes from the composed map (`timeline_calc.py`).
+- `classMs → [(piece, sourceMs, gain)]` is **new** (E3's `timeModel.ts`, and a pure backend twin where needed):
+  `timeline_calc.py` has no per-instant gain today. It is derived from the composed map plus the render curves.
 - A crossfade instant maps to both pieces, and both are audible in the rendered clip.
 - `transportMs = classMs − clip.start_ms`.
 
@@ -190,8 +198,18 @@ TransportState = {status, piece?, transportMs?, observedAt, uncertaintyMs, reaso
 **Every edit is validated** by `agent.design.check(draft, map)`: `workout.validate`, `fit_to_music`, the timing
 gate. These are the same rules as a model draft.
 
-**Overrides, locks and anchors** live in the draft's **edit overlay**, which the draft revision stores. It is
-covered by `content_hash`, and so by the approval.
+**Overrides, locks and anchors** live in the draft's **edit overlay**.
+
+**Where the overlay lives, and the hash (amends ADR 0007 §2, ADR 0036 §1 and B10).**
+- The overlay is a new nullable column `edit_overlay jsonb` on `class_revisions` (E2's migration), **not** a
+  field of `content`. So it is never sent to MOWL, never counted against the 64 KB `content` check, and the
+  strict `WorkoutDraft` is unchanged. It has its own bound: at most 200 records and 32 KB.
+- `content_hash` stays exactly what it is today for a revision with no overlay (`NULL`), so no existing row,
+  approval or saved program changes. A revision **with** an overlay is hashed over the canonical
+  `{content, mix_spec?, overlay}` (`mix_spec` only for a studio draft), by a new `edited_hash` beside
+  `studio_hash`. This holds for Spotify drafts too. An approval binds the overlay, and a lock-only or pin-only
+  edit is a real revision with a different hash.
+- Pin records (§5) are part of the overlay.
 
 | Record | Meaning | Created by | On AI regeneration |
 |---|---|---|---|
@@ -215,8 +233,22 @@ covered by `content_hash`, and so by the approval.
 
 ### 4. Revisions, undo and concurrency
 
-- A committed edit (on drop or blur) is a new `draft` revision with provenance `origin: "user_edit"`, through
-  the existing revision write. There is no model call.
+- A committed edit (on drop or blur) is a new `draft` revision with provenance `origin: "user_edit"`. There is
+  no model call and **no job**: `design/revision.py`'s write is fenced by a job, so a user edit has **its own
+  write path** (the `classes/duplicate.py` pattern): session auth, CSRF, the owner from `UserContext`, the
+  class row locked, `base_revision_id` checked in the same transaction, the same validation
+  (`agent.design.check` and the overlay order) and the same hash.
+- **Cap.** `CLASSBEAT_REVISIONS_PER_CLASS` counts only `revise_draft` today and bounds storage (ADR 0007 §4).
+  User edits get their own cap (200 per class, `409 revision_limit`). The client **coalesces** edits (a drag is
+  one edit, committed on drop). Past the cap a user can still undo, redo and clear.
+- **Which flows offer the editor before approval.**
+  - A **studio draft** before its outputs consent, and a **Spotify draft** (a class with a `draft` revision)
+    before Save, are editable.
+  - The **composer flow** (ADR 0038) has no draft revision before approval: the design is the `preview`
+    inside the waiting `song_list`, and the class's one open job is `waiting_for_approval`. The editor is
+    **not offered** there. After approval there is a draft and the editor is offered. A user who wants to edit
+    earlier uses ADR 0038 §6's "Ask for changes", which replaces the waiting job.
+- **A job running on the class** blocks edits, as today (`class_busy`).
 - **Undo and redo** move along the chain with `POST /classes/{id}/current`. A new edit after an undo
   branches and clears the client's redo stack.
 - **Optimistic concurrency.** Every write (edit, undo, redo, clear, approve) carries `base_revision_id`. The
@@ -224,11 +256,23 @@ covered by `content_hash`, and so by the approval.
   `409 stale_revision` with the current id.
   - The client reloads, keeps the unsent edit, and offers to reapply it.
   - `POST /current` gains `expected_current_id`, with the same 409.
-- While the class's one open job runs (ADR 0038), edits get the existing job-running conflict.
+- **Approval is guarded the same way.** The approve request carries `base_revision_id` and is refused
+  `409 stale_revision` if the current revision moved.
+- **Drag and the fit.** `agent.design.check` returns the **fitted** spec, and `fit_to_music` snaps interval
+  starts to a beat or a bar within 6 s, so a dropped boundary can move. An override stores the **fitted**
+  value (what the user will get), and the UI shows the snapped position immediately and says so
+  ("snapped to the beat, +1.4 s"). Nothing moves silently. A block with `ftp_test` is not split, merged or
+  resized by drag (its `sec` must match), and the duration operation skips it.
 
 ### 5. Cut pins (the mix spec; amends ADR 0036 §4.2 and A7)
 
-`MixTrack` (`studio/mix_spec_model.py`) gains optional `start_pin` and `end_pin`:
+**Pin records live in the edit overlay** (§3), the source of truth, keyed by a target
+`{reference, occurrence, edge: start | end}`: the song's SwedeBeat reference and which occurrence of it in
+the mix (A3 allows repeats; the model sees only indexes, so the target is the song, never a position). The
+stored `mix_spec` carries the **derived** pins: `MixTrack` (`studio/mix_spec_model.py`, `extra="forbid"`)
+gains optional `start_pin` and `end_pin`, absent when there is none, so a spec without a pin is byte-identical
+to today's and keeps its hash. `mix_plan_policy._track` accepts the two fields and keeps refusing every other
+unknown one. This **amends A1**.
 
 ```
 {requested_sec,          # the instructor's request, 0.01 s
@@ -248,8 +292,10 @@ cut **skips `selected()`**, so an AI candidate never replaces a pin:
 - unconfirmed `bar` pins re-snap, shown as "moved by reanalysis: +0.12 s";
 - confirmed pins **never move**, and an off-beat one gets only `off_beat_cut`.
 
-**A new sha256** (`music_changed`) puts every pin of that track into "listen again". Nothing moves, and
-approval waits until each pin is re-confirmed or cleared (the beat-one pattern, migration 0029).
+**A new sha256** (`music_changed`) puts every pin of that track into "listen again". Nothing moves. Approval
+is refused by the **server**, not only the UI: **`pin_unconfirmed`**, named in B9's fixed order after
+`mix_not_applied`, at create and again when the job runs (`outputs_admit`), until each such pin is
+re-confirmed or cleared (the beat-one pattern, migration 0029). E1's acceptance criteria and tests include it.
 
 **The hard rules stay**, whether or not a cut is pinned:
 - `cut_out_of_range`, `window_too_short`, `not_a_permutation`;
@@ -260,15 +306,16 @@ approval waits until each pin is re-confirmed or cleared (the beat-one pattern, 
 
 A refused pin leaves the last valid revision, and the UI shows the reason.
 
-**Pins and regeneration.** Pins behave as overrides of the cut: they are re-applied on regeneration. A
-swapped-out song drops its pins with a notice.
+**Pins and regeneration.** A new model spec never carries pins. The overlay's pin records are re-applied to
+it by target (`reference`, `occurrence`); a record whose song is no longer in the mix is **unapplied**
+(listed, kept, without effect). A song replaced by another drops its pins with a notice.
 
 **Pins and amendment B.**
 - Pins exist only on a song that has a cut, under `dj_mix` with `trim`.
 - A song made whole (`keep_whole`, or `trim` off) has no cut, so its pins become **unapplied**: listed, kept,
   without effect.
-- `mix_choice_policy` derives the spec first; pins are then applied to the derived spec and checked by
-  `checked` as above.
+- `mix_choice_policy` derives the spec first; the overlay's pins are then applied to the derived spec and
+  checked by `checked` as above. §8 states the consequence for B4 and B9.
 
 ### 6. SwedeBeat audition
 
@@ -276,9 +323,14 @@ swapped-out song drops its pins with a notice.
 
 - The render plan (`render_policy`) gains `window: {start, end}` in output samples. `validate_plan` refuses it
   on an output plan, so the output path cannot carry it.
-- **Per-piece state, no pre-roll guess.** The child decodes every piece that overlaps the window **from that
-  piece's own `src_start`**, exactly as the full render does: the same seek, the same soxr stream, the same
-  curve state from the fade start. It only limits **writing** to the window.
+- **Per-piece state, no pre-roll guess.** The child decodes every piece that overlaps the window **exactly as
+  the full render does**: `renderchild.track_blocks` decodes from the file's first sample through one soxr
+  stream and drops samples until the piece's `src_start`; it does not seek. The window keeps that, so the
+  resampler state and the fade-curve state from the fade start are the same. It only limits **writing** to the
+  window. A decode from the file's start costs more for a late piece or a loop piece (case 12), which R1
+  measures; a real seek would change a source not at 44.1 kHz (case 11), so none is used.
+- `validate_plan` tells an output plan from a preview plan by a new explicit `purpose: "output" | "preview"`
+  field (default `output`); `window` is valid only with `preview`, and the output path builds `output`.
 - The implementing PR audits every stateful stage: decoder seek, resampler, fade gains, bass-swap filters,
   mixer buffer. If one carries state across pieces, the window decodes from the earliest piece whose state
   reaches it.
@@ -336,6 +388,11 @@ same span of a full WAV render. The expectation is bit-exact, with a tolerance o
 - Each clip request carries the session:
   - another owner's or class's session → `404`;
   - after `expires_at`, or once `delivered_ms` would pass 25 min of audio → `410 preview_session_ended`.
+  - `delivered_ms` counts **each distinct clip once per session** (its length when first served in the
+    session), never bytes or requests, because a media element re-requests a clip with `Range` on a seek or a
+    reload. R2 tests that repeated `Range` requests for one clip do not use up the cap.
+  - Session creation and `preview_render` jobs are **rate-limited per owner** (resource protection, not a
+    session count or a quota: D7 stands).
 - **The server cannot verify how long audio was heard, and does not try.** A modified client gets at most one
   lifetime's delivery per Play, and a script can keep pressing Play. This is a product-use deterrent, not DRM
   and not access control, and no further mechanism is added for it.
@@ -365,7 +422,8 @@ position, and **Review transition** gives the fade start − 15 s. Then:
   the measured delay) may be applied if the measurement shows it is enough; nothing beyond that.
 
 **The cache key** is `sha256` of a canonical JSON of:
-- the full render plan's sha256;
+- the sha256 of the **stored plan**: the reference-keyed `output_body_policy.render_plan`, not the child's plan
+  with local paths and `output`;
 - every source file's sha256;
 - the window in absolute class time `[start_ms, end_ms)`;
 - the encoder settings;
@@ -385,13 +443,25 @@ choice, the user applies it: B4 makes a new draft, which can be undone.
 
 #### 6.5 Storage, delivery and the job
 
-- **Storage.** Source tracks are cached per owner (reference plus sha256). Clips go in `preview_clips`, owned
-  with RLS; the metadata is in Postgres and the bytes on a private volume.
-  - Both are purged after 14 idle days, with the class or the account (ADR 0014; the retention registry,
-    ADR 0007 §11), and under a per-owner size cap.
+- **Storage.** Two new owned tables, each with RLS: `preview_sources` (the per-owner source-track cache:
+  reference plus sha256, the file's path) and `preview_clips`. Both are in the ADR 0014 registry and the
+  retention registry (ADR 0007 §11).
+  - `preview_clips` is **unique per `(owner_id, key)`** and the bytes live under a **per-owner path**: the
+    content key alone would share a file across owners, so one owner's purge would delete another's clip and
+    a hit's timing would leak across owners.
+  - Both are purged after 14 idle days, with the class or the account, and under a per-owner size cap. The
+    cascade covers rows only, so the delete path **removes the files** it names, and an **orphan sweep** (a
+    maintenance job) deletes volume files that have no row and rows whose file is gone.
   - Output renders still use fresh downloads (ADR 0036 §6, unchanged).
 - **The job.** A low-priority `preview_render` job (ADR 0005) runs the existing sandboxed child. It uses the
   gateway's read-only download, with its existing caps, and makes no external write.
+  - **It does not occupy the class's job slot.** `jobs_one_open_per_class` counts every open job of a class,
+    `waiting_for_approval` included (migration 0004, ADR 0038 §6), so a job carrying the `class_id` would make
+    every audition `class_busy` and block edits, undo and redo. `preview_render` is created with `class_id`
+    NULL and an explicit `preview_class_id`, checked against the owner, for the purge and the account
+    deletion, and it is outside the one-open-job index. The trade-off: it cannot be blocked by another class
+    job, so the per-owner rate limit (§6.3) and the lease and fencing of ADR 0005 bound it. R2's acceptance
+    criteria include that an edit and an undo succeed while a clip renders.
 - **Delivery.**
   - Clips are owner-only, with `Content-Disposition: inline` and `Cache-Control: private, no-store`. These
     headers keep clips out of caches; they do **not** stop saving or recording, and nothing here claims they
@@ -406,6 +476,9 @@ choice, the user applies it: B4 makes a new draft, which can be undone.
   `user-read-playback-state` through the existing PKCE flow and the BYOK wizard.
 - `scope_granted` is unchanged; a new `preview_granted` check is added. A connection without the scopes keeps
   working as today.
+- The granted scope is **not stored today** (`connect.py` checks it and discards it) and `authorize_url` sends
+  a fixed `SCOPE`. S1 adds a column for the granted scopes (a migration) and a scope parameter for the opt-in
+  flow, and reads `preview_granted` from the column.
 
 **7.2 Proxy.**
 - These owner-scoped endpoints call `PUT /v1/me/player/play` (`uris`, `position_ms`), `PUT …/pause`,
@@ -414,7 +487,20 @@ choice, the user applies it: B4 makes a new draft, which can be undone.
   - `POST …/pause`;
   - `GET …/state`;
   - `GET …/devices`.
-- The egress allowlist gains exactly those methods and paths. The token never leaves the backend.
+- **The proxy restricts what it may play** (ADR 0009 §10: a browser-sent id is never used):
+  - `audition` takes `{piece_index, position_ms}`. The server takes the track **from the class's current
+    draft** by that index, rebuilds `spotify:track:<id>` from a validated id (`^[0-9A-Za-z]{22}$`), and refuses
+    `position_ms` outside `[0, track length)`.
+  - `device_id` is taken only from the server's own `GET …/devices` result, never from the browser.
+  - A class with no current draft or a piece index outside it is refused. The endpoints cannot play anything
+    else, so they are not a general remote control (D7).
+  - S2's acceptance criteria and tests (#1395) include each of these refusals.
+- **Egress.** The allowlists are per host today (`SPOTIFY_ALLOWLIST`, `WEB_URLLIB_HOSTS`) and nothing
+  restricts a path, so S2 adds a **path guard** (like `test_swedebeat_gateway_guard.py`) for exactly those
+  methods and paths. It states the client (the existing Spotify async client) and the **`spotify_call` mode in
+  the web process** for these writes: no `record_result`, a 401 flips `needs_reconnect`, a token refresh runs
+  under the row lock, at the polling rate of §7.3. This amends ADR 0009 §10. The token never leaves the
+  backend.
 
 **7.3 State and drift.**
 
@@ -438,16 +524,43 @@ choice, the user applies it: B4 makes a new draft, which can be undone.
   here, and the nudge steps (default ±0.1, 0.5, 1, 5 and 10 s) follow from it.
 
 **7.4 Alignment correction.**
-- `spotify_offset_corrections(owner_id, spotify_track_id, offset_ms, set_against_analysis)` is owned, with RLS.
-  It follows the `beat_one_corrections` pattern, including "listen again" when the analysis changes.
-- It shifts the map `fit_to_music` uses, so MOWL timing improves too.
+- `spotify_offset_corrections` is **class-owned**, as `beat_one_corrections` is (ADR 0007 amendment, migration
+  0029): `owner_id`, an owner-inclusive `class_id` foreign key `ON DELETE CASCADE`, the music `fingerprint`,
+  the 1-based `song` (play order), `offset_ms`, `set_against_analysis`, the times; RLS `owner_isolation`;
+  unique per `(owner_id, class_id, fingerprint, song)`; at most 200 rows for the current fingerprint. **No
+  Spotify id and no title.** A correction therefore never reaches another class of that user on the same
+  track, the rule beat-one's design set.
+- "Listen again" when the analysis changes uses `set_against_analysis` (the analysis `map_version` and the
+  analysed file's sha256 when set): if either differs, the correction is shown but not applied until the user
+  confirms it again.
+- **A correction reaches the class only through a refit** that stores a **new `draft` revision**, as beat-one
+  does. An approved class, its approval binding and its saved programs never change underneath the user.
+  Until a refit, the correction only moves the audition cursor in the editor.
 - It never edits spotdown's `offset_s`.
 - Spotify songs still play whole: the owner default; ADR 0021 is unchanged.
 
 ### 8. Relation to ADR 0036 amendment B
 
-Amendment B (Proposed, #1366) was written in parallel with this ADR. This ADR depends on it and changes none of
-it:
+Amendment B (#1366; its header still reads Proposed in ADR 0036 and is aligned in a later docs PR) was written
+in parallel with this ADR. This ADR depends on it and **amends three of its items and A1**, listed first; the
+rest is unchanged.
+
+**Amended.**
+- **B4 (the proposal).** `user_edit` is added to the origins that are **not** a proposal, beside `mix_choices`.
+  The proposal B4 resolves is the nearest `design_draft` or `revise_draft` draft **past any `user_edit`
+  drafts**. The overlay of the draft the job starts from is carried: `apply_mix_choices` remaps, fits, then
+  re-applies the overlay by §3's order (so a user's pins and workout edits survive **Apply these choices**), and
+  the new draft stores the carried overlay. Its lineage names the draft it was applied on.
+- **B9 (`applied_form`).** A draft's stored spec is `applied_form` when it equals
+  `with_pins(mix_choice_policy.applied(proposal, facts, choices), overlay pins)`, run through
+  `mix_plan_policy.checked`. A `user_edit` draft is therefore admitted when it differs from `applied(...)` only
+  by its overlay. A draft that differs by anything else still fails closed: `mix_not_applied`. `pin_unconfirmed`
+  (§5) comes after it in the order.
+- **B10 and A1 (the hash and the spec shape).** The spec shape gains optional `start_pin` and `end_pin`
+  (§5); the choices stay out of the spec. The hash of a draft with an overlay covers the overlay (§3), which
+  is also what binds the pins to the approval. A draft without an overlay hashes as today.
+
+**Unchanged.**
 - **B3** leaves the audio preview to a separate owner design: this ADR.
 - **B4a**'s `mix_remap_calc` is the song-anchored remap that §3 uses when an audio edit moves the workout.
   Overrides, locks and anchors reconcile after it (§3).
@@ -455,6 +568,9 @@ it:
 - **B8**'s bass-swap setting applies to preview windows exactly as to outputs (§6.1).
 - **B12** makes the mix spec and the write path security-critical, so the pin PR (E1) has an **Opus Developer
   and an Opus Reviewer**. It depends on #1367 (`mix_choice_policy`).
+- The amendments above touch the approval path, so E2 (the user-edit write path, `base_revision_id` on approve,
+  the overlay hash) is security-critical too: **Opus Developer and Opus Reviewer**, as approvals are in the
+  review gate. They also need B9's recomputation extended in #1370's code, which E1 and E2 do in their PRs.
 
 ## Alternatives
 
@@ -475,14 +591,17 @@ it:
 
 **New owned tables, each with RLS (ADR 0002) and in deletion and export (ADR 0014):**
 - `preview_sessions`;
+- `preview_sources` (the per-owner source-track cache);
 - `preview_clips`;
-- `spotify_offset_corrections`.
+- `spotify_offset_corrections` (class-owned).
+
+Plus a column `class_revisions.edit_overlay` and a column for the granted Spotify scopes.
 
 **Other new pieces:**
 - a private preview volume;
-- a `preview_render` job kind;
+- a `preview_render` job kind, outside the class's one-open-job index;
 - two optional Spotify scopes;
-- exact new egress paths.
+- a path guard for the Spotify playback paths.
 
 **What changes in existing code:**
 - The mix spec gains pins. `mix_plan_policy` skips candidate selection for pinned cuts, and every hard rule
@@ -491,6 +610,7 @@ it:
 
 **Security-critical work** (AGENTS.md):
 - the pins (mix spec, approved external write content): E1, Opus and Opus;
+- the user-edit write path, the approve guard and the overlay hash (approvals): E2, Opus and Opus;
 - the clip service and its isolation: R2, Opus and Opus;
 - the Spotify scopes and proxy (Spotify OAuth, egress): S1 and S2, Opus and Opus;
 - the sandboxed child: R1, Opus review.
