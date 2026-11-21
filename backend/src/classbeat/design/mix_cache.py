@@ -15,7 +15,9 @@ designed on.
   provenance is this build's (``mix_map_model.current_mix_provenance``), then the ``local`` row;
   otherwise the ``local`` row only, as before #1304. **A hit makes no request at all.**
 - ``store``: one fenced transaction (the connection and the link held again) upserts the row,
-  drops what is past 30 days and all but the newest ``MAPS_PER_USER`` rows of the user, frees the
+  drops what is past 30 days and all but the newest ``MAPS_PER_USER`` rows of the user (rows of
+  **both** analysers count, as in ``track_cache``: an owner whose mixes have a ``local`` and a
+  ``spotdown`` row each keeps about half as many mixes cached), frees the
   job's analysis slot, marks the job as one that ran a fresh analysis
   (``jobs.mail_handoff``) and records the fetch and analysis times (``jobs.analysis_times``).
 

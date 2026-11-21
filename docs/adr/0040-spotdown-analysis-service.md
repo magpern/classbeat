@@ -718,7 +718,7 @@ no tempo change points, and the harness's recall-only edge gate cannot see that.
   boundary inside a song becomes a song edge, so a real mix can come out over-segmented, and while
   spotdown emits no change points every song has the mix's one BPM. A span without a trusted beat joins its
   neighbour; beat 1 is the first trusted downbeat, else the first beat with a zero margin (shown as an
-  estimate). The provenance record adds `mix_map_policy` to its policy versions.
+  estimate). A drop or breakdown outside every song is left out. The provenance record adds `mix_map_policy` to its policy versions.
 - **Rows per analyser.** `swedebeat_mix_maps` is keyed `(owner_id, mix_id, analyser)` (migration
   0065) with the `spotdown` row's provenance; a revision designed on spotdown's map records
   `analyser` and the provenance (kept per class, §6), and a revise or refit reads the row whose map has
@@ -730,6 +730,8 @@ no tempo change points, and the harness's recall-only edge gate cannot see that.
   for spotdown at most 180 s (today's local mix-analysis limit), then falls back. Every failure, and
   an error of any type in the spotdown code, falls back to the local `mixanalysis` and `mixchild`
   path. The local child's 180 s and 1.5 GiB limits are unchanged; spotdown's own are its sandbox's.
+  ADR 0026 stage 1's decode time is the analysis that made the map; the spotdown consultation is
+  logged apart (`spotdown_ms`).
 
 ### Amendment (2026-11-20): the analysis and refinement stage of the Spotify flow, as built (SD-P6 stage B, #1303; amends §8 for that stage)
 

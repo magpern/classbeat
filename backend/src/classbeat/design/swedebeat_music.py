@@ -129,6 +129,8 @@ class _Analysed:
     analyser: Analyser
     provenance: dict[str, Any] | None
     peak_rss: int | None
+    decode: float  # seconds of the analysis that made the map (the local child, or spotdown)
+    spotdown: float | None  # seconds spent consulting spotdown; ``None`` when it was not
 
 
 async def _analyse(
@@ -139,15 +141,23 @@ async def _analyse(
     limit: float,
     clock: Callable[[], float],
 ) -> _Analysed:
-    """spotdown's map while it is the owner's source and gives one, else the local analysis."""
+    """spotdown's map while it is the owner's source and gives one, else the local analysis.
+    ``decode`` (``jobs.analysis_decode_ms``, ADR 0026 stage 1) is the time of the analysis that
+    made the map: after a spotdown fallback, the local child's alone, never the relay's."""
+    consulted = None
     if session is not None:
+        started = clock()
         mapped = await mix_spotdown.analyse(run, session, mix_id, audio)
+        consulted = clock() - started
         if mapped is not None:
-            return _Analysed(mapped.music_map, "spotdown", mapped.provenance, None)
+            return _Analysed(
+                mapped.music_map, "spotdown", mapped.provenance, None, consulted, consulted
+            )
+    started = clock()
     result = await analyse_audio(
         run, audio, max_seconds=limit, map_version=music.MAP_VERSION, clock=clock
     )
-    return _Analysed(result.music_map, "local", None, result.peak_rss)
+    return _Analysed(result.music_map, "local", None, result.peak_rss, clock() - started, consulted)
 
 
 async def load_swedebeat_mix(
@@ -250,7 +260,7 @@ async def open_swedebeat_mix(
         del link
         decode_started = clock()
         result = await _analyse(run, session, mix_id, audio, limit, clock)
-        timing = Timing(decode_started - fetch_started, clock() - decode_started)
+        timing = Timing(decode_started - fetch_started, result.decode)
     analysis = MixAnalysis(
         mix_id,
         playlist_id,
@@ -273,6 +283,9 @@ async def open_swedebeat_mix(
             "peak_rss_mb": None if result.peak_rss is None else result.peak_rss // (1 << 20),
             "fetch_ms": analysis_times.to_ms(timing.fetch),
             "decode_ms": analysis_times.to_ms(timing.decode),
+            "spotdown_ms": None
+            if result.spotdown is None
+            else analysis_times.to_ms(result.spotdown),
             "load_1m": _load_average(),
         },
     )

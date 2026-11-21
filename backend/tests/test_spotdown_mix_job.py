@@ -14,6 +14,8 @@ Never the network: the autouse netguard refuses any other connection.
   row its base was designed on; a lost lease stores nothing; account deletion deletes the scope.
 """
 
+import asyncio
+import io
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -39,9 +41,19 @@ from mowlfake import FakeMowl
 from optools import KIND as JOB_KIND
 from optools import TOKEN_A, TOKEN_B, OpsEnv
 from spotdownfake import FakeSpotdown, spotdown
-from test_swedebeat_fetch import Harness, MixInput, account, add_beats, env, leftovers, work
+from test_spotdown_mix_policy import mix_document
+from test_swedebeat_fetch import (
+    Harness,
+    MixInput,
+    account,
+    add_beats,
+    env,
+    leftovers,
+    operator_log,
+    work,
+)
 
-__all__ = ["env", "spotdown", "work"]  # the fixtures
+__all__ = ["env", "operator_log", "spotdown", "work"]  # the fixtures
 
 pytestmark = pytest.mark.usefixtures("mowl_api", "analysis_slot_by_default")
 KEY = bytes(range(32))
@@ -367,12 +379,24 @@ async def test_a_spent_budget_calls_nothing_and_is_local(
     spotdown: FakeSpotdown,
     mowl_api: FakeMowl,
     monkeypatch: pytest.MonkeyPatch,
+    hashed: list[str],
 ) -> None:
     monkeypatch.setattr(studio_policy, "WAIT_SECONDS", 0.0)
     owner, connection = await on_mix(harness, mowl_api)
     await harness.run(owner, connection, add_beats(mowl_api, NAME))
     assert spotdown.seen == []
+    assert hashed == []  # given up before the file is even read
     assert [r.analyser for r in rows(harness, owner)] == ["local"]
+
+
+class FakeClock:
+    """The relay's monotonic clock, moved on only by its pauses (polls and waits)."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def monotonic(self) -> float:
+        return self.now
 
 
 async def test_the_wait_is_capped_at_todays_180_s_then_local(
@@ -382,21 +406,43 @@ async def test_the_wait_is_capped_at_todays_180_s_then_local(
     monkeypatch: pytest.MonkeyPatch,
     local_runs: list[str],
 ) -> None:
+    """spotdown's job would finish at 300 s: after the 180 s cap, well inside the job's 600 s
+    budget. The relay gives up at the cap and the mix is analysed locally; without the cap it
+    would wait on and use spotdown's map."""
     assert mix_spotdown.MIX_WAIT_SECONDS == 180.0
-    monkeypatch.setattr(mix_spotdown, "MIX_WAIT_SECONDS", 0.05)
+    assert studio_policy.WAIT_SECONDS == 600.0
+    clock, finish_at = FakeClock(), 300.0
+    monkeypatch.setattr(track_spotdown, "time", clock)
+    monkeypatch.setattr(mix_spotdown, "time", clock)
+    started: list[float] = []
+    polled: list[float] = []
 
-    def never_done(job_id: str) -> httpx.Response:
-        return httpx.Response(200, json={"schema_version": "job-v1", "job_id": job_id,
-                                         "client_ref": "x", "status": "running",
-                                         "outcome": None})  # fmt: skip
+    async def pause(_run: object, seconds: float) -> None:
+        clock.now += seconds
 
-    monkeypatch.setattr(spotdown, "_poll", never_done)
+    monkeypatch.setattr(track_spotdown, "pause", pause)
+    real_poll, real_begin = spotdown._poll, track_spotdown.begin  # pyright: ignore[reportPrivateUsage]
+
+    async def begin(run: Any, session: Any) -> None:
+        await real_begin(run, session)
+        started.append(clock.now)
+
+    def finishes_late(job_id: str) -> httpx.Response:
+        polled.append(clock.now - started[0])
+        job = spotdown.jobs[job_id]
+        job.polls = 10 if clock.now - started[0] >= finish_at else 1  # done, else queued
+        return real_poll(job_id)
+
+    monkeypatch.setattr(track_spotdown, "begin", begin)
+    monkeypatch.setattr(spotdown, "_poll", finishes_late)
     owner, connection = await on_mix(harness, mowl_api)
     row = await harness.run(owner, connection, add_beats(mowl_api, NAME))
     assert (row.state, row.error_category) == ("completed", None)
     assert [r.analyser for r in rows(harness, owner)] == ["local"]
     assert len(local_runs) == 1
-    assert sent(spotdown, "/v2/analyses")  # it was started, then given up within the cap
+    assert polled  # it was started and polled
+    assert max(polled) <= mix_spotdown.MIX_WAIT_SECONDS  # never polled past the cap
+    assert not any(s.path.startswith("/v2/analyses/an_") for s in spotdown.seen)  # never read
 
 
 async def test_a_rate_limited_start_waits_and_keeps_the_same_upload(
@@ -596,3 +642,68 @@ async def test_account_deletion_deletes_the_owners_scope_in_spotdown(
     assert await scope_outbox.drain(harness.ops.factory) == 1
     assert {s for s, _by in spotdown.analyses.values()} == {theirs}
     assert [s.path for s in spotdown.seen if s.method == "DELETE"] == [f"/v2/scopes/{mine}"]
+
+
+async def test_after_a_fallback_the_decode_time_is_the_local_analysis_alone(
+    harness: PreferHarness,
+    spotdown: FakeSpotdown,
+    mowl_api: FakeMowl,
+    monkeypatch: pytest.MonkeyPatch,
+    operator_log: io.StringIO,
+) -> None:
+    """ADR 0026 stage 1: ``analysis_decode_ms`` is the analysis that made the map; the time spent
+    consulting spotdown before a fallback is logged apart (``spotdown_ms``)."""
+    from classbeat.design.mixanalysis import Analysis
+
+    async def slow_fallback(*_args: object) -> None:
+        await asyncio.sleep(1.0)  # spotdown consulted for a second, then the fallback
+
+    local = mix_map_of(mix_document([(0.0, 60.0, 124.0)]), "m", "c" * 64, music.MAP_VERSION)
+    assert isinstance(local, MixMap)
+
+    async def instant(*_args: object, **_kwargs: object) -> Analysis:
+        return Analysis(local.music_map, None)
+
+    monkeypatch.setattr(mix_spotdown, "analyse", slow_fallback)
+    monkeypatch.setattr(swedebeat_music, "analyse_audio", instant)
+    owner, connection = await on_mix(harness, mowl_api)
+    row = await harness.run(owner, connection, add_beats(mowl_api, NAME))
+    assert (row.state, row.error_category) == ("completed", None)
+    (line,) = [
+        json.loads(text)
+        for text in operator_log.getvalue().splitlines()
+        if "swedebeat mix analysed" in text
+    ]
+    assert line["analyser"] == "local"
+    assert line["spotdown_ms"] >= 1000
+    assert line["decode_ms"] < 500  # the local analysis only, not the relay before it
+    assert row.analysis_decode_ms == line["decode_ms"]
+
+
+async def test_a_map_the_table_check_refuses_falls_back(
+    harness: PreferHarness,
+    spotdown: FakeSpotdown,
+    mowl_api: FakeMowl,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[Any] = []
+
+    def refused(music_map: Any, version: int) -> bool:
+        seen.append(version)
+        return False
+
+    monkeypatch.setattr(mix_spotdown, "valid_map", refused)
+    owner, connection = await on_mix(harness, mowl_api)
+    await harness.run(owner, connection, add_beats(mowl_api, NAME))
+    assert seen == [music.MAP_VERSION]
+    assert [r.analyser for r in rows(harness, owner)] == ["local"]
+
+
+async def test_a_rate_limit_longer_than_the_wait_left_falls_back_at_once(
+    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl
+) -> None:
+    spotdown.inject["/v2/analyses"] = [httpx.Response(429, headers={"Retry-After": "3600"})]
+    owner, connection = await on_mix(harness, mowl_api)
+    await harness.run(owner, connection, add_beats(mowl_api, NAME))
+    assert len(sent(spotdown, "/v2/analyses")) == 1  # not tried again: the wait does not fit
+    assert [r.analyser for r in rows(harness, owner)] == ["local"]

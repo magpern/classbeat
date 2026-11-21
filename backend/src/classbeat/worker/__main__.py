@@ -68,6 +68,47 @@ def _install_signal_handlers(loop: asyncio.AbstractEventLoop, stop: asyncio.Even
             signal.signal(sig, lambda *_: loop.call_soon_threadsafe(stop.set))
 
 
+def configure_spotdown(settings: Settings) -> None:
+    """The worker's spotdown switches, each from its own settings (ADR 0040 section 9); each is
+    off unless set."""
+    # spotdown's shadow mode for studio tracks (ADR 0040 section 9): off unless set, and active
+    # only with spotdown installed (``main``) and ``upload`` among the sources.
+    shadow_config.configure(
+        shadow_config.ShadowConfig(
+            settings.spotdown_shadow, parse_sources(settings.spotdown_sources), scope_key(settings)
+        )
+    )
+    # Studio tracks analysed by spotdown (ADR 0040 section 9, rollout step 2): off unless set,
+    # only for the allowlisted owners, with the local analysis as the fallback.
+    studio_tracks_config.configure(
+        studio_tracks_config.TracksConfig(
+            settings.spotdown_studio,
+            parse_studio_owners(settings.spotdown_studio_owners),
+            parse_sources(settings.spotdown_sources),
+            scope_key(settings),
+        )
+    )
+    # The Spotify song pick's spotdown match (ADR 0040 sections 2 and 8, SD-P6 stage A): off
+    # unless set, only for the allowlisted owners, with today's pick as the fallback.
+    song_match_config.configure(
+        song_match_config.MatchConfig(
+            settings.spotdown_spotify,
+            parse_owners(settings.spotdown_spotify_owners, "spotdown_spotify_owners"),
+            parse_sources(settings.spotdown_sources),
+        )
+    )
+    # SwedeBeat mixes analysed by spotdown (#1304): its own switch, off unless set, only for its
+    # allowlisted owners, with the local mix analysis as the fallback.
+    mix_config.configure(
+        studio_tracks_config.TracksConfig(
+            settings.spotdown_mix,
+            parse_owners(settings.spotdown_mix_owners, "spotdown_mix_owners"),
+            parse_sources(settings.spotdown_sources),
+            scope_key(settings),
+        )
+    )
+
+
 async def _run(settings: Settings, signer: EventSigner | None = None) -> None:
     engine = create_engine(settings)
     try:
@@ -105,42 +146,7 @@ async def _run(settings: Settings, signer: EventSigner | None = None) -> None:
     # studio_songs (ADR 0036): CLASSBEAT_SWEDEBEAT_STUDIO (off unless the worker has it too: a
     # queued job then ends feature_off); it shares swedebeat_match's gateway and key ring.
     studio_config.configure(studio_config.StudioConfig.from_settings(settings))
-    # spotdown's shadow mode for studio tracks (ADR 0040 section 9): off unless set, and active
-    # only with spotdown installed (``main``) and ``upload`` among the sources.
-    shadow_config.configure(
-        shadow_config.ShadowConfig(
-            settings.spotdown_shadow, parse_sources(settings.spotdown_sources), scope_key(settings)
-        )
-    )
-    # Studio tracks analysed by spotdown (ADR 0040 section 9, rollout step 2): off unless set,
-    # only for the allowlisted owners, with the local analysis as the fallback.
-    studio_tracks_config.configure(
-        studio_tracks_config.TracksConfig(
-            settings.spotdown_studio,
-            parse_studio_owners(settings.spotdown_studio_owners),
-            parse_sources(settings.spotdown_sources),
-            scope_key(settings),
-        )
-    )
-    # The Spotify song pick's spotdown match (ADR 0040 sections 2 and 8, SD-P6 stage A): off
-    # unless set, only for the allowlisted owners, with today's pick as the fallback.
-    song_match_config.configure(
-        song_match_config.MatchConfig(
-            settings.spotdown_spotify,
-            parse_owners(settings.spotdown_spotify_owners, "spotdown_spotify_owners"),
-            parse_sources(settings.spotdown_sources),
-        )
-    )
-    # SwedeBeat mixes analysed by spotdown (#1304): its own switch, off unless set, only for its
-    # allowlisted owners, with the local mix analysis as the fallback.
-    mix_config.configure(
-        studio_tracks_config.TracksConfig(
-            settings.spotdown_mix,
-            parse_owners(settings.spotdown_mix_owners, "spotdown_mix_owners"),
-            parse_sources(settings.spotdown_sources),
-            scope_key(settings),
-        )
-    )
+    configure_spotdown(settings)
     stop = asyncio.Event()
     # Before "worker started" is logged, so a signal after that line is always handled.
     _install_signal_handlers(asyncio.get_running_loop(), stop)

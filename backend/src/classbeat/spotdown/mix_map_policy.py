@@ -25,6 +25,8 @@ threshold is left out, so a mix map never rests on a hint.
 - spotdown's phrases are ``heuristic`` too: ``first_phrase`` is the song's beat 1 and
   ``phrase_bars`` the library's 8, so the phrase grid adds nothing beyond the bars.
 - ``grid_score`` is the beat grid's confidence.
+- A drop or breakdown outside every song (before the content start, from the last song's end on)
+  is left out: it belongs to no song.
 
 Anything missing or not trusted is ``MapRefused`` with a code (no duration, no trusted BPM or
 beats, too many songs or events), and the caller analyses the mix locally.
@@ -122,6 +124,12 @@ def _spans(cuts: list[float], beats: list[float]) -> list[tuple[float, float]]:
     return out
 
 
+def _song_of(spans: list[tuple[float, float]], t: float) -> int | None:
+    """The song (1-based) whose span holds ``t``; ``None`` before the first or from the last
+    song's end on (silence before the content start or after its end)."""
+    return next((n for n, (a, b) in enumerate(spans, 1) if a <= t < b), None)
+
+
 def _song(
     n: int,
     span: tuple[float, float],
@@ -171,17 +179,14 @@ def mix_map(doc: Document, decision: TimingDecision, map_version: int) -> Mapped
     score = ft.confidence(beats_feature) or 0.0
     timeline, downbeats = _timeline(doc, bpm), _trusted_times(grid, "downbeats")
     songs = [_song(n, span, beats, downbeats, timeline, score) for n, span in enumerate(spans, 1)]
-    events = [
-        {
-            "t": round(e.t, 3),
-            "precise": round(e.t, 3),
-            "kind": e.kind,
-            "strength": e.strength,
-            "song": next((n for n, (a, b) in enumerate(spans, 1) if a <= e.t < b), len(spans)),
-        }
-        for e in fc.trusted_events(doc)
-        if e.kind in MIX_EVENT_KINDS and e.t <= duration
-    ]
+    events: list[dict[str, object]] = []
+    for e in fc.trusted_events(doc):
+        song = _song_of(spans, e.t)
+        if e.kind in MIX_EVENT_KINDS and song is not None:  # outside every song: left out
+            t = round(e.t, 3)
+            events.append(
+                {"t": t, "precise": t, "kind": e.kind, "strength": e.strength, "song": song}
+            )
     if len(events) > MAX_EVENTS:
         return MapRefused("too_many_features")
     mapped: dict[str, object] = {

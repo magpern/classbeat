@@ -4,7 +4,9 @@ of ``design.revision``). Pure: no I/O.
 ``SwedebeatRevisionMusic`` of a draft designed on spotdown's map of the mix (#1304) also records
 ``analyser`` (``spotdown``) and that analysis's ``provenance`` record (``mix_map_model``: ids,
 versions, the audio identity and the timing class with its evidence; no title, link, URL or
-scope), at most ``PROVENANCE_MAX`` (as the cache row); a draft on a local map has neither.
+scope); this model does not bound its size: ``mix_map_model.mix_map_of`` refuses a record over
+``PROVENANCE_MAX`` before any map is used, as the table's check does on the cache row. A draft on
+a local map has neither.
 """
 
 from typing import Annotated, Any, Literal, Self

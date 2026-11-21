@@ -127,6 +127,24 @@ def test_only_drops_and_breakdowns_become_events_of_their_song() -> None:
     assert all(e["precise"] == e["t"] for e in m["events"])
 
 
+def test_an_event_outside_every_song_is_left_out() -> None:
+    doc = mix_document(SONGS)
+    doc["signal"] |= {"content_start_s": 2.0, "content_end_s": 598.0}
+    doc["events"] += [
+        _feature(kind="drop", start_s=1.0, strength=0.9),  # before the content start
+        _feature(kind="breakdown", start_s=598.0, strength=0.9),  # at the content end
+        _feature(kind="breakdown", start_s=599.5, strength=0.9),  # after it
+        _feature(kind="breakdown", start_s=597.9, strength=0.9),  # the last song's own
+    ]
+    m = mapped(doc)
+    assert [(e["kind"], e["t"], e["song"]) for e in m["events"]] == [
+        ("drop", 100.0, 1),
+        ("drop", 305.0, 2),
+        ("drop", 505.0, 3),
+        ("breakdown", 597.9, 3),
+    ]
+
+
 def test_an_untrusted_boundary_or_change_point_is_left_out() -> None:
     m = mapped(mix_document(SONGS, boundary_confidence=0.3))
     assert [(s["start"], s["end"]) for s in m["songs"]] == [(0.0, 600.0)]
@@ -356,3 +374,59 @@ def test_the_mix_switch_is_its_own() -> None:
         assert mix_config.current().mode == "off"  # the studio's switch never turns the mix on
     finally:
         studio_tracks_config.configure(None)
+
+
+# --- the worker's wiring --------------------------------------------------------------------------
+
+OTHER = UUID("1c6f1a52-6f0e-4f43-9a51-6c1d2a0c9e12")
+
+
+@pytest.mark.parametrize(
+    ("env", "mix", "studio"),
+    [
+        (
+            {"CLASSBEAT_SPOTDOWN_MIX": "allowlist", "CLASSBEAT_SPOTDOWN_MIX_OWNERS": str(OWNER)},
+            ("allowlist", frozenset({OWNER})),
+            ("off", frozenset()),
+        ),
+        (
+            {
+                "CLASSBEAT_SPOTDOWN_STUDIO": "allowlist",
+                "CLASSBEAT_SPOTDOWN_STUDIO_OWNERS": str(OTHER),
+            },
+            ("off", frozenset()),
+            ("allowlist", frozenset({OTHER})),
+        ),
+        ({}, ("off", frozenset()), ("off", frozenset())),
+    ],
+)
+def test_the_worker_configures_the_mix_switch_from_its_own_settings(
+    monkeypatch: pytest.MonkeyPatch,
+    env: dict[str, str],
+    mix: tuple[str, frozenset[UUID]],
+    studio: tuple[str, frozenset[UUID]],
+) -> None:
+    from classbeat.spotdown import shadow_config, song_match_config
+    from classbeat.worker.__main__ import configure_spotdown
+
+    for name in (
+        "CLASSBEAT_SPOTDOWN_MIX", "CLASSBEAT_SPOTDOWN_MIX_OWNERS", "CLASSBEAT_SPOTDOWN_STUDIO",
+        "CLASSBEAT_SPOTDOWN_STUDIO_OWNERS", "CLASSBEAT_SPOTDOWN_SPOTIFY",
+        "CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS",
+    ):  # fmt: skip
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SOURCES", "upload")
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    try:
+        configure_spotdown(settings)
+        got_mix, got_studio = mix_config.current(), studio_tracks_config.current()
+        assert (got_mix.mode, got_mix.owners) == mix
+        assert (got_studio.mode, got_studio.owners) == studio
+        assert got_mix.sources == frozenset({"upload"})
+    finally:
+        mix_config.configure(None)
+        studio_tracks_config.configure(None)
+        song_match_config.configure(None)
+        shadow_config.configure(None)
