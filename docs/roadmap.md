@@ -1,5 +1,36 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 35 (2026-11-21, owner decision: the Class Preview & Editor milestone CP; ADR 0042; issue #1389)
+
+The owner froze the plan [class-preview-editor.md](plans/class-preview-editor.md) on 2026-11-21 after five
+review rounds, and gave the go for the milestone and its issues the same day. The decision record is
+[ADR 0042](adr/0042-class-preview-and-editor.md).
+
+- **CP, Class Preview & Editor.** One editor before approval, where the instructor:
+  - auditions the music against the zone blocks;
+  - edits the workout timeline: overrides, locks, anchors, undo and redo with optimistic concurrency;
+  - edits the audio timeline: cut pins, and Spotify alignment corrections.
+- **Two audio backends:**
+  - SwedeBeat windows rendered by the existing renderer;
+  - remote control of the user's own Spotify, original tracks one at a time.
+- **Not a gym player:**
+  - a 15-minute continuous listening session, counted on a monotonic clock in the browser (a deterrent,
+    not DRM);
+  - Play by gesture only;
+  - no class-performance mode.
+- **The legal and licensing assumption** (ADR 0042 D11): a personal, non-commercial project; the owner
+  handles every permission. It is recorded once, with no flags or gates for it.
+- **Issues:**
+  - #1389 (CP0, the ADR);
+  - E1 #1390, E2 #1391, E3 #1396;
+  - R1 #1392, R2 #1394, R3 #1397;
+  - S1 #1393, S2 #1395, S3 #1398.
+
+  E1 also depends on #1367 (ADR 0036 amendment B).
+- **Unchanged:**
+  - ADR 0021's Spotify rule: Spotify songs play whole in MOWL;
+  - the safety envelope: no live-account calls by agents. The live checks are the owner's.
+
 ## Amendment 34 (2026-11-21, owner decision: no fixed limit on open PRs; issue #1384)
 
 The owner removed the limit of at most four open PRs at a time on 2026-11-21: "We have no limit of
