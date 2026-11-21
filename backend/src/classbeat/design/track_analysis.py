@@ -29,10 +29,11 @@ itself: the kind's ``admit`` and its run check them before calling it.
    default, only for the allowlisted owners of ``studio_tracks_config``): the cache's hits are
    then also the owner's ``spotdown`` rows whose provenance is current, and for each downloaded
    track, while its bytes are on disk, the owner's own cache by sha256 (the same bytes under
-   another reference) and then spotdown (its lookup by sha256 in the owner's scope, only then the
-   upload and the analysis) give an ``exact`` map with its provenance; **on any spotdown failure
-   or outage that track is analysed locally** as in step 3, and only that track changes. Off, a
-   ``spotdown`` row is a miss and nothing here differs from a local run.
+   another reference) and then spotdown (its lookup by sha256 in the studio's shared scope, the
+   same for every owner (``scope_policy``, #1338), only then the upload and the analysis) give an
+   ``exact`` map with its provenance; **on any spotdown failure or outage that track is analysed
+   locally** as in step 3, and only that track changes. Off, a ``spotdown`` row is a miss and
+   nothing here differs from a local run.
 5. **Shadow mode** (``track_shadow``, ADR 0040 section 9; off by default, and never while spotdown
    is the source): each downloaded track's bytes are also relayed to spotdown before they are
    deleted, and once the batch is stored (its slot freed) the comparisons are awaited within

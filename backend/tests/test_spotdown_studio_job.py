@@ -7,10 +7,12 @@ other connection.
   every map is the local one, as today;
 - on: spotdown is the source of each downloaded track's map (``exact``, the played bytes), stored
   with its provenance; the owner's cache by reference, then by sha256, then spotdown's lookup by
-  sha256 in the owner's scope come before any upload; the audio is gone after the job;
+  sha256 in the studio's shared scope (#1338: every owner reuses the analysis of the same file)
+  come before any upload; the audio is gone after the job;
 - every spotdown failure and outage falls back to the local analysis of that track only, and the
   result is then today's;
-- writes are fenced (a lost lease stores nothing); account deletion deletes the scope in spotdown.
+- writes are fenced (a lost lease stores nothing); account deletion deletes the owner's scope in
+  spotdown and leaves the shared studio scope.
 """
 
 import hashlib
@@ -30,7 +32,7 @@ from classbeat.jobs import JobRun
 from classbeat.spotdown import scope_outbox, shadow_config, studio_policy, studio_tracks_config
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.provenance_model import POLICY_VERSIONS
-from classbeat.spotdown.scope_calc import cache_scope
+from classbeat.spotdown.scope_calc import cache_scope, shared_scope
 from classbeat.spotdown.studio_map_model import StudioMap, studio_map
 from ctx import make_context
 from mediafake import kick_wav_bytes
@@ -54,6 +56,7 @@ __all__ = ["env", "harness", "spotdown", "work"]  # the fixtures
 pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
 THREE = "trk-three-03"  # the same bytes as ONE under another reference
 KEY = bytes(range(32))
+SHARED = shared_scope(KEY, "studio")  # #1338: every owner's studio analyses
 OTHER_SHA = hashlib.sha256(OTHER_AUDIO).hexdigest()
 
 
@@ -101,6 +104,11 @@ def rows(harness: Harness, owner: UUID) -> list[Any]:
         "WHERE owner_id = :o ORDER BY reference, analyser",
         o=owner,
     ).all()
+
+
+def only_analysis(spotdown: FakeSpotdown) -> str:
+    (analysis_id,) = spotdown.analyses
+    return analysis_id
 
 
 def downloads(harness: Harness, owner: UUID) -> int:
@@ -169,7 +177,7 @@ async def test_spotdown_gives_each_map_with_its_provenance_and_no_local_run(
     assert (row.state, row.error_category) == ("completed", None)
     assert local_runs == []  # spotdown analysed both
     assert not any(work.iterdir())  # no audio left  # noqa: ASYNC240
-    scope = cache_scope(KEY, owner)
+    scope = SHARED
     lookups, uploads = sent(spotdown, "/v2/analyses/lookup"), sent(spotdown, "/v2/uploads")
     assert [hashlib.sha256(u.body).hexdigest() for u in uploads] == [SHA, OTHER_SHA]
     assert len(lookups) == 2
@@ -190,7 +198,15 @@ async def test_spotdown_gives_each_map_with_its_provenance_and_no_local_run(
         assert r.provenance["policy_versions"] == dict(POLICY_VERSIONS)
         assert r.provenance["source"] == {"kind": "upload", "ref": None}
         text = json.dumps(r.provenance)
-        for secret in (ONE, TWO, scope, "studio-", "cache_scope", "Bearer"):
+        for secret in (
+            ONE,
+            TWO,
+            scope,
+            cache_scope(KEY, owner),
+            "studio-",
+            "cache_scope",
+            "Bearer",
+        ):
             assert secret not in text
     result = last_result(harness)
     assert [(t[0], t[2]) for t in result] == [(r.reference, r.map) for r in stored]
@@ -223,31 +239,38 @@ async def test_the_same_bytes_under_another_reference_are_neither_looked_up_nor_
     assert three.provenance == one.provenance
 
 
-async def test_an_analysis_in_the_owners_scope_is_read_without_an_upload(
+async def test_an_analysis_in_the_shared_scope_is_read_without_an_upload(
     harness: Harness, spotdown: FakeSpotdown
 ) -> None:
     owner = await on_owner(harness)
-    spotdown.add_analysis(cache_scope(KEY, owner), f"sha256:{SHA}")
+    spotdown.add_analysis(SHARED, f"sha256:{SHA}")
     await harness.run(owner, [ONE])
     assert sent(spotdown, "/v2/uploads") == []
     assert [r.analyser for r in rows(harness, owner)] == ["spotdown"]
 
 
-async def test_another_owners_scope_is_never_read_or_written(
-    harness: Harness, spotdown: FakeSpotdown
+async def test_a_second_owner_reuses_the_studio_analysis_without_an_upload(
+    harness: Harness, spotdown: FakeSpotdown, local_runs: list[str]
 ) -> None:
+    """#1338 (owner answer to #1297): a studio track is the same file for every user, so its
+    analysis is shared; no owner's own scope is sent for it, and each owner keeps their own row."""
     first, second = await harness.user(), await harness.user()
     turn_on(first, second)
     await harness.run(first, [ONE])
     before = len(spotdown.seen)
     await harness.run(second, [ONE])
-    mine = cache_scope(KEY, second)
     later = spotdown.seen[before:]
-    assert [s.path for s in later if s.path == "/v2/uploads"] == ["/v2/uploads"]  # again
+    assert [s.path for s in later] == [
+        "/v2/analyses/lookup",
+        f"/v2/analyses/{only_analysis(spotdown)}",
+    ]
+    assert all(f"cache_scope={SHARED}" in s.query for s in later)
     for s in later:
-        assert cache_scope(KEY, first) not in s.query + s.body.decode("latin-1")
-    assert all(mine in s.query for s in later if s.path in ("/v2/uploads", "/v2/analyses/lookup"))
-    assert [r.analyser for r in rows(harness, second)] == ["spotdown"]
+        for owner in (first, second):
+            assert cache_scope(KEY, owner) not in s.query + s.body.decode("latin-1")
+    assert local_runs == []
+    assert [r.analyser for r in rows(harness, second)] == ["spotdown"]  # their own row
+    assert rows(harness, second)[0].map == rows(harness, first)[0].map
 
 
 # --- every failure falls back to the local analysis of that track --------------------------------
@@ -365,7 +388,7 @@ async def test_one_failing_track_changes_only_that_track(
     assert one == off_result[0]  # today's map for the failing track
     assert (one[0], two[0]) == (ONE, TWO)
     assert [r.analyser for r in rows(harness, owner)] == ["local", "spotdown"]
-    assert two[2] == expected_map(spotdown, cache_scope(KEY, owner), OTHER_SHA, TWO)
+    assert two[2] == expected_map(spotdown, SHARED, OTHER_SHA, TWO)
 
 
 async def test_an_error_in_the_spotdown_code_falls_back(
@@ -444,18 +467,20 @@ async def test_a_lost_lease_while_waiting_stops_the_run_and_stores_nothing(
     assert not any(work.iterdir())  # noqa: ASYNC240
 
 
-async def test_account_deletion_deletes_the_owners_scope_in_spotdown(
+async def test_account_deletion_deletes_the_owners_scope_and_keeps_the_shared_studio_one(
     harness: Harness, spotdown: FakeSpotdown
 ) -> None:
+    """#1338: the shared studio analysis holds a catalog file's analysis and no user data, so one
+    account's deletion leaves it for the other owners; the owner's own scope is still deleted."""
     owner, other = await harness.user(), await harness.user()
     turn_on(owner, other)
     await harness.run(owner, [ONE])
     await harness.run(other, [ONE])
-    mine, theirs = cache_scope(KEY, owner), cache_scope(KEY, other)
-    assert {s for s, _by in spotdown.analyses.values()} == {mine, theirs}
+    assert [s for s, _by in spotdown.analyses.values()] == [SHARED]  # analysed once
     assert await erase.delete_row(harness.ops.factory, make_context(owner), KEY)
     assert await scope_outbox.drain(harness.ops.factory) == 1
-    assert {s for s, _by in spotdown.analyses.values()} == {theirs}
+    assert [s for s, _by in spotdown.analyses.values()] == [SHARED]
+    mine = cache_scope(KEY, owner)
     assert [s.path for s in spotdown.seen if s.method == "DELETE"] == [f"/v2/scopes/{mine}"]
 
 

@@ -4,7 +4,9 @@ with it; the web app computes the same scope when an account is deleted (``scope
 
 Rotating ``app_secret_key`` gives every owner a new scope: the private analyses under the old ones
 are then orphaned in spotdown (a later ``DELETE /v2/scopes/{scope}`` of the new scope does not
-reach them), so a rotation must delete the old scopes first.
+reach them), so a rotation must delete the old scopes first, the shared studio scope included:
+spotdown never purges it and no account deletion reaches it (ADR 0040, amendment "studio-track
+analyses are shared", item 5).
 """
 
 from classbeat.auth import derive_key
