@@ -8,6 +8,7 @@ import pytest
 from classbeat.agent.brief import Brief
 from classbeat.agent.songs import PickPlan
 from classbeat.songs.song_list import content_hash
+from classbeat.studio.output_choice_policy import STUDIO_VALUES
 from classbeat.swedebeat_match.verdict_policy import Verdict
 from classbeat.swedebeat_studio.candidate_policy import (
     Candidate,
@@ -17,7 +18,8 @@ from classbeat.swedebeat_studio.candidate_policy import (
     song_of,
     to_replace,
 )
-from classbeat.swedebeat_studio.config_policy import canonical, studio_values
+from classbeat.swedebeat_studio.config import StudioConfig
+from classbeat.swedebeat_studio.config_policy import OUTPUTS, VALUES, canonical, studio_values
 from classbeat.swedebeat_studio.evidence_policy import evidence, merge, really_missing, retry_slots
 from classbeat.swedebeat_studio.length_policy import UPPER, within
 from classbeat.swedebeat_studio.song_list_model import StudioListContent
@@ -59,6 +61,11 @@ def _cand(n: int, role: str, found: Verdict = MISSING) -> Candidate:
         ("design", {"design"}),
         (" design , swedebeat_playlist", {"design", "swedebeat_playlist"}),
         ("design,swedebeat_mix,mowl", {"design", "swedebeat_mix", "mowl"}),
+        ("design,swedebeat_mix,bass_swap", {"design", "swedebeat_mix", "bass_swap"}),  # B8
+        (
+            "design,swedebeat_playlist,swedebeat_mix,mowl,bass_swap",
+            {"design", "swedebeat_playlist", "swedebeat_mix", "mowl", "bass_swap"},
+        ),
     ],
 )
 def test_the_studio_setting_accepts_its_values(raw: str, values: set[str]) -> None:
@@ -76,6 +83,13 @@ def test_the_studio_setting_accepts_its_values(raw: str, values: set[str]) -> No
         "mowl",
         "design,mowl",  # mowl needs swedebeat_mix
         "DESIGN",
+        "bass_swap",  # bass_swap needs swedebeat_mix (ADR 0036 amendment B8)
+        "design,bass_swap",
+        "design,swedebeat_playlist,bass_swap",
+        "design,swedebeat_playlist,mowl,bass_swap",
+        "design,swedebeat_mix,BASS_SWAP",  # an unknown value
+        "design,swedebeat_mix,bass-swap",
+        "design,swedebeat_mix,bass_swap,bass_swap",
     ],
 )
 def test_any_other_studio_value_refuses_to_start(raw: str) -> None:
@@ -86,6 +100,20 @@ def test_any_other_studio_value_refuses_to_start(raw: str) -> None:
 def test_the_stored_setting_is_in_a_fixed_order() -> None:
     assert canonical("mowl, swedebeat_mix ,design") == "design,swedebeat_mix,mowl"
     assert canonical("") == ""
+    assert canonical("bass_swap,swedebeat_mix,design") == "design,swedebeat_mix,bass_swap"
+
+
+def test_the_setting_without_bass_swap_has_it_off() -> None:
+    assert not StudioConfig(studio_values("design,swedebeat_mix")).bass_swap  # the default
+    assert not StudioConfig().bass_swap
+    assert StudioConfig(studio_values("design,swedebeat_mix,bass_swap")).bass_swap
+
+
+def test_bass_swap_is_never_an_output() -> None:
+    assert frozenset({"swedebeat_playlist", "swedebeat_mix", "mowl"}) == OUTPUTS
+    assert "bass_swap" in VALUES
+    assert "bass_swap" not in OUTPUTS
+    assert OUTPUTS == STUDIO_VALUES  # the output choice's three
 
 
 # --- the evidence rule ---------------------------------------------------------------------
