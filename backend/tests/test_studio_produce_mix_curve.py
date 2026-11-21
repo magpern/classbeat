@@ -28,6 +28,7 @@ from studiotools import StudioEnv
 from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage]
     analysed,  # noqa: F401 - the autouse stand-in of the sandboxed child
     designed,
+    spotdown,  # noqa: F401 - the fake spotdown that stand-in answers from
 )
 
 pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on", "bass_swap_on")
