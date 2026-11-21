@@ -40,6 +40,15 @@ What it encodes, from ADR 0009 (assumptions to verify at the first live run, ADR
   ``next``, ``href``, ``uri`` and ``external_urls`` like Spotify's, so tests can show none is
   followed. Another account's playlist answers 404 (``foreign = "404"``, the default, strictest
   for isolation tests) or its metadata with 403 on its contents and writes (``"visible"``).
+- **The player** (ADR 0042 section 7.3, #1395), per user: ``add_device`` (id, name, type,
+  active, restricted) and ``play_external`` (something else plays). ``GET /v1/me/player`` (204
+  when nothing plays; the item carries ``uri``, ``href`` and ``external_urls`` like Spotify's;
+  ``progress_ms`` advances with the clock while playing), ``GET /v1/me/player/devices``,
+  ``PUT /v1/me/player/play?device_id=`` (``uris`` of one catalogue track and ``position_ms``;
+  an unknown device 404) and ``PUT /v1/me/player/pause`` (nothing playing 404). Reads need
+  ``user-read-playback-state``, commands ``user-modify-playback-state`` (else 403), and a user in
+  ``free_users`` gets Spotify's 403 ``PREMIUM_REQUIRED`` on a command. Any other player path is
+  404. The bodies sent are recorded (``player_bodies``).
 - **Failure injection** (``inject``) by request number (1-based, every request counted, both
   hosts) and/or method and path, ``times`` requests long. See ``KINDS``.
 - **Records** every request (``seen``): its number, method, host, path, the ``Authorization``
@@ -192,6 +201,25 @@ class Grant:
     user: str
     scope: str
     expires_at: float = 0.0
+
+
+@dataclass
+class Device:
+    id: str
+    name: str
+    type: str = "Computer"
+    is_active: bool = False
+    is_restricted: bool = False
+
+
+@dataclass
+class Playback:
+    device_id: str
+    item: str | None  # a catalogue track id, or None for something that is not one
+    kind: str  # "track", "episode" or "ad"
+    progress_ms: int
+    is_playing: bool
+    since: float  # the clock when progress_ms was set
 
 
 @dataclass
@@ -371,6 +399,12 @@ class FakeSpotify:
         # of ``public`` that is answered 200 and not applied.
         self.create_public = False
         self.ignore_privacy = False
+        # The player (#1395): each user's devices and playback, the users without Premium and
+        # the JSON bodies of the player commands, in order.
+        self.devices: dict[str, list[Device]] = {}
+        self.playback: dict[str, Playback] = {}
+        self.free_users: set[str] = set()
+        self.player_bodies: list[dict[str, Any]] = []
         self._count = 0
         self._next_playlist = 0
 
@@ -503,6 +537,28 @@ class FakeSpotify:
                 if (host is None or s.host == host)
                 and (path is None or re.fullmatch(path, s.path) is not None)
             ]
+
+    def add_device(
+        self,
+        user: str,
+        device_id: str,
+        name: str = "Studio laptop",
+        *,
+        type: str = "Computer",
+        active: bool = False,
+        restricted: bool = False,
+    ) -> Device:
+        device = Device(device_id, name, type, active, restricted)
+        with self.lock:
+            self.devices.setdefault(user, []).append(device)
+        return device
+
+    def play_external(self, user: str, item: str | None = None, *, kind: str = "track") -> None:
+        """Something classbeat did not start plays on the user's first device: ``item`` (a
+        catalogue track id) or, for ``kind`` ``episode`` or ``ad``, no track."""
+        with self.lock:
+            device = self.devices[user][0]
+            self.playback[user] = Playback(device.id, item, kind, 0, True, self.clock())
 
     # --- one request -----------------------------------------------------------------------
 
@@ -681,6 +737,8 @@ class FakeSpotify:
         page_kind = injection.kind if injection is not None else None
         if path == "/v1/me" and method == "GET":
             return _json(200, self._user(user))
+        if path == "/v1/me/player" or path.startswith("/v1/me/player/"):
+            return self._player(user, grant.scope.split(), seen, body)
         if path == "/v1/search" and method == "GET":
             return self._search(seen.query)
         if path == "/v1/me/playlists":
@@ -950,6 +1008,109 @@ class FakeSpotify:
         if page_kind == "next_unlisted":
             _spoil(page, page_kind, self.item_shape)
         return _json(200, page)
+
+    # --- the player (#1395) ----------------------------------------------------------------
+
+    def _player(self, user: str, scopes: list[str], seen: Seen, body: bytes) -> Answer:
+        path, method = seen.path, seen.method
+        reads = {"/v1/me/player": "GET", "/v1/me/player/devices": "GET"}
+        commands = {"/v1/me/player/play": "PUT", "/v1/me/player/pause": "PUT"}
+        if reads.get(path) == method:
+            if "user-read-playback-state" not in scopes:
+                return _error(403, "Insufficient client scope")
+            return self._player_state(user) if path == "/v1/me/player" else self._devices(user)
+        if commands.get(path) != method:
+            return _error(404, "Service not found")
+        if "user-modify-playback-state" not in scopes:
+            return _error(403, "Insufficient client scope")
+        if user in self.free_users:
+            error = {"status": 403, "message": "Premium required", "reason": "PREMIUM_REQUIRED"}
+            return _json(403, {"error": error})
+        try:
+            sent = json.loads(body) if body else {}
+        except ValueError:
+            return _error(400, "Malformed json")
+        self.player_bodies.append(sent if isinstance(sent, dict) else {"_": sent})
+        if path == "/v1/me/player/pause":
+            return self._pause(user)
+        return self._play(user, seen.query.get("device_id"), sent)
+
+    def _progress(self, playback: Playback) -> int:
+        if not playback.is_playing:
+            return playback.progress_ms
+        return playback.progress_ms + int((self.clock() - playback.since) * 1000)
+
+    def _device_json(self, device: Device) -> dict[str, Any]:
+        return {
+            "id": device.id,
+            "is_active": device.is_active,
+            "is_private_session": False,
+            "is_restricted": device.is_restricted,
+            "name": device.name,
+            "type": device.type,
+            "volume_percent": 60,
+            "supports_volume": True,
+        }
+
+    def _devices(self, user: str) -> Answer:
+        return _json(200, {"devices": [self._device_json(d) for d in self.devices.get(user, [])]})
+
+    def _player_state(self, user: str) -> Answer:
+        playback = self.playback.get(user)
+        device = next(
+            (d for d in self.devices.get(user, []) if playback and d.id == playback.device_id),
+            None,
+        )
+        if playback is None or device is None:
+            return Answer(204)
+        item: dict[str, Any] | None = None
+        if playback.kind == "track" and playback.item in self.catalogue:
+            item = self._track(playback.item)
+        elif playback.kind == "episode":
+            item = {"id": track_id(999), "type": "episode", "uri": "spotify:episode:x"}
+        return _json(
+            200,
+            {
+                "device": self._device_json(device),
+                "repeat_state": "off",
+                "shuffle_state": False,
+                "context": None,
+                "timestamp": int(self.clock() * 1000),
+                "progress_ms": self._progress(playback),
+                "is_playing": playback.is_playing,
+                "item": item,
+                "currently_playing_type": playback.kind,
+                "actions": {"interrupting_playback": True},
+            },
+        )
+
+    def _play(self, user: str, device_id: str | None, sent: Any) -> Answer:
+        devices = self.devices.get(user, [])
+        device = next((d for d in devices if d.id == device_id), None)
+        if device is None:
+            return _error(404, "Device not found")
+        uris = sent.get("uris") if isinstance(sent, dict) else None
+        position = sent.get("position_ms", 0) if isinstance(sent, dict) else None
+        if not isinstance(uris, list) or len(uris) != 1 or not isinstance(uris[0], str):
+            return _error(400, "Invalid uris")
+        found = TRACK_URI.fullmatch(uris[0])
+        if found is None or found[1] not in self.catalogue:
+            return _error(400, "Invalid track uri")
+        if not isinstance(position, int) or isinstance(position, bool) or position < 0:
+            return _error(400, "Invalid position_ms")
+        for other in devices:
+            other.is_active = other is device
+        self.playback[user] = Playback(device.id, found[1], "track", position, True, self.clock())
+        return Answer(204)
+
+    def _pause(self, user: str) -> Answer:
+        playback = self.playback.get(user)
+        if playback is None:
+            return _error(404, "Player command failed: No active device found")
+        playback.progress_ms = self._progress(playback)
+        playback.is_playing = False
+        playback.since = self.clock()
+        return Answer(204)
 
     # --- what tests and the e2e control read -----------------------------------------------
 
