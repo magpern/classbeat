@@ -731,6 +731,44 @@ no tempo change points, and the harness's recall-only edge gate cannot see that.
   an error of any type in the spotdown code, falls back to the local `mixanalysis` and `mixchild`
   path. The local child's 180 s and 1.5 GiB limits are unchanged; spotdown's own are its sandbox's.
 
+### Amendment (2026-11-20): the analysis and refinement stage of the Spotify flow, as built (SD-P6 stage B, #1303; amends §8 for that stage)
+
+Recorded with the code. Behind the same allowlist as the match stage (it runs only when the match ran
+for the class and did not fall back); off by default.
+
+1. **Only the chosen songs are analysed**, after `choose_songs` and before the list is stored: each new
+   song whose match is `timing`, by its match's YouTube sources (the best, then at most 2 alternates),
+   with **no `cache_scope`** (a `youtube` analysis is global; contract v2 makes it optional for a
+   youtube-only request) and a `spotify` reference whose id is an opaque digest of the Spotify id (no
+   Spotify id leaves). A cache hit is ready at once. Every result is **at best `approximate`**
+   (§3); an `unusable` one is discarded and the song keeps MOWL's sections.
+2. **This supersedes §8's `rate_limited` row ("fenced requeue after `retry_after_s`") for the
+   Spotify analysis stage**, as the match-stage amendment above (item 1) does for the match stage
+   (Architect's decision, 2026-11-21, on the review of #1329). A `rate_limited` start or job is waited
+   for **in the run**: charged to the job's budget before the wait, made only when it fits what is left,
+   with checkpoints at least every 10 s; it does not count as an attempt. *Why:* a requeue would rerun
+   the model stages before it (`pick_pool`, `choose_songs`), and the bound is the same 600 s per class.
+   Plan §6 carries a dated note.
+   **The other reactions (within §8's rows):** `provider_error` once again, then MOWL's sections for that song, and a provider outage of a
+   round (≥ 50 % and ≥ 3 songs) gives today's path for the whole class (no swaps); `processing_failed`
+   is not retried on the same audio except once after a `timeout`, then the next alternate, then MOWL's
+   sections; `source_unavailable` and `not_found` the next alternate, then MOWL's sections;
+   `alignment_failed` and `uncertain` MOWL's sections at once. At most 6 requests per song. For a
+   Spotify class MOWL's sections always exist for a chosen song, so §3's fall-through ends there.
+3. **Refinement:** `track_fit_policy` checks each `approximate` song against its slot (the BPM and
+   length it was chosen with, and a low-energy start for a warm-up); at most 2 rounds and a third of
+   the list per round, each unsuitable song replaced alone by a ranked spare that keeps the list's
+   total within 10 % (no model call), else accepted with a warning. The poll pauses, retry pauses and
+   waits all count against the one 600 s budget the match stage opened.
+4. **Kept:** the `spotdown_analysis` record in the list's provenance (§6's per-track items: the
+   analysis id, the analyser, the audio identity, the source kind, the timing class with its reason and
+   evidence, the policy versions, the fit, and the refinement swaps); never the video id, a scope, a
+   `client_ref`, a URL or a job id. **Fallback** to the list as chosen and no record, for the whole
+   class and every later run of the job: spotdown unreachable, an outage, or an error of any type in
+   the stage.
+5. **Not yet:** the design map's per-track timing class (`track_timing_calc.stamp`, SD-P6 stage C)
+   and the use of spotdown's sections in the design come from this record in a later stage.
+
 ## Status
 
 Accepted. §12 took effect on 2026-11-20, when the owner accepted #1296.

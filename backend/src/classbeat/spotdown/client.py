@@ -131,7 +131,7 @@ class SpotdownClient:
 
     async def start_analysis(
         self,
-        cache_scope: str,
+        cache_scope: str | None,
         client_ref: str,
         idempotency_key: str,
         *,
@@ -139,7 +139,8 @@ class SpotdownClient:
         source_ref: str | None = None,
         reference: rq.Reference | None = None,
     ) -> AnalysisReady | Pending | Failure:
-        """``POST /v2/analyses``: ready at once on a cache hit (``200``), else queued (``202``)."""
+        """``POST /v2/analyses``: ready at once on a cache hit (``200``), else queued (``202``).
+        ``cache_scope`` may be ``None`` only for a ``source_ref`` (a global ``youtube`` source)."""
         content = rq.analysis_body(
             cache_scope, client_ref, upload_id=upload_id, source_ref=source_ref, reference=reference
         )

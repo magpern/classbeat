@@ -22,7 +22,11 @@ socket, no network, deterministic. Public test values only.
 - Every ``/v2`` request without ``Authorization: Bearer <SERVICE_KEY>`` is ``401``; the same
   ``Idempotency-Key`` with another body is ``409``. Errors use ``{"error": {"code", "message"}}``.
 
-``fake.end`` sets how every new job ends (for a caller whose ``client_ref`` it does not choose).
+``fake.end`` sets how every new job ends (for a caller whose ``client_ref`` it does not choose);
+``fake.ends_by_source[source]`` how the next jobs of a ``youtube:<id>`` source end, one each;
+``fake.documents[source]`` the document of that source's analyses; ``fake.references[source]``
+records the alignment reference last asked for. An analysis of a ``youtube`` source needs no
+``cache_scope`` (contract v2: a global source).
 A document of an analysis held for ``sha256:<hex>`` carries that sha256 in its provenance.
 
 ``fake.inject[path] = [httpx.Response, ...]`` answers the next requests to ``path`` with those
@@ -102,6 +106,11 @@ class FakeSpotdown:
     inject: dict[str, list[httpx.Response]] = field(default_factory=lambda: {})
     connect_error: bool = False
     end: str | None = None  # every new job ends so (one of ``ENDS``), whatever its client_ref
+    # per source (``youtube:<id>``): how its next jobs end, one per job (before ``end``)
+    ends_by_source: dict[str, list[str]] = field(default_factory=lambda: {})
+    # per source: the analysis-v1 document of its analyses (else the minimal example)
+    documents: dict[str, dict[str, Any]] = field(default_factory=lambda: {})
+    references: dict[str, dict[str, Any]] = field(default_factory=lambda: {})  # the last asked
     uploads: dict[str, tuple[str, str]] = field(default_factory=lambda: {})  # id: scope, sha
     analyses: dict[str, tuple[str | None, str]] = field(default_factory=lambda: {})  # id: scope, by
     jobs: dict[str, _Job] = field(default_factory=lambda: {})
@@ -130,9 +139,10 @@ class FakeSpotdown:
 
     def analysis(self, analysis_id: str) -> dict[str, Any]:
         """The minimal example with this id; one held for ``sha256:<hex>`` names those bytes."""
-        document = copy.deepcopy(example("analysis-v1.minimal.json"))
-        document["analysis_id"] = analysis_id
         by = self.analyses.get(analysis_id, (None, ""))[1]
+        base = self.documents.get(by)
+        document = copy.deepcopy(base if base is not None else example("analysis-v1.minimal.json"))
+        document["analysis_id"] = analysis_id
         if by.startswith("sha256:"):
             document["provenance"]["audio"]["sha256"] = by.removeprefix("sha256:")
         return document
@@ -149,8 +159,12 @@ class FakeSpotdown:
         if request.method == "PUT" and path == "/v2/uploads":
             return self._idempotent(request, query.get("cache_scope", ""), body, self._upload)
         if request.method == "POST" and path == "/v2/analyses":
-            scope = str(json.loads(body).get("cache_scope", ""))
-            return self._idempotent(request, scope, body, self._start)
+            asked = json.loads(body)
+            scope = str(asked.get("cache_scope", ""))
+            global_ok = "cache_scope" not in asked and str(asked.get("source_ref", "")).startswith(
+                "youtube:"
+            )  # contract v2: optional for a youtube-only request (a global source)
+            return self._idempotent(request, scope, body, self._start, global_ok=global_ok)
         if request.method == "GET" and path == "/v2/analyses/lookup":
             return self._lookup(query)
         if request.method == "GET" and path.startswith("/v2/analyses/"):
@@ -169,11 +183,19 @@ class FakeSpotdown:
             return _error(404, "not_found")
         return httpx.Response(200, json=self.analysis(analysis_id))
 
-    def _idempotent(self, request: httpx.Request, scope: str, body: bytes, route: Any) -> Any:
+    def _idempotent(
+        self,
+        request: httpx.Request,
+        scope: str,
+        body: bytes,
+        route: Any,
+        *,
+        global_ok: bool = False,
+    ) -> Any:
         key = request.headers.get("idempotency-key")
         if not key:
             return _error(422, "idempotency_key_required")
-        if not scope:
+        if not scope and not global_ok:
             return _error(422, "scope_required")
         digest = hashlib.sha256(body).hexdigest()
         recorded = self.idempotency.get((scope, request.url.path, key))
@@ -247,14 +269,20 @@ class FakeSpotdown:
             by = f"sha256:{held[1]}"
         else:
             by = str(request["source_ref"])
-        cached = self._find(scope, by)
+        cached = self._find(scope or None, by)
         job_id = self._next("job")
         if cached is not None:
             return httpx.Response(
                 200, json={"job_id": job_id, "status": "done", "analysis_id": cached}
             )
         ref = str(request["client_ref"])
-        end = self.end or next((e for e in ENDS if ref.endswith(e)), "done")
+        ends = self.ends_by_source.get(by)
+        if ends:
+            end = ends.pop(0)
+        else:
+            end = self.end or next((e for e in ENDS if ref.endswith(e)), "done")
+        if "reference" in request:
+            self.references[by] = dict(request["reference"])
         self.jobs[job_id] = _Job(job_id, scope, ref, end)
         if end in ("done", "alignment_failed"):
             held_scope = None if by.startswith("youtube:") else scope
