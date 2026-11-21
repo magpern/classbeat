@@ -62,7 +62,8 @@ class Recorded:
     source_kind: str
 
 
-def _entries(provenance: Mapping[str, Any]) -> dict[int, Mapping[str, Any]]:
+def entries_by_position(provenance: Mapping[str, Any]) -> dict[int, Mapping[str, Any]]:
+    """The record's entries by position; a position recorded twice is left out (strict)."""
     record = provenance.get(KEY)
     songs = record.get("songs") if isinstance(record, dict) else None
     found: dict[int, list[Mapping[str, Any]]] = {}
@@ -75,7 +76,7 @@ def _entries(provenance: Mapping[str, Any]) -> dict[int, Mapping[str, Any]]:
 
 def recorded(provenance: Mapping[str, Any]) -> list[Recorded]:
     """Each marked song with its record entry; strict (module docstring)."""
-    entries = _entries(provenance)
+    entries = entries_by_position(provenance)
     out: list[Recorded] = []
     for position, cls, kind in timing_marks(provenance):
         entry = entries.get(position)

@@ -57,6 +57,8 @@ EXEMPT: dict[str, str] = {
     "limiter",
     "test_spotdown_song_sections_hook.py": "a 429 from the faked spotdown (ADR 0040), not our "
     "limiter",
+    "test_spotdown_revise_carry_job.py": "a 429 from the faked spotdown (ADR 0040), not our "
+    "limiter",
     "test_spotdown_song_sections_job.py": "a 429 from the faked spotdown (ADR 0040), not our "
     "limiter",
     "test_spotify_errors.py": PROVIDER,

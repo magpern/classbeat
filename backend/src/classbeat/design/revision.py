@@ -12,6 +12,7 @@
   the user's ``mowl_playlist_links`` row, the fingerprint of the analysed track list
   (``classbeat.design.music.fingerprint``) and the tracks MOWL had no BPM for yet, by index and
   title, so the user is told (their bars were a guess at 120 BPM). No MOWL or Spotify id, no map.
+  A draft with a track on spotdown's sections adds ``spotdown`` (``revision_spotdown_model``).
   On a Swedebeat mix (ADR 0016 section 3, A4): ``{source: "mowl_swedebeat_mix", mix_id, name,
   duration, listed_duration, unsure_beat_one, fingerprint, link_id}`` (``SwedebeatRevisionMusic``):
   the fingerprint is the map's (``swedebeat_music.fingerprint``), and the link gives Save the MOWL
@@ -51,11 +52,13 @@ from classbeat.agent.loop import StageOutcome
 from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
 from classbeat.design.music_kind import NoMusicStep
+from classbeat.design.revision_adopt import adopt_first as adopt_first
 from classbeat.design.revision_music_model import NoRevisionMusic as NoRevisionMusic
 from classbeat.design.revision_music_model import RevisionSong
 from classbeat.design.revision_music_model import SpotifyRevisionMusic as SpotifyRevisionMusic
 from classbeat.design.revision_music_model import SwedebeatRevisionMusic as SwedebeatRevisionMusic
 from classbeat.design.revision_music_model import UnknownBpmTrack as UnknownBpmTrack
+from classbeat.design.revision_spotdown_model import SpotdownSections, sections_of
 from classbeat.design.studio_revision_model import StudioRevisionMusic as StudioRevisionMusic
 from classbeat.jobs import FencedSession, JobFailure
 
@@ -82,34 +85,6 @@ _INSERT = text(
     "WHERE j.id = :job_id AND j.owner_id = :owner_id "
     "AND (CAST(:parent_id AS uuid) IS NULL OR p.id IS NOT NULL) RETURNING number"
 )
-
-# The job's own class (read from the fenced job row, never from the input). All three are set
-# together and only while the class has no current revision: its first design.
-_ADOPT_FIRST = text(
-    "UPDATE classes c SET current_revision_id = :revision_id, brief = CAST(:brief AS jsonb), "
-    "music_source = CAST(:music_source AS jsonb) FROM jobs j "
-    "WHERE j.id = :job_id AND j.owner_id = :owner_id AND c.owner_id = j.owner_id "
-    "AND c.id = j.class_id AND c.current_revision_id IS NULL RETURNING c.id"
-)
-
-
-async def adopt_first(
-    fs: FencedSession, revision_id: UUID, brief: dict[str, Any], music_source: dict[str, Any]
-) -> bool:
-    """In the final fenced transaction, after the revision is stored: make it the class's current
-    revision and record the brief and the music source, if the class has none yet. Returns
-    whether it did (a class that already has a current revision keeps it)."""
-    found = await fs.db.execute(
-        _ADOPT_FIRST,
-        {
-            "revision_id": revision_id,
-            "brief": json.dumps(brief, sort_keys=True, ensure_ascii=False),
-            "music_source": json.dumps(music_source, sort_keys=True, ensure_ascii=False),
-            "job_id": fs.lease.job_id,
-            "owner_id": fs.lease.owner_id,
-        },
-    )
-    return found.first() is not None
 
 
 def studio_hash(content: Mapping[str, Any], mix_spec: Mapping[str, Any]) -> bytes:
@@ -143,6 +118,13 @@ def _beat_one_fields(
     # Validated as a whole (not ``model_copy``, which skips the list bounds).
     whole = {**music.model_dump(mode="python"), "beat_one": applied or None, "songs": songs}
     return type(music).model_validate(whole)
+
+
+def _sections(music_map: dict[str, Any] | None, list_id: UUID | None) -> SpotdownSections | None:
+    try:  # a stamped track without its list cannot happen: fail closed
+        return sections_of(music_map, list_id)
+    except ValueError:
+        raise JobFailure("internal") from None
 
 
 REVISION_MUSIC: Final = TypeAdapter[RevisionMusic](
@@ -216,9 +198,12 @@ def content_and_music(
     music_map: dict[str, Any] | None,
     step: MusicStep | NoMusicStep,
     song_list_id: UUID | None,
+    spotdown_list_id: UUID | None = None,
 ) -> tuple[dict[str, Any], bytes, RevisionMusic | NoRevisionMusic, bool]:
     """The fitted content (validated again, server-side), its hash, the revision's music and
-    whether it is a running draft; ``invalid_output`` if the draft no longer validates."""
+    whether it is a running draft; ``invalid_output`` if the draft no longer validates.
+    ``spotdown_list_id`` (a revise or refit): the list a stamped track came from, else
+    ``song_list_id`` (``revision_spotdown_model``)."""
     draft = fitted_draft(result)
     running = isinstance(draft, RunningDraft)
     try:  # again, server-side, before it is stored
@@ -262,6 +247,7 @@ def content_and_music(
             fingerprint=step.fingerprint,
             unknown_bpm=[UnknownBpmTrack(index=u.index, title=u.title) for u in step.unknown_bpm],
             song_list_id=song_list_id,
+            spotdown=_sections(music_map, spotdown_list_id or song_list_id),
         )
     if not isinstance(step, NoMusicStep) and not isinstance(music, NoRevisionMusic):
         assert music_map is not None  # noqa: S101 - checked above
@@ -283,10 +269,13 @@ def build(
     request_message_id: UUID | None = None,
     song_list_id: UUID | None = None,
     rules: Mapping[str, Any] | None = None,
+    spotdown_list_id: UUID | None = None,
 ) -> DraftRevision:
     """The revision to store; ``invalid_output`` if the draft no longer validates, or (a revise)
     if it is the base draft again: a revision that changes nothing is not stored."""
-    content, content_hash, music, running = content_and_music(result, music_map, step, song_list_id)
+    content, content_hash, music, running = content_and_music(
+        result, music_map, step, song_list_id, spotdown_list_id
+    )
     if base_hash is not None and content_hash == base_hash:
         raise JobFailure("invalid_output")
     made: Provenance = provenance(

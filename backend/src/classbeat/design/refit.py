@@ -26,7 +26,8 @@ jobs API's, as for every kind.
 2. the class's music step (``kind.music_step``, unchanged checks, and the corrections for the
    step's fingerprint); a fingerprint other than the base's ends the job ``music_changed`` with
    nothing stored (the music is not what the base was designed on: a chat revision designs on
-   the new music);
+   the new music); a base that had tracks on spotdown's sections has them read again first
+   (``spotdown_base``, ``songs.spotdown_carry``; ADR 0040 SD-P6 stage E), else today's music;
 3. the base's stored content fitted again (``agent.design.check``, for a running class
    ``agent.running.check_running``) to the corrected map: the total is kept and each change moves
    to the corrected grid within the fit's tolerance;
@@ -63,6 +64,7 @@ from classbeat.design.kind import (
     music_step,
 )
 from classbeat.design.revision_ready import revision_ready
+from classbeat.design.spotdown_base import base_sections
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import Admitted, Refused
@@ -229,7 +231,8 @@ async def run(job_run: JobRun) -> Complete:
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
     await job_run.stage("music")
     prefer = base_music.fingerprint  # a mix: the analysis the base was designed on (#1304)
-    step = await music_step(job_run, runtime, music, given.mowl_connection_id, prefer)
+    carry = await base_sections(job_run, base_id)  # SD-P6 stage E: None is today's path
+    step = await music_step(job_run, runtime, music, given.mowl_connection_id, prefer, carry)
     handed_over = False
     try:
         if step.fingerprint != base_music.fingerprint:
@@ -239,7 +242,12 @@ async def run(job_run: JobRun) -> Complete:
         result = refit(base_draft, m)
         song_list_id = getattr(base_music, "song_list_id", None)
         draft = revision_refit.build_refit(
-            result, m, step, base_revision_id=base_id, song_list_id=song_list_id
+            result,
+            m,
+            step,
+            base_revision_id=base_id,
+            song_list_id=song_list_id,
+            spotdown_list_id=carry.song_list_id if carry is not None else None,
         )
 
         async def store(fs: FencedSession) -> UUID:

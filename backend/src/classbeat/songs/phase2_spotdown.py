@@ -75,14 +75,17 @@ async def _track(
 
 
 async def _with_spotdown(
-    run: JobRun, stored: SongListRevision, analysis: Mapping[str, Any]
+    run: JobRun,
+    stored: SongListRevision,
+    analysis: Mapping[str, Any],
+    only: frozenset[int] | None,
 ) -> tuple[dict[str, Any] | None, int, int]:
     """The analysis with spotdown's sections (``None``: nothing applied), the marked and the
     applied counts."""
     config = song_match_config.current()
     if not config.active_for(run.lease.owner_id):
         return None, 0, 0
-    marked = recorded(stored.provenance)
+    marked = [r for r in recorded(stored.provenance) if only is None or r.position in only]
     if not marked:
         return None, 0, 0
     client = SpotdownClient(config.sources)
@@ -98,11 +101,14 @@ async def _with_spotdown(
     return (None if not applied else {**analysis, "map": m}), len(marked), applied
 
 
-async def spotdown_music(run: JobRun, stored: SongListRevision, step: MusicStep) -> MusicStep:
-    """``step`` on spotdown's sections for the marked songs, or ``step`` unchanged (inactive,
-    nothing applied, or any fallback). The caller closes ``step`` when this raises."""
+async def spotdown_music(
+    run: JobRun, stored: SongListRevision, step: MusicStep, only: frozenset[int] | None = None
+) -> MusicStep:
+    """``step`` on spotdown's sections for the marked songs (``only``: of those, the positions a
+    revised draft had on them, ``spotdown_carry``), or ``step`` unchanged (inactive, nothing
+    applied, or any fallback). The caller closes ``step`` when this raises."""
     try:
-        analysis, marked, applied = await _with_spotdown(run, stored, step.data.analysis)
+        analysis, marked, applied = await _with_spotdown(run, stored, step.data.analysis, only)
     except PASSED:
         raise
     except Exception as exc:
