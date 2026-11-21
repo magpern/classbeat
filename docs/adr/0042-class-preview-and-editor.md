@@ -2,8 +2,8 @@
 
 Status: **Accepted by the owner, 2026-11-21** (plan [class-preview-editor.md](../plans/class-preview-editor.md),
 frozen after five review rounds). It gets its fresh Opus review in its PR (AGENTS.md review gate; first review
-of a new security design). Nothing is built by this ADR. The work is the issues of the plan (E1 to E3, R1 to
-R3, S1 to S3), opened when the owner says so.
+of a new security design). Nothing is built by this ADR. Milestone CP (roadmap Amendment 35); this ADR is
+#1389. The work is E1 #1390, E2 #1391, E3 #1396, R1 #1392, R2 #1394, R3 #1397, S1 #1393, S2 #1395 and S3 #1398.
 
 Depends on: [ADR 0036](0036-swedebeat-studio.md) (the studio, its mix spec, render and outputs), including
 its **amendment B** (#1366, the DJ mix opt-in, `mix_remap_calc`), which this ADR builds on (see "Relation to
