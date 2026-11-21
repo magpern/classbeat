@@ -3,17 +3,18 @@
 
 **Rows per analyser** (migration 0065, #1304): a mix's ``local`` map (``design.mixanalysis``, every
 row before #1304) and its ``spotdown`` map (``spotdown.mix_map_model``, with its ``provenance``)
-are two rows; a store replaces only its own analyser's row, so a class keeps the analysis it was
-designed on.
+are two rows; a store replaces only its own analyser's row. spotdown is the only analysis path
+(ADR 0040 amendment, #1353): **a ``local`` row is never a hit**, whatever asks (the rows go in
+#1356).
 
 - ``cached``: one fenced transaction share-locks the connection (``hold``) and reads the user's
   rows for the mix with their stored link. A row counts only if it is younger than
   ``MAP_TTL_DAYS``, was made for **this MOWL connection**, names the link's MOWL playlist and has
-  the library's current map version. Of those, the one whose map has the fingerprint ``prefer``
-  (a revise or refit: the analysis its base was designed on, whichever analyser made it) comes
-  first; else, while spotdown is the owner's source (``spotdown``), a ``spotdown`` row whose
-  provenance is this build's (``mix_map_model.current_mix_provenance``), then the ``local`` row;
-  otherwise the ``local`` row only, as before #1304. **A hit makes no request at all.**
+  the library's current map version. Of the ``spotdown`` rows among those, the one whose map has
+  the fingerprint ``prefer`` (a revise or refit: the analysis its base was designed on) comes
+  first; else one whose provenance is this build's (``mix_map_model.current_mix_provenance``). A
+  base designed on a ``local`` row finds no row with its fingerprint, so its revise is told
+  ``music_changed`` by the fingerprint check. **A hit makes no request at all.**
 - ``store``: one fenced transaction (the connection and the link held again) upserts the row,
   drops what is past 30 days and all but the newest ``MAPS_PER_USER`` rows of the user (rows of
   **both** analysers count, as in ``track_cache``: an owner whose mixes have a ``local`` and a
@@ -113,7 +114,7 @@ def fingerprint(music_map: dict[str, Any]) -> str:
 def _analysis(row: Any, mix_id: str, connection_id: UUID) -> MixAnalysis | None:
     if row.mowl_connection_id != connection_id or row.linked is None:
         return None
-    if row.linked != row.playlist_id or row.analyser not in ("local", "spotdown"):
+    if row.linked != row.playlist_id or row.analyser != "spotdown":
         return None
     stored: object = row.map
     if not isinstance(stored, dict) or stored.get("version") != music.MAP_VERSION:  # pyright: ignore[reportUnknownMemberType]
@@ -134,20 +135,13 @@ def _analysis(row: Any, mix_id: str, connection_id: UUID) -> MixAnalysis | None:
     )
 
 
-def choose(found: list[MixAnalysis], *, spotdown: bool, prefer: str | None) -> MixAnalysis | None:
-    """The hit among the usable rows (module docstring)."""
+def choose(found: list[MixAnalysis], *, prefer: str | None) -> MixAnalysis | None:
+    """The hit among the usable ``spotdown`` rows (module docstring)."""
     if prefer is not None:
         same = next((a for a in found if a.fingerprint == prefer), None)
         if same is not None:
             return same
-    if spotdown:
-        own = next(
-            (a for a in found if a.analyser == "spotdown" and current_mix_provenance(a.provenance)),
-            None,
-        )
-        if own is not None:
-            return own
-    return next((a for a in found if a.analyser == "local"), None)
+    return next((a for a in found if current_mix_provenance(a.provenance)), None)
 
 
 async def cached(
@@ -156,7 +150,6 @@ async def cached(
     mix_id: str,
     connection_id: UUID,
     *,
-    spotdown: bool = False,
     prefer: str | None = None,
 ) -> MixAnalysis | None:
     async with run.fenced() as fs:
@@ -165,7 +158,7 @@ async def cached(
         params = {"owner_id": run.lease.owner_id, "mix_id": mix_id, "days": MAP_TTL_DAYS}
         rows = (await fs.db.execute(_CACHED, params)).all()
     found = [a for a in (_analysis(r, mix_id, connection_id) for r in rows) if a is not None]
-    return choose(found, spotdown=spotdown, prefer=prefer)
+    return choose(found, prefer=prefer)
 
 
 async def store(

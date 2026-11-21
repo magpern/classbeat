@@ -36,6 +36,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
     analysed,  # noqa: F401 - the autouse stand-in of the sandboxed child
     design_script,
     designed,
+    spotdown,  # noqa: F401 - the fake spotdown that stand-in answers from
 )
 from test_swedebeat_studio_songs import SWAP_12, SWAPPED_LIST
 

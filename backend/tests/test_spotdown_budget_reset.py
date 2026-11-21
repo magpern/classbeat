@@ -55,6 +55,22 @@ async def test_a_retryable_ending_resets_the_budget_and_the_flag(
     assert budget(jenv, job_id) == (0.0, False)  # ...with a fresh budget
 
 
+async def test_a_retryable_ending_also_resets_the_studio_budget(jenv: JobsEnv) -> None:
+    """One reset covers both tables (#1353): the studio row is deleted, the song row zeroed."""
+    owner, job_id = jenv.job(max_attempts=3)
+    plant(jenv, owner, job_id)
+    jenv.sql(
+        "INSERT INTO spotdown_studio_budgets (owner_id, job_id, outage) VALUES (:o, :j, true)",
+        o=owner,
+        j=job_id,
+    )
+    await run_next(jenv, fails_with("analysis_unavailable"))
+    assert jenv.row(job_id).state == "queued"
+    assert budget(jenv, job_id) == (0.0, False)
+    left = jenv.sql("SELECT 1 FROM spotdown_studio_budgets WHERE job_id = :j", j=job_id).first()
+    assert left is None
+
+
 async def test_the_last_attempt_ends_the_job_and_nothing_is_reset(jenv: JobsEnv) -> None:
     owner, job_id = jenv.job(max_attempts=1)
     plant(jenv, owner, job_id)

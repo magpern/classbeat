@@ -107,6 +107,10 @@ CATEGORIES: Final = (
     # outcome, spotdown answered but the music cannot be analysed, and is not retried. Raised by
     # ``spotdown.outage_policy`` and the code that calls it (#1353, #1354).
     "analysis_unavailable",
+    # ADR 0036 amendment B, B6 (migration 0069, #1371): a studio pick for a class no list of whole
+    # songs can fit (over ``MAX_TOTAL_SEC`` less the per-song margin); raised before the first
+    # model call. Not retried: the same class would be refused again.
+    "mix_too_long",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).

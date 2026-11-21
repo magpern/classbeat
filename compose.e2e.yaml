@@ -374,7 +374,7 @@ services:
       # ADR 0040 amendment (#1337, #1354): the Spotify song pick's spotdown match and analysis run
       # for every user, against the fake spotdown (the worker only); there is no switch.
       CLASSBEAT_SPOTDOWN_URL: http://spotdown-api:8000
-      CLASSBEAT_SPOTDOWN_SOURCES: youtube
+      CLASSBEAT_SPOTDOWN_SOURCES: upload,youtube
       SSL_CERT_FILE: /fake-ca/bundle.pem
     secrets:
       - spotdown_service_key

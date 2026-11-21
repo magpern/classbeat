@@ -1,55 +1,53 @@
-"""The failure reactions and the wait budget of studio tracks analysed by spotdown (ADR 0040
-section 8, plan section 6; SD-P5, #1302). Pure: no I/O.
+"""The failure reactions and the wait budget of studio tracks and mixes analysed by spotdown (ADR
+0040 section 8 and its amendment "spotdown is the only analysis path", item 4; plan section 6;
+#1353).
+Pure: no I/O.
 
-spotdown is never a hard dependency: every outcome but a map ends in the **local analysis of that
-track** (``fallback``), and only that track changes. Per failure (``reaction``):
+spotdown is the only analysis path: no outcome but a map falls back to anything. Per failure
+(``reaction``), after its bounded reaction the job ends in a category (``outage_policy``):
 
-- spotdown **unreachable** (any reason: no answer, a 5xx, a refused key, a bad answer): this track
-  falls back and the rest of the job is analysed locally without calling spotdown (``outage``);
 - ``rate_limited``: wait its (clamped) ``retry_after_s`` and try again, not counted as an attempt,
-  within the budget (``wait``);
-- ``provider_error``: one retry after ``RETRY_PAUSE_SECONDS`` (``retry``), then the fallback. When
-  at least ``OUTAGE_MIN_TRACKS`` tracks and half of those tried in the run end so, it is a
-  provider outage (``provider_outage``): the rest of the job is local;
+  within the budget (``wait``); a wait that does not fit the budget ends ``analysis_unavailable``;
+- ``provider_error``: one retry after ``RETRY_PAUSE_SECONDS`` (``retry``), then
+  ``analysis_unavailable`` (retried with the job's backoff: ``unavailable``). A provider outage
+  (about half of a batch, at least three tracks) is then never reached: the first track that ends
+  so ends the job;
 - ``processing_failed``: deterministic, so no retry on the same audio, except one after a
-  ``timeout``; then the fallback;
-- ``alignment_failed`` and every other status (none applies to an upload): the fallback.
+  ``timeout``; then ``analysis_failed`` (``failed``, not retried);
+- ``alignment_failed`` and every other status (none applies to an upload): ``analysis_failed``.
+
+An ``Unreachable`` is not a reaction here: ``outage_policy.unreachable_category`` maps its reason.
 
 **The budget** (``remaining``): a design job waits for spotdown (its polls, its ``rate_limited``
 waits) at most ``WAIT_SECONDS`` (the "about 10 min" of section 8) in all, counted from the job's
-first spotdown call, **over every run of the job** (``design.track_spotdown_budget``); then every
-track left is analysed locally. An outage found by one run holds for the whole job too.
-``rate_limited`` waits in the run (with checkpoints, within this budget) instead of a fenced
-requeue (ADR 0040 section 8, amendment of 2026-11-20).
+first spotdown call; the budget is the **attempt's**: it is reset when a run ends in a retryable
+category (``jobs.transitions.retry`` deletes the job's ``spotdown_studio_budgets`` row), so a
+retried ``analysis_unavailable`` is a real retry. A requeue that counts no attempt, and a
+lease-lost requeue, keep what was spent. ``rate_limited`` waits in the run (with checkpoints,
+within this budget) instead of a fenced requeue (ADR 0040 section 8, amendment of 2026-11-20).
 """
 
 from datetime import datetime, timedelta
 from typing import Final, Literal
 
-from classbeat.spotdown.failure_policy import TrackFailure, Unreachable
+from classbeat.spotdown.failure_policy import TrackFailure
 
 WAIT_SECONDS: Final = 600.0
 RETRY_PAUSE_SECONDS: Final = 5.0
-OUTAGE_MIN_TRACKS: Final = 3
 
-Reaction = Literal["fallback", "retry", "wait", "outage"]
+Reaction = Literal["retry", "wait", "unavailable", "failed"]
 
 
-def reaction(failure: TrackFailure | Unreachable, retried: bool) -> Reaction:
+def reaction(failure: TrackFailure, retried: bool) -> Reaction:
     """What to do after ``failure``; ``retried``: this track's one counted retry is spent."""
-    if isinstance(failure, Unreachable):
-        return "outage"
     if failure.status == "rate_limited":
         return "wait"
     retryable = failure.status == "provider_error" or (
         failure.status == "processing_failed" and failure.failure_kind == "timeout"
     )
-    return "retry" if retryable and not retried else "fallback"
-
-
-def provider_outage(provider_errors: int, tried: int) -> bool:
-    """Whether the run's ``provider_error`` tracks make an outage (section 8's rule)."""
-    return provider_errors >= OUTAGE_MIN_TRACKS and 2 * provider_errors >= tried
+    if retryable and not retried:
+        return "retry"
+    return "unavailable" if failure.status == "provider_error" else "failed"
 
 
 def wait_for(retry_after_s: float | None, left: float) -> float | None:

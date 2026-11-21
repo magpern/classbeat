@@ -17,9 +17,10 @@
   or ``spotdown`` (spotdown's analysis of the same bytes, with its ``provenance`` record). A
   track's two rows coexist; a store replaces only the row of its own analyser, so a class
   designed on one analyser's map is never moved to the other's. Every read takes an ``Accept``
-  rule over the ``Stored`` row: ``track_analysis`` takes ``local`` rows and, while spotdown is
-  the owner's source, current ``spotdown`` ones (a ``spotdown`` hit before a ``local`` one);
-  revise, outputs and the timeline take exactly the row the draft recorded (``recorded``).
+  rule over the ``Stored`` row: ``track_analysis`` takes only current ``spotdown`` rows (#1353:
+  a ``local`` row is no hit; it stays unread until #1356 drops them); revise, outputs and the
+  timeline take exactly the row the draft recorded (``recorded``), which, until #1356, still
+  reads a ``local`` row a draft made before #1353 recorded.
 
 Every statement filters on ``owner_id`` itself as well as through row security. Nothing here logs.
 """

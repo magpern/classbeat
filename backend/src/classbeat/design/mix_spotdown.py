@@ -1,7 +1,6 @@
 """A SwedeBeat mix analysed by spotdown (ADR 0040 sections 5 to 9, plan sections 5 to 8; SD-P7a,
-#1304): the source of the mix's map for an allowlisted owner (``spotdown.mix_config``), with the
-local analysis (``design.mixanalysis`` in the sandboxed ``mixchild``) as the fallback. Off by
-default; inactive, nothing here is called.
+#1304; its amendment "spotdown is the only analysis path", #1353): the only source of the mix's
+map. Nothing falls back to a local analysis.
 
 ``swedebeat_music`` fetches the mix as always (the MOWL temporary link, ``mixfetch``, 250 MB; the
 link is never stored, logged or sent here) and, **while the fetched file is still on disk**, after
@@ -18,23 +17,23 @@ The document is read in the same scope and goes through ``mix_map_model.mix_map_
 (``timing_class_policy`` path (a), then ``mix_map_policy.mix_map``) and
 ``mixanalysis.valid_map``; only an ``exact`` played-recording map is returned with its provenance.
 
-**Bounds.** The relay, the session, the per-class budget and the outage flag are the studio's
+**Bounds.** The relay, the session, the attempt's budget and the outage flag are the studio's
 (``design.track_spotdown``, ``track_spotdown_budget``: the design job's ``spotdown_studio_budgets``
-row over all its runs, ADR 0040 section 8 and its amendment of 2026-11-20); the reactions are
-``studio_policy``'s. On top, a mix waits for spotdown (polls and ``rate_limited`` waits) at most
-``MIX_WAIT_SECONDS``, today's 180 s limit of the local mix analysis, so a class never waits
-longer for spotdown than the local analysis it falls back to may take.
+row, reset when a run ends in a retryable category, ADR 0040 section 8 and its amendment "spotdown
+is the only analysis path", item 4); the reactions are ``studio_policy``'s. On top, a mix waits for
+spotdown (polls and ``rate_limited`` waits) at most ``MIX_WAIT_SECONDS`` (180 s).
 
-**Every other outcome is ``None``**, and the caller analyses the mix locally: a status after its
-bounded reaction, spotdown unreachable (the job's later runs are then local too), the budget
-spent, a refused document, or an error of any type in here (swallowed; only its type is logged).
-Only ``RunStopped`` and ``DatabaseRoleError`` pass, as for every step of the run. Only codes are
-logged: never a mix id, a sha256, a link or a scope.
+**Every other outcome ends the job** (``spotdown_ending``): ``analysis_unavailable`` (retried) for
+spotdown not usable, an ``Unreachable`` about the service, a ``provider_error`` after its one
+retry, a wait that does not fit, the budget or the 180 s cap spent; ``analysis_failed`` for a
+status about this music, an ``Unreachable`` about this request or its answer, a refused document;
+``internal`` for ``conflict``. **No error is swallowed**; ``RunStopped`` and ``DatabaseRoleError``
+pass as for every step of the run. Only fixed codes are logged: never a mix id, a sha256, a link
+or a scope.
 """
 
 import asyncio
 import hashlib
-import logging
 import time
 import uuid
 from pathlib import Path
@@ -42,30 +41,31 @@ from typing import Final
 
 from mowl import music
 
+from classbeat.design import spotdown_ending
 from classbeat.design import track_spotdown as relay
-from classbeat.design.mixanalysis import ANALYSIS_SECONDS, valid_map
+from classbeat.design.mixanalysis import valid_map
 from classbeat.egress_spotdown import CALL_SECONDS
 from classbeat.jobs import JobRun
-from classbeat.spotdown import mix_config, scope_policy, studio_policy
+from classbeat.spotdown import scope_policy, studio_policy, studio_tracks_config
 from classbeat.spotdown.answer_model import Uploaded
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.failure_policy import AnalysisReady, Pending, Unreachable
 from classbeat.spotdown.mix_map_model import MixMap, mix_map_of
 from classbeat.spotdown.scope_calc import idempotency_key
 
-logger = logging.getLogger(__name__)
-
-MIX_WAIT_SECONDS: Final = ANALYSIS_SECONDS  # today's limit of the local mix analysis
+MIX_WAIT_SECONDS: Final = 180.0  # at most this long waiting for spotdown, polls and waits
 # The lease over the mix's spotdown calls (the lookup, the upload, the start, the read).
 RELAY_SECONDS: Final = relay.RELAY_SECONDS + CALL_SECONDS
 HASH_CHUNK: Final = 1 << 20
 
 
-def session_for(run: JobRun) -> relay.Session | None:
-    """The run's session when spotdown is the source of mixes for its owner, else ``None``."""
-    config = mix_config.current()
-    if config.scope_key is None or not config.active_for(run.lease.owner_id):
-        return None
+def session_for(run: JobRun) -> relay.Session:
+    """The run's session; ``analysis_unavailable`` (logged, nothing called) when spotdown is not
+    usable in this worker (``studio_tracks_config.TracksConfig.refusal``)."""
+    config = studio_tracks_config.current()
+    refused = config.refusal()
+    if refused is not None or config.scope_key is None:
+        raise spotdown_ending.unreachable(refused or "not_configured")
     scope = scope_policy.scope_for("mix", config.scope_key, run.lease.owner_id)
     return relay.Session(SpotdownClient(config.sources), scope)
 
@@ -106,35 +106,38 @@ async def _attempt(
 
 async def _analyse(
     run: JobRun, session: relay.Session, mix_id: str, sha256: str, audio: Path
-) -> MixMap | str:
-    """The map, or why the mix falls back (a code)."""
+) -> MixMap:
+    """The map, or the job's ending (``spotdown_ending``)."""
     nonce, attempt, retried = uuid.uuid4().hex, 1, False
     while session.left() > 0:
         outcome = await _attempt(run, session, nonce, attempt, sha256, audio)
         if isinstance(outcome, dict):
             mapped = mix_map_of(outcome, mix_id, sha256, music.MAP_VERSION)
             if not isinstance(mapped, MixMap):
-                return mapped.reason
-            return mapped if valid_map(mapped.music_map, music.MAP_VERSION) else "bad_map"
-        if isinstance(outcome, str):
-            return outcome  # the budget is spent
+                raise spotdown_ending.failed("map_refused")
+            if not valid_map(mapped.music_map, music.MAP_VERSION):
+                raise spotdown_ending.failed("bad_map")
+            return mapped
+        if isinstance(outcome, str):  # the budget is spent
+            raise spotdown_ending.unavailable("budget_spent")
         if isinstance(outcome, Unreachable):
-            await relay.note_outage(run, session)
-            return "unreachable"
+            raise await relay.unreachable(run, session, outcome.reason)
         step = studio_policy.reaction(outcome, retried)
         if step == "wait":
             wait = studio_policy.wait_for(outcome.retry_after_s, session.left())
             if wait is None:
-                return relay.TIMED_OUT
+                raise spotdown_ending.unavailable("wait_over_budget")
             await relay.pause(run, wait)
         elif step == "retry":
             retried, attempt = True, attempt + 1
             pause = min(studio_policy.RETRY_PAUSE_SECONDS, max(session.left(), 0.0))
             await relay.pause(run, pause)
+        elif step == "unavailable":
+            raise spotdown_ending.unavailable(outcome.status)
         else:
-            return outcome.status
+            raise spotdown_ending.failed(outcome.status)
         await run.checkpoint()
-    return relay.TIMED_OUT
+    raise spotdown_ending.unavailable("budget_spent")
 
 
 def _sha256(audio: Path) -> str:
@@ -146,23 +149,14 @@ def _sha256(audio: Path) -> str:
     return digest.hexdigest()
 
 
-async def analyse(run: JobRun, session: relay.Session, mix_id: str, audio: Path) -> MixMap | None:
-    """spotdown's map of the fetched ``audio`` of the mix ``mix_id``; ``None``: analyse it
-    locally."""
-    try:
-        await relay.begin(run, session)
-        if session.deadline is not None:  # the job's budget, and at most today's 180 s
-            session.deadline = min(session.deadline, time.monotonic() + MIX_WAIT_SECONDS)
-        if session.outage or session.left() <= 0:
-            return None
-        sha256 = await asyncio.to_thread(_sha256, audio)
-        result = await _analyse(run, session, mix_id, sha256, audio)
-    except relay.PASSED:
-        raise
-    except Exception as exc:
-        logger.warning("spotdown mix failed", extra={"error_type": type(exc).__name__})
-        return None
-    if isinstance(result, MixMap):
-        return result
-    logger.info("spotdown mix fallback", extra={"job_id": str(run.lease.job_id), "reason": result})
-    return None
+async def analyse(run: JobRun, session: relay.Session, mix_id: str, audio: Path) -> MixMap:
+    """spotdown's map of the fetched ``audio`` of the mix ``mix_id``, or a ``JobFailure``."""
+    await relay.begin(run, session)
+    if session.deadline is not None:  # the attempt's budget, and at most 180 s
+        session.deadline = min(session.deadline, time.monotonic() + MIX_WAIT_SECONDS)
+    if session.outage:
+        raise spotdown_ending.unavailable("outage_flag")
+    if session.left() <= 0:
+        raise spotdown_ending.unavailable("budget_spent")
+    sha256 = await asyncio.to_thread(_sha256, audio)
+    return await _analyse(run, session, mix_id, sha256, audio)

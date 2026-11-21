@@ -53,6 +53,8 @@ const FAILURES: Record<string, FailureKeys> = {
   analysis_failed: { title: 'job.failure.analysis_failed.title', detail: 'job.failure.analysis_failed.detail' },
   // spotdown, the only analysis path, is down or out of budget: retried by itself (ADR 0040 amendment item 4).
   analysis_unavailable: { title: 'job.failure.analysis_unavailable.title', detail: 'job.failure.analysis_unavailable.detail' },
+  // A studio pick for a class no list of whole songs can fit (ADR 0036 amendment B, B6; #1371).
+  mix_too_long: { title: 'job.failure.mix_too_long.title', detail: 'job.failure.mix_too_long.detail' },
   feature_off: { title: 'job.failure.feature_off.title', detail: 'job.failure.feature_off.detail' },
   analysis_limit: { title: 'job.failure.analysis_limit.title', detail: 'job.failure.analysis_limit.detail' },
   soundless_not_evaluated: { title: 'job.failure.soundless_not_evaluated.title', detail: 'job.failure.soundless_not_evaluated.detail' },

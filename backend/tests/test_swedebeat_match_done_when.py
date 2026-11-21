@@ -21,13 +21,15 @@ from jobapi import Browser, new_key
 from mowlfake import FakeMowl
 from optools import TOKEN_A, TOKEN_B
 from preftools import use_swedebeat
-from test_swedebeat_verify import (  # noqa: F401 - the fixtures: env, work, henv
+from test_swedebeat_verify import (  # noqa: F401 - the fixtures: env, work, henv, spotdown
     HandEnv,
     _check,
     _start,
     env,
     henv,
     plant,
+    spotdown,
+    spotdown_on,
     work,
 )
 

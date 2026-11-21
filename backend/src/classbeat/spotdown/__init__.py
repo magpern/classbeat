@@ -21,8 +21,9 @@ and ``scope_key``; the side effects are ``classbeat.design.track_shadow`` and ``
 account deletion's ``DELETE /v2/scopes``). Studio tracks via spotdown (SD-P5, #1302):
 ``studio_map_model`` (the map and provenance, always through ``timing_class_policy`` and
 ``spotdown_map_policy``), ``studio_policy`` (the failure reactions and the budget),
-``studio_owners_policy`` and ``studio_tracks_config`` (off by default, an allowlist); the side
-effect is ``classbeat.design.track_spotdown``.
+and ``studio_tracks_config`` (what the studio and the mixes share: usable or not, no switch,
+#1353), ``outage_policy`` (an ``Unreachable``'s category); the side effects are
+``classbeat.design.track_spotdown``, ``mix_spotdown`` and ``spotdown_ending``.
 The Spotify song pick's match stage (SD-P6 stage A, #1303): ``song_match_config`` with
 ``owner_list_policy`` (the allowlist), ``song_match_policy`` (each match's use, the reactions,
 the outage rule and the wait budget), ``song_swap_calc`` (spares and replacement rounds) and
