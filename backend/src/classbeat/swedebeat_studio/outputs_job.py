@@ -83,7 +83,7 @@ class Producer:
             if s.swedebeat is not None and not s.gap
         }
         if any(r not in found for r in self.references):
-            raise JobFailure("internal")  # the draft's mix is a permutation of its approved list
+            raise JobFailure("internal")  # each piece of the mix is a track of the approved list
         return found
 
     def durations(self) -> dict[str, float]:

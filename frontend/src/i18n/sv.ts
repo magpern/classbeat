@@ -2366,6 +2366,8 @@ const sv: Catalogue = {
     'Det här är inte längre passets aktuella version. Ladda om sidan.',
   'studio.reason.mowl_needs_mix':
     'Ett MOWL-träningspass behöver mixen. Välj mixen också.',
+  'studio.reason.playlist_has_repeats':
+    'Den här klassen upprepar en låt, så den kan bara skapas som en mix. Välj mixen i stället för SwedeBeat-spellistan.',
   'studio.reason.output_off':
     'Något av de valda resultaten är avstängt just nu. Välj andra eller försök igen senare.',
   'studio.reason.connection_changed':
@@ -2398,6 +2400,14 @@ const sv: Catalogue = {
     '{start} till {end}, över låt {song}.',
   'studio.tl.standing':
     'Stående',
+  'studio.tl.repeatOf':
+    'Spelar låt {song} igen.',
+  'studio.tl.loop':
+    'Spelar vidare från låten före.',
+  'studio.tl.hint.whole_track_repeated':
+    'Låtarna {songs} spelar samma hela spår. Be om en ändring om du inte ville det.',
+  'studio.tl.hint.one_song_dominates':
+    'Låtarna {songs} är samma spår och fyller mer än halva mixen.',
   'studio.tl.loadFailed':
     'Tidslinjen kunde inte hämtas. Ladda om sidan.',
   'studio.musicChanged.title':
@@ -2426,6 +2436,8 @@ const sv: Catalogue = {
     'Träningspasset i MOWL, med mixen kopplad. Det behöver mixen.',
   'studio.out.mowlNeedsMix':
     'Mixen är på så länge MOWL är på, eftersom mixen kopplas till träningspasset.',
+  'studio.out.playlistHasRepeats':
+    'Den här klassen upprepar en låt, så den kan bara skapas som en mix.',
   'studio.out.none':
     'Välj minst ett resultat.',
   'studio.out.noneEnabled':
@@ -2484,6 +2496,10 @@ const sv: Catalogue = {
     'Mixen blev annorlunda',
   'job.failure.render_not_reproducible.detail':
     'Mixen blev inte likadan två gånger, så ingenting mer skickades. Gör ett nytt val.',
+  'job.failure.playlist_has_repeats.title':
+    'Den här klassen kan bara bli en mix',
+  'job.failure.playlist_has_repeats.detail':
+    'Den upprepar en låt, så ingen SwedeBeat-spellista skapades. Godkänn mixen i stället.',
   'studio.os.limitReached':
     'Ditt senaste godkännande stoppades av gränsen för försök till resultat: högst 24 per pass totalt, och 24 per dygn för alla dina pass. Det kan ändå gå att godkänna för ett oavslutat resultat.',
   'studio.ended.backToClass':
@@ -2494,6 +2510,8 @@ const sv: Catalogue = {
     'Kontrollera igen kräver det SwedeBeat-konto som godkände detta. Anslut det kontot igen för att kontrollera.',
   'studio.os.category.render_not_reproducible':
     'Mixen blev annorlunda vid en andra rendering, så ingenting mer skickades. Gör ett nytt val.',
+  'studio.os.category.playlist_has_repeats':
+    'Den här klassen upprepar en låt, så SwedeBeat-spellistan skapades inte. Godkänn mixen i stället.',
   'studio.os.category.music_changed':
     'Analysen av musiken har gått ut. Byt låtar för att analysera på nytt; ett nytt val kostar en passkredit.',
   'studio.os.category.not_connected':
@@ -2586,6 +2604,8 @@ const sv: Catalogue = {
     'En publicerad spellista visar ditt namn och din e-postadress för andra i SwedeBeat.',
   'studio.consent.mix':
     'Vad en sammanfogad mix visar för andra är inte bekräftat än.',
+  'studio.consent.repeats':
+    'Mixen spelar vissa låtar mer än en gång, som tidslinjen visar.',
   'studio.consent.approve':
     'Godkänn och skapa',
   'studio.consent.sending':

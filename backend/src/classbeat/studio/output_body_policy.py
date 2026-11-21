@@ -13,9 +13,11 @@ never from model text (ADR 0036 section 6, SR C7). Pure: no I/O.
   length), otherwise left to the gateway (``null``: true when it finds a cut itself).
 - **The render plan** (``render_plan``): ``mowl.compose.mix_offsets`` of the spec at 44100 Hz with
   the analysed lengths, each track named by its reference (the paths are the render's own).
-- **X-Tracks** (``x_tracks``): per track in mix order the title, artist and BPM and its played
-  length until the next track starts (its window less its outgoing crossfade, so the lengths add
-  up to the mix), as UTF-8 JSON of at most 16 KB: titles and artists are cut until it fits.
+- **X-Tracks** (``x_tracks``): per **loop run** in mix order (ADR 0036 amendment A8: adjacent pieces
+  of one song are one entry, one song playing on; a non-adjacent repeat is its own entry) the
+  title, artist and BPM and its played length until the next entry starts (its pieces' windows
+  less the run's outgoing crossfade, so the lengths add up to the mix), as UTF-8 JSON of at most
+  16 KB: titles and artists are cut until it fits.
 """
 
 import json
@@ -26,6 +28,8 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 from mowl import compose
+
+from classbeat.studio.mix_repeat_calc import runs
 
 RATE: Final = 44100  # render_policy.RATE
 CATEGORY_ID: Final = 27
@@ -116,19 +120,26 @@ def played_seconds(plan: Sequence[Mapping[str, Any]]) -> list[float]:
     return [round((p["src_end"] - p["src_start"] - p["fade_out"]) / RATE, 3) for p in plan]
 
 
+def _run_seconds(plan: Sequence[Mapping[str, Any]]) -> list[tuple[str, float]]:
+    """Per loop run, its reference and its length until the next run starts, in seconds."""
+    references = [str(p["reference"]) for p in plan]
+    frames = [p["src_end"] - p["src_start"] - p["fade_out"] for p in plan]
+    return [(references[a], round(sum(frames[a : b + 1]) / RATE, 3)) for a, b in runs(references)]
+
+
 def x_tracks(plan: Sequence[Mapping[str, Any]], facts: Mapping[str, Facts]) -> list[dict[str, Any]]:
     """The merge's track list, cut until its JSON fits 16 KB (see the module docstring)."""
-    played = played_seconds(plan)
+    played = _run_seconds(plan)
     cut = TEXT_MAX
     while True:
         items = [
             {
-                "title": facts[p["reference"]].title[:cut],
-                "artist": facts[p["reference"]].artist[:cut],
-                "bpm": facts[p["reference"]].bpm,
+                "title": facts[reference].title[:cut],
+                "artist": facts[reference].artist[:cut],
+                "bpm": facts[reference].bpm,
                 "duration": seconds,
             }
-            for p, seconds in zip(plan, played, strict=True)
+            for reference, seconds in played
         ]
         raw = json.dumps(items, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         if len(raw) <= X_TRACKS_MAX or cut <= 1:

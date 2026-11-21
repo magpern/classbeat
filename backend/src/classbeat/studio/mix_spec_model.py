@@ -1,9 +1,10 @@
 """The stored shape of a studio draft's mix spec (ADR 0036 section 4.2, SR C5). Pure: no I/O.
 
-``{"tracks": [{"reference", "start_sec", "end_sec"}], "crossfades": [int, ...]}``: the catalogue
-references in the mix's order, each cut stored rounded to 0.01 s, and one whole-second crossfade
-per change of track. This is the shape only; the rules against the analyses (the order, the
-downbeats, the windows, the totals) are ``mix_plan_policy``'s, which made it.
+``{"tracks": [{"reference", "start_sec", "end_sec"}], "crossfades": [int, ...]}``: the pieces in the
+mix's order, each a catalogue reference (one may come back in a later piece, #1342) with its cut
+stored rounded to 0.01 s, and one whole-second crossfade per change of piece. This is the shape
+only; the rules against the analyses (the order, the downbeats, the windows, the totals) are
+``mix_plan_policy``'s, which made it.
 """
 
 from typing import Annotated, Self

@@ -21,19 +21,26 @@ from classbeat.agent.section_energy import DESIGN_GUIDANCE
 
 _MIX = """\
 The music is a mix classbeat builds from the instructor's approved songs. You decide the mix \
-and the workout together:
-- the order: every track of the list exactly once, by its index;
-- the cut of each track: start_sec and end_sec in the track's own seconds, 0 <= start_sec < \
+and the workout together. The mix is a list of pieces, each a cut of one track named by its index:
+- the order: every track of the list at least once, and no other. A track may play again in a \
+later piece (name its index again), for example one recovery minute used at every recovery or a \
+strong chorus. Keep repeats to parts of songs: never play the whole of a track twice unless the \
+instructor asked for it. Never put two pieces of the same track next to each other: put another \
+track between them. A class that repeats a track can be produced as a mix only, not as a \
+SwedeBeat playlist;
+- the cut of each piece: start_sec and end_sec in the track's own seconds, 0 <= start_sec < \
 end_sec <= its length, with at least 60 s played. A cut moves to the nearest downbeat \
 (first_downbeat_sec plus whole bars of bar_sec); 0 and the track's length stay the edges;
-- one crossfade between each two tracks: whole seconds from 0 to 30, shorter than both tracks' \
-played windows, and for a middle track its incoming plus outgoing crossfade shorter than its \
+- one crossfade between each two pieces: whole seconds from 0 to 30, shorter than both pieces' \
+played windows, and for a middle piece its incoming plus outgoing crossfade shorter than its \
 window. Every track plays at its own tempo: there is no tempo change;
-- at most 40 tracks and 150 minutes.
-The backend computes the mix's length (the played windows less the crossfades) and returns it \
-with the snapped cuts: never state a length or a total yourself. Cut and order the songs so the \
-music suits the class: the length the brief asks for, quiet parts for the warm-up, the \
-recoveries and the cooldown, loud parts for the hard work.
+- at most 40 pieces and 150 minutes.
+The backend computes the mix's length (the played windows less the crossfades, every piece \
+counted) and returns it with the snapped cuts: never state a length or a total yourself. Cut and \
+order the songs so the music suits the class: the length the brief asks for, quiet parts for the \
+warm-up, the recoveries and the cooldown, loud parts for the hard work. The warnings \
+whole_track_repeated and one_song_dominates are hints, not errors: keep such a mix only when the \
+instructor asked for it or it clearly suits the class.
 
 """
 _RULES = """\

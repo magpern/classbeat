@@ -70,6 +70,8 @@ const FAILURES: Record<string, FailureKeys> = {
   writes_off: { title: 'job.failure.writes_off.title', detail: 'job.failure.writes_off.detail' },
   connection_changed: { title: 'job.failure.connection_changed.title', detail: 'job.failure.connection_changed.detail' },
   render_not_reproducible: { title: 'job.failure.render_not_reproducible.title', detail: 'job.failure.render_not_reproducible.detail' },
+  // A class that repeats a song is mix-only (ADR 0036 amendment A8): its SwedeBeat playlist is refused when the job runs.
+  playlist_has_repeats: { title: 'job.failure.playlist_has_repeats.title', detail: 'job.failure.playlist_has_repeats.detail' },
 }
 
 const SOUNDLESS_INVALID: FailureKeys = {

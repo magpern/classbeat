@@ -191,6 +191,7 @@ const OWN: Record<string, CatalogueKey> = {
   hash_mismatch: 'studio.reason.hash_mismatch',
   not_current: 'studio.reason.not_current',
   mowl_needs_mix: 'studio.reason.mowl_needs_mix',
+  playlist_has_repeats: 'studio.reason.playlist_has_repeats',
   output_off: 'studio.reason.output_off',
   connection_changed: 'studio.reason.connection_changed',
   session_refused: 'studio.reason.session_refused',

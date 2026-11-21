@@ -98,6 +98,9 @@ CATEGORIES: Final = (
     "writes_off",
     "render_not_reproducible",
     "output_limit",
+    # ADR 0036 amendment A8 (migration 0067, #1342): the SwedeBeat playlist chosen for a draft
+    # whose mix repeats a song, refused again when the job runs; nothing is written. Not retried.
+    "playlist_has_repeats",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).

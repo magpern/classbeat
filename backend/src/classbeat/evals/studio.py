@@ -6,8 +6,9 @@ recorded ``FakeProvider`` script in CI. No model, no network, no database.
 ``music.tracks`` is how many tracks the approved list has). ``run_studio_case`` builds the tracks
 (``studio_tracks``: one tempo each, a downbeat grid, a drop every 16 bars, a quiet and a loud
 half), runs the stage on an in-memory host and checks the submitted draft with the design checks
-(``checks.run_checks``, on the composed map) and the studio's own (``studio_checks``): the mix is
-every track once, each window plays at least 60 s, the total is the backend's one duration rule
+(``checks.run_checks``, on the composed map) and the studio's own (``studio_checks``): the mix
+plays every track at least once and no other (a repeat is allowed, #1342), each window plays at
+least 60 s, the total is the backend's one duration rule
 and the composed map's, and no stand-in for a catalogue reference reached the model.
 """
 
@@ -62,11 +63,12 @@ def studio_tracks(count: int) -> tuple[StudioTrack, ...]:
 
 def studio_checks(composed: Composed, count: int, sent: str) -> list[Check]:
     plan = composed.plan
-    order = sorted(t["track"] for t in plan["tracks"])
+    covered = sorted({t["track"] for t in plan["tracks"]})
     windows = [t["end_sec"] - t["start_sec"] for t in plan["tracks"]]
     total = total_sec(windows, plan["crossfades"])
+    detail = f"{len(covered)} of {count} tracks in {len(windows)} pieces"
     return [
-        Check("mix_order", order == list(range(count)), f"{len(order)} of {count} tracks"),
+        Check("mix_order", covered == list(range(count)), detail),
         Check("mix_windows", min(windows) >= MIN_PLAYED_SEC, f"shortest {min(windows):.2f} s"),
         Check(
             "mix_total",

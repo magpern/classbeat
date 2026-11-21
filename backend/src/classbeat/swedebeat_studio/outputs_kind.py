@@ -8,8 +8,10 @@ the user chose on the consent screen for **one** approved studio draft, each wit
    SwedeBeat connection the list's, live and share-locked **at the approved generation**, the
    Spotify account for ``spotify_playlist``). A failure ends the job with nothing written:
    ``feature_off``, ``invalid_input``, ``not_connected``, ``connection_changed`` (another or a
-   reconnected SwedeBeat connection), ``account_changed`` or ``internal``. Then the bearer of that
-   connection (its generation again) and the user's analyses of the draft's tracks.
+   reconnected SwedeBeat connection), ``account_changed``, ``playlist_has_repeats`` (the
+   SwedeBeat playlist for a draft that repeats a song, ADR 0036 amendment A8) or ``internal``.
+   Then the bearer of that connection (its generation again) and the user's analyses of the
+   draft's tracks.
 2. **Each chosen output**, in ``output_choice_policy.OUTPUTS`` order, on its current attempt
    (``outputs_attempt.current``: opened with its names and plan before any write intent; nothing
    for a ``done`` output or one **in doubt**, which blocks every new write to it):
@@ -58,6 +60,7 @@ _AS_JOB: Final = {
     "not_connected": "not_connected",
     "connection_changed": "connection_changed",
     "account_changed": "account_changed",
+    "playlist_has_repeats": "playlist_has_repeats",
     "internal": "internal",
 }
 _TITLE = text("SELECT title FROM classes WHERE owner_id = :owner_id AND id = :class_id")

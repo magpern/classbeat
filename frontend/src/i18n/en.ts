@@ -2234,6 +2234,8 @@ export const en = {
     'This is no longer the class’s current version. Reload the page.',
   'studio.reason.mowl_needs_mix':
     'A MOWL workout needs the mix. Choose the mix too.',
+  'studio.reason.playlist_has_repeats':
+    'This class repeats a song, so it can be produced as a mix only. Choose the mix instead of the SwedeBeat playlist.',
   'studio.reason.output_off':
     'One of the chosen outputs is switched off right now. Choose others, or try again later.',
   'studio.reason.connection_changed':
@@ -2266,6 +2268,14 @@ export const en = {
     '{start} to {end}, over song {song}.',
   'studio.tl.standing':
     'Standing',
+  'studio.tl.repeatOf':
+    'Plays song {song} again.',
+  'studio.tl.loop':
+    'Plays on from the song before.',
+  'studio.tl.hint.whole_track_repeated':
+    'Songs {songs} play the same whole track. Ask for a change unless you wanted that.',
+  'studio.tl.hint.one_song_dominates':
+    'Songs {songs} are the same track and fill more than half of the mix.',
   'studio.tl.loadFailed':
     'The timeline could not be loaded. Reload the page.',
   'studio.musicChanged.title':
@@ -2294,6 +2304,8 @@ export const en = {
     'The workout in MOWL, with the mix attached. It needs the mix.',
   'studio.out.mowlNeedsMix':
     'The mix stays on while MOWL is on, because the mix is attached to the workout.',
+  'studio.out.playlistHasRepeats':
+    'This class repeats a song, so it can be produced as a mix only.',
   'studio.out.none':
     'Choose at least one output.',
   'studio.out.noneEnabled':
@@ -2352,6 +2364,10 @@ export const en = {
     'The mix came out differently',
   'job.failure.render_not_reproducible.detail':
     'The mix did not render the same twice, so nothing more was sent. Make a new pick.',
+  'job.failure.playlist_has_repeats.title':
+    'This class can be a mix only',
+  'job.failure.playlist_has_repeats.detail':
+    'It repeats a song, so no SwedeBeat playlist was made. Approve the mix instead.',
   'studio.os.limitReached':
     'Your last approval stopped at the limit of output attempts: at most 24 per class in total, and 24 per day across all your classes. Approving may still work for an unfinished output.',
   'studio.ended.backToClass':
@@ -2362,6 +2378,8 @@ export const en = {
     'Check again needs the SwedeBeat account that approved this. Connect that account again to check.',
   'studio.os.category.render_not_reproducible':
     'The mix came out differently on a second render, so nothing more was sent. Make a new pick.',
+  'studio.os.category.playlist_has_repeats':
+    'This class repeats a song, so the SwedeBeat playlist was not made. Approve the mix instead.',
   'studio.os.category.music_changed':
     'The analysis of the music has expired. Change songs to analyse it again; a new pick costs a class credit.',
   'studio.os.category.not_connected':
@@ -2454,6 +2472,8 @@ export const en = {
     'A published playlist shows your name and email to others in SwedeBeat.',
   'studio.consent.mix':
     'What a merged mix shows others has not been confirmed yet.',
+  'studio.consent.repeats':
+    'The mix plays some songs more than once, as the timeline shows.',
   'studio.consent.approve':
     'Approve and create',
   'studio.consent.sending':

@@ -45,7 +45,7 @@ async def view(factory: Factory, ctx: UserContext, class_id: UUID) -> dict[str, 
         s.swedebeat.reference: s.swedebeat for s in found.songs.content.songs if s.swedebeat
     }
     if any(r not in by_reference for r in references):
-        return "internal"  # the draft's mix is a permutation of its approved list
+        return "internal"  # each piece of the mix is a track of the approved list
     facts = [
         SongFacts(by_reference[r].title, by_reference[r].artist, by_reference[r].bpm)
         for r in references
