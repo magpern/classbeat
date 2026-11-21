@@ -6,9 +6,9 @@ behaviour. It is SD-P7b of the spotdown programme (roadmap
 and §5). The implementation issues of §14 are opened only after the owner accepts it (§13, item 1).
 
 Depends on: [ADR 0040](0040-spotdown-analysis-service.md) (the boundary, timing classes, scopes, the
-v2 API) and the relay pattern proven for studio tracks (#1302, still open). The web-side relay of §2
-is not the worker-side relay that #1302 proves, so the upload issue (U4, §14) waits for #1302 as
-well as for the owner's acceptance.
+v2 API) and the relay pattern proven for studio tracks (classbeat#1302, merged as #1320). The web-side relay of §2
+is not the worker-side relay that classbeat#1302 proves, so the upload issue (U4, §14) waits for the owner's acceptance
+(§13, item 1), not for #1302.
 
 Amends, effective on the owner's acceptance of this ADR (§13, item 1):
 - [ADR 0021](0021-use-part-of-a-song.md) §2, third bullet ("User files: not a source. Needs its own
@@ -47,7 +47,7 @@ default for user audio.
 
 **What spotdown already does for an upload** (`magpern/spotdown`, read in the checkout, no call):
 `PUT /v2/uploads` takes `application/octet-stream` with a required `cache_scope`, reads the body in
-chunks, refuses past `MAX_UPLOAD_BYTES` (100 MiB), keeps only mp3, mp4 and wav recognised by their
+chunks, refuses past `MAX_UPLOAD_BYTES` (60 MiB), keeps only mp3, mp4 and wav recognised by their
 bytes, keeps no file name, deletes the file after the job or after one hour, and answers
 `{upload_id, sha256, bytes}`. The analysis runs in a subprocess with rlimits (ADR 0040 §10).
 
@@ -192,7 +192,7 @@ browser.
 | Limit | Default | Where enforced |
 |---|---|---|
 | Formats | mp3, m4a (mp4 audio), wav, recognised by their first bytes **and** by spotdown. The declared extension and content type are not trusted. FLAC and Ogg are out of v1 because spotdown's upload does not keep them (the same list is extended when spotdown does) | web sniff; spotdown |
-| Size of one file | **60 MiB** (the studio download cap, ADR 0036; under spotdown's 100 MiB). About 6 minutes of 16-bit stereo wav, far more of mp3 | the relay, counted as streamed |
+| Size of one file | **60 MiB** (the studio download cap, ADR 0036; spotdown's `MAX_UPLOAD_BYTES` is also 60 MiB). About 6 minutes of 16-bit stereo wav, far more of mp3 | the relay, counted as streamed |
 | Length of one file | **12 minutes** measured after decoding; longer is `too_long`, nothing kept | spotdown's decoded-length rlimit; checked again on the result |
 | Tracks in a class | **20** | admit |
 | Tracks a user holds (all states) | **100** (`library_full`; the user removes some) | the route, under the owner lock |
