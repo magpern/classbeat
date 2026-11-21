@@ -617,3 +617,260 @@ consent text in en, sv and da, and tests: table-driven cases for every new reaso
 crossfade rules, the 10 % tolerance and a long-track loop (A4.2) with repeats, and mutation checks on the
 `exact` gate, the coverage rule, the phrase tolerance, the loop-join crossfade and the playlist refusal. The loop joins depend on #1328's trusted
 candidates; non-adjacent repeats do not.
+
+## Amendment B (2026-11-21, owner): the DJ mix is opt-in, with per-song suggestions (#1366)
+
+Status: **Proposed** (owner request and approval of the design, 2026-11-21; Accepted when the fresh Opus review
+of #1366's PR passes). Amends §1 (what a studio draft is approved as), §3.3 (the upper bound), §4.4 and §4.5
+(the model's mix is a suggestion), §5 (the approval with the output choice), §6 (the output matrix and the
+consent screen) and the bass swap of #1330. Everything not named here is unchanged, amendment A (A1 to A11)
+included. Nothing is built by this amendment; the work is B12.
+
+### Context
+
+The owner asked (2026-11-21): the DJ mix must be opt-in; cut and trim are an option of their own; classbeat
+**suggests** per song and the user can opt out per song, for many songs, or for all songs. The owner
+approved a design with five points (B1 to B5 below follow them). Reading the code before writing this up
+showed five places where the code does not match the owner's wording; each is decided below and listed in B13:
+
+1. **The SwedeBeat playlist is not plain today.** `output_body_policy.playlist_body` sends the spec's cuts
+   (`start_sec`, `end_sec`, `trim`) and each track's crossfade, and the SwedeBeat app applies them (§6, gate
+   L6). Only the final Spotify playlist is whole songs. So "a plain playlist of whole songs is the default"
+   needs a change, not "as today".
+2. **One draft, one timeline.** The workout is fitted to the composed map (`agent.design.check`,
+   `fit_to_music`), and every output is made from the one approved draft (§1). A per-song opt-out moves every
+   later song, so it cannot be approval data on top of an unchanged draft: the workout would no longer match
+   the music. It must make a new draft whose workout is fitted again. No model call is needed for that:
+   `refit_draft` (`design/refit.py`, ADR 0007 amendment "beat-one corrections") already fits stored content to
+   a new map with no model.
+3. **The class length.** The song stage accepts a list up to 50 % over the target (`length_policy.UPPER`,
+   §3.3), "because the designed cuts can only shorten". With whole songs as the default, that list is often far
+   too long. And no stage refuses a composed duration outside the class's 10 % today: A6 says the tolerance
+   applies "as today", but `agent/studio_design.py`, `agent/design.py`, `agent/studio_prompt.py` and
+   `swedebeat_studio/` hold no such check (grep, 2026-11-21).
+4. **The bass swap is on wherever it fits** (`render_plan` with the tracks' facts, #1330); there is no
+   setting.
+5. **Repeats.** A "keep whole" on a song that plays in several pieces (A3) or a loop run (A4) cannot keep the
+   pieces: several whole copies would be `whole_track_repeated` (A5), and a loop join on the edges of a whole
+   track is not on a phrase point.
+
+### Decision
+
+#### B1. Output choice: whole songs by default, the DJ mix opt-in
+
+- The consent screen offers the outputs of §6. The **Spotify playlist** and the **SwedeBeat playlist** are
+  **whole songs** in the approved order with no crossfade (hard cuts). **DJ mix** is today's `swedebeat_mix`
+  output (the rendered MP3), named "DJ mix" on the screen; it is **off by default** and nothing is mixed
+  unless the user chooses it. The MOWL workout still needs it (`mowl_needs_mix`), since it attaches the mix.
+  The default outputs stay `spotify_playlist` and `swedebeat_playlist`.
+- **One draft, one timeline (decided, reason: context item 2).** The music form is a property of the draft
+  the user approves, not of one output. Without DJ mix the approved draft is the **whole-songs form** (B4);
+  with DJ mix it is the form of the user's choices. When both the SwedeBeat playlist and DJ mix are chosen,
+  the playlist carries the same cuts and crossfades as the mix (as today), and the consent screen says so. A
+  SwedeBeat playlist with app-applied cuts but no rendered mix is no longer offered (B13).
+
+#### B2. Under DJ mix, two independent switches
+
+- **Blend transitions** (default on): crossfades, downbeat-locked transitions and, when the owner turns it on,
+  the bass swap (B8). Off: every crossfade is 0 (hard cuts), so there is no overlap and no swap.
+- **Trim songs** (default on): classbeat may shorten songs (and repeat parts of them, amendment A). Off: every
+  song plays once, whole.
+- **Phrase alignment of cuts belongs to Trim songs, not Blend** (a refinement of the owner's list): a cut's
+  candidate selection and bar snap (A7 steps 2 and 3) place where a song is trimmed, and an end on a phrase is
+  as useful before a hard cut as before a crossfade. Blend covers what happens in the overlap.
+
+#### B3. Suggest per song; nothing applied before the user acts, nothing written before the approval
+
+- The model's design (§4.4) is the **proposal**: its order, cuts, crossfades and repeats are **suggestions**.
+  The prompts say so (B12, #1372).
+- With DJ mix on, each approved song shows classbeat's proposal next to the full version, for example
+  "play 0:00 to 3:10 of 4:05, ends on a phrase" (the end is within the 30 ms of A4.2 of a trusted phrase
+  point; display only). Per song: **Keep whole**, **Hard cut in**, **Hard cut out**. In bulk: **All songs**,
+  **None**, and a multi-select with keep whole, hard cut and back to the suggestion.
+- The screen's choices are local until the user presses **Apply these choices**, which makes a new draft
+  (B4). **Approve** is enabled only when the current draft is the form on the screen (B10). The approval gate
+  is unchanged: nothing is written to any account until the user approves that final draft for the chosen
+  outputs (§6, §7, AGENTS.md safety rules).
+
+#### B4. A choice is a deterministic derivation of the proposal, checked again
+
+- **The choices** (`MixChoices`, a pure model): `dj_mix`, `blend`, `trim`, and three sets of **approved-list
+  positions**: `keep_whole`, `hard_cut_in`, `hard_cut_out`. Positions, never references (§3.4). With `dj_mix`
+  false, `blend` and `trim` are false and the sets empty (else `invalid_input`): that is the whole-songs form.
+- **`mix_choice_policy.applied(proposal, facts, choices)`**, pure, always from the **proposal** (the nearest
+  ancestor draft that is not itself an applied one), never stacked on an applied draft, in this order:
+  1. A song is **whole** when `dj_mix` or `trim` is false, when its position is in `keep_whole`, or when its
+     timing is not `exact` (B5). A whole song becomes **one** piece `[0, length]` (the analysed length; edges
+     stay edges, A7) at the place of its **first** piece; its other pieces are dropped (B7).
+  2. Each change of piece keeps the proposal's crossfade only when the same two pieces were adjacent in the
+     proposal; a join made by dropping pieces is 0. With `blend` false every crossfade is 0. A song in
+     `hard_cut_in` (or `hard_cut_out`) gets 0 on the change into (or out of) each of its pieces.
+  3. `mix_plan_policy.checked`, unchanged, on the result. Its refusal is shown by name and never repaired
+     (for example a whole song under 60 s is `window_too_short`).
+  4. The class length (B6).
+- **No new model call** (confirmed by the code: the cuts are only shortened or removed and crossfades only set
+  to 0 or kept, so `checked` re-validates the result against the stored analyses, T129). But a new **draft**
+  is needed (context item 2): the job `apply_mix_choices` (#1369, the `refit_draft` pattern: no model, no
+  credit, no `agent_runs`, nothing written outside classbeat) fits the proposal's stored content to the new
+  composed map with the total kept (`agent.design.check`; a failure is `refit_failed`, nothing stored) and
+  stores a `draft` revision. Its parent is the current draft; its provenance is `{origin: mix_choices,
+  proposal_revision_id, choices}`. A result equal to the current draft's spec stores nothing.
+- A read-only **preview** (`POST /api/classes/{id}/mix-choices/preview`, owner-scoped, rate-limited, no
+  model, no network, nothing stored) runs steps 1 to 4 and answers the windows, the new total, the allowed
+  range, the refusal if any, and the derived spec's digest. It does not refit; the job does.
+
+#### B5. Only `exact` songs get a trim suggestion
+
+A song whose stored timing decision (ADR 0040 §3) is not `exact` gets no trim: the screen shows **Full song
+only** with the reason (approximate timing, unusable timing, or no timing decision yet), and `applied` keeps
+it whole whatever the proposal says. Crossfades into and out of it still follow Blend. This is stricter than
+A7, which lets an `approximate` track be cut (only rounded): a cut there is a guess, and the user is now told
+what is trimmed. The prompts ask the model to cut only `exact` tracks, with a soft hint
+`cut_on_inexact_track` (never a refusal; `applied` enforces it). Once #1353 makes spotdown the only analysis
+path, "no timing decision" no longer occurs for a studio track.
+
+#### B6. Class length: refuse with a named reason, and offer a re-plan as the user's action
+
+- `applied` refuses a result whose composed duration is outside **10 % under to 10 % over** the list's
+  `target_sec` (`agent.songs.within_tolerance` with its default bounds): **`class_length_out_of_tolerance`**,
+  with the new total and the allowed range. The screen shows the new total for every form and the reason when
+  it is refused.
+- **Decided: refuse, and offer the re-plan as a button**, never re-plan silently. Reasons: the user's explicit
+  choices for the songs they touched are never changed behind their back; a fair re-plan of the other songs
+  needs musical judgement (phrase points, where the workout's efforts land), which is the model's design job,
+  not a deterministic rule; a model call costs time and quota and is the user's action; and a refusal
+  fails closed. **Re-plan the other songs** is a `revise_draft` with the choices (#1372): the model sees, by
+  list index, which songs are kept whole and which cuts are hard, and re-plans the rest. Its result is a new
+  proposal, and the same choices are applied to it again (B4), which is authoritative. It is offered only
+  while Trim songs is on and some song can still be trimmed; otherwise the screen offers **Change songs**.
+- **The song stage fits whole songs (amends §3.3):** `length_policy.UPPER` returns from 50 % to the song
+  pick's 10 % (#1371), because whole songs are now the default. Reversible: one constant.
+- The new check covers a derived draft only. Whether the design stage should refuse its own proposal outside
+  the tolerance (context item 3) is left to a follow-up; A6's "as today" is read as the prompt-level intent
+  it is.
+
+#### B7. Repeats and loops (amendment A)
+
+- **Keep whole** (or Trim songs off) on a song with several pieces makes it play **once**, whole, at its first
+  piece's place; its repeats and loop pieces are dropped, and the new joins are hard cuts (B4 step 2). So a
+  whole song is never repeated (`whole_track_repeated` cannot arise from a choice) and no loop join is left on
+  a whole track. The screen says so on that song: "Keeping it whole plays it once".
+- The **whole-songs form** has each approved song once, whole, in the order of its first piece, which is A8's
+  order for the final Spotify playlist. It has no repeats, so `playlist_has_repeats` never applies to it.
+- With DJ mix and Trim on, repeats and loops follow amendment A unchanged, including A8: a draft with repeats
+  is mix-only, and the SwedeBeat playlist stays refused for it.
+- **Hard cut in or out** on a song applies to the outer changes of each of its pieces; a loop join is already
+  0 (A4.3).
+- A song that is not `exact` cannot loop (A4.1) and, with B5, plays once, whole.
+
+#### B8. The bass swap is off by default
+
+`CLASSBEAT_SWEDEBEAT_STUDIO` gains the value **`bass_swap`** (needs `swedebeat_mix`; off by default; every
+other unknown value still refuses to start). Without it, `render_plan` gives every transition `equal_power`;
+with it, #1330's rule applies unchanged. The owner turns it on after hearing it on a real mix (reversible: the
+setting). The render plan is stored with the attempt before the first write intent (§6), so a change of the
+setting never alters an open attempt, and the merge's request hash covers the plan as before.
+
+#### B9. Defence in depth: nothing is mixed unless chosen
+
+`output_choice_policy.refusal` takes a fact **`mixed`** (not `mix_choice_policy.is_plain` of the draft's
+stored, hash-checked spec: every piece `[0, length]` in whole hundredths, every crossfade 0, no reference
+twice) and refuses **`mix_not_chosen`** when a mixed draft has `swedebeat_playlist` chosen without
+`swedebeat_mix`. The fixed order becomes `invalid_input`, `mowl_needs_mix`, `mix_not_chosen`,
+`playlist_has_repeats`, `output_off`. `outputs_admit.bound` checks it at create time and again when the job
+runs, and `outputs_kind` maps it to a job failure of the same name. A Spotify playlist is admitted from any
+draft (it is whole songs by nature, A8). A plain draft with DJ mix is admitted: a rendered whole-songs mix is a
+legitimate choice (MOWL needs a mix).
+
+#### B10. Where the choices live, the hash and the approval
+
+- **No spec-shape change** (A1 still holds): the effect of the choices is the derived draft's `mix_spec`. The
+  choices themselves are recorded only in that revision's provenance, for re-opening the screen and for audit;
+  the output path never reads them, and the consent text is derived from the spec, not from the record.
+- **`content_hash` unchanged** (§1: SHA-256 of `{content, mix_spec}`). It covers the derived spec and the
+  refitted workout, so a different choice is a different draft and hash.
+- **The approval binding unchanged** (§6: the draft's id, its `content_hash`, the outputs, the SwedeBeat
+  connection and generation; `BINDING_VERSION` stays). The approved draft **is** the applied one, so binding
+  it binds the choices. B9 binds the outputs to the music form.
+- **The request hash unchanged**: it already covers the draft's `content_hash`, the exact body fields and, for
+  the merge, the stored render plan (with or without the bass swap, B8).
+- The screen enables Approve only when the current draft's spec digest equals the preview's, so the user
+  approves exactly the form they last saw, with its total.
+
+#### B11. Copy (en, sv, da)
+
+New or changed keys, each in en, sv and da (#1373 and #1370): `studio.out.swedebeat_mix` and its `.desc`
+("DJ mix"); `studio.out.swedebeat_playlist.desc` (whole songs; with DJ mix it follows the mix);
+`studio.mix.title`, `studio.mix.blend`, `studio.mix.blend.desc`, `studio.mix.trim`, `studio.mix.trim.desc`;
+`studio.mix.song.proposal` ("play {from} to {to} of {length}"), `studio.mix.song.endsOnPhrase`,
+`studio.mix.song.full`, `studio.mix.song.keepWhole`, `studio.mix.song.hardCutIn`,
+`studio.mix.song.hardCutOut`, `studio.mix.song.playsOnce`; `studio.mix.fullOnly` with
+`studio.mix.fullOnly.approximate`, `.unusable`, `.unknown`; `studio.mix.all`, `studio.mix.none`,
+`studio.mix.selected`, `studio.mix.bulk.keepWhole`, `studio.mix.bulk.hardCut`, `studio.mix.bulk.suggestion`;
+`studio.mix.total` (new total, class length, allowed range); `studio.mix.apply`, `studio.mix.applying`,
+`studio.mix.replan`; `studio.consent.playlistFollowsMix`, `studio.consent.mixChoices`; the reasons
+`studio.reason.class_length_out_of_tolerance`, `studio.reason.mix_not_chosen`, `studio.reason.apply_limit`,
+`studio.reason.refit_failed`.
+
+#### B12. The work, the tests and who builds it
+
+The mix spec and the write path are security-critical (AGENTS.md: approvals and external writes): those PRs
+have an Opus Developer and an Opus Reviewer. Each issue states its scope, its acceptance criteria and its
+tests.
+
+| Issue | Scope | Developer / Reviewer | Depends on |
+|---|---|---|---|
+| #1367 | `mix_choice_model`, `mix_choice_policy` (B4 to B7, `is_plain`), pure, table-driven and property tests | Opus / Opus | #1366 |
+| #1368 | `bass_swap` value, `render_plan` off by default (B8) | Opus / Opus | #1366 |
+| #1369 | `apply_mix_choices` job, the read-only preview, the timeline fields (B4, B6, B10) | Opus / Opus | #1367, #1353 |
+| #1370 | `mix_not_chosen` at create and at job time (B9) | Opus / Opus | #1367 |
+| #1371 | song stage upper bound 10 % (B6) | Sonnet / Sonnet | #1366 |
+| #1372 | prompts as suggestions, `cut_on_inexact_track`, re-plan with the choices (B5, B6) | Sonnet / Opus | #1367, #1353, #1365 |
+| #1373 | consent screen: DJ mix opt-in, switches, per-song rows, bulk, totals, Apply then Approve; en, sv, da (B1 to B7, B11) | Sonnet / Sonnet | #1369, #1370, #1372 |
+| #1374 | e2e on fakes: whole-songs default body, per-song choices, length refusal, forged mixed playlist refused, no curve by default | Sonnet / Sonnet | #1373, #1368, #1371, #1363 |
+
+The studio-design issues (#1369, #1372) start after #1353 (spotdown the only analysis path, SD-P7c, #1306).
+#580 (part of a song) is what this makes opt-in; #581 (DJ-style transitions) keeps its scope, and its bass
+swap is now behind B8.
+
+#### B13. Decisions the owner may want to revisit
+
+1. A SwedeBeat playlist with app-applied cuts and crossfades now requires DJ mix (one draft, one timeline,
+   B1). Undoing it would need two drafts per class or per-output timelines.
+2. Approximate-timing songs are never trimmed (B5), stricter than A7.
+3. The song stage's upper bound is back to 10 % (B6); the setting is one constant.
+4. An out-of-tolerance choice is refused, with re-plan as a button (B6), never an automatic re-plan.
+5. The design stage still accepts its own proposal outside the class tolerance (B6, context item 3).
+6. The bass swap stays off until the owner turns `bass_swap` on (B8).
+
+### Alternatives
+
+- **The choices as approval data only** (one of the two places the owner named), with the draft unchanged and
+  the outputs transformed at job time. Rejected: the workout is fitted to the composed map, so the outputs
+  would not match the approved workout and timeline, and the user would approve a total they never saw.
+- **A new field in the mix spec** (per-piece `whole`, `hard_cut`). Rejected: A1 keeps the shape, the derived
+  spec already says it, and a second representation of the same fact could disagree with the cuts.
+- **Choices in the `content_hash`.** Not needed: the hash covers their effect, and the record is never read by
+  the output path.
+- **Applying the choices inside the approval request.** Rejected: the user would approve before seeing the
+  refitted timeline, and the approval transaction would store a revision.
+- **Re-plan automatically when the length breaks.** Rejected (B6).
+- **The model designs on whole songs first and trims later.** Rejected: the proposal's cuts would then not be
+  checked against a workout fitted to them, and every design would need a second pass.
+- **Bass swap on, with a per-class switch.** Deferred: the owner wants it off until heard; a user switch can
+  follow under Blend.
+
+### Consequences
+
+- A studio class approved with defaults gets whole songs, hard cuts, and no rendered mix. The design's mix is
+  a suggestion that costs nothing until used.
+- Every opt-out is one cheap job and one new draft revision (no model, no credit), bounded by
+  `MAX_CHOICE_APPLIES` per proposal and the daily limit of `design/mixlimit.py`.
+- The SwedeBeat playlist body of a whole-songs draft has `start_sec` 0, `end_sec` the length, `trim` null
+  and `crossfade_sec` 0 for every track; gate L6 is unchanged (its check of cuts still covers the DJ-mix
+  case).
+- New refusal reasons: `class_length_out_of_tolerance`, `mix_not_chosen`, `refit_failed`, `apply_limit`; new
+  hint `cut_on_inexact_track`; new setting value `bass_swap`.
+- The threat-model row T128 (published outputs: the consent binding) gains the `mix_not_chosen` re-check; T129
+  (the model proposing cuts) gains the derived spec, re-checked by `checked`.
+- Agents still call no real gateway, enable no write and run no live check; every test uses the fakes.
