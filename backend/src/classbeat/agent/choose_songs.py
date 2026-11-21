@@ -7,7 +7,8 @@
   the map has it), ``omitted_no_bpm`` and, in replace mode, the kept songs. A track still without
   a BPM is left out and counted.
 - ``check_song_list(songs, note?)`` and ``submit_song_list``: every index exists, no song twice,
-  the **backend-computed total** (lengths less 9 s per transition) within 10 % of ``target_sec``,
+  the **backend-computed total** (``ctx.measure``: lengths less 9 s per transition within 10 % of
+  ``target_sec``; the studio's is whole songs, ``length_policy``),
   ``kept`` only when replacing and in its own slot with its own role, the class opens with a
   ``warmup`` or ``build`` and ends with a ``cooldown``. Errors come back for correction.
 
@@ -28,20 +29,11 @@ from typing import Any, Final
 
 from classbeat.agent import song_input
 from classbeat.agent.dispatcher import MAX_RESULT_BYTES
+from classbeat.agent.length_measure import SONG_MEASURE, LengthMeasure
 from classbeat.agent.replace_rules import replace_rules
 from classbeat.agent.schemas import GetPoolInput, SongList
 from classbeat.agent.section_energy import SONGS_GUIDANCE, fit_pool_answer
-from classbeat.agent.songs import (
-    CROSSFADE_SEC,
-    TOLERANCE,
-    PickPlan,
-    PoolTrack,
-    kept_view,
-    key_of,
-    pool_view,
-    total_sec,
-    within_tolerance,
-)
+from classbeat.agent.songs import PickPlan, PoolTrack, kept_view, key_of, pool_view
 from classbeat.agent.stage import Stage, Tool, ToolAnswer, ToolError
 from classbeat.agent.tempo_policy import TEMPO_GUIDANCE, jumps_view, tempo_jumps
 from classbeat.jobs.errors import JobFailure
@@ -145,7 +137,7 @@ class ChooseContext:
     plan: PickPlan
     tracks: tuple[PoolTrack, ...]
     omitted_no_bpm: int
-    upper: float = TOLERANCE  # the total's upper bound over the target (the studio relaxes it)
+    measure: LengthMeasure = SONG_MEASURE  # the total and its bounds (the studio's differ)
 
     @classmethod
     def build(
@@ -154,13 +146,13 @@ class ChooseContext:
         tracks: Sequence[PoolTrack],
         omitted_no_bpm: int,
         *,
-        upper: float = TOLERANCE,
+        measure: LengthMeasure = SONG_MEASURE,
     ) -> "ChooseContext":
         """``JobFailure('pool_too_small')`` (not retried) when fewer usable tracks than songs
         to find remain after the tracks without a BPM are left out."""
         if len(tracks) < plan.slots:
             raise JobFailure("pool_too_small")
-        return cls(plan, tuple(tracks), omitted_no_bpm, upper)
+        return cls(plan, tuple(tracks), omitted_no_bpm, measure)
 
     def facts(self) -> dict[str, Any]:
         p = self.plan
@@ -169,7 +161,7 @@ class ChooseContext:
             mode=p.mode,
             target_sec=p.target_sec,
             n=p.n,
-            crossfade_sec=CROSSFADE_SEC,
+            crossfade_sec=self.measure.crossfade_sec,
             replace_roles=p.replace,
             kept=[kept_view(k, i) for i, k in enumerate(p.kept)],
         )
@@ -243,14 +235,10 @@ def check_list(ctx: ChooseContext, args: SongList) -> ChosenList:
         else:
             keys[key] = n
     errors += replace_rules(plan, songs, kept_at)
-    total = total_sec([c.length_sec for c in chosen])
+    total = ctx.measure.total([c.length_sec for c in chosen])
     target = plan.target_sec
-    if not within_tolerance(total, target, upper=ctx.upper):
-        low, high = round(target * (1 - TOLERANCE)), round(target * (1 + ctx.upper))
-        errors.append(
-            f"the total time is {round(total)} s (lengths less {CROSSFADE_SEC:g} s per change of "
-            f"song); it must be between {low} and {high} s"
-        )
+    if problem := ctx.measure.problem(total, target, len(chosen)):
+        errors.append(problem)
     if songs[0].role not in OPENERS:
         errors.append("the first song must have the role warmup or build")
     if songs[-1].role != CLOSER:
@@ -258,7 +246,13 @@ def check_list(ctx: ChooseContext, args: SongList) -> ChosenList:
     if errors:
         raise ToolError("invalid_song_list", errors[:MAX_MESSAGES])
     return ChosenList(
-        tuple(chosen), round(total), target, CROSSFADE_SEC, plan.mode, ctx.omitted_no_bpm, args.note
+        tuple(chosen),
+        round(total),
+        target,
+        ctx.measure.crossfade_sec,
+        plan.mode,
+        ctx.omitted_no_bpm,
+        args.note,
     )
 
 

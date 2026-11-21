@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from classbeat.agent.brief import Brief
-from classbeat.agent.songs import PickPlan
+from classbeat.agent.songs import TOLERANCE, PickPlan
 from classbeat.songs.song_list import content_hash
 from classbeat.swedebeat_match.verdict_policy import Verdict
 from classbeat.swedebeat_studio.candidate_policy import (
@@ -224,7 +224,8 @@ def test_a_swap_is_recorded_and_can_be_undone_to_a_marked_gap() -> None:
     gap = undone.songs[1]
     assert (gap.gap, gap.swedebeat, gap.spotify_id, gap.title) == (True, None, _id(1), "Song 1")
     assert gap.swap is not None and gap.swap.undone  # noqa: PT018
-    assert undone.total_sec == 480 - 9  # two songs left in the mix
+    assert undone.total_sec == 480  # two songs left in the mix, whole songs
+    assert undone.crossfade_sec == 0
     assert not undoable(undone, 1)
     assert askable(undone, 1)  # the user can ask for another song for the gap
     with pytest.raises(ValueError, match="undo"):
@@ -286,10 +287,10 @@ def test_another_keeps_the_other_songs_in_their_slots_without_the_other_gaps() -
 # --- length and the hash -------------------------------------------------------------------
 
 
-def test_the_length_check_relaxes_only_the_upper_bound() -> None:
-    assert UPPER == 0.5
+def test_the_class_length_check_is_ten_percent_each_way() -> None:
+    assert UPPER == TOLERANCE == 0.10
     assert within(1620, 1800) and not within(1619, 1800)  # noqa: PT018 - 10 % under
-    assert within(2700, 1800) and not within(2701, 1800)  # noqa: PT018 - 50 % over
+    assert within(1980, 1800) and not within(1981, 1800)  # noqa: PT018 - 10 % over
 
 
 def test_the_approval_hash_changes_with_a_reference() -> None:

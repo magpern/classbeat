@@ -3,7 +3,7 @@
 The content (``StudioListContent``, ``v: 1``, ``source: "swedebeat_studio"``)::
 
     {"v": 1, "source": "swedebeat_studio", "mode": "pick" | "replace",
-     "target_sec": 2700, "total_sec": 2650, "crossfade_sec": 9.0,
+     "target_sec": 2700, "total_sec": 2650, "crossfade_sec": 0.0,
      "songs": [{"spotify_id": "...", "title": "...", "artist": "...", "role": "climb",
                 "new": true, "cover": "https://i.scdn.co/image/<40 hex>" | null,
                 "gap": false,
@@ -25,8 +25,9 @@ The content (``StudioListContent``, ``v: 1``, ``source: "swedebeat_studio"``)::
 - **A gap** (``gap: true``) has no ``swedebeat`` facts: an undone swap (its ``swap.undone``) or a
   song of a ``suspected_unavailable`` list. A gap can never be approved into a mix
   (``swap_policy.mix_tracks``, the kind's approval check).
-- ``total_sec`` is the backend's: the non-gap songs' SwedeBeat durations less ``crossfade_sec``
-  per change of song (``length_policy``).
+- ``total_sec`` is the backend's: the sum of the non-gap songs' SwedeBeat durations, whole songs
+  (``length_policy``), and ``crossfade_sec`` is 0 (a list stored before ADR 0036 amendment B had
+  9 s per change of song, and its total was the durations less that).
 - The content hash (``song_list.content_hash``, the canonical JSON's SHA-256) covers every field,
   the references, durations and BPMs included, so the approval binds them.
 

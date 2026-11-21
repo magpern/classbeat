@@ -27,12 +27,14 @@ class GapInMix(ValueError):
 
 
 def song_total(songs: Sequence[StudioSong]) -> int:
-    """The class time of the list's non-gap songs, from their SwedeBeat durations."""
+    """The class time of the list's non-gap songs: whole songs, the sum of their durations."""
     return studio_total([s.swedebeat.duration_sec for s in songs if s.swedebeat is not None])
 
 
 def with_songs(content: StudioListContent, songs: Sequence[StudioSong]) -> StudioListContent:
-    return content.model_copy(update={"songs": list(songs), "total_sec": song_total(songs)})
+    return content.model_copy(
+        update={"songs": list(songs), "total_sec": song_total(songs), "crossfade_sec": 0.0}
+    )
 
 
 def undoable(content: StudioListContent, position: int) -> bool:
