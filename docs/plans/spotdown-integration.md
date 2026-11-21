@@ -256,6 +256,13 @@ is charged to the class's wait budget before it is made and made only when it fi
 least every 10 s. That amendment supersedes the `rate_limited` row above for that stage; the other
 stages are unchanged by it.*
 
+*Note 2026-11-21 (#1303, #1329; ADR 0040, the amendment "the analysis and refinement stage of the
+Spotify flow"): the same holds for the Spotify **analysis** stage (SD-P6 stage B). A `rate_limited`
+start or job is waited for in the run, charged to the same per-class wait budget before the wait and
+made only when it fits, instead of a fenced requeue (which would rerun `pick_pool` and
+`choose_songs`). That amendment supersedes the `rate_limited` row above for that stage too; the studio
+and mix stages are unchanged by it.*
+
 **Overall bounds per class:**
 - match retry: 1;
 - alternates per track: ≤2;

@@ -28,6 +28,10 @@ The Spotify song pick's match stage (SD-P6 stage A, #1303): ``song_match_config`
 the outage rule and the wait budget), ``song_swap_calc`` (spares and replacement rounds) and
 ``song_match_record_model`` (the list's provenance record); the side effects are
 ``classbeat.songs.pick_match``, ``pick_match_batch`` and ``pick_match_budget``.
+Its analysis and refinement stage (SD-P6 stage B): ``song_analysis_policy`` (the reactions and a
+slot's needs), ``song_refine_calc`` (the spare that replaces an unsuitable song) and
+``song_analysis_record_model`` (the record and the timing marks); the side effects are
+``classbeat.songs.pick_analyse`` and ``pick_analyse_batch``.
 Side effects: ``opener`` (the seam that opens a client of ``classbeat.egress_spotdown``),
 ``exchange`` (one capped request) and ``client`` (the calls of the contract, nothing else).
 Nothing here calls spotdown unless the setting is set: unset, ``classbeat.egress_spotdown``

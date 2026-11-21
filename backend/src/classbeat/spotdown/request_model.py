@@ -5,7 +5,8 @@ Pure: no I/O.
   only: ``client_ref``, ``title``, ``artists``, ``duration_s`` and an optional ``isrc``. Never a
   user token, a URL, a file name or an owner id (ADR 0040 section 1, threat model T131).
 - ``analysis_body``: ``POST /v2/analyses`` with **exactly one** of ``upload_id`` or
-  ``source_ref``. classbeat never sends spotdown's ``url`` source (a MOWL temporary link never
+  ``source_ref``, and a ``cache_scope`` (optional only for a ``source_ref``: global).
+  classbeat never sends spotdown's ``url`` source (a MOWL temporary link never
   leaves classbeat), so there is no parameter for it.
 - ``source_ref`` (a body or the source lookup) is only ``youtube:<11-character video id>``, the one
   kind spotdown's ``POST /v2/analyses`` takes; a sha256 is 64 lowercase hex digits (the content
@@ -140,20 +141,23 @@ def match_body(tracks: tuple[TrackQuery, ...], cache_scope: str | None) -> bytes
 
 
 def analysis_body(
-    cache_scope: str,
+    cache_scope: str | None,
     client_ref: str,
     *,
     upload_id: str | None = None,
     source_ref: str | None = None,
     reference: Reference | None = None,
 ) -> bytes:
-    """``POST /v2/analyses``'s body: exactly one of ``upload_id`` and ``source_ref``."""
+    """``POST /v2/analyses``'s body: exactly one of ``upload_id`` and ``source_ref``. Without
+    ``cache_scope`` only for a ``source_ref`` (a ``youtube`` source is global, contract v2)."""
     if (upload_id is None) == (source_ref is None):
         raise RequestRefused("an analysis has exactly one of upload_id and source_ref")
-    body: dict[str, object] = {
-        "cache_scope": check_scope(cache_scope),
-        "client_ref": _text(client_ref, REF_MAX, "a client_ref is 1 to 128 characters"),
-    }
+    if cache_scope is None and source_ref is None:
+        raise RequestRefused("an analysis of an upload needs its cache_scope")
+    body: dict[str, object] = {}
+    if cache_scope is not None:
+        body["cache_scope"] = check_scope(cache_scope)
+    body["client_ref"] = _text(client_ref, REF_MAX, "a client_ref is 1 to 128 characters")
     if upload_id is not None:
         body["upload_id"] = check_id(upload_id)
     if source_ref is not None:

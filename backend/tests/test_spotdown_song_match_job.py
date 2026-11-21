@@ -12,6 +12,9 @@ in its title). Never the network: the autouse netguard refuses any other connect
 - spotdown unreachable, a provider outage or an error of any type in the stage: today's list
   (byte for byte when no replacement round ran), for this run and every later run of the job;
 - the wait budget is the job's over its runs; the idempotency keys are stable across runs.
+
+The analysis stage after ``choose`` (stage B, ``pick_analyse``) is stubbed out here (``match_only``)
+so these tests see the match stage alone; ``test_spotdown_song_analysis_job`` runs both.
 """
 
 import json
@@ -26,7 +29,7 @@ from sqlalchemy import text
 
 from classbeat import egress_spotdown
 from classbeat.db import user_session
-from classbeat.songs import pick_match, pick_match_batch, pick_match_budget
+from classbeat.songs import pick, pick_match, pick_match_batch, pick_match_budget
 from classbeat.spotdown import song_match_config
 from classbeat.spotdown import song_match_policy as policy
 from classbeat.spotdown.client import SpotdownClient
@@ -38,7 +41,7 @@ from spotdownfake import SERVICE_KEY, FakeSpotdown, spotdown
 
 __all__ = ["spotdown"]  # the fixture
 
-pytestmark = pytest.mark.usefixtures("songenv")
+pytestmark = pytest.mark.usefixtures("songenv", "match_only")
 
 # The songs ``choose_turns`` picks (pool index = song number in ``pool_turns``), with their roles.
 LIST = [(0, "warmup"), (2, "build"), (4, "climb"), (10, "recovery"), (6, "sprint"),
@@ -69,6 +72,16 @@ def script(*turns: dict[str, Any]) -> dict[str, Any]:
 def tag(songenv: SongEnv, status: str, *songs: int) -> None:
     for n in songs:
         songenv.fake.catalogue[song_id(n)]["name"] += f" [{status}]"
+
+
+@pytest.fixture
+def match_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The analysis stage (SD-P6 stage B) leaves the chosen list as it is."""
+
+    async def chosen_as_is(_run: object, _matched: object, _map: object, chosen: Any) -> Any:
+        return chosen, {}
+
+    monkeypatch.setattr(pick, "analyse_list", chosen_as_is)
 
 
 @pytest.fixture
