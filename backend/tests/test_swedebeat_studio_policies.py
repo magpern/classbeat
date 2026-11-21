@@ -6,8 +6,9 @@ from typing import Any
 import pytest
 
 from classbeat.agent.brief import Brief
-from classbeat.agent.songs import PickPlan
+from classbeat.agent.songs import TOLERANCE, PickPlan
 from classbeat.songs.song_list import content_hash
+from classbeat.studio.output_choice_policy import STUDIO_VALUES
 from classbeat.swedebeat_match.verdict_policy import Verdict
 from classbeat.swedebeat_studio.candidate_policy import (
     Candidate,
@@ -17,7 +18,8 @@ from classbeat.swedebeat_studio.candidate_policy import (
     song_of,
     to_replace,
 )
-from classbeat.swedebeat_studio.config_policy import canonical, studio_values
+from classbeat.swedebeat_studio.config import StudioConfig
+from classbeat.swedebeat_studio.config_policy import OUTPUTS, VALUES, canonical, studio_values
 from classbeat.swedebeat_studio.evidence_policy import evidence, merge, really_missing, retry_slots
 from classbeat.swedebeat_studio.length_policy import UPPER, within
 from classbeat.swedebeat_studio.song_list_model import StudioListContent
@@ -59,6 +61,11 @@ def _cand(n: int, role: str, found: Verdict = MISSING) -> Candidate:
         ("design", {"design"}),
         (" design , swedebeat_playlist", {"design", "swedebeat_playlist"}),
         ("design,swedebeat_mix,mowl", {"design", "swedebeat_mix", "mowl"}),
+        ("design,swedebeat_mix,bass_swap", {"design", "swedebeat_mix", "bass_swap"}),  # B8
+        (
+            "design,swedebeat_playlist,swedebeat_mix,mowl,bass_swap",
+            {"design", "swedebeat_playlist", "swedebeat_mix", "mowl", "bass_swap"},
+        ),
     ],
 )
 def test_the_studio_setting_accepts_its_values(raw: str, values: set[str]) -> None:
@@ -76,6 +83,13 @@ def test_the_studio_setting_accepts_its_values(raw: str, values: set[str]) -> No
         "mowl",
         "design,mowl",  # mowl needs swedebeat_mix
         "DESIGN",
+        "bass_swap",  # bass_swap needs swedebeat_mix (ADR 0036 amendment B8)
+        "design,bass_swap",
+        "design,swedebeat_playlist,bass_swap",
+        "design,swedebeat_playlist,mowl,bass_swap",
+        "design,swedebeat_mix,BASS_SWAP",  # an unknown value
+        "design,swedebeat_mix,bass-swap",
+        "design,swedebeat_mix,bass_swap,bass_swap",
     ],
 )
 def test_any_other_studio_value_refuses_to_start(raw: str) -> None:
@@ -86,6 +100,20 @@ def test_any_other_studio_value_refuses_to_start(raw: str) -> None:
 def test_the_stored_setting_is_in_a_fixed_order() -> None:
     assert canonical("mowl, swedebeat_mix ,design") == "design,swedebeat_mix,mowl"
     assert canonical("") == ""
+    assert canonical("bass_swap,swedebeat_mix,design") == "design,swedebeat_mix,bass_swap"
+
+
+def test_the_setting_without_bass_swap_has_it_off() -> None:
+    assert not StudioConfig(studio_values("design,swedebeat_mix")).bass_swap  # the default
+    assert not StudioConfig().bass_swap
+    assert StudioConfig(studio_values("design,swedebeat_mix,bass_swap")).bass_swap
+
+
+def test_bass_swap_is_never_an_output() -> None:
+    assert frozenset({"swedebeat_playlist", "swedebeat_mix", "mowl"}) == OUTPUTS
+    assert "bass_swap" in VALUES
+    assert "bass_swap" not in OUTPUTS
+    assert OUTPUTS == STUDIO_VALUES  # the output choice's three
 
 
 # --- the evidence rule ---------------------------------------------------------------------
@@ -224,7 +252,8 @@ def test_a_swap_is_recorded_and_can_be_undone_to_a_marked_gap() -> None:
     gap = undone.songs[1]
     assert (gap.gap, gap.swedebeat, gap.spotify_id, gap.title) == (True, None, _id(1), "Song 1")
     assert gap.swap is not None and gap.swap.undone  # noqa: PT018
-    assert undone.total_sec == 480 - 9  # two songs left in the mix
+    assert undone.total_sec == 480  # two songs left in the mix, whole songs
+    assert undone.crossfade_sec == 0
     assert not undoable(undone, 1)
     assert askable(undone, 1)  # the user can ask for another song for the gap
     with pytest.raises(ValueError, match="undo"):
@@ -286,10 +315,10 @@ def test_another_keeps_the_other_songs_in_their_slots_without_the_other_gaps() -
 # --- length and the hash -------------------------------------------------------------------
 
 
-def test_the_length_check_relaxes_only_the_upper_bound() -> None:
-    assert UPPER == 0.5
+def test_the_class_length_check_is_ten_percent_each_way() -> None:
+    assert UPPER == TOLERANCE == 0.10
     assert within(1620, 1800) and not within(1619, 1800)  # noqa: PT018 - 10 % under
-    assert within(2700, 1800) and not within(2701, 1800)  # noqa: PT018 - 50 % over
+    assert within(1980, 1800) and not within(1981, 1800)  # noqa: PT018 - 10 % over
 
 
 def test_the_approval_hash_changes_with_a_reference() -> None:

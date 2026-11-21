@@ -1144,6 +1144,8 @@ export const en = {
   'job.failure.analysis_unavailable.title': 'Music analysis is not available right now',
   'job.failure.analysis_unavailable.detail':
     'We tried several times. Your class was not designed. Try again in a few minutes.',
+  'job.failure.mix_too_long.title': 'This class is too long for a mix',
+  'job.failure.mix_too_long.detail': 'Nothing was picked. Choose a shorter class length and try again.',
   'job.failure.feature_off.title': 'This is switched off right now',
   'job.failure.feature_off.detail': 'Nothing was designed. Try again later.',
   'job.failure.analysis_limit.title': 'Too many new Swedebeat mixes today',

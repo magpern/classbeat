@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 from mowl import compose
 
-from classbeat.agent.songs import total_sec as list_total_sec
 from classbeat.studio import mix_hint_policy, mix_repeat_calc
 from classbeat.studio.mix_hint_policy import Hint, hints
 from classbeat.studio.mix_plan_policy import (
@@ -214,7 +213,7 @@ def test_the_ten_percent_tolerance_is_the_lists_and_repeats_never_lift_it() -> N
     # lower bound (27 min), however often the mix repeats them.
     target = 30 * 60
     listed = studio_total([240, 240, 240])
-    assert listed == round(list_total_sec([240, 240, 240]))
+    assert listed == 720
     assert not within(listed, target)
     looped = spec(*[(r, 0, 240.0) for r in (ORDER * 3)[:8]], crossfades=[8] * 7)
     good = checked(looped, ORDER, FACTS)

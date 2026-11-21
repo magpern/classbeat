@@ -10,7 +10,7 @@ URL and key, ``swedebeat_match.config``, which both processes configure as well)
 from dataclasses import dataclass, field
 
 from classbeat.config import Settings
-from classbeat.swedebeat_studio.config_policy import DESIGN, studio_values
+from classbeat.swedebeat_studio.config_policy import BASS_SWAP, DESIGN, studio_values
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +21,11 @@ class StudioConfig:
     def design(self) -> bool:
         """The studio itself (its song stage): ``design`` is on."""
         return DESIGN in self.values
+
+    @property
+    def bass_swap(self) -> bool:
+        """The mix's bass swap (ADR 0036 amendment B8): ``bass_swap`` is on (off by default)."""
+        return BASS_SWAP in self.values
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "StudioConfig":

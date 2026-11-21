@@ -43,6 +43,7 @@ from classbeat.jobs.errors import RETRYABLE
 from classbeat.studio import output_body_policy as body
 from classbeat.swedebeat_match import config as match_config
 from classbeat.swedebeat_match.kind import open_match_bearer
+from classbeat.swedebeat_studio import config as studio_config
 from classbeat.swedebeat_studio import outputs_mowl, outputs_rows, outputs_spotify
 from classbeat.swedebeat_studio import outputs_swedebeat as swedebeat
 from classbeat.swedebeat_studio.outputs_admit import KIND, SERVER_FIELDS, admit, bound
@@ -96,7 +97,9 @@ def _detail(p: Producer, output: str, mix: OutputRow | None) -> Callable[[], Map
         if output == "swedebeat_playlist":
             name = body.class_name(p.title)
             return {"name": name, "body": body.playlist_body(name, spec, facts, durations)}
-        plan = body.render_plan(spec, durations, p.track_facts())
+        # The setting is read here, once, when the attempt is opened (ADR 0036 amendment B8)
+        swaps = studio_config.current().bass_swap
+        plan = body.render_plan(spec, durations, p.track_facts(), bass_swap=swaps)
         last = plan[-1]
         return {
             "name": body.mix_name(p.title, body.new_suffix()),

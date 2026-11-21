@@ -15,7 +15,7 @@ from songtools import song_id
 from spotifyfake import USER_A
 from studiotools import BRIEF, StudioEnv, choose_turns, pool_turns, script
 
-SHORT_BRIEF = {"length_min": 10, "intensity": "moderate"}  # three songs
+SHORT_BRIEF = {"length_min": 12, "intensity": "moderate"}  # three songs of 240 s: 720 s
 LIST_3 = [("pool", 0, "warmup"), ("pool", 2, "build"), ("pool", 5, "cooldown")]
 
 

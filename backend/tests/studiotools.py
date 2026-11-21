@@ -165,8 +165,8 @@ class StudioEnv:
         env = self.songs.spot.env
         owner = await env.user(f"studio-{uuid.uuid4().hex[:10]}@example.com")
         self.songs.sql(
-            "INSERT INTO entitlements (owner_id, features, source) "
-            "VALUES (:o, ARRAY['song_picking'], 'grant')",
+            "INSERT INTO entitlements (owner_id, plan_id, features, source) "
+            "VALUES (:o, 'instructor', ARRAY['song_picking'], 'grant')",
             o=owner,
         )
         ctx = make_context(owner)

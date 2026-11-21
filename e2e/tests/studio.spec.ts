@@ -50,7 +50,11 @@ async function newStudioUser(page: Parameters<typeof readyForStudio>[0], tag: st
   await signUpThroughUi(page, email)
   await signInThroughUi(page, email)
   await readyForStudio(page)
-  return ownerId(email)
+  const owner = ownerId(email)
+  // The studio list is whole songs within the plan's length (ADR 0036 B6a): the free plan's 30 minutes
+  // cannot hold the recorded eight four-minute songs, so the user is on the instructor plan.
+  sql(`INSERT INTO entitlements (owner_id, plan_id, source) VALUES ('${owner}', 'instructor', 'grant')`)
+  return owner
 }
 
 test('a studio class from the description to its outputs, with no MOWL connection', async ({ page }) => {

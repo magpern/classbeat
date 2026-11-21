@@ -9,12 +9,14 @@ from mowl import compose
 
 from classbeat.studio.output_choice_policy import (
     OUTPUTS,
+    STUDIO_VALUES,
     canonical,
     enabled_outputs,
     needs_render,
     refusal,
 )
 from classbeat.studio.timeline_calc import SongFacts, timeline
+from classbeat.swedebeat_studio import config_policy
 from studiomaps import track_map
 
 ALL = frozenset(OUTPUTS)
@@ -37,6 +39,8 @@ ALL = frozenset(OUTPUTS)
         (["swedebeat_mix", "swedebeat_mix"], ALL, "invalid_input"),
         (["private_playlist"], ALL, "invalid_input"),  # there is no private playlist output
         (["classbeat_player"], ALL, "invalid_input"),  # later (section 9), not here
+        (["bass_swap"], ALL | {"bass_swap"}, "invalid_input"),  # a setting value, no output (B8)
+        (["swedebeat_mix", "bass_swap"], ALL | {"bass_swap"}, "invalid_input"),
     ],
 )
 def test_the_choice_rules(chosen: list[str], enabled: frozenset[str], reason: str | None) -> None:
@@ -100,6 +104,15 @@ def test_the_enabled_outputs_follow_the_setting_and_spotify() -> None:
         "mowl",
     }
     assert enabled_outputs({"design"}, spotify_on=True) == {"spotify_playlist"}
+    every = frozenset(config_policy.VALUES)  # every value on, ``bass_swap`` included (B8)
+    assert "bass_swap" in every
+    assert enabled_outputs(every, spotify_on=False) == config_policy.OUTPUTS == STUDIO_VALUES
+    assert enabled_outputs(every, spotify_on=True) == {
+        "spotify_playlist",
+        "swedebeat_playlist",
+        "swedebeat_mix",
+        "mowl",
+    }
     assert enabled_outputs({"design"}, spotify_on=False) == frozenset()
 
 
