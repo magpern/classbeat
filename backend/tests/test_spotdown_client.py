@@ -3,6 +3,7 @@ per-track status of ``/v2/match``, every job outcome, uploads, lookups, the scop
 failure taxonomy of ADR 0040 section 8, and "off means nothing is sent". No network (netguard)."""
 
 import gzip
+import json
 from collections.abc import AsyncIterator
 
 import httpx
@@ -20,7 +21,7 @@ from classbeat.spotdown.failure_policy import (
     UncertainMatch,
     Unreachable,
 )
-from classbeat.spotdown.request_model import Reference, RequestRefused, TrackQuery
+from classbeat.spotdown.request_model import Reference, RequestRefused, TrackQuery, analysis_body
 from classbeat.spotdown.scope_calc import idempotency_key
 from spotdownfake import ENDS, SCOPE_A, SCOPE_B, SERVICE_KEY, FakeSpotdown, spotdown
 
@@ -287,6 +288,56 @@ async def test_only_a_youtube_video_id_is_a_source_ref(
     with pytest.raises(RequestRefused):
         await client.lookup_source(source_ref, SCOPE_A)
     assert spotdown.seen == []
+
+
+def test_an_analysis_body_without_a_scope_only_for_a_global_source() -> None:
+    """SD-P6 stage B (#1303): ``cache_scope`` may be left out only for a ``source_ref`` (a
+    ``youtube`` source is global); an upload is private and always carries its owner's scope."""
+    with pytest.raises(RequestRefused):
+        analysis_body(None, "t1", upload_id="up_1")
+    with pytest.raises(RequestRefused):
+        analysis_body(None, "t1", upload_id="up_1", reference=Reference("spotify", "r", 200.0))
+    assert "cache_scope" not in json.loads(analysis_body(None, "t1", source_ref=YT))
+    assert json.loads(analysis_body(SCOPE_A, "t1", source_ref=YT))["cache_scope"] == SCOPE_A
+    assert json.loads(analysis_body(SCOPE_A, "t1", upload_id="up_1"))["cache_scope"] == SCOPE_A
+
+
+async def test_an_upload_analysis_without_its_scope_is_refused_before_anything_is_sent(
+    spotdown: FakeSpotdown,
+) -> None:
+    with pytest.raises(RequestRefused):
+        await SpotdownClient(ALL).start_analysis(
+            None, "t1", idempotency_key("j", "u"), upload_id="up_1"
+        )
+    assert spotdown.seen == []
+
+
+async def test_a_youtube_analysis_sends_its_scope_when_given_and_none_when_not(
+    spotdown: FakeSpotdown,
+) -> None:
+    client = SpotdownClient(ALL)
+    with_scope = await client.start_analysis(
+        SCOPE_A, "t1", idempotency_key("j", "a"), source_ref=YT
+    )
+    other = "youtube:zyxwvutsrqp"
+    without = await client.start_analysis(None, "t2", idempotency_key("j", "b"), source_ref=other)
+    assert isinstance(with_scope, Pending)
+    assert isinstance(without, Pending)
+    first, second = (json.loads(s.body) for s in spotdown.seen if s.path == "/v2/analyses")
+    assert first["cache_scope"] == SCOPE_A
+    assert "cache_scope" not in second
+
+
+def test_the_fake_still_needs_a_scope_for_an_upload_analysis(spotdown: FakeSpotdown) -> None:
+    """The fake's scope-less form is for a ``youtube`` source only, as the contract says."""
+    body = json.dumps({"client_ref": "t1", "upload_id": "up_1"}).encode()
+    request = httpx.Request(
+        "POST", "http://spotdown-api:8000/v2/analyses", content=body,
+        headers={"Authorization": f"Bearer {SERVICE_KEY}", "Idempotency-Key": "k" * 64},
+    )  # fmt: skip
+    answer = spotdown.handle(request, body)
+    assert answer.status_code == 422
+    assert answer.json()["error"]["code"] == "scope_required"
 
 
 @pytest.mark.parametrize("duration", [0.0, -1.0, 7200.5, float("nan"), float("inf")])

@@ -68,7 +68,8 @@ async def _sleep(run: JobRun, seconds: float) -> None:
         await run.checkpoint()
 
 
-async def _wait(session: Session, seconds: float) -> None:
+async def wait(session: Session, seconds: float) -> None:
+    """Charge ``seconds`` to the job's budget, then wait them (the analysis stage too)."""
     await budget.charge(session.run, seconds)  # before the wait: a stopped run has spent it
     session.spent += seconds
     await _sleep(session.run, seconds)
@@ -126,10 +127,10 @@ async def _batch(
                 again.append(ref)
         if not again or pass_no == policy.MAX_PASSES:
             break
-        wait = policy.wait_for(pause, session.left())
-        if wait is None:
+        pause_s = policy.wait_for(pause, session.left())
+        if pause_s is None:
             break  # what is still pending keeps its last outcome (MOWL's sections)
-        await _wait(session, wait)
+        await wait(session, pause_s)
         pending = again
     return final
 

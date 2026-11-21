@@ -8,6 +8,8 @@ the wait for the user's one approval. Everything runs in the worker, inside the 
    matches the pool with spotdown (metadata only, nothing downloaded), leaves out the genuinely
    missing candidates while the others can fill the list and otherwise runs bounded replacement
    rounds; off, unreachable or on any failure of it, the pool goes on exactly as before.
+   After ``choose`` (step 4), ``classbeat.songs.pick_analyse`` analyses the chosen songs only
+   and replaces an unsuitable one alone from the spares (SD-P6 stage B; the same fallbacks).
 2. ``pool_write``: ``classbeat.playlists.write_pool`` (ensure the pool playlist: a
    ``spotify_create_playlist`` under this job's own key when the pool row has no playlist yet; the
    owner check; a ``spotify_replace_items`` of exactly the candidates, read back and compared),
@@ -77,6 +79,7 @@ from classbeat.playlists import open_spotify, write_pool
 from classbeat.songs import song_list
 from classbeat.songs.config import SongConfig
 from classbeat.songs.inputs import SongJob
+from classbeat.songs.pick_analyse import analyse_list
 from classbeat.songs.pick_match import MatchedPool, match_pool
 from classbeat.songs.search import job_searcher
 from classbeat.songs.seed import SeedSpec, load_seeded
@@ -185,17 +188,19 @@ async def run_phase_one(
         sync_wait_seconds=config.sync_wait_seconds,
     )
     try:
-        stored = await _choose(
+        chosen, made = await _choose(
             run, provider, plan, matched, pool_outcome, step, agent, config, origin=origin
         )
-        record = matched.record([s.spotify_id if s.new else "" for s in stored[0].songs])
+        # SD-P6 (#1303): spotdown's analysis of the chosen songs only, and the refinement.
+        chosen, analysis = await analyse_list(run, matched, step.data.analysis["map"], chosen)
+        record = matched.record([s.spotify_id if s.new else "" for s in chosen.songs])
         built = song_list.build(
-            stored[0],
+            chosen,
             account=account,
-            provenance={**stored[1], **record, **(extra_provenance or {})},
+            provenance={**made, **record, **analysis, **(extra_provenance or {})},
             parent_id=seeded.revision_id if seeded is not None else None,
             generations=generations(spotify, step),
-            unmet=list_unmet(plan.brief.music_taste, matched.eligible, stored[0]),  # issue #1133
+            unmet=list_unmet(plan.brief.music_taste, matched.eligible, chosen),  # issue #1133
         )
     except BaseException:
         step.close()
