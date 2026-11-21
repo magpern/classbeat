@@ -684,9 +684,14 @@ for the class and did not fall back); off by default.
    youtube-only request) and a `spotify` reference whose id is an opaque digest of the Spotify id (no
    Spotify id leaves). A cache hit is ready at once. Every result is **at best `approximate`**
    (§3); an `unusable` one is discarded and the song keeps MOWL's sections.
-2. **The reactions (within §8's rows):** `rate_limited` is waited for **in the run**, as the match
-   stage's (the amendment above, item 1: charged to the job's budget before the wait, made only when it
-   fits); `provider_error` once again, then MOWL's sections for that song, and a provider outage of a
+2. **This supersedes §8's `rate_limited` row ("fenced requeue after `retry_after_s`") for the
+   Spotify analysis stage**, as the match-stage amendment above (item 1) does for the match stage
+   (Architect's decision, 2026-11-21, on the review of #1329). A `rate_limited` start or job is waited
+   for **in the run**: charged to the job's budget before the wait, made only when it fits what is left,
+   with checkpoints at least every 10 s; it does not count as an attempt. *Why:* a requeue would rerun
+   the model stages before it (`pick_pool`, `choose_songs`), and the bound is the same 600 s per class.
+   Plan §6 carries a dated note.
+   **The other reactions (within §8's rows):** `provider_error` once again, then MOWL's sections for that song, and a provider outage of a
    round (≥ 50 % and ≥ 3 songs) gives today's path for the whole class (no swaps); `processing_failed`
    is not retried on the same audio except once after a `timeout`, then the next alternate, then MOWL's
    sections; `source_unavailable` and `not_found` the next alternate, then MOWL's sections;

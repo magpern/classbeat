@@ -98,6 +98,9 @@ def outcome_of(song: ChosenSong, got: Got) -> SongOutcome:
 
 
 def _want(matched: MatchedPool, song: ChosenSong, position: int) -> Want | None:
+    """The song's analysis request, or ``None``. ``song.new`` and ``use == "timing"`` are defence in
+    depth: a kept song is never matched (stage A leaves it out of the pool), and only a ``timing``
+    match carries sources; ``test_a_replace_analyses_only_its_new_song`` runs a replace."""
     match = matched.matches.get(song.spotify_id)
     if not song.new or match is None or match.use != "timing" or not match.sources:
         return None
@@ -219,6 +222,20 @@ async def _mark_fallback(run: JobRun) -> None:
         logger.warning("spotdown song analysis fallback not recorded", extra={"error_type": kind})
 
 
+def _log_done(run: JobRun, record: Mapping[str, Any], swaps: int) -> None:
+    songs = record["spotdown_analysis"]["songs"]
+    logger.info(
+        "spotdown song analysis",
+        extra={
+            "job_id": str(run.lease.job_id),
+            "analysed": sum(s["use"] == "spotdown" for s in songs),
+            "sections": sum(s["use"] == "sections" for s in songs),
+            "swaps": swaps,
+            "rounds": record["spotdown_analysis"]["rounds"],
+        },
+    )
+
+
 async def analyse_list(
     run: JobRun, matched: MatchedPool, analysis_map: Mapping[str, Any], chosen: ChosenList
 ) -> tuple[ChosenList, dict[str, Any]]:
@@ -228,6 +245,7 @@ async def analyse_list(
         return chosen, {}
     try:
         refined, record, swaps = await _analyse(run, matched, analysis_map, chosen)
+        _log_done(run, record, swaps)
     except PASSED:
         raise
     except Exception as exc:
@@ -242,15 +260,4 @@ async def analyse_list(
             extra={"job_id": str(run.lease.job_id), "reason": reason},
         )
         return chosen, {}
-    songs = record["spotdown_analysis"]["songs"]
-    logger.info(
-        "spotdown song analysis",
-        extra={
-            "job_id": str(run.lease.job_id),
-            "analysed": sum(s["use"] == "spotdown" for s in songs),
-            "sections": sum(s["use"] == "sections" for s in songs),
-            "swaps": swaps,
-            "rounds": record["spotdown_analysis"]["rounds"],
-        },
-    )
     return refined, record

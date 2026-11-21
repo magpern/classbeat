@@ -34,6 +34,7 @@ from classbeat.spotdown import (
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.song_analysis_record_model import KEY, timing_marks
 from classbeat.spotdown.song_match_record_model import KEY as MATCH_KEY
+from pickfake import call, entries, turn
 from songanalysisdocs import youtube_doc
 from songtools import Rider, SongEnv, choose_turns, pool_turns, song_id
 from spotdownfake import SERVICE_KEY, FakeSpotdown, spotdown
@@ -504,6 +505,7 @@ CALLS = [
     (song_match_policy, "provider_outage", False, "shared"),
     (song_match_policy, "wait_for", False, "shared"),
     (pick_analyse, "Session", False, None),
+    (pick_analyse, "_log_done", False, None),
 ]
 
 
@@ -584,3 +586,41 @@ async def test_nothing_secret_or_identifying_is_logged(
     for secret in (SERVICE_KEY, "youtube:", "vid0000", "alt0000", "Ride Song", "Made-up Band"):
         assert secret not in logged
     assert all(song_id(n) not in logged for n in range(20))
+
+
+# --- a replace: the kept songs are not analysed -------------------------------------------------
+
+
+async def test_a_replace_analyses_only_its_new_song(
+    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None]
+) -> None:
+    rider = await songenv.rider()
+    job_id, revision, _ = await songenv.waiting(rider)  # before the switch: nothing sent
+    assert spotdown.seen == []
+    class_id = str(songenv.row(job_id).class_id)
+    await rider.browser.post(f"/api/jobs/{job_id}/cancel")
+    on(rider)
+    spotdown.documents[f"youtube:{vid(0)}"] = youtube_doc(vid(0), bpm(13))  # batch index 0: song 13
+    kept = [("kept", 0, "warmup"), ("kept", 1, "build"), ("pool", 0, "climb")]
+    rest = [(2, "recovery"), (3, "sprint"), (4, "sprint"), (5, "recovery"), (6, "cooldown")]
+    songenv.script = {
+        "model": "fake-model",
+        "turns": [
+            turn(call("search_tracks", {"query": "beta"}, expect={"ok": True})),
+            turn(
+                call(
+                    "submit_pool",
+                    entries(*[(r, "climb") for r in range(3, 9)]),  # songs 13 to 18
+                    expect={"accepted": True},
+                )
+            ),
+            *choose_turns(kept + [("kept", i, role) for i, role in rest]),
+        ],
+    }
+    seed = {"song_list_revision_id": str(revision), "replace": [2]}
+    _, new_id, _ = await songenv.waiting(rider, class_id=class_id, seed=seed)
+    new = songenv.revision(new_id)
+    assert new.content["songs"][2]["spotify_id"] == song_id(13)
+    # The match batch is the 6 new candidates (index 0 is song 13): only that one is analysed.
+    assert [a["source_ref"] for a in starts(spotdown)] == [f"youtube:{vid(0)}"]
+    assert [e["position"] for e in new.provenance[KEY]["songs"]] == [2]

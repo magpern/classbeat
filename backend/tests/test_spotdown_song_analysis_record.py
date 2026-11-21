@@ -1,11 +1,17 @@
 """SD-P6 stage B (#1303, ADR 0040 section 6, plan section 4a): the analysis stage's record and its
 timing marks (``song_analysis_record_model``), and the refinement's spare choice
-(``song_refine_calc``)."""
+(``song_refine_calc``) and state (``pick_analyse._Refine``)."""
 
 import json
+from typing import Any
 
 import pytest
 
+from classbeat.agent.choose_songs import ChosenSong
+from classbeat.agent.pick_pool import PoolPick
+from classbeat.agent.songs import PoolTrack
+from classbeat.songs import pick_analyse
+from classbeat.songs.pick_match import MatchedPool
 from classbeat.spotdown.provenance_read_calc import AudioIdentity
 from classbeat.spotdown.song_analysis_record_model import (
     KEY,
@@ -16,6 +22,7 @@ from classbeat.spotdown.song_analysis_record_model import (
     timing_marks,
 )
 from classbeat.spotdown.song_refine_calc import Slot, spare_for
+from classbeat.spotdown.song_swap_calc import Candidate
 from classbeat.spotdown.timing_class_policy import TimingDecision
 from classbeat.spotdown.track_fit_policy import Fit
 
@@ -99,3 +106,47 @@ def test_no_spare_qualifies(spares: list[Slot], tried: set[str]) -> None:
 
 def test_the_replaced_song_itself_may_share_its_title() -> None:
     assert spare_for(2, LISTED, [slot(9, title="Song 2")], set(), 1800) == 0
+
+
+# --- the refinement's state (``pick_analyse._Refine``) ------------------------------------------
+
+
+def _refine_state() -> Any:
+    """A list of 8 songs, 2 of them sprints (positions 4 and 5), and 3 spare sprints s1 to s3,
+    ranked in that order."""
+    roles = ["warmup", "build", "climb", "recovery", "sprint", "sprint", "recovery", "cooldown"]
+    listed = [f"l{n}" for n in range(8)]
+    spare = ["s1", "s2", "s3"]
+    picks = [PoolPick(n, r, i) for n, (i, r) in enumerate(zip(listed, roles, strict=True))]
+    picks += [PoolPick(10 + n, "sprint", i) for n, i in enumerate(spare)]
+    candidates = {
+        p.spotify_id: Candidate(p.spotify_id, p.role, f"T {p.spotify_id}", "A", "sections",
+                                "uncertain", 0.9 - p.ref / 100)
+        for p in picks
+    }  # fmt: skip
+    matched = MatchedPool(tuple(picks), tuple(picks), candidates=candidates, active=True)
+    pool = {
+        p.spotify_id: PoolTrack(p.spotify_id, f"T {p.spotify_id}", "A", p.role, 120.0, 240)
+        for p in picks
+    }
+    songs = [
+        ChosenSong(i, f"T {i}", "A", r, 120.0, 240, True)
+        for i, r in zip(listed, roles, strict=True)
+    ]
+    state = pick_analyse._Refine(matched, pool, songs)  # pyright: ignore[reportPrivateUsage]
+    for n in range(8):
+        state.outcomes[n] = SongOutcome("spotdown", None, None, Fit(False, ("bpm_unusable",)))
+    return state
+
+
+def test_a_spare_swapped_out_is_never_a_spare_again() -> None:
+    state = _refine_state()
+    assert state.replace(4, 1, 1800) is None  # round 1: position 4 takes s1
+    assert state.songs[4].spotify_id == "s1"
+    state.outcomes[4] = SongOutcome("spotdown", None, None, Fit(False, ("bpm_unusable",)))
+    state.replace(4, 2, 1800)  # round 2: s1 does not fit either: s2
+    state.replace(5, 2, 1800)  # the next sprint slot must not get s1 back
+    assert [state.songs[4].spotify_id, state.songs[5].spotify_id] == ["s2", "s3"]
+    assert state.swaps[4].original_id == "l4"  # the original as it was chosen
+    assert state.swaps[4].round == 2
+    assert state.replace(4, 2, 1800) is False  # nothing is left: accepted with a warning
