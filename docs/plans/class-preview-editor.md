@@ -49,7 +49,7 @@
 | **S3** | `SpotifyConnectTransport`: §2 states and lanes, drift and uncertainty, `spotify_offset_corrections` and its UI (§2, §7.3, §7.4) | The cursor only from observation; corrections kept apart from spotdown's facts | fake with latency, jitter and reordering; autoplay → `external`; `unusable` → `unaligned`; an intro → `outside_window`; overlap lane choice; device switch; no device; pause | Sonnet / Opus |
 
 **Order.** E1 → E2 → R1 → E3 → R2 → R3, with S1 → S2 → S3 alongside when a PR slot is free.
-- The four-open-PR limit and the running spotdown programme set the pace.
+- The running spotdown programme and review capacity set the pace (no fixed PR limit, roadmap Amendment 34).
 - E1 also waits for #1367.
 
 ## Verification
