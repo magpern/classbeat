@@ -3,11 +3,13 @@
 job, not per run.
 
 - ``open``: in the job's fenced transaction, the job's row (made on its first use of the match)
-  with the seconds already waited and whether an earlier run fell back to today's path;
+  with the seconds already waited and whether an earlier run of this attempt found spotdown
+  unavailable;
 - ``charge``: add a wait to the job's total **before** it is made (a run stopped during the wait
   has spent it), capped at a day;
-- ``mark_fallback``: spotdown was unreachable or a provider outage was found: every later run of
-  the job uses today's path without calling spotdown.
+- ``mark_unavailable``: spotdown was unreachable or a provider outage was found: every later run of
+  the same attempt ends ``analysis_unavailable`` at once without calling spotdown. The budget and
+  the flag are reset per attempt (``classbeat.jobs.spotdown_budget_reset``), not here.
 
 Filtered on ``owner_id`` itself as well as through row security, and on the job. Nothing here
 logs. The later stages of the Spotify flow (analysis, refinement) share this budget.
@@ -29,7 +31,7 @@ _CHARGE = text(
     "UPDATE spotdown_song_budgets SET spent_seconds = least(spent_seconds + :seconds, 86400) "
     "WHERE owner_id = :owner_id AND job_id = :job_id"
 )
-_FALLBACK = text(
+_UNAVAILABLE = text(
     "UPDATE spotdown_song_budgets SET fallback = true "
     "WHERE owner_id = :owner_id AND job_id = :job_id"
 )
@@ -40,7 +42,7 @@ def _params(run: JobRun) -> dict[str, object]:
 
 
 async def open(run: JobRun) -> tuple[float, bool]:
-    """(seconds waited so far, fallen back)."""
+    """(seconds waited so far, spotdown found unavailable)."""
     async with run.fenced() as fs:
         await fs.db.execute(_OPEN, _params(run))
         row = (await fs.db.execute(_READ, _params(run))).one()
@@ -54,6 +56,6 @@ async def charge(run: JobRun, seconds: float) -> None:
         await fs.db.execute(_CHARGE, {**_params(run), "seconds": float(seconds)})
 
 
-async def mark_fallback(run: JobRun) -> None:
+async def mark_unavailable(run: JobRun) -> None:
     async with run.fenced() as fs:
-        await fs.db.execute(_FALLBACK, _params(run))
+        await fs.db.execute(_UNAVAILABLE, _params(run))

@@ -175,7 +175,7 @@ async def run_phase_one(
     )
     registry, searcher = SearchRegistry(), job_searcher(run, keyring, spotify)
     pool, pool_outcome = await _pool(run, provider, plan, registry, searcher, pool_config)
-    # SD-P6 (#1303): spotdown's match of the pool; today's pool unchanged when it is off.
+    # SD-P6 (#1303, #1354): spotdown's match of the pool, always; a missing song is left out.
     matched = await match_pool(run, plan, pool, registry, (provider, searcher, pool_config))
     track_ids = tuple(p.spotify_id for p in matched.playlist)
     playlist_id = await write_pool_playlist(run, keyring, spotify, given, track_ids)
@@ -270,9 +270,6 @@ async def _choose(
     analysis_map = step.data.analysis["map"]
     covers = {p.spotify_id: p.cover for p in matched.playlist}  # the search's, host-checked
     tracks, omitted = analysed_pool(analysis_map, pairs(matched.eligible), covers)
-    if len(tracks) < plan.slots and matched.missing:  # MOWL's sections for the missing ones too
-        both = (*matched.eligible, *matched.missing)
-        tracks, omitted = analysed_pool(analysis_map, pairs(both), covers)
     ctx = ChooseContext.build(plan, tracks, omitted)  # pool_too_small
     choose_config = stage_config(
         agent, config, turns=choose_module.MAX_TURNS, calls=choose_module.MAX_TOOL_CALLS

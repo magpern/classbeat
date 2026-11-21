@@ -10,22 +10,23 @@ chosen list's songs at once, with the reactions of ``song_analysis_policy``.
   polled, then the run waits once, for the longest pause any of them asked for (a retry pause, a
   ``rate_limited`` wait, the poll pace of ``shadow_policy.poll_delay``). **Every wait is charged
   to the job's budget before it is made** (``pick_match_batch.wait``, the budget the match stage
-  shares) and made only when it fits what is left; what is still open then keeps MOWL's sections
-  (``timed_out``).
+  shares) and made only when it fits what is left; a wait that does not fit ends the job
+  ``analysis_unavailable`` (the budget is spent, item 4).
 - **Idempotency-Key**: from the job, the refinement round, the position, the request's number for
   that song and the source asked (hashed). ``client_ref`` is the position.
 - A document is used only when it is the analysis asked for (its id, a ``youtube`` source with
   the video id asked).
-- spotdown unreachable (any reason, any call) raises ``Fallback``.
-
-Nothing here logs.
+- spotdown unreachable (any reason, any call) raises the ``JobFailure`` of
+  ``pick_unavailable.unreachable`` (the category of its reason; its fixed line is logged at every
+  site: the start, a poll and the read of the document). A song that cannot be analysed ends as
+  ``Got(reason=...)``: the caller makes it missing (item 5).
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Final
 
-from classbeat.songs.pick_match_batch import Fallback, Session, wait
+from classbeat.songs import pick_unavailable
+from classbeat.songs.pick_match_batch import Session, wait
 from classbeat.spotdown import song_analysis_policy as policy
 from classbeat.spotdown import song_match_policy
 from classbeat.spotdown.failure_policy import AnalysisReady, Pending, TrackFailure, Unreachable
@@ -35,8 +36,6 @@ from classbeat.spotdown.request_model import Reference
 from classbeat.spotdown.scope_calc import idempotency_key
 from classbeat.spotdown.shadow_policy import poll_delay
 from classbeat.spotdown.song_sections_calc import REFERENCE_KIND, reference_id
-
-TIMED_OUT: Final = "timed_out"
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +51,7 @@ class Want:
 
 @dataclass(frozen=True, slots=True)
 class Got:
-    """A song's end: its document and the source it came from, or why MOWL's sections stay."""
+    """A song's end: its document and the source it came from, or why it is missing."""
 
     doc: dict[str, object] | None = field(default=None, repr=False)
     source: Candidate | None = field(default=None, repr=False)
@@ -80,7 +79,7 @@ def _key(session: Session, round_no: int, track: _Track) -> str:
 async def _read(session: Session, track: _Track, analysis_id: str) -> Got | TrackFailure:
     doc = await session.client.get_analysis(analysis_id)  # global: no scope
     if isinstance(doc, Unreachable):
-        raise Fallback("unreachable")
+        raise await pick_unavailable.unreachable(session.run, doc)
     if isinstance(doc, TrackFailure):
         return doc
     source = track.want.sources[track.tried.source]
@@ -111,7 +110,7 @@ async def _step(session: Session, round_no: int, track: _Track) -> Got | TrackFa
     else:
         started = await session.client.poll(track.job_id)
     if isinstance(started, Unreachable):
-        raise Fallback("unreachable")
+        raise await pick_unavailable.unreachable(session.run, started)
     if isinstance(started, Pending):
         track.job_id = started.job_id
         return None
@@ -141,7 +140,7 @@ async def analyse_tracks(session: Session, wants: Sequence[Want], round_no: int)
                 continue
             reaction = policy.react(result, track.tried, len(track.want.sources))
             track.tried = reaction.tried
-            if reaction.step == "sections":
+            if reaction.step == "missing":
                 ends[position] = Got(reason=reaction.reason)
                 del open_[position]
                 continue
@@ -154,8 +153,7 @@ async def analyse_tracks(session: Session, wants: Sequence[Want], round_no: int)
             polls += 1
         pause_s = song_match_policy.wait_for(pause, session.left())
         if pause_s is None:
-            ends |= {p: Got(reason=TIMED_OUT) for p in open_}
-            break
+            raise await pick_unavailable.unavailable(session.run)  # the budget is spent
         if pause_s > 0:
             await wait(session, pause_s)
     return ends

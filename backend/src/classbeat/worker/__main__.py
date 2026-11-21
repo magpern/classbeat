@@ -88,14 +88,9 @@ def configure_spotdown(settings: Settings) -> None:
             scope_key(settings),
         )
     )
-    # The Spotify song pick's spotdown match (ADR 0040 sections 2 and 8, SD-P6 stage A): off
-    # unless set, only for the allowlisted owners, with today's pick as the fallback.
+    # The Spotify song pick's spotdown stages (ADR 0040 amendment, #1354): always on, no switch.
     song_match_config.configure(
-        song_match_config.MatchConfig(
-            settings.spotdown_spotify,
-            parse_owners(settings.spotdown_spotify_owners, "spotdown_spotify_owners"),
-            parse_sources(settings.spotdown_sources),
-        )
+        song_match_config.MatchConfig(parse_sources(settings.spotdown_sources))
     )
     # SwedeBeat mixes analysed by spotdown (#1304): its own switch, off unless set, only for its
     # allowlisted owners, with the local mix analysis as the fallback.

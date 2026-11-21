@@ -6,15 +6,16 @@
   track (or a ``429`` for the whole request) after its clamped ``retry_after_s``, not counted as an
   attempt. At most ``MAX_PASSES`` requests per batch.
 - **Every wait is charged to the job's budget before it is made** (``pick_match_budget``) and made
-  only when it fits in what is left of ``WAIT_SECONDS`` over every run; what is still pending then
-  keeps its last outcome (MOWL's sections).
+  only when it fits in what is left of ``WAIT_SECONDS`` over every run of the attempt; a wait that
+  does not fit ends the job ``analysis_unavailable`` (item 4), as does a ``rate_limited`` track
+  still there after ``MAX_PASSES``.
 - **Idempotency-Key**: from the job, the replacement round, the batch, the pass and the tracks
   asked (hashed), so a run that repeats a request gets spotdown's first answer, and a new pass
   (after a wait or for the retry) is a new request. ``client_ref`` is the track's index in the
   batch: no Spotify id leaves.
-- spotdown unreachable (any reason) or a provider outage of a batch raise ``Fallback``.
-
-Nothing here logs.
+- spotdown unreachable (``pick_unavailable.unreachable``: the category of its reason, and its fixed
+  line logged) or a provider outage of a batch raise ``JobFailure``; a ``provider_error`` of one
+  track after its retry is that song's ``missing`` (``song_match_policy.track_match``).
 """
 
 import asyncio
@@ -30,6 +31,7 @@ from classbeat.agent.pick_pool import PoolPick
 from classbeat.agent.registry import Entry
 from classbeat.jobs import JobRun
 from classbeat.songs import pick_match_budget as budget
+from classbeat.songs import pick_unavailable
 from classbeat.spotdown import song_match_policy as policy
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.failure_policy import MatchOutcome, TrackFailure, Unreachable
@@ -38,14 +40,6 @@ from classbeat.spotdown.scope_calc import idempotency_key
 from classbeat.spotdown.song_match_policy import TrackMatch
 
 PAUSE_SLICE_SECONDS: Final = 10.0  # a wait checkpoints at least this often (a cancel, shutdown)
-
-
-class Fallback(Exception):
-    """Today's path for the whole class; ``reason`` is a code."""
-
-    def __init__(self, reason: str) -> None:
-        super().__init__(reason)
-        self.reason = reason
 
 
 @dataclass
@@ -89,7 +83,8 @@ def _key(
     # spotdown replays a key's first answer for 24 h: a later run of the job that asks the
     # identical batch gets this run's answers again on every pass, a replayed ``rate_limited`` or
     # ``provider_error`` included, and may spend budget waiting on them (bounded by the budget and
-    # ``MAX_PASSES``; those tracks then keep MOWL's sections). ADR 0040, the match-stage amendment.
+    # ``MAX_PASSES``; then ``analysis_unavailable``, or a missing song for a ``provider_error``).
+    # ADR 0040, the match-stage amendment.
     tracks = [[q.client_ref, q.title, list(q.artists), q.duration_s] for q in asked]
     digest = hashlib.sha256(json.dumps(tracks, ensure_ascii=False).encode("utf-8")).hexdigest()
     parts = (str(run.lease.job_id), f"r{round_no}", f"b{batch_no}", f"p{pass_no}", digest)
@@ -109,7 +104,7 @@ async def _batch(
         key = _key(session.run, round_no, batch_no, pass_no, queries)
         answer = await session.client.match(queries, idempotency_key=key)
         if isinstance(answer, Unreachable):
-            raise Fallback("unreachable")
+            raise await pick_unavailable.unreachable(session.run, answer)
         outcomes = (
             dict(zip(pending, answer, strict=True))
             if isinstance(answer, tuple)
@@ -131,16 +126,19 @@ async def _batch(
             break
         pause_s = policy.wait_for(pause, session.left())
         if pause_s is None:
-            break  # what is still pending keeps its last outcome (MOWL's sections)
+            raise await pick_unavailable.unavailable(session.run)  # the budget is spent
         await wait(session, pause_s)
         pending = again
+    if any(isinstance(o, TrackFailure) and o.status == "rate_limited" for o in final.values()):
+        raise await pick_unavailable.unavailable(session.run)  # still rate limited after the passes
     return final
 
 
 async def match_picks(
     session: Session, picks: Sequence[PoolPick], entries: Mapping[str, Entry], round_no: int
 ) -> dict[str, TrackMatch]:
-    """Each pick's match, by Spotify id; ``Fallback`` on a provider outage of a batch."""
+    """Each pick's match, by Spotify id; ``JobFailure`` (``analysis_unavailable``) on a provider
+    outage of a batch."""
     out: dict[str, TrackMatch] = {}
     for batch_no, start in enumerate(range(0, len(picks), MATCH_BATCH_MAX)):
         chunk = picks[start : start + MATCH_BATCH_MAX]
@@ -150,7 +148,7 @@ async def match_picks(
             isinstance(o, TrackFailure) and o.status == "provider_error" for o in final.values()
         )
         if policy.provider_outage(errors, len(chunk)):
-            raise Fallback("provider_outage")
+            raise await pick_unavailable.unavailable(session.run)
         for pick, query in zip(chunk, asked, strict=True):
             out[pick.spotify_id] = policy.track_match(final[query.client_ref])
     return out

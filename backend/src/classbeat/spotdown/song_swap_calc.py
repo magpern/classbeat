@@ -2,8 +2,7 @@
 ADR 0040 section 2 step 3; SD-P6 stage A, #1303). Pure: no I/O.
 
 - **A candidate** (``Candidate``) is a pool pick with its match's ``use``
-  (``song_match_policy``): ``missing`` candidates are genuinely missing, every other one is
-  **usable** (``timing`` or ``sections``).
+  (``song_match_policy``): a ``missing`` candidate is not used; a ``timing`` one is **usable**.
 - **Spares first** (``short``): the usable candidates are the spares. While they can still fill
   the list (``slots`` songs, and one per slot of every role the plan needs: ``need`` is
   ``PickPlan.required_roles``, two per slot), a missing candidate is simply left out: no model
@@ -12,10 +11,11 @@ ADR 0040 section 2 step 3; SD-P6 stage A, #1303). Pure: no I/O.
   (``to_replace``: never more than the shortfall).
 - **Swaps** (``pair_swaps``): each replaced original, in order, takes the first unpaired usable
   fresh candidate of its role. The record (``Swap``) names the original as it was wanted (its
-  Spotify id, title and artist, which an undo needs), the reason (its match status) and the round.
+  Spotify id, title and artist, which an undo needs), the reason (its match status or an
+  analysis reason) and the round.
 - **The ranked spares of a slot** (``ranked_spares``, the seam of the analysis and refinement
-  stages): the usable candidates of the role that are not in the list, ``timing`` before
-  ``sections``, then by recording-match confidence, then in pool order.
+  stages): the usable candidates of the role that are not in the list, ``timing`` first,
+  then by recording-match confidence, then in pool order.
 """
 
 from collections.abc import Collection, Mapping, Sequence
@@ -40,7 +40,7 @@ class Swap:
     original_id: str = field(repr=False)
     title: str = field(repr=False)
     artist: str = field(repr=False)
-    reason: str  # the original's match status: ``not_found`` or ``source_unavailable``
+    reason: str  # why the original was missing (a match status or an analysis reason)
     round: int
 
 

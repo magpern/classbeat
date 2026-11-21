@@ -6,7 +6,8 @@ UUIDs in the canonical 8-4-4-4-12 form (any case; spaces around a comma ignored)
 switch is not offered by an allowlist. A refusal names the setting and the rule, never the value,
 and the process refuses to start.
 
-Used by ``CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS`` (``song_match_config``, SD-P6, #1303).
+Used by ``CLASSBEAT_SPOTDOWN_MIX_OWNERS`` (``mix_config``); the Spotify song pick's own list is
+gone (#1354).
 """
 
 from typing import Final

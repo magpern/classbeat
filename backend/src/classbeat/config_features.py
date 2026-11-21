@@ -138,13 +138,6 @@ class FeatureSettings(BaseSettings):
     # for everyone: that default waits for the studio gates (owner decision #1298).
     spotdown_studio: Literal["off", "allowlist"] = "off"
     spotdown_studio_owners: str = ""
-    # ADR 0040 sections 2 and 8 (#1303, SD-P6 stage A): the Spotify song pick's ``/v2/match``
-    # stage, worker only. ``off`` (the default) is today's pick; ``allowlist`` matches the pool
-    # with spotdown for the owners in ``spotdown_spotify_owners`` (user ids, comma separated),
-    # with ``youtube`` among the sources (``spotdown.song_match_config``). No value switches it
-    # on for everyone: that default waits for the Spotify gates (owner decision #1298).
-    spotdown_spotify: Literal["off", "allowlist"] = "off"
-    spotdown_spotify_owners: str = ""
     # ADR 0040 section 9 (#1304): SwedeBeat mixes analysed by spotdown, worker only, its own
     # switch: ``off`` (the default) is today's local mix analysis; ``allowlist`` makes spotdown
     # the source of the mix's map for the owners in ``spotdown_mix_owners``, with the local
@@ -182,11 +175,6 @@ class FeatureSettings(BaseSettings):
     @classmethod
     def _check_spotdown_studio_owners(cls, value: str) -> str:
         return check_spotdown_studio_owners(value)
-
-    @field_validator("spotdown_spotify_owners")
-    @classmethod
-    def _check_spotdown_spotify_owners(cls, value: str) -> str:
-        return check_owner_list(value, "spotdown_spotify_owners")
 
     @field_validator("spotdown_mix_owners")
     @classmethod
