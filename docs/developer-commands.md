@@ -806,6 +806,24 @@ The fake Spotify (`e2e/fake-spotify/server.py`, service `spotify-fake`) answers 
 (`tests/spotifyfake.py`), so the two cannot drift; the `/__e2e/` control is reached from the web container.
 Web and worker trust the same CA bundle (`SSL_CERT_FILE`), now including the Spotify fake's CA.
 
+The fake spotdown (#1337, `e2e/fake-spotdown/server.py`, service `spotdown-fake`) answers as `http://spotdown-api:8000`
+(a compose alias, plain http: an internal origin the spotdown URL policy accepts) and publishes no port. Its logic is
+`backend/tests/spotdowncore.py` (no pytest, no `classbeat` import), mounted read-only, the same code the backend tests
+run in process (`tests/spotdownfake.py` is the fixture over it), with `songanalysisdocs.py`, the vendored contract
+examples and `spotifycore.py` (the tempo the fake MOWL has for a track): every video it names has an analysis whose
+tempo is that track's, so the song's timing is "approximate". Its service key is the PUBLIC TEST value
+`e2e/fake-spotdown/service-key.txt`, mounted on the worker only as `spotdown_service_key` (CI checks it, and scans the
+logs and `docker inspect` for it). The worker has `CLASSBEAT_SPOTDOWN_URL`, `..._SOURCES=youtube`,
+`..._SPOTIFY=allowlist` and the owner list `${E2E_SPOTDOWN_OWNERS:-}`, empty: every other spec is on today's path. The
+list is read once at start and e2e user ids exist only after sign-up, so `e2e/tests/spotdown-pick.spec.ts` recreates the
+worker with its user's id (`spotdown-helpers.ts`, `allowSpotdownOwners`) and, in `afterAll`, without. A recreate removes the
+old container's logs, so `allowSpotdownOwners` first appends them to `E2E_SAVED_LOGS` (CI: `$RUNNER_TEMP/e2e-saved-worker.log`), which the
+CI log scan reads with the rest (the spec plants a marker line and checks the saved file holds it). The control
+(`/__e2e/state`: method and path of each request; `reset`) is reached from the web container. An upload gets one analysis per
+sha256 (the same tempo and grid; its length is the audio's), a body over its cap is refused with 413 and never cut short, and
+`backend/tests/test_spotdown_e2e_fake.py` checks that every document the fake serves validates against the vendored analysis-v1
+schema (and that the check can fail). This PR covers the Spotify song pick only; studio and mix e2e come later.
+
 Song picking is on in the e2e stack only (`CLASSBEAT_SONG_PICKING: "true"` on web and worker in
 `compose.e2e.yaml`); the defaults keep it off. `e2e/tests/spotify-helpers.ts` holds the fake Spotify's public
 test data (`CLIENT_A` allows `USER_A`, `CLIENT_B` allows `USER_B`, `CLIENT_UNKNOWN` is no app), its control

@@ -143,6 +143,41 @@ services:
       timeout: 3s
       retries: 30
 
+  # spotdown (ADR 0040; #1337), over plain http as spotdown-api:8000: an internal origin, which the
+  # spotdown URL policy accepts (a single-label service name and an explicit port). The fake is
+  # backend/tests/spotdowncore.py, the code the backend tests run in-process, mounted read-only with
+  # the vendored contract's examples, the analysis documents' builder and the fake Spotify's core
+  # (the tempo MOWL has for a track); server.py only carries HTTP. Its one service key is the PUBLIC
+  # TEST value in e2e/fake-spotdown/service-key.txt, which the worker (only) gets as its
+  # spotdown_service_key secret below. It needs no CA and publishes no port.
+  spotdown-fake:
+    profiles: [e2e]
+    image: ${COMPOSE_PROJECT_NAME:-classbeat}:local
+    pull_policy: never
+    restart: "no"
+    command: ["python", "/fake/server.py"]
+    environment:
+      FAKE_SPOTDOWN_CONTRACTS: /fake-core/contracts/spotdown
+    volumes:
+      - ./e2e/fake-spotdown:/fake:ro
+      - ./backend/tests/spotdowncore.py:/fake-core/spotdowncore.py:ro
+      - ./backend/tests/songanalysisdocs.py:/fake-core/songanalysisdocs.py:ro
+      - ./backend/tests/spotifycore.py:/fake-core/spotifycore.py:ro
+      - ./backend/tests/contracts/spotdown:/fake-core/contracts/spotdown:ro
+    networks:
+      default:
+        aliases:
+          - spotdown-api
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/__e2e/state', timeout=3)"
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   web:
     environment:
       # ADR 0015: the Swedebeat connection is on in the e2e stack only.
@@ -336,7 +371,17 @@ services:
       CLASSBEAT_RUNNING_ENABLED: "true"
       CLASSBEAT_SOUNDLESS_ENABLED: "true"
       CLASSBEAT_COMPOSER_FLOW: "true"
+      # ADR 0040 (#1337): the Spotify song pick's spotdown match and analysis against the fake
+      # spotdown (the worker only). The allowlist is empty, so every user is on today's path, until
+      # a spec names its own user (E2E_SPOTDOWN_OWNERS, e2e/tests/spotdown-helpers.ts recreates the
+      # worker with it and, afterwards, without).
+      CLASSBEAT_SPOTDOWN_URL: http://spotdown-api:8000
+      CLASSBEAT_SPOTDOWN_SOURCES: youtube
+      CLASSBEAT_SPOTDOWN_SPOTIFY: allowlist
+      CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS: ${E2E_SPOTDOWN_OWNERS:-}
       SSL_CERT_FILE: /fake-ca/bundle.pem
+    secrets:
+      - spotdown_service_key
     volumes:
       # The last bundle: the other fakes' CAs and the gateway's (the match calls it).
       - gateway-ca:/fake-ca:ro
@@ -350,12 +395,18 @@ services:
         condition: service_healthy
       fake-gateway:
         condition: service_healthy
+      spotdown-fake:
+        condition: service_healthy
 
 secrets:
   # ADR 0035 section 9: the PUBLIC TEST client key of the fake gateway (not the owner's): replaces
   # the empty secrets/swedebeat_gateway_key of web and the worker in this stack only.
   swedebeat_gateway_key:
     file: ./e2e/fake-gateway/client-key.txt
+  # #1337: the PUBLIC TEST service key of the fake spotdown (not a real key): replaces the empty
+  # secrets/spotdown_service_key of the worker in this stack only.
+  spotdown_service_key:
+    file: ./e2e/fake-spotdown/service-key.txt
   oauth_google_client_secret:
     file: ./e2e/fake-oidc/client-secret.txt
   oauth_microsoft_client_secret:

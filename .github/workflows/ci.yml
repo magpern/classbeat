@@ -620,8 +620,9 @@ jobs:
           [ "${#containers[@]}" -gt 0 ] || { echo "::error::no containers found"; exit 1; }
           docker inspect "${containers[@]}" > "$RUNNER_TEMP/inspect.json"
           checked=0
-          # The e2e gateway client key is a public test value, but it is mounted as a secret.
-          for f in secrets/* e2e/fake-gateway/client-key.txt; do
+          # The e2e gateway client key and the fake spotdown's service key are public test values,
+          # but they are mounted as secrets.
+          for f in secrets/* e2e/fake-gateway/client-key.txt e2e/fake-spotdown/service-key.txt; do
             [ -s "$f" ] || continue
             checked=$((checked + 1))
             if grep -qF -- "$(cat "$f")" "$RUNNER_TEMP/inspect.json"; then
@@ -756,6 +757,26 @@ jobs:
               echo "::error::$name has a gateway key variable in its environment"
               exit 1
             fi
+          done
+
+      # ADR 0040 section 10 (#1337): spotdown's service key is a secret file on the worker only (in
+      # this stack the public test key of e2e/fake-spotdown), never a variable.
+      - name: Check the spotdown service key is mounted on the worker only
+        working-directory: .
+        run: |
+          set -euo pipefail
+          config="$(docker compose --profile '*' config --format json)"
+          holders="$(jq -r '[.services | to_entries[]
+            | select((.value.secrets // []) | map(.source) | index("spotdown_service_key"))
+            | .key] | sort | join(" ")' <<< "$config")"
+          echo "spotdown_service_key is mounted on: $holders"
+          [ "$holders" = "worker" ] \
+            || { echo "::error::spotdown_service_key must be mounted on the worker only (is: $holders)"; exit 1; }
+          docker compose exec -T worker test -s /run/secrets/spotdown_service_key \
+            || { echo "::error::the worker does not have the spotdown_service_key secret"; exit 1; }
+          for svc in web web-passkeys web-paddle; do
+            docker compose exec -T "$svc" sh -c '! test -e /run/secrets/spotdown_service_key' \
+              || { echo "::error::$svc can read spotdown_service_key"; exit 1; }
           done
 
       # ADR 0003 section 5: the OAuth client secret files are on web only (#521).
@@ -898,6 +919,7 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
           TOTAL: ${{ needs.changes.outputs.e2e_shards }}
+          E2E_SAVED_LOGS: ${{ runner.temp }}/e2e-saved-worker.log
         run: |
           set -euo pipefail
           [[ $TOTAL =~ ^[1-9][0-9]*$ ]] || { echo "::error::no shard count from changes"; exit 1; }
@@ -913,10 +935,13 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          docker compose logs --no-color web worker web-passkeys web-paddle db > "$RUNNER_TEMP/stack.log"
+          docker compose logs --no-color web worker web-passkeys web-paddle db spotdown-fake > "$RUNNER_TEMP/stack.log"
+          # A spec that recreates the worker saves the old container's logs first (#1337, spotdown-helpers.ts).
+          [ ! -f "$RUNNER_TEMP/e2e-saved-worker.log" ] || cat "$RUNNER_TEMP/e2e-saved-worker.log" >> "$RUNNER_TEMP/stack.log"
           [ -s "$RUNNER_TEMP/stack.log" ] || { echo "::error::no web, worker, web-passkeys, web-paddle or db logs"; exit 1; }
           checked=0
-          for f in secrets/* e2e/fake-paddle/webhook-secret.txt e2e/fake-gateway/client-key.txt; do
+          for f in secrets/* e2e/fake-paddle/webhook-secret.txt e2e/fake-gateway/client-key.txt \
+            e2e/fake-spotdown/service-key.txt; do
             [ -s "$f" ] || continue
             checked=$((checked + 1))
             value="$(cat "$f")"
