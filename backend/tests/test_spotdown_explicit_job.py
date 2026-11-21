@@ -8,10 +8,6 @@ from typing import Any
 
 import pytest
 
-from classbeat.db.role_check import DatabaseRoleError
-from classbeat.jobs.errors import LeaseLost, RunStopped
-from classbeat.songs import pick_explicit
-from classbeat.songs.pick_explicit import explicit_report
 from classbeat.spotdown import explicit_model as model
 from songtools import Rider, SongEnv, song_id
 from spotdownfake import FakeSpotdown, spotdown
@@ -19,6 +15,7 @@ from test_spotdown_song_analysis_job import (
     SONGS,
     baseline,
     docs,
+    labelled,
     listed,
     on,
     run_on,
@@ -78,6 +75,31 @@ async def test_spotdowns_yes_tags_a_song_spotify_does_not_flag(
     assert all(e["spotdown"]["value"] == "yes" for e in revision.provenance[KEY]["songs"])
 
 
+_MALFORMED: list[Any] = [
+    {"value": [], "confidence": 0.9, "method": "metadata", "evidence": []},
+    {
+        "value": "yes",
+        "confidence": 0.9,
+        "method": "metadata",
+        "evidence": [{"source": [], "value": True}],
+    },
+    {"value": {"a": 1}, "confidence": [], "method": "metadata", "evidence": {}},
+    [],
+    {},
+]
+
+
+@pytest.mark.parametrize("raw", _MALFORMED)
+async def test_a_malformed_spotdown_group_keeps_spotdowns_timing(
+    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None], raw: Any
+) -> None:
+    """A malformed ``content.explicit`` is no evidence and never costs the list its timing."""
+    docs(spotdown, raw_explicit=raw)
+    _, revision = await run_on(songenv, on)
+    assert labelled(revision) == list(range(8))  # spotdown's sections kept
+    assert tagged(revision) == []
+
+
 async def test_a_spotdown_no_does_not_hide_spotifys_yes(
     songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None]
 ) -> None:
@@ -118,28 +140,3 @@ async def test_a_failing_report_never_fails_the_pick(
     _, revision = await listed(songenv, rider)
     assert revision.content == today.content
     assert KEY not in revision.provenance
-
-
-@pytest.mark.parametrize("error", [RunStopped("cancelled"), LeaseLost(), DatabaseRoleError("x")])
-def test_the_run_stopping_errors_pass_through(
-    error: Exception, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    def boom(*_a: Any, **_k: Any) -> Any:
-        raise error
-
-    monkeypatch.setattr(model, "evidence_for", boom)
-    matched = type("M", (), {"playlist": []})()
-    chosen = type("C", (), {"songs": []})()
-    with pytest.raises(type(error)):
-        explicit_report(matched, chosen, {}, None)  # type: ignore[arg-type]
-    assert (RunStopped, LeaseLost, DatabaseRoleError) == pick_explicit.PASSED
-
-
-def test_any_other_error_is_swallowed(monkeypatch: pytest.MonkeyPatch) -> None:
-    def boom(*_a: Any, **_k: Any) -> Any:
-        raise RuntimeError("planted")
-
-    monkeypatch.setattr(model, "evidence_for", boom)
-    matched = type("M", (), {"playlist": []})()
-    chosen = type("C", (), {"songs": []})()
-    assert explicit_report(matched, chosen, {}, None) == ({}, frozenset())  # type: ignore[arg-type]

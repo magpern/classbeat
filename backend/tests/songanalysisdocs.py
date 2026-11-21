@@ -18,6 +18,7 @@ def youtube_doc(
     low_start: bool = True,
     alignment: bool = True,
     explicit: str | None = None,
+    raw_explicit: Any = None,
 ) -> dict[str, Any]:
     """``explicit``: the document's ``content.explicit`` value (``yes``, ``no`` or ``unknown``; its
     evidence as spotdown would list it), or ``None``: a document without a ``content`` group, as
@@ -29,6 +30,8 @@ def youtube_doc(
         doc["content"] = {
             "explicit": explicit_group([{"source": "caller", "value": f} for f in flag])
         }
+    if raw_explicit is not None:  # a malformed group, as a faulty spotdown could send
+        doc["content"] = {"explicit": raw_explicit}
     doc["provenance"]["source"]["ref"] = video_id
     doc["provenance"]["source"]["match"]["chosen"] = video_id
     doc["provenance"]["source"]["match"]["candidates"][0]["ref"] = video_id

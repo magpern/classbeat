@@ -59,10 +59,10 @@ def _evidence_item(item: object) -> dict[str, Any] | None:
     if not isinstance(item, dict) or set(item) != {"source", "value"}:  # pyright: ignore[reportUnknownArgumentType]
         return None
     source, value = item["source"], item["value"]  # pyright: ignore[reportUnknownVariableType]
-    if source not in SOURCES:
+    if not isinstance(source, str) or source not in SOURCES:  # type first: a list is unhashable
         return None
     if source == "youtube_age_limit":
-        ok = isinstance(value, int) and not isinstance(value, bool) and 0 < value <= 99
+        ok = isinstance(value, int) and not isinstance(value, bool) and 18 <= value <= 99
     else:
         ok = isinstance(value, bool)
     return {"source": source, "value": value} if ok else None
@@ -73,7 +73,7 @@ def _group(group: object, keys: frozenset[str]) -> dict[str, Any] | None:
         return None
     data: dict[str, Any] = {str(k): v for k, v in group.items()}  # pyright: ignore[reportUnknownVariableType]
     value, confidence, raw = data["value"], _number(data["confidence"]), data["evidence"]
-    if value not in VALUES or confidence is None:
+    if not isinstance(value, str) or value not in VALUES or confidence is None:
         return None
     if not isinstance(raw, list) or len(raw) > MAX_EVIDENCE:  # pyright: ignore[reportUnknownArgumentType]
         return None
@@ -85,7 +85,8 @@ def _group(group: object, keys: frozenset[str]) -> dict[str, Any] | None:
 
 def spotdown_group(group: object) -> dict[str, Any] | None:
     """spotdown's group as the record keeps it (``value``, ``confidence``, ``evidence``: exactly
-    these), or ``None`` when it is not exactly that shape."""
+    these keys, each of the contract's type and range), or ``None`` for anything else. Total: it
+    never raises, whatever the input."""
     return _group(group, _STORED)
 
 

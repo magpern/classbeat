@@ -12,6 +12,10 @@ from typing import Any
 
 import pytest
 
+from classbeat.db.role_check import DatabaseRoleError
+from classbeat.jobs.errors import LeaseLost, RunStopped
+from classbeat.songs import pick_explicit
+from classbeat.songs.pick_explicit import explicit_report
 from classbeat.spotdown import explicit_model as em
 from classbeat.spotdown.provenance_read_calc import AudioIdentity
 from classbeat.spotdown.request_model import TrackQuery, analysis_body, match_body
@@ -109,6 +113,15 @@ BROKEN = [
     _broken(lambda g: g.update(evidence=[{"source": "somewhere", "value": True}])),
     _broken(lambda g: g.update(evidence=[{"source": "caller", "value": True, "extra": 1}])),
     _broken(lambda g: g.update(evidence=["caller"])),
+    _broken(lambda g: g.update(evidence=[{"source": "youtube_age_limit", "value": 17}])),  # < 18
+    # unhashable values: a type check comes before every set lookup (#1344 review)
+    _broken(lambda g: g.update(value=[])),
+    _broken(lambda g: g.update(value={"a": 1})),
+    _broken(lambda g: g.update(confidence=[])),
+    _broken(lambda g: g.update(evidence=[{"source": [], "value": True}])),
+    _broken(lambda g: g.update(evidence=[{"source": {"a": 1}, "value": True}])),
+    _broken(lambda g: g.update(evidence=[{"source": "caller", "value": []}])),
+    _broken(lambda g: g.update(evidence=[{"source": "youtube_age_limit", "value": {}}])),
 ]
 
 
@@ -262,3 +275,40 @@ def test_song_and_songout_leave_the_flag_out_unless_true() -> None:
     }
     assert "explicit" not in SongOut(position=1, **out).model_dump(mode="json")
     assert SongOut(position=1, explicit=True, **out).model_dump(mode="json")["explicit"] is True
+
+
+@pytest.mark.parametrize("bad", [[], {}, [1], {"a": []}, None, 1, "yes", True])
+def test_document_group_is_total(bad: Any) -> None:
+    """Never raises, whatever ``content.explicit`` holds (it is called outside the swallow)."""
+    for field in ("value", "confidence", "method", "evidence"):
+        group = {"value": "yes", "confidence": 0.9, "method": "metadata", "evidence": []}
+        group[field] = bad
+        em.document_group({"content": {"explicit": group}})  # must not raise
+    assert em.document_group({"content": {"explicit": bad}}) is None
+    assert em.document_group({"content": bad}) is None
+
+
+# The swallow of the report (no database): only the run-stopping errors pass.
+@pytest.mark.parametrize("error", [RunStopped("cancelled"), LeaseLost(), DatabaseRoleError("x")])
+def test_the_run_stopping_errors_pass_through(
+    error: Exception, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise error
+
+    monkeypatch.setattr(em, "evidence_for", boom)
+    matched = type("M", (), {"playlist": []})()
+    chosen = type("C", (), {"songs": []})()
+    with pytest.raises(type(error)):
+        explicit_report(matched, chosen, {}, None)  # type: ignore[arg-type]
+    assert (RunStopped, LeaseLost, DatabaseRoleError) == pick_explicit.PASSED
+
+
+def test_any_other_error_is_swallowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("planted")
+
+    monkeypatch.setattr(em, "evidence_for", boom)
+    matched = type("M", (), {"playlist": []})()
+    chosen = type("C", (), {"songs": []})()
+    assert explicit_report(matched, chosen, {}, None) == ({}, frozenset())  # type: ignore[arg-type]

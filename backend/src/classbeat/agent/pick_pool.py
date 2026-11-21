@@ -112,7 +112,9 @@ class PoolPick:
     spotify_id: str
     cover: str | None = field(default=None, repr=False)
     year: int | None = None  # the search hit's release year (``taste_check_policy``)
-    explicit: bool | None = None  # Spotify's explicit flag; ``None``: unknown (report only, #1340)
+    explicit: bool | None = field(
+        default=None, repr=False
+    )  # Spotify's explicit flag; ``None``: unknown (report only, #1340)
 
 
 @dataclass(frozen=True)
