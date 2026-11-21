@@ -14,6 +14,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from classbeat.design.revision_spotdown_model import SpotdownSections
+
 
 class UnknownBpmTrack(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -70,6 +72,9 @@ class SpotifyRevisionMusic(BaseModel):
     song_list_id: UUID | None = None
     beat_one: BeatOneList = None
     songs: SongList = None
+    # ADR 0040 SD-P6 stage E (#1303): the tracks on spotdown's sections and the list whose record
+    # gave them (``revision_spotdown_model``); absent on every other draft (stored as before).
+    spotdown: SpotdownSections | None = None
 
 
 class SwedebeatRevisionMusic(BaseModel):

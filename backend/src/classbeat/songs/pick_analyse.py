@@ -41,6 +41,7 @@ from classbeat.songs import pick_match_budget as budget
 from classbeat.songs.pick_analyse_batch import Got, Want, analyse_tracks
 from classbeat.songs.pick_match import PASSED, MatchedPool
 from classbeat.songs.pick_match_batch import Fallback, Session
+from classbeat.songs.seed import Seeded
 from classbeat.spotdown import song_match_config, track_facts_calc, track_fit_policy
 from classbeat.spotdown import song_match_policy as match_policy
 from classbeat.spotdown.client import SpotdownClient
@@ -53,6 +54,7 @@ from classbeat.spotdown.song_analysis_record_model import (
     SongOutcome,
     analysis_record,
 )
+from classbeat.spotdown.song_carry_calc import with_kept
 from classbeat.spotdown.song_refine_calc import Slot, spare_for
 from classbeat.spotdown.spotdown_map_policy import MapRefused, reference_sections
 from classbeat.spotdown.timing_class_policy import decide
@@ -261,3 +263,21 @@ async def analyse_list(
         )
         return chosen, {}
     return refined, record
+
+
+def kept_timing(
+    record: dict[str, Any], seeded: Seeded | None, chosen: ChosenList
+) -> dict[str, Any]:
+    """``record`` with each kept song's spotdown entry of the seed list (SD-P6 stage E,
+    ``song_carry_calc``); ``record`` unchanged when there is no seed, no record, or on an error of
+    any type (the kept songs then keep MOWL's sections). Pure, so nothing passes."""
+    if seeded is None or not record:
+        return record
+    try:
+        kept = [(k.slot, k.spotify_id) for k in seeded.kept]
+        listed = [(s.spotify_id, s.new) for s in chosen.songs]
+        return with_kept(record, seeded.provenance, kept, listed)
+    except Exception as exc:
+        kind = type(exc).__name__
+        logger.warning("spotdown kept timing failed", extra={"error_type": kind})
+        return record

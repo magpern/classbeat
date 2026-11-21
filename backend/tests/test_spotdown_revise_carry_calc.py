@@ -1,0 +1,169 @@
+"""SD-P6 stage E (#1303): the pure parts. ``revision_spotdown_model`` (which tracks a draft had on
+spotdown's sections) and ``song_carry_calc.with_kept`` (a kept song's entry carried into a "Change
+songs" list); and the ``kept_timing`` adapter's swallow."""
+
+import uuid
+from typing import Any
+
+import pytest
+from pydantic import ValidationError
+
+from classbeat.agent import track_timing_calc as tt
+from classbeat.agent.choose_songs import ChosenSong
+from classbeat.agent.songs import KeptSong
+from classbeat.classes.duplicate_music import music_copy
+from classbeat.design.revision_spotdown_model import SpotdownSections, sections_of, stamped
+from classbeat.songs import pick_analyse
+from classbeat.songs.seed import Seeded
+from classbeat.spotdown import song_carry_calc
+from classbeat.spotdown.song_analysis_record_model import KEY
+from classbeat.spotdown.song_carry_calc import with_kept
+
+LIST = uuid.uuid4()
+
+
+def a_map(n: int = 4) -> dict[str, Any]:
+    tracks = [{"track": i + 1, "spotify_id": f"s{i}", "sec": 200.0} for i in range(n)]
+    return {"tracks": tracks, "songs": [], "events": []}
+
+
+# --- revision_spotdown_model ---------------------------------------------------------------------
+
+
+def test_a_map_without_stamps_records_nothing() -> None:
+    assert sections_of(a_map(), LIST) is None
+    assert sections_of(a_map(), None) is None  # today's path never needs a list
+    assert sections_of({"songs": []}, None) is None  # a mix: no tracks
+
+
+def test_the_approximate_tracks_are_recorded_sorted() -> None:
+    m = tt.stamp(tt.stamp(a_map(), 3, "approximate", "youtube"), 1, "approximate", "youtube")
+    assert stamped(m) == [1, 3]
+    assert sections_of(m, LIST) == SpotdownSections(song_list_id=LIST, tracks=[1, 3])
+
+
+def test_an_unusable_stamp_is_not_a_track_on_spotdowns_sections() -> None:
+    m = tt.stamp(a_map(), 0, "unusable", "youtube")
+    assert stamped(m) == []
+
+
+def test_a_stamped_map_without_a_list_fails_closed() -> None:
+    m = tt.stamp(a_map(), 0, "approximate", "youtube")
+    with pytest.raises(ValueError, match="without its song list"):
+        sections_of(m, None)
+
+
+@pytest.mark.parametrize("tracks", [[], [2, 1], [1, 1], [-1], [200], [True]])
+def test_the_model_refuses_a_bad_track_list(tracks: list[Any]) -> None:
+    with pytest.raises(ValidationError):
+        SpotdownSections.model_validate({"song_list_id": LIST, "tracks": tracks})
+
+
+def test_the_model_refuses_an_unknown_key() -> None:
+    with pytest.raises(ValidationError):
+        SpotdownSections.model_validate({"song_list_id": LIST, "tracks": [0], "x": 1})
+
+
+# --- with_kept -----------------------------------------------------------------------------------
+
+
+def entry(position: int, use: str = "spotdown", cls: str = "approximate") -> dict[str, Any]:
+    return {
+        "position": position,
+        "use": use,
+        "analysis_id": f"an{position}",
+        "timing": {"class": cls, "reason": "r", "evidence": {}, "policy_version": "1"},
+    }
+
+
+def record(*entries: dict[str, Any]) -> dict[str, Any]:
+    return {KEY: {"v": 1, "rounds": 0, "songs": list(entries), "swaps": []}}
+
+
+PARENT = record(entry(0), entry(1), entry(2), entry(3, use="sections"), entry(4, cls="unusable"))
+LISTED = [("k0", False), ("k1", False), ("new", True), ("k3", False), ("k4", False)]
+KEPT = [(0, "k0"), (1, "k1"), (3, "k3"), (4, "k4")]
+
+
+def test_each_marked_kept_song_gets_its_parents_entry() -> None:
+    out = with_kept(record(entry(2)), PARENT, KEPT, LISTED)
+    songs = out[KEY]["songs"]
+    assert [e["position"] for e in songs] == [0, 1, 2]
+    assert songs[0] == {**entry(0), "kept": True}
+    assert songs[2] == entry(2)  # the new song's own entry, untouched
+
+
+def test_no_record_means_nothing_is_carried() -> None:
+    assert with_kept({}, PARENT, KEPT, LISTED) == {}
+
+
+def test_a_kept_song_not_in_its_slot_or_marked_new_is_not_carried() -> None:
+    moved = [("k1", False), ("k0", False), ("new", True), ("k3", False), ("k4", False)]
+    assert [e["position"] for e in with_kept(record(), PARENT, KEPT, moved)[KEY]["songs"]] == []
+    renewed = [("k0", True), *LISTED[1:]]
+    assert [e["position"] for e in with_kept(record(), PARENT, KEPT, renewed)[KEY]["songs"]] == [1]
+
+
+def test_a_slot_recorded_twice_in_the_parent_is_not_carried() -> None:
+    parent = record(entry(0), entry(0), entry(1))
+    assert [e["position"] for e in with_kept(record(), parent, KEPT, LISTED)[KEY]["songs"]] == [1]
+
+
+def test_a_slot_the_new_record_names_is_never_overwritten() -> None:
+    own = {**entry(1), "analysis_id": "mine"}
+    out = with_kept(record(own), PARENT, KEPT, LISTED)
+    assert [e["analysis_id"] for e in out[KEY]["songs"]] == ["an0", "mine"]
+
+
+def test_a_slot_outside_the_list_is_not_carried() -> None:
+    assert with_kept(record(), PARENT, [(9, "k9")], LISTED)[KEY]["songs"] == []
+
+
+# --- the adapter ---------------------------------------------------------------------------------
+
+
+def chosen() -> Any:
+    from classbeat.agent import ChosenList
+
+    songs = tuple(ChosenSong(sid, "t", "a", "climb", 120.0, 200, new, None) for sid, new in LISTED)
+    return ChosenList(songs, 1000, 1000, 0, "fill", 0, "")
+
+
+def seeded() -> Seeded:
+    kept = tuple(KeptSong(slot, sid, "t", "a", "climb", 120.0, 200, None) for slot, sid in KEPT)
+    return Seeded(uuid.uuid4(), kept, ("climb",), PARENT)
+
+
+def test_kept_timing_carries_through_the_adapter() -> None:
+    out = pick_analyse.kept_timing(record(entry(2)), seeded(), chosen())
+    assert [e["position"] for e in out[KEY]["songs"]] == [0, 1, 2]
+
+
+def test_kept_timing_without_a_seed_or_a_record_is_unchanged() -> None:
+    assert pick_analyse.kept_timing(record(entry(2)), None, chosen()) == record(entry(2))
+    assert pick_analyse.kept_timing({}, seeded(), chosen()) == {}
+
+
+@pytest.mark.parametrize("error", [KeyError, ValueError, TypeError, RuntimeError])
+def test_an_error_of_any_type_carries_nothing(
+    monkeypatch: pytest.MonkeyPatch, error: type[Exception]
+) -> None:
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise error("injected")
+
+    monkeypatch.setattr(pick_analyse, "with_kept", boom)
+    assert pick_analyse.kept_timing(record(entry(2)), seeded(), chosen()) == record(entry(2))
+
+
+def test_the_calc_reads_the_strict_marks() -> None:
+    assert song_carry_calc.timing_marks(PARENT) == [
+        (0, "approximate", "youtube"), (1, "approximate", "youtube"), (2, "approximate", "youtube"),
+    ]  # fmt: skip
+
+
+def test_a_class_copy_drops_the_record_with_the_list() -> None:
+    music: dict[str, Any] = {
+        "source": "mowl_spotify_playlist", "song_list_id": str(LIST), "fingerprint": "f",
+    }  # fmt: skip
+    music["spotdown"] = {"song_list_id": str(LIST), "tracks": [0]}
+    assert music_copy(music) == {"source": "mowl_spotify_playlist", "fingerprint": "f"}

@@ -811,7 +811,80 @@ on for everyone. **Making it the shipped default still waits for the Spotify gat
 5. **Not yet:** the design draft records which tracks were on spotdown's sections only through its
    `song_list_id` (the list's `spotdown_analysis` record); a refit or a revise of the design reads
    MOWL's analysis again and so designs on today's sections (no stamp), the path before SD-P6.
-   Carrying the stamp there is a later stage of #1303.
+   Carrying the stamp there is a later stage of #1303. *(Done: the stage E amendment below.)*
+
+### Amendment (2026-11-21): spotdown's timing through a revise, a refit and a change of songs, as built (SD-P6 stage E, #1303; closes the gap of stage D item 5)
+
+Recorded with the code. Behind the same allowlist as stages A, B and D: off by default, no value
+turns it on for everyone; **the shipped default still waits for the Spotify gates of plan §7
+(#1298).**
+
+1. **What a draft records.** A draft whose design map had at least one track on spotdown's sections
+   (stamped `approximate` by stage D) adds `music.spotdown = {song_list_id, tracks}`
+   (`design.revision_spotdown_model`): the 0-based positions of those tracks, sorted, and the
+   `song_list` revision whose `spotdown_analysis` record gave them. Every other draft stores exactly
+   as before (spotdown off, every fallback, a mix, a soundless class, a draft on MOWL's sections only).
+   A stamped map without a list cannot happen and fails the job `internal`. Never a title, an
+   analysis id, a source or a URL. A copy of a class (#550) drops it with `song_list_id`.
+2. **The design: re-read through the stage-D path, not a stored map** (Architect's reversible choice).
+   A `revise_draft` or `refit_draft` of such a draft reads the base's `music.spotdown`
+   (`design.spotdown_base`, through the job's own class, only while the switch and allowlist are on),
+   loads that list (`song_list.load`, its hash checked again), requires the music MOWL analysed now to
+   be exactly the list's tracks in order, and runs stage D's `phase2_spotdown.spotdown_music` for
+   **those positions only** (`only`): each analysis read again by its id and verified against the
+   track, as in phase 2 (`songs.spotdown_carry`), before the beat-one corrections are attached. A
+   track the base had on MOWL's sections stays on them, so a revise never changes the timing class of
+   a track the base did not have. The new revision records the positions applied again (so a chain of
+   chat revisions keeps them: a `revise_draft` revision still names no `song_list_id`, as before).
+   *Why not carry the stamped map:* the design map is not stored (only its fingerprint), storing it
+   would add up to tens of KiB per revision, and a stored copy could not be verified again; the
+   re-read is one cheap `GET` per track and the same allowlisted verification as stage D.
+3. **A change of songs** (`revise_songs`, plan §6 "partial changes": a failure after design goes
+   through `revise` for that track only). Phase 1 matches and analyses only the new songs (stages A
+   and B; a kept song is never in the pool). The new list's record then gets, for each kept song still
+   in its own slot, the parent list's entry for that slot as it was, with `kept: true`
+   (`spotdown.song_carry_calc.with_kept`): only a slot the parent marked (`timing_marks`) with exactly
+   one entry, never one the new record names, and only when the new list has a record (stage A and B
+   ran and did not fall back). So the kept songs keep their "timing approximate" label and phase 2
+   reads them again and verifies them (stage D) like the new song.
+4. **Fallbacks, all to today's path.** Per track (MOWL's sections, no stamp): a read `rate_limited`,
+   a document not verified, not mapped or not `approximate`. For the whole revise or refit, the music
+   step exactly as MOWL gave it (byte for byte): switched off or not allowlisted (no read at all), a
+   base without the field (every draft stored before stage E, so a stage-D draft stored before this
+   amendment is revised on MOWL's sections), a field that does not parse, the list gone or not
+   loading, other music than the list's, spotdown unreachable on any read, or an error of any type in
+   `spotdown_base`, `spotdown_carry` or `spotdown_music` (swallowed; only its type is logged; only
+   `RunStopped`, `LeaseLost` and `DatabaseRoleError` pass). In a change of songs an error carrying the
+   kept entries leaves them out (those songs keep MOWL's sections). The refit's `music_changed` check
+   is unchanged (the fingerprint is MOWL's track list, the same either way), and a correction of a
+   Spotify track is keyed by its track number, so it applies to the same track on either sections.
+5. **Not carried:** the composer (ADR 0038) never runs stages A and B, so its lists have no record.
+   A revise whose base was designed before this amendment (no field) designs on MOWL's sections.
+
+**Audit of #1303's acceptance (plan §6, row by row; every test on the fake spotdown, no network):**
+
+| Row or criterion | Test that proves it |
+|---|---|
+| `not_found` | match: `test_spotdown_song_match_job.py::test_missing_candidates_are_left_out_while_the_spares_fill_the_list`, `::test_a_short_pool_gets_a_replacement_round_with_the_swap_recorded`, `::test_at_most_three_rounds_then_mowls_sections_for_the_missing`; analysis: `test_spotdown_song_analysis_job.py::test_a_lost_source_moves_to_the_alternate[not_found]` |
+| `uncertain` | `test_spotdown_song_match_job.py::test_uncertain_and_a_lone_provider_error_keep_their_song_with_mowls_sections`; `test_spotdown_song_analysis_job.py::test_uncertain_and_a_lasting_provider_error_keep_mowls_sections[uncertain]` |
+| `source_unavailable` | `test_spotdown_song_analysis_job.py::test_a_lost_source_moves_to_the_alternate[source_unavailable]`, `::test_every_source_lost_keeps_mowls_sections_for_that_song_only`; match: `::test_missing_candidates_are_left_out_while_the_spares_fill_the_list` |
+| `provider_error` (retry) and the outage | match: `::test_a_provider_error_that_clears_on_its_retry_is_matched`, `::test_unreachable_or_an_outage_is_todays_list_byte_for_byte[outage]`; analysis: `::test_a_provider_error_that_clears_on_its_retry_is_used`, `::test_a_provider_outage_keeps_the_list_and_swaps_nothing`, `::test_three_provider_errors_of_eight_are_not_an_outage` |
+| `rate_limited` (in-run wait, superseding the requeue: stage A item 1, stage B item 2, stage D item 4) and the wait budget | match: `::test_rate_limited_waits_inside_the_jobs_budget_over_its_runs`, `::test_a_wait_that_does_not_fit_the_budget_is_not_made`, `::test_a_429_for_the_whole_request_waits_and_asks_again`; analysis: `::test_rate_limited_waits_inside_the_budget_and_asks_again`, `::test_the_budget_spent_keeps_mowls_sections`; phase 2: `test_spotdown_song_sections_job.py::test_a_song_whose_analysis_is_rate_limited_keeps_mowls_sections_alone`; revise: `test_spotdown_revise_carry_job.py::test_a_failed_read_of_one_track_changes_that_track_only` |
+| `processing_failed` | `test_spotdown_song_analysis_job.py::test_a_lost_source_moves_to_the_alternate[processing_failed:decode_error]`, `::test_one_retry_after_a_timeout_on_the_same_source` |
+| `alignment_failed` | `test_spotdown_song_analysis_job.py::test_alignment_failed_keeps_mowls_sections_without_an_alternate`, `::test_an_unusable_timeline_is_discarded_with_its_evidence` |
+| spotdown unreachable | match: `::test_unreachable_or_an_outage_is_todays_list_byte_for_byte`; analysis: `::test_spotdown_unreachable_is_the_list_as_chosen_byte_for_byte`; phase 2: `test_spotdown_song_sections_job.py::test_a_fallback_at_phase_two_is_exactly_today`; revise: `test_spotdown_revise_carry_job.py::test_a_fallback_in_a_revise_is_exactly_todays_music` |
+| Off is identical to today | `test_spotdown_song_match_job.py::test_off_sends_nothing_and_writes_nothing` (no YouTube among its cases), `test_spotdown_song_analysis_job.py::test_off_analyses_nothing`, `test_spotdown_song_sections_job.py::test_a_fallback_at_phase_two_is_exactly_today[off]`, `test_spotdown_revise_carry_job.py::test_a_fallback_in_a_revise_is_exactly_todays_music[off]`, `::test_a_change_with_spotdown_off_carries_nothing` |
+| The whole pool is never analysed | `test_spotdown_song_analysis_job.py::test_only_the_chosen_songs_are_analysed_and_each_is_approximate`, `::test_a_replace_analyses_only_its_new_song`; `test_spotdown_revise_carry_job.py::test_a_change_of_one_song_analyses_it_alone_and_keeps_the_others_timing` |
+| No beat-precise instruction on an `approximate` track | `test_agent_timing_gate.py`, `test_evals_spotify_approximate.py::test_the_validator_refuses_a_precise_cue_on_the_approximate_map` (and the revise and refit design on the stamped map: `test_spotdown_revise_carry_job.py`) |
+| A failure in one track leaves the others unchanged | `test_spotdown_song_analysis_job.py::test_every_source_lost_keeps_mowls_sections_for_that_song_only`, `test_spotdown_song_sections_hook.py::test_only_the_marked_songs_change`, `test_spotdown_revise_carry_job.py::test_a_failed_read_of_one_track_changes_that_track_only`, `::test_a_track_the_base_had_on_mowls_sections_stays_on_them` |
+| Partial changes: after design, through `revise` for that track only | `test_spotdown_revise_carry_job.py::test_a_change_of_one_song_analyses_it_alone_and_keeps_the_others_timing`, `::test_a_revise_and_a_refit_of_it_keep_the_tracks_on_spotdowns_sections`, `::test_a_refit_keeps_them_and_applies_the_correction` |
+| The Spotify gates of §7 before the default switch | **owner-gated: #1298** (no agent turns the switch on) |
+
+**Not built: an e2e against the fake.** The e2e stack (`compose.e2e.yaml`, `e2e/`) has fakes for
+MOWL, Spotify, OIDC, Paddle and the gateway but none for spotdown; one would need a new fake service,
+its egress origin and key file in the stack, and the allowlist switched on for an e2e user. The job
+tests above run the whole worker path (the jobs API, the queue, the fenced transactions, Postgres)
+against the in-process fake instead; an e2e is left for the hardening batch or the default switch.
 
 ## Status
 

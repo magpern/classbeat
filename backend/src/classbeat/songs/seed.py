@@ -1,7 +1,9 @@
 """The seed of a replace (ADR 0008 section 6), split out of ``classbeat.songs.pick``: the list a
 change of songs starts from, re-read and re-hashed in the worker through the job's own class."""
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
@@ -28,11 +30,13 @@ class SeedSpec:
 
 @dataclass(frozen=True)
 class Seeded:
-    """A replace: the plan's kept songs and replaced roles, and the seed list (the parent)."""
+    """A replace: the plan's kept songs and replaced roles, and the seed list (the parent) with
+    its provenance (a kept song's spotdown timing, ``song_carry_calc``)."""
 
     revision_id: UUID
     kept: tuple[KeptSong, ...]
     roles: tuple[str, ...]
+    provenance: Mapping[str, Any] = field(default_factory=dict[str, Any])
 
 
 async def class_of(fs: FencedSession) -> UUID:
@@ -65,4 +69,4 @@ async def load_seeded(run: JobRun, seed: SeedSpec | None) -> Seeded | None:
         if slot not in replaced
     )
     roles = tuple(found.content.songs[slot].role for slot in sorted(replaced))
-    return Seeded(seed.song_list_revision_id, kept, roles)
+    return Seeded(seed.song_list_revision_id, kept, roles, found.provenance)

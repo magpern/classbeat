@@ -38,10 +38,13 @@ def build_refit(
     *,
     base_revision_id: UUID,
     song_list_id: UUID | None = None,
+    spotdown_list_id: UUID | None = None,
 ) -> DraftRevision:
     """The base's content fitted again to the corrected music. Stored even when the content is
     the base's again: its ``music.beat_one`` records the corrections now applied."""
-    content, content_hash, music, running = content_and_music(result, music_map, step, song_list_id)
+    content, content_hash, music, running = content_and_music(
+        result, music_map, step, song_list_id, spotdown_list_id
+    )
     made = RefitProvenance(
         origin="beat_one",
         base_revision_id=base_revision_id,

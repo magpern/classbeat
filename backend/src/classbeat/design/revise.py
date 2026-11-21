@@ -33,7 +33,8 @@ retry restarts the stage from its beginning and the final store is the only writ
    and the change summary records a ``game_retired`` Not as asked item (ADR 0029 section 3);
 2. the music step of ``design_draft`` (``kind.music_step``: the playlist, or the mix after
    ``mixadmit.still_on``); a fingerprint that differs from the base revision's is told to the
-   model as a fact;
+   model as a fact; a base that had tracks on spotdown's sections has them read again
+   (``spotdown_base``, ``songs.spotdown_carry``; ADR 0040 SD-P6 stage E), else today's music;
 3. for a brief that states values (``Brief.explicit``; the class's, with the nearest stated layer
    of the base's chain applied, ``chat.load_base``), the request's stated values layered onto it
    (``classbeat.design.revise_stated``, #904: the ``interpret`` stage told the class's values,
@@ -51,16 +52,10 @@ retry restarts the stage from its beginning and the final store is the only writ
 """
 
 import uuid
-from typing import Annotated, ClassVar, Final, Self
+from typing import Final
 from uuid import UUID
 
-from pydantic import (
-    AfterValidator,
-    BaseModel,
-    Field,
-    StringConstraints,
-    model_validator,
-)
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import quota
@@ -68,7 +63,6 @@ from classbeat.agent import run_stage
 from classbeat.agent.records import JobStageHost
 from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested
 from classbeat.agent.running import revise_stage_for
-from classbeat.agent.schemas import clean_text
 from classbeat.context import UserContext
 from classbeat.design import (
     chat,
@@ -89,45 +83,20 @@ from classbeat.design.kind import (
     group_model,
     music_step,
 )
-from classbeat.design.revise_sketch import SketchBaseField, admit_base
+from classbeat.design.revise_input import MAX_REQUEST as MAX_REQUEST
+from classbeat.design.revise_input import Request as Request
+from classbeat.design.revise_input import ReviseDraftInput as ReviseDraftInput
+from classbeat.design.revise_input import Sha256Hex as Sha256Hex
+from classbeat.design.revise_sketch import admit_base
 from classbeat.design.revise_soundless import run_soundless
 from classbeat.design.sport_rules import rules_for
+from classbeat.design.spotdown_base import base_sections
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
-from classbeat.jobs.inputs import ModelJobInput
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.quota.route import with_plan, with_plan_run
 
 KIND: Final = "revise_draft"
 STAGES: Final = ("music", "revise")
-MAX_REQUEST: Final = 2000
-
-
-def _visible(value: str) -> str:
-    cleaned = clean_text(value)
-    if not cleaned:
-        raise ValueError("must have visible text")
-    return cleaned
-
-
-Request = Annotated[str, Field(min_length=1, max_length=MAX_REQUEST), AfterValidator(_visible)]
-Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
-
-
-class ReviseDraftInput(SketchBaseField, ModelJobInput):
-    CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl",)
-
-    base_revision_id: UUID
-    request: Request
-    mowl_connection_id: UUID
-    # Server fields: only ``admit`` sets them (a browser sending one is refused).
-    base_revision_hash: Sha256Hex | None = None
-    request_message_id: UUID | None = None
-
-    @model_validator(mode="after")
-    def _a_class_of_its_own(self) -> Self:
-        if self.class_id is None:
-            raise ValueError("a revision names its class")
-        return self
 
 
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
@@ -208,7 +177,10 @@ async def run(job_run: JobRun) -> Complete:
     if brief.sport == sport.RUNNING:
         sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)
     await job_run.stage("music")
-    step = await music_step(job_run, runtime, music, given.mowl_connection_id, base.fingerprint)
+    carry = await base_sections(job_run, base_id)  # SD-P6 stage E: None is today's path
+    step = await music_step(
+        job_run, runtime, music, given.mowl_connection_id, base.fingerprint, carry
+    )
     handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
         # The stored brief only: the request text never reaches the engine (ADR 0017 section 1).
@@ -250,6 +222,7 @@ async def run(job_run: JobRun) -> Complete:
             base_hash=base_hash,
             request_message_id=request_message_id,
             rules=rules.provenance() if rules else None,
+            spotdown_list_id=carry.song_list_id if carry is not None else None,
         )
         draft = with_interpretation(
             draft,

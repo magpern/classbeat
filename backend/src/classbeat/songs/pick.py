@@ -79,7 +79,7 @@ from classbeat.playlists import open_spotify, write_pool
 from classbeat.songs import song_list
 from classbeat.songs.config import SongConfig
 from classbeat.songs.inputs import SongJob
-from classbeat.songs.pick_analyse import analyse_list
+from classbeat.songs.pick_analyse import analyse_list, kept_timing
 from classbeat.songs.pick_match import MatchedPool, match_pool
 from classbeat.songs.search import job_searcher
 from classbeat.songs.seed import SeedSpec, load_seeded
@@ -194,6 +194,7 @@ async def run_phase_one(
         )
         # SD-P6 (#1303): spotdown's analysis of the chosen songs only, and the refinement.
         chosen, analysis = await analyse_list(run, matched, step.data.analysis["map"], chosen)
+        analysis = kept_timing(analysis, seeded, chosen)  # stage E: a kept song keeps its timing
         record = matched.record([s.spotify_id if s.new else "" for s in chosen.songs])
         built = song_list.build(
             chosen,

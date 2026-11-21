@@ -48,9 +48,11 @@ def music_source_copy(source: Any) -> dict[str, str] | None:
 
 
 def music_copy(music: Any) -> dict[str, Any]:
-    """The revision's music reference without the source class's song list."""
+    """The revision's music reference without the source class's song list (``song_list_id``,
+    and ``spotdown``, which names one too: the copy's revise designs on MOWL's sections)."""
     copied = _dict(music)
     copied.pop("song_list_id", None)
+    copied.pop("spotdown", None)
     return copied
 
 
