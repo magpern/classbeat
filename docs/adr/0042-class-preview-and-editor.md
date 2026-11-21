@@ -362,6 +362,26 @@ it by target (`reference`, `occurrence`); a record whose song is no longer in th
 - The implementing PR audits every stateful stage: decoder seek, resampler, fade gains, bass-swap filters,
   mixer buffer. If one carries state across pieces, the window decodes from the earliest piece whose state
   reaches it.
+  - **The audit (R1, #1392).** No stage carries state from one piece to another, so the earliest piece
+    that *meets the window* is the earliest to decode; a piece that does not meet it is not opened.
+    | Stage | State | Where it starts |
+    |---|---|---|
+    | decoder (libsndfile) and soxr stream | the decoder's and the resampler's history | the file's first sample, per piece (no seek) |
+    | fade gains | none: a function of the sample's position in its piece | any sample |
+    | bass-swap bands (`render_curves`) | one held fade with `HALF` samples of context, the FIR reads zeros outside | the fade, per piece |
+    | mixer buffer | the samples not yet written | the window's start; pieces add in plan order, as the full render does |
+    A piece that meets the window is fed through `shaped` from its first block; only the blocks outside
+    the window are not added to the mixer. So the window's samples are the full render's, bit for bit
+    (the tests assert the 1e-6 tolerance of §6.2; the measured maximum difference over the 12 cases is 0).
+  - **The decode cost of a late or loop piece (case 12), measured** on one cloud container core: reaching a piece's
+    first sample by decoding the file from its start costs about 0.06 s per minute of file position for a
+    44.1 kHz MP3 and about 0.1 s for a 48 kHz one (one soxr stream): 0.3 s at 5 min and 0.5 s at 8 min (44.1
+    kHz), 0.5 s and 0.9 s (48 kHz). A whole child run for a 4-minute window whose first piece began 5 min
+    earlier took 9.7 s, against 9.1 s for the window at the mix start: the 320 kb/s MP3 encode (about 2.3 s per
+    minute of output) dominates and the late piece adds about half a second. No pre-roll or seek is worth it.
+  - `validate_plan` also **requires** a `window` on a `preview` plan (a preview with none would be a whole
+    mix outside the output path), and bounds it: whole samples, `0 <= start < end <= composed`, at most 6 min
+    (`MAX_WINDOW_FRAMES`). The published path (`render_files`) names `purpose: "output"` itself.
 - **Quality:** 320 kb/s CBR MP3, the same libsndfile encoder as the final mix, one encode per window. The
   bass swap follows the same `render_plan` rule and setting as the output (amendment B8: off by default).
 
@@ -448,6 +468,25 @@ position, and **Review transition** gives the fade start − 15 s. Then:
   window preloaded and switched on `ended`.
 - The short gap at a join is **accepted and documented**. A trivial correction (starting the next clip at
   the measured delay) may be applied if the measurement shows it is enough; nothing beyond that.
+- **The measurement (R1, #1392).** A known click (8 samples of 0.9 in a silent stereo file) was written
+  through the child's own encoder (`soundfile` 0.14.0 over libsndfile 1.2.2, LAME 3.100 inside it; 320 kb/s
+  CBR, 44.1 kHz) and decoded three ways, for a direct encode and for a real child window render
+  (`{"purpose": "preview", "window": [8 s, 14 s)}` over a source with the click at 10 s):
+  - **A gapless tag is written.** libsndfile writes an `Info` frame (the LAME header of a CBR file) first,
+    with `LAME3.100` and the encoder delay **576** samples and end padding **756** samples. The encoded
+    stream is `frames x 1152` samples: for 3 s (132300 samples) it is 116 frames, 133632 samples,
+    132300 + 576 + 756. A decoder adds its own 529 samples of delay, so a decoder that **ignores** the
+    tag shows the click **1105 samples (25.1 ms) late** and a stream 1332 samples (30.2 ms) long
+    (measured with the `Info` frame cut off, decoded by ffmpeg).
+  - **Decoders that read the tag are exact.** libsndfile (`soundfile.read`), ffmpeg and **Chromium**
+    (Google Chrome for Testing 153, `decodeAudioData` and an `<audio>` element's `duration`) all gave
+    exactly the written length (132300 samples for the 3 s file; 264600 for the 6 s window, 6.000 s) and
+    the click at exactly its written sample (44100 and 88200), so a window's decoded length is the window's
+    to the sample, well inside `length_ok`'s 100 ms, and a window's audio starts and ends at its edges.
+  - **So the first release needs no correction at a join**: two `<audio>` elements switched on `ended`
+    differ from gapless only by the element switch, which is the accepted gap. A client that ignores the
+    tag would add about 25 ms at the start and 5 ms of padding at the end of each clip; nothing is done
+    for such a client.
 
 **The cache key** is `sha256` of a canonical JSON of:
 - the sha256 of the **stored plan**: the reference-keyed `output_body_policy.render_plan`, not the child's plan
