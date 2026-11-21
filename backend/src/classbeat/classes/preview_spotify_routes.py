@@ -111,11 +111,15 @@ def _state(found: State) -> dict[str, Any]:
 
 
 _NOT_FOUND = Refusal("not_found", 404)
-_Ctx = Annotated[UserContext, Depends(auth.require_user)]
 
 
 @router.post("/{class_id}/preview/spotify/audition", responses={404: {}, 409: {}, 422: {}})
-async def audition(class_id: str, body: AuditionIn, request: Request, ctx: _Ctx) -> JSONResponse:
+async def audition(
+    class_id: str,
+    body: AuditionIn,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)],
+) -> JSONResponse:
     """Play the current draft's song ``piece_index`` from ``position_ms`` on the user's device."""
     wanted = _uuid(class_id)
     if wanted is None:
@@ -138,7 +142,9 @@ async def audition(class_id: str, body: AuditionIn, request: Request, ctx: _Ctx)
 
 
 @router.post("/{class_id}/preview/spotify/pause", responses={404: {}, 409: {}})
-async def pause(class_id: str, request: Request, ctx: _Ctx) -> JSONResponse:
+async def pause(
+    class_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
+) -> JSONResponse:
     wanted = _uuid(class_id)
     if wanted is None:
         return _refuse(_NOT_FOUND)
@@ -150,7 +156,9 @@ async def pause(class_id: str, request: Request, ctx: _Ctx) -> JSONResponse:
 
 
 @router.get("/{class_id}/preview/spotify/state", responses={404: {}, 409: {}})
-async def state(class_id: str, request: Request, ctx: _Ctx) -> JSONResponse:
+async def state(
+    class_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
+) -> JSONResponse:
     wanted = _uuid(class_id)
     if wanted is None:
         return _refuse(_NOT_FOUND)
@@ -159,7 +167,9 @@ async def state(class_id: str, request: Request, ctx: _Ctx) -> JSONResponse:
 
 
 @router.get("/{class_id}/preview/spotify/devices", responses={404: {}, 409: {}})
-async def devices(class_id: str, request: Request, ctx: _Ctx) -> JSONResponse:
+async def devices(
+    class_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
+) -> JSONResponse:
     wanted = _uuid(class_id)
     if wanted is None:
         return _refuse(_NOT_FOUND)
