@@ -108,8 +108,13 @@ async def test_the_run_reads_only_the_jobs_own_class(
 ) -> None:
     rider, class_id, _ = await designed(studio)
     job_id = await admitted(studio, rider, class_id)
-    other = UUID(int=class_id.int ^ 1)  # an id the job's row does not name
-    set_input(studio, job_id, "{class_id}", str(other))
+    # The job's row now names another class of the user: the run must not act on the input's id.
+    other = studio.songs.sql(
+        "INSERT INTO classes (id, owner_id, title) VALUES (gen_random_uuid(), :o, 'Other') "
+        "RETURNING id",
+        o=rider.user_id,
+    ).scalar_one()
+    studio.songs.sql("UPDATE jobs SET class_id = :c WHERE id = :id", c=other, id=job_id)
     derived: list[object] = []
     real = mix_apply.derive
 
