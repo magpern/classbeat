@@ -138,10 +138,11 @@ The owner's direction (2026-11-15):
    - A cache hit needs no download. **The audio is deleted at once.**
 2. **The mix spec** is `{tracks: [{reference, start_sec, end_sec}], crossfades: [int, …], map_version}`. The
    pure `mix_plan_policy` validates it against the stored analysis, never against model text:
-   - The order is a permutation of the approved references, with no gaps (§3.3). *(Proposed amendment of
-     2026-11-21, #1331, at the end: each approved reference at least once, and a song may repeat.)*
+   - The order is a permutation of the approved references, with no gaps (§3.3). *(Amended 2026-11-21,
+     #1331, at the end: each approved reference at least once, and a song may repeat.)*
    - `0 <= start_sec < end_sec <= length`. Cuts snap to the nearest downbeat of the analysis. At least 60 s of
-     each track plays.
+     each track plays. *(Amended 2026-11-21, #1331, A4.4 at the end: a loop piece may be shorter; its loop
+     run plays at least 60 s.)*
    - Each crossfade is a whole number of seconds from 0 to 30, shorter than the played window of **both**
      neighbouring tracks. For every middle track, the incoming plus the outgoing crossfade is shorter than its
      window, so part of each track plays alone.
@@ -422,13 +423,14 @@ Each PR is tested on fakes. Security-critical PRs get an Opus Developer and an O
 
 ## Amendment (2026-11-21, owner): a song may appear more than once in a mix (#1331)
 
-Status: **Proposed** until its Opus review. Amends §4.2 ("a permutation of the approved references") and adds
+Status: **Accepted (owner decisions 2026-11-21; Opus review PASS on #1332).** Review findings applied in
+#1341. Amends §4.2 ("a permutation of the approved references") and adds
 to §4.4, §5, §6 and §10. Authorized by the owner on 2026-11-21, with these product decisions the same day:
 the same song may appear many times in a class; the same window may be reused anywhere, not only next to
 itself (for example one 1-minute recovery piece used at every recovery); back-to-back pieces of one song are
 a loop (for example a chorus two or three times in a row); and a whole track is not repeated unless the user
 asked for it. Roadmap Amendment 33 records it. Everything not named here is unchanged. Nothing is built by
-this amendment; the implementation issue opens after it is accepted.
+this amendment; the implementation issue is #1342.
 
 **Terms.** A **piece** is one entry of the mix spec's `tracks`. A **repeat** is a piece whose `reference`
 appeared in an earlier piece. A **loop join** is a change of piece where both pieces have the **same**
@@ -440,7 +442,8 @@ a repeat that is not a loop piece.
 
 `{tracks: [{reference, start_sec, end_sec}], crossfades, map_version}` already holds a list of pieces, and the
 render plan is a list of audio pieces. No field is added: a repeat is the same `reference` in another piece. The
-model still sees indexes, never references (§3.4); a repeat names the same index again.
+model still sees indexes, never references (§3.4); a repeat names the same index again. Every hint of this
+amendment (A2, A5) names a track or piece **index**, never a reference.
 
 ### A2. Coverage and bounds
 
@@ -451,7 +454,8 @@ model still sees indexes, never references (§3.4); a repeat names the same inde
   at most `MAX_TRACKS` (40) **pieces** in all (`too_many_tracks`) and 150 minutes (`mix_too_long`). There is no
   `too_many_repeats` reason.
 - **Soft hint `one_song_dominates`:** one reference fills more than half of the composed duration (its pieces'
-  windows less their outgoing crossfades). It reaches the model as a named hint and is shown on the timeline;
+  windows less their outgoing crossfades), and that reference has two or more pieces **or** the approved list has
+  two or more songs (a class of one song played once is never flagged). It reaches the model as a named hint and is shown on the timeline;
   it never refuses a draft.
 
 ### A3. Non-adjacent repeats are ordinary pieces
@@ -468,17 +472,22 @@ be identical to an earlier piece's or different.
    (spotdown off or not yet run for the track) refuses it: `loop_needs_exact_timing`. Such a song may still
    repeat non-adjacently (A3).
 2. **On phrase points, else downbeats.** At each loop join the outgoing piece's `end_sec` and the incoming
-   piece's `start_sec` each land, after snapping, within **30 ms** (the lock tolerance of #1330) of a
-   **trusted** candidate of #1328: a phrase start or phrase end when the track has a trusted phrase grid,
-   otherwise a trusted downbeat. A loop piece's window is therefore a whole number of bars of its own grid.
-   Otherwise `loop_not_on_phrase`. The run's **outer** edges (into the first piece and out of the last) are
+   piece's `start_sec` each land within **30 ms** (the lock tolerance of #1330) of a **trusted** candidate of
+   #1328: a phrase start or phrase end when the track has a trusted phrase grid, otherwise a trusted downbeat.
+   The point compared is the **snapped cut** (after A7 step 3, on the `TrackFacts` bar grid) against the
+   **trusted candidate's own time** (spotdown's measured point, not re-snapped). Late in a long track the two
+   grids can drift apart by more than 30 ms; the check then refuses (it fails closed), and the implementation
+   tests a long track to show where. A piece **between two loop joins** therefore plays a whole number of bars;
+   the first and last pieces of a run have one ordinary outer edge and need not. Otherwise
+   `loop_not_on_phrase`. The run's **outer** edges (into the first piece and out of the last) are
    ordinary transitions.
 3. **No crossfade at a loop join.** Its crossfade is **0**: the two pieces share one tempo and one grid, so a
    cut on a phrase point is seamless, while a whole-second overlap would put the grids out of step. Otherwise
    `loop_crossfade_not_zero`. *(Reversible: if #1330 brings an accepted proposal for crossfades of whole bars, a
    loop join may take one.)*
-4. **The minimum length of a loop piece** is `MIN_LOOP_BARS` = **8 bars** (one phrase of four-four), counted on
-   the track's own grid; otherwise `loop_piece_too_short`. `MIN_PLAYED_SEC` does not apply to a single loop
+4. **The minimum length of a loop piece** is `MIN_LOOP_BARS` = **8 bars** (one phrase of four-four), on the
+   grid the snap uses: `cs(end) - cs(start) >= cs(MIN_LOOP_BARS * 240 / bpm)` with the track's
+   `TrackFacts.bpm`; otherwise `loop_piece_too_short`. `MIN_PLAYED_SEC` does not apply to a single loop
    piece. It applies to the **loop run**: the run's windows together (its joins have no crossfade) play at least
    60 s, so a song still never plays for less than a minute at a stretch (`window_too_short`). A run of one
    piece is an ordinary piece and keeps the 60 s rule.
@@ -497,8 +506,8 @@ keeps it.
 
 - **The one duration rule is unchanged:** the sum of the pieces' windows less the sum of the crossfades, with
   every piece counted, a repeat as often as it plays, and a loop join adding 0. `compose_map` and `mix_offsets`
-  take the pieces in order, the same analysis once per piece. The Developer confirms that `mowl.compose` does
-  not key pieces by track; if it does, a mowl-workouts change comes first.
+  take the pieces in order, the same analysis once per piece. Whether `mowl.compose` keys pieces by track is the
+  **first task** of #1342; if it does, a mowl-workouts change comes first.
 - **The crossfade rules are unchanged per piece:** one crossfade per change of piece, whole seconds 0 to 30,
   shorter than **both** neighbouring pieces' windows, and for every middle piece the incoming plus the outgoing
   crossfade shorter than its window. A4.3 adds only that a loop join's crossfade is 0.
@@ -510,14 +519,16 @@ keeps it.
 ### A7. The validation order (extends #580's fixed order)
 
 `mix_plan_policy.checked` stays the only validator (no second spec shape). After the shape checks that come
-first today (`unknown_field`, `tempo_change`, `list_has_gap`, at least one piece, `too_many_tracks` on pieces),
-the order is fixed:
+first today (`unknown_field`, `tempo_change`, `list_has_gap`, at least one piece, `too_many_tracks` on pieces,
+and per piece a **reference on the approved list**, else `not_a_permutation`, as `_track` refuses it today,
+since step 1 needs that track's facts), the order is fixed:
 
 1. the range check of each proposed cut (`cut_out_of_range`);
 2. candidate selection (#1328);
 3. the bar-grid snap, `exact` only;
 4. the range check again after snapping;
-5. **coverage** (A2): each approved reference at least once, nothing else (`not_a_permutation`);
+5. **coverage** (A2): each approved reference at least once (`not_a_permutation`; "nothing else" is already
+   held by the per-piece check above);
 6. **loop joins** (A4), for each join in mix order: `loop_needs_exact_timing`, then `loop_not_on_phrase`;
 7. **lengths:** each loop piece at least `MIN_LOOP_BARS` (`loop_piece_too_short`); every other piece and every
    loop run at least `MIN_PLAYED_SEC` (`window_too_short`);
@@ -547,6 +558,12 @@ Every constraint is checked after snapping. The new refusal reasons are `loop_ne
   are silent on it (the app's per-track editor was observed, never a duplicate). Until A9 settles it,
   `output_choice_policy` refuses `swedebeat_playlist` for a draft whose spec has any repeated reference, and
   `produce_outputs` checks it again when the job runs (defence in depth): nothing is written.
+  - **The reason is `playlist_has_repeats`.** `refusal` takes a "has repeats" fact derived from the draft's
+    spec, and its fixed order becomes `invalid_input`, `mowl_needs_mix`, `playlist_has_repeats`, `output_off`.
+  - At job time `outputs_admit.bound` re-runs `refusal`; `outputs_kind` maps `playlist_has_repeats` to a job
+    failure of the same name (never the `invalid_input` fallback).
+  - The copy keys are `studio.reason.playlist_has_repeats` (the refusal) and `studio.out.playlistHasRepeats`
+    (the note on the disabled option), in en, sv and da.
 - **The output choice and the consent screen say so:** the playlist option is off and disabled with "This class
   repeats a song, so it can be produced as a mix only" (en, sv, da). The design prompt tells the model that
   repeats make a class mix-only; a user who wants the playlist asks for a version without repeats through
@@ -563,24 +580,26 @@ Every constraint is checked after snapping. The new refusal reasons are `loop_ne
   crossfade. If it does, a later amendment lifts the mix-only rule; if not, it stays. Agents run no live check
   and never call a real gateway.
 - **Rights (L4b).** Whether the owner's L4b decision to render and publish a mix covers **repeated or looped
-  sections** of a catalogue track is the owner's decision. Until it is answered, a mix with repeats is held to
-  the same L4b gate, and no mix is published anyway before L4b holds.
+  sections** of a catalogue track is the owner's decision. The L4b answer counts for a mix with repeats **only
+  when it explicitly covers repeated or looped sections**; a general L4b answer does not. The owner turns
+  `swedebeat_mix` on (§10), so this is the owner's control, and no mix is published before L4b holds.
 
 ### A10. Approval
 
 The mix spec, repeats included, is in the studio draft's `content_hash` (§1), so a change to the repeats is a
 new draft and a new hash, like any cut, and the consent binding sees it. The model proposes the pieces; the
 backend validates them against the stored analyses and timing decisions, never against model text (T129). The
-owner's decisions on #1330 hold: the model may reorder and repeat within the approved list; a song swap goes
-through `revise_songs`.
+model may **reorder** the approved list (#1330's clarification of 2026-11-21) and **repeat** within it (this
+amendment, #1331, owner 2026-11-21); a song swap still goes through `revise_songs`.
 
-### A11. The work (after acceptance)
+### A11. The work
 
-One implementation issue, Opus Developer and Opus Reviewer (the mix spec feeds the external writes): the loop
+One implementation issue, #1342, Opus Developer and Opus Reviewer (the mix spec feeds the external writes). Its
+**first task** is the `mowl.compose` check of A6. Then: the loop
 module and `checked` order, the soft hints, `output_choice_policy` and the job's re-check, X-Tracks, the render
 download of each distinct reference once, the timeline marks, the prompts and their `prompt_version`s, the
 consent text in en, sv and da, and tests: table-driven cases for every new reason and hint, the existing
 `test_mix_plan_policy.py` unchanged except the reworded `not_a_permutation` text, the duration rule, the
-crossfade rules and the 10 % tolerance with repeats, and mutation checks on the `exact` gate, the phrase
-tolerance, the loop-join crossfade and the playlist refusal. The loop joins depend on #1328's trusted
+crossfade rules, the 10 % tolerance and a long-track loop (A4.2) with repeats, and mutation checks on the
+`exact` gate, the coverage rule, the phrase tolerance, the loop-join crossfade and the playlist refusal. The loop joins depend on #1328's trusted
 candidates; non-adjacent repeats do not.
