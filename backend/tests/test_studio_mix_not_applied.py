@@ -4,7 +4,7 @@ SwedeBeat gateway, ``FakeProvider``, spotdown's ``exact`` maps, the render child
 Postgres as ``classbeat_app``; never the network.
 
 - ``mix_not_applied``: an unapplied proposal with a cut on a track that is not ``exact``
-  (``approximate``, or no timing decision), approved with DJ mix, is refused at the choice and,
+  (``approximate`` or ``unusable``), approved with DJ mix, is refused at the choice and,
   past it, when the job runs (no gateway request); the same proposal with only ``exact`` cuts
   inside the class length is admitted and produced; a proposal outside the class length is refused
   for the SwedeBeat playlist alone;
@@ -19,15 +19,13 @@ Postgres as ``classbeat_app``; never the network.
 import copy
 import json
 import uuid
-from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
 import pytest
 
-from classbeat.design import revision, track_analysis
+from classbeat.design import revision
 from classbeat.jobs.errors import RETRYABLE
-from classbeat.spotdown import studio_tracks_config
 from classbeat.studio.mix_choice_model import MixChoiceRefused, MixChoices, Proposal, canonical
 from classbeat.studio.mix_choice_policy import applied
 from classbeat.studio.mix_facts_model import of_map
@@ -35,7 +33,7 @@ from classbeat.swedebeat_studio import applied_form, outputs_admit
 from classbeat.swedebeat_studio.applied_form import Form
 from gatewaycore import SESSION_PATH
 from songtools import new_key
-from spotdownfake import spotdown  # noqa: F401 - fixture
+from spotdownfake import FakeSpotdown
 from studiomaps import track_map
 from studiooutputs import (
     Renders,
@@ -47,12 +45,13 @@ from studiooutputs import (
     run_job,
 )
 from studiotools import StudioEnv, StudioRider
-from test_spotdown_studio_design import ON, no_pause, spotdown_maps  # noqa: F401 - fixtures
+from test_evals_studio_spotdown import document
 from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage]
     MIX_8,
     WHOLE_8,
     analysed,  # noqa: F401 - the autouse stand-in of the sandboxed child
     designed,
+    spotdown,  # noqa: F401 - the fake spotdown the stand-in answers from
 )
 
 pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on")
@@ -126,7 +125,7 @@ def set_timing(studio: StudioEnv, owner: UUID, reference: str, timing: str) -> N
 
 
 async def designed_exact(studio: StudioEnv, mix: dict[str, Any]) -> tuple[Any, UUID, Any]:
-    studio_tracks_config.configure(ON)  # every track ``exact`` (spotdown's played recording)
+    """Designed on spotdown's maps: every track ``exact`` (the played recording)."""
     rider, class_id, _list, current = await designed(studio, mix)
     records = studio.songs.revision(current.current_revision_id).music["analyses"]
     assert {r["provenance"]["timing"]["class"] for r in records} == {"exact"}
@@ -141,12 +140,12 @@ def last_reference(studio: StudioEnv, current: Any) -> str:
 # --- mix_not_applied on a proposal -----------------------------------------------------------
 
 
-@pytest.mark.usefixtures("spotdown_maps")
-async def test_a_cut_on_an_approximate_track_is_refused_with_dj_mix(
-    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("timing", ["approximate", "unusable"])
+async def test_a_cut_on_a_track_that_is_not_exact_is_refused_with_dj_mix(
+    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch, timing: str
 ) -> None:
     rider, class_id, current = await designed_exact(studio, cut_last())
-    set_timing(studio, rider.user_id, last_reference(studio, current), "approximate")
+    set_timing(studio, rider.user_id, last_reference(studio, current), timing)
     for outputs in (["swedebeat_mix"], ["swedebeat_playlist", "swedebeat_mix", "mowl"]):
         assert await refused(studio, rider, class_id, current, *outputs) == "mix_not_applied"
     assert await refused(studio, rider, class_id, current, "swedebeat_playlist") == (
@@ -162,7 +161,7 @@ async def test_a_cut_on_an_approximate_track_is_refused_with_dj_mix(
 @pytest.mark.parametrize(
     ("mix", "outputs", "reason"),
     [
-        (None, ("swedebeat_mix",), "mix_not_applied"),  # the cut on a local track
+        (None, ("swedebeat_mix",), "mix_not_applied"),  # a cut on an approximate track
         (MIX_8, ("swedebeat_playlist",), "mix_not_chosen"),
     ],
 )
@@ -175,7 +174,9 @@ async def test_the_create_transaction_checks_both_facts_again(
 ) -> None:
     """The route's pre-check passed (stood in), the create's own check (``admit``, under the
     class row's lock) still refuses: no job stored, nothing asked of the gateway."""
-    rider, class_id, _list, current = await designed(studio, mix or cut_last())
+    rider, class_id, current = await designed_exact(studio, mix or cut_last())
+    if mix is None:
+        set_timing(studio, rider.user_id, last_reference(studio, current), "approximate")
     real = applied_form.form
     calls: list[int] = []
 
@@ -188,18 +189,6 @@ async def test_the_create_transaction_checks_both_facts_again(
     assert len(calls) == 2  # the pre-check, then the create transaction
 
 
-async def test_a_cut_on_a_track_without_a_timing_decision_is_refused_with_dj_mix(
-    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    rider, class_id, _list, current = await designed(studio, cut_last())  # local analyses
-    assert await refused(studio, rider, class_id, current, "swedebeat_mix") == "mix_not_applied"
-    done = await admitted_past_the_check(
-        studio, monkeypatch, rider, class_id, current, "swedebeat_mix"
-    )
-    assert (done.state, done.error_category) == ("failed", "mix_not_applied")
-
-
-@pytest.mark.usefixtures("spotdown_maps")
 async def test_the_same_proposal_with_exact_cuts_is_admitted_and_produced(
     studio: StudioEnv, renders: Renders
 ) -> None:
@@ -213,14 +202,20 @@ async def test_the_same_proposal_with_exact_cuts_is_admitted_and_produced(
 
 
 async def test_a_proposal_outside_the_class_length_is_refused_for_the_playlist(
-    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
+    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
 ) -> None:
     short = 180.0  # eight whole songs of 180 s: 1440 s, under 90 % of the list's 1800 s
+    fake: FakeSpotdown = request.getfixturevalue("spotdown")
+    served = fake.analysis  # the 240 s document of the ``analysed`` stand-in
 
-    async def analyse_audio(*_args: Any, **_kwargs: Any) -> Any:
-        return SimpleNamespace(music_map=track_map(short), peak_rss=None)
+    def analysis(analysis_id: str) -> dict[str, Any]:
+        found = served(analysis_id)
+        made = document(track_map(short), 0)
+        made["analysis_id"] = analysis_id
+        made["provenance"]["audio"]["sha256"] = found["provenance"]["audio"]["sha256"]
+        return made
 
-    monkeypatch.setattr(track_analysis, "analyse_audio", analyse_audio)
+    monkeypatch.setattr(fake, "analysis", analysis)
     whole = {
         "tracks": [{"track": n, "start_sec": 0, "end_sec": short} for n in range(8)],
         "crossfades": [0] * 7,

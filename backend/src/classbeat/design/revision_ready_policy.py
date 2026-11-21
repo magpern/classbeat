@@ -29,9 +29,7 @@ READY_ORIGINS: Final[frozenset[str | None]] = frozenset(
         "duplicate",
         "beat_one",
         "swedebeat_match",
-        # ADR 0036 amendment B4 (#1369 stores it; #1370 reads it): a studio draft derived from its
-        # proposal by the user's mix choices, the draft the user approves (B10).
-        "mix_choices",
+        "mix_choices",  # ADR 0036 amendment B (#1369): the user's mix choices applied, no model
     }
 )
 NOT_READY_ORIGINS: Final[frozenset[str]] = frozenset({SKETCH})

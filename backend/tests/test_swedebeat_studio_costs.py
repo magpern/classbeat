@@ -18,7 +18,7 @@ from spotifyfake import USER_A
 from studiotools import StudioEnv, StudioRider, choose_turns, pool_turns, script, title
 from test_swedebeat_studio_songs import FOUND_4, _swap_script  # pyright: ignore[reportPrivateUsage]
 
-SHORT_BRIEF = {"length_min": 10, "intensity": "moderate"}  # three songs
+SHORT_BRIEF = {"length_min": 12, "intensity": "moderate"}  # three songs of 240 s: 720 s
 
 
 def _credit(studio: StudioEnv, job_id: UUID) -> str:

@@ -601,8 +601,8 @@ export const en = {
   'class.asked.request': 'You asked: “{request}”',
   'class.asked.changed': 'Changed on request',
   'class.asked.songs': 'Songs changed',
-  'class.asked.mixChoices': 'Mix choices applied',
   'class.asked.beatOne': 'Beat 1 adjusted',
+  'class.asked.mixChoices': 'Mix choices applied',
   'class.asked.first': 'First design',
   'class.compare.segments': 'Segments: {added} added, {removed} removed.',
   'class.compare.intervalsChanged': { one: '{count} interval changed', other: '{count} intervals changed' },
@@ -1145,6 +1145,8 @@ export const en = {
   'job.failure.analysis_unavailable.title': 'Music analysis is not available right now',
   'job.failure.analysis_unavailable.detail':
     'We tried several times. Your class was not designed. Try again in a few minutes.',
+  'job.failure.mix_too_long.title': 'This class is too long for a mix',
+  'job.failure.mix_too_long.detail': 'Nothing was picked. Choose a shorter class length and try again.',
   'job.failure.feature_off.title': 'This is switched off right now',
   'job.failure.feature_off.detail': 'Nothing was designed. Try again later.',
   'job.failure.analysis_limit.title': 'Too many new Swedebeat mixes today',

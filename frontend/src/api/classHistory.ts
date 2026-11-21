@@ -200,7 +200,6 @@ export function askedFor(entry: TimelineEntry): string {
   if (entry.origin === 'sketch' && entry.request !== null) return t('class.asked.request', { request: entry.request })
   if (entry.origin === 'revise_songs') return t('class.asked.songs')
   if (entry.origin === 'beat_one') return t('class.asked.beatOne')
-  // ADR 0036 amendment B4: a studio draft derived from its proposal by the user's mix choices.
   if (entry.origin === 'mix_choices') return t('class.asked.mixChoices')
   return t('class.asked.first')
 }

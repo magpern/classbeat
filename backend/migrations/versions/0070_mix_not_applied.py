@@ -1,7 +1,7 @@
 """The mix_not_chosen and mix_not_applied job categories (ADR 0036 amendment B9; #1370)
 
-Revision ID: 0069_mix_not_applied
-Revises: 0068_analysis_unavailable
+Revision ID: 0070_mix_not_applied
+Revises: 0069_mix_too_long
 Create Date: 2026-11-21
 
 ``jobs.error_category`` gains ``mix_not_chosen`` and ``mix_not_applied``: ``produce_outputs``
@@ -12,15 +12,15 @@ neither is retried. Without them ``JobFailure`` would turn the category into ``i
 the job categories.
 
 The downgrade turns the new categories into ``internal`` with row security lifted for that
-statement, as 0068 does, and restores 0068's check.
+statement, as 0069 does, and restores 0069's check.
 """
 
 from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0069_mix_not_applied"
-down_revision: str | Sequence[str] | None = "0068_analysis_unavailable"
+revision: str = "0070_mix_not_applied"
+down_revision: str | Sequence[str] | None = "0069_mix_too_long"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -29,7 +29,7 @@ def _quoted(names: str) -> str:
     return ", ".join(f"'{name}'" for name in names.split())
 
 
-# The jobs check of migration 0068 (the last one to change it).
+# The jobs check of migration 0069 (the last one to change it).
 OLD_JOB_CATEGORIES = _quoted(
     "upstream_unavailable rate_limited model_unavailable lease_lost operation_busy not_connected "
     "needs_reconnect key_unavailable decrypt_failed invalid_input account_disabled model_refused "
@@ -41,7 +41,7 @@ OLD_JOB_CATEGORIES = _quoted(
     "analysis_failed feature_off analysis_limit handoff_expired program_other_sport "
     "music_changed player_ahead player_conflict track_too_large track_unavailable track_limit "
     "connection_changed writes_off render_not_reproducible output_limit playlist_has_repeats "
-    "analysis_unavailable"
+    "analysis_unavailable mix_too_long"
 )
 NEW_JOB_CATEGORIES = _quoted("mix_not_chosen mix_not_applied")
 # The jobs check from here on (``classbeat.jobs.errors.CATEGORIES``, ``tests/test_jobs_errors.py``).

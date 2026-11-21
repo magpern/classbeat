@@ -8,6 +8,7 @@ A stored match counts only when it is the current draft's song list.
 import asyncio
 import json
 import uuid
+import wave
 from collections.abc import Iterator
 from typing import Any
 from uuid import UUID
@@ -19,13 +20,15 @@ from authtools import running_env
 from classbeat import design, swedebeat_handoff
 from classbeat.classes import handoff as handoff_api
 from classbeat.connections.repository import disconnect
-from classbeat.design import mixfetch
+from classbeat.design import mix_spotdown, mixfetch, track_spotdown
 from classbeat.design.swedebeat_music import load_swedebeat_mix, swedebeat_step
 from classbeat.egress import Allowlist, mowl_media_test_client
 from classbeat.jobs import JobFailure, KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.songs.song_list import Song, SongListContent, SongListMusic, content_hash
 from classbeat.songs.song_list import fingerprint as song_fingerprint
+from classbeat.spotdown import studio_tracks_config
+from classbeat.spotdown.studio_tracks_config import TracksConfig
 from classbeat.swedebeat_handoff import kind as verify_kind
 from classbeat.swedebeat_handoff.config import HandoffConfig
 from classbeat.swedebeat_handoff.kind import KIND, VERIFY_MIX
@@ -38,8 +41,42 @@ from mediafake import FakeMedia
 from mowlfake import FakeMowl
 from optools import TOKEN_A, OpsEnv
 from preftools import use_swedebeat
+from spotdownfake import FakeSpotdown, spotdown
+from test_spotdown_mix_policy import mix_document
 
 pytestmark = pytest.mark.usefixtures("jenv", "mowl_api", "analysis_slot_by_default")
+__all__ = ["spotdown"]  # the fixture
+
+
+@pytest.fixture(autouse=True)
+def spotdown_on(spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """spotdown is the only analysis path (#1353): the fake one answers with the fetched mix as
+    one 124 bpm song as long as its file (read from the WAV header the relay hashes)."""
+    lengths: dict[str, float] = {}
+    real_sha = mix_spotdown._sha256  # pyright: ignore[reportPrivateUsage]
+    real = spotdown.analysis
+
+    def sha256(audio: Any) -> str:
+        digest = real_sha(audio)
+        with wave.open(str(audio), "rb") as wav:
+            lengths[digest] = wav.getnframes() / wav.getframerate()
+        return digest
+
+    def analysis(analysis_id: str) -> dict[str, Any]:
+        sha = real(analysis_id)["provenance"]["audio"]["sha256"]
+        doc = mix_document([(0.0, lengths.get(sha, 150.0), 124.0)], sha=sha)
+        doc["analysis_id"] = analysis_id
+        return doc
+
+    async def pause(*_args: object) -> None:
+        return None
+
+    monkeypatch.setattr(mix_spotdown, "_sha256", sha256)
+    monkeypatch.setattr(spotdown, "analysis", analysis)
+    monkeypatch.setattr(track_spotdown, "pause", pause)
+    studio_tracks_config.configure(TracksConfig(frozenset({"upload"}), b"k" * 32))
+    yield
+    studio_tracks_config.configure(None)
 
 
 def _song(seconds: int, n: int = 1) -> Song:

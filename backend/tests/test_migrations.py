@@ -35,7 +35,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0069_mix_not_applied"]
+    assert script.get_heads() == ["0070_mix_not_applied"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -56,7 +56,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0069_mix_not_applied"]
+        assert applied_revisions(database_url) == ["0070_mix_not_applied"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -1057,11 +1057,49 @@ def test_0068_admits_analysis_unavailable_and_the_downgrade_turns_it_into_intern
         command.downgrade(config, "base")
 
 
-def test_0069_admits_the_mix_categories_and_the_downgrade_turns_them_into_internal(
+def test_0069_admits_mix_too_long_and_the_downgrade_turns_it_into_internal(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1371: ``jobs.error_category`` takes ``mix_too_long`` at head and refuses it after the
+    downgrade, which first turns a stored one into ``internal`` (as 0054, 0067 and 0068 do)."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+
+    def failed_job(category: str) -> uuid.UUID:
+        with admin.begin() as connection:
+            owner = new_user(connection)
+            return new_job(
+                connection, owner, state="failed", error_category=category,
+                finished_at="2026-01-01",
+            )  # fmt: skip
+
+    def category_of(job_id: uuid.UUID) -> str:
+        with admin.connect() as connection:
+            return connection.execute(
+                text("SELECT error_category FROM jobs WHERE id = :i"), {"i": job_id}
+            ).scalar_one()
+
+    try:
+        command.upgrade(config, "head")
+        stored = failed_job("mix_too_long")
+        assert category_of(stored) == "mix_too_long"
+        command.downgrade(config, "0068_analysis_unavailable")
+        assert category_of(stored) == "internal"
+        with pytest.raises(IntegrityError, match="jobs_error_category"):
+            failed_job("mix_too_long")
+        command.upgrade(config, "head")
+        assert failed_job("mix_too_long") is not None
+    finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0070_admits_the_mix_categories_and_the_downgrade_turns_them_into_internal(
     owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """#1370: ``jobs.error_category`` takes ``mix_not_chosen`` and ``mix_not_applied`` at head and
-    refuses them after the downgrade, which first turns a stored one into ``internal`` (as 0068)."""
+    refuses them after the downgrade, which first turns a stored one into ``internal`` (as 0069)."""
     monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
     config = alembic_config()
     admin = create_engine(database_url)
@@ -1084,12 +1122,12 @@ def test_0069_admits_the_mix_categories_and_the_downgrade_turns_them_into_intern
         command.upgrade(config, "head")
         stored = [failed_job(c) for c in ("mix_not_chosen", "mix_not_applied")]
         assert [category_of(s) for s in stored] == ["mix_not_chosen", "mix_not_applied"]
-        command.downgrade(config, "0068_analysis_unavailable")
+        command.downgrade(config, "0069_mix_too_long")
         assert [category_of(s) for s in stored] == ["internal", "internal"]
         for category in ("mix_not_chosen", "mix_not_applied"):
             with pytest.raises(IntegrityError, match="jobs_error_category"):
                 failed_job(category)
-        assert failed_job("analysis_unavailable") is not None  # 0068's check is back
+        assert failed_job("mix_too_long") is not None  # 0069's check is back
         command.upgrade(config, "head")
         assert failed_job("mix_not_applied") is not None
     finally:

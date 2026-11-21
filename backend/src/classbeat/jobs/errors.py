@@ -107,7 +107,11 @@ CATEGORIES: Final = (
     # outcome, spotdown answered but the music cannot be analysed, and is not retried. Raised by
     # ``spotdown.outage_policy`` and the code that calls it (#1353, #1354).
     "analysis_unavailable",
-    # ADR 0036 amendment B9 (migration 0069, #1370): a SwedeBeat output for a draft that is mixed
+    # ADR 0036 amendment B, B6 (migration 0069, #1371): a studio pick for a class no list of whole
+    # songs can fit (over ``MAX_TOTAL_SEC`` less the per-song margin); raised before the first
+    # model call. Not retried: the same class would be refused again.
+    "mix_too_long",
+    # ADR 0036 amendment B9 (migration 0070, #1370): a SwedeBeat output for a draft that is mixed
     # without DJ mix chosen, or that is not the applied form of its proposal, refused again when the
     # job runs; nothing is written. Not retried.
     "mix_not_chosen",

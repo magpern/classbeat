@@ -12,7 +12,7 @@ the fakes (Spotify, the SwedeBeat gateway, ``FakeProvider``), with no MOWL conne
 import asyncio
 import copy
 import hashlib
-from types import SimpleNamespace
+from collections.abc import Iterator
 from typing import Any
 from uuid import UUID
 
@@ -21,17 +21,22 @@ import pytest
 
 from agentfake import good_draft
 from classbeat import connections
-from classbeat.design import revision, track_analysis
+from classbeat.design import revision, track_spotdown
 from classbeat.jobs import KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
+from classbeat.spotdown import studio_tracks_config
+from classbeat.spotdown.studio_tracks_config import TracksConfig
 from classbeat.swedebeat_studio.design_kind import STUDIO_DESIGN
 from classbeat.swedebeat_studio.revise_kind import STUDIO_REVISE
 from ctx import make_context
 from songtools import new_key
+from spotdownfake import FakeSpotdown, spotdown
 from studiomaps import track_map
 from studiotools import StudioEnv, StudioRider, pick_script
+from test_evals_studio_spotdown import document
 from test_swedebeat_studio_songs import ALL_POOL, _sent  # pyright: ignore[reportPrivateUsage]
 
+__all__ = ["spotdown"]  # the fixture
 pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
 LENGTH = 240.0
 MIX_8 = {
@@ -60,16 +65,29 @@ def design_script(mix: dict[str, Any], *, note: str | None = None) -> dict[str, 
 
 
 @pytest.fixture(autouse=True)
-def analysed(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """The sandboxed child stood in by a map of the fake's audio (its download stays real)."""
+def analysed(spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
+    """spotdown stood in by the fake: its document of each uploaded track is the 240 s map as
+    analysis-v1 (the download from the fake gateway stays real). The list holds the id of every
+    document the fake served (one per analysis the design asked for)."""
     seen: list[str] = []
+    real = spotdown.analysis
 
-    async def analyse_audio(run: Any, audio: Any, **kwargs: Any) -> Any:
-        seen.append(audio.name)
-        return SimpleNamespace(music_map=track_map(LENGTH), peak_rss=None)
+    def analysis(analysis_id: str) -> dict[str, Any]:
+        seen.append(analysis_id)
+        sha = real(analysis_id)["provenance"]["audio"]["sha256"]
+        made = document(track_map(LENGTH), 0)
+        made["analysis_id"] = analysis_id
+        made["provenance"]["audio"]["sha256"] = sha
+        return made
 
-    monkeypatch.setattr(track_analysis, "analyse_audio", analyse_audio)
-    return seen
+    async def pause(*_args: object) -> None:
+        return None
+
+    monkeypatch.setattr(spotdown, "analysis", analysis)
+    monkeypatch.setattr(track_spotdown, "pause", pause)
+    studio_tracks_config.configure(TracksConfig(frozenset({"upload"}), b"k" * 32))
+    yield seen
+    studio_tracks_config.configure(None)
 
 
 async def run_kind(studio: StudioEnv, job_id: UUID) -> Any:
@@ -172,9 +190,10 @@ async def test_a_studio_design_stores_the_mix_spec_under_its_hash_with_no_credit
     assert current.brief is not None
     assert held_credits(studio, rider.user_id) == ["studio_songs:reserved", "studio_design:none"]
     assert ledger_rows(studio, rider.user_id) == 1  # the pick's, settled with its own job
-    # Each track downloaded once and analysed; no reference reached the model.
+    # Each track downloaded once and sent to spotdown; the fake gateway serves the same bytes for
+    # every track, so spotdown holds one analysis of them. No reference reached the model.
     assert len(downloads(studio)) == 8
-    assert len(analysed) == 8
+    assert len(analysed) == 1
     sent = _sent(studio)
     for reference in references:
         assert reference not in sent

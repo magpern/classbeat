@@ -649,8 +649,8 @@ const sv: Catalogue = {
   'class.asked.request': 'Du bad om: ”{request}”',
   'class.asked.changed': 'Ändrad på begäran',
   'class.asked.songs': 'Låtar ändrade',
-  'class.asked.mixChoices': 'Mixval tillämpade',
   'class.asked.beatOne': 'Beat 1 justerad',
+  'class.asked.mixChoices': 'Mixval tillämpade',
   'class.asked.first': 'Första utformningen',
   'class.compare.segments': 'Segment: {added} tillagda, {removed} borttagna.',
   'class.compare.intervalsChanged': { one: '{count} intervall ändrat', other: '{count} intervaller ändrade' },
@@ -1016,6 +1016,8 @@ const sv: Catalogue = {
   'job.failure.analysis_unavailable.title': 'Musikanalysen är inte tillgänglig just nu',
   'job.failure.analysis_unavailable.detail':
     'Vi försökte flera gånger. Ditt pass utformades inte. Försök igen om några minuter.',
+  'job.failure.mix_too_long.title': 'Passet är för långt för en mix',
+  'job.failure.mix_too_long.detail': 'Inga låtar valdes. Välj ett kortare pass och försök igen.',
   'job.failure.feature_off.title': 'Det här är avstängt just nu',
   'job.failure.feature_off.detail': 'Inget utformades. Försök igen senare.',
   'job.failure.analysis_limit.title': 'För många nya Swedebeat-mixar i dag',

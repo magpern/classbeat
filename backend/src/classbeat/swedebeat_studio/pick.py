@@ -46,7 +46,7 @@ from classbeat.swedebeat_studio.song_list_model import (
 from classbeat.swedebeat_studio.stages import Steps
 from classbeat.swedebeat_studio.swap_policy import song_total
 
-CROSSFADE_SEC: Final = 9.0
+CROSSFADE_SEC: Final = 0.0  # whole songs, no crossfade (ADR 0036 B6)
 
 
 def stored_evidence(found: Evidence, *, anyway: bool = False) -> StoredEvidence:
@@ -118,6 +118,7 @@ async def pick(
     """A pick from a Spotify search, or from the user's own playlist (``playlist_id``, read only;
     its songs need no role, so it swaps only while they cannot fill the list)."""
     plan = PickPlan.build(brief)
+    steps.require_length(plan)  # mix_too_long, before any model call
     if playlist_id is not None:
         await steps.run.stage("playlist_read")
         pool = await steps.read_playlist(playlist_id)

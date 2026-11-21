@@ -1,21 +1,20 @@
-"""SD-P7a (#1304, ADR 0040 sections 5 to 9): a SwedeBeat mix analysed by spotdown, as a job on the
-fakes: the fake MOWL and media endpoint (``mowlfake``, ``mediafake``), the fake spotdown
-(``spotdownfake``, in process) and the real sandboxed child on generated audio for the local path.
-Never the network: the autouse netguard refuses any other connection.
+"""SD-P7a (#1304, #1353, ADR 0040 sections 5 to 9 and its amendment "spotdown is the only analysis
+path"): a SwedeBeat mix analysed by spotdown, as a job on the fakes: the fake MOWL and media
+endpoint (``mowlfake``, ``mediafake``) and the fake spotdown (``spotdownfake``, in process). Never
+the network: the autouse netguard refuses any other connection.
 
-- off (the default), an owner not on the allowlist, or spotdown not installed: nothing is sent and
-  the map, the row and the result are today's;
-- on: the MOWL temporary-link fetch as always, then spotdown's lookup by sha256 in the owner's
-  scope, then the streamed upload; the ``exact`` map is stored as a ``spotdown`` row with its
-  provenance; no mix id, name, link or token is sent; the audio is gone after the job;
-- every spotdown failure, an error of any type in each step, the budget and today's 180 s wait
-  cap fall back to the local analysis, whose result is then today's;
-- rows per analyser: switching off reads only the ``local`` row, a revise's ``prefer`` reads the
-  row its base was designed on; a lost lease stores nothing; account deletion deletes the scope.
+- spotdown not installed, or without the ``upload`` source: the job ends ``analysis_unavailable``
+  before the mix is fetched, and nothing is sent;
+- installed: the MOWL temporary-link fetch as always, then spotdown's lookup by sha256 in the
+  owner's scope, then the streamed upload; the ``exact`` map is stored as a ``spotdown`` row with
+  its provenance; no mix id, name, link or token is sent; the audio is gone after the job;
+- every spotdown failure, the budget and the 180 s wait cap end the job with their category
+  (ADR 0040 section 8; ``test_spotdown_failure_kinds`` is the table), and an error of any type in a
+  step is ``internal``, never swallowed;
+- rows per analyser: only a ``spotdown`` row is a hit, a revise's ``prefer`` reads the row its base
+  was designed on; a lost lease stores nothing; account deletion deletes the scope.
 """
 
-import asyncio
-import io
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -30,7 +29,7 @@ from classbeat.account import erase
 from classbeat.design import mix_spotdown, swedebeat_music, track_spotdown
 from classbeat.design.mix_cache import fingerprint
 from classbeat.jobs import Complete, JobKind, JobRun, KindRegistry
-from classbeat.spotdown import mix_config, mix_map_model, scope_outbox, studio_policy
+from classbeat.spotdown import mix_map_model, scope_outbox, studio_policy, studio_tracks_config
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.mix_map_model import MIX_POLICY_VERSIONS, MixMap, mix_map_of
 from classbeat.spotdown.scope_calc import cache_scope
@@ -41,7 +40,6 @@ from mowlfake import FakeMowl
 from optools import KIND as JOB_KIND
 from optools import TOKEN_A, TOKEN_B, OpsEnv
 from spotdownfake import FakeSpotdown, spotdown
-from test_spotdown_mix_policy import mix_document
 from test_swedebeat_fetch import (
     Harness,
     MixInput,
@@ -58,6 +56,7 @@ __all__ = ["env", "operator_log", "spotdown", "work"]  # the fixtures
 pytestmark = pytest.mark.usefixtures("mowl_api", "analysis_slot_by_default")
 KEY = bytes(range(32))
 NAME = "Planted Mix Name q9z"
+UPLOAD_ON = TracksConfig(frozenset({"upload"}), KEY)
 
 
 class PreferHarness(Harness):
@@ -99,22 +98,9 @@ def no_pause(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         return None
 
     monkeypatch.setattr(track_spotdown, "pause", pause)
+    studio_tracks_config.configure(UPLOAD_ON)
     yield
-    mix_config.configure(None)
-
-
-@pytest.fixture
-def local_runs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Each local analysis (the real sandboxed child still runs)."""
-    seen: list[str] = []
-    real = swedebeat_music.analyse_audio
-
-    async def counted(run: JobRun, audio: Path, **kwargs: Any) -> Any:
-        seen.append(audio.name)
-        return await real(run, audio, **kwargs)
-
-    monkeypatch.setattr(swedebeat_music, "analyse_audio", counted)
-    return seen
+    studio_tracks_config.configure(None)
 
 
 @pytest.fixture
@@ -129,10 +115,6 @@ def hashed(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     monkeypatch.setattr(mix_spotdown, "_sha256", recorded)
     return seen
-
-
-def turn_on(*owners: UUID) -> None:
-    mix_config.configure(TracksConfig("allowlist", frozenset(owners), frozenset({"upload"}), KEY))
 
 
 def rows(harness: Harness, owner: UUID) -> list[Any]:
@@ -152,21 +134,10 @@ def result_of(harness: Harness) -> tuple[Any, ...]:
     return (r.name, r.duration, r.listed_duration, r.music_map, r.cached, r.analyser)
 
 
-async def baseline(harness: PreferHarness, mowl_api: FakeMowl) -> tuple[Any, list[Any]]:
-    """The result and the stored row of a local run (another owner, the same audio)."""
-    owner, connection = await account(harness)
-    mix = add_beats(mowl_api, NAME)
-    row = await harness.run(owner, connection, mix)
-    assert (row.state, row.error_category) == ("completed", None)
-    return result_of(harness), [(r.map, r.analyser, r.provenance) for r in rows(harness, owner)]
-
-
 async def on_mix(
     harness: PreferHarness, mowl_api: FakeMowl, token: str = TOKEN_A
-) -> tuple[UUID, ...]:
-    owner, connection = await account(harness, token)
-    turn_on(owner)
-    return owner, connection
+) -> tuple[UUID, UUID]:
+    return await account(harness, token)
 
 
 def mapped_of(fake: FakeSpotdown, analysis_id: str, mix: str, sha: str) -> MixMap:
@@ -175,52 +146,42 @@ def mapped_of(fake: FakeSpotdown, analysis_id: str, mix: str, sha: str) -> MixMa
     return result
 
 
-# --- off: today's analysis ----------------------------------------------------------------------
+# --- spotdown not installed ---------------------------------------------------------------------
 
 
-async def test_off_by_default_nothing_is_sent_and_the_map_is_local(
-    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl, local_runs: list[str]
+@pytest.mark.parametrize("config", [None, TracksConfig(frozenset(), KEY)])
+async def test_not_installed_or_without_upload_the_job_is_unavailable_before_the_fetch(
+    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl, config: Any
 ) -> None:
-    off, off_rows = await baseline(harness, mowl_api)
-    assert spotdown.seen == []
-    assert len(local_runs) == 1
-    assert off_rows == [(off[3], "local", None)]
-    assert off[5] == "local"
-
-
-async def test_an_owner_not_on_the_allowlist_or_without_spotdown_is_local(
-    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl
-) -> None:
-    off, off_rows = await baseline(harness, mowl_api)
-    owner, connection = await account(harness, TOKEN_A)
-    turn_on(UUID(int=7))  # somebody else
-    mix = add_beats(mowl_api, NAME)
-    await harness.run(owner, connection, mix)
-    assert result_of(harness) == off
-    assert [(r.map, r.analyser, r.provenance) for r in rows(harness, owner)] == off_rows
-    assert spotdown.seen == []
-    assert harness.ops.sql("SELECT count(*) FROM spotdown_studio_budgets").scalar_one() == 0
-
-
-async def test_on_without_spotdown_installed_is_local(
-    harness: PreferHarness, mowl_api: FakeMowl, local_runs: list[str]
-) -> None:
+    studio_tracks_config.configure(config)
     owner, connection = await on_mix(harness, mowl_api)
     mix = add_beats(mowl_api, NAME)
     row = await harness.run(owner, connection, mix)
+    assert (row.state, row.error_category) == ("failed", "analysis_unavailable")
+    assert spotdown.seen == []
+    assert harness.media.requests == []  # the mix was never fetched
+    assert rows(harness, owner) == []
+
+
+async def test_a_cached_row_needs_no_configuration(
+    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl
+) -> None:
+    owner, connection = await on_mix(harness, mowl_api)
+    mix = add_beats(mowl_api, NAME)
+    await harness.run(owner, connection, mix)
+    studio_tracks_config.configure(None)
+    row = await harness.run(owner, connection, mix)
     assert (row.state, row.error_category) == ("completed", None)
-    assert [r.analyser for r in rows(harness, owner)] == ["local"]
-    assert len(local_runs) == 1
+    assert harness.results[-1].cached is True
 
 
-# --- on: spotdown is the source -----------------------------------------------------------------
+# --- spotdown is the source ---------------------------------------------------------------------
 
 
-async def test_spotdown_gives_the_map_with_its_provenance_and_no_local_run(
+async def test_spotdown_gives_the_map_with_its_provenance(
     harness: PreferHarness,
     spotdown: FakeSpotdown,
     mowl_api: FakeMowl,
-    local_runs: list[str],
     hashed: list[str],
     work: Path,
 ) -> None:
@@ -228,7 +189,6 @@ async def test_spotdown_gives_the_map_with_its_provenance_and_no_local_run(
     mix = add_beats(mowl_api, NAME)
     row = await harness.run(owner, connection, mix)
     assert (row.state, row.error_category) == ("completed", None)
-    assert local_runs == []
     scope = cache_scope(KEY, owner)
     [sha] = hashed
     [(held_scope, by)] = spotdown.analyses.values()
@@ -288,7 +248,6 @@ async def test_an_analysis_in_the_owners_scope_is_read_without_an_upload(
     mix = add_beats(mowl_api, NAME)
     # The same bytes analysed before in this owner's scope (the fake's audio is deterministic).
     other, other_connection = await account(harness, TOKEN_B)
-    turn_on(owner, other)
     await harness.run(other, other_connection, add_beats(mowl_api, NAME, token=TOKEN_B))
     [sha] = hashed
     spotdown.add_analysis(cache_scope(KEY, owner), f"sha256:{sha}")
@@ -303,7 +262,6 @@ async def test_another_owners_scope_is_never_read_or_written(
 ) -> None:
     owner, connection = await on_mix(harness, mowl_api)
     other, other_connection = await account(harness, TOKEN_B)
-    turn_on(owner, other)
     await harness.run(owner, connection, add_beats(mowl_api, NAME))
     await harness.run(other, other_connection, add_beats(mowl_api, NAME, token=TOKEN_B))
     mine, theirs = cache_scope(KEY, owner), cache_scope(KEY, other)
@@ -315,44 +273,41 @@ async def test_another_owners_scope_is_never_read_or_written(
     assert {s for s, _by in spotdown.analyses.values()} == {mine, theirs}
 
 
-# --- every failure falls back to today's analysis -----------------------------------------------
+# --- a failure ends the job with its category ---------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    "end",
+    ("end", "category"),
     [
-        "processing_failed:decode_error",
-        "processing_failed:timeout",
-        "processing_failed:out_of_memory",
-        "processing_failed:analysis_error",
-        "provider_error",
-        "source_unavailable",
-        "not_found",
-        "uncertain",
+        ("processing_failed:decode_error", "analysis_failed"),
+        ("processing_failed:timeout", "analysis_failed"),  # one retry first
+        ("processing_failed:out_of_memory", "analysis_failed"),
+        ("processing_failed:analysis_error", "analysis_failed"),
+        ("provider_error", "analysis_unavailable"),  # one retry, then an outage
+        ("source_unavailable", "analysis_failed"),
+        ("not_found", "analysis_failed"),
+        ("uncertain", "analysis_failed"),
     ],
 )
-async def test_a_spotdown_failure_gives_todays_map(
-    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl, end: str
+async def test_a_spotdown_failure_ends_the_job_with_its_category(
+    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl, end: str, category: str
 ) -> None:
-    off, off_rows = await baseline(harness, mowl_api)
     spotdown.end = end
-    owner, connection = await on_mix(harness, mowl_api, TOKEN_B)
-    row = await harness.run(owner, connection, add_beats(mowl_api, NAME, token=TOKEN_B))
-    assert (row.state, row.error_category) == ("completed", None)
-    assert result_of(harness) == off
-    assert [(r.map, r.analyser, r.provenance) for r in rows(harness, owner)] == off_rows
+    owner, connection = await on_mix(harness, mowl_api)
+    row = await harness.run(owner, connection, add_beats(mowl_api, NAME))
+    assert (row.state, row.error_category) == ("failed", category)
     retried = end in ("provider_error", "processing_failed:timeout")
     assert len(sent(spotdown, "/v2/analyses")) == (2 if retried else 1)
+    assert rows(harness, owner) == []
 
 
-async def test_unreachable_spotdown_falls_back_and_marks_the_jobs_outage(
+async def test_unreachable_spotdown_is_unavailable_and_marks_the_jobs_outage(
     harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl
 ) -> None:
-    off, _rows = await baseline(harness, mowl_api)
     spotdown.connect_error = True
-    owner, connection = await on_mix(harness, mowl_api, TOKEN_B)
-    await harness.run(owner, connection, add_beats(mowl_api, NAME, token=TOKEN_B))
-    assert result_of(harness) == off
+    owner, connection = await on_mix(harness, mowl_api)
+    row = await harness.run(owner, connection, add_beats(mowl_api, NAME))
+    assert (row.state, row.error_category) == ("failed", "analysis_unavailable")
     assert [s.path for s in spotdown.seen] == ["/v2/analyses/lookup"]
     assert harness.ops.sql(
         "SELECT outage FROM spotdown_studio_budgets WHERE owner_id = :o", o=owner
@@ -360,7 +315,7 @@ async def test_unreachable_spotdown_falls_back_and_marks_the_jobs_outage(
 
 
 async def test_an_outage_from_an_earlier_run_of_the_job_calls_nothing(
-    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl, local_runs: list[str]
+    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl
 ) -> None:
     owner, connection = await on_mix(harness, mowl_api)
     job_id = harness.job(owner, connection, add_beats(mowl_api, NAME))
@@ -369,12 +324,12 @@ async def test_an_outage_from_an_earlier_run_of_the_job_calls_nothing(
         o=owner, j=job_id,
     )  # fmt: skip
     await harness.ops.run_next()
-    assert harness.ops.row(job_id).state == "completed"
+    row = harness.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "analysis_unavailable")
     assert spotdown.seen == []
-    assert len(local_runs) == 1
 
 
-async def test_a_spent_budget_calls_nothing_and_is_local(
+async def test_a_spent_budget_calls_nothing_and_is_unavailable(
     harness: PreferHarness,
     spotdown: FakeSpotdown,
     mowl_api: FakeMowl,
@@ -383,10 +338,11 @@ async def test_a_spent_budget_calls_nothing_and_is_local(
 ) -> None:
     monkeypatch.setattr(studio_policy, "WAIT_SECONDS", 0.0)
     owner, connection = await on_mix(harness, mowl_api)
-    await harness.run(owner, connection, add_beats(mowl_api, NAME))
+    row = await harness.run(owner, connection, add_beats(mowl_api, NAME))
+    assert (row.state, row.error_category) == ("failed", "analysis_unavailable")
     assert spotdown.seen == []
     assert hashed == []  # given up before the file is even read
-    assert [r.analyser for r in rows(harness, owner)] == ["local"]
+    assert rows(harness, owner) == []
 
 
 class FakeClock:
@@ -399,16 +355,15 @@ class FakeClock:
         return self.now
 
 
-async def test_the_wait_is_capped_at_todays_180_s_then_local(
+async def test_the_wait_is_capped_at_180_s_and_the_job_is_unavailable(
     harness: PreferHarness,
     spotdown: FakeSpotdown,
     mowl_api: FakeMowl,
     monkeypatch: pytest.MonkeyPatch,
-    local_runs: list[str],
 ) -> None:
     """spotdown's job would finish at 300 s: after the 180 s cap, well inside the job's 600 s
-    budget. The relay gives up at the cap and the mix is analysed locally; without the cap it
-    would wait on and use spotdown's map."""
+    budget. The relay gives up at the cap and the job ends ``analysis_unavailable``; without the
+    cap it would wait on and use spotdown's map."""
     assert mix_spotdown.MIX_WAIT_SECONDS == 180.0
     assert studio_policy.WAIT_SECONDS == 600.0
     clock, finish_at = FakeClock(), 300.0
@@ -437,9 +392,8 @@ async def test_the_wait_is_capped_at_todays_180_s_then_local(
     monkeypatch.setattr(spotdown, "_poll", finishes_late)
     owner, connection = await on_mix(harness, mowl_api)
     row = await harness.run(owner, connection, add_beats(mowl_api, NAME))
-    assert (row.state, row.error_category) == ("completed", None)
-    assert [r.analyser for r in rows(harness, owner)] == ["local"]
-    assert len(local_runs) == 1
+    assert (row.state, row.error_category) == ("failed", "analysis_unavailable")
+    assert rows(harness, owner) == []
     assert polled  # it was started and polled
     assert max(polled) <= mix_spotdown.MIX_WAIT_SECONDS  # never polled past the cap
     assert not any(s.path.startswith("/v2/analyses/an_") for s in spotdown.seen)  # never read
@@ -465,7 +419,6 @@ async def test_a_document_of_other_bytes_is_never_used(
     mowl_api: FakeMowl,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    off, _rows = await baseline(harness, mowl_api)
     real = spotdown.analysis
 
     def other_bytes(analysis_id: str) -> dict[str, Any]:
@@ -474,10 +427,10 @@ async def test_a_document_of_other_bytes_is_never_used(
         return document
 
     monkeypatch.setattr(spotdown, "analysis", other_bytes)
-    owner, connection = await on_mix(harness, mowl_api, TOKEN_B)
-    await harness.run(owner, connection, add_beats(mowl_api, NAME, token=TOKEN_B))
-    assert result_of(harness) == off
-    assert [r.analyser for r in rows(harness, owner)] == ["local"]
+    owner, connection = await on_mix(harness, mowl_api)
+    row = await harness.run(owner, connection, add_beats(mowl_api, NAME))
+    assert (row.state, row.error_category) == ("failed", "analysis_failed")
+    assert rows(harness, owner) == []
 
 
 def _raising(exc: BaseException, generator: bool = False) -> Any:
@@ -514,7 +467,7 @@ def _sync_raising(exc: BaseException) -> Any:
         (mix_spotdown.relay, "note_outage", ArithmeticError("x"), "async"),
     ],
 )
-async def test_an_error_of_any_type_in_a_spotdown_step_falls_back(
+async def test_an_error_of_any_type_in_a_spotdown_step_is_internal_and_not_swallowed(
     harness: PreferHarness,
     spotdown: FakeSpotdown,
     mowl_api: FakeMowl,
@@ -525,7 +478,6 @@ async def test_an_error_of_any_type_in_a_spotdown_step_falls_back(
     exc: BaseException,
     kind: str,
 ) -> None:
-    off, off_rows = await baseline(harness, mowl_api)
     if name == "note_outage":
         spotdown.connect_error = True  # the step that records the outage raises
     if kind == "sync":
@@ -534,9 +486,11 @@ async def test_an_error_of_any_type_in_a_spotdown_step_falls_back(
         monkeypatch.setattr(target, name, _raising(exc, generator=kind == "generator"))
     owner, connection = await on_mix(harness, mowl_api, TOKEN_B)
     row = await harness.run(owner, connection, add_beats(mowl_api, NAME, token=TOKEN_B))
-    assert (row.state, row.error_category) == ("completed", None)
-    assert result_of(harness) == off
-    assert [(r.map, r.analyser, r.provenance) for r in rows(harness, owner)] == off_rows
+    # An unexpected error is ``internal``; an OS error reading the audio inside the exchange is
+    # what the client already reports as unreachable (``connection``).
+    expected = "analysis_unavailable" if name == "chunks" else "internal"
+    assert (row.state, row.error_category) == ("failed", expected)
+    assert rows(harness, owner) == []
     assert leftovers(work) == []
 
 
@@ -563,24 +517,23 @@ async def test_a_lost_lease_while_waiting_stops_the_run_and_stores_nothing(
 # --- rows per analyser: a class keeps the analysis it was designed on ---------------------------
 
 
-async def test_switched_off_the_mix_is_analysed_locally_beside_the_spotdown_row(
-    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl, local_runs: list[str]
+async def test_a_local_row_is_no_hit_and_is_left_beside_the_spotdown_row(
+    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl
 ) -> None:
+    """A ``local`` row (stored before #1353) is analysed again by spotdown, and kept."""
     owner, connection = await on_mix(harness, mowl_api)
     mix = add_beats(mowl_api, NAME)
     await harness.run(owner, connection, mix)
-    spotdown_map = harness.results[-1].music_map
-    mix_config.configure(None)
-    await harness.run(owner, connection, mix)
-    assert (harness.results[-1].analyser, harness.results[-1].cached) == ("local", False)
-    assert len(local_runs) == 1
-    assert [(r.analyser, r.map == spotdown_map) for r in rows(harness, owner)] == [
-        ("local", False),
-        ("spotdown", True),  # untouched by the local store
-    ]
-    turn_on(owner)  # on again: the spotdown row is the hit before the local one
-    await harness.run(owner, connection, mix)
-    assert (harness.results[-1].analyser, harness.results[-1].cached) == ("spotdown", True)
+    harness.ops.sql(
+        "UPDATE swedebeat_mix_maps SET analyser = 'local', provenance = NULL WHERE owner_id = :o",
+        o=owner,
+    )
+    fetches = len(harness.media.requests)
+    row = await harness.run(owner, connection, mix)
+    assert (row.state, row.error_category) == ("completed", None)
+    assert (harness.results[-1].analyser, harness.results[-1].cached) == ("spotdown", False)
+    assert len(harness.media.requests) == fetches + 1  # a miss: fetched again
+    assert sorted(r.analyser for r in rows(harness, owner)) == ["local", "spotdown"]
 
 
 async def test_a_spotdown_row_of_other_policy_versions_is_analysed_again(
@@ -603,29 +556,29 @@ async def test_a_spotdown_row_of_other_policy_versions_is_analysed_again(
     assert stored.provenance["policy_versions"] == dict(stale)
 
 
-async def test_prefer_reads_the_row_the_base_was_designed_on_whatever_the_switch(
-    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl, local_runs: list[str]
+async def test_prefer_reads_the_row_the_base_was_designed_on_and_never_a_local_one(
+    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl
 ) -> None:
     owner, connection = await on_mix(harness, mowl_api)
     mix = add_beats(mowl_api, NAME)
     await harness.run(owner, connection, mix)  # the spotdown row
     designed_on = harness.results[-1].fingerprint
-    mix_config.configure(None)
-    await harness.run(owner, connection, mix)  # the local row beside it
-    local = harness.results[-1].fingerprint
-    assert local != designed_on
+    # A local row of another map beside it (what a pre-#1353 job stored).
+    harness.ops.sql(
+        "INSERT INTO swedebeat_mix_maps (owner_id, mowl_connection_id, mix_id, playlist_id, "
+        "name, duration, listed_duration, map, analyser, created_at) "
+        "SELECT owner_id, mowl_connection_id, mix_id, playlist_id, name, duration, "
+        "listed_duration, jsonb_set(map, '{songs,0,bpm}', '100'), 'local', "
+        "created_at - interval '1 minute' FROM swedebeat_mix_maps WHERE owner_id = :o",
+        o=owner,
+    )
     calls, fetches = len(spotdown.seen), len(harness.media.requests)
-    for prefer, analyser in ((designed_on, "spotdown"), (local, "local")):
-        for switched_on in (False, True):
-            mix_config.configure(None)
-            if switched_on:
-                turn_on(owner)
-            harness.prefer = prefer
-            await harness.run(owner, connection, mix)
-            got = harness.results[-1]
-            assert (got.analyser, got.cached, got.fingerprint) == (analyser, True, prefer)
+    for prefer in (designed_on, None, "f" * 64):
+        harness.prefer = prefer
+        await harness.run(owner, connection, mix)
+        got = harness.results[-1]
+        assert (got.analyser, got.cached, got.fingerprint) == ("spotdown", True, designed_on)
     assert (len(spotdown.seen), len(harness.media.requests)) == (calls, fetches)
-    assert len(local_runs) == 1
 
 
 async def test_account_deletion_deletes_the_owners_scope_in_spotdown(
@@ -633,7 +586,6 @@ async def test_account_deletion_deletes_the_owners_scope_in_spotdown(
 ) -> None:
     owner, connection = await on_mix(harness, mowl_api)
     other, other_connection = await account(harness, TOKEN_B)
-    turn_on(owner, other)
     await harness.run(owner, connection, add_beats(mowl_api, NAME))
     await harness.run(other, other_connection, add_beats(mowl_api, NAME, token=TOKEN_B))
     mine, theirs = cache_scope(KEY, owner), cache_scope(KEY, other)
@@ -644,43 +596,7 @@ async def test_account_deletion_deletes_the_owners_scope_in_spotdown(
     assert [s.path for s in spotdown.seen if s.method == "DELETE"] == [f"/v2/scopes/{mine}"]
 
 
-async def test_after_a_fallback_the_decode_time_is_the_local_analysis_alone(
-    harness: PreferHarness,
-    spotdown: FakeSpotdown,
-    mowl_api: FakeMowl,
-    monkeypatch: pytest.MonkeyPatch,
-    operator_log: io.StringIO,
-) -> None:
-    """ADR 0026 stage 1: ``analysis_decode_ms`` is the analysis that made the map; the time spent
-    consulting spotdown before a fallback is logged apart (``spotdown_ms``)."""
-    from classbeat.design.mixanalysis import Analysis
-
-    async def slow_fallback(*_args: object) -> None:
-        await asyncio.sleep(1.0)  # spotdown consulted for a second, then the fallback
-
-    local = mix_map_of(mix_document([(0.0, 60.0, 124.0)]), "m", "c" * 64, music.MAP_VERSION)
-    assert isinstance(local, MixMap)
-
-    async def instant(*_args: object, **_kwargs: object) -> Analysis:
-        return Analysis(local.music_map, None)
-
-    monkeypatch.setattr(mix_spotdown, "analyse", slow_fallback)
-    monkeypatch.setattr(swedebeat_music, "analyse_audio", instant)
-    owner, connection = await on_mix(harness, mowl_api)
-    row = await harness.run(owner, connection, add_beats(mowl_api, NAME))
-    assert (row.state, row.error_category) == ("completed", None)
-    (line,) = [
-        json.loads(text)
-        for text in operator_log.getvalue().splitlines()
-        if "swedebeat mix analysed" in text
-    ]
-    assert line["analyser"] == "local"
-    assert line["spotdown_ms"] >= 1000
-    assert line["decode_ms"] < 500  # the local analysis only, not the relay before it
-    assert row.analysis_decode_ms == line["decode_ms"]
-
-
-async def test_a_map_the_table_check_refuses_falls_back(
+async def test_a_map_the_table_check_refuses_ends_the_job_analysis_failed(
     harness: PreferHarness,
     spotdown: FakeSpotdown,
     mowl_api: FakeMowl,
@@ -694,16 +610,18 @@ async def test_a_map_the_table_check_refuses_falls_back(
 
     monkeypatch.setattr(mix_spotdown, "valid_map", refused)
     owner, connection = await on_mix(harness, mowl_api)
-    await harness.run(owner, connection, add_beats(mowl_api, NAME))
+    row = await harness.run(owner, connection, add_beats(mowl_api, NAME))
+    assert (row.state, row.error_category) == ("failed", "analysis_failed")
     assert seen == [music.MAP_VERSION]
-    assert [r.analyser for r in rows(harness, owner)] == ["local"]
+    assert rows(harness, owner) == []
 
 
-async def test_a_rate_limit_longer_than_the_wait_left_falls_back_at_once(
+async def test_a_rate_limit_longer_than_the_wait_left_ends_the_job_at_once(
     harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl
 ) -> None:
     spotdown.inject["/v2/analyses"] = [httpx.Response(429, headers={"Retry-After": "3600"})]
     owner, connection = await on_mix(harness, mowl_api)
-    await harness.run(owner, connection, add_beats(mowl_api, NAME))
+    row = await harness.run(owner, connection, add_beats(mowl_api, NAME))
+    assert (row.state, row.error_category) == ("failed", "analysis_unavailable")
     assert len(sent(spotdown, "/v2/analyses")) == 1  # not tried again: the wait does not fit
-    assert [r.analyser for r in rows(harness, owner)] == ["local"]
+    assert rows(harness, owner) == []

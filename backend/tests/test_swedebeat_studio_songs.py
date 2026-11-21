@@ -5,6 +5,7 @@ No network, no real account."""
 
 import hashlib
 import json
+import re
 from typing import Any
 from uuid import UUID
 
@@ -80,7 +81,12 @@ async def test_a_studio_pick_takes_its_facts_from_one_match_with_no_mowl(
         "score": 0.93,
     }
     assert (first["gap"], first["swap"]) == (False, None)
-    assert content["total_sec"] == 8 * 240 - 7 * 9
+    assert content["total_sec"] == 8 * 240  # whole songs: no crossfade is subtracted (B6)
+    assert content["crossfade_sec"] == 0
+    # The stored total is the stage's: the plain sum of the SwedeBeat durations (#1371), and the
+    # choose stage showed the model no crossfade.
+    assert content["total_sec"] == sum(s["swedebeat"]["duration_sec"] for s in content["songs"])
+    assert re.search(r'"crossfade_sec":\s*0(\.0)?[,}]', _sent(studio))
     assert stored.music["source"] == "swedebeat_studio"
     assert stored.music["fingerprint"] == common.ids_hash(chosen).hex()
     assert stored.music["swedebeat_connection_id"] == str(rider.swedebeat_connection_id)
@@ -237,7 +243,8 @@ async def test_a_swap_can_be_undone_and_the_gap_never_approved(studio: StudioEnv
     gap = undone.content["songs"][0]
     assert (gap["gap"], gap["swedebeat"], gap["spotify_id"]) == (True, None, song_id(1))
     assert gap["swap"]["undone"] is True
-    assert undone.content["total_sec"] == 7 * 240 - 6 * 9
+    assert undone.content["total_sec"] == 7 * 240
+    assert undone.content["crossfade_sec"] == 0
     # The working copy follows the list, the original back in its slot.
     pool = studio.songs.pool(rider.user_id)
     entries = studio.songs.fake.playlists[pool.playlist_id].entries
@@ -323,7 +330,7 @@ async def test_another_song_for_a_gap_is_matched_recorded_and_approvable(
     assert approved.status_code == 200, approved.text
 
 
-SHORT_BRIEF = {"length_min": 10, "intensity": "moderate"}  # three songs
+SHORT_BRIEF = {"length_min": 12, "intensity": "moderate"}  # three songs of 240 s: 720 s
 POOL_6 = [
     (0, "warmup"),
     (1, "warmup"),
@@ -365,8 +372,8 @@ async def test_swap_anyway_is_the_users_choice_after_a_suspected_list(studio: St
     originals = {s["spotify_id"]: s["swap"]["original"]["spotify_id"]
                  for s in content["songs"] if s["swap"]}  # fmt: skip
     assert originals == {song_id(20): song_id(0), song_id(24): song_id(4)}
-    # 702 s for a 600 s class: over the pick's 10 %, inside the studio's relaxed bound.
-    assert content["total_sec"] == 3 * 240 - 2 * 9
+    # Whole songs: 720 s for a 720 s class, no crossfade subtracted.
+    assert content["total_sec"] == 3 * 240
 
 
 async def test_another_users_list_is_not_found(studio: StudioEnv) -> None:
@@ -392,3 +399,23 @@ async def test_a_queued_studio_pick_holds_the_pool_for_every_pick(studio: Studio
     await studio.created(rider)  # queued: it will write the pool (the working copy)
     async with user_session(studio.songs.factory, make_context(rider.user_id)) as db:
         assert await pool_busy(db, rider.user_id)  # a song pick of any class is refused
+
+
+async def test_the_jobs_plan_gates_reach_the_song_stage_through_the_kind(
+    studio: StudioEnv,
+) -> None:
+    """The recorded list (1920 s) is whole songs inside the instructor plan, but not inside a
+    30-minute plan's bound (1890 s less 1 s a song): the job's stored ``plan_gates`` decide, so the
+    kind must hand them to ``Steps`` (a mutation dropping ``given.plan_gates`` fails this)."""
+    studio.found(*ALL_POOL)
+    rider = await studio.rider()
+    job_id = await studio.created(rider)
+    studio.songs.sql(
+        "UPDATE jobs SET input = jsonb_set(input, '{plan_gates}', "
+        '\'{"max_class_minutes": 30, "games": false, "races": false, "ftp_tests": false}\') '
+        "WHERE id = :id",
+        id=job_id,
+    )
+    row = await studio.run(job_id)
+    assert row.state == "failed"
+    assert "choose" in studio.songs.stages(job_id)

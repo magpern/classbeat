@@ -8,7 +8,7 @@
   null, the mix policy's version), ``current_mix_provenance`` the cache's rule;
 - the fixture form of the plan section 7 mix gates: on documents whose features sit where the
   songs change, every song start and end is within 2 s and every BPM within 2 %;
-- the settings: off and nobody by default, no value for everyone, its own allowlist.
+- the settings: gone (#1353); the one config is not usable by default and the worker sets it.
 """
 
 import copy
@@ -21,7 +21,7 @@ from mowl import music
 
 from classbeat.config import Settings
 from classbeat.design.mixanalysis import valid_map
-from classbeat.spotdown import mix_config, mix_map_policy, studio_tracks_config
+from classbeat.spotdown import mix_map_policy, studio_tracks_config
 from classbeat.spotdown.mix_map_model import (
     MIX_POLICY_VERSIONS,
     MixMap,
@@ -29,7 +29,6 @@ from classbeat.spotdown.mix_map_model import (
     current_mix_provenance,
     mix_map_of,
 )
-from classbeat.spotdown.owner_list_policy import OwnerListRefused, parse_owners
 from classbeat.spotdown.spotdown_map_policy import MapRefused
 from classbeat.spotdown.timing_class_policy import TimingDecision
 from spotdownfake import example
@@ -334,99 +333,64 @@ def test_a_record_of_another_build_is_not_current(change: Any) -> None:
 # --- the settings -------------------------------------------------------------------------------
 
 
-def test_the_mix_settings_default_to_off_and_nobody(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("CLASSBEAT_SPOTDOWN_MIX", "CLASSBEAT_SPOTDOWN_MIX_OWNERS"):
-        monkeypatch.delenv(name, raising=False)
+def test_the_mix_settings_are_gone_and_the_shared_config_is_not_usable_by_default() -> None:
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    assert (settings.spotdown_mix, settings.spotdown_mix_owners) == ("off", "")
-    assert mix_config.current() == studio_tracks_config.TracksConfig()
-
-
-@pytest.mark.parametrize("value", ["on", "default", "true", "everyone"])
-def test_no_mix_setting_switches_it_on_for_everyone(
-    monkeypatch: pytest.MonkeyPatch, value: str
-) -> None:
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_MIX", value)
-    with pytest.raises(ValueError, match="spotdown_mix"):
-        Settings(_env_file=None)  # type: ignore[call-arg]
-
-
-def test_the_mix_allowlist_is_read_checked_and_named(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_MIX", "allowlist")
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_MIX_OWNERS", str(OWNER).upper())
-    settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    assert (settings.spotdown_mix, settings.spotdown_mix_owners) == ("allowlist", str(OWNER))
-    assert (settings.spotdown_studio, settings.spotdown_studio_owners) == ("off", "")
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_MIX_OWNERS", "nobody")
-    with pytest.raises(ValueError, match="spotdown_mix_owners must be") as refused:
-        Settings(_env_file=None)  # type: ignore[call-arg]
-    assert "nobody" not in str(refused.value)
-    with pytest.raises(OwnerListRefused, match="spotdown_mix_owners"):
-        parse_owners("nobody", "spotdown_mix_owners")
-
-
-def test_the_mix_switch_is_its_own() -> None:
-    on = studio_tracks_config.TracksConfig(
-        "allowlist", frozenset({OWNER}), frozenset({"upload"}), bytes(32)
-    )
-    studio_tracks_config.configure(on)
-    try:
-        assert mix_config.current().mode == "off"  # the studio's switch never turns the mix on
-    finally:
-        studio_tracks_config.configure(None)
+    assert not hasattr(settings, "spotdown_mix")
+    assert not hasattr(settings, "spotdown_mix_owners")
+    assert studio_tracks_config.current() == studio_tracks_config.TracksConfig()
+    assert studio_tracks_config.current().refusal() == "not_configured"
 
 
 # --- the worker's wiring --------------------------------------------------------------------------
 
-OTHER = UUID("1c6f1a52-6f0e-4f43-9a51-6c1d2a0c9e12")
-
 
 @pytest.mark.parametrize(
-    ("env", "mix", "studio"),
+    ("sources", "key", "refusal"),
     [
-        (
-            {"CLASSBEAT_SPOTDOWN_MIX": "allowlist", "CLASSBEAT_SPOTDOWN_MIX_OWNERS": str(OWNER)},
-            ("allowlist", frozenset({OWNER})),
-            ("off", frozenset()),
-        ),
-        (
-            {
-                "CLASSBEAT_SPOTDOWN_STUDIO": "allowlist",
-                "CLASSBEAT_SPOTDOWN_STUDIO_OWNERS": str(OTHER),
-            },
-            ("off", frozenset()),
-            ("allowlist", frozenset({OTHER})),
-        ),
-        ({}, ("off", frozenset()), ("off", frozenset())),
+        ("upload", "k" * 40, None),
+        ("youtube", "k" * 40, "source_off"),
+        ("upload", None, "not_configured"),
     ],
 )
-def test_the_worker_configures_the_mix_switch_from_its_own_settings(
-    monkeypatch: pytest.MonkeyPatch,
-    env: dict[str, str],
-    mix: tuple[str, frozenset[UUID]],
-    studio: tuple[str, frozenset[UUID]],
+def test_the_worker_configures_the_one_config_from_its_settings(
+    monkeypatch: pytest.MonkeyPatch, sources: str, key: str | None, refusal: str | None
+) -> None:
+    from pydantic import SecretStr
+
+    from classbeat import egress_spotdown
+    from classbeat.spotdown import shadow_config, song_match_config
+    from classbeat.worker.__main__ import configure_spotdown
+
+    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SOURCES", sources)
+    secret = None if key is None else SecretStr(key)
+    settings = Settings(_env_file=None, app_secret_key=secret)  # type: ignore[call-arg]
+    egress_spotdown.install_spotdown("http://spotdown-api:8000", SecretStr("k" * 32))
+    try:
+        configure_spotdown(settings)
+        config = studio_tracks_config.current()
+        assert config.sources == frozenset({sources})
+        assert (config.scope_key is not None) is (key is not None)
+        assert config.refusal() == refusal
+    finally:
+        egress_spotdown.install_spotdown(None, None)
+        studio_tracks_config.configure(None)
+        song_match_config.configure(None)
+        shadow_config.configure(None)
+
+
+def test_the_worker_logs_once_at_start_that_analysis_is_unavailable_and_no_value(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     from classbeat.spotdown import shadow_config, song_match_config
     from classbeat.worker.__main__ import configure_spotdown
 
-    for name in (
-        "CLASSBEAT_SPOTDOWN_MIX", "CLASSBEAT_SPOTDOWN_MIX_OWNERS", "CLASSBEAT_SPOTDOWN_STUDIO",
-        "CLASSBEAT_SPOTDOWN_STUDIO_OWNERS", "CLASSBEAT_SPOTDOWN_SPOTIFY",
-        "CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS",
-    ):  # fmt: skip
-        monkeypatch.delenv(name, raising=False)
-    for name, value in env.items():
-        monkeypatch.setenv(name, value)
     monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SOURCES", "upload")
-    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    caplog.set_level("INFO")
     try:
-        configure_spotdown(settings)
-        got_mix, got_studio = mix_config.current(), studio_tracks_config.current()
-        assert (got_mix.mode, got_mix.owners) == mix
-        assert (got_studio.mode, got_studio.owners) == studio
-        assert got_mix.sources == frozenset({"upload"})
+        configure_spotdown(Settings(_env_file=None))  # type: ignore[call-arg]
     finally:
-        mix_config.configure(None)
         studio_tracks_config.configure(None)
         song_match_config.configure(None)
         shadow_config.configure(None)
+    lines = [r.getMessage() for r in caplog.records if "music analysis" in r.getMessage()]
+    assert lines == ["music analysis is unavailable: spotdown is not installed in this worker"]

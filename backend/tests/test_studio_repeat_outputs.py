@@ -19,12 +19,10 @@ import pytest
 
 from classbeat.design import revision
 from classbeat.jobs.errors import RETRYABLE
-from classbeat.spotdown import studio_tracks_config
 from classbeat.studio import output_body_policy as body
 from classbeat.swedebeat_studio import outputs_admit
 from gatewaycore import MERGE_PATH, SESSION_PATH
 from songtools import new_key
-from spotdownfake import spotdown  # noqa: F401 - fixture
 from studiooutputs import (
     Renders,
     choice,
@@ -36,7 +34,6 @@ from studiooutputs import (
     sent,
 )
 from studiotools import StudioEnv
-from test_spotdown_studio_design import ON, no_pause, spotdown_maps  # noqa: F401 - fixtures
 from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage]
     LENGTH,
     MIX_8,
@@ -44,10 +41,11 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
     approved,
     design_script,
     run_kind,
+    spotdown,  # noqa: F401 - the fake spotdown that stand-in answers from
     start_design,
 )
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on", "spotdown_maps")
+pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on")
 
 # The eight approved tracks as MIX_8 plays them, then track 1 again for 90 s (not next to itself).
 MIX_REPEAT: dict[str, Any] = {
@@ -57,7 +55,6 @@ MIX_REPEAT: dict[str, Any] = {
 
 
 async def designed_with_repeat(studio: StudioEnv) -> tuple[Any, UUID, Any]:
-    studio_tracks_config.configure(ON)  # ``exact`` tracks: only they keep a cut or a repeat (B5)
     rider, class_id, list_id = await approved(studio)
     studio.songs.script = design_script(MIX_REPEAT)
     response = await start_design(rider, class_id, list_id)

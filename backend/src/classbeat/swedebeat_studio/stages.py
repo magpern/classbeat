@@ -7,7 +7,9 @@
   Spotify title, artist and cover; no Spotify write.
 - ``match``: one gateway match of the candidates with the evidence retry (``match.match_pairs``).
 - ``choose``: the ``choose_songs`` stage over the usable candidates, their BPM and length the
-  **SwedeBeat** facts, with the relaxed upper bound (``length_policy.UPPER``).
+  **SwedeBeat** facts, measured as whole songs (``length_policy.whole_songs_measure``: the plain
+  sum, 10 % bounds narrowed by the plan's maximum and a margin per song; ADR 0036 B6). A class no
+  list can fit fails ``mix_too_long`` (``require_length``) before any model call.
 
 **Never in a model's input**: the catalogue references, tokens, the Spotify user, playlist or
 track ids, covers and MOWL ids (the stages see refs, indexes, titles and numbers only). Every
@@ -46,12 +48,13 @@ from classbeat.connections import OpenConnection
 from classbeat.connections.swedebeat_account import SwedebeatBearer
 from classbeat.crypto.keks import KeyRing
 from classbeat.jobs import JobFailure, JobRun
+from classbeat.plan_gates import PlanGates
 from classbeat.playlists import common
 from classbeat.songs.config import SongConfig
 from classbeat.songs.pick import stage_config
 from classbeat.swedebeat_studio.candidate_policy import Candidate, facts_of
 from classbeat.swedebeat_studio.evidence_policy import Evidence
-from classbeat.swedebeat_studio.length_policy import UPPER
+from classbeat.swedebeat_studio.length_policy import unfillable, whole_songs_measure
 from classbeat.swedebeat_studio.match import match_pairs
 from classbeat.swedebeat_studio.playlist_policy import playlist_candidates
 
@@ -69,7 +72,14 @@ class Steps:
     key: SecretStr
     keyring: KeyRing
     spotify: OpenConnection
+    gates: PlanGates | None = None  # the job's plan gates; none (stored before #496): no plan bound
     runs: list[StageOutcome] = field(default_factory=list[StageOutcome])
+
+    def require_length(self, plan: PickPlan) -> None:
+        """``JobFailure('mix_too_long')`` when no list of the plan's songs can pass the song
+        stage's length bounds (checked before the first model call)."""
+        if unfillable(plan.target_sec, plan.n, self.gates):
+            raise JobFailure("mix_too_long")
 
     async def read_playlist(self, playlist_id: str) -> list[Candidate]:
         """The user's own playlist's candidates: one read (``playlist_items``), never a write."""
@@ -122,6 +132,7 @@ class Steps:
     async def choose(self, plan: PickPlan, candidates: Sequence[Candidate]) -> ChosenList:
         """The ``choose_songs`` stage over the usable candidates (``pool_too_small`` when too few
         are usable). A candidate without SwedeBeat facts is left out and counted."""
+        self.require_length(plan)
         tracks: list[PoolTrack] = []
         for c in candidates:
             facts = facts_of(c.verdict)
@@ -138,7 +149,9 @@ class Steps:
                     cover=c.cover,
                 )
             )
-        ctx = ChooseContext.build(plan, tracks, len(candidates) - len(tracks), upper=UPPER)
+        ctx = ChooseContext.build(
+            plan, tracks, len(candidates) - len(tracks), measure=whole_songs_measure(self.gates)
+        )
         limits = stage_config(
             self.agent,
             self.config,

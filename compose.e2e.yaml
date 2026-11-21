@@ -376,7 +376,7 @@ services:
       # a spec names its own user (E2E_SPOTDOWN_OWNERS, e2e/tests/spotdown-helpers.ts recreates the
       # worker with it and, afterwards, without).
       CLASSBEAT_SPOTDOWN_URL: http://spotdown-api:8000
-      CLASSBEAT_SPOTDOWN_SOURCES: youtube
+      CLASSBEAT_SPOTDOWN_SOURCES: upload,youtube
       CLASSBEAT_SPOTDOWN_SPOTIFY: allowlist
       CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS: ${E2E_SPOTDOWN_OWNERS:-}
       SSL_CERT_FILE: /fake-ca/bundle.pem

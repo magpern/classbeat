@@ -17,13 +17,14 @@ Plus the stored form (review non-blocking 1): a map whose jsonb form differs fro
 import copy
 import json
 from collections.abc import Iterator
+from dataclasses import replace
 from typing import Any
 from uuid import UUID
 
 import pytest
 
 from classbeat.classes import studio_timeline
-from classbeat.design import track_analysis
+from classbeat.design import track_spotdown
 from classbeat.design.studio_revision_model import map_hash
 from classbeat.spotdown import studio_tracks_config
 from ctx import make_context
@@ -99,12 +100,13 @@ def on_spotdown(spotdown_maps: FakeSpotdown) -> Iterator[FakeSpotdown]:
 
 
 async def designed_on_spotdown(
-    studio: StudioEnv, cache: str, mix: dict[str, Any] = MIX_8
+    studio: StudioEnv, analysed: list[str], cache: str, mix: dict[str, Any] = MIX_8
 ) -> tuple[Any, UUID, Any]:
     rider, class_id, _list, current = await designed(studio, mix)
     records = studio.songs.revision(current.current_revision_id).music["analyses"]
     assert {r["analyser"] for r in records} == {"spotdown"}
-    studio_tracks_config.configure(None)  # a later job, spotdown off: the local rows are hits
+    analysed.clear()
+    studio_tracks_config.configure(None)  # a later job, spotdown not installed: cache hits only
     change(studio, rider.user_id, cache)
     return rider, class_id, current
 
@@ -114,7 +116,7 @@ async def designed_on_spotdown(
 async def test_the_timeline_reads_only_the_recorded_row(
     studio: StudioEnv, analysed: list[str], cache: str
 ) -> None:
-    rider, class_id, _current = await designed_on_spotdown(studio, cache)
+    rider, class_id, _current = await designed_on_spotdown(studio, analysed, cache)
     ctx = make_context(rider.user_id)
     view = await studio_timeline.view(studio.songs.spot.env.factory, ctx, class_id)
     if cache == "kept":
@@ -129,7 +131,7 @@ async def test_the_timeline_reads_only_the_recorded_row(
 async def test_a_revise_reads_only_the_recorded_row(
     studio: StudioEnv, analysed: list[str], cache: str
 ) -> None:
-    rider, class_id, current = await designed_on_spotdown(studio, cache)
+    rider, class_id, current = await designed_on_spotdown(studio, analysed, cache)
     studio.songs.script = design_script(cut_last(), note="Cut the last song.")
     response = await revise(rider, class_id, current.current_revision_id, "Cut the last song")
     row = await run_kind(studio, UUID(response.json()["id"]))
@@ -145,7 +147,7 @@ async def test_a_revise_reads_only_the_recorded_row(
 async def test_the_outputs_read_only_the_recorded_row(
     studio: StudioEnv, analysed: list[str], cache: str
 ) -> None:
-    rider, class_id, current = await designed_on_spotdown(studio, cache, WHOLE_8)
+    rider, class_id, current = await designed_on_spotdown(studio, analysed, cache, WHOLE_8)
     if cache == "kept":
         done = await produce(studio, rider, class_id, current, "swedebeat_playlist")
         assert (done.state, done.error_category) == ("completed", None)
@@ -179,12 +181,13 @@ def unlike_jsonb() -> dict[str, Any]:
 async def test_a_map_is_recorded_by_the_hash_of_its_stored_form(
     studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from types import SimpleNamespace
+    real = track_spotdown.studio_map
 
-    async def analyse_audio(_run: Any, _audio: Any, **_kwargs: Any) -> Any:
-        return SimpleNamespace(music_map=unlike_jsonb(), peak_rss=None)
+    def studio_map(*args: Any) -> Any:
+        mapped = real(*args)
+        return replace(mapped, track_map=unlike_jsonb())
 
-    monkeypatch.setattr(track_analysis, "analyse_audio", analyse_audio)
+    monkeypatch.setattr(track_spotdown, "studio_map", studio_map)
     rider, class_id, _list, current = await designed(studio)
     stored = studio.songs.sql(
         "SELECT map FROM swedebeat_track_maps WHERE owner_id = :o", o=rider.user_id
