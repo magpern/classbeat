@@ -9,10 +9,11 @@ publish that failed resumes **on that stored id** and never creates a second pla
 the approval:
 
 1. one of the worker's analysis slots (#574: the render is as heavy as an analysis);
-2. each track **downloaded fresh** (``download_track``, 120 s and 60 MB each, counted in the daily
-   track-download limit) into the render's private directory; one whose sha256 is not the
+2. each **distinct** track **downloaded fresh**, once per attempt however many pieces it plays
+   in (ADR 0036 amendment A8; ``download_track``, 120 s and 60 MB each, counted in the daily
+   track-download limit), into the render's private directory; one whose sha256 is not the
    analysed bytes' stops the output with ``music_changed`` ("the music changed, review again"),
-   nothing sent;
+   nothing sent. The render plan keeps one entry per piece, each naming its track's one file;
 3. the render once (``studio.render.rendered_mix``, the sandboxed child) from the stored plan
    (``mowl.compose.mix_offsets``), its decoded length checked against the composed one and its
    file at most 400 MB, else ``analysis_failed`` and nothing sent;
@@ -166,17 +167,23 @@ async def mix(p: Producer, row: OutputRow) -> None:
 
         await p.write(request, never)
         return
+    distinct = list(dict.fromkeys(str(part["reference"]) for part in plan))
     async with p.run.fenced() as fs:
-        await tracklimit.check(fs, len(plan))
+        await tracklimit.check(fs, len(distinct))
     p.run.require_analysis_slot()  # #574: requeued with one, the attempt not counted
 
     async def prepare(work: Path) -> list[dict[str, Any]]:
-        tracks: list[dict[str, Any]] = []
-        for n, part in enumerate(plan):
-            reference = str(part["reference"])
-            dest = work / f"track-{n:02d}.mp3"
-            await _download(p, reference, dest, str(sha256s[reference]))
-            tracks.append({"path": str(dest), **{k: part[k] for k in render_policy.TRACK_INTS}})
+        files: dict[str, Path] = {}
+        for n, reference in enumerate(distinct):  # each track once, its sha256 checked once
+            files[reference] = work / f"track-{n:02d}.mp3"
+            await _download(p, reference, files[reference], str(sha256s[reference]))
+        tracks = [
+            {
+                "path": str(files[str(part["reference"])]),
+                **{k: part[k] for k in render_policy.TRACK_INTS},
+            }
+            for part in plan
+        ]
         await p.run.checkpoint()
         return tracks
 

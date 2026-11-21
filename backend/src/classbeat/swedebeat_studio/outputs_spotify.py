@@ -1,7 +1,9 @@
 """The final Spotify playlist of a studio class (ADR 0036 section 6, ADR 0008 sections 2 and 4,
 SR C7): a fresh, private playlist created and filled with the approved draft's tracks **in the
-mix's order**, through ``classbeat.playlists.final`` (the create, its ``class_playlists`` row for
-the approved studio ``song_list`` revision, the absolute fill, read back). Its keys are the
+mix's order**, each song **once**, in the order of its first piece (ADR 0036 amendment A8: Spotify
+plays whole tracks, so the playlist is a song list, not the mix's timing), through
+``classbeat.playlists.final`` (the create, its ``class_playlists`` row for the approved studio
+``song_list`` revision, the absolute fill, read back). Its keys are the
 approval's (``out:...:spotify_playlist:<n>:spotify_create`` and ``...:spotify_fill``), so a later
 job for the same approval finds the earlier rows and makes no second playlist. It needs no
 SwedeBeat write, no render and no MOWL.
@@ -17,13 +19,14 @@ the same operation and the output's derived state with it.
 from classbeat.jobs import JobFailure
 from classbeat.playlists import fill_final_playlist, open_spotify, sync
 from classbeat.playlists.final import create_final_playlist
+from classbeat.studio.mix_repeat_calc import first_order
 from classbeat.swedebeat_studio.outputs_attempt import mark
 from classbeat.swedebeat_studio.outputs_job import Producer
 from classbeat.swedebeat_studio.outputs_rows import OutputRow, step_keys
 
 
 def track_ids(p: Producer) -> list[str]:
-    """The approved list's Spotify ids in the mix's order."""
+    """The approved list's Spotify ids in the mix's order, each once (its first piece's place)."""
     by_reference = {
         s.swedebeat.reference: s.spotify_id
         for s in p.draft.songs.content.songs
@@ -31,7 +34,7 @@ def track_ids(p: Producer) -> list[str]:
     }
     if any(r not in by_reference for r in p.references):
         raise JobFailure("internal")
-    return [by_reference[r] for r in p.references]
+    return [by_reference[r] for r in first_order(p.references)]
 
 
 async def spotify_playlist(p: Producer, row: OutputRow) -> None:

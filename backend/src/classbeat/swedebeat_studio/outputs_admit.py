@@ -11,8 +11,8 @@ order, each refusal writing nothing:
 3. the draft (``current_draft.load`` with the class row share-locked): ``class_not_found``,
    ``no_studio_draft``, ``not_current`` (not the class's current revision), ``hash_mismatch``
    (a stale hash), ``internal`` (a stored hash that no longer holds);
-4. the choice (``output_choice_policy.refusal``): ``invalid_input``, ``mowl_needs_mix``,
-   ``output_off``;
+4. the choice (``output_choice_policy.refusal``, with the draft's own spec: whether it repeats a
+   song): ``invalid_input``, ``mowl_needs_mix``, ``playlist_has_repeats``, ``output_off``;
 5. the SwedeBeat connection: ``not_connected`` unless it is the user's, ``connected`` and live;
    ``connection_changed`` unless it is the one the approved list was matched with **and** its
    generation (read share-locked) is the one the route's session check saw;
@@ -37,6 +37,7 @@ from classbeat.context import UserContext
 from classbeat.flags import effective as flags
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.songs import config as song_config
+from classbeat.studio.mix_repeat_calc import has_repeats
 from classbeat.studio.output_choice_policy import enabled_outputs, refusal
 from classbeat.swedebeat_studio import config, current_draft
 from classbeat.swedebeat_studio.admit import studio_on, swedebeat_connected
@@ -105,7 +106,8 @@ async def bound(
     found = await the_draft(db, ctx.user_id, given, lock=lock)
     if isinstance(found, str):
         return found
-    refused = refusal(given.outputs, await enabled(db, ctx))
+    repeats = has_repeats(found.music.mix_spec.references())  # the stored, hash-checked spec
+    refused = refusal(given.outputs, await enabled(db, ctx), repeats=repeats)
     if refused is not None:
         return refused
     connection_id = given.swedebeat_connection_id

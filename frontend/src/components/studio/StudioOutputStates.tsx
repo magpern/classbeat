@@ -38,6 +38,7 @@ const CATEGORY_TEXT: Record<string, CatalogueKey> = {
   invalid_response: 'studio.os.category.upstream_unavailable',
   connection_changed: 'studio.os.category.connection_changed',
   render_not_reproducible: 'studio.os.category.render_not_reproducible',
+  playlist_has_repeats: 'studio.os.category.playlist_has_repeats',
   music_changed: 'studio.os.category.music_changed',
   not_connected: 'studio.os.category.not_connected',
   invalid_input: 'studio.os.category.invalid_input',
@@ -51,7 +52,13 @@ const CHECK_REASON_TEXT: Record<string, CatalogueKey> = {
 }
 
 /** Failures that approving again cannot help: the category's own sentence says what to do. */
-const NO_RETRY: readonly string[] = ['render_not_reproducible', 'music_changed', 'analysis_failed', 'invalid_input']
+const NO_RETRY: readonly string[] = [
+  'render_not_reproducible',
+  'music_changed',
+  'analysis_failed',
+  'invalid_input',
+  'playlist_has_repeats',
+]
 
 const DUPLICATE_RISK = {
   spotify_playlist: 'studio.os.duplicateRisk.spotify_playlist',

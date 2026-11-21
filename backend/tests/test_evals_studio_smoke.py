@@ -69,3 +69,18 @@ def test_the_studio_checks_fail_on_a_bad_mix() -> None:
     composed = Composed(plan, {"duration": 49.0}, 50.0)
     failed = {c.name for c in studio_checks(composed, 2, "a ref-0123 was sent") if not c.ok}
     assert failed == {"mix_order", "mix_windows", "mix_total", "no_reference"}
+
+
+def test_the_studio_checks_take_a_repeat_and_still_want_every_track() -> None:
+    plan = {
+        "tracks": [
+            {"track": 0, "start_sec": 0.0, "end_sec": 60.0},
+            {"track": 1, "start_sec": 0.0, "end_sec": 60.0},
+            {"track": 0, "start_sec": 0.0, "end_sec": 60.0},  # #1342: a repeat
+        ],
+        "crossfades": [0, 0],
+    }
+    composed = Composed(plan, {"duration": 180.0}, 180.0)
+    assert all(c.ok for c in studio_checks(composed, 2, "nothing"))
+    failed = {c.name for c in studio_checks(composed, 3, "nothing") if not c.ok}
+    assert failed == {"mix_order"}  # track 2 never plays

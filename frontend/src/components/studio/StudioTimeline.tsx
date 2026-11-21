@@ -6,6 +6,8 @@ import { Chip } from '../ui/chip'
 /**
  * The music timeline of a studio draft (ADR 0036 section 5): the songs with their cut points, the
  * crossfades and the intervals, all from the server's composed map. No audio: nothing here plays.
+ * A piece that plays a song again is marked with the song it repeats, and the mix's soft hints
+ * (a whole track again, one song over half the mix) are shown by song number (#1342).
  */
 export function StudioTimeline({ timeline }: { timeline: Timeline }) {
   const t = useT()
@@ -17,6 +19,11 @@ export function StudioTimeline({ timeline }: { timeline: Timeline }) {
         {t('studio.tl.length', { mix: minutes(timeline.durationSec), workout: minutes(timeline.workoutSec) })}
       </p>
       <p className="m-0 text-muted">{t('studio.tl.noAudio')}</p>
+      {timeline.hints.map((hint) => (
+        <p key={`${hint.code}-${hint.pieces.join('-')}`} className="m-0 text-text" data-testid="timeline-hint">
+          {t(`studio.tl.hint.${hint.code}`, { songs: hint.pieces.map((n) => n + 1).join(', ') })}
+        </p>
+      ))}
       <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label={t('studio.tl.songs')}>
         {timeline.tracks.map((track) => {
           const fade = fadeAfter.get(track.position)
@@ -36,6 +43,11 @@ export function StudioTimeline({ timeline }: { timeline: Timeline }) {
                     mixTo: minutes(track.mixEndSec),
                   })}
                 </p>
+                {track.repeatOf !== null ? (
+                  <p className="m-0 text-[0.9375rem] text-muted" data-testid="timeline-repeat">
+                    {track.loop ? t('studio.tl.loop') : t('studio.tl.repeatOf', { song: track.repeatOf + 1 })}
+                  </p>
+                ) : null}
               </div>
               {fade !== undefined ? (
                 <p className="m-0 pl-3 text-[0.9375rem] text-muted" data-testid="timeline-fade">

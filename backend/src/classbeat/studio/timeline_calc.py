@@ -9,6 +9,10 @@ to and the render's ``mix_offsets`` share, so the view cannot drift from the mix
   track's own time (``start_sec``, ``end_sec``), the played window (``played_sec``), where it
   starts and ends in the mix (the composed map's song), its incoming and outgoing crossfade and
   its **effective** length (until the next track starts: the window less the outgoing crossfade);
+- per piece, its marks (ADR 0036 amendment A8): ``repeat_of``, the position of the first piece of
+  the same song when this piece is a repeat (else ``None``), and ``loop`` (the same song as the
+  piece before it, a loop join); ``has_repeats`` for the whole mix (the class is mix-only);
+- ``hints``: the soft checks of ``mix_hint_policy`` (code and piece positions, never a reference);
 - per change of track, the crossfade with where it lies in the mix;
 - the workout's intervals with their start and end in the mix and the track under their start.
 
@@ -21,6 +25,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from mowl import compose
+
+from classbeat.studio import mix_hint_policy, mix_repeat_calc
 
 INTERVAL_FIELDS = ("zone", "rpm", "standing", "game", "ftp_test")
 
@@ -80,6 +86,10 @@ def timeline(
     if [s.get("track") for s in songs] != list(range(1, len(spec["tracks"]) + 1)):
         raise ValueError("a studio track is one song")
     crossfades = [int(c) for c in spec["crossfades"]]
+    references = [str(t["reference"]) for t in spec["tracks"]]
+    repeat_of = mix_repeat_calc.repeat_of(references)
+    joins = set(mix_repeat_calc.loop_joins(references))
+    lengths = {r: float(m["duration"]) for r, m in zip(references, track_maps, strict=True)}
     tracks: list[dict[str, Any]] = []
     for n, (cut, song, fact) in enumerate(zip(spec["tracks"], songs, facts, strict=True)):
         played = round(float(cut["end_sec"]) - float(cut["start_sec"]), 2)
@@ -100,6 +110,8 @@ def timeline(
                 "first_downbeat_sec": float(song["first_downbeat"]),
                 "crossfade_in_sec": fade_in,
                 "crossfade_out_sec": fade_out,
+                "repeat_of": repeat_of[n],
+                "loop": n - 1 in joins,
             }
         )
     fades = [
@@ -117,6 +129,8 @@ def timeline(
         "duration_sec": float(composed["duration"]),
         "workout_sec": intervals[-1]["end_sec"] if intervals else 0,
         "tracks": tracks,
+        "has_repeats": mix_repeat_calc.has_repeats(references),
+        "hints": [h.as_json() for h in mix_hint_policy.hints(spec, lengths)],
         "crossfades": fades,
         "intervals": intervals,
     }

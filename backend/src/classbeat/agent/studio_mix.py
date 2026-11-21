@@ -10,7 +10,8 @@ Pure: no I/O, no reference.
 - ``compose``: the model's plan (indexes, cuts, crossfades) checked by ``mix_plan_policy`` against
   the analyses (``ToolError('invalid_mix')`` with the named reason), then ``mowl.compose.
   compose_map``: the map ``fit_to_music`` reads, with ``crossfade`` 0 because the crossfades are
-  already in it (as a mix's map). The plan comes back snapped, by index.
+  already in it (as a mix's map). The plan comes back snapped, by index, with the soft checks
+  of ``mix_hint_policy`` (``hints``: piece positions only), which the answer adds to its warnings.
 """
 
 from collections.abc import Mapping, Sequence
@@ -24,6 +25,7 @@ from classbeat.agent import mix_input, model_input
 from classbeat.agent.model_input import EVENT_KINDS, view_text
 from classbeat.agent.stage import ToolError
 from classbeat.agent.studio_schemas import MixInput
+from classbeat.studio import mix_hint_policy
 from classbeat.studio.mix_plan_policy import (
     CS,
     MixPlanRefused,
@@ -56,6 +58,7 @@ class Composed:
     plan: dict[str, Any]  # {"tracks": [{"track", "start_sec", "end_sec"}], "crossfades"}
     map: dict[str, Any]
     duration_sec: float
+    hints: tuple[str, ...] = ()  # mix_hint_policy's texts: codes and piece positions only
 
 
 def _events(m: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -135,7 +138,9 @@ def compose(tracks: Sequence[StudioTrack], given: MixInput) -> Composed:
         "crossfades": good["crossfades"],
     }
     windows = [(cs(t["end_sec"]) - cs(t["start_sec"])) / CS for t in good["tracks"]]  # exact cs
-    return Composed(plan, composed, total_sec(windows, good["crossfades"]))
+    found = mix_hint_policy.hints(good, {k: f.length for k, f in facts.items()})
+    hints = tuple(mix_hint_policy.texts(found))
+    return Composed(plan, composed, total_sec(windows, good["crossfades"]), hints)
 
 
 def by_list_index(composed: Composed, timeline: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -155,13 +160,14 @@ def by_list_index(composed: Composed, timeline: list[dict[str, Any]]) -> list[di
 
 
 def warnings_by_list_index(composed: Composed, warnings: Sequence[str]) -> list[str]:
-    """``warnings`` with the beat-one estimate named by the list's indexes."""
+    """``warnings`` with the beat-one estimate named by the list's indexes, then the mix's soft
+    checks (``Composed.hints``)."""
     order = [t["track"] for t in composed.plan["tracks"]]
-    unsure = sorted(order[n] for n in mix_input.unsure_beat_one(composed.map) if n < len(order))
+    unsure = sorted({order[n] for n in mix_input.unsure_beat_one(composed.map) if n < len(order)})
     kept = [w for w in warnings if not w.startswith(BEAT_ONE_HEAD)]
     if unsure:
         kept.append(mix_input.BEAT_ONE_ESTIMATE.format(songs=", ".join(str(n) for n in unsure)))
-    return kept
+    return [*kept, *composed.hints]
 
 
 def plan_for_model(composed: Composed) -> dict[str, Any]:

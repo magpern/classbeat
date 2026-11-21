@@ -40,11 +40,41 @@ ALL = frozenset(OUTPUTS)
     ],
 )
 def test_the_choice_rules(chosen: list[str], enabled: frozenset[str], reason: str | None) -> None:
-    assert refusal(chosen, enabled) == reason
+    assert refusal(chosen, enabled, repeats=False) == reason
 
 
 def test_the_dependency_is_checked_before_the_setting() -> None:
-    assert refusal(["mowl"], frozenset()) == "mowl_needs_mix"
+    assert refusal(["mowl"], frozenset(), repeats=False) == "mowl_needs_mix"
+
+
+# --- #1342 (ADR 0036 amendment A8): a class that repeats a song is mix-only --------------------
+
+
+@pytest.mark.parametrize(
+    ("chosen", "enabled", "reason"),
+    [
+        (["swedebeat_playlist"], ALL, "playlist_has_repeats"),
+        (["swedebeat_playlist", "swedebeat_mix"], ALL, "playlist_has_repeats"),
+        (list(OUTPUTS), ALL, "playlist_has_repeats"),
+        (["swedebeat_mix", "mowl"], ALL, None),  # the mix renders one piece per entry
+        (["spotify_playlist"], ALL, None),  # each song once (outputs_spotify)
+        (["spotify_playlist", "swedebeat_mix"], ALL, None),
+        # The fixed order: invalid_input, mowl_needs_mix, playlist_has_repeats, output_off.
+        (["swedebeat_playlist", "swedebeat_playlist"], ALL, "invalid_input"),
+        (["swedebeat_playlist", "mowl"], ALL, "mowl_needs_mix"),
+        (["swedebeat_playlist"], frozenset(), "playlist_has_repeats"),
+        (["swedebeat_mix"], frozenset(), "output_off"),
+    ],
+)
+def test_the_playlist_is_refused_for_a_draft_with_repeats(
+    chosen: list[str], enabled: frozenset[str], reason: str | None
+) -> None:
+    assert refusal(chosen, enabled, repeats=True) == reason
+
+
+def test_a_draft_without_repeats_may_have_the_playlist() -> None:
+    assert refusal(["swedebeat_playlist"], ALL, repeats=False) is None
+    assert refusal(["swedebeat_playlist"], frozenset(), repeats=False) == "output_off"
 
 
 def test_a_choice_is_kept_in_one_order() -> None:
@@ -139,6 +169,52 @@ def test_the_intervals_lie_on_the_mix() -> None:
 def test_no_reference_is_in_the_timeline() -> None:
     made = repr(timeline(SPEC, MAPS, FACTS, CONTENT))
     assert "ref-" not in made
+
+
+# A song again later in the mix (ADR 0036 amendment A8): one row per piece, the repeat marked.
+REPEAT: dict[str, Any] = {
+    "tracks": [
+        {"reference": "ref-b", "start_sec": 30.4, "end_sec": 250.0},
+        {"reference": "ref-a", "start_sec": 0, "end_sec": 120.4},
+        {"reference": "ref-c", "start_sec": 15.4, "end_sec": 200.0},
+        {"reference": "ref-a", "start_sec": 0, "end_sec": 120.4},
+    ],
+    "crossfades": [8, 12, 6],
+}
+REPEAT_MAPS = [MAPS[0], MAPS[1], MAPS[2], MAPS[1]]
+REPEAT_FACTS = [FACTS[0], FACTS[1], FACTS[2], FACTS[1]]
+
+
+def test_a_repeat_is_its_own_row_and_is_marked() -> None:
+    made = timeline(REPEAT, REPEAT_MAPS, REPEAT_FACTS, CONTENT)
+    composed = compose.compose_map([dict(m) for m in REPEAT_MAPS], REPEAT)
+    assert made["duration_sec"] == composed["duration"]
+    assert len(made["tracks"]) == 4
+    assert [t["repeat_of"] for t in made["tracks"]] == [None, None, None, 1]
+    assert [t["loop"] for t in made["tracks"]] == [False] * 4
+    assert made["has_repeats"] is True
+    # The one duration rule with the repeat counted as often as it plays.
+    assert sum(t["effective_sec"] for t in made["tracks"]) == pytest.approx(made["duration_sec"])
+    assert made["hints"] == []  # a minute twice is neither a whole track nor half the mix
+    assert "ref-" not in repr(made)
+
+
+def test_a_mix_without_repeats_is_not_marked() -> None:
+    made = timeline(SPEC, MAPS, FACTS, CONTENT)
+    assert made["has_repeats"] is False
+    assert [t["repeat_of"] for t in made["tracks"]] == [None, None, None]
+    assert made["hints"] == []
+
+
+def test_the_timeline_carries_the_hints_by_piece() -> None:
+    whole = {**REPEAT, "tracks": [*REPEAT["tracks"]]}
+    whole["tracks"][1] = {"reference": "ref-a", "start_sec": 0, "end_sec": 300.0}
+    whole["tracks"][3] = {"reference": "ref-a", "start_sec": 0, "end_sec": 300.0}
+    made = timeline(whole, REPEAT_MAPS, REPEAT_FACTS, CONTENT)
+    assert made["hints"] == [
+        {"code": "whole_track_repeated", "pieces": [1, 3]},
+        {"code": "one_song_dominates", "pieces": [1, 3]},
+    ]
 
 
 def test_maps_that_do_not_fit_the_cuts_are_refused() -> None:

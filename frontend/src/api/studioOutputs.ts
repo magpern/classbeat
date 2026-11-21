@@ -1,5 +1,5 @@
 import { ApiError, get, post } from './client'
-import { count, flag, list, object, optionalCount, optionalText, text } from './decode'
+import { count, flag, list, object, optionalCount, optionalFlag, optionalText, text } from './decode'
 import { decodeJob, decodeStartedJob, type Job } from './jobs'
 
 // A studio class's timeline, its design start, its chat revise and its output choice (ADR 0036
@@ -23,6 +23,16 @@ export interface TimelineTrack {
   mixEndSec: number
   crossfadeInSec: number
   crossfadeOutSec: number
+  /** The position of the first piece of the same song when this piece plays it again (#1342). */
+  repeatOf: number | null
+  /** The same song as the piece before it, playing on (a loop join; refused until #1328). */
+  loop: boolean
+}
+
+/** A soft check of the mix (never a refusal): its code and the piece positions it names. */
+export interface TimelineHint {
+  code: 'whole_track_repeated' | 'one_song_dominates'
+  pieces: number[]
 }
 
 export interface TimelineFade {
@@ -49,6 +59,9 @@ export interface Timeline {
   durationSec: number
   workoutSec: number
   tracks: TimelineTrack[]
+  /** A song plays in more than one piece: the class is mix-only (ADR 0036 amendment A8). */
+  hasRepeats: boolean
+  hints: TimelineHint[]
   crossfades: TimelineFade[]
   intervals: TimelineInterval[]
 }
@@ -74,7 +87,26 @@ function decodeTrack(value: unknown): TimelineTrack {
     mixEndSec: num(item, 'mix_end_sec'),
     crossfadeInSec: num(item, 'crossfade_in_sec'),
     crossfadeOutSec: num(item, 'crossfade_out_sec'),
+    repeatOf: optionalCount(item, 'repeat_of'),
+    loop: optionalFlag(item, 'loop') === true,
   }
+}
+
+const HINT_CODES: readonly string[] = ['whole_track_repeated', 'one_song_dominates']
+
+/** The known hints only: an unknown code is left out rather than shown as a code. */
+function decodeHints(item: Record<string, unknown>): TimelineHint[] {
+  if (item['hints'] === undefined) return []
+  return list(item, 'hints').flatMap((value) => {
+    const hint = object(value, 'hint')
+    const code = text(hint, 'code')
+    if (!HINT_CODES.includes(code)) return []
+    const pieces = list(hint, 'pieces').map((n) => {
+      if (typeof n !== 'number' || !Number.isInteger(n) || n < 0) throw new ApiError(500, null, null, undefined)
+      return n
+    })
+    return [{ code: code as TimelineHint['code'], pieces }]
+  })
 }
 
 function decodeFade(value: unknown): TimelineFade {
@@ -97,12 +129,16 @@ function decodeInterval(value: unknown): TimelineInterval {
 
 export function decodeTimeline(value: unknown): Timeline {
   const item = object(value, 'timeline')
+  const tracks = list(item, 'tracks').map(decodeTrack)
   return {
     revisionId: text(item, 'revision_id'),
     contentHash: text(item, 'content_hash'),
     durationSec: num(item, 'duration_sec'),
     workoutSec: num(item, 'workout_sec'),
-    tracks: list(item, 'tracks').map(decodeTrack),
+    tracks,
+    // The server's flag, or any piece marked as a repeat: either one makes the class mix-only.
+    hasRepeats: optionalFlag(item, 'has_repeats') === true || tracks.some((t) => t.repeatOf !== null),
+    hints: decodeHints(item),
     crossfades: list(item, 'crossfades').map(decodeFade),
     intervals: list(item, 'intervals').map(decodeInterval),
   }
