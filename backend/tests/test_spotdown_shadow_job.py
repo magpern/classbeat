@@ -3,13 +3,13 @@ the fake gateway, the fake spotdown (``spotdownfake``, in process) and the real 
 generated audio. Never the network: the autouse netguard refuses any other connection.
 
 - off (the default), or on without spotdown installed: nothing is sent, nothing is written;
-- on: the bytes of each downloaded track are looked up, then uploaded once, in the owner's own
-  scope; the comparison and the provenance are recorded, path (a) ``exact``, with no reference,
-  scope, client ref or title; the analysis step's result and stored maps are those of a run
-  without shadow mode;
+- on: the bytes of each downloaded track are looked up, then uploaded once, in the studio's
+  shared scope (#1338: a studio track's analysis serves every owner); the comparison and the
+  provenance are recorded, path (a) ``exact``, with no reference, scope, client ref or title;
+  the analysis step's result and stored maps are those of a run without shadow mode;
 - every failure (spotdown unreachable, a per-track status, the budget, an error in the shadow
   code, the database refusing its write) is an outcome, and never changes the run;
-- owners are isolated: rows by row security, analyses by scope.
+- owners are isolated by row security; only spotdown's analysis of the same file is shared.
 """
 
 import hashlib
@@ -32,7 +32,7 @@ from classbeat.design.track_cache import TrackMap
 from classbeat.jobs import Complete, JobKind, JobRun, KindRegistry
 from classbeat.spotdown import shadow_config, shadow_policy
 from classbeat.spotdown.client import SpotdownClient
-from classbeat.spotdown.scope_calc import cache_scope
+from classbeat.spotdown.scope_calc import cache_scope, shared_scope
 from classbeat.swedebeat_match import gateway_match
 from ctx import make_context
 from gatewaycore import FakeGateway
@@ -209,7 +209,7 @@ async def test_each_track_is_compared_and_the_step_is_unchanged(
     assert last_result(harness) == off_result  # the design gets exactly today's analysis
     assert harness.maps(owner) == off_maps
     assert not any(work.iterdir())  # no audio left  # noqa: ASYNC240
-    scope = cache_scope(KEY, owner)
+    scope = shared_scope(KEY, "studio")
     uploads = [s for s in spotdown.seen if s.path == "/v2/uploads"]
     assert [hashlib.sha256(s.body).hexdigest() for s in uploads] == [
         SHA,
@@ -232,7 +232,15 @@ async def test_each_track_is_compared_and_the_step_is_unchanged(
         assert s.provenance["audio"]["sha256"] in {SHA, hashlib.sha256(OTHER_AUDIO).hexdigest()}
         assert s.finished_at is not None
         stored = json.dumps([s.metrics, s.provenance, s.detail])
-        for secret in (ONE, TWO, scope, "shadow-", "cache_scope", "Bearer"):
+        for secret in (
+            ONE,
+            TWO,
+            scope,
+            cache_scope(KEY, owner),
+            "shadow-",
+            "cache_scope",
+            "Bearer",
+        ):
             assert secret not in stored
 
 
@@ -240,23 +248,29 @@ async def test_bytes_analysed_before_in_the_scope_are_not_uploaded_again(
     harness: Harness, spotdown: FakeSpotdown, shadow_on: None
 ) -> None:
     owner = await harness.user()
-    spotdown.add_analysis(cache_scope(KEY, owner), f"sha256:{SHA}")
+    spotdown.add_analysis(shared_scope(KEY, "studio"), f"sha256:{SHA}")
     await harness.run(owner, [ONE])
     assert "PUT /v2/uploads" not in spotdown_paths(spotdown)
     assert [s.outcome for s in harness.shadows(owner)] == ["compared"]
 
 
-async def test_another_owners_analysis_is_not_reused_and_their_rows_are_not_visible(
+async def test_another_owners_analysis_is_reused_but_their_rows_are_not_visible(
     harness: Harness, spotdown: FakeSpotdown, shadow_on: None
 ) -> None:
+    """#1338: the same studio file is analysed once for every owner (the shared scope); the
+    shadow rows stay each owner's own."""
     first, second = await harness.user(), await harness.user()
     await harness.run(first, [ONE])
-    before = len([s for s in spotdown.seen if s.path == "/v2/uploads"])
+    before = len(spotdown.seen)
     await harness.run(second, [ONE])
-    uploads = [s for s in spotdown.seen if s.path == "/v2/uploads"]
-    assert len(uploads) == before + 1  # the second owner's scope holds nothing of the first's
-    assert f"cache_scope={cache_scope(KEY, second)}" in uploads[-1].query
-    assert cache_scope(KEY, first) != cache_scope(KEY, second)
+    later = spotdown.seen[before:]
+    assert [s.path for s in later if s.path == "/v2/uploads"] == []  # no second upload
+    shared = shared_scope(KEY, "studio")
+    assert any(f"cache_scope={shared}" in s.query for s in later)
+    for s in later:
+        for owner in (first, second):
+            assert cache_scope(KEY, owner) not in s.query + s.body.decode("latin-1")
+    assert [s.outcome for s in harness.shadows(second)] == ["compared"]
     async with user_session(harness.ops.factory, make_context(second)) as db:
         visible = (await db.execute(text("SELECT owner_id FROM spotdown_shadow_tracks"))).all()
     assert [r.owner_id for r in visible] == [second]  # row security: only their own

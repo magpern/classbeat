@@ -14,6 +14,7 @@ from classbeat.spotdown.scope_calc import (
     SCOPE_PATTERN,
     cache_scope,
     idempotency_key,
+    shared_scope,
 )
 
 KEY = bytes(range(32))
@@ -46,6 +47,29 @@ def test_the_scope_needs_a_uuid_and_a_long_key() -> None:
         cache_scope(KEY, str(OWNER))  # pyright: ignore[reportArgumentType]
     with pytest.raises(ValueError, match="at least 32"):
         cache_scope(b"short", OWNER)
+
+
+def test_a_shared_scope_names_no_owner_and_is_never_an_owners() -> None:
+    scope = shared_scope(KEY, "studio")
+    assert SCOPE_PATTERN.fullmatch(scope)
+    assert scope.startswith("s1-")
+    assert len(scope) == 46
+    expected = hmac.new(
+        KEY, b"classbeat/spotdown-shared-scope/v1\x00studio", hashlib.sha256
+    ).digest()
+    assert scope == "s1-" + base64.urlsafe_b64encode(expected).rstrip(b"=").decode()
+    assert scope == shared_scope(KEY, "studio")
+    assert scope != shared_scope(KEY, "mix")
+    assert scope != shared_scope(bytes(32), "studio")
+    assert scope.removeprefix("s1-") != cache_scope(KEY, OWNER).removeprefix("o1-")
+
+
+@pytest.mark.parametrize("name", ["", "Studio", "studio-1", "a" * 33, "st\x00"])
+def test_a_shared_scope_needs_a_lowercase_name_and_a_long_key(name: str) -> None:
+    with pytest.raises(ValueError, match="lowercase letters"):
+        shared_scope(KEY, name)
+    with pytest.raises(ValueError, match="at least 32"):
+        shared_scope(b"short", "studio")
 
 
 def test_the_idempotency_key_is_stable_hashed_and_distinct() -> None:

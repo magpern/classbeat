@@ -8,10 +8,11 @@ written). For each track ``track_analysis`` downloads and analyses (a cache miss
 
 1. **``relay``**, while the capped download is still on disk and before it is deleted: a
    ``pending`` row (``track_shadow_rows.open_row``, the lease extended over the relay), then, in
-   the owner's ``cache_scope`` (``scope_calc.cache_scope``, an HMAC of the owner id),
-   ``lookup_content`` by the sha256; only on a miss the bytes are streamed to ``upload`` and the
-   analysis is started (``Idempotency-Key`` from the job, the row and the step; ``client_ref`` is
-   the row's random id). Nothing else leaves: no reference, title, token or URL. The relay has no
+   the studio's shared scope (``scope_policy.scope_for``, the one the live source uses; it names
+   no owner; ADR 0040 section 7, amendment of 2026-11-21), ``lookup_content`` by the sha256;
+   only on a miss the bytes are streamed to ``upload`` and the analysis is started
+   (``Idempotency-Key`` from the job, the row and the step; ``client_ref`` is the row's random
+   id). Nothing else leaves: no reference, title, token or URL. The relay has no
    checkpoint of its own (a stop found here only skips it), so it never stops the run before the
    track's map is stored.
 2. **``finish``**, after the batch's last track is stored and its analysis slot freed: polls the
@@ -44,11 +45,11 @@ from classbeat.design import track_shadow_rows as rows
 from classbeat.egress_spotdown import ANALYSIS_SECONDS, CALL_SECONDS, UPLOAD_SECONDS
 from classbeat.jobs import JobRun, RunStopped
 from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS
-from classbeat.spotdown import shadow_config
+from classbeat.spotdown import scope_policy, shadow_config
 from classbeat.spotdown.answer_model import Uploaded
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.failure_policy import AnalysisReady, Pending, TrackFailure
-from classbeat.spotdown.scope_calc import cache_scope, idempotency_key
+from classbeat.spotdown.scope_calc import idempotency_key
 from classbeat.spotdown.shadow_policy import failure_outcome, poll_delay, remaining
 from classbeat.spotdown.shadow_record_model import ShadowRecord, evaluate, local_metrics
 
@@ -94,7 +95,7 @@ def _key(run: JobRun, relayed: Relayed, step: str) -> str:
 async def _send(run: JobRun, client: SpotdownClient, relayed: Relayed, audio: Path) -> None:
     found = await client.lookup_content(relayed.sha256, relayed.scope)
     if isinstance(found, AnalysisReady):
-        relayed.analysis_id = found.analysis_id  # analysed before in this scope: no upload
+        relayed.analysis_id = found.analysis_id  # analysed before (by any owner): no upload
         return
     if found is not None:
         relayed.ended = ShadowRecord(*failure_outcome(found))
@@ -125,7 +126,7 @@ async def relay(
     if not config.active or config.scope_key is None:
         return None
     try:
-        scope = cache_scope(config.scope_key, run.lease.owner_id)
+        scope = scope_policy.scope_for("studio", config.scope_key, run.lease.owner_id)
         row_id = await rows.open_row(run, local_metrics(local_map), RELAY_SECONDS)
     except PASSED:
         raise
