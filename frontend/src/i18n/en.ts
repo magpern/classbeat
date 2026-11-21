@@ -1143,7 +1143,7 @@ export const en = {
   'job.failure.analysis_failed.detail': 'Try another mix.',
   'job.failure.analysis_unavailable.title': 'Music analysis is not available right now',
   'job.failure.analysis_unavailable.detail':
-    'We try again by ourselves. Your class was not designed. You can also try again in a few minutes.',
+    'We tried several times. Your class was not designed. Try again in a few minutes.',
   'job.failure.feature_off.title': 'This is switched off right now',
   'job.failure.feature_off.detail': 'Nothing was designed. Try again later.',
   'job.failure.analysis_limit.title': 'Too many new Swedebeat mixes today',

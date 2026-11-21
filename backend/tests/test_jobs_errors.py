@@ -235,7 +235,7 @@ def test_analysis_unavailable_is_a_retried_category_and_analysis_failed_is_not()
     assert failure_of(JobFailure("analysis_unavailable")).category == "analysis_unavailable"
 
 
-def test_a_lease_lost_requeue_is_not_a_retryable_ending_so_it_keeps_the_spent_budget() -> None:
+def test_lease_lost_operation_busy_and_analysis_limit_are_not_retryable_endings() -> None:
     # ADR 0040 amendment item 4 and ``spotdown.outage_policy``: the spotdown wait budget resets
     # when a run ends in a RETRYABLE category. These endings are not in it, so they keep it.
     for kept in ("lease_lost", "operation_busy", "analysis_limit"):

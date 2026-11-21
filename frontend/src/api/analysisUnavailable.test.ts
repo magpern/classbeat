@@ -15,15 +15,20 @@ const KEYS = [
   'job.revise.analysis_unavailable',
 ] as const
 
+// A service or product name, a code, a URL, a bare host (`example.com`) or an IP (`10.0.0.5`).
+const TECHNICAL = /spotdown|classbeat|analysis_unavailable|https?:|\w\.\w|\d+\.\d+\.\d+/i
+
 describe('analysis_unavailable copy', () => {
   it('shows its own title and detail, not the fallback and not analysis_failed', () => {
     const found = failureText('analysis_unavailable')
     expect(found.title).toBe('Music analysis is not available right now')
-    expect(found.detail).toMatch(/try again by ourselves/)
-    expect(found.detail).toMatch(/try again in a few minutes/)
+    // Shown only once the job has ended, so it says the retries were made, not that they will be.
+    expect(found.detail).toMatch(/tried several times/)
+    expect(found.detail).not.toMatch(/\b(try|trying) again by ourselves|will try again/i)
+    expect(found.detail).toMatch(/try again in a few minutes/i)
     expect(found).not.toEqual(failureText('analysis_failed'))
     expect(found).not.toEqual(failureText('some_unknown_category'))
-    expect(JSON.stringify(found)).not.toMatch(/spotdown|analysis_unavailable|https?:/i)
+    expect(JSON.stringify(found)).not.toMatch(TECHNICAL)
   })
 
   it('is retried by itself while the job waits, and says nothing changed on a revise', () => {
@@ -40,7 +45,14 @@ describe('analysis_unavailable copy', () => {
     for (const key of KEYS) {
       expect(catalogue[key], key).toBeTypeOf('string')
       expect(catalogue[key], key).not.toBe(en[key])
-      expect(catalogue[key] as string, key).not.toMatch(/spotdown|analysis_unavailable|https?:|classbeat/i)
+      expect(catalogue[key] as string, key).not.toMatch(TECHNICAL)
     }
+  })
+
+  it('the technical-words pattern catches a name, a URL, a bare host and an IP', () => {
+    for (const bad of ['spotdown is down', 'see https://x', 'spotdown.internal', 'at example.com', 'host 10.0.0.5']) {
+      expect(bad).toMatch(TECHNICAL)
+    }
+    expect('We tried several times. Try again in a few minutes.').not.toMatch(TECHNICAL)
   })
 })

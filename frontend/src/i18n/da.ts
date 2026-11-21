@@ -1002,7 +1002,7 @@ const da: Catalogue = {
   'job.failure.analysis_failed.detail': 'Prøv et andet mix.',
   'job.failure.analysis_unavailable.title': 'Musikanalysen er ikke tilgængelig lige nu',
   'job.failure.analysis_unavailable.detail':
-    'Vi prøver igen af os selv. Dit hold blev ikke designet. Du kan også prøve igen om nogle minutter.',
+    'Vi prøvede flere gange. Dit hold blev ikke designet. Prøv igen om nogle minutter.',
   'job.failure.feature_off.title': 'Det er slået fra lige nu',
   'job.failure.feature_off.detail': 'Intet blev designet. Prøv igen senere.',
   'job.failure.analysis_limit.title': 'For mange nye Swedebeat-mix i dag',

@@ -1014,7 +1014,7 @@ const sv: Catalogue = {
   'job.failure.analysis_failed.detail': 'Prova en annan mix.',
   'job.failure.analysis_unavailable.title': 'Musikanalysen är inte tillgänglig just nu',
   'job.failure.analysis_unavailable.detail':
-    'Vi försöker igen av oss själva. Ditt pass utformades inte. Du kan också försöka igen om några minuter.',
+    'Vi försökte flera gånger. Ditt pass utformades inte. Försök igen om några minuter.',
   'job.failure.feature_off.title': 'Det här är avstängt just nu',
   'job.failure.feature_off.detail': 'Inget utformades. Försök igen senare.',
   'job.failure.analysis_limit.title': 'För många nya Swedebeat-mixar i dag',
