@@ -9,7 +9,8 @@ that one: a reconnect, a Client ID change or another account in between sends no
 (``connections.run_library_call``, ``asyncio.to_thread``), never on the worker's event loop, so the
 heartbeat and the other runs go on while Spotify answers. The token never leaves
 ``classbeat.connections``; the stage only ever sees the library's track dicts, which the search
-registry reduces to refs and cleaned text.
+registry reduces to refs and cleaned text (and the backend alone keeps Spotify's ``explicit`` flag
+of each, ``songs.search_hits_calc``).
 
 A refusal that is worth another try (``rate_limited``, ``upstream_unavailable``) is
 ``SearchUnavailable``: the model is told search is unavailable right now (a fixed sentence) and may
@@ -27,6 +28,7 @@ from classbeat.connections import ConnectionFailure, Credentials, OpenConnection
 from classbeat.crypto.keks import KeyRing
 from classbeat.jobs import JobRun
 from classbeat.playlists import common
+from classbeat.songs.search_hits_calc import hits as search_hits
 
 TRANSIENT: Final = frozenset({"rate_limited", "upstream_unavailable"})
 
@@ -34,7 +36,12 @@ TRANSIENT: Final = frozenset({"rate_limited", "upstream_unavailable"})
 def job_searcher(run: JobRun, keyring: KeyRing, opened: OpenConnection) -> Searcher:
     async def search(query: str) -> Sequence[Mapping[str, Any]]:
         def read(creds: Credentials) -> list[Any]:
-            return spotify_web.search_tracks(creds, query)
+            # The library's ``search_tracks`` drops Spotify's ``explicit`` flag, so this is its
+            # request (same path, ``type=track``, its limit, no market) read through its own
+            # ``_track`` with the flag kept (#1340; ``tests/test_mowl_library.py`` pins both).
+            params = {"q": query, "type": "track", "limit": spotify_web.SEARCH_LIMIT}
+            answer = spotify_web.call(creds, "GET", "search", params)
+            return search_hits(answer, spotify_web._track)  # pyright: ignore[reportPrivateUsage]
 
         try:
             hits = await common.call(run.factory, keyring, run.ctx, opened, read)

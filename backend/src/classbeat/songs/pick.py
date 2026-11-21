@@ -80,6 +80,7 @@ from classbeat.songs import song_list
 from classbeat.songs.config import SongConfig
 from classbeat.songs.inputs import SongJob
 from classbeat.songs.pick_analyse import analyse_list, kept_timing
+from classbeat.songs.pick_explicit import explicit_report
 from classbeat.songs.pick_match import MatchedPool, match_pool
 from classbeat.songs.search import job_searcher
 from classbeat.songs.seed import SeedSpec, load_seeded
@@ -196,14 +197,16 @@ async def run_phase_one(
         chosen, analysis = await analyse_list(run, matched, step.data.analysis["map"], chosen)
         analysis = kept_timing(analysis, seeded, chosen)  # stage E: a kept song keeps its timing
         record = matched.record([s.spotify_id if s.new else "" for s in chosen.songs])
+        flags, explicit = explicit_report(matched, chosen, analysis, seeded)  # report only, #1340
         built = song_list.build(
             chosen,
             account=account,
-            provenance={**made, **record, **analysis, **(extra_provenance or {})},
+            provenance={**made, **record, **analysis, **flags, **(extra_provenance or {})},
             parent_id=seeded.revision_id if seeded is not None else None,
             generations=generations(spotify, step),
             unmet=list_unmet(plan.brief.music_taste, matched.eligible, chosen),  # issue #1133
             approximate=frozenset(p for p, _, _ in timing_marks(analysis)),  # "timing approximate"
+            explicit=explicit,  # the "Explicit" tag
         )
     except BaseException:
         step.close()

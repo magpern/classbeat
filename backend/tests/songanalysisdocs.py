@@ -6,7 +6,7 @@ import copy
 import hashlib
 from typing import Any
 
-from spotdownfake import example
+from spotdownfake import example, explicit_group
 
 
 def youtube_doc(
@@ -17,8 +17,21 @@ def youtube_doc(
     residual: float = 0.3,
     low_start: bool = True,
     alignment: bool = True,
+    explicit: str | None = None,
+    raw_explicit: Any = None,
 ) -> dict[str, Any]:
+    """``explicit``: the document's ``content.explicit`` value (``yes``, ``no`` or ``unknown``; its
+    evidence as spotdown would list it), or ``None``: a document without a ``content`` group, as
+    one made before document version 6.4 (the full example's own group is dropped)."""
     doc = copy.deepcopy(example("analysis-v1.full.json"))
+    doc.pop("content", None)
+    if explicit is not None:
+        flag = {"yes": [True], "no": [False], "unknown": []}[explicit]
+        doc["content"] = {
+            "explicit": explicit_group([{"source": "caller", "value": f} for f in flag])
+        }
+    if raw_explicit is not None:  # a malformed group, as a faulty spotdown could send
+        doc["content"] = {"explicit": raw_explicit}
     doc["provenance"]["source"]["ref"] = video_id
     doc["provenance"]["source"]["match"]["chosen"] = video_id
     doc["provenance"]["source"]["match"]["candidates"][0]["ref"] = video_id

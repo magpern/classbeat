@@ -47,6 +47,7 @@ class Want:
     spotify_id: str = field(repr=False)
     sources: tuple[Candidate, ...] = field(repr=False)
     length_s: float = 0.0  # on Spotify's clock
+    explicit: bool | None = None  # Spotify's flag, sent only when known (#1340)
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +106,7 @@ async def _step(session: Session, round_no: int, track: _Track) -> Got | TrackFa
             _key(session, round_no, track),
             source_ref=track.want.sources[track.tried.source].source,
             reference=reference_of(track.want),
+            explicit=track.want.explicit,
         )
     else:
         started = await session.client.poll(track.job_id)

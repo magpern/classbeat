@@ -357,6 +357,9 @@ class FakeSpotify:
         self.refresh: dict[str, Grant] = {}
         self.playlists: dict[str, Playlist] = {}
         self.catalogue = _catalogue()
+        # Spotify's track ``explicit`` flag per track id; a track not here is sent without the key
+        # (an answer that lacks it: unknown), a real Spotify always sends it (#1340).
+        self.explicit: dict[str, bool] = {}
         self.seen: list[Seen] = []
         self.injections: list[Injection] = []
         self.item_shape = "item"  # or "track", the legacy name of an entry's track
@@ -729,7 +732,9 @@ class FakeSpotify:
 
     def _track(self, tid: str) -> dict[str, Any]:
         t = self.catalogue[tid]
+        flag = {"explicit": self.explicit[tid]} if tid in self.explicit else {}
         return {
+            **flag,
             "id": tid,
             "type": "track",
             "name": t["name"],
