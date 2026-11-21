@@ -126,6 +126,19 @@ def songs_of(revision: Any) -> list[str]:
     return [s["spotify_id"] for s in revision.content["songs"]]
 
 
+def untimed(content: dict[str, Any]) -> dict[str, Any]:
+    """The list's content without the songs' ``timing`` label (SD-P6 stage D, ``Song.timing``)."""
+    songs = [{k: v for k, v in s.items() if k != "timing"} for s in content["songs"]]
+    return {**content, "songs": songs}
+
+
+def labelled(revision: Any) -> list[int]:
+    """The positions labelled ``timing approximate``: exactly the songs spotdown times."""
+    songs = revision.content["songs"]
+    assert {s.get("timing") for s in songs} <= {"approximate", None}
+    return [p for p, s in enumerate(songs) if s.get("timing") == "approximate"]
+
+
 def entry(revision: Any, position: int) -> dict[str, Any]:
     return next(e for e in revision.provenance[KEY]["songs"] if e["position"] == position)
 
@@ -160,7 +173,8 @@ async def test_only_the_chosen_songs_are_analysed_and_each_is_approximate(
 ) -> None:
     today = await baseline(songenv)
     job_id, revision = await run_on(songenv, on)
-    assert revision.content == today.content  # every song fits: nothing swapped
+    assert untimed(revision.content) == today.content  # every song fits: nothing swapped
+    assert labelled(revision) == list(range(8))
     asked = starts(spotdown)
     assert [a["source_ref"] for a in asked] == [f"youtube:{vid(n)}" for n in SONGS]  # not the pool
     for body, n in zip(asked, SONGS, strict=True):
@@ -222,7 +236,8 @@ async def test_every_source_lost_keeps_mowls_sections_for_that_song_only(
     ends(spotdown, vid(4), "source_unavailable")
     ends(spotdown, alt(4), "source_unavailable")
     _, revision = await run_on(songenv, on)
-    assert revision.content == today.content
+    assert untimed(revision.content) == today.content
+    assert labelled(revision) == [0, 1, 3, 4, 5, 6, 7]  # MOWL's sections: no label
     assert entry(revision, 2) == {"position": 2, "use": "sections", "reason": "source_unavailable"}
     assert all(entry(revision, p)["use"] == "spotdown" for p in range(8) if p != 2)
     assert [p for p, _, _ in timing_marks(revision.provenance)] == [0, 1, 3, 4, 5, 6, 7]
@@ -384,8 +399,9 @@ async def test_an_unsuitable_song_is_replaced_alone_from_the_spares(
     _, revision = await run_on(songenv, on)
     ids = songs_of(revision)
     assert ids == [song_id(5) if n == 4 else song_id(n) for n in SONGS]  # the spare climb
-    others = [s for p, s in enumerate(revision.content["songs"]) if p != 2]
+    others = [s for p, s in enumerate(untimed(revision.content)["songs"]) if p != 2]
     assert others == [s for p, s in enumerate(today.content["songs"]) if p != 2]
+    assert labelled(revision) == [p for p, _, _ in timing_marks(revision.provenance)]
     record = revision.provenance[KEY]
     assert record["rounds"] == 1
     (swap,) = record["swaps"]

@@ -51,7 +51,8 @@ from classbeat.jobs import Complete, FencedSession, JobFailure, JobRun
 from classbeat.songs import composer_design, composer_draft, config, fit_policy, song_list
 from classbeat.songs.composer_common import brief_of, dismissed_of, read_sketch
 from classbeat.songs.inputs import DesignWithSongsInput
-from classbeat.songs.phase2 import Prepared, final_checks, final_music, mark_mowl, music_source
+from classbeat.songs.phase2 import Prepared, final_music
+from classbeat.songs.phase2_final import final_checks, mark_mowl, music_source
 from classbeat.songs.preview_model import Preview, song_times
 
 ORIGIN = "design_with_songs"

@@ -83,6 +83,7 @@ from classbeat.songs.pick_analyse import analyse_list
 from classbeat.songs.pick_match import MatchedPool, match_pool
 from classbeat.songs.search import job_searcher
 from classbeat.songs.seed import SeedSpec, load_seeded
+from classbeat.spotdown.song_analysis_record_model import timing_marks
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +202,7 @@ async def run_phase_one(
             parent_id=seeded.revision_id if seeded is not None else None,
             generations=generations(spotify, step),
             unmet=list_unmet(plan.brief.music_taste, matched.eligible, chosen),  # issue #1133
+            approximate=frozenset(p for p, _, _ in timing_marks(analysis)),  # "timing approximate"
         )
     except BaseException:
         step.close()

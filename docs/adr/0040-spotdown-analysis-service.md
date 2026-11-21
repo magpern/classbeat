@@ -734,6 +734,48 @@ for the class and did not fall back); off by default.
 5. **Not yet:** the design map's per-track timing class (`track_timing_calc.stamp`, SD-P6 stage C)
    and the use of spotdown's sections in the design come from this record in a later stage.
 
+### Amendment (2026-11-21): spotdown's analysis in the Spotify design, as built (SD-P6 stage D, #1303; amends §8 for that stage)
+
+Recorded with the code. Behind the same allowlist as the match and analysis stages
+(`CLASSBEAT_SPOTDOWN_SPOTIFY`, `CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS`): off by default, no value turns it
+on for everyone. **Making it the shipped default still waits for the Spotify gates of plan §7 (#1298).**
+
+1. **Where:** in phase 2 of a song pick (`songs.phase2.final_music`, for the pick, `revise_songs` and
+   the composer), after the final playlist's MOWL analysis was checked against the approved ids and
+   before the design stage (`songs.phase2_spotdown`). The match (stage A) and the analysis with its
+   refinement (stage B) are **not run again** there: they ran in phase 1, before the list was stored
+   and approved, and the approved list is fixed (a new match or refinement could only end
+   `playlist_mismatch`). Phase 2 reads what stage B recorded (`spotdown_analysis`,
+   `timing_marks`), and for each marked song reads the analysis again by its id
+   (`GET /v2/analyses/{id}`, global: no `cache_scope`).
+2. **What the design gets:** a marked song's document is used only when it is the recorded analysis
+   (the same id and audio sha256, a `youtube` source: an allowlist) **aligned to this track** (a
+   `spotify` reference with the track's opaque id and its length within 1 s)
+   (`song_sections_calc.verified`). Its sections (`spotdown_map_policy.reference_sections`, on the
+   Spotify clock) replace that track's MOWL sections, rebuilt by the library's own
+   `mowl.spotify.build_map` with the track's MOWL length and BPM: the BPM stays Spotify's own, of the
+   recording that is played, and spotdown adds section-level energy (its drops and breakdowns are the
+   loudness steps between its sections, as for MOWL's). Every other track, section and event stays as
+   it was. The track is then stamped (`track_timing_calc.stamp`, class and `provenance.source.kind`),
+   so §3's design validator (`timing_gate`), the model's `timing` key and note (`timing_input`) apply
+   to it. A `youtube` source is never `exact` (the cap of `track_timing_calc`); a class that is not
+   `approximate` (`unusable`, or an unknown one, which reads `unusable`) is not applied.
+3. **The label:** phase 1 sets `Song.timing = "approximate"` for each song stage B marks, so the list
+   page shows "timing approximate" (en, sv, da) before the Approve.
+4. **Per-track fallback (MOWL's sections, no stamp):** a document not verified, not mapped or not
+   `approximate`, and a `rate_limited` read. *This supersedes §8's `rate_limited` row for this
+   stage:* phase 2 never waits (the read is one cheap `GET` of a ready analysis; a wait would hold the
+   approved class). **Whole-class fallback to today's music, byte for byte** (the MOWL analysis
+   unchanged, so everything the design model is sent is what it is sent with spotdown off):
+   switched off or not allowlisted, a list with no record, spotdown unreachable on any read (every
+   answer but `200` and `429`: a `5xx` outage and an analysis that is gone too), or an error of any
+   type in the stage (swallowed; only its type is logged). Only `RunStopped`, `LeaseLost` and
+   `DatabaseRoleError` pass, and the step is then closed.
+5. **Not yet:** the design draft records which tracks were on spotdown's sections only through its
+   `song_list_id` (the list's `spotdown_analysis` record); a refit or a revise of the design reads
+   MOWL's analysis again and so designs on today's sections (no stamp), the path before SD-P6.
+   Carrying the stamp there is a later stage of #1303.
+
 ## Status
 
 Accepted. §12 took effect on 2026-11-20, when the owner accepted #1296.

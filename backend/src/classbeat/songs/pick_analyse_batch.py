@@ -21,7 +21,6 @@ chosen list's songs at once, with the reactions of ``song_analysis_policy``.
 Nothing here logs.
 """
 
-import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Final
@@ -35,8 +34,8 @@ from classbeat.spotdown.provenance_read_calc import youtube_ref
 from classbeat.spotdown.request_model import Reference
 from classbeat.spotdown.scope_calc import idempotency_key
 from classbeat.spotdown.shadow_policy import poll_delay
+from classbeat.spotdown.song_sections_calc import REFERENCE_KIND, reference_id
 
-REFERENCE_KIND: Final = "spotify"
 TIMED_OUT: Final = "timed_out"
 
 
@@ -68,8 +67,7 @@ class _Track:
 
 
 def reference_of(want: Want) -> Reference:
-    digest = hashlib.sha256(f"spotify:{want.spotify_id}".encode()).hexdigest()[:32]
-    return Reference(REFERENCE_KIND, digest, float(want.length_s))
+    return Reference(REFERENCE_KIND, reference_id(want.spotify_id), float(want.length_s))
 
 
 def _key(session: Session, round_no: int, track: _Track) -> str:
