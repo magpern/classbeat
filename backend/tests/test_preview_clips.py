@@ -219,6 +219,7 @@ async def test_the_jobs_api_never_offers_a_preview_render(studio: StudioEnv) -> 
     assert studio.songs.sql("SELECT count(*) FROM jobs WHERE kind = 'preview_render'").scalar() == 0
 
 
+@pytest.mark.usefixtures("frozen_rate_windows")
 async def test_sessions_and_renders_are_rate_limited_per_owner(studio: StudioEnv) -> None:
     rider, class_id, _, _ = await designed(studio)
     session = await new_session(rider, class_id)
