@@ -1,6 +1,6 @@
 """SD-P6 stage E (#1303): the pure parts. ``revision_spotdown_model`` (which tracks a draft had on
 spotdown's sections) and ``song_carry_calc.with_kept`` (a kept song's entry carried into a "Change
-songs" list); and the ``kept_timing`` adapter's swallow."""
+songs" list); and the ``kept_timing`` adapter (it swallows nothing)."""
 
 import uuid
 from typing import Any
@@ -145,14 +145,15 @@ def test_kept_timing_without_a_seed_or_a_record_is_unchanged() -> None:
 
 
 @pytest.mark.parametrize("error", [KeyError, ValueError, TypeError, RuntimeError])
-def test_an_error_of_any_type_carries_nothing(
+def test_an_error_of_any_type_is_not_swallowed(
     monkeypatch: pytest.MonkeyPatch, error: type[Exception]
 ) -> None:
     def boom(*_a: Any, **_k: Any) -> Any:
         raise error("injected")
 
     monkeypatch.setattr(pick_analyse, "with_kept", boom)
-    assert pick_analyse.kept_timing(record(entry(2)), seeded(), chosen()) == record(entry(2))
+    with pytest.raises(error):  # no fallback: the job ends ``internal`` (#1354)
+        pick_analyse.kept_timing(record(entry(2)), seeded(), chosen())
 
 
 def test_the_calc_reads_the_strict_marks() -> None:

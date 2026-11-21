@@ -3,15 +3,14 @@ Spotify song pick as a job on the fakes: the fake Spotify, the fake MOWL pool, t
 the fake spotdown (``spotdownfake``, in process; a track's match status is a ``[<status>]`` token
 in its title). Never the network: the autouse netguard refuses any other connection.
 
-- off (the default), an owner not on the allowlist, no ``youtube`` source or spotdown not
-  installed: nothing is sent, nothing is written, the list is today's;
-- on: one ``/v2/match`` of the pool (metadata only, nothing downloaded); the genuinely missing
-  candidates are left out while the spares fill the list, else replaced by the song agent (at
-  most 3 rounds, swaps recorded); ``uncertain`` and an unresolved ``provider_error`` or
-  ``rate_limited`` keep their song with MOWL's sections;
-- spotdown unreachable, a provider outage or an error of any type in the stage: today's list
-  (byte for byte when no replacement round ran), for this run and every later run of the job;
-- the wait budget is the job's over its runs; the idempotency keys are stable across runs.
+- spotdown is the only path (ADR 0040 amendment "spotdown is the only analysis path", #1354): one
+  ``/v2/match`` of the pool (metadata only, nothing downloaded); a candidate that is not
+  ``matched`` is left out while the spares fill the list, else replaced by the song agent (at
+  most 3 rounds, swaps recorded), then ``analysis_failed`` when the list stays short;
+- spotdown unreachable (each reason), a provider outage, a wait that does not fit the budget or a
+  spent budget: ``analysis_unavailable`` (retryable), never a list from MOWL's sections;
+- the wait budget is the attempt's (reset by a retry, kept by a lease-lost requeue); the
+  idempotency keys are stable across runs.
 
 The analysis stage after ``choose`` (stage B, ``pick_analyse``) is stubbed out here (``match_only``)
 so these tests see the match stage alone; ``test_spotdown_song_analysis_job`` runs both.
@@ -19,7 +18,7 @@ so these tests see the match stage alone; ``test_spotdown_song_analysis_job`` ru
 
 import json
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
@@ -30,7 +29,7 @@ from sqlalchemy import text
 from classbeat import egress_spotdown
 from classbeat.db import user_session
 from classbeat.songs import pick, pick_match, pick_match_batch, pick_match_budget
-from classbeat.spotdown import song_match_config
+from classbeat.spotdown import outage_policy, song_match_config
 from classbeat.spotdown import song_match_policy as policy
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.song_match_record_model import KEY
@@ -41,7 +40,7 @@ from spotdownfake import SERVICE_KEY, FakeSpotdown, spotdown
 
 __all__ = ["spotdown"]  # the fixture
 
-pytestmark = pytest.mark.usefixtures("songenv", "match_only")
+pytestmark = pytest.mark.usefixtures("songenv", "match_only", "waits")
 
 # The songs ``choose_turns`` picks (pool index = song number in ``pool_turns``), with their roles.
 LIST = [(0, "warmup"), (2, "build"), (4, "climb"), (10, "recovery"), (6, "sprint"),
@@ -85,7 +84,7 @@ def match_only(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def waits(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+def waits(songenv: SongEnv, monkeypatch: pytest.MonkeyPatch) -> list[float]:
     """The stage's waits, made at once (each is still charged to the job's budget)."""
     made: list[float] = []
 
@@ -96,30 +95,9 @@ def waits(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     return made
 
 
-@pytest.fixture
-def on(spotdown: FakeSpotdown, waits: list[float]) -> Iterator[Callable[[Rider], None]]:
-    def switch(rider: Rider) -> None:
-        song_match_config.configure(
-            song_match_config.MatchConfig(
-                "allowlist", frozenset({rider.user_id}), frozenset({"youtube"})
-            )
-        )
-
-    try:
-        yield switch
-    finally:
-        song_match_config.configure(None)
-
-
 async def listed(songenv: SongEnv, rider: Rider, **extra: Any) -> tuple[UUID, Any]:
     job_id, revision_id, _ = await songenv.waiting(rider, **extra)
     return job_id, songenv.revision(revision_id)
-
-
-def same(revision: Any) -> tuple[Any, dict[str, Any]]:
-    """What must not change: the content and the provenance but for the run ids."""
-    provenance = {k: v for k, v in revision.provenance.items() if k != "agent_run_ids"}
-    return revision.content, provenance
 
 
 def budget_row(songenv: SongEnv, job_id: UUID) -> Any:
@@ -136,52 +114,39 @@ def keys(spotdown: FakeSpotdown) -> list[str]:
     return [s.headers["idempotency-key"] for s in spotdown.seen if s.path == "/v2/match"]
 
 
-async def baseline(songenv: SongEnv) -> Any:
-    """Today's list for the same catalogue, from an owner the match is not on for."""
-    other = await songenv.rider()
-    songenv.script = script(*pool_turns(), *chosen(POOL))
-    return (await listed(songenv, other))[1]
+async def ended(songenv: SongEnv, rider: Rider, **extra: Any) -> tuple[UUID, str, str]:
+    """One attempt of a new pick: (job id, the job's state, how the attempt ended: the category of
+    its ``retry_scheduled`` or ``failed`` event)."""
+    job_id = await songenv.created(rider, **extra)
+    row = await songenv.run(job_id)
+    return job_id, row.state, ending(songenv, job_id)
 
 
-# --- off ----------------------------------------------------------------------------------------
+def ending(songenv: SongEnv, job_id: UUID) -> str:
+    """The category of the job's latest ``retry_scheduled`` or ``failed`` event (or empty)."""
+    event = songenv.sql(
+        "SELECT payload ->> 'category' AS category FROM job_events WHERE job_id = :j "
+        "AND kind IN ('retry_scheduled', 'failed') ORDER BY seq DESC LIMIT 1",
+        j=job_id,
+    ).first()
+    return "" if event is None else event.category
 
 
-@pytest.mark.parametrize("why", ["default", "not_listed", "no_youtube", "not_installed"])
-async def test_off_sends_nothing_and_writes_nothing(
-    songenv: SongEnv, spotdown: FakeSpotdown, why: str
+def ids(revision: Any) -> list[str]:
+    return [s["spotify_id"] for s in revision.content["songs"]]
+
+
+# --- the match ------------------------------------------------------------------------------
+
+
+async def test_all_matched_keeps_the_chosen_list_and_records_the_match(
+    songenv: SongEnv, spotdown: FakeSpotdown
 ) -> None:
     rider = await songenv.rider()
-    owners = frozenset() if why == "not_listed" else frozenset({rider.user_id})
-    sources = frozenset({"upload"}) if why == "no_youtube" else frozenset({"youtube"})
-    if why != "default":
-        song_match_config.configure(song_match_config.MatchConfig("allowlist", owners, sources))
-    if why == "not_installed":
-        egress_spotdown.install_spotdown(None, None)
-    try:
-        job_id, revision = await listed(songenv, rider)
-    finally:
-        song_match_config.configure(None)
-    assert spotdown.seen == []
-    assert budget_row(songenv, job_id) is None
-    assert KEY not in revision.provenance
-    assert [s["spotify_id"] for s in revision.content["songs"]] == [song_id(n) for n, _ in LIST]
-
-
-# --- on: the match ------------------------------------------------------------------------------
-
-
-async def test_all_matched_keeps_todays_list_and_records_the_match(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None]
-) -> None:
-    today = await baseline(songenv)
-    rider = await songenv.rider()
-    on(rider)
     songenv.script = script(*pool_turns(), *chosen(POOL))
     job_id, revision = await listed(songenv, rider)
-    content, provenance = same(revision)
-    assert content == today.content
-    record = provenance.pop(KEY)
-    assert provenance == same(today)[1]
+    assert ids(revision) == [song_id(n) for n, _ in LIST]
+    record = revision.provenance[KEY]
     assert record["songs"] == [
         {"position": n, "status": "matched", "use": "timing", "band": "confident",
          "confidence": 0.92}
@@ -203,33 +168,28 @@ async def test_all_matched_keeps_todays_list_and_records_the_match(
 
 
 async def test_missing_candidates_are_left_out_while_the_spares_fill_the_list(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None]
+    songenv: SongEnv, spotdown: FakeSpotdown
 ) -> None:
     tag(songenv, "not_found", 1)
     tag(songenv, "source_unavailable", 3)
-    today = await baseline(songenv)
     rider = await songenv.rider()
-    on(rider)
     eligible = [n for n in POOL if n not in (1, 3)]
     songenv.script = script(*pool_turns(), *chosen(eligible))  # no replacement round
     _, revision = await listed(songenv, rider)
-    assert revision.content["songs"] == today.content["songs"]
+    assert ids(revision) == [song_id(n) for n, _ in LIST]
     record = revision.provenance[KEY]
     assert (record["missing"], record["rounds"], record["swaps"]) == (2, 0, [])
     assert len(matches(spotdown)) == 1
     pool = songenv.pool(rider.user_id)
     items = songenv.fake.playlists[pool.playlist_id].entries
-    assert items == [
-        f"spotify:track:{song_id(n)}" for n in [*eligible, 1, 3]
-    ]  # usable first, missing at the end
+    assert items == [f"spotify:track:{song_id(n)}" for n in eligible]  # the missing are not written
 
 
 async def test_a_short_pool_gets_a_replacement_round_with_the_swap_recorded(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None]
+    songenv: SongEnv, spotdown: FakeSpotdown
 ) -> None:
     tag(songenv, "not_found", 4, 5)  # both climbs: the list lacks its climb
     rider = await songenv.rider()
-    on(rider)
     eligible = [n for n in POOL if n not in (4, 5)] + list(range(14, 20))
     songs = [(14, "climb") if n == 4 else (n, role) for n, role in LIST]
     songenv.script = script(*pool_turns(), *round_turns(), *chosen(eligible, songs))
@@ -250,20 +210,19 @@ async def test_a_short_pool_gets_a_replacement_round_with_the_swap_recorded(
             "round": 1,
         }
     ]
-    assert (record["rounds"], record["missing"]) == (1, 1)  # song 5 is left, not replaced
+    assert (record["rounds"], record["missing"]) == (1, 2)  # songs 4 and 5 are left out
     first, second = matches(spotdown)
     assert (len(first["tracks"]), len(second["tracks"])) == (14, 6)
     assert len(set(keys(spotdown))) == 2
     assert len(revision.provenance["agent_run_ids"]) == 3  # pool, the round, choose
 
 
-async def test_at_most_three_rounds_then_mowls_sections_for_the_missing(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None]
+async def test_at_most_three_rounds_then_analysis_failed_for_a_short_list(
+    songenv: SongEnv, spotdown: FakeSpotdown
 ) -> None:
     gone = [0, 1, 3, 5, 8, 9, 13]  # 7 usable of 14: one song short of 8
     tag(songenv, "not_found", *gone, *range(14, 20))  # and every new candidate missing too
     rider = await songenv.rider()
-    on(rider)
     shown = [n for n in POOL if n not in gone] + gone  # the missing ones after the usable ones
     songenv.script = script(
         *pool_turns(),
@@ -272,34 +231,27 @@ async def test_at_most_three_rounds_then_mowls_sections_for_the_missing(
         *round_turns(role="warmup"),
         *chosen(shown),
     )
-    _, revision = await listed(songenv, rider)
-    assert [s["spotify_id"] for s in revision.content["songs"]] == [song_id(n) for n, _ in LIST]
-    record = revision.provenance[KEY]
-    assert (record["rounds"], record["swaps"], record["missing"]) == (3, [], 7)
-    assert record["songs"][0] == {"position": 0, "status": "not_found", "use": "missing"}
+    job_id, state, category = await ended(songenv, rider)
+    assert (state, category) == ("failed", "analysis_failed")  # not retried, no list from MOWL
+    assert songenv.row(job_id).approval_revision_id is None
     assert len(matches(spotdown)) == 2  # the pool, then round 1's new candidates
 
 
-async def test_uncertain_and_a_lone_provider_error_keep_their_song_with_mowls_sections(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None]
+async def test_uncertain_and_a_lone_provider_error_are_missing_songs_the_spares_replace(
+    songenv: SongEnv, spotdown: FakeSpotdown
 ) -> None:
     tag(songenv, "uncertain", 2)
     tag(songenv, "provider_error", 6, 7)
-    today = await baseline(songenv)
     rider = await songenv.rider()
-    on(rider)
-    songenv.script = script(*pool_turns(), *chosen(POOL))
+    eligible = [n for n in POOL if n not in (2, 6, 7)]
+    songs = [(0, "warmup"), (1, "build"), (4, "climb"), (10, "recovery"), (5, "sprint"),
+             (8, "sprint"), (11, "recovery"), (12, "cooldown")]  # fmt: skip
+    songenv.script = script(*pool_turns(), *chosen(eligible, songs))
     job_id, revision = await listed(songenv, rider)
-    assert revision.content["songs"] == today.content["songs"]
-    songs = revision.provenance[KEY]["songs"]
-    assert songs[1] == {
-        "position": 1, "status": "uncertain", "use": "sections", "band": "uncertain",
-        "confidence": 0.7,
-    }  # fmt: skip
-    assert songs[4:6] == [
-        {"position": 4, "status": "provider_error", "use": "sections"},
-        {"position": 5, "status": "provider_error", "use": "sections"},
-    ]
+    assert ids(revision) == [song_id(n) for n, _ in songs]
+    record = revision.provenance[KEY]
+    assert {s["status"] for s in record["songs"]} == {"matched"}  # the missing are not in the list
+    assert record["missing"] == 3
     # One retry of the two, after a pause charged to the job's budget.
     _, retry = matches(spotdown)
     assert [t["client_ref"] for t in retry["tracks"]] == ["t6", "t7"]
@@ -307,10 +259,9 @@ async def test_uncertain_and_a_lone_provider_error_keep_their_song_with_mowls_se
 
 
 async def test_a_provider_error_that_clears_on_its_retry_is_matched(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None]
+    songenv: SongEnv, spotdown: FakeSpotdown
 ) -> None:
     rider = await songenv.rider()
-    on(rider)
     first = []
     for n in POOL:
         item: dict[str, Any] = {"schema_version": "match-v1", "client_ref": f"t{n}"}
@@ -329,85 +280,110 @@ async def test_a_provider_error_that_clears_on_its_retry_is_matched(
     assert len(set(keys(spotdown))) == 2  # the retry is a new request
 
 
-# --- on: the fallback ---------------------------------------------------------------------------
+# --- unreachable and the failure kinds -------------------------------------------------------
 
 
-def unreachable(spotdown: FakeSpotdown, how: str, songenv: SongEnv) -> None:
+def inject(spotdown: FakeSpotdown, how: str, songenv: SongEnv) -> None:
     if how == "connect_error":
         spotdown.connect_error = True
-    elif how == "503":
-        spotdown.inject["/v2/match"] = [httpx.Response(503)]
-    elif how == "401":
+    elif how in ("503", "413", "400", "409", "401", "403", "302"):
+        spotdown.inject["/v2/match"] = [httpx.Response(int(how))]
+    elif how == "wrong_key":
         spotdown.key = "another-key"
     elif how == "bad_answer":
         spotdown.inject["/v2/match"] = [httpx.Response(200, json={"results": []})]
-    elif how == "disabled":
+    elif how == "source_disabled":
         error = {"error": {"code": "source_disabled", "message": ""}}
         spotdown.inject["/v2/match"] = [httpx.Response(422, json=error)]
+    elif how == "not_configured":
+        egress_spotdown.install_spotdown(None, None)
+    elif how == "source_off":
+        song_match_config.configure(song_match_config.MatchConfig(frozenset({"upload"})))
     elif how == "outage":
         tag(songenv, "provider_error", 1, 3, 5, 8, 9, 12, 13)  # 7 of 14, after the retry
 
 
-@pytest.mark.parametrize("how", ["connect_error", "503", "401", "bad_answer", "disabled", "outage"])
-async def test_unreachable_or_an_outage_is_todays_list_byte_for_byte(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None], how: str
-) -> None:
-    unreachable(spotdown, how, songenv)
-    if how == "outage":
-        today = await baseline(songenv)
-    else:
-        connect_error, key = spotdown.connect_error, spotdown.key
-        spotdown.connect_error, spotdown.key = False, SERVICE_KEY  # the baseline sends nothing
-        today = await baseline(songenv)
-        spotdown.connect_error, spotdown.key = connect_error, key
-    rider = await songenv.rider()
-    on(rider)
-    songenv.script = script(*pool_turns(), *chosen(POOL))
-    job_id, revision = await listed(songenv, rider)
-    assert same(revision) == same(today)
-    assert KEY not in revision.provenance
-    assert budget_row(songenv, job_id).fallback is True
+# (how, the reason it is logged with or None, the attempt's ending: (job state, category))
+UNREACHABLE = [
+    ("connect_error", "connection", ("queued", "analysis_unavailable")),
+    ("503", "server_error", ("queued", "analysis_unavailable")),
+    ("302", "blocked", ("queued", "analysis_unavailable")),  # a redirect: the egress refuses it
+    ("401", "unauthorized", ("queued", "analysis_unavailable")),
+    ("403", "unauthorized", ("queued", "analysis_unavailable")),
+    ("wrong_key", "unauthorized", ("queued", "analysis_unavailable")),
+    ("source_disabled", "source_disabled", ("queued", "analysis_unavailable")),
+    ("not_configured", "not_configured", ("queued", "analysis_unavailable")),
+    ("source_off", "source_off", ("queued", "analysis_unavailable")),
+    ("outage", None, ("queued", "analysis_unavailable")),
+    ("413", "too_large", ("failed", "analysis_failed")),
+    ("400", "rejected", ("failed", "analysis_failed")),
+    ("bad_answer", "bad_answer", ("failed", "analysis_failed")),
+    ("409", "conflict", ("failed", "internal")),
+]
 
 
-async def test_a_fallback_holds_for_every_later_run_of_the_job(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None]
-) -> None:
-    rider = await songenv.rider()
-    on(rider)
-    spotdown.connect_error = True
-    songenv.script = script(*pool_turns(), {"error": "overloaded"})  # choose fails: retried
-    job_id = await songenv.created(rider)
-    row = await songenv.run(job_id)
-    assert (row.state, row.error_category) == ("queued", None)
-    asked = len(spotdown.seen)
-    spotdown.connect_error = False  # reachable again: the job still uses today's path
-    songenv.script = script(*pool_turns(), *chosen(POOL))
-    assert (await songenv.run(job_id)).state == "waiting_for_approval"
-    assert len(spotdown.seen) == asked == 1
-    revision = songenv.revision(songenv.row(job_id).approval_revision_id)
-    assert KEY not in revision.provenance
-
-
-async def test_a_failing_fallback_record_still_falls_back(
+@pytest.mark.parametrize(("how", "reason", "ending"), UNREACHABLE, ids=[u[0] for u in UNREACHABLE])
+async def test_each_unreachable_reason_ends_its_category_and_makes_no_list(
     songenv: SongEnv,
     spotdown: FakeSpotdown,
-    on: Callable[[Rider], None],
-    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    how: str,
+    reason: str | None,
+    ending: tuple[str, str],
 ) -> None:
-    async def refuse(_run: object) -> None:
-        raise OSError("database refused")
-
-    monkeypatch.setattr(pick_match_budget, "mark_fallback", refuse)
-    spotdown.connect_error = True
     rider = await songenv.rider()
-    on(rider)
+    inject(spotdown, how, songenv)
     songenv.script = script(*pool_turns(), *chosen(POOL))
-    job_id, revision = await listed(songenv, rider)
-    assert KEY not in revision.provenance
-    assert budget_row(songenv, job_id).fallback is False
+    try:
+        with caplog.at_level(logging.INFO):
+            job_id, state, category = await ended(songenv, rider)
+    finally:
+        song_match_config.configure(None)
+    assert (state, category) == ending
+    assert songenv.row(job_id).approval_revision_id is None  # no list, from no other timing
+    if reason is not None:
+        assert outage_policy.log_message(reason) in caplog.text  # type: ignore[arg-type]  # fmt: skip
 
 
-# --- on: an error of any type -------------------------------------------------------------------
+async def test_a_retried_attempt_starts_with_a_fresh_budget_and_finds_spotdown_up(
+    songenv: SongEnv, spotdown: FakeSpotdown, waits: list[float]
+) -> None:
+    tag(songenv, "rate_limited", 2)  # every read of song 2 is limited: the pass limit ends it
+    rider = await songenv.rider()
+    songenv.script = script(*pool_turns(), *chosen(POOL))
+    job_id, state, category = await ended(songenv, rider)
+    assert (state, category) == ("queued", "analysis_unavailable")
+    assert len(waits) == policy.MAX_PASSES - 1  # attempt 1 spent its waits...
+    row = budget_row(songenv, job_id)
+    assert tuple(row) == (0.0, False)  # ...and the retry reset them
+    # Attempt 2: the song is no longer limited; it runs from a budget of 0 and succeeds.
+    songenv.fake.catalogue[song_id(2)]["name"] = songenv.fake.catalogue[song_id(2)]["name"].replace(
+        " [rate_limited]", ""
+    )
+    waits.clear()
+    songenv.script = script(*pool_turns(), *chosen(POOL))
+    assert (await songenv.run(job_id)).state == "waiting_for_approval"
+    assert waits == []
+    assert tuple(budget_row(songenv, job_id)) == (0.0, False)
+
+
+async def test_an_unavailable_flag_ends_the_same_attempt_before_spotdown_is_asked_again(
+    songenv: SongEnv, spotdown: FakeSpotdown
+) -> None:
+    """The flag is set (a lease-lost requeue keeps it): the next run of the attempt ends
+    ``analysis_unavailable`` at once, sending nothing."""
+    rider = await songenv.rider()
+    job_id = await songenv.created(rider)
+    songenv.sql(
+        "INSERT INTO spotdown_song_budgets (owner_id, job_id, spent_seconds, fallback) "
+        "VALUES (:o, :j, 0, true)",
+        o=rider.user_id,
+        j=job_id,
+    )
+    songenv.script = script(*pool_turns(), *chosen(POOL))
+    row = await songenv.run(job_id)
+    assert (row.state, row.error_category) == ("queued", None)
+    assert spotdown.seen == []
 
 
 def _raiser(error: type[BaseException]) -> Callable[..., Any]:
@@ -450,63 +426,57 @@ CALLS = [
 @pytest.mark.parametrize(
     ("n", "target"), list(enumerate(CALLS)), ids=[f"{c[0].__name__}.{c[1]}" for c in CALLS]
 )
-async def test_an_error_of_any_type_in_the_stage_gives_todays_list(
+async def test_an_error_of_any_type_in_the_stage_is_internal_never_a_list(
     songenv: SongEnv,
     spotdown: FakeSpotdown,
-    on: Callable[[Rider], None],
     monkeypatch: pytest.MonkeyPatch,
     n: int,
     target: tuple[Any, str, bool, str],
 ) -> None:
+    """Nothing in the stage swallows an error (#1354): each call raising ends the attempt
+    ``internal``, and no list is written."""
     owner, name, is_async, scenario = target
     if scenario in ("short", "round"):
         tag(songenv, "not_found", 4, 5)
     if scenario == "limited":
         tag(songenv, "rate_limited", 2)
-    today = await baseline(songenv)
     error = ERRORS[n % len(ERRORS)]
     monkeypatch.setattr(owner, name, (_async_raiser if is_async else _raiser)(error))
     rider = await songenv.rider()
-    on(rider)
     rounds = round_turns() if scenario == "round" else []
     songenv.script = script(*pool_turns(), *rounds, *chosen(POOL))
-    _, revision = await listed(songenv, rider)
-    assert revision.content == today.content
-    assert KEY not in revision.provenance
+    job_id, state, category = await ended(songenv, rider)
+    assert (state, category) == ("failed", "internal")
+    assert songenv.row(job_id).approval_revision_id is None
 
 
 # --- the budget and the keys over the job's runs ------------------------------------------------
 
 
-async def test_rate_limited_waits_inside_the_jobs_budget_over_its_runs(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None], waits: list[float]
+async def test_rate_limited_waits_inside_the_attempts_budget_then_ends_unavailable(
+    songenv: SongEnv, spotdown: FakeSpotdown, waits: list[float]
 ) -> None:
     tag(songenv, "rate_limited", 2)  # the fake answers ``retry_after_s`` 30, every time
     rider = await songenv.rider()
-    on(rider)
     songenv.script = script(*pool_turns(), {"error": "overloaded"})
     job_id = await songenv.created(rider)
     assert (await songenv.run(job_id)).state == "queued"
     passes = policy.MAX_PASSES - 1
-    assert waits == [30.0] * passes  # then the pass limit: song 2 keeps MOWL's sections
-    assert budget_row(songenv, job_id).spent_seconds == 30.0 * passes
+    assert waits == [30.0] * passes  # then the pass limit: a rate-limited song is unavailable
+    assert ending(songenv, job_id) == "analysis_unavailable"
     first_keys = keys(spotdown)
     assert len(set(first_keys)) == policy.MAX_PASSES  # a new pass is a new request
-    # The second run starts from what the first spent, and asks with the same keys.
-    songenv.script = script(*pool_turns(), *chosen(POOL))
-    assert (await songenv.run(job_id)).state == "waiting_for_approval"
+    assert tuple(budget_row(songenv, job_id)) == (0.0, False)  # the retry reset the budget
+    # The next attempt asks with the same keys and has its own full budget of waits.
+    waits.clear()
+    assert (await songenv.run(job_id)).state == "queued"
     assert keys(spotdown)[len(first_keys) :] == first_keys
-    assert budget_row(songenv, job_id).spent_seconds == 300.0
-    revision = songenv.revision(songenv.row(job_id).approval_revision_id)
-    assert revision.provenance[KEY]["songs"][1] == {
-        "position": 1, "status": "rate_limited", "use": "sections",
-    }  # fmt: skip
+    assert waits == [30.0] * passes
 
 
 async def test_a_run_stopped_during_a_wait_has_already_spent_it(
     songenv: SongEnv,
     spotdown: FakeSpotdown,
-    on: Callable[[Rider], None],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The worker shuts down during the first ``rate_limited`` wait: the real wait sees the
@@ -521,7 +491,6 @@ async def test_a_run_stopped_during_a_wait_has_already_spent_it(
 
     monkeypatch.setattr(pick_match_batch, "_sleep", shut_down_then_wait)
     rider = await songenv.rider()
-    on(rider)
     songenv.script = script(*pool_turns(), *chosen(POOL))
     job_id = await songenv.created(rider)
     row = await songenv.run(job_id)
@@ -531,12 +500,11 @@ async def test_a_run_stopped_during_a_wait_has_already_spent_it(
     assert budget_row(songenv, job_id).spent_seconds == 30.0  # charged before the wait
 
 
-async def test_a_wait_that_does_not_fit_the_budget_is_not_made(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None], waits: list[float]
+async def test_a_wait_that_does_not_fit_the_budget_is_not_made_and_ends_unavailable(
+    songenv: SongEnv, spotdown: FakeSpotdown, waits: list[float]
 ) -> None:
     tag(songenv, "rate_limited", 2)
     rider = await songenv.rider()
-    on(rider)
     job_id = await songenv.created(rider)
     songenv.sql(
         "INSERT INTO spotdown_song_budgets (owner_id, job_id, spent_seconds) VALUES (:o, :j, 580)",
@@ -544,18 +512,17 @@ async def test_a_wait_that_does_not_fit_the_budget_is_not_made(
         j=job_id,
     )
     songenv.script = script(*pool_turns(), *chosen(POOL))
-    assert (await songenv.run(job_id)).state == "waiting_for_approval"
+    assert (await songenv.run(job_id)).state == "queued"
+    assert ending(songenv, job_id) == "analysis_unavailable"
     assert waits == []
     assert len(keys(spotdown)) == 1
-    assert budget_row(songenv, job_id).spent_seconds == 580.0
 
 
 async def test_a_429_for_the_whole_request_waits_and_asks_again(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None], waits: list[float]
+    songenv: SongEnv, spotdown: FakeSpotdown, waits: list[float]
 ) -> None:
     spotdown.inject["/v2/match"] = [httpx.Response(429, headers={"Retry-After": "7"})]
     rider = await songenv.rider()
-    on(rider)
     songenv.script = script(*pool_turns(), *chosen(POOL))
     _, revision = await listed(songenv, rider)
     assert waits == [7.0]
@@ -565,11 +532,8 @@ async def test_a_429_for_the_whole_request_waits_and_asks_again(
 # --- isolation and logs -------------------------------------------------------------------------
 
 
-async def test_the_budget_row_is_the_owners_alone(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None]
-) -> None:
+async def test_the_budget_row_is_the_owners_alone(songenv: SongEnv, spotdown: FakeSpotdown) -> None:
     rider = await songenv.rider()
-    on(rider)
     songenv.script = script(*pool_turns(), *chosen(POOL))
     job_id, _ = await listed(songenv, rider)
     other = await songenv.rider()
@@ -584,13 +548,11 @@ async def test_the_budget_row_is_the_owners_alone(
 async def test_nothing_secret_or_identifying_is_logged(
     songenv: SongEnv,
     spotdown: FakeSpotdown,
-    on: Callable[[Rider], None],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     tag(songenv, "not_found", 4, 5)
     tag(songenv, "provider_error", 6)
     rider = await songenv.rider()
-    on(rider)
     eligible = [n for n in POOL if n not in (4, 5)] + list(range(14, 20))
     songs = [(14, "climb") if n == 4 else (n, role) for n, role in LIST]
     songenv.script = script(*pool_turns(), *round_turns(), *chosen(eligible, songs))
@@ -604,14 +566,13 @@ async def test_nothing_secret_or_identifying_is_logged(
 
 
 async def test_a_replace_matches_only_its_new_pool_and_records_only_the_new_song(
-    songenv: SongEnv, spotdown: FakeSpotdown, on: Callable[[Rider], None]
+    songenv: SongEnv, spotdown: FakeSpotdown
 ) -> None:
     rider = await songenv.rider()
-    job_id, revision, _ = await songenv.waiting(rider)  # before the switch: nothing sent
-    assert spotdown.seen == []
+    job_id, revision, _ = await songenv.waiting(rider)  # the first pick matches its pool
+    spotdown.seen.clear()
     class_id = str(songenv.row(job_id).class_id)
     await rider.browser.post(f"/api/jobs/{job_id}/cancel")
-    on(rider)
     kept = [("kept", 0, "warmup"), ("kept", 1, "build"), ("pool", 0, "climb")]
     rest = [(2, "recovery"), (3, "sprint"), (4, "sprint"), (5, "recovery"), (6, "cooldown")]
     songenv.script = script(

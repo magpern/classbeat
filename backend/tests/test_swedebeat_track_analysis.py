@@ -1,19 +1,18 @@
 """SR C4 (ADR 0036 section 4.1): the studio's per-track analysis step
 (``classbeat.design.track_analysis.analyse_tracks``) as a job on the fakes: the fake gateway
-(``gatewayfake``, in process over an httpx transport) and the real sandboxed child on generated
-audio. Never the network: the autouse netguard refuses any other connection.
+(``gatewayfake``, in process over an httpx transport) and the fake spotdown (``spotdownfake``, the
+only analysis path, #1353). Never the network: the autouse netguard refuses any other connection.
 
 - a fresh analysis downloads each track once, stores its map with the SHA-256 of the bytes and
   leaves no audio; a cache hit makes no download (and needs no analysis slot);
 - the audio directory is gone after a success and after every failure;
-- the size cap, a missing file, the sandbox, the daily limit and the gateway's statuses end in
+- the size cap, a missing file, the daily limit and the gateway's statuses end in
   named categories, with nothing stored.
 """
 
 import hashlib
 import json
-import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -24,10 +23,12 @@ from pydantic import BaseModel, ConfigDict, SecretStr
 
 from authtools import Env, running_env
 from classbeat.connections.swedebeat_account import open_bearer
-from classbeat.design import mixanalysis, mixfetch, track_analysis, tracklimit
+from classbeat.design import mixfetch, track_analysis, track_spotdown, tracklimit
 from classbeat.design.track_analysis import analyse_tracks
 from classbeat.design.track_cache import TrackMap
 from classbeat.jobs import Complete, JobKind, JobRun, KindRegistry
+from classbeat.spotdown import studio_tracks_config
+from classbeat.spotdown.studio_tracks_config import TracksConfig
 from classbeat.swedebeat_gateway.track_policy import DOWNLOAD_MAX
 from classbeat.swedebeat_match import gateway_match
 from ctx import make_context
@@ -37,7 +38,11 @@ from jobtools import new_job
 from mediafake import kick_wav_bytes
 from optools import KIND as JOB_KIND
 from optools import OpsEnv
+from spotdownfake import FakeSpotdown, spotdown
+from studiomaps import track_map as studio_track_map
+from test_evals_studio_spotdown import document
 
+__all__ = ["spotdown"]  # the fixture
 pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
 ONE, TWO = "trk-one-01", "trk-two-02"
 AUDIO = kick_wav_bytes(30.0)  # a 124 BPM kick track; WAV bytes served as audio/mpeg
@@ -68,6 +73,28 @@ def no_pause(monkeypatch: pytest.MonkeyPatch) -> None:
         return None
 
     monkeypatch.setattr(gateway_match, "_pause", pause)
+
+
+@pytest.fixture(autouse=True)
+def spotdown_on(spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """spotdown answers with a 124 BPM map of each track's bytes; no wait is real."""
+    real = spotdown.analysis
+
+    def analysis(analysis_id: str) -> dict[str, Any]:
+        sha = real(analysis_id)["provenance"]["audio"]["sha256"]
+        made = document(studio_track_map(30.0, bpm=124.0), 0)
+        made["analysis_id"] = analysis_id
+        made["provenance"]["audio"]["sha256"] = sha
+        return made
+
+    async def pause(*_args: object) -> None:
+        return None
+
+    monkeypatch.setattr(spotdown, "analysis", analysis)
+    monkeypatch.setattr(track_spotdown, "pause", pause)
+    studio_tracks_config.configure(TracksConfig(frozenset({"upload"}), b"k" * 32))
+    yield
+    studio_tracks_config.configure(None)
 
 
 class TrackInput(BaseModel):
@@ -268,50 +295,6 @@ async def test_a_refused_bearer_is_confirmed_then_needs_reconnect(harness: Harne
     assert status == "needs_reconnect"
 
 
-async def test_audio_that_does_not_decode_is_analysis_failed_and_deleted(
-    harness: Harness, work: Path
-) -> None:
-    owner = await harness.user()
-    harness.gateway.add_audio(ONE, b"\xff\xfb" + b"not audio at all" * 64)
-    row = await harness.run(owner, [ONE])
-    assert (row.state, row.error_category) == ("failed", "analysis_failed")
-    assert harness.fetched() == [route(ONE)]
-    assert (leftovers(work), harness.maps(owner)) == ([], [])
-
-
-async def test_an_answer_without_the_system_call_filter_is_refused_on_linux(
-    harness: Harness, work: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The parent refuses a Linux child that does not say the seccomp filter held (T109): a
-    stand-in child that answers a good map without it, on a parent that counts as Linux."""
-    good = {
-        "duration": 30.0,
-        "songs": [{"start": 0, "end": 30.0, "bpm": 124.0, "first_downbeat": 0.5}],
-        "events": [],
-        "sections": [{"start": 0.0, "end": 30.0, "energy": None}],
-        "track_version": track.TRACK_VERSION,
-    }
-    answer = json.dumps({"map": good, "peak_rss": None,
-                         "sandbox": {"syscalls": False, "files": False}})  # fmt: skip
-    seen: list[list[str]] = []
-
-    def argv(audio: Path, max_seconds: float, max_rss: int, mode: str = "mix") -> list[str]:
-        seen.append([audio.name, mode])
-        return [sys.executable, "-I", "-c", f"print({answer!r})"]
-
-    monkeypatch.setattr(mixanalysis, "child_argv", argv)
-    monkeypatch.setattr(mixanalysis, "LINUX", True)
-    owner = await harness.user()
-    row = await harness.run(owner, [ONE])
-    assert (row.state, row.error_category) == ("failed", "analysis_failed")
-    assert seen == [["track.mp3", "track"]]
-    assert (leftovers(work), harness.maps(owner)) == ([], [])
-    # The same answer with the filter held is stored: the refusal is the filter's.
-    answer = answer.replace('"syscalls": false', '"syscalls": true')
-    row = await harness.run(owner, [ONE])
-    assert (row.state, row.error_category) == ("completed", None)
-
-
 async def test_the_daily_limit_refuses_before_any_download(harness: Harness) -> None:
     owner = await harness.user()
     harness.ops.sql(
@@ -345,14 +328,14 @@ async def test_a_disconnect_before_the_store_stores_nothing(
     from classbeat import connections
 
     owner = await harness.user()
-    real = mixanalysis.analyse_audio
+    real = track_spotdown.analyse
 
     async def disconnect_first(*args: Any, **kwargs: Any) -> Any:
         result = await real(*args, **kwargs)
         assert await connections.disconnect(harness.ops.factory, make_context(owner), "swedebeat")
         return result
 
-    monkeypatch.setattr(track_analysis, "analyse_audio", disconnect_first)
+    monkeypatch.setattr(track_spotdown, "analyse", disconnect_first)
     row = await harness.run(owner, [ONE])
     assert (row.state, row.error_category) == ("failed", "not_connected")
     assert harness.maps(owner) == []

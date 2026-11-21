@@ -56,8 +56,18 @@ def test_worker_process_exits_0_on_a_signal(
     ) as process:
         try:
             assert process.stdout is not None
-            first = json.loads(process.stdout.readline())  # blocks until the worker is up
-            assert first["message"] == "worker started"
+            # Blocks until the worker is up. Before it, the one start-up line that spotdown is not
+            # installed (#1353: no value in it), since this process sets no spotdown settings.
+            lines = [json.loads(process.stdout.readline())]
+            if lines[0]["message"] != "worker started":
+                lines.append(json.loads(process.stdout.readline()))
+            assert [e["message"] for e in lines] == [
+                *(
+                    ["music analysis is unavailable: spotdown is not installed in this worker"]
+                    * (len(lines) - 1)
+                ),
+                "worker started",
+            ]
             process.send_signal(sig)
             assert process.wait(timeout=3) == 0
             rest = [json.loads(line) for line in process.stdout.read().splitlines()]

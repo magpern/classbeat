@@ -21,6 +21,7 @@ from sqlalchemy import text
 from classbeat.jobs.discard import ENDINGS, discard_first_creation
 from classbeat.jobs.errors import RETRIED_ONCE, RETRYABLE, LeaseLost
 from classbeat.jobs.fence import FencedSession, insert_event
+from classbeat.jobs.spotdown_budget_reset import reset as reset_spotdown_budget
 from classbeat.jobs.spotify_ending import SPOTIFY_NOTED as SPOTIFY_NOTED
 from classbeat.jobs.spotify_ending import note_spotify_ending as note_spotify_ending
 from classbeat.jobs.spotify_ending import save_spotify_calls as save_spotify_calls
@@ -205,6 +206,8 @@ async def retry(fs: FencedSession, category: str, delay: float) -> str:
         return await fail(fs, category)
     if counts.attempt >= counts.max_attempts:
         return await fail(fs, category)
+    if category in RETRYABLE:  # a counted retry; not ``operation_busy`` or ``pool_not_synced``
+        await reset_spotdown_budget(fs.db, fs.lease.params())  # a fresh attempt, a fresh budget
     return await _requeue(fs, refund=False, delay=delay, kind="retry_scheduled", category=category)
 
 

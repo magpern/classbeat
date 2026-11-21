@@ -41,6 +41,26 @@ function mapVersion(): number {
   return Number(out)
 }
 
+/**
+ * The provenance record of a seeded `spotdown` cache row (spotdown is the only analysis path, ADR 0040
+ * amendment, #1353; only such a row is a cache hit): this build's record version and policy versions,
+ * an exact played-recording timing class and the bytes' sha256 (empty for a mix, which is not checked).
+ * Nothing is analysed on the stack, and no title, file name or link goes in it.
+ */
+export function seedProvenance(kind: 'mix' | 'studio', sha256: string): string {
+  const module = kind === 'mix' ? 'mix_map_model.MIX_POLICY_VERSIONS' : 'studio_map_model.STUDIO_POLICY_VERSIONS'
+  const code = [
+    'import json',
+    'from classbeat.spotdown import mix_map_model, studio_map_model, provenance_model',
+    `v = dict(${module})`,
+    'print(json.dumps({"record_version": provenance_model.RECORD_VERSION, "analysis_id": "an_e2e_seed",',
+    '  "analyzer": {"name": "spotdown", "version": "e2e", "config_hash": None},',
+    `  "audio": {"sha256": "${sha256}"}, "source": {"kind": "upload", "ref": None},`,
+    '  "timing": {"class": "exact", "reason": "played_recording", "evidence": {}}, "policy_versions": v}))',
+  ].join('\n')
+  return compose(['exec', '-T', 'worker', 'python', '-c', code]).trim().replaceAll("'", "''")
+}
+
 /** Seed a cache hit for one mix: owned link row plus map row for the user's MOWL connection. */
 export function seedCachedMix(ownerId: string, connectionId: string, mixId: string): void {
   const version = mapVersion()
@@ -66,8 +86,9 @@ export function seedCachedMix(ownerId: string, connectionId: string, mixId: stri
   sql(
     `INSERT INTO mowl_playlist_links (owner_id, source, source_id, playlist_id) VALUES ('${ownerId}', 'swedebeat', '${mixId}', ${String(PLANTED_PLAYLIST_ID)}) ON CONFLICT (owner_id, source, source_id) DO UPDATE SET playlist_id = EXCLUDED.playlist_id`,
   )
+  const provenance = seedProvenance('mix', '')
   sql(
-    `INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, name, duration, listed_duration, analyser, map) VALUES ('${ownerId}', '${mixId}', '${connectionId}', ${String(PLANTED_PLAYLIST_ID)}, '${CACHED_MIX_NAME}', 120, 120, 'local', '${map}'::jsonb) ON CONFLICT (owner_id, mix_id, analyser) DO UPDATE SET mowl_connection_id = EXCLUDED.mowl_connection_id, playlist_id = EXCLUDED.playlist_id, map = EXCLUDED.map, created_at = now()`,
+    `INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, name, duration, listed_duration, analyser, map, provenance) VALUES ('${ownerId}', '${mixId}', '${connectionId}', ${String(PLANTED_PLAYLIST_ID)}, '${CACHED_MIX_NAME}', 120, 120, 'spotdown', '${map}'::jsonb, '${provenance}'::jsonb) ON CONFLICT (owner_id, mix_id, analyser) DO UPDATE SET mowl_connection_id = EXCLUDED.mowl_connection_id, playlist_id = EXCLUDED.playlist_id, map = EXCLUDED.map, provenance = EXCLUDED.provenance, created_at = now()`,
   )
 }
 

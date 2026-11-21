@@ -54,6 +54,7 @@ async def test_a_pick_ends_waiting_with_its_song_list(songenv: SongEnv) -> None:
         "bpm": 100.0,
         "length_sec": 240,
         "new": True,
+        "timing": "approximate",  # spotdown's: the only timing source (#1354)
         # the search hit's album cover, the narrowest image of at least 64 px
         "cover": album_images("FakeAlbum" + "0" * 13)[-1]["url"],
     }

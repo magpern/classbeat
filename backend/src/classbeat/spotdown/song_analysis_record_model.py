@@ -1,11 +1,11 @@
 """The record of a song pick's analysis stage, kept in the ``song_list`` revision's provenance under
 ``spotdown_analysis`` (ADR 0040 section 6, plan section 4a; SD-P6 stage B, #1303). Pure: no I/O.
 
-Written only when the stage ran and the class did not fall back to today's path. Per song of the
-list that was analysed or tried (by its position):
+Written for every Spotify song list (no fallback to MOWL's sections, #1354). Per song of the
+list that was analysed (by its position; a kept song carries its seed list's entry,
+``song_carry_calc``):
 
-- ``use``: ``spotdown`` (an ``approximate`` analysis is the song's timing) or ``sections``
-  (MOWL's sections, today's path for that song) with the ``reason`` code;
+- ``use``: ``spotdown`` (an ``approximate`` analysis is the song's timing), the only value;
 - for an analysis: its id, the analyser (name, version, config hash), the audio identity, the
   source **kind** only, the timing class with its reason and evidence (``timing_class_policy``),
   the fit (``track_fit_policy``) and whether it was accepted with a warning; and, for a song whose
@@ -31,10 +31,10 @@ from classbeat.spotdown.timing_class_policy import TimingDecision
 from classbeat.spotdown.track_fit_policy import Fit
 
 KEY: Final = "spotdown_analysis"
-RECORD_VERSION: Final = 1
+RECORD_VERSION: Final = 2  # 2: every entry is spotdown's timing; no ``sections`` use (#1354)
 SOURCE_KIND: Final = "youtube"  # the one source this stage analyses
 
-Use = Literal["spotdown", "sections"]
+Use = Literal["spotdown"]  # the one timing source (ADR 0040 amendment, #1354)
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +51,6 @@ class Analysed:
 @dataclass(frozen=True, slots=True)
 class SongOutcome:
     use: Use
-    reason: str | None = None  # ``sections``: why
     analysed: Analysed | None = field(default=None, repr=False)
     fit: Fit | None = None
     warning: bool = False  # accepted although it does not fit (after the last round)
@@ -80,8 +79,6 @@ def _audio(a: AudioIdentity) -> dict[str, Any]:
 
 def _song(position: int, out: SongOutcome) -> dict[str, Any]:
     entry: dict[str, Any] = {"position": position, "use": out.use}
-    if out.reason is not None:
-        entry["reason"] = out.reason
     if (a := out.analysed) is not None:
         name, version, config = a.analyzer
         entry |= {

@@ -10,19 +10,24 @@ parent list's evidence for its slot (``spotdown.explicit_model``).
 **A flag never fails a pick**: an error of any type in here (swallowed; only its type is logged)
 gives no record and no tag, so the list is stored as it was before the flag existed. Only
 ``RunStopped``, ``LeaseLost`` and ``DatabaseRoleError`` pass, as for every step of a run (none can
-come from pure code).
+come from pure code). The stages before it (match, analysis) never swallow an error: only this
+report does, by design.
 """
 
 import logging
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Final
 
 from classbeat.agent import ChosenList
-from classbeat.songs.pick_match import PASSED, MatchedPool
+from classbeat.db import DatabaseRoleError
+from classbeat.jobs.errors import LeaseLost, RunStopped
+from classbeat.songs.pick_match import MatchedPool
 from classbeat.songs.seed import Seeded
 from classbeat.spotdown import explicit_model as model
 
 logger = logging.getLogger(__name__)
+
+PASSED: Final = (RunStopped, LeaseLost, DatabaseRoleError)
 
 
 def explicit_report(

@@ -4,6 +4,7 @@ import { useModelScript, type ModelScript } from './model-script'
 import { sql } from './song-helpers'
 import { CLIENT_A, connectSpotify, inContainer, playSpotify, spotifyDialog } from './spotify-helpers'
 import { EMAIL_A, PASSWORD_A, fillSwedebeat, openSwedebeatDialog, setCatalogue, type Song } from './swedebeat-helpers'
+import { seedProvenance } from './swedebeat-mix-helpers'
 
 // Shared by the studio specs (ADR 0036, SR C8): a user with Spotify (and the working-playlist
 // consent) and SwedeBeat connected and **no MOWL connection**, a studio pick started through the
@@ -145,12 +146,13 @@ export function seedTrackMaps(owner: string, listRevisionId: string): void {
   // compose.e2e.yaml): the render checks each download against it.
   const { sha256 } = JSON.parse(inContainer('web', AUDIO)) as { sha256: string }
   const map = JSON.stringify(made.map).replaceAll("'", "''")
+  const provenance = seedProvenance('studio', sha256)
   for (const reference of references) {
     sql(
-      `INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, analyser, sha256, map) VALUES ` +
-        `('${owner}', '${reference}', ${String(made.version)}, 'local', '\\x${sha256}'::bytea, '${map}'::jsonb) ` +
+      `INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, analyser, sha256, map, provenance) VALUES ` +
+        `('${owner}', '${reference}', ${String(made.version)}, 'spotdown', '\\x${sha256}'::bytea, '${map}'::jsonb, '${provenance}'::jsonb) ` +
         `ON CONFLICT (owner_id, reference, analyser_version, analyser) DO UPDATE SET map = EXCLUDED.map, ` +
-        `sha256 = EXCLUDED.sha256, created_at = now()`,
+        `sha256 = EXCLUDED.sha256, provenance = EXCLUDED.provenance, created_at = now()`,
     )
   }
 }

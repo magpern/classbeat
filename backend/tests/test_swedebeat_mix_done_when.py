@@ -31,6 +31,7 @@ from jobapi import Browser
 from jobtools import new_job
 from mowlfake import FakeMowl
 from optools import TOKEN_A, TOKEN_B, OpsEnv
+from spotdownfake import spotdown
 from test_mowl_redaction import Everything
 from test_swedebeat_design import (
     MIX_ID,
@@ -42,8 +43,9 @@ from test_swedebeat_design import (
     jobs_of,
     rider,
 )
-from test_swedebeat_fetch import Harness, add_beats
+from test_swedebeat_fetch import Harness, add_beats, spotdown_on
 
+__all__ = ["spotdown", "spotdown_on"]  # the fixtures
 pytest_plugins = ["test_mowl_redaction"]
 
 pytestmark = pytest.mark.usefixtures("jenv", "mowl_api", "analysis_slot_by_default")

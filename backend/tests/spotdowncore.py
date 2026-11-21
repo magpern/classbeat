@@ -176,6 +176,11 @@ class FakeSpotdown:
         document["analysis_id"] = analysis_id
         if by.startswith("sha256:"):
             document["provenance"]["audio"]["sha256"] = by.removeprefix("sha256:")
+        asked = self.references.get(by)  # a placeholder reference becomes the asked one (#1354)
+        alignment = document.get("alignment")
+        if asked and isinstance(alignment, dict) and alignment["reference"]["id"] == "0" * 32:
+            alignment["reference"] = dict(asked)
+            document["provenance"]["alignment"]["reference"] = dict(asked)
         if analysis_id in self.explicit_evidence and "content" not in document:
             document["content"] = {"explicit": explicit_group(self.explicit_evidence[analysis_id])}
         return document

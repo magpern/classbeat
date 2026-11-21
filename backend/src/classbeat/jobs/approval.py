@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.context import UserContext, require_context
+from classbeat.jobs.spotdown_budget_reset import reset as reset_spotdown_budget
 from classbeat.jobs.user import LOCK_SQL, NOTIFY_QUEUED, lock_owner, user_event
 
 _NEWEST_LIST = text(
@@ -129,6 +130,7 @@ async def approve(
     if reason is not None:
         return Approval(False, row.state, reason)
     seq = (await db.execute(_APPROVE, {**params, "save": save})).scalar_one()
+    await reset_spotdown_budget(db, params)  # a new phase: a fresh spotdown budget
     await user_event(db, ctx, job_id, seq, "approved")
     await db.execute(NOTIFY_QUEUED)
     return Approval(True, "queued")

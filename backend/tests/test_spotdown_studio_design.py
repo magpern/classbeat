@@ -1,8 +1,9 @@
-"""#1302 acceptance (ADR 0040 section 8): **with spotdown on but unreachable, or failing, the
-studio design is byte-identical to today's.** Two studio designs of the same list and script on
-the fakes (the fake gateway, the fake model, the fake spotdown), one with spotdown off and one with
-it the source for every owner: the stored revision's content, its hash and its music (but the
-list's own id) are the same bytes, and every map is the local one. Never the network."""
+"""#1302 review B2 (ADR 0040 section 6, amendment "spotdown is the only analysis path", #1353): **a
+class designed on spotdown keeps its maps and provenance.** Its record carries the analyser and
+the provenance of each track; a later local row beside spotdown's is never read; a revise reads
+the recorded spotdown rows with no new analysis, also with spotdown no longer installed (a cache
+hit needs no configuration); gone from the cache, the rows are not replaced: ``music_changed``.
+On the fakes (the fake gateway, the fake model, the fake spotdown); never the network."""
 
 import copy
 import json
@@ -18,8 +19,7 @@ from classbeat.spotdown import studio_tracks_config
 from ctx import make_context
 from spotdownfake import FakeSpotdown, spotdown
 from studiomaps import track_map
-from studiotools import StudioEnv, pick_script
-from test_spotdown_shadow_design import output
+from studiotools import StudioEnv
 from test_swedebeat_studio_design import (
     LENGTH,
     MIX_8,
@@ -35,14 +35,7 @@ from test_swedebeat_studio_design import (
 __all__ = ["analysed", "spotdown"]  # the fixtures
 
 
-class Everyone(frozenset[Any]):
-    """An allowlist that holds every owner (the riders are made inside ``designed``)."""
-
-    def __contains__(self, _owner: object) -> bool:
-        return True
-
-
-ON = studio_tracks_config.TracksConfig("allowlist", Everyone(), frozenset({"upload"}), b"k" * 32)
+ON = studio_tracks_config.TracksConfig(frozenset({"upload"}), b"k" * 32)
 
 
 @pytest.fixture(autouse=True)
@@ -55,51 +48,11 @@ def no_pause(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     studio_tracks_config.configure(None)
 
 
-@pytest.mark.parametrize(
-    "setup", [{"connect_error": True}, {"end": "processing_failed:decode_error"}]
-)
-async def test_the_design_is_byte_identical_when_spotdown_fails(
-    studio: StudioEnv, analysed: list[str], spotdown: FakeSpotdown, setup: dict[str, Any]
-) -> None:
-    _rider, _class, _list, without = await designed(studio)
-    assert spotdown.seen == []  # off: nothing was sent
-    local = len(analysed)
-    studio_tracks_config.configure(ON)
-    for name, value in setup.items():
-        setattr(spotdown, name, value)
-    studio.songs.script = pick_script()  # the second rider's pick
-    rider, _class, _list, with_spotdown = await designed(studio)
-    assert spotdown.seen  # spotdown was the source and was asked
-    assert output(studio, with_spotdown) == output(studio, without)
-    assert with_spotdown.brief == without.brief
-    # The fake gateway serves the same bytes for every track: the first fell back to the local
-    # analysis, the others are the owner's own analysis of those bytes (no spotdown call).
-    assert len(analysed) == local + 1
-    analysers = studio.songs.sql(
-        "SELECT DISTINCT analyser FROM swedebeat_track_maps WHERE owner_id = :o", o=rider.user_id
-    ).scalars()
-    assert list(analysers) == ["local"]
-
-
-# --- a class keeps the analyser it was designed on (#1302 review B2) ----------------------------
-
-
 @pytest.fixture
-def spotdown_maps(spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch) -> FakeSpotdown:
-    """spotdown's document of each uploaded track: the studio fixture's 240 s map as analysis-v1
-    (of those bytes), so the design can be made on spotdown's maps."""
-    from test_evals_studio_spotdown import document
-
-    real = spotdown.analysis
-
-    def analysis(analysis_id: str) -> dict[str, Any]:
-        sha = real(analysis_id)["provenance"]["audio"]["sha256"]
-        made = document(track_map(LENGTH), 0)
-        made["analysis_id"] = analysis_id
-        made["provenance"]["audio"]["sha256"] = sha
-        return made
-
-    monkeypatch.setattr(spotdown, "analysis", analysis)
+def spotdown_maps(spotdown: FakeSpotdown, analysed: list[str]) -> FakeSpotdown:
+    """The fake spotdown with the studio fixture's 240 s map as its document of each track
+    (``analysed``, autouse in the studio design tests, installs it)."""
+    assert analysed == []
     return spotdown
 
 
@@ -117,9 +70,9 @@ def local_beside(studio: StudioEnv, owner: Any) -> None:
 async def test_a_class_designed_on_spotdown_keeps_its_maps_and_provenance(
     studio: StudioEnv, analysed: list[str], spotdown_maps: FakeSpotdown
 ) -> None:
-    studio_tracks_config.configure(ON)
     rider, class_id, _list, current = await designed(studio)
-    assert analysed == []  # no local analysis
+    assert analysed  # spotdown was asked
+    analysed.clear()
     base = studio.songs.revision(current.current_revision_id)
     records = base.music["analyses"]
     assert len(records) == 8
@@ -132,8 +85,8 @@ async def test_a_class_designed_on_spotdown_keeps_its_maps_and_provenance(
         o=rider.user_id,
     ).scalars()
     assert all(m["cut_candidates"] for m in stored)  # #1328: each map carries its candidates
-    # Switched off, a later job's local maps of the same tracks coexist with spotdown's.
-    studio_tracks_config.configure(None)
+    # Not installed any more, a later local row of the same tracks coexist with spotdown's.
+    studio_tracks_config.configure(None)  # a cache hit needs no configuration
     local_beside(studio, rider.user_id)
     ctx = make_context(rider.user_id)
     before = await studio_timeline.view(studio.songs.spot.env.factory, ctx, class_id)
