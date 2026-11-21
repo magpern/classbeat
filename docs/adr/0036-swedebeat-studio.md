@@ -691,6 +691,8 @@ showed five places where the code does not match the owner's wording; each is de
   (B4). **Approve** is enabled only when the current draft is the form on the screen (B10). The approval gate
   is unchanged: nothing is written to any account until the user approves that final draft for the chosen
   outputs (§6, §7, AGENTS.md safety rules).
+- A playable audio preview is out of scope here; the owner designs it separately. (The "preview" of B4 is a
+  read-only computation of the windows and the total, with no audio.)
 
 #### B4. A choice is a deterministic derivation of the proposal, checked again
 
