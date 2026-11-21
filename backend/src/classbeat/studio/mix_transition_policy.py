@@ -73,9 +73,8 @@ class TransitionHint:
 
 
 def downbeats(facts: TrackFacts) -> tuple[float, ...]:
-    """The trusted downbeats of an ``exact`` track, in time order (none for any other)."""
-    if facts.timing_class != "exact":
-        return ()
+    """The trusted downbeats of an ``exact`` track, in time order (none for any other: the trust
+    gate is ``mix_cut_policy.trusted``)."""
     return tuple(
         sorted(c.at_s for c in facts.candidates if c.kind == "downbeat" and trusted(c, facts))
     )

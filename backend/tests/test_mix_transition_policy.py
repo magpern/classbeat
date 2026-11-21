@@ -162,6 +162,15 @@ def test_two_tracks_of_one_tempo_cut_on_downbeats_lock_with_whole_bars() -> None
     assert mt.locked(a, 201.5, b, 10.25, 8) is False  # the outgoing end a beat off its bar
 
 
+def test_every_downbeat_of_each_side_needs_a_partner() -> None:
+    full, sparse = track(), track()
+    every_other = tuple(c for n, c in enumerate(full.candidates) if n % 2 == 0)
+    sparse = replace(full, candidates=every_other)  # spotdown found only every other bar here
+    assert mt.locked(full, 200.5, full, 0.5, 8) is True
+    assert mt.locked(full, 200.5, sparse, 0.5, 8) is False  # an outgoing downbeat alone
+    assert mt.locked(sparse, 200.5, full, 0.5, 8) is False  # an incoming one alone
+
+
 @pytest.mark.parametrize(("shift", "locks"), [(0.03, True), (-0.03, True), (0.04, False)])
 def test_the_lock_tolerance_is_30_ms(shift: float, locks: bool) -> None:
     a, b = track(), track(first=0.25)
