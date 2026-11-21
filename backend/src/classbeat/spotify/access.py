@@ -58,7 +58,7 @@ UNAUTHORIZED = 401
 Factory = async_sessionmaker[AsyncSession]
 
 
-def _expiring(opened: OpenConnection, margin_seconds: float, now: float) -> bool:
+def expiring(opened: OpenConnection, margin_seconds: float, now: float) -> bool:
     return float(opened.credentials.spotify_expires_at) - now < margin_seconds
 
 
@@ -83,7 +83,8 @@ async def refresh_if_needed(
     )
 
 
-# The read-only mode's shielded refreshes still running: a strong reference until each is done.
+# The web's shielded refreshes still running (the read-only mode's and
+# ``classbeat.spotify.player_access``): a strong reference until each is done.
 _SHIELDED: set[asyncio.Task[Any]] = set()
 
 
@@ -93,7 +94,7 @@ def _settle(task: asyncio.Task[Any]) -> None:
         task.exception()  # retrieved, so an abandoned failure is not reported as never retrieved
 
 
-async def _shielded[R](coroutine: Coroutine[Any, Any, R]) -> R:
+async def shielded[R](coroutine: Coroutine[Any, Any, R]) -> R:
     """Run ``coroutine`` as its own task that a cancellation of the caller does not cancel."""
     task = asyncio.ensure_future(coroutine)
     _SHIELDED.add(task)
@@ -101,7 +102,7 @@ async def _shielded[R](coroutine: Coroutine[Any, Any, R]) -> R:
     return await asyncio.shield(task)
 
 
-def _expected(opened: OpenConnection, expect: OpenConnection | None) -> OpenConnection:
+def expected_connection(opened: OpenConnection, expect: OpenConnection | None) -> OpenConnection:
     """The row as opened now must be the connection the caller held (``expect``): the same row,
     generation and Spotify account. A refresh keeps all three; a reconnect, a Client ID change or
     another account changes the generation, and then nothing is sent (``not_connected``)."""
@@ -210,11 +211,11 @@ async def _call[T](
     if before_read is not None and not read_only:
         raise ValueError("before_read is the read-only mode's")
     http = http if http is not None else SpotifyHttp()
-    opened = _expected(await open_connection(factory, ring, ctx, PROVIDER), expect)
-    if _expiring(opened, margin_seconds, time.time()):
+    opened = expected_connection(await open_connection(factory, ring, ctx, PROVIDER), expect)
+    if expiring(opened, margin_seconds, time.time()):
         refresh = refresh_if_needed(factory, ring, ctx, http, margin_seconds=margin_seconds)
-        await (_shielded(refresh) if read_only else refresh)
-        opened = _expected(await open_connection(factory, ring, ctx, PROVIDER), expect)
+        await (shielded(refresh) if read_only else refresh)
+        opened = expected_connection(await open_connection(factory, ring, ctx, PROVIDER), expect)
     if before_read is not None:
         await before_read()
     result, failure = await _attempt(factory, ctx, opened, fn, single_request, record=not read_only)
@@ -233,7 +234,7 @@ async def _call[T](
     )
     if write:
         raise ConnectionFailure("upstream_unavailable", not_applied=True, http_status=UNAUTHORIZED)
-    repeat = _expected(await open_connection(factory, ring, ctx, PROVIDER), expect)
+    repeat = expected_connection(await open_connection(factory, ring, ctx, PROVIDER), expect)
     result, failure = await _attempt(factory, ctx, repeat, fn, single_request)
     if failure is None:
         return result  # pyright: ignore[reportReturnType]
