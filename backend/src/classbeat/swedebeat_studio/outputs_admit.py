@@ -12,7 +12,9 @@ order, each refusal writing nothing:
    ``no_studio_draft``, ``not_current`` (not the class's current revision), ``hash_mismatch``
    (a stale hash), ``internal`` (a stored hash that no longer holds);
 4. the choice (``output_choice_policy.refusal``, with the draft's own spec: whether it repeats a
-   song): ``invalid_input``, ``mowl_needs_mix``, ``playlist_has_repeats``, ``output_off``;
+   song, whether it is mixed and whether it is the applied form of its proposal, read by
+   ``applied_form``, ADR 0036 amendment B9): ``invalid_input``, ``mowl_needs_mix``,
+   ``mix_not_chosen``, ``mix_not_applied``, ``playlist_has_repeats``, ``output_off``;
 5. the SwedeBeat connection: ``not_connected`` unless it is the user's, ``connected`` and live;
    ``connection_changed`` unless it is the one the approved list was matched with **and** its
    generation (read share-locked) is the one the route's session check saw;
@@ -39,7 +41,7 @@ from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.songs import config as song_config
 from classbeat.studio.mix_repeat_calc import has_repeats
 from classbeat.studio.output_choice_policy import enabled_outputs, refusal
-from classbeat.swedebeat_studio import config, current_draft
+from classbeat.swedebeat_studio import applied_form, config, current_draft
 from classbeat.swedebeat_studio.admit import studio_on, swedebeat_connected
 from classbeat.swedebeat_studio.current_draft import CurrentDraft
 from classbeat.swedebeat_studio.outputs_input import BINDING_VERSION, ProduceOutputsInput
@@ -107,7 +109,14 @@ async def bound(
     if isinstance(found, str):
         return found
     repeats = has_repeats(found.music.mix_spec.references())  # the stored, hash-checked spec
-    refused = refusal(given.outputs, await enabled(db, ctx), repeats=repeats)
+    form = await applied_form.form(db, ctx.user_id, given.the_class, found, given.outputs)
+    refused = refusal(
+        given.outputs,
+        await enabled(db, ctx),
+        repeats=repeats,
+        mixed=form.mixed,
+        applied_form=form.applied_form,
+    )
     if refused is not None:
         return refused
     connection_id = given.swedebeat_connection_id

@@ -8,9 +8,9 @@
   ``Idempotency-Key``: the user's approval of that draft for those outputs
   (``classes.studio_outputs``): 201 with the ``produce_outputs`` job ``{job_id, kind, state}``,
   200 with the same job for a repeated key and body; 409 ``{reason}`` with the refusal
-  (``hash_mismatch``, ``not_current``, ``mowl_needs_mix``, ``playlist_has_repeats``, ``output_off``,
-  ``connection_changed``, ``session_refused``, ``class_busy``, ``idempotency_mismatch`` ...), 404
-  ``not_found`` as above.
+  (``hash_mismatch``, ``not_current``, ``mowl_needs_mix``, ``mix_not_chosen``, ``mix_not_applied``,
+  ``playlist_has_repeats``, ``output_off``, ``connection_changed``, ``session_refused``,
+  ``class_busy``, ``idempotency_mismatch`` ...), 404 ``not_found`` as above.
 
 Signed in (``auth.require_user``) and, like every unsafe request, with the CSRF token the auth
 middleware checks.

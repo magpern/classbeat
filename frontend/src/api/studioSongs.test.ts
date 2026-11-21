@@ -10,6 +10,14 @@ describe('studio songs api', () => {
     expect(studioError(new ApiError(409, 'revision_limit', null, undefined))).toContain('limit of song changes')
   })
 
+  it('names the two refusals of the music form in plain words (ADR 0036 B9)', () => {
+    const chosen = studioError(new ApiError(409, 'mix_not_chosen', null, undefined))
+    const applied = studioError(new ApiError(409, 'mix_not_applied', null, undefined))
+    expect(chosen).toContain('Choose DJ mix too')
+    expect(applied).toContain('Apply your choices again')
+    expect(chosen + applied).not.toMatch(/mix_not_/)
+  })
+
   it('falls back to a plain sentence for an unknown reason', () => {
     expect(studioError(new ApiError(500, 'weird_code', null, undefined))).not.toContain('weird_code')
   })

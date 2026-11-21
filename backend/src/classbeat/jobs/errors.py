@@ -107,6 +107,11 @@ CATEGORIES: Final = (
     # outcome, spotdown answered but the music cannot be analysed, and is not retried. Raised by
     # ``spotdown.outage_policy`` and the code that calls it (#1353, #1354).
     "analysis_unavailable",
+    # ADR 0036 amendment B9 (migration 0069, #1370): a SwedeBeat output for a draft that is mixed
+    # without DJ mix chosen, or that is not the applied form of its proposal, refused again when the
+    # job runs; nothing is written. Not retried.
+    "mix_not_chosen",
+    "mix_not_applied",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).

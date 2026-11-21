@@ -1,10 +1,12 @@
 """#1342 part 1 (ADR 0036 amendment A8, A10): a studio draft whose mix repeats a song, on the fakes
-(the SwedeBeat gateway, ``FakeProvider``, the render child stood in); never the network.
+(the SwedeBeat gateway, ``FakeProvider``, the render child stood in, spotdown's ``exact`` maps, so
+the repeat is the applied form of its proposal, B5 and B9); never the network.
 
 - the draft is stored with the repeat, under a hash that covers it, and its timeline marks it;
-- the SwedeBeat playlist is refused for it **at choice time** (``playlist_has_repeats``, no job, no
-  gateway call) and **at job time** (the job ends ``error_category = 'playlist_has_repeats'``, not
-  ``internal``, nothing written, not retried); a draft without repeats keeps the playlist;
+- the SwedeBeat playlist is refused for it **at choice time** (``playlist_has_repeats`` with DJ mix,
+  ``mix_not_chosen`` without it (ADR 0036 amendment B9), no job, no gateway call) and **at job
+  time** (the job ends ``error_category = 'playlist_has_repeats'``, not ``internal``, nothing
+  written, not retried); a draft without repeats keeps the playlist;
 - the mix is produced: one render entry per piece, each distinct track downloaded once and its
   sha256 checked once, X-Tracks one entry per piece (no loop runs in part 1) adding up to the mix.
 """
@@ -17,10 +19,12 @@ import pytest
 
 from classbeat.design import revision
 from classbeat.jobs.errors import RETRYABLE
+from classbeat.spotdown import studio_tracks_config
 from classbeat.studio import output_body_policy as body
 from classbeat.swedebeat_studio import outputs_admit
 from gatewaycore import MERGE_PATH, SESSION_PATH
 from songtools import new_key
+from spotdownfake import spotdown  # noqa: F401 - fixture
 from studiooutputs import (
     Renders,
     choice,
@@ -32,6 +36,7 @@ from studiooutputs import (
     sent,
 )
 from studiotools import StudioEnv
+from test_spotdown_studio_design import ON, no_pause, spotdown_maps  # noqa: F401 - fixtures
 from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage]
     LENGTH,
     MIX_8,
@@ -42,7 +47,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
     start_design,
 )
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on")
+pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on", "spotdown_maps")
 
 # The eight approved tracks as MIX_8 plays them, then track 1 again for 90 s (not next to itself).
 MIX_REPEAT: dict[str, Any] = {
@@ -52,6 +57,7 @@ MIX_REPEAT: dict[str, Any] = {
 
 
 async def designed_with_repeat(studio: StudioEnv) -> tuple[Any, UUID, Any]:
+    studio_tracks_config.configure(ON)  # ``exact`` tracks: only they keep a cut or a repeat (B5)
     rider, class_id, list_id = await approved(studio)
     studio.songs.script = design_script(MIX_REPEAT)
     response = await start_design(rider, class_id, list_id)
@@ -104,12 +110,15 @@ async def test_the_playlist_is_refused_at_choice_time_and_the_mix_is_not(
     rider, class_id, current = await designed_with_repeat(studio)
     path = f"/api/classes/{class_id}/outputs"
     before = len(studio.gateway.requests)
-    for chosen in (["swedebeat_playlist"], ["swedebeat_playlist", "swedebeat_mix"]):
+    for chosen, reason in (
+        (["swedebeat_playlist"], "mix_not_chosen"),  # B9: a repeat is mixed
+        (["swedebeat_playlist", "swedebeat_mix"], "playlist_has_repeats"),
+    ):
         answer = await rider.browser.post(
             path, choice(current, studio, *chosen), {"Idempotency-Key": new_key()}
         )
         assert answer.status_code == 409, answer.text
-        assert answer.json()["detail"]["reason"] == "playlist_has_repeats"
+        assert answer.json()["detail"]["reason"] == reason
     assert (
         studio.songs.sql("SELECT count(*) FROM jobs WHERE kind = 'produce_outputs'").scalar() == 0
     )
@@ -129,7 +138,7 @@ async def test_the_playlist_is_refused_again_when_the_job_runs(
     monkeypatch.setattr(outputs_admit, "has_repeats", lambda _: False)
     answer = await rider.browser.post(
         f"/api/classes/{class_id}/outputs",
-        choice(current, studio, "swedebeat_playlist"),
+        choice(current, studio, "swedebeat_playlist", "swedebeat_mix"),
         {"Idempotency-Key": new_key()},
     )
     assert answer.status_code == 201, answer.text

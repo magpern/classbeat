@@ -33,6 +33,7 @@ from studiotools import StudioEnv, choose_turns, pool_turns, script
 from test_spotify_sync import ITEMS, LIST_A, LIST_B, gate_first_put, run_sync, uris
 from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage]
     MIX_8,
+    WHOLE_8,
     analysed,  # noqa: F401 - the autouse stand-in of the sandboxed child
     design_script,
     designed,
@@ -78,7 +79,7 @@ async def test_the_final_fill_is_the_drafts_sync(studio: StudioEnv) -> None:
 async def test_a_failed_fill_never_blocks_the_swedebeat_outputs_and_sync_again_fills_it(
     studio: StudioEnv,
 ) -> None:
-    rider, class_id, list_id, current = await designed(studio)
+    rider, class_id, list_id, current = await designed(studio, WHOLE_8)
     before = set(studio.songs.fake.playlists)
     # The fill's owner check (the first read after the public create, roadmap Amendment 30) is
     # refused: nothing is written to the new playlist's items.
