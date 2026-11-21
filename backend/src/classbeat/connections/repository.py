@@ -18,8 +18,9 @@ found, the same as an unknown one. Writes:
   checked under the row lock, else ``account_changed`` and nothing written) forgets the account's
   pool, operations and live class playlists, another Client ID the pool and its operations, in
   the same transaction.
-  A SwedeBeat connect stores its ``account_ref`` (#1117) in the same write: always, ``NULL``
-  included, so a reconnect never keeps the account of the login it replaces.
+  A SwedeBeat connect stores its ``account_ref`` (#1117), a Spotify connect its
+  ``granted_scopes`` (ADR 0042 section 7.1), in the same write: always, ``NULL`` included, so a
+  reconnect never keeps the account or the grant of the one it replaces.
   Every rewrite of an existing row is a user's connect, so it increases ``generation`` (ADR 0009
   section 5.4); a refresh (``classbeat.spotify``) and a rewrap keep it.
 - **status changes** (``needs_reconnect``, ``last_error``, ``last_used_at``) are conditional on
@@ -54,7 +55,7 @@ from classbeat.connections.errors import ConnectionFailure, run_library_call
 from classbeat.connections.forget import forget_account, forget_every_account, forget_mowl_account
 from classbeat.connections.player_data import forget_player_operations
 from classbeat.connections.row_crypto import open_row, seal_row
-from classbeat.connections.spotify_data import forget_spotify_account, revoke_pool
+from classbeat.connections.spotify_data import forget_replaced_spotify
 from classbeat.connections.tables import PROVIDERS, connections
 from classbeat.context import UserContext
 from classbeat.crypto.envelope import canonical_json
@@ -154,6 +155,7 @@ async def save(
     expires_at: datetime | None = None,
     confirm_account_change: bool = False,
     account_ref: str | None = None,
+    granted_scopes: str | None = None,
 ) -> UUID:
     """Connect or reconnect: store ``secret`` (the provider's payload fields) encrypted.
     Returns the row id (kept across reconnects).
@@ -167,13 +169,16 @@ async def save(
         raise ValueError("the payload does not have the provider's fields")
     if account_ref is not None and provider != "swedebeat":
         raise ValueError("only a SwedeBeat connection records its account")
+    if granted_scopes is not None and provider != "spotify":
+        raise ValueError("only a Spotify connection records its granted scopes")
     plaintext = canonical_json(dict(secret))
     public_values = dict(public or {})
     confirm = confirm_account_change
+    columns = {"account_ref": account_ref, "granted_scopes": granted_scopes}
     try:
         async with user_session(factory, ctx) as db:
             return await _write(
-                db, ring, ctx, provider, plaintext, public_values, expires_at, confirm, account_ref
+                db, ring, ctx, provider, plaintext, public_values, expires_at, confirm, columns
             )
     except IntegrityError as error:
         if not _is_provider_conflict(error):
@@ -182,7 +187,7 @@ async def save(
     logger.info("parallel connect; retrying once", extra={"provider": provider})
     async with user_session(factory, ctx) as db:
         return await _write(
-            db, ring, ctx, provider, plaintext, public_values, expires_at, confirm, account_ref
+            db, ring, ctx, provider, plaintext, public_values, expires_at, confirm, columns
         )
 
 
@@ -194,8 +199,8 @@ async def _write(
     plaintext: bytes,
     public: dict[str, Any],
     expires_at: datetime | None,
-    confirm_account_change: bool = False,
-    account_ref: str | None = None,
+    confirm_account_change: bool,
+    columns: Mapping[str, str | None],
 ) -> UUID:
     found = (
         await db.execute(
@@ -212,7 +217,7 @@ async def _write(
         "public": public,
         **await seal_row(db, ring, ctx.user_id, provider, row_id, plaintext),
         "expires_at": expires_at,
-        "account_ref": account_ref,  # every write: a reconnect never keeps the old account
+        **columns,  # every write: a reconnect never keeps the old account or grant
         "connected_at": func.now(),
         "updated_at": func.now(),
     }
@@ -223,8 +228,8 @@ async def _write(
             # disconnect then connect would (ADR 0006 section 3), after the row lock above.
             await forget_mowl_account(db, ctx)
         elif provider == "spotify":
-            await _forget_replaced_spotify(
-                db, ctx, dict(found.public or {}), public, confirm_account_change
+            await forget_replaced_spotify(
+                db, ctx.user_id, dict(found.public or {}), public, confirm_account_change
             )
         elif provider == "player":  # ADR 0034 section 3: the binding held (same account)
             await forget_player_operations(db, ctx.user_id)
@@ -238,31 +243,6 @@ async def _write(
             insert(connections).values(id=row_id, owner_id=ctx.user_id, provider=provider, **values)
         )
     return row_id
-
-
-async def _forget_replaced_spotify(
-    db: AsyncSession,
-    ctx: UserContext,
-    old: Mapping[str, Any],
-    new: Mapping[str, Any],
-    confirm_account_change: bool,
-) -> None:
-    """ADR 0009 section 7, after the row lock: another Spotify account forgets everything kept
-    about the old one, and only with ``confirm_account_change`` (else ``account_changed``, the
-    transaction rolls back and nothing is written); the same account under another Client ID
-    forgets the pool (the consent is asked again); a reconnect of the same account and app keeps
-    both. A value that is missing on either side counts as different (the safe reading)."""
-
-    def same(key: str) -> bool:
-        value = old.get(key)
-        return isinstance(value, str) and bool(value) and value == new.get(key)
-
-    if not same("spotify_user_id"):
-        if not confirm_account_change:
-            raise ConnectionFailure("account_changed", not_applied=True)
-        await forget_spotify_account(db, ctx.user_id)
-    elif not same("client_id"):
-        await revoke_pool(db, ctx.user_id)
 
 
 async def open_connection(

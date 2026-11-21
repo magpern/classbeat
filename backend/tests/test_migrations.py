@@ -35,7 +35,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0069_mix_too_long"]
+    assert script.get_heads() == ["0070_spotify_granted_scopes"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -56,7 +56,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0069_mix_too_long"]
+        assert applied_revisions(database_url) == ["0070_spotify_granted_scopes"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:

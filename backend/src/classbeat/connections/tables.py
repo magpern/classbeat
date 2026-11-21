@@ -3,7 +3,8 @@
 Only ``classbeat.connections`` reads or writes it (``tests/test_crypto_guard.py``). Migration
 ``0003_connections`` creates it with its constraints and RLS, ``0006_spotify`` adds
 ``generation``, ``0050_player_connection`` the ``player`` provider, ``0057_swedebeat_account_ref``
-``account_ref``; this is the query-side mirror.
+``account_ref``, ``0070_spotify_granted_scopes`` ``granted_scopes``; this is the query-side
+mirror.
 """
 
 from sqlalchemy import (
@@ -48,4 +49,8 @@ connections = Table(
     # #1117: a keyed digest of the SwedeBeat ``customer_id`` (``swedebeat`` rows only), set on
     # every connect and reconnect; ``NULL`` reads as another account.
     Column("account_ref", Text),
+    # ADR 0042 section 7.1 (#1393): the Spotify scopes the last connect was granted, the known
+    # ones sorted (``classbeat.spotify.flow.stored_scopes``); ``NULL`` (a row from before) reads
+    # as no listening-preview scopes.
+    Column("granted_scopes", Text),
 )

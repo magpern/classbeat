@@ -185,8 +185,11 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
             "price_version route_key",
             "account",
         ),
+        # ``granted_scopes`` (ADR 0042 section 7.1): the Spotify scopes the connect was granted,
+        # classbeat's own scope names only; it goes with its row.
         "connections": _entry(
-            "public last_error secret secret_nonce wrapped_dek dek_nonce account_ref",
+            "public last_error secret secret_nonce wrapped_dek dek_nonce account_ref "
+            "granted_scopes",
             "provider status key_id",
             "account",
             "mowl_connection",

@@ -31,7 +31,7 @@ from classbeat.context import UserContext
 from classbeat.db import system_session
 from classbeat.spotify import connect
 from classbeat.spotify.errors import sentence_of
-from classbeat.spotify.flow import CLIENT_ID_INPUT_MAX, normalize_client_id
+from classbeat.spotify.flow import CLIENT_ID_INPUT_MAX, normalize_client_id, preview_granted
 from classbeat.spotify.http import SpotifyHttp
 
 PROVIDER: Final = "spotify"
@@ -87,6 +87,8 @@ class StatusOut(BaseModel):
     consent_version: int | None
     consent_text: str
     song_picking_enabled: bool
+    # ADR 0042 section 7.1: the connection was granted the listening-preview scopes (opt-in).
+    preview_granted: bool = False
     # The dialogs' data (ADR 0008 section 8): what a consent revoke or Disconnect leaves in the
     # user's own Spotify. Names only, never a link or an id.
     pool_playlist: str | None
@@ -106,6 +108,8 @@ class StartIn(BaseModel):
 
     client_id: str = Field(min_length=1, max_length=CLIENT_ID_INPUT_MAX)
     confirm_account_change: bool = False
+    # ADR 0042 section 7.1: "Enable listening preview", the user's opt-in to the playback scopes.
+    preview: bool = False
 
 
 class StartOut(BaseModel):
@@ -140,6 +144,7 @@ async def status(
         consent_version=found.consent_version,
         consent_text=CONSENT_TEXT,
         song_picking_enabled=settings.song_picking,
+        preview_granted=found.status == "connected" and preview_granted(found.granted_scopes),
         pool_playlist=left.pool_playlist,
         class_playlists=[
             ClassPlaylistOut(
@@ -177,6 +182,7 @@ async def start(
         info.id,
         client_id,
         confirm_account_change=body.confirm_account_change,
+        preview=body.preview,
     )
     return StartOut(authorize_url=url)
 
