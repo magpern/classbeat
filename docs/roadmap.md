@@ -1,5 +1,18 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 33 (2026-11-21, owner decision: a SwedeBeat studio song may repeat in a mix; issue #1331)
+
+The owner authorized repeats on 2026-11-21. Recorded in [ADR 0036](adr/0036-swedebeat-studio.md), amendment
+"a song may appear more than once in a mix" (Proposed until its Opus review).
+
+- A song may appear many times in a class, and the same window may be reused anywhere. No per-song or
+  share-of-class cap: only the existing bounds (40 pieces, 150 minutes); a soft hint on one song's share.
+- Back-to-back pieces of one song are a loop: `exact` timing only, joined on phrase or downbeat points, with
+  a shorter minimum per loop piece (8 bars) while the run keeps the 60 s rule.
+- A whole track is not repeated unless the user asked: a prompt rule and a soft hint, never a refusal.
+- A class with repeats is mix-only until the owner's live check shows that a SwedeBeat playlist accepts the
+  same track twice with distinct cuts. Whether L4b covers repeated sections is the owner's question.
+
 ## Amendment 32 (2026-11-20, owner decision: YouTube-derived analysis for Spotify classes; issue #1296)
 
 The owner answered #1296 ([comment](https://github.com/magpern/classbeat/issues/1296#issuecomment-7050972098)):
