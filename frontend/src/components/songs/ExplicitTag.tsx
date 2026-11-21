@@ -1,9 +1,9 @@
 import { useT } from '../../i18n/I18n'
 
 /**
- * The boxed "E" of Material Symbols `explicit` (Google, Apache License 2.0,
- * https://github.com/google/material-design-icons), drawn inline so no icon font or request is
- * needed. Decorative on its own: `ExplicitTag` gives it the accessible name.
+ * The boxed "E" of the Material Symbols `explicit` glyph, from Google's Material Design icons
+ * (Apache License 2.0), drawn inline so no icon font or request is needed. Decorative on its own:
+ * `ExplicitTag` gives it the accessible name.
  */
 function ExplicitGlyph() {
   return (
