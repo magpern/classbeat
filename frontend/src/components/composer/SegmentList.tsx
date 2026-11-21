@@ -6,6 +6,7 @@ import { useT } from '../../i18n/I18n'
 import { songRows } from '../../lib/composer/songRows'
 import { clock } from '../../lib/workout'
 import { Button } from '../ui/button'
+import { Chip } from '../ui/chip'
 
 // The server stores no playlist names: an attached playlist is "your playlist", numbered when more
 // than one is attached (the position in the request).
@@ -18,8 +19,8 @@ function sourceText(source: SongSource | null | undefined, attached: number, t: 
 
 /**
  * The class's segments, each with the songs that start in it (ADR 0038 section 10.2): title,
- * artist and where it came from, and Swap before the approval. Song titles are server text, shown
- * as plain text.
+ * artist and where it came from, a "Timing approximate" mark (ADR 0040 section 3), and Swap before
+ * the approval. Song titles are server text, shown as plain text.
  */
 export function SegmentList({
   segments,
@@ -72,6 +73,11 @@ export function SegmentList({
                       </span>
                     ) : null}
                   </p>
+                  {song.timing === 'approximate' ? (
+                    <Chip tone="warn" data-testid="song-timing-approximate">
+                      {t('songs.list.timingApproximate')}
+                    </Chip>
+                  ) : null}
                   {canSwap ? (
                     <Button
                       variant="secondary"

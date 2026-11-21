@@ -44,6 +44,11 @@ export interface Song {
   openSpotify: string | null
   /** Composer lists only; absent or null for an older list. */
   source?: SongSource | null
+  /**
+   * `approximate` when the song's timing is known only to about 2 s (a YouTube match, ADR 0040
+   * section 3), shown as "timing approximate"; absent or null otherwise.
+   */
+  timing?: 'approximate' | null
 }
 
 export interface SongList {
@@ -120,6 +125,7 @@ function decodeSong(value: unknown): Omit<Song, 'startSec'> {
     cover: optionalText(item, 'cover'),
     openSpotify: trackLink(optionalText(item, 'open_spotify')),
     source: decodeSource(item.source),
+    timing: item.timing === 'approximate' ? 'approximate' : null,
   }
 }
 

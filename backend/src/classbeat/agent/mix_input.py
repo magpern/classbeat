@@ -21,7 +21,7 @@ from typing import Any, Final
 from mowl import service
 from mowl.workout import mmss
 
-from classbeat.agent import beat_one, model_input
+from classbeat.agent import beat_one, model_input, timing_input
 from classbeat.agent.beat_one import Correction
 from classbeat.agent.model_input import EVENT_KINDS, LONGER_THAN_MUSIC, MusicData
 
@@ -81,8 +81,11 @@ def music_map(data: MusicData) -> dict[str, Any]:
 
 
 def music_summary(data: MusicData, m: Mapping[str, Any]) -> dict[str, Any]:
-    """``model_input.music_summary``, or ``mix_summary``; ``m`` is ``music_map(data)``."""
-    return mix_summary(m) if isinstance(data, MixData) else model_input.music_summary(data, m)
+    """``model_input.music_summary``, or ``mix_summary``; ``m`` is ``music_map(data)``. Each
+    track that is not ``exact`` is marked (``timing_input``; none in a map before SD-P6)."""
+    if isinstance(data, MixData):
+        return mix_summary(m)
+    return timing_input.annotate_summary(model_input.music_summary(data, m), m)
 
 
 def _bpm(value: Any) -> float | None:
@@ -125,7 +128,7 @@ def mix_summary(m: Mapping[str, Any]) -> dict[str, Any]:
 def track_detail(m: Mapping[str, Any], index: int) -> dict[str, Any]:
     """``model_input.track_detail``; of a mix, the song itself. ``index`` already checked."""
     if not is_mix(m):
-        return model_input.track_detail(m, index)
+        return timing_input.annotate_detail(model_input.track_detail(m, index), m)
     number = index + 1
     song = next(s for s in m["songs"] if s["song"] == number)
     return {
@@ -154,8 +157,11 @@ def track_at(m: Mapping[str, Any], t: float) -> int:
 def timeline_for_model(
     fitted: Mapping[str, Any], report: Sequence[Mapping[str, Any]], m: Mapping[str, Any]
 ) -> list[dict[str, Any]]:
-    """``model_input.timeline_for_model``; of a mix, with the song under each interval."""
-    return model_input.timeline_for_model(fitted, report, _by_song(m) if is_mix(m) else m)
+    """``model_input.timeline_for_model``; of a mix, with the song under each interval. An
+    interval on a track that is not ``exact`` is marked (``timing_input``)."""
+    if is_mix(m):
+        return model_input.timeline_for_model(fitted, report, _by_song(m))
+    return timing_input.annotate_timeline(model_input.timeline_for_model(fitted, report, m), m)
 
 
 def music_warnings(m: Mapping[str, Any], workout_sec: int) -> list[str]:

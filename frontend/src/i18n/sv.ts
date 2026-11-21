@@ -1244,6 +1244,7 @@ const sv: Catalogue = {
   'songs.list.openSpotifyLabel': 'ÖPPNA SPOTIFY, {title}',
   'songs.list.bpm': '{bpm} BPM',
   'songs.list.new': 'Ny',
+  'songs.list.timingApproximate': 'Ungefärlig timing',
   'songs.list.replace': 'Byt ut',
   'songs.list.replaceLabel': 'Byt ut {title}',
   'music.label': 'Musik',

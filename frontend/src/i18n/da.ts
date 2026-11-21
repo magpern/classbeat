@@ -1232,6 +1232,7 @@ const da: Catalogue = {
   'songs.list.openSpotifyLabel': 'ÅBN SPOTIFY, {title}',
   'songs.list.bpm': '{bpm} BPM',
   'songs.list.new': 'Ny',
+  'songs.list.timingApproximate': 'Omtrentlig timing',
   'songs.list.replace': 'Erstat',
   'songs.list.replaceLabel': 'Erstat {title}',
   'music.label': 'Musik',

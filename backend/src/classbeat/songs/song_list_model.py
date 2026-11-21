@@ -55,6 +55,10 @@ class Song(BaseModel):
     new: bool
     cover: str | None = None  # v: 2 (ADR 0013 section 9); absent in v: 1
     source: SongSource | None = Field(default=None, exclude_if=lambda v: v is None)  # v: 3
+    # ADR 0040 section 3: a song whose timing is approximate (a YouTube match, SD-P6), for the
+    # page's "timing approximate" label. Left out of the dump when absent, so every other list
+    # is stored and hashed as before.
+    timing: Literal["approximate"] | None = Field(default=None, exclude_if=lambda v: v is None)
 
     @field_validator("cover", mode="before")
     @classmethod

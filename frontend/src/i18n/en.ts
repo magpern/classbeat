@@ -1341,6 +1341,7 @@ export const en = {
   'songs.list.openSpotifyLabel': 'OPEN SPOTIFY, {title}',
   'songs.list.bpm': '{bpm} BPM',
   'songs.list.new': 'New',
+  'songs.list.timingApproximate': 'Timing approximate',
   'songs.list.replace': 'Replace',
   'songs.list.replaceLabel': 'Replace {title}',
   'music.label': 'Music',
