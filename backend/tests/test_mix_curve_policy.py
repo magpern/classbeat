@@ -91,7 +91,7 @@ DURATIONS = {"a": 240.0, "b": 240.0, "c": 240.0}
 
 
 def test_the_render_plan_names_a_bass_swap_only_where_one_is_chosen() -> None:
-    plan = body.render_plan(SPEC, DURATIONS, FACTS)
+    plan = body.render_plan(SPEC, DURATIONS, FACTS, bass_swap=True)
     assert plan[1]["curve"] == "bass_swap"
     assert plan[1]["swap"] == 4 * RATE
     assert "curve" not in plan[0]
@@ -105,11 +105,9 @@ def test_the_render_plan_names_a_bass_swap_only_where_one_is_chosen() -> None:
 
 def test_without_facts_or_curves_the_render_plan_is_todays() -> None:
     today = body.render_plan(SPEC, DURATIONS)
-    assert (
-        body.render_plan(SPEC, DURATIONS, {k: replace(f, low_band=None) for k, f in FACTS.items()})
-        == today
-    )
-    swapped = body.render_plan(SPEC, DURATIONS, FACTS)
+    quiet = {k: replace(f, low_band=None) for k, f in FACTS.items()}
+    assert body.render_plan(SPEC, DURATIONS, quiet, bass_swap=True) == today
+    swapped = body.render_plan(SPEC, DURATIONS, FACTS, bass_swap=True)
     assert [{k: v for k, v in p.items() if k not in ("curve", "swap")} for p in swapped] == today
     assert body.played_seconds(swapped) == body.played_seconds(today)  # the timing is the same
 
@@ -183,7 +181,7 @@ def test_the_mean_is_over_the_values_in_the_span() -> None:
 
 
 def test_the_render_gets_the_stored_plans_curve_and_nothing_else() -> None:
-    plan = body.render_plan(SPEC, DURATIONS, FACTS)
+    plan = body.render_plan(SPEC, DURATIONS, FACTS, bass_swap=True)
     tracks = [render_policy.track_of({**p, "extra": 1}, f"t{n}") for n, p in enumerate(plan)]
     assert tracks[1]["curve"] == "bass_swap"
     assert tracks[1]["swap"] == 4 * RATE

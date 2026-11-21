@@ -18,7 +18,8 @@ The outputs are ``spotify_playlist`` (the final Spotify playlist), ``swedebeat_p
 ``enabled_outputs`` is ADR 0036 section 10: ``swedebeat_playlist``, ``swedebeat_mix`` and ``mowl``
 follow their values of ``CLASSBEAT_SWEDEBEAT_STUDIO`` (``config_policy`` already refuses ``mowl``
 without ``swedebeat_mix`` at start), and the final Spotify playlist follows Spotify's own live
-activation (song picking), as every Spotify playlist does.
+activation (song picking), as every Spotify playlist does. Every other value of the setting
+(``design``, ``bass_swap``: ADR 0036 amendment B8) is never an output.
 """
 
 from collections.abc import Collection, Iterable

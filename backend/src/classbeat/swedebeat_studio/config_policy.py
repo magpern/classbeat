@@ -3,10 +3,11 @@ this environment runs. Pure: no I/O.
 
 - A comma-separated list, empty by default (the studio off: SwedeBeat classes keep today's match
   and the manual hand-off). Spaces around a value are ignored.
-- The accepted values are ``design`` (the studio itself), ``swedebeat_playlist``,
-  ``swedebeat_mix`` and ``mowl``. Anything else, an empty item or a value given twice refuses to
-  start the app (``ValueError`` from ``Settings``).
-- An output value needs ``design``; ``mowl`` needs ``swedebeat_mix``.
+- The accepted values are ``design`` (the studio itself), the three outputs ``swedebeat_playlist``,
+  ``swedebeat_mix`` and ``mowl``, and ``bass_swap`` (ADR 0036 amendment B8: the mix's bass swap,
+  #1330, off by default; **not an output**). Anything else, an empty item or a value given twice
+  refuses to start the app (``ValueError`` from ``Settings``).
+- An output value needs ``design``; ``mowl`` and ``bass_swap`` need ``swedebeat_mix``.
 
 Each value's live gates are the owner's (ADR 0036 section 10); this module only reads the list.
 """
@@ -14,8 +15,11 @@ Each value's live gates are the owner's (ADR 0036 section 10); this module only 
 from typing import Final
 
 DESIGN: Final = "design"
-VALUES: Final = (DESIGN, "swedebeat_playlist", "swedebeat_mix", "mowl")
-OUTPUTS: Final = frozenset(VALUES[1:])
+BASS_SWAP: Final = "bass_swap"
+VALUES: Final = (DESIGN, "swedebeat_playlist", "swedebeat_mix", "mowl", BASS_SWAP)
+# Explicit, never derived from ``VALUES``: a value that is not an output (``bass_swap``) must
+# never become one (``output_choice_policy.STUDIO_VALUES`` lists the same three).
+OUTPUTS: Final = frozenset({"swedebeat_playlist", "swedebeat_mix", "mowl"})
 
 
 def studio_values(raw: str) -> frozenset[str]:
@@ -34,6 +38,8 @@ def studio_values(raw: str) -> frozenset[str]:
         raise ValueError("swedebeat_studio: an output needs design")
     if "mowl" in values and "swedebeat_mix" not in values:
         raise ValueError("swedebeat_studio: mowl needs swedebeat_mix")
+    if BASS_SWAP in values and "swedebeat_mix" not in values:
+        raise ValueError("swedebeat_studio: bass_swap needs swedebeat_mix")
     return values
 
 

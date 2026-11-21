@@ -11,7 +11,10 @@ in-test listing), with the render child stood in (``studiooutputs.Renders``); ne
 - an entry whose URL the merge could not have returned (empty, ``http:``, a query) is never
   shown or confirmed: Confirm is ``nothing_to_confirm`` and the merge stays in doubt;
 - MOWL attaches only the entry with the URL's object key and the duration; an entry with the
-  name alone is never attached: ``published_not_listed`` with Check again.
+  name alone is never attached: ``published_not_listed`` with Check again;
+- the bass swap (ADR 0036 amendment B8, #1368) follows ``bass_swap`` when an attempt's plan is
+  stored, never later: an attempt opened with it off keeps its plan (and the merge's request hash)
+  when it is turned on before the merge.
 """
 
 import json
@@ -22,18 +25,24 @@ import pytest
 from mowl import api as mowl_api
 
 from classbeat import connections
+from classbeat.studio import output_body_policy as body
+from classbeat.swedebeat_studio import config as studio_config
 from classbeat.swedebeat_studio import outputs_mowl
 from ctx import make_context
 from gatewaycore import MERGE_PATH
 from mowlfake import TOKEN
 from studiooutputs import (
+    ALL_ON,
     Renders,
     act,
+    choice,
+    choose,
     operations,
     outputs_on,  # noqa: F401 - fixture
     produce,
     renders_fixture,  # noqa: F401 - the ``renders`` fixture
     rows,
+    run_job,
     sent,
     view,
 )
@@ -250,3 +259,75 @@ async def test_a_name_only_entry_is_never_attached(
     assert checked.json()["state"] == "published_not_listed"  # still nothing to take
     assert listing.attached == []
     assert len(studio.gateway.mixes) == 1  # never published again
+
+
+# -- the bass swap's setting (ADR 0036 amendment B8, #1368) ----------------------------------------
+
+
+def every_transition_swaps(spec: Any, facts: Any) -> list[int | None]:
+    """#1330's rule stood in: a swap in the middle of every overlap, so the setting decides."""
+    return [int(fade) * body.RATE // 2 if int(fade) > 0 else None for fade in spec["crossfades"]]
+
+
+def curves(plan: list[dict[str, Any]]) -> list[Any]:
+    return [(p.get("curve"), p.get("swap")) for p in plan]
+
+
+def merge_hashes(studio: StudioEnv, owner: Any) -> list[bytes]:
+    found = studio.songs.sql(
+        "SELECT request_hash FROM external_operations "
+        "WHERE owner_id = :o AND kind = 'swedebeat_merge_publish'",
+        o=owner,
+    ).scalars()
+    return [bytes(h) for h in found]
+
+
+@pytest.fixture
+def swaps(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(body, "bass_swaps", every_transition_swaps)
+
+
+@pytest.mark.usefixtures("swaps")
+@pytest.mark.parametrize("bass_swap", [False, True])
+async def test_a_new_attempt_follows_the_bass_swap_value(
+    studio: StudioEnv, renders: Renders, bass_swap: bool
+) -> None:
+    values = ALL_ON | {"bass_swap"} if bass_swap else ALL_ON  # ALL_ON: the default, off
+    studio_config.configure(studio_config.StudioConfig(values))
+    rider, class_id, _, current = await designed(studio)
+    done = await produce(studio, rider, class_id, current, "swedebeat_mix")
+    assert (done.state, done.error_category) == ("completed", None)
+    (row,) = rows(studio, rider.user_id)
+    (rendered,) = renders.plans
+    swapped = [c for c in curves(row.detail["plan"]) if c != (None, None)]
+    if bass_swap:  # #1330's plan: each overlap swaps, and the render gets it
+        assert swapped
+        assert all(c[0] == "bass_swap" for c in swapped)
+        assert curves(rendered) == curves(row.detail["plan"])
+    else:  # off: every transition equal_power, no curve stored or rendered
+        assert swapped == []
+        assert all("curve" not in t and "swap" not in t for t in rendered)
+
+
+@pytest.mark.usefixtures("swaps")
+async def test_an_open_attempt_keeps_its_plan_when_bass_swap_is_turned_on(
+    studio: StudioEnv, renders: Renders
+) -> None:
+    rider, class_id, _, current = await designed(studio)  # outputs on, bass_swap off
+    studio.gateway.inject("connect_error", MERGE_PATH)  # the first merge never leaves
+    job_id = await choose(rider, class_id, choice(current, studio, "swedebeat_mix"))
+    first = await run_job(studio, job_id, rounds=1)
+    assert first.state == "queued"  # retried
+    (opened,) = rows(studio, rider.user_id)
+    stored = opened.detail["plan"]
+    assert all("curve" not in p for p in stored)
+    (hash_before,) = merge_hashes(studio, rider.user_id)
+    studio_config.configure(studio_config.StudioConfig(ALL_ON | {"bass_swap"}))  # before the merge
+    done = await run_job(studio, job_id)
+    assert (done.state, done.error_category) == ("completed", None)
+    (row,) = rows(studio, rider.user_id)
+    assert (row.attempt, row.detail["plan"]) == (opened.attempt, stored)  # the same plan
+    assert len(renders.plans) == 2  # rendered again from the stored plan: still no curve
+    assert all("curve" not in t for plan in renders.plans for t in plan)
+    assert merge_hashes(studio, rider.user_id) == [hash_before]  # the request hash unchanged
+    assert len(studio.gateway.mixes) == 1

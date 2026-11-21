@@ -73,7 +73,8 @@ class FeatureSettings(BaseSettings):
     # refuses startup of both. Its client key is ``Settings.swedebeat_gateway_key`` (a file).
     swedebeat_gateway_url: str | None = None
     # ADR 0036 sections 2 and 10: the SwedeBeat studio, a comma list of ``design``,
-    # ``swedebeat_playlist``, ``swedebeat_mix`` and ``mowl``; empty (the default) is off.
+    # ``swedebeat_playlist``, ``swedebeat_mix``, ``mowl`` and ``bass_swap`` (amendment B8, not an
+    # output); empty (the default) is off.
     # ``swedebeat_studio.config_policy`` refuses anything else at startup.
     swedebeat_studio: str = ""
     # ADR 0018 section 5: running classes. The environment's kill switch (off by default; the
