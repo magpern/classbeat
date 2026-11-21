@@ -258,6 +258,19 @@ async def test_a_refused_choice_stores_nothing_and_asks_the_gateway_nothing(
     assert sessions(studio) == before
 
 
+async def test_bass_swap_is_never_an_output_even_with_every_value_on(studio: StudioEnv) -> None:
+    """ADR 0036 amendment B8 (#1368): ``bass_swap`` is a setting value, never a choice."""
+    rider, class_id, _, current = await designed(studio)
+    studio_config.configure(studio_config.StudioConfig(ALL_ON | {"bass_swap"}))
+    try:
+        for chosen in (["bass_swap"], ["swedebeat_mix", "bass_swap"]):
+            answer = await choose(rider, class_id, choice(current, studio, *chosen))
+            assert (answer.status_code, answer.json()["detail"]["reason"]) == (422, "invalid_input")
+        assert produce_jobs(studio, rider.user_id) == []
+    finally:
+        studio_config.configure(studio_config.StudioConfig(frozenset({"design"})))
+
+
 async def test_an_output_the_setting_does_not_run_is_refused(studio: StudioEnv) -> None:
     rider, class_id, _, current = await designed(studio)  # the studio's "design" only
     for chosen in (["swedebeat_playlist"], ["swedebeat_mix"], ["swedebeat_mix", "mowl"]):
