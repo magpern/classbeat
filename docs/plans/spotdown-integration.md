@@ -1,6 +1,6 @@
 # Plan: spotdown as a music-analysis service for classbeat (Revision 2, frozen)
 
-**Status: FROZEN, 2026-11-20.** The owner approved this plan for freeze after three review rounds (Revision 1; Revision 2; Revision 2 with final corrections). It is the architectural baseline for the programme. **Every phase is authorized for implementation (owner, 2026-11-20, after the freeze)**, except the owner decisions #1296 to #1299 and magpern/spotdown#1; no deploy, live-account test or real YouTube, SwedeBeat, MOWL or Spotify call by any agent. Roadmap [Amendment 31](../roadmap.md). The decision record will be ADR 0040 (#1300); where this plan and that ADR differ, the ADR wins once it is accepted, and the plan is fixed in the PR that changes it.
+**Status: FROZEN, 2026-11-20.** The owner approved this plan for freeze after three review rounds (Revision 1; Revision 2; Revision 2 with final corrections). It is the architectural baseline for the programme. **Every phase is authorized for implementation (owner, 2026-11-20, after the freeze)**, except the owner decisions #1297 to #1299 and magpern/spotdown#1 (#1296 was accepted on 2026-11-20, see the note below); no deploy, live-account test or real YouTube, SwedeBeat, MOWL or Spotify call by any agent. Roadmap [Amendment 31](../roadmap.md). The decision record will be ADR 0040 (#1300); where this plan and that ADR differ, the ADR wins once it is accepted, and the plan is fixed in the PR that changes it.
 
 Companion repository: [magpern/spotdown](https://github.com/magpern/spotdown), [docs/integration-plan.md](https://github.com/magpern/spotdown/blob/main/docs/integration-plan.md). Tracking issue: #1308.
 
@@ -21,16 +21,16 @@ Companion repository: [magpern/spotdown](https://github.com/magpern/spotdown), [
 | P1 | [spotdown#5](https://github.com/magpern/spotdown/issues/5) caches, lookups, provenance | spotdown | spotdown#4 | – |
 | P2 | [spotdown#6](https://github.com/magpern/spotdown/issues/6) quality harness and baseline gates (bounded) | spotdown | spotdown#4, #5 | real-music gate runs: #1298 |
 | P2+ | [spotdown#7](https://github.com/magpern/spotdown/issues/7) labels, [#8](https://github.com/magpern/spotdown/issues/8) phrases, [#9](https://github.com/magpern/spotdown/issues/9) downbeats (never blocking) | spotdown | spotdown#6 | – |
-| P3 | [spotdown#10](https://github.com/magpern/spotdown/issues/10) YouTube matcher and source | spotdown | spotdown#4, #5 | live enablement: #1296 |
+| P3 | [spotdown#10](https://github.com/magpern/spotdown/issues/10) YouTube matcher and source | spotdown | spotdown#4, #5 | live enablement: the owner's deployment setting (#1296 accepted 2026-11-20) |
 | P3 | [spotdown#11](https://github.com/magpern/spotdown/issues/11) alignment layer | spotdown | spotdown#3, #5 | – |
 | P4 | #1301 client, egress, fake, policies, shadow | classbeat | #1300, spotdown#3, #4, #5 | – |
 | P5 | #1302 studio tracks via spotdown | classbeat | #1301, spotdown#6 | default switch: #1298 |
-| P6 | #1303 Spotify flow via spotdown | classbeat | #1301, spotdown#6, #10, #11 | **#1296**; default switch: #1298 |
+| P6 | #1303 Spotify flow via spotdown | classbeat | #1301, spotdown#6, #10, #11 | default switch: #1298 (#1296 accepted 2026-11-20) |
 | P7 | #1304 mix via spotdown | classbeat | #1302, spotdown#6 | default switch: #1298 |
 | P7 | #1305 ADR for `user_audio` | classbeat | #1300, #1302 | – |
 | P7 | #1306 retirement review | classbeat | #1302, #1303, #1304 | **#1299** |
 
-Owner decisions: #1296 (ToS risk, YouTube), #1297 (cross-user reuse; blocks nothing), #1298 (real-music corpus), #1299 (retirement), [spotdown#1](https://github.com/magpern/spotdown/issues/1) (ruleset). GitHub milestones could not be created with the agents' tools; the phase is the `SD-Pn` prefix in each title (creating milestones is optional for the owner).
+Owner decisions: #1296 (ToS risk, YouTube; **accepted 2026-11-20**: Spotify classes get their analysis through spotdown, MOWL sections only as the fallback; ADR 0040 amendment "#1296 accepted"), #1297 (cross-user reuse; blocks nothing), #1298 (real-music corpus), #1299 (retirement), [spotdown#1](https://github.com/magpern/spotdown/issues/1) (ruleset). GitHub milestones could not be created with the agents' tools; the phase is the `SD-Pn` prefix in each title (creating milestones is optional for the owner).
 
 ## Context
 
@@ -262,6 +262,13 @@ start or job is waited for in the run, charged to the same per-class wait budget
 made only when it fits, instead of a fenced requeue (which would rerun `pick_pool` and
 `choose_songs`). That amendment supersedes the `rate_limited` row above for that stage too; the studio
 and mix stages are unchanged by it.*
+
+*Note 2026-11-21 (#1303; ADR 0040, the stage A, B and D amendments): the "fenced requeue" above is
+therefore not used by the Spotify flow. The Spotify stages (match, analysis) wait **in the run**, charged
+to one 600 s wait budget per class, and when it is spent the class falls back to MOWL's sections (no
+requeue). Phase 2 (stage D, the read of a ready analysis after the Approve) **never waits**: a
+`rate_limited` read falls back per track to MOWL's sections at once. The fenced requeue stays for the
+studio and mix paths.*
 
 **Overall bounds per class:**
 - match retry: 1;
