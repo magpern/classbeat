@@ -5,7 +5,8 @@ The song stages keep the seconds a job has waited for spotdown and whether an ou
 ``spotdown_song_budgets`` (``classbeat.songs.pick_match_budget``). A budget belongs to **one
 attempt**: it is reset only when
 
-- a run ends in a retryable category (``transitions.retry``, any category but ``operation_busy``),
+- a run ends in a retryable category (``transitions.retry``, a category in ``RETRYABLE``; not
+  ``operation_busy`` or ``pool_not_synced``),
   because the next attempt is a fresh try (it will find spotdown up, or end ``analysis_unavailable``
   again with a fresh budget); and
 - Approve starts a phase (``approval.approve``).

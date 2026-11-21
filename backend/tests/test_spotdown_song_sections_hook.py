@@ -33,7 +33,7 @@ from classbeat.design.music import MusicStep
 from classbeat.jobs import JobFailure, RunStopped
 from classbeat.jobs.errors import LeaseLost
 from classbeat.songs import phase2, phase2_spotdown
-from classbeat.spotdown import song_match_config
+from classbeat.spotdown import outage_policy, song_match_config
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.provenance_read_calc import AudioIdentity
 from classbeat.spotdown.song_analysis_record_model import (
@@ -194,11 +194,13 @@ async def test_a_list_without_the_record_asks_nothing_and_is_today(world: World)
 
 
 async def test_unreachable_is_analysis_unavailable_and_stops_at_the_first_read(
-    world: World,
+    world: World, caplog: pytest.LogCaptureFixture
 ) -> None:
     world.fake.connect_error = True
-    await world.fails("analysis_unavailable")
+    with caplog.at_level(logging.INFO):
+        await world.fails("analysis_unavailable")
     assert len(world.reads()) == 1  # the first read; nothing after it
+    assert outage_policy.log_message("connection") in caplog.text  # the reason is logged
 
 
 # (status of the read of song 2, the category the job ends with)

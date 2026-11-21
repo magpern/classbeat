@@ -70,17 +70,6 @@ class SongSpotdown(FakeSpotdown):
         self.documents.setdefault(f"youtube:{video}", youtube_doc(video, tempo))
         return video
 
-    def analysis(self, analysis_id: str) -> dict[str, object]:
-        """The document aligned to the reference last asked for, unless the test set its own: a
-        placeholder reference id (``youtube_doc``'s) becomes the asked one, as spotdown's would."""
-        document = super().analysis(analysis_id)
-        asked = self.references.get(self.analyses.get(analysis_id, (None, ""))[1])
-        alignment = document.get("alignment")
-        if asked and isinstance(alignment, dict) and alignment["reference"]["id"] == "0" * 32:
-            alignment["reference"] = dict(asked)
-            document["provenance"]["alignment"]["reference"] = dict(asked)  # pyright: ignore
-        return document
-
 
 @pytest.fixture
 def spotdown(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeSpotdown]:

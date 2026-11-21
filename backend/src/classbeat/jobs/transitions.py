@@ -206,7 +206,7 @@ async def retry(fs: FencedSession, category: str, delay: float) -> str:
         return await fail(fs, category)
     if counts.attempt >= counts.max_attempts:
         return await fail(fs, category)
-    if category != "operation_busy":
+    if category in RETRYABLE:  # a counted retry; not ``operation_busy`` or ``pool_not_synced``
         await reset_spotdown_budget(fs.db, fs.lease.params())  # a fresh attempt, a fresh budget
     return await _requeue(fs, refund=False, delay=delay, kind="retry_scheduled", category=category)
 

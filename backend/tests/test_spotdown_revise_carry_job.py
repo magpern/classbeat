@@ -15,6 +15,7 @@ refuses any other connection).
 
 import asyncio
 import copy
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -29,6 +30,7 @@ from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.songs import REVISE_SONGS, spotdown_carry
 from classbeat.songs import kind as songs_kind
 from classbeat.songs.song_list import SongListRevision
+from classbeat.spotdown import outage_policy
 from classbeat.spotdown.song_analysis_record_model import KEY, timing_marks
 from jobapi import new_key
 from revisesongtools import REQUEST, change, current, replace_script, revise_script
@@ -258,6 +260,9 @@ FAILURES: dict[str, tuple[Any, str, str]] = {
 }
 
 
+LOGGED = {"unreachable": "connection", "server_error": "server_error"}  # the reason logged
+
+
 @pytest.mark.parametrize("how", list(FAILURES))
 async def test_a_failure_in_a_revise_has_no_fallback_and_no_revision(
     songenv: SongEnv,
@@ -265,12 +270,16 @@ async def test_a_failure_in_a_revise_has_no_fallback_and_no_revision(
     hooked: list[Any],
     carried: list[Any],
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
     how: str,
 ) -> None:
     rider, class_id, draft = await spotdown_class(songenv)
     inject, state, category = FAILURES[how]
     inject(fake, monkeypatch)
-    await revise(songenv, rider, class_id, draft.id, ends=(state, category))
+    with caplog.at_level(logging.INFO):
+        await revise(songenv, rider, class_id, draft.id, ends=(state, category))
+    if how in LOGGED:
+        assert outage_policy.log_message(LOGGED[how]) in caplog.text  # type: ignore[arg-type]
     assert current(songenv, class_id) == draft.id  # no new revision
     assert carried == [] or all(  # a carry that raised gave no step back
         tt.classes(step.data.analysis["map"]) for step, _ in carried

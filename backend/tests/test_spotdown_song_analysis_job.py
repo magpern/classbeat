@@ -36,6 +36,7 @@ from classbeat.songs import (
     pick_refine,
 )
 from classbeat.spotdown import (
+    outage_policy,
     song_analysis_policy,
     song_match_policy,
     track_facts_calc,
@@ -356,12 +357,16 @@ async def test_the_budget_spent_ends_analysis_unavailable(
 FAILURES = [
     ("connect_error", ("queued", "analysis_unavailable")),
     ("503", ("queued", "analysis_unavailable")),
+    ("302", ("queued", "analysis_unavailable")),
     ("401", ("queued", "analysis_unavailable")),
     ("413", ("failed", "analysis_failed")),
     ("400", ("failed", "analysis_failed")),
     ("bad_answer", ("failed", "analysis_failed")),
     ("409", ("failed", "internal")),
 ]
+REASONS = {"connect_error": "connection", "503": "server_error", "302": "blocked",
+           "401": "unauthorized", "413": "too_large", "400": "rejected",
+           "bad_answer": "bad_answer", "409": "conflict"}  # fmt: skip
 
 
 @pytest.mark.parametrize(("how", "ending_of"), FAILURES, ids=[f[0] for f in FAILURES])
@@ -389,7 +394,7 @@ async def test_each_failure_kind_of_the_analysis_ends_its_category_and_makes_no_
         job_id, state, category = await ended(songenv)
     assert (state, category) == ending_of
     assert songenv.row(job_id).approval_revision_id is None
-    assert "spotdown unreachable: category=" in caplog.text  # every site logs its reason
+    assert outage_policy.log_message(REASONS[how]) in caplog.text  # type: ignore[arg-type]
 
 
 # --- the refinement -------------------------------------------------------------------------
@@ -658,3 +663,44 @@ async def test_approve_starts_phase_two_with_a_fresh_budget(songenv: SongEnv) ->
     assert (await rider.approve(job_id, revision_id, digest)).status_code == 200
     row = budget_row(songenv, job_id)
     assert (row.spent_seconds, row.fallback) == (0, False)
+
+
+# The sprint at position 4 is song 6; its spares are 8, then 9, then none. The recovery at
+# position 3 (song 10) has no spare at all.
+# (songs whose sources are all lost, MAX_ROUNDS or None, the job's state, its category)
+MISSING = [
+    ([6], None, "waiting_for_approval", None),
+    ([6, 8], None, "waiting_for_approval", None),  # two spare rounds fit in the three
+    ([6, 8, 9], None, "failed", "analysis_failed"),  # no spare for the third: item 5
+    ([10], None, "failed", "analysis_failed"),  # no spare at all
+    ([6], 1, "waiting_for_approval", None),
+    ([6, 8], 1, "failed", "analysis_failed"),  # a second round is over the limit (a spare left)
+]
+
+
+@pytest.mark.parametrize(
+    ("lost", "limit", "state", "category"),
+    MISSING,
+    ids=lambda v: "-".join(map(str, v)) if isinstance(v, list) else str(v),
+)
+async def test_a_song_that_stays_missing_ends_analysis_failed_and_makes_no_list(
+    songenv: SongEnv,
+    spotdown: FakeSpotdown,
+    monkeypatch: pytest.MonkeyPatch,
+    lost: list[int],
+    limit: int | None,
+    state: str,
+    category: str | None,
+) -> None:
+    for n in lost:
+        ends(spotdown, vid(n), "source_unavailable")
+        ends(spotdown, alt(n), "source_unavailable")
+    if limit is not None:
+        monkeypatch.setattr(song_match_policy, "MAX_ROUNDS", limit)
+    job_id, got_state, got_category = await ended(songenv)
+    assert got_state == state
+    if category is None:
+        assert songenv.row(job_id).approval_revision_id is not None  # a list for approval
+    else:
+        assert got_category == category
+        assert songenv.row(job_id).approval_revision_id is None  # nothing stored or shown

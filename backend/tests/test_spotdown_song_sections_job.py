@@ -13,6 +13,7 @@ pool, the model and ``spotdownfake``, in process; the netguard refuses any other
 
 import copy
 import json
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -23,6 +24,7 @@ from classbeat.agent import track_timing_calc as tt
 from classbeat.agent.timing_input import TIMING_NOTE
 from classbeat.design.music import MusicStep
 from classbeat.songs import phase2, phase2_spotdown
+from classbeat.spotdown import outage_policy
 from classbeat.spotdown.song_analysis_record_model import KEY
 from classbeat.spotdown.song_sections_calc import reference_id
 from songanalysisdocs import youtube_doc
@@ -148,20 +150,27 @@ PHASE_TWO = {
 }
 
 
+LOGGED = {"unreachable": "connection", "server_error": "server_error"}  # the reason logged
+
+
 @pytest.mark.parametrize("how", list(PHASE_TWO))
 async def test_a_failure_at_phase_two_has_no_fallback_and_no_design(
     songenv: SongEnv,
     fake: FakeSpotdown,
     hooked: list[Any],
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
     how: str,
 ) -> None:
     inject, state, category = PHASE_TWO[how]
     rider = await songenv.rider()
     job_id, revision_id = await songenv.approved(rider)
     inject(fake, monkeypatch)
-    row = await songenv.run(job_id)
+    with caplog.at_level(logging.INFO):
+        row = await songenv.run(job_id)
     assert (row.state, ending(songenv, job_id)) == (state, category)
+    if how in LOGGED:
+        assert outage_policy.log_message(LOGGED[how]) in caplog.text  # type: ignore[arg-type]
     assert hooked == []  # the hook never gave a step back: MOWL's sections were never used
     assert songenv.revision(revision_id).content.get("design") is None  # no design was made
     design = songenv.providers[-1]

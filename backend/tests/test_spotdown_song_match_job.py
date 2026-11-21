@@ -286,7 +286,7 @@ async def test_a_provider_error_that_clears_on_its_retry_is_matched(
 def inject(spotdown: FakeSpotdown, how: str, songenv: SongEnv) -> None:
     if how == "connect_error":
         spotdown.connect_error = True
-    elif how in ("503", "413", "400", "409") or how in ("401", "403"):
+    elif how in ("503", "413", "400", "409", "401", "403", "302"):
         spotdown.inject["/v2/match"] = [httpx.Response(int(how))]
     elif how == "wrong_key":
         spotdown.key = "another-key"
@@ -307,6 +307,7 @@ def inject(spotdown: FakeSpotdown, how: str, songenv: SongEnv) -> None:
 UNREACHABLE = [
     ("connect_error", "connection", ("queued", "analysis_unavailable")),
     ("503", "server_error", ("queued", "analysis_unavailable")),
+    ("302", "blocked", ("queued", "analysis_unavailable")),  # a redirect: the egress refuses it
     ("401", "unauthorized", ("queued", "analysis_unavailable")),
     ("403", "unauthorized", ("queued", "analysis_unavailable")),
     ("wrong_key", "unauthorized", ("queued", "analysis_unavailable")),

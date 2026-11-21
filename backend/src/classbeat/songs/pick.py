@@ -3,9 +3,9 @@ the wait for the user's one approval. Everything runs in the worker, inside the 
 
 1. ``pool_search``: the ``pick_pool`` stage (model; ``search_tracks`` through the job's Spotify
    connection, ``classbeat.songs.search``; ``check_pool``, ``submit_pool``). The model names
-   candidates by registry ``ref`` only; the backend maps them to Spotify ids. For an owner the
-   spotdown match is on for (off by default; SD-P6, #1303), ``classbeat.songs.pick_match`` then
-   matches the pool with spotdown (metadata only, nothing downloaded), leaves out the genuinely
+   candidates by registry ``ref`` only; the backend maps them to Spotify ids.
+   ``classbeat.songs.pick_match`` (SD-P6, #1303, #1354; always on) then matches the pool with
+   spotdown (metadata only, nothing downloaded), leaves out the genuinely
    missing candidates while the others can fill the list and otherwise runs bounded replacement
    rounds; spotdown unreachable or any failure of it ends the job (``outage_policy``): no fallback.
    After ``choose`` (step 4), ``classbeat.songs.pick_analyse`` analyses the chosen songs only

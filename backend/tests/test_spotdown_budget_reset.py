@@ -79,6 +79,24 @@ async def test_operation_busy_keeps_what_was_spent(jenv: JobsEnv) -> None:
     assert budget(jenv, job_id) == SPENT
 
 
+async def test_operation_busy_past_the_requeue_limit_keeps_what_was_spent(jenv: JobsEnv) -> None:
+    """The one path where ``retry`` sees ``operation_busy`` (a counted attempt): no reset."""
+    owner, job_id = jenv.job(max_attempts=3)
+    plant(jenv, owner, job_id)
+    lease = (await issue(jenv.factory, (await claim(jenv)).claimed)).lease
+    async with fenced_session(jenv.factory, lease) as fs:
+        assert await transitions.operation_busy(fs, 0.0, 0) == "queued"
+    assert budget(jenv, job_id) == SPENT
+
+
+async def test_pool_not_synced_keeps_what_was_spent(jenv: JobsEnv) -> None:
+    owner, job_id = jenv.job(max_attempts=3)
+    plant(jenv, owner, job_id)
+    await run_next(jenv, fails_with("pool_not_synced"))
+    assert jenv.row(job_id).state == "queued"
+    assert budget(jenv, job_id) == SPENT
+
+
 async def test_a_lease_lost_requeue_keeps_what_was_spent(jenv: JobsEnv) -> None:
     owner, job_id = jenv.job(max_attempts=3)
     plant(jenv, owner, job_id)
