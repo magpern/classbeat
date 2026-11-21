@@ -25,6 +25,7 @@ from classbeat.spotdown.song_analysis_record_model import (
     analysis_record,
 )
 from classbeat.spotdown.timing_class_policy import TimingDecision
+from classbeat.spotdown.track_fit_policy import Fit
 from spotdownfake import example, explicit_group
 
 YES = explicit_group([{"source": "caller", "value": True}])
@@ -247,12 +248,10 @@ def test_spotdowns_group_of_each_analysed_song_comes_from_the_analysis_record() 
     decision = TimingDecision("approximate", "matched_recording", {}, "1")
     seen = Analysed("an_1", ("analyzer", "1", None), audio, decision, group("yes"))
     plain = Analysed("an_2", ("analyzer", "1", None), audio, decision)
-    unusable = Analysed("an_3", ("analyzer", "1", None), audio, decision, group("yes"))
     record = analysis_record(
         {
-            0: SongOutcome("spotdown", None, seen),
-            1: SongOutcome("spotdown", None, plain),
-            2: SongOutcome("sections", "bad_document", unusable),  # not spotdown's timing
+            0: SongOutcome("spotdown", seen, Fit(True, ())),
+            1: SongOutcome("spotdown", plain, Fit(True, ())),
         },
         {},
         rounds=0,

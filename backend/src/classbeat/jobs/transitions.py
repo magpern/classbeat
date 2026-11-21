@@ -21,6 +21,7 @@ from sqlalchemy import text
 from classbeat.jobs.discard import ENDINGS, discard_first_creation
 from classbeat.jobs.errors import RETRIED_ONCE, RETRYABLE, LeaseLost
 from classbeat.jobs.fence import FencedSession, insert_event
+from classbeat.jobs.spotdown_budget_reset import reset as reset_spotdown_budget
 from classbeat.jobs.spotify_ending import SPOTIFY_NOTED as SPOTIFY_NOTED
 from classbeat.jobs.spotify_ending import note_spotify_ending as note_spotify_ending
 from classbeat.jobs.spotify_ending import save_spotify_calls as save_spotify_calls
@@ -40,12 +41,6 @@ _REQUEUE = text(
     "leased_by = NULL, lease_expires_at = NULL, heartbeat_at = NULL "
     "WHERE id = :job_id AND owner_id = :owner_id AND lease_version = :v AND state = 'running' "
     "RETURNING next_seq, available_at"
-)
-# ADR 0040 amendment "spotdown is the only analysis path", item 4 (#1353): a run that ends in a
-# retryable category starts its next attempt with a full spotdown wait budget and no outage flag
-# (``design.track_spotdown_budget`` makes the row again on its first use).
-_RESET_SPOTDOWN_BUDGET = text(
-    "DELETE FROM spotdown_studio_budgets WHERE owner_id = :owner_id AND job_id = :job_id"
 )
 # A job that must analyse a mix and was claimed without an analysis slot (#574): back to the
 # queue at once with the slot, the attempt not counted, like the shutdown hand-back.
@@ -212,7 +207,7 @@ async def retry(fs: FencedSession, category: str, delay: float) -> str:
     if counts.attempt >= counts.max_attempts:
         return await fail(fs, category)
     if category in RETRYABLE:  # a counted retry; not ``operation_busy`` or ``pool_not_synced``
-        await fs.db.execute(_RESET_SPOTDOWN_BUDGET, fs.lease.params())
+        await reset_spotdown_budget(fs.db, fs.lease.params())  # a fresh attempt, a fresh budget
     return await _requeue(fs, refund=False, delay=delay, kind="retry_scheduled", category=category)
 
 

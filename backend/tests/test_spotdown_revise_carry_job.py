@@ -1,19 +1,21 @@
-"""SD-P6 stage E (#1303, ADR 0040 and its stage E amendment): spotdown's timing kept through a
-``revise_draft``, a ``refit_draft`` and a "Change songs" (``revise_songs``) of a Spotify design,
+"""SD-P6 stage E (#1303, ADR 0040 and its stage E amendment; #1354): spotdown's timing kept through
+a ``revise_draft``, a ``refit_draft`` and a "Change songs" (``revise_songs``) of a Spotify design,
 on the fakes (Spotify, the MOWL pool, the model and ``spotdownfake``, in process; the netguard
 refuses any other connection).
 
-- a draft designed on spotdown's sections records which tracks (``music.spotdown``); a revise or
-  refit reads exactly those tracks again (verified, as stage D) and records them again, so a chain
-  of revisions keeps them; a track the base had on MOWL's sections stays on them;
-- a failure in one track (its read ``rate_limited``) changes that track only;
-- switched off, spotdown unreachable, a ``5xx`` or an error of any type in each call: the revise's
-  music is exactly today's (the step as MOWL gave it) and the revision records no ``spotdown``;
+- a draft designed on spotdown's sections records its tracks (``music.spotdown``, all of them); a
+  revise or refit reads exactly those tracks again (verified, as stage D) and records them again,
+  so a chain of revisions keeps them;
+- there is no fallback to MOWL's sections: spotdown unreachable, a ``5xx`` or a ``rate_limited``
+  read is ``analysis_unavailable`` (the job is retried), an analysis that is gone is
+  ``analysis_failed``, other music than the list's or a list that is gone is ``music_changed``, an
+  error of any type in a call is ``internal``; the revision is not made;
 - a change of one song analyses only the new song and carries every kept song's timing.
 """
 
 import asyncio
 import copy
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -28,12 +30,14 @@ from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.songs import REVISE_SONGS, spotdown_carry
 from classbeat.songs import kind as songs_kind
 from classbeat.songs.song_list import SongListRevision
+from classbeat.spotdown import outage_policy
 from classbeat.spotdown.song_analysis_record_model import KEY, timing_marks
 from jobapi import new_key
 from revisesongtools import REQUEST, change, current, replace_script, revise_script
 from songtools import Rider, SongEnv
 from spotdownfake import FakeSpotdown, spotdown
-from test_spotdown_song_sections_job import designed, fake, hooked, reads, switch
+from test_spotdown_song_analysis_job import ending
+from test_spotdown_song_sections_job import designed, fake, hooked
 
 __all__ = ["fake", "hooked", "spotdown"]  # the fixtures
 
@@ -73,8 +77,16 @@ async def run_any(songenv: SongEnv, job_id: UUID) -> Any:
     return songenv.row(job_id)
 
 
-async def revise(songenv: SongEnv, rider: Rider, class_id: UUID, base: UUID) -> Any:
-    """A chat revise of ``base``, run to the end: its new revision."""
+async def revise(
+    songenv: SongEnv,
+    rider: Rider,
+    class_id: UUID,
+    base: UUID,
+    *,
+    ends: tuple[str, str] | None = None,
+) -> Any:
+    """A chat revise of ``base``, run to the end: its new revision. ``ends`` (state, category): the
+    attempt ends so instead and the job's row is returned."""
     songenv.script = revise_script()
     body = {
         "kind": REVISE_DRAFT.name,
@@ -87,7 +99,11 @@ async def revise(songenv: SongEnv, rider: Rider, class_id: UUID, base: UUID) -> 
     }
     made = await rider.browser.post("/api/jobs", body, {"Idempotency-Key": new_key()})
     assert made.status_code == 201, made.text
-    row = await run_any(songenv, UUID(made.json()["id"]))
+    job_id = UUID(made.json()["id"])
+    row = await run_any(songenv, job_id)
+    if ends is not None:
+        assert (row.state, ending(songenv, job_id)) == ends
+        return row
     assert (row.state, row.error_category) == ("completed", None)
     return songenv.revision(current(songenv, class_id))
 
@@ -121,31 +137,14 @@ def sections(m: dict[str, Any], position: int) -> list[dict[str, Any]]:
             if s["track"] == position + 1]  # fmt: skip
 
 
-async def spotdown_class(
-    songenv: SongEnv, fake: FakeSpotdown, *, rate_limited: int | None = None
-) -> tuple[Rider, UUID, Any, dict[str, Any]]:
-    """A class designed on spotdown's sections: the rider, the class, its draft and the design's
-    map. ``rate_limited``: that position's read at phase 2 is ``rate_limited`` (MOWL's sections)."""
-
-    def before_design() -> None:
-        if rate_limited is not None:
-            listed = songenv.sql(
-                "SELECT provenance FROM class_revisions WHERE kind = 'song_list' "
-                "ORDER BY created_at DESC LIMIT 1"
-            ).scalar_one()
-            analysis = listed[KEY]["songs"][rate_limited]["analysis_id"]
-            fake.inject[f"/v2/analyses/{analysis}"] = [
-                httpx.Response(429, headers={"Retry-After": "5"})
-            ]
-
-    listed, rider = await designed(
-        songenv, on_pick=True, on_design=True, before_design=before_design
-    )
+async def spotdown_class(songenv: SongEnv) -> tuple[Rider, UUID, Any]:
+    """A class designed on spotdown's sections: the rider, the class and its draft."""
+    listed, rider = await designed(songenv)
     draft = songenv.sql(
         "SELECT * FROM class_revisions WHERE kind = 'draft' AND music ->> 'song_list_id' = :l",
         l=str(listed.id),
     ).one()
-    return rider, draft.class_id, draft, {}
+    return rider, draft.class_id, draft
 
 
 def design_map(hooked: list[Any]) -> dict[str, Any]:
@@ -159,7 +158,7 @@ def design_map(hooked: list[Any]) -> dict[str, Any]:
 async def test_a_revise_and_a_refit_of_it_keep_the_tracks_on_spotdowns_sections(
     songenv: SongEnv, fake: FakeSpotdown, hooked: list[Any], carried: list[Any]
 ) -> None:
-    rider, class_id, draft, _ = await spotdown_class(songenv, fake)
+    rider, class_id, draft = await spotdown_class(songenv)
     designed_on = design_map(hooked)
     list_id = draft.music["song_list_id"]
     assert draft.music["spotdown"] == {"song_list_id": list_id, "tracks": list(range(8))}
@@ -184,7 +183,7 @@ async def test_a_revise_and_a_refit_of_it_keep_the_tracks_on_spotdowns_sections(
 async def test_a_refit_keeps_them_and_applies_the_correction(
     songenv: SongEnv, fake: FakeSpotdown, hooked: list[Any], carried: list[Any]
 ) -> None:
-    rider, class_id, draft, _ = await spotdown_class(songenv, fake)
+    rider, class_id, draft = await spotdown_class(songenv)
     designed_on = design_map(hooked)
     refitted = await refit(songenv, rider, class_id, draft.id)
     [(step, _)] = carried
@@ -195,96 +194,96 @@ async def test_a_refit_keeps_them_and_applies_the_correction(
     assert refitted.music["song_list_id"] == draft.music["song_list_id"]
 
 
-async def test_a_track_the_base_had_on_mowls_sections_stays_on_them(
-    songenv: SongEnv, fake: FakeSpotdown, hooked: list[Any], carried: list[Any]
-) -> None:
-    rider, class_id, draft, _ = await spotdown_class(songenv, fake, rate_limited=2)
-    designed_on = design_map(hooked)
-    assert draft.music["spotdown"]["tracks"] == [0, 1, 3, 4, 5, 6, 7]
-    reads_before = len(reads(fake))
-    revised = await revise(songenv, rider, class_id, draft.id)  # track 2 readable again now
-    [(step, _)] = carried
-    m = step.data.analysis["map"]
-    assert set(tt.classes(m)) == {0, 1, 3, 4, 5, 6, 7}
-    assert m["songs"] == designed_on["songs"]
-    assert len(reads(fake)) - reads_before == 7  # never the track the base did not have
-    assert revised.music["spotdown"]["tracks"] == [0, 1, 3, 4, 5, 6, 7]
+# --- no fallback ----------------------------------------------------------------------------------
 
 
-async def test_a_failed_read_of_one_track_changes_that_track_only(
-    songenv: SongEnv, fake: FakeSpotdown, hooked: list[Any], carried: list[Any]
-) -> None:
-    rider, class_id, draft, _ = await spotdown_class(songenv, fake)
-    designed_on = design_map(hooked)
-    listed = songenv.revision(UUID(draft.music["song_list_id"]))
-    analysis = listed.provenance[KEY]["songs"][5]["analysis_id"]
-    fake.inject[f"/v2/analyses/{analysis}"] = [httpx.Response(429, headers={"Retry-After": "5"})]
-    revised = await revise(songenv, rider, class_id, draft.id)
-    [(step, before)] = carried
-    m = step.data.analysis["map"]
-    assert set(tt.classes(m)) == set(range(8)) - {5}
-    assert sections(m, 5) == sections(before["map"], 5)  # MOWL's sections for that track
-    for n in set(range(8)) - {5}:
-        assert sections(m, n) == sections(designed_on, n)  # every other track unchanged
-    assert revised.music["spotdown"]["tracks"] == [0, 1, 2, 3, 4, 6, 7]
+def _boom(*_a: Any, **_k: Any) -> Any:
+    raise KeyError("injected")
 
 
-# --- exactly today's ----------------------------------------------------------------------------
+def _reordered(mp: pytest.MonkeyPatch) -> None:
+    real = spotdown_carry.song_list.load
+
+    async def reordered(*a: Any, **k: Any) -> Any:
+        got = await real(*a, **k)
+        assert got is not None
+        songs = list(reversed(got.content.songs))
+        content = got.content.model_copy(update={"songs": songs})
+        return SongListRevision(content, got.content_hash, got.music, got.provenance, None)
+
+    mp.setattr(spotdown_carry.song_list, "load", reordered)
 
 
-@pytest.mark.parametrize(
-    "how",
-    ["off", "unreachable", "server_error", "list_error", "other_music", "read_error", "base_error"],
-)
-async def test_a_fallback_in_a_revise_is_exactly_todays_music(
+def _gone(mp: pytest.MonkeyPatch) -> None:
+    async def none(*_a: Any, **_k: Any) -> Any:
+        return None
+
+    mp.setattr(spotdown_carry.song_list, "load", none)
+
+
+def _status(code: int, **headers: str) -> Any:
+    def inject(fake: FakeSpotdown, _mp: pytest.MonkeyPatch) -> None:
+        fake.inject[f"/v2/analyses/{sorted(fake.analyses)[5]}"] = [
+            httpx.Response(code, headers=headers)
+        ]
+
+    return inject
+
+
+# how the revise fails -> (state after the attempt, category)
+FAILURES: dict[str, tuple[Any, str, str]] = {
+    "unreachable": (
+        lambda f, _m: setattr(f, "connect_error", True),
+        "queued",
+        "analysis_unavailable",
+    ),
+    "server_error": (_status(503), "queued", "analysis_unavailable"),
+    "rate_limited": (_status(429, **{"Retry-After": "5"}), "queued", "analysis_unavailable"),
+    "gone": (_status(404), "failed", "analysis_failed"),
+    "list_gone": (lambda _f, m: _gone(m), "failed", "music_changed"),
+    "other_music": (lambda _f, m: _reordered(m), "failed", "music_changed"),
+    "list_error": (
+        lambda _f, m: m.setattr(spotdown_carry.song_list, "load", _boom),
+        "failed",
+        "internal",
+    ),
+    "read_error": (
+        lambda _f, m: m.setattr(spotdown_carry, "spotdown_music", _boom),
+        "failed",
+        "internal",
+    ),
+    "base_error": (
+        lambda _f, m: m.setattr(spotdown_base.SpotdownSections, "model_validate_json", _boom),
+        "failed",
+        "internal",
+    ),
+}
+
+
+LOGGED = {"unreachable": "connection", "server_error": "server_error"}  # the reason logged
+
+
+@pytest.mark.parametrize("how", list(FAILURES))
+async def test_a_failure_in_a_revise_has_no_fallback_and_no_revision(
     songenv: SongEnv,
     fake: FakeSpotdown,
     hooked: list[Any],
     carried: list[Any],
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
     how: str,
 ) -> None:
-    rider, class_id, draft, _ = await spotdown_class(songenv, fake)
-
-    def boom(*_a: Any, **_k: Any) -> Any:
-        raise KeyError("injected")
-
-    fake.seen.clear()
-    if how == "off":
-        switch(None)
-    elif how == "unreachable":
-        fake.connect_error = True
-    elif how == "server_error":
-        for a in list(fake.analyses):
-            fake.inject[f"/v2/analyses/{a}"] = [httpx.Response(503)]
-    elif how == "list_error":
-        monkeypatch.setattr(spotdown_carry.song_list, "load", boom)
-    elif how == "other_music":
-        real = spotdown_carry.song_list.load
-
-        async def reordered(*a: Any, **k: Any) -> Any:
-            got = await real(*a, **k)
-            assert got is not None
-            songs = list(reversed(got.content.songs))
-            content = got.content.model_copy(update={"songs": songs})
-            return SongListRevision(content, got.content_hash, got.music, got.provenance, None)
-
-        monkeypatch.setattr(spotdown_carry.song_list, "load", reordered)
-    elif how == "read_error":
-        monkeypatch.setattr(spotdown_carry, "spotdown_music", boom)
-    else:
-        monkeypatch.setattr(spotdown_base.SpotdownSections, "model_validate_json", boom)
-    revised = await revise(songenv, rider, class_id, draft.id)
-    assert "spotdown" not in revised.music  # designed on today's sections: nothing to carry
-    if how in ("off", "base_error"):
-        assert carried == []  # nothing read: the music step is today's
-        assert fake.seen == []
-        return
-    if how in ("list_error", "other_music"):
-        assert reads(fake) == []  # refused before any analysis is read
-    [(step, before)] = carried
-    assert step.data.analysis == before  # the step exactly as MOWL gave it
-    assert tt.classes(step.data.analysis["map"]) == {}
+    rider, class_id, draft = await spotdown_class(songenv)
+    inject, state, category = FAILURES[how]
+    inject(fake, monkeypatch)
+    with caplog.at_level(logging.INFO):
+        await revise(songenv, rider, class_id, draft.id, ends=(state, category))
+    if how in LOGGED:
+        assert outage_policy.log_message(LOGGED[how]) in caplog.text  # type: ignore[arg-type]
+    assert current(songenv, class_id) == draft.id  # no new revision
+    assert carried == [] or all(  # a carry that raised gave no step back
+        tt.classes(step.data.analysis["map"]) for step, _ in carried
+    )
 
 
 # --- a change of one song -----------------------------------------------------------------------
@@ -293,7 +292,7 @@ async def test_a_fallback_in_a_revise_is_exactly_todays_music(
 async def test_a_change_of_one_song_analyses_it_alone_and_keeps_the_others_timing(
     songenv: SongEnv, fake: FakeSpotdown, hooked: list[Any]
 ) -> None:
-    rider, class_id, draft, _ = await spotdown_class(songenv, fake)
+    rider, class_id, draft = await spotdown_class(songenv)
     designed_on = design_map(hooked)
     parent = songenv.revision(UUID(draft.music["song_list_id"]))
     starts_before = sum(1 for s in fake.seen if (s.method, s.path) == ("POST", "/v2/analyses"))
@@ -335,18 +334,3 @@ async def test_a_change_of_one_song_analyses_it_alone_and_keeps_the_others_timin
         "song_list_id": str(listed.id),
         "tracks": sorted(tt.classes(m)),
     }
-
-
-async def test_a_change_with_spotdown_off_carries_nothing(
-    songenv: SongEnv, fake: FakeSpotdown, hooked: list[Any]
-) -> None:
-    rider, class_id, draft, _ = await spotdown_class(songenv, fake)
-    switch(None)
-    songenv.script = replace_script()
-    answer = await change(rider, class_id, draft.id)
-    assert answer.status_code == 201, answer.text
-    row = await run_any(songenv, UUID(answer.json()["id"]))
-    assert row.state == "waiting_for_approval", (row.state, row.error_category)
-    listed = songenv.revision(row.approval_revision_id)
-    assert KEY not in listed.provenance
-    assert [s.get("timing") for s in listed.content["songs"]] == [None] * 8

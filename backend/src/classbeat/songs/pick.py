@@ -3,13 +3,13 @@ the wait for the user's one approval. Everything runs in the worker, inside the 
 
 1. ``pool_search``: the ``pick_pool`` stage (model; ``search_tracks`` through the job's Spotify
    connection, ``classbeat.songs.search``; ``check_pool``, ``submit_pool``). The model names
-   candidates by registry ``ref`` only; the backend maps them to Spotify ids. For an owner the
-   spotdown match is on for (off by default; SD-P6, #1303), ``classbeat.songs.pick_match`` then
-   matches the pool with spotdown (metadata only, nothing downloaded), leaves out the genuinely
+   candidates by registry ``ref`` only; the backend maps them to Spotify ids.
+   ``classbeat.songs.pick_match`` (SD-P6, #1303, #1354; always on) then matches the pool with
+   spotdown (metadata only, nothing downloaded), leaves out the genuinely
    missing candidates while the others can fill the list and otherwise runs bounded replacement
-   rounds; off, unreachable or on any failure of it, the pool goes on exactly as before.
+   rounds; spotdown unreachable or any failure of it ends the job (``outage_policy``): no fallback.
    After ``choose`` (step 4), ``classbeat.songs.pick_analyse`` analyses the chosen songs only
-   and replaces an unsuitable one alone from the spares (SD-P6 stage B; the same fallbacks).
+   and replaces an unsuitable one alone from the spares (SD-P6 stage B; no fallback either).
 2. ``pool_write``: ``classbeat.playlists.write_pool`` (ensure the pool playlist: a
    ``spotify_create_playlist`` under this job's own key when the pool row has no playlist yet; the
    owner check; a ``spotify_replace_items`` of exactly the candidates, read back and compared),
@@ -175,7 +175,7 @@ async def run_phase_one(
     )
     registry, searcher = SearchRegistry(), job_searcher(run, keyring, spotify)
     pool, pool_outcome = await _pool(run, provider, plan, registry, searcher, pool_config)
-    # SD-P6 (#1303): spotdown's match of the pool; today's pool unchanged when it is off.
+    # SD-P6 (#1303, #1354): spotdown's match of the pool, always; a missing song is left out.
     matched = await match_pool(run, plan, pool, registry, (provider, searcher, pool_config))
     track_ids = tuple(p.spotify_id for p in matched.playlist)
     playlist_id = await write_pool_playlist(run, keyring, spotify, given, track_ids)
@@ -270,9 +270,6 @@ async def _choose(
     analysis_map = step.data.analysis["map"]
     covers = {p.spotify_id: p.cover for p in matched.playlist}  # the search's, host-checked
     tracks, omitted = analysed_pool(analysis_map, pairs(matched.eligible), covers)
-    if len(tracks) < plan.slots and matched.missing:  # MOWL's sections for the missing ones too
-        both = (*matched.eligible, *matched.missing)
-        tracks, omitted = analysed_pool(analysis_map, pairs(both), covers)
     ctx = ChooseContext.build(plan, tracks, omitted)  # pool_too_small
     choose_config = stage_config(
         agent, config, turns=choose_module.MAX_TURNS, calls=choose_module.MAX_TOOL_CALLS

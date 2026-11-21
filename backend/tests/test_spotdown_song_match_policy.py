@@ -1,12 +1,12 @@
 """SD-P6 stage A (#1303, ADR 0040 sections 2 and 8): the pure rules of the Spotify song pick's
-spotdown match: the owner allowlist setting, the per-track use and reactions, the outage and
-budget bounds, spares and replacement rounds, and the provenance record. No I/O."""
+spotdown match (the only analysis path, #1354): the owner list parser (still the mix setting's), the
+per-track use and reactions, the outage and budget bounds, spares and replacement rounds, and the
+provenance record. No I/O."""
 
 from uuid import UUID
 
 import pytest
 
-from classbeat import egress_spotdown
 from classbeat.config import Settings
 from classbeat.spotdown import song_match_config
 from classbeat.spotdown import song_match_policy as policy
@@ -30,7 +30,7 @@ from classbeat.spotdown.song_swap_calc import (
 
 A = UUID("00000000-0000-4000-8000-00000000000a")
 B = UUID("00000000-0000-4000-8000-00000000000b")
-NAME = "spotdown_spotify_owners"
+NAME = "spotdown_mix_owners"
 
 
 def source(ref: str, confidence: float, band: str = "confident") -> Source:
@@ -67,44 +67,27 @@ def test_no_value_means_everyone_and_a_refusal_never_echoes_it(value: str) -> No
     assert NAME in str(refused.value)
 
 
-def test_the_settings_are_off_by_default_and_refuse_a_bad_owner_list(
+def test_the_spotify_switch_and_owner_list_settings_are_gone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    for name in ("CLASSBEAT_SPOTDOWN_SPOTIFY", "CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS"):
-        monkeypatch.delenv(name, raising=False)
-    settings = Settings()
-    assert (settings.spotdown_spotify, settings.spotdown_spotify_owners) == ("off", "")
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SPOTIFY", "on")
-    with pytest.raises(ValueError, match="spotdown_spotify"):
-        Settings()
+    """spotdown is the only analysis path: no switch, no allowlist (#1354). A set variable is
+    ignored (extra settings are not an error), never read."""
     monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SPOTIFY", "allowlist")
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS", "*")
-    with pytest.raises(ValueError, match="spotdown_spotify_owners must be"):
-        Settings()
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS", f"{B},{A}")
-    assert Settings().spotdown_spotify_owners == f"{A},{B}"
+    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS", "*")  # would be refused if it were read
+    settings = Settings()
+    assert not hasattr(settings, "spotdown_spotify")
+    assert not hasattr(settings, "spotdown_spotify_owners")
 
 
-def test_active_only_for_an_allowlisted_owner_with_youtube_and_spotdown_installed() -> None:
-    youtube = frozenset({"youtube"})
-    egress_spotdown.install_spotdown(None, None)
-    assert not song_match_config.MatchConfig("allowlist", frozenset({A}), youtube).active_for(A)
-    assert not song_match_config.MatchConfig().active_for(A)
-    assert not song_match_config.current().active_for(A)  # the default: off
-
-
-def test_active_needs_every_condition(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(egress_spotdown, "spotdown_installed", lambda: True)
-    youtube = frozenset({"youtube"})
-    on = song_match_config.MatchConfig("allowlist", frozenset({A}), youtube)
-    assert on.active_for(A)
-    assert not on.active_for(B)
-    assert not song_match_config.MatchConfig("off", frozenset({A}), youtube).active_for(A)
-    assert not song_match_config.MatchConfig("allowlist", frozenset(), youtube).active_for(A)
-    upload = frozenset({"upload"})
-    assert not song_match_config.MatchConfig("allowlist", frozenset({A}), upload).active_for(A)
-    monkeypatch.setattr(egress_spotdown, "spotdown_installed", lambda: False)
-    assert not on.active_for(A)
+def test_the_match_setting_is_only_the_deployments_sources() -> None:
+    assert song_match_config.MatchConfig().sources == frozenset()
+    assert not hasattr(song_match_config.MatchConfig(), "active_for")
+    song_match_config.configure(song_match_config.MatchConfig(frozenset({"youtube"})))
+    try:
+        assert song_match_config.current().sources == {"youtube"}
+    finally:
+        song_match_config.configure(None)
+    assert song_match_config.current().sources == frozenset()
 
 
 # --- the per-track use and reactions ------------------------------------------------------------
@@ -127,18 +110,18 @@ def test_a_matched_track_is_for_timing_with_its_alternates_as_sources() -> None:
 @pytest.mark.parametrize(
     ("outcome", "use"),
     [
-        (UncertainMatch(source("u", 0.7, "uncertain"), (), "youtube-1"), "sections"),
-        (TrackFailure("provider_error"), "sections"),
-        (TrackFailure("rate_limited", retry_after_s=30.0), "sections"),
+        (UncertainMatch(source("u", 0.7, "uncertain"), (), "youtube-1"), "missing"),
+        (TrackFailure("provider_error"), "missing"),  # after its one retry
         (TrackFailure("not_found"), "missing"),
         (TrackFailure("source_unavailable"), "missing"),
-        (TrackFailure("processing_failed"), "sections"),  # never sent by /v2/match: fail safe
+        (TrackFailure("processing_failed"), "missing"),  # never sent by /v2/match: fail safe
     ],
 )
-def test_every_other_status_is_never_for_timing(outcome: object, use: str) -> None:
+def test_every_other_status_is_missing_never_kept_on_sections(outcome: object, use: str) -> None:
     made = policy.track_match(outcome)  # pyright: ignore[reportArgumentType]
-    assert made.use == use
+    assert made.use == use  # the song is missing: a spare, a round, then analysis_failed
     assert made.sources == ()
+    assert {"timing", "missing"} == policy.USES  # there is no ``sections`` use
 
 
 def test_reactions_retry_a_provider_error_once_and_wait_for_a_rate_limit() -> None:
@@ -179,7 +162,7 @@ def test_the_budget_is_ten_minutes_and_a_wait_that_does_not_fit_is_not_made() ->
 
 
 def cand(n: int, role: str, use: str = "timing", confidence: float | None = 0.9) -> Candidate:
-    status = {"timing": "matched", "sections": "uncertain", "missing": "not_found"}[use]
+    status = {"timing": "matched", "missing": "not_found"}[use]
     return Candidate(f"id{n}", role, f"Song {n}", f"Band {n}", use, status, confidence)  # pyright: ignore[reportArgumentType]
 
 
@@ -188,7 +171,7 @@ NEED = {"climb": 2, "sprint": 4, "cooldown": 2}
 
 def test_spares_fill_the_list_without_a_round() -> None:
     found = [cand(0, "climb"), cand(1, "sprint"), cand(2, "sprint"), cand(3, "cooldown")]
-    found += [cand(n, "warmup", "sections") for n in range(4, 8)]
+    found += [cand(n, "warmup") for n in range(4, 8)]
     assert not short(found, 8, NEED)
     assert short(found[:-1], 8, NEED)  # one song short
     no_climb = [cand(9, "warmup"), *found[1:]]
@@ -217,7 +200,7 @@ def test_a_round_replaces_only_the_shortfall_and_pairs_by_role() -> None:
 
 def test_ranked_spares_timing_first_then_confidence_then_pool_order() -> None:
     found = [
-        cand(0, "climb", "sections", 0.8),
+        cand(0, "climb", "missing", 0.8),
         cand(1, "climb", "timing", 0.86),
         cand(2, "climb", "timing", 0.95),
         cand(3, "climb", "missing"),
@@ -226,7 +209,7 @@ def test_ranked_spares_timing_first_then_confidence_then_pool_order() -> None:
         cand(6, "climb", "timing", 0.97),
     ]
     spares = ranked_spares(found, {"id6"}, "climb")
-    assert [c.spotify_id for c in spares] == ["id2", "id1", "id5", "id0"]
+    assert [c.spotify_id for c in spares] == ["id2", "id1", "id5"]
 
 
 # --- the record ---------------------------------------------------------------------------------
@@ -248,7 +231,7 @@ def test_the_record_holds_codes_and_numbers_and_the_swap_never_a_source() -> Non
             "band": "confident",
             "confidence": 0.923,
         },
-        {"position": 2, "status": "provider_error", "use": "sections"},
+        {"position": 2, "status": "provider_error", "use": "missing"},
     ]
     assert record["swaps"] == [
         {
@@ -259,6 +242,6 @@ def test_the_record_holds_codes_and_numbers_and_the_swap_never_a_source() -> Non
         }
     ]
     assert record["matcher_versions"] == ["youtube-1"]
-    assert (record["v"], record["policy_version"], record["rounds"]) == (1, "song-match-1", 1)
+    assert (record["v"], record["policy_version"], record["rounds"]) == (2, "song-match-2", 1)
     assert "youtube:" not in repr(record)
     assert "vidAAAAAAAA" not in repr(record)

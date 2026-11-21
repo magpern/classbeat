@@ -1,28 +1,27 @@
-"""The match stage of a Spotify song pick (ADR 0040 sections 2 and 8, plan sections 1 and 6;
-SD-P6 stage A, #1303): what each ``POST /v2/match`` outcome means for a candidate, the bounded
-reactions and the per-class bounds. Pure: no I/O.
+"""The match stage of a Spotify song pick (ADR 0040 amendment "spotdown is the only analysis
+path", items 4 and 5; SD-P6 stage A, #1303, #1354): what each ``POST /v2/match`` outcome means for
+a candidate, the bounded reactions and the per-class bounds. Pure: no I/O.
 
 **What a candidate is used for** (``TrackMatch.use``), after its reactions:
 
-- ``timing``: ``matched`` (a ``confident`` best candidate). The later analysis stage may analyse
-  its source (best, then at most ``MAX_ALTERNATES`` alternates); until then, and whenever that
-  fails, the candidate keeps today's MOWL pool sections.
-- ``sections``: kept with MOWL's sections only, **never used for timing**: ``uncertain``, a
-  ``provider_error`` still there after its one retry, a ``rate_limited`` the budget could not
-  wait for.
-- ``missing``: ``not_found`` or ``source_unavailable`` (the match carries no alternate for it):
-  genuinely missing, so a spare, then a replacement round (``song_swap_calc``).
+- ``timing``: ``matched`` (a ``confident`` best candidate). The analysis stage analyses its source
+  (best, then at most ``MAX_ALTERNATES`` alternates).
+- ``missing``: everything else a single track can end with: ``uncertain``, ``not_found``,
+  ``source_unavailable`` and a ``provider_error`` still there after its one retry. A missing song
+  gets a spare, then a replacement round (``song_swap_calc``), then ``analysis_failed``. A song is
+  never kept on MOWL's sections.
 
 **Reactions** (``reaction``): ``rate_limited`` waits its (clamped) ``retry_after_s`` and asks
 again, not counted as an attempt; ``provider_error`` is retried once after ``RETRY_PAUSE_SECONDS``;
 every other outcome is final. **Provider outage** (``provider_outage``): at least
 ``OUTAGE_MIN_TRACKS`` tracks and at least half of a batch still ``provider_error`` after the
-retry: no swaps, the whole class falls back to today's path (MOWL sections).
+retry: the job ends ``analysis_unavailable`` (retryable), no swaps.
 
 **The budget** (``remaining``, ``wait_for``): a song job waits for spotdown (retry pauses and
 ``rate_limited`` waits) at most ``WAIT_SECONDS`` (the "about 10 min" of section 8) **in all, over
-every run of the job** (``classbeat.songs.pick_match_budget``); a wait that does not fit is not
-made. At most ``MAX_ROUNDS`` replacement rounds and ``MAX_PASSES`` requests per batch.
+every run of one attempt** (``classbeat.songs.pick_match_budget``); a wait that does not fit is not
+made and ends the job ``analysis_unavailable``. At most ``MAX_ROUNDS`` replacement rounds and
+``MAX_PASSES`` requests per batch.
 """
 
 from dataclasses import dataclass, field
@@ -36,7 +35,7 @@ from classbeat.spotdown.failure_policy import (
 )
 from classbeat.spotdown.match_model import Candidate
 
-POLICY_VERSION: Final = "song-match-1"
+POLICY_VERSION: Final = "song-match-2"
 WAIT_SECONDS: Final = 600.0
 RETRY_PAUSE_SECONDS: Final = 5.0
 OUTAGE_MIN_TRACKS: Final = 3
@@ -44,9 +43,9 @@ MAX_ALTERNATES: Final = 2
 MAX_ROUNDS: Final = 3
 MAX_PASSES: Final = 6  # one request, its retry, and rate_limited waits (each inside the budget)
 
-Use = Literal["timing", "sections", "missing"]
+Use = Literal["timing", "missing"]
 Reaction = Literal["final", "retry", "wait"]
-USES: Final[frozenset[str]] = frozenset({"timing", "sections", "missing"})
+USES: Final[frozenset[str]] = frozenset({"timing", "missing"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,19 +73,18 @@ def track_match(outcome: MatchOutcome) -> TrackMatch:
             outcome.matcher_version,
             (outcome.best, *outcome.alternates[:MAX_ALTERNATES]),
         )
+    # uncertain, not_found, source_unavailable, provider_error after its retry, or a job-only
+    # status that ``/v2/match`` never sends: the song is missing. (``rate_limited`` past the budget
+    # never gets here: the caller ends the job ``analysis_unavailable``.)
     if isinstance(outcome, UncertainMatch):
         return TrackMatch(
-            "sections",
+            "missing",
             "uncertain",
             outcome.best.band,
             outcome.best.recording_match_confidence,
             outcome.matcher_version,
         )
-    if outcome.status in ("not_found", "source_unavailable"):
-        return TrackMatch("missing", outcome.status)
-    # provider_error after its retry, rate_limited past the budget, or a job-only status that
-    # ``/v2/match`` never sends: keep the song with MOWL's sections.
-    return TrackMatch("sections", outcome.status)
+    return TrackMatch("missing", outcome.status)
 
 
 def reaction(outcome: MatchOutcome, retried: bool) -> Reaction:
