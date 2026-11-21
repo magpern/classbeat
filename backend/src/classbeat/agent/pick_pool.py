@@ -112,6 +112,9 @@ class PoolPick:
     spotify_id: str
     cover: str | None = field(default=None, repr=False)
     year: int | None = None  # the search hit's release year (``taste_check_policy``)
+    explicit: bool | None = field(
+        default=None, repr=False
+    )  # Spotify's explicit flag; ``None``: unknown (report only, #1340)
 
 
 @dataclass(frozen=True)
@@ -201,7 +204,9 @@ def check_entries(ctx: PoolContext, entries: Sequence[PoolEntry]) -> PoolResult:
         entry = reg.get(e.ref)
         if entry is None:  # checked above; never reached
             raise ToolError("out_of_range", ["a ref is not from your search results"])
-        picks.append(PoolPick(e.ref, e.role, entry.spotify_id, entry.cover, entry.year))
+        picks.append(
+            PoolPick(e.ref, e.role, entry.spotify_id, entry.cover, entry.year, entry.explicit)
+        )
     return PoolResult(tuple(picks))
 
 

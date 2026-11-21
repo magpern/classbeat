@@ -138,11 +138,18 @@ class SpotdownClient:
         upload_id: str | None = None,
         source_ref: str | None = None,
         reference: rq.Reference | None = None,
+        explicit: bool | None = None,
     ) -> AnalysisReady | Pending | Failure:
         """``POST /v2/analyses``: ready at once on a cache hit (``200``), else queued (``202``).
-        ``cache_scope`` may be ``None`` only for a ``source_ref`` (a global ``youtube`` source)."""
+        ``cache_scope`` may be ``None`` only for a ``source_ref`` (a global ``youtube`` source).
+        ``explicit``: the caller's explicit-lyrics flag, sent only when known."""
         content = rq.analysis_body(
-            cache_scope, client_ref, upload_id=upload_id, source_ref=source_ref, reference=reference
+            cache_scope,
+            client_ref,
+            upload_id=upload_id,
+            source_ref=source_ref,
+            reference=reference,
+            explicit=explicit,
         )
         source = "upload" if source_ref is None else source_ref.split(":", 1)[0]
         refused = self._refusal(source)

@@ -94,6 +94,32 @@ class _Job:
     analysis_id: str | None = None
 
 
+_EXPLICIT_WEIGHTS = {("caller", True): 0.9, ("caller", False): 0.8,
+                     ("caller_match", True): 0.9, ("caller_match", False): 0.8}  # fmt: skip
+
+
+def evidence_of(request: dict[str, Any], match_flag: bool | None) -> list[dict[str, Any]]:
+    """The metadata evidence of a new analysis: the request's ``explicit`` (``caller``) and the
+    flag of the match that chose the video (``caller_match``), as spotdown#36 lists them."""
+    found: list[dict[str, Any]] = []
+    if isinstance(request.get("explicit"), bool):
+        found.append({"source": "caller", "value": request["explicit"]})
+    if match_flag is not None:
+        found.append({"source": "caller_match", "value": match_flag})
+    return found
+
+
+def explicit_group(evidence: list[dict[str, Any]]) -> dict[str, Any]:
+    """``content.explicit`` from the evidence, by spotdown's rule: ``unknown`` without any, ``yes``
+    on any true flag (at most 0.5 against a false one), else ``no``."""
+    yes = [_EXPLICIT_WEIGHTS[(e["source"], True)] for e in evidence if e["value"] is True]
+    no = [_EXPLICIT_WEIGHTS[(e["source"], False)] for e in evidence if e["value"] is False]
+    value, confidence = ("yes", max(yes)) if yes else ("no", max(no)) if no else ("unknown", 0.0)
+    if yes and no:
+        confidence = min(confidence, 0.5)
+    return {"value": value, "confidence": confidence, "method": "metadata", "evidence": evidence}
+
+
 def _error(status: int, code: str) -> httpx.Response:
     return httpx.Response(status, json={"error": {"code": code, "message": code}})
 
@@ -111,6 +137,10 @@ class FakeSpotdown:
     # per source: the analysis-v1 document of its analyses (else the minimal example)
     documents: dict[str, dict[str, Any]] = field(default_factory=lambda: {})
     references: dict[str, dict[str, Any]] = field(default_factory=lambda: {})  # the last asked
+    # spotdown#36: the caller's ``explicit`` flag of the latest match that chose a video (a later
+    # match without a flag removes it), and the evidence each new analysis was made with.
+    match_flags: dict[str, bool] = field(default_factory=lambda: {})  # youtube:<id>: flag
+    explicit_evidence: dict[str, list[dict[str, Any]]] = field(default_factory=lambda: {})
     uploads: dict[str, tuple[str, str]] = field(default_factory=lambda: {})  # id: scope, sha
     analyses: dict[str, tuple[str | None, str]] = field(default_factory=lambda: {})  # id: scope, by
     jobs: dict[str, _Job] = field(default_factory=lambda: {})
@@ -145,6 +175,8 @@ class FakeSpotdown:
         document["analysis_id"] = analysis_id
         if by.startswith("sha256:"):
             document["provenance"]["audio"]["sha256"] = by.removeprefix("sha256:")
+        if analysis_id in self.explicit_evidence and "content" not in document:
+            document["content"] = {"explicit": explicit_group(self.explicit_evidence[analysis_id])}
         return document
 
     # --- routes -----------------------------------------------------------------------------
@@ -245,12 +277,19 @@ class FakeSpotdown:
             if status in ("matched", "uncertain"):
                 confidence = 0.92 if status == "matched" else 0.7
                 result["best"] = self._candidate(scope, f"youtube:vid{n:08d}", confidence)
+                self._keep_flag(f"youtube:vid{n:08d}", track.get("explicit"))
                 result["alternates"] = [self._candidate(scope, f"youtube:alt{n:08d}", 0.65)]
                 result["matcher_version"] = "1"
             if status == "rate_limited":
                 result["retry_after_s"] = 30
             results.append(result)
         return httpx.Response(200, json={"results": results})
+
+    def _keep_flag(self, source: str, flag: object) -> None:
+        if isinstance(flag, bool):
+            self.match_flags[source] = flag
+        else:
+            self.match_flags.pop(source, None)
 
     def _upload(self, scope: str, body: bytes) -> httpx.Response:
         upload_id = self._next("up")
@@ -286,7 +325,9 @@ class FakeSpotdown:
         self.jobs[job_id] = _Job(job_id, scope, ref, end)
         if end in ("done", "alignment_failed"):
             held_scope = None if by.startswith("youtube:") else scope
-            self.jobs[job_id].analysis_id = self.add_analysis(held_scope, by)
+            made = self.add_analysis(held_scope, by)
+            self.jobs[job_id].analysis_id = made
+            self.explicit_evidence[made] = evidence_of(request, self.match_flags.get(by))
         return httpx.Response(202, json={"job_id": job_id, "status": "queued"})
 
     def _poll(self, job_id: str) -> httpx.Response:

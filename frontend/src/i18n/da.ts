@@ -1233,6 +1233,7 @@ const da: Catalogue = {
   'songs.list.bpm': '{bpm} BPM',
   'songs.list.new': 'Ny',
   'songs.list.timingApproximate': 'Omtrentlig timing',
+  'songs.list.explicit': 'Eksplicit tekst',
   'songs.list.replace': 'Erstat',
   'songs.list.replaceLabel': 'Erstat {title}',
   'music.label': 'Musik',

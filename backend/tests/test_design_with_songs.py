@@ -96,13 +96,14 @@ async def test_the_spotify_search_runs_off_the_event_loop(
 ) -> None:
     loop_thread = threading.get_ident()
     threads: list[int] = []
-    original = spotify_web.search_tracks
+    original = spotify_web.call
 
-    def recording(creds: Any, query: str, *args: Any, **kwargs: Any) -> Any:
-        threads.append(threading.get_ident())
-        return original(creds, query, *args, **kwargs)
+    def recording(creds: Any, method: str, path: str, *args: Any, **kwargs: Any) -> Any:
+        if path == "search":  # the job's search reads the library's request itself (#1340)
+            threads.append(threading.get_ident())
+        return original(creds, method, path, *args, **kwargs)
 
-    monkeypatch.setattr(spotify_web, "search_tracks", recording)
+    monkeypatch.setattr(spotify_web, "call", recording)
     rider = await songenv.rider()
     await songenv.waiting(rider)
     assert len(threads) == 2

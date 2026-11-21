@@ -50,3 +50,38 @@ describe('the timing approximate label', () => {
     expect(da['songs.list.timingApproximate']).toBe('Omtrentlig timing')
   })
 })
+
+// #1340 (report only): a song with explicit lyrics shows a small Explicit tag; unknown shows nothing.
+describe('the explicit tag', () => {
+  it('is read only as true; anything else is no tag', () => {
+    const decoded = list([
+      row(1, { explicit: true }),
+      row(2),
+      row(3, { explicit: false }),
+      row(4, { explicit: 'true' }),
+      row(5, { explicit: null }),
+    ])
+    expect(decoded.songs.map((s) => s.explicit)).toEqual([true, null, null, null, null])
+  })
+
+  it('tags only the explicit song, with an accessible label and a tooltip, beside the timing mark', () => {
+    render(<SongRows songs={list([row(1), row(2, { explicit: true, timing: 'approximate' })]).songs} />)
+    const tags = screen.getAllByTestId('song-explicit')
+    expect(tags).toHaveLength(1)
+    expect(tags[0]?.getAttribute('aria-label')).toBe('Explicit lyrics')
+    expect(tags[0]?.getAttribute('title')).toBe('Explicit lyrics')
+    expect(tags[0]?.closest('[data-testid="song"]')?.textContent).toContain('Song 2')
+    expect(screen.getByTestId('song-timing-approximate')).toBeTruthy()
+  })
+
+  it('shows no tag for a list without the flag', () => {
+    render(<SongRows songs={list([row(1), row(2)]).songs} />)
+    expect(screen.queryByTestId('song-explicit')).toBeNull()
+  })
+
+  it('is worded in en, sv and da', () => {
+    expect(en['songs.list.explicit']).toBe('Explicit lyrics')
+    expect(sv['songs.list.explicit']).toBe('Explicit text')
+    expect(da['songs.list.explicit']).toBe('Eksplicit tekst')
+  })
+})

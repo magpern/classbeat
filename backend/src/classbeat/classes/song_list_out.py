@@ -59,6 +59,9 @@ class SongOut(BaseModel):
     # ADR 0040 section 3: "approximate" for a song whose timing is approximate; left out of the
     # answer otherwise, so every other list reads exactly as before.
     timing: Literal["approximate"] | None = Field(default=None, exclude_if=lambda v: v is None)
+    # ADR 0040 section 6 (#1340): true when the song may have explicit lyrics (the page's
+    # "Explicit" tag, report only); left out of the answer otherwise.
+    explicit: Literal[True] | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class PreviewSongOut(BaseModel):
@@ -185,6 +188,7 @@ async def song_list(
                 if s.source is None
                 else SongSourceOut(kind=s.source.kind, playlist=s.source.playlist),
                 timing=s.timing,
+                explicit=s.explicit,
             )
             for i, s in enumerate(c.songs, start=1)
         ],

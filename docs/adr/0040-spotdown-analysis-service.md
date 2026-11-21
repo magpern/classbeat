@@ -968,6 +968,10 @@ upload or lookup), `test_spotdown_studio_job.py` and `test_spotdown_shadow_job.p
 reuses the first's analysis without an upload; account deletion leaves the shared scope) and
 `test_spotdown_mix_job.py` (mixes stay per owner, unchanged).
 
+### Amendment (2026-11-21, owner): the explicit flag, report only (#1340; extends section 6)
+
+Spotify's track `explicit` flag is kept from the search hit (classbeat reads the `search` answer through the pinned library's own reduction and keeps the one extra field, so no library bump) through the pick (`MatchedPool`) and sent to spotdown as the strict boolean `explicit` on a `/v2/match` item and on `POST /v2/analyses`, **only when known** (spotdown contract 6.4, `content.explicit`). The flag is recorded per track in the song list's provenance (`explicit`, record v1, beside `spotdown_analysis`; spotdown's own `content.explicit` is kept beside Spotify's) and a song shows a small "Explicit" tag in the class view when either source says yes. **Nothing is blocked, filtered, reordered or down-ranked, no model sees the flag, unknown shows nothing, and an error in the report never fails a pick or a job** (only RunStopped, LeaseLost and DatabaseRoleError pass). A kept song of a "Change songs" list carries its parent's evidence for its slot. Not covered, a follow-up: the composer, studio and from-playlist lists have no flag and show no tag. The tag is the Material Symbols `explicit` glyph (Apache-2.0) as an inline SVG; lucide-react has no equivalent boxed "E".
+
 ## Status
 
 Accepted. §12 took effect on 2026-11-20, when the owner accepted #1296.

@@ -8,7 +8,9 @@ list that was analysed or tried (by its position):
   (MOWL's sections, today's path for that song) with the ``reason`` code;
 - for an analysis: its id, the analyser (name, version, config hash), the audio identity, the
   source **kind** only, the timing class with its reason and evidence (``timing_class_policy``),
-  the fit (``track_fit_policy``) and whether it was accepted with a warning.
+  the fit (``track_fit_policy``) and whether it was accepted with a warning; and, for a song whose
+  timing is spotdown's, the document's own ``content.explicit`` when it carries it (``explicit``,
+  ``explicit_model.spotdown_group``; report only, #1340).
 
 Per refinement swap: the position, the original as it was chosen (Spotify id, title, artist:
 what an undo needs, as ``song_match_record_model``), the fit reasons and the round. The policy
@@ -43,6 +45,7 @@ class Analysed:
     analyzer: tuple[str, str, str | None]  # name, version, config hash
     audio: AudioIdentity
     decision: TimingDecision
+    explicit: Mapping[str, Any] | None = None  # spotdown's ``content.explicit``, strict
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +96,8 @@ def _song(position: int, out: SongOutcome) -> dict[str, Any]:
                 "policy_version": a.decision.policy_version,
             },
         }
+    if out.use == "spotdown" and out.analysed is not None and out.analysed.explicit is not None:
+        entry["explicit"] = dict(out.analysed.explicit)
     if out.fit is not None:
         entry["fit"] = {"fits": out.fit.fits, "reasons": list(out.fit.reasons)}
     if out.warning:

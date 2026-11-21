@@ -131,7 +131,9 @@ def candidate_set(
     for role, entry in [*pins, *((FAVOURED_ROLE, e) for e in favoured.entries)]:
         if entry.spotify_id not in seen:
             seen.add(entry.spotify_id)
-            extras.append(PoolPick(entry.ref, role, entry.spotify_id, entry.cover, entry.year))
+            extras.append(
+                PoolPick(entry.ref, role, entry.spotify_id, entry.cover, entry.year, entry.explicit)
+            )
     extras = extras[:MAX_POOL]
     model = [p for p in pool.picks if p.spotify_id not in excluded]
     picks = (*model[: MAX_POOL - len(extras)], *extras)

@@ -49,6 +49,8 @@ export interface Song {
    * section 3), shown as "timing approximate"; absent or null otherwise.
    */
   timing?: 'approximate' | null
+  /** `true` when the song has explicit lyrics (#1340, report only); absent or null when unknown or not. */
+  explicit?: true | null
 }
 
 export interface SongList {
@@ -126,6 +128,7 @@ function decodeSong(value: unknown): Omit<Song, 'startSec'> {
     openSpotify: trackLink(optionalText(item, 'open_spotify')),
     source: decodeSource(item.source),
     timing: item.timing === 'approximate' ? 'approximate' : null,
+    explicit: item.explicit === true ? true : null,
   }
 }
 

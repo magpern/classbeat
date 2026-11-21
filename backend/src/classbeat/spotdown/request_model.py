@@ -2,12 +2,15 @@
 Pure: no I/O.
 
 - ``match_body``: ``POST /v2/match``, 1 to ``MATCH_BATCH_MAX`` (50) tracks, each the metadata
-  only: ``client_ref``, ``title``, ``artists``, ``duration_s`` and an optional ``isrc``. Never a
-  user token, a URL, a file name or an owner id (ADR 0040 section 1, threat model T131).
+  only: ``client_ref``, ``title``, ``artists``, ``duration_s`` and an optional ``isrc`` and
+  ``explicit`` (Spotify's own explicit-lyrics flag, spotdown#36: sent only when known, a strict
+  boolean; unknown, or anything that is not a boolean, means the key is left out). Never a user
+  token, a URL, a file name or an owner id (ADR 0040 section 1, threat model T131).
 - ``analysis_body``: ``POST /v2/analyses`` with **exactly one** of ``upload_id`` or
   ``source_ref``, and a ``cache_scope`` (optional only for a ``source_ref``: global).
   classbeat never sends spotdown's ``url`` source (a MOWL temporary link never
-  leaves classbeat), so there is no parameter for it.
+  leaves classbeat), so there is no parameter for it. An optional ``explicit`` (a boolean, only
+  when known) is the caller's flag spotdown keeps as evidence; it never changes how a job runs.
 - ``source_ref`` (a body or the source lookup) is only ``youtube:<11-character video id>``, the one
   kind spotdown's ``POST /v2/analyses`` takes; a sha256 is 64 lowercase hex digits (the content
   lookup), as the contract says.
@@ -51,6 +54,7 @@ class TrackQuery:
     artists: tuple[str, ...]
     duration_s: float
     isrc: str | None = None
+    explicit: bool | None = None  # Spotify's flag; ``None``: unknown, so not sent (#1340)
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +124,10 @@ def _track(track: TrackQuery) -> dict[str, object]:
         if not isinstance(track.isrc, str) or not _ISRC.fullmatch(track.isrc):  # pyright: ignore[reportUnnecessaryIsInstance]
             raise RequestRefused("an isrc is 12 characters")
         item["isrc"] = track.isrc
+    if isinstance(
+        track.explicit, bool
+    ):  # a strict boolean or nothing: a flag never fails a request
+        item["explicit"] = track.explicit
     return item
 
 
@@ -147,9 +155,11 @@ def analysis_body(
     upload_id: str | None = None,
     source_ref: str | None = None,
     reference: Reference | None = None,
+    explicit: bool | None = None,
 ) -> bytes:
     """``POST /v2/analyses``'s body: exactly one of ``upload_id`` and ``source_ref``. Without
-    ``cache_scope`` only for a ``source_ref`` (a ``youtube`` source is global, contract v2)."""
+    ``cache_scope`` only for a ``source_ref`` (a ``youtube`` source is global, contract v2).
+    ``explicit``: the caller's flag, sent only when known."""
     if (upload_id is None) == (source_ref is None):
         raise RequestRefused("an analysis has exactly one of upload_id and source_ref")
     if cache_scope is None and source_ref is None:
@@ -170,6 +180,8 @@ def analysis_body(
             "id": _text(reference.id, SOURCE_REF_MAX, "a reference id is 1 to 256 characters"),
             "duration_s": _reference_duration(reference.duration_s),
         }
+    if isinstance(explicit, bool):  # a strict boolean or nothing: a flag never fails a request
+        body["explicit"] = explicit
     return _dump(body)
 
 

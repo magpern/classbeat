@@ -1342,6 +1342,7 @@ export const en = {
   'songs.list.bpm': '{bpm} BPM',
   'songs.list.new': 'New',
   'songs.list.timingApproximate': 'Timing approximate',
+  'songs.list.explicit': 'Explicit lyrics',
   'songs.list.replace': 'Replace',
   'songs.list.replaceLabel': 'Replace {title}',
   'music.label': 'Music',
