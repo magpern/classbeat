@@ -182,7 +182,8 @@ class Person:
         # ADR 0040 section 8 (#1303): a song job's spotdown match budget.
         self.sql(
             "INSERT INTO spotdown_song_budgets (owner_id, job_id, spent_seconds) "
-            "SELECT owner_id, id, 30 FROM jobs WHERE owner_id = :u ORDER BY created_at LIMIT 1",
+            "SELECT owner_id, id, 30 FROM jobs WHERE owner_id = :u ORDER BY created_at LIMIT 1 "
+            "ON CONFLICT (owner_id, job_id) DO UPDATE SET spent_seconds = 30",  # stage A made it
             u=u,
         )
         self.sql("INSERT INTO user_preferences (owner_id, uses_swedebeat) VALUES (:u, true)", u=u)

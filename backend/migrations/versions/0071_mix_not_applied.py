@@ -1,7 +1,7 @@
 """The mix_not_chosen and mix_not_applied job categories (ADR 0036 amendment B9; #1370)
 
-Revision ID: 0070_mix_not_applied
-Revises: 0069_mix_too_long
+Revision ID: 0071_mix_not_applied
+Revises: 0070_spotify_granted_scopes
 Create Date: 2026-11-21
 
 ``jobs.error_category`` gains ``mix_not_chosen`` and ``mix_not_applied``: ``produce_outputs``
@@ -19,8 +19,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0070_mix_not_applied"
-down_revision: str | Sequence[str] | None = "0069_mix_too_long"
+revision: str = "0071_mix_not_applied"
+down_revision: str | Sequence[str] | None = "0070_spotify_granted_scopes"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -29,7 +29,7 @@ def _quoted(names: str) -> str:
     return ", ".join(f"'{name}'" for name in names.split())
 
 
-# The jobs check of migration 0069 (the last one to change it).
+# The jobs check of migration 0069 (the last one to change it; 0070 leaves it as it is).
 OLD_JOB_CATEGORIES = _quoted(
     "upstream_unavailable rate_limited model_unavailable lease_lost operation_busy not_connected "
     "needs_reconnect key_unavailable decrypt_failed invalid_input account_disabled model_refused "

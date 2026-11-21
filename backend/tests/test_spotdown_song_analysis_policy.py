@@ -20,11 +20,11 @@ def test_rate_limited_waits_and_is_not_an_attempt() -> None:
     assert (r.step, r.pause) == ("wait", RETRY_AFTER_DEFAULT)
 
 
-def test_provider_error_is_retried_once_then_mowl_sections() -> None:
+def test_provider_error_is_retried_once_then_missing() -> None:
     r = react(TrackFailure("provider_error"), first(), 3)
     assert (r.step, r.pause, r.tried.retried_error) == ("again", RETRY_PAUSE_SECONDS, True)
     r2 = react(TrackFailure("provider_error"), r.tried, 3)
-    assert (r2.step, r2.reason) == ("sections", "provider_error")
+    assert (r2.step, r2.reason) == ("missing", "provider_error")
 
 
 def test_one_retry_after_a_timeout_then_the_alternate() -> None:
@@ -44,7 +44,7 @@ def test_processing_failed_is_not_retried_on_the_same_audio(kind: str | None) ->
 
 
 @pytest.mark.parametrize("status", ["source_unavailable", "not_found", "processing_failed"])
-def test_at_most_two_alternates_then_mowl_sections(status: str) -> None:
+def test_at_most_two_alternates_then_missing(status: str) -> None:
     failure = TrackFailure(status)  # pyright: ignore[reportArgumentType]
     tried = first()
     steps = []
@@ -52,23 +52,23 @@ def test_at_most_two_alternates_then_mowl_sections(status: str) -> None:
         r = react(failure, tried, 3)
         steps.append(r.step)
         tried = r.tried
-        if r.step == "sections":
+        if r.step == "missing":
             assert r.reason == status
             break
-    assert steps == ["alternate", "alternate", "sections"]
+    assert steps == ["alternate", "alternate", "missing"]
     # Never past the third source, whatever the track says it has.
-    assert react(failure, Tried(source=2, requests=1), 9).step == "sections"
-    # A single source: straight to MOWL's sections.
-    assert react(failure, first(), 1).step == "sections"
+    assert react(failure, Tried(source=2, requests=1), 9).step == "missing"
+    # A single source: straight to missing.
+    assert react(failure, first(), 1).step == "missing"
 
 
 @pytest.mark.parametrize(
     ("status", "reason"),
     [("alignment_failed", "alignment_failed"), ("uncertain", "uncertain")],
 )
-def test_alignment_failed_and_uncertain_keep_mowl_sections(status: str, reason: str) -> None:
+def test_alignment_failed_and_uncertain_make_the_song_missing(status: str, reason: str) -> None:
     r = react(TrackFailure(status), first(), 3)  # pyright: ignore[reportArgumentType]
-    assert (r.step, r.reason) == ("sections", reason)
+    assert (r.step, r.reason) == ("missing", reason)
 
 
 @pytest.mark.parametrize(
@@ -82,8 +82,8 @@ def test_alignment_failed_and_uncertain_keep_mowl_sections(status: str, reason: 
 )
 def test_at_most_max_requests_per_track(failure: TrackFailure) -> None:
     r = react(failure, Tried(requests=policy.MAX_REQUESTS), 3)
-    assert (r.step, r.reason) == ("sections", "too_many_requests")
-    assert react(failure, Tried(requests=policy.MAX_REQUESTS - 1), 3).step != "sections"
+    assert (r.step, r.reason) == ("missing", "too_many_requests")
+    assert react(failure, Tried(requests=policy.MAX_REQUESTS - 1), 3).step != "missing"
 
 
 def test_a_slot_needs_its_chosen_bpm_and_length_and_a_warmup_a_low_start() -> None:

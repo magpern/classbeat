@@ -1,8 +1,8 @@
 """The record of a song pick's match stage, kept in the ``song_list`` revision's provenance under
 ``spotdown_match`` (ADR 0040 section 6, plan section 4a; SD-P6 stage A, #1303). Pure: no I/O.
 
-Written only when the match ran and the class did not fall back to today's path; a list made
-without it is stored exactly as before. Per song of the list (by its position): the final match
+Written for every Spotify song list (spotdown is the only analysis path, #1354; there is no
+fallback to MOWL's sections). Per song of the list (by its position): the final match
 status, its ``use`` (``song_match_policy``), band and confidence; a song kept from the seed list
 has no entry. Per swap: the position of the replacement, the original as it was wanted (its
 Spotify id, title and artist: what an undo needs, as ADR 0036 section 3.3 stores it), the reason
@@ -17,7 +17,7 @@ from classbeat.spotdown.song_match_policy import POLICY_VERSION, TrackMatch
 from classbeat.spotdown.song_swap_calc import Swap
 
 KEY: Final = "spotdown_match"
-RECORD_VERSION: Final = 1
+RECORD_VERSION: Final = 2  # 2: no ``sections`` use; every list song has an entry (#1354)
 
 
 def _song(position: int, match: TrackMatch) -> dict[str, Any]:

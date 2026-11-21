@@ -119,7 +119,7 @@ OTHER_LIST = str(uuid.uuid4())
 
 def link(
     origin: str | None,
-    song_list: str = LIST,
+    song_list: str | None = LIST,
     kind: str = "draft",
     source: str | None = STUDIO_SOURCE,
 ) -> Link:

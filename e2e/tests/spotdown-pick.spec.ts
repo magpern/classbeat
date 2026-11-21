@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { type Page } from "@playwright/test";
 import {
   expect,
@@ -16,24 +15,16 @@ import {
   untilState,
 } from "./song-helpers";
 import { resetSpotify } from "./spotify-helpers";
-import {
-  SAVED_LOGS,
-  allowSpotdownOwners,
-  plantWorkerLogMarker,
-  resetSpotdown,
-  spotdownCount,
-  spotdownRequests,
-  userId,
-} from "./spotdown-helpers";
+import { resetSpotdown, spotdownCount } from "./spotdown-helpers";
 
-// The Spotify song pick on spotdown (ADR 0040 sections 2, 3 and 8; SD-P6, #1303; this spec, #1337)
-// against the fake spotdown, the fake Spotify, the fake MOWL and the recorded fake model: the list
-// says "Timing approximate" on every song spotdown timed; Change songs analyses the new song only
-// and the kept songs keep the label; and a user who is not on the allowlist gets today's pick, with
-// no request to spotdown. Public test values only: no real spotdown, YouTube, Spotify or MOWL.
+// The Spotify song pick on spotdown (ADR 0040 amendment "spotdown is the only analysis path";
+// SD-P6, #1303, #1354; this spec, #1337) against the fake spotdown, the fake Spotify, the fake MOWL
+// and the recorded fake model: every pick runs on spotdown (no allowlist, no fallback); the list
+// says "Timing approximate" on every song; Change songs analyses the new song only and the kept
+// songs keep the label. Public test values only: no real spotdown, YouTube, Spotify or MOWL.
 
 test.describe.configure({ mode: "serial" });
-test.setTimeout(180_000); // the worker is recreated, then a pick runs it twice and polls the fake
+test.setTimeout(180_000); // a pick, an approval and a change, polling the fake
 
 const LABEL = "song-timing-approximate";
 
@@ -52,26 +43,18 @@ test.beforeEach(() => {
 test.afterAll(() => {
   resetSpotify();
   sql(`DELETE FROM app_settings WHERE key = 'song_picking'`);
-  allowSpotdownOwners(); // the stack's own, empty list again
 });
 
-async function newUser(page: Page, tag: string): Promise<string> {
+async function newUser(page: Page, tag: string): Promise<void> {
   const email = uniqueEmail(tag);
   await signUpThroughUi(page, email);
   await signInThroughUi(page, email);
-  return userId(email);
 }
 
 test("a pick labels the songs spotdown times; Change songs keeps the label on the kept songs", async ({
   page,
 }) => {
-  const owner = await newUser(page, "sd-pick");
-  // The recreate removes the worker's logs; the CI secret scan reads the saved copy, so show that
-  // a line the worker wrote before the recreate is in it.
-  const marker = `e2e-saved-log-marker-${Date.now()}`;
-  plantWorkerLogMarker(marker);
-  allowSpotdownOwners(owner); // only this user is on the allowlist
-  expect(readFileSync(SAVED_LOGS, "utf8")).toContain(marker);
+  await newUser(page, "sd-pick");
   await readyToPick(page);
 
   // Pick songs: the pool is matched with spotdown, the eight chosen songs analysed, and the list
@@ -121,17 +104,4 @@ test("a pick labels the songs spotdown times; Change songs keeps the label on th
     ).toHaveText("Timing approximate");
   }
   expect(spotdownCount("POST", "/v2/analyses") - before).toBe(1);
-});
-
-test("a user who is not on the allowlist gets today's pick and spotdown is never asked", async ({
-  page,
-}) => {
-  await newUser(page, "sd-off"); // the worker's list holds the first test's user only
-  await readyToPick(page);
-  const id = await startPick(page, "E2E today ride");
-  await untilState(page, id, "waiting_for_approval");
-
-  expect(await listedTitles(page)).toHaveLength(8); // the same list as without spotdown
-  await expect(page.getByTestId(LABEL)).toHaveCount(0);
-  expect(spotdownRequests()).toEqual([]); // no match, no analysis, nothing
 });

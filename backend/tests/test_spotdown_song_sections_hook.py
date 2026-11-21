@@ -1,17 +1,18 @@
-"""SD-P6 stage D (#1303, ADR 0040 sections 2, 3 and 8): the phase-2 hook
+"""SD-P6 stage D (#1303, ADR 0040 sections 2, 3 and 8; #1354): the phase-2 hook
 (``songs.phase2_spotdown.spotdown_music``) on the fake spotdown (``spotdownfake``), with no
 database and no network: a stand-in run and a real ``MusicStep`` on MOWL's map of four invented
 tracks.
 
-- on, every marked song is on spotdown's sections and stamped ``approximate``; one ``GET`` per
+- every song of the list is on spotdown's sections and stamped ``approximate``; one ``GET`` per
   song, global (no ``cache_scope``), nothing else asked;
-- off, not allowlisted, no record: nothing is asked and the step is exactly today's;
-- unreachable or a ``5xx`` on any read: exactly today's for the whole class;
-- a ``429``, a document that is not the recorded analysis of this track, or a class that is not
-  ``approximate``: MOWL's sections for that song only;
-- an error of any type in each call the hook makes is swallowed: exactly today's, only the type
-  logged; ``RunStopped``, ``LeaseLost`` and ``DatabaseRoleError`` pass, and ``phase2.final_music``
-  closes the step then.
+- a list without the record (an own-playlist or composer list, which run no analysis stage) is
+  today's music, nothing is asked;
+- there is no MOWL-sections fallback: a read that finds spotdown unreachable or ``rate_limited``
+  is ``analysis_unavailable``; a recorded analysis that is gone, does not verify, does not map, is
+  not ``approximate``, or a song with no recorded entry, is ``analysis_failed``; a track-id
+  mismatch is ``internal`` (``outage_policy``);
+- an error of any type in each call the hook makes propagates (it is not swallowed): the caller
+  maps it to ``internal`` and ``phase2.final_music`` closes the step.
 """
 
 import copy
@@ -29,10 +30,10 @@ from classbeat.agent import track_timing_calc as tt
 from classbeat.agent.model_input import MusicData
 from classbeat.db import DatabaseRoleError
 from classbeat.design.music import MusicStep
-from classbeat.jobs import RunStopped
+from classbeat.jobs import JobFailure, RunStopped
 from classbeat.jobs.errors import LeaseLost
 from classbeat.songs import phase2, phase2_spotdown
-from classbeat.spotdown import song_match_config
+from classbeat.spotdown import outage_policy, song_match_config
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.provenance_read_calc import AudioIdentity
 from classbeat.spotdown.song_analysis_record_model import (
@@ -78,7 +79,7 @@ def record(positions: tuple[int, ...], ids: dict[int, str], cls: str = "approxim
         decision = TimingDecision(cls, "matched_recording", {"residual_s": 0.3})  # pyright: ignore[reportArgumentType]
         audio = AudioIdentity(sha(p), "fp", "mp3", 44100.0, 2.0, 240.0, 240.0)
         analysed = Analysed(ids[p], ("spotdown", "1", None), audio, decision)
-        outcomes[p] = SongOutcome("spotdown", None, analysed, Fit(True, ()))
+        outcomes[p] = SongOutcome("spotdown", analysed, Fit(True, ()))
     return analysis_record(outcomes, {}, rounds=0)
 
 
@@ -108,6 +109,13 @@ class World:
         assert out is step
         return out
 
+    async def fails(self, category: str) -> None:
+        """The hook ends ``JobFailure(category)`` and leaves the music as it was."""
+        with pytest.raises(JobFailure) as raised:
+            await self.hook()
+        assert raised.value.category == category
+        assert self.is_today(self.step())
+
     def is_today(self, step: MusicStep) -> bool:
         """Exactly today's music: the same object, unchanged, byte for byte."""
         return step.data is self.data and json.dumps(step.data.analysis, sort_keys=True) == (
@@ -118,15 +126,9 @@ class World:
         return [s for s in self.fake.seen if s.path.startswith("/v2/analyses/")]
 
 
-def switch(owners: frozenset[Any] = frozenset({OWNER})) -> None:
-    song_match_config.configure(
-        song_match_config.MatchConfig("allowlist", owners, frozenset({"youtube"}))
-    )
-
-
 @pytest.fixture
 def world(spotdown: FakeSpotdown) -> Iterator[World]:
-    switch()
+    song_match_config.configure(song_match_config.MatchConfig(frozenset({"youtube"})))
     try:
         yield World(spotdown)
     finally:
@@ -167,81 +169,70 @@ async def test_every_marked_song_is_on_spotdowns_sections_and_approximate(world:
     assert run.checkpoints == 4
 
 
-async def test_only_the_marked_songs_change(spotdown: FakeSpotdown) -> None:
-    switch()
+async def test_a_song_with_no_recorded_entry_is_analysis_failed(spotdown: FakeSpotdown) -> None:
+    """A designed track always has a stamp: a position the record has no spotdown entry for ends
+    the job; nothing is made of MOWL's sections for it."""
+    song_match_config.configure(song_match_config.MatchConfig(frozenset({"youtube"})))
     try:
         world = World(spotdown, positions=(1, 3))
-        step = await world.hook()
+        await world.fails("analysis_failed")
     finally:
         song_match_config.configure(None)
-    m, before = step.data.analysis["map"], world.analysis["map"]
-    assert tt.classes(m) == {1: "approximate", 3: "approximate"}
-    for track in (1, 3):
-        assert track_songs(m, track) == track_songs(before, track)
-    assert len(world.reads()) == 2
+    assert [r.path for r in world.reads()] == []  # stopped at the first (position 0)
 
 
-# --- off: exactly today's -------------------------------------------------------------------------
+# --- a list without the record: the own-playlist exemption ------------------------------------
 
 
-async def test_off_asks_nothing_and_is_today(world: World) -> None:
-    song_match_config.configure(None)
-    assert world.is_today(await world.hook())
-    assert world.fake.seen == []
-
-
-async def test_an_owner_not_on_the_list_asks_nothing(world: World) -> None:
-    switch(frozenset({uuid4()}))
-    assert world.is_today(await world.hook())
-    assert world.fake.seen == []
-
-
-async def test_a_list_without_the_record_asks_nothing(world: World) -> None:
+async def test_a_list_without_the_record_asks_nothing_and_is_today(world: World) -> None:
     world.stored.provenance = {}
     assert world.is_today(await world.hook())
     assert world.fake.seen == []
 
 
-# --- the whole class falls back -------------------------------------------------------------------
+# --- spotdown cannot be used: no fallback --------------------------------------------------------
 
 
-async def test_unreachable_is_today_for_the_whole_class(world: World) -> None:
+async def test_unreachable_is_analysis_unavailable_and_stops_at_the_first_read(
+    world: World, caplog: pytest.LogCaptureFixture
+) -> None:
     world.fake.connect_error = True
-    assert world.is_today(await world.hook())
+    with caplog.at_level(logging.INFO):
+        await world.fails("analysis_unavailable")
     assert len(world.reads()) == 1  # the first read; nothing after it
+    assert outage_policy.log_message("connection") in caplog.text  # the reason is logged
 
 
-@pytest.mark.parametrize("status", [500, 503, 404, 401, 409, 422])
-async def test_a_failed_read_of_any_song_is_today_for_the_whole_class(
-    world: World, status: int
+# (status of the read of song 2, the category the job ends with)
+READS = [
+    (500, "analysis_unavailable"),
+    (503, "analysis_unavailable"),
+    (401, "analysis_unavailable"),
+    (404, "analysis_failed"),  # the recorded analysis is gone
+    (422, "analysis_failed"),
+    (409, "internal"),
+]
+
+
+@pytest.mark.parametrize(("status", "category"), READS)
+async def test_a_failed_read_of_any_song_ends_the_job_in_its_category(
+    world: World, status: int, category: str
 ) -> None:
     world.fake.inject[f"/v2/analyses/{world.ids[2]}"] = [httpx.Response(status)]
-    assert world.is_today(await world.hook())
+    await world.fails(category)
     assert len(world.reads()) == 3  # stopped at the failed one
 
 
-# --- one song keeps MOWL's sections ---------------------------------------------------------------
-
-
-def _only_track_2_is_mowls(world: World, step: MusicStep) -> None:
-    m = step.data.analysis["map"]
-    assert tt.classes(m) == {0: "approximate", 1: "approximate", 3: "approximate"}
-    assert "timing" not in m["tracks"][2]
-    assert track_songs(m, 3) == track_songs(world.analysis["map"], 3)
-
-
-async def test_a_rate_limited_read_keeps_mowls_sections_for_that_song(world: World) -> None:
+async def test_a_rate_limited_read_is_analysis_unavailable_without_a_wait(world: World) -> None:
     world.fake.inject[f"/v2/analyses/{world.ids[2]}"] = [
         httpx.Response(429, headers={"Retry-After": "30"})
     ]
-    _only_track_2_is_mowls(world, await world.hook())
-    assert len(world.reads()) == 4  # no wait, no second read
+    await world.fails("analysis_unavailable")
+    assert len(world.reads()) == 3  # no wait, no second read
 
 
 @pytest.mark.parametrize("case", ["reference", "sha", "kind", "no_alignment", "too_long"])
-async def test_a_document_not_verified_keeps_mowls_sections_for_that_song(
-    world: World, case: str
-) -> None:
+async def test_a_document_not_verified_is_analysis_failed(world: World, case: str) -> None:
     doc = world.fake.documents[f"youtube:{vid(2)}"]
     if case == "reference":
         doc["alignment"]["reference"]["id"] = reference_id(IDS[1])  # aligned to another track
@@ -253,32 +244,24 @@ async def test_a_document_not_verified_keeps_mowls_sections_for_that_song(
         doc.pop("alignment")
     else:
         doc["alignment"]["reference"]["duration_s"] = SEC + 5.0
-    _only_track_2_is_mowls(world, await world.hook())
+    await world.fails("analysis_failed")
 
 
-async def test_a_document_that_does_not_map_keeps_mowls_sections_for_that_song(
-    world: World,
-) -> None:
+async def test_a_document_that_does_not_map_is_analysis_failed(world: World) -> None:
     doc = world.fake.documents[f"youtube:{vid(2)}"]
     doc["tempo"]["bpm"] = None  # no trusted BPM: ``reference_sections`` refuses it
-    _only_track_2_is_mowls(world, await world.hook())
+    await world.fails("analysis_failed")
 
 
 @pytest.mark.parametrize("cls", ["unusable", "exact"])
-async def test_a_recorded_class_that_is_not_approximate_is_not_marked(
-    spotdown: FakeSpotdown, cls: str
+async def test_a_recorded_class_that_is_not_approximate_is_analysis_failed(
+    world: World, cls: str
 ) -> None:
-    switch()
-    try:
-        world = World(spotdown)
-        world.stored.provenance = record((0, 1, 2, 3), world.ids, cls)
-        assert world.is_today(await world.hook())
-    finally:
-        song_match_config.configure(None)
-    assert spotdown.seen == []
+    world.stored.provenance = record((0, 1, 2, 3), world.ids, cls)
+    await world.fails("analysis_failed")
 
 
-async def test_an_unknown_class_after_the_read_keeps_mowls_sections(
+async def test_an_unknown_class_after_the_read_is_analysis_failed(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     real = phase2_spotdown.recorded
@@ -290,7 +273,12 @@ async def test_an_unknown_class_after_the_read_keeps_mowls_sections(
                 if r.position == 2 else r for r in got]  # fmt: skip
 
     monkeypatch.setattr(phase2_spotdown, "recorded", odd)
-    _only_track_2_is_mowls(world, await world.hook())
+    await world.fails("analysis_failed")
+
+
+async def test_a_track_id_that_is_not_the_lists_is_internal(world: World) -> None:
+    world.stored.track_ids = (IDS[1], IDS[0], IDS[2], IDS[3])  # order is checked before: a bug
+    await world.fails("internal")
 
 
 # --- an error of any type in each call ------------------------------------------------------------
@@ -318,7 +306,7 @@ TARGETS = ("config", "recorded", "client", "get_analysis", "verified", "referenc
 
 @pytest.mark.parametrize("error", ERRORS, ids=lambda e: e.__name__)
 @pytest.mark.parametrize("target", TARGETS)
-async def test_an_error_of_any_type_in_each_call_is_today(
+async def test_an_error_of_any_type_in_each_call_propagates_and_leaks_nothing(
     world: World,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -338,12 +326,10 @@ async def test_an_error_of_any_type_in_each_call_is_today(
         _targets(monkeypatch)[target](aboom)
     else:
         _targets(monkeypatch)[target](boom)
-    with caplog.at_level(logging.INFO):
-        step = await world.hook(run)
-    assert world.is_today(step)
-    failed = [r for r in caplog.records if r.getMessage() == "spotdown song sections failed"]
-    assert [getattr(r, "error_type", None) for r in failed] == [error.__name__]
-    ours = [r for r in caplog.records if r.name.startswith("classbeat")]  # httpx is quiet (log.py)
+    with caplog.at_level(logging.INFO), pytest.raises(error):
+        await world.hook(run)  # the caller (the job runner) ends the attempt ``internal``
+    assert world.is_today(world.step())
+    ours = [r for r in caplog.records if r.name.startswith("classbeat")]
     text = " ".join(f"{r.getMessage()} {r.__dict__}" for r in ours)
     for leak in ("vid0000", "SectSynth", "secret", "an_0"):
         assert leak not in text

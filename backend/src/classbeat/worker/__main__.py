@@ -44,7 +44,6 @@ from classbeat.spotdown import (
     song_match_config,
     studio_tracks_config,
 )
-from classbeat.spotdown.owner_list_policy import parse_owners
 from classbeat.spotdown.scope_key import scope_key
 from classbeat.spotdown.sources_policy import parse_sources
 from classbeat.swedebeat_studio import config as studio_config
@@ -85,14 +84,9 @@ def configure_spotdown(settings: Settings) -> None:
     if tracks.refusal() is not None:
         # Once, at start; no value (a URL, a key or a source) is logged.
         logger.warning("music analysis is unavailable: spotdown is not installed in this worker")
-    # The Spotify song pick's spotdown match (ADR 0040 sections 2 and 8, SD-P6 stage A): off
-    # unless set, only for the allowlisted owners, with today's pick as the fallback.
+    # The Spotify song pick's spotdown stages (ADR 0040 amendment, #1354): always on, no switch.
     song_match_config.configure(
-        song_match_config.MatchConfig(
-            settings.spotdown_spotify,
-            parse_owners(settings.spotdown_spotify_owners, "spotdown_spotify_owners"),
-            parse_sources(settings.spotdown_sources),
-        )
+        song_match_config.MatchConfig(parse_sources(settings.spotdown_sources))
     )
 
 

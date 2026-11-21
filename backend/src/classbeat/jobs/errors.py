@@ -111,7 +111,7 @@ CATEGORIES: Final = (
     # songs can fit (over ``MAX_TOTAL_SEC`` less the per-song margin); raised before the first
     # model call. Not retried: the same class would be refused again.
     "mix_too_long",
-    # ADR 0036 amendment B9 (migration 0070, #1370): a SwedeBeat output for a draft that is mixed
+    # ADR 0036 amendment B9 (migration 0071, #1370): a SwedeBeat output for a draft that is mixed
     # without DJ mix chosen, or that is not the applied form of its proposal, refused again when the
     # job runs; nothing is written. Not retried.
     "mix_not_chosen",
