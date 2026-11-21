@@ -46,8 +46,8 @@ selected, snapped) and rounded, or raises ``MixPlanRefused`` with one named reas
    candidates that ``TrackFacts`` carries;
 5. the lengths (step 7, ``mix_loop_policy.length_refusal``): each loop piece at least
    ``MIN_LOOP_BARS`` less 1 cs of cut rounding (``loop_piece_too_short``), then every other
-   piece and every loop run at least ``MIN_PLAYED_SEC`` (``window_too_short``), after coverage, so a short window with a
-   missing track ends ``not_a_permutation``;
+   piece and every loop run at least ``MIN_PLAYED_SEC`` (``window_too_short``), after coverage,
+   so a short window with a missing track ends ``not_a_permutation``;
 6. the crossfades (step 8: count, whole, range, ``loop_crossfade_not_zero``, too long, overlap),
    then the total (step 9, ``mix_too_long``).
 
