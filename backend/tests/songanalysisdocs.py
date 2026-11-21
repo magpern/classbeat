@@ -6,7 +6,7 @@ import copy
 import hashlib
 from typing import Any
 
-from spotdownfake import example, explicit_group
+from spotdowncore import example, explicit_group
 
 
 def youtube_doc(

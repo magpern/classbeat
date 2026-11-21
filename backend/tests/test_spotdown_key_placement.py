@@ -31,12 +31,25 @@ def test_the_dev_stack_mounts_the_key_on_the_worker_only() -> None:
     assert compose["secrets"][NAME] == {"file": f"./secrets/{NAME}"}
 
 
+E2E_KEY_FILE = "./e2e/fake-spotdown/service-key.txt"  # the e2e stack's PUBLIC test key (#1337)
+
+
 def test_no_other_compose_file_names_it_and_no_environment_holds_it() -> None:
     for path in sorted(ROOT.glob("compose*.y*ml")):
         content = path.read_text("utf-8")
         assert "CLASSBEAT_SPOTDOWN_SERVICE_KEY" not in content, path  # never a variable
-        if path.name != "compose.yaml":
+        if path.name not in ("compose.yaml", "compose.e2e.yaml"):
             assert NAME not in content, path.name
+
+
+def test_the_e2e_stack_mounts_its_public_test_key_on_the_worker_only() -> None:
+    compose: dict[str, Any] = yaml.safe_load(text("compose.e2e.yaml"))
+    holders = sorted(n for n, s in compose["services"].items() if NAME in mounts(s))
+    assert holders == ["worker"]  # not web, the second and third webs, or the fake itself
+    assert compose["secrets"][NAME] == {"file": E2E_KEY_FILE}
+    for name, service in compose["services"].items():
+        env = service.get("environment") or {}
+        assert not any("SERVICE_KEY" in str(k).upper() for k in env), name
 
 
 def test_the_key_is_in_no_image_or_workflow() -> None:
