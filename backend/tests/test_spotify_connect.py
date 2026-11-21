@@ -116,6 +116,7 @@ async def test_happy_path_connects_and_stores_ciphertext_only(
         "consent_version": None,
         "consent_text": body["consent_text"],
         "song_picking_enabled": True,
+        "preview_granted": False,
         "pool_playlist": None,
         "class_playlists": [],
     }

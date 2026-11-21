@@ -15,6 +15,8 @@ the user's Spotify are the user's own and are never deleted (ADR 0008 section 8)
 - ``forget_spotify_account``: every Spotify operation row (pool and final), the consent row, and
   every live ``class_playlists`` row detached (history, never reused). Disconnect and an account
   change; the caller deletes or rewrites the connection row itself.
+- ``forget_replaced_spotify``: a connect that rewrites an existing row decides, from the account
+  and the Client ID it replaces, between ``forget_spotify_account``, ``revoke_pool`` and nothing.
 
 The operations go first, as in the MOWL forget of ``classbeat.connections.repository``: a worker
 recording an outcome locks the operation row and then writes ``spotify_pool`` or
@@ -22,11 +24,14 @@ recording an outcome locks the operation row and then writes ``spotify_pool`` or
 this finds its row gone.
 """
 
-from typing import Final
+from collections.abc import Mapping
+from typing import Any, Final
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from classbeat.connections.errors import ConnectionFailure
 
 # The external_operations.kind values of migration 0006 that write to Spotify.
 SPOTIFY_OPERATION_KINDS: Final = ("spotify_create_playlist", "spotify_replace_items")
@@ -93,3 +98,28 @@ async def forget_spotify_account(db: AsyncSession, owner_id: UUID) -> None:
     await db.execute(_DELETE_POOL, {"owner_id": owner_id})
     await db.execute(_DETACH_PLAYLISTS, {"owner_id": owner_id})
     await db.execute(_FORGET_SYNCS, {"owner_id": owner_id})
+
+
+async def forget_replaced_spotify(
+    db: AsyncSession,
+    owner_id: UUID,
+    old: Mapping[str, Any],
+    new: Mapping[str, Any],
+    confirm_account_change: bool,
+) -> None:
+    """ADR 0009 section 7, after the row lock: another Spotify account forgets everything kept
+    about the old one, and only with ``confirm_account_change`` (else ``account_changed``, the
+    transaction rolls back and nothing is written); the same account under another Client ID
+    forgets the pool (the consent is asked again); a reconnect of the same account and app keeps
+    both. A value that is missing on either side counts as different (the safe reading)."""
+
+    def same(key: str) -> bool:
+        value = old.get(key)
+        return isinstance(value, str) and bool(value) and value == new.get(key)
+
+    if not same("spotify_user_id"):
+        if not confirm_account_change:
+            raise ConnectionFailure("account_changed", not_applied=True)
+        await forget_spotify_account(db, owner_id)
+    elif not same("client_id"):
+        await revoke_pool(db, owner_id)

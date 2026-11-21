@@ -3,7 +3,9 @@
 **Start** creates the flow row (state and session as SHA-256, the Client ID, the **fixed**
 redirect URI from settings, the PKCE verifier, ``confirm_account_change``) and returns the
 authorize URL. Nothing about an existing connection changes at the start: with another Client ID
-the old tokens stay in use until a new flow succeeds.
+the old tokens stay in use until a new flow succeeds. The listening-preview scopes are asked for
+only when the user opted in (``preview``, ADR 0042 section 7.1); a refused consent is Spotify's
+``error`` on the callback, which stores nothing, so the connection stays as it was.
 
 **Callback.** Without a session nothing is deleted (no flow can be the caller's). A ``state``
 that is not the caller's own (unknown, another user's, another session's) deletes nothing and
@@ -16,7 +18,8 @@ that flow stays valid for its owner. Otherwise:
   expired or used is deleted (``access_denied``);
 - the stored ``redirect_uri`` is re-checked equal to the setting (never taken from the request);
 - the code is exchanged with the stored Client ID, redirect URI and verifier (no Client Secret),
-  the granted scope checked, ``GET /me`` verifies the token and gives the Spotify user id, and
+  the granted scope checked and kept (``granted_scopes``, what ``preview_granted`` reads),
+  ``GET /me`` verifies the token and gives the Spotify user id, and
   ``connections.save`` stores the tokens. Under the row lock it decides between a reconnect, a
   Client ID change (``generation`` + 1, the pool forgotten) and another account (only with the
   flow's ``confirm_account_change``, else ``account_changed`` and nothing stored).
@@ -43,9 +46,11 @@ from classbeat.spotify.flow import (
     authorize_url,
     new_state,
     new_verifier,
+    scope_for,
     scope_granted,
     session_hash,
     sha256,
+    stored_scopes,
 )
 from classbeat.spotify.http import SpotifyHttp
 
@@ -77,8 +82,10 @@ async def start(
     client_id: str,
     *,
     confirm_account_change: bool,
+    preview: bool = False,
 ) -> str:
-    """A new flow for ``client_id`` (already validated); returns the authorize URL."""
+    """A new flow for ``client_id`` (already validated); returns the authorize URL. ``preview``
+    (the user's opt-in) adds the listening-preview scopes; without it the URL is as before."""
     state, verifier = new_state(), new_verifier()
     redirect_uri = settings.spotify_redirect_uri
     await connections.create_flow(
@@ -93,7 +100,11 @@ async def start(
         ttl_seconds=settings.spotify_flow_ttl_seconds,
     )
     return authorize_url(
-        client_id=client_id, redirect_uri=redirect_uri, state=state, verifier=verifier
+        client_id=client_id,
+        redirect_uri=redirect_uri,
+        state=state,
+        verifier=verifier,
+        scope=scope_for(preview=preview),
     )
 
 
@@ -167,6 +178,7 @@ async def _connect(
             },
             public={"client_id": taken.client_id, "spotify_user_id": spotify_user_id},
             confirm_account_change=taken.confirm_account_change,
+            granted_scopes=stored_scopes(granted.scope),
         )
     except ConnectionFailure as error:
         failure = error

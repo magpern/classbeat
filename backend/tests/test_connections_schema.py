@@ -108,7 +108,7 @@ def test_the_columns_and_defaults(admin: Connection) -> None:
         )
     ).all()
     nullable = {r.column_name for r in rows if r.is_nullable == "YES"}
-    assert nullable == {"last_error", "expires_at", "last_used_at", "account_ref"}
+    assert nullable == {"last_error", "expires_at", "last_used_at", "account_ref", "granted_scopes"}
     defaults = {r.column_name: r.column_default for r in rows if r.column_default}
     assert defaults["id"] == "gen_random_uuid()"
     assert defaults["public"] == "'{}'::jsonb"
