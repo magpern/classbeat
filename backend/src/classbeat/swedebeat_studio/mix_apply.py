@@ -9,8 +9,9 @@ is stored, no model, no network, no download.
 1. the proposal of the base draft (``mix_proposal.for_draft``: the allowlist of B4):
    ``no_proposal``; its analyses as recorded, from the cache: ``music_changed``;
 2. with ``limit`` (the job): at most ``MAX_CHOICE_APPLIES`` applied drafts per proposal
-   (``apply_limit``); with ``fit``, a proposal naming a game MOWL no longer offers is
-   ``game_retired`` (ADR 0029 section 3, as ``refit_draft``);
+   (``apply_limit``); then, in the preview and the job alike, a proposal naming a game MOWL no
+   longer offers is ``game_retired`` (ADR 0029 section 3, as ``refit_draft``: it is never fitted
+   or stored again);
 3. the choices (``mix_choice_model.parsed``): ``invalid_input``;
 4. ``mix_apply_calc.derived``: ``invalid_input`` (a position off the list), ``checked``'s
    reasons, ``class_length_out_of_tolerance``;
@@ -109,7 +110,7 @@ def computed(
     gates: PlanGates | None = None,
 ) -> Derivation:
     """Steps 3 to 5 on the proposal ``found`` (no I/O)."""
-    if fit and has_retired_game(found.draft.content):
+    if has_retired_game(found.draft.content):
         raise MixApplyRefused(RETIRED)  # ADR 0029: a retired game is never fitted or stored again
     try:
         choices = mix_choice_model.parsed(raw_choices)

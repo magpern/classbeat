@@ -5,12 +5,14 @@ API and its run, and the rows that must not change. Fakes only (Spotify, the Swe
 
 import asyncio
 import copy
+import json
 from typing import Any
 from uuid import UUID
 
 import httpx
 
 from agentfake import good_draft
+from classbeat.design import revision
 from classbeat.jobs import KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.swedebeat_studio.apply_kind import APPLY_MIX_CHOICES, KIND
@@ -143,16 +145,29 @@ def counts(studio: StudioEnv, owner: UUID) -> dict[str, int]:
     }
 
 
-def copy_revision(studio: StudioEnv, source: UUID, origin: str, parent: UUID | None) -> UUID:
-    """A copy of ``source`` with another provenance origin and parent, made the class's current
-    draft (a stand-in for kinds the studio cannot reach: a duplicate, a beat-one refit)."""
+def copy_revision(
+    studio: StudioEnv,
+    source: UUID,
+    origin: str,
+    parent: UUID | None,
+    content: dict[str, Any] | None = None,
+) -> UUID:
+    """A copy of ``source`` with another provenance origin and parent (and, with ``content``,
+    that content under its own studio hash), made the class's current draft: a stand-in for
+    kinds the studio cannot reach (a duplicate, a beat-one refit, a draft stored with a game
+    MOWL has since retired)."""
+    row = studio.songs.revision(source)
+    content = content if content is not None else row.content
+    content_hash = revision.studio_hash(content, row.music["mix_spec"])
     made = studio.songs.sql(
         "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
         "music, provenance, job_id, parent_id) SELECT gen_random_uuid(), r.owner_id, r.class_id, "
         "(SELECT max(n.number) + 1 FROM class_revisions n WHERE n.class_id = r.class_id), r.kind, "
-        "r.content, r.content_hash, r.music, "
+        "CAST(:content AS jsonb), :hash, r.music, "
         "jsonb_set(r.provenance, '{origin}', to_jsonb(CAST(:origin AS text))), r.job_id, "
         "CAST(:parent AS uuid) FROM class_revisions r WHERE r.id = :source RETURNING id, class_id",
+        content=json.dumps(content),
+        hash=content_hash,
         origin=origin,
         parent=parent,
         source=source,

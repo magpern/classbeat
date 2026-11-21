@@ -115,10 +115,7 @@ async def studio_music(
     maps = await cached_in(db, owner_id, references, recorded(wanted(proposal.music, references)))
     if any(r not in maps for r in references):
         return None
-    try:
-        return StudioMusic.of(songs.content, [maps[r] for r in references])
-    except JobFailure:
-        return None
+    return StudioMusic.of(songs.content, [maps[r] for r in references])  # ``internal``: broken
 
 
 def proposal_of(proposal: ProposalDraft, songs: song_list.StudioList) -> Proposal:
@@ -151,7 +148,10 @@ async def for_draft(
     loaded = await load(db, owner_id, class_id, found)
     if loaded is None or loaded.music.song_list_id != list_id:
         return "internal"
-    music = await studio_music(db, owner_id, songs, loaded)
+    try:
+        music = await studio_music(db, owner_id, songs, loaded)
+    except JobFailure:
+        return "internal"  # every reference was found: the list and its analyses disagree
     if music is None:
         return "music_changed"
     return Resolved(loaded, music, proposal_of(loaded, songs))

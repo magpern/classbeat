@@ -17,6 +17,7 @@ proposal (``mix_proposal.resolve``), whether it is plain and an applied draft's 
 from typing import Any
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,8 +95,11 @@ async def view(factory: Factory, ctx: UserContext, class_id: UUID) -> dict[str, 
         made = timeline(found.spec, [maps[r].music_map for r in references], facts, found.content)
     except (ValueError, KeyError, TypeError):
         return "music_changed"  # the cached analyses no longer fit the stored cuts
-    for track, reference in zip(made["tracks"], references, strict=True):
-        track.update(_track_mix(maps[reference]))
+    try:
+        for track, reference in zip(made["tracks"], references, strict=True):
+            track.update(_track_mix(maps[reference]))
+    except (ValidationError, ValueError, KeyError, TypeError):
+        return "music_changed"  # a cached analysis without a usable length
     lengths = {r: float(maps[r].music_map["duration"]) for r in references}
     draft = DraftMix(is_plain=is_plain(found.spec, lengths), **mix).model_dump(mode="json")
     return {

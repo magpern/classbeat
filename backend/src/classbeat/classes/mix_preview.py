@@ -11,7 +11,8 @@ nothing**: no job, no revision, no model, no network, no download. In order:
   and ``content_hash`` its hash;
 - its proposal and the analyses it recorded (``mix_apply.proposal_for``: ``no_proposal``,
   ``music_changed``);
-- the choices applied to the proposal (``mix_apply.computed`` without the fit: the same order and
+- the choices applied to the proposal (``mix_apply.computed`` without the fit, after its
+  ``game_retired``: the same order and
   so the same first reason as the job's): a refusal is answered in ``refusal`` (``reason``, and
   for the class length the total and the range), not as an error.
 

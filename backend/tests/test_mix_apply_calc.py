@@ -2,6 +2,8 @@
 the derivation's checks (``mix_apply.computed``, which the preview, the job's admit and its run
 share) and the preview's rate limit."""
 
+import ast
+from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
@@ -124,3 +126,25 @@ def test_the_preview_limit_is_per_user_and_per_window() -> None:
     assert limiter.allow(two)  # another user has its own count
     now[0] = 60.0  # the next window
     assert limiter.allow(one)
+
+
+PURE = ("classbeat/swedebeat_studio/mix_apply_calc.py", "classbeat/studio/mix_proposal_policy.py")
+IO = (
+    "sqlalchemy",
+    "httpx",
+    "classbeat.db",
+    "classbeat.jobs",
+    "classbeat.design",
+    "classbeat.connections",
+)
+
+
+@pytest.mark.parametrize("path", PURE)
+def test_the_pure_modules_import_no_io(path: str) -> None:
+    """CLAUDE.md rule 3: no import of the database, the jobs, the network or a module that has
+    them (``swedebeat_studio.draft`` is read through a protocol)."""
+    source = (Path(__file__).resolve().parent.parent / "src" / path).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    named = [n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
+    named += [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
+    assert not [m for m in named if m.startswith(IO) or m.startswith("classbeat.swedebeat_studio")]

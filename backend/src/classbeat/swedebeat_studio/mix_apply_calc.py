@@ -23,25 +23,39 @@ show.
 
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 from pydantic import ValidationError
 
 from classbeat.agent.design import DesignResult, check, within_plan
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.stage import ToolError
-from classbeat.agent.studio_mix import Composed, compose
+from classbeat.agent.studio_mix import Composed, StudioTrack, compose
 from classbeat.agent.studio_schemas import MixInput
 from classbeat.plan_gates import PlanGates, max_draft_seconds
 from classbeat.studio import mix_choice_policy, mix_remap_calc
 from classbeat.studio.mix_choice_model import MixChoiceRefused, MixChoices, Proposal
+from classbeat.studio.mix_facts_model import TrackFacts
 from classbeat.studio.mix_spec_model import MixSpec
-from classbeat.swedebeat_studio.draft import StudioMusic
 
 DOES_NOT_FIT: Final = mix_remap_calc.DOES_NOT_FIT
 PLAN_TOO_LONG: Final = "plan_class_too_long"
 PLAN_NOT_ALLOWED: Final = "plan_not_allowed"
+
+
+class StudioTracks(Protocol):
+    """The approved list's tracks with their stored analyses, in the list's order (what
+    ``swedebeat_studio.draft.StudioMusic`` holds; a protocol, so this module imports no I/O)."""
+
+    @property
+    def references(self) -> Sequence[str]: ...
+
+    @property
+    def tracks(self) -> Sequence[StudioTrack]: ...
+
+    def facts(self) -> Mapping[str, TrackFacts]: ...
 
 
 @dataclass(frozen=True)
@@ -53,7 +67,7 @@ class Fitted:
     result: DesignResult
 
 
-def derived(proposal: Proposal, music: StudioMusic, choices: MixChoices) -> dict[str, Any]:
+def derived(proposal: Proposal, music: StudioTracks, choices: MixChoices) -> dict[str, Any]:
     """Step 1: the derived, checked spec, else ``MixChoiceRefused`` by name."""
     return mix_choice_policy.applied(proposal, music.facts(), choices)
 
@@ -61,6 +75,22 @@ def derived(proposal: Proposal, music: StudioMusic, choices: MixChoices) -> dict
 def stored_spec(spec: dict[str, Any]) -> dict[str, Any]:
     """A spec in its stored form (``MixSpec``), the one the hash and the digest cover."""
     return MixSpec.model_validate(spec).model_dump(mode="json")
+
+
+def plan_of(references: Sequence[str], spec: dict[str, Any]) -> dict[str, Any]:
+    """A spec by the list's indexes (``agent.studio_mix``'s plan); ``ValueError`` for a reference
+    off the list (the derived spec names only the proposal's, so that is a broken invariant)."""
+    index = {r: n for n, r in enumerate(references)}
+    stored = stored_spec(spec)
+    if any(t["reference"] not in index for t in stored["tracks"]):
+        raise ValueError("a piece is not a track of the approved list")
+    return {
+        "tracks": [
+            {"track": index[t["reference"]], "start_sec": t["start_sec"], "end_sec": t["end_sec"]}
+            for t in stored["tracks"]
+        ],
+        "crossfades": list(stored["crossfades"]),
+    }
 
 
 def spec_digest(spec: dict[str, Any]) -> str:
@@ -98,12 +128,12 @@ def fitted(
     content: dict[str, Any],
     proposal_spec: dict[str, Any],
     spec: dict[str, Any],
-    music: StudioMusic,
+    music: StudioTracks,
     gates: PlanGates | None,
 ) -> Fitted:
     """Step 2 (module docstring), on the derived spec ``spec`` that ``derived`` returned."""
     workout = moved(content, proposal_spec, spec)
-    plan = music.plan_of(MixSpec.model_validate(spec))
+    plan = plan_of(music.references, spec)
     try:
         composed = compose(music.tracks, MixInput.model_validate(plan))
     except (ToolError, ValidationError):

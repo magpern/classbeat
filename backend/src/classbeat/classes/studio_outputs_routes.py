@@ -44,6 +44,7 @@ router = APIRouter(prefix="/api/classes", tags=["classes"])
 
 _STATUS = {
     "not_found": 404,
+    "internal": 500,  # a stored row that no longer holds: never a 409 the page could act on
     "class_not_found": 404,
     "feature_off": 404,
     "invalid_input": 422,
