@@ -1,4 +1,4 @@
-# Plan: Class Preview & Editor (Revision 5, frozen)
+# Plan: Class Preview & Editor (Revision 6, frozen)
 
 **Status: FROZEN, 2026-11-21.**
 - The owner approved this plan for freeze after five review rounds. It is the implementation baseline.
@@ -85,8 +85,4 @@
 | 3 | Spotify overlap semantics, clean versus watermarked tests, a focus-aware watermark schedule, overrides versus locks versus anchors, provenance, concurrency, per-piece decode instead of pre-roll, end of window |
 | 4 | The watermark replaced by a server-enforced 15-minute session |
 | 5 | The session counted as actual playback in the browser, the server keeping authorization and caps only; reliable two-element joins (no gapless engine); full clip invalidation accepted; transition-preserving window placement; at freeze, R3's monotonic counter (owner correction) |
-
-
-## Revision 6 (2026-11-21): the ADR review
-
-The Opus review of ADR 0042 (PR #1399) found six blocking gaps, all closed in the ADR: amendments to B4, B9, B10 and A1 (pins and the overlay in `applied_form`); the overlay's storage and hash; class-owned offset corrections; `preview_render` outside the class's job slot and the composer-flow limit; the Spotify proxy's server-chosen track; and **E2 is Opus / Opus** (approvals). No PR structure or dependency changes.
+| 6 | The ADR review (PR #1399): amendments to B4, B9, B10 and A1; overlay column and hash; class-owned offset corrections; `preview_render` outside the class job slot; server-chosen Spotify track; E2 Opus / Opus; every audio edit runs B's one order of checks. No PR structure or dependency change |

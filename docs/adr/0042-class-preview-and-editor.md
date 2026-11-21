@@ -69,8 +69,9 @@ one hard limit: classbeat is **not** a gym player, so it has no class-performanc
   `progress_ms`, `is_playing` and `timestamp`. That needs `user-modify-playback-state`,
   `user-read-playback-state` and Premium. Spotify documents neither latency nor ordering ("The order of
   execution is not guaranteed").
-- `mix_cut_policy.placed()` snaps a proposed cut to a trusted candidate on an `exact` track, and only rounds it on
-  an `approximate` one, so on an `exact` track a manual cut would be moved silently today.
+- `mix_cut_policy.placed()` snaps a proposed cut to a trusted candidate on an `exact` track, falling back to the
+  bar grid when no candidate is near (and for a track with no stored timing decision), and only rounds it on an
+  `approximate` one, so on an `exact` track a manual cut would be moved silently today.
 - Workout edits go only through the model today. The beat-1 correction (migration 0029) is the one direct,
   per-song correction.
 
@@ -198,6 +199,17 @@ TransportState = {status, piece?, transportMs?, observedAt, uncertaintyMs, reaso
 **Every edit is validated** by `agent.design.check(draft, map)`: `workout.validate`, `fit_to_music`, the timing
 gate. These are the same rules as a model draft.
 
+**Every audio edit runs amendment B's one order of checks** (a cut pin, a cut change, a reorder, a removed song,
+a crossfade change, a duration change; a workout-only edit changes no composed total and skips the first two):
+1. `mix_plan_policy.checked` (cuts placed, hard rules);
+2. `class_length_out_of_tolerance` (B6, the 10 % class-length rule) on the composed total;
+3. the remap and fit, refused `workout_does_not_fit` if the workout cannot follow (B4a);
+4. `plan_class_too_long` (`max_draft_seconds`, a plan entitlement) and `plan_not_allowed`.
+
+A pin changes the composed total like any cut, so it is no exception. A refused edit stores nothing. B9's
+`applied_form` (§8) re-runs steps 1 and 2 on the pinned spec, and the output path runs 4 again as today. E1 and
+E2 test each refusal with a pin present.
+
 **Overrides, locks and anchors** live in the draft's **edit overlay**.
 
 **Where the overlay lives, and the hash (amends ADR 0007 §2, ADR 0036 §1 and B10).**
@@ -240,7 +252,9 @@ gate. These are the same rules as a model draft.
   (`agent.design.check` and the overlay order) and the same hash.
 - **Cap.** `CLASSBEAT_REVISIONS_PER_CLASS` counts only `revise_draft` today and bounds storage (ADR 0007 §4).
   User edits get their own cap (200 per class, `409 revision_limit`). The client **coalesces** edits (a drag is
-  one edit, committed on drop). Past the cap a user can still undo, redo and clear.
+  one edit, committed on drop). Past the cap a user can still undo and redo (they move the pointer and store
+  nothing); a **clear** is an edit and counts against the cap, so alternating clear and undo cannot grow storage
+  without bound. A fully cleared overlay is stored as **NULL**, so the hash returns to the no-overlay form.
 - **Which flows offer the editor before approval.**
   - A **studio draft** before its outputs consent, and a **Spotify draft** (a class with a `draft` revision)
     before Save, are editable.
@@ -458,8 +472,9 @@ choice, the user applies it: B4 makes a new draft, which can be undone.
   - **It does not occupy the class's job slot.** `jobs_one_open_per_class` counts every open job of a class,
     `waiting_for_approval` included (migration 0004, ADR 0038 §6), so a job carrying the `class_id` would make
     every audition `class_busy` and block edits, undo and redo. `preview_render` is created with `class_id`
-    NULL and an explicit `preview_class_id`, checked against the owner, for the purge and the account
-    deletion, and it is outside the one-open-job index. The trade-off: it cannot be blocked by another class
+    NULL and an explicit `preview_class_id` (an owner-inclusive foreign key to `classes`, `ON DELETE CASCADE`,
+    and re-checked in the job's fenced store so no clip is stored for a class deleted while it rendered), for
+    the purge and the account deletion, and it is outside the one-open-job index. The trade-off: it cannot be blocked by another class
     job, so the per-owner rate limit (§6.3) and the lease and fencing of ADR 0005 bound it. R2's acceptance
     criteria include that an edit and an undo succeed while a clip renders.
 - **Delivery.**
@@ -498,8 +513,9 @@ choice, the user applies it: B4 makes a new draft, which can be undone.
 - **Egress.** The allowlists are per host today (`SPOTIFY_ALLOWLIST`, `WEB_URLLIB_HOSTS`) and nothing
   restricts a path, so S2 adds a **path guard** (like `test_swedebeat_gateway_guard.py`) for exactly those
   methods and paths. It states the client (the existing Spotify async client) and the **`spotify_call` mode in
-  the web process** for these writes: no `record_result`, a 401 flips `needs_reconnect`, a token refresh runs
-  under the row lock, at the polling rate of §7.3. This amends ADR 0009 §10. The token never leaves the
+  the web process** for these writes: no `record_result`; a token refresh runs under the row lock only inside the
+  expiry margin, never per poll; a 401 flips `needs_reconnect` only after one refresh and a retry, as ADR 0009
+  does. This amends ADR 0009 §10. The token never leaves the
   backend.
 
 **7.3 State and drift.**
@@ -553,8 +569,10 @@ rest is unchanged.
   the new draft stores the carried overlay. Its lineage names the draft it was applied on.
 - **B9 (`applied_form`).** A draft's stored spec is `applied_form` when it equals
   `with_pins(mix_choice_policy.applied(proposal, facts, choices), overlay pins)`, run through
-  `mix_plan_policy.checked`. A `user_edit` draft is therefore admitted when it differs from `applied(...)` only
-  by its overlay. A draft that differs by anything else still fails closed: `mix_not_applied`. `pin_unconfirmed`
+  `mix_plan_policy.checked` and the class-length rule (B6, §3's order), so the pinned spec is held to the same
+  gates. The **choices** a `user_edit` draft is checked with are those of its **nearest ancestor that is not a
+  `user_edit`** (a `mix_choices` or proposal draft), so the fail-closed default does not refuse it. A `user_edit`
+  draft is therefore admitted when it differs from `applied(...)` only by its overlay. A draft that differs by anything else still fails closed: `mix_not_applied`. `pin_unconfirmed`
   (§5) comes after it in the order.
 - **B10 and A1 (the hash and the spec shape).** The spec shape gains optional `start_pin` and `end_pin`
   (§5); the choices stay out of the spec. The hash of a draft with an overlay covers the overlay (§3), which
