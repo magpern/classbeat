@@ -81,6 +81,16 @@ def test_a_curve_never_changes_the_composed_length() -> None:
 # -- render_curves, unit -----------------------------------------------------------------------
 
 
+def test_the_incoming_and_outgoing_swap_regions_of_one_track_must_be_disjoint() -> None:
+    rc = curves()
+    middle = entry(Path("b.mp3"), 0, 6 * S, 2 * S, fade_in=3 * S, fade_out=3 * S)
+    middle |= {"curve": "bass_swap", "swap": S}
+    after = {**entry(Path("c.mp3"), 0, 6 * S, 5 * S), "curve": "bass_swap", "swap": S}
+    assert [r[:2] for r in rc.regions(middle, after)] == [(0, 3 * S), (3 * S, 6 * S)]  # touching
+    with pytest.raises(ValueError, match="overlap"):
+        rc.regions({**middle, "fade_in": 3 * S + 1}, after)  # one sample over: refused
+
+
 def test_without_a_bass_swap_the_blocks_are_the_equal_power_gains_exactly() -> None:
     child, rc = load_child(), curves()
     rng = np.random.default_rng(3)

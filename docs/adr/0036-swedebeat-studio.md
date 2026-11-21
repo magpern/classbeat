@@ -140,8 +140,9 @@ The owner's direction (2026-11-15):
    pure `mix_plan_policy` validates it against the stored analysis, never against model text:
    - The order is a permutation of the approved references, with no gaps (§3.3). *(Amended 2026-11-21,
      #1331, at the end: each approved reference at least once, and a song may repeat.)*
-   - `0 <= start_sec < end_sec <= length`. A cut first moves to a usable cut candidate in reach (A7 step 2) and then snaps to the nearest bar of the
-     analysis's grid (A7 step 3), as the pure cut policy has it. At least 60 s of
+   - `0 <= start_sec < end_sec <= length`. A cut first moves to a usable cut candidate in reach (A7 step 2) and then, for an `exact` track or one with
+     no stored timing decision only, snaps to the nearest bar of the analysis's grid (A7 step 3); an `approximate`
+     or `unusable` track is only rounded. At least 60 s of
      each track plays. *(Amended 2026-11-21, #1331, A4.4 at the end: a loop piece may be shorter; its loop
      run plays at least 60 s.)*
    - Each crossfade is a whole number of seconds from 0 to 30, shorter than the played window of **both**

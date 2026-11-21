@@ -42,15 +42,22 @@ BASS = {"step_s": 1.0, "values": [0.8] * 241}
 
 
 def store_spotdown_rows(
-    studio: StudioEnv, revision_id: UUID, *, with_bass: bool, step: float = 2.0
+    studio: StudioEnv,
+    revision_id: UUID,
+    *,
+    with_bass: bool,
+    step: float = 2.0,
+    slow_first: bool = False,
 ) -> None:
     """Every stored map becomes a current ``exact`` spotdown row (``current_provenance``), and
     the draft's record of the analyses it was designed on says so (the output reads exactly it)."""
-    extra = {"cut_candidates": beats(step), **({"low_band": BASS} if with_bass else {})}
+    shared = {"cut_candidates": beats(step), **({"low_band": BASS} if with_bass else {})}
     records: list[dict[str, Any]] = []
-    for row in studio.songs.sql(
-        "SELECT id, reference, sha256, map FROM swedebeat_track_maps"
-    ).all():
+    rows = studio.songs.sql("SELECT id, reference, sha256, map FROM swedebeat_track_maps").all()
+    for n, row in enumerate(rows):
+        extra = dict(shared)
+        if slow_first and n == 0:  # one track at another tempo: a neighbour pair clashes
+            extra["songs"] = [{**row.map["songs"][0], "bpm": 80.0}]
         record = {
             "record_version": RECORD_VERSION,
             "audio": {"sha256": bytes(row.sha256).hex()},
@@ -114,3 +121,11 @@ async def test_downbeats_that_do_not_meet_are_no_bass_swap_and_a_hint_on_the_tim
     assert answer.status_code == 200, answer.text
     found = [(h["code"], h["pieces"]) for h in answer.json()["hints"]]
     assert ("downbeats_not_locked", [0, 1]) in found
+
+
+async def test_clashing_tempos_are_a_tempo_jump_hint_on_the_timeline(studio: StudioEnv) -> None:
+    rider, class_id, _, current = await designed(studio)
+    store_spotdown_rows(studio, current.current_revision_id, with_bass=True, slow_first=True)
+    answer = await rider.browser.get(f"/api/classes/{class_id}/timeline")
+    assert answer.status_code == 200, answer.text
+    assert "tempo_jump" in [h["code"] for h in answer.json()["hints"]]
