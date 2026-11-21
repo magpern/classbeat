@@ -23,8 +23,9 @@ SHARED_KINDS: Final = frozenset({"studio"})
 OWNER_KINDS: Final = frozenset({"mix", "upload"})
 
 
-class ScopeRefused(ValueError):
-    """A source kind the allowlist does not name; the message never holds the value."""
+class ScopeRefused(Exception):  # not a ValueError: never mistaken for a bad value
+    """A source kind the allowlist does not name (a programming error: callers pass literals);
+    the message never holds the value."""
 
 
 def scope_for(kind: str, key: bytes, owner_id: UUID) -> str:

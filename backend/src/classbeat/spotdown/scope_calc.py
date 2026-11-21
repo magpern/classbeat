@@ -14,7 +14,9 @@ the old scopes first.
 owner uses for a source whose bytes are the same for everyone (a SwedeBeat studio track): ``s1-``
 plus the unpadded base64url HMAC-SHA256 of a different label and the source kind's name. It names
 no owner, and its prefix and label keep it apart from every owner's scope. ``scope_policy`` decides
-which source kind may use it.
+which source kind may use it. No account deletion reaches it and spotdown never purges a scoped
+entry, so rotating the key orphans the old shared scope **for good**: an operator deletes it with
+the old key first (ADR 0040, amendment "studio-track analyses are shared", item 5).
 
 **``Idempotency-Key``** is derived from the caller's stable parts (for example the job id, the
 step and the track's client ref), so a retried step sends the same key and spotdown returns its

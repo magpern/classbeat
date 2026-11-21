@@ -39,3 +39,4 @@ def test_an_unknown_kind_is_refused(kind: str) -> None:
     with pytest.raises(ScopeRefused) as refused:
         scope_for(kind, KEY, OWNER)
     assert str(refused.value) == "a source kind the scope policy does not name"  # no value
+    assert not isinstance(refused.value, ValueError)  # never handled as a bad value

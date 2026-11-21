@@ -266,8 +266,11 @@ evidence.
   private-source analyses never cross users by default (cross-user reuse is the owner's decision,
   #1297; the default is no). Account deletion calls `DELETE /v2/scopes/{scope}`.
   *(Amended 2026-11-21, owner answer to #1297, #1338: a SwedeBeat **studio track** is analysed in one
-  scope shared by every owner; mixes and user audio keep the owner's HMAC scope. See the amendment
-  "studio-track analyses are shared" at the end.)*
+  scope shared by every owner; mixes and user audio keep the owner's HMAC scope. That shared scope
+  is a scoped entry spotdown never purges (not on a version change, not after 90 days unused), so
+  it is kept until an operator deletes it, and rotating the `cache_scope` key orphans it for good.
+  See the amendment "studio-track analyses are shared" at the end, item 5, and
+  magpern/spotdown#40.)*
 - **YouTube:** the match result already says whether an analysis is cached for each candidate, so a
   cached analysis is never downloaded or analysed again.
 - **Sources classbeat holds the bytes for:** classbeat checks its own per-owner cache (by reference
@@ -930,11 +933,34 @@ decision.
    (ADR 0002): a second owner still downloads the track and stores its own row; only the
    spotdown analysis is reused (no upload, no new analysis).
 4. **Account deletion:** `DELETE /v2/scopes/{scope}` still deletes the owner's scope (mixes and any
-   future upload). The shared studio scope is never deleted for one account: it holds a catalog
-   file's analysis and no user data, like the global YouTube entries. Its lifetime is spotdown's
-   (until the analyser version changes, and the bounded lifetime of the "#1296 accepted"
-   amendment, item 5, where spotdown applies it to scoped entries too). Rotating the `cache_scope`
-   key orphans the shared scope as it does the owners' (§7).
+   future upload). The shared studio scope is never deleted for one account, by design: it holds
+   a catalog file's analysis and no user data.
+5. **Retention: the shared scope is kept until an operator deletes it.** To spotdown it is a
+   scoped entry like any owner's, and spotdown's retention only ever selects global rows (`main`
+   at 94b1ee7: `retention_store` filters `cache_scope IS NULL` and `scope_key = ''`; contract v2,
+   "Retention of global analyses": "the purge never touches a scoped one"). So **none** of these
+   reaches it: the purge on an analyser version change, the 90-days-unused purge of the "#1296
+   accepted" amendment (item 5), the takedown (it accepts only a global `youtube:` reference), or
+   an account deletion. Its analyses, its job and idempotency records and any upload row the
+   upload TTL sweep misses stay. This is a third retention class, beside owner scopes (they end
+   with the account) and global entries (90 days unused or a version change).
+   - **Consequence:** an analysis made by an older `analyzer_version` is never hit again (a hit
+     needs an equal sha256 **and** `analyzer_version`), so a stale entry never reaches a class. It
+     only stays in spotdown's database. The scope holds catalog-file analyses, random `client_ref`s
+     and hashed `Idempotency-Key`s, no user data, so the lasting entries are a storage and
+     hygiene cost, not a privacy one.
+   - **Operator deletion:** `DELETE /v2/scopes/<value>` with the service key removes everything
+     of the scope (the next studio track then uploads and analyses again). The operator computes
+     the value in the worker container, which holds `app_secret_key`:
+     `python -c "from classbeat.config import Settings; from classbeat.spotdown.scope_key import scope_key; from classbeat.spotdown.scope_calc import shared_scope; print(shared_scope(scope_key(Settings()), 'studio'))"`.
+     The value is an opaque identifier, not a key. It is still not pasted into an issue or a log:
+     with the service key it names the shared scope.
+   - **Rotation:** rotating `app_secret_key` (the `cache_scope` key, §7) orphans the shared scope
+     **for good**, like every owner's old scope. Nothing in classbeat records the old value and
+     spotdown never purges it, so an operator computes and deletes it with the old key **before**
+     the rotation.
+   - **Follow-up:** a lifetime for scoped entries that are never deleted, or an operator
+     procedure for them, is magpern/spotdown#40 (owner-gated, like every spotdown phase).
 
 Tests: `test_spotdown_scope_policy.py` (the table over kinds, an unknown kind refused),
 `test_spotdown_scope_calc.py` (the shared scope's form), `test_spotdown_client.py` (no scope-less
