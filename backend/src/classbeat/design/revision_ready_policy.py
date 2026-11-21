@@ -29,6 +29,7 @@ READY_ORIGINS: Final[frozenset[str | None]] = frozenset(
         "duplicate",
         "beat_one",
         "swedebeat_match",
+        "mix_choices",  # ADR 0036 amendment B (#1369): the user's mix choices applied, no model
     }
 )
 NOT_READY_ORIGINS: Final[frozenset[str]] = frozenset({SKETCH})

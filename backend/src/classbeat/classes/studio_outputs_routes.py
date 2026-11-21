@@ -11,6 +11,11 @@
   (``hash_mismatch``, ``not_current``, ``mowl_needs_mix``, ``playlist_has_repeats``, ``output_off``,
   ``connection_changed``, ``session_refused``, ``class_busy``, ``idempotency_mismatch`` ...), 404
   ``not_found`` as above.
+- ``POST /api/classes/{class_id}/mix-choices/preview`` with ``{revision_id, content_hash,
+  choices}``: the read-only preview of the mix choices (``classes.mix_preview``): 200 with the
+  derived form or its refusal; 404 as above; 409 ``{reason}`` (``no_studio_draft``,
+  ``stale_base``, ``no_proposal``, ``music_changed``); 422 for a body that does not read; 429
+  ``rate_limited`` beyond ``mix_preview_limit.PREVIEWS_PER_MINUTE``. Nothing is stored.
 
 Signed in (``auth.require_user``) and, like every unsafe request, with the CSRF token the auth
 middleware checks.
@@ -23,8 +28,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from classbeat import auth
-from classbeat.classes import studio_outputs, studio_timeline
+from classbeat.classes import mix_preview, studio_outputs, studio_timeline
 from classbeat.classes.handoff_routes import job_enqueue
+from classbeat.classes.mix_preview_limit import LIMITER
 from classbeat.classes.studio_songs_routes import StudioJobOut, _uuid  # pyright: ignore[reportPrivateUsage]
 from classbeat.context import UserContext
 from classbeat.design.revise import Sha256Hex
@@ -38,6 +44,7 @@ router = APIRouter(prefix="/api/classes", tags=["classes"])
 
 _STATUS = {
     "not_found": 404,
+    "internal": 500,  # a stored row that no longer holds: never a 409 the page could act on
     "class_not_found": 404,
     "feature_off": 404,
     "invalid_input": 422,
@@ -62,6 +69,17 @@ class OutputsIn(BaseModel):
     outputs: list[str] = Field(min_length=1, max_length=len(OUTPUTS))
 
 
+class PreviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revision_id: str = Field(max_length=64)
+    content_hash: Sha256Hex
+    choices: dict[str, Any] = Field(max_length=6)
+
+
+MAX_PREVIEW_BYTES = 16384  # a body of positions on a list of at most 40 songs is far smaller
+
+
 def _refuse(reason: str, counts: dict[str, Any] | None = None) -> JSONResponse:
     body: dict[str, Any] = {"reason": reason, **(counts or {})}
     if reason in ("feature_off", "class_not_found"):
@@ -77,6 +95,33 @@ async def get_timeline(
     if wanted is None:
         return _refuse("not_found")
     found = await studio_timeline.view(request.app.state.session_factory, ctx, wanted)
+    if isinstance(found, str):
+        return _refuse(found)
+    return JSONResponse(found)
+
+
+@router.post("/{class_id}/mix-choices/preview", responses={404: {}, 409: {}, 422: {}, 429: {}})
+async def preview_mix_choices(
+    class_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
+) -> JSONResponse:
+    wanted = _uuid(class_id)
+    if wanted is None:
+        return _refuse("not_found")
+    if not LIMITER.allow(ctx.user_id):
+        return _refuse("rate_limited")
+    raw = await request.body()
+    if len(raw) > MAX_PREVIEW_BYTES:
+        return _refuse("too_large")
+    try:
+        body = PreviewIn.model_validate_json(raw)
+    except ValidationError:
+        return _refuse("invalid_input")
+    revision = _uuid(body.revision_id)
+    if revision is None:
+        return _refuse("invalid_input")
+    found = await mix_preview.preview(
+        request.app.state.session_factory, ctx, wanted, revision, body.content_hash, body.choices
+    )
     if isinstance(found, str):
         return _refuse(found)
     return JSONResponse(found)

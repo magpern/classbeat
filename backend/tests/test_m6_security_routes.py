@@ -196,6 +196,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/swap-anyway"): "owned",
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/design"): "owned",  # SR C5
     ("GET", "/api/classes/{class_id}/timeline"): "owned",  # SR C6a
+    ("POST", "/api/classes/{class_id}/mix-choices/preview"): "owned",  # #1369: read-only
     ("POST", "/api/classes/{class_id}/outputs"): "owned",  # SR C6a: the output choice
     ("GET", "/api/classes/{class_id}/outputs"): "owned",  # SR C7: the per-output states
     ("POST", "/api/classes/{class_id}/outputs/{output}/{action}"): "owned",  # SR C7: the actions
@@ -833,6 +834,16 @@ OWNED_ROUTES = [
     # SR C6a (test_studio_outputs: another user's class is 404 with the studio on, and asks the
     # gateway nothing).
     OwnedRoute("GET", "/api/classes/{class_id}/timeline", control=frozenset({404})),
+    OwnedRoute(  # #1369 (test_studio_apply_mix_choices: another user's class is 404, studio on)
+        "POST",
+        "/api/classes/{class_id}/mix-choices/preview",
+        lambda rows: {
+            "revision_id": str(rows.revision_id),
+            "content_hash": rows.digest,
+            "choices": {"dj_mix": False, "blend": False, "trim": False},
+        },
+        frozenset({404}),
+    ),
     OwnedRoute(
         "POST",
         "/api/classes/{class_id}/outputs",

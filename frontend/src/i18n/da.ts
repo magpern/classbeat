@@ -641,6 +641,7 @@ const da: Catalogue = {
   'class.asked.changed': 'Ændret efter ønske',
   'class.asked.songs': 'Sange ændret',
   'class.asked.beatOne': 'Beat 1 justeret',
+  'class.asked.mixChoices': 'Mixvalg anvendt',
   'class.asked.first': 'Første design',
   'class.compare.segments': 'Segmenter: {added} tilføjet, {removed} fjernet.',
   'class.compare.intervalsChanged': { one: '{count} interval ændret', other: '{count} intervaller ændret' },

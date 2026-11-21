@@ -602,6 +602,7 @@ export const en = {
   'class.asked.changed': 'Changed on request',
   'class.asked.songs': 'Songs changed',
   'class.asked.beatOne': 'Beat 1 adjusted',
+  'class.asked.mixChoices': 'Mix choices applied',
   'class.asked.first': 'First design',
   'class.compare.segments': 'Segments: {added} added, {removed} removed.',
   'class.compare.intervalsChanged': { one: '{count} interval changed', other: '{count} intervals changed' },

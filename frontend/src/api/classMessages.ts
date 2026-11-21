@@ -90,6 +90,7 @@ export const ORIGIN_LABELS = {
   duplicate: 'class.origin.other',
   beat_one: 'class.origin.other',
   swedebeat_match: 'class.origin.other',
+  mix_choices: 'class.origin.other',
 } as const satisfies Record<string, CatalogueKey>
 
 export function originLabel(origin: string): string {

@@ -38,6 +38,7 @@ KINDS_THAT_CALL: Final = frozenset(
         "refit_draft",
         "revise_songs",
         "studio_revise",
+        "apply_mix_choices",  # ADR 0036 amendment B (#1369)
     }
 )
 # ``revise_draft`` takes a sketch as its base on purpose (ADR 0038 section 4: a chat change of the
@@ -79,6 +80,8 @@ ROUTES_ALLOWED: Final = {
     "never a sketch (a draft); its design_with_songs swap writes only the private working copy, "
     "and its base is the current sketch on purpose (songs.composer_admit), as the fill's is",
     ("POST", "/api/classes/{class_id}/outputs"): _STUDIO,
+    ("POST", "/api/classes/{class_id}/mix-choices/preview"): _STUDIO + "; a read that stores "
+    "nothing",
     ("POST", "/api/classes/{class_id}/outputs/{output}/{action}"): _STUDIO,
     ("GET", "/api/classes/{class_id}/spotify-sync/{revision_id}"): _STUDIO,
     ("POST", "/api/classes/{class_id}/spotify-sync/{revision_id}/{target}"): _STUDIO,
