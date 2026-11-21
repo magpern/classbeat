@@ -4,8 +4,9 @@ v2 contract (``docs/contract-v2.md`` in magpern/spotdown; the shapes are its ``s
 Pure rules: ``url_policy`` (``CLASSBEAT_SPOTDOWN_URL``, an internal origin only),
 ``sources_policy`` (``CLASSBEAT_SPOTDOWN_SOURCES``), ``key_policy`` (the ``spotdown_service_key``
 secret file, its redacted holder and "available"), ``scope_calc`` (``cache_scope``, an HMAC of the
-owner id, and ``Idempotency-Key``), ``request_model`` (request bodies, paths and queries from
-checked values), ``answer_model`` and ``match_model`` (strict answer parsers) and
+owner id, the shared scope of a kind, and ``Idempotency-Key``), ``scope_policy`` (which kind is
+shared: only ``studio``, an allowlist; #1338), ``request_model`` (request bodies, paths and
+queries from checked values), ``answer_model`` and ``match_model`` (strict answer parsers) and
 ``failure_policy`` (the failure taxonomy of ADR 0040 section 8 as typed results).
 The analysis rules (SD-P4 part 2): ``timing_class_policy`` with ``timing_inputs_model`` and
 ``anchor_calc`` (the strict ``exact`` rule, section 3), ``feature_trust_policy``,

@@ -7,8 +7,9 @@ still on disk**, asks ``analyse`` for its map:
 
 1. the owner's own cache by the bytes (``track_cache.cached_by_sha256``: the same sha256 under
    another reference) is the caller's step, before this one;
-2. spotdown's lookup by sha256 in the owner's ``cache_scope`` (``scope_calc.cache_scope``, an
-   HMAC of the owner id): a hit is read, **no upload**;
+2. spotdown's lookup by sha256 in the studio's **shared** scope (``scope_policy.scope_for``: a
+   studio track is the same file for every user, so every owner shares its analysis; the scope
+   names no owner; ADR 0040 section 7, amendment of 2026-11-21): a hit is read, **no upload**;
 3. only then the bytes are streamed to ``upload`` and the analysis is started (an
    ``Idempotency-Key`` per job, track, attempt and step; ``client_ref`` a random id), and polled
    with checkpoints (``shadow_policy.poll_delay``) within the job's budget
@@ -44,11 +45,11 @@ from classbeat.design.track_map_policy import valid_track_map
 from classbeat.egress_spotdown import ANALYSIS_SECONDS, CALL_SECONDS, UPLOAD_SECONDS
 from classbeat.jobs import JobRun, RunStopped
 from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS
-from classbeat.spotdown import studio_policy, studio_tracks_config
+from classbeat.spotdown import scope_policy, studio_policy, studio_tracks_config
 from classbeat.spotdown.answer_model import Uploaded
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.failure_policy import AnalysisReady, Pending, TrackFailure, Unreachable
-from classbeat.spotdown.scope_calc import cache_scope, idempotency_key
+from classbeat.spotdown.scope_calc import idempotency_key
 from classbeat.spotdown.shadow_policy import poll_delay
 from classbeat.spotdown.studio_map_model import StudioMap, studio_map
 
@@ -100,7 +101,7 @@ def session_for(run: JobRun) -> Session | None:
     config = studio_tracks_config.current()
     if config.scope_key is None or not config.active_for(run.lease.owner_id):
         return None
-    scope = cache_scope(config.scope_key, run.lease.owner_id)
+    scope = scope_policy.scope_for("studio", config.scope_key, run.lease.owner_id)
     return Session(SpotdownClient(config.sources), scope)
 
 
@@ -145,7 +146,7 @@ async def _attempt(
 
     found = await client.lookup_content(sha256, scope)
     if isinstance(found, AnalysisReady):
-        analysis_id = found.analysis_id  # analysed before in this scope: no upload
+        analysis_id = found.analysis_id  # analysed before (by any owner): no upload
     elif found is not None:
         return found
     else:

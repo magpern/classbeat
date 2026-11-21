@@ -265,6 +265,9 @@ evidence.
 - classbeat sends an HMAC of `owner_id` as `cache_scope` for SwedeBeat, mix and user audio, so
   private-source analyses never cross users by default (cross-user reuse is the owner's decision,
   #1297; the default is no). Account deletion calls `DELETE /v2/scopes/{scope}`.
+  *(Amended 2026-11-21, owner answer to #1297, #1338: a SwedeBeat **studio track** is analysed in one
+  scope shared by every owner; mixes and user audio keep the owner's HMAC scope. See the amendment
+  "studio-track analyses are shared" at the end.)*
 - **YouTube:** the match result already says whether an analysis is cached for each candidate, so a
   cached analysis is never downloaded or analysed again.
 - **Sources classbeat holds the bytes for:** classbeat checks its own per-owner cache (by reference
@@ -894,6 +897,50 @@ its egress origin and key file in the stack, and the allowlist switched on for a
 tests above run the whole worker path (the jobs API, the queue, the fenced transactions, Postgres)
 against the in-process fake instead. The e2e is the tracked follow-up #1337, to be done before the
 default switch.
+
+### Amendment (2026-11-21, owner answer to #1297; #1338): studio-track analyses are shared (amends §7)
+
+**Decision (owner, 2026-11-21, #1297).** An analysis of a SwedeBeat **studio track** serves every
+user: the file is the same catalog file for everyone (the same sha256), it is looked up only once
+classbeat already holds the bytes, and a hit only makes the request faster (nothing tells the user
+it was analysed before). **Mixes are not shared:** they keep the owner's scope. **User uploads are
+not planned** (ADR 0041); if they are ever built they keep the owner's scope and need their own
+decision.
+
+**As built (classbeat only; spotdown unchanged).**
+1. **Not "no `cache_scope`".** spotdown's contract v2 requires a `cache_scope` for every upload, for
+   the sha256 lookup and for the analysis of an upload (`422 scope_required`); only `youtube`
+   sources are global there. The owner's "global, like a YouTube analysis" is therefore one
+   **shared scope**: `scope_calc.shared_scope(key, "studio")`, `s1-` plus the unpadded base64url
+   HMAC-SHA256 of the `cache_scope` key (§7) over its own label and the kind's name. It names no
+   owner, and its prefix and label keep it apart from every owner's `o1-` scope. spotdown needs no
+   change, and a later spotdown "global upload" kind could replace it without a classbeat schema
+   change (only the scope string changes; the shared entries would then be analysed once more).
+2. **An allowlist** (`spotdown.scope_policy.scope_for`, pure): `studio` gets the shared scope;
+   `mix` and `upload` get the owner's `cache_scope`; any other kind raises `ScopeRefused`, so a new
+   kind is never shared by mistake. Both studio paths use it (the live source,
+   `design.track_spotdown`, and shadow mode, `design.track_shadow`), and the mix path
+   (`design.mix_spotdown`) asks it for `mix`. The request builder still refuses an upload, a sha256
+   lookup or an upload's analysis without a scope (`request_model`, `client`), so nothing private
+   or shared ever goes scope-less.
+3. **What crosses owners:** only the studio track's analysis in spotdown (its document, keyed by the
+   file's sha256) and the uploads and jobs of that scope (an upload lasts at most 1 h). Each job's
+   `client_ref` is a random id and its `Idempotency-Key`s come from the job, so no owner id,
+   reference, title or token is in the shared scope. classbeat's own `track_cache` stays per owner
+   (ADR 0002): a second owner still downloads the track and stores its own row; only the
+   spotdown analysis is reused (no upload, no new analysis).
+4. **Account deletion:** `DELETE /v2/scopes/{scope}` still deletes the owner's scope (mixes and any
+   future upload). The shared studio scope is never deleted for one account: it holds a catalog
+   file's analysis and no user data, like the global YouTube entries. Its lifetime is spotdown's
+   (until the analyser version changes, and the bounded lifetime of the "#1296 accepted"
+   amendment, item 5, where spotdown applies it to scoped entries too). Rotating the `cache_scope`
+   key orphans the shared scope as it does the owners' (§7).
+
+Tests: `test_spotdown_scope_policy.py` (the table over kinds, an unknown kind refused),
+`test_spotdown_scope_calc.py` (the shared scope's form), `test_spotdown_client.py` (no scope-less
+upload or lookup), `test_spotdown_studio_job.py` and `test_spotdown_shadow_job.py` (a second owner
+reuses the first's analysis without an upload; account deletion leaves the shared scope) and
+`test_spotdown_mix_job.py` (mixes stay per owner, unchanged).
 
 ## Status
 

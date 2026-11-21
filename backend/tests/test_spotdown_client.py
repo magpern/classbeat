@@ -5,6 +5,7 @@ failure taxonomy of ADR 0040 section 8, and "off means nothing is sent". No netw
 import gzip
 import json
 from collections.abc import AsyncIterator
+from typing import cast
 
 import httpx
 import pytest
@@ -326,6 +327,22 @@ async def test_a_youtube_analysis_sends_its_scope_when_given_and_none_when_not(
     first, second = (json.loads(s.body) for s in spotdown.seen if s.path == "/v2/analyses")
     assert first["cache_scope"] == SCOPE_A
     assert "cache_scope" not in second
+
+
+async def test_an_upload_and_a_sha256_lookup_never_leave_without_a_scope(
+    spotdown: FakeSpotdown,
+) -> None:
+    """#1338: even a shared (studio) analysis carries a scope; there is no scope-less upload."""
+
+    async def audio() -> AsyncIterator[bytes]:
+        yield b"x"
+
+    client, none = SpotdownClient(ALL), cast(str, None)
+    with pytest.raises(RequestRefused):
+        await client.upload(audio(), none, idempotency_key("j", "u"))
+    with pytest.raises(RequestRefused):
+        await client.lookup_content("0" * 64, none)
+    assert spotdown.seen == []
 
 
 def test_the_fake_still_needs_a_scope_for_an_upload_analysis(spotdown: FakeSpotdown) -> None:

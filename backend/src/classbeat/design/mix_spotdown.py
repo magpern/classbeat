@@ -7,8 +7,8 @@ default; inactive, nothing here is called.
 link is never stored, logged or sent here) and, **while the fetched file is still on disk**, after
 its own cache (``mix_cache.cached``) missed, asks ``analyse`` for the map:
 
-1. spotdown's lookup by sha256 in the owner's ``cache_scope`` (``scope_calc.cache_scope``, an
-   HMAC of the owner id): a hit is read, **no upload**;
+1. spotdown's lookup by sha256 in the owner's ``cache_scope`` (``scope_policy.scope_for``: a mix
+   is never shared, so an HMAC of the owner id): a hit is read, **no upload**;
 2. only then the bytes are streamed to ``upload`` (``UPLOAD_MAX`` is the fetch's 250 MB) and the
    analysis is started (an ``Idempotency-Key`` per job, attempt and step, the same across
    ``rate_limited`` waits; ``client_ref`` a random id) and polled with checkpoints. Nothing else
@@ -46,12 +46,12 @@ from classbeat.design import track_spotdown as relay
 from classbeat.design.mixanalysis import ANALYSIS_SECONDS, valid_map
 from classbeat.egress_spotdown import CALL_SECONDS
 from classbeat.jobs import JobRun
-from classbeat.spotdown import mix_config, studio_policy
+from classbeat.spotdown import mix_config, scope_policy, studio_policy
 from classbeat.spotdown.answer_model import Uploaded
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.failure_policy import AnalysisReady, Pending, Unreachable
 from classbeat.spotdown.mix_map_model import MixMap, mix_map_of
-from classbeat.spotdown.scope_calc import cache_scope, idempotency_key
+from classbeat.spotdown.scope_calc import idempotency_key
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ def session_for(run: JobRun) -> relay.Session | None:
     config = mix_config.current()
     if config.scope_key is None or not config.active_for(run.lease.owner_id):
         return None
-    scope = cache_scope(config.scope_key, run.lease.owner_id)
+    scope = scope_policy.scope_for("mix", config.scope_key, run.lease.owner_id)
     return relay.Session(SpotdownClient(config.sources), scope)
 
 

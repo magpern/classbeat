@@ -232,6 +232,7 @@ This is kept under the per-owner retention of ADR 0007 §11.
 | Workout data | classbeat | unchanged: `track_cache` (owner, reference, analyser version, sha256), `swedebeat_mix_maps`, the MOWL path in memory only | ADR 0007 §11 | per owner (ADR 0002) |
 
 - classbeat sends an HMAC of `owner_id` as `cache_scope` for SwedeBeat, mix and user audio, so private-source analyses never cross users by default. Account deletion calls `DELETE /v2/scopes/{scope}`.
+  *(Note, 2026-11-21, owner answer to #1297, #1338: a SwedeBeat **studio track** is analysed in one scope shared by every owner (the same catalog file for everyone), because spotdown requires a scope for uploads; mixes and user audio keep the owner's scope. ADR 0040, amendment "studio-track analyses are shared".)*
 - **YouTube:** the match result already says whether an analysis is cached for each candidate, so a cached analysis is never downloaded or analysed again.
 - **Sources classbeat holds the bytes for:** classbeat checks its own per-owner cache (by reference and sha256), then spotdown's lookup by sha256 within the scope, and only then uploads. Nothing is analysed or uploaded twice.
 
