@@ -7,7 +7,7 @@ never a model's number, and, for #1328, the track's **stored** timing class and 
 candidates; a spotdown analysis has its decision's class and the candidates stored with its map.
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Final
 
 from classbeat.spotdown.cut_candidates_model import Candidate, parse
@@ -43,4 +43,4 @@ def stored_candidates(raw: object, timing_class: TimingClass | None) -> tuple[Ca
         return ()
     if timing_class == "exact":
         return found
-    return tuple(replace(c, trusted=False) for c in found)
+    return tuple(Candidate(c.at_s, c.kind, c.confidence, c.method, False, c.label) for c in found)
