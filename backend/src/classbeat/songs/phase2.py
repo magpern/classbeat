@@ -33,7 +33,9 @@ It runs after the user's Approve (the same job, ``approved``) or for a **resume*
 5. ``music``: the design music step on it, waiting (``CLASSBEAT_SPOTIFY_POOL_SYNC_WAIT_SECONDS``)
    for MOWL to list the approved ids; then the analysed track list must be **exactly the
    approved ids in the approved order** (``playlist_mismatch`` otherwise, also when MOWL did not
-   catch up in time: the user creates it again from the page).
+   catch up in time: the user creates it again from the page). Then, for a song the list's
+   ``spotdown_analysis`` record marks, spotdown's sections in place of MOWL's, stamped
+   ``approximate`` (``phase2_spotdown``; SD-P6, #1303); exactly today's music when it is off.
 6. ``design``: the ``design`` stage (ADR 0006 section 3) on that music, unchanged, within the
    song kinds' job ceiling (``CLASSBEAT_SONG_JOB_COST_MICROS``, across every stage and attempt).
 7. The final fenced transaction (``Complete``): both connections held again, the MOWL link still
@@ -56,7 +58,7 @@ Nothing here logs or sends a model an id: the design stage gets the music summar
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Final
 from uuid import UUID
 
 from sqlalchemy import text
@@ -83,26 +85,22 @@ from classbeat.playlists import (
     fill_final_playlist,
     open_spotify,
 )
-from classbeat.playlists import common as playlist_common
 from classbeat.songs import song_list
 from classbeat.songs.config import SongConfig
 from classbeat.songs.inputs import DesignWithSongsInput, SongJob
+from classbeat.songs.phase2_final import final_checks, mark_mowl, music_source, newest, tracks_hash
+from classbeat.songs.phase2_spotdown import spotdown_music
 from classbeat.songs.pick import stage_config
 
 logger = logging.getLogger(__name__)
 
 PHASE_TWO: Final = ("prepare", "create", "fill", "attach", "music", "design")
 ORIGIN: Final = "design_with_songs"
-MUSIC_SOURCE: Final = "mowl_spotify_playlist"
 
 _JOB = text(
     "SELECT j.class_id, j.approval_revision_id, c.title FROM jobs j JOIN classes c "
     "ON c.owner_id = j.owner_id AND c.id = j.class_id "
     "WHERE j.id = :job_id AND j.owner_id = :owner_id"
-)
-_NEWEST = text(
-    "SELECT id FROM class_revisions WHERE owner_id = :owner_id AND class_id = :class_id "
-    "AND kind = 'song_list' ORDER BY number DESC LIMIT 1"
 )
 # A live, verified playlist of this list on this Spotify account, the newest first.
 _VERIFIED = text(
@@ -110,16 +108,6 @@ _VERIFIED = text(
     "AND class_id = :class_id AND revision_id = :revision_id AND spotify_user_id = :account "
     "AND state = 'verified' AND content_hash = :content_hash AND detached_at IS NULL "
     "ORDER BY created_at DESC LIMIT 1"
-)
-_LIVE_VERIFIED = text(
-    "SELECT 1 FROM class_playlists WHERE owner_id = :owner_id AND class_id = :class_id "
-    "AND id = :id AND playlist_id = :playlist_id AND revision_id = :revision_id "
-    "AND state = 'verified' AND content_hash = :content_hash AND detached_at IS NULL"
-)
-_MOWL_ID = text(
-    "UPDATE class_playlists SET mowl_playlist_id = :mowl_playlist_id, updated_at = now() "
-    "WHERE owner_id = :owner_id AND class_id = :class_id AND id = :id AND detached_at IS NULL "
-    "RETURNING id"
 )
 
 
@@ -131,11 +119,6 @@ class Prepared:
     stored: song_list.SongListRevision
     spotify: OpenConnection
     mowl: OpenConnection
-
-
-async def _newest(fs: FencedSession, class_id: UUID) -> UUID | None:
-    params = {"owner_id": fs.lease.owner_id, "class_id": class_id}
-    return (await fs.db.execute(_NEWEST, params)).scalar_one_or_none()
 
 
 _CURRENT = text(
@@ -164,7 +147,7 @@ async def prepare(
             revision_id = job.approval_revision_id
         else:
             revision_id = given.resume.song_list_revision_id if given.resume else None
-        if revision_id is None or await _newest(fs, job.class_id) != revision_id:
+        if revision_id is None or await newest(fs, job.class_id) != revision_id:
             raise JobFailure("invalid_input")  # superseded (or the list is gone)
         stored = await song_list.load(fs.db, fs.lease.owner_id, job.class_id, revision_id)
         if stored is None:
@@ -188,11 +171,6 @@ async def prepare(
     return Prepared(job.class_id, job.title, revision_id, stored, spotify, mowl)
 
 
-def _tracks_hash(p: Prepared) -> bytes:
-    """``class_playlists.content_hash`` of a playlist holding exactly the approved ids in order."""
-    return playlist_common.ids_hash(p.stored.track_ids)
-
-
 async def _verified(fs: FencedSession, p: Prepared) -> ClassPlaylist | None:
     row = (
         await fs.db.execute(
@@ -202,7 +180,7 @@ async def _verified(fs: FencedSession, p: Prepared) -> ClassPlaylist | None:
                 "class_id": p.class_id,
                 "revision_id": p.revision_id,
                 "account": p.spotify.account,
-                "content_hash": _tracks_hash(p),
+                "content_hash": tracks_hash(p),
             },
         )
     ).first()
@@ -287,16 +265,6 @@ async def _music(
     return step
 
 
-def music_source(final: ClassPlaylist) -> dict[str, Any]:
-    """``classes.music_source`` of a class designed on picked songs (``ClassMusicSource``)."""
-    return {
-        "source": MUSIC_SOURCE,
-        "spotify_playlist_id": final.playlist_id,
-        "origin": "song_pick",
-        "class_playlist_id": str(final.id),
-    }
-
-
 async def final_music(
     run: JobRun,
     keyring: KeyRing,
@@ -309,46 +277,12 @@ async def final_music(
     The caller owns the step from here (``close`` it, or hand it to the outcome's ``release``)."""
     p = await prepare(run, keyring, given, base_revision_id=base_revision_id)
     final = await build_playlist(run, keyring, p)
-    return p, final, await _music(run, keyring, given, p, final, config)
-
-
-async def final_checks(
-    fs: FencedSession, p: Prepared, final: ClassPlaylist, step: MusicStep
-) -> None:
-    """The final transaction's checks (step 7): both connections held again, the MOWL link the
-    one analysed, the list still the newest, the class playlist still live and verified."""
-    if not await hold(fs.db, fs.lease.ctx, p.spotify):
-        raise JobFailure("not_connected")
-    await step.still_current(fs)
-    if await _newest(fs, p.class_id) != p.revision_id:
-        raise JobFailure("invalid_input")
-    live = await fs.db.execute(
-        _LIVE_VERIFIED,
-        {
-            "owner_id": fs.lease.owner_id,
-            "class_id": p.class_id,
-            "id": final.id,
-            "playlist_id": final.playlist_id,
-            "revision_id": p.revision_id,
-            "content_hash": _tracks_hash(p),
-        },
-    )
-    if live.first() is None:
-        raise JobFailure("not_connected")  # Disconnect detached it meanwhile
-
-
-async def mark_mowl(
-    fs: FencedSession, p: Prepared, final: ClassPlaylist, mowl_playlist_id: int
-) -> None:
-    """``class_playlists.mowl_playlist_id`` of the final playlist (step 7)."""
-    params = {
-        "owner_id": fs.lease.owner_id,
-        "class_id": p.class_id,
-        "id": final.id,
-        "mowl_playlist_id": mowl_playlist_id,
-    }
-    if (await fs.db.execute(_MOWL_ID, params)).first() is None:
-        raise JobFailure("internal")
+    step = await _music(run, keyring, given, p, final, config)
+    try:  # SD-P6 (#1303): spotdown's sections for the marked songs; else exactly today's
+        return p, final, await spotdown_music(run, p.stored, step)
+    except BaseException:
+        step.close()
+        raise
 
 
 async def run_phase_two(

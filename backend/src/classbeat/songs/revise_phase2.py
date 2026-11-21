@@ -25,7 +25,8 @@ from classbeat.jobs import Complete, FencedSession, JobFailure, JobRun
 from classbeat.songs import revise_reading
 from classbeat.songs.config import SongConfig
 from classbeat.songs.inputs import ReviseSongsInput
-from classbeat.songs.phase2 import final_checks, final_music, mark_mowl, music_source
+from classbeat.songs.phase2 import final_music
+from classbeat.songs.phase2_final import final_checks, mark_mowl, music_source
 from classbeat.songs.pick import stage_config
 
 ORIGIN: Final = "revise_songs"
