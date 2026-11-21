@@ -20,6 +20,7 @@ const LABEL: Record<string, string> = {
   duplicate: 'Version',
   beat_one: 'Version',
   swedebeat_match: 'Version',
+  mix_choices: 'Version',
 }
 
 // What the history says asked for a version of each origin, without a request and with one.
@@ -33,6 +34,7 @@ const ASKED: Record<string, [string, string]> = {
   duplicate: ['Duplicated from a class that is gone', 'Duplicated from a class that is gone'],
   beat_one: ['Beat 1 adjusted', 'Beat 1 adjusted'],
   swedebeat_match: ['First design', 'First design'],
+  mix_choices: ['Mix choices applied', 'Mix choices applied'],
 }
 
 function entry(origin: string, request: string | null): TimelineEntry {

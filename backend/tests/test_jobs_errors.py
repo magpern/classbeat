@@ -151,6 +151,7 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     import classbeat.songs  # design_with_songs (SJ1) and revise_songs (SJ3)
     import classbeat.swedebeat_handoff  # swedebeat_verify_mix (B2)
     import classbeat.swedebeat_match  # swedebeat_match (B1)
+    import classbeat.swedebeat_studio.apply_kind  # apply_mix_choices (ADR 0036 B, #1369)
     import classbeat.swedebeat_studio.design_kind  # studio_design (ADR 0036, SR C5)
     import classbeat.swedebeat_studio.kind  # studio_songs (ADR 0036, SR C3)
     import classbeat.swedebeat_studio.outputs_kind  # produce_outputs (ADR 0036, SR C6a stub)
@@ -163,6 +164,7 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     assert classbeat.swedebeat_handoff.KIND
     assert classbeat.saving.__name__
     assert classbeat.player_send.KIND
+    assert classbeat.swedebeat_studio.apply_kind.APPLY_MIX_CHOICES
     assert classbeat.swedebeat_studio.kind.STUDIO_SONGS
     assert classbeat.swedebeat_studio.design_kind.STUDIO_DESIGN
     assert classbeat.swedebeat_studio.outputs_kind.PRODUCE_OUTPUTS
@@ -171,6 +173,7 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     from classbeat.jobs import KINDS
 
     assert KINDS.names() == [
+        "apply_mix_choices",  # ADR 0036 amendment B (#1369): no model, no credit, no network
         "design_draft",
         "design_with_songs",
         "interpret_request",  # ADR 0029 section 5 (MA1b-3)
