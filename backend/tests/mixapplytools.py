@@ -157,8 +157,8 @@ def copy_revision(
     kinds the studio cannot reach (a duplicate, a beat-one refit, a draft stored with a game
     MOWL has since retired)."""
     row = studio.songs.revision(source)
-    content = content if content is not None else row.content
-    content_hash = revision.studio_hash(content, row.music["mix_spec"])
+    stored: dict[str, Any] = content if content is not None else row.content
+    content_hash = revision.studio_hash(stored, row.music["mix_spec"])
     made = studio.songs.sql(
         "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
         "music, provenance, job_id, parent_id) SELECT gen_random_uuid(), r.owner_id, r.class_id, "
@@ -166,7 +166,7 @@ def copy_revision(
         "CAST(:content AS jsonb), :hash, r.music, "
         "jsonb_set(r.provenance, '{origin}', to_jsonb(CAST(:origin AS text))), r.job_id, "
         "CAST(:parent AS uuid) FROM class_revisions r WHERE r.id = :source RETURNING id, class_id",
-        content=json.dumps(content),
+        content=json.dumps(stored),
         hash=content_hash,
         origin=origin,
         parent=parent,

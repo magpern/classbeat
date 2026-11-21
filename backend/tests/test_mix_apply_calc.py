@@ -1,6 +1,7 @@
 """#1369 (ADR 0036 amendment B, B4 and B6b) without a database: the proposal allowlist, the order of
 the derivation's checks (``mix_apply.computed``, which the preview, the job's admit and its run
-share) and the preview's rate limit."""
+share), the fit's refusals (each call it guards made to raise), the purity of the calculation
+modules and the preview's rate limit."""
 
 import ast
 from pathlib import Path
@@ -9,12 +10,18 @@ from uuid import uuid4
 
 import pytest
 
+from agentfake import good_draft
+from classbeat.agent.stage import ToolError
+from classbeat.agent.studio_mix import StudioTrack
 from classbeat.classes.mix_preview_limit import PreviewLimiter
-from classbeat.studio import mix_proposal_policy
-from classbeat.studio.mix_choice_model import Proposal
+from classbeat.plan_gates import PlanGates
+from classbeat.studio import mix_plan_policy, mix_proposal_policy
+from classbeat.studio.mix_choice_model import MixChoiceRefused, MixChoices, Proposal
 from classbeat.studio.mix_facts_model import TrackFacts
-from classbeat.swedebeat_studio import mix_apply
+from classbeat.swedebeat_studio import mix_apply, mix_apply_calc
+from classbeat.swedebeat_studio.draft import StudioMusic
 from mix_choice_fixtures import FACTS, ORDER, PLAIN, spec, track
+from studiomaps import track_map
 
 DJ = {"dj_mix": True, "blend": True, "trim": True}
 WHOLE = {"dj_mix": False, "blend": False, "trim": False}
@@ -148,3 +155,77 @@ def test_the_pure_modules_import_no_io(path: str) -> None:
     named = [n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
     named += [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
     assert not [m for m in named if m.startswith(IO) or m.startswith("classbeat.swedebeat_studio")]
+
+
+# --- The fit (B4a), each refusal it swallows made to raise -------------------------------------
+
+
+def fit_case() -> tuple[Proposal, Any, dict[str, Any]]:
+    """Eight whole 240 s tracks crossfaded 8 s (1864 s) and the fake's good draft made 1864 s."""
+    refs = tuple(f"r{n}" for n in range(8))
+    tracks = tuple(StudioTrack(f"Song {n}", "Band", track_map(240.0)) for n in range(8))
+    music = StudioMusic(refs, tracks)
+    raw = {"tracks": [{"reference": r, "start_sec": 0.0, "end_sec": 240.0} for r in refs]}
+    proposed = mix_plan_policy.checked({**raw, "crossfades": [8] * 7}, refs, music.facts())
+    draft = good_draft()
+    draft["segments"][-1]["intervals"][-1]["sec"] += 64
+    return Proposal(refs, proposed, 1800), music, draft
+
+
+def fit(gates: PlanGates | None = None) -> mix_apply_calc.Fitted:
+    value, music, draft = fit_case()
+    spec = mix_apply_calc.derived(value, music, MixChoices.whole_songs())
+    return mix_apply_calc.fitted(draft, dict(value.spec), spec, music, gates)
+
+
+def test_the_fit_moves_the_workout_to_the_whole_songs_end() -> None:
+    made = fit()
+    assert made.result.duration_sec == 1920  # the end followed the music (1864 s to 1920 s)
+
+
+def test_a_check_refusal_is_workout_does_not_fit(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(*_: object) -> None:
+        raise ToolError("invalid_draft", ["no fit"])
+
+    monkeypatch.setattr(mix_apply_calc, "check", refuse)
+    with pytest.raises(MixChoiceRefused) as caught:
+        fit()
+    assert caught.value.reason == "workout_does_not_fit"
+
+
+def test_a_spec_that_does_not_compose_is_a_broken_invariant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def refuse(*_: object) -> None:
+        raise ToolError("invalid_mix", ["no"])
+
+    monkeypatch.setattr(mix_apply_calc, "compose", refuse)
+    with pytest.raises(ValueError, match="does not compose"):
+        fit()
+
+
+@pytest.mark.parametrize(
+    ("gates", "expected"),
+    [
+        (PlanGates(max_class_minutes=30, games=True, races=True, ftp_tests=True),
+         "plan_class_too_long"),  # 1890 s at most
+        (PlanGates(max_class_minutes=60, games=False, races=True, ftp_tests=False), None),
+    ],
+)  # fmt: skip
+def test_the_plan_gates_on_the_fitted_class(gates: PlanGates, expected: str | None) -> None:
+    if expected is None:
+        assert fit(gates).result.duration_sec == 1920  # no game, no FTP test: allowed
+        return
+    with pytest.raises(MixChoiceRefused) as caught:
+        fit(gates)
+    assert caught.value.reason == expected
+
+
+def test_another_plan_problem_is_plan_not_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(*_: object) -> None:
+        raise ToolError("not_allowed", ["no games"])
+
+    monkeypatch.setattr(mix_apply_calc, "within_plan", refuse)
+    with pytest.raises(MixChoiceRefused) as caught:
+        fit(PlanGates(max_class_minutes=60, games=False, races=True, ftp_tests=True))
+    assert caught.value.reason == "plan_not_allowed"
