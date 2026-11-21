@@ -1,6 +1,7 @@
-"""#1342 part 1 (ADR 0036 amendment "a song may appear more than once in a mix", A2, A3, A5 to A7):
-plain repeats in the mix spec. Coverage, the per-piece check structure, the loop join refused
-until part 2, the ordinary rules on repeated pieces, and the soft hints. Pure: no I/O."""
+"""#1342 (ADR 0036 amendment "a song may appear more than once in a mix", A2, A3, A5 to A7): plain
+repeats in the mix spec. Coverage, the per-piece check structure, the loop join refused on a track
+with no stored timing decision (the loop rules themselves: ``test_mix_loop_policy.py``), the
+ordinary rules on repeated pieces, and the soft hints. Pure: no I/O."""
 
 from typing import Any
 
@@ -115,10 +116,10 @@ def test_the_total_bound_counts_every_piece() -> None:
     assert checked(fits, ORDER, long)  # exactly 150 minutes, repeats counted
 
 
-# --- the loop join, refused until part 2 (A4.1) --------------------------------------------------
+# --- the loop join without a stored timing decision (A4.1) ------------------------------------
 
 
-def test_a_loop_join_is_refused_until_the_timing_decision_reaches_the_validator() -> None:
+def test_a_loop_join_is_refused_without_a_stored_timing_decision() -> None:
     value = spec(("a", 0.5, 120.5), ("a", 120.5, 240.0), ("b", 0, 240.0), ("c", 0, 240.0),
                  crossfades=[0, 8, 8])  # fmt: skip
     refused = refusal(value)
@@ -269,7 +270,7 @@ def test_one_song_dominates_counts_windows_less_their_outgoing_crossfades() -> N
 
 
 def test_a_class_of_one_song_is_never_flagged_as_dominated() -> None:
-    # The spec of a one-song class (its loop join is refused in part 1; hints read any spec).
+    # The spec of a one-song class (its loop join needs exact timing; hints read any spec).
     value = spec(("a", 0, 240.0), ("a", 0, 240.0), crossfades=[8])
     assert [h.code for h in hints(value, {"a": 240.0})] == ["whole_track_repeated"]
 

@@ -92,3 +92,18 @@ def test_the_total_is_the_composed_maps_for_a_three_decimal_length() -> None:
     with pytest.raises(ToolError) as caught:
         studio_mix.compose(odd, given)
     assert caught.value.messages[0].startswith("crossfades_overlap")  # named by the policy
+
+
+def test_a_loop_is_checked_again_on_the_stored_timing_class_by_reference() -> None:
+    # #1342 part 2 (ADR 0036 A4): the backend's own check lets a loop through on a stored exact
+    # track at its phrase points, and refuses the same plan once the track has no stored decision.
+    from test_studio_stage_repeats import exact_tracks, looped
+
+    exact = StudioMusic(REFS, exact_tracks())
+    plan = studio_mix.compose(exact.tracks, MixInput.model_validate(looped())).plan
+    spec = exact.spec_of(plan)
+    assert [t["reference"] for t in spec["tracks"][:2]] == [REFS[0], REFS[0]]
+    assert exact.plan_of(MixSpec.model_validate(spec)) == plan
+    with pytest.raises(JobFailure) as caught:
+        MUSIC.spec_of(plan)  # the same tracks with no stored timing decision
+    assert caught.value.category == "invalid_output"

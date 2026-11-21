@@ -87,3 +87,16 @@ def test_the_studio_checks_take_a_repeat_and_still_want_every_track() -> None:
     assert all(c.ok for c in studio_checks(composed, 2, "nothing"))
     failed = {c.name for c in studio_checks(composed, 3, "nothing") if not c.ok}
     assert failed == {"mix_order"}  # track 2 never plays
+
+
+def test_the_studio_checks_take_a_loop_by_its_run() -> None:
+    # #1342 part 2: two loop pieces of 32 s play 64 s together; one piece alone is still 60 s.
+    loop = [{"track": 0, "start_sec": 32.0, "end_sec": 64.0}] * 2
+    other = {"track": 1, "start_sec": 0.0, "end_sec": 60.0}
+    plan = {"tracks": [*loop, other], "crossfades": [0, 0]}
+    composed = Composed(plan, {"duration": 124.0}, 124.0)
+    assert all(c.ok for c in studio_checks(composed, 2, "nothing"))
+    plan["tracks"] = [loop[0], other]
+    plan["crossfades"] = [0]
+    alone = Composed(plan, {"duration": 92.0}, 92.0)
+    assert {c.name for c in studio_checks(alone, 2, "nothing") if not c.ok} == {"mix_windows"}

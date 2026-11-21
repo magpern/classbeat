@@ -7,9 +7,9 @@ recorded ``FakeProvider`` script in CI. No model, no network, no database.
 (``studio_tracks``: one tempo each, a downbeat grid, a drop every 16 bars, a quiet and a loud
 half), runs the stage on an in-memory host and checks the submitted draft with the design checks
 (``checks.run_checks``, on the composed map) and the studio's own (``studio_checks``): the mix
-plays every track at least once and no other (a repeat is allowed, #1342), each window plays at
-least 60 s, the total is the backend's one duration rule
-and the composed map's, and no stand-in for a catalogue reference reached the model.
+plays every track at least once and no other (a repeat is allowed, #1342), each loop run (one
+piece, or a loop's pieces together) plays at least 60 s, the total is the backend's one duration
+rule and the composed map's, and no stand-in for a catalogue reference reached the model.
 
 The local tracks have no stored timing decision and so no cut candidates (#1328); the spotdown
 variant (``tests/test_evals_studio_spotdown.py``) gives the same tracks with their candidates, and
@@ -32,6 +32,7 @@ from classbeat.evals.checks import Check, run_checks
 from classbeat.evals.runner import EvalHost
 from classbeat.jobs.errors import JobFailure
 from classbeat.studio.mix_plan_policy import MIN_PLAYED_SEC, total_sec
+from classbeat.studio.mix_repeat_calc import runs
 
 REFERENCE_MARK: Final = "ref-"  # what a catalogue reference looks like in the fakes
 
@@ -69,11 +70,12 @@ def studio_checks(composed: Composed, count: int, sent: str) -> list[Check]:
     plan = composed.plan
     covered = sorted({t["track"] for t in plan["tracks"]})
     windows = [t["end_sec"] - t["start_sec"] for t in plan["tracks"]]
+    played = [sum(windows[a : b + 1]) for a, b in runs([str(t["track"]) for t in plan["tracks"]])]
     total = total_sec(windows, plan["crossfades"])
     detail = f"{len(covered)} of {count} tracks in {len(windows)} pieces"
     return [
         Check("mix_order", covered == list(range(count)), detail),
-        Check("mix_windows", min(windows) >= MIN_PLAYED_SEC, f"shortest {min(windows):.2f} s"),
+        Check("mix_windows", min(played) >= MIN_PLAYED_SEC, f"shortest run {min(played):.2f} s"),
         Check(
             "mix_total",
             total == composed.duration_sec == composed.map["duration"],

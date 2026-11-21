@@ -25,14 +25,19 @@ and the workout together. The mix is a list of pieces, each a cut of one track n
 - the order: every track of the list at least once, and no other. A track may play again in a \
 later piece (name its index again), for example one recovery minute used at every recovery or a \
 strong chorus. Keep repeats to parts of songs: never play the whole of a track twice unless the \
-instructor asked for it. Never put two pieces of the same track next to each other: put another \
-track between them. A class that repeats a track can be produced as a mix only, not as a \
+instructor asked for it. A class that repeats a track can be produced as a mix only, not as a \
 SwedeBeat playlist;
+- a loop: two pieces of one track next to each other are a loop (for example a chorus two or \
+three times in a row), allowed only for a track whose timing is exact. Where the two pieces meet, \
+the first one's end_sec and the next one's start_sec are each on a trusted phrase point of that \
+track (get_music lists them; a bar of its grid when it has none), with crossfade 0 between \
+them. Each piece of a loop plays at least 8 bars, and the loop's pieces together at least 60 s. \
+Otherwise put another track between them;
 - the cut of each piece: start_sec and end_sec in the track's own seconds, 0 <= start_sec < \
-end_sec <= its length, with at least 60 s played. A cut near a trusted cut point moves to it, \
-then to the nearest downbeat (first_downbeat_sec plus whole bars of bar_sec); 0 and the \
-track's length stay the edges. A track with timing approximate or unusable is never moved \
-to a bar;
+end_sec <= its length, with at least 60 s played (a piece of a loop: 8 bars). A cut near a \
+trusted cut point moves to it, then to the nearest downbeat (first_downbeat_sec plus whole \
+bars of bar_sec); 0 and the track's length stay the edges. A track with timing approximate or \
+unusable is never moved to a bar;
 - the cut points: per track, cut_points lists where it may be cut, in its own seconds (the \
 music's start and end, silence and fade edges; get_music with a track adds segment, label and \
 phrase starts). A point whose use is hint is a guess: never cut at one for that reason alone. \

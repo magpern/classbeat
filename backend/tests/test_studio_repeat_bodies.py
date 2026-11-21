@@ -39,7 +39,7 @@ NON_ADJACENT = spec(
     ("ref-a", 0, 60.0), ("ref-b", 0, 210.0), ("ref-a", 0, 60.0), ("ref-c", 0, 200.0),
     ("ref-a", 100.0, 160.0), crossfades=[4, 8, 4, 6],
 )  # fmt: skip
-# A loop run (b, b: one song playing on) as part 2 will allow it; the bodies already take it.
+# A loop run (b, b: one song playing on, its join at crossfade 0, A4).
 LOOPED = spec(
     ("ref-a", 0, 120.0), ("ref-b", 0, 64.0), ("ref-b", 64.0, 128.0), ("ref-c", 0, 200.0),
     ("ref-a", 0, 120.0), crossfades=[6, 0, 8, 5],

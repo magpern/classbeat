@@ -147,10 +147,17 @@ def test_a_pieces_own_checks_run_before_the_next_pieces() -> None:
     assert caught.value.reason == "cut_out_of_range"  # piece 0's step 4 before piece 1
 
 
-def test_a_loop_join_is_still_refused_on_an_exact_track_with_candidates() -> None:
+def test_a_loop_join_on_an_exact_track_lands_on_its_phrase_point() -> None:
+    # Part 2 of #1342: 120.0 selects the trusted phrase start 120.5 (A7 step 2) on both sides.
     facts = exact(point(61.6), point(120.5, "phrase_start"))
-    caught = refusal(facts, ("a", 0, 120.0), ("a", 120.0, 240.0), crossfades=[0, 8, 8])
-    assert caught.reason == "loop_needs_exact_timing"  # part 2 of #1342
+    good = run(facts, ("a", 0, 120.0), ("a", 120.0, 240.0), crossfades=[0, 8, 8])
+    assert [(t["start_sec"], t["end_sec"]) for t in good["tracks"][:2]] == [
+        (0, 120.5),
+        (120.5, 240.0),
+    ]
+    approximate = replace(facts, timing_class="approximate")
+    caught = refusal(approximate, ("a", 0, 120.0), ("a", 120.0, 240.0), crossfades=[0, 8, 8])
+    assert caught.reason == "loop_needs_exact_timing"
 
 
 @pytest.mark.parametrize("seed", range(20))
