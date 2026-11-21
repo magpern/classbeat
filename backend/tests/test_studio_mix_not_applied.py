@@ -333,7 +333,6 @@ async def test_an_applied_draft_whose_spec_is_not_its_applied_form_is_refused(
     [
         "another_id",  # not the proposal B4 resolves
         "no_id",
-        "bad_choices",  # a position off the list
         "unknown_origin",  # neither a proposal nor an applied draft
     ],
 )
@@ -345,13 +344,123 @@ async def test_an_applied_draft_with_another_record_is_refused(
     record: dict[str, Any] = {
         "another_id": recorded(uuid.uuid4(), WHOLE_CHOICES),
         "no_id": {"origin": "mix_choices", "choices": WHOLE_CHOICES},
-        "bad_choices": recorded(pid, {**WHOLE_CHOICES, "dj_mix": True, "keep_whole": [99]}),
         "unknown_origin": {**recorded(pid, WHOLE_CHOICES), "origin": "duplicate"},
     }[provenance]
     current = applied_draft(studio, class_id, pid, whole_spec(studio, pid), record)
     assert await refused(studio, rider, class_id, current, "swedebeat_playlist") == (
         "mix_not_applied"
     )
+
+
+async def test_a_proposal_whose_stored_hash_no_longer_holds_is_refused(studio: StudioEnv) -> None:
+    """As #1402's ``mix_proposal.load``: the proposal's ``content_hash`` is checked again over its
+    content and spec (a revision is immutable, so this is defence in depth)."""
+    rider, class_id, _list, proposal = await designed(studio)
+    pid = proposal.current_revision_id
+    current = applied_draft(
+        studio, class_id, pid, whole_spec(studio, pid), recorded(pid, WHOLE_CHOICES)
+    )
+    studio.songs.sql(
+        "UPDATE class_revisions SET content_hash = :h WHERE id = :p", h=b"\0" * 32, p=pid
+    )
+    assert await refused(studio, rider, class_id, current, "swedebeat_playlist") == (
+        "mix_not_applied"
+    )
+
+
+DJ_CHOICES = json.loads(canonical(MixChoices.dj_defaults()))
+
+
+@pytest.mark.parametrize("keep_whole", [[], [99]])
+async def test_an_applied_draft_whose_choices_name_a_position_off_the_list_is_refused(
+    studio: StudioEnv, keep_whole: list[int]
+) -> None:
+    """The spec is ``applied`` of the DJ-mix defaults; the recorded choices differ from those only
+    by ``keep_whole``. A position off the eight-song list is refused by itself (``invalid_input``
+    inside ``applied``); without it the same draft is admitted."""
+    rider, class_id, _list, proposal = await designed(studio)  # MIX_8 on exact tracks
+    pid = proposal.current_revision_id
+    spec = copy.deepcopy(studio.songs.revision(pid).music["mix_spec"])  # DJ defaults give it back
+    choices = {**DJ_CHOICES, "keep_whole": keep_whole}
+    current = applied_draft(studio, class_id, pid, spec, recorded(pid, choices))
+    answer = await post(
+        rider, class_id, choice(current, studio, "swedebeat_playlist", "swedebeat_mix")
+    )
+    if keep_whole:
+        assert answer.status_code == 409, answer.text
+        assert answer.json()["detail"]["reason"] == "mix_not_applied"
+    else:
+        assert answer.status_code == 201, answer.text
+
+
+# --- the facts are the recorded analyses only (review finding 1 on #1403) ---------------------
+
+
+def as_local_design(studio: StudioEnv, class_id: UUID, owner: UUID, base_id: UUID) -> Any:
+    """The class as a draft designed on **local** analyses (as every studio draft before #1380
+    was): a ``local`` row beside each spotdown row, of the same bytes and map, and a new current
+    proposal (``design_draft``, the same content and spec) that records those local rows. The
+    spotdown rows stay in the cache, **exact** and unrecorded."""
+    studio.songs.sql(
+        "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map) "
+        "SELECT owner_id, reference, analyser_version, sha256, map "
+        "FROM swedebeat_track_maps WHERE owner_id = :o AND analyser = 'spotdown'",
+        o=owner,
+    )
+    base = studio.songs.revision(base_id)
+    records = [{**r, "analyser": "local", "provenance": None} for r in base.music["analyses"]]
+    made = uuid.uuid4()
+    studio.songs.sql(
+        "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
+        "music, provenance, job_id, parent_id) SELECT :id, owner_id, class_id, "
+        "(SELECT max(number) + 1 FROM class_revisions WHERE class_id = :c), 'draft', content, "
+        "content_hash, CAST(:music AS jsonb), provenance, job_id, id "
+        "FROM class_revisions WHERE id = :p",
+        id=made,
+        c=class_id,
+        p=base_id,
+        music=json.dumps({**base.music, "analyses": records}),
+    )
+    studio.songs.sql(
+        "UPDATE classes SET current_revision_id = :r WHERE id = :c", r=made, c=class_id
+    )
+    assert studio.songs.revision(made).provenance["origin"] == "design_draft"
+    return studio.songs.sql(
+        "SELECT current_revision_id FROM classes WHERE id = :c", c=class_id
+    ).one()
+
+
+def newer_spotdown_row(studio: StudioEnv, owner: UUID, reference: str) -> None:
+    """The recorded spotdown row of ``reference`` replaced by a newer analysis of other bytes,
+    still ``exact``: the draft did not record it."""
+    studio.songs.sql(
+        "UPDATE swedebeat_track_maps SET sha256 = :b, created_at = now() "
+        "WHERE owner_id = :o AND reference = :r AND analyser = 'spotdown'",
+        o=owner,
+        r=reference,
+        b=bytes(range(32)),
+    )
+
+
+@pytest.mark.parametrize("cache", ["exact_spotdown_beside_recorded_local", "newer_spotdown"])
+async def test_the_facts_are_only_the_analyses_the_draft_recorded(
+    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch, cache: str
+) -> None:
+    """A cut on the last song, whose recorded analysis is not ``exact`` (a ``local`` one) or is
+    gone (replaced by a newer row), while an **unrecorded exact** analysis of the same reference
+    is in the cache. Read from that row the cut would be the applied form; read from the recorded
+    rows only, it is refused at the choice and when the job runs, with nothing asked."""
+    rider, class_id, design = await designed_exact(studio, cut_last())
+    if cache == "newer_spotdown":
+        current = design
+        newer_spotdown_row(studio, rider.user_id, last_reference(studio, current))
+    else:
+        current = as_local_design(studio, class_id, rider.user_id, design.current_revision_id)
+    assert await refused(studio, rider, class_id, current, "swedebeat_mix") == "mix_not_applied"
+    done = await admitted_past_the_check(
+        studio, monkeypatch, rider, class_id, current, "swedebeat_mix"
+    )
+    assert (done.state, done.error_category) == ("failed", "mix_not_applied")
 
 
 # --- mix_not_chosen when the job runs ---------------------------------------------------------

@@ -13,7 +13,9 @@ import pytest
 from classbeat.studio import mix_applied_policy
 from classbeat.studio.mix_applied_policy import (
     APPLIED_ORIGIN,
+    MAX_CHAIN,
     PROPOSAL_ORIGINS,
+    STUDIO_SOURCE,
     Link,
     basis,
     holds,
@@ -24,6 +26,7 @@ from classbeat.studio.mix_applied_policy import (
 from classbeat.studio.mix_choice_model import MixChoices, canonical
 from classbeat.studio.mix_choice_policy import applied
 from classbeat.studio.output_choice_policy import OUTPUTS, refusal
+from classbeat.swedebeat_studio.song_list_model import SOURCE
 from mix_choice_fixtures import FACTS, ORDER, PLAIN, REPEAT, proposal, spec, track
 
 ALL = frozenset(OUTPUTS)
@@ -114,27 +117,59 @@ LIST = str(uuid.uuid4())
 OTHER_LIST = str(uuid.uuid4())
 
 
-def link(origin: str | None, song_list: str = LIST, kind: str = "draft") -> Link:
-    return Link(uuid.uuid4(), kind, song_list, origin)
+def link(
+    origin: str | None,
+    song_list: str = LIST,
+    kind: str = "draft",
+    source: str | None = STUDIO_SOURCE,
+) -> Link:
+    return Link(uuid.uuid4(), kind, song_list, origin, source)
 
 
-def test_the_proposal_is_the_nearest_allowlisted_draft_on_the_same_list() -> None:
+def test_the_studio_source_is_the_song_lists() -> None:
+    assert STUDIO_SOURCE == SOURCE
+
+
+def test_the_proposal_is_the_nearest_allowlisted_studio_draft_on_the_same_list() -> None:
     assert frozenset({"design_draft", "revise_draft"}) == PROPOSAL_ORIGINS
     first = link("revise_draft")
     older = link("design_draft")
-    passed_over = [
+    passed_over = [  # studio drafts of the same list whose origin is not a model design
         link(APPLIED_ORIGIN),
         link("duplicate"),
         link("beat_one"),
         link(None),
         link("studio_songs"),
-        link("design_draft", OTHER_LIST),
-        link("design_draft", kind="song_list"),
         link("refit_draft"),  # any origin added later until the allowlist names it
     ]
     assert proposal_of([*passed_over, first, older], LIST) == first.revision_id
     assert proposal_of(passed_over, LIST) is None
     assert proposal_of([], LIST) is None
+
+
+@pytest.mark.parametrize(
+    "barrier",
+    [
+        link("design_draft", OTHER_LIST),  # another list
+        link("design_draft", kind="song_list"),  # not a draft
+        link("design_draft", source="spotify"),  # a draft of another music source
+        link("design_draft", source=None),
+        link(APPLIED_ORIGIN, None),  # no list
+    ],
+)
+def test_the_walk_stops_at_a_revision_that_is_no_studio_draft_of_the_list(barrier: Link) -> None:
+    """#1402's rule (``mix_proposal_policy.step``): stop, never pass over to an older proposal."""
+    older = link("design_draft")
+    assert proposal_of([link(APPLIED_ORIGIN), barrier, older], LIST) is None
+    assert proposal_of([barrier, older], LIST) is None
+
+
+def test_the_walk_reads_at_most_max_chain_revisions() -> None:
+    proposed = link("design_draft")
+    assert MAX_CHAIN == 500
+    within = [*(link(APPLIED_ORIGIN) for _ in range(MAX_CHAIN - 1)), proposed]
+    assert proposal_of(within, LIST) == proposed.revision_id
+    assert proposal_of([link(APPLIED_ORIGIN), *within], LIST) is None
 
 
 def test_a_proposal_is_its_own_basis_with_the_choices_its_outputs_imply() -> None:
@@ -188,8 +223,9 @@ def test_any_other_draft_has_no_basis() -> None:
     for origin in ("duplicate", "beat_one", None, "sketch", "refit_draft"):
         assert basis([link(origin), proposed], LIST, {}, ["swedebeat_playlist"]) is None
     assert basis([], LIST, {}, ["swedebeat_playlist"]) is None
-    # A proposal on another list than the draft's (never its own proposal) has none either.
+    # A proposal on another list than the draft's, or of another source, has none either.
     assert basis([link("design_draft", OTHER_LIST)], LIST, {}, ["swedebeat_playlist"]) is None
+    assert basis([link("design_draft", source="x")], LIST, {}, ["swedebeat_playlist"]) is None
 
 
 # --- holds ------------------------------------------------------------------------------------

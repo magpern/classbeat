@@ -8,11 +8,12 @@
   ``spotdown`` row). A row that is gone or does not read is left out, so the draft is ``mixed``
   and not ``applied_form`` (fail closed).
 - **The lineage** is the draft and its parents on the same class of the same user, at most
-  ``MAX_CHAIN`` revisions (more than a class can hold): its origin, kind and ``song_list``, and
-  then the provenance of the draft itself and the music of the proposal ``basis`` names.
+  ``mix_applied_policy.MAX_CHAIN`` revisions: each one's kind, music source, ``song_list`` and
+  origin, then the provenance of the draft itself and the proposal ``basis`` names.
 - **The proposal** of ``applied`` is ``Proposal(the approved list by position, the proposal's
-  stored spec, the list's target_sec)``. A proposal row that is no studio draft any more, or any
-  read that fails, is not ``applied_form``.
+  stored spec, the list's target_sec)``, read as #1402's ``mix_proposal.load`` reads it: a studio
+  draft whose stored ``content_hash`` still holds over ``{content, mix_spec}``. Any other row, or
+  any read that fails, is not ``applied_form``.
 
 Nothing is written or logged.
 """
@@ -20,37 +21,38 @@ Nothing is written or logged.
 import json
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Any
 from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat.design import revision
 from classbeat.design.revision import StudioRevisionMusic
 from classbeat.design.studio_revision_model import wanted
 from classbeat.design.track_cache import cached_in, recorded
 from classbeat.spotdown.studio_map_model import stored_timing_class
-from classbeat.studio.mix_applied_policy import Link, basis, holds, mixed
+from classbeat.studio.mix_applied_policy import MAX_CHAIN, Link, basis, holds, mixed
 from classbeat.studio.mix_choice_model import Proposal
 from classbeat.studio.mix_facts_model import TrackFacts, of_map
 from classbeat.swedebeat_studio.current_draft import CurrentDraft
 
-MAX_CHAIN: Final = 256  # a class holds at most 200 revisions (``plans_revisions_per_class``)
-
 _CHAIN = text(
-    "WITH RECURSIVE chain (id, parent_id, kind, song_list_id, origin, depth) AS ("
-    " SELECT r.id, r.parent_id, r.kind, r.music ->> 'song_list_id', r.provenance ->> 'origin', 0"
+    "WITH RECURSIVE chain (id, parent_id, kind, source, song_list_id, origin, depth) AS ("
+    " SELECT r.id, r.parent_id, r.kind, r.music ->> 'source', r.music ->> 'song_list_id',"
+    " r.provenance ->> 'origin', 1"
     " FROM class_revisions r"
     " WHERE r.owner_id = :owner_id AND r.class_id = :class_id AND r.id = :revision_id"
     " UNION ALL"
-    " SELECT p.id, p.parent_id, p.kind, p.music ->> 'song_list_id', p.provenance ->> 'origin',"
+    " SELECT p.id, p.parent_id, p.kind, p.music ->> 'source', p.music ->> 'song_list_id',"
+    " p.provenance ->> 'origin',"
     " c.depth + 1 FROM chain c JOIN class_revisions p ON p.owner_id = :owner_id"
     " AND p.class_id = :class_id AND p.id = c.parent_id WHERE c.depth < :limit"
-    ") SELECT id, kind, song_list_id, origin FROM chain ORDER BY depth"
+    ") SELECT id, kind, source, song_list_id, origin FROM chain ORDER BY depth"
 )
 _ROW = text(
-    "SELECT kind, music, provenance FROM class_revisions "
+    "SELECT kind, content, content_hash, music, provenance FROM class_revisions "
     "WHERE owner_id = :owner_id AND class_id = :class_id AND id = :revision_id"
 )
 
@@ -95,7 +97,7 @@ async def _applied_form(
         "limit": MAX_CHAIN,
     }
     chain = [
-        Link(r.id, str(r.kind), r.song_list_id, r.origin)
+        Link(r.id, str(r.kind), r.song_list_id, r.origin, r.source)
         for r in (await db.execute(_CHAIN, params)).all()
     ]
     own = await _row(db, owner_id, class_id, found.revision_id)
@@ -107,18 +109,19 @@ async def _applied_form(
     if chosen is None:
         return False
     row = await _row(db, owner_id, class_id, chosen.proposal_id)
-    if row is None or row.kind != "draft":
+    if row is None or row.kind != "draft" or not isinstance(row.content, dict):
         return False
     try:
         music = StudioRevisionMusic.model_validate_json(json.dumps(row.music))
     except (ValidationError, TypeError, ValueError):
         return False
+    spec = music.mix_spec.model_dump(mode="json")
+    if revision.studio_hash(row.content, spec) != bytes(row.content_hash):  # pyright: ignore[reportUnknownArgumentType]
+        return False  # its stored hash no longer holds (a revision is immutable: never normal)
     if str(music.song_list_id) != song_list_id:
         return False
     approved = [s.swedebeat.reference if s.swedebeat else None for s in found.songs.content.songs]
-    proposal = Proposal(
-        approved, music.mix_spec.model_dump(mode="json"), found.songs.content.target_sec
-    )
+    proposal = Proposal(approved, spec, found.songs.content.target_sec)
     return holds(found.spec, proposal, facts, chosen.choices)
 
 
