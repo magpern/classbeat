@@ -220,3 +220,30 @@ def test_the_ten_percent_class_length_tolerance_counts_the_trimmed_windows() -> 
     good = trimmed()
     windows = [t["end_sec"] - t["start_sec"] for t in good["tracks"]]
     assert within_tolerance(total_sec(windows, good["crossfades"]), target)  # 580 s
+
+
+@pytest.mark.parametrize("timing", [None, "exact"])
+def test_a_bar_within_the_cut_rounding_of_the_end_is_the_end(timing: Any) -> None:
+    # 1.993 + 99 bars of 2 s = 199.993: rounded 199.99, one hundredth from the 200 s end
+    facts = TrackFacts(200.0, 120.0, 1.993, timing)
+    assert mix_cut_policy.placed(199.5, facts) == 200.0
+    others = {"b": PLAIN, "c": PLAIN}
+    value = spec(("a", 0, 199.5), ("b", 0, 240.0), ("c", 0, 240.0))
+    good = checked(value, ORDER, {"a": facts, **others})
+    assert good["tracks"][0]["end_sec"] == 200.0
+    assert checked(good, ORDER, {"a": facts, **others}) == good
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_cuts_near_the_end_place_once_on_any_grid(seed: int) -> None:
+    rng = random.Random(1000 + seed)  # noqa: S311 - a reproducible table, not a secret
+    length = round(rng.uniform(150.0, 400.0), rng.choice([2, 3]))
+    bpm = rng.uniform(70.0, 190.0)
+    bar = 240.0 / bpm
+    # every other grid has a downbeat just before the end, within the cut rounding of it
+    first = (length - rng.uniform(0.004, 0.014)) % bar if seed % 2 else rng.uniform(0.0, 2.0)
+    facts = TrackFacts(length, bpm, first, rng.choice([None, "exact"]))
+    for _ in range(25):
+        at = round(rng.uniform(length - 3.0, length + 0.005), rng.choice([2, 3]))
+        once = mix_cut_policy.placed(at, facts)
+        assert mix_cut_policy.placed(once, facts) == once

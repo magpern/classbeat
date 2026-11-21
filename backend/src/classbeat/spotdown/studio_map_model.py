@@ -9,7 +9,8 @@ other bytes is never ``exact``), then the track map from ``spotdown_map_policy.t
 an ``exact`` ``played_recording`` track that maps is used; anything else is ``StudioRefused`` with
 a code, and the caller analyses that track locally. The map also carries the track's **cut
 candidates** under ``cut_candidates_model.MAP_KEY`` (``cut_candidates_calc``, #1328), read back by
-``agent.studio_mix.StudioTrack``.
+``agent.studio_mix.StudioTrack``. A map, candidates included, larger than the table's check
+(``MAP_MAX``) is ``StudioRefused("map_too_large")``, so the track is analysed locally.
 
 The provenance kept with the map is ``provenance_model``'s record (ids, versions, the audio
 identity, the timing class with its reason and evidence, the policy versions), at most
@@ -39,6 +40,7 @@ from classbeat.spotdown.timing_inputs_model import Played, TimingClass, TimingIn
 
 PLAYED_KIND: Final = "swedebeat_track"
 PROVENANCE_MAX: Final = 65536  # the table's check on ``swedebeat_track_maps.provenance``
+MAP_MAX: Final = 1 << 20  # the table's check on ``swedebeat_track_maps.map`` (``MAX_MAP_BYTES``)
 STUDIO_POLICY_VERSIONS: Final = (
     *POLICY_VERSIONS,
     ("cut_candidates_calc", cut_candidates_calc.VERSION),
@@ -80,11 +82,18 @@ def studio_map(
         **mapped.track_map,
         MAP_KEY: as_json(cut_candidates_calc.candidates(doc, decision)),
     }
-    try:
-        fits = jsonb_text_size(record) <= PROVENANCE_MAX
-    except (TypeError, ValueError):
-        fits = False
+    if not _fits(track_map, MAP_MAX):
+        return StudioRefused("map_too_large")  # the candidates too: never past the table's check
+    fits = _fits(record, PROVENANCE_MAX)
     return StudioMap(track_map, record) if fits else StudioRefused("provenance_too_large")
+
+
+def _fits(value: Mapping[str, object], limit: int) -> bool:
+    """Within ``limit`` as the table measures it (jsonb's text, ``jsonb_text_calc``)."""
+    try:
+        return jsonb_text_size(value) <= limit
+    except (TypeError, ValueError):
+        return False
 
 
 def _obj(value: object, key: str) -> Mapping[str, object] | None:

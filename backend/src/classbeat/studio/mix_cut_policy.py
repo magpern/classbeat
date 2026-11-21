@@ -20,8 +20,9 @@ downbeat plus whole bars at its BPM), only for an ``exact`` track or one with no
 decision (a local analysis of the played bytes, as before #1328); an ``approximate`` or
 ``unusable`` track keeps its cut, rounded, and is never snapped to a grid. A start of 0 stays the
 file's start, and an end within 0.01 s of the length, or past it, is the length in whole
-hundredths (``cs(length)``, as ``mowl.compose._clamp`` clamps a window). Cuts are rounded to
-0.01 s.
+hundredths (``cs(length)``, as ``mowl.compose._clamp`` clamps a window), **after** the snap and
+the rounding as well as before: a bar that lands within the cut rounding of the end is the end,
+so placing a placed cut again never moves it. Cuts are rounded to 0.01 s.
 """
 
 from typing import Final
@@ -75,12 +76,12 @@ def snapped(at: float, facts: TrackFacts) -> float:
     edge = _edge(at, facts)
     if edge is not None:
         return edge
-    end = cs(facts.length) / CS
-    if not snaps(facts):
-        return min(round(at, 2), end)
-    bar = 240.0 / facts.bpm
-    nearest = facts.first_downbeat + round((at - facts.first_downbeat) / bar) * bar
-    return min(round(max(nearest, 0.0), 2), end)
+    if snaps(facts):
+        bar = 240.0 / facts.bpm
+        at = facts.first_downbeat + round((at - facts.first_downbeat) / bar) * bar
+    rounded = round(max(at, 0.0), 2)
+    edge = _edge(rounded, facts)  # once rounded, the edges again (0, or the length and past it)
+    return rounded if edge is None else edge
 
 
 def placed(at: float, facts: TrackFacts) -> float:

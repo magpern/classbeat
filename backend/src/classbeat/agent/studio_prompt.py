@@ -31,7 +31,8 @@ SwedeBeat playlist;
 - the cut of each piece: start_sec and end_sec in the track's own seconds, 0 <= start_sec < \
 end_sec <= its length, with at least 60 s played. A cut near a trusted cut point moves to it, \
 then to the nearest downbeat (first_downbeat_sec plus whole bars of bar_sec); 0 and the \
-track's length stay the edges. A track with timing approximate is never moved to a bar;
+track's length stay the edges. A track with timing approximate or unusable is never moved \
+to a bar;
 - the cut points: per track, cut_points lists where it may be cut, in its own seconds (the \
 music's start and end, silence and fade edges; get_music with a track adds segment, label and \
 phrase starts). A point whose use is hint is a guess: never cut at one for that reason alone. \

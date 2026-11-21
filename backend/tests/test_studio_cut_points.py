@@ -92,7 +92,7 @@ def test_the_prompts_keep_the_whole_track_by_default() -> None:
         assert "cut only actual silence" in system
         assert "give the reason in that piece's why" in system
         assert "A point whose use is hint is a guess" in system
-        assert "timing approximate is never moved to a bar" in system
+        assert "timing approximate or unusable is never moved to a bar" in system
 
 
 def test_a_plan_cut_near_a_trusted_point_comes_back_on_it() -> None:
