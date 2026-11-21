@@ -1,12 +1,16 @@
 """The studio's music for the model and its composition (ADR 0036 sections 4.2 to 4.4, SR C5).
 Pure: no I/O, no reference.
 
-- ``StudioTrack``: one approved track as the stage holds it: the list's Spotify title and artist
-  and its analysis (``mowl.track``'s map). **No catalogue reference**: the stage names tracks by
-  index, and only the backend maps an index back to a reference (``swedebeat_studio.design``).
+- ``StudioTrack``: one approved track as the stage holds it: the list's Spotify title and artist,
+  its analysis (``mowl.track``'s map) and its stored timing class (``None`` for a local analysis);
+  ``facts`` adds the cut candidates stored with a spotdown map (#1328, trust inherited again).
+  **No catalogue reference**: the stage names tracks by index, and only the backend maps an index
+  back to a reference (``swedebeat_studio.design``).
 - ``music_summary`` / ``track_detail``: per track its index, title, artist, BPM, length, bar
-  length and first downbeat, and the drops and breakdowns in the track's own seconds; a track's
-  detail adds its sections with their energy. Numbers come from the analysis only.
+  length and first downbeat, the drops and breakdowns in the track's own seconds, its timing class
+  when spotdown analysed it and its edge cut points (``cut_points_input``); a track's detail adds
+  its sections with their energy and every cut point but the downbeats. Numbers come from the
+  analysis only.
 - ``compose``: the model's plan (indexes, cuts, crossfades) checked by ``mix_plan_policy`` against
   the analyses (``ToolError('invalid_mix')`` with the named reason), then ``mowl.compose.
   compose_map``: the map ``fit_to_music`` reads, with ``crossfade`` 0 because the crossfades are
@@ -21,11 +25,14 @@ from typing import Any, Final
 from mowl import compose as mix
 from mowl.workout import mmss
 
-from classbeat.agent import mix_input, model_input
+from classbeat.agent import cut_points_input, mix_input, model_input
 from classbeat.agent.model_input import EVENT_KINDS, view_text
 from classbeat.agent.stage import ToolError
 from classbeat.agent.studio_schemas import MixInput
+from classbeat.spotdown.cut_candidates_model import MAP_KEY
+from classbeat.spotdown.timing_inputs_model import TimingClass
 from classbeat.studio import mix_hint_policy
+from classbeat.studio.mix_facts_model import stored_candidates
 from classbeat.studio.mix_plan_policy import (
     CS,
     MixPlanRefused,
@@ -45,11 +52,16 @@ class StudioTrack:
     title: str
     artist: str
     music_map: Mapping[str, Any]
+    timing_class: TimingClass | None = None  # the stored decision's; ``None``: a local analysis
 
     def facts(self) -> TrackFacts:
         (song,) = self.music_map["songs"]
         return TrackFacts(
-            float(self.music_map["duration"]), float(song["bpm"]), float(song["first_downbeat"])
+            float(self.music_map["duration"]),
+            float(song["bpm"]),
+            float(song["first_downbeat"]),
+            self.timing_class,
+            stored_candidates(self.music_map.get(MAP_KEY), self.timing_class),
         )
 
 
@@ -71,6 +83,8 @@ def _events(m: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 def _track(index: int, track: StudioTrack) -> dict[str, Any]:
     facts = track.facts()
+    timing = {} if facts.timing_class is None else {"timing": facts.timing_class}
+    points = cut_points_input.edge_points(facts)
     return {
         "index": index,
         "title": view_text(track.title),
@@ -80,6 +94,8 @@ def _track(index: int, track: StudioTrack) -> dict[str, Any]:
         "bar_sec": round(240.0 / facts.bpm, 3),
         "first_downbeat_sec": round(facts.first_downbeat, 2),
         "drops_and_breakdowns": _events(track.music_map),
+        **timing,
+        **({"cut_points": points} if points else {}),
     }
 
 
@@ -100,7 +116,12 @@ def track_detail(tracks: Sequence[StudioTrack], index: int) -> dict[str, Any]:
          "energy": s.get("energy")}
         for s in track.music_map.get("sections") or []
     ]  # fmt: skip
-    return {**_track(index, track), "sections": sections}
+    points = cut_points_input.all_points(track.facts())
+    return {
+        **_track(index, track),
+        "sections": sections,
+        **({"cut_points": points} if points else {}),
+    }
 
 
 def _whole(value: float) -> int | float:

@@ -10,6 +10,10 @@ half), runs the stage on an in-memory host and checks the submitted draft with t
 plays every track at least once and no other (a repeat is allowed, #1342), each window plays at
 least 60 s, the total is the backend's one duration rule
 and the composed map's, and no stand-in for a catalogue reference reached the model.
+
+The local tracks have no stored timing decision and so no cut candidates (#1328); the spotdown
+variant (``tests/test_evals_studio_spotdown.py``) gives the same tracks with their candidates, and
+the recorded script's trimmed piece carries its ``why`` (the prompts of #1328).
 """
 
 from collections.abc import Callable

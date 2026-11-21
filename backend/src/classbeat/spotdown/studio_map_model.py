@@ -7,7 +7,9 @@ SwedeBeat reference and **always goes through the two policies**: the timing cla
 the same sha256; no match, alignment, beat equivalence or anchors are given, so a document of
 other bytes is never ``exact``), then the track map from ``spotdown_map_policy.track_map``. Only
 an ``exact`` ``played_recording`` track that maps is used; anything else is ``StudioRefused`` with
-a code, and the caller analyses that track locally.
+a code, and the caller analyses that track locally. The map also carries the track's **cut
+candidates** under ``cut_candidates_model.MAP_KEY`` (``cut_candidates_calc``, #1328), read back by
+``agent.studio_mix.StudioTrack``.
 
 The provenance kept with the map is ``provenance_model``'s record (ids, versions, the audio
 identity, the timing class with its reason and evidence, the policy versions), at most
@@ -15,9 +17,13 @@ identity, the timing class with its reason and evidence, the policy versions), a
 none). No title, file name, URL, scope or client ref; the played reference is used only for the
 path (a) check and is not part of the record.
 
+``stored_timing_class`` reads a stored record's class for the studio's ``TrackFacts``.
+
 ``current_provenance`` is the cache's rule for a stored ``spotdown`` row: the record of this
 version, ``exact`` on path (a), of the row's own bytes (the record's sha256 is the row's), made
-under the policy versions of this build. Any other row is analysed again.
+under the policy versions of this build (``STUDIO_POLICY_VERSIONS``: ``provenance_model``'s and
+``cut_candidates_calc``'s, so a row stored before its candidates is analysed again). Any other row
+is analysed again.
 """
 
 from collections.abc import Mapping
@@ -25,13 +31,18 @@ from dataclasses import dataclass
 from typing import Final
 
 from classbeat.jsonb_text_calc import jsonb_text_size
-from classbeat.spotdown import spotdown_map_policy, timing_class_policy
+from classbeat.spotdown import cut_candidates_calc, spotdown_map_policy, timing_class_policy
+from classbeat.spotdown.cut_candidates_model import MAP_KEY, as_json
 from classbeat.spotdown.provenance_model import POLICY_VERSIONS, RECORD_VERSION, provenance_of
 from classbeat.spotdown.provenance_read_calc import analysed
-from classbeat.spotdown.timing_inputs_model import Played, TimingInputs
+from classbeat.spotdown.timing_inputs_model import Played, TimingClass, TimingInputs
 
 PLAYED_KIND: Final = "swedebeat_track"
 PROVENANCE_MAX: Final = 65536  # the table's check on ``swedebeat_track_maps.provenance``
+STUDIO_POLICY_VERSIONS: Final = (
+    *POLICY_VERSIONS,
+    ("cut_candidates_calc", cut_candidates_calc.VERSION),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,11 +75,16 @@ def studio_map(
         return StudioRefused(mapped.reason)
     record = provenance.record()
     record["source"] = {"kind": provenance.source_kind, "ref": None}
+    record["policy_versions"] = dict(STUDIO_POLICY_VERSIONS)
+    track_map = {
+        **mapped.track_map,
+        MAP_KEY: as_json(cut_candidates_calc.candidates(doc, decision)),
+    }
     try:
         fits = jsonb_text_size(record) <= PROVENANCE_MAX
     except (TypeError, ValueError):
         fits = False
-    return StudioMap(mapped.track_map, record) if fits else StudioRefused("provenance_too_large")
+    return StudioMap(track_map, record) if fits else StudioRefused("provenance_too_large")
 
 
 def _obj(value: object, key: str) -> Mapping[str, object] | None:
@@ -93,5 +109,17 @@ def current_provenance(provenance: object, sha256: str) -> bool:
         and timing.get("class") == "exact"
         and timing.get("reason") == "played_recording"
         and versions is not None
-        and dict(versions) == dict(POLICY_VERSIONS)
+        and dict(versions) == dict(STUDIO_POLICY_VERSIONS)
     )
+
+
+def stored_timing_class(provenance: object) -> TimingClass | None:
+    """The timing class a stored ``spotdown`` row's record names; ``unusable`` when it names none
+    (any doubt: no candidates), ``None`` for a row without a record (a local analysis)."""
+    if provenance is None:
+        return None
+    timing = _obj(provenance, "timing")
+    found = None if timing is None else timing.get("class")
+    if found == "exact":
+        return "exact"
+    return "approximate" if found == "approximate" else "unusable"

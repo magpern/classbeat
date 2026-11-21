@@ -16,8 +16,8 @@ from classbeat import egress_spotdown
 from classbeat.config import Settings
 from classbeat.spotdown import studio_policy as sp
 from classbeat.spotdown.failure_policy import TrackFailure, Unreachable
-from classbeat.spotdown.provenance_model import POLICY_VERSIONS
 from classbeat.spotdown.studio_map_model import (
+    STUDIO_POLICY_VERSIONS,
     StudioMap,
     StudioRefused,
     current_provenance,
@@ -56,7 +56,7 @@ def test_the_played_bytes_are_exact_and_mapped_with_their_provenance() -> None:
     assert record["timing"]["class"] == "exact"  # type: ignore[index]
     assert record["timing"]["reason"] == "played_recording"  # type: ignore[index]
     assert record["audio"]["sha256"] == SHA  # type: ignore[index]
-    assert record["policy_versions"] == dict(POLICY_VERSIONS)
+    assert record["policy_versions"] == dict(STUDIO_POLICY_VERSIONS)
     assert record["source"] == {"kind": "upload", "ref": None}
     assert REFERENCE not in json.dumps(record)  # the played reference is never kept
     assert current_provenance(record, SHA)
