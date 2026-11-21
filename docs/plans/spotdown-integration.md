@@ -6,6 +6,8 @@ Companion repository: [magpern/spotdown](https://github.com/magpern/spotdown), [
 
 **Note 2026-11-20 (#1300):** ADR 0040 §5 supersedes two names in this plan: the lookups' query parameter is `cache_scope=` (was `scope=`) and the `rate_limited` field is `retry_after_s` (was `retry_after`). They are renamed below; no decision changed.
 
+**Note 2026-11-20 (#1296, roadmap Amendment 32):** decision 1 of "Decisions that need the owner" is answered. The owner accepted the terms-of-service risk and deploys spotdown with YouTube switched on, and Spotify classes get their analysis through spotdown (the MOWL sections are the fallback, not the default). P6 is no longer gated by #1296; the default switch still waits for #1298. classbeat does not police how the analysis service sources audio. The retention of the global entries is settled in [ADR 0040](../adr/0040-spotdown-analysis-service.md), amendment "#1296 accepted". The issue table row for P6 below, which lists #1296 as its blocker, is superseded by this note (#1296 is answered; only the default switch, #1298, remains). The body below is frozen and unchanged.
+
 ## Issues
 
 | Phase | Issue | Repo | Depends on | Owner blocker |
@@ -247,6 +249,12 @@ Per-track statuses from spotdown, and how classbeat reacts:
 | `processing_failed` | decode error, timeout, out of memory | deterministic, so no retry on the same audio (except 1 retry after a timeout); then an alternate, then the MOWL sections, then replacement |
 | `alignment_failed` | analysed, but the timeline is unusable | the timing class becomes `unusable`, as in §2 |
 | spotdown unreachable | – | the whole class uses today's paths (MOWL sections, or the local studio and mix analysis). spotdown is never a hard dependency. |
+
+*Note 2026-11-20 (#1303, #1325; ADR 0040, the amendment "the match stage of the Spotify flow"): for the
+Spotify match stage, `rate_limited` is waited for **in the run** instead of a fenced requeue: each wait
+is charged to the class's wait budget before it is made and made only when it fits, with checkpoints at
+least every 10 s. That amendment supersedes the `rate_limited` row above for that stage; the other
+stages are unchanged by it.*
 
 **Overall bounds per class:**
 - match retry: 1;

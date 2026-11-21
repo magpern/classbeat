@@ -67,7 +67,7 @@ def no_pause(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
     monkeypatch.setattr(gateway_match, "_pause", pause)
     monkeypatch.setattr(track_shadow, "_pause", pause)
-    monkeypatch.setattr(track_spotdown, "_pause", pause)
+    monkeypatch.setattr(track_spotdown, "pause", pause)
     yield
     studio_tracks_config.configure(None)
     shadow_config.configure(None)
@@ -563,7 +563,7 @@ def _raising(exc: BaseException, generator: bool = False) -> Any:
     [
         (SpotdownClient, "lookup_content", OSError("socket")),
         (SpotdownClient, "upload", ValueError("bad")),
-        (track_spotdown, "_chunks", PermissionError("audio")),
+        (track_spotdown, "chunks", PermissionError("audio")),
         (SpotdownClient, "start_analysis", KeyError("x")),
         (SpotdownClient, "poll", TypeError("x")),
         (SpotdownClient, "get_analysis", httpx.ReadError("x")),
@@ -585,7 +585,7 @@ async def test_an_error_of_any_type_in_a_spotdown_step_falls_back(
     if name in ("studio_map", "valid_track_map"):
         monkeypatch.setattr(target, name, lambda *_a, **_k: (_ for _ in ()).throw(exc))
     else:
-        monkeypatch.setattr(target, name, _raising(exc, generator=name == "_chunks"))
+        monkeypatch.setattr(target, name, _raising(exc, generator=name == "chunks"))
     owner = await on_owner(harness)
     row = await harness.run(owner, [ONE])
     assert (row.state, row.error_category) == ("completed", None)

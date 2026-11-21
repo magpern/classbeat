@@ -10,8 +10,9 @@
 - **A store** (``store``) is one fenced transaction per analysed track: the connection held again
   (so a Disconnect that forgot the rows cannot be undone by a late store), the row upserted with
   the SHA-256 of the analysed bytes, then the user's rows past ``MAP_TTL_DAYS`` and all but the
-  newest ``MAPS_PER_USER`` dropped, as ``swedebeat_mix_maps`` does. The last store of a run frees
-  its mix-analysis slot (#574).
+  newest ``MAPS_PER_USER`` dropped (rows of both analysers count), as ``swedebeat_mix_maps``
+  does. The last store of a run frees its mix-analysis slot (#574). The run goes on with the map
+  **as stored** (jsonb's form, ``RETURNING map``), the one a later read sees and hashes.
 - **The analyser** (ADR 0040 section 6, #1302): a row is ``local`` (``mowl.music.analyze_track``)
   or ``spotdown`` (spotdown's analysis of the same bytes, with its ``provenance`` record). A
   track's two rows coexist; a store replaces only the row of its own analyser, so a class
@@ -74,7 +75,7 @@ _UPSERT = text(
     "CAST(:provenance AS jsonb)) "
     "ON CONFLICT (owner_id, reference, analyser_version, analyser) DO UPDATE SET "
     "sha256 = EXCLUDED.sha256, map = EXCLUDED.map, provenance = EXCLUDED.provenance, "
-    "created_at = now()"
+    "created_at = now() RETURNING map"
 )
 _EXPIRE = text(
     "DELETE FROM swedebeat_track_maps "
@@ -173,8 +174,11 @@ async def cached_by_sha256(
 
 async def store(
     run: JobRun, connection: OpenConnection, analysed: TrackMap, *, release_slot: bool
-) -> None:
-    """Keep ``analysed`` for the user (``not_connected`` when the connection is gone)."""
+) -> TrackMap:
+    """Keep ``analysed`` for the user (``not_connected`` when the connection is gone); answers it
+    with the map **as stored**: jsonb's form, which a later read sees (``-0.0`` is ``0.0``,
+    ``1e+16`` an integer), so a draft records the hash of what revise, outputs and the timeline
+    read (``recorded``)."""
     owner = run.lease.owner_id
     payload = json.dumps(analysed.music_map, separators=(",", ":"), allow_nan=False)
     provenance = analysed.provenance
@@ -184,7 +188,7 @@ async def store(
     async with run.fenced() as fs:
         if not await hold(fs.db, run.ctx, connection):
             raise JobFailure("not_connected")
-        await fs.db.execute(
+        kept = await fs.db.scalar(
             _UPSERT,
             {
                 "owner_id": owner,
@@ -202,6 +206,14 @@ async def store(
             await run.release_analysis_slot(fs)  # #574: free once this commits
     if release_slot:
         run.slot_released()
+    return TrackMap(  # the map as stored: a jsonb object reads back as a dict
+        analysed.reference,
+        analysed.sha256,
+        cast(dict[str, Any], kept),
+        cached=analysed.cached,
+        analyser=analysed.analyser,
+        provenance=analysed.provenance,
+    )
 
 
 def recorded(wanted: Mapping[str, Wanted]) -> Accept:

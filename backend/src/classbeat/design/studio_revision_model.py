@@ -10,8 +10,9 @@
   SHA-256 of the analysed bytes, the hex SHA-256 of the map itself (``map_hash``: a re-analysis
   of the same bytes by the same analyser, say after a policy change, is another map) and, for
   spotdown, ``provenance_model``'s record (the analysis id, versions, the audio identity, the
-  timing class and its evidence): the provenance kept per track in a class (plan section 4a),
-  under the class's retention (ADR 0007 section 11), not only the 30-day cache row's.
+  timing class and its evidence; at most ``MAX_TRACKS`` records, each provenance read from a cache
+  row, which the table caps at 64 KiB): the provenance kept per track in a class (plan section
+  4a), under the class's retention (ADR 0007 section 11), not only the 30-day cache row's.
 - ``wanted``: what a later step (revise, outputs, the timeline) must read for each reference:
   exactly the recorded analyser, bytes and map. A draft stored before #1302 has no ``analyses``; its
   tracks were all analysed locally, so it wants the ``local`` row, of any bytes, as before.
@@ -26,6 +27,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from classbeat.design.track_map_policy import MAX_TRACKS
 from classbeat.studio.mix_spec_model import MixSpec
 
 Analyser = Literal["local", "spotdown"]
@@ -50,7 +52,7 @@ class StudioRevisionMusic(BaseModel):
     song_list_id: UUID
     mix_spec: MixSpec
     map_version: int = Field(ge=1)
-    analyses: list[TrackRecord] | None = None
+    analyses: list[TrackRecord] | None = Field(default=None, max_length=MAX_TRACKS)
 
 
 @dataclass(frozen=True, slots=True)

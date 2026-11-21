@@ -85,14 +85,14 @@ async def _attempt(
     elif found is not None:
         return found
     else:
-        uploaded = await client.upload(relay._chunks(audio), scope, key("upload"))  # pyright: ignore[reportPrivateUsage]
+        uploaded = await client.upload(relay.chunks(audio), scope, key("upload"))
         if not isinstance(uploaded, Uploaded):
             return uploaded
         started = await client.start_analysis(
             scope, f"mix-{uuid.uuid4().hex}", key("start"), upload_id=uploaded.upload_id
         )
         if isinstance(started, Pending):
-            ready = await relay._wait_ready(run, session, started.job_id)  # pyright: ignore[reportPrivateUsage]
+            ready = await relay.wait_ready(run, session, started.job_id)
             if not isinstance(ready, str) or ready == relay.TIMED_OUT:
                 return ready
             analysis_id = ready
@@ -119,18 +119,18 @@ async def _analyse(
         if isinstance(outcome, str):
             return outcome  # the budget is spent
         if isinstance(outcome, Unreachable):
-            await relay._outage(run, session)  # pyright: ignore[reportPrivateUsage]
+            await relay.note_outage(run, session)
             return "unreachable"
         step = studio_policy.reaction(outcome, retried)
         if step == "wait":
             wait = studio_policy.wait_for(outcome.retry_after_s, session.left())
             if wait is None:
                 return relay.TIMED_OUT
-            await relay._pause(run, wait)  # pyright: ignore[reportPrivateUsage]
+            await relay.pause(run, wait)
         elif step == "retry":
             retried, attempt = True, attempt + 1
             pause = min(studio_policy.RETRY_PAUSE_SECONDS, max(session.left(), 0.0))
-            await relay._pause(run, pause)  # pyright: ignore[reportPrivateUsage]
+            await relay.pause(run, pause)
         else:
             return outcome.status
         await run.checkpoint()
@@ -150,7 +150,7 @@ async def analyse(run: JobRun, session: relay.Session, mix_id: str, audio: Path)
     """spotdown's map of the fetched ``audio`` of the mix ``mix_id``; ``None``: analyse it
     locally."""
     try:
-        await relay._begin(run, session)  # pyright: ignore[reportPrivateUsage]
+        await relay.begin(run, session)
         if session.deadline is not None:  # the job's budget, and at most today's 180 s
             session.deadline = min(session.deadline, time.monotonic() + MIX_WAIT_SECONDS)
         if session.outage or session.left() <= 0:

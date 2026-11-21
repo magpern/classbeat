@@ -139,9 +139,9 @@ async def test_each_track_is_downloaded_analysed_stored_and_its_audio_deleted(
 ) -> None:
     real, at_store = track_analysis.store, list[list[str]]()
 
-    async def store(*args: Any, **kwargs: Any) -> None:
+    async def store(*args: Any, **kwargs: Any) -> TrackMap:
         at_store.append(leftovers(work))  # the audio is gone before the map is stored
-        await real(*args, **kwargs)
+        return await real(*args, **kwargs)
 
     monkeypatch.setattr(track_analysis, "store", store)
     owner = await harness.user()

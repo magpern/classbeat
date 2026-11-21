@@ -260,7 +260,7 @@ classbeat cannot see what the user plays, so the rule is:
 
 | Case | What the user sees | Rule |
 |---|---|---|
-| spotdown off or unreachable | "Audio analysis is not available now", the upload control disabled; classes of other kinds are unaffected | no queue of uploads; nothing is stored |
+| spotdown off or unreachable | "Audio analysis is not available now", the upload control disabled; classes of other kinds are unaffected | no queue of uploads; nothing is persisted (§1) |
 | wrong format, over the size or length cap | the reason, named in plain words | refused before or during the relay; nothing kept; the row and scope removed |
 | `processing_failed` (decode, timeout, out of memory) | "We could not read that file; try another export" | no retry on the same audio (one retry after a timeout, ADR 0040 §8); the row removed |
 | `rate_limited`, analysis slots busy | "Waiting for analysis", then the result | fenced requeue with `retry_after_s`, within the 10-minute budget of ADR 0040 §8, then "Try again later" |
@@ -355,7 +355,7 @@ classbeat keeps **no audio, no file name, no tag and no URL**. It keeps:
 - **Malware and hostile files.** classbeat never decodes, parses beyond the format sniff, writes or
   executes the bytes; it relays them. The decoder is spotdown's, in a subprocess with rlimits on
   memory, CPU time and decoded length, inside the container ceilings, and spotdown deletes the file
-  after the job (hard gate: no audio kept). **No antivirus scan** is added: nothing is stored, served
+  after the job (hard gate: no audio kept). **No antivirus scan** is added: nothing is persisted (§1), served
   or executed, and a scanner would be one more parser of hostile input next to the web process; this
   is reversible (§11). Requirements on spotdown for hostile input (§14, U2): force the demuxer from
   the sniffed kind (mp3, mp4, wav only) so a text container such as a playlist, `concat` or HLS file

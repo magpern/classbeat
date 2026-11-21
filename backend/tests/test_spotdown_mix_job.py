@@ -86,7 +86,7 @@ def no_pause(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     async def pause(*_args: object) -> None:
         return None
 
-    monkeypatch.setattr(track_spotdown, "_pause", pause)
+    monkeypatch.setattr(track_spotdown, "pause", pause)
     yield
     mix_config.configure(None)
 
@@ -458,14 +458,14 @@ def _sync_raising(exc: BaseException) -> Any:
         (mix_spotdown, "_sha256", OSError("disk"), "sync"),
         (SpotdownClient, "lookup_content", OSError("socket"), "async"),
         (SpotdownClient, "upload", ValueError("bad"), "async"),
-        (track_spotdown, "_chunks", PermissionError("audio"), "generator"),
+        (track_spotdown, "chunks", PermissionError("audio"), "generator"),
         (SpotdownClient, "start_analysis", KeyError("x"), "async"),
         (SpotdownClient, "poll", TypeError("x"), "async"),
         (SpotdownClient, "get_analysis", httpx.ReadError("x"), "async"),
         (mix_spotdown, "mix_map_of", AttributeError("x"), "sync"),
         (mix_spotdown, "valid_map", ZeroDivisionError(), "sync"),
         (track_spotdown.budget, "open", LookupError("x"), "async"),
-        (mix_spotdown.relay, "_outage", ArithmeticError("x"), "async"),
+        (mix_spotdown.relay, "note_outage", ArithmeticError("x"), "async"),
     ],
 )
 async def test_an_error_of_any_type_in_a_spotdown_step_falls_back(
@@ -480,7 +480,7 @@ async def test_an_error_of_any_type_in_a_spotdown_step_falls_back(
     kind: str,
 ) -> None:
     off, off_rows = await baseline(harness, mowl_api)
-    if name == "_outage":
+    if name == "note_outage":
         spotdown.connect_error = True  # the step that records the outage raises
     if kind == "sync":
         monkeypatch.setattr(target, name, _sync_raising(exc))

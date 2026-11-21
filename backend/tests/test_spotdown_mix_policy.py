@@ -29,8 +29,8 @@ from classbeat.spotdown.mix_map_model import (
     current_mix_provenance,
     mix_map_of,
 )
+from classbeat.spotdown.owner_list_policy import OwnerListRefused, parse_owners
 from classbeat.spotdown.spotdown_map_policy import MapRefused
-from classbeat.spotdown.studio_owners_policy import StudioOwnersRefused, parse_owners
 from classbeat.spotdown.timing_class_policy import TimingDecision
 from spotdownfake import example
 
@@ -343,7 +343,7 @@ def test_the_mix_allowlist_is_read_checked_and_named(monkeypatch: pytest.MonkeyP
     with pytest.raises(ValueError, match="spotdown_mix_owners must be") as refused:
         Settings(_env_file=None)  # type: ignore[call-arg]
     assert "nobody" not in str(refused.value)
-    with pytest.raises(StudioOwnersRefused, match="spotdown_mix_owners"):
+    with pytest.raises(OwnerListRefused, match="spotdown_mix_owners"):
         parse_owners("nobody", "spotdown_mix_owners")
 
 

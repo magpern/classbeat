@@ -2,7 +2,7 @@
 (ADR 0040 sections 6 to 8; SD-P5, #1302)
 
 Revision ID: 0064_track_map_provenance
-Revises: 0063_spotdown_shadow
+Revises: 0066_spotdown_song_budgets
 Create Date: 2026-11-20
 
 - ``swedebeat_track_maps`` gains ``analyser`` (``local``: ``mowl.music.analyze_track`` in the
@@ -18,6 +18,9 @@ Create Date: 2026-11-20
   analysed locally). No content. Owner RLS; gone with the job (and so the class) and the account
   by cascade.
 
+It revises 0066 (#1325, merged first), so the line stays single-headed; the ids need not be in
+numeric order.
+
 The downgrade drops the budget table, the ``spotdown`` rows (a cache: they are analysed again),
 both columns, and restores the old key.
 """
@@ -29,7 +32,7 @@ from alembic import op
 from classbeat.db.rls import enable_owner_rls
 
 revision: str = "0064_track_map_provenance"
-down_revision: str | Sequence[str] | None = "0063_spotdown_shadow"
+down_revision: str | Sequence[str] | None = "0066_spotdown_song_budgets"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
