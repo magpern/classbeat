@@ -12,7 +12,11 @@ never from model text (ADR 0036 section 6, SR C7). Pure: no I/O.
   5) and ``trim`` true whenever there is a cut (a start after 0 or an end before the analysed
   length), otherwise left to the gateway (``null``: true when it finds a cut itself).
 - **The render plan** (``render_plan``): ``mowl.compose.mix_offsets`` of the spec at 44100 Hz with
-  the analysed lengths, each track named by its reference (the paths are the render's own).
+  the analysed lengths, each track named by its reference (the paths are the render's own). Given
+  the tracks' ``TrackFacts``, a transition the backend finds fit for it (``mix_curve_policy``,
+  #1330) adds ``curve`` ``bass_swap`` and its ``swap`` to the incoming track; every other one has
+  no curve (``equal_power``). The playlist body never carries a curve: the app applies only cuts
+  and crossfades.
 - **X-Tracks** (``x_tracks``): per **loop run** in mix order (ADR 0036 amendment A8: adjacent pieces
   of one song are one entry, one song playing on; a non-adjacent repeat is its own entry) the
   title, artist and BPM and its played length until the next entry starts (its pieces' windows
@@ -29,6 +33,8 @@ from typing import Any, Final
 
 from mowl import compose
 
+from classbeat.studio.mix_curve_policy import bass_swaps
+from classbeat.studio.mix_facts_model import TrackFacts
 from classbeat.studio.mix_repeat_calc import runs
 
 RATE: Final = 44100  # render_policy.RATE
@@ -101,18 +107,27 @@ def playlist_body(
     return {"name": name, "category_id": CATEGORY_ID, "crossfade_sec": 0, "tracks": body}
 
 
-def render_plan(spec: Mapping[str, Any], durations: Mapping[str, float]) -> list[dict[str, Any]]:
-    """The spec's sample positions per track, named by reference (see the module docstring)."""
+def render_plan(
+    spec: Mapping[str, Any],
+    durations: Mapping[str, float],
+    facts: Mapping[str, TrackFacts] | None = None,
+) -> list[dict[str, Any]]:
+    """The spec's sample positions per track, named by reference, with a bass swap where
+    ``facts`` allow one (see the module docstring)."""
     tracks = _tracks(spec)
     lengths = [float(durations[t["reference"]]) for t in tracks]
     offsets = compose.mix_offsets(dict(spec), RATE, lengths)
-    return [
+    plan = [
         {
             "reference": tracks[o["index"]]["reference"],
             **{k: v for k, v in o.items() if k != "index"},
         }
         for o in offsets
     ]
+    for n, swap in enumerate(() if facts is None else bass_swaps(spec, facts)):
+        if swap is not None:
+            plan[n + 1] |= {"curve": "bass_swap", "swap": swap}
+    return plan
 
 
 def played_seconds(plan: Sequence[Mapping[str, Any]]) -> list[float]:

@@ -11,6 +11,14 @@ finds the bar anyway). A cut at an edge (0, or within the cut rounding of the le
 file's edge and is never moved: the whole track, intros, outros and fades, stays by default. An
 edge candidate is never selected either.
 
+**At a transition** (#1330) the phrase point of that side comes first: the outgoing piece's end
+takes a ``phrase_end``, the incoming piece's start a ``phrase_start``, before any other kind in
+reach, and a downbeat still comes last. The trust gate is the same (``usable``), so an
+``approximate`` or ``unusable`` track keeps today's transitions, and without a trusted phrase point
+in reach the selection is today's. ``Side`` names the cut: ``"end"`` of a piece that another
+follows, ``"start"`` of a piece that follows another, ``None`` for the mix's own first start and
+last end.
+
 The tolerance is ``SELECT_TOLERANCE_S``, at most ``SELECT_BAR_SHARE`` of a bar. Under half a bar,
 a snapped cut checked again selects only a point that snaps back to the same bar, so ``checked``
 of a checked spec changes nothing (``swedebeat_studio.draft`` relies on it).
@@ -25,13 +33,15 @@ the rounding as well as before: a bar that lands within the cut rounding of the 
 so placing a placed cut again never moves it. Cuts are rounded to 0.01 s.
 """
 
-from typing import Final
+from typing import Final, Literal
 
 from classbeat.spotdown.cut_candidates_model import Candidate
 from classbeat.studio.mix_facts_model import CS, TrackFacts, cs
 
 SELECT_TOLERANCE_S: Final = 1.0
 SELECT_BAR_SHARE: Final = 0.45  # under half a bar (see the module docstring)
+Side = Literal["start", "end"] | None
+PHRASE_OF: Final = {"start": "phrase_start", "end": "phrase_end"}
 
 
 def snaps(facts: TrackFacts) -> bool:
@@ -60,15 +70,23 @@ def _edge(at: float, facts: TrackFacts) -> float | None:
     return None
 
 
-def selected(at: float, facts: TrackFacts) -> float:
-    """Step 2: the nearest usable candidate within the tolerance, else ``at``."""
+def _rank(kind: str, side: Side) -> int:
+    """0 for the side's phrase point at a transition, 2 for a downbeat, 1 for any other kind."""
+    if side is not None and kind == PHRASE_OF[side]:
+        return 0
+    return 2 if kind == "downbeat" else 1
+
+
+def selected(at: float, facts: TrackFacts, side: Side = None) -> float:
+    """Step 2: the nearest usable candidate within the tolerance, else ``at``; at a transition
+    (``side``) its phrase point first."""
     if _edge(at, facts) is not None:
         return at
     reach = tolerance(facts)
     near = [c for c in usable(facts) if abs(c.at_s - at) <= reach]
     if not near:
         return at
-    return min(near, key=lambda c: (c.kind == "downbeat", abs(c.at_s - at), c.at_s)).at_s
+    return min(near, key=lambda c: (_rank(c.kind, side), abs(c.at_s - at), c.at_s)).at_s
 
 
 def snapped(at: float, facts: TrackFacts) -> float:
@@ -84,6 +102,6 @@ def snapped(at: float, facts: TrackFacts) -> float:
     return rounded if edge is None else edge
 
 
-def placed(at: float, facts: TrackFacts) -> float:
+def placed(at: float, facts: TrackFacts, side: Side = None) -> float:
     """Steps 2 and 3 for one cut."""
-    return snapped(selected(at, facts), facts)
+    return snapped(selected(at, facts, side), facts)

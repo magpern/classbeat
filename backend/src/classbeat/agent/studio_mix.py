@@ -15,7 +15,8 @@ Pure: no I/O, no reference.
   the analyses (``ToolError('invalid_mix')`` with the named reason), then ``mowl.compose.
   compose_map``: the map ``fit_to_music`` reads, with ``crossfade`` 0 because the crossfades are
   already in it (as a mix's map). The plan comes back snapped, by index, with the soft checks
-  of ``mix_hint_policy`` (``hints``: piece positions only), which the answer adds to its warnings.
+  of ``mix_hint_policy`` and ``mix_transition_policy`` (``hints``: piece positions and numbers
+  only; #1330's tempo and downbeat-lock hints), which the answer adds to its warnings.
 """
 
 from collections.abc import Mapping, Sequence
@@ -29,10 +30,9 @@ from classbeat.agent import cut_points_input, mix_input, model_input
 from classbeat.agent.model_input import EVENT_KINDS, view_text
 from classbeat.agent.stage import ToolError
 from classbeat.agent.studio_schemas import MixInput
-from classbeat.spotdown.cut_candidates_model import MAP_KEY
 from classbeat.spotdown.timing_inputs_model import TimingClass
-from classbeat.studio import mix_hint_policy
-from classbeat.studio.mix_facts_model import stored_candidates
+from classbeat.studio import mix_hint_policy, mix_transition_policy
+from classbeat.studio.mix_facts_model import of_map
 from classbeat.studio.mix_plan_policy import (
     CS,
     MixPlanRefused,
@@ -55,14 +55,7 @@ class StudioTrack:
     timing_class: TimingClass | None = None  # the stored decision's; ``None``: a local analysis
 
     def facts(self) -> TrackFacts:
-        (song,) = self.music_map["songs"]
-        return TrackFacts(
-            float(self.music_map["duration"]),
-            float(song["bpm"]),
-            float(song["first_downbeat"]),
-            self.timing_class,
-            stored_candidates(self.music_map.get(MAP_KEY), self.timing_class),
-        )
+        return of_map(self.music_map, self.timing_class)
 
 
 @dataclass(frozen=True)
@@ -70,7 +63,7 @@ class Composed:
     plan: dict[str, Any]  # {"tracks": [{"track", "start_sec", "end_sec"}], "crossfades"}
     map: dict[str, Any]
     duration_sec: float
-    hints: tuple[str, ...] = ()  # mix_hint_policy's texts: codes and piece positions only
+    hints: tuple[str, ...] = ()  # the soft checks' texts: codes, piece positions and numbers
 
 
 def _events(m: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -160,7 +153,8 @@ def compose(tracks: Sequence[StudioTrack], given: MixInput) -> Composed:
     }
     windows = [(cs(t["end_sec"]) - cs(t["start_sec"])) / CS for t in good["tracks"]]  # exact cs
     found = mix_hint_policy.hints(good, {k: f.length for k, f in facts.items()})
-    hints = tuple(mix_hint_policy.texts(found))
+    joins = mix_transition_policy.hints(good, facts)  # #1330: tempo and downbeat lock
+    hints = (*mix_hint_policy.texts(found), *mix_transition_policy.texts(joins))
     return Composed(plan, composed, total_sec(windows, good["crossfades"]), hints)
 
 

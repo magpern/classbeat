@@ -9,7 +9,8 @@ other bytes is never ``exact``), then the track map from ``spotdown_map_policy.t
 an ``exact`` ``played_recording`` track that maps is used; anything else is ``StudioRefused`` with
 a code, and the caller analyses that track locally. The map also carries the track's **cut
 candidates** under ``cut_candidates_model.MAP_KEY`` (``cut_candidates_calc``, #1328), read back by
-``agent.studio_mix.StudioTrack``. A map, candidates included, larger than the table's check
+``agent.studio_mix.StudioTrack``, and its trusted low-band energy curve under
+``low_band_model.MAP_KEY`` (#1330). A map, candidates included, larger than the table's check
 (``MAP_MAX``) is ``StudioRefused("map_too_large")``, so the track is analysed locally.
 
 The provenance kept with the map is ``provenance_model``'s record (ids, versions, the audio
@@ -23,7 +24,8 @@ path (a) check and is not part of the record.
 ``current_provenance`` is the cache's rule for a stored ``spotdown`` row: the record of this
 version, ``exact`` on path (a), of the row's own bytes (the record's sha256 is the row's), made
 under the policy versions of this build (``STUDIO_POLICY_VERSIONS``: ``provenance_model``'s and
-``cut_candidates_calc``'s, so a row stored before its candidates is analysed again). Any other row
+``cut_candidates_calc``'s and ``low_band_model``'s, so a row stored before its candidates or its
+low band is analysed again). Any other row
 is analysed again.
 """
 
@@ -32,7 +34,12 @@ from dataclasses import dataclass
 from typing import Final
 
 from classbeat.jsonb_text_calc import jsonb_text_size
-from classbeat.spotdown import cut_candidates_calc, spotdown_map_policy, timing_class_policy
+from classbeat.spotdown import (
+    cut_candidates_calc,
+    low_band_model,
+    spotdown_map_policy,
+    timing_class_policy,
+)
 from classbeat.spotdown.cut_candidates_model import MAP_KEY, as_json
 from classbeat.spotdown.provenance_model import POLICY_VERSIONS, RECORD_VERSION, provenance_of
 from classbeat.spotdown.provenance_read_calc import analysed
@@ -44,6 +51,7 @@ MAP_MAX: Final = 1 << 20  # the table's check on ``swedebeat_track_maps.map`` (`
 STUDIO_POLICY_VERSIONS: Final = (
     *POLICY_VERSIONS,
     ("cut_candidates_calc", cut_candidates_calc.VERSION),
+    ("low_band_model", low_band_model.VERSION),
 )
 
 
@@ -82,6 +90,9 @@ def studio_map(
         **mapped.track_map,
         MAP_KEY: as_json(cut_candidates_calc.candidates(doc, decision)),
     }
+    low = low_band_model.curve(doc)
+    if low is not None:  # #1330: where the track has real bass (the render's bass swap)
+        track_map[low_band_model.MAP_KEY] = low_band_model.as_json(low)
     if not _fits(track_map, MAP_MAX):
         return StudioRefused("map_too_large")  # the candidates too: never past the table's check
     fits = _fits(record, PROVENANCE_MAX)

@@ -98,6 +98,10 @@ async def test_the_case_passes_on_spotdowns_maps(case: Any) -> None:
     assert all(t.facts().candidates for t in tracks)  # #1328: the candidates reach the check
     assert '"cut_points"' in sent().replace('\\"', '"')  # and the model, by track index
     assert '"use":"trusted"' in sent().replace('\\"', '"')
+    # #1330: the prompt's transition guidance, and the soft checks on spotdown's trusted grid
+    # (whole tracks crossfaded over 6 and 8 s: the downbeats do not lock) reach the model as hints
+    assert "downbeats_not_locked" in sent()
+    assert "downbeats_not_locked: in the crossfade between pieces" in sent()
     assert result.outcome == "submitted"
     assert result.passed, [(c.name, c.detail) for c in result.checks if not c.ok]
     assert {c.name for c in result.checks} >= {"mix_order", "mix_windows", "mix_total", "duration"}

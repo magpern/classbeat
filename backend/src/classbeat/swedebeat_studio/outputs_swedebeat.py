@@ -177,12 +177,8 @@ async def mix(p: Producer, row: OutputRow) -> None:
         for n, reference in enumerate(distinct):  # each track once, its sha256 checked once
             files[reference] = work / f"track-{n:02d}.mp3"
             await _download(p, reference, files[reference], str(sha256s[reference]))
-        tracks = [
-            {
-                "path": str(files[str(part["reference"])]),
-                **{k: part[k] for k in render_policy.TRACK_INTS},
-            }
-            for part in plan
+        tracks = [  # with a transition curve where the plan names one (#1330)
+            render_policy.track_of(part, str(files[str(part["reference"])])) for part in plan
         ]
         await p.run.checkpoint()
         return tracks

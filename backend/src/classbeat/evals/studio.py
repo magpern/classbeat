@@ -13,7 +13,8 @@ and the composed map's, and no stand-in for a catalogue reference reached the mo
 
 The local tracks have no stored timing decision and so no cut candidates (#1328); the spotdown
 variant (``tests/test_evals_studio_spotdown.py``) gives the same tracks with their candidates, and
-the recorded script's trimmed piece carries its ``why`` (the prompts of #1328).
+the recorded script's trimmed piece carries its ``why`` (the prompts of #1328). The spotdown variant
+also sees #1330's downbeat-lock hints on the trusted grid; the local tracks have none.
 """
 
 from collections.abc import Callable

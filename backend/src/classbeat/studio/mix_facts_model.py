@@ -7,10 +7,12 @@ never a model's number, and, for #1328, the track's **stored** timing class and 
 candidates; a spotdown analysis has its decision's class and the candidates stored with its map.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 
-from classbeat.spotdown.cut_candidates_model import Candidate, parse
+from classbeat.spotdown import low_band_model
+from classbeat.spotdown.cut_candidates_model import MAP_KEY, Candidate, parse
 from classbeat.spotdown.timing_inputs_model import TimingClass
 
 CS: Final = 100  # hundredths of a second per second (``mowl.compose.CS``)
@@ -30,6 +32,7 @@ class TrackFacts:
     first_downbeat: float
     timing_class: TimingClass | None = None  # ``None``: no stored timing decision
     candidates: tuple[Candidate, ...] = ()
+    low_band: low_band_model.Curve | None = None  # ``None``: not known (no bass swap)
 
 
 def stored_candidates(raw: object, timing_class: TimingClass | None) -> tuple[Candidate, ...]:
@@ -44,3 +47,18 @@ def stored_candidates(raw: object, timing_class: TimingClass | None) -> tuple[Ca
     if timing_class == "exact":
         return found
     return tuple(Candidate(c.at_s, c.kind, c.confidence, c.method, False, c.label) for c in found)
+
+
+def of_map(music_map: Mapping[str, Any], timing_class: TimingClass | None) -> TrackFacts:
+    """A stored track map's facts: its one song's BPM and first downbeat, and what the stored
+    timing class lets through (candidates; the low band of an ``exact`` track only)."""
+    (song,) = music_map["songs"]
+    low = low_band_model.parse(music_map.get(low_band_model.MAP_KEY))
+    return TrackFacts(
+        float(music_map["duration"]),
+        float(song["bpm"]),
+        float(song["first_downbeat"]),
+        timing_class,
+        stored_candidates(music_map.get(MAP_KEY), timing_class),
+        low if timing_class == "exact" else None,
+    )
