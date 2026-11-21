@@ -80,7 +80,7 @@ class Session:
         return self.deadline - time.monotonic()
 
 
-async def _begin(run: JobRun, session: Session) -> None:
+async def begin(run: JobRun, session: Session) -> None:
     """The job's budget and outage flag, read (or started) once per run."""
     if session.deadline is not None:
         return
@@ -89,7 +89,7 @@ async def _begin(run: JobRun, session: Session) -> None:
     session.outage = session.outage or outage
 
 
-async def _outage(run: JobRun, session: Session) -> None:
+async def note_outage(run: JobRun, session: Session) -> None:
     """spotdown is unreachable: the rest of the job (this run and every later one) is local."""
     session.outage = True
     await budget.mark_outage(run)
@@ -104,13 +104,13 @@ def session_for(run: JobRun) -> Session | None:
     return Session(SpotdownClient(config.sources), scope)
 
 
-async def _chunks(path: Path) -> AsyncIterator[bytes]:
+async def chunks(path: Path) -> AsyncIterator[bytes]:
     with path.open("rb") as audio:
         while chunk := await asyncio.to_thread(audio.read, CHUNK):
             yield chunk
 
 
-async def _pause(run: JobRun, seconds: float) -> None:
+async def pause(run: JobRun, seconds: float) -> None:
     """Wait ``seconds``, or less when the worker shuts down (the next checkpoint stops the run)."""
     try:
         await asyncio.wait_for(run.shutdown.wait(), timeout=seconds)
@@ -118,10 +118,10 @@ async def _pause(run: JobRun, seconds: float) -> None:
         return
 
 
-async def _wait_ready(run: JobRun, session: Session, job_id: str) -> str | Failure:
+async def wait_ready(run: JobRun, session: Session, job_id: str) -> str | Failure:
     rounds, retry_after = 0, None
     while (left := session.left()) > 0:
-        await _pause(run, poll_delay(rounds, retry_after, left))
+        await pause(run, poll_delay(rounds, retry_after, left))
         await run.checkpoint()
         rounds, retry_after = rounds + 1, None
         outcome = await session.client.poll(job_id)
@@ -149,14 +149,14 @@ async def _attempt(
     elif found is not None:
         return found
     else:
-        uploaded = await client.upload(_chunks(audio), scope, key("upload"))
+        uploaded = await client.upload(chunks(audio), scope, key("upload"))
         if not isinstance(uploaded, Uploaded):
             return uploaded
         started = await client.start_analysis(
             scope, f"studio-{uuid.uuid4().hex}", key("start"), upload_id=uploaded.upload_id
         )
         if isinstance(started, Pending):
-            ready = await _wait_ready(run, session, started.job_id)
+            ready = await wait_ready(run, session, started.job_id)
             if not isinstance(ready, str) or ready == TIMED_OUT:
                 return ready
             analysis_id = ready
@@ -185,17 +185,17 @@ async def _analyse(
         if isinstance(outcome, str):
             return outcome  # the budget is spent
         if isinstance(outcome, Unreachable):
-            await _outage(run, session)  # studio_policy.reaction: the rest of the job is local
+            await note_outage(run, session)  # studio_policy.reaction: the rest of the job is local
             return "unreachable"
         step = studio_policy.reaction(outcome, retried)
         if step == "wait":
             wait = studio_policy.wait_for(outcome.retry_after_s, session.left())
             if wait is None:
                 return TIMED_OUT
-            await _pause(run, wait)
+            await pause(run, wait)
         elif step == "retry":
             retried, attempt = True, attempt + 1
-            await _pause(run, min(studio_policy.RETRY_PAUSE_SECONDS, max(session.left(), 0.0)))
+            await pause(run, min(studio_policy.RETRY_PAUSE_SECONDS, max(session.left(), 0.0)))
         else:
             session.provider_errors += outcome.status == "provider_error"
             return outcome.status
@@ -209,7 +209,7 @@ async def analyse(
     """spotdown's map of the downloaded ``audio`` for ``reference``; ``None``: analyse it
     locally."""
     try:
-        await _begin(run, session)
+        await begin(run, session)
         if session.outage or session.left() <= 0:
             return None
         session.tried += 1
@@ -217,7 +217,7 @@ async def analyse(
         if not isinstance(result, StudioMap) and studio_policy.provider_outage(
             session.provider_errors, session.tried
         ):
-            await _outage(run, session)
+            await note_outage(run, session)
     except PASSED:
         raise
     except Exception as exc:

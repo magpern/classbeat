@@ -48,7 +48,7 @@ def no_pause(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     async def pause(*_args: object) -> None:
         return None
 
-    monkeypatch.setattr(track_spotdown, "_pause", pause)
+    monkeypatch.setattr(track_spotdown, "pause", pause)
     yield
     studio_tracks_config.configure(None)
 

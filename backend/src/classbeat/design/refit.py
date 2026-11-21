@@ -228,7 +228,8 @@ async def run(job_run: JobRun) -> Complete:
     if isinstance(music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
     await job_run.stage("music")
-    step = await music_step(job_run, runtime, music, given.mowl_connection_id)
+    prefer = base_music.fingerprint  # a mix: the analysis the base was designed on (#1304)
+    step = await music_step(job_run, runtime, music, given.mowl_connection_id, prefer)
     handed_over = False
     try:
         if step.fingerprint != base_music.fingerprint:

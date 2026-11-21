@@ -695,6 +695,43 @@ for everyone.
    unreachable or an error in the stage give today's path for the whole class and every later run of
    the job.
 
+### Amendment (2026-11-20, SD-P7a, #1304): the SwedeBeat mix through spotdown, as built (extends §6 to §9)
+
+**Off by default and blocked on #1298 (Architect, 2026-11-21).** The mix switch stays `off`, and
+no value turns it on for everyone, until the §9 mix gates pass on the owner's real mixes (#1298): the
+song reading below is known to over-segment a real mix and to give it one BPM while spotdown emits
+no tempo change points, and the harness's recall-only edge gate cannot see that.
+
+- **Source and switch.** The mix keeps today's MOWL temporary-link fetch (`design.mixfetch`, 250 MB;
+  the link is never stored, logged or sent to spotdown). spotdown is the source of the mix's map only
+  with `CLASSBEAT_SPOTDOWN_MIX=allowlist` and the job's owner in `CLASSBEAT_SPOTDOWN_MIX_OWNERS`
+  (worker only, its own switch, default `off`; no value means everyone: that waits for the mix gates
+  on the owner's corpus, #1298). Off, the code path and every stored byte are today's.
+- **Lookups** (§7): the owner's `swedebeat_mix_maps` row, then `lookup_content` by sha256 in the
+  owner's `cache_scope`, then the streamed upload and the analysis. Account deletion deletes the scope
+  through the existing outbox (one scope per owner covers studio tracks and mixes).
+- **Mapping.** `timing_class_policy` path (a) (`swedebeat_mix`, the uploaded bytes are the played mix:
+  `exact`), then `mix_map_policy` (version 1): spotdown has no notion of a song, so a song starts and
+  ends at the content edges and at the **trusted** structure boundaries, and its BPM is the tempo at
+  its midpoint from `tempo.bpm` and the **trusted** change points: the reading spotdown's harness uses
+  for the §9 mix gates, restricted to trusted features. Kept as is (Architect, 2026-11-21): a structure
+  boundary inside a song becomes a song edge, so a real mix can come out over-segmented, and while
+  spotdown emits no change points every song has the mix's one BPM. A span without a trusted beat joins its
+  neighbour; beat 1 is the first trusted downbeat, else the first beat with a zero margin (shown as an
+  estimate). A drop or breakdown outside every song is left out. The provenance record adds `mix_map_policy` to its policy versions.
+- **Rows per analyser.** `swedebeat_mix_maps` is keyed `(owner_id, mix_id, analyser)` (migration
+  0065) with the `spotdown` row's provenance; a revision designed on spotdown's map records
+  `analyser` and the provenance (kept per class, §6), and a revise or refit reads the row whose map has
+  its base's fingerprint first, whatever the switch, so a class never changes analyser silently.
+  The web app's admission counts only `local` rows as a cache hit for the daily limit (stricter).
+- **Bounds** (§8). The per-class budget and outage flag are the design job's
+  `spotdown_studio_budgets` row: the mix **reuses that table** (Architect, 2026-11-21) because a design
+  job designs on either a mix or studio tracks, never both, so one class has one budget; a mix also waits
+  for spotdown at most 180 s (today's local mix-analysis limit), then falls back. Every failure, and
+  an error of any type in the spotdown code, falls back to the local `mixanalysis` and `mixchild`
+  path. The local child's 180 s and 1.5 GiB limits are unchanged; spotdown's own are its sandbox's.
+  ADR 0026 stage 1's decode time is the analysis that made the map; the spotdown consultation is
+  logged apart (`spotdown_ms`).
 
 ### Amendment (2026-11-20): the analysis and refinement stage of the Spotify flow, as built (SD-P6 stage B, #1303; amends §8 for that stage)
 

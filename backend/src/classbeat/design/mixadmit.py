@@ -45,7 +45,7 @@ from classbeat.connections.preferences import uses_swedebeat_in
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import mixlimit
-from classbeat.design.swedebeat_music import MAP_TTL_DAYS
+from classbeat.design.mix_cache import MAP_TTL_DAYS
 from classbeat.egress import OutboundBlocked
 from classbeat.flags import effective
 from classbeat.jobs import JobFailure, JobRun
@@ -62,13 +62,16 @@ class Listing(Protocol):
     def __call__(self, ctx: UserContext, /) -> Awaitable[object]: ...
 
 
-# A cache hit as ``swedebeat_music._cached`` judges it: young enough, this connection, the stored
-# link's playlist and the library's current map version. The user's own rows only (RLS).
+# A cache hit as ``mix_cache.cached`` judges it: young enough, this connection, the stored link's
+# playlist and the library's current map version. The user's own rows only (RLS). Only a
+# ``local`` row counts (#1304): the web app does not know whether spotdown is a worker's source
+# for this owner, so a ``spotdown`` row alone never skips the daily limit here (stricter).
 _CACHED = text(
     "SELECT 1 FROM swedebeat_mix_maps m JOIN mowl_playlist_links l ON l.owner_id = m.owner_id "
     "AND l.source = 'swedebeat' AND l.source_id = m.mix_id AND l.playlist_id = m.playlist_id "
     "WHERE m.owner_id = :owner_id AND m.mix_id = :mix_id AND m.mowl_connection_id = :connection_id "
-    "AND m.created_at > now() - make_interval(days => :days) AND m.map->>'version' = :version"
+    "AND m.created_at > now() - make_interval(days => :days) AND m.map->>'version' = :version "
+    "AND m.analyser = 'local'"
 )
 _CLASS_MIX = text(
     "SELECT music_source->>'mix_id' AS mix_id FROM classes "
