@@ -453,10 +453,10 @@ amendment (A2, A5) names a track or piece **index**, never a reference.
 - **No per-song repeat cap and no share-of-class cap** (owner). The only bounds are the existing safety bounds:
   at most `MAX_TRACKS` (40) **pieces** in all (`too_many_tracks`) and 150 minutes (`mix_too_long`). There is no
   `too_many_repeats` reason.
-- **Soft hint `one_song_dominates`:** one reference fills more than half of the composed duration (its pieces'
-  windows less their outgoing crossfades), and that reference has two or more pieces **or** the approved list has
-  two or more songs (a class of one song played once is never flagged). It reaches the model as a named hint and is shown on the timeline;
-  it never refuses a draft.
+- **Soft hint `one_song_dominates`:** one reference's windows, less their outgoing crossfades, fill more than
+  half of the composed duration, and that reference has two or more pieces **and** the mix has two or more songs
+  (a song played once is never flagged, however long, and neither is a class of one song). It reaches the model
+  as a named hint and is shown on the timeline; it never refuses a draft.
 
 ### A3. Non-adjacent repeats are ordinary pieces
 
@@ -506,8 +506,9 @@ keeps it.
 
 - **The one duration rule is unchanged:** the sum of the pieces' windows less the sum of the crossfades, with
   every piece counted, a repeat as often as it plays, and a loop join adding 0. `compose_map` and `mix_offsets`
-  take the pieces in order, the same analysis once per piece. Whether `mowl.compose` keys pieces by track is the
-  **first task** of #1342; if it does, a mowl-workouts change comes first.
+  take the pieces in order, the same analysis once per piece. **Checked (#1342, [comment
+  7062866236](https://github.com/magpern/classbeat/issues/1342#issuecomment-7062866236)):** `mowl.compose`
+  (wheel 0.12.0) does not key pieces by track, so no mowl-workouts change is needed.
 - **The crossfade rules are unchanged per piece:** one crossfade per change of piece, whole seconds 0 to 30,
   shorter than **both** neighbouring pieces' windows, and for every middle piece the incoming plus the outgoing
   crossfade shorter than its window. A4.3 adds only that a loop join's crossfade is 0.
@@ -518,12 +519,14 @@ keeps it.
 
 ### A7. The validation order (extends #580's fixed order)
 
-`mix_plan_policy.checked` stays the only validator (no second spec shape). After the shape checks that come
-first today (`unknown_field`, `tempo_change`, `list_has_gap`, at least one piece, `too_many_tracks` on pieces,
-and per piece a **reference on the approved list**, else `not_a_permutation`, as `_track` refuses it today,
-since step 1 needs that track's facts), the order is fixed:
+`mix_plan_policy.checked` stays the only validator (no second spec shape). First the spec's shape checks
+(`unknown_field`, `list_has_gap`, at least one piece, `too_many_tracks` on pieces). Then **each piece runs all
+its own checks before the next piece's**: its fields (`unknown_field`, `tempo_change`), its **reference on the
+approved list** (else `not_a_permutation`, since step 1 needs that track's facts), then steps 1 to 4 for that
+piece. Steps 5 to 10 then run on the whole mix, in this order: coverage, then the loop joins, then
+`window_too_short` and the rest. The fixed order is:
 
-1. the range check of each proposed cut (`cut_out_of_range`);
+1. the range check of the piece's proposed cut (`cut_out_of_range`);
 2. candidate selection (#1328);
 3. the bar-grid snap, `exact` only;
 4. the range check again after snapping;
@@ -595,7 +598,7 @@ amendment, #1331, owner 2026-11-21); a song swap still goes through `revise_song
 ### A11. The work
 
 One implementation issue, #1342, Opus Developer and Opus Reviewer (the mix spec feeds the external writes). Its
-**first task** is the `mowl.compose` check of A6. Then: the loop
+first task, the `mowl.compose` check of A6, is done (no change needed). Then: the loop
 module and `checked` order, the soft hints, `output_choice_policy` and the job's re-check, X-Tracks, the render
 download of each distinct reference once, the timeline marks, the prompts and their `prompt_version`s, the
 consent text in en, sv and da, and tests: table-driven cases for every new reason and hint, the existing

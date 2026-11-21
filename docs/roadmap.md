@@ -12,7 +12,8 @@ implementation #1342).
   a shorter minimum per loop piece (8 bars) while the run keeps the 60 s rule.
 - A whole track is not repeated unless the user asked: a prompt rule and a soft hint, never a refusal.
 - A class with repeats is mix-only until the owner's live check shows that a SwedeBeat playlist accepts the
-  same track twice with distinct cuts. Whether L4b covers repeated sections is the owner's question.
+  same track twice with distinct cuts. Whether L4b covers repeated or looped sections is the
+  owner's question; a general L4b answer does not count for repeats, it must say so explicitly (ADR 0036 A9).
 
 ## Amendment 32 (2026-11-20, owner decision: YouTube-derived analysis for Spotify classes; issue #1296)
 
