@@ -147,6 +147,7 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     # design_draft (D1), revise_draft (R1), refit_draft (BC3), interpret_request (MA1b-3)
     import classbeat.design
     import classbeat.player_send  # send_to_player and player_remove (ADR 0034 section 5)
+    import classbeat.preview.render_kind  # preview_render (ADR 0042 section 6.5, #1394)
     import classbeat.saving
     import classbeat.songs  # design_with_songs (SJ1) and revise_songs (SJ3)
     import classbeat.swedebeat_handoff  # swedebeat_verify_mix (B2)
@@ -155,7 +156,6 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     import classbeat.swedebeat_studio.kind  # studio_songs (ADR 0036, SR C3)
     import classbeat.swedebeat_studio.outputs_kind  # produce_outputs (ADR 0036, SR C6a stub)
     import classbeat.swedebeat_studio.revise_kind  # studio_revise (ADR 0036, SR C5)
-    import classbeat.preview.render_kind  # preview_render (ADR 0042 section 6.5, #1394)
     import classbeat.swedebeat_studio.sync_kind  # spotify_sync (ADR 0036 section 9, SR C8)
 
     assert classbeat.design.KIND

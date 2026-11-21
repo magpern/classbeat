@@ -63,7 +63,7 @@ def test_a_preview_render_has_no_class_id_and_a_preview_class(admin: Connection)
 def test_no_other_kind_has_a_null_class_or_a_preview_class(admin: Connection, kind: str) -> None:
     owner = new_user(admin)
     class_id = new_class(admin, owner)
-    with pytest.raises(IntegrityError, match="jobs_class_id|jobs_preview_class"):
+    with pytest.raises(IntegrityError, match=r"jobs_class_id|jobs_preview_class"):
         _job(admin, owner, kind, None, class_id)
     with pytest.raises(IntegrityError, match="jobs_class_id"):
         _job(admin, owner, kind, None, None)
