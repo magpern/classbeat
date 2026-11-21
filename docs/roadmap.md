@@ -1,5 +1,16 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 34 (2026-11-21, owner decision: no fixed limit on open PRs; issue #1384)
+
+The owner removed the limit of at most four open PRs at a time on 2026-11-21: "We have no limit of
+PRs any more, we use sound judgement instead." AGENTS.md ("Unit of work") says so.
+
+- The Architect decides how many PRs are open at once: only as many as can be reviewed, fixed and
+  merged, with PRs that touch the same files or depend on each other kept in sequence, and with CI
+  and review load in mind.
+- Unchanged: reviews and fixes come before new work (no new Developer while a `FAIL` waits), one
+  issue per PR, one writing agent per branch, and the whole review gate.
+
 ## Amendment 33 (2026-11-21, owner decision: a SwedeBeat studio song may repeat in a mix; issue #1331)
 
 The owner authorized repeats on 2026-11-21. Recorded in [ADR 0036](adr/0036-swedebeat-studio.md), amendment
