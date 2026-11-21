@@ -18,6 +18,7 @@ import { useQuery } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 import { Details } from '../ui/details'
 import { ConsentSwitch } from './ConsentSwitch'
+import { SpotifyPreview } from './SpotifyPreview'
 import { SpotifyWizard } from './SpotifyWizard'
 
 // ADR 0009 section 2 (the wizard), 7 (what Disconnect and a changed Client ID delete), 8 (the
@@ -104,10 +105,10 @@ export function SpotifyConnection({ onStatus }: { onStatus?: (status: SpotifySta
     })
   }
 
-  const start = (clientId: string) => {
+  const start = (clientId: string, preview: boolean, confirm = confirmSwitch) => {
     setNote(null)
     void action.run(async () => {
-      goToProvider(await guard(() => startSpotify(clientId, confirmSwitch)))
+      goToProvider(await guard(() => startSpotify(clientId, confirm, preview)))
     }, startError)
   }
 
@@ -254,6 +255,16 @@ export function SpotifyConnection({ onStatus }: { onStatus?: (status: SpotifySta
           <p className="m-0">{t('spot.profileSetting')}</p>
           <ConsentSwitch status={status} onChanged={reload} />
         </section>
+      ) : null}
+      {connected && !changing && !confirmSwitch && dialog === null ? (
+        <SpotifyPreview
+          status={status}
+          busy={action.busy}
+          onEnable={(clientId) => {
+            // The same account and app: a re-consent never carries an account-change confirmation.
+            start(clientId, true, false)
+          }}
+        />
       ) : null}
     </div>
   )

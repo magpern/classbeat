@@ -1,6 +1,6 @@
 import { ApiError, del, get, post, request } from './client'
 import { decodeSentence, type SentenceRef } from './sentences'
-import { flag, object, optionalCount, optionalText, text } from './decode'
+import { flag, object, optionalCount, optionalFlag, optionalText, text } from './decode'
 
 // The Spotify connection (ADR 0009 section 2, backend/src/classbeat/spotify/routes.py). The
 // answers hold no token, no Spotify user id and no display name. The Client ID is the user's own
@@ -22,6 +22,10 @@ export interface SpotifyStatus {
   consentVersion: number | null
   /** The exact wording the user consents to (ADR 0009 section 9). */
   consentText: string
+  /** The user's own public Client ID (sent back for the listening-preview re-consent, never shown). */
+  clientId: string | null
+  /** ADR 0042 section 7.1: the connection was granted the opt-in listening-preview scopes. */
+  previewGranted: boolean
 }
 
 function decodeStatus(value: unknown): SpotifyStatus {
@@ -35,6 +39,9 @@ function decodeStatus(value: unknown): SpotifyStatus {
     poolConsent: flag(item, 'pool_consent'),
     consentVersion: optionalCount(item, 'consent_version'),
     consentText: text(item, 'consent_text'),
+    clientId: optionalText(item, 'client_id'),
+    // A missing field reads as "not granted", the safe answer.
+    previewGranted: optionalFlag(item, 'preview_granted') ?? false,
   }
 }
 
@@ -53,15 +60,20 @@ export async function getSpotifyStatus(signal?: AbortSignal): Promise<SpotifySta
   }
 }
 
-/** Starts a connect. The body has exactly these fields: there is no Client Secret. */
+/**
+ * Starts a connect. The body has exactly these fields: there is no Client Secret. `preview` is the
+ * user's opt-in to the listening-preview scopes (ADR 0042 section 7.1), sent only when chosen.
+ */
 export async function startSpotify(
   clientId: string,
   confirmAccountChange: boolean,
+  preview = false,
 ): Promise<string> {
   const body = object(
     await post('/api/connections/spotify/start', {
       client_id: clientId,
       confirm_account_change: confirmAccountChange,
+      ...(preview ? { preview: true } : {}),
     }),
     'start',
   )

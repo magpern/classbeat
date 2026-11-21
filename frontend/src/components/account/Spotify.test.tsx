@@ -113,10 +113,18 @@ describe('the wizard', () => {
     spotifyApi()
     const sp = await openSpotify('/account/spotify')
     await sp.findByLabelText('Spotify Client ID')
-    const inputs = Array.from(screen.getByRole('dialog', { name: 'Spotify' }).querySelectorAll('input, textarea, select'))
-    expect(inputs).toHaveLength(1)
+    const dialog = screen.getByRole('dialog', { name: 'Spotify' })
+    const inputs = Array.from(dialog.querySelectorAll('input, textarea, select'))
+    // One field to type into (the Client ID) and one checkbox (the listening-preview opt-in, #1393).
+    expect(inputs.filter((input) => input.getAttribute('type') !== 'checkbox')).toHaveLength(1)
+    expect(sp.getAllByRole('checkbox').map((box) => box.closest('label')?.textContent)).toEqual([
+      'Enable listening preview',
+    ])
+    expect(inputs).toHaveLength(2)
     for (const input of inputs) {
-      const label = input.id ? (document.querySelector(`label[for="${input.id}"]`)?.textContent ?? '') : ''
+      const label = input.id
+        ? (document.querySelector(`label[for="${input.id}"]`)?.textContent ?? '')
+        : (input.closest('label')?.textContent ?? '')
       expect(`${input.getAttribute('name') ?? ''} ${label} ${input.getAttribute('type') ?? ''}`).not.toMatch(
         /secret|password/i,
       )
