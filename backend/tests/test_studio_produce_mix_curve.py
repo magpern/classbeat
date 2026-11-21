@@ -1,10 +1,13 @@
 """#1330 on the database: the mix output reads each stored map's timing class and low band, so a
 transition between two ``exact`` spotdown rows with bass and locked downbeats is rendered with the
 ``bass_swap`` curve (and any other row stays ``equal_power``); the timeline shows the transitions'
-soft hints (``downbeats_not_locked``) from the same stored facts. On the fakes, never the
-network."""
+soft hints (``downbeats_not_locked``) from the same stored facts. The bass swap is off by default
+(#1368), so every test here sets the ``bass_swap`` studio value it needs itself (``bass_swap_on``)
+and puts the earlier value back; it never relies on what another test left. On the fakes, never
+the network."""
 
 import json
+from collections.abc import Iterator
 from typing import Any
 from uuid import UUID
 
@@ -13,7 +16,9 @@ import pytest
 from classbeat.design.studio_revision_model import map_hash
 from classbeat.spotdown.provenance_model import RECORD_VERSION
 from classbeat.spotdown.studio_map_model import STUDIO_POLICY_VERSIONS
+from classbeat.swedebeat_studio import config as studio_config
 from studiooutputs import (
+    ALL_ON,
     Renders,
     outputs_on,  # noqa: F401 - fixture
     produce,
@@ -25,7 +30,19 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
     designed,
 )
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on")
+pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on", "bass_swap_on")
+
+
+@pytest.fixture
+def bass_swap_on(outputs_on: None) -> Iterator[None]:  # noqa: F811 - after ``outputs_on``
+    """Every output and the bass swap on (off by default, #1368), whatever an earlier test left;
+    the earlier studio settings come back afterwards."""
+    before = studio_config.current()
+    studio_config.configure(studio_config.StudioConfig(ALL_ON | {"bass_swap"}))
+    try:
+        yield
+    finally:
+        studio_config.configure(before)
 
 
 def beats(step: float) -> list[dict[str, Any]]:
@@ -101,6 +118,13 @@ async def test_exact_spotdown_rows_with_bass_are_rendered_with_a_bass_swap(
     found = await curves(studio, renders, with_bass=True)
     assert found[0] is None  # the first piece has no incoming transition
     assert found[1:] == ["bass_swap"] * 7
+
+
+async def test_with_the_bass_swap_off_exact_rows_with_bass_stay_equal_power(
+    studio: StudioEnv, renders: Renders
+) -> None:
+    studio_config.configure(studio_config.StudioConfig(ALL_ON))  # bass_swap_on puts it back
+    assert await curves(studio, renders, with_bass=True) == [None] * 8
 
 
 async def test_without_a_stored_low_band_the_curve_stays_equal_power(
