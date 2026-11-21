@@ -9,9 +9,10 @@ A ``BaseSettings`` (not a plain ``BaseModel``) only so its ``model_config`` type
 """
 
 import re
+from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 from classbeat.config_turnstile import check_site_key as check_turnstile_site_key
@@ -130,6 +131,11 @@ class FeatureSettings(BaseSettings):
     # analysed by spotdown and only the comparison is recorded (``spotdown.shadow_config``); the
     # design keeps today's analysis. Off by default.
     spotdown_shadow: bool = False
+    # ADR 0042 section 6.5 (#1394): the audition's private preview volume (web and worker, the
+    # same path and user; ``preview.storage``). Unset (the default), the audition is off. Each
+    # owner's clips and source tracks together are capped at ``preview_owner_max_mb``.
+    preview_dir: Path | None = None
+    preview_owner_max_mb: int = Field(default=512, ge=16, le=10240)
 
     @field_validator("swedebeat_gateway_url")
     @classmethod

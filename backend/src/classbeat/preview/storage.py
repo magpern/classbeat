@@ -50,6 +50,11 @@ def configure(root: Path | None, owner_max_bytes: int = DEFAULT_OWNER_MAX_BYTES)
     _root, _owner_max_bytes = root, owner_max_bytes
 
 
+def configure_from(preview_dir: Path | None, owner_max_mb: int) -> None:
+    """From the settings ``preview_dir`` and ``preview_owner_max_mb`` (web and worker start)."""
+    configure(preview_dir, owner_max_mb * 1024 * 1024)
+
+
 def current() -> Path | None:
     return _root
 
@@ -144,11 +149,18 @@ def remove(path: Path) -> bool:
     return True
 
 
+def remove_dir(target: Path) -> None:
+    """Delete one directory and what is in it; a link is removed, never followed. Never raises."""
+    if target.is_symlink() or (sys.platform == "win32" and target.is_junction()):
+        remove(target)
+        return
+    if target.is_dir():
+        shutil.rmtree(target, ignore_errors=True)
+    else:
+        remove(target)
+
+
 def remove_owner(root: Path | None, owner_id: UUID) -> None:
     """Delete everything of one owner (their account is gone). Never raises."""
-    if root is None:
-        return
-    target = owner_dir(root, owner_id)
-    if target.is_symlink() or (sys.platform == "win32" and target.is_junction()):
-        return  # never followed; the sweep logs it
-    shutil.rmtree(target, ignore_errors=True)
+    if root is not None:
+        remove_dir(owner_dir(root, owner_id))

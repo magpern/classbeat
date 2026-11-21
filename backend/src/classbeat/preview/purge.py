@@ -63,6 +63,12 @@ _BY_ID = {
     ).bindparams(bindparam("ids", expanding=True))
     for kind in storage.KINDS
 }
+_OF_CLASS = {
+    kind: text(
+        f"SELECT id FROM preview_{kind} WHERE owner_id = :owner_id AND class_id = :class_id"  # noqa: S608
+    )
+    for kind in storage.KINDS
+}
 _IDS = {
     kind: text(f"SELECT id FROM preview_{kind} WHERE owner_id = :owner_id")  # noqa: S608
     for kind in storage.KINDS
@@ -100,6 +106,19 @@ async def cap(db: AsyncSession, root: Path, owner_id: UUID) -> list[Path]:
     files: list[Path] = []
     for kind in storage.KINDS:
         files += await _delete(db, root, owner_id, kind, [r.id for r in over if r.kind == kind])
+    return files
+
+
+async def class_files(
+    db: AsyncSession, root: Path | None, owner_id: UUID, class_id: UUID
+) -> list[Path]:
+    """The files of the class's rows, read before the class is deleted (its cascade takes them)."""
+    if root is None:
+        return []
+    files: list[Path] = []
+    for kind in storage.KINDS:
+        ids = await db.execute(_OF_CLASS[kind], {"owner_id": owner_id, "class_id": class_id})
+        files += _paths(root, owner_id, kind, ids.scalars())
     return files
 
 

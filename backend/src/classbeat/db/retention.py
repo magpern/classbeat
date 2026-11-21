@@ -119,6 +119,18 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         "swedebeat_track_maps": _entry(
             "reference sha256 map provenance", "analyser", "account", "swedebeat_connection"
         ),
+        # ADR 0042 section 6.5 (#1394): the audition. A listening session holds counters and the
+        # keys (digests) of the clips it served: no content; gone a day after its creation (the
+        # hourly purge), with the class and the account. The source-track cache names SwedeBeat
+        # references, and its files are that catalogue's audio, as are the clips (a key and a
+        # digest per row): gone after 14 idle days or over the size cap (the hourly purge), with
+        # the class, the account and the SwedeBeat connection (``connections.forget``; their
+        # files with the purge's sweep).
+        "preview_sessions": _entry("", "delivered_keys", "class", "account"),
+        "preview_sources": _entry(
+            "reference", "sha256", "class", "account", "swedebeat_connection"
+        ),
+        "preview_clips": _entry("", "key sha256", "class", "account", "swedebeat_connection"),
         # ADR 0040 section 9 (#1301 part 3): spotdown's shadow comparison of a studio track: the
         # outcome and detail codes, the metrics (numbers and codes) and the provenance record (ids,
         # versions, the audio identity, the timing evidence). No title, reference, URL, scope or
