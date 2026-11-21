@@ -225,6 +225,28 @@ OWN = [
     "Sista ett!",
     "Zone one, two, three",
 ]
+# The fourth review of #1323: counts made of bound numbers, and countdown words after a length.
+COUNTED = [
+    "Zone 3, zone 2, zone 1, go!",
+    "Gear 3, gear 2, gear 1, sprint!",
+    "Rep 3, rep 2, rep 1, go",
+    "Step 1, step 2, step 3, step 4",
+    "Zon 3, zon 2, zon 1, kör",
+    "Runde 1, runde 2, runde 3",
+    "3x, 2x, 1x, go",
+    "3%, 2%, 1%",
+    "1st, 2nd, 3rd, go!",
+    "3rd, 2nd, 1st, go!",
+    "3 gears, 2 gears, 1 gear",
+    "3 minutes, 2 minutes, 1 minute",
+    "2 minutes to go",
+    "1:00 to go",
+    "1:00 more",
+    "2 minuter till",
+    "And one!",
+    "Och ett!",
+    "Og et!",
+]
 # Section-level cues refused on purpose: seconds, counts of things and label lists.
 REFUSED_ON_PURPOSE = [
     "Zone 3, 4, 5",
@@ -247,7 +269,7 @@ REFUSED_ON_PURPOSE = [
 ]
 
 
-@pytest.mark.parametrize("text", REVIEWED + OWN + REFUSED_ON_PURPOSE)
+@pytest.mark.parametrize("text", REVIEWED + OWN + COUNTED + REFUSED_ON_PURPOSE)
 def test_a_reviewed_or_ambiguous_phrasing_is_refused(text: str) -> None:
     assert precise_kind(text) is not None
 
@@ -409,7 +431,77 @@ def test_each_language_has_enough_rows() -> None:
         ("niveau to-3", []),  # a label's number, then a range
         ("one more climb", []),  # the word, not a number
         ("to tråd", []),  # known gap: an ambiguous word counting things reads as the word
+        ("2 minutes to go", ["2"]),
+        ("1:00 to go", ["1:00"]),
+        ("zone 3, zone 2, zone 1", ["3", "2", "1"]),
+        ("zone 3, zone 2", []),  # two labels are a change, not a count
+        ("zone 2, zone 4, zone 5", []),
+        ("hold kadencen på 90", []),
+        ("cadence at 95", []),
+        ("zone 2, 3 minutes, zone 4", []),  # different uses are not a count
+        ("runde 4, på ni og kør", ["ni"]),
+        ("the one, go", ["one"]),
     ],
 )
 def test_unbound_lists_the_refused_numbers(text: str, left: list[str]) -> None:
     assert unbound(text) == left
+
+
+# Ordinary section-level cues (the corpus of the fourth review of #1323, less "Zone 5 for 30
+# seconds", refused on purpose): none is refused, so the correction loop is not starved.
+ORDINARY = [
+    "Seated climb, zone 3",
+    "Stand up and climb, zone 4",
+    "Add a gear, find 80 rpm",
+    "Sprint! Zone 5, all out",
+    "Recover in zone 2",
+    "Two minutes seated, then stand",
+    "Build through the chorus",
+    "Hands on the bars, stay seated",
+    "Ride with the beat",
+    "Follow the music, push the pace",
+    "Big push into the chorus",
+    "Breathe, roll the legs out",
+    "Add two gears and stand",
+    "Back down to zone 2, easy spin",
+    "Hold 85-95 rpm",
+    "Interval 2 of 4: zone 5",
+    "Final climb, give it everything",
+    "Drop a gear and recover",
+    "Drop to zone 2",
+    "Jumps, up and down with the music",
+    "Halfway there, keep going",
+    "Last climb of the class",
+    "One last push!",
+    "Last song, make it count",
+    "Sittande klättring, zon 3",
+    "Stå upp, lägg på två växlar",
+    "Spurta! Allt du har",
+    "Sista klättringen, ge allt",
+    "Återhämtning i zon 2, lätta ben",
+    "Två minuter sittande",
+    "Siddende bakke, zone 3",
+    "Rejs dig, læg et gear på",
+    "Spurt! Alt hvad du har",
+    "Sidste bakke, giv alt",
+    "Restitution i zone 2",
+    "Hold kadencen på 90",
+    "To minutter siddende",
+    "En sidste indsats!",
+    "Push for one minute",
+    "Halfway through, one more interval",
+    "Feel the bass, ride it",
+    "Stand for the whole chorus",
+    "Climb till the end of the song",
+    "Sprint to the finish",
+    "Ett sista ryck!",
+    "Et sidste skub!",
+    "Sprint 1 of 3 — zone 5",
+    "Pick it up to 110 rpm",
+    "Recover for 1 minute",
+]
+
+
+@pytest.mark.parametrize("text", ORDINARY)
+def test_an_ordinary_cue_passes(text: str) -> None:
+    assert precise_kind(text) is None

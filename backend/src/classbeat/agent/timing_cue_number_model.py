@@ -64,13 +64,14 @@ def _words() -> dict[str, int]:
         out[tens] = n
         out |= {f"{w}og{tens}": n + u for u, w in enumerate(_DA_UNITS, 1)}
         out[f"etog{tens}"] = n + 1
+    out |= {k.replace("forty", "fourty"): v for k, v in out.items() if "forty" in k}  # misspelt
     return out
 
 
 WORDS: Final[dict[str, int]] = _words()
-_WORD: Final = "|".join(sorted(map(re.escape, WORDS), key=len, reverse=True))
+WORD: Final = "|".join(sorted(map(re.escape, WORDS), key=len, reverse=True))
 _DIGITS: Final = r"\d+(?::\d\d|[.,]\d+(?![.,]\d))?"
-_TOKEN: Final = re.compile(rf"(?<!\w)(?:(?P<d>{_DIGITS})|(?P<w>{_WORD})(?!\w))")
+_TOKEN: Final = re.compile(rf"(?<!\w)(?:(?P<d>{_DIGITS})|(?P<w>{WORD})(?!\w))")
 
 
 @dataclass(frozen=True, slots=True)

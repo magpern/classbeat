@@ -86,6 +86,30 @@ IDIOMS = [
     ("Vid droppen", D),
     ("Ved droppet", D),
     ("Feel the drop in tempo", D),
+    # the fourth review of #1323
+    ("Ready, steady, go!", C),
+    ("Get set... go!", C),
+    ("Färdiga, gå!", C),
+    ("Parat... start!", C),
+    ("Wait... wait... NOW!", C),
+    ("Ready and one, go", C),
+    ("Count with me!", C),
+    ("Räkna med mig", C),
+    ("Tæl med mig", C),
+    ("Klar... kør!", C),
+    ("When the bass kicks in, sprint", D),
+    ("When the beat kicks in, go", D),
+    ("Drop's here, go!", D),
+    ("Drop\u2019s coming", D),
+    ("Here it drops, go!", D),
+    ("Spurta vid dropp", D),
+    ("On the upbeat", B),
+    ("On the offbeat, stand", B),
+    ("Wait... wait...", C),
+    ("Vänta, vänta", C),
+    ("Vent... vent", C),
+    ("Go on the snare", B),
+    ("Feel the kick drum, go on the snare", B),
 ]
 
 
@@ -121,6 +145,15 @@ ALLOWED = [
     "Andra klättringen",
     "Raise the bar in the chorus",
     "Klar for omkvædet",
+    "Set 2, go",
+    "Ready for the climb",
+    "Upbeat song, smile",
+    "Kick it up",
+    "Wait for the chorus",
+    "Get ready for the climb",
+    "Drop the shoulders",
+    "Steady now",
+    "Steady, now breathe",
 ]
 
 
