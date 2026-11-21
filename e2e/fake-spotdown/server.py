@@ -20,6 +20,8 @@ real YouTube analysis. It never logs a request: no title, source or key reaches 
 request's method and path, no header, body or key) and `reset`.
 """
 
+import hashlib
+import io
 import json
 import os
 import re
@@ -36,7 +38,9 @@ import spotifycore
 
 KEY_FILE = os.environ.get("FAKE_SPOTDOWN_KEY", "/fake/service-key.txt")
 CONTROL = "/__e2e/"
-BODY_MAX = 1_000_000
+BODY_MAX = 1_000_000  # any request but an upload
+UPLOAD_MAX = 64_000_000  # PUT /v2/uploads: a track or a mix (the fake gateway's audio is 10 MB)
+UPLOAD_PATH = "/v2/uploads"
 NUMBER = re.compile(r"(\d{1,3})$")  # the catalogue number a fake Spotify title ends in
 
 
@@ -50,6 +54,36 @@ class E2eSpotdown(spotdowncore.FakeSpotdown):
         tempo = float(spotifycore.mowl_bpm(spotifycore.track_id(index)))
         self.documents[f"youtube:{video}"] = songanalysisdocs.youtube_doc(video, tempo)
         return video
+
+    def _upload(self, scope: str, body: bytes) -> httpx.Response:
+        """A held upload has a fixed analysis per sha256 of its bytes (the fake gateway's tracks
+        and mixes): the document's length is the audio's own and its tempo is a function of the
+        digest, so the same bytes are analysed the same way in every run."""
+        answer = super()._upload(scope, body)
+        digest = hashlib.sha256(body).hexdigest()
+        document = songanalysisdocs.youtube_doc(
+            "uploaded000", upload_tempo(digest), duration=audio_seconds(body)
+        )
+        document["provenance"]["source"] = {"kind": "upload"}  # no ref, no match (the schema)
+        self.documents[f"sha256:{digest}"] = document
+        return answer
+
+
+def upload_tempo(digest: str) -> float:
+    """100 to 187 BPM by the digest (the fake MOWL's range)."""
+    return float(100 + 3 * (int(digest[:8], 16) % 30))
+
+
+def audio_seconds(body: bytes) -> float:
+    """The length of the audio in ``body`` (whole seconds, at least 60 so the document's four
+    sections fit); 240 s when it cannot be decoded (the stack's tracks are 240 s of silence)."""
+    try:
+        import soundfile
+
+        info = soundfile.info(io.BytesIO(body))
+        return float(max(round(info.frames / info.samplerate), 60))
+    except Exception:
+        return 240.0
 
 
 class State:
@@ -80,8 +114,12 @@ def make_handler(state: State) -> type[BaseHTTPRequestHandler]:
 
         def _serve(self, method: str) -> None:
             length = int(self.headers.get("Content-Length") or 0)
-            body = self.rfile.read(min(length, BODY_MAX + 1)) if length else b""
             path = self.path.partition("?")[0]
+            cap = UPLOAD_MAX if path == UPLOAD_PATH else BODY_MAX
+            if length > cap:  # refuse, never cut the body short
+                self._refuse(length)
+                return
+            body = self.rfile.read(length) if length else b""
             if path.startswith(CONTROL):
                 self._control(method, path.removeprefix(CONTROL))
                 return
@@ -92,6 +130,14 @@ def make_handler(state: State) -> type[BaseHTTPRequestHandler]:
                 state.requests.append({"method": method, "path": path})
                 answer = state.fake.handle(request, body)
             self._send(answer.status_code, dict(answer.headers), answer.content)
+
+        def _refuse(self, length: int) -> None:
+            """``413``; a body of up to 4 MB is read first so the client sees the answer."""
+            left = min(length, 4_000_000)
+            while left > 0:
+                left -= len(self.rfile.read(min(65_536, left)) or b"\0" * left)
+            self.close_connection = True
+            self._json(413, {"error": {"code": "payload_too_large", "message": "too large"}})
 
         def _control(self, method: str, name: str) -> None:
             with state.lock:
