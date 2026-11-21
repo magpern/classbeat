@@ -7,10 +7,11 @@ C5). Every statement filters on ``owner_id`` as well as running under row securi
   class's brief until its first design). ``load_approved`` reads the list itself back (its hash
   re-checked, ``song_list.load``) and refuses a gap.
 - ``pinned``: the bearer's SwedeBeat connection is still the one the list was made with.
-- ``cached_maps``: the list's analyses from the user's cache only, for a revise: **no download**.
-  A track whose analysis is gone (expired, forgotten by a Disconnect) ends the job
-  ``music_changed``: the music is not what the base was designed on, and Change songs designs
-  again.
+- ``cached_maps``: the list's analyses from the user's cache only, for a revise: **no download**,
+  and exactly the rows the base recorded (``studio_revision_model.wanted``: the analyser and the
+  bytes, ADR 0040 section 6). A track whose analysis is gone (expired, forgotten by a
+  Disconnect, or only another analyser's row is left) ends the job ``music_changed``: the music
+  is not what the base was designed on, and Change songs designs again.
 - ``adopt``: the class's first design adopts the brief and ``{"source": "swedebeat_studio"}``;
   a design on a newer approved list (a new pick) becomes the class's current revision.
 """
@@ -24,7 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.connections.swedebeat_account import SwedebeatBearer
 from classbeat.design import revision
-from classbeat.design.track_cache import TrackMap, cached
+from classbeat.design.studio_revision_model import StudioRevisionMusic, wanted
+from classbeat.design.track_cache import TrackMap, cached, recorded
 from classbeat.jobs import FencedSession, JobFailure, JobRun
 from classbeat.swedebeat_studio import song_list
 from classbeat.swedebeat_studio.admit import KIND as SONGS_KIND
@@ -101,11 +103,12 @@ def references(stored: song_list.StudioList) -> list[str]:
 
 
 async def cached_maps(
-    run: JobRun, bearer: SwedebeatBearer, stored: song_list.StudioList
+    run: JobRun, bearer: SwedebeatBearer, stored: song_list.StudioList, base: StudioRevisionMusic
 ) -> list[TrackMap]:
-    """The list's analyses from the cache, in order; ``music_changed`` for one that is gone."""
+    """The list's analyses the base was designed on, from the cache, in order; ``music_changed``
+    for one that is gone."""
     refs = references(stored)
-    found = await cached(run, bearer.connection, refs)
+    found = await cached(run, bearer.connection, refs, recorded(wanted(base, refs)))
     if any(r not in found for r in refs):
         raise JobFailure("music_changed")
     return [found[r] for r in refs]

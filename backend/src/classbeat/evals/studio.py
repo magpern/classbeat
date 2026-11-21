@@ -94,9 +94,12 @@ async def run_studio_case(
     provider: ModelProvider,
     config: AgentConfig,
     sent: Callable[[], str] | None = None,
+    tracks: tuple[StudioTrack, ...] | None = None,
 ) -> StudioCaseResult:
-    """``sent``: a callable giving everything the provider was sent, for the reference check."""
-    tracks = studio_tracks(case.music.tracks)
+    """``sent``: a callable giving everything the provider was sent, for the reference check;
+    ``tracks``: the approved list's analyses (default ``studio_tracks``; the spotdown variant,
+    #1302, gives the same tracks as ``spotdown_map_policy`` maps them)."""
+    tracks = tracks if tracks is not None else studio_tracks(case.music.tracks)
     ctx = StudioContext(case.brief, tracks)
     stage = studio_stage(ctx)
     try:

@@ -3,8 +3,10 @@ between the stage (which names tracks by index) and the stored revision (which n
 catalogue reference).
 
 - ``StudioMusic``: the approved tracks in the list's order, each with its reference and stored
-  analysis; ``stage_tracks`` is what the stage gets (the list's Spotify title and artist and the
-  map, **no reference**), ``plan_of`` turns a stored mix spec back into the stage's indexes (a
+  analysis, and the record of each analysis (``records``: the analyser, the bytes and spotdown's
+  provenance, ADR 0040 section 6) that the draft keeps in its ``music.analyses``;
+  ``stage_tracks`` is what the stage gets (the list's Spotify title and artist and the map, **no
+  reference**), ``plan_of`` turns a stored mix spec back into the stage's indexes (a
   revise's base mix).
 - ``build``: the fitted draft validated again; the stage's plan mapped to references and checked
   once more by ``mix_plan_policy`` against the stored analyses (the backend's own check, never
@@ -27,6 +29,7 @@ from classbeat.agent.studio_design import StudioResult
 from classbeat.agent.studio_mix import StudioTrack
 from classbeat.design import revision
 from classbeat.design.revision import DraftRevision, StudioRevisionMusic
+from classbeat.design.studio_revision_model import TrackRecord, map_hash
 from classbeat.design.track_cache import TrackMap
 from classbeat.jobs import JobFailure
 from classbeat.studio.mix_plan_policy import MixPlanRefused, TrackFacts, checked
@@ -42,18 +45,29 @@ class StudioMusic:
 
     references: tuple[str, ...]
     tracks: tuple[StudioTrack, ...]
+    records: tuple[TrackRecord, ...] = ()
 
     @classmethod
     def of(cls, content: StudioListContent, maps: Sequence[TrackMap]) -> "StudioMusic":
-        by_reference = {m.reference: m.music_map for m in maps}
+        by_reference = {m.reference: m for m in maps}
         refs: list[str] = []
         tracks: list[StudioTrack] = []
+        records: list[TrackRecord] = []
         for song in content.songs:
             if song.swedebeat is None or song.swedebeat.reference not in by_reference:
                 raise JobFailure("internal")  # the caller checked the list and analysed it
-            refs.append(song.swedebeat.reference)
-            tracks.append(StudioTrack(song.title, song.artist, by_reference[refs[-1]]))
-        return cls(tuple(refs), tuple(tracks))
+            found = by_reference[song.swedebeat.reference]
+            refs.append(found.reference)
+            tracks.append(StudioTrack(song.title, song.artist, found.music_map))
+            provenance = None if found.provenance is None else dict(found.provenance)
+            records.append(TrackRecord(
+                reference=found.reference,
+                analyser=found.analyser,
+                sha256=found.sha256,
+                map_hash=map_hash(found.music_map),
+                provenance=provenance,
+            ))  # fmt: skip
+        return cls(tuple(refs), tuple(tracks), tuple(records))
 
     def facts(self) -> dict[str, TrackFacts]:
         return {r: t.facts() for r, t in zip(self.references, self.tracks, strict=True)}
@@ -119,6 +133,7 @@ def build(
             song_list_id=song_list_id,
             mix_spec=spec,
             map_version=int(studio.composed.map["version"]),
+            analyses=list(music.records),
         )
     except (ValueError, ValidationError):
         raise JobFailure("invalid_output") from None

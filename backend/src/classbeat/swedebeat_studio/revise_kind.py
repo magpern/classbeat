@@ -114,7 +114,7 @@ async def run(job_run: JobRun) -> Complete:
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any call
     await job_run.stage("tracks")
     bearer = await open_match_bearer(job_run, match_config.current(), given.swedebeat_connection_id)
-    maps = await design_step.cached_maps(job_run, bearer, stored)  # never a download
+    maps = await design_step.cached_maps(job_run, bearer, stored, base_music)  # no download
     music = draft.StudioMusic.of(stored.content, maps)
     base_plan = music.plan_of(base_music.mix_spec)
     rules = rules_for(brief, row.dismissed_rules)

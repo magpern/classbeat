@@ -65,7 +65,7 @@ SECRET_COLUMNS: dict[str, frozenset[str]] = {
         "class_playlists": "playlist_id spotify_user_id name content_hash",
         "mowl_playlist_links": "source_id playlist_id",
         "swedebeat_mix_maps": "mix_id name playlist_id map",
-        "swedebeat_track_maps": "reference sha256 map",
+        "swedebeat_track_maps": "reference sha256 map provenance",
         "class_outputs": "external_id detail",
         "spotify_syncs": "track_ids",
         "redeem_codes": "code_hash",
