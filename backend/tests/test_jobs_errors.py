@@ -155,6 +155,7 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     import classbeat.swedebeat_studio.kind  # studio_songs (ADR 0036, SR C3)
     import classbeat.swedebeat_studio.outputs_kind  # produce_outputs (ADR 0036, SR C6a stub)
     import classbeat.swedebeat_studio.revise_kind  # studio_revise (ADR 0036, SR C5)
+    import classbeat.preview.render_kind  # preview_render (ADR 0042 section 6.5, #1394)
     import classbeat.swedebeat_studio.sync_kind  # spotify_sync (ADR 0036 section 9, SR C8)
 
     assert classbeat.design.KIND
@@ -168,6 +169,7 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     assert classbeat.swedebeat_studio.outputs_kind.PRODUCE_OUTPUTS
     assert classbeat.swedebeat_studio.revise_kind.STUDIO_REVISE
     assert classbeat.swedebeat_studio.sync_kind.SPOTIFY_SYNC
+    assert classbeat.preview.render_kind.PREVIEW_RENDER
     from classbeat.jobs import KINDS
 
     assert KINDS.names() == [
@@ -175,6 +177,7 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
         "design_with_songs",
         "interpret_request",  # ADR 0029 section 5 (MA1b-3)
         "player_remove",  # ADR 0034 section 5 (PC-5): only the class delete creates one
+        "preview_render",  # ADR 0042 section 6.5 (#1394): only the clip endpoint creates one
         "produce_outputs",  # ADR 0036 section 6 (SR C6a): a stub that writes nothing; C7 runs it
         "refit_draft",  # ADR 0007 amendment "beat-one corrections" (BC3)
         "revise_draft",

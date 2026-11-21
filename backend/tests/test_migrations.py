@@ -35,7 +35,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0069_mix_too_long"]
+    assert script.get_heads() == ["0071_preview_clips"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -56,7 +56,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0069_mix_too_long"]
+        assert applied_revisions(database_url) == ["0071_preview_clips"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -195,6 +195,10 @@ JOBS = [
     "studio_output_starts",
     # ADR 0036 section 9 (0056_spotify_syncs, SR C8).
     "spotify_syncs",
+    # ADR 0042 section 6.5 (0071_preview_clips, #1394).
+    "preview_sessions",
+    "preview_sources",
+    "preview_clips",
     # Issue #525 (0028_user_preferences).
     "user_preferences",
     # ADR 0007 amendment "beat-one corrections" (0029).
