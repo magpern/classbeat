@@ -21,7 +21,7 @@ from agentfake import CONFIG, from_dict
 from classbeat.agent.studio_mix import StudioTrack
 from classbeat.design.track_map_policy import valid_track_map
 from classbeat.evals.studio import load_studio_cases, run_studio_case, studio_tracks
-from classbeat.spotdown.studio_map_model import StudioMap, studio_map
+from classbeat.spotdown.studio_map_model import StudioMap, stored_timing_class, studio_map
 from spotdownfake import example
 from test_evals_studio_smoke import script
 
@@ -39,13 +39,21 @@ def document(local: Mapping[str, Any], n: int) -> dict[str, Any]:
     doc["analysis_id"] = f"an_studio{n:04d}"
     doc["provenance"]["audio"] |= {"sha256": f"{n:064x}", "file_duration_s": duration}
     doc["signal"] |= {"duration_s": duration, "content_start_s": 0.0, "content_end_s": duration}
+    doc["signal"]["silence_regions"] = [  # #1328: a trailing silence, a trusted cut candidate
+        {"start_s": duration - 0.5, "end_s": duration, "confidence": 0.9, "method": "measured"}
+    ]
     seconds = int(duration)
     doc["signal"]["energy"]["full"]["values"] = [0.2 if t < half else 0.9 for t in range(seconds)]
     doc["tempo"]["bpm"] = bpm
     doc["grid"] = {
         "beats": {"times_s": beats, "confidence": 0.9, "method": "estimated"},
         "downbeats": {"times_s": beats[::4], "confidence": 0.8, "method": "estimated"},
-    }
+        "phrases": [  # #1328: 8-bar phrases, trusted cut candidates
+            {"start_s": t, "end_s": round(t + 8 * 4 * beat, 4), "bars": 8, "confidence": 0.7,
+             "method": "estimated"}
+            for t in beats[::32]
+        ],
+    }  # fmt: skip
     doc["structure"]["segments"] = [
         {"id": "s1", "start_s": 0.0, "end_s": half, "boundary_confidence": 0.8,
          "method": "estimated"},
@@ -68,7 +76,8 @@ def spotdown_tracks(count: int) -> tuple[StudioTrack, ...]:
         assert isinstance(mapped, StudioMap), mapped
         assert valid_track_map(mapped.track_map, track.TRACK_VERSION)
         assert mapped.provenance["timing"]["class"] == "exact"  # type: ignore[index]
-        out.append(StudioTrack(local.title, local.artist, mapped.track_map))
+        timing = stored_timing_class(mapped.provenance)
+        out.append(StudioTrack(local.title, local.artist, mapped.track_map, timing))
     return tuple(out)
 
 
@@ -86,6 +95,9 @@ async def test_the_case_passes_on_spotdowns_maps(case: Any) -> None:
         return json.dumps([repr(s) for s in fake.sent], ensure_ascii=False)
 
     result = await run_studio_case(case, fake, CONFIG, sent, tracks)
+    assert all(t.facts().candidates for t in tracks)  # #1328: the candidates reach the check
+    assert '"cut_points"' in sent().replace('\\"', '"')  # and the model, by track index
+    assert '"use":"trusted"' in sent().replace('\\"', '"')
     assert result.outcome == "submitted"
     assert result.passed, [(c.name, c.detail) for c in result.checks if not c.ok]
     assert {c.name for c in result.checks} >= {"mix_order", "mix_windows", "mix_total", "duration"}

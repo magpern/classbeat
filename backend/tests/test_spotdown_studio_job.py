@@ -31,9 +31,8 @@ from classbeat.design import track_analysis, track_spotdown
 from classbeat.jobs import JobRun
 from classbeat.spotdown import scope_outbox, shadow_config, studio_policy, studio_tracks_config
 from classbeat.spotdown.client import SpotdownClient
-from classbeat.spotdown.provenance_model import POLICY_VERSIONS
 from classbeat.spotdown.scope_calc import cache_scope, shared_scope
-from classbeat.spotdown.studio_map_model import StudioMap, studio_map
+from classbeat.spotdown.studio_map_model import STUDIO_POLICY_VERSIONS, StudioMap, studio_map
 from ctx import make_context
 from mediafake import kick_wav_bytes
 from spotdownfake import FakeSpotdown, spotdown
@@ -195,7 +194,7 @@ async def test_spotdown_gives_each_map_with_its_provenance_and_no_local_run(
         assert r.provenance["timing"]["class"] == "exact"
         assert r.provenance["timing"]["reason"] == "played_recording"
         assert r.provenance["audio"]["sha256"] == sha
-        assert r.provenance["policy_versions"] == dict(POLICY_VERSIONS)
+        assert r.provenance["policy_versions"] == dict(STUDIO_POLICY_VERSIONS)
         assert r.provenance["source"] == {"kind": "upload", "ref": None}
         text = json.dumps(r.provenance)
         for secret in (
@@ -448,7 +447,7 @@ async def test_a_row_of_other_policy_versions_is_analysed_again(
     assert downloads(harness, owner) == fetched + 1  # a miss: downloaded again
     assert len(sent(spotdown, "/v2/uploads")) == 1  # spotdown's lookup had it
     [stored] = rows(harness, owner)
-    assert stored.provenance["policy_versions"] == dict(POLICY_VERSIONS)
+    assert stored.provenance["policy_versions"] == dict(STUDIO_POLICY_VERSIONS)
 
 
 async def test_a_lost_lease_while_waiting_stops_the_run_and_stores_nothing(

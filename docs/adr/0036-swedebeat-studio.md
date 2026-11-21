@@ -527,8 +527,18 @@ piece. Steps 5 to 10 then run on the whole mix, in this order: coverage, then th
 `window_too_short` and the rest. The fixed order is:
 
 1. the range check of the piece's proposed cut (`cut_out_of_range`);
-2. candidate selection (#1328);
-3. the bar-grid snap, `exact` only;
+2. candidate selection (#1328): the nearest **usable** candidate within `min(1.0 s, 0.45 × bar)` of the
+   proposed cut, else the proposed cut. Usable means trusted **and** on an `exact` track (an `approximate`
+   candidate is advisory and never sets a cut; an `unusable` track has none). A downbeat is chosen only when
+   no other kind is in reach, and a tie in distance goes to the earlier candidate. A cut at an edge (0, or
+   within 0.01 s of the length) is never moved, and an edge candidate is never selected;
+3. the bar-grid snap on the `TrackFacts` grid, for an `exact` track **or a track with no stored timing
+   decision** (a local analysis of the played bytes, the played recording itself), as before #1328. An
+   `approximate` or `unusable` track is never snapped: its cut is only rounded to 0.01 s. Edges stay edges.
+   On an `exact` track the snap moves the cut that step 2 chose to its nearest bar, so a selected candidate
+   only decides which bar the cut lands on: the final cut is that bar, not the candidate's own time
+   (intended; Architect, 2026-11-21, on the #1350 review).
+   *(Architect, 2026-11-21, #1350; reversible. A loop join still needs a stored `exact` decision, A4.1.)*
 4. the range check again after snapping;
 5. **coverage** (A2): each approved reference at least once (`not_a_permutation`; "nothing else" is already
    held by the per-piece check above);
@@ -541,7 +551,8 @@ piece. Steps 5 to 10 then run on the whole mix, in this order: coverage, then th
 10. then the **soft checks**, which never refuse: `whole_track_repeated`, `one_song_dominates` (and #1330's
     lock and tempo hints).
 
-Every constraint is checked after snapping. The new refusal reasons are `loop_needs_exact_timing`,
+Every constraint is checked after snapping. A piece's `why` (the model's note on a cut, #1328) is model text:
+it never enters the stored spec or the `content_hash`. The new refusal reasons are `loop_needs_exact_timing`,
 `loop_not_on_phrase`, `loop_piece_too_short` and `loop_crossfade_not_zero`; the new hints are
 `whole_track_repeated` and `one_song_dominates`. The loop checks live in a small pure module beside
 `mix_plan_policy` (a rule module stays near 150 lines, CLAUDE.md), called from `checked` at step 6.

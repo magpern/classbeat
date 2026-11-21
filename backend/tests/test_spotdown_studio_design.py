@@ -125,6 +125,11 @@ async def test_a_class_designed_on_spotdown_keeps_its_maps_and_provenance(
     for record in records:  # the provenance kept with the class, not only in the cache
         assert record["provenance"]["timing"]["class"] == "exact"
         assert record["provenance"]["audio"]["sha256"] == record["sha256"]
+    stored = studio.songs.sql(
+        "SELECT map FROM swedebeat_track_maps WHERE owner_id = :o AND analyser = 'spotdown'",
+        o=rider.user_id,
+    ).scalars()
+    assert all(m["cut_candidates"] for m in stored)  # #1328: each map carries its candidates
     # Switched off, a later job's local maps of the same tracks coexist with spotdown's.
     studio_tracks_config.configure(None)
     local_beside(studio, rider.user_id)

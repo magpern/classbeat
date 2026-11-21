@@ -16,8 +16,8 @@ from classbeat import egress_spotdown
 from classbeat.config import Settings
 from classbeat.spotdown import studio_policy as sp
 from classbeat.spotdown.failure_policy import TrackFailure, Unreachable
-from classbeat.spotdown.provenance_model import POLICY_VERSIONS
 from classbeat.spotdown.studio_map_model import (
+    STUDIO_POLICY_VERSIONS,
     StudioMap,
     StudioRefused,
     current_provenance,
@@ -56,11 +56,39 @@ def test_the_played_bytes_are_exact_and_mapped_with_their_provenance() -> None:
     assert record["timing"]["class"] == "exact"  # type: ignore[index]
     assert record["timing"]["reason"] == "played_recording"  # type: ignore[index]
     assert record["audio"]["sha256"] == SHA  # type: ignore[index]
-    assert record["policy_versions"] == dict(POLICY_VERSIONS)
+    assert record["policy_versions"] == dict(STUDIO_POLICY_VERSIONS)
     assert record["source"] == {"kind": "upload", "ref": None}
     assert REFERENCE not in json.dumps(record)  # the played reference is never kept
     assert current_provenance(record, SHA)
     assert not current_provenance(record, "d" * 64)  # the record of other bytes than the row's
+
+
+def test_the_map_carries_its_candidates_within_the_tables_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from classbeat.design.track_map_policy import MAX_MAP_BYTES
+    from classbeat.jsonb_text_calc import jsonb_text_size
+    from classbeat.spotdown import studio_map_model
+
+    assert studio_map_model.MAP_MAX == MAX_MAP_BYTES  # the same check as ``valid_track_map``
+    mapped = studio_map(doc(), REFERENCE, SHA, 1)
+    assert isinstance(mapped, StudioMap)
+    assert mapped.track_map["cut_candidates"]  # #1328
+    size = jsonb_text_size(mapped.track_map)
+    monkeypatch.setattr(studio_map_model, "MAP_MAX", size)
+    assert isinstance(studio_map(doc(), REFERENCE, SHA, 1), StudioMap)  # at the limit: stored
+    monkeypatch.setattr(studio_map_model, "MAP_MAX", size - 1)
+    assert studio_map(doc(), REFERENCE, SHA, 1) == StudioRefused("map_too_large")
+
+
+def test_a_map_the_table_could_not_measure_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    from classbeat.spotdown import studio_map_model
+
+    def unmeasurable(_value: object) -> int:
+        raise TypeError("not JSON")
+
+    monkeypatch.setattr(studio_map_model, "jsonb_text_size", unmeasurable)
+    assert studio_map(doc(), REFERENCE, SHA, 1) == StudioRefused("map_too_large")
 
 
 @pytest.mark.parametrize(

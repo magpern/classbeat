@@ -29,8 +29,17 @@ instructor asked for it. Never put two pieces of the same track next to each oth
 track between them. A class that repeats a track can be produced as a mix only, not as a \
 SwedeBeat playlist;
 - the cut of each piece: start_sec and end_sec in the track's own seconds, 0 <= start_sec < \
-end_sec <= its length, with at least 60 s played. A cut moves to the nearest downbeat \
-(first_downbeat_sec plus whole bars of bar_sec); 0 and the track's length stay the edges;
+end_sec <= its length, with at least 60 s played. A cut near a trusted cut point moves to it, \
+then to the nearest downbeat (first_downbeat_sec plus whole bars of bar_sec); 0 and the \
+track's length stay the edges. A track with timing approximate or unusable is never moved \
+to a bar;
+- the cut points: per track, cut_points lists where it may be cut, in its own seconds (the \
+music's start and end, silence and fade edges; get_music with a track adds segment, label and \
+phrase starts). A point whose use is hint is a guess: never cut at one for that reason alone. \
+By default a piece plays the whole track: keep intros, outros and fades, which are part of the \
+music, and cut only actual silence (before content_start or after content_end). Cut anywhere \
+else only when the class needs a shorter song or a part of one (a repeat), at a trusted point \
+where you can, and give the reason in that piece's why;
 - one crossfade between each two pieces: whole seconds from 0 to 30, shorter than both pieces' \
 played windows, and for a middle piece its incoming plus outgoing crossfade shorter than its \
 window. Every track plays at its own tempo: there is no tempo change;
@@ -99,9 +108,10 @@ REVISE_SYSTEM: Final = (
     + _DATA
 )
 GET_MUSIC: Final = (
-    "The tracks: per track its index, title, artist, BPM, length, bar length, first downbeat and "
-    "the drops and breakdowns in its own seconds. With track, that track's sections (each with "
-    "its energy from 0 to 1, where known)."
+    "The tracks: per track its index, title, artist, BPM, length, bar length, first downbeat, "
+    "the drops and breakdowns in its own seconds and, where known, its timing and its edge cut "
+    "points. With track, that track's sections (each with its energy from 0 to 1, where known) "
+    "and all its cut points (trusted, or a hint)."
 )
 PREVIEW: Final = (
     "Check a draft and a mix without finishing: returns the snapped mix and its total, the "

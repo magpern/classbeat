@@ -4,7 +4,8 @@ catalogue reference).
 
 - ``StudioMusic``: the approved tracks in the list's order, each with its reference and stored
   analysis, and the record of each analysis (``records``: the analyser, the bytes and spotdown's
-  provenance, ADR 0040 section 6) that the draft keeps in its ``music.analyses``;
+  provenance, ADR 0040 section 6) that the draft keeps in its ``music.analyses``; a spotdown
+  track's stage track carries its stored timing class, and so its cut candidates (#1328);
   ``stage_tracks`` is what the stage gets (the list's Spotify title and artist and the map, **no
   reference**), ``plan_of`` turns a stored mix spec back into the stage's indexes (a
   revise's base mix).
@@ -32,6 +33,7 @@ from classbeat.design.revision import DraftRevision, StudioRevisionMusic
 from classbeat.design.studio_revision_model import TrackRecord, map_hash
 from classbeat.design.track_cache import TrackMap
 from classbeat.jobs import JobFailure
+from classbeat.spotdown.studio_map_model import stored_timing_class
 from classbeat.studio.mix_plan_policy import MixPlanRefused, TrackFacts, checked
 from classbeat.studio.mix_spec_model import MixSpec
 from classbeat.swedebeat_studio.song_list_model import SOURCE, StudioListContent
@@ -58,7 +60,8 @@ class StudioMusic:
                 raise JobFailure("internal")  # the caller checked the list and analysed it
             found = by_reference[song.swedebeat.reference]
             refs.append(found.reference)
-            tracks.append(StudioTrack(song.title, song.artist, found.music_map))
+            timing = stored_timing_class(found.provenance) if found.analyser == "spotdown" else None
+            tracks.append(StudioTrack(song.title, song.artist, found.music_map, timing))
             provenance = None if found.provenance is None else dict(found.provenance)
             records.append(TrackRecord(
                 reference=found.reference,
