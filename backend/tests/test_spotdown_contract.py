@@ -59,6 +59,7 @@ MATCH_REQUEST = {
                     "artists": {"type": "array", "minItems": 1, "items": {"type": "string"}},
                     "duration_s": {"type": "number", "minimum": 0},
                     "isrc": {"type": "string"},
+                    "explicit": {"type": "boolean"},  # spotdown#36: the caller's flag, optional
                 },
             },
         },
@@ -74,6 +75,7 @@ ANALYSIS_REQUEST = {
         "client_ref": {"type": "string", "minLength": 1, "maxLength": 128},
         "upload_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
         "source_ref": {"type": "string", "pattern": "^youtube:[A-Za-z0-9_-]{11}$"},  # contract v2
+        "explicit": {"type": "boolean"},  # spotdown#36: the caller's flag, optional
         "reference": {
             "type": "object",
             "additionalProperties": False,

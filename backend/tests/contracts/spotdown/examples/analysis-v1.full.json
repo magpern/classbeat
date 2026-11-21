@@ -259,6 +259,23 @@
       "method": "heuristic"
     }
   ],
+  "content": {
+    "explicit": {
+      "value": "yes",
+      "confidence": 0.5,
+      "method": "metadata",
+      "evidence": [
+        {
+          "source": "caller",
+          "value": false
+        },
+        {
+          "source": "youtube_age_limit",
+          "value": 18
+        }
+      ]
+    }
+  },
   "alignment": {
     "reference": {
       "kind": "spotify",

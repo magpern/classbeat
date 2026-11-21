@@ -161,11 +161,14 @@ def build(
     preview: Preview | None = None,
     sources: Mapping[str, SongSource] | None = None,
     approximate: frozenset[int] = frozenset(),
+    explicit: frozenset[int] = frozenset(),
 ) -> SongListRevision:
     """The revision of ``chosen`` for the Spotify account ``account`` (``v: 3`` with
     ``preview``); ``invalid_output`` if it does not fit the content's rules or 64 KB, checked on
     the whole canonical content before anything is inserted. ``approximate``: the 0-based
-    positions whose timing is spotdown's ``approximate`` one (``Song.timing``; SD-P6, #1303)."""
+    positions whose timing is spotdown's ``approximate`` one (``Song.timing``; SD-P6, #1303);
+    ``explicit``: the positions that show the "Explicit" tag (``Song.explicit``; report only,
+    #1340)."""
     try:
         content = SongListContent(
             v=VERSION if preview is None else PREVIEW_VERSION,
@@ -185,6 +188,7 @@ def build(
                     cover=cover_url(s.cover),
                     source=None if preview is None else (sources or {}).get(s.spotify_id),
                     timing="approximate" if n in approximate else None,
+                    explicit=True if n in explicit else None,
                 )
                 for n, s in enumerate(chosen.songs)
             ],
