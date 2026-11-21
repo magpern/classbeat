@@ -145,6 +145,13 @@ class FeatureSettings(BaseSettings):
     # on for everyone: that default waits for the Spotify gates (owner decision #1298).
     spotdown_spotify: Literal["off", "allowlist"] = "off"
     spotdown_spotify_owners: str = ""
+    # ADR 0040 section 9 (#1304): SwedeBeat mixes analysed by spotdown, worker only, its own
+    # switch: ``off`` (the default) is today's local mix analysis; ``allowlist`` makes spotdown
+    # the source of the mix's map for the owners in ``spotdown_mix_owners``, with the local
+    # analysis as the fallback (``spotdown.mix_config``). No value switches it on for everyone:
+    # that default waits for the mix gates (owner decision #1298).
+    spotdown_mix: Literal["off", "allowlist"] = "off"
+    spotdown_mix_owners: str = ""
 
     @field_validator("swedebeat_gateway_url")
     @classmethod
@@ -180,6 +187,11 @@ class FeatureSettings(BaseSettings):
     @classmethod
     def _check_spotdown_spotify_owners(cls, value: str) -> str:
         return check_owner_list(value, "spotdown_spotify_owners")
+
+    @field_validator("spotdown_mix_owners")
+    @classmethod
+    def _check_spotdown_mix_owners(cls, value: str) -> str:
+        return check_owner_list(value, "spotdown_mix_owners")
 
     @field_validator("oidc_player_client_id")
     @classmethod

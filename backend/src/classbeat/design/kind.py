@@ -60,10 +60,10 @@ from classbeat.agent.running import design_stage_for
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import corrections, kind_music, mixadmit, music_kind, revision, sport
+from classbeat.design import kind_music, mixadmit, music_kind, revision, sport
 from classbeat.design.interpreted import with_interpretation
+from classbeat.design.kind_music_step import music_step as music_step
 from classbeat.design.kind_nomusic import run_no_music
-from classbeat.design.music import MusicStep, load_music
 from classbeat.design.music_choice import (
     CLASS_MUSIC_SOURCE as CLASS_MUSIC_SOURCE,
 )
@@ -77,7 +77,6 @@ from classbeat.design.music_choice import (
     SwedebeatMusicChoice,
 )
 from classbeat.design.sport_rules import rules_for
-from classbeat.design.swedebeat_music import swedebeat_step
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
 from classbeat.jobs.inputs import ModelJobInput, jsonb_size
 from classbeat.jobs.kinds import Admitted, Refused
@@ -177,27 +176,6 @@ async def group_model(
     """The model of one stage group of this attempt (``classbeat.models.jobs``): its own new
     provider and the agent config of the route's choice."""
     return await runtime.models(run, route_key, group, runtime.agent)
-
-
-async def music_step(
-    run: JobRun,
-    runtime: Runtime,
-    music: SpotifyMusicChoice | SwedebeatMusicChoice,
-    connection_id: UUID,
-) -> MusicStep:
-    """The music step of the class's source: the user's Spotify playlist in MOWL, or their
-    Swedebeat mix (``swedebeat_step``; the caller checked the flag with ``mixadmit.still_on``)."""
-    if isinstance(music, SwedebeatMusicChoice):
-        step = await swedebeat_step(run, runtime.keyring, music.mix_id, connection_id=connection_id)
-    else:
-        step = await load_music(
-            run, runtime.keyring, music.spotify_playlist_id, connection_id=connection_id
-        )
-    try:  # the class's beat-one corrections for this music (ADR 0007 amendment)
-        return await corrections.attach(run, step)
-    except BaseException:
-        step.close()
-        raise
 
 
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:

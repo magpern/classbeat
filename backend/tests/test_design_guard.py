@@ -24,6 +24,7 @@ from typing import Any
 import pytest
 
 from classbeat.design import kind as design_kind
+from classbeat.design import kind_music_step
 from classbeat.design import music as design_music
 from classbeat.jobs import Complete, FencedSession, JobFailure, JobRun
 from designtools import DesignEnv, FakeMowlMusic
@@ -263,7 +264,7 @@ async def test_the_step_is_closed_whether_the_store_ran_or_not(
     a cancel found by the final transaction means ``store`` never runs."""
     owner, conn = await owner_with_mowl(denv)
     steps: list[design_music.MusicStep] = []
-    real_load, real_run_stage = design_kind.load_music, design_kind.run_stage
+    real_load, real_run_stage = kind_music_step.load_music, design_kind.run_stage
 
     async def keep_step(*args: Any, **kwargs: Any) -> design_music.MusicStep:
         steps.append(await real_load(*args, **kwargs))
@@ -275,7 +276,7 @@ async def test_the_step_is_closed_whether_the_store_ran_or_not(
             denv.ops.sql("UPDATE jobs SET cancel_requested_at = now() WHERE id = :id", id=job_id)
         return outcome
 
-    monkeypatch.setattr(design_kind, "load_music", keep_step)
+    monkeypatch.setattr(kind_music_step, "load_music", keep_step)
     monkeypatch.setattr(design_kind, "run_stage", run_then_cancel)
     job_id = denv.job(owner, conn)
     await denv.run_next()

@@ -100,8 +100,11 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # name, MOWL's playlist id, the map). No audio, nothing Spotify-derived. At most 20 per user
         # and 30 days (A3); gone with the account and with the MOWL connection (Disconnect, an
         # account change, ``connections.forget.forget_mowl_account``).
+        # ADR 0040 section 6 (#1304): ``analyser`` is a code (``local`` or ``spotdown``) and a
+        # ``spotdown`` row's ``provenance`` is ids, versions, the audio identity and the timing
+        # evidence (no title, mix id, link, URL or scope).
         "swedebeat_mix_maps": _entry(
-            "mix_id name playlist_id map", "", "account", "mowl_connection"
+            "mix_id name playlist_id map provenance", "analyser", "account", "mowl_connection"
         ),
         # ADR 0016 section 7 (A4): when each new mix analysis started, for the daily limit. No
         # content; a user's rows past 48 hours go with their next one, all with the account.

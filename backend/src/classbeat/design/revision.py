@@ -39,11 +39,11 @@ import logging
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated, Any, Final, Literal, Self
+from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
 from mowl import workout
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
+from pydantic import Field, TypeAdapter, ValidationError
 from sqlalchemy import text
 
 from classbeat.agent import DesignResult, Provenance, WorkoutDraft, beat_one, mix_input, provenance
@@ -51,6 +51,11 @@ from classbeat.agent.loop import StageOutcome
 from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
 from classbeat.design.music_kind import NoMusicStep
+from classbeat.design.revision_music_model import NoRevisionMusic as NoRevisionMusic
+from classbeat.design.revision_music_model import RevisionSong
+from classbeat.design.revision_music_model import SpotifyRevisionMusic as SpotifyRevisionMusic
+from classbeat.design.revision_music_model import SwedebeatRevisionMusic as SwedebeatRevisionMusic
+from classbeat.design.revision_music_model import UnknownBpmTrack as UnknownBpmTrack
 from classbeat.design.studio_revision_model import StudioRevisionMusic as StudioRevisionMusic
 from classbeat.jobs import FencedSession, JobFailure
 
@@ -105,93 +110,6 @@ async def adopt_first(
         },
     )
     return found.first() is not None
-
-
-class UnknownBpmTrack(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    index: int = Field(ge=0)
-    title: str = Field(max_length=200)
-
-
-class BeatOneCorrection(BaseModel):
-    """One applied beat-one correction (ADR 0007 amendment "beat-one corrections")."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    song: int = Field(ge=1, le=500)
-    beats: int = Field(ge=-3, le=3)
-
-    @model_validator(mode="after")
-    def _not_zero(self) -> Self:
-        if self.beats == 0:
-            raise ValueError("a correction moves beat 1")
-        return self
-
-
-class RevisionSong(BaseModel):
-    """A song the class plays, for the beat-one control (``classbeat.agent.beat_one.songs``):
-    seconds of the class as heard; ``title`` for a Spotify track only. Shown to the user only."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    song: int = Field(ge=1, le=500)
-    start: float = Field(ge=0, le=86400)
-    end: float = Field(ge=0, le=86400)
-    bpm: float = Field(gt=0, le=1000)
-    estimate: bool
-    title: str | None = Field(default=None, max_length=100)
-
-
-# Absent on every revision before the amendment, which therefore validates and dumps as before.
-BeatOneList = Annotated[list[BeatOneCorrection] | None, Field(default=None, max_length=500)]
-SongList = Annotated[list[RevisionSong] | None, Field(default=None, max_length=200)]
-
-
-class SpotifyRevisionMusic(BaseModel):
-    """``class_revisions.music`` of a draft on a Spotify playlist."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    source: Literal["mowl_spotify_playlist"]
-    link_id: UUID
-    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
-    unknown_bpm: list[UnknownBpmTrack] = Field(max_length=500)
-    # ADR 0008 section 4: a draft designed on picked songs names the approved ``song_list``
-    # revision it was made from; absent on every other draft (stored exactly as before).
-    song_list_id: UUID | None = None
-    beat_one: BeatOneList = None
-    songs: SongList = None
-
-
-class SwedebeatRevisionMusic(BaseModel):
-    """``class_revisions.music`` of a draft on the user's Swedebeat mix (ADR 0016 section 3):
-    the mix's opaque id and name, the analysed length and the map's fingerprint; ``link_id`` is
-    the user's ``mowl_playlist_links`` row (``source = 'swedebeat'``) Save reads its MOWL playlist
-    from, under the same checks as a Spotify link. ``listed_duration`` and ``unsure_beat_one``
-    are the library's warnings (the listing's length, the songs whose beat 1 is an estimate)."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    source: Literal["mowl_swedebeat_mix"]
-    mix_id: str = Field(pattern=r"^[0-9A-Za-z_-]{1,64}$")
-    name: str = Field(max_length=200)
-    duration: float = Field(gt=0, le=7200)
-    listed_duration: float = Field(ge=0, le=86400)
-    unsure_beat_one: list[int] = Field(max_length=500)
-    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
-    link_id: UUID
-    beat_one: BeatOneList = None
-    songs: SongList = None
-
-
-class NoRevisionMusic(BaseModel):
-    """``class_revisions.music`` of a soundless class's draft (#527): the source and nothing
-    else, so no MOWL object, link or fingerprint is named."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    source: Literal["none"]
 
 
 def studio_hash(content: Mapping[str, Any], mix_spec: Mapping[str, Any]) -> bytes:
@@ -334,6 +252,8 @@ def content_and_music(
             unsure_beat_one=list(step.mix.unsure_beat_one),
             fingerprint=step.fingerprint,
             link_id=step.link_id,
+            analyser="spotdown" if step.mix.analyser == "spotdown" else None,
+            provenance=step.mix.provenance,
         )
     else:
         music = SpotifyRevisionMusic(
