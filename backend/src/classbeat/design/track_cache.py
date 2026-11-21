@@ -26,7 +26,7 @@ Every statement filters on ``owner_id`` itself as well as through row security. 
 
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, Final, cast
 from uuid import UUID
 
@@ -206,7 +206,14 @@ async def store(
             await run.release_analysis_slot(fs)  # #574: free once this commits
     if release_slot:
         run.slot_released()
-    return replace(analysed, music_map=cast(dict[str, Any], kept))  # a jsonb object: a dict
+    return TrackMap(  # the map as stored: a jsonb object reads back as a dict
+        analysed.reference,
+        analysed.sha256,
+        cast(dict[str, Any], kept),
+        cached=analysed.cached,
+        analyser=analysed.analyser,
+        provenance=analysed.provenance,
+    )
 
 
 def recorded(wanted: Mapping[str, Wanted]) -> Accept:
