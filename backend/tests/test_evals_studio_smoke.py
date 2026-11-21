@@ -61,6 +61,8 @@ async def test_the_case_passes_against_its_recorded_script(case: Any) -> None:
     assert result.passed, [(c.name, c.detail) for c in result.checks if not c.ok]
     assert {c.name for c in result.checks} >= {"mix_order", "mix_windows", "mix_total", "duration"}
     assert len(result.prompt_version) == 64
+    assert "tempo_jump (neighbours whose" in sent()  # #1330's prompt, a new prompt_version
+    assert "downbeats_not_locked: in the crossfade" not in sent()  # local maps: no trusted grid
     assert fake.remaining == 0
 
 

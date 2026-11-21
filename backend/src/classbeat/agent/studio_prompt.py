@@ -5,7 +5,8 @@ for a revise the base draft, the base mix **by index** and the user's requests. 
 reference, an id, a connection or any earlier model text but the base draft's own.
 
 The prompts say the backend computes the total and snaps the cuts, so the model never states a
-length, a total or a reference.
+length, a total or a reference, and (#1330) how transitions fit: neighbours of a close tempo, cuts
+on phrase points or downbeats, crossfades of whole bars, and the hints that say where one does not.
 """
 
 import json
@@ -48,13 +49,22 @@ where you can, and give the reason in that piece's why;
 - one crossfade between each two pieces: whole seconds from 0 to 30, shorter than both pieces' \
 played windows, and for a middle piece its incoming plus outgoing crossfade shorter than its \
 window. Every track plays at its own tempo: there is no tempo change;
+- the transitions: order the tracks so neighbours fit, a close tempo (within about 6 %, or half \
+or double time) and energy for the block. For a track with timing exact, end a piece that \
+another follows on a trusted phrase_end and start a piece that follows another on a trusted \
+phrase_start where one suits, else on a downbeat; the backend moves a cut near such a point onto \
+it. Choose a crossfade that is a whole number of bars of both tracks (bar_sec), so their \
+downbeats meet in the overlap; for some tempos no whole second does;
 - at most 40 pieces and 150 minutes.
 The backend computes the mix's length (the played windows less the crossfades, every piece \
 counted) and returns it with the snapped cuts: never state a length or a total yourself. Cut and \
 order the songs so the music suits the class: the length the brief asks for, quiet parts for the \
 warm-up, the recoveries and the cooldown, loud parts for the hard work. The warnings \
 whole_track_repeated and one_song_dominates are hints, not errors: keep such a mix only when the \
-instructor asked for it or it clearly suits the class.
+instructor asked for it or it clearly suits the class. The warnings tempo_jump (neighbours whose \
+tempos clash) and downbeats_not_locked (a crossfade whose downbeats do not meet, with the \
+crossfades that would) are hints too: fix them by reordering, recutting or another crossfade \
+where you can; keep a tempo jump only where the class changes phase.
 
 """
 _RULES = """\

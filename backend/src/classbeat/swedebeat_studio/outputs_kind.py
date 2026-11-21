@@ -96,7 +96,7 @@ def _detail(p: Producer, output: str, mix: OutputRow | None) -> Callable[[], Map
         if output == "swedebeat_playlist":
             name = body.class_name(p.title)
             return {"name": name, "body": body.playlist_body(name, spec, facts, durations)}
-        plan = body.render_plan(spec, durations)
+        plan = body.render_plan(spec, durations, p.track_facts())
         last = plan[-1]
         return {
             "name": body.mix_name(p.title, body.new_suffix()),

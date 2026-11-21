@@ -35,7 +35,8 @@ selected, snapped) and rounded, or raises ``MixPlanRefused`` with one named reas
 2. **per piece, in mix order** (``_track``): its fields (``tempo_change``, ``unknown_field``), its
    reference on the approved list (``not_a_permutation``), then for each cut A7 steps 1 to 4: its
    range (``cut_out_of_range``), the candidate selection and the snap (``mix_cut_policy.placed``:
-   a trusted candidate of an ``exact`` track within the tolerance, else the proposed cut; the bar
+   a trusted candidate of an ``exact`` track within the tolerance, at a transition its phrase
+   point first (#1330), else the proposed cut; the bar
    grid for ``exact`` or no stored timing decision only), and its range again once placed
    (``cut_out_of_range``, a named detail). One piece's checks all run before the next piece's;
 3. coverage (step 5): each approved reference has a piece (``not_a_permutation``);
@@ -50,7 +51,8 @@ selected, snapped) and rounded, or raises ``MixPlanRefused`` with one named reas
    then the total (step 9, ``mix_too_long``).
 
 Every constraint after step 4 is checked on the placed cuts. The soft checks (A7 step 10) are
-``mix_hint_policy.hints``, which callers run on the checked spec: they never refuse.
+``mix_hint_policy.hints`` and ``mix_transition_policy.hints`` (#1330: the downbeat lock and the
+tempo check), which callers run on the checked spec: they never refuse.
 
 Cuts are stored rounded to 0.01 s, the app's precision, and every comparison is in whole
 hundredths (``cs``, as ``mowl.compose`` computes): a 60.00 s window is 6000 cs whatever its start,
@@ -87,7 +89,11 @@ def _seconds(value: object) -> float:
     return float(value)
 
 
-def _track(raw: object, facts: Mapping[str, TrackFacts]) -> tuple[str, float, float]:
+def _track(
+    raw: object, facts: Mapping[str, TrackFacts], n: int, count: int
+) -> tuple[str, float, float]:
+    """Piece ``n`` of ``count``: its start is a transition's after the first piece, its end
+    before the last (``mix_cut_policy.Side``, #1330)."""
     if not isinstance(raw, Mapping):
         raise MixPlanRefused("unknown_field", "each track is an object")
     item: Mapping[str, Any] = raw  # pyright: ignore[reportUnknownVariableType]
@@ -103,7 +109,8 @@ def _track(raw: object, facts: Mapping[str, TrackFacts]) -> tuple[str, float, fl
     start, end = _seconds(item.get("start_sec")), _seconds(item.get("end_sec"))
     if not 0 <= cs(start) < cs(end) <= cs(known.length) + 1:  # the library's 0.01 s of slack
         raise MixPlanRefused("cut_out_of_range", "need 0 <= start_sec < end_sec <= length")
-    start, end = placed(start, known), placed(end, known)  # A7 steps 2 and 3
+    start = placed(start, known, "start" if n > 0 else None)  # A7 steps 2 and 3
+    end = placed(end, known, "end" if n < count - 1 else None)
     if not 0 <= cs(start) < cs(end) <= cs(known.length):  # A7 step 4: the range once placed
         raise MixPlanRefused(
             "cut_out_of_range", "the placed cut (candidate, snap) leaves no window"
@@ -155,7 +162,8 @@ def checked(
     if len(tracks) > MAX_TRACKS:  # pyright: ignore[reportUnknownArgumentType]
         raise MixPlanRefused("too_many_tracks", f"at most {MAX_TRACKS} pieces")
     known = {r: facts[r] for r in approved if r is not None and r in facts}
-    cut = [_track(t, known) for t in tracks]  # pyright: ignore[reportUnknownVariableType]
+    count = len(tracks)  # pyright: ignore[reportUnknownArgumentType]
+    cut = [_track(t, known, n, count) for n, t in enumerate(tracks)]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
     if {r for r in approved if r is not None} - {r for r, _, _ in cut}:  # "only those": _track
         raise MixPlanRefused("not_a_permutation", COVERAGE)
     joins = mix_loop_policy.join_refusal(cut, known)  # A7 step 6, on the placed cuts

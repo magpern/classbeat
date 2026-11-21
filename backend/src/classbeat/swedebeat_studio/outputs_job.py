@@ -31,6 +31,8 @@ from classbeat.design.track_cache import TrackMap
 from classbeat.jobs import JobFailure, JobRun
 from classbeat.operations import CallResult, NotWritten, UncertainAnswer, perform
 from classbeat.operations.requests import Guard, OperationRequest
+from classbeat.spotdown.studio_map_model import stored_timing_class
+from classbeat.studio.mix_facts_model import TrackFacts, of_map
 from classbeat.studio.output_body_policy import Facts
 from classbeat.swedebeat_gateway.writes import WriteFailure
 from classbeat.swedebeat_match.gateway_match import call_failure
@@ -88,6 +90,16 @@ class Producer:
 
     def durations(self) -> dict[str, float]:
         return {r: float(self.maps[r].music_map["duration"]) for r in self.references}
+
+    def track_facts(self) -> dict[str, TrackFacts]:
+        """Each piece's stored analysis as the mix rules read it (the render's curves, #1330)."""
+        out: dict[str, TrackFacts] = {}
+        for r in self.references:
+            found = self.maps[r]
+            spotdown = found.analyser == "spotdown"
+            timing = stored_timing_class(found.provenance) if spotdown else None
+            out[r] = of_map(found.music_map, timing)
+        return out
 
     def sha256s(self) -> dict[str, str]:
         return {r: self.maps[r].sha256 for r in self.references}

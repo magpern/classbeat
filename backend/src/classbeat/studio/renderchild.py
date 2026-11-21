@@ -7,8 +7,8 @@ kill or a hostile file ends only this process. It holds no database connection, 
 network: it reads the plan and the tracks the plan names, and writes the one output file.
 
 - **Run by path, not as a module** (as ``design/mixchild.py``): nothing named ``classbeat`` is
-  imported. ``render_policy`` is loaded by path from this directory, ``sandbox`` and ``rss`` from
-  ``design/``.
+  imported. ``render_policy`` and ``render_curves`` are loaded by path from this directory,
+  ``sandbox`` and ``rss`` from ``design/``.
 - **Confined before a file is opened** (``design.sandbox``): the system call filter is required
   (its failure ends the child), Landlock is applied when the kernel has it: the interpreter's
   files read-only, the plan's directory (the job's private directory) read-write, nothing else.
@@ -17,7 +17,7 @@ network: it reads the plan and the tracks the plan names, and writes the one out
   rate and channel count bounded), brought to 44100 Hz stereo (``soxr``), cut, faded with equal
   power and added where the plan says. Reading stops at ``src_end``; a file that ends before it
   fails. Memory is the overlap or gap between tracks (at most 30 s, by the plan's rules), never a
-  decoded track.
+  decoded track. A bass swap (#1330) is ``render_curves``'s.
 - **Streamed output**: the finished samples before the next track starts go to a 320 kb/s CBR MP3
   (``soundfile``, libsndfile's encoder) at once. The render is deterministic: the same plan and
   files give the same bytes.
@@ -166,17 +166,22 @@ class Mixer:
         return out
 
 
-def render(tracks: list[dict[str, Any]], writer: Any, policy: ModuleType, work: str) -> int:
-    """Stream the mix into ``writer`` (a soundfile output); the number of frames written."""
+def render(
+    tracks: list[dict[str, Any]], writer: Any, policy: ModuleType, work: str, curves: ModuleType
+) -> int:
+    """Stream the mix into ``writer`` (a soundfile output); the number of frames written. Each
+    track's blocks take their gains through ``render_curves.shaped`` (#1330's transition curves)."""
     mixer = Mixer()
     written = 0
     for i, track in enumerate(tracks):
-        following = tracks[i + 1]["dst_start"] if i + 1 < len(tracks) else None
+        after = tracks[i + 1] if i + 1 < len(tracks) else None
+        following = None if after is None else after["dst_start"]
         offset = 0
-        for block in track_blocks(
+        blocks = track_blocks(
             inside(work, track["path"]), track["src_start"], track["src_end"], policy.RATE
-        ):
-            mixer.add(track["dst_start"] + offset, block * gains(track, offset, len(block)))
+        )
+        for block in curves.shaped(blocks, track, after, gains, policy.SWAP_RAMP_FRAMES):
+            mixer.add(track["dst_start"] + offset, block)
             offset += len(block)
             done = track["dst_start"] + offset
             ready = mixer.flush(done if following is None else min(done, following))
@@ -211,7 +216,7 @@ def main(argv: list[str]) -> int:
         plan_path, max_rss = argv[1], int(argv[2])
         if max_rss <= 0:
             return _fail()
-        policy = load(HERE, "render_policy")
+        policy, curves = load(HERE, "render_policy"), load(HERE, "render_curves")
         sandbox, rss = load(DESIGN, "sandbox"), load(DESIGN, "rss")
         work = os.path.dirname(os.path.realpath(plan_path))
         syscalls = bool(sandbox.deny_syscalls())
@@ -236,7 +241,7 @@ def main(argv: list[str]) -> int:
             bitrate_mode="CONSTANT",
             compression_level=0.0,
         ) as writer:
-            render(tracks, writer, policy, work)
+            render(tracks, writer, policy, work, curves)
         frames = decoded_frames(output)
         out = json.dumps(
             {

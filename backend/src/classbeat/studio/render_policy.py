@@ -11,9 +11,20 @@ the level). Tracks are in mix order: ``dst_start`` never decreases, and a track 
 30 s before the end of the tracks before it (an overlap) or after it (a gap of silence; likewise
 the first track after the start): the render keeps only that much in memory. A track is never the
 output file.
+
+**The transition curve** (#1330) is an optional ``curve`` on a track, for the transition into it,
+from the allowlist ``CURVES``; anything else is refused. ``equal_power`` (the default, also with no
+``curve``) is the fade above. ``bass_swap`` also needs ``swap``, a whole number of samples into
+its fade-in, at least ``SWAP_RAMP_FRAMES`` and before the fade-in ends: the high band crossfades at
+equal power, while the low band stays the outgoing track's until the swap point (a downbeat) and
+the incoming track's after it, handed over in the ``SWAP_RAMP_FRAMES`` before it
+(``render_curves``). It is refused on the first track and wherever the transition is not one
+overlap of the two fades (the fade-in equal to the previous track's fade-out, starting where that
+fade-out starts). A curve never moves a sample, so the composed length is the same.
 """
 
 import math
+from collections.abc import Mapping
 from typing import Any, Final
 
 RATE: Final = 44100
@@ -24,10 +35,32 @@ MAX_FRAMES: Final = MAX_SECONDS * RATE
 MAX_SHIFT_FRAMES: Final = 30 * RATE  # the longest gap or overlap between tracks (memory is that)
 MAX_MIX_BYTES: Final = 400 * 1000 * 1000  # the gateway's cap on the rendered file
 TRACK_INTS: Final = ("src_start", "src_end", "dst_start", "fade_in", "fade_out")
+CURVES: Final = ("equal_power", "bass_swap")
+CURVE_KEYS: Final = ("curve", "swap")  # optional, ``_curve``
+SWAP_RAMP_FRAMES: Final = 441  # 10 ms: the low band's handover, ending on the swap point
 
 
 def _whole(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= MAX_FRAMES
+
+
+def _curve(track: dict[str, Any], previous: dict[str, Any] | None) -> None:
+    """``ValueError`` for a curve that is not on the allowlist or not one this transition takes."""
+    curve, extra = track.get("curve", "equal_power"), set(track) & set(CURVE_KEYS)
+    if not isinstance(curve, str) or curve not in CURVES:
+        raise ValueError("curve")
+    if curve == "equal_power":
+        if "swap" in extra:
+            raise ValueError("curve")
+        return
+    swap = track.get("swap")
+    if previous is None or not _whole(swap) or not SWAP_RAMP_FRAMES <= swap < track["fade_in"]:  # pyright: ignore[reportOperatorIssue]
+        raise ValueError("curve")
+    length = previous["src_end"] - previous["src_start"]
+    if previous["fade_out"] != track["fade_in"]:
+        raise ValueError("curve")
+    if track["dst_start"] != previous["dst_start"] + length - previous["fade_out"]:
+        raise ValueError("curve")
 
 
 def validate_plan(plan: object) -> list[dict[str, Any]]:
@@ -42,7 +75,10 @@ def validate_plan(plan: object) -> list[dict[str, Any]]:
     checked: list[dict[str, Any]] = []
     previous = ends = 0
     for track in tracks:  # pyright: ignore[reportUnknownVariableType]
-        if not isinstance(track, dict) or set(track) != {"path", *TRACK_INTS}:  # pyright: ignore[reportUnknownArgumentType]
+        if not isinstance(track, dict):
+            raise ValueError("track")
+        keys = set(track)  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+        if not {"path", *TRACK_INTS} <= keys <= {"path", *TRACK_INTS, *CURVE_KEYS}:
             raise ValueError("track")
         if not isinstance(track["path"], str) or not track["path"]:
             raise ValueError("path")
@@ -57,12 +93,22 @@ def validate_plan(plan: object) -> list[dict[str, Any]]:
             raise ValueError("gap or overlap")
         if track["path"] == plan["output"]:
             raise ValueError("path")
+        _curve(track, checked[-1] if checked else None)  # pyright: ignore[reportUnknownArgumentType]
         previous = track["dst_start"]
         ends = max(ends, track["dst_start"] + length)
         checked.append(track)  # pyright: ignore[reportUnknownArgumentType]
     if composed_frames(checked) > MAX_FRAMES:
         raise ValueError("too long")
     return checked
+
+
+def track_of(part: Mapping[str, Any], path: str) -> dict[str, Any]:
+    """A stored render-plan entry as the render's track at ``path``: its samples and its curve."""
+    return {
+        "path": path,
+        **{k: part[k] for k in TRACK_INTS},
+        **{k: part[k] for k in CURVE_KEYS if k in part},
+    }
 
 
 def composed_frames(tracks: list[dict[str, Any]]) -> int:
