@@ -1061,7 +1061,10 @@ sections and amendments carry a one-line pointer and are otherwise kept as histo
      when a run ends in a retryable category (the job goes back to `queued` with backoff, ADR 0005
      §2) and when Approve starts a new phase; the next counted claim then starts with a full budget
      and a cleared flag. A run that is requeued without counting an attempt (a shutdown hand-back,
-     `operation_busy`, an analysis-slot requeue) keeps the budget it had. The reset is never keyed on
+     `operation_busy`, an analysis-slot requeue) keeps the budget it had. So does a lease-lost
+     requeue, which counts an attempt but ends in no retryable category (recorded in #1352, review of
+     #1360: the budget and the outage flag are kept, and at worst the next attempt ends
+     `analysis_unavailable` and is retried with a fresh budget). The reset is never keyed on
      the `attempt` number alone: it counts per phase and Approve sets it back to 0, so phase 2's
      attempt 1 must not inherit phase 1's. Today both span every run of the job
      (`spotdown_studio_budgets`, `spotdown_song_budgets`), which would make a retry fail at once.

@@ -51,6 +51,8 @@ const FAILURES: Record<string, FailureKeys> = {
   media_host_not_allowed: { title: 'job.failure.media_host_not_allowed.title', detail: 'job.failure.media_host_not_allowed.detail' },
   media_refused: { title: 'job.failure.media_refused.title', detail: 'job.failure.media_refused.detail' },
   analysis_failed: { title: 'job.failure.analysis_failed.title', detail: 'job.failure.analysis_failed.detail' },
+  // spotdown, the only analysis path, is down or out of budget: retried by itself (ADR 0040 amendment item 4).
+  analysis_unavailable: { title: 'job.failure.analysis_unavailable.title', detail: 'job.failure.analysis_unavailable.detail' },
   feature_off: { title: 'job.failure.feature_off.title', detail: 'job.failure.feature_off.detail' },
   analysis_limit: { title: 'job.failure.analysis_limit.title', detail: 'job.failure.analysis_limit.detail' },
   soundless_not_evaluated: { title: 'job.failure.soundless_not_evaluated.title', detail: 'job.failure.soundless_not_evaluated.detail' },
@@ -209,6 +211,7 @@ const RETRIES: Record<string, CatalogueKey> = {
   upstream_unavailable: 'job.retry.upstream_unavailable',
   rate_limited: 'job.retry.rate_limited',
   model_unavailable: 'job.retry.model_unavailable',
+  analysis_unavailable: 'job.retry.analysis_unavailable',
 }
 
 export function retryLabel(category: string | null): string {
@@ -235,6 +238,7 @@ const REVISE_FAILURES: Record<string, CatalogueKey> = {
   upstream_unavailable: 'job.revise.upstream_unavailable',
   rate_limited: 'job.revise.rate_limited',
   model_unavailable: 'job.revise.model_unavailable',
+  analysis_unavailable: 'job.revise.analysis_unavailable',
   lease_lost: 'job.revise.lease_lost',
   operation_busy: 'job.revise.operation_busy',
   not_connected: 'job.revise.not_connected',

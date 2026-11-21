@@ -27,8 +27,8 @@ from classbeat.jobs.sentences import job_sentence
 
 def migration_categories() -> set[str]:
     versions = Path(__file__).resolve().parent.parent / "migrations" / "versions"
-    path = versions / "0067_playlist_has_repeats.py"
-    spec = importlib.util.spec_from_file_location("migration_0067", path)
+    path = versions / "0068_analysis_unavailable.py"
+    spec = importlib.util.spec_from_file_location("migration_0068", path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -40,7 +40,15 @@ def test_the_categories_match_the_migration_check() -> None:
     assert set(CATEGORIES) == migration_categories()
     # ``pool_missing`` (OP1, ADR 0008 section 1): the pool is forgotten and the retry creates anew.
     assert (
-        frozenset({"upstream_unavailable", "rate_limited", "model_unavailable", "pool_missing"})
+        frozenset(
+            {
+                "upstream_unavailable",
+                "rate_limited",
+                "model_unavailable",
+                "pool_missing",
+                "analysis_unavailable",  # ADR 0040 amendment item 4
+            }
+        )
         == RETRYABLE
     )
 
@@ -217,3 +225,18 @@ def test_a_queued_catalogue_wait_names_at_most_the_pause_cap() -> None:
     assert _catalogue_sentence("queued", None, 86_400, int(RATE_LIMIT_CAP_SECONDS)) == _HOUR
     # No stored hint: the remaining pause is still named within the cap.
     assert _catalogue_sentence("queued", None, None, 7_200) == _HOUR
+
+
+def test_analysis_unavailable_is_a_retried_category_and_analysis_failed_is_not() -> None:
+    assert "analysis_unavailable" in CATEGORIES
+    assert "analysis_unavailable" in RETRYABLE
+    assert "analysis_failed" in CATEGORIES
+    assert "analysis_failed" not in RETRYABLE
+    assert failure_of(JobFailure("analysis_unavailable")).category == "analysis_unavailable"
+
+
+def test_lease_lost_operation_busy_and_analysis_limit_are_not_retryable_endings() -> None:
+    # ADR 0040 amendment item 4 and ``spotdown.outage_policy``: the spotdown wait budget resets
+    # when a run ends in a RETRYABLE category. These endings are not in it, so they keep it.
+    for kept in ("lease_lost", "operation_busy", "analysis_limit"):
+        assert kept not in RETRYABLE

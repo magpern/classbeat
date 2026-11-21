@@ -1012,6 +1012,9 @@ const sv: Catalogue = {
   'job.failure.media_refused.detail': 'Inget utformades. Försök igen senare.',
   'job.failure.analysis_failed.title': 'Ljudet från den här mixen kunde inte analyseras',
   'job.failure.analysis_failed.detail': 'Prova en annan mix.',
+  'job.failure.analysis_unavailable.title': 'Musikanalysen är inte tillgänglig just nu',
+  'job.failure.analysis_unavailable.detail':
+    'Vi försökte flera gånger. Ditt pass utformades inte. Försök igen om några minuter.',
   'job.failure.feature_off.title': 'Det här är avstängt just nu',
   'job.failure.feature_off.detail': 'Inget utformades. Försök igen senare.',
   'job.failure.analysis_limit.title': 'För många nya Swedebeat-mixar i dag',
@@ -1054,6 +1057,7 @@ const sv: Catalogue = {
   'job.retry.upstream_unavailable': 'MOWL svarade inte. Försöker igen om en liten stund.',
   'job.retry.rate_limited': 'MOWL bad oss sakta ner. Försöker igen om en liten stund.',
   'job.retry.model_unavailable': 'Utformaren är upptagen. Försöker igen om en liten stund.',
+  'job.retry.analysis_unavailable': 'Musikanalysen är inte tillgänglig just nu. Försöker igen om en liten stund.',
   'job.retry.default': 'Något gick fel. Försöker igen om en liten stund.',
   'job.mixStage': 'Hämtar och analyserar din mix',
   'job.waitingForSlot': 'Väntar på en ledig plats. Andra mixar analyseras före din.',
@@ -1074,6 +1078,7 @@ const sv: Catalogue = {
     'Det gick inte att nå MOWL. Inget ändrades. Försök igen om några minuter.',
   'job.revise.rate_limited': 'MOWL bad oss sakta ner. Inget ändrades. Vänta några minuter och försök igen.',
   'job.revise.model_unavailable': 'Utformaren är upptagen. Inget ändrades. Försök igen om några minuter.',
+  'job.revise.analysis_unavailable': 'Musikanalysen är inte tillgänglig just nu. Inget ändrades. Försök igen om några minuter.',
   'job.revise.lease_lost': 'Ändringen avbröts för många gånger. Inget ändrades. Försök igen.',
   'job.revise.operation_busy':
     'En annan utformning av dig använde fortfarande samma spellista. Inget ändrades. Försök igen om en stund.',

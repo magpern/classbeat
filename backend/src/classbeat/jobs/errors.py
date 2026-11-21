@@ -101,13 +101,26 @@ CATEGORIES: Final = (
     # ADR 0036 amendment A8 (migration 0067, #1342): the SwedeBeat playlist chosen for a draft
     # whose mix repeats a song, refused again when the job runs; nothing is written. Not retried.
     "playlist_has_repeats",
+    # ADR 0040 amendment "spotdown is the only analysis path", item 4 (migration 0068, #1352):
+    # spotdown, the only analysis path, is not installed, unreachable, in a provider outage or out
+    # of budget; the whole job is retried with backoff. ``analysis_failed`` (above) is the other
+    # outcome, spotdown answered but the music cannot be analysed, and is not retried. Raised by
+    # ``spotdown.outage_policy`` and the code that calls it (#1353, #1354).
+    "analysis_unavailable",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).
 # ``pool_missing`` (ADR 0008 sections 1 and 2, OP1): the pool playlist was gone; its id and the
 # pool operation rows are forgotten, so the retry creates a new pool under a new key and ``ref``.
+# ``analysis_unavailable`` (ADR 0040 amendment item 4): spotdown could not be used for this run.
 RETRYABLE: Final = frozenset(
-    {"upstream_unavailable", "rate_limited", "model_unavailable", "pool_missing"}
+    {
+        "upstream_unavailable",
+        "rate_limited",
+        "model_unavailable",
+        "pool_missing",
+        "analysis_unavailable",
+    }
 )
 # Retried once per phase, then failed (ADR 0008 section 1: ``pool_not_synced``, "once more":
 # MOWL had not caught up with the pool playlist; a second miss is the user's to retry later).
