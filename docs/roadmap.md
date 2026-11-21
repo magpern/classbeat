@@ -3,7 +3,8 @@
 ## Amendment 33 (2026-11-21, owner decision: a SwedeBeat studio song may repeat in a mix; issue #1331)
 
 The owner authorized repeats on 2026-11-21. Recorded in [ADR 0036](adr/0036-swedebeat-studio.md), amendment
-"a song may appear more than once in a mix" (Proposed until its Opus review).
+"a song may appear more than once in a mix" (Accepted 2026-11-21 after an Opus review PASS on #1332;
+implementation #1342).
 
 - A song may appear many times in a class, and the same window may be reused anywhere. No per-song or
   share-of-class cap: only the existing bounds (40 pieces, 150 minutes); a soft hint on one song's share.
