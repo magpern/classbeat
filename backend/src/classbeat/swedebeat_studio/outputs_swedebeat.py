@@ -10,10 +10,11 @@ the approval:
 
 1. one of the worker's analysis slots (#574: the render is as heavy as an analysis);
 2. each **distinct** track **downloaded fresh**, once per attempt however many pieces it plays
-   in (ADR 0036 amendment A8; ``download_track``, 120 s and 60 MB each, counted in the daily
-   track-download limit), into the render's private directory; one whose sha256 is not the
-   analysed bytes' stops the output with ``music_changed`` ("the music changed, review again"),
-   nothing sent. The render plan keeps one entry per piece, each naming its track's one file;
+   in (ADR 0036 amendment A8; ``fresh_download.download_checked``: 120 s and 60 MB each, counted
+   in the daily track-download limit), into the render's private directory; one whose sha256 is
+   not the analysed bytes' stops the output with ``music_changed`` ("the music changed, review
+   again"), nothing sent. The render plan keeps one entry per piece, each naming its track's one
+   file;
 3. the render once (``studio.render.rendered_mix``, the sandboxed child) from the stored plan
    (``mowl.compose.mix_offsets``), its decoded length checked against the composed one and its
    file at most 400 MB, else ``analysis_failed`` and nothing sent;
@@ -30,27 +31,23 @@ The audio is never kept: the directory goes with everything in it on every way o
 import json
 import logging
 from pathlib import Path
-from typing import Any, Final
+from typing import Any
 
 from classbeat.design import tracklimit
-from classbeat.egress_gateway import DOWNLOAD_SECONDS, MERGE_SECONDS
+from classbeat.egress_gateway import MERGE_SECONDS
 from classbeat.jobs import JobFailure
-from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS
 from classbeat.operations import CallResult, NotWritten
 from classbeat.studio import render, render_policy
 from classbeat.studio.output_key_policy import OutputKey, parse
-from classbeat.swedebeat_gateway import client as gateway
 from classbeat.swedebeat_gateway import opener, writes
 from classbeat.swedebeat_gateway.write_policy import PUBLISH_BODY
-from classbeat.swedebeat_match.gateway_match import call_failure
 from classbeat.swedebeat_studio import outputs_ops, outputs_rows
+from classbeat.swedebeat_studio.fresh_download import download_checked
 from classbeat.swedebeat_studio.outputs_attempt import mark
 from classbeat.swedebeat_studio.outputs_job import Producer, result_of
 from classbeat.swedebeat_studio.outputs_rows import OutputRow, step_keys
 
 logger = logging.getLogger(__name__)
-
-OWN_CATEGORIES: Final = frozenset({"track_too_large", "track_unavailable", "internal"})
 
 
 def _key(row: OutputRow, step: str) -> OutputKey:
@@ -124,29 +121,6 @@ async def _merge_state(p: Producer, row: OutputRow) -> str | None:
     return None if found is None else found[0]
 
 
-async def _download(p: Producer, reference: str, dest: Path, analysed: str) -> None:
-    async with p.run.fenced() as fs:
-        await fs.extend_lease(DOWNLOAD_SECONDS + CALL_LEASE_MARGIN_SECONDS)
-        await tracklimit.reserve(fs, 1)  # counted even if it fails
-    await p.run.checkpoint()
-    category, retry_after = "invalid_response", None
-    try:
-        async with opener.open_client(DOWNLOAD_SECONDS) as client:
-            got = await gateway.download_track(client, p.key, p.bearer.bearer, reference, dest)
-    except gateway.GatewayFailure as refused:
-        category, retry_after = refused.category, refused.retry_after
-    except ValueError:
-        category = "internal"
-    else:
-        if got.sha256 != analysed:
-            logger.info("studio mix track changed", extra={"job_id": str(p.run.lease.job_id)})
-            raise JobFailure("music_changed")
-        return
-    if category in OWN_CATEGORIES:
-        raise JobFailure(category)
-    raise await call_failure(p.run, p.bearer, p.key, category, retry_after)
-
-
 async def mix(p: Producer, row: OutputRow) -> None:
     """Render once and merge-publish the mix (see the module docstring)."""
     fields = _merge_fields(row)
@@ -176,7 +150,9 @@ async def mix(p: Producer, row: OutputRow) -> None:
         files: dict[str, Path] = {}
         for n, reference in enumerate(distinct):  # each track once, its sha256 checked once
             files[reference] = work / f"track-{n:02d}.mp3"
-            await _download(p, reference, files[reference], str(sha256s[reference]))
+            await download_checked(
+                p.run, p.bearer, p.key, reference, files[reference], str(sha256s[reference])
+            )
         tracks = [  # with a transition curve where the plan names one (#1330)
             render_policy.track_of(part, str(files[str(part["reference"])])) for part in plan
         ]

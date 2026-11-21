@@ -121,15 +121,20 @@ async def render_files(
     timeout_seconds: float = RENDER_SECONDS,
     max_rss: int = MAX_RSS_BYTES,
     argv: Callable[[Path, int], Sequence[str]] | None = None,
+    window: tuple[int, int] | None = None,
 ) -> Rendered:
     """Render ``tracks`` (plan dicts whose ``path`` lies in ``work``) to ``work/mix.mp3`` in a
-    limited child. Raises ``RenderFailed`` for anything the plan, the child or its limits end."""
+    limited child. Raises ``RenderFailed`` for anything the plan, the child or its limits end.
+    With ``window`` (output samples) it is a preview clip of that span (ADR 0042 section 6.1),
+    whose length is checked against the window's; the published mix never passes one."""
     try:
         body: dict[str, Any] = {
             "output": str(work / OUTPUT_NAME),
-            "purpose": "output",  # this path never carries a window (render_policy refuses one)
+            "purpose": "output",  # never with a window (render_policy refuses one)
             "tracks": [dict(t) for t in tracks],
         }
+        if window is not None:
+            body |= {"purpose": "preview", "window": {"start": window[0], "end": window[1]}}
         checked = render_policy.validate_plan(body)
         plan = work / PLAN_NAME
         plan.write_text(json.dumps({**body, "tracks": checked}))
@@ -169,9 +174,8 @@ async def render_files(
     data = output[0] if output else b""
     if process.returncode != 0 or len(data) > MAX_OUTPUT_BYTES:
         raise RenderFailed("child failed")
-    return _checked(
-        work / OUTPUT_NAME, data, peak, render_policy.composed_seconds(checked), max_rss
-    )
+    written = render_policy.output_frames(checked, window) / render_policy.RATE
+    return _checked(work / OUTPUT_NAME, data, peak, written, max_rss)
 
 
 def _checked(path: Path, data: bytes, peak: int, composed_sec: float, max_rss: int) -> Rendered:
