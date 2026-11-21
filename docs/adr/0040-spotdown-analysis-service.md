@@ -94,6 +94,7 @@ analysis paths (MOWL sections, `mixanalysis`, `mixchild`, `track_analysis`) stay
 | 6. Design | classbeat | model | `design` runs unchanged, fed by a pure adapter. After approval a track change goes through `revise` for that track's part, not a full regeneration |
 
 The whole pool is never analysed. The only speculative work is the free cache summary in step 2.
+*Superseded 2026-11-21 (owner, #1299) for step 5's "fall back for that track": an unsuitable track is replaced or accepted with a warning, never timed another way; the amendment "spotdown is the only analysis path" at the end.*
 
 ### 3. Recording identity and timing classes (plan §2)
 
@@ -137,6 +138,7 @@ enhancement, outside this ADR's scope.
 A track that matched but failed later (acquisition, decode, analysis or alignment) falls through, in
 order: the next alternate from step 2; the MOWL sections for that track; replacement. The per-kind
 rules are in §8.
+*Superseded 2026-11-21 (owner, #1299): the MOWL sections are no longer a step of the fall-through, and an `unusable` track is missing (replaced), never timed on MOWL's sections; the amendment "spotdown is the only analysis path" at the end (items 3 and 5).*
 
 ### 4. A generic spotdown and the v2 API (plan §3)
 
@@ -580,6 +582,7 @@ default switches); #1299 (retiring the local and MOWL-based paths); spotdown#1 (
   fingerprint-only match never reusing an analysis, neither lookup crossing scopes, provenance on
   every stored analysis, partial replacement leaving the other tracks unchanged, and e2e against the
   fake; the §9 corpus and workout comparison before any default switch or removal.
+  *(Superseded 2026-11-21: no default switch and no evidence gate on removal; the amendment "spotdown is the only analysis path".)*
 
 ### Amendment (2026-11-20): authorization and spotdown quality-gate thresholds as built (extends §9)
 
@@ -643,6 +646,7 @@ changes no code, setting, compose file or deployment.
 4. **Not covered by this decision:** any live call by an agent or CI (agents and CI never call
    YouTube; tests fake yt-dlp); deploying; and the default-switch evidence gates of §9: #1298 still
    gates making spotdown-first the shipped default for users, unless the owner says otherwise there.
+   *Superseded 2026-11-21 (owner, #1299): #1298 gates nothing and there is no default switch; see the amendment "spotdown is the only analysis path" at the end.*
    Licensed sources (SwedeBeat, user audio) still win when they exist (§10).
 5. **Retention of the global entries (settles §7's open item; the Architect's safest reversible
    default, the owner can override it).**
@@ -718,6 +722,7 @@ for everyone.
 no value turns it on for everyone, until the §9 mix gates pass on the owner's real mixes (#1298): the
 song reading below is known to over-segment a real mix and to give it one BPM while spotdown emits
 no tempo change points, and the harness's recall-only edge gate cannot see that.
+*Superseded 2026-11-21 (owner, #1299): #1298 gates nothing and there is no default switch; see the amendment "spotdown is the only analysis path" at the end.*
 
 - **Source and switch.** The mix keeps today's MOWL temporary-link fetch (`design.mixfetch`, 250 MB;
   the link is never stored, logged or sent to spotdown). spotdown is the source of the mix's map only
@@ -796,6 +801,7 @@ for the class and did not fall back); off by default.
 Recorded with the code. Behind the same allowlist as the match and analysis stages
 (`CLASSBEAT_SPOTDOWN_SPOTIFY`, `CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS`): off by default, no value turns it
 on for everyone. **Making it the shipped default still waits for the Spotify gates of plan §7 (#1298).**
+*Superseded 2026-11-21 (owner, #1299): #1298 gates nothing and there is no default switch; see the amendment "spotdown is the only analysis path" at the end.*
 
 1. **Where:** in phase 2 of a song pick (`songs.phase2.final_music`, for the pick, `revise_songs` and
    the composer), after the final playlist's MOWL analysis was checked against the approved ids and
@@ -839,6 +845,7 @@ on for everyone. **Making it the shipped default still waits for the Spotify gat
 Recorded with the code. Behind the same allowlist as stages A, B and D: off by default, no value
 turns it on for everyone; **the shipped default still waits for the Spotify gates of plan §7
 (#1298).**
+*Superseded 2026-11-21 (owner, #1299): #1298 gates nothing and there is no default switch; see the amendment "spotdown is the only analysis path" at the end.*
 
 1. **What a draft records.** A draft whose design map had at least one track on spotdown's sections
    (stamped `approximate` by stage D) adds `music.spotdown = {song_list_id, tracks}`
@@ -908,7 +915,7 @@ turns it on for everyone; **the shipped default still waits for the Spotify gate
 | No beat-precise instruction on an `approximate` track | `test_agent_timing_gate.py`, `test_evals_spotify_approximate.py::test_the_validator_refuses_a_precise_cue_on_the_approximate_map` (and the revise and refit design on the stamped map: `test_spotdown_revise_carry_job.py`) |
 | A failure in one track leaves the others unchanged | `test_spotdown_song_analysis_job.py::test_every_source_lost_keeps_mowls_sections_for_that_song_only`, `test_spotdown_song_sections_hook.py::test_only_the_marked_songs_change`, `test_spotdown_revise_carry_job.py::test_a_failed_read_of_one_track_changes_that_track_only`, `::test_a_track_the_base_had_on_mowls_sections_stays_on_them` |
 | Partial changes: after design, through `revise` for that track only | `test_spotdown_revise_carry_job.py::test_a_change_of_one_song_analyses_it_alone_and_keeps_the_others_timing`, `::test_a_revise_and_a_refit_of_it_keep_the_tracks_on_spotdowns_sections`, `::test_a_refit_keeps_them_and_applies_the_correction` |
-| The Spotify gates of §7 before the default switch | **owner-gated: #1298** (no agent turns the switch on) |
+| The Spotify gates of §7 before the default switch | **owner-gated: #1298** (no agent turns the switch on). *Superseded 2026-11-21: #1298 gates nothing, no switch (the amendment "spotdown is the only analysis path").* |
 
 **Not built: an e2e against the fake.** The e2e stack (`compose.e2e.yaml`, `e2e/`) has fakes for
 MOWL, Spotify, OIDC, Paddle and the gateway but none for spotdown; one would need a new fake service,
@@ -916,6 +923,7 @@ its egress origin and key file in the stack, and the allowlist switched on for a
 tests above run the whole worker path (the jobs API, the queue, the fenced transactions, Postgres)
 against the in-process fake instead. The e2e is the tracked follow-up #1337, to be done before the
 default switch.
+*(2026-11-21: there is no default switch; #1337 is done before the code PRs of the amendment "spotdown is the only analysis path", item 8.)*
 
 ### Amendment (2026-11-21, owner answer to #1297; #1338): studio-track analyses are shared (amends §7)
 
@@ -1038,23 +1046,35 @@ sections and amendments carry a one-line pointer and are otherwise kept as histo
      ADR 0005 §4's backoff and the job's attempts. The user sees "Music analysis is not available
      right now" with the automatic-retry and try-again copy (en, sv, da). It is the outcome, for the
      whole job, of:
-     - spotdown not installed in the worker (no URL or no key) or unreachable (any `Unreachable`
-       reason);
+     - spotdown not installed in the worker (no URL or no key) or unreachable: an `Unreachable`
+       (`spotdown.failure_policy`) whose reason is about the service or its deployment, not about this
+       music: `not_configured`, `source_off` (until `CLASSBEAT_SPOTDOWN_SOURCES` is removed, item 2),
+       `source_disabled` (spotdown's YouTube sourcing is off, `ALLOW_YTDLP_SOURCING`: retried, since
+       the owner may switch it on), `blocked`, `connection`, `unauthorized` (a wrong service key, an
+       operator error) and `server_error`;
      - a provider outage (§8's threshold: ≥ 50 % of a batch and ≥ 3 tracks), a `provider_error`
        still there after its one retry on a studio track or a mix, a `rate_limited` wait that does
        not fit the budget, the wait budget spent, or the mix's 180 s wait cap;
-     - on a Spotify class, a `rate_limited` or unreachable read in phase 2 or in a revise carry
-       (stage D item 4, stage E item 4).
-   - **A fresh budget per attempt.** Each counted attempt of the job (ADR 0005 §2) starts with a
-     fresh wait budget (600 s) and a cleared outage flag. Today both span every run of the job
-     (`spotdown_studio_budgets`, `spotdown_song_budgets`), which would make a retry fail at once. A
-     run that does not count as an attempt (a hand-back, an analysis-slot requeue) keeps its
-     attempt's budget.
+     - on a Spotify class, a `rate_limited` read in phase 2 or in a revise carry, or one that is
+       unreachable for one of the reasons above (stage D item 4, stage E item 4).
+   - **A fresh budget per counted retry.** The wait budget (600 s) and the outage flag are reset
+     when a run ends in a retryable category (the job goes back to `queued` with backoff, ADR 0005
+     §2) and when Approve starts a new phase; the next counted claim then starts with a full budget
+     and a cleared flag. A run that is requeued without counting an attempt (a shutdown hand-back,
+     `operation_busy`, an analysis-slot requeue) keeps the budget it had. The reset is never keyed on
+     the `attempt` number alone: it counts per phase and Approve sets it back to 0, so phase 2's
+     attempt 1 must not inherit phase 1's. Today both span every run of the job
+     (`spotdown_studio_budgets`, `spotdown_song_budgets`), which would make a retry fail at once.
    - **`analysis_failed`** (existing, not retried) is the outcome when spotdown answered but the
      music cannot be analysed: a studio track or a mix refused (`processing_failed` after its retry,
-     unsupported, too large, a refused or unmappable document); on a Spotify class, too few songs
-     with a usable spotdown timing after the spares and the 3 replacement rounds (item 5), or a
+     unsupported, too large, a refused or unmappable document), which includes the `Unreachable`
+     reasons about this request or its answer, `too_large` (a 413 or an answer over its cap),
+     `rejected` (any other 4xx, such as a 404 for an analysis that is gone) and `bad_answer`; on a
+     Spotify class, too few songs with a usable spotdown timing after the spares and the 3
+     replacement rounds (item 5), or a
      recorded analysis that is gone or no longer verifies at phase 2 (the user changes songs).
+   - **`conflict`** (a 409: an `Idempotency-Key` used for another body) is classbeat's own bug: it is
+     `internal`. Every `Unreachable` reason therefore maps to exactly one category.
    - **Any other exception** in the spotdown code is no longer swallowed into a fallback: it is
      `internal`, as everywhere. `RunStopped`, `LeaseLost` and `DatabaseRoleError` pass as before.
    - Every category is logged by name only (never a URL, a scope, a sha256 or a title) and counted in
@@ -1067,7 +1087,9 @@ sections and amendments carry a one-line pointer and are otherwise kept as histo
    ones are offered too" is removed. A stage whose output changes for the same input bumps its record
    or stage version.
 6. **Versions.** The provenance's `POLICY_VERSIONS` (`spotdown_map_policy`, `timing_class_policy`,
-   `track_fit_policy`, `mix_map_policy`) cover a map's content. Removing a fallback does not change a
+   `track_fit_policy`), extended for a mix by `mix_map_model.MIX_POLICY_VERSIONS` (`mix_map_policy`)
+   and for a studio track by `studio_map_model.STUDIO_POLICY_VERSIONS` (`cut_candidates_calc`),
+   cover a map's content. Removing a fallback does not change a
    spotdown map, so the retirement does not bump them. The rows of the `local` analyser are deleted
    by migration, and the `analyser` checks narrowed to `spotdown`, in the deletion PRs.
 7. **Evidence.** The quality gates of §9 and plan §7 are engineering checks on the fixtures, not
@@ -1083,11 +1105,13 @@ sections and amendments carry a one-line pointer and are otherwise kept as histo
    studio-track analysis and its `local` rows), #1357 (`mixanalysis` and `mixchild`), #1358
    (librosa and numba, after a mowl-workouts change).
 
-**What it supersedes** (each carries a pointer here): §1's "stay as fallbacks"; §8's fallback
+**What it supersedes** (each carries a pointer here): §1's "stay as fallbacks"; §2 step 5's "fall back" and §3's fall-through to MOWL's sections; §8's fallback
 reactions, its "spotdown unreachable" row and the SD-P5 note's local fallback; §9's rollout per
 source and its removal conditions; §14's #1298 and #1299 blockers; the "#1296 accepted" item 3; the
-stage A item 4, SD-P7a, stage B items 2 and 4, stage D item 4 and stage E item 4 fallbacks; and the
-Alternatives and Consequences lines on the local paths. #1298 gates nothing (owner, 2026-11-21).
+stage A item 4, SD-P7a, stage B items 2 and 4, stage D item 4 and stage E item 4 fallbacks; every
+remaining "#1298 gates the default" (the "#1296 accepted" item 4, the SD-P7a preamble, the stage D and
+E preambles, the stage E audit row and its e2e note); and the Alternatives and Consequences lines on the
+local paths and the default switch. #1298 gates nothing (owner, 2026-11-21).
 
 ## Status
 
