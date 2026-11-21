@@ -15,15 +15,16 @@ from uuid import UUID
 
 import pytest
 
+from classbeat.design import track_spotdown
 from classbeat.design.refit import KIND as REFIT_KIND
 from classbeat.design.refit import REFIT_DRAFT
 from classbeat.design.revise import KIND as REVISE_KIND
 from classbeat.jobs import KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
-from classbeat.spotdown import mix_config
+from classbeat.spotdown import studio_tracks_config
 from classbeat.spotdown.studio_tracks_config import TracksConfig
 from mowlfake import FakeMowl
-from optools import TOKEN_A, TOKEN_B
+from optools import TOKEN_A
 from spotdownfake import FakeSpotdown, spotdown
 from test_spotdown_mix_policy import mix_document
 from test_swedebeat_design import (
@@ -60,13 +61,14 @@ def mix_documents(spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch) -> An
         doc["analysis_id"] = analysis_id
         return doc
 
+    async def pause(*_args: object) -> None:
+        return None
+
     monkeypatch.setattr(spotdown, "analysis", analysis)
+    monkeypatch.setattr(track_spotdown, "pause", pause)
+    studio_tracks_config.configure(TracksConfig(frozenset({"upload"}), KEY))
     yield
-    mix_config.configure(None)
-
-
-def turn_on(owner: UUID) -> None:
-    mix_config.configure(TracksConfig("allowlist", frozenset({owner}), frozenset({"upload"}), KEY))
+    studio_tracks_config.configure(None)
 
 
 def ask(kind: str, base: Any, browser: Any, **extra: Any) -> dict[str, Any]:
@@ -85,11 +87,10 @@ async def designed(browsers: Any, menv: MixEnv, mowl_api: FakeMowl, token: str) 
     return browser
 
 
-async def test_a_class_designed_on_spotdowns_map_keeps_it_when_switched_off(
+async def test_a_class_designed_on_spotdowns_map_keeps_it_when_spotdown_is_gone(
     browsers: Any, menv: MixEnv, mowl_api: FakeMowl, spotdown: FakeSpotdown
 ) -> None:
     browser = await designed(browsers, menv, mowl_api, TOKEN_A)
-    turn_on(browser.user_id)
     created = await create(browser, design_body(browser))
     assert created.status_code == 201, created.text
     job_id = UUID(created.json()["id"])
@@ -111,8 +112,8 @@ async def test_a_class_designed_on_spotdowns_map_keeps_it_when_switched_off(
         assert value not in sent
     assert all(MIX_ID not in s.query and MIX_NAME not in s.query for s in spotdown.seen)
 
-    # Switched off (the rollback lever): the revise reads the row the class was designed on.
-    mix_config.configure(None)
+    # Not installed any more: the revise reads the row the class was designed on (a cache hit).
+    studio_tracks_config.configure(None)
     menv.scripts, menv.providers = [revise_script()], []
     revised = await create(browser, ask(REVISE_KIND, base, browser, request="Harder push"))
     assert revised.status_code == 201, revised.text
@@ -154,41 +155,47 @@ async def test_a_class_designed_on_spotdowns_map_keeps_it_when_switched_off(
     )
 
 
-async def test_with_spotdown_failing_the_design_is_todays(
-    browsers: Any, menv: MixEnv, mowl_api: FakeMowl, spotdown: FakeSpotdown
+@pytest.mark.parametrize(
+    ("end", "category"),
+    [
+        ("processing_failed:decode_error", "analysis_failed"),
+        ("provider_error", "analysis_unavailable"),
+    ],
+)
+async def test_with_spotdown_failing_the_design_ends_with_its_category_and_no_draft(
+    browsers: Any,
+    menv: MixEnv,
+    mowl_api: FakeMowl,
+    spotdown: FakeSpotdown,
+    end: str,
+    category: str,
 ) -> None:
-    off_browser = await designed(browsers, menv, mowl_api, TOKEN_A)
-    off_created = await create(off_browser, design_body(off_browser))
-    await menv.run_next()
-    [off] = revisions(menv, UUID(off_created.json()["id"]))
-
-    spotdown.end = "processing_failed:decode_error"
-    browser = await designed(browsers, menv, mowl_api, TOKEN_B)
-    turn_on(browser.user_id)
+    spotdown.end = end
+    browser = await designed(browsers, menv, mowl_api, TOKEN_A)
     created = await create(browser, design_body(browser))
     await menv.run_next()
-    [on] = revisions(menv, UUID(created.json()["id"]))
+    row = menv.ops.row(UUID(created.json()["id"]))
+    # A retryable ending (analysis_unavailable) goes back to the queue with its attempts left.
+    ended = ("queued", None) if category == "analysis_unavailable" else ("failed", category)
+    assert (row.state, row.error_category) == ended
     assert spotdown.seen  # spotdown was asked, and failed
-    assert bytes(on.content_hash) == bytes(off.content_hash)
-    assert on.content == off.content
-    drop = {"link_id"}
-    assert {k: v for k, v in on.music.items() if k not in drop} == {
-        k: v for k, v in off.music.items() if k not in drop
-    }
-    assert "analyser" not in on.music
-    assert "provenance" not in on.music
+    assert revisions(menv, row.id) == []
+    assert (
+        menv.ops.sql(
+            "SELECT count(*) FROM swedebeat_mix_maps WHERE owner_id = :o", o=browser.user_id
+        ).scalar_one()
+        == 0
+    )
 
 
-async def test_admit_counts_only_a_local_row_as_a_cached_mix(
+async def test_admit_counts_a_spotdown_row_as_a_cached_mix_and_a_local_row_not(
     browsers: Any, menv: MixEnv, mowl_api: FakeMowl
 ) -> None:
-    """The web app cannot know whether spotdown is a worker's source for this owner, so a
-    ``spotdown`` row alone never skips the daily limit (stricter than a hit)."""
+    """#1353: only a current ``spotdown`` row is a hit, so only it skips the daily limit."""
     from classbeat.design import mixlimit
     from test_swedebeat_design import plant_analyses
 
     browser = await designed(browsers, menv, mowl_api, TOKEN_A)
-    turn_on(browser.user_id)
     created = await create(browser, design_body(browser))
     await menv.run_next()
     assert menv.ops.row(UUID(created.json()["id"])).state == "completed"
@@ -197,12 +204,12 @@ async def test_admit_counts_only_a_local_row_as_a_cached_mix(
     assert menv.ops.sql(
         "SELECT analyser FROM swedebeat_mix_maps WHERE owner_id = :o", o=owner
     ).scalars().all() == ["spotdown"]
-    refused = await create(browser, design_body(browser))
-    assert refused.status_code == 409, refused.text
-    assert refused.json()["detail"]["reason"] == "analysis_limit"
+    cached = await create(browser, design_body(browser))
+    assert cached.status_code == 201, cached.text  # a spotdown row is a hit: no new analysis
     menv.ops.sql(
         "UPDATE swedebeat_mix_maps SET analyser = 'local', provenance = NULL WHERE owner_id = :o",
         o=owner,
     )
-    cached = await create(browser, design_body(browser))
-    assert cached.status_code == 201, cached.text
+    refused = await create(browser, design_body(browser))
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"]["reason"] == "analysis_limit"

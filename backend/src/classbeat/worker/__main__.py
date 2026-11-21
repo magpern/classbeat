@@ -40,7 +40,6 @@ from classbeat.log import configure_logging
 from classbeat.player.delivery import run_player_delivery
 from classbeat.playlists.runtime import playlists_runtime
 from classbeat.spotdown import (
-    mix_config,
     shadow_config,
     song_match_config,
     studio_tracks_config,
@@ -48,7 +47,6 @@ from classbeat.spotdown import (
 from classbeat.spotdown.owner_list_policy import parse_owners
 from classbeat.spotdown.scope_key import scope_key
 from classbeat.spotdown.sources_policy import parse_sources
-from classbeat.spotdown.studio_owners_policy import parse_owners as parse_studio_owners
 from classbeat.swedebeat_studio import config as studio_config
 from classbeat.swedebeat_studio import (  # noqa: F401 - each registers its kind on import
     design_kind,  # studio_design (SR C5)
@@ -78,16 +76,15 @@ def configure_spotdown(settings: Settings) -> None:
             settings.spotdown_shadow, parse_sources(settings.spotdown_sources), scope_key(settings)
         )
     )
-    # Studio tracks analysed by spotdown (ADR 0040 section 9, rollout step 2): off unless set,
-    # only for the allowlisted owners, with the local analysis as the fallback.
-    studio_tracks_config.configure(
-        studio_tracks_config.TracksConfig(
-            settings.spotdown_studio,
-            parse_studio_owners(settings.spotdown_studio_owners),
-            parse_sources(settings.spotdown_sources),
-            scope_key(settings),
-        )
+    # Studio tracks and SwedeBeat mixes: spotdown is the only analysis path (ADR 0040 amendment
+    # "spotdown is the only analysis path", #1353): no switch, no allowlist, no fallback.
+    tracks = studio_tracks_config.TracksConfig(
+        parse_sources(settings.spotdown_sources), scope_key(settings)
     )
+    studio_tracks_config.configure(tracks)
+    if tracks.refusal() is not None:
+        # Once, at start; no value (a URL, a key or a source) is logged.
+        logger.warning("music analysis is unavailable: spotdown is not installed in this worker")
     # The Spotify song pick's spotdown match (ADR 0040 sections 2 and 8, SD-P6 stage A): off
     # unless set, only for the allowlisted owners, with today's pick as the fallback.
     song_match_config.configure(
@@ -95,16 +92,6 @@ def configure_spotdown(settings: Settings) -> None:
             settings.spotdown_spotify,
             parse_owners(settings.spotdown_spotify_owners, "spotdown_spotify_owners"),
             parse_sources(settings.spotdown_sources),
-        )
-    )
-    # SwedeBeat mixes analysed by spotdown (#1304): its own switch, off unless set, only for its
-    # allowlisted owners, with the local mix analysis as the fallback.
-    mix_config.configure(
-        studio_tracks_config.TracksConfig(
-            settings.spotdown_mix,
-            parse_owners(settings.spotdown_mix_owners, "spotdown_mix_owners"),
-            parse_sources(settings.spotdown_sources),
-            scope_key(settings),
         )
     )
 

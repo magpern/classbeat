@@ -39,6 +39,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
     approved,
     design_script,
     run_kind,
+    spotdown,  # noqa: F401 - the fake spotdown that stand-in answers from
     start_design,
 )
 

@@ -1,6 +1,6 @@
-"""Studio tracks analysed by spotdown (ADR 0040 sections 7 to 9, plan sections 5, 6 and 8; SD-P5,
-#1302): the source of a track's map for an allowlisted owner (``studio_tracks_config``), with the
-local analysis as the fallback. Off by default; inactive, nothing here is called.
+"""Studio tracks analysed by spotdown (ADR 0040 sections 7 to 9, plan sections 5, 6 and 8, and its
+amendment "spotdown is the only analysis path", items 1 and 4; #1302, #1353): the only source of a
+track's map. Nothing falls back to a local analysis.
 
 ``track_analysis`` downloads a track as always (60 MB, 120 s) and, **while the capped download is
 still on disk**, asks ``analyse`` for its map:
@@ -12,24 +12,26 @@ still on disk**, asks ``analyse`` for its map:
    names no owner; ADR 0040 section 7, amendment of 2026-11-21): a hit is read, **no upload**;
 3. only then the bytes are streamed to ``upload`` and the analysis is started (an
    ``Idempotency-Key`` per job, track, attempt and step; ``client_ref`` a random id), and polled
-   with checkpoints (``shadow_policy.poll_delay``) within the job's budget
-   (``studio_policy.WAIT_SECONDS`` over every run of the job, ``track_spotdown_budget``).
-   Nothing else leaves: no reference, title, token or URL.
+   with checkpoints (``shadow_policy.poll_delay``) within the attempt's budget
+   (``studio_policy.WAIT_SECONDS``, ``track_spotdown_budget``: reset when a run ends in a
+   retryable category). Nothing else leaves: no reference, title, token or URL.
 
 The document is read in the same scope and goes through ``studio_map_model.studio_map``
 (``timing_class_policy`` path (a), then ``spotdown_map_policy.track_map``) and
 ``track_map_policy.valid_track_map``; only an ``exact`` played-recording map is returned with its
-provenance. **Every other outcome is ``None``**, and the caller analyses that track locally:
-a per-track status after its bounded reaction (``studio_policy.reaction``), spotdown unreachable
-(the rest of the job, every later run too, is then local: ``track_spotdown_budget``), the
-budget spent, a refused document, or any error in here (swallowed; only its type is logged).
-Only ``RunStopped`` (a cancel, a shutdown, a lost lease at a checkpoint) and ``DatabaseRoleError``
-pass, as for every step of the run. Only counts and codes are logged: never a reference, a sha256
-or a scope.
+provenance. **Every other outcome ends the job** (``spotdown_ending``), with the category of the
+amendment's item 4: ``analysis_unavailable`` (retried) for spotdown not usable, an ``Unreachable``
+about the service, a ``provider_error`` after its one retry, a ``rate_limited`` wait that does not
+fit, the budget spent or an outage flag found; ``analysis_failed`` for a status about this music
+(``processing_failed`` after its retry, ``alignment_failed``, ...), an ``Unreachable`` about this
+request or its answer, a refused or unmappable document; ``internal`` for ``conflict``. **No error
+is swallowed:** any other exception propagates (and is ``internal``), as do ``RunStopped`` (a
+cancel, a shutdown, a lost lease at a checkpoint) and ``DatabaseRoleError``. The tracks already
+stored are kept, so a retry analyses only the rest. Only counts and fixed codes are logged: never
+a reference, a sha256 or a scope.
 """
 
 import asyncio
-import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -39,26 +41,29 @@ from typing import Final
 
 from mowl import track
 
-from classbeat.db import DatabaseRoleError
+from classbeat.design import spotdown_ending
 from classbeat.design import track_spotdown_budget as budget
 from classbeat.design.track_map_policy import valid_track_map
 from classbeat.egress_spotdown import ANALYSIS_SECONDS, CALL_SECONDS, UPLOAD_SECONDS
-from classbeat.jobs import JobRun, RunStopped
+from classbeat.jobs import JobFailure, JobRun
 from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS
-from classbeat.spotdown import scope_policy, studio_policy, studio_tracks_config
+from classbeat.spotdown import outage_policy, scope_policy, studio_policy, studio_tracks_config
 from classbeat.spotdown.answer_model import Uploaded
 from classbeat.spotdown.client import SpotdownClient
-from classbeat.spotdown.failure_policy import AnalysisReady, Pending, TrackFailure, Unreachable
+from classbeat.spotdown.failure_policy import (
+    AnalysisReady,
+    Pending,
+    TrackFailure,
+    Unreachable,
+    UnreachableReason,
+)
 from classbeat.spotdown.scope_calc import idempotency_key
 from classbeat.spotdown.shadow_policy import poll_delay
 from classbeat.spotdown.studio_map_model import StudioMap, studio_map
 
-logger = logging.getLogger(__name__)
-
 CHUNK: Final = 256 * 1024
 # The lease over one track's spotdown calls (the lookup, the upload, the start); polls checkpoint.
 RELAY_SECONDS: Final = UPLOAD_SECONDS + ANALYSIS_SECONDS + CALL_SECONDS + CALL_LEASE_MARGIN_SECONDS
-PASSED: Final = (RunStopped, DatabaseRoleError)
 TIMED_OUT: Final = "timed_out"
 
 Failure = TrackFailure | Unreachable
@@ -66,14 +71,12 @@ Failure = TrackFailure | Unreachable
 
 @dataclass(slots=True)
 class Session:
-    """One run's use of spotdown; the budget and the outage are the job's (``begin``)."""
+    """One run's use of spotdown; the budget and the outage are the attempt's (``begin``)."""
 
     client: SpotdownClient
     scope: str
-    deadline: float | None = None  # monotonic: the end of the job's budget, once begun
+    deadline: float | None = None  # monotonic: the end of the attempt's budget, once begun
     outage: bool = False
-    tried: int = 0
-    provider_errors: int = 0
 
     def left(self) -> float:
         if self.deadline is None:
@@ -82,7 +85,7 @@ class Session:
 
 
 async def begin(run: JobRun, session: Session) -> None:
-    """The job's budget and outage flag, read (or started) once per run."""
+    """The attempt's budget and outage flag, read (or started) once per run."""
     if session.deadline is not None:
         return
     now, started, outage = await budget.open(run)
@@ -91,18 +94,29 @@ async def begin(run: JobRun, session: Session) -> None:
 
 
 async def note_outage(run: JobRun, session: Session) -> None:
-    """spotdown is unreachable: the rest of the job (this run and every later one) is local."""
+    """spotdown is unavailable: the flag is the job's until a retry resets it (a lease-lost
+    requeue keeps it, ``outage_policy``)."""
     session.outage = True
     await budget.mark_outage(run)
 
 
-def session_for(run: JobRun) -> Session | None:
-    """The run's session when spotdown is the source for its owner, else ``None`` (local)."""
+def session_for(run: JobRun) -> Session:
+    """The run's session; ``analysis_unavailable`` (logged, nothing called) when spotdown is not
+    usable in this worker (``studio_tracks_config.TracksConfig.refusal``)."""
     config = studio_tracks_config.current()
-    if config.scope_key is None or not config.active_for(run.lease.owner_id):
-        return None
+    refused = config.refusal()
+    if refused is not None or config.scope_key is None:
+        raise spotdown_ending.unreachable(refused or "not_configured")
     scope = scope_policy.scope_for("studio", config.scope_key, run.lease.owner_id)
     return Session(SpotdownClient(config.sources), scope)
+
+
+async def unreachable(run: JobRun, session: Session, reason: UnreachableReason) -> JobFailure:
+    """The job's ending for an ``Unreachable``: the outage is noted when it is the service's."""
+    ending = spotdown_ending.unreachable(reason)
+    if ending.category == outage_policy.UNAVAILABLE:
+        await note_outage(run, session)
+    return ending
 
 
 async def chunks(path: Path) -> AsyncIterator[bytes]:
@@ -171,8 +185,8 @@ async def _attempt(
 
 async def _analyse(
     run: JobRun, session: Session, reference: str, sha256: str, audio: Path
-) -> StudioMap | str:
-    """The map, or why this track falls back (a code)."""
+) -> StudioMap:
+    """The map, or the job's ending (``spotdown_ending``)."""
     nonce, attempt, retried = uuid.uuid4().hex, 1, False
     while session.left() > 0:
         # The keys stay the same across ``rate_limited`` waits (no second upload of the same
@@ -181,52 +195,38 @@ async def _analyse(
         if isinstance(outcome, dict):
             mapped = studio_map(outcome, reference, sha256, track.TRACK_VERSION)
             if not isinstance(mapped, StudioMap):
-                return mapped.reason
-            return mapped if valid_track_map(mapped.track_map, track.TRACK_VERSION) else "bad_map"
-        if isinstance(outcome, str):
-            return outcome  # the budget is spent
+                raise spotdown_ending.failed("map_refused")
+            if not valid_track_map(mapped.track_map, track.TRACK_VERSION):
+                raise spotdown_ending.failed("bad_map")
+            return mapped
+        if isinstance(outcome, str):  # the budget is spent
+            raise spotdown_ending.unavailable("budget_spent")
         if isinstance(outcome, Unreachable):
-            await note_outage(run, session)  # studio_policy.reaction: the rest of the job is local
-            return "unreachable"
+            raise await unreachable(run, session, outcome.reason)
         step = studio_policy.reaction(outcome, retried)
         if step == "wait":
             wait = studio_policy.wait_for(outcome.retry_after_s, session.left())
             if wait is None:
-                return TIMED_OUT
+                raise spotdown_ending.unavailable("wait_over_budget")
             await pause(run, wait)
         elif step == "retry":
             retried, attempt = True, attempt + 1
             await pause(run, min(studio_policy.RETRY_PAUSE_SECONDS, max(session.left(), 0.0)))
+        elif step == "unavailable":
+            raise spotdown_ending.unavailable(outcome.status)
         else:
-            session.provider_errors += outcome.status == "provider_error"
-            return outcome.status
+            raise spotdown_ending.failed(outcome.status)
         await run.checkpoint()
-    return TIMED_OUT
+    raise spotdown_ending.unavailable("budget_spent")
 
 
 async def analyse(
     run: JobRun, session: Session, reference: str, sha256: str, audio: Path
-) -> StudioMap | None:
-    """spotdown's map of the downloaded ``audio`` for ``reference``; ``None``: analyse it
-    locally."""
-    try:
-        await begin(run, session)
-        if session.outage or session.left() <= 0:
-            return None
-        session.tried += 1
-        result = await _analyse(run, session, reference, sha256, audio)
-        if not isinstance(result, StudioMap) and studio_policy.provider_outage(
-            session.provider_errors, session.tried
-        ):
-            await note_outage(run, session)
-    except PASSED:
-        raise
-    except Exception as exc:
-        logger.warning("spotdown studio failed", extra={"error_type": type(exc).__name__})
-        return None
-    if isinstance(result, StudioMap):
-        return result
-    logger.info(
-        "spotdown studio fallback", extra={"job_id": str(run.lease.job_id), "reason": result}
-    )
-    return None
+) -> StudioMap:
+    """spotdown's map of the downloaded ``audio`` for ``reference``, or a ``JobFailure``."""
+    await begin(run, session)
+    if session.outage:
+        raise spotdown_ending.unavailable("outage_flag")
+    if session.left() <= 0:
+        raise spotdown_ending.unavailable("budget_spent")
+    return await _analyse(run, session, reference, sha256, audio)

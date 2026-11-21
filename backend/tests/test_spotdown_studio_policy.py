@@ -1,9 +1,8 @@
 """SD-P5 (#1302, ADR 0040 sections 3, 6, 8 and 9): the pure rules of studio tracks analysed by
 spotdown: the map always through ``timing_class_policy`` (path (a) only) and
 ``spotdown_map_policy`` (``studio_map_model``), the provenance kept with it and the cache's rule
-for a stored one, the failure reactions and the budget (``studio_policy``), the allowlist setting
-(``studio_owners_policy``) and when spotdown is the source (``studio_tracks_config``). No
-database, no network."""
+for a stored one, the failure reactions and the budget (``studio_policy``) and when spotdown is
+usable (``studio_tracks_config``; the four settings are gone, #1353). No database, no network."""
 
 import copy
 import json
@@ -15,19 +14,13 @@ import pytest
 from classbeat import egress_spotdown
 from classbeat.config import Settings
 from classbeat.spotdown import studio_policy as sp
-from classbeat.spotdown.failure_policy import TrackFailure, Unreachable
+from classbeat.spotdown.failure_policy import TrackFailure
 from classbeat.spotdown.studio_map_model import (
     STUDIO_POLICY_VERSIONS,
     StudioMap,
     StudioRefused,
     current_provenance,
     studio_map,
-)
-from classbeat.spotdown.studio_owners_policy import (
-    MAX_OWNERS,
-    StudioOwnersRefused,
-    canonical,
-    parse_owners,
 )
 from classbeat.spotdown.studio_tracks_config import TracksConfig
 from spotdownfake import SERVICE_KEY, example
@@ -164,36 +157,23 @@ def test_a_stored_provenance_of_another_build_is_not_current(change: Any) -> Non
 @pytest.mark.parametrize(
     ("failure", "retried", "step"),
     [
-        (Unreachable("connection"), False, "outage"),
-        (Unreachable("server_error"), False, "outage"),
-        (Unreachable("unauthorized"), True, "outage"),
         (TrackFailure("rate_limited", retry_after_s=30.0), True, "wait"),
         (TrackFailure("provider_error"), False, "retry"),
-        (TrackFailure("provider_error"), True, "fallback"),
+        (TrackFailure("provider_error"), True, "unavailable"),  # retried, with the job's backoff
         (TrackFailure("processing_failed", failure_kind="timeout"), False, "retry"),
-        (TrackFailure("processing_failed", failure_kind="timeout"), True, "fallback"),
-        (TrackFailure("processing_failed", failure_kind="decode_error"), False, "fallback"),
-        (TrackFailure("processing_failed", failure_kind="out_of_memory"), False, "fallback"),
-        (TrackFailure("alignment_failed", analysis_id="an_1"), False, "fallback"),
-        (TrackFailure("not_found"), False, "fallback"),
-        (TrackFailure("uncertain"), False, "fallback"),
-        (TrackFailure("source_unavailable"), False, "fallback"),
+        (TrackFailure("processing_failed", failure_kind="timeout"), True, "failed"),
+        (TrackFailure("processing_failed", failure_kind="decode_error"), False, "failed"),
+        (TrackFailure("processing_failed", failure_kind="out_of_memory"), False, "failed"),
+        (TrackFailure("alignment_failed", analysis_id="an_1"), False, "failed"),
+        (TrackFailure("not_found"), False, "failed"),
+        (TrackFailure("uncertain"), False, "failed"),
+        (TrackFailure("source_unavailable"), False, "failed"),
     ],
 )
 def test_each_failure_has_its_bounded_reaction(
-    failure: TrackFailure | Unreachable, retried: bool, step: str
+    failure: TrackFailure, retried: bool, step: str
 ) -> None:
     assert sp.reaction(failure, retried) == step
-
-
-@pytest.mark.parametrize(
-    ("errors", "tried", "outage"),
-    [(0, 0, False), (2, 2, False), (3, 3, True), (3, 6, True), (3, 7, False), (4, 8, True)],
-)
-def test_a_provider_outage_needs_three_tracks_and_half_the_run(
-    errors: int, tried: int, outage: bool
-) -> None:
-    assert sp.provider_outage(errors, tried) is outage
 
 
 @pytest.mark.parametrize(
@@ -210,65 +190,10 @@ def test_the_budget_is_about_ten_minutes() -> None:
     assert sp.WAIT_SECONDS == 600.0
 
 
-# --- the allowlist setting ----------------------------------------------------------------------
-
-
-def test_the_owners_are_canonical_sorted_and_empty_is_nobody() -> None:
-    a, b = "0B6F1A52-6F0E-4F43-9A51-6C1D2A0C9E11", "00000000-0000-4000-8000-000000000001"
-    assert canonical(f" {a} , {b} ") == f"{b},{a.lower()}"
-    assert parse_owners("") == frozenset()
-    assert parse_owners("  ") == frozenset()
-    assert parse_owners(a) == {OWNER}
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        "not-a-uuid",
-        "0b6f1a526f0e4f439a516c1d2a0c9e11",  # only the dashed form
-        "{0b6f1a52-6f0e-4f43-9a51-6c1d2a0c9e11}",
-        "urn:uuid:0b6f1a52-6f0e-4f43-9a51-6c1d2a0c9e11",
-        "0b6f1a52-6f0e-4f43-9a51-6c1d2a0c9e11,0b6f1a52-6f0e-4f43-9a51-6c1d2a0c9e11",
-        "0b6f1a52-6f0e-4f43-9a51-6c1d2a0c9e11,",
-        ",".join(str(uuid4()) for _ in range(MAX_OWNERS + 1)),
-    ],
-)
-def test_a_bad_allowlist_is_refused_without_the_value(value: str) -> None:
-    with pytest.raises(StudioOwnersRefused) as refused:
-        parse_owners(value)
-    assert value not in str(refused.value)
-
-
-def test_the_settings_default_to_off_and_nobody(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("CLASSBEAT_SPOTDOWN_STUDIO", "CLASSBEAT_SPOTDOWN_STUDIO_OWNERS"):
-        monkeypatch.delenv(name, raising=False)
-    settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    assert (settings.spotdown_studio, settings.spotdown_studio_owners) == ("off", "")
-
-
-@pytest.mark.parametrize("value", ["on", "default", "true", "everyone"])
-def test_no_setting_switches_it_on_for_everyone(
-    monkeypatch: pytest.MonkeyPatch, value: str
-) -> None:
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_STUDIO", value)
-    with pytest.raises(ValueError, match="spotdown_studio"):
-        Settings(_env_file=None)  # type: ignore[call-arg]
-
-
-def test_the_allowlist_setting_is_read_and_checked(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_STUDIO", "allowlist")
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_STUDIO_OWNERS", str(OWNER).upper())
-    settings = Settings(_env_file=None)  # type: ignore[call-arg]
-    assert (settings.spotdown_studio, settings.spotdown_studio_owners) == ("allowlist", str(OWNER))
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_STUDIO_OWNERS", "nobody")
-    with pytest.raises(ValueError, match="spotdown_studio_owners must be"):
-        Settings(_env_file=None)  # type: ignore[call-arg]
-
-
-# --- when spotdown is the source ----------------------------------------------------------------
+# --- when spotdown is usable ---------------------------------------------------------------------
 
 KEY = bytes(range(32))
-ON = TracksConfig("allowlist", frozenset({OWNER}), frozenset({"upload"}), KEY)
+ON = TracksConfig(frozenset({"upload"}), KEY)
 
 
 @pytest.fixture
@@ -282,19 +207,35 @@ def installed() -> Any:
         egress_spotdown.install_spotdown(None, None)
 
 
-def test_only_an_allowlisted_owner_with_everything_set(installed: None) -> None:
-    assert ON.active_for(OWNER)
-    assert not ON.active_for(uuid4())  # not on the list
-    assert not TracksConfig().active_for(OWNER)  # the default
-    assert not TracksConfig("off", ON.owners, ON.sources, KEY).active_for(OWNER)
-    assert not TracksConfig("allowlist", ON.owners, frozenset({"youtube"}), KEY).active_for(OWNER)
-    assert not TracksConfig("allowlist", ON.owners, ON.sources, None).active_for(OWNER)
+def test_usable_only_with_everything_set_else_the_refusal_names_the_unreachable_reason(
+    installed: None,
+) -> None:
+    assert ON.refusal() is None
+    assert TracksConfig().refusal() == "not_configured"  # the default: nothing set
+    assert TracksConfig(ON.sources, None).refusal() == "not_configured"  # no scope key
+    assert TracksConfig(frozenset({"youtube"}), KEY).refusal() == "source_off"
+    assert TracksConfig(frozenset(), KEY).refusal() == "source_off"
     assert "scope_key" not in repr(ON)
     assert str(KEY) not in repr(ON)
 
 
-def test_not_without_spotdown_installed() -> None:
-    assert not ON.active_for(OWNER)
+def test_not_usable_without_spotdown_installed() -> None:
+    assert ON.refusal() == "not_configured"
+
+
+@pytest.mark.parametrize("name", ["SPOTDOWN_STUDIO", "SPOTDOWN_STUDIO_OWNERS", "SPOTDOWN_MIX"])
+def test_the_removed_settings_are_ignored_as_any_unknown_one(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    monkeypatch.setenv(f"CLASSBEAT_{name}", "allowlist")
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    for field in (
+        "spotdown_studio",
+        "spotdown_studio_owners",
+        "spotdown_mix",
+        "spotdown_mix_owners",
+    ):
+        assert not hasattr(settings, field)
 
 
 def test_the_budget_left_is_the_jobs_from_its_first_spotdown_call() -> None:
