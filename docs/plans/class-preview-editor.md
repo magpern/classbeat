@@ -29,17 +29,19 @@
 ## Issues (one PR each; opened 2026-11-21)
 
 **Dependencies:**
-- ADR 0 → E1, E2, R1, S1;
+- ADR 0 → R1, S1 (these start at once);
+- ADR 0 + #1367 + #1370 → E1 (amendment B's `mix_choice_policy` and the B9 recomputation);
+- E1 + #1369 + #1370 → E2 (E2 owns the server write of pins, §3 and §4);
 - E1 + E2 → E3;
 - R1 → R2 → R3 (and E3);
 - S1 → S2 → S3 (and E3);
-- **E1 also needs #1367** (ADR 0036 amendment B's `mix_choice_policy`).
+- **E1 needs #1367 and #1370; E2 needs E1, #1369 and #1370** (ADR 0036 amendment B).
 
 | PR | Scope (ADR 0042 §) | Acceptance criteria | Focused tests | Dev / Reviewer |
 |---|---|---|---|---|
 | **0** #1389 | ADR 0042 (this freeze's PR) | Fresh review PASS | docs only | Architect / **Opus** |
 | **E1** #1390 | Cut pins in `mix_spec_model`, `mix_plan_policy`, `mix_cut_policy` and `mix_hint_policy` (§5) | A pin is never replaced by an AI candidate; confirmed pins never move; `music_changed` blocks approval until each pin is re-confirmed; every hard rule still refuses, the loop rules included; pins unapplied on a whole song (amendment B) | table tests per mode × state × reanalysis × `music_changed`; each refusal reason with a pin present; pins after `mix_choice_policy` | **Opus / Opus** (mix spec, amendment B12) |
-| **E2** #1391 | `workout_edit_policy` (drag, move, split, merge, set, duration); the overlay (overrides, locks, anchors); the user-edit revision route; `base_revision_id` and `expected_current_id` (§3, §4) | Drag, move, split and merge keep the total; `set` never changes the mix spec; Green→Yellow survives regeneration with no lock; a lock violation refuses; orphaned and unapplied records have no effect; stale base → 409 | property tests: the total is invariant; locked blocks unchanged; ≥ 50% reconciliation; Use AI value; edit during a job → conflict; undo after a branch clears redo; reconciliation after a B4a remap | Opus / Opus (Opus review of ADR 0042: approvals) |
+| **E2** #1391 | `workout_edit_policy` (drag, move, split, merge, set, duration); the overlay (overrides, locks, anchors); the user-edit revision route, including the **server write of cut pins** (set, confirm, re-confirm, clear, each run through §3's audio-edit order); `base_revision_id` and `expected_current_id` (§3, §4) | Drag, move, split and merge keep the total; `set` never changes the mix spec; Green→Yellow survives regeneration with no lock; a lock violation refuses; orphaned and unapplied records have no effect; stale base → 409 | property tests: the total is invariant; locked blocks unchanged; ≥ 50% reconciliation; Use AI value; edit during a job → conflict; undo after a branch clears redo; reconciliation after a B4a remap | Opus / Opus (Opus review of ADR 0042: approvals) |
 | **E3** #1396 | Editor page: `timeModel.ts`, the `PreviewTransport` interface, `SilentTransport`, block, overlay and pin UI, provenance hover, undo and redo. Reuses `StudioTimeline`, `ProfileChart`, `SongStrip`, `BeatOnePanel` patterns (§2–§5) | Every E1 and E2 operation reachable by keyboard and mouse; the cursor drawn only from `observe()` | Vitest on the `timeModel` mappings (overlaps, lanes, provenance); e2e on fakes: drag, lock, undo, regenerate | Sonnet / Sonnet |
 | **R1** #1392 | `window` in `render_policy` and `renderchild`; per-piece decode from `src_start` plus the stage audit; `preview_window_calc`; `RENDERER_VERSION`; the MP3 delay and padding measurement recorded in ADR 0042 (§6.1, §6.2, §6.4) | Clean-window PCM equals the full-render span (bit-exact expected, 1e-6); output plans refuse `window`; published sha256 unchanged; placement rules 1–5 | the 12 cases of §6.2; property tests: a selected transition always whole, no window under 60 s except at the mix end, ends extended (never shortened) out of guard zones, at most 6 min | Sonnet / **Opus** (sandboxed child) |
 | **R2** #1394 | `preview_sessions`, the `preview_render` job, the clip endpoint, the cache key, `preview_clips` and the volume, purge and cap (§6.3–§6.5) | Owner-only clips; 30 min lifetime and 25 min delivery caps; no claim of audible-time verification; purge on idle, class and account deletion | another owner's session → 404; expired or over the delivery cap → 410; each key input changes the key; a workout-only edit is a hit; an audio edit is a miss; netguard and the fake gateway | **Opus / Opus** |

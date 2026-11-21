@@ -26,6 +26,9 @@ Amends, when accepted:
 - [ADR 0007](0007-classes-revisions-and-saving.md): user-edit revisions with their own write path, the edit
   overlay and §2's `content_hash`, the revision cap, and optimistic concurrency on revision writes, approval
   and `POST /classes/{id}/current` (§3, §4).
+- [ADR 0005](0005-jobs-and-leases.md): the `preview_render` job kind, which has no `class_id`. R2 widens the
+  `jobs_class_id` CHECK (migration 0052, NULL only for `player_remove` today) for it and keeps it outside
+  `jobs_one_open_per_class`.
 - [ADR 0009](0009-spotify-connection.md): §1, two optional preview scopes and `preview_granted`; §10, the
   playback calls and their egress paths, with the rule that a browser-sent id is never used (§7).
 - [ADR 0036](0036-swedebeat-studio.md) §4.1 ("the audio is deleted at once"): the same exception as ADR 0016,
@@ -36,7 +39,7 @@ Amends, when accepted:
   - The alignment correction (§7.4) is not a trim.
 
 Related: [ADR 0002](0002-tenant-isolation.md) (new owned tables, RLS),
-[ADR 0005](0005-jobs-and-leases.md) (the `preview_render` job), [ADR 0010](0010-live-activation-permissions.md),
+[ADR 0010](0010-live-activation-permissions.md),
 [ADR 0014](0014-account-export-and-deletion.md) (deletion and export of the new tables),
 [ADR 0038](0038-composer-flow.md) (the class's one open job), [ADR 0040](0040-spotdown-analysis-service.md)
 (analysis, timing classes, alignment `offset_s`).
@@ -199,16 +202,19 @@ TransportState = {status, piece?, transportMs?, observedAt, uncertaintyMs, reaso
 **Every edit is validated** by `agent.design.check(draft, map)`: `workout.validate`, `fit_to_music`, the timing
 gate. These are the same rules as a model draft.
 
-**Every audio edit runs amendment B's one order of checks** (a cut pin, a cut change, a reorder, a removed song,
-a crossfade change, a duration change; a workout-only edit changes no composed total and skips the first two):
+**Every audio edit runs amendment B's one order of checks.** The editor's audio edits are the **cut pin**
+operations (set, confirm, re-confirm, clear, §5) and **change class duration**. Reordering, removing a song or
+changing a crossfade are not offered: such a spec is not `applied_form` and is refused `mix_not_applied`.
+A workout-only edit changes no composed total and skips the first two steps:
 1. `mix_plan_policy.checked` (cuts placed, hard rules);
 2. `class_length_out_of_tolerance` (B6, the 10 % class-length rule) on the composed total;
 3. the remap and fit, refused `workout_does_not_fit` if the workout cannot follow (B4a);
 4. `plan_class_too_long` (`max_draft_seconds`, a plan entitlement) and `plan_not_allowed`.
 
 A pin changes the composed total like any cut, so it is no exception. A refused edit stores nothing. B9's
-`applied_form` (§8) re-runs steps 1 and 2 on the pinned spec, and the output path runs 4 again as today. E1 and
-E2 test each refusal with a pin present.
+`applied_form` (§8) re-runs steps 1 and 2 on the pinned spec. Step 4 runs again wherever
+`check_stored_draft` runs today (MOWL Save and Update, and `POST /classes/{id}/current`); `outputs_admit` has no
+plan gate and gets none. E1 and E2 test each refusal with a pin present.
 
 **Overrides, locks and anchors** live in the draft's **edit overlay**.
 
@@ -221,6 +227,12 @@ E2 test each refusal with a pin present.
   `{content, mix_spec?, overlay}` (`mix_spec` only for a studio draft), by a new `edited_hash` beside
   `studio_hash`. This holds for Spotify drafts too. An approval binds the overlay, and a lock-only or pin-only
   edit is a real revision with a different hash.
+- **One hash function, chosen by whether `edit_overlay` is NULL, at every place that recomputes and compares a
+  stored hash.** Those places are at least `saving/approval.py` (MOWL Save approval),
+  `swedebeat_studio/current_draft.py` (the outputs flow) and `swedebeat_studio/revise_kind.py`, plus
+  `design/revision.py`'s write. They all call it, so no integrity check is weakened or skipped for an edited
+  draft. E2 tests Save, `current_draft.load` and the outputs admit with an edited draft, and that a tampered
+  overlay is refused at each.
 - Pin records (§5) are part of the overlay.
 
 | Record | Meaning | Created by | On AI regeneration |
@@ -307,8 +319,10 @@ cut **skips `selected()`**, so an AI candidate never replaces a pin:
 - confirmed pins **never move**, and an off-beat one gets only `off_beat_cut`.
 
 **A new sha256** (`music_changed`) puts every pin of that track into "listen again". Nothing moves. Approval
-is refused by the **server**, not only the UI: **`pin_unconfirmed`**, named in B9's fixed order after
-`mix_not_applied`, at create and again when the job runs (`outputs_admit`), until each such pin is
+is refused by the **server**, not only the UI: **`pin_unconfirmed`**, placed in B9's fixed order immediately after
+`mix_not_applied` and before `playlist_has_repeats`
+(`invalid_input`, `mowl_needs_mix`, `mix_not_chosen`, `mix_not_applied`, **`pin_unconfirmed`**,
+`playlist_has_repeats`, `output_off`), at create and again when the job runs (`outputs_admit`), until each such pin is
 re-confirmed or cleared (the beat-one pattern, migration 0029). E1's acceptance criteria and tests include it.
 
 **The hard rules stay**, whether or not a cut is pinned:
@@ -573,7 +587,7 @@ rest is unchanged.
   gates. The **choices** a `user_edit` draft is checked with are those of its **nearest ancestor that is not a
   `user_edit`** (a `mix_choices` or proposal draft), so the fail-closed default does not refuse it. A `user_edit`
   draft is therefore admitted when it differs from `applied(...)` only by its overlay. A draft that differs by anything else still fails closed: `mix_not_applied`. `pin_unconfirmed`
-  (§5) comes after it in the order.
+  (§5) comes immediately after it in the order.
 - **B10 and A1 (the hash and the spec shape).** The spec shape gains optional `start_pin` and `end_pin`
   (§5); the choices stay out of the spec. The hash of a draft with an overlay covers the overlay (§3), which
   is also what binds the pins to the approval. A draft without an overlay hashes as today.
