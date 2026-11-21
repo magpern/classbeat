@@ -14,7 +14,7 @@ from classbeat.agent import PickPlan
 from classbeat.agent.brief import Brief
 from classbeat.swedebeat_studio.candidate_policy import Candidate, song_of, swap_of, usable
 from classbeat.swedebeat_studio.evidence_policy import OK, SUSPECTED, Evidence
-from classbeat.swedebeat_studio.pick import stored_evidence
+from classbeat.swedebeat_studio.pick import CROSSFADE_SEC, stored_evidence
 from classbeat.swedebeat_studio.song_list_model import MAX_ROUNDS, StudioListContent, StudioSong
 from classbeat.swedebeat_studio.stages import Steps
 from classbeat.swedebeat_studio.swap_policy import (
@@ -33,6 +33,7 @@ def undone(seed: StudioListContent, position: int) -> StudioListContent:
 async def another(
     steps: Steps, brief: Brief, seed: StudioListContent, position: int
 ) -> StudioListContent:
+    steps.require_length(PickPlan.build(brief))  # mix_too_long, before any model call
     slots = another_slots(seed, position)
     asked = seed.songs[position]
     original = asked_original(asked)
@@ -73,6 +74,7 @@ async def another(
             "mode": "replace",
             "songs": songs,
             "total_sec": song_total(songs),
+            "crossfade_sec": CROSSFADE_SEC,
             "evidence": evidence,
             "rounds": rounds,
             "note": chosen.note[:300],

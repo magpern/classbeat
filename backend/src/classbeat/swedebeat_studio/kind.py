@@ -167,6 +167,7 @@ async def run(job_run: JobRun) -> Outcome:
             cfg.swedebeat_gateway_key,
             keyring,
             spotify,
+            given.plan_gates,
         )
         if given.action == "another" and seed is not None and position is not None:
             content = await another(steps, given.brief, seed.content, position)
