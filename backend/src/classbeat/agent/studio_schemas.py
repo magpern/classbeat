@@ -31,7 +31,8 @@ class MixTrackInput(BaseModel):
 
 class MixInput(BaseModel):
     """The mix: its pieces in the order they play (every approved track at least once; a track may
-    play again in a later piece, never in the next one), and one crossfade per change."""
+    play again in a later piece, and in the next one only as a loop), and one crossfade per
+    change."""
 
     model_config = STRICT
 

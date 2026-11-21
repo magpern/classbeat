@@ -15,10 +15,15 @@ selected, snapped) and rounded, or raises ``MixPlanRefused`` with one named reas
   approved reference with no piece (each approved track at least once, and only those);
 - ``too_many_tracks``: more than ``MAX_TRACKS`` pieces;
 - ``cut_out_of_range``: not ``0 <= start_sec < end_sec <= length``, before or after placing;
-- ``loop_needs_exact_timing``: two pieces of one track back to back (``mix_loop_policy``);
-- ``window_too_short``: under ``MIN_PLAYED_SEC`` played once snapped;
+- ``loop_needs_exact_timing`` / ``loop_not_on_phrase``: a loop join (two pieces of one track back
+  to back) on a track whose stored timing is not ``exact``, or off its trusted phrase points
+  (``mix_loop_policy``, A4.1 and A4.2);
+- ``loop_piece_too_short``: a loop piece under ``MIN_LOOP_BARS`` bars (A4.4);
+- ``window_too_short``: a piece, or a loop run's pieces together, under ``MIN_PLAYED_SEC`` played
+  once snapped;
 - ``crossfade_count``: not one crossfade per change of piece;
 - ``crossfade_not_whole`` / ``crossfade_out_of_range``: not a whole number of seconds 0 to 30;
+- ``loop_crossfade_not_zero``: a crossfade at a loop join that is not 0 (A4.3);
 - ``crossfade_too_long``: not shorter than **both** neighbours' windows;
 - ``crossfades_overlap``: a middle track's incoming plus outgoing crossfade is not shorter than
   its window (part of each track plays alone);
@@ -34,11 +39,15 @@ selected, snapped) and rounded, or raises ``MixPlanRefused`` with one named reas
    grid for ``exact`` or no stored timing decision only), and its range again once placed
    (``cut_out_of_range``, a named detail). One piece's checks all run before the next piece's;
 3. coverage (step 5): each approved reference has a piece (``not_a_permutation``);
-4. the loop joins (step 6, ``mix_loop_policy``; part 2 of #1342 reads the candidates and timing
-   class that ``TrackFacts`` carries);
-5. the lengths (step 7): every piece at least ``MIN_PLAYED_SEC`` (``window_too_short``), after
-   coverage, so a short window with a missing track ends ``not_a_permutation``;
-6. the crossfades (step 8), then the total (step 9, ``mix_too_long``).
+4. the loop joins (step 6, ``mix_loop_policy.join_refusal``), each join in mix order:
+   ``loop_needs_exact_timing``, then ``loop_not_on_phrase``, on the stored timing class and
+   candidates that ``TrackFacts`` carries;
+5. the lengths (step 7, ``mix_loop_policy.length_refusal``): each loop piece at least
+   ``MIN_LOOP_BARS`` (``loop_piece_too_short``), then every other piece and every loop run at
+   least ``MIN_PLAYED_SEC`` (``window_too_short``), after coverage, so a short window with a
+   missing track ends ``not_a_permutation``;
+6. the crossfades (step 8: count, whole, range, ``loop_crossfade_not_zero``, too long, overlap),
+   then the total (step 9, ``mix_too_long``).
 
 Every constraint after step 4 is checked on the placed cuts. The soft checks (A7 step 10) are
 ``mix_hint_policy.hints``, which callers run on the checked spec: they never refuse.
@@ -102,8 +111,8 @@ def _track(raw: object, facts: Mapping[str, TrackFacts]) -> tuple[str, float, fl
     return reference, start, end
 
 
-def _crossfades(raw: object, windows: Sequence[int]) -> list[int]:
-    """``windows`` in hundredths of a second."""
+def _crossfades(raw: object, windows: Sequence[int], references: Sequence[str] = ()) -> list[int]:
+    """``windows`` in hundredths of a second, ``references`` the pieces' in mix order."""
     if not isinstance(raw, list | tuple) or len(raw) != len(windows) - 1:  # pyright: ignore[reportUnknownArgumentType]
         raise MixPlanRefused("crossfade_count", "one crossfade per change of piece")
     out: list[int] = []
@@ -113,6 +122,9 @@ def _crossfades(raw: object, windows: Sequence[int]) -> list[int]:
         if not 0 <= value <= MAX_CROSSFADE:
             raise MixPlanRefused("crossfade_out_of_range", f"0 to {MAX_CROSSFADE} s")
         out.append(value)
+    loop = mix_loop_policy.crossfade_refusal(references, out)
+    if loop is not None:
+        raise MixPlanRefused(*loop)
     for n, fade in enumerate(out):
         if fade * CS >= min(windows[n], windows[n + 1]):
             raise MixPlanRefused("crossfade_too_long", "shorter than both neighbouring windows")
@@ -146,13 +158,14 @@ def checked(
     cut = [_track(t, known) for t in tracks]  # pyright: ignore[reportUnknownVariableType]
     if {r for r in approved if r is not None} - {r for r, _, _ in cut}:  # "only those": _track
         raise MixPlanRefused("not_a_permutation", COVERAGE)
-    loop = mix_loop_policy.refusal([r for r, _, _ in cut])
-    if loop is not None:
-        raise MixPlanRefused(*loop)
+    joins = mix_loop_policy.join_refusal(cut, known)  # A7 step 6, on the placed cuts
+    if joins is not None:
+        raise MixPlanRefused(*joins)
+    lengths = mix_loop_policy.length_refusal(cut, known, MIN_PLAYED_SEC)  # A7 step 7
+    if lengths is not None:
+        raise MixPlanRefused(*lengths)
     windows = [cs(end) - cs(start) for _, start, end in cut]
-    if min(windows) < cs(MIN_PLAYED_SEC):
-        raise MixPlanRefused("window_too_short", f"at least {MIN_PLAYED_SEC:.0f} s of each piece")
-    crossfades = _crossfades(spec.get("crossfades"), windows)
+    crossfades = _crossfades(spec.get("crossfades"), windows, [r for r, _, _ in cut])
     if sum(windows) - CS * sum(crossfades) > MAX_TOTAL_SEC * CS:
         raise MixPlanRefused("mix_too_long", f"at most {MAX_TOTAL_SEC // 60} minutes")
     return {

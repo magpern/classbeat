@@ -25,7 +25,7 @@ export interface TimelineTrack {
   crossfadeOutSec: number
   /** The position of the first piece of the same song when this piece plays it again (#1342). */
   repeatOf: number | null
-  /** The same song as the piece before it, playing on (a loop join; refused until #1328). */
+  /** The same song as the piece before it, playing on (a loop join, A4: exact timing, on phrase points). */
   loop: boolean
 }
 
