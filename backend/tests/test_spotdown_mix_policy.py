@@ -411,8 +411,7 @@ def test_the_worker_configures_the_mix_switch_from_its_own_settings(
 
     for name in (
         "CLASSBEAT_SPOTDOWN_MIX", "CLASSBEAT_SPOTDOWN_MIX_OWNERS", "CLASSBEAT_SPOTDOWN_STUDIO",
-        "CLASSBEAT_SPOTDOWN_STUDIO_OWNERS", "CLASSBEAT_SPOTDOWN_SPOTIFY",
-        "CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS",
+        "CLASSBEAT_SPOTDOWN_STUDIO_OWNERS",
     ):  # fmt: skip
         monkeypatch.delenv(name, raising=False)
     for name, value in env.items():

@@ -43,12 +43,15 @@ from classbeat.egress import WORKER_ALLOWLIST, build_allowlist_opener
 from classbeat.jobs import KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.playlists import common
+from classbeat.songs import pick_match_batch
+from classbeat.spotdown import song_match_config
 from ctx import make_context
 from jobapi import Browser
 from jobtools import grant_plan
 from optools import ACCOUNT_BASE, ATTACH_URL, TOKEN_A, FakeMowlAttach
 from pickfake import LIST_8, POOL_14, call, entries, turn
 from pickfake import songs as song_refs
+from spotdownfake import FakeSpotdown
 from spotifycore import NARROW_ALBUM, FakeSpotify, Seen
 from spotifyfake import CLIENT_A, USER_A, SpotifyHTTPS
 from spotifytools import Spot
@@ -447,7 +450,10 @@ async def songenv(
     spotify_admin: Connection,
     monkeypatch: pytest.MonkeyPatch,
     users_plan: str | None,
+    spotdown: FakeSpotdown,
 ) -> AsyncIterator[SongEnv]:
+    """The song stack. spotdown is installed (the ``spotdown`` fixture, a fake that times every
+    song) with ``youtube`` on: every Spotify pick runs on it, there is no other path (#1354)."""
     spot.fake.catalogue = catalogue()
     mowl = FakeMowlPool(spotify=spot.fake)
     network = Network(spot.library, mowl)
@@ -457,6 +463,11 @@ async def songenv(
     monkeypatch.setattr(library, "BPM_POLL_SEC", 0.01)
     monkeypatch.setattr(library, "BPM_WAIT_SEC", 0.2)
     monkeypatch.setattr(design_music, "SYNC_POLL_SECONDS", 0.01)
+
+    async def no_wait(run: Any, _seconds: float) -> None:
+        await run.checkpoint()  # spotdown's polls and pauses are charged but not waited
+
+    monkeypatch.setattr(pick_match_batch, "_sleep", no_wait)
     made = SongEnv(spot, spotify_admin, mowl, plan=users_plan)
     previous = common.runtime()
     common.configure(common.Runtime(http=spot.http))
@@ -464,9 +475,11 @@ async def songenv(
         Runtime(keyring=spot.ring, models=FactoryModels(made.new_provider), agent=CONFIG)
     )
     songs.configure(songs.SongConfig(enabled=True, sync_wait_seconds=0.3))
+    song_match_config.configure(song_match_config.MatchConfig(frozenset({"youtube"})))
     try:
         yield made
     finally:
+        song_match_config.configure(None)
         songs.configure(None)
         design.configure(None)
         common.configure(previous)

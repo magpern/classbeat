@@ -47,6 +47,7 @@ pytest_plugins = [
     "savetools",
     "updatetools",
     "playlisttools",
+    "spotdownfake",
     "songtools",
     "composertools",
     "studiotools",
