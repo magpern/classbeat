@@ -270,13 +270,16 @@ def kept_timing(
 ) -> dict[str, Any]:
     """``record`` with each kept song's spotdown entry of the seed list (SD-P6 stage E,
     ``song_carry_calc``); ``record`` unchanged when there is no seed, no record, or on an error of
-    any type (the kept songs then keep MOWL's sections). Pure, so nothing passes."""
+    any type (the kept songs then keep MOWL's sections). Only ``RunStopped``, ``LeaseLost`` and
+    ``DatabaseRoleError`` pass, as everywhere (none can come from pure code)."""
     if seeded is None or not record:
         return record
     try:
         kept = [(k.slot, k.spotify_id) for k in seeded.kept]
         listed = [(s.spotify_id, s.new) for s in chosen.songs]
         return with_kept(record, seeded.provenance, kept, listed)
+    except PASSED:
+        raise
     except Exception as exc:
         kind = type(exc).__name__
         logger.warning("spotdown kept timing failed", extra={"error_type": kind})

@@ -167,3 +167,14 @@ def test_a_class_copy_drops_the_record_with_the_list() -> None:
     }  # fmt: skip
     music["spotdown"] = {"song_list_id": str(LIST), "tracks": [0]}
     assert music_copy(music) == {"source": "mowl_spotify_playlist", "fingerprint": "f"}
+
+
+def test_a_stamped_draft_without_a_list_fails_the_job_internal() -> None:
+    from classbeat.design import revision
+    from classbeat.jobs import JobFailure
+
+    m = tt.stamp(a_map(), 0, "approximate", "youtube")
+    with pytest.raises(JobFailure) as failed:
+        revision._sections(m, None)  # pyright: ignore[reportPrivateUsage]
+    assert failed.value.category == "internal"
+    assert revision._sections(a_map(), None) is None  # pyright: ignore[reportPrivateUsage]

@@ -851,7 +851,10 @@ turns it on for everyone; **the shipped default still waits for the Spotify gate
    a document not verified, not mapped or not `approximate`. For the whole revise or refit, the music
    step exactly as MOWL gave it (byte for byte): switched off or not allowlisted (no read at all), a
    base without the field (every draft stored before stage E, so a stage-D draft stored before this
-   amendment is revised on MOWL's sections), a field that does not parse, the list gone or not
+   amendment is revised on MOWL's sections), a field that does not parse (a revise only: a refit,
+   like Save and the beat-one page, validates the base's whole `music` strictly first, as it always
+   has, so a malformed field, which only a hand edit of the database can make, fails it closed
+   `internal`), the list gone or not
    loading, other music than the list's, spotdown unreachable on any read, or an error of any type in
    `spotdown_base`, `spotdown_carry` or `spotdown_music` (swallowed; only its type is logged; only
    `RunStopped`, `LeaseLost` and `DatabaseRoleError` pass). In a change of songs an error carrying the
@@ -860,6 +863,11 @@ turns it on for everyone; **the shipped default still waits for the Spotify gate
    Spotify track is keyed by its track number, so it applies to the same track on either sections.
 5. **Not carried:** the composer (ADR 0038) never runs stages A and B, so its lists have no record.
    A revise whose base was designed before this amendment (no field) designs on MOWL's sections.
+6. **Rollback:** `SpotifyRevisionMusic` forbids unknown keys (`extra="forbid"`), so a build from
+   before stage E refuses a draft that carries `music.spotdown` wherever it validates the music (Save,
+   a refit, the beat-one page). Only the allowlisted owners' drafts can carry it. Before rolling the
+   worker and web back past stage E, switch `CLASSBEAT_SPOTDOWN_SPOTIFY` off and accept that those
+   drafts cannot be saved until the build is rolled forward again (or strip the field by hand).
 
 **Audit of #1303's acceptance (plan §6, row by row; every test on the fake spotdown, no network):**
 
@@ -884,7 +892,8 @@ turns it on for everyone; **the shipped default still waits for the Spotify gate
 MOWL, Spotify, OIDC, Paddle and the gateway but none for spotdown; one would need a new fake service,
 its egress origin and key file in the stack, and the allowlist switched on for an e2e user. The job
 tests above run the whole worker path (the jobs API, the queue, the fenced transactions, Postgres)
-against the in-process fake instead; an e2e is left for the hardening batch or the default switch.
+against the in-process fake instead. The e2e is the tracked follow-up #1337, to be done before the
+default switch.
 
 ## Status
 
