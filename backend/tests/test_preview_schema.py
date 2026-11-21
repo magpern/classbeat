@@ -147,7 +147,7 @@ def test_0071_up_and_down(
             class_id = new_class(conn, owner)
             _job(conn, owner, "preview_render", None, class_id)
             _session(conn, owner, class_id)
-        command.downgrade(config, "0069_mix_too_long")
+        command.downgrade(config, "0070_spotify_granted_scopes")
         with engine.connect() as conn:
             kinds = conn.execute(text("SELECT kind FROM jobs WHERE owner_id = :o"), {"o": owner})
             assert list(kinds.scalars()) == []

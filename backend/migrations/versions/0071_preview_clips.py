@@ -1,7 +1,7 @@
 """The SwedeBeat audition's clip service (ADR 0042 sections 6.3 to 6.5; CP-R2 #1394)
 
 Revision ID: 0071_preview_clips
-Revises: 0069_mix_too_long
+Revises: 0070_spotify_granted_scopes
 Create Date: 2026-11-21
 
 Three owned tables, owner RLS forced, each with an owner-inclusive foreign key to its class
@@ -38,7 +38,7 @@ from alembic import op
 from classbeat.db.rls import enable_owner_rls
 
 revision: str = "0071_preview_clips"
-down_revision: str | Sequence[str] | None = "0069_mix_too_long"
+down_revision: str | Sequence[str] | None = "0070_spotify_granted_scopes"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

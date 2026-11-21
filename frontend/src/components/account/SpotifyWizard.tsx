@@ -1,15 +1,19 @@
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import type { SpotifyStatus } from '../../api/spotify'
 import { useT } from '../../i18n/I18n'
 import { Field, Notice } from '../forms'
 
 // ADR 0009 section 2: the dashboard steps, the fixed callback URL and the one field, the Client
 // ID. No field asks for a Client Secret: Spotify sign-in is PKCE. An invalid Client ID is blocked
-// here, nothing is sent, and the value is not repeated back.
+// here, nothing is sent, and the value is not repeated back. "Enable listening preview" is an
+// unticked opt-in (ADR 0042 section 7.1): only when ticked does the start ask for the playback scopes.
 
 const CLIENT_ID = /^[0-9a-fA-F]{32}$/
 
-/** The Client ID step of the Spotify wizard; `onStart` gets a trimmed, valid Client ID. */
+/**
+ * The Client ID step of the Spotify wizard; `onStart` gets a trimmed, valid Client ID and whether
+ * the user opted in to the listening preview.
+ */
 export function SpotifyWizard({
   status,
   confirmSwitch,
@@ -24,12 +28,14 @@ export function SpotifyWizard({
   /** A connected user is changing the Client ID (after the confirmation). */
   changing: boolean
   busy: boolean
-  onStart: (clientId: string) => void
+  onStart: (clientId: string, preview: boolean) => void
   onKeep: () => void
 }) {
   const t = useT()
   const [clientId, setClientId] = useState('')
   const [invalid, setInvalid] = useState(false)
+  const [preview, setPreview] = useState(false)
+  const previewHint = useId()
   const [copy, setCopy] = useState<'copied' | 'failed' | null>(null)
 
   const connect = (event: FormEvent) => {
@@ -40,7 +46,7 @@ export function SpotifyWizard({
       return
     }
     setInvalid(false)
-    onStart(sent)
+    onStart(sent, preview)
   }
 
   const copyUrl = (url: string) => {
@@ -106,6 +112,22 @@ export function SpotifyWizard({
         }}
       />
       {invalid ? <Notice kind="error">{t('spot.invalidClientId')}</Notice> : null}
+      <div className="flex flex-col gap-1">
+        <label className="check">
+          <input
+            type="checkbox"
+            aria-describedby={previewHint}
+            checked={preview}
+            onChange={(e) => {
+              setPreview(e.target.checked)
+            }}
+          />
+          {t('spot.previewEnable')}
+        </label>
+        <p id={previewHint} className="m-0 text-muted">
+          {t('spot.previewOff')} {t('spot.previewNeeds')}
+        </p>
+      </div>
       <div className="flex flex-wrap gap-3">
         <button className="button" type="submit" disabled={busy}>
           {confirmSwitch

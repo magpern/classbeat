@@ -1,8 +1,9 @@
 """The user's Spotify connection as the account page sees it, and the standing pool consent
 (ADR 0009 sections 2 and 9).
 
-- ``spotify_status``: the row's status, ``last_error`` and the user's own Client ID, and whether
-  the pool consent is given. Never a token, the Spotify user id or a display name.
+- ``spotify_status``: the row's status, ``last_error``, the user's own Client ID and the scopes it
+  was granted (``granted_scopes``, which ``classbeat.spotify.flow.preview_granted`` reads), and
+  whether the pool consent is given. Never a token, the Spotify user id or a display name.
 - ``give_pool_consent``: needs a ``connected`` row (its lock shared while the consent row is
   written, so a parallel disconnect or account change cannot leave a consent for another
   account); inserts ``spotify_pool`` with ``playlist_id NULL`` and the connection's Spotify user
@@ -49,13 +50,14 @@ class SpotifyStatus:
     client_id: str | None
     pool_consent: bool
     consent_version: int | None
+    granted_scopes: str | None = None  # None: not connected, or a row from before 0070
 
 
 async def spotify_status(factory: Factory, ctx: UserContext) -> SpotifyStatus:
     async with user_session(factory, ctx) as db:
         row = (
             await db.execute(
-                select(_C.status, _C.last_error, _C.public).where(
+                select(_C.status, _C.last_error, _C.public, _C.granted_scopes).where(
                     _C.owner_id == ctx.user_id, _C.provider == PROVIDER
                 )
             )
@@ -70,6 +72,7 @@ async def spotify_status(factory: Factory, ctx: UserContext) -> SpotifyStatus:
         client_id if isinstance(client_id, str) else None,
         version is not None,
         version,
+        row.granted_scopes,
     )
 
 

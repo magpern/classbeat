@@ -80,10 +80,19 @@ class Spot:
     def ctx(self, actor: Actor) -> Any:
         return make_context(self.user_id(actor))
 
-    async def start(self, actor: Actor, client_id: str = CLIENT_A, *, confirm: bool = False) -> str:
-        response = await actor.post(
-            START, {"client_id": client_id, "confirm_account_change": confirm}
-        )
+    async def start(
+        self,
+        actor: Actor,
+        client_id: str = CLIENT_A,
+        *,
+        confirm: bool = False,
+        preview: bool = False,
+    ) -> str:
+        """``preview``: the listening-preview opt-in (ADR 0042 section 7.1), sent only when set."""
+        body: dict[str, Any] = {"client_id": client_id, "confirm_account_change": confirm}
+        if preview:
+            body["preview"] = True
+        response = await actor.post(START, body)
         assert response.status_code == 200, response.text
         return response.json()["authorize_url"]
 
@@ -109,9 +118,15 @@ class Spot:
         return {k: v[0] for k, v in parse_qs(urlsplit(location).query).items()}
 
     async def connect(
-        self, actor: Actor, client_id: str = CLIENT_A, user: str = USER_A, *, confirm: bool = False
+        self,
+        actor: Actor,
+        client_id: str = CLIENT_A,
+        user: str = USER_A,
+        *,
+        confirm: bool = False,
+        preview: bool = False,
     ) -> dict[str, str]:
-        url = await self.start(actor, client_id, confirm=confirm)
+        url = await self.start(actor, client_id, confirm=confirm, preview=preview)
         return await self.callback(actor, self.approve(url, user))
 
     def token_requests(self) -> list[Seen]:
