@@ -22,7 +22,10 @@ def mix_for(count: int) -> dict[str, Any]:
     for n in order:
         length = float(tracks[n].music_map["duration"])
         cuts.append({"track": n, "start_sec": 0, "end_sec": length})
-    cuts[0]["start_sec"] = 8.0  # a cut that snaps to the first track's grid
+    cuts[0] |= {  # a cut that snaps to the first track's grid, with its reason (#1328)
+        "start_sec": 8.0,
+        "why": "A shorter first song so the warm-up starts on the beat.",
+    }
     return {"tracks": cuts, "crossfades": [6, *([8] * (count - 2))]}
 
 

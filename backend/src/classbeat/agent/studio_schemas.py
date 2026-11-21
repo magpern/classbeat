@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from classbeat.agent.schemas import STRICT, Note, WorkoutDraft
 from classbeat.studio.mix_plan_policy import MAX_TRACKS
 
-SCHEMA_VERSION = 1  # of the schemas below
+SCHEMA_VERSION = 2  # of the schemas below (2: a piece's why, #1328)
 
 
 class MixTrackInput(BaseModel):
@@ -23,6 +23,10 @@ class MixTrackInput(BaseModel):
     track: int = Field(ge=0, lt=MAX_TRACKS, description="The track's index in the music summary.")
     start_sec: float = Field(description="Where the piece starts playing, in the track's seconds.")
     end_sec: float = Field(description="Where it stops, in its own seconds (its length: the end).")
+    why: Note = Field(
+        default="",
+        description="Why it is cut anywhere but its edges or actual silence (one short sentence).",
+    )
 
 
 class MixInput(BaseModel):
