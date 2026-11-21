@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError, ProgrammingError
 from classbeat.auth.tables import metadata
 from classbeat.db import SYSTEM_TABLES
 from dbtools import install_queue, migrated
+from jobtools import new_job, new_user
 from rls_guard import check_tables
 from role_guard import check_roles
 
@@ -34,7 +35,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0067_playlist_has_repeats"]
+    assert script.get_heads() == ["0068_analysis_unavailable"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +56,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0067_playlist_has_repeats"]
+        assert applied_revisions(database_url) == ["0068_analysis_unavailable"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -1013,6 +1014,44 @@ def test_0045_plan_names_and_numbers_up_and_down(
         ]
         command.upgrade(config, "head")
         assert rows()[1][3] == "Individual"
+    finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0068_admits_analysis_unavailable_and_the_downgrade_turns_it_into_internal(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1352: ``jobs.error_category`` takes ``analysis_unavailable`` at head and refuses it after
+    the downgrade, which first turns a stored one into ``internal`` (as 0054 and 0067 do)."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+
+    def failed_job(category: str) -> uuid.UUID:
+        with admin.begin() as connection:
+            owner = new_user(connection)
+            return new_job(
+                connection, owner, state="failed", error_category=category,
+                finished_at="2026-01-01",
+            )  # fmt: skip
+
+    def category_of(job_id: uuid.UUID) -> str:
+        with admin.connect() as connection:
+            return connection.execute(
+                text("SELECT error_category FROM jobs WHERE id = :i"), {"i": job_id}
+            ).scalar_one()
+
+    try:
+        command.upgrade(config, "head")
+        stored = failed_job("analysis_unavailable")
+        assert category_of(stored) == "analysis_unavailable"
+        command.downgrade(config, "0067_playlist_has_repeats")
+        assert category_of(stored) == "internal"
+        with pytest.raises(IntegrityError, match="jobs_error_category"):
+            failed_job("analysis_unavailable")
+        command.upgrade(config, "head")
+        assert failed_job("analysis_unavailable") is not None
     finally:
         admin.dispose()
         command.downgrade(config, "base")

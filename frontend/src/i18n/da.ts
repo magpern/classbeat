@@ -1000,6 +1000,9 @@ const da: Catalogue = {
   'job.failure.media_refused.detail': 'Intet blev designet. Prøv igen senere.',
   'job.failure.analysis_failed.title': 'Lyden fra dette mix kunne ikke analyseres',
   'job.failure.analysis_failed.detail': 'Prøv et andet mix.',
+  'job.failure.analysis_unavailable.title': 'Musikanalysen er ikke tilgængelig lige nu',
+  'job.failure.analysis_unavailable.detail':
+    'Vi prøver igen af os selv. Dit hold blev ikke designet. Du kan også prøve igen om nogle minutter.',
   'job.failure.feature_off.title': 'Det er slået fra lige nu',
   'job.failure.feature_off.detail': 'Intet blev designet. Prøv igen senere.',
   'job.failure.analysis_limit.title': 'For mange nye Swedebeat-mix i dag',
@@ -1042,6 +1045,7 @@ const da: Catalogue = {
   'job.retry.upstream_unavailable': 'MOWL svarede ikke. Prøver igen om lidt.',
   'job.retry.rate_limited': 'MOWL bad os sætte tempoet ned. Prøver igen om lidt.',
   'job.retry.model_unavailable': 'Designeren har travlt. Prøver igen om lidt.',
+  'job.retry.analysis_unavailable': 'Musikanalysen er ikke tilgængelig lige nu. Prøver igen om lidt.',
   'job.retry.default': 'Noget gik galt. Prøver igen om lidt.',
   'job.mixStage': 'Henter og analyserer dit mix',
   'job.waitingForSlot': 'Venter på en ledig plads. Andre mix bliver analyseret før dit.',
@@ -1061,6 +1065,7 @@ const da: Catalogue = {
   'job.revise.upstream_unavailable': 'MOWL kunne ikke nås. Intet blev ændret. Prøv igen om nogle minutter.',
   'job.revise.rate_limited': 'MOWL bad os sætte tempoet ned. Intet blev ændret. Vent nogle minutter, og prøv igen.',
   'job.revise.model_unavailable': 'Designeren har travlt. Intet blev ændret. Prøv igen om nogle minutter.',
+  'job.revise.analysis_unavailable': 'Musikanalysen er ikke tilgængelig lige nu. Intet blev ændret. Prøv igen om nogle minutter.',
   'job.revise.lease_lost': 'Ændringen blev afbrudt for mange gange. Intet blev ændret. Prøv igen.',
   'job.revise.operation_busy':
     'Et andet design fra dig brugte stadig den samme playliste. Intet blev ændret. Prøv igen om lidt.',
