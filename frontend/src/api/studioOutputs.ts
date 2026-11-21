@@ -31,7 +31,7 @@ export interface TimelineTrack {
 
 /** A soft check of the mix (never a refusal): its code and the piece positions it names. */
 export interface TimelineHint {
-  code: 'whole_track_repeated' | 'one_song_dominates'
+  code: 'whole_track_repeated' | 'one_song_dominates' | 'tempo_jump' | 'downbeats_not_locked'
   pieces: number[]
 }
 
@@ -92,7 +92,7 @@ function decodeTrack(value: unknown): TimelineTrack {
   }
 }
 
-const HINT_CODES: readonly string[] = ['whole_track_repeated', 'one_song_dominates']
+const HINT_CODES: readonly string[] = ['whole_track_repeated', 'one_song_dominates', 'tempo_jump', 'downbeats_not_locked']
 
 /** The known hints only: an unknown code is left out rather than shown as a code. */
 function decodeHints(item: Record<string, unknown>): TimelineHint[] {

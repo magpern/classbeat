@@ -16,7 +16,8 @@ a model's word), each at its step of A7:
   cut is on the ``TrackFacts`` bar grid and the anchor is spotdown's measured point, not re-snapped,
   so where the two drift apart late in a long track the join is refused (it fails closed);
 - step 7, ``length_refusal``: each loop piece at least ``MIN_LOOP_BARS`` bars of the track's
-  ``TrackFacts.bpm`` (``loop_piece_too_short``, A4.4), then every loop run, its windows together
+  ``TrackFacts.bpm``, less ``ROUNDING_SLACK_CS`` (the cut rounding; ``loop_piece_too_short``,
+  A4.4), then every loop run, its windows together
   (a run of one piece is an ordinary piece), at least ``MIN_PLAYED_SEC`` (``window_too_short``);
 - step 8, ``crossfade_refusal``: a loop join's crossfade is 0 (``loop_crossfade_not_zero``, A4.3),
   after the crossfade's own shape and range and before ``crossfade_too_long``.
@@ -38,6 +39,7 @@ CROSSFADE_NOT_ZERO: Final = "loop_crossfade_not_zero"
 WINDOW_TOO_SHORT: Final = "window_too_short"
 LOCK_TOLERANCE_MS: Final = 30  # the lock tolerance of #1330
 MIN_LOOP_BARS: Final = 8  # one phrase of four-four
+ROUNDING_SLACK_CS: Final = 1  # each cut is rounded to 0.01 s on its own, so a window can lose 1 cs
 PHRASE_KINDS: Final = frozenset({"phrase_start", "phrase_end"})
 
 Piece = tuple[str, float, float]  # (reference, start_sec, end_sec), placed
@@ -86,8 +88,12 @@ def length_refusal(
     windows = [cs(b) - cs(a) for _, a, b in pieces]
     looped = sorted({m for n in loop_joins(references) for m in (n, n + 1)})
     for n in looped:
-        if windows[n] < cs(MIN_LOOP_BARS * 240.0 / facts[references[n]].bpm):
-            return PIECE_TOO_SHORT, f"piece {n} of a loop plays at least {MIN_LOOP_BARS} bars"
+        need = cs(MIN_LOOP_BARS * 240.0 / facts[references[n]].bpm) - ROUNDING_SLACK_CS
+        if windows[n] < need:
+            return (
+                PIECE_TOO_SHORT,
+                f"piece {n} of a loop plays at least {MIN_LOOP_BARS} bars (within 0.01 s)",
+            )
     for first, last in runs(references):
         if sum(windows[first : last + 1]) < cs(min_played_sec):
             if first == last:

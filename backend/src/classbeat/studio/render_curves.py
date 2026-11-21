@@ -19,7 +19,8 @@ no I/O: ``renderchild`` loads this file by path, as ``render_policy`` (it never 
 The low band is a linear-phase FIR (a Blackman-windowed sinc, ``TAPS`` taps, ``CROSSOVER_HZ``),
 applied centred (no delay) through numpy's FFT in blocks; outside the held part it reads zeros,
 where the gains are 0 anyway (the cut's own start and end). Deterministic: the same plan and files
-give the same samples.
+give the same samples on one machine; numpy's FFT is not promised bit-identical across CPU types, so
+a retry that lands on another one may differ and end as ``render_not_reproducible`` (nothing sent).
 """
 
 from collections.abc import Callable, Iterable, Iterator
@@ -73,6 +74,10 @@ def regions(track: dict[str, Any], following: dict[str, Any] | None) -> list[Reg
         found.append((0, track["fade_in"], track["swap"], True))
     if following is not None and following.get("curve") == "bass_swap":
         found.append((length - track["fade_out"], length, following["swap"], False))
+    if len(found) == 2 and found[0][1] > found[1][0]:
+        # ``_band`` writes each region over the last: they must not meet (``validate_plan``'s cut
+        # check, fade_in + fade_out <= length, already guarantees it for a checked plan)
+        raise ValueError("swap regions overlap")
     return found
 
 

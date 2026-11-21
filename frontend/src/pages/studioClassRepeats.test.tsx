@@ -31,6 +31,8 @@ const REPEATED = {
   has_repeats: true,
   hints: [
     { code: 'whole_track_repeated', pieces: [0, 2] },
+    { code: 'tempo_jump', pieces: [0, 1] },
+    { code: 'downbeats_not_locked', pieces: [1, 2] },
     { code: 'not_a_hint_we_know', pieces: [1] },
   ],
   crossfades: [
@@ -63,8 +65,10 @@ describe('a studio class whose mix repeats a song', () => {
     expect(marks).toHaveLength(1)
     expect(marks[0]).toHaveTextContent('Plays song 1 again.')
     const hints = screen.getAllByTestId('timeline-hint')
-    expect(hints).toHaveLength(1) // an unknown code is never shown
+    expect(hints).toHaveLength(3) // an unknown code is never shown
     expect(hints[0]).toHaveTextContent('Songs 1, 3 play the same whole track')
+    expect(hints[1]).toHaveTextContent('Songs 1, 2 are at tempos that clash')
+    expect(hints[2]).toHaveTextContent('crossfade between songs 2, 3 does not line up')
   })
 
   it('offers the SwedeBeat playlist off and disabled, with the reason, and says so in the consent', async () => {

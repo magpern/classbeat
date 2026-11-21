@@ -50,6 +50,10 @@ class TransitionHint:
     bpm: tuple[float, ...] = ()  # tempo_jump only: the two tempos
     crossfades: tuple[int, ...] = ()  # downbeats_not_locked: crossfades that would lock
 
+    def as_json(self) -> dict[str, Any]:
+        """The timeline's form: the code and the piece positions only."""
+        return {"code": self.code, "pieces": list(self.pieces)}
+
     def text(self) -> str:
         """The hint for the model: its code, the piece indexes and numbers only."""
         a, b = self.pieces
@@ -94,7 +98,8 @@ def locked(
 ) -> bool | None:
     """Whether the downbeats lock in the overlap of ``crossfade`` seconds between the outgoing
     piece's ``end`` and the incoming piece's ``start``; ``None`` where the check does not apply
-    (no overlap, or a side that is not ``exact`` with trusted downbeats)."""
+    (no overlap, or a side that is not ``exact`` with trusted downbeats). Vacuously ``True`` when
+    both sides have trusted downbeats but none falls inside the overlap: nothing there to clash."""
     out_beats, in_beats = downbeats(outgoing), downbeats(incoming)
     if crossfade <= 0 or not out_beats or not in_beats:
         return None

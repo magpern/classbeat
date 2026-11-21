@@ -118,7 +118,7 @@ def _track(
     return reference, start, end
 
 
-def _crossfades(raw: object, windows: Sequence[int], references: Sequence[str] = ()) -> list[int]:
+def _crossfades(raw: object, windows: Sequence[int], *, references: Sequence[str]) -> list[int]:
     """``windows`` in hundredths of a second, ``references`` the pieces' in mix order."""
     if not isinstance(raw, list | tuple) or len(raw) != len(windows) - 1:  # pyright: ignore[reportUnknownArgumentType]
         raise MixPlanRefused("crossfade_count", "one crossfade per change of piece")
@@ -173,7 +173,7 @@ def checked(
     if lengths is not None:
         raise MixPlanRefused(*lengths)
     windows = [cs(end) - cs(start) for _, start, end in cut]
-    crossfades = _crossfades(spec.get("crossfades"), windows, [r for r, _, _ in cut])
+    crossfades = _crossfades(spec.get("crossfades"), windows, references=[r for r, _, _ in cut])
     if sum(windows) - CS * sum(crossfades) > MAX_TOTAL_SEC * CS:
         raise MixPlanRefused("mix_too_long", f"at most {MAX_TOTAL_SEC // 60} minutes")
     return {
