@@ -535,6 +535,9 @@ piece. Steps 5 to 10 then run on the whole mix, in this order: coverage, then th
 3. the bar-grid snap on the `TrackFacts` grid, for an `exact` track **or a track with no stored timing
    decision** (a local analysis of the played bytes, the played recording itself), as before #1328. An
    `approximate` or `unusable` track is never snapped: its cut is only rounded to 0.01 s. Edges stay edges.
+   On an `exact` track the snap moves the cut that step 2 chose to its nearest bar, so a selected candidate
+   only decides which bar the cut lands on: the final cut is that bar, not the candidate's own time
+   (intended; Architect, 2026-11-21, on the #1350 review).
    *(Architect, 2026-11-21, #1350; reversible. A loop join still needs a stored `exact` decision, A4.1.)*
 4. the range check again after snapping;
 5. **coverage** (A2): each approved reference at least once (`not_a_permutation`; "nothing else" is already

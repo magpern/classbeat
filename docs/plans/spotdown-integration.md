@@ -6,7 +6,7 @@ Companion repository: [magpern/spotdown](https://github.com/magpern/spotdown), [
 
 **Note 2026-11-20 (#1300):** ADR 0040 §5 supersedes two names in this plan: the lookups' query parameter is `cache_scope=` (was `scope=`) and the `rate_limited` field is `retry_after_s` (was `retry_after`). They are renamed below; no decision changed.
 
-**Note 2026-11-20 (#1296, roadmap Amendment 32):** decision 1 of "Decisions that need the owner" is answered. The owner accepted the terms-of-service risk and deploys spotdown with YouTube switched on, and Spotify classes get their analysis through spotdown (the MOWL sections are the fallback, not the default). P6 is no longer gated by #1296; the default switch still waits for #1298. classbeat does not police how the analysis service sources audio. The retention of the global entries is settled in [ADR 0040](../adr/0040-spotdown-analysis-service.md), amendment "#1296 accepted". The issue table row for P6 below, which lists #1296 as its blocker, is superseded by this note (#1296 is answered; only the default switch, #1298, remains). The body below is frozen and unchanged.
+**Note 2026-11-20 (#1296, roadmap Amendment 32):** decision 1 of "Decisions that need the owner" is answered. The owner accepted the terms-of-service risk and deploys spotdown with YouTube switched on, and Spotify classes get their analysis through spotdown (the MOWL sections are the fallback, not the default). P6 is no longer gated by #1296; the default switch still waits for #1298 *(superseded 2026-11-21: #1298 gates nothing and there is no default switch or fallback; the note at the end of §7)*. classbeat does not police how the analysis service sources audio. The retention of the global entries is settled in [ADR 0040](../adr/0040-spotdown-analysis-service.md), amendment "#1296 accepted". The issue table row for P6 below, which lists #1296 as its blocker, is superseded by this note (#1296 is answered; only the default switch, #1298, remains). The body below is frozen and unchanged.
 
 ## Issues
 
@@ -347,6 +347,12 @@ Two gates are **hard and never relaxed**: false `exact` = 0, and no audio kept a
 3. it becomes the default.
 
 The existing implementations (MOWL sections, `mixanalysis`, `mixchild`, `track_analysis`) stay as fallbacks. They are removed only after the corpus and workout acceptance pass, a period of production use with no regression in the fallback rate, and the owner's sign-off. Schema compatibility or numeric parity alone is never enough.
+
+*Note 2026-11-21 (owner, #1299; ADR 0040, the amendment "spotdown is the only analysis path", #1351): the
+owner replaced the rollout per source above. spotdown is the only analysis path for every source, with no
+shadow stage, no allowlist, no default switch, no fallback and no evidence gate; the quality gates of this
+section are engineering checks on the fixtures, not gates on shipping. Tuning happens after deployment on
+a test server, from the owner's feedback. The rest of this plan stays frozen.*
 
 ## 8. Proportionate scope
 
