@@ -173,6 +173,12 @@ class Person:
             "ORDER BY created_at LIMIT 1",
             u=u,
         )
+        # ADR 0040 section 8 (#1302): a design job's spotdown budget.
+        self.sql(
+            "INSERT INTO spotdown_studio_budgets (owner_id, job_id) "
+            "SELECT owner_id, id FROM jobs WHERE owner_id = :u ORDER BY created_at LIMIT 1",
+            u=u,
+        )
         # ADR 0040 section 8 (#1303): a song job's spotdown match budget.
         self.sql(
             "INSERT INTO spotdown_song_budgets (owner_id, job_id, spent_seconds) "

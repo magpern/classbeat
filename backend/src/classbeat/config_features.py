@@ -18,6 +18,7 @@ from classbeat.config_turnstile import check_site_key as check_turnstile_site_ke
 from classbeat.player.base_url_policy import player_base_url as check_player_base_url
 from classbeat.spotdown.owner_list_policy import canonical as check_owner_list
 from classbeat.spotdown.sources_policy import canonical as check_spotdown_sources
+from classbeat.spotdown.studio_owners_policy import canonical as check_spotdown_studio_owners
 from classbeat.spotdown.url_policy import spotdown_url as check_spotdown_url
 from classbeat.swedebeat_gateway.url_policy import gateway_url as check_swedebeat_gateway_url
 from classbeat.swedebeat_studio.config_policy import canonical as check_swedebeat_studio
@@ -130,6 +131,13 @@ class FeatureSettings(BaseSettings):
     # analysed by spotdown and only the comparison is recorded (``spotdown.shadow_config``); the
     # design keeps today's analysis. Off by default.
     spotdown_shadow: bool = False
+    # ADR 0040 section 9 (#1302): studio tracks analysed by spotdown, worker only. ``off`` (the
+    # default) is today's local analysis; ``allowlist`` makes spotdown the source of the track
+    # map for the owners in ``spotdown_studio_owners`` (user ids, comma separated), with the
+    # local analysis as the fallback (``spotdown.studio_tracks_config``). No value switches it on
+    # for everyone: that default waits for the studio gates (owner decision #1298).
+    spotdown_studio: Literal["off", "allowlist"] = "off"
+    spotdown_studio_owners: str = ""
     # ADR 0040 sections 2 and 8 (#1303, SD-P6 stage A): the Spotify song pick's ``/v2/match``
     # stage, worker only. ``off`` (the default) is today's pick; ``allowlist`` matches the pool
     # with spotdown for the owners in ``spotdown_spotify_owners`` (user ids, comma separated),
@@ -162,6 +170,11 @@ class FeatureSettings(BaseSettings):
     @classmethod
     def _check_spotdown_sources(cls, value: str) -> str:
         return check_spotdown_sources(value)
+
+    @field_validator("spotdown_studio_owners")
+    @classmethod
+    def _check_spotdown_studio_owners(cls, value: str) -> str:
+        return check_spotdown_studio_owners(value)
 
     @field_validator("spotdown_spotify_owners")
     @classmethod
