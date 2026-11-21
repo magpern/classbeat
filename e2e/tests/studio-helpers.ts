@@ -147,9 +147,9 @@ export function seedTrackMaps(owner: string, listRevisionId: string): void {
   const map = JSON.stringify(made.map).replaceAll("'", "''")
   for (const reference of references) {
     sql(
-      `INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map) VALUES ` +
-        `('${owner}', '${reference}', ${String(made.version)}, '\\x${sha256}'::bytea, '${map}'::jsonb) ` +
-        `ON CONFLICT (owner_id, reference, analyser_version) DO UPDATE SET map = EXCLUDED.map, ` +
+      `INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, analyser, sha256, map) VALUES ` +
+        `('${owner}', '${reference}', ${String(made.version)}, 'local', '\\x${sha256}'::bytea, '${map}'::jsonb) ` +
+        `ON CONFLICT (owner_id, reference, analyser_version, analyser) DO UPDATE SET map = EXCLUDED.map, ` +
         `sha256 = EXCLUDED.sha256, created_at = now()`,
     )
   }
