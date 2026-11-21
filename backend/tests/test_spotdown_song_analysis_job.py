@@ -90,7 +90,7 @@ def ends(fake: FakeSpotdown, source: str, *how: str) -> None:
 
 
 @pytest.fixture
-def waits(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+def waits(songenv: SongEnv, monkeypatch: pytest.MonkeyPatch) -> list[float]:
     made: list[float] = []
 
     async def sleep(_run: object, seconds: float) -> None:
@@ -196,12 +196,10 @@ async def test_only_the_chosen_songs_are_analysed_and_each_is_approximate(
         assert leak not in stored
     assert timing_marks(revision.provenance) == [(n, "approximate", "youtube") for n in range(8)]
     assert MATCH_KEY in revision.provenance
-    assert tuple(budget_row(songenv, job_id)) == (0.0, False)
+    assert budget_row(songenv, job_id).fallback is False
 
 
-async def test_a_cached_analysis_is_ready_at_once(
-    songenv: SongEnv, spotdown: FakeSpotdown
-) -> None:
+async def test_a_cached_analysis_is_ready_at_once(songenv: SongEnv, spotdown: FakeSpotdown) -> None:
     for n in SONGS:
         spotdown.add_analysis(None, f"youtube:{vid(n)}")
     _, revision = await run_on(songenv)
@@ -305,7 +303,8 @@ async def test_a_provider_outage_ends_analysis_unavailable_and_swaps_nothing(
     job_id, state, category = await ended(songenv)
     assert (state, category) == ("queued", "analysis_unavailable")
     assert songenv.row(job_id).approval_revision_id is None
-    assert len(starts(spotdown)) == 8  # no spare was asked for
+    asked = {a["source_ref"] for a in starts(spotdown)}
+    assert asked == {f"youtube:{vid(n)}" for n in SONGS}  # no spare was asked for
 
 
 async def test_three_provider_errors_of_eight_are_not_an_outage_each_is_replaced(
@@ -617,7 +616,6 @@ async def test_a_replace_analyses_only_its_new_song(
     spotdown.seen.clear()
     class_id = str(songenv.row(job_id).class_id)
     await rider.browser.post(f"/api/jobs/{job_id}/cancel")
-    spotdown.documents[f"youtube:{vid(0)}"] = youtube_doc(vid(0), bpm(13))  # batch index 0: song 13
     kept = [("kept", 0, "warmup"), ("kept", 1, "build"), ("pool", 0, "climb")]
     rest = [(2, "recovery"), (3, "sprint"), (4, "sprint"), (5, "recovery"), (6, "cooldown")]
     songenv.script = {
@@ -638,6 +636,25 @@ async def test_a_replace_analyses_only_its_new_song(
     _, new_id, _ = await songenv.waiting(rider, class_id=class_id, seed=seed)
     new = songenv.revision(new_id)
     assert new.content["songs"][2]["spotify_id"] == song_id(13)
-    # The match batch is the 6 new candidates (index 0 is song 13): only that one is analysed.
-    assert [a["source_ref"] for a in starts(spotdown)] == [f"youtube:{vid(0)}"]
-    assert [e["position"] for e in new.provenance[KEY]["songs"]] == [2]
+    # The match batch is the 6 new candidates: only the one chosen (song 13) is analysed.
+    assert [a["source_ref"] for a in starts(spotdown)] == [f"youtube:{vid(13)}"]
+    # The record holds every song: the kept ones carry the seed list's entry, the new one its own.
+    assert [e["position"] for e in new.provenance[KEY]["songs"]] == list(range(8))
+    seeded = {e["position"]: e for e in songenv.revision(revision).provenance[KEY]["songs"]}
+    for e in new.provenance[KEY]["songs"]:
+        if e["position"] != 2:
+            assert e == {**seeded[e["position"]], "kept": True}  # marked as carried
+
+
+async def test_approve_starts_phase_two_with_a_fresh_budget(songenv: SongEnv) -> None:
+    """The wait spent in phases 1 is not charged to phase 2 (#1354): Approve resets the row."""
+    rider = await songenv.rider()
+    songenv.script = script()
+    job_id, revision_id, digest = await songenv.waiting(rider)
+    songenv.sql(
+        "UPDATE spotdown_song_budgets SET spent_seconds = 400, fallback = true WHERE job_id = :j",
+        j=job_id,
+    )
+    assert (await rider.approve(job_id, revision_id, digest)).status_code == 200
+    row = budget_row(songenv, job_id)
+    assert (row.spent_seconds, row.fallback) == (0, False)

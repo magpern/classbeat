@@ -7,9 +7,9 @@ the wait for the user's one approval. Everything runs in the worker, inside the 
    spotdown match is on for (off by default; SD-P6, #1303), ``classbeat.songs.pick_match`` then
    matches the pool with spotdown (metadata only, nothing downloaded), leaves out the genuinely
    missing candidates while the others can fill the list and otherwise runs bounded replacement
-   rounds; off, unreachable or on any failure of it, the pool goes on exactly as before.
+   rounds; spotdown unreachable or any failure of it ends the job (``outage_policy``): no fallback.
    After ``choose`` (step 4), ``classbeat.songs.pick_analyse`` analyses the chosen songs only
-   and replaces an unsuitable one alone from the spares (SD-P6 stage B; the same fallbacks).
+   and replaces an unsuitable one alone from the spares (SD-P6 stage B; no fallback either).
 2. ``pool_write``: ``classbeat.playlists.write_pool`` (ensure the pool playlist: a
    ``spotify_create_playlist`` under this job's own key when the pool row has no playlist yet; the
    owner check; a ``spotify_replace_items`` of exactly the candidates, read back and compared),

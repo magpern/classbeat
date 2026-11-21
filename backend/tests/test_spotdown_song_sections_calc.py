@@ -82,7 +82,8 @@ def provenance(*positions: int, cls: str = "approximate") -> dict[str, Any]:
     decision = TimingDecision(cls, "matched_recording", {"residual_s": 0.3})  # pyright: ignore[reportArgumentType]
     outcomes = {
         p: SongOutcome(
-            "spotdown", None, Analysed(f"an_{p:04d}", ("spotdown", "1", None), AUDIO, decision),
+            "spotdown",
+            Analysed(f"an_{p:04d}", ("spotdown", "1", None), AUDIO, decision),
             Fit(True, ()),
         )
         for p in positions

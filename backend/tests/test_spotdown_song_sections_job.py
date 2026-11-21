@@ -1,19 +1,19 @@
-"""SD-P6 stage D (#1303, ADR 0040 sections 2, 3 and 8): a ``design_with_songs`` job from the pick
-to the first design with spotdown's analysis in the design, on the fakes (Spotify, the MOWL pool,
-the model and ``spotdownfake``, in process; the netguard refuses any other connection).
+"""SD-P6 stage D (#1303, ADR 0040 sections 2, 3 and 8; #1354): a ``design_with_songs`` job from the
+pick to the first design with spotdown's analysis in the design, on the fakes (Spotify, the MOWL
+pool, the model and ``spotdownfake``, in process; the netguard refuses any other connection).
 
-- on, phase 1 labels the analysed songs ``timing approximate`` and phase 2 designs on spotdown's
-  sections, every analysed track stamped ``approximate``: the model sees ``"timing":
-  "approximate"`` and the note, the design validator checks it, and the class completes;
-- switched off before phase 2, spotdown unreachable at phase 2, or an error in the hook: phase 2's
-  music and everything the design model is sent are **exactly** those of a class designed with
-  spotdown off (byte for byte), and the class completes;
-- a song whose analysis cannot be read again keeps MOWL's sections alone.
+- phase 1 labels the analysed songs ``timing approximate`` and phase 2 designs on spotdown's
+  sections, every track stamped ``approximate``: the model sees ``"timing": "approximate"`` and the
+  note, the design validator checks it, and the class completes;
+- there is no fallback to MOWL's sections: spotdown unreachable or ``rate_limited`` at phase 2 is
+  ``analysis_unavailable`` (the job is retried), an analysis that is gone is ``analysis_failed``, an
+  error in the hook is ``internal``; in each the class is not completed and the design model is
+  never sent a music step.
 """
 
 import copy
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -23,14 +23,13 @@ from classbeat.agent import track_timing_calc as tt
 from classbeat.agent.timing_input import TIMING_NOTE
 from classbeat.design.music import MusicStep
 from classbeat.songs import phase2, phase2_spotdown
-from classbeat.spotdown import song_match_config
 from classbeat.spotdown.song_analysis_record_model import KEY
 from classbeat.spotdown.song_sections_calc import reference_id
 from songanalysisdocs import youtube_doc
 from songtools import CHOSEN, Rider, SongEnv, song_id
 from spotdownfake import FakeSpotdown, spotdown
 from spotifycore import mowl_bpm
-from test_spotdown_song_analysis_job import vid
+from test_spotdown_song_analysis_job import ending, vid
 
 __all__ = ["spotdown"]  # the fixture
 
@@ -43,17 +42,6 @@ def docs(fake: FakeSpotdown) -> None:
         doc = youtube_doc(vid(n), float(mowl_bpm(song_id(n))))
         doc["alignment"]["reference"]["id"] = reference_id(song_id(n))
         fake.documents[f"youtube:{vid(n)}"] = doc
-
-
-def switch(rider: Rider | None) -> None:
-    if rider is None:
-        song_match_config.configure(None)
-        return
-    song_match_config.configure(
-        song_match_config.MatchConfig(
-            "allowlist", frozenset({rider.user_id}), frozenset({"youtube"})
-        )
-    )
 
 
 @pytest.fixture
@@ -73,18 +61,9 @@ def hooked(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, MusicStep, dict[s
 
 
 @pytest.fixture
-def fake(spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeSpotdown]:
-    async def no_wait(_run: object, _seconds: float) -> None:
-        return None
-
-    from classbeat.songs import pick_match_batch
-
-    monkeypatch.setattr(pick_match_batch, "_sleep", no_wait)
-    docs(spotdown)
-    try:
-        yield spotdown
-    finally:
-        song_match_config.configure(None)
+def fake(spotdown: FakeSpotdown) -> FakeSpotdown:
+    docs(spotdown)  # ``songenv`` already skips the polling waits
+    return spotdown
 
 
 def sent_to_design(songenv: SongEnv) -> str:
@@ -98,16 +77,10 @@ def sent_to_design(songenv: SongEnv) -> str:
 
 
 async def designed(
-    songenv: SongEnv,
-    *,
-    on_pick: bool,
-    on_design: bool,
-    before_design: Callable[[], None] = lambda: None,
+    songenv: SongEnv, before_design: Callable[[], None] = lambda: None
 ) -> tuple[Any, Rider]:
     rider = await songenv.rider()
-    switch(rider if on_pick else None)
     job_id, revision_id = await songenv.approved(rider)
-    switch(rider if on_design else None)
     before_design()
     row = await songenv.run(job_id)
     assert (row.state, row.error_category) == ("completed", None)
@@ -118,13 +91,13 @@ def reads(fake: FakeSpotdown) -> list[str]:
     return [s.path for s in fake.seen if s.method == "GET" and s.path.startswith("/v2/analyses/an")]
 
 
-# --- on -------------------------------------------------------------------------------------------
+# --- the design ---------------------------------------------------------------------------------
 
 
-async def test_on_the_design_gets_spotdowns_sections_stamped_approximate(
+async def test_the_design_gets_spotdowns_sections_stamped_approximate(
     songenv: SongEnv, fake: FakeSpotdown, hooked: list[Any]
 ) -> None:
-    listed, _ = await designed(songenv, on_pick=True, on_design=True)
+    listed, _ = await designed(songenv)
     assert [s.get("timing") for s in listed.content["songs"]] == ["approximate"] * 8  # the label
     analysis_ids = [e["analysis_id"] for e in listed.provenance[KEY]["songs"]]
     phase_one = len(reads(fake)) - 8
@@ -143,63 +116,53 @@ async def test_on_the_design_gets_spotdowns_sections_stamped_approximate(
     assert json.dumps(TIMING_NOTE)[1:-1] in text  # the note, as JSON text
 
 
-# --- exactly today's ----------------------------------------------------------------------------
+# --- no fallback ----------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("how", ["off", "unreachable", "server_error", "error"])
-async def test_a_fallback_at_phase_two_is_exactly_today(
+def _unreachable(fake: FakeSpotdown, _mp: pytest.MonkeyPatch) -> None:
+    fake.connect_error = True
+
+
+def _status(code: int, **headers: str) -> Callable[[FakeSpotdown, pytest.MonkeyPatch], None]:
+    def inject(fake: FakeSpotdown, _mp: pytest.MonkeyPatch) -> None:
+        third = sorted(fake.analyses)[2]
+        fake.inject[f"/v2/analyses/{third}"] = [httpx.Response(code, headers=headers)]
+
+    return inject
+
+
+def _hook_error(_fake: FakeSpotdown, mp: pytest.MonkeyPatch) -> None:
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise KeyError("injected")
+
+    mp.setattr(phase2_spotdown, "apply_track", boom)
+
+
+# (how spotdown fails at phase 2, the job's state after the attempt, its category)
+PHASE_TWO = {
+    "unreachable": (_unreachable, "queued", "analysis_unavailable"),
+    "server_error": (_status(503), "queued", "analysis_unavailable"),
+    "rate_limited": (_status(429, **{"Retry-After": "5"}), "queued", "analysis_unavailable"),
+    "gone": (_status(404), "failed", "analysis_failed"),
+    "hook_error": (_hook_error, "failed", "internal"),
+}
+
+
+@pytest.mark.parametrize("how", list(PHASE_TWO))
+async def test_a_failure_at_phase_two_has_no_fallback_and_no_design(
     songenv: SongEnv,
     fake: FakeSpotdown,
     hooked: list[Any],
     monkeypatch: pytest.MonkeyPatch,
     how: str,
 ) -> None:
-    await designed(songenv, on_pick=False, on_design=False)
-    today = sent_to_design(songenv)
-    [(_, off_step, _)] = hooked
-    today_map = copy.deepcopy(off_step.data.analysis)
-
-    def before_design() -> None:
-        fake.seen.clear()
-        if how == "unreachable":
-            fake.connect_error = True
-        elif how == "server_error":
-            for a in list(fake.analyses):
-                fake.inject[f"/v2/analyses/{a}"] = [httpx.Response(503)]
-        elif how == "error":
-
-            def boom(*_a: Any, **_k: Any) -> Any:
-                raise KeyError("injected")
-
-            monkeypatch.setattr(phase2_spotdown, "apply_track", boom)
-
-    listed, _ = await designed(
-        songenv, on_pick=True, on_design=how != "off", before_design=before_design
-    )
-    assert listed.provenance[KEY]["songs"]  # phase 1 did analyse the songs
-    _, step, before = hooked[-1]
-    assert step.data.analysis == before  # the hook gave today's music back
-    assert step.data.analysis["map"] == today_map["map"]  # the same music (ids differ per user)
-    assert tt.classes(step.data.analysis["map"]) == {}
-    assert sent_to_design(songenv) == today  # byte for byte what spotdown off sends
-    if how == "off":
-        assert fake.seen == []
-
-
-async def test_a_song_whose_analysis_is_rate_limited_keeps_mowls_sections_alone(
-    songenv: SongEnv, fake: FakeSpotdown, hooked: list[Any]
-) -> None:
-    def before_design() -> None:
-        third = sorted(fake.analyses)[2]
-        fake.inject[f"/v2/analyses/{third}"] = [httpx.Response(429, headers={"Retry-After": "5"})]
-
-    listed, _ = await designed(songenv, on_pick=True, on_design=True, before_design=before_design)
-    [(_, step, before)] = hooked
-    m = step.data.analysis["map"]
-    ids = sorted(fake.analyses)
-    position = [e["analysis_id"] for e in listed.provenance[KEY]["songs"]].index(ids[2])
-    assert set(tt.classes(m)) == set(range(8)) - {position}
-    mowl = [{k: v for k, v in s.items() if k != "song"} for s in before["map"]["songs"]
-            if s["track"] == position + 1]  # fmt: skip
-    assert [{k: v for k, v in s.items() if k != "song"} for s in m["songs"]
-            if s["track"] == position + 1] == mowl  # fmt: skip
+    inject, state, category = PHASE_TWO[how]
+    rider = await songenv.rider()
+    job_id, revision_id = await songenv.approved(rider)
+    inject(fake, monkeypatch)
+    row = await songenv.run(job_id)
+    assert (row.state, ending(songenv, job_id)) == (state, category)
+    assert hooked == []  # the hook never gave a step back: MOWL's sections were never used
+    assert songenv.revision(revision_id).content.get("design") is None  # no design was made
+    design = songenv.providers[-1]
+    assert design.sent == [] or "approximate" not in sent_to_design(songenv)

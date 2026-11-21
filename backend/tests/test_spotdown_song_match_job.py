@@ -84,7 +84,7 @@ def match_only(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def waits(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+def waits(songenv: SongEnv, monkeypatch: pytest.MonkeyPatch) -> list[float]:
     """The stage's waits, made at once (each is still charged to the job's budget)."""
     made: list[float] = []
 
@@ -182,9 +182,7 @@ async def test_missing_candidates_are_left_out_while_the_spares_fill_the_list(
     assert len(matches(spotdown)) == 1
     pool = songenv.pool(rider.user_id)
     items = songenv.fake.playlists[pool.playlist_id].entries
-    assert items == [
-        f"spotify:track:{song_id(n)}" for n in [*eligible, 1, 3]
-    ]  # usable first, missing at the end
+    assert items == [f"spotify:track:{song_id(n)}" for n in eligible]  # the missing are not written
 
 
 async def test_a_short_pool_gets_a_replacement_round_with_the_swap_recorded(
@@ -212,7 +210,7 @@ async def test_a_short_pool_gets_a_replacement_round_with_the_swap_recorded(
             "round": 1,
         }
     ]
-    assert (record["rounds"], record["missing"]) == (1, 1)  # song 5 is left, not replaced
+    assert (record["rounds"], record["missing"]) == (1, 2)  # songs 4 and 5 are left out
     first, second = matches(spotdown)
     assert (len(first["tracks"]), len(second["tracks"])) == (14, 6)
     assert len(set(keys(spotdown))) == 2
@@ -323,9 +321,7 @@ UNREACHABLE = [
 ]
 
 
-@pytest.mark.parametrize(
-    ("how", "reason", "ending"), UNREACHABLE, ids=[u[0] for u in UNREACHABLE]
-)
+@pytest.mark.parametrize(("how", "reason", "ending"), UNREACHABLE, ids=[u[0] for u in UNREACHABLE])
 async def test_each_unreachable_reason_ends_its_category_and_makes_no_list(
     songenv: SongEnv,
     spotdown: FakeSpotdown,
@@ -535,9 +531,7 @@ async def test_a_429_for_the_whole_request_waits_and_asks_again(
 # --- isolation and logs -------------------------------------------------------------------------
 
 
-async def test_the_budget_row_is_the_owners_alone(
-    songenv: SongEnv, spotdown: FakeSpotdown
-) -> None:
+async def test_the_budget_row_is_the_owners_alone(songenv: SongEnv, spotdown: FakeSpotdown) -> None:
     rider = await songenv.rider()
     songenv.script = script(*pool_turns(), *chosen(POOL))
     job_id, _ = await listed(songenv, rider)
