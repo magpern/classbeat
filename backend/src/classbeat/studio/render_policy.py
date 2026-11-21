@@ -2,7 +2,8 @@
 when a rendered length is the composed length. Stdlib only and no I/O, because the render child
 loads this file by path (it never imports the ``classbeat`` package).
 
-A **render plan** is JSON: ``{"output": path, "tracks": [track, ...]}`` where a track is
+A **render plan** is JSON: ``{"output": path, "tracks": [track, ...]}`` (plus the optional
+``purpose`` and ``window`` below) where a track is
 ``{"path", "src_start", "src_end", "dst_start", "fade_in", "fade_out"}``. Everything but the path
 is a whole number of samples at 44100 Hz: the track plays its source samples
 ``[src_start, src_end)`` from output sample ``dst_start`` on, fading in over the first ``fade_in``
@@ -21,6 +22,13 @@ the incoming track's after it, handed over in the ``SWAP_RAMP_FRAMES`` before it
 (``render_curves``). It is refused on the first track and wherever the transition is not one
 overlap of the two fades (the fade-in equal to the previous track's fade-out, starting where that
 fade-out starts). A curve never moves a sample, so the composed length is the same.
+
+**The purpose and the window** (ADR 0042 section 6.1). ``purpose`` is ``"output"`` (the default,
+also with no key: the published mix) or ``"preview"`` (an audition clip). A preview plan must carry
+a ``window``, ``{"start", "end"}`` in output samples: the child renders the whole mix as ever but
+writes only ``[start, end)``, at most ``MAX_WINDOW_FRAMES`` and inside the composed mix. An output
+plan refuses a ``window``, so the output path cannot carry one. ``plan_window`` reads it from a
+validated plan.
 """
 
 import math
@@ -38,6 +46,10 @@ TRACK_INTS: Final = ("src_start", "src_end", "dst_start", "fade_in", "fade_out")
 CURVES: Final = ("equal_power", "bass_swap")
 CURVE_KEYS: Final = ("curve", "swap")  # optional, ``_curve``
 SWAP_RAMP_FRAMES: Final = 441  # 10 ms: the low band's handover, ending on the swap point
+PURPOSES: Final = ("output", "preview")
+PLAN_KEYS: Final = ("output", "tracks")  # always; ``purpose`` and ``window`` are optional
+WINDOW_KEYS: Final = ("start", "end")
+MAX_WINDOW_FRAMES: Final = 6 * 60 * RATE  # ADR 0042 section 6.4: no window is over 6 minutes
 
 
 def _whole(value: object) -> bool:
@@ -63,9 +75,28 @@ def _curve(track: dict[str, Any], previous: dict[str, Any] | None) -> None:
         raise ValueError("curve")
 
 
+def _window(plan: dict[str, Any], composed: int) -> None:
+    """``ValueError`` for a plan whose purpose or window is not one this render accepts."""
+    purpose, window = plan.get("purpose", "output"), plan.get("window")
+    if not isinstance(purpose, str) or purpose not in PURPOSES:
+        raise ValueError("purpose")
+    if purpose == "output":
+        if "window" in plan:
+            raise ValueError("an output plan takes no window")
+        return
+    if not isinstance(window, dict) or set(window) != set(WINDOW_KEYS):  # pyright: ignore[reportUnknownArgumentType]
+        raise ValueError("a preview plan takes a window")
+    start, end = window["start"], window["end"]  # pyright: ignore[reportUnknownVariableType]
+    if not _whole(start) or not _whole(end) or not 0 <= start < end <= composed:  # pyright: ignore[reportUnknownArgumentType, reportOperatorIssue]
+        raise ValueError("window")
+    if end - start > MAX_WINDOW_FRAMES:  # pyright: ignore[reportOperatorIssue]
+        raise ValueError("window")
+
+
 def validate_plan(plan: object) -> list[dict[str, Any]]:
     """The plan's tracks, or ``ValueError`` when the plan is not one this render accepts."""
-    if not isinstance(plan, dict) or set(plan) != {"output", "tracks"}:  # pyright: ignore[reportUnknownArgumentType]
+    allowed = {*PLAN_KEYS, "purpose", "window"}
+    if not isinstance(plan, dict) or not {*PLAN_KEYS} <= set(plan) <= allowed:  # pyright: ignore[reportUnknownArgumentType]
         raise ValueError("not a plan")
     tracks = plan["tracks"]  # pyright: ignore[reportUnknownVariableType]
     if not isinstance(plan["output"], str) or not plan["output"]:
@@ -99,7 +130,20 @@ def validate_plan(plan: object) -> list[dict[str, Any]]:
         checked.append(track)  # pyright: ignore[reportUnknownArgumentType]
     if composed_frames(checked) > MAX_FRAMES:
         raise ValueError("too long")
+    _window(plan, composed_frames(checked))
     return checked
+
+
+def plan_window(plan: Mapping[str, Any]) -> tuple[int, int] | None:
+    """The ``[start, end)`` of a validated plan's window in output samples; ``None`` for the whole
+    mix (an output plan)."""
+    window = plan.get("window")
+    return None if window is None else (window["start"], window["end"])
+
+
+def output_frames(tracks: list[dict[str, Any]], window: tuple[int, int] | None) -> int:
+    """The length in samples of what the render writes: the window's, else the composed mix's."""
+    return composed_frames(tracks) if window is None else window[1] - window[0]
 
 
 def track_of(part: Mapping[str, Any], path: str) -> dict[str, Any]:

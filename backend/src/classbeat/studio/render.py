@@ -38,6 +38,10 @@ from classbeat.design.rss import process_rss
 from classbeat.design.sandbox import LINUX, SandboxError, make_undumpable
 from classbeat.studio import render_policy
 
+# The renderer's identity in a preview clip's cache key (ADR 0042 section 6.4). Bump it with every
+# change to ``renderchild``, ``render_curves`` or ``render_policy``: a test hashes them and fails
+# on a change that did not bump it.
+RENDERER_VERSION: Final = 1
 MAX_RSS_BYTES: Final = 1024**3
 # Measured (macOS, one core, 20 minutes of output): about 280x real time, so 150 minutes take about
 # 30 s; a CI Linux runner was not measured but the test below demands at least 10x. The cap is
@@ -121,11 +125,14 @@ async def render_files(
     """Render ``tracks`` (plan dicts whose ``path`` lies in ``work``) to ``work/mix.mp3`` in a
     limited child. Raises ``RenderFailed`` for anything the plan, the child or its limits end."""
     try:
-        checked = render_policy.validate_plan(
-            {"output": str(work / OUTPUT_NAME), "tracks": [dict(t) for t in tracks]}
-        )
+        body: dict[str, Any] = {
+            "output": str(work / OUTPUT_NAME),
+            "purpose": "output",  # this path never carries a window (render_policy refuses one)
+            "tracks": [dict(t) for t in tracks],
+        }
+        checked = render_policy.validate_plan(body)
         plan = work / PLAN_NAME
-        plan.write_text(json.dumps({"output": str(work / OUTPUT_NAME), "tracks": checked}))
+        plan.write_text(json.dumps({**body, "tracks": checked}))
         make_undumpable()
         process = subprocess.Popen(  # noqa: S603, ASYNC220 - ours; the call returns at once
             list((argv or child_argv)(plan, max_rss)),

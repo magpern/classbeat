@@ -21,6 +21,10 @@ network: it reads the plan and the tracks the plan names, and writes the one out
 - **Streamed output**: the finished samples before the next track starts go to a 320 kb/s CBR MP3
   (``soundfile``, libsndfile's encoder) at once. The render is deterministic: the same plan and
   files give the same bytes.
+- **A preview** (``"purpose": "preview"`` with a ``window``, ADR 0042 section 6.1) writes only the
+  window, as one 320 kb/s CBR MP3 through the same encoder. Every track that meets the window is
+  decoded as in the full render, from the file's first sample, no seek, so the window's samples are
+  the full render's (``render`` says which stages are stateful and where each starts).
 - **The answer** is one JSON line: ``{"sha256", "frames", "duration_sec", "peak_rss", "sandbox"}``,
   ``frames`` being what the written file decodes to. Every failure is exit status 3 with nothing on
   stdout; stderr is not read.
@@ -166,14 +170,42 @@ class Mixer:
         return out
 
 
+def overlaps(track: dict[str, Any], window: tuple[int, int] | None) -> bool:
+    """Whether the track's played span in the mix meets the window (always, with no window)."""
+    if window is None:
+        return True
+    return (
+        track["dst_start"] < window[1]
+        and track["dst_start"] + (track["src_end"] - track["src_start"]) > window[0]
+    )
+
+
 def render(
-    tracks: list[dict[str, Any]], writer: Any, policy: ModuleType, work: str, curves: ModuleType
+    tracks: list[dict[str, Any]],
+    writer: Any,
+    policy: ModuleType,
+    work: str,
+    curves: ModuleType,
+    window: tuple[int, int] | None = None,
 ) -> int:
     """Stream the mix into ``writer`` (a soundfile output); the number of frames written. Each
-    track's blocks take their gains through ``render_curves.shaped`` (#1330's transition curves)."""
+    track's blocks take their gains through ``render_curves.shaped`` (#1330's transition curves).
+
+    With a ``window`` ``(start, end)`` in output samples (a preview, ADR 0042 section 6.1) only
+    ``[start, end)`` is written. A track that meets the window is decoded **as in the full render**
+    (from the file's first sample through its own soxr stream, no seek, every block through
+    ``shaped``); only blocks outside the window are not added to the mixer, so the samples are the
+    full render's span, bit for bit. A track that does not meet it is not opened. No stage carries
+    state from another track: decoder and soxr start at the file's first sample, a gain is a
+    function of the position in its track, the bass-swap bands are per held fade (zeros outside),
+    and the mixer sums in track order from the window's start."""
+    low, high = (0, None) if window is None else window
     mixer = Mixer()
+    mixer.base = low
     written = 0
     for i, track in enumerate(tracks):
+        if not overlaps(track, window):
+            continue
         after = tracks[i + 1] if i + 1 < len(tracks) else None
         following = None if after is None else after["dst_start"]
         offset = 0
@@ -181,14 +213,21 @@ def render(
             inside(work, track["path"]), track["src_start"], track["src_end"], policy.RATE
         )
         for block in curves.shaped(blocks, track, after, gains, policy.SWAP_RAMP_FRAMES):
-            mixer.add(track["dst_start"] + offset, block)
+            at = track["dst_start"] + offset
             offset += len(block)
             done = track["dst_start"] + offset
-            ready = mixer.flush(done if following is None else min(done, following))
+            if high is not None and at >= high:
+                break  # nothing later of this track is in the window
+            cut = max(low - at, 0)
+            if cut < len(block):
+                mixer.add(max(at, low), block[cut : None if high is None else high - at])
+            upto = done if following is None else min(done, following)
+            ready = mixer.flush(upto if high is None else min(upto, high))
             if ready is not None:
                 writer.write(ready)
                 written += len(ready)
-    ready = mixer.flush(policy.composed_frames(tracks))
+    last = policy.composed_frames(tracks)
+    ready = mixer.flush(last if high is None else min(last, high))
     if ready is not None:
         writer.write(ready)
         written += len(ready)
@@ -226,6 +265,7 @@ def main(argv: list[str]) -> int:
         with open(plan_path, encoding="utf-8") as handle:
             plan = json.load(handle)
         tracks = policy.validate_plan(plan)
+        window = policy.plan_window(plan)
         output = inside(work, plan["output"])
         if any(inside(work, t["path"]) == output for t in tracks):
             raise ValueError("a track is the output")
@@ -241,7 +281,7 @@ def main(argv: list[str]) -> int:
             bitrate_mode="CONSTANT",
             compression_level=0.0,
         ) as writer:
-            render(tracks, writer, policy, work, curves)
+            render(tracks, writer, policy, work, curves, window)
         frames = decoded_frames(output)
         out = json.dumps(
             {
