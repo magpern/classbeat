@@ -49,6 +49,10 @@
         "$ref": "#/$defs/label"
       }
     },
+    "content": {
+      "description": "Optional (added to analysis-v1 with document version 6.4). Reported content signals of the recording. Report only: spotdown never blocks, filters or ranks on them; the consumer decides.",
+      "$ref": "#/$defs/content"
+    },
     "alignment": {
       "description": "Optional. How the file's clock maps to a reference clock. The consumer applies it; spotdown never rewrites the file-clock times above.",
       "$ref": "#/$defs/alignment"
@@ -1236,6 +1240,183 @@
           "const": "estimated"
         }
       }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "explicit"
+      ],
+      "properties": {
+        "explicit": {
+          "$ref": "#/$defs/explicit"
+        }
+      }
+    },
+    "explicit": {
+      "description": "Whether the recording has explicit lyrics, from metadata evidence only. unknown without evidence (never no); any yes evidence makes it yes, and against no evidence its confidence is at most 0.5.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "confidence",
+        "method",
+        "evidence"
+      ],
+      "properties": {
+        "value": {
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "method": {
+          "const": "metadata",
+          "description": "metadata: from flags supplied with the request or the source's own metadata, not from the audio."
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/explicit_evidence"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "description": "unknown has no evidence and no confidence.",
+          "if": {
+            "properties": {
+              "value": {
+                "const": "unknown"
+              }
+            },
+            "required": [
+              "value"
+            ]
+          },
+          "then": {
+            "properties": {
+              "evidence": {
+                "maxItems": 0
+              },
+              "confidence": {
+                "const": 0
+              }
+            }
+          }
+        },
+        {
+          "description": "no needs evidence, all of it a false flag.",
+          "if": {
+            "properties": {
+              "value": {
+                "const": "no"
+              }
+            },
+            "required": [
+              "value"
+            ]
+          },
+          "then": {
+            "properties": {
+              "evidence": {
+                "minItems": 1,
+                "items": {
+                  "properties": {
+                    "value": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "yes needs at least one piece of yes evidence: a true flag or an age limit.",
+          "if": {
+            "properties": {
+              "value": {
+                "const": "yes"
+              }
+            },
+            "required": [
+              "value"
+            ]
+          },
+          "then": {
+            "properties": {
+              "evidence": {
+                "contains": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "value": {
+                          "const": true
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "source": {
+                          "const": "youtube_age_limit"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "explicit_evidence": {
+      "description": "caller: the explicit flag of the analysis request. caller_match: the explicit flag of the match request that chose the source. youtube_age_limit: the source's age restriction in years (18 or more; a lower one is no evidence and is not listed).",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "value"
+          ],
+          "properties": {
+            "source": {
+              "enum": [
+                "caller",
+                "caller_match"
+              ]
+            },
+            "value": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "value"
+          ],
+          "properties": {
+            "source": {
+              "const": "youtube_age_limit"
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 18,
+              "maximum": 99
+            }
+          }
+        }
+      ]
     }
   }
 }

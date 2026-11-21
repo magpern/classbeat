@@ -59,6 +59,11 @@ class Song(BaseModel):
     # page's "timing approximate" label. Left out of the dump when absent, so every other list
     # is stored and hashed as before.
     timing: Literal["approximate"] | None = Field(default=None, exclude_if=lambda v: v is None)
+    # ADR 0040 section 6 (#1340): ``True`` for a song that may have explicit lyrics (Spotify's flag
+    # or spotdown's ``content.explicit`` says so), for the page's "Explicit" tag. Report only.
+    # Never ``False``: left out of the dump when absent, so every other list is stored and hashed
+    # as before.
+    explicit: Literal[True] | None = Field(default=None, exclude_if=lambda v: v is None)
 
     @field_validator("cover", mode="before")
     @classmethod

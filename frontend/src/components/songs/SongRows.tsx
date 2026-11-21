@@ -4,6 +4,7 @@ import { minutes, roleLabel } from '../../lib/songs'
 import { Chip, ChipButton } from '../ui/chip'
 import { ListRow } from '../ui/list-row'
 import { CoverArt } from './CoverArt'
+import { ExplicitTag } from './ExplicitTag'
 
 const LIST = 'song-list m-0 flex list-none flex-col divide-y divide-line overflow-hidden rounded-3xl border border-line bg-surface p-0 shadow-card'
 // On a phone the action drops under the text, so a long title keeps the whole width of the row.
@@ -12,7 +13,8 @@ const ROW = 'gap-3 px-4 max-sm:flex-wrap sm:gap-4 sm:px-5'
 /**
  * The songs of a list as numbered `ListRow`s (ADR 0028 section 2): the number and album cover,
  * the title with a "New" mark for a song that was not in the earlier list and a "Timing approximate"
- * mark for a song whose timing is approximate (ADR 0040 section 3), the artist, then role,
+ * mark for a song whose timing is approximate (ADR 0040 section 3), a small Explicit tag for a song
+ * with explicit lyrics (#1340, report only), the artist, then role,
  * BPM and length and, when `marks` is given, a Replace mark per song. Every text is rendered as
  * text and no id is shown. The cover comes through `CoverArt` only (ADR 0013 section 9), or its
  * initials tile.
@@ -48,12 +50,13 @@ export function SongRows({
             </span>
           }
           badge={
-            song.isNew || song.timing === 'approximate' ? (
+            song.isNew || song.timing === 'approximate' || song.explicit === true ? (
               <>
                 {song.isNew ? <Chip tone="ok">{t('songs.list.new')}</Chip> : null}
                 {song.timing === 'approximate' ? (
                   <Chip tone="warn" data-testid="song-timing-approximate">{t('songs.list.timingApproximate')}</Chip>
                 ) : null}
+                {song.explicit === true ? <ExplicitTag /> : null}
               </>
             ) : null
           }

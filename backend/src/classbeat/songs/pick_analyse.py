@@ -45,6 +45,7 @@ from classbeat.songs.seed import Seeded
 from classbeat.spotdown import song_match_config, track_facts_calc, track_fit_policy
 from classbeat.spotdown import song_match_policy as match_policy
 from classbeat.spotdown.client import SpotdownClient
+from classbeat.spotdown.explicit_model import document_group
 from classbeat.spotdown.provenance_model import provenance_of
 from classbeat.spotdown.provenance_read_calc import alignment, analysed, decoded_duration_check
 from classbeat.spotdown.song_analysis_policy import slot_need
@@ -87,7 +88,7 @@ def outcome_of(song: ChosenSong, got: Got) -> SongOutcome:
         return SongOutcome("sections", "bad_document")
     record = Analysed(
         prov.analysis_id, (prov.analyzer_name, prov.analyzer_version, prov.config_hash),
-        prov.audio, decision,
+        prov.audio, decision, document_group(doc),
     )  # fmt: skip
     if decision.timing_class != "approximate":  # unusable (exact cannot happen: strict anyway)
         return SongOutcome("sections", decision.reason, record)
@@ -106,7 +107,8 @@ def _want(matched: MatchedPool, song: ChosenSong, position: int) -> Want | None:
     match = matched.matches.get(song.spotify_id)
     if not song.new or match is None or match.use != "timing" or not match.sources:
         return None
-    return Want(position, song.spotify_id, match.sources, float(song.length_sec))
+    explicit = matched.explicit_of(song.spotify_id)
+    return Want(position, song.spotify_id, match.sources, float(song.length_sec), explicit)
 
 
 def _slot(song: ChosenSong | PoolTrack) -> Slot:

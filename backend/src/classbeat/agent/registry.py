@@ -9,7 +9,8 @@ the model can only name a track it was shown, and only by its ref.
 What it keeps of a track is the cleaned, cut text the model was shown (control and format
 characters removed, 120 characters), its length in whole seconds and its year, and, for the
 backend alone, the album cover URL when it passes ``classbeat.covers.cover_url`` (ADR 0013
-section 9). The same Spotify id found by two searches is one entry with one ref.
+section 9) and Spotify's ``explicit`` flag when it is a boolean (ADR 0040, #1340). The same
+Spotify id found by two searches is one entry with one ref.
 """
 
 import re
@@ -40,6 +41,10 @@ class Entry:
     # The album cover (ADR 0013 section 9), host-checked; the backend's, like the id: ``shown``
     # never includes it, so it never reaches a model.
     cover: str | None = field(default=None, repr=False)
+    # Spotify's own track ``explicit`` flag, when it sent a true or false (``None``: unknown). The
+    # backend's, like the cover: ``shown`` never includes it, so no model sees it or can act on it
+    # (report only: nothing is filtered, ranked or blocked on it, #1340).
+    explicit: bool | None = field(default=None, repr=False)
 
     def key(self) -> tuple[str, str]:
         return normalised(self.title), normalised(self.artist)
@@ -138,6 +143,7 @@ class SearchRegistry:
             duration_sec=sec,
             spotify_id=tid,
             cover=cover_url(hit.get("image")),
+            explicit=hit["explicit"] if isinstance(hit.get("explicit"), bool) else None,
         )
         self._entries.append(entry)
         self._by_id[tid] = entry.ref

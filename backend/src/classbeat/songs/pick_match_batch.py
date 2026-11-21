@@ -78,7 +78,9 @@ async def wait(session: Session, seconds: float) -> None:
 
 def _query(ref: str, entry: Entry) -> TrackQuery:
     names = tuple(a.strip() for a in entry.artist.split(", ") if a.strip())[:ARTISTS_MAX]
-    return TrackQuery(ref, entry.title, names or (entry.artist,), float(entry.duration_sec))
+    return TrackQuery(
+        ref, entry.title, names or (entry.artist,), float(entry.duration_sec), None, entry.explicit
+    )
 
 
 def _key(

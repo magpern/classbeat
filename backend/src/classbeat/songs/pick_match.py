@@ -92,6 +92,10 @@ class MatchedPool:
     def today(cls, picks: Sequence[PoolPick], runs: Sequence[StageOutcome] = ()) -> "MatchedPool":
         return cls(tuple(picks), tuple(picks), runs=tuple(runs))
 
+    def explicit_of(self, spotify_id: str) -> bool | None:
+        """Spotify's explicit flag of a candidate (report only, #1340); ``None``: unknown."""
+        return next((p.explicit for p in self.playlist if p.spotify_id == spotify_id), None)
+
     def spares(self, role: str, listed: Sequence[str]) -> list[PoolPick]:
         """The ranked spares of a slot of ``role`` (``listed``: the list's Spotify ids)."""
         by_id = {p.spotify_id: p for p in self.eligible}
