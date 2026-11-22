@@ -53,9 +53,9 @@ def carried(monkeypatch: pytest.MonkeyPatch) -> list[tuple[MusicStep, dict[str, 
     calls: list[tuple[MusicStep, dict[str, Any]]] = []
     real = spotdown_carry.carried_music
 
-    async def recording(run: Any, step: MusicStep, sections: Any) -> MusicStep:
+    async def recording(run: Any, step: MusicStep, sections: Any, *more: Any) -> MusicStep:
         before = copy.deepcopy(dict(step.data.analysis))
-        out = await real(run, step, sections)
+        out = await real(run, step, sections, *more)
         calls.append((out, before))
         return out
 

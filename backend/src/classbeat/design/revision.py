@@ -120,9 +120,9 @@ def _beat_one_fields(
     return type(music).model_validate(whole)
 
 
-def _sections(music_map: dict[str, Any] | None, list_id: UUID | None) -> SpotdownSections | None:
-    try:  # a stamped track without its list cannot happen: fail closed
-        return sections_of(music_map, list_id)
+def _sections(m: object, ids: UUID | None, o: SpotdownSections | None) -> SpotdownSections | None:
+    try:  # a stamped track without its list or record cannot happen: fail closed
+        return sections_of(m, ids, o)
     except ValueError:
         raise JobFailure("internal") from None
 
@@ -213,11 +213,11 @@ def content_and_music(
     music_map: dict[str, Any] | None,
     step: MusicStep | NoMusicStep,
     song_list_id: UUID | None,
-    spotdown_list_id: UUID | None = None,
+    spotdown: SpotdownSections | None = None,
 ) -> tuple[dict[str, Any], bytes, RevisionMusic | NoRevisionMusic, bool]:
     """``checked_content``, its hash, the revision's music and whether it is a running draft.
-    ``spotdown_list_id`` (a revise or refit): the list a stamped track came from, else
-    ``song_list_id`` (``revision_spotdown_model``)."""
+    ``spotdown`` (the music step's origin: a carry, a playlist design's record), else
+    ``song_list_id``, names where a stamped track's record lives (``revision_spotdown_model``)."""
     content, running = checked_content(result)
     music: RevisionMusic | NoRevisionMusic
     if isinstance(step, NoMusicStep):
@@ -250,7 +250,7 @@ def content_and_music(
             fingerprint=step.fingerprint,
             unknown_bpm=[UnknownBpmTrack(index=u.index, title=u.title) for u in step.unknown_bpm],
             song_list_id=song_list_id,
-            spotdown=_sections(music_map, spotdown_list_id or song_list_id),
+            spotdown=_sections(music_map, song_list_id, spotdown),
         )
     if not isinstance(step, NoMusicStep) and not isinstance(music, NoRevisionMusic):
         assert music_map is not None  # noqa: S101 - checked above
@@ -272,12 +272,12 @@ def build(
     request_message_id: UUID | None = None,
     song_list_id: UUID | None = None,
     rules: Mapping[str, Any] | None = None,
-    spotdown_list_id: UUID | None = None,
+    spotdown: SpotdownSections | None = None,
 ) -> DraftRevision:
     """The revision to store; ``invalid_output`` if the draft no longer validates, or (a revise)
     if it is the base draft again: a revision that changes nothing is not stored."""
     content, content_hash, music, running = content_and_music(
-        result, music_map, step, song_list_id, spotdown_list_id
+        result, music_map, step, song_list_id, spotdown
     )
     if base_hash is not None and content_hash == base_hash:
         raise JobFailure("invalid_output")

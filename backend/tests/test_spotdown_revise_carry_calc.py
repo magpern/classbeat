@@ -64,6 +64,44 @@ def test_the_model_refuses_an_unknown_key() -> None:
         SpotdownSections.model_validate({"song_list_id": LIST, "tracks": [0], "x": 1})
 
 
+RECORD: dict[str, Any] = {"spotdown_analysis": {"songs": []}, "spotdown_match": {"songs": []}}
+
+
+def test_a_playlist_designs_own_record_is_its_origin() -> None:
+    """#1407: a ``design_draft`` on the user's MOWL playlist keeps the record itself; a revise of
+    it records the stamped tracks with the same record (``origin``)."""
+    m = tt.stamp(tt.stamp(a_map(), 0, "approximate", "youtube"), 1, "approximate", "youtube")
+    origin = SpotdownSections(record=RECORD, tracks=[0, 1, 2, 3])
+    assert sections_of(m, None, origin) == SpotdownSections(record=RECORD, tracks=[0, 1])
+    listed = SpotdownSections(song_list_id=LIST, tracks=[0])
+    assert sections_of(m, None, listed) == SpotdownSections(song_list_id=LIST, tracks=[0, 1])
+    assert sections_of(a_map(), None, origin) is None  # nothing stamped: nothing recorded
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"tracks": [0]},  # neither
+        {"song_list_id": LIST, "record": RECORD, "tracks": [0]},  # both
+        {"record": {"x": "y" * 270_000}, "tracks": [0]},  # over the bound
+        {"record": [], "tracks": [0]},  # not an object
+    ],
+    ids=["neither", "both", "too_large", "not_an_object"],
+)
+def test_the_model_needs_exactly_one_bounded_origin(value: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        SpotdownSections.model_validate(value)
+
+
+def test_a_class_copy_keeps_a_record_that_names_no_list() -> None:
+    """#1407: the record names no other row of the source class, so the copy's revise reads it."""
+    music: dict[str, Any] = {"source": "mowl_spotify_playlist", "fingerprint": "f"}
+    music["spotdown"] = {"record": RECORD, "tracks": [0]}
+    assert music_copy(music) == music
+    broken = {**music, "spotdown": {"tracks": [0]}}  # neither: dropped, never copied as is
+    assert music_copy(broken) == {"source": "mowl_spotify_playlist", "fingerprint": "f"}
+
+
 # --- with_kept -----------------------------------------------------------------------------------
 
 
@@ -176,6 +214,6 @@ def test_a_stamped_draft_without_a_list_fails_the_job_internal() -> None:
 
     m = tt.stamp(a_map(), 0, "approximate", "youtube")
     with pytest.raises(JobFailure) as failed:
-        revision._sections(m, None)  # pyright: ignore[reportPrivateUsage]
+        revision._sections(m, None, None)  # pyright: ignore[reportPrivateUsage]
     assert failed.value.category == "internal"
-    assert revision._sections(a_map(), None) is None  # pyright: ignore[reportPrivateUsage]
+    assert revision._sections(a_map(), None, None) is None  # pyright: ignore[reportPrivateUsage]
