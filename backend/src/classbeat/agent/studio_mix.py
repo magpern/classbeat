@@ -17,6 +17,9 @@ Pure: no I/O, no reference.
   already in it (as a mix's map). The plan comes back snapped, by index, with the soft checks
   of ``mix_hint_policy`` and ``mix_transition_policy`` (``hints``: piece positions and numbers
   only; #1330's tempo and downbeat-lock hints), which the answer adds to its warnings.
+- ``compose_spec``: the same from a spec by the stage's keys (``KEY``), for the backend's own
+  derived specs, which may carry cut pins (ADR 0042 section 5, #1390; the model's plan never
+  does), with the pins' soft checks (``mix_hint_policy.pin_hints``).
 """
 
 from collections.abc import Mapping, Sequence
@@ -123,7 +126,6 @@ def _whole(value: float) -> int | float:
 
 def compose(tracks: Sequence[StudioTrack], given: MixInput) -> Composed:
     """The plan checked and composed; ``ToolError('invalid_mix', [reason: detail])``."""
-    facts = {KEY.format(n): t.facts() for n, t in enumerate(tracks)}
     spec = {
         "tracks": [
             {"reference": KEY.format(t.track), "start_sec": t.start_sec, "end_sec": t.end_sec}
@@ -133,6 +135,12 @@ def compose(tracks: Sequence[StudioTrack], given: MixInput) -> Composed:
         ],
         "crossfades": [_whole(c) for c in given.crossfades],
     }
+    return compose_spec(tracks, spec)
+
+
+def compose_spec(tracks: Sequence[StudioTrack], spec: Mapping[str, Any]) -> Composed:
+    """``spec`` (references as ``KEY`` of the list index) checked and composed, as ``compose``."""
+    facts = {KEY.format(n): t.facts() for n, t in enumerate(tracks)}
     try:
         good = checked(spec, list(facts), facts)
     except MixPlanRefused as refused:
@@ -154,7 +162,12 @@ def compose(tracks: Sequence[StudioTrack], given: MixInput) -> Composed:
     windows = [(cs(t["end_sec"]) - cs(t["start_sec"])) / CS for t in good["tracks"]]  # exact cs
     found = mix_hint_policy.hints(good, {k: f.length for k, f in facts.items()})
     joins = mix_transition_policy.hints(good, facts)  # #1330: tempo and downbeat lock
-    hints = (*mix_hint_policy.texts(found), *mix_transition_policy.texts(joins))
+    pinned = mix_hint_policy.pin_hints(good, facts)  # #1390: none without a pin
+    hints = (
+        *mix_hint_policy.texts(found),
+        *mix_transition_policy.texts(joins),
+        *mix_hint_policy.texts(pinned),
+    )
     return Composed(plan, composed, total_sec(windows, good["crossfades"]), hints)
 
 

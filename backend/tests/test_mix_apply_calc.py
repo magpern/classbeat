@@ -199,7 +199,7 @@ def test_a_spec_that_does_not_compose_is_a_broken_invariant(
     def refuse(*_: object) -> None:
         raise ToolError("invalid_mix", ["no"])
 
-    monkeypatch.setattr(mix_apply_calc, "compose", refuse)
+    monkeypatch.setattr(mix_apply_calc, "compose_spec", refuse)
     with pytest.raises(ValueError, match="does not compose"):
         fit()
 

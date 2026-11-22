@@ -15,26 +15,49 @@ names **piece indexes** (positions in the mix), never a reference.
 
 Hints come in mix order of their first piece, ``whole_track_repeated`` before ``one_song_dominates``
 for the same reference.
+
+``pin_hints`` are the cut pins' soft checks (ADR 0042 section 5, #1390), each naming one piece and
+its ``edge``, in mix order, start before end:
+
+- ``off_beat_cut``: a pinned cut off the bar grid of a track that has a trusted one (``exact`` or
+  no stored timing decision, ``mix_cut_policy.snaps``): an ``exact`` pin, or a confirmed one. A
+  ``bar`` pin is on the grid by definition.
+- ``pin_moved``: the same target's pinned cut is not where it was in ``before`` (a reanalysis
+  re-snapped an unconfirmed ``bar`` pin), with ``moved_sec``, so nothing moves silently.
 """
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
+from classbeat.studio.mix_cut_policy import snapped, snaps
+from classbeat.studio.mix_facts_model import TrackFacts
+from classbeat.studio.mix_pin_policy import occurrences, pins_of, targets
 from classbeat.studio.mix_plan_policy import CS, cs
 
 WHOLE_TRACK_REPEATED: Final = "whole_track_repeated"
 ONE_SONG_DOMINATES: Final = "one_song_dominates"
+OFF_BEAT_CUT: Final = "off_beat_cut"
+PIN_MOVED: Final = "pin_moved"
 
 
 @dataclass(frozen=True, slots=True)
 class Hint:
     code: str
     pieces: tuple[int, ...]
+    edge: str | None = None  # a pin's hint: which cut of the piece
+    moved_sec: float | None = None  # ``pin_moved``: by how much
 
     def text(self) -> str:
         """The hint for the model: its code and the piece indexes only."""
         named = ", ".join(str(n) for n in self.pieces)
+        if self.code == OFF_BEAT_CUT:
+            return f"{OFF_BEAT_CUT}: the pinned {self.edge} cut of piece {named} is off the beat."
+        if self.code == PIN_MOVED:
+            return (
+                f"{PIN_MOVED}: the pinned {self.edge} cut of piece {named} moved by reanalysis: "
+                f"{self.moved_sec:+.2f} s."
+            )
         if self.code == WHOLE_TRACK_REPEATED:
             return (
                 f"{WHOLE_TRACK_REPEATED}: pieces {named} each play the whole of one track. Repeat "
@@ -46,7 +69,12 @@ class Hint:
         )
 
     def as_json(self) -> dict[str, Any]:
-        return {"code": self.code, "pieces": list(self.pieces)}
+        out: dict[str, Any] = {"code": self.code, "pieces": list(self.pieces)}
+        if self.edge is not None:
+            out["edge"] = self.edge
+        if self.moved_sec is not None:
+            out["moved_sec"] = self.moved_sec
+        return out
 
 
 def hints(spec: Mapping[str, Any], lengths: Mapping[str, float]) -> list[Hint]:
@@ -70,6 +98,28 @@ def hints(spec: Mapping[str, Any], lengths: Mapping[str, float]) -> list[Hint]:
             out.append(Hint(WHOLE_TRACK_REPEATED, whole))
         if len(pieces) >= 2 and 2 * sum(effective[n] for n in at) > total:
             out.append(Hint(ONE_SONG_DOMINATES, tuple(at)))
+    return out
+
+
+def pin_hints(
+    spec: Mapping[str, Any],
+    facts: Mapping[str, TrackFacts],
+    before: Mapping[str, Any] | None = None,
+) -> list[Hint]:
+    """The pins' soft checks of a checked spec (module docstring); ``facts`` by reference,
+    ``before`` the spec it was derived again from (``None``: no move to report)."""
+    was = targets(before) if before is not None else {}
+    at = occurrences(spec)
+    out: list[Hint] = []
+    for n, edge, pin in pins_of(spec):
+        known = facts[at[n][0]]
+        cut = float(spec["tracks"][n][f"{edge}_sec"])
+        free = pin.mode == "exact" or pin.confirmed  # a bar pin is on the grid
+        if free and snaps(known) and cs(snapped(cut, known)) != cs(cut):
+            out.append(Hint(OFF_BEAT_CUT, (n,), edge))
+        old = was.get((*at[n], edge))
+        if old is not None and cs(old) != cs(cut):
+            out.append(Hint(PIN_MOVED, (n,), edge, (cs(cut) - cs(old)) / CS))
     return out
 
 
