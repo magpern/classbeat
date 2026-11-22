@@ -143,3 +143,9 @@ def stored_timing_class(provenance: object) -> TimingClass | None:
     if found == "exact":
         return "exact"
     return "approximate" if found == "approximate" else "unusable"
+
+
+def track_timing_class(analyser: str, provenance: object) -> TimingClass | None:
+    """The one rule for the timing class of a stored analysis (draft and outputs share it): a
+    ``spotdown`` row's record names it, a local analysis has none."""
+    return stored_timing_class(provenance) if analyser == "spotdown" else None

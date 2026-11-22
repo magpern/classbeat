@@ -107,10 +107,10 @@ def test_a_crossfade_as_long_as_a_neighbours_window_is_too_long() -> None:
     from classbeat.studio import mix_plan_policy
 
     with pytest.raises(MixPlanRefused) as caught:
-        mix_plan_policy._crossfades([30], [3000, 24000])  # pyright: ignore[reportPrivateUsage]
+        mix_plan_policy._crossfades([30], [3000, 24000], references=["a", "b"])  # pyright: ignore[reportPrivateUsage]
     assert caught.value.reason == "crossfade_too_long"
     with pytest.raises(MixPlanRefused) as caught:
-        mix_plan_policy._crossfades([20], [24000, 2000])  # pyright: ignore[reportPrivateUsage]
+        mix_plan_policy._crossfades([20], [24000, 2000], references=["a", "b"])  # pyright: ignore[reportPrivateUsage]
     assert caught.value.reason == "crossfade_too_long"
 
 

@@ -46,7 +46,10 @@ async def test_the_model_repeats_a_track_by_naming_its_index_again() -> None:
     windows = [t["end_sec"] - t["start_sec"] for t in plan["tracks"]]
     assert outcome.output.composed.duration_sec == round(sum(windows) - 8 * 8, 2)
     assert outcome.output.composed.map["duration"] == outcome.output.composed.duration_sec
-    assert outcome.output.composed.hints == ()  # a minute again is no whole track
+    # A minute again is no whole track (no ``whole_track_repeated``); but these local tracks have
+    # no timing decision, so the cut minute is ``cut_on_inexact_track`` (#1372), a soft hint only.
+    assert [h.split(":")[0] for h in outcome.output.composed.hints] == ["cut_on_inexact_track"]
+    assert "pieces 8 cut a track" in outcome.output.composed.hints[0]
 
 
 def test_the_timeline_names_a_repeat_by_its_list_index() -> None:

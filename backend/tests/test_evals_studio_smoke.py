@@ -63,6 +63,10 @@ async def test_the_case_passes_against_its_recorded_script(case: Any) -> None:
     assert len(result.prompt_version) == 64
     assert "tempo_jump (neighbours whose" in sent()  # #1330's prompt, a new prompt_version
     assert "downbeats_not_locked: in the crossfade" not in sent()  # local maps: no trusted grid
+    # #1372's prompt (a new prompt_version): the mix is a suggestion, and a local map has no
+    # timing decision, so the trimmed first piece is the soft hint ``cut_on_inexact_track``
+    assert "suggestions the instructor may decline" in sent()
+    assert "cut_on_inexact_track: pieces 0 cut a track" in sent()
     assert fake.remaining == 0
 
 

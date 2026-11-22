@@ -12,7 +12,9 @@ to and the render's ``mix_offsets`` share, so the view cannot drift from the mix
 - per piece, its marks (ADR 0036 amendment A8): ``repeat_of``, the position of the first piece of
   the same song when this piece is a repeat (else ``None``), and ``loop`` (the same song as the
   piece before it, a loop join); ``has_repeats`` for the whole mix (the class is mix-only);
-- ``hints``: the soft checks of ``mix_hint_policy`` (code and piece positions, never a reference);
+- ``hints``: the soft checks of ``mix_hint_policy`` and, when the caller gives the tracks' stored
+  facts, the transitions' ``tempo_jump`` and ``downbeats_not_locked`` (``mix_transition_policy``,
+  the warnings the model got): code and piece positions, never a reference;
 - per change of track, the crossfade with where it lies in the mix;
 - the workout's intervals with their start and end in the mix and the track under their start.
 
@@ -26,7 +28,8 @@ from typing import Any
 
 from mowl import compose
 
-from classbeat.studio import mix_hint_policy, mix_repeat_calc
+from classbeat.studio import mix_hint_policy, mix_repeat_calc, mix_transition_policy
+from classbeat.studio.mix_facts_model import TrackFacts
 
 INTERVAL_FIELDS = ("zone", "rpm", "standing", "game", "ftp_test")
 
@@ -71,14 +74,21 @@ def _intervals(content: Mapping[str, Any], starts: Sequence[float]) -> list[dict
     return out
 
 
+def _transition_hints(
+    spec: Mapping[str, Any], track_facts: Mapping[str, TrackFacts] | None
+) -> list[mix_transition_policy.TransitionHint]:
+    return [] if track_facts is None else mix_transition_policy.hints(spec, track_facts)
+
+
 def timeline(
     spec: Mapping[str, Any],
     track_maps: Sequence[Mapping[str, Any]],
     facts: Sequence[SongFacts],
     content: Mapping[str, Any],
+    track_facts: Mapping[str, TrackFacts] | None = None,
 ) -> dict[str, Any]:
     """The timeline (see the module docstring); ``ValueError`` when the maps do not fit the spec
-    (``compose_map``'s own refusal) or a track is not one song."""
+    (``compose_map``'s own refusal) or a track is not one song. ``track_facts`` by reference."""
     if len(facts) != len(spec["tracks"]):
         raise ValueError("one set of facts per track")
     composed = compose.compose_map([dict(m) for m in track_maps], dict(spec))
@@ -130,7 +140,10 @@ def timeline(
         "workout_sec": intervals[-1]["end_sec"] if intervals else 0,
         "tracks": tracks,
         "has_repeats": mix_repeat_calc.has_repeats(references),
-        "hints": [h.as_json() for h in mix_hint_policy.hints(spec, lengths)],
+        "hints": [
+            *(h.as_json() for h in mix_hint_policy.hints(spec, lengths)),
+            *(h.as_json() for h in _transition_hints(spec, track_facts)),
+        ],
         "crossfades": fades,
         "intervals": intervals,
     }

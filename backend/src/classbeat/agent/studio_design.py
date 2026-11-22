@@ -9,8 +9,10 @@ designs the workout **and** the mix (order, cuts, crossfades) over the approved 
   ``fit_to_music``, the plan's gates, the stated values). The answer adds the plan as the backend
   snapped it and the total it computed. On success the stage ends with a ``StudioResult``.
 - A revise starts from the base draft and the base mix (by index) and the instructor's requests
-  (``studio_prompt.revise_message``); its ``submit_draft`` takes a ``note`` (shown as plain text,
-  never read back), and it has no ``songs_requested`` exit: Change songs is the studio's own pick.
+  (``studio_prompt.revise_message``), and a re-plan also from the user's mix choices
+  (``StudioBase.choices``, stated first by index, ADR 0036 B6); its ``submit_draft`` takes a
+  ``note`` (shown as plain text, never read back), and it has no ``songs_requested`` exit: Change
+  songs is the studio's own pick.
 
 Own system prompts and tool schemas, so each stage has its own ``prompt_version``. Pure: no
 network, no credentials, no database, no catalogue reference.
@@ -50,6 +52,7 @@ from classbeat.agent.studio_prompt import (
 )
 from classbeat.agent.studio_schemas import StudioDraftInput, StudioReviseInput
 from classbeat.plan_gates import PlanGates
+from classbeat.studio.mix_choice_model import MixChoices
 
 DESIGN_STAGE: Final = "studio_design"
 REVISE_STAGE: Final = "studio_revise"
@@ -67,12 +70,14 @@ class StudioResult:
 
 @dataclass(frozen=True)
 class StudioBase:
-    """A revise's starting point: the base draft (``content``) and its mix by index."""
+    """A revise's starting point: the base draft (``content``) and its mix by index; ``choices``
+    for a re-plan (ADR 0036 B6), already checked against the list."""
 
     draft: dict[str, Any]
     plan: dict[str, Any]
     earlier_requests: tuple[str, ...]
     request: str
+    choices: MixChoices | None = None
 
 
 @dataclass(frozen=True)
@@ -90,7 +95,14 @@ class StudioContext:
             return with_explicit(first_message(self.brief, music, rules), self.brief)
         b = self.base
         text = revise_message(
-            self.brief, music, b.draft, b.plan, b.earlier_requests, b.request, rules=rules
+            self.brief,
+            music,
+            b.draft,
+            b.plan,
+            b.earlier_requests,
+            b.request,
+            rules=rules,
+            choices=b.choices,
         )
         return with_explicit(text, self.brief)
 

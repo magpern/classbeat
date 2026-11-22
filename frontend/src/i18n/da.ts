@@ -2414,6 +2414,10 @@ const da: Catalogue = {
     'Sangene {songs} spiller det samme hele nummer. Bed om en ændring, hvis du ikke ønskede det.',
   'studio.tl.hint.one_song_dominates':
     'Sangene {songs} er det samme nummer og fylder mere end halvdelen af mixet.',
+  'studio.tl.hint.tempo_jump':
+    'Sangene {songs} har tempoer, der kolliderer. Bed om en anden rækkefølge, medmindre timen skifter fase der.',
+  'studio.tl.hint.downbeats_not_locked':
+    'Overgangen mellem sangene {songs} går ikke i takt. Bed om en anden længde på den.',
   'studio.tl.loadFailed':
     'Tidslinjen kunne ikke hentes. Genindlæs siden.',
   'studio.musicChanged.title':

@@ -1,12 +1,15 @@
 """The studio stages' prompts and first messages (ADR 0036 section 4.4, SR C5), from allowlisted
 fields only (ADR 0006 section 7): the brief (``model_input.brief_for_model``), the tracks
 (``studio_mix.music_summary``: index, the list's title and artist, numbers from the analysis),
-for a revise the base draft, the base mix **by index** and the user's requests. Never a catalogue
+for a revise the base draft, the base mix **by index**, the user's requests and, for a re-plan,
+the user's mix choices by index (``studio_replan``, ADR 0036 B6). Never a catalogue
 reference, an id, a connection or any earlier model text but the base draft's own.
 
 The prompts say the backend computes the total and snaps the cuts, so the model never states a
 length, a total or a reference, and (#1330) how transitions fit: neighbours of a close tempo, cuts
 on phrase points or downbeats, crossfades of whole bars, and the hints that say where one does not.
+Since ADR 0036 amendment B (#1372) they say the mix is a **suggestion** the user may decline and
+that only a track whose timing is ``exact`` may be cut (the soft hint ``cut_on_inexact_track``).
 """
 
 import json
@@ -19,10 +22,15 @@ from classbeat.agent.game_prompt import games_section
 from classbeat.agent.model_input import brief_for_model
 from classbeat.agent.schemas import clean_text
 from classbeat.agent.section_energy import DESIGN_GUIDANCE
+from classbeat.agent.studio_replan import choices_section
+from classbeat.studio.mix_choice_model import MixChoices
 
 _MIX = """\
 The music is a mix classbeat builds from the instructor's approved songs. You decide the mix \
-and the workout together. The mix is a list of pieces, each a cut of one track named by its index:
+and the workout together. Your mix is a proposal: its order, cuts, crossfades and repeats are \
+suggestions the instructor may decline, for one song, several or all of them (keep a song whole, \
+a hard cut with no crossfade, or whole songs only), so make the class work with whole songs too. \
+The mix is a list of pieces, each a cut of one track named by its index:
 - the order: every track of the list at least once, and no other. A track may play again in a \
 later piece (name its index again), for example one recovery minute used at every recovery or a \
 strong chorus. Keep repeats to parts of songs: never play the whole of a track twice unless the \
@@ -31,14 +39,17 @@ SwedeBeat playlist;
 - a loop: two pieces of one track next to each other are a loop (for example a chorus two or \
 three times in a row), allowed only for a track whose timing is exact. Where the two pieces meet, \
 the first one's end_sec and the next one's start_sec are each on a trusted phrase point of that \
-track (get_music lists them; a bar of its grid when it has none), with crossfade 0 between \
-them. Each piece of a loop plays at least 8 bars, and the loop's pieces together at least 60 s. \
+track (get_music lists them; where it lists none, only a downbeat the backend trusts counts, which \
+you cannot see, so the backend may refuse the cut), with crossfade 0 between them. \
+Each piece of a loop plays at least 8 bars, and the loop's pieces together at least 60 s. \
 Otherwise put another track between them;
 - the cut of each piece: start_sec and end_sec in the track's own seconds, 0 <= start_sec < \
 end_sec <= its length, with at least 60 s played (a piece of a loop: 8 bars). A cut near a \
 trusted cut point moves to it, then to the nearest downbeat (first_downbeat_sec plus whole \
 bars of bar_sec); 0 and the track's length stay the edges. A track with timing approximate or \
-unusable is never moved to a bar;
+unusable is never moved to a bar. Only a track with timing exact may be cut: a track whose \
+timing is approximate, unusable or not given plays once, whole (start_sec 0, end_sec its \
+length), and the instructor's mix keeps it whole whatever you cut;
 - the cut points: per track, cut_points lists where it may be cut, in its own seconds (the \
 music's start and end, silence and fade edges; get_music with a track adds segment, label and \
 phrase starts). A point whose use is hint is a guess: never cut at one for that reason alone. \
@@ -64,7 +75,8 @@ whole_track_repeated and one_song_dominates are hints, not errors: keep such a m
 instructor asked for it or it clearly suits the class. The warnings tempo_jump (neighbours whose \
 tempos clash) and downbeats_not_locked (a crossfade whose downbeats do not meet, with the \
 crossfades that would) are hints too: fix them by reordering, recutting or another crossfade \
-where you can; keep a tempo jump only where the class changes phase.
+where you can; keep a tempo jump only where the class changes phase. The hint \
+cut_on_inexact_track names pieces that cut a track whose timing is not exact: play it whole.
 
 """
 _RULES = """\
@@ -114,7 +126,8 @@ REVISE_SYSTEM: Final = (
     "Change songs on the class page is the way.\n\nHow to work: call preview_draft with the "
     "whole revised draft and mix until it does what was asked, then submit_draft with both and, "
     "in note, one short sentence on what you changed. A draft and mix identical to the base are "
-    "not a revision and are refused.\n\n"
+    "not a revision and are refused. When the message states the instructor's mix choices (a "
+    "re-plan), keep each one exactly and re-plan only the rest.\n\n"
     + _RULES
     + DESIGN_GUIDANCE
     + "\n\n"
@@ -173,7 +186,10 @@ def revise_message(
     request: str,
     *,
     rules: str | None,
+    choices: MixChoices | None = None,
 ) -> str:
+    """The revise's first message; with ``choices`` (a re-plan, ADR 0036 B6) the choices come
+    first, by list index (``studio_replan``)."""
     payload = {
         "brief": brief_for_model(brief),
         "music": music,
@@ -182,4 +198,5 @@ def revise_message(
         "earlier_requests": [clean_text(r) for r in earlier],
         "request": clean_text(request),
     }
-    return REVISE + _rules(rules) + _json(payload)
+    replan = "" if choices is None else choices_section(choices)
+    return REVISE + replan + _rules(rules) + _json(payload)

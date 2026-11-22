@@ -12,7 +12,10 @@ analyses. No credit; ``admit`` is ``design_admit``'s.
    is ``music_changed``). Nothing is sent to the gateway.
 3. The request's stated values layered onto the brief (``revise_stated``, as ``revise_draft``),
    then **stage ``revise``**: the studio stage over the brief, the tracks, the base draft, the base
-   mix by index and the user's requests along the base's chain (no earlier note or model text).
+   mix by index and the user's requests along the base's chain (no earlier note or model text);
+   for a **re-plan** (ADR 0036 B6, #1372) also the input's ``choices``, read again and checked
+   against the list (``internal`` otherwise: admit checked them), stated first by index. The
+   result is an ordinary revise, a new proposal; ``apply_mix_choices`` applies the choices to it.
 4. **Store**, in the final fenced transaction: the connection held, the class still the studio's,
    the revision (parent = base, ``origin = revise_draft``; the same draft and mix again are
    ``invalid_output``), the compare-and-set of ``current_revision_id`` and the assistant message
@@ -38,6 +41,7 @@ from classbeat.design.revision import StudioRevisionMusic
 from classbeat.design.sport_rules import rules_for
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.quota.route import with_plan, with_plan_run
+from classbeat.studio import mix_choice_model
 from classbeat.swedebeat_match import config as match_config
 from classbeat.swedebeat_match.kind import open_match_bearer
 from classbeat.swedebeat_studio import design_step, draft, song_list
@@ -116,6 +120,12 @@ async def run(job_run: JobRun) -> Complete:
     bearer = await open_match_bearer(job_run, match_config.current(), given.swedebeat_connection_id)
     maps = await design_step.cached_maps(job_run, bearer, stored, base_music)  # no download
     music = draft.StudioMusic.of(stored.content, maps)
+    choices = None
+    if given.choices is not None:  # a re-plan: admit checked them against this very list
+        try:
+            choices = mix_choice_model.on_list(given.choices, len(music.references))
+        except mix_choice_model.MixChoiceRefused:
+            raise JobFailure("internal") from None
     base_plan = music.plan_of(base_music.mix_spec)
     rules = rules_for(brief, row.dismissed_rules)
     stated = await revise_stated.layered(job_run, model, brief, given.request, given.plan_gates)
@@ -125,6 +135,7 @@ async def run(job_run: JobRun) -> Complete:
         base_plan,
         row.earlier_requests,
         given.request,
+        choices,
     )
     ctx = StudioContext(stated.brief, music.tracks, rules, given.plan_gates, base)
     outcome = await run_stage(

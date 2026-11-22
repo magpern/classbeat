@@ -2294,6 +2294,10 @@ export const en = {
     'Songs {songs} play the same whole track. Ask for a change unless you wanted that.',
   'studio.tl.hint.one_song_dominates':
     'Songs {songs} are the same track and fill more than half of the mix.',
+  'studio.tl.hint.tempo_jump':
+    'Songs {songs} are at tempos that clash. Ask for a different order unless the class changes phase there.',
+  'studio.tl.hint.downbeats_not_locked':
+    'The crossfade between songs {songs} does not line up on the beat. Ask for a different crossfade length.',
   'studio.tl.loadFailed':
     'The timeline could not be loaded. Reload the page.',
   'studio.musicChanged.title':

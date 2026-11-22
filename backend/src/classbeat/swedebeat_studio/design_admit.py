@@ -18,7 +18,9 @@ reserved the class's credit and committed it with the approved list (the C3 revi
 so the design never charges the class again; a design that failed may simply be started again.
 
 **studio_revise**: as ``revise_draft``'s ``admit``: ``invalid_input`` unless the base is a studio
-``draft`` of the class, ``stale_base`` unless it is current, ``revision_limit``, ``chat_full``; then
+``draft`` of the class, ``stale_base`` unless it is current, then the common checks, then for a
+re-plan ``invalid_input`` unless its ``choices`` read as ``MixChoices`` with every position on the
+base's approved list (ADR 0036 B6, #1372), ``revision_limit``, ``chat_full``; then
 the user's ``class_messages`` row with the job and the base's hash (server fields). No credit.
 """
 
@@ -36,7 +38,8 @@ from classbeat.context import UserContext
 from classbeat.design import chat, limits, music_kind
 from classbeat.design.revision_ready import revision_ready
 from classbeat.jobs.kinds import Admitted, Refused
-from classbeat.swedebeat_studio import design_step
+from classbeat.studio import mix_choice_model
+from classbeat.swedebeat_studio import design_step, song_list
 from classbeat.swedebeat_studio.admit import studio_on, swedebeat_connected
 from classbeat.swedebeat_studio.design_inputs import (
     StudioClassInput,
@@ -46,7 +49,8 @@ from classbeat.swedebeat_studio.design_inputs import (
 from classbeat.swedebeat_studio.song_list_model import SOURCE
 
 _BASE_MUSIC = text(
-    "SELECT music ->> 'source' AS source FROM class_revisions "
+    "SELECT music ->> 'source' AS source, music ->> 'song_list_id' AS song_list_id "
+    "FROM class_revisions "
     "WHERE owner_id = :owner_id AND class_id = :class_id AND id = :id AND kind = 'draft'"
 )
 
@@ -88,6 +92,24 @@ async def admit_design(db: AsyncSession, ctx: UserContext, parsed: BaseModel) ->
     return Admitted({"brief": brief})
 
 
+async def _choices_on_list(
+    db: AsyncSession, ctx: UserContext, parsed: StudioReviseInput, base: Any
+) -> bool:
+    """A re-plan's ``choices`` read and every position on the base's approved list (B6)."""
+    try:
+        list_id = UUID(str(base.song_list_id))
+    except ValueError:
+        return False
+    songs = await song_list.load(db, ctx.user_id, parsed.the_class, list_id)
+    if songs is None:
+        return False
+    try:
+        mix_choice_model.on_list(parsed.choices, len(songs.content.songs))
+    except mix_choice_model.MixChoiceRefused:
+        return False
+    return True
+
+
 async def admit_revise(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
     if not isinstance(parsed, StudioReviseInput):
         return Refused("invalid_input")
@@ -99,13 +121,16 @@ async def admit_revise(db: AsyncSession, ctx: UserContext, parsed: BaseModel) ->
     if not state.exists or state.base_kind != "draft" or state.base_hash is None:
         return Refused("invalid_input")
     params = {"owner_id": ctx.user_id, "class_id": class_id, "id": base_id}
-    if (await db.execute(_BASE_MUSIC, params)).scalar_one_or_none() != SOURCE:
+    base = (await db.execute(_BASE_MUSIC, params)).first()
+    if base is None or base.source != SOURCE:
         return Refused("invalid_input")
     if state.current != base_id:
         return Refused("stale_base")
     refused = await _common(db, ctx, parsed)
     if refused is not None:
         return refused
+    if parsed.choices is not None and not await _choices_on_list(db, ctx, parsed, base):
+        return Refused("invalid_input")
     chat_limits = limits.current()
     allowed = await chat_limits.policy.limit_for(db, ctx, class_id)
     if state.chat_revisions >= allowed:
