@@ -119,6 +119,7 @@ def test_the_prompts_say_the_mix_is_a_suggestion_and_only_exact_tracks_are_cut()
         assert "Only a track with timing exact may be cut" in system
         assert "plays once, whole (start_sec 0, end_sec its length)" in system
         assert "cut_on_inexact_track" in system
+        assert "Keep repeats to parts of songs (exact tracks only)" in system
     assert "mix choices (a re-plan), keep each one exactly" in REVISE_SYSTEM
     assert "mix choices (a re-plan)" not in DESIGN_SYSTEM
 

@@ -33,9 +33,9 @@ a hard cut with no crossfade, or whole songs only), so make the class work with 
 The mix is a list of pieces, each a cut of one track named by its index:
 - the order: every track of the list at least once, and no other. A track may play again in a \
 later piece (name its index again), for example one recovery minute used at every recovery or a \
-strong chorus. Keep repeats to parts of songs: never play the whole of a track twice unless the \
-instructor asked for it. A class that repeats a track can be produced as a mix only, not as a \
-SwedeBeat playlist;
+strong chorus. Keep repeats to parts of songs (exact tracks only): never play the whole of a \
+track twice unless the instructor asked for it. A class that repeats a track can be produced as a \
+mix only, not as a SwedeBeat playlist;
 - a loop: two pieces of one track next to each other are a loop (for example a chorus two or \
 three times in a row), allowed only for a track whose timing is exact. Where the two pieces meet, \
 the first one's end_sec and the next one's start_sec are each on a trusted phrase point of that \

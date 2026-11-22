@@ -874,7 +874,10 @@ path, "no timing decision" no longer occurs for a studio track.
   the **form** first (from `dj_mix`, `blend` and `trim`: whole songs, no crossfades, no trims when DJ mix is
   off; hard cuts only when Blend is off; every song once, whole, when Trim is off), then, by list index,
   which songs are kept whole and which cuts are hard, and re-plans the rest. Its result is a new
-  proposal, and the same choices are applied to it again (B4), which is authoritative. For
+  proposal, and the same choices are applied to it again (B4), which is authoritative. **As built
+  (#1409):** the re-plan's choices travel as the optional field `choices` of the `studio_revise` job input
+  (a `MixChoices` object, checked against the approved list at admit), not as a field named `mix_choices`
+  as #1372 first called it; `mix_choices` remains only the provenance origin of an applied draft (B4). For
   `class_length_out_of_tolerance` and `plan_class_too_long` it is offered only while Trim songs is on and some
   song can still be trimmed (otherwise the screen offers **Change songs**: with nothing to trim, the length
   follows the songs, and a re-design cannot shorten them); for `workout_does_not_fit`, `plan_not_allowed` and
