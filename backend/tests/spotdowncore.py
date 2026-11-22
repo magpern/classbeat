@@ -27,9 +27,10 @@ transport: no socket, no network, deterministic). Public test values only.
 ``fake.end`` sets how every new job ends (for a caller whose ``client_ref`` it does not choose);
 ``fake.ends_by_source[source]`` how the next jobs of a ``youtube:<id>`` source end, one each;
 ``fake.documents[source]`` the document of that source's analyses; ``fake.references[source]``
-records the alignment reference last asked for, and ``fake.aligned[analysis_id]`` the reference an
-analysis is aligned to: as in contract v2, a cache hit asked with another reference than the hit's
-answers with an analysis aligned to the one asked (a new id), never with another's alignment. An
+records the alignment reference last asked for (written only: no test reads it), and
+``fake.aligned[analysis_id]`` the reference an analysis is aligned to: as in contract v2, a cache
+hit asked with another reference than the hit's answers with an analysis aligned to the one
+asked (a new id), never with another's alignment. An
 analysis of a ``youtube`` source needs no ``cache_scope`` (contract v2: a global source).
 A document of an analysis held for ``sha256:<hex>`` carries that sha256 in its provenance.
 

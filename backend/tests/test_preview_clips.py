@@ -17,7 +17,7 @@ child stood in by ``studiooutputs.Renders``); never the network.
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -146,6 +146,17 @@ async def test_an_ended_session_is_410_and_nothing_is_rendered_for_it(
     assert gone.status_code == 410
     assert gone.json() == {"detail": {"reason": "preview_session_ended"}}
     assert len(renders.plans) == 1
+
+
+async def test_a_start_that_is_not_in_the_mix_is_422_invalid_start(studio: StudioEnv) -> None:
+    rider, class_id, _, _ = await designed(studio)
+    session = await new_session(rider, class_id)
+    beyond = 24 * 3600 * 1000  # the route's top; the mix is far shorter
+    for start in (beyond, beyond + 1, cast(Any, "-1"), cast(Any, "x")):
+        refused = await get_clip(rider, class_id, session, start)
+        assert refused.status_code == 422, (start, refused.text)
+        assert refused.json() == {"detail": {"reason": "invalid_start"}}
+    assert studio.songs.sql("SELECT count(*) FROM jobs WHERE kind = 'preview_render'").scalar() == 0
 
 
 async def test_a_workout_only_edit_is_a_hit_and_an_audio_edit_a_miss(

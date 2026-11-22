@@ -315,6 +315,18 @@ async def test_a_token_inside_the_margin_is_refreshed_once(
     assert pv.connection().last_used_at is None
 
 
+@pytest.mark.parametrize(("expires_in", "refreshes"), [(150, 0), (90, 1)])
+async def test_the_refresh_margin_is_the_line_between_refreshing_and_not(
+    spot: Spot, spotify_admin: Connection, expires_in: float, refreshes: int
+) -> None:
+    """The default margin is 120 s: a token 150 s from expiry is used as it is, one 90 s from it
+    is refreshed first (S2: a refresh happens only inside the margin)."""
+    pv = await preview(spot, spotify_admin, expires_in=expires_in)
+    pv.spot.fake.add_device(USER_A, DEVICE, active=True)
+    await state(pv)
+    assert len(pv.spot.token_requests()) == refreshes
+
+
 async def test_a_401_refreshes_and_repeats_once(pv: Preview) -> None:
     pv.spot.fake.add_device(USER_A, DEVICE, active=True)
     pv.spot.fake.expire(pv.access)  # Spotify refuses the stored token before its expiry

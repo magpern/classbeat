@@ -249,6 +249,21 @@ def test_a_window_over_a_piece_that_started_five_minutes_earlier(tmp_path: Path)
     assert_window_is_the_full_span(whole, window, pcm(tmp_path, tracks, window))
 
 
+def test_a_window_over_a_piece_that_starts_deep_in_its_file(tmp_path: Path) -> None:
+    """Case 12 with a deep ``src_start``: the piece begins 5 minutes into a 7 minute file, so the
+    decode must skip that much before the window's samples; the span is still the full render's."""
+    a = noise(tmp_path / "a.wav", 7 * 60.0, 21, rate=8000, format="WAV", subtype="PCM_16")
+    b = noise(tmp_path / "b.wav", 60.0, 22, rate=11025, format="WAV", subtype="PCM_16", channels=1)
+    tracks = [
+        entry(a, 5 * 60 * S, 6 * 60 * S, 0, fade_out=20 * S),
+        entry(b, 0, 40 * S, 40 * S, fade_in=20 * S),
+    ]
+    whole = pcm(tmp_path, tracks)
+    window = seconds(30.0, 70.0)
+    assert tracks[0]["src_start"] >= 5 * 60 * S
+    assert_window_is_the_full_span(whole, window, pcm(tmp_path, tracks, window))
+
+
 # -- the output path is unchanged ------------------------------------------------------------------
 
 

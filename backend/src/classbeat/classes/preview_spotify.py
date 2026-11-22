@@ -25,7 +25,6 @@ carries a token, a device id, a URL or anything of Spotify's but the observed st
 """
 
 from dataclasses import dataclass
-from typing import Any
 from uuid import UUID
 
 from classbeat import connections
@@ -33,7 +32,9 @@ from classbeat.classes import preview_tracks
 from classbeat.classes.preview_tracks import DraftTracks
 from classbeat.connections import ConnectionFailure
 from classbeat.context import UserContext
+from classbeat.crypto.keks import KeyRing
 from classbeat.egress import OutboundBlocked
+from classbeat.spotify.access import Factory
 from classbeat.spotify.flow import preview_granted
 from classbeat.spotify.http import SpotifyHttp
 from classbeat.spotify.player_access import Send, player_call
@@ -54,8 +55,8 @@ from classbeat.spotify.player_state_model import Observed, observed, pieces_of, 
 
 @dataclass(frozen=True, slots=True)
 class Deps:
-    factory: Any
-    ring: Any
+    factory: Factory
+    ring: KeyRing
     http: SpotifyHttp
     player: SpotifyPlayerHttp
     margin_seconds: float
