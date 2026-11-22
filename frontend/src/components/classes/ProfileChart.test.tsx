@@ -25,7 +25,7 @@ const SEGMENTS: DraftSegment[] = [
 
 const SONGS: Song[] = [
   { position: 1, title: 'First', artist: 'A', role: 'warmup', bpm: 120, lengthSec: 600, startSec: 0, isNew: false, cover: null, openSpotify: null },
-  { position: 2, title: 'Second', artist: 'B', role: 'main', bpm: 140, lengthSec: 600, startSec: 591, isNew: false, cover: null, openSpotify: null },
+  { position: 2, title: 'Second', artist: 'B', role: 'main', bpm: 140, lengthSec: 600, startSec: 590.46, isNew: false, cover: null, openSpotify: null },
 ]
 
 function bars(container: HTMLElement) {
@@ -112,12 +112,12 @@ describe('the class profile', () => {
   })
 
   it('places each song block where the song starts in the class', () => {
-    // 1200 s class; the second song starts at 591 s (a 9 s crossfade) and the first block runs to it.
+    // 1200 s class; the second song starts at 590.46 s (a 9.54 s crossfade) and the first block runs to it.
     render(<ProfileChart segments={SEGMENTS} title="Hills" songs={SONGS} />)
     const [first, second] = screen.getByTestId('song-strip').querySelectorAll('li')
     expect(first?.style.left).toBe('0%')
-    expect(parseFloat(first?.style.width ?? '')).toBeCloseTo((591 / 1200) * 100, 5)
-    expect(parseFloat(second?.style.left ?? '')).toBeCloseTo((591 / 1200) * 100, 5)
+    expect(parseFloat(first?.style.width ?? '')).toBeCloseTo((590.46 / 1200) * 100, 5)
+    expect(parseFloat(second?.style.left ?? '')).toBeCloseTo((590.46 / 1200) * 100, 5)
     expect(parseFloat(second?.style.width ?? '')).toBeCloseTo((600 / 1200) * 100, 5) // to its own end
   })
 

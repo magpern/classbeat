@@ -31,6 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from classbeat.agent.schemas import MAX_SONGS
 from classbeat.agent.stored_draft import stored_draft
+from classbeat.crossfade_calc import track_shift_sec
 
 MAX_CLASS_SECONDS = 4 * 3600.0
 
@@ -81,7 +82,8 @@ class Preview(BaseModel):
 def song_times(analysis_map: Mapping[str, Any]) -> list[PreviewSong]:
     """Each track's heard span, in play order, from an analysis map (``mowl.spotify.build_map``):
     the earliest ``start`` and the latest ``end`` of the sections of that track, in class
-    seconds (the crossfade is in them). ``ValueError`` for a track with no section."""
+    seconds (the crossfade is in them: classbeat's, ``crossfade_calc.CROSSFADE_SEC``, whatever the
+    stored map was built with). ``ValueError`` for a track with no section."""
     tracks = analysis_map.get("tracks")
     sections = analysis_map.get("songs")
     if not isinstance(tracks, list) or not isinstance(sections, list):
@@ -92,6 +94,8 @@ def song_times(analysis_map: Mapping[str, Any]) -> list[PreviewSong]:
             raise ValueError("not an analysis map")
         number = int(section["track"])  # pyright: ignore[reportUnknownArgumentType]
         start, end = float(section["start"]), float(section["end"])  # pyright: ignore[reportUnknownArgumentType]
+        moved = track_shift_sec(analysis_map, number)
+        start, end = start + moved, end + moved
         low, high = spans.get(number, (start, end))
         spans[number] = (min(low, start), max(high, end))
     out: list[PreviewSong] = []

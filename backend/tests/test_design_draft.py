@@ -15,11 +15,12 @@ import uuid
 from typing import Any
 
 import pytest
-from mowl import music, spotify, workout
+from mowl import music, workout
 
 from agentfake import FactoryModels
 from classbeat import design
 from classbeat.agent import Provenance, WorkoutDraft
+from classbeat.crossfade_calc import CROSSFADE_SEC
 from classbeat.design import Runtime
 from classbeat.design import kind as design_kind
 from classbeat.design import music as design_music
@@ -95,7 +96,7 @@ async def test_a_draft_is_designed_on_a_new_playlist_and_stored(
         "medium",
     )
     assert made.prompt_version == run.prompt_version
-    assert (made.map_version, made.crossfade_sec) == (music.MAP_VERSION, spotify.CROSSFADE_SEC)
+    assert (made.map_version, made.crossfade_sec) == (music.MAP_VERSION, CROSSFADE_SEC)
     assert made.agent_run_ids == [run.id]
     assert made.tss_approximate is False  # no zone 7 in the fitted draft (ADR 0012 section 7)
     assert made.cost_micros == run.cost_micros

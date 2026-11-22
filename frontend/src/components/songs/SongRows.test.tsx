@@ -14,8 +14,8 @@ const row = (position: number, more: Record<string, unknown> = {}) => ({
 })
 const list = (songs: Record<string, unknown>[]) =>
   decodeSongList({
-    id: 'l', number: 1, status: 'waiting', content_hash: 'h', mode: 'pick', target_sec: 720, total_sec: 702,
-    crossfade_sec: 9, songs,
+    id: 'l', number: 1, status: 'waiting', content_hash: 'h', mode: 'pick', target_sec: 720, total_sec: 701,
+    crossfade_sec: 9.54, songs,
   })
 
 describe('the timing approximate label', () => {

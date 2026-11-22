@@ -566,9 +566,9 @@ GOOD = [
 ]  # fmt: skip
 
 
-def test_the_total_is_the_sum_less_nine_seconds_per_change_of_song() -> None:
-    assert CROSSFADE_SEC == 9.0
-    assert total_sec([240] * 8) == 8 * 240 - 7 * 9
+def test_the_total_is_the_sum_less_the_crossfade_per_change_of_song() -> None:
+    assert CROSSFADE_SEC == 9.54  # MOWL's own value (#1427)
+    assert total_sec([240] * 8) == pytest.approx(8 * 240 - 7 * 9.54)
     assert total_sec([100]) == 100
     assert total_sec([]) == 0
     assert within_tolerance(1980, 1800)
@@ -577,7 +577,7 @@ def test_the_total_is_the_sum_less_nine_seconds_per_change_of_song() -> None:
     assert not within_tolerance(1619, 1800)
     _, stage = choose_env()
     out = run(stage, "check_song_list", songs(*GOOD))
-    assert (out["valid"], out["songs"], out["total_sec"]) == (True, 8, 1857)
+    assert (out["valid"], out["songs"], out["total_sec"]) == (True, 8, 1853)
 
 
 def test_a_list_is_stored_from_the_analysis_not_from_the_model() -> None:
@@ -589,7 +589,8 @@ def test_a_list_is_stored_from_the_analysis_not_from_the_model() -> None:
     assert [s.title for s in out.songs] == [f"Smoke Song {i}" for i in (0, 2, 4, 10, 6, 7, 11, 12)]
     assert [s.role for s in out.songs] == [g[2] for g in GOOD]
     assert all(s.new for s in out.songs)
-    assert (out.total_sec, out.target_sec, out.mode, out.crossfade_sec) == (1857, 1800, "pick", 9.0)
+    assert (out.total_sec, out.target_sec, out.mode) == (1853, 1800, "pick")
+    assert out.crossfade_sec == 9.54
     assert out.songs[1].spotify_id == "SmokePick0000000000002"
     assert out.songs[1].bpm == 106.0
     assert out.songs[1].length_sec == 240
@@ -602,12 +603,12 @@ def test_a_list_is_checked_on_the_total_in_both_directions() -> None:
     out = run(stage, "check_song_list", short)
     assert out["error"] == "invalid_song_list"
     assert out["messages"] == [
-        "the total time is 1164 s (lengths less 9 s per change of song); "
+        "the total time is 1162 s (lengths less 9.54 s per change of song); "
         "it must be between 1620 and 1980 s"
     ]
     long = songs(*GOOD[:-1], ("pool", 8, "sprint"), ("pool", 9, "sprint"), ("pool", 12, "cooldown"))
     out = run(stage, "check_song_list", long)
-    assert "the total time is 2319 s" in out["messages"][0]
+    assert "the total time is 2314 s" in out["messages"][0]
 
 
 @pytest.mark.parametrize(

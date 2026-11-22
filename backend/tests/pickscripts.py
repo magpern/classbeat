@@ -63,7 +63,7 @@ def _pick(case: PickCase) -> list[dict[str, Any]]:
         _t(call("submit_pool", pool, expect={"accepted": True}), usage=_usage(6100, 700, 3000)),
         _t(get_pool, usage=_usage(2300, 180)),
         _t(
-            call("check_song_list", songs(*LIST_8), expect={"valid": True, "total_sec": 1857}),
+            call("check_song_list", songs(*LIST_8), expect={"valid": True, "total_sec": 1853}),
             usage=_usage(7600, 900),
         ),
         _t(

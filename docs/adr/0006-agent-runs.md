@@ -460,6 +460,38 @@ missing-music case: D1 fails a job without music before the stage runs.
 - New dependency: `anthropic` (pinned, audited). New secret: `anthropic_api_key`, worker only.
 - Threat model T54 to T57 follow from this ADR.
 
+## Amendment of 2026-11-22: the Spotify crossfade is MOWL's 9.54 s (issue #1427)
+
+The owner-run, read-only capture of the native MOWL app (2026-11-20, #580) saw MOWL send
+`POST api.mowl.com/v1/Spotify/Player/SeekToPosition` with `CrossFadeInMilliSeconds: 9540` on a
+playlist timeline where each track is shortened by that value, so the Spotify crossfade is
+**9.54 s**, not 9.0 s. The 9.0 of `mowl.spotify.CROSSFADE_SEC` was an empirical fit (mowl-workouts
+0.5.0: segment starts fitted to track starts on four official rides, 1 to 3 s error at 9 s against
+6 to 10 s at 8 or 10 s), not a measurement and not a rider setting; 9.54 sits inside that fit's noise.
+It is **a measured MOWL value from one capture** (one account, one playlist), so it stays one
+constant, not a setting; the stored `crossfade_sec` and the map's `crossfade` key keep a per-user
+value possible without a schema change. The owner notes that MOWL says the rider's Spotify crossfade
+should be 10 s, so 9.54 is most likely MOWL's own track spacing at that setting; it holds while the
+rider follows the how-to, and a rider with another setting (or crossfade off, `crossfade` 0) plays
+out of step with MOWL's timeline whatever classbeat models. Whether 9540 varies by account, device
+or Spotify setting is an owner check on #1348, never run by an agent.
+
+- **One definition**: `classbeat/crossfade_calc.py` (`CROSSFADE_SEC` = 9.54, pure). `agent/songs.CROSSFADE_SEC`
+  re-exports it. It no longer derives from the vendored wheel (not rebuilt or changed by #1427).
+- **Every map is converted, none rewritten.** The wheel builds (`spotify.build_map`) and converts
+  (`library._entry`) at its 9.0, so a stored analysis carries `crossfade` 9.0 (or no key, under
+  0.4.1). `model_input.music_map` (and so `mix_input.music_map`, which design, revise, refit and the
+  composer's re-time call) puts every Spotify map into 9.54 with `spotify.with_crossfade`, and
+  `preview_model.song_times` reads the song strip's spans at 9.54. The stored map, list, revision or
+  provenance keeps its own value (9.0): no migration, `content_hash` and approvals unchanged. A
+  provenance for a map without the key records 9.54.
+- **Effects.** A new Spotify song list has `crossfade_sec` 9.54, its total is the lengths less 9.54 s
+  per change, and the 10 % check, the strip's start times and the tempo-clash check use it; track n of
+  a map starts (n - 1) x 0.54 s earlier than at 9.0 (5.94 s for the 12th). The player document carries
+  `crossfade_ms` 9540.
+- **Not affected**: SwedeBeat studio classes (per-transition crossfades, `crossfade_sec` 0.0, ADR 0036
+  B6), soundless classes, and the gateway playlist and mix bodies.
+
 ## M3a issue breakdown (ADR 0005 and this ADR)
 
 One issue per PR, milestone "M3a Jobs and design". "Opus" marks a security-critical issue with an

@@ -133,17 +133,27 @@ def test_song_times_is_each_tracks_span_in_play_order() -> None:
     analysis = {
         "tracks": [{"track": 1}, {"track": 2}],
         "songs": [
-            {"track": 1, "start": 0.0, "end": 100.0},
-            {"track": 1, "start": 100.0, "end": 241.0},
-            {"track": 2, "start": 232.0, "end": 400.5},
+            {"song": 1, "track": 1, "start": 0.0, "end": 100.0},
+            {"song": 2, "track": 1, "start": 100.0, "end": 241.0},
+            {"song": 3, "track": 2, "start": 231.46, "end": 400.5},
         ],
+        "events": [],
+        "duration": 400.5,
+        "crossfade": 9.54,
     }
     assert song_times(analysis) == [
         PreviewSong(start=0.0, end=241.0),
-        PreviewSong(start=232.0, end=400.5),
+        PreviewSong(start=231.46, end=400.5),
     ]
+    # a map stored at the library's 9.0 (or with no crossfade key) is read in classbeat's 9.54
+    old = {
+        **analysis,
+        "crossfade": 9.0,
+        "songs": [*analysis["songs"][:2], {**analysis["songs"][2], "start": 232.0, "end": 399.96}],
+    }
+    assert song_times(old)[1] == PreviewSong(start=231.46, end=399.42)
     with pytest.raises(ValueError, match="without a section"):
-        song_times({"tracks": [{"track": 1}, {"track": 2}], "songs": analysis["songs"][:2]})
+        song_times({**analysis, "songs": analysis["songs"][:2]})
 
 
 def maximum(cue: str, segments: int, intervals: int) -> song_list.SongListRevision:

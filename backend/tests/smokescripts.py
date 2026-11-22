@@ -28,7 +28,7 @@ from smokedrafts import make_draft
 # The asked length does not apply: the music is shorter; the draft fills it.
 TOTAL = {"music_too_short": 1380}
 # Where a first FTP lead of 300 s is shifted so the fitted test still lasts its full length.
-FTP_LEAD = {"ftp_20_60": 250, "ftp_5_45": 260}
+FTP_LEAD = {"ftp_20_60": 265, "ftp_5_45": 260}
 
 
 def _usage(inp: int, out: int, cached: int = 0) -> dict[str, int]:
@@ -153,7 +153,7 @@ def script_for(case: Case) -> FakeScript:
         ]
     elif case.name == "ftp_5_45":
         drafts["first"] = make_draft(
-            case.brief.length_min * 60, intensity=case.brief.intensity, ftp=5, ftp_lead=300
+            case.brief.length_min * 60, intensity=case.brief.intensity, ftp=5, ftp_lead=305
         )
         first = {"draft": {"$draft": "first"}}
         failed = _call(

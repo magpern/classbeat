@@ -6,7 +6,7 @@ class's current revision, never revised or saved as a draft.
 - **content** (``SongListContent``, version ``v: 2``, at most 64 KB as canonical JSON)::
 
       {"v": 2, "mode": "pick" | "replace", "target_sec": 2700, "total_sec": 2688,
-       "crossfade_sec": 9.0,
+       "crossfade_sec": 9.54,
        "songs": [{"spotify_id": "...", "title": "...", "artist": "...", "role": "climb",
                   "bpm": 92.0, "length_sec": 241, "new": true,
                   "cover": "https://i.scdn.co/image/<40 hex>" | null}],

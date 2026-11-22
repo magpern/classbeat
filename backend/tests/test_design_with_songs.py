@@ -40,8 +40,8 @@ async def test_a_pick_ends_waiting_with_its_song_list(songenv: SongEnv) -> None:
     assert bytes(stored.content_hash).hex() == digest
     assert content["v"] == 2  # v: 2 adds each song's cover (ADR 0013 section 9)
     assert content["mode"] == "pick"
-    assert (content["target_sec"], content["total_sec"]) == (1800, 1857)
-    assert content["crossfade_sec"] == 9.0
+    assert (content["target_sec"], content["total_sec"]) == (1800, 1853)
+    assert content["crossfade_sec"] == 9.54
     assert content["omitted_no_bpm"] == 0
     assert [s["spotify_id"] for s in content["songs"]] == CHOSEN
     first = content["songs"][0]

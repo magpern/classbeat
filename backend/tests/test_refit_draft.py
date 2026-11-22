@@ -12,6 +12,7 @@ from uuid import UUID
 
 import pytest
 
+from classbeat.crossfade_calc import CROSSFADE_SEC
 from classbeat.design.kind import DESIGN_DRAFT
 from classbeat.design.refit import KIND, MAX_REFITS, REFIT_DRAFT
 from classbeat.design.revise import REVISE_DRAFT
@@ -103,6 +104,8 @@ async def test_a_refit_stores_the_corrected_draft_as_the_current_child_without_a
     assert second.music["fingerprint"] == first.music["fingerprint"]
     assert second.provenance["origin"] == "beat_one"
     assert second.provenance["base_revision_id"] == str(base)
+    # the corrected map is in MOWL's 9.54 s crossfade (#1427), the library's 9.0 only as stored
+    assert second.provenance["crossfade_sec"] == CROSSFADE_SEC
     for key in ("provider", "model", "agent_run_ids", "cost_micros", "usage"):
         assert key not in second.provenance
     assert renv.messages(class_id) == [], "a refit is not a chat revision"

@@ -127,7 +127,7 @@ one hard limit: classbeat is **not** a gym player, so it has no class-performanc
 - `transportMs = classMs − clip.start_ms`.
 
 **Spotify mapping.**
-- The class was fitted with a crossfade constant `C` (today 9 s, `CROSSFADE_SEC`; #1348 investigates 9.54 s).
+- The class was fitted with a crossfade constant `C` (9.54 s, `CROSSFADE_SEC`, MOWL's own value since #1427, amendment of 2026-11-22 to ADR 0006; it was 9 s before, and stored maps keep their 9.0).
   `C` is **read from the class's music map**, never hard-coded.
 - Song *i* occupies `[S_i, E_i)`, with `E_i = S_i + L_i` and `S_{i+1} = E_i − C`. `[S_{i+1}, E_i)` is an
   **overlap region**: in MOWL the rider's own Spotify crossfades there.
