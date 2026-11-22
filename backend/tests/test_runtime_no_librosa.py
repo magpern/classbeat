@@ -13,6 +13,8 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 ABSENT = ("librosa", "numba", "llvmlite", "scipy")
 RENDER_LIBRARIES = ("numpy", "soundfile", "soxr")
@@ -57,9 +59,12 @@ def test_the_environment_does_not_install_it(name: str) -> None:
 
 def test_the_render_libraries_are_declared_directly() -> None:
     deps = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]["dependencies"]
-    pinned = {d.split("==")[0]: d for d in deps if "==" in d}
+    reqs = [Requirement(d) for d in deps]
+    pinned = {r.name: r for r in reqs if "==" in str(r.specifier)}
     for name in RENDER_LIBRARIES:
         assert name in pinned, f"{name} must be a direct, pinned dependency"
         assert importlib.util.find_spec(name) is not None
-    assert not [d for d in deps if d.split("=")[0].split("[")[0].strip() in ABSENT]
-    assert "mowl-workouts[" not in " ".join(deps)  # never the `analysis` extra
+    assert not [r.name for r in reqs if canonicalize_name(r.name) in ABSENT]
+    # never the `analysis` extra
+    analysis = [r for r in reqs if canonicalize_name(r.name) == "mowl-workouts" and r.extras]
+    assert not analysis

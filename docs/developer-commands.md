@@ -31,7 +31,7 @@ uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATI
 
 The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.13.0-py3-none-any.whl`,
 built from commit `58408fd7` (the v0.13.0 tag; vendored wheel SHA-256 `fd35db6e…`; the release asset's size and
-digest are pinned once its release exists, until then the script stops at that check) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
+digest are pinned in the script) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
 (needs `gh` access to the private repo; it checks the tag's commit, the missing key file, the release
 asset's pinned size and SHA-256, that the release wheel holds the key file by name (never read), and that
 every other file and the `Requires-Dist` lines match the release wheel). After a rebuild run `uv lock`. classbeat leaves out
