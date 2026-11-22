@@ -85,7 +85,7 @@ def analysed(spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch) -> Iterato
 
     monkeypatch.setattr(spotdown, "analysis", analysis)
     monkeypatch.setattr(track_spotdown, "pause", pause)
-    studio_tracks_config.configure(TracksConfig(frozenset({"upload"}), b"k" * 32))
+    studio_tracks_config.configure(TracksConfig(b"k" * 32))
     yield seen
     studio_tracks_config.configure(None)
 

@@ -18,7 +18,7 @@ sections 2 and 4). Pure: no I/O.
   the model, marked as hints; nothing here validates with them (``feature_trust_policy``).
 
 Anything that is not there or not trusted is left out; a track without a trusted BPM (or, for
-``track_map``, beats) is ``MapRefused``, so the caller keeps today's path for it.
+``track_map``, beats) is ``MapRefused``: the caller refuses the track (no other timing).
 """
 
 from collections.abc import Mapping

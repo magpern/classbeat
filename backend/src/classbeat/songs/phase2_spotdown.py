@@ -41,7 +41,7 @@ from classbeat.design.music import MusicStep
 from classbeat.jobs import JobFailure, JobRun
 from classbeat.songs.pick_unavailable import failure_of
 from classbeat.songs.song_list import SongListRevision
-from classbeat.spotdown import outage_policy, song_match_config
+from classbeat.spotdown import outage_policy
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.failure_policy import TrackFailure, Unreachable
 from classbeat.spotdown.provenance_read_calc import source_kind
@@ -82,7 +82,7 @@ async def _with_spotdown(
 ) -> dict[str, Any]:
     """The analysis with spotdown's sections for every song of the list."""
     by_position = {r.position: r for r in recorded(provenance)}
-    client = SpotdownClient(song_match_config.current().sources)
+    client = SpotdownClient()
     m = analysis["map"]
     for position, spotify_id in enumerate(ids):
         rec = by_position.get(position)

@@ -42,7 +42,7 @@ from classbeat.songs.pick_match_batch import Session
 from classbeat.songs.pick_outcome import Missing, outcome_of
 from classbeat.songs.pick_refine import Refine, want_of
 from classbeat.songs.seed import Seeded
-from classbeat.spotdown import outage_policy, song_match_config, track_fit_policy
+from classbeat.spotdown import outage_policy, track_fit_policy
 from classbeat.spotdown import song_match_policy as match_policy
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.song_analysis_record_model import analysis_record
@@ -61,7 +61,7 @@ async def _analyse(
     spent, unavailable = await budget.open(run)
     if unavailable:
         raise JobFailure(outage_policy.UNAVAILABLE)  # an earlier run of this attempt found it
-    session = Session(run, SpotdownClient(song_match_config.current().sources), spent)
+    session = Session(run, SpotdownClient(), spent)
     covers = {p.spotify_id: p.cover for p in matched.playlist}
     pairs = [(p.spotify_id, p.role) for p in matched.eligible]
     pool = {t.spotify_id: t for t in analysed_pool(analysis_map, pairs, covers)[0]}

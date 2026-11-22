@@ -12,7 +12,7 @@ still on disk**, asks ``analyse`` for its map:
    names no owner; ADR 0040 section 7, amendment of 2026-11-21): a hit is read, **no upload**;
 3. only then the bytes are streamed to ``upload`` and the analysis is started (an
    ``Idempotency-Key`` per job, track, attempt and step; ``client_ref`` a random id), and polled
-   with checkpoints (``shadow_policy.poll_delay``) within the attempt's budget
+   with checkpoints (``poll_pace_calc.poll_delay``) within the attempt's budget
    (``studio_policy.WAIT_SECONDS``, ``track_spotdown_budget``: reset when a run ends in a
    retryable category). Nothing else leaves: no reference, title, token or URL.
 
@@ -57,8 +57,8 @@ from classbeat.spotdown.failure_policy import (
     Unreachable,
     UnreachableReason,
 )
+from classbeat.spotdown.poll_pace_calc import poll_delay
 from classbeat.spotdown.scope_calc import idempotency_key
-from classbeat.spotdown.shadow_policy import poll_delay
 from classbeat.spotdown.studio_map_model import StudioMap, studio_map
 
 CHUNK: Final = 256 * 1024
@@ -109,7 +109,7 @@ def session_for(run: JobRun) -> Session:
     if refused is not None or config.scope_key is None:
         raise spotdown_ending.unreachable(refused or "not_configured")
     scope = scope_policy.scope_for("studio", config.scope_key, run.lease.owner_id)
-    return Session(SpotdownClient(config.sources), scope)
+    return Session(SpotdownClient(), scope)
 
 
 async def unreachable(run: JobRun, session: Session, reason: UnreachableReason) -> JobFailure:

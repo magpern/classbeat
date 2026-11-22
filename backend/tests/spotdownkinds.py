@@ -20,7 +20,6 @@ UNAVAILABLE, FAILED, INTERNAL = "analysis_unavailable", "analysis_failed", "inte
 # Every UnreachableReason, with the category it ends the job in.
 REASONS: dict[str, str] = {
     "not_configured": UNAVAILABLE,
-    "source_off": UNAVAILABLE,
     "source_disabled": UNAVAILABLE,
     "blocked": UNAVAILABLE,
     "connection": UNAVAILABLE,
@@ -31,7 +30,7 @@ REASONS: dict[str, str] = {
     "bad_answer": FAILED,
     "conflict": INTERNAL,
 }
-CONFIG_REASONS = ("not_configured", "source_off")  # no client call: the worker has no spotdown
+CONFIG_REASONS = ("not_configured",)  # no client call: the worker has no spotdown
 STATUSES: dict[str, str] = {  # the fake's ``end``: a job status spotdown answers
     "processing_failed:decode_error": FAILED,
     "processing_failed:out_of_memory": FAILED,

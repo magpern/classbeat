@@ -13,8 +13,7 @@ security.
   operation row and then writes the link or the saved row, so taking the same order here cannot
   deadlock with it, and a save recorded after this finds its row gone (``not_connected``).
 - **SwedeBeat** (``forget_swedebeat_account``, Disconnect and a keys wipe): the studio's track
-  analyses (``swedebeat_track_maps``) and spotdown's shadow comparisons of them
-  (``spotdown_shadow_tracks``). A worker stores one only while it holds the connection
+  analyses (``swedebeat_track_maps``). A worker stores one only while it holds the connection
   (``repository.hold``), so a store after this finds the connection gone and writes nothing. A
   reconnect in place keeps them: a bearer expires daily, and the catalogue is the same. The
   account digest a publish recorded in its operation's context (``account``, #1117) is removed
@@ -30,11 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.connections.player_data import forget_player_operations
 from classbeat.connections.spotify_data import forget_spotify_account
-from classbeat.connections.swedebeat_maps import (
-    FORGET_MIX_MAPS,
-    FORGET_SHADOW_TRACKS,
-    FORGET_TRACK_MAPS,
-)
+from classbeat.connections.swedebeat_maps import FORGET_MIX_MAPS, FORGET_TRACK_MAPS
 from classbeat.context import UserContext
 
 FORGET_MOWL: Final = (
@@ -82,7 +77,6 @@ async def forget_swedebeat_account(db: AsyncSession, ctx: UserContext) -> None:
     for statement in FORGET_PREVIEW:
         await db.execute(statement, {"owner_id": ctx.user_id})
     await db.execute(FORGET_TRACK_MAPS, {"owner_id": ctx.user_id})
-    await db.execute(FORGET_SHADOW_TRACKS, {"owner_id": ctx.user_id})
     await db.execute(FORGET_PUBLISH_ACCOUNT, {"owner_id": ctx.user_id})
 
 

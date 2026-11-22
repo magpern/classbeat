@@ -26,7 +26,7 @@ _OWNED = (
     "mail_handoff mowl_playlist_links player_link_flows player_publications "
     "preview_clips preview_sessions preview_sources quota_periods "
     "saved_workouts "
-    "spotdown_shadow_tracks spotdown_song_budgets spotdown_studio_budgets "
+    "spotdown_song_budgets spotdown_studio_budgets "
     "spotify_oauth_flows spotify_pool spotify_syncs "
     "security_log studio_output_starts subscriptions "
     "swedebeat_analyses "

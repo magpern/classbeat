@@ -35,7 +35,7 @@ depends_on: str | Sequence[str] | None = None
 OUTCOMES = (
     "'pending', 'compared', 'track_failure', 'unreachable', 'timed_out', 'bad_document', "
     "'internal'"
-)  # ``classbeat.spotdown.shadow_policy.OUTCOMES``
+)  # the outcomes of the shadow comparison (the code that wrote them is gone, 0073)
 
 SHADOW_TRACKS = f"""
     CREATE TABLE public.spotdown_shadow_tracks (

@@ -35,7 +35,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0073_pin_unconfirmed"]
+    assert script.get_heads() == ["0074_drop_spotdown_shadow"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -56,7 +56,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0073_pin_unconfirmed"]
+        assert applied_revisions(database_url) == ["0074_drop_spotdown_shadow"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -182,8 +182,7 @@ JOBS = [
     "swedebeat_handoffs",
     # ADR 0036 section 4.1 (0053_swedebeat_track_maps, SR C4).
     "swedebeat_track_maps",
-    # ADR 0040 sections 7 and 9 (0063_spotdown_shadow, #1301 part 3).
-    "spotdown_shadow_tracks",
+    # ADR 0040 section 7 (0063_spotdown_shadow, #1301 part 3; its shadow table is gone, 0074).
     "spotdown_scope_deletions",
     # ADR 0040 section 8 (0064_track_map_provenance, #1302).
     "spotdown_studio_budgets",
@@ -1173,6 +1172,54 @@ def test_0073_admits_pin_unconfirmed_and_the_downgrade_turns_it_into_internal(
         assert failed_job("mix_not_applied") is not None  # the check before 0073 is back
         command.upgrade(config, "head")
         assert failed_job("pin_unconfirmed") is not None
+    finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0074_drops_the_shadow_table_and_the_downgrade_recreates_it_empty(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1355: ``spotdown_shadow_tracks`` is gone at head; the downgrade recreates it empty, with
+    its owner row security and both indexes, and upgrading again drops it again."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+    exists = text("SELECT to_regclass('public.spotdown_shadow_tracks') IS NOT NULL")
+    rls = text(
+        "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class "
+        "WHERE oid = 'public.spotdown_shadow_tracks'::regclass"
+    )
+    indexes = text(
+        "SELECT indexname FROM pg_indexes WHERE tablename = 'spotdown_shadow_tracks' "
+        "AND indexname IN ('spotdown_shadow_tracks_owner_job', "
+        "'spotdown_shadow_tracks_owner_started')"
+    )
+    try:
+        command.upgrade(config, "head")
+        with admin.connect() as connection:
+            assert connection.execute(exists).scalar_one() is False
+        command.downgrade(config, "0073_pin_unconfirmed")
+        with admin.begin() as connection:
+            assert connection.execute(exists).scalar_one() is True
+            assert connection.execute(rls).scalar_one() is True
+            assert sorted(connection.execute(indexes).scalars()) == [
+                "spotdown_shadow_tracks_owner_job",
+                "spotdown_shadow_tracks_owner_started",
+            ]
+            owner = new_user(connection)
+            job = new_job(connection, owner, state="failed", error_category="internal",
+                          finished_at="2026-01-01")  # fmt: skip
+            connection.execute(
+                text(
+                    "INSERT INTO spotdown_shadow_tracks (owner_id, job_id, outcome) "
+                    "VALUES (:o, :j, 'compared')"
+                ),
+                {"o": owner, "j": job},
+            )
+        command.upgrade(config, "head")
+        with admin.connect() as connection:
+            assert connection.execute(exists).scalar_one() is False
     finally:
         admin.dispose()
         command.downgrade(config, "base")

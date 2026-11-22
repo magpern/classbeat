@@ -4,7 +4,7 @@ only analysis path", item 4, #1352). Pure: no I/O.
 Every ``UnreachableReason`` (``failure_policy``) maps to exactly one category, listed here once:
 
 - ``analysis_unavailable`` (retried with backoff): the reason is about the service or its
-  deployment, not about this music: ``not_configured``, ``source_off``, ``source_disabled``
+  deployment, not about this music: ``not_configured``, ``source_disabled``
   (spotdown's YouTube sourcing is off; the owner may switch it on), ``blocked``, ``connection``,
   ``unauthorized`` and ``server_error``;
 - ``analysis_failed`` (not retried): spotdown answered, but about this request or its answer:
@@ -36,7 +36,6 @@ INTERNAL: Final = "internal"
 
 _CATEGORY: Final[dict[str, str]] = {
     "not_configured": UNAVAILABLE,
-    "source_off": UNAVAILABLE,
     "source_disabled": UNAVAILABLE,
     "blocked": UNAVAILABLE,
     "connection": UNAVAILABLE,

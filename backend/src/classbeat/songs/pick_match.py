@@ -48,7 +48,7 @@ from classbeat.agent.schemas import MAX_POOL, MAX_SONGS
 from classbeat.jobs import JobFailure, JobRun
 from classbeat.songs import pick_match_budget as budget
 from classbeat.songs.pick_match_batch import Session, match_picks
-from classbeat.spotdown import outage_policy, song_match_config
+from classbeat.spotdown import outage_policy
 from classbeat.spotdown import song_match_policy as policy
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.song_match_policy import TrackMatch
@@ -174,7 +174,7 @@ async def _match(
     spent, unavailable = await budget.open(run)
     if unavailable:
         raise JobFailure(outage_policy.UNAVAILABLE)  # an earlier run of this attempt found it
-    session = Session(run, SpotdownClient(song_match_config.current().sources), spent)
+    session = Session(run, SpotdownClient(), spent)
     entries = {e.spotify_id: e for e in registry.entries()}
     matches = await match_picks(session, pool.picks, entries, 0)
     made = [_candidate(p, entries[p.spotify_id], matches[p.spotify_id]) for p in pool.picks]

@@ -8,16 +8,9 @@ from uuid import UUID
 import pytest
 
 from classbeat.config import Settings
-from classbeat.spotdown import song_match_config
 from classbeat.spotdown import song_match_policy as policy
 from classbeat.spotdown.failure_policy import Matched, TrackFailure, UncertainMatch
 from classbeat.spotdown.match_model import Candidate as Source
-from classbeat.spotdown.owner_list_policy import (
-    MAX_OWNERS,
-    OwnerListRefused,
-    canonical,
-    parse_owners,
-)
 from classbeat.spotdown.song_match_record_model import KEY, match_record
 from classbeat.spotdown.song_swap_calc import (
     Candidate,
@@ -30,64 +23,32 @@ from classbeat.spotdown.song_swap_calc import (
 
 A = UUID("00000000-0000-4000-8000-00000000000a")
 B = UUID("00000000-0000-4000-8000-00000000000b")
-NAME = "spotdown_mix_owners"
 
 
 def source(ref: str, confidence: float, band: str = "confident") -> Source:
     return Source(f"youtube:{ref}", confidence, band, 200.0, 0.5, "ok", None, None)
 
 
-# --- the owner allowlist ------------------------------------------------------------------------
+# --- the settings -------------------------------------------------------------------------------
 
 
-def test_the_owner_list_is_canonical_uuids_and_empty_is_nobody() -> None:
-    assert parse_owners("", NAME) == frozenset()
-    assert parse_owners(f" {str(A).upper()} , {B}", NAME) == {A, B}
-    assert canonical(f"{B},{A}", NAME) == f"{A},{B}"
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
-        "*",
-        "all",
-        "everyone",
-        f"{A},{A}",
-        f"{{{A}}}",
-        f"urn:uuid:{A}",
-        A.hex,
-        f"{A},",
-        ",".join(str(UUID(int=i + 1)) for i in range(MAX_OWNERS + 1)),
-    ],
-)
-def test_no_value_means_everyone_and_a_refusal_never_echoes_it(value: str) -> None:
-    with pytest.raises(OwnerListRefused) as refused:
-        parse_owners(value, NAME)
-    assert value not in str(refused.value)
-    assert NAME in str(refused.value)
-
-
-def test_the_spotify_switch_and_owner_list_settings_are_gone(
+def test_the_spotify_switch_owner_list_and_source_settings_are_gone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """spotdown is the only analysis path: no switch, no allowlist (#1354). A set variable is
-    ignored (extra settings are not an error), never read."""
+    """spotdown is the only analysis path: no switch, no allowlist, no source list (#1354, #1355).
+    A set variable is ignored (extra settings are not an error), never read."""
     monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SPOTIFY", "allowlist")
     monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SPOTIFY_OWNERS", "*")  # would be refused if it were read
+    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SOURCES", "nonsense")  # likewise
+    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SHADOW", "true")
     settings = Settings()
-    assert not hasattr(settings, "spotdown_spotify")
-    assert not hasattr(settings, "spotdown_spotify_owners")
-
-
-def test_the_match_setting_is_only_the_deployments_sources() -> None:
-    assert song_match_config.MatchConfig().sources == frozenset()
-    assert not hasattr(song_match_config.MatchConfig(), "active_for")
-    song_match_config.configure(song_match_config.MatchConfig(frozenset({"youtube"})))
-    try:
-        assert song_match_config.current().sources == {"youtube"}
-    finally:
-        song_match_config.configure(None)
-    assert song_match_config.current().sources == frozenset()
+    for name in (
+        "spotdown_spotify",
+        "spotdown_spotify_owners",
+        "spotdown_sources",
+        "spotdown_shadow",
+    ):
+        assert not hasattr(settings, name)
 
 
 # --- the per-track use and reactions ------------------------------------------------------------

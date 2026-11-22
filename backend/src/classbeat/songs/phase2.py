@@ -35,7 +35,7 @@ It runs after the user's Approve (the same job, ``approved``) or for a **resume*
    approved ids in the approved order** (``playlist_mismatch`` otherwise, also when MOWL did not
    catch up in time: the user creates it again from the page). Then, for a song the list's
    ``spotdown_analysis`` record marks, spotdown's sections in place of MOWL's, stamped
-   ``approximate`` (``phase2_spotdown``; SD-P6, #1303); exactly today's music when it is off.
+   ``approximate`` (``phase2_spotdown``; SD-P6, #1303); always, there is no switch.
 6. ``design``: the ``design`` stage (ADR 0006 section 3) on that music, unchanged, within the
    song kinds' job ceiling (``CLASSBEAT_SONG_JOB_COST_MICROS``, across every stage and attempt).
 7. The final fenced transaction (``Complete``): both connections held again, the MOWL link still
@@ -278,7 +278,7 @@ async def final_music(
     p = await prepare(run, keyring, given, base_revision_id=base_revision_id)
     final = await build_playlist(run, keyring, p)
     step = await _music(run, keyring, given, p, final, config)
-    try:  # SD-P6 (#1303): spotdown's sections for the marked songs; else exactly today's
+    try:  # SD-P6 (#1303): spotdown's sections for the marked songs (always; no fallback)
         return p, final, await spotdown_music(run, p.stored, step)
     except BaseException:
         step.close()

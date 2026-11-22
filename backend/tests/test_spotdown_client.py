@@ -28,7 +28,6 @@ from spotdownfake import ENDS, SCOPE_A, SCOPE_B, SERVICE_KEY, FakeSpotdown, spot
 
 __all__ = ["spotdown"]  # the fixture
 
-ALL = frozenset({"upload", "youtube"})
 YT = "youtube:abcdefghijk"
 AUDIO = b"ID3" + bytes(range(256)) * 64
 
@@ -62,7 +61,7 @@ async def test_with_nothing_installed_every_call_is_not_configured_and_nothing_i
 
     monkeypatch.setattr(opener, "open_client", never)
     monkeypatch.setattr(opener, "open_upload_client", never)
-    client = SpotdownClient(ALL)
+    client = SpotdownClient()
     off = Unreachable("not_configured")
     key = idempotency_key("job", "1")
     assert await client.match((track("t1"),)) == off
@@ -75,27 +74,30 @@ async def test_with_nothing_installed_every_call_is_not_configured_and_nothing_i
     assert await client.delete_scope(SCOPE_A) == off
 
 
-@pytest.mark.parametrize("sources", [frozenset[str](), frozenset({"upload"})])
-async def test_youtube_calls_need_the_youtube_source(
-    spotdown: FakeSpotdown, sources: frozenset[str]
+async def test_there_is_no_source_setting_so_both_kinds_of_call_are_sent(
+    spotdown: FakeSpotdown,
 ) -> None:
-    client = SpotdownClient(sources)
+    client = SpotdownClient()
     key = idempotency_key("job", "1")
-    assert await client.match((track("t1"),)) == Unreachable("source_off")
-    started = await client.start_analysis(SCOPE_A, "t1", key, source_ref="youtube:abcdefghijk")
-    assert started == Unreachable("source_off")
-    assert await client.lookup_source("youtube:abcdefghijk") == Unreachable("source_off")
-    assert spotdown.seen == []
+    assert not isinstance(await client.match((track("t1"),)), Unreachable)
+    assert not isinstance(await client.upload(chunks(), SCOPE_A, key), Unreachable)
+    assert [(seen.method, seen.path) for seen in spotdown.seen] == [
+        ("POST", "/v2/match"),
+        ("PUT", "/v2/uploads"),
+    ]
 
 
-async def test_upload_calls_need_the_upload_source(spotdown: FakeSpotdown) -> None:
-    client = SpotdownClient(frozenset({"youtube"}))
+@pytest.mark.parametrize("ref", ["url:https://example.com/a.mp3", "url:abcdefghijk", "http://x"])
+async def test_the_url_source_cannot_be_requested(spotdown: FakeSpotdown, ref: str) -> None:
+    """spotdown's ``url`` source is never classbeat's (a MOWL temporary link never leaves it,
+    ADR 0040 section 10): every call that takes a source reference refuses it before anything is
+    sent, and no call has a parameter that could name another source."""
+    client = SpotdownClient()
     key = idempotency_key("job", "1")
-    assert await client.upload(chunks(), SCOPE_A, key) == Unreachable("source_off")
-    assert await client.start_analysis(SCOPE_A, "t1", key, upload_id="up_1") == Unreachable(
-        "source_off"
-    )
-    assert await client.lookup_content("0" * 64, SCOPE_A) == Unreachable("source_off")
+    with pytest.raises(RequestRefused):
+        await client.start_analysis(SCOPE_A, "t1", key, source_ref=ref)
+    with pytest.raises(RequestRefused):
+        await client.lookup_source(ref)
     assert spotdown.seen == []
 
 
@@ -112,7 +114,7 @@ async def test_match_maps_every_per_track_status(spotdown: FakeSpotdown) -> None
         track("t4", "Song [provider_error]"),
         track("t5", "Song [rate_limited]"),
     )
-    results = await SpotdownClient(ALL).match(tracks, SCOPE_A, idempotency_key("m", "1"))
+    results = await SpotdownClient().match(tracks, SCOPE_A, idempotency_key("m", "1"))
     assert isinstance(results, tuple)
     matched, *rest = results
     assert isinstance(matched, Matched)
@@ -139,7 +141,7 @@ async def test_a_match_answer_out_of_order_or_short_is_a_bad_answer(
 ) -> None:
     good = httpx.Response(200, json={"results": []})
     spotdown.inject["/v2/match"] = [good]
-    assert await SpotdownClient(ALL).match((track("t1"),)) == Unreachable("bad_answer")
+    assert await SpotdownClient().match((track("t1"),)) == Unreachable("bad_answer")
 
 
 @pytest.mark.parametrize(
@@ -157,7 +159,7 @@ async def test_a_bad_track_is_refused_before_anything_is_sent(
     spotdown: FakeSpotdown, bad: TrackQuery
 ) -> None:
     with pytest.raises(RequestRefused):
-        await SpotdownClient(ALL).match((bad,))
+        await SpotdownClient().match((bad,))
     assert spotdown.seen == []
 
 
@@ -165,7 +167,7 @@ async def test_a_bad_track_is_refused_before_anything_is_sent(
 
 
 async def test_upload_then_analyse_then_poll_to_done_then_read(spotdown: FakeSpotdown) -> None:
-    client = SpotdownClient(ALL)
+    client = SpotdownClient()
     uploaded = await client.upload(chunks(), SCOPE_A, idempotency_key("job", "up"))
     assert isinstance(uploaded, Uploaded)
     assert uploaded.size == len(AUDIO)
@@ -197,7 +199,7 @@ async def test_upload_then_analyse_then_poll_to_done_then_read(spotdown: FakeSpo
 
 @pytest.mark.parametrize("end", ENDS)
 async def test_every_job_outcome_is_typed(spotdown: FakeSpotdown, end: str) -> None:
-    client = SpotdownClient(ALL)
+    client = SpotdownClient()
     started = await client.start_analysis(
         SCOPE_A, f"track-{end}", idempotency_key("job", end), source_ref="youtube:abcdefghijk"
     )
@@ -223,7 +225,7 @@ async def test_every_job_outcome_is_typed(spotdown: FakeSpotdown, end: str) -> N
 
 async def test_a_cached_analysis_is_ready_at_once(spotdown: FakeSpotdown) -> None:
     analysis_id = spotdown.add_analysis(None, "youtube:cached00001")
-    client = SpotdownClient(ALL)
+    client = SpotdownClient()
     got = await client.start_analysis(
         SCOPE_B, "t1", idempotency_key("j", "1"), source_ref="youtube:cached00001"
     )
@@ -235,7 +237,7 @@ async def test_a_private_analysis_is_read_only_with_the_scope_that_holds_it(
     spotdown: FakeSpotdown,
 ) -> None:
     mine = spotdown.add_analysis(SCOPE_A, "sha256:" + "b" * 64)
-    client = SpotdownClient(ALL)
+    client = SpotdownClient()
     got = await client.get_analysis(mine, SCOPE_A)
     assert isinstance(got, dict)
     assert got["analysis_id"] == mine
@@ -250,7 +252,7 @@ async def test_a_private_analysis_is_read_only_with_the_scope_that_holds_it(
 
 async def test_a_global_analysis_is_read_with_or_without_a_scope(spotdown: FakeSpotdown) -> None:
     shared = spotdown.add_analysis(None, "youtube:shared00001")
-    client = SpotdownClient(ALL)
+    client = SpotdownClient()
     for scope in (None, SCOPE_A, SCOPE_B):
         got = await client.get_analysis(shared, scope)
         assert isinstance(got, dict)
@@ -262,7 +264,7 @@ async def test_a_bad_analysis_scope_never_reaches_the_query(
     spotdown: FakeSpotdown, scope: str
 ) -> None:
     with pytest.raises(RequestRefused):
-        await SpotdownClient(ALL).get_analysis("an_1", scope)
+        await SpotdownClient().get_analysis("an_1", scope)
     assert spotdown.seen == []
 
 
@@ -283,7 +285,7 @@ async def test_a_bad_analysis_scope_never_reaches_the_query(
 async def test_only_a_youtube_video_id_is_a_source_ref(
     spotdown: FakeSpotdown, source_ref: str
 ) -> None:
-    client = SpotdownClient(ALL)
+    client = SpotdownClient()
     with pytest.raises(RequestRefused):
         await client.start_analysis(SCOPE_A, "t1", idempotency_key("j", "s"), source_ref=source_ref)
     with pytest.raises(RequestRefused):
@@ -307,7 +309,7 @@ async def test_an_upload_analysis_without_its_scope_is_refused_before_anything_i
     spotdown: FakeSpotdown,
 ) -> None:
     with pytest.raises(RequestRefused):
-        await SpotdownClient(ALL).start_analysis(
+        await SpotdownClient().start_analysis(
             None, "t1", idempotency_key("j", "u"), upload_id="up_1"
         )
     assert spotdown.seen == []
@@ -316,7 +318,7 @@ async def test_an_upload_analysis_without_its_scope_is_refused_before_anything_i
 async def test_a_youtube_analysis_sends_its_scope_when_given_and_none_when_not(
     spotdown: FakeSpotdown,
 ) -> None:
-    client = SpotdownClient(ALL)
+    client = SpotdownClient()
     with_scope = await client.start_analysis(
         SCOPE_A, "t1", idempotency_key("j", "a"), source_ref=YT
     )
@@ -337,7 +339,7 @@ async def test_an_upload_and_a_sha256_lookup_never_leave_without_a_scope(
     async def audio() -> AsyncIterator[bytes]:
         yield b"x"
 
-    client, none = SpotdownClient(ALL), cast(str, None)
+    client, none = SpotdownClient(), cast(str, None)
     with pytest.raises(RequestRefused):
         await client.upload(audio(), none, idempotency_key("j", "u"))
     with pytest.raises(RequestRefused):
@@ -363,7 +365,7 @@ async def test_a_reference_duration_outside_the_contract_is_refused(
 ) -> None:
     reference = Reference("spotify", "4uLU6hMCjMI75M1A2tKUQC", duration)
     with pytest.raises(RequestRefused):
-        await SpotdownClient(ALL).start_analysis(
+        await SpotdownClient().start_analysis(
             SCOPE_A, "t1", idempotency_key("j", "r"), source_ref=YT, reference=reference
         )
     assert spotdown.seen == []
@@ -372,7 +374,7 @@ async def test_a_reference_duration_outside_the_contract_is_refused(
 async def test_the_same_idempotency_key_returns_the_first_answer_and_another_body_is_a_conflict(
     spotdown: FakeSpotdown,
 ) -> None:
-    client = SpotdownClient(ALL)
+    client = SpotdownClient()
     key = idempotency_key("job", "start")
     first = await client.start_analysis(SCOPE_A, "t1", key, source_ref="youtube:abcdefghijk")
     again = await client.start_analysis(SCOPE_A, "t1", key, source_ref="youtube:abcdefghijk")
@@ -384,7 +386,7 @@ async def test_the_same_idempotency_key_returns_the_first_answer_and_another_bod
 async def test_delete_scope_removes_the_scope_only(spotdown: FakeSpotdown) -> None:
     mine = spotdown.add_analysis(SCOPE_A, "sha256:" + "a" * 64)
     theirs = spotdown.add_analysis(SCOPE_B, "sha256:" + "a" * 64)
-    client = SpotdownClient(ALL)
+    client = SpotdownClient()
     assert await client.delete_scope(SCOPE_A) == Deleted()
     assert await client.delete_scope(SCOPE_A) == Deleted()  # idempotent
     assert await client.lookup_content("a" * 64, SCOPE_A) is None
@@ -432,29 +434,29 @@ async def test_a_poll_maps_every_http_failure(
     spotdown: FakeSpotdown, answer: httpx.Response, expected: object
 ) -> None:
     spotdown.inject["/v2/jobs/job_1"] = [answer]
-    assert await SpotdownClient(ALL).poll("job_1") == expected
+    assert await SpotdownClient().poll("job_1") == expected
 
 
 async def test_a_job_answer_for_another_job_is_a_bad_answer(spotdown: FakeSpotdown) -> None:
     view = {"schema_version": "job-v1", "job_id": "job_2", "status": "queued", "outcome": None}
     spotdown.inject["/v2/jobs/job_1"] = [httpx.Response(200, json=view)]
-    assert await SpotdownClient(ALL).poll("job_1") == Unreachable("bad_answer")
+    assert await SpotdownClient().poll("job_1") == Unreachable("bad_answer")
 
 
 async def test_an_analysis_with_another_id_is_a_bad_answer(spotdown: FakeSpotdown) -> None:
     real = spotdown.add_analysis(None, "youtube:xxxxxxxxxxx")
     spotdown.inject["/v2/analyses/an_wanted"] = [httpx.Response(200, json=spotdown.analysis(real))]
-    assert await SpotdownClient(ALL).get_analysis("an_wanted") == Unreachable("bad_answer")
+    assert await SpotdownClient().get_analysis("an_wanted") == Unreachable("bad_answer")
 
 
 async def test_a_connection_error_is_unreachable(spotdown: FakeSpotdown) -> None:
     spotdown.connect_error = True
-    assert await SpotdownClient(ALL).delete_scope(SCOPE_A) == Unreachable("connection")
+    assert await SpotdownClient().delete_scope(SCOPE_A) == Unreachable("connection")
 
 
 async def test_a_wrong_key_is_unauthorized(spotdown: FakeSpotdown) -> None:
     spotdown.key = "another-key-that-spotdown-expects-0123456789"
-    assert await SpotdownClient(ALL).lookup_source("youtube:abcdefghijk") == Unreachable(
+    assert await SpotdownClient().lookup_source("youtube:abcdefghijk") == Unreachable(
         "unauthorized"
     )
 
@@ -465,7 +467,7 @@ async def test_an_upload_over_the_cap_is_cut_off(
     from classbeat import egress_spotdown
 
     monkeypatch.setattr(egress_spotdown, "UPLOAD_MAX", len(AUDIO) - 1)
-    got = await SpotdownClient(ALL).upload(chunks(), SCOPE_A, idempotency_key("j", "u"))
+    got = await SpotdownClient().upload(chunks(), SCOPE_A, idempotency_key("j", "u"))
     assert got == Unreachable("too_large")
     assert spotdown.uploads == {}
 
@@ -476,7 +478,7 @@ async def test_an_upload_over_the_cap_is_cut_off(
 async def test_an_id_that_is_not_the_contracts_never_reaches_a_path(
     spotdown: FakeSpotdown, path_value: str
 ) -> None:
-    client = SpotdownClient(ALL)
+    client = SpotdownClient()
     with pytest.raises(RequestRefused):
         await client.poll(path_value)
     with pytest.raises(RequestRefused):
@@ -485,7 +487,7 @@ async def test_an_id_that_is_not_the_contracts_never_reaches_a_path(
 
 
 async def test_the_key_goes_only_into_the_authorization_header(spotdown: FakeSpotdown) -> None:
-    client = SpotdownClient(ALL)
+    client = SpotdownClient()
     await client.match((track("t1"),), SCOPE_A)
     await client.lookup_source("youtube:abcdefghijk", SCOPE_A)
     await client.upload(chunks(), SCOPE_A, idempotency_key("j", "u"))

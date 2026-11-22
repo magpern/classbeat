@@ -8,12 +8,10 @@ from trusted features (``feature_trust_policy``); an unknown fact the slot needs
 
 ``plan_round`` bounds the refinement: at most ``MAX_ROUNDS`` rounds, and in each at most a third
 of the list (rounded down) is replaced, the worst first, one track at a time (the spares first,
-the caller's concern); a list under three tracks gets no round. An ``unusable`` track that has a
-fallback (MOWL sections) falls back at once instead of using a replacement. After the last round
-every track that still does not fit is accepted with a warning, or falls back when its timing is
-``unusable``. **Falling back means today's path** for that track: its spotdown analysis is not
-used (MOWL sections for a Spotify class; for a studio track without them, the local studio or mix
-analysis, or the caller's replacement round). A ``Fit`` that ``check`` did not build (no reason,
+the caller's concern); a list under three tracks gets no round. After the last round every track
+that still does not fit is accepted with a warning, or is reported in ``fall_back`` when its timing
+is ``unusable`` (spotdown is the only analysis path: there is no other timing to fall back to, so
+the caller decides what ends the track). A ``Fit`` that ``check`` did not build (no reason,
 an unknown one) is ranked worst, never an exception.
 """
 
@@ -127,20 +125,14 @@ def _worst(fit: Fit) -> int:
     return min(ranks, default=-1)
 
 
-def plan_round(
-    fits: Sequence[Fit], rounds_done: int, has_fallback: frozenset[int] = frozenset()
-) -> Refinement:
+def plan_round(fits: Sequence[Fit], rounds_done: int) -> Refinement:
     """What the next round does; ``fits[i]`` is the check of the list's track ``i``."""
     unfit = [i for i, fit in enumerate(fits) if not fit.fits]
     unusable = {i for i in unfit if "timing_unusable" in fits[i].reasons}
-    fall_back = sorted(unusable & has_fallback)
-    rest = sorted(
-        (i for i in unfit if i not in fall_back),
-        key=lambda i: (_worst(fits[i]), i),
-    )
+    rest = sorted(unfit, key=lambda i: (_worst(fits[i]), i))
     cap = round_cap(len(fits))
     if rounds_done >= MAX_ROUNDS or cap == 0 or not rest:
         stays = [i for i in rest if i in unusable]
         warned = sorted(i for i in rest if i not in unusable)
-        return Refinement((), (), tuple(sorted(fall_back + stays)), tuple(warned), True)
-    return Refinement(tuple(rest[:cap]), tuple(rest[cap:]), tuple(fall_back), (), False)
+        return Refinement((), (), tuple(stays), tuple(warned), True)
+    return Refinement(tuple(rest[:cap]), tuple(rest[cap:]), (), (), False)

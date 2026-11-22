@@ -344,53 +344,37 @@ def test_the_mix_settings_are_gone_and_the_shared_config_is_not_usable_by_defaul
 # --- the worker's wiring --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("sources", "key", "refusal"),
-    [
-        ("upload", "k" * 40, None),
-        ("youtube", "k" * 40, "source_off"),
-        ("upload", None, "not_configured"),
-    ],
-)
+@pytest.mark.parametrize(("key", "refusal"), [("k" * 40, None), (None, "not_configured")])
 def test_the_worker_configures_the_one_config_from_its_settings(
-    monkeypatch: pytest.MonkeyPatch, sources: str, key: str | None, refusal: str | None
+    key: str | None, refusal: str | None
 ) -> None:
     from pydantic import SecretStr
 
     from classbeat import egress_spotdown
-    from classbeat.spotdown import shadow_config, song_match_config
     from classbeat.worker.__main__ import configure_spotdown
 
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SOURCES", sources)
     secret = None if key is None else SecretStr(key)
     settings = Settings(_env_file=None, app_secret_key=secret)  # type: ignore[call-arg]
     egress_spotdown.install_spotdown("http://spotdown-api:8000", SecretStr("k" * 32))
     try:
         configure_spotdown(settings)
         config = studio_tracks_config.current()
-        assert config.sources == frozenset({sources})
         assert (config.scope_key is not None) is (key is not None)
         assert config.refusal() == refusal
     finally:
         egress_spotdown.install_spotdown(None, None)
         studio_tracks_config.configure(None)
-        song_match_config.configure(None)
-        shadow_config.configure(None)
 
 
 def test_the_worker_logs_once_at_start_that_analysis_is_unavailable_and_no_value(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    from classbeat.spotdown import shadow_config, song_match_config
     from classbeat.worker.__main__ import configure_spotdown
 
-    monkeypatch.setenv("CLASSBEAT_SPOTDOWN_SOURCES", "upload")
     caplog.set_level("INFO")
     try:
         configure_spotdown(Settings(_env_file=None))  # type: ignore[call-arg]
     finally:
         studio_tracks_config.configure(None)
-        song_match_config.configure(None)
-        shadow_config.configure(None)
     lines = [r.getMessage() for r in caplog.records if "music analysis" in r.getMessage()]
     assert lines == ["music analysis is unavailable: spotdown is not installed in this worker"]

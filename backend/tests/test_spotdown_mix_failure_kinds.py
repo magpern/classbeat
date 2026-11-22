@@ -25,7 +25,7 @@ __all__ = ["env", "operator_log", "spotdown", "work", "xenv"]  # the fixtures
 
 pytestmark = pytest.mark.usefixtures("mowl_api", "analysis_slot_by_default")
 KEY = bytes(range(32))
-UPLOAD_ON = TracksConfig(frozenset({"upload"}), KEY)
+UPLOAD_ON = TracksConfig(KEY)
 
 
 @pytest.fixture(autouse=True)
@@ -64,8 +64,6 @@ async def test_each_failure_kind_ends_the_mix_in_its_category(
     )
     if config == "not_configured":
         studio_tracks_config.configure(None)
-    elif config == "source_off":
-        studio_tracks_config.configure(TracksConfig(frozenset(), KEY))
     owner, connection = await on_mix(harness, mowl_api)
     with caplog.at_level(logging.WARNING):
         row = await harness.run(owner, connection, add_beats(mowl_api, NAME))
