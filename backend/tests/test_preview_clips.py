@@ -25,7 +25,7 @@ import pytest
 from classbeat.design import revision
 from classbeat.design.revision import StudioRevisionMusic
 from classbeat.preview import session_policy
-from previewtools import (
+from cliptools import (
     get_clip,
     new_session,
     rendered,

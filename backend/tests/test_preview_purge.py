@@ -13,12 +13,12 @@ from classbeat import connections
 from classbeat.account import erase
 from classbeat.auth.purge import purge_expired
 from classbeat.preview import purge, storage
-from ctx import make_context
-from previewtools import (
+from cliptools import (
     new_session,
     rendered,
     volume_fixture,  # noqa: F401 - the ``volume`` fixture
 )
+from ctx import make_context
 from studiooutputs import renders_fixture  # noqa: F401 - the ``renders`` fixture
 from studiotools import StudioEnv, StudioRider, pick_script
 from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage]

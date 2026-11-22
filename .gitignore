@@ -20,7 +20,7 @@ dist/
 build/
 
 # Node
-node_modules/
+node_modules
 frontend/dist/
 playwright-report/
 test-results/

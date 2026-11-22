@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
+import { expect, type APIResponse, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import { PLAYLISTS, connectMowl, getJob } from './design-helpers'
 import { withSpotify } from './spotify-helpers'
 import { PASSWORD, nextTotp, passCaptcha, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
@@ -44,14 +44,30 @@ export async function mowlConnectionId(page: Page): Promise<string> {
 
 let titles = 0
 
+/**
+ * An idempotent read from this context, sent once more when the connection was reset before any
+ * answer: the context reuses a kept-alive connection, and after an idle wait longer than the
+ * server's keep-alive (uvicorn's 5 s) the server can close it just as the next request goes out
+ * (`socket hang up`, ECONNRESET). Only a GET is resent, and only on that error; any answer, and
+ * every POST, is the test's as before.
+ */
+async function getOnce(context: BrowserContext, path: string): Promise<APIResponse> {
+  try {
+    return await context.request.get(path)
+  } catch (error) {
+    if (!String(error).includes('ECONNRESET')) throw error
+    return await context.request.get(path)
+  }
+}
+
 /** `POST /api/jobs` for a design, as the new-class form sends it, from this context's session. */
 export async function createDesign(
   context: BrowserContext,
   connectionId: string,
   playlist: { id: string } = PLAYLISTS.draft,
 ): Promise<Answer> {
-  const session = (await (await context.request.get('/api/auth/session')).json()) as { csrf_token: string }
-  const origin = new URL((await context.request.get('/api/ready')).url()).origin
+  const session = (await (await getOnce(context, '/api/auth/session')).json()) as { csrf_token: string }
+  const origin = new URL((await getOnce(context, '/api/ready')).url()).origin
   titles += 1
   const answer = await context.request.post('/api/jobs', {
     headers: {

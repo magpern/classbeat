@@ -24,6 +24,7 @@ NO_FIRST_BRIEF: Final = (
     "refit_draft",
     "revise_songs",
     "studio_revise",  # SR C5: a studio draft exists before it can run
+    "apply_mix_choices",  # ADR 0036 amendment B (#1369): applies choices to a stored draft
     "save_workout",
     "update_workout",
     "swedebeat_match",

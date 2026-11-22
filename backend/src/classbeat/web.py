@@ -39,15 +39,11 @@ from classbeat.classes.handoff_routes import router as handoff_router
 from classbeat.classes.history import router as history_router
 from classbeat.classes.interpretation_routes import router as interpretation_router
 from classbeat.classes.pending_routes import router as pending_router
-from classbeat.classes.preview_routes import install as install_preview
+from classbeat.classes.preview_spotify_routes import router as preview_spotify_router
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.classes.song_fill_routes import router as song_fill_router
-from classbeat.classes.studio_design_routes import router as studio_design_router
-from classbeat.classes.studio_output_actions_routes import router as studio_output_actions_router
-from classbeat.classes.studio_outputs_routes import router as studio_outputs_router
-from classbeat.classes.studio_songs_routes import router as studio_songs_router
-from classbeat.classes.studio_sync_routes import router as studio_sync_router
+from classbeat.classes.studio_routers import install as install_studio
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.mowl_qr import QrWaits
 from classbeat.connections.mowl_qr_routes import router as mowl_qr_router
@@ -78,13 +74,14 @@ from classbeat.spa_routes import add_single_page_app
 from classbeat.spotdown.scope_key import scope_key
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
-from classbeat.swedebeat_studio import config as studio_config
 from classbeat.swedebeat_studio import (  # noqa: F401 - each registers its kind on import
+    apply_kind,  # apply_mix_choices (ADR 0036 amendment B, #1369)
     design_kind,  # studio_design (SR C5)
     outputs_kind,  # produce_outputs (SR C7)
     revise_kind,  # studio_revise (SR C5)
     sync_kind,  # spotify_sync (SR C8)
 )
+from classbeat.swedebeat_studio import config as studio_config
 from classbeat.swedebeat_studio import kind as studio_kind  # noqa: F401 - registers studio_songs
 from classbeat.usage.routes import router as usage_router
 
@@ -268,16 +265,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(history_router)
     app.include_router(duplicate_router)
     app.include_router(handoff_router)
-    app.include_router(studio_songs_router)
-    app.include_router(studio_design_router)
-    app.include_router(studio_outputs_router)  # SR C6a: timeline and output choice
-    app.include_router(studio_output_actions_router)  # SR C7: output states and their actions
-    app.include_router(studio_sync_router)  # SR C8: Spotify sync state and Sync again
-    install_preview(app, settings)  # ADR 0042 section 6.5: the audition's sessions and clips
+    install_studio(app, settings)  # its stages and the audition (#1394)
     app.include_router(interpretation_router)
     app.include_router(pending_router)  # ADR 0038 section 8: pending chat messages
     app.include_router(beat_one_router)  # split out of the classes router
     app.include_router(song_fill_router)  # ADR 0038 section 5: songs into the sketch
+    app.include_router(preview_spotify_router)  # ADR 0042 section 7.2: the Spotify audition
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():
