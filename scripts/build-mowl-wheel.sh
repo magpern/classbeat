@@ -36,8 +36,8 @@ REPO=magpern/mowl-workouts
 TAG=v0.13.0
 COMMIT=58408fd7c54823aedb1c33d207b99894af1f65f4
 WHEEL=mowl_workouts-0.13.0-py3-none-any.whl
-RELEASE_SIZE="" # pin from the v0.13.0 release asset
-RELEASE_SHA256="" # pin from the v0.13.0 release asset
+RELEASE_SIZE="83815" # pin from the v0.13.0 release asset
+RELEASE_SHA256="4f3288ae9556056eb1cd2ee35c102caf3221569a3d6375ea922f003eb8496989" # pin from the v0.13.0 release asset
 KEY_FILE=mowl/_swedebeat_app.json
 
 PYTHON="$(command -v python3 || command -v python || true)"
