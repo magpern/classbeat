@@ -9,6 +9,7 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from classbeat.design.revision import studio_hash
 from classbeat.studio import mix_hint_policy
@@ -38,7 +39,7 @@ def pin(requested: float, mode: str = "bar", confirmed: float | None = None) -> 
     return out
 
 
-def piece(reference: str, start: float, end: float, **pins: dict[str, Any]) -> dict[str, Any]:
+def piece(reference: str, start: float, end: float, **pins: Any) -> dict[str, Any]:
     return {"reference": reference, "start_sec": start, "end_sec": end, **pins}
 
 
@@ -253,7 +254,12 @@ def test_the_pin_table(
     assert ("off_beat_cut" in codes) == ((mode == "exact" or confirmed is not None) and off_grid)
     if moved:
         (hint,) = [h for h in hints if h.code == "pin_moved"]
-        assert hint.as_json() == {"code": "pin_moved", "pieces": [0], "edge": "end", "moved_sec": 0.12}
+        assert hint.as_json() == {
+            "code": "pin_moved",
+            "pieces": [0],
+            "edge": "end",
+            "moved_sec": 0.12,
+        }
         assert "+0.12 s" in hint.text()
 
 
@@ -281,7 +287,7 @@ def test_the_pins_hints_name_pieces_never_references() -> None:
     ],
 )
 def test_the_stored_shape_refuses_a_pin_that_does_not_read(bad: dict[str, Any]) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         MixSpec.model_validate(first_a(bad, end=96.0))
 
 
