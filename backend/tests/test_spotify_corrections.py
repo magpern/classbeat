@@ -23,8 +23,8 @@ from previewtools import TRACKS, Preview, class_with_draft, make_current, new_cl
 from spotifytools import Spot
 from test_classes_schema import insert
 
-pytestmark = pytest.mark.usefixtures("frozen_rate_windows")
-
+# The correction routes have no rate limit by design (like the beat-one routes): no test here
+# counts a 429, so no window is pinned (test_rate_window_guard asks for a pin only on a 429).
 SHAS = ("a1" * 32, "b2" * 32, "c3" * 32)
 BASE = "/api/classes/{}/preview/spotify"
 
