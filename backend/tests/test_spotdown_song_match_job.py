@@ -217,6 +217,28 @@ async def test_a_short_pool_gets_a_replacement_round_with_the_swap_recorded(
     assert len(revision.provenance["agent_run_ids"]) == 3  # pool, the round, choose
 
 
+async def test_a_replacement_round_never_adds_a_song_that_is_excluded(
+    songenv: SongEnv, spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``match_pool(exclude=)`` (a composer swap's songs taken out): the round's candidate set
+    is filtered, so the excluded song is never matched, never a swap, never in the list."""
+    real = pick_match.match_pool
+
+    async def excluding(*args: Any) -> Any:
+        return await real(*args, exclude=frozenset({song_id(14)}))
+
+    monkeypatch.setattr(pick, "match_pool", excluding)
+    tag(songenv, "not_found", 4, 5)
+    rider = await songenv.rider()
+    eligible = [n for n in POOL if n not in (4, 5)] + list(range(15, 20))
+    songs = [(15, "climb") if n == 4 else (n, role) for n, role in LIST]
+    songenv.script = script(*pool_turns(), *round_turns(), *chosen(eligible, songs))
+    _, revision = await listed(songenv, rider)
+    assert song_id(14) not in ids(revision)
+    first, second = matches(spotdown)
+    assert (len(first["tracks"]), len(second["tracks"])) == (14, 5)  # song 14 is not matched
+
+
 async def test_at_most_three_rounds_then_analysis_failed_for_a_short_list(
     songenv: SongEnv, spotdown: FakeSpotdown
 ) -> None:
