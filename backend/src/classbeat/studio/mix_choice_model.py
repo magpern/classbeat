@@ -6,7 +6,7 @@ B2 to B4, #1367). Pure: no I/O.
 ``dj_mix`` false the choices are the **whole-songs form**: ``blend`` and ``trim`` false and the
 three sets empty, else ``invalid_input``. A set is stored sorted and never holds a position twice;
 ``canonical`` is its one JSON form (keys sorted, no space, no unknown field). Whether a position is
-on the list is checked against the list (``positions_refusal``).
+on the list is checked against the list (``positions_refusal``; both at once: ``on_list``).
 
 ``Proposal`` is what ``mix_choice_policy.applied`` derives from: the approved list's references by
 position (``None`` for a gap), the proposal draft's stored, checked mix spec and the list's
@@ -103,6 +103,14 @@ def positions_refusal(choices: MixChoices, count: int) -> None:
     for found in (choices.keep_whole, choices.hard_cut_in, choices.hard_cut_out):
         if any(p >= count for p in found):
             raise MixChoiceRefused(INVALID_INPUT, "a chosen position is not on the list")
+
+
+def on_list(raw: object, count: int) -> MixChoices:
+    """``raw`` read (``parsed``) and checked against a list of ``count`` songs
+    (``positions_refusal``): a re-plan's choices (#1372), else ``invalid_input``."""
+    choices = parsed(raw)
+    positions_refusal(choices, count)
+    return choices
 
 
 @dataclass(frozen=True, slots=True)

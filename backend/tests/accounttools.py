@@ -234,6 +234,27 @@ class Person:
             c=class_id,
             rev=self.found.list_rev,
         )
+        # ADR 0042 section 6.5 (#1394): a listening session, a cached track and a clip.
+        self.sql(
+            "INSERT INTO preview_sessions (owner_id, class_id, expires_at) "
+            "VALUES (:u, :c, now() + interval '10 minutes')",
+            u=u,
+            c=class_id,
+        )
+        self.sql(
+            "INSERT INTO preview_sources (owner_id, class_id, reference, sha256, bytes) "
+            "VALUES (:u, :c, 'trk_1', :h, 10)",
+            u=u,
+            c=class_id,
+            h=bytes(32),
+        )
+        self.sql(
+            "INSERT INTO preview_clips (owner_id, class_id, key, start_ms, end_ms, sha256, bytes) "
+            "VALUES (:u, :c, :h, 0, 60000, :h, 10)",
+            u=u,
+            c=class_id,
+            h=bytes(32),
+        )
         code_id = self.sql(
             "INSERT INTO redeem_codes (code_hash, label, plan_id, grant_days, max_redemptions, "
             "expires_at) VALUES (:hash, 'gdpr', 'instructor', 30, 5, now() + interval '30 days') "

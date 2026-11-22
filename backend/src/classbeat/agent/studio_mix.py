@@ -16,7 +16,8 @@ Pure: no I/O, no reference.
   compose_map``: the map ``fit_to_music`` reads, with ``crossfade`` 0 because the crossfades are
   already in it (as a mix's map). The plan comes back snapped, by index, with the soft checks
   of ``mix_hint_policy`` and ``mix_transition_policy`` (``hints``: piece positions and numbers
-  only; #1330's tempo and downbeat-lock hints), which the answer adds to its warnings.
+  only; #1330's tempo and downbeat-lock hints; #1372's ``cut_on_inexact_track``), which the
+  answer adds to its warnings.
 - ``compose_spec``: the same from a spec by the stage's keys (``KEY``), for the backend's own
   derived specs, which may carry cut pins (ADR 0042 section 5, #1390; the model's plan never
   does), with the pins' soft checks (``mix_hint_policy.pin_hints``).
@@ -161,6 +162,7 @@ def compose_spec(tracks: Sequence[StudioTrack], spec: Mapping[str, Any]) -> Comp
     }
     windows = [(cs(t["end_sec"]) - cs(t["start_sec"])) / CS for t in good["tracks"]]  # exact cs
     found = mix_hint_policy.hints(good, {k: f.length for k, f in facts.items()})
+    found += mix_hint_policy.inexact_cuts(good, facts)  # B5: a cut the user's mix undoes
     joins = mix_transition_policy.hints(good, facts)  # #1330: tempo and downbeat lock
     pinned = mix_hint_policy.pin_hints(good, facts)  # #1390: none without a pin
     hints = (

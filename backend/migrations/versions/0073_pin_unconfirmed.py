@@ -1,7 +1,7 @@
 """The pin_unconfirmed job category (ADR 0042 section 5; #1390)
 
-Revision ID: 0072_pin_unconfirmed
-Revises: 0071_mix_not_applied
+Revision ID: 0073_pin_unconfirmed
+Revises: 0072_preview_clips
 Create Date: 2026-11-22
 
 ``jobs.error_category`` gains ``pin_unconfirmed``: ``produce_outputs`` refuses again, when the job
@@ -18,8 +18,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0072_pin_unconfirmed"
-down_revision: str | Sequence[str] | None = "0071_mix_not_applied"
+revision: str = "0073_pin_unconfirmed"
+down_revision: str | Sequence[str] | None = "0072_preview_clips"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -28,7 +28,7 @@ def _quoted(names: str) -> str:
     return ", ".join(f"'{name}'" for name in names.split())
 
 
-# The jobs check of migration 0071 (the last one to change it).
+# The jobs check of migration 0071 (the last one to change it; 0072 leaves it as it is).
 OLD_JOB_CATEGORIES = _quoted(
     "upstream_unavailable rate_limited model_unavailable lease_lost operation_busy not_connected "
     "needs_reconnect key_unavailable decrypt_failed invalid_input account_disabled model_refused "

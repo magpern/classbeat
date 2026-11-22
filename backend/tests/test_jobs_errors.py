@@ -27,8 +27,8 @@ from classbeat.jobs.sentences import job_sentence
 
 def migration_categories() -> set[str]:
     versions = Path(__file__).resolve().parent.parent / "migrations" / "versions"
-    path = versions / "0072_pin_unconfirmed.py"
-    spec = importlib.util.spec_from_file_location("migration_0072", path)
+    path = versions / "0073_pin_unconfirmed.py"
+    spec = importlib.util.spec_from_file_location("migration_0073", path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -147,6 +147,7 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     # design_draft (D1), revise_draft (R1), refit_draft (BC3), interpret_request (MA1b-3)
     import classbeat.design
     import classbeat.player_send  # send_to_player and player_remove (ADR 0034 section 5)
+    import classbeat.preview.render_kind  # preview_render (ADR 0042 section 6.5, #1394)
     import classbeat.saving
     import classbeat.songs  # design_with_songs (SJ1) and revise_songs (SJ3)
     import classbeat.swedebeat_handoff  # swedebeat_verify_mix (B2)
@@ -170,6 +171,7 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     assert classbeat.swedebeat_studio.outputs_kind.PRODUCE_OUTPUTS
     assert classbeat.swedebeat_studio.revise_kind.STUDIO_REVISE
     assert classbeat.swedebeat_studio.sync_kind.SPOTIFY_SYNC
+    assert classbeat.preview.render_kind.PREVIEW_RENDER
     from classbeat.jobs import KINDS
 
     assert KINDS.names() == [
@@ -178,6 +180,7 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
         "design_with_songs",
         "interpret_request",  # ADR 0029 section 5 (MA1b-3)
         "player_remove",  # ADR 0034 section 5 (PC-5): only the class delete creates one
+        "preview_render",  # ADR 0042 section 6.5 (#1394): only the clip endpoint creates one
         "produce_outputs",  # ADR 0036 section 6 (SR C6a): a stub that writes nothing; C7 runs it
         "refit_draft",  # ADR 0007 amendment "beat-one corrections" (BC3)
         "revise_draft",

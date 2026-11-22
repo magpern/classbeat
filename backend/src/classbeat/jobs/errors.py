@@ -116,7 +116,7 @@ CATEGORIES: Final = (
     # job runs; nothing is written. Not retried.
     "mix_not_chosen",
     "mix_not_applied",
-    # ADR 0042 section 5 (migration 0072, #1390): an output chosen while a confirmed cut pin's
+    # ADR 0042 section 5 (migration 0073, #1390): an output chosen while a confirmed cut pin's
     # music changed and it is not re-confirmed or cleared, refused again when the job runs;
     # nothing is written. Not retried.
     "pin_unconfirmed",

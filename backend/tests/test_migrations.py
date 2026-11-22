@@ -35,7 +35,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0072_pin_unconfirmed"]
+    assert script.get_heads() == ["0073_pin_unconfirmed"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -56,7 +56,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0072_pin_unconfirmed"]
+        assert applied_revisions(database_url) == ["0073_pin_unconfirmed"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -195,6 +195,10 @@ JOBS = [
     "studio_output_starts",
     # ADR 0036 section 9 (0056_spotify_syncs, SR C8).
     "spotify_syncs",
+    # ADR 0042 section 6.5 (0072_preview_clips, #1394).
+    "preview_sessions",
+    "preview_sources",
+    "preview_clips",
     # Issue #525 (0028_user_preferences).
     "user_preferences",
     # ADR 0007 amendment "beat-one corrections" (0029).
@@ -1135,7 +1139,7 @@ def test_0071_admits_the_mix_categories_and_the_downgrade_turns_them_into_intern
         command.downgrade(config, "base")
 
 
-def test_0072_admits_pin_unconfirmed_and_the_downgrade_turns_it_into_internal(
+def test_0073_admits_pin_unconfirmed_and_the_downgrade_turns_it_into_internal(
     owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """#1390: ``jobs.error_category`` takes ``pin_unconfirmed`` at head and refuses it after the
@@ -1162,11 +1166,11 @@ def test_0072_admits_pin_unconfirmed_and_the_downgrade_turns_it_into_internal(
         command.upgrade(config, "head")
         stored = failed_job("pin_unconfirmed")
         assert category_of(stored) == "pin_unconfirmed"
-        command.downgrade(config, "0071_mix_not_applied")
+        command.downgrade(config, "0072_preview_clips")
         assert category_of(stored) == "internal"
         with pytest.raises(IntegrityError, match="jobs_error_category"):
             failed_job("pin_unconfirmed")
-        assert failed_job("mix_not_applied") is not None  # the check before 0072 is back
+        assert failed_job("mix_not_applied") is not None  # the check before 0073 is back
         command.upgrade(config, "head")
         assert failed_job("pin_unconfirmed") is not None
     finally:

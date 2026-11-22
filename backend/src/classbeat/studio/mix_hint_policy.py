@@ -16,6 +16,12 @@ names **piece indexes** (positions in the mix), never a reference.
 Hints come in mix order of their first piece, ``whole_track_repeated`` before ``one_song_dominates``
 for the same reference.
 
+``inexact_cuts`` (ADR 0036 amendment B5, #1372) is the stage's soft hint ``cut_on_inexact_track``:
+the pieces of a track whose stored timing is not ``exact`` (``approximate``, ``unusable`` or no
+decision) that do not play it whole (``[0, length]`` in whole hundredths, as
+``mix_choice_policy.is_plain`` reads whole). Never a refusal: ``mix_choice_policy.applied`` keeps
+such a track whole whatever the proposal says.
+
 ``pin_hints`` are the cut pins' soft checks (ADR 0042 section 5, #1390), each naming one piece and
 its ``edge``, in mix order, start before end:
 
@@ -37,6 +43,7 @@ from classbeat.studio.mix_plan_policy import CS, cs
 
 WHOLE_TRACK_REPEATED: Final = "whole_track_repeated"
 ONE_SONG_DOMINATES: Final = "one_song_dominates"
+CUT_ON_INEXACT_TRACK: Final = "cut_on_inexact_track"
 OFF_BEAT_CUT: Final = "off_beat_cut"
 PIN_MOVED: Final = "pin_moved"
 
@@ -62,6 +69,12 @@ class Hint:
             return (
                 f"{WHOLE_TRACK_REPEATED}: pieces {named} each play the whole of one track. Repeat "
                 "only part of a song unless the instructor asked for the whole track again."
+            )
+        if self.code == CUT_ON_INEXACT_TRACK:
+            return (
+                f"{CUT_ON_INEXACT_TRACK}: pieces {named} cut a track whose timing is not exact. "
+                "Such a track plays once, whole (start_sec 0, end_sec its length): the "
+                "instructor's mix keeps it whole whatever the cut."
             )
         return (
             f"{ONE_SONG_DOMINATES}: pieces {named} are one track and fill more than half of the "
@@ -121,6 +134,18 @@ def pin_hints(
         if old is not None and cs(old) != cs(cut):
             out.append(Hint(PIN_MOVED, (n,), edge, (cs(cut) - cs(old)) / CS))
     return out
+
+
+def inexact_cuts(spec: Mapping[str, Any], facts: Mapping[str, TrackFacts]) -> list[Hint]:
+    """``cut_on_inexact_track`` on a checked spec (see the module docstring); ``facts`` by
+    reference. At most one hint, naming every such piece in mix order."""
+    cut = tuple(
+        n
+        for n, t in enumerate(spec["tracks"])
+        if (found := facts[t["reference"]]).timing_class != "exact"
+        and (cs(t["start_sec"]) != 0 or cs(t["end_sec"]) != cs(found.length))
+    )
+    return [Hint(CUT_ON_INEXACT_TRACK, cut)] if cut else []
 
 
 def texts(found: Sequence[Hint]) -> list[str]:

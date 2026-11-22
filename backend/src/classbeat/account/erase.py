@@ -40,6 +40,7 @@ from classbeat.emails.notices import read_prefs
 from classbeat.jobs import credits, user
 from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.issuer import owner_context
+from classbeat.preview import storage as preview_storage
 from classbeat.spotdown import scope_outbox
 
 Factory = async_sessionmaker[AsyncSession]
@@ -149,7 +150,9 @@ async def delete_row(factory: Factory, ctx: UserContext, scope_key: bytes | None
             await auth.record_event(db, "account_deleted")
             if scope_key is not None:  # ADR 0040 section 7: committed with the delete
                 await scope_outbox.record(db, scope_key, ctx.user_id)
-        return deleted
+    if deleted:  # ADR 0042 section 6.5: the audition's files, once the delete committed
+        preview_storage.remove_owner(preview_storage.current(), ctx.user_id)
+    return deleted
 
 
 async def _running(factory: Factory, ctx: UserContext) -> int:

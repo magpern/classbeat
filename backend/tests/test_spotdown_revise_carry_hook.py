@@ -2,15 +2,16 @@
 network (a stand-in run and fenced session; stage D's ``World`` on the fake spotdown for the music).
 Nothing here is swallowed: there is no fallback to MOWL's sections.
 
-- ``design.spotdown_base.base_sections``: a base on a song list with no field is
-  ``music_changed`` (#1386), a mix base is ``None`` and reads nothing, a ``design_draft`` base
-  (no list) is ``None``, a row or a field that does not parse is ``internal``, an error of any
-  type in each call (the fence, the query, its result) propagates;
+- ``design.spotdown_base.base_sections``: a Spotify base with no field is ``music_changed``
+  (#1386; a ``design_draft`` base with no list too, #1407), a mix base is ``None`` and reads
+  nothing, a row or a field that does not parse is ``internal``, an error of any type in each call
+  (the fence, the query, its result) propagates;
 - ``songs.spotdown_carry.carried_music``: the list gone, other music than the list's, or a base that
   had only some tracks on spotdown is ``music_changed``; every track of the list is read again;
   what ``spotdown_music`` ends in passes; an error of any type in each call propagates;
-- ``design.kind_music_step.music_step``: closes the step when the carry raises; never carries on a
-  mix;
+- ``design.kind_music_step.music_step``: closes the step when the carry or the design's stages
+  raise; a playlist with no carry runs the design's stages A, B and D (#1407), never MOWL's
+  sections; never carries on a mix;
 - ``songs.pick_analyse.kept_timing``: an error of any type in each call propagates.
 """
 
@@ -30,7 +31,7 @@ from classbeat.design.music import MusicStep
 from classbeat.design.music_choice import SpotifyMusicChoice, SwedebeatMusicChoice
 from classbeat.design.revision_spotdown_model import SpotdownSections
 from classbeat.jobs import JobFailure
-from classbeat.songs import pick_analyse, spotdown_carry
+from classbeat.songs import draft_spotdown, pick_analyse, spotdown_carry
 from classbeat.songs.seed import Seeded
 from classbeat.spotdown import song_match_config
 from spotdownfake import FakeSpotdown, spotdown
@@ -122,10 +123,21 @@ async def test_a_base_on_a_song_list_without_the_field_is_music_changed(spotdown
     assert raised.value.category == "music_changed"
 
 
-async def test_a_design_draft_base_with_no_song_list_is_none() -> None:
-    """A ``design_draft`` on the user's MOWL playlist has no list (outside #1386)."""
+async def test_a_design_draft_base_with_no_song_list_and_no_field_is_music_changed() -> None:
+    """#1407: a base on the user's MOWL playlist without the field was designed on MOWL's
+    sections; it is ``music_changed``, never "today's music"."""
     music = {"source": "mowl_spotify_playlist", "link_id": "x", "fingerprint": "f"}
-    assert await spotdown_base.base_sections(Run(music), LIST, mix=False) is None  # pyright: ignore[reportArgumentType]
+    with pytest.raises(JobFailure) as raised:
+        await spotdown_base.base_sections(Run(music), LIST, mix=False)  # pyright: ignore[reportArgumentType]
+    assert raised.value.category == "music_changed"
+
+
+@pytest.mark.usefixtures("on")
+async def test_a_design_draft_base_with_its_own_record_is_read() -> None:
+    record = {"spotdown_analysis": {"songs": []}}
+    music = {"source": "mowl_spotify_playlist", "spotdown": {"tracks": [0, 1], "record": record}}
+    got = await spotdown_base.base_sections(Run(music), LIST, mix=False)  # pyright: ignore[reportArgumentType]
+    assert got == SpotdownSections(record=record, tracks=[0, 1])
 
 
 @pytest.mark.parametrize("value", [None, "x", 3, [MUSIC]])
@@ -272,6 +284,54 @@ async def test_what_spotdown_music_ends_in_passes(carry: Carry, status: int, cat
     assert carry.world.is_today(carry.world.step())
 
 
+# --- carried_music: a playlist design's own record (#1407) -------------------------------------
+
+
+async def own(carry: Carry, tracks: list[int], fingerprint: str | None = "fp") -> MusicStep:
+    sections = SpotdownSections(record=dict(carry.world.stored.provenance), tracks=tracks)
+    step = carry.world.step()  # its fingerprint is "fp"
+    return await spotdown_carry.carried_music(Run(), step, sections, fingerprint)  # pyright: ignore[reportArgumentType]
+
+
+async def test_a_record_carry_reads_every_track_again_and_loads_no_list(carry: Carry) -> None:
+    step = await own(carry, ALL)
+    assert tt.classes(step.data.analysis["map"]) == dict.fromkeys(ALL, "approximate")
+    ids = carry.world.ids
+    assert [s.path for s in carry.world.reads()] == [f"/v2/analyses/{ids[n]}" for n in ALL]
+    assert carry.loaded == []  # no song list is read
+
+
+@pytest.mark.parametrize(("tracks", "fingerprint"), [(ALL, "other"), ([0, 2], "fp")])
+async def test_a_record_carry_on_other_music_or_some_tracks_is_music_changed(
+    carry: Carry, tracks: list[int], fingerprint: str
+) -> None:
+    with pytest.raises(JobFailure) as raised:
+        await own(carry, tracks, fingerprint)
+    assert raised.value.category == "music_changed"
+    assert carry.world.reads() == []
+
+
+async def test_a_record_carry_without_the_bases_fingerprint_is_internal(carry: Carry) -> None:
+    with pytest.raises(JobFailure) as raised:
+        await own(carry, ALL, None)
+    assert raised.value.category == "internal"
+    assert carry.world.reads() == []
+
+
+@pytest.mark.parametrize(
+    ("status", "category"), [(503, "analysis_unavailable"), (404, "analysis_failed")]
+)
+async def test_what_a_record_carry_reads_ends_in_passes(
+    carry: Carry, status: int, category: str
+) -> None:
+    import httpx
+
+    carry.world.fake.inject[f"/v2/analyses/{carry.world.ids[2]}"] = [httpx.Response(status)]
+    with pytest.raises(JobFailure) as raised:
+        await own(carry, ALL)
+    assert raised.value.category == category
+
+
 def _carry_targets(
     monkeypatch: pytest.MonkeyPatch, run: Run
 ) -> dict[str, Callable[[BaseException | type[BaseException]], None]]:
@@ -319,6 +379,7 @@ def _opened_step() -> MusicStep:
 
 
 SECTIONS = SpotdownSections(song_list_id=LIST, tracks=[0])
+OWN = SpotdownSections(record={"spotdown_analysis": {"songs": []}}, tracks=[0])
 PLAYLIST = SpotifyMusicChoice(source="mowl_spotify_playlist", spotify_playlist_id="a" * 22)
 
 
@@ -347,9 +408,13 @@ async def test_music_step_carries_a_playlist_before_the_corrections(
     async def load(*_a: Any, **_k: Any) -> MusicStep:
         return step
 
-    async def carried(_run: Any, s: MusicStep, sections: Any) -> MusicStep:
-        order.append(("carry", sections))
+    async def carried(_run: Any, s: MusicStep, sections: Any, fingerprint: Any) -> MusicStep:
+        order.append(("carry", sections, fingerprint))
         return s
+
+    async def drafted(_run: Any, s: MusicStep) -> tuple[MusicStep, Any]:
+        order.append(("design", None, None))
+        return s, OWN
 
     async def attach(_run: Any, s: MusicStep) -> MusicStep:
         order.append(("corrections", None))
@@ -357,14 +422,77 @@ async def test_music_step_carries_a_playlist_before_the_corrections(
 
     monkeypatch.setattr(kind_music_step, "load_music", load)
     monkeypatch.setattr(spotdown_carry, "carried_music", carried)
+    monkeypatch.setattr(draft_spotdown, "drafted_music", drafted)
     monkeypatch.setattr(corrections, "attach", attach)
     runtime = SimpleNamespace(keyring=None)
-    out = await kind_music_step.music_step(None, runtime, PLAYLIST, uuid4(), None, SECTIONS)  # pyright: ignore[reportArgumentType]
-    assert out is step
-    assert order == [("carry", SECTIONS), ("corrections", None)]
+    out = await kind_music_step.music_step(None, runtime, PLAYLIST, uuid4(), "fp", SECTIONS)  # pyright: ignore[reportArgumentType]
+    assert out == (step, SECTIONS)  # the carry is the revision's origin
+    assert order == [("carry", SECTIONS, "fp"), ("corrections", None)]
     order.clear()
-    await kind_music_step.music_step(None, runtime, PLAYLIST, uuid4(), None, None)  # pyright: ignore[reportArgumentType]
-    assert order == [("corrections", None)]  # no carry: today's step
+    out = await kind_music_step.music_step(None, runtime, PLAYLIST, uuid4(), None, None)  # pyright: ignore[reportArgumentType]
+    assert out == (step, OWN)  # no carry: the design's stages A, B and D (#1407)
+    assert order == [("design", None, None), ("corrections", None)]
+
+
+@pytest.mark.parametrize(
+    ("prefer", "fresh", "ran"),
+    [("fp", True, "carry"), ("old", False, "carry"), ("old", True, "design")],
+    ids=["same_music", "changed_refit", "changed_revise"],
+)
+async def test_a_changed_playlist_gets_the_designs_stages_in_a_revise_only(
+    monkeypatch: pytest.MonkeyPatch, prefer: str, fresh: bool, ran: str
+) -> None:
+    """#1407: a playlist design's own record fits only its music (fingerprint "fp" here); a
+    revise of changed music times it afresh, a refit carries it (and the carry says
+    ``music_changed``); a song list's carry is never replaced."""
+    step, order = _opened_step(), []
+
+    async def load(*_a: Any, **_k: Any) -> MusicStep:
+        return step
+
+    async def carried(_run: Any, s: MusicStep, *_a: Any) -> MusicStep:
+        order.append("carry")
+        return s
+
+    async def drafted(_run: Any, s: MusicStep) -> tuple[MusicStep, Any]:
+        order.append("design")
+        return s, OWN
+
+    async def attach(_run: Any, s: MusicStep) -> MusicStep:
+        return s
+
+    monkeypatch.setattr(kind_music_step, "load_music", load)
+    monkeypatch.setattr(spotdown_carry, "carried_music", carried)
+    monkeypatch.setattr(draft_spotdown, "drafted_music", drafted)
+    monkeypatch.setattr(corrections, "attach", attach)
+    runtime: Any = SimpleNamespace(keyring=None)
+    run: Any = None
+    await kind_music_step.music_step(
+        run, runtime, PLAYLIST, uuid4(), prefer, OWN, fresh_on_change=fresh
+    )
+    assert order == [ran]
+    order.clear()
+    await kind_music_step.music_step(
+        run, runtime, PLAYLIST, uuid4(), "old", SECTIONS, fresh_on_change=True
+    )
+    assert order == ["carry"]  # a song list's base: its carry decides (``music_changed``)
+
+
+@pytest.mark.parametrize("stop", [*PASSED, ValueError("x")], ids=lambda e: type(e).__name__)
+async def test_music_step_closes_the_step_when_the_designs_stages_raise(
+    monkeypatch: pytest.MonkeyPatch, stop: Exception
+) -> None:
+    step = _opened_step()
+
+    async def load(*_a: Any, **_k: Any) -> MusicStep:
+        return step
+
+    monkeypatch.setattr(kind_music_step, "load_music", load)
+    monkeypatch.setattr(draft_spotdown, "drafted_music", araiser(stop))
+    runtime = SimpleNamespace(keyring=None)
+    with pytest.raises(type(stop)):
+        await kind_music_step.music_step(None, runtime, PLAYLIST, uuid4(), None, None)  # pyright: ignore[reportArgumentType]
+    assert step.connection_id is None  # closed
 
 
 async def test_music_step_never_carries_on_a_mix(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -378,11 +506,14 @@ async def test_music_step_never_carries_on_a_mix(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(kind_music_step, "swedebeat_step", mix)
     monkeypatch.setattr(spotdown_carry, "carried_music", raiser(AssertionError("carried")))
+    monkeypatch.setattr(draft_spotdown, "drafted_music", raiser(AssertionError("designed")))
     monkeypatch.setattr(corrections, "attach", attach)
     music = SwedebeatMusicChoice(source="mowl_swedebeat_mix", mix_id="mix1")
     runtime = SimpleNamespace(keyring=None)
     out = await kind_music_step.music_step(None, runtime, music, uuid4(), None, SECTIONS)  # pyright: ignore[reportArgumentType]
-    assert out is step
+    assert out == (step, None)
+    out = await kind_music_step.music_step(None, runtime, music, uuid4(), None, None)  # pyright: ignore[reportArgumentType]
+    assert out == (step, None)
 
 
 # --- kept_timing ----------------------------------------------------------------------------------

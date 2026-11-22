@@ -68,6 +68,11 @@ DISCARDED_WITH: Final = frozenset(
         "spotdown_shadow_tracks",
         "spotdown_studio_budgets",
         "spotdown_song_budgets",
+        # ADR 0042 section 6.5: the audition of a studio draft (a discarded first creation has
+        # none); its files are no row's after the cascade and go with the hourly sweep.
+        "preview_sessions",
+        "preview_sources",
+        "preview_clips",
     }
 )
 
