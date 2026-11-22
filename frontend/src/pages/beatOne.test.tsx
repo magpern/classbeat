@@ -208,6 +208,7 @@ const SENTENCES: [string, number, string, string][] = [
   ['correction_limit', 409, 'PUT', 'This class has as many timing fixes as it can hold. Reset some, then try again.'],
   ['no_beat_data', 409, 'PUT', 'This version has no beat data to correct. Ask for a change by chat first, then try again.'],
   ['refit_limit', 409, 'POST', 'This class has had its timing fixed as often as it can. Design a new class to start again.'],
+  ['has_user_edits', 409, 'POST', 'This class has your own edits. Undo them before asking for a change, so they are not lost.'],
   ['invalid_input', 422, 'DELETE', 'That request could not be used. Check it and try again.'],
 ]
 

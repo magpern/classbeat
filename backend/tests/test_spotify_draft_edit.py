@@ -5,6 +5,7 @@ and refuses a stale base, a locked block, an audio edit and a draft with no map.
 API, the worker side, Postgres as ``classbeat_app``, the fake MOWL and ``FakeProvider``; never the
 network, and the web process reads no MOWL (the fake records every read it answers)."""
 
+import json
 from typing import Any
 from uuid import UUID
 
@@ -86,6 +87,30 @@ async def test_an_edit_stores_a_user_edit_revision_with_its_override(renv: Revis
     assert "edit_map" not in stored.music  # a user_edit keeps none: the ancestor's is read
     assert {k: v for k, v in before.music.items() if k != "edit_map"} == stored.music
     assert [r["type"] for r in made["records"]] == ["override"]
+
+
+async def test_the_stored_map_names_no_song(renv: ReviseEnv) -> None:
+    """ADR 0006 section 6 and ADR 0007: a revision holds no Spotify id, title or artist, and
+    ``class_revisions.music`` reaches the account export. The map keeps timing only."""
+    class_id, base = await renv.design()
+    stored = json.dumps(row_of(renv, base).music["edit_map"])
+    for planted in (
+        "PlantedTrk",
+        "Invented Song",
+        "Made-up Artist",
+        '"spotify_id"',
+        '"title"',
+        '"artist"',
+        "spotify:",
+        "open.spotify.com",
+    ):
+        assert planted not in stored
+    # The map still has everything the edit reads, and an edit of the draft still works.
+    assert {"version", "duration", "crossfade", "songs", "tracks", "events"} <= set(
+        row_of(renv, base).music["edit_map"]
+    )
+    answer = await edit(renv, class_id, base, {"op": "lock", "block": 0, "scope": "all"})
+    assert answer.status_code == 200, answer.text
 
 
 async def test_the_web_process_reads_no_mowl_for_an_edit(
@@ -279,22 +304,6 @@ async def test_the_overlay_view_and_undo_of_an_edited_spotify_draft(renv: Revise
     assert row_of(renv, UUID(again.json()["revision_id"])).parent_id == base
 
 
-async def test_a_revise_of_an_edited_draft_still_checks_its_hash(renv: ReviseEnv) -> None:
-    class_id, base = await renv.design()
-    made = await edit(renv, class_id, base, {"op": "lock", "block": 0, "scope": "all"})
-    edited = UUID(made.json()["revision_id"])
-    job_id, _ = await renv.revise(class_id, edited, "revise_good")
-    assert renv.denv.ops.row(job_id).state == "completed"
-    revised = renv.revisions(class_id)[-1]
-    assert revised.parent_id == edited
-    assert revised.provenance["origin"] == "revise_draft"
-    assert revised.edit_overlay is None
-    assert bytes(revised.content_hash) == revision_hash(revised.content)
-    assert "edit_map" in revised.music  # a revise stores the map it fitted to, and so is editable
-    again = await edit(renv, class_id, revised.id, {"op": "lock", "block": 0, "scope": "all"})
-    assert again.status_code == 200, again.text
-
-
 async def test_a_duplicate_of_an_edited_draft_has_the_plain_hash_and_no_overlay(
     renv: ReviseEnv,
 ) -> None:
@@ -331,11 +340,9 @@ async def test_a_refit_stores_the_corrected_map_and_an_edit_of_it_is_checked_aga
     renv: ReviseEnv,
 ) -> None:
     class_id, base = await renv.design()
-    made = await edit(renv, class_id, base, {"op": "lock", "block": 0, "scope": "all"})
-    edited = UUID(made.json()["revision_id"])
     correct_all(renv, class_id)
-    await refit(renv, class_id, edited)
-    first, _edit, refitted = renv.revisions(class_id)
+    await refit(renv, class_id, base)
+    first, refitted = renv.revisions(class_id)
     assert refitted.provenance["origin"] == "beat_one"
     assert refitted.music["edit_map"] != first.music["edit_map"], "the corrected map, not the old"
     assert refitted.music["edit_map"]["version"] == first.music["edit_map"]["version"]

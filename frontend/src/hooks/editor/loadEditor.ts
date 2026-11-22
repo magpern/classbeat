@@ -12,8 +12,10 @@ import { decodeBlocks, type EditorBlock } from '../../lib/editor/blocks'
 export type ReadOnlyReason =
   | 'no_draft'
   | 'open_job'
-  /** Neither a studio draft nor a Spotify draft the server can edit (an older Spotify draft has no stored map). */
+  /** An older Spotify draft: it has no stored map to check an edit against (#1424). */
   | 'edit_unavailable'
+  /** Anything else the editor cannot edit (a soundless or running class, a shape it does not know). */
+  | 'not_editable'
   | 'music_changed'
   /** After a studio revise, until the user undoes it or applies the choices (#1423). */
   | 'mix_not_applied'
@@ -53,7 +55,12 @@ export type EditorLoad =
   | { kind: 'readonly'; reason: ReadOnlyReason; summary: ClassSummary }
   | { kind: 'not_found' }
 
-const KNOWN: readonly string[] = ['edit_unavailable', 'music_changed', 'mix_not_applied', 'no_proposal']
+const KNOWN: readonly string[] = ['music_changed', 'mix_not_applied', 'no_proposal']
+
+/** Only a cycling class with music can be an older Spotify draft: the sentence for it is true only then. */
+function olderSpotify(summary: ClassSummary): boolean {
+  return !summary.soundless && !summary.studio && summary.sport === 'cycling'
+}
 
 export async function loadEditor(classId: string, signal: AbortSignal): Promise<EditorLoad> {
   let summary: ClassSummary
@@ -68,7 +75,10 @@ export async function loadEditor(classId: string, signal: AbortSignal): Promise<
   if (summary.openJob !== null) return readonly('open_job')
   const overlay = await getOverlay(classId, signal)
   if (overlay.kind === 'none') return { kind: 'not_found' }
-  if (overlay.kind === 'unavailable') return readonly(KNOWN.includes(overlay.reason) ? (overlay.reason as ReadOnlyReason) : 'edit_unavailable')
+  if (overlay.kind === 'unavailable') {
+    if (KNOWN.includes(overlay.reason)) return readonly(overlay.reason as ReadOnlyReason)
+    return readonly(overlay.reason === 'edit_unavailable' && olderSpotify(summary) ? 'edit_unavailable' : 'not_editable')
+  }
   const [revision, timeline] = await Promise.all([
     getRevision(classId, overlay.overlay.revisionId, signal),
     getTimeline(classId, signal),
@@ -76,7 +86,7 @@ export async function loadEditor(classId: string, signal: AbortSignal): Promise<
   if (timeline.kind === 'music_changed') return readonly('music_changed')
   // A class with no studio timeline whose overlay is ready is a Spotify draft the server can edit
   // (an older one answers the overlay `edit_unavailable` above): same editor, without the studio parts.
-  if (timeline.kind === 'none') return readonly('edit_unavailable')
+  if (timeline.kind === 'none') return readonly('not_editable')
   const blocks = decodeBlocks(revision.raw)
   if (blocks === null) return readonly('unsupported')
   const spotify = timeline.kind !== 'ready'

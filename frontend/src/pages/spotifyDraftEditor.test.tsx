@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { CLASS_PATH, REV1, REV2 } from '../test/classFixtures'
+import { CLASS_PATH, REV1, REV2, classBody } from '../test/classFixtures'
 import { EDITS_PATH, EDIT_PAGE, HASH2, editorRoutes, refusal } from '../test/editorApi'
 import { fakeApi } from '../test/fakeApi'
 import { renderAt } from '../test/render'
@@ -35,7 +35,8 @@ const spotifyStatus = {
 
 function routes(extra: Record<string, unknown> = {}) {
   return editorRoutes({
-    // Not a studio class: the studio timeline answers 409 no_studio_draft, the overlay is ready.
+    // Not a studio class: the class is not the studio's, the timeline answers 409 no_studio_draft.
+    [`GET ${CLASS_PATH}`]: classBody(),
     [`GET ${CLASS_PATH}/timeline`]: () => refusal('no_studio_draft'),
     'GET /api/connections/spotify': spotifyStatus,
     [`GET ${A}/alignment`]: { revision_id: REV1, map_version: 3, crossfade_ms: 10_000, songs: [song(0), song(1), song(2)] },

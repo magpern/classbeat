@@ -64,6 +64,7 @@ from classbeat import quota
 from classbeat.agent import Brief
 from classbeat.context import UserContext
 from classbeat.design import chat, limits, music_kind
+from classbeat.design.edited_base import refuse_edited
 from classbeat.design.games_policy import RETIRED
 from classbeat.design.kind import current_runtime, group_model
 from classbeat.design.revision_ready import revision_ready
@@ -126,6 +127,10 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         return Refused("invalid_input")  # a foreign or unknown id answers like any other
     if state.current != given.base_revision_id:
         return Refused("stale_base")
+    # An edited Spotify draft is not revised until its overlay is carried (``edited_base_calc``).
+    edited = await refuse_edited(db, owner, class_id, given.base_revision_id)
+    if edited is not None:
+        return edited
     if state.base_retired:
         return Refused(RETIRED)  # ADR 0029: a retired game is never revised on new songs
     chat_limits = limits.current()

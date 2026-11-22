@@ -131,10 +131,6 @@ def fit(
         result = check(draft, music_map)
     except (ToolError, ValidationError):
         raise EditRefused(refused) from None
-    except (KeyError, IndexError, TypeError, ValueError):
-        if state.fixed_map is None:
-            raise
-        raise EditRefused("edit_unavailable") from None  # a stored map that does not read
     try:
         within_plan(gates, result)
     except ToolError:

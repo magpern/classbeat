@@ -25,7 +25,6 @@ request**.
 """
 
 import json
-from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -33,7 +32,9 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.design.edit_overlay_model import EditOverlay, parsed
+from classbeat.classes.spotify_edit_model import SpotifyDraft
+from classbeat.design import revision_edit_map
+from classbeat.design.edit_overlay_model import parsed
 from classbeat.design.revision import SpotifyRevisionMusic
 from classbeat.design.revision_hash import revision_hash
 from classbeat.studio.mix_proposal_policy import USER_EDIT_ORIGIN
@@ -52,16 +53,6 @@ _MUSIC = text(
     "SELECT music FROM class_revisions WHERE owner_id = :owner_id AND class_id = :class_id "
     "AND id = :id AND kind = 'draft'"
 )
-
-
-@dataclass(frozen=True)
-class SpotifyDraft:
-    revision_id: UUID
-    content_hash: bytes
-    content: dict[str, Any]
-    music: SpotifyRevisionMusic
-    overlay: EditOverlay  # the stored ``edit_overlay`` (no record: NULL)
-    edit_map: dict[str, Any]  # the map the draft was fitted to (module docstring)
 
 
 def _music(raw: object) -> SpotifyRevisionMusic | None:
@@ -110,4 +101,7 @@ async def load(db: AsyncSession, owner_id: UUID, class_id: UUID) -> SpotifyDraft
         edit_map = await _ancestors_map(db, owner_id, class_id, row.current, music.fingerprint)
     if edit_map is None:
         return EDIT_UNAVAILABLE
-    return SpotifyDraft(row.current, stored, content, music, overlay, edit_map)
+    # The stored map holds no song identity (``revision_edit_map``): neutral stand-ins go back in.
+    return SpotifyDraft(
+        row.current, stored, content, music, overlay, revision_edit_map.restored(edit_map)
+    )

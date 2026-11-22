@@ -19,6 +19,7 @@ export const editorDa: Catalogue = {
     'Analysen af holdets musik er udløbet, så det kan ikke redigeres. Skift sange for at analysere musikken igen.',
   'editor.readonly.mix_not_applied':
     'Den her version stammer fra en chatændring og passer ikke længere til den musikform, du valgte. Redigeringen er sat på pause. Åbn holdet og gå enten tilbage til versionen før ændringen eller brug “Brug disse valg”.',
+  'editor.readonly.not_editable': 'Den her version kan ikke redigeres her.',
   'editor.readonly.no_proposal': 'Holdet har ingen musikplan at redigere. Planlæg musikken igen fra holdets side.',
   'editor.readonly.unsupported': 'Den her version har en form, som redigeringen ikke kan redigere.',
   'editor.readonly.back': 'Åbn holdet',

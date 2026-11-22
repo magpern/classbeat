@@ -14,6 +14,7 @@ change summary (``noted``). The model is never asked to pick a replacement game,
 gets is the strict schema, so no retired game reaches a model or the stored result.
 """
 
+import hashlib
 from dataclasses import dataclass
 from typing import Any, Final
 from uuid import UUID
@@ -24,7 +25,7 @@ from sqlalchemy import text
 from classbeat.agent import Brief
 from classbeat.agent.schemas import AnyDraft, RunningDraft, WorkoutDraft
 from classbeat.agent.stored_draft import StoredDraft, stored_draft
-from classbeat.design import chat
+from classbeat.design import chat, revision
 from classbeat.design.games_policy import RETIRED, is_retired
 from classbeat.design.kind import (
     CLASS_MUSIC_SOURCE,
@@ -32,7 +33,6 @@ from classbeat.design.kind import (
     NoMusicChoice,
     SwedebeatMusicChoice,
 )
-from classbeat.design.revision_hash import revision_hash
 from classbeat.design.revision_ready import is_sketch
 from classbeat.jobs import JobFailure, JobRun
 
@@ -100,7 +100,7 @@ async def load(
     base_hash = bytes.fromhex(base_hash_hex)
     if (
         row.content_hash != base_hash
-        or revision_hash(row.content, overlay=row.overlay) != base_hash
+        or hashlib.sha256(revision.canonical(row.content)).digest() != base_hash
     ):
         raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
     try:

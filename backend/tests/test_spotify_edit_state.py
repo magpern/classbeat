@@ -11,7 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from classbeat.classes import spotify_edit_state as spot
-from classbeat.classes.spotify_edit_draft import SpotifyDraft
+from classbeat.classes.spotify_edit_model import SpotifyDraft
 from classbeat.classes.user_edit_model import (
     AnchorBlock,
     ClearAll,
@@ -34,8 +34,9 @@ MAP: dict[str, Any] = {
     "version": 13,
     "duration": 931.38,
     "crossfade": 9.54,
-    "songs": [],
-    "tracks": [],
+    "songs": [{"song": 1, "track": 1, "start": 0.0, "end": 931.0, "bpm": 120.0}],
+    "tracks": [{"track": 1, "sec": 931.38, "bpm": 120.0}],
+    "events": [{"t": 60.0, "kind": "drop", "song": 1}],
 }
 
 
@@ -143,7 +144,53 @@ def test_the_class_may_not_run_past_the_last_song_it_plays() -> None:
         {k: v for k, v in MAP.items() if k != "duration"},
         {**MAP, "duration": math.nan},
         {**MAP, "duration": "931"},
+        {k: v for k, v in MAP.items() if k != "crossfade"},
+        {k: v for k, v in MAP.items() if k != "songs"},
+        {**MAP, "songs": [{"song": 1}]},
+        {k: v for k, v in MAP.items() if k != "tracks"},
+        {**MAP, "tracks": [{"track": 1}]},
+        {**MAP, "events": [{"kind": "drop"}]},
     ],
 )
 def test_a_map_the_library_could_not_have_made_has_no_state(broken: dict[str, Any]) -> None:
     assert spot.state_of(draft(broken)) is None
+
+
+def test_the_cap_is_the_song_that_ends_last_whatever_the_order() -> None:
+    songs = [
+        {"song": 2, "start": 400.0, "end": 820.5, "bpm": 124.0, "estimate": False},
+        {"song": 1, "start": 0.0, "end": 400.0, "bpm": 120.0, "estimate": False},
+    ]
+    state = spot.state_of(draft(MAP, songs=songs))
+    assert state is not None
+    assert state.max_total_sec == 820
+
+
+NAMED = {
+    **MAP,
+    "tracks": [
+        {
+            "track": n,
+            "sec": 100.0,
+            "bpm": 120.0,
+            "spotify_id": f"id{n}",
+            "title": "T",
+            "artist": "A",
+        }
+        for n in (1, 2)
+    ],
+}
+
+
+def test_a_stored_map_names_no_song_and_is_read_back_with_stand_ins() -> None:
+    kept = emap.stored(NAMED)
+    assert kept is not None
+    assert all(not {"spotify_id", "title", "artist"} & set(t) for t in kept["tracks"])
+    assert [t["sec"] for t in kept["tracks"]] == [100.0, 100.0]
+    back = emap.restored(kept)
+    assert [(t["spotify_id"], t["title"], t["artist"]) for t in back["tracks"]] == [
+        ("track-1", "Track 1", ""),
+        ("track-2", "Track 2", ""),
+    ]
+    assert "title" not in kept["tracks"][0]  # the stored copy is not changed
+    assert NAMED["tracks"][0]["title"] == "T"  # nor the library's

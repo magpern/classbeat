@@ -90,7 +90,6 @@ from classbeat.design.revise_input import ReviseDraftInput as ReviseDraftInput
 from classbeat.design.revise_input import Sha256Hex as Sha256Hex
 from classbeat.design.revise_sketch import admit_base
 from classbeat.design.revise_soundless import run_soundless
-from classbeat.design.revision_hash import revision_hash
 from classbeat.design.sport_rules import rules_for
 from classbeat.design.spotdown_base import base_sections
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
@@ -165,7 +164,7 @@ async def run(job_run: JobRun) -> Complete:
     loaded = await revise_base.load(
         job_run, base_id, given.base_revision_hash, runtime.context_requests, sketch=sketch
     )
-    base, brief, music = loaded.row, loaded.brief, loaded.music
+    base, base_hash, brief, music = loaded.row, loaded.base_hash, loaded.brief, loaded.music
     base_draft = loaded.draft  # strict, a retired game already a regular interval (ADR 0029)
     if isinstance(music, NoMusicChoice):
         return await run_soundless(job_run, given, loaded, runtime, sketch=sketch)
@@ -227,7 +226,7 @@ async def run(job_run: JobRun) -> Complete:
             step,
             origin="revise_draft",
             base_revision_id=base_id,
-            base_hash=revision_hash(base.content),  # the content alone, as a new revision's
+            base_hash=base_hash,
             request_message_id=request_message_id,
             rules=rules.provenance() if rules else None,
             spotdown=timing,

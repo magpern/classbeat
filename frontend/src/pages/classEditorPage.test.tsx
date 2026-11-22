@@ -277,11 +277,14 @@ describe('a refused edit', () => {
 
 describe('a draft that cannot be edited opens read-only, never as a broken editor', () => {
   const cases: [string, Record<string, unknown>, RegExp][] = [
-    ['edit_unavailable', { [OVERLAY]: () => refusal('edit_unavailable') }, /made before Spotify classes could be edited here/],
+    ['edit_unavailable (an older Spotify draft)', { [`GET ${CLASS_PATH}`]: classBody(), [OVERLAY]: () => refusal('edit_unavailable') }, /made before Spotify classes could be edited here/],
+    ['edit_unavailable on a studio class', { [OVERLAY]: () => refusal('edit_unavailable') }, /^This version cannot be edited here\.$/],
+    ['edit_unavailable on a soundless class', { [`GET ${CLASS_PATH}`]: classBody({ soundless: true }), [OVERLAY]: () => refusal('edit_unavailable') }, /^This version cannot be edited here\.$/],
+    ['edit_unavailable on a running class', { [`GET ${CLASS_PATH}`]: classBody({ sport: 'running' }), [OVERLAY]: () => refusal('edit_unavailable') }, /^This version cannot be edited here\.$/],
     ['mix_not_applied', { [OVERLAY]: () => refusal('mix_not_applied') }, /Apply these choices/],
     ['music_changed', { [OVERLAY]: () => refusal('music_changed') }, /analysis of this class/],
     ['no_proposal', { [OVERLAY]: () => refusal('no_proposal') }, /no music design to edit/],
-    ['an unknown reason', { [OVERLAY]: () => refusal('something_new') }, /made before Spotify classes could be edited here/],
+    ['an unknown reason', { [OVERLAY]: () => refusal('something_new') }, /^This version cannot be edited here\.$/],
     ['a draft whose analysis expired', { [`GET ${CLASS_PATH}/timeline`]: () => refusal('music_changed') }, /analysis of this class/],
     ['an open job', { [`GET ${CLASS_PATH}`]: classBody({ open_job_id: 'b1111111-1111-4111-8111-111111111111', open_job: { id: 'b1111111-1111-4111-8111-111111111111', kind: 'revise_draft', state: 'running' } }) }, /A change to this class is being made/],
     ['no draft yet', { [`GET ${CLASS_PATH}`]: classBody({ current_revision_id: null, current_revision_number: null, revision_count: 0 }) }, /no version to edit yet/],

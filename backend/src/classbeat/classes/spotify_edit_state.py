@@ -12,17 +12,17 @@ and the one map the class was fitted to (``fixed_map``, ``design.revision_edit_m
   Spotify draft has neither, so they are refused ``audio_edit_unavailable`` before anything is
   computed (``refusal``);
 - **a duration** is held to the music: at most the end of the last song the class plays
-  (``music.songs``), else the map's length, so the song lanes always cover the class; the plan's
-  own length gate runs on the fit as always.
+  (``music.songs``, whichever ends last), else the map's length, so the song lanes always cover
+  the class; the plan's own length gate runs on the fit as always.
 """
 
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final, cast
 
 from classbeat.agent.studio_mix import StudioTrack
-from classbeat.classes.spotify_edit_draft import SpotifyDraft
+from classbeat.classes.spotify_edit_model import SpotifyDraft
 from classbeat.classes.user_edit_model import (
     AnchorBlock,
     Edit,
@@ -61,9 +61,40 @@ def refusal(edit: Edit) -> str | None:
     return None
 
 
+def _number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _all(items: object, *keys: str) -> bool:
+    """Whether ``items`` is a list of mappings that each hold a finite number under every key."""
+    return isinstance(items, list) and all(
+        isinstance(item, dict) and all(_number(item.get(key)) for key in keys)
+        for item in cast(list[Any], items)
+    )
+
+
+def readable(edit_map: Mapping[str, Any]) -> bool:
+    """Whether the stored map has the shape ``agent.design.check`` reads: a version of 1 or more,
+    a length and a crossfade, songs with their times and tempo, and tracks with their length. A
+    map that fails it was not made by the library, so the edit answers ``edit_unavailable`` here
+    instead of a library error surfacing as something else (``check`` is then not wrapped)."""
+    version = edit_map.get("version")
+    return (
+        isinstance(version, int)
+        and not isinstance(version, bool)
+        and version >= 1
+        and _number(edit_map.get("duration"))
+        and _number(edit_map.get("crossfade"))
+        and bool(edit_map.get("songs"))
+        and _all(edit_map.get("songs"), "start", "end", "bpm", "song", "track")
+        and _all(edit_map.get("tracks"), "sec")
+        and _all(edit_map.get("events", []), "t")
+    )
+
+
 def _total_cap(draft: SpotifyDraft) -> int | None:
     songs = draft.music.songs
-    end = songs[-1].end if songs else draft.edit_map.get("duration")
+    end = max(s.end for s in songs) if songs else draft.edit_map.get("duration")
     if isinstance(end, bool) or not isinstance(end, int | float) or not math.isfinite(end):
         return None
     return math.floor(end)
@@ -72,10 +103,10 @@ def _total_cap(draft: SpotifyDraft) -> int | None:
 def state_of(draft: SpotifyDraft) -> EditState | None:
     """The state of ``draft``, ``None`` when its map has no version or length to read (the caller
     answers ``edit_unavailable``: it is not a map the library made)."""
-    version = draft.edit_map.get("version")
     cap = _total_cap(draft)
-    if isinstance(version, bool) or not isinstance(version, int) or version < 1 or cap is None:
+    if not readable(draft.edit_map) or cap is None:
         return None
+    version = int(draft.edit_map["version"])
     return EditState(
         content=draft.content,
         spec={"tracks": []},
