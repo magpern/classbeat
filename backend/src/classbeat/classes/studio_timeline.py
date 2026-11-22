@@ -4,7 +4,9 @@
 current studio draft with its hash re-checked (``current_draft.load``: ``not_found``,
 ``no_studio_draft``, ``internal``) and the user's cached analyses of the draft's references
 (``track_cache.cached_in``, exactly the rows the draft recorded; one that is gone is
-``music_changed``: Change songs analyses again).
+``music_changed``: Change songs analyses again). A stored map that no longer reads is not
+returned by ``cached_in`` (``valid_track_map``), so it is the same case: the answer is the draft's,
+not one song's, and a draft with a song to analyse again is stale as a whole.
 The timeline itself is ``timeline_calc``'s, from ``compose_map`` of the stored mix spec.
 
 The answer names the draft (``revision_id``, ``content_hash``: what the output choice binds) and
