@@ -19,16 +19,16 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "classbeat"
 ALLOWED: dict[str, set[str]] = {
     # The jobs API's create transaction: a job's new class (ADR 0005 section 2), its SQL in
     # ``jobs/class_rows.py`` (split out of ``jobs/user.py``, MA1b-3).
-    "classes": {"jobs/class_rows.py", "classes/duplicate.py"},
+    "classes": {"jobs/class_rows.py", "classes/duplicate_sql.py"},
     "class_revisions": {
         "design/revision.py",  # design_draft and revise_draft, the final fenced store
         "songs/song_list.py",  # the song pick's song list, the final fenced store
         "swedebeat_match/revision.py",  # the Swedebeat match, the final fenced store
-        "classes/duplicate.py",  # the one exception: revision 1 of the class it creates
+        "classes/duplicate_sql.py",  # the one exception: revision 1 of the class it creates
         "classes/user_edit_store.py",  # a user edit (ADR 0042), no job, under the class lock
     },
     "beat_one_corrections": {
-        "classes/duplicate.py",  # the source's rows for the copied music, re-keyed to the copy
+        "classes/duplicate_sql.py",  # the source's rows for the copied music, re-keyed to the copy
         "classes/beat_one.py",  # the corrections API (BC4): one song's row, under the class lock
     },
 }

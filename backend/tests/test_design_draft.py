@@ -75,6 +75,8 @@ async def test_a_draft_is_designed_on_a_new_playlist_and_stored(
         "songs": revision.music["songs"],
         # #1407: every track on spotdown's sections, the draft keeps its own record.
         "spotdown": revision.music["spotdown"],
+        # #1424: the corrected map the draft was fitted to, which the editor checks edits against.
+        "edit_map": revision.music["edit_map"],
     }
     spotdown = revision.music["spotdown"]
     assert spotdown["tracks"] == list(range(len(fake_mowl.music.tracks)))
