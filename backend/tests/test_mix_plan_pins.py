@@ -17,6 +17,7 @@ from classbeat.studio.mix_facts_model import TrackFacts
 from classbeat.studio.mix_pin_policy import listen_again
 from classbeat.studio.mix_plan_policy import MixPlanRefused, checked
 from classbeat.studio.mix_spec_model import MixSpec
+from classbeat.studio.output_body_policy import Facts, playlist_body, render_plan
 from mix_choice_fixtures import phrases
 
 ORDER = ["a", "b", "c"]
@@ -297,3 +298,30 @@ def test_the_stored_shape_refuses_an_exact_or_confirmed_pin_that_is_not_its_cut(
     with pytest.raises(ValueError, match="is its cut"):
         MixSpec.model_validate(first_a(pin(96.6, "bar", confirmed=95.0), end=96.0))
     MixSpec.model_validate(first_a(pin(96.6, "bar"), end=96.0))  # a bar pin's cut is the snap
+
+
+def test_a_pin_never_reaches_the_gateway_body_or_the_render_plan() -> None:
+    """What ``produce_outputs`` writes is the effective cut only: the same body and plan as the
+    spec with its pins stripped."""
+    pinned = checked(
+        mix(
+            piece("a", 0.0, 96.6, start_pin=pin(2.0, "exact"), end_pin=pin(96.6, "exact")),
+            piece("b", 0.0, 240.0, end_pin=pin(200.3, "bar", confirmed=200.3)),
+            piece("c", 0.0, 240.0),
+            crossfades=[8, 6],
+        ),
+        ORDER,
+        facts(),
+    )
+    bare = {
+        **pinned,
+        "tracks": [
+            {k: v for k, v in t.items() if not k.endswith("_pin")} for t in pinned["tracks"]
+        ],
+    }
+    known = {r: Facts("Song", "Band", 120.0) for r in ORDER}
+    durations = dict.fromkeys(ORDER, 240.0)
+    body = playlist_body("Class", pinned, known, durations)
+    assert body == playlist_body("Class", bare, known, durations)
+    assert "_pin" not in json.dumps(body)
+    assert render_plan(pinned, durations) == render_plan(bare, durations)
