@@ -711,3 +711,30 @@ Plus a column `class_revisions.edit_overlay` and a column for the granted Spotif
 - the render-stage audit (§6.1);
 - the MP3 join measurement (§6.4);
 - the Spotify live measurement (§7.3), which is the owner's.
+
+## Implementation notes (E2, #1391)
+
+Decisions E2 took within this ADR, each safe and reversible. The two deviations have follow-up issues.
+
+1. **Spotify drafts are not editable yet (a deviation from §4).** `POST /classes/{id}/edits` answers
+   `409 edit_unavailable` for a class that is not a studio class. The check and fit a Spotify draft needs
+   come from its composed map, which is built from MOWL's analyses, and E2 has no read path for them. The
+   editor is offered for studio drafts only. A follow-up issue adds Spotify drafts.
+2. **The jobs API's `stale_revision` carries no current id.** A Save, Update or outputs approval with a stale
+   `base_revision_id` is refused `409 stale_revision` with the reason only: a job refusal has no payload. The
+   page reloads the class to get its current revision. The edit and `POST /current` refusals do carry
+   `current_revision_id`.
+3. **Pins are not re-applied on a studio revise (a deliberate deferral of §5's "Pins and regeneration").** A
+   revise re-applies the overlay's locks, overrides and anchors to the model's workout and keeps its pin
+   records as they are. It does not apply them to the model's new spec. The new draft's spec is then not the
+   applied form of its choices, so the draft fails closed: an audio edit and a SwedeBeat output (the mix or the
+   SwedeBeat playlist) answer `mix_not_applied` until the user undoes the revise or uses **Apply these
+   choices**, which applies the pins (§8). A Spotify playlist alone plays whole songs, so pins do not apply to
+   it. No mix is rendered or published without its pins. A follow-up issue re-applies the pins in the revise.
+4. **Which workout is stored.** A workout edit (drag, split, merge, move, set, duration) stores the
+   instructor's own timing, validated by `agent.design.check` but not replaced by its fitted spec, so a drop
+   lands where the user put it. An audio edit (a pin) and **Apply these choices** store the fitted workout,
+   because the mix under it changed.
+5. **The base ids are optional on the API.** `base_revision_id` (Save, Update, the outputs approval) and
+   `expected_current_id` (`POST /current`) may be left out, so a client from before E2 keeps working, and the
+   check runs only when they are sent. E3's client must always send them.

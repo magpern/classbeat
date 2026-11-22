@@ -79,7 +79,9 @@ async def preview(
             return current
         if current.revision_id != revision_id or current.content_hash.hex() != content_hash:
             return "stale_base"
-        base = mix_proposal.ProposalDraft(current.revision_id, current.content, current.music)
+        base = mix_proposal.ProposalDraft(
+            current.revision_id, current.content, current.music, current.overlay
+        )
         try:
             found = await mix_apply.proposal_for(db, ctx.user_id, class_id, base, current.songs)
         except mix_apply.MixApplyRefused as refused:

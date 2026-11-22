@@ -1,3 +1,4 @@
+import json
 import uuid
 from pathlib import Path
 from typing import Any
@@ -35,7 +36,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0075_drop_local_track_maps"]
+    assert script.get_heads() == ["0076_edit_overlay"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -56,7 +57,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0075_drop_local_track_maps"]
+        assert applied_revisions(database_url) == ["0076_edit_overlay"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -1292,3 +1293,58 @@ def test_0075_deletes_the_local_track_maps_and_the_downgrade_restores_the_check(
     finally:
         admin.dispose()
         command.downgrade(config, "base")
+
+
+def test_0076_adds_the_bounded_edit_overlay_and_the_downgrade_drops_it(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1391 (ADR 0042 section 4): ``class_revisions.edit_overlay`` is a nullable jsonb whose check
+    refuses an empty or missing ``records`` list and more than 200 records; the downgrade drops it
+    and upgrading again adds it back."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+    column = text(
+        "SELECT data_type, is_nullable FROM information_schema.columns WHERE table_schema = "
+        "'public' AND table_name = 'class_revisions' AND column_name = 'edit_overlay'"
+    )
+    owner, class_id = uuid.uuid4(), uuid.uuid4()
+    insert = text(
+        "INSERT INTO class_revisions (owner_id, class_id, number, kind, content, content_hash, "
+        "music, provenance, edit_overlay) VALUES (:o, :c, :n, 'draft', '{}'::jsonb, "
+        "decode(repeat('00', 32), 'hex'), '{}'::jsonb, '{}'::jsonb, CAST(:v AS jsonb))"
+    )
+    lock = {"type": "lock", "block": 0, "scope": "all"}
+    try:
+        command.upgrade(config, "head")
+        with admin.connect() as connection:
+            assert tuple(connection.execute(column).one()) == ("jsonb", "YES")
+        with admin.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (id, email, email_normalized, email_verified_at) "
+                    "VALUES (:o, :e, :e, now())"
+                ),
+                {"o": owner, "e": f"m75-{owner.hex[:8]}@example.com"},
+            )
+            connection.execute(
+                text("INSERT INTO classes (id, owner_id, title) VALUES (:c, :o, 'm75')"),
+                {"c": class_id, "o": owner},
+            )
+            for number, value in enumerate((None, json.dumps({"records": [lock]})), start=1):
+                connection.execute(insert, {"o": owner, "c": class_id, "n": number, "v": value})
+        for bad in ({"records": []}, {}, {"records": [lock] * 201}, [lock]):
+            with pytest.raises(IntegrityError), admin.begin() as connection:
+                connection.execute(
+                    insert, {"o": owner, "c": class_id, "n": 9, "v": json.dumps(bad)}
+                )
+        command.downgrade(config, "0075_drop_local_track_maps")
+        with admin.connect() as connection:
+            assert connection.execute(column).first() is None
+        command.upgrade(config, "head")
+        with admin.connect() as connection:
+            assert tuple(connection.execute(column).one()) == ("jsonb", "YES")
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text("DELETE FROM users WHERE id = :o"), {"o": owner})
+        admin.dispose()

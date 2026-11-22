@@ -18,6 +18,12 @@ is stored, no model, no network, no download.
 5. with ``fit`` (the job): ``mix_apply_calc.fitted``: ``workout_does_not_fit``,
    ``plan_class_too_long``, ``plan_not_allowed``; then a derived spec equal to the base's stores
    nothing (``nothing_pending``).
+
+**A base with an edit overlay** (ADR 0042 section 8, #1391): the overlay is carried. Step 4 derives
+the spec with the overlay's cut pins (the preview's spec is the one the job stores), and step 5 is
+``studio_edit_ops.carried``: the base's own workout remapped onto that spec, the overlay re-applied
+by its fixed order (``locked_block_conflict``), fitted and gated as an audio edit; the result is
+``Derivation.carried``, the new draft's content, spec and overlay.
 """
 
 from dataclasses import dataclass
@@ -28,11 +34,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.design.games_policy import RETIRED, has_retired_game
+from classbeat.design.workout_edit_policy import EditRefused
 from classbeat.plan_gates import PlanGates
 from classbeat.studio import mix_choice_model
 from classbeat.studio.mix_choice_model import MixChoiceRefused, MixChoices
-from classbeat.swedebeat_studio import mix_apply_calc, mix_proposal, song_list
+from classbeat.swedebeat_studio import mix_apply_calc, mix_proposal, song_list, studio_edit_ops
 from classbeat.swedebeat_studio.mix_apply_calc import Fitted
+from classbeat.swedebeat_studio.studio_edit_calc import EditResult, EditState
 
 MAX_CHOICE_APPLIES: Final = 30  # applied drafts per proposal (409 ``apply_limit``)
 NOTHING_PENDING: Final = "nothing_pending"
@@ -62,6 +70,7 @@ class Derivation:
     choices: MixChoices
     spec: dict[str, Any]  # the derived spec as ``checked`` returned it
     fitted: Fitted | None = None
+    carried: EditResult | None = None  # a base with an overlay (module docstring)
 
 
 def _refused(exc: MixChoiceRefused) -> MixApplyRefused:
@@ -112,19 +121,44 @@ def computed(
     """Steps 3 to 5 on the proposal ``found`` (no I/O)."""
     if has_retired_game(found.draft.content):
         raise MixApplyRefused(RETIRED)  # ADR 0029: a retired game is never fitted or stored again
+    pins = base.overlay.pins()
     try:
         choices = mix_choice_model.parsed(raw_choices)
-        spec = mix_apply_calc.derived(found.proposal, found.music, choices)
+        spec = mix_apply_calc.derived(found.proposal, found.music, choices, pins)
         fitted = None
-        if fit:
+        if fit and not base.overlay.records:
             fitted = mix_apply_calc.fitted(
                 found.draft.content, found.draft.spec, spec, found.music, gates
             )
     except MixChoiceRefused as exc:
         raise _refused(exc) from None
+    carried = _carried(found, base, choices, gates) if fit and base.overlay.records else None
     if fit and mix_apply_calc.stored_spec(spec) == base.spec:
         raise MixApplyRefused(NOTHING_PENDING)
-    return Derivation(found, choices, spec, fitted)
+    return Derivation(found, choices, spec, fitted, carried)
+
+
+def _carried(
+    found: mix_proposal.Resolved,
+    base: mix_proposal.ProposalDraft,
+    choices: MixChoices,
+    gates: PlanGates | None,
+) -> EditResult:
+    """Step 5 for a base with an overlay (module docstring); a refusal is ``MixApplyRefused``."""
+    state = EditState(
+        content=base.content,
+        spec=base.spec,
+        overlay=base.overlay,
+        music=found.music,
+        analysed={a.reference: a.sha256 for a in base.music.analyses or ()},
+        proposal=found.proposal,
+        choices=choices,
+        map_version=base.music.map_version,
+    )
+    try:
+        return studio_edit_ops.carried(state, gates)
+    except EditRefused as refused:
+        raise MixApplyRefused(refused.reason) from None
 
 
 async def derive(

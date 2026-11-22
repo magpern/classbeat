@@ -22,6 +22,10 @@ section 5 and section 8, #1390). Pure: no I/O.
   such record at all (fail closed). It never moves a cut: a confirmed cut stays ``confirmed_sec``
   until the user re-confirms or clears it. An unconfirmed pin is a request that follows the
   analysis it is checked on (a ``bar`` pin re-snaps on reanalysis) and needs no confirmation.
+- ``requests_moved``: the **unconfirmed** pins of a checked spec whose analysed file is not the
+  one they were set against (``set_against``, the overlay record's; ADR 0042 section 5, #1391):
+  they go to "listen again" too, and block approval as a confirmed one does (``music_changed``).
+  A pin without a record (``None``) is one (fail closed).
 """
 
 from collections import Counter
@@ -117,3 +121,21 @@ def targets(spec: Mapping[str, Any]) -> dict[tuple[str, int, Edge], float]:
     """Each pinned cut's effective second by target (for the moved-by-reanalysis hint)."""
     at = occurrences(spec)
     return {(*at[n], edge): float(spec["tracks"][n][f"{edge}_sec"]) for n, edge, _ in pins_of(spec)}
+
+
+def requests_moved(
+    spec: Mapping[str, Any],
+    set_against: Mapping[tuple[str, int, Edge], str | None],
+    analysed: Mapping[str, str | None],
+) -> list[tuple[int, Edge]]:
+    """The unconfirmed pins whose file changed since they were set (module docstring)."""
+    at = occurrences(spec)
+    return [
+        (n, edge)
+        for n, edge, pin in pins_of(spec)
+        if not pin.confirmed
+        and (
+            set_against.get((*at[n], edge)) is None
+            or (analysed.get(at[n][0]) or None) != set_against.get((*at[n], edge))
+        )
+    ]

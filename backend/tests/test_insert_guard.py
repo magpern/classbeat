@@ -25,6 +25,7 @@ ALLOWED: dict[str, set[str]] = {
         "songs/song_list.py",  # the song pick's song list, the final fenced store
         "swedebeat_match/revision.py",  # the Swedebeat match, the final fenced store
         "classes/duplicate.py",  # the one exception: revision 1 of the class it creates
+        "classes/user_edit_store.py",  # a user edit (ADR 0042), no job, under the class lock
     },
     "beat_one_corrections": {
         "classes/duplicate.py",  # the source's rows for the copied music, re-keyed to the copy

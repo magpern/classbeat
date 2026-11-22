@@ -18,7 +18,7 @@ Own system prompts and tool schemas, so each stage has its own ``prompt_version`
 network, no credentials, no database, no catalogue reference.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -66,18 +66,25 @@ class StudioResult:
     result: DesignResult
     composed: Composed
     note: str = ""
+    overlay: Any = None  # a revise of an edited draft: the reconciled overlay (``StudioBase``)
 
 
 @dataclass(frozen=True)
 class StudioBase:
     """A revise's starting point: the base draft (``content``) and its mix by index; ``choices``
-    for a re-plan (ADR 0036 B6), already checked against the list."""
+    for a re-plan (ADR 0036 B6), already checked against the list. A base with an edit overlay
+    (ADR 0042 section 3, #1391) adds ``fixed``, the message's statement of the instructor's locks
+    and overrides, and ``reconcile``, run on each submitted draft: the overlay re-applied (a lock
+    breach is ``overlay_violated``, a correction round) and the draft checked again
+    (``swedebeat_studio.revise_overlay``)."""
 
     draft: dict[str, Any]
     plan: dict[str, Any]
     earlier_requests: tuple[str, ...]
     request: str
     choices: MixChoices | None = None
+    fixed: str = ""
+    reconcile: Callable[[DesignResult, Composed], tuple[DesignResult, Any]] | None = None
 
 
 @dataclass(frozen=True)
@@ -103,6 +110,7 @@ class StudioContext:
             b.request,
             rules=rules,
             choices=b.choices,
+            fixed=b.fixed,
         )
         return with_explicit(text, self.brief)
 
@@ -145,18 +153,22 @@ def studio_stage(ctx: StudioContext) -> Stage:
         return ToolAnswer({**_answer(result, composed, ctx), "timeline": timeline})
 
     def submit(args: StudioDraftInput, note: str) -> ToolAnswer:
-        made: list[Composed] = []
+        made: list[tuple[Composed, Any]] = []
+        reconcile = None if ctx.base is None else ctx.base.reconcile
 
         def build() -> DesignResult:
             result, composed = checked(ctx, args)
-            made.append(composed)
+            overlay = None
+            if reconcile is not None:
+                result, overlay = reconcile(result, composed)
+            made.append((composed, overlay))
             return result
 
         result = within_request(gate, build)
-        composed = made[-1]
+        composed, overlay = made[-1]
         answer = {"accepted": True, **_answer(result, composed, ctx)}
         answer.pop("duration_sec")
-        return ToolAnswer(answer, output=StudioResult(result, composed, note))
+        return ToolAnswer(answer, output=StudioResult(result, composed, note, overlay))
 
     def submit_draft(args: StudioDraftInput) -> ToolAnswer:
         return submit(args, "")

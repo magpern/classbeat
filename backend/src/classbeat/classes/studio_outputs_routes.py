@@ -4,7 +4,8 @@
   effective lengths and intervals, from the composed map (``classes.studio_timeline``). 404
   ``not_found`` for another user's or an unknown class and with the studio off; 409 ``{reason}``
   for ``no_studio_draft`` and ``music_changed``.
-- ``POST /api/classes/{class_id}/outputs`` with ``{revision_id, content_hash, outputs}`` and an
+- ``POST /api/classes/{class_id}/outputs`` with ``{revision_id, content_hash, outputs}`` (and the
+  optional ``base_revision_id``: ``stale_revision`` when the class moved, ADR 0042) and an
   ``Idempotency-Key``: the user's approval of that draft for those outputs
   (``classes.studio_outputs``): 201 with the ``produce_outputs`` job ``{job_id, kind, state}``,
   200 with the same job for a repeated key and body; 409 ``{reason}`` with the refusal
@@ -22,6 +23,7 @@ middleware checks.
 """
 
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
@@ -66,6 +68,7 @@ class OutputsIn(BaseModel):
 
     revision_id: str = Field(max_length=64)
     content_hash: Sha256Hex
+    base_revision_id: UUID | None = None  # the current revision the page showed (ADR 0042)
     outputs: list[str] = Field(min_length=1, max_length=len(OUTPUTS))
 
 
@@ -166,6 +169,7 @@ async def choose_outputs(
         body.content_hash,
         body.outputs,
         idempotency_key=idempotency_key,
+        base_revision_id=body.base_revision_id,
         ledger=ledger,
         limit=limit,
         enqueue=job_enqueue(),

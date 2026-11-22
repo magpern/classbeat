@@ -16,6 +16,10 @@ analyses. No credit; ``admit`` is ``design_admit``'s.
    for a **re-plan** (ADR 0036 B6, #1372) also the input's ``choices``, read again and checked
    against the list (``internal`` otherwise: admit checked them), stated first by index. The
    result is an ordinary revise, a new proposal; ``apply_mix_choices`` applies the choices to it.
+   A base with an **edit overlay** (ADR 0042 sections 3 and 8, #1391; the overlay read and its
+   hash checked in step 1) states the instructor's locks and overrides as fixed in the message,
+   and each submitted draft is reconciled with it (``revise_overlay``: a lock breach is
+   ``overlay_violated``, a correction round); the new revision stores the reconciled overlay.
 4. **Store**, in the final fenced transaction: the connection held, the class still the studio's,
    the revision (parent = base, ``origin = revise_draft``; the same draft and mix again are
    ``invalid_output``), the compare-and-set of ``current_revision_id`` and the assistant message
@@ -34,17 +38,20 @@ from classbeat.agent.stored_draft import stored_draft
 from classbeat.agent.studio_design import StudioBase, StudioContext, StudioResult, studio_stage
 from classbeat.connections import hold
 from classbeat.connections.preferences import uses_swedebeat_in
-from classbeat.design import chat, diff, music_kind, revise_base, revise_stated, revision, sport
+from classbeat.design import chat, diff, music_kind, revise_base, revise_stated, sport
+from classbeat.design.edit_overlay_model import EditOverlay, parsed
 from classbeat.design.interpreted import with_interpretation
 from classbeat.design.kind import current_runtime, group_model
 from classbeat.design.revision import StudioRevisionMusic
+from classbeat.design.revision_hash import revision_hash
 from classbeat.design.sport_rules import rules_for
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
+from classbeat.plan_gates import PlanGates
 from classbeat.quota.route import with_plan, with_plan_run
 from classbeat.studio import mix_choice_model
 from classbeat.swedebeat_match import config as match_config
 from classbeat.swedebeat_match.kind import open_match_bearer
-from classbeat.swedebeat_studio import design_step, draft, song_list
+from classbeat.swedebeat_studio import design_step, draft, revise_overlay, song_list
 from classbeat.swedebeat_studio.admit import studio_on
 from classbeat.swedebeat_studio.design_admit import admit_revise
 from classbeat.swedebeat_studio.design_inputs import StudioReviseInput
@@ -53,7 +60,7 @@ KIND: Final = "studio_revise"
 STAGES: Final = ("tracks", "revise")
 
 _BASE_MUSIC = text(
-    "SELECT r.music FROM class_revisions r JOIN jobs j ON j.owner_id = r.owner_id "
+    "SELECT r.music, r.edit_overlay FROM class_revisions r JOIN jobs j ON j.owner_id = r.owner_id "
     "AND j.class_id = r.class_id WHERE j.id = :job_id AND j.owner_id = :owner_id "
     "AND r.id = :base AND r.kind = 'draft'"
 )
@@ -61,7 +68,7 @@ _BASE_MUSIC = text(
 
 async def _base(
     job_run: JobRun, given: StudioReviseInput, context: int
-) -> tuple[chat.BaseForRun, StudioRevisionMusic, song_list.StudioList]:
+) -> tuple[chat.BaseForRun, StudioRevisionMusic, song_list.StudioList, EditOverlay]:
     if given.base_revision_hash is None:
         raise JobFailure("internal")
     params = {"job_id": job_run.lease.job_id, "owner_id": job_run.lease.owner_id}
@@ -90,9 +97,28 @@ async def _base(
         raise JobFailure("invalid_input")
     base_hash = bytes.fromhex(given.base_revision_hash)
     spec = music.mix_spec.model_dump(mode="json")
-    if row.content_hash != base_hash or revision.studio_hash(row.content, spec) != base_hash:
+    overlay = None if raw is None else raw.edit_overlay
+    hashed = revision_hash(row.content, mix_spec=spec, overlay=overlay)
+    if row.content_hash != base_hash or hashed != base_hash:
         raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
-    return row, music, stored
+    try:
+        return row, music, stored, parsed(overlay)
+    except ValueError:
+        raise JobFailure("internal") from None
+
+
+def _reconcile(
+    base: dict[str, Any],
+    overlay: EditOverlay,
+    music: draft.StudioMusic,
+    base_music: StudioRevisionMusic,
+    gates: PlanGates | None,
+) -> revise_overlay.Reconcile | None:
+    """The overlay's reconciliation of each submitted draft; ``None`` without an overlay."""
+    if not overlay.records:
+        return None
+    analysed = {a.reference: a.sha256 for a in base_music.analyses or ()}
+    return revise_overlay.reconciler(base, overlay, music.references, analysed, gates)
 
 
 async def run(job_run: JobRun) -> Complete:
@@ -105,7 +131,7 @@ async def run(job_run: JobRun) -> Complete:
         or given.request_message_id is None
     ):
         raise JobFailure("internal")
-    row, base_music, stored = await _base(job_run, given, runtime.context_requests)
+    row, base_music, stored, overlay = await _base(job_run, given, runtime.context_requests)
     try:
         brief = Brief.model_validate(row.brief)
         base_draft, retired = revise_base.without_retired_games(
@@ -130,12 +156,15 @@ async def run(job_run: JobRun) -> Complete:
     rules = rules_for(brief, row.dismissed_rules)
     stated = await revise_stated.layered(job_run, model, brief, given.request, given.plan_gates)
     await job_run.stage("revise")
+    base_content = base_draft.model_dump(mode="json", exclude_none=True)
     base = StudioBase(
-        base_draft.model_dump(mode="json", exclude_none=True),
+        base_content,
         base_plan,
         row.earlier_requests,
         given.request,
         choices,
+        fixed=revise_overlay.fixed_section(base_content, overlay),
+        reconcile=_reconcile(base_content, overlay, music, base_music, given.plan_gates),
     )
     ctx = StudioContext(stated.brief, music.tracks, rules, given.plan_gates, base)
     outcome = await run_stage(

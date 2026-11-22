@@ -1,26 +1,22 @@
-"""``/api/classes``: my classes, their revisions and conversation, the pick of the current revision
-and the class delete (ADR 0007 sections 2, 11 and 12; issue C2).
+"""``/api/classes``: my classes, their revisions and conversation and the class delete (ADR 0007
+sections 2, 11 and 12; issue C2). The pick of the current revision and the user's edits are
+``classes.edit_routes``.
 
 Signed in; the ``POST`` and ``DELETE`` are CSRF-checked by the middleware. Another user's id, an
 unknown id and a malformed one are the same 404 ``not_found``; the user's own class that a failed
 first creation discarded is 404 ``class_discarded`` with that job's id (ADR 0039). Errors carry a
 reason code only.
 409 reasons: ``limit_exceeded`` (the 33rd dismissed rule, ADR 0017), ``class_busy``,
-``hash_mismatch``, ``not_ready`` (the pick), ``stale_match`` (the Swedebeat selection) and
-``call_may_be_running``, ``uncertain_write`` (the delete), and ``quota`` (the pick, #496: the
-chosen draft has a game, an FTP test or a length the user's current plan does not include; the
-jobs API's body, ``{reason: "quota", quota: "feature" | "length", feature | limit and used, plan}``,
-no money).
+``stale_match`` (the Swedebeat selection) and ``call_may_be_running``, ``uncertain_write`` (the
+delete).
 
 A ``swedebeat_match`` revision (ADR 0016 section 6) is read only while the effective
 ``swedebeat_enabled`` flag is on; off, its id answers 404 ``feature_off`` without its content being
 read, and the class detail carries no match pointer.
 """
 
-import re
 from dataclasses import asdict
 from typing import Annotated, Any
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
@@ -38,6 +34,10 @@ from classbeat.classes import (
     song_list_out,
     song_views,
 )
+from classbeat.classes.answers import internal as _internal
+from classbeat.classes.answers import not_found as _not_found
+from classbeat.classes.answers import refuse as _refuse
+from classbeat.classes.answers import uuid_of as _uuid
 from classbeat.classes.discarded import not_found_answer
 from classbeat.classes.list_cursor import decode_cursor, encode_cursor
 from classbeat.classes.music_playlists_out import MosaicSongOut, MusicPlaylistOut, MusicPlaylistsOut
@@ -50,7 +50,6 @@ from classbeat.classes.schemas import (
     DismissedRulesOut,
     MessageOut,
     MessagesOut,
-    PickIn,
     PlayerStateOut,
     PlaylistOut,
     RevisionOut,
@@ -65,32 +64,9 @@ from classbeat.classes.song_list_out import SongListOut, SwedebeatMatchOut
 from classbeat.connections.swedebeat_account import swedebeat_enabled
 from classbeat.context import UserContext
 from classbeat.covers import cover_url
-from classbeat.jobs.credits import QuotaRefused
 
 router = APIRouter(prefix="/api/classes", tags=["classes"])
 music_router = APIRouter(prefix="/api/music", tags=["music"])
-
-HASH = re.compile(r"^[0-9a-f]{64}$")
-
-
-def _refuse(reason: str, status: int = 409) -> JSONResponse:
-    return JSONResponse({"detail": {"reason": reason}}, status_code=status)
-
-
-def _not_found() -> JSONResponse:
-    return _refuse("not_found", 404)
-
-
-def _internal() -> JSONResponse:
-    """A stored row that no longer checks: the reason only, nothing of the row."""
-    return JSONResponse({"detail": {"reason": "internal"}}, status_code=500)
-
-
-def _uuid(raw: str) -> UUID | None:
-    try:
-        return UUID(raw)
-    except ValueError:
-        return None
 
 
 @router.get("", response_model=ClassesOut, responses={422: {}})
@@ -298,33 +274,6 @@ async def approve_swedebeat_match(
     return selection.SelectionOut(
         revision_id=done.approved.revision_id, content_hash=done.approved.content_hash
     )
-
-
-@router.post("/{class_id}/current", response_model=ClassOut, responses={404: {}, 409: {}, 422: {}})
-async def pick_current(
-    class_id: str,
-    body: PickIn,
-    request: Request,
-    ctx: Annotated[UserContext, Depends(auth.require_user)],
-) -> ClassOut | JSONResponse:
-    wanted = _uuid(class_id)
-    if wanted is None:
-        return _not_found()
-    if not HASH.fullmatch(body.content_hash):
-        return _refuse("invalid_input", 422)
-    factory = request.app.state.session_factory
-    try:
-        done = await service.pick(
-            factory, ctx, wanted, body.revision_id, bytes.fromhex(body.content_hash)
-        )
-    except QuotaRefused as refused:  # the current plan (#496); nothing changed
-        return JSONResponse({"detail": {**refused.detail(), "reason": "quota"}}, status_code=409)
-    if done.reason == "not_found":
-        return _not_found()
-    if done.reason is not None:
-        return _refuse(done.reason)
-    row = await service.get_class(factory, ctx, wanted)
-    return _not_found() if row is None else ClassOut.of(row)
 
 
 @router.delete("/{class_id}", response_model=removal.DeletedOut, responses={404: {}, 409: {}})

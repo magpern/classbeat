@@ -4,8 +4,9 @@ B4, #1369). Pure: no I/O.
 The proposal is the nearest draft, the current one or an ancestor on the same ``song_list``, whose
 provenance ``origin`` is in an **allowlist of model designs**: ``design_draft`` and
 ``revise_draft``, as the studio design and revise jobs store them (``swedebeat_studio/draft.py``
-``build``). Every other origin (``mix_choices``, ``duplicate``, ``beat_one``, ``None`` and any
-origin added later until this list names it) is not a proposal and is passed over, so
+``build``). Every other origin (``mix_choices``, ``user_edit`` (ADR 0042 section 8: the
+instructor's direct edits, #1391), ``duplicate``, ``beat_one``, ``None`` and any origin added
+later until this list names it) is not a proposal and is passed over, so
 ``mix_choice_policy.applied`` never runs on a derived spec. The walk stops, with no proposal, at a
 revision that is no studio draft of the same list (another list, a ``song_list`` row, a draft of
 another music source) and after ``MAX_CHAIN`` revisions.
@@ -19,6 +20,7 @@ from typing import Final, Literal
 NO_PROPOSAL: Final = "no_proposal"
 PROPOSAL_ORIGINS: Final[frozenset[str]] = frozenset({"design_draft", "revise_draft"})
 APPLIED_ORIGIN: Final = "mix_choices"
+USER_EDIT_ORIGIN: Final = "user_edit"  # ADR 0042 section 8: its choices are its nearest other's
 MAX_CHAIN: Final = 500  # revisions walked; a class never holds near this many on one list
 
 Step = Literal["proposal", "pass", "stop"]
