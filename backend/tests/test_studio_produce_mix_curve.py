@@ -165,13 +165,12 @@ async def test_clashing_tempos_are_a_tempo_jump_hint_on_the_timeline(studio: Stu
 async def test_a_stored_map_that_cannot_be_read_makes_the_whole_timeline_music_changed(
     studio: StudioEnv,
 ) -> None:
-    """Intended (ADR 0036 section 5): ``cached_in`` returns no analysis for a map that does not
-    read (``valid_track_map``), the same as a gone one, and the answer is the draft's. So it is
+    """Intended (ADR 0036 Amendment B, context item 2 and B1: one draft, one timeline):
+    ``cached_in`` returns no analysis for a map that does not read (``valid_track_map``; pinned in
+    ``test_track_cache_hit``), the same as a gone one, and the answer is the draft's. So it is
     ``music_changed`` (Change songs analyses again), never a timeline with a track missing and
     never a 500."""
     rider, class_id, _, current = await designed(studio)
-    store_spotdown_rows(
-        studio, current.current_revision_id, with_bass=True, slow_first=True, unreadable_first=True
-    )
+    store_spotdown_rows(studio, current.current_revision_id, with_bass=True, unreadable_first=True)
     answer = await rider.browser.get(f"/api/classes/{class_id}/timeline")
     assert (answer.status_code, answer.json()["detail"]) == (409, {"reason": "music_changed"})

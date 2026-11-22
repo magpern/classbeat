@@ -22,20 +22,44 @@ LIMIT = 1000
 # Loads the child by path, as the parent runs it, then watches with the given stand-in ``rss``.
 # ``process_rss`` answers only for this process's own pid, so watching another process fails.
 PROBE = """
-import importlib.util, os, sys, time, types
+import importlib.util, os, sys, threading, time, types
 spec = importlib.util.spec_from_file_location("c", sys.argv[1])
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 used = None if sys.argv[2] == "none" else int(sys.argv[2])
 fake = types.SimpleNamespace(process_rss=lambda pid: used if pid == os.getpid() else None)
+# A stand-in sleep for the watcher thread only: it records how long the watcher waits between
+# readings and refuses one over the bound in argv[5] (the thread then dies and the process lives).
+real_sleep = time.sleep
+def sleep(seconds):
+    if threading.current_thread() is not threading.main_thread():
+        if seconds > float(sys.argv[5]):
+            raise SystemExit("poll too slow: %s s" % seconds)
+    real_sleep(seconds)
+time.sleep = sleep
 m._watch(fake, int(sys.argv[3]))
 time.sleep(float(sys.argv[4]))
 print("survived", flush=True)
 """
 
 
+# The longest wait between two readings the watcher may take (it polls every 0.05 s): "the moment
+# it passes the limit" means within a few polls, not within the parent's own much slower poll.
+MAX_POLL = 0.25
+
+
 def probe(used: str, limit: int, sleep: float) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-I", "-c", PROBE, str(render.CHILD), used, str(limit), str(sleep)],
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            PROBE,
+            str(render.CHILD),
+            used,
+            str(limit),
+            str(sleep),
+            str(MAX_POLL),
+        ],
         capture_output=True,
         text=True,
         timeout=60,
@@ -47,6 +71,7 @@ def test_the_child_ends_itself_once_its_memory_passes_the_limit() -> None:
     done = probe(str(LIMIT + 1), LIMIT, sleep=10.0)
     assert done.returncode == 3  # EXIT_FAILED
     assert "survived" not in done.stdout  # it ended at once, not after its work
+    assert "poll too slow" not in done.stderr  # and the watcher reads often enough to do so
 
 
 @pytest.mark.parametrize("used", [str(LIMIT), str(LIMIT - 1), "none"])
