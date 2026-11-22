@@ -2384,6 +2384,8 @@ const sv: Catalogue = {
     'Den här klassen är mixad (klipp eller övertoningar), så SwedeBeat-spellistan ensam skulle inte spela den som den är gjord. Välj DJ-mix också, eller använd hela låtar först.',
   'studio.reason.mix_not_applied':
     'Den här versionen är inte den form du valde för musiken. Använd dina val igen och godkänn sedan den nya versionen.',
+  'studio.reason.pin_unconfirmed':
+    'Musiken i en låt ändrades efter att du bekräftade ett klipp i den. Lyssna på klippet igen och bekräfta det, eller ta bort det, och godkänn sedan.',
   'studio.reason.playlist_has_repeats':
     'Den här klassen upprepar en låt, så den kan bara skapas som en mix. Välj mixen i stället för SwedeBeat-spellistan.',
   'studio.reason.output_off':

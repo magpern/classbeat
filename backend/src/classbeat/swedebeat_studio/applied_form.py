@@ -1,6 +1,6 @@
 """B9's facts of the approved studio draft, read in the caller's transaction (ADR 0036 amendment B9,
-#1370): ``mixed`` and ``applied_form`` (``studio.mix_applied_policy``), for
-``outputs_admit.bound`` at create time and again when the job runs.
+#1370): ``mixed``, ``applied_form`` (``studio.mix_applied_policy``) and ``pin_unconfirmed`` (ADR
+0042 section 5, #1390), for ``outputs_admit.bound`` at create time and again when the job runs.
 
 - **The facts** are those of the analyses the draft holds: the user's cached analyses of the
   approved list's references, exactly the rows the draft recorded (``track_cache.cached_in`` with
@@ -16,6 +16,12 @@
   list, or any read that fails, is not ``applied_form``. The facts stay the draft's own (above),
   not the proposal's records that the preview and the apply job read (#1369 copies those into an
   applied draft, so the two agree; any difference is refused).
+- **The pins.** ``applied_form`` holds the stored spec to ``applied(...)`` with the edit
+  overlay's cut pins (``overlay_pins``; ADR 0042 section 8). The overlay is E2's (#1391): until it
+  is stored no draft has one, so a stored spec that carries a pin is not ``applied_form`` (fail
+  closed). ``pin_unconfirmed`` is ``mix_pin_policy.listen_again`` of the stored, hash-checked spec
+  against the analysed files the draft recorded (``analyses``; a draft without them knows none, so
+  every confirmed pin of it is to be listened to again).
 
 Nothing is written or logged.
 """
@@ -33,6 +39,8 @@ from classbeat.design.track_cache import cached_in, recorded
 from classbeat.spotdown.studio_map_model import stored_timing_class
 from classbeat.studio.mix_applied_policy import basis, holds, mixed
 from classbeat.studio.mix_facts_model import TrackFacts, of_map
+from classbeat.studio.mix_pin_model import PinRecord
+from classbeat.studio.mix_pin_policy import listen_again
 from classbeat.swedebeat_studio import mix_proposal
 from classbeat.swedebeat_studio.current_draft import CurrentDraft
 
@@ -46,6 +54,23 @@ _ROW = text(
 class Form:
     mixed: bool
     applied_form: bool
+    pin_unconfirmed: bool
+
+
+def overlay_pins(found: CurrentDraft) -> tuple[PinRecord, ...]:
+    """The draft's edit-overlay pin records: none until E2 (#1391) stores the overlay."""
+    del found
+    return ()
+
+
+def unconfirmed(found: CurrentDraft) -> bool:
+    """A confirmed pin of the stored spec whose analysed file is not the one it was confirmed
+    against (module docstring); anything that does not read is one (fail closed)."""
+    analysed = {a.reference: a.sha256 for a in found.music.analyses or ()}
+    try:
+        return bool(listen_again(found.spec, analysed))
+    except (ValueError, KeyError, TypeError):
+        return True
 
 
 async def facts_of(db: AsyncSession, owner_id: UUID, found: CurrentDraft) -> dict[str, TrackFacts]:
@@ -89,15 +114,17 @@ async def _applied_form(
     if loaded is None or loaded.music.song_list_id != list_id:
         return False
     proposal = mix_proposal.proposal_of(loaded, found.songs)
-    return holds(found.spec, proposal, facts, chosen.choices)
+    return holds(found.spec, proposal, facts, chosen.choices, overlay_pins(found))
 
 
 async def form(
     db: AsyncSession, owner_id: UUID, class_id: UUID, found: CurrentDraft, outputs: Collection[str]
 ) -> Form:
-    """``mixed`` and ``applied_form`` of ``found`` approved for ``outputs`` (module docstring)."""
+    """``mixed``, ``applied_form`` and ``pin_unconfirmed`` of ``found`` approved for ``outputs``
+    (module docstring)."""
     facts = await facts_of(db, owner_id, found)
     return Form(
         mixed(found.spec, facts),
         await _applied_form(db, owner_id, class_id, found, facts, outputs),
+        unconfirmed(found),
     )

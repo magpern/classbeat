@@ -2252,6 +2252,8 @@ export const en = {
     'This class is mixed (cuts or crossfades), so the SwedeBeat playlist alone would not play it as designed. Choose DJ mix too, or apply whole songs first.',
   'studio.reason.mix_not_applied':
     'This version is not the form you chose for the music. Apply your choices again, then approve the new version.',
+  'studio.reason.pin_unconfirmed':
+    'The music of a song changed after you confirmed a cut in it. Listen to that cut again and confirm it, or clear it, then approve.',
   'studio.reason.playlist_has_repeats':
     'This class repeats a song, so it can be produced as a mix only. Choose the mix instead of the SwedeBeat playlist.',
   'studio.reason.output_off':

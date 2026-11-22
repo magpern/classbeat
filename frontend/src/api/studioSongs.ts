@@ -193,6 +193,7 @@ const OWN: Record<string, CatalogueKey> = {
   mowl_needs_mix: 'studio.reason.mowl_needs_mix',
   mix_not_chosen: 'studio.reason.mix_not_chosen',
   mix_not_applied: 'studio.reason.mix_not_applied',
+  pin_unconfirmed: 'studio.reason.pin_unconfirmed',
   playlist_has_repeats: 'studio.reason.playlist_has_repeats',
   output_off: 'studio.reason.output_off',
   connection_changed: 'studio.reason.connection_changed',

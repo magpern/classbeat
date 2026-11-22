@@ -10,21 +10,25 @@ Pure: no I/O. ``swedebeat_studio.applied_form`` reads what they take.
   ``swedebeat_mix``, the DJ-mix defaults with it); an applied draft (``origin: mix_choices``,
   #1369) with its recorded ``proposal_revision_id``, which must be ``resolved``, and its recorded
   ``choices``. Any other draft, no proposal, or a record that does not read, has none (``None``).
-- ``holds``: the stored spec equals ``applied(proposal, facts, choices)`` in the stored form.
-  An ``applied`` that refuses, or anything that does not read, does not hold (fail closed).
+- ``holds``: the stored spec equals ``applied(proposal, facts, choices)`` with the overlay's cut
+  pins (``mix_choice_policy.pinned``: ``with_pins``, then ``checked`` and the class-length rule
+  again; ADR 0042 section 8, #1390) in the stored form. Without a pin record that is ``applied``
+  itself, unchanged. An ``applied`` or a pinned spec that refuses, or anything that does not read,
+  does not hold (fail closed).
 
 Whatever choices are recorded, a spec equal to their ``applied`` keeps B5 and B6 (``applied``
 enforces both), so the record can never widen what is admitted.
 """
 
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
 from classbeat.studio.mix_choice_model import MixChoices, Proposal, parsed
-from classbeat.studio.mix_choice_policy import applied, is_plain
+from classbeat.studio.mix_choice_policy import is_plain, pinned
 from classbeat.studio.mix_facts_model import TrackFacts
+from classbeat.studio.mix_pin_model import PinRecord
 from classbeat.studio.mix_proposal_policy import APPLIED_ORIGIN, is_proposal
 from classbeat.studio.mix_spec_model import MixSpec
 
@@ -83,10 +87,12 @@ def holds(
     proposal: Proposal,
     facts: Mapping[str, TrackFacts],
     choices: MixChoices,
+    pins: Sequence[PinRecord] = (),
 ) -> bool:
-    """``stored`` is ``applied(proposal, facts, choices)`` in the stored form (module docstring)."""
+    """``stored`` is ``applied(proposal, facts, choices)`` with ``pins`` in the stored form
+    (module docstring)."""
     try:
-        derived = MixSpec.model_validate(applied(proposal, facts, choices))
+        derived = MixSpec.model_validate(pinned(proposal, facts, choices, pins).spec)
     except (ValueError, KeyError, TypeError, IndexError):  # a refusal or a ValidationError too
         return False
     return derived.model_dump(mode="json") == dict(stored)

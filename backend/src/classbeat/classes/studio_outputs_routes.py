@@ -9,8 +9,8 @@
   (``classes.studio_outputs``): 201 with the ``produce_outputs`` job ``{job_id, kind, state}``,
   200 with the same job for a repeated key and body; 409 ``{reason}`` with the refusal
   (``hash_mismatch``, ``not_current``, ``mowl_needs_mix``, ``mix_not_chosen``, ``mix_not_applied``,
-  ``playlist_has_repeats``, ``output_off``, ``connection_changed``, ``session_refused``,
-  ``class_busy``, ``idempotency_mismatch`` ...), 404 ``not_found`` as above.
+  ``pin_unconfirmed``, ``playlist_has_repeats``, ``output_off``, ``connection_changed``,
+  ``session_refused``, ``class_busy``, ``idempotency_mismatch`` ...), 404 ``not_found`` as above.
 - ``POST /api/classes/{class_id}/mix-choices/preview`` with ``{revision_id, content_hash,
   choices}``: the read-only preview of the mix choices (``classes.mix_preview``): 200 with the
   derived form or its refusal; 404 as above; 409 ``{reason}`` (``no_studio_draft``,
