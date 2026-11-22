@@ -22,8 +22,13 @@ from studiomaps import track_map
 ALL = frozenset(OUTPUTS)
 # A whole-songs draft that is the applied form of its proposal (ADR 0036 amendment B9); a draft
 # that repeats a song is mixed (an applied form only with DJ mix and exact tracks).
-PLAIN: dict[str, bool] = {"mixed": False, "applied_form": True}
-REPEATS: dict[str, bool] = {"repeats": True, "mixed": True, "applied_form": True}
+PLAIN: dict[str, bool] = {"mixed": False, "applied_form": True, "pin_unconfirmed": False}
+REPEATS: dict[str, bool] = {
+    "repeats": True,
+    "mixed": True,
+    "applied_form": True,
+    "pin_unconfirmed": False,
+}
 
 
 @pytest.mark.parametrize(
