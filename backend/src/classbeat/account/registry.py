@@ -119,9 +119,6 @@ NOT_EXPORTED: Mapping[str, str] = MappingProxyType(
         "swedebeat_track_maps": "exported as a count only (``swedebeat_track_analyses`` in the "
         "file, ADR 0036 section 4.1): the analysis of a catalogue track is a derived map, not "
         "something the user wrote",
-        "spotdown_shadow_tracks": "spotdown's shadow comparison of a studio track (ADR 0040 "
-        "section 9): numbers, codes and the analysis's provenance, for the rollout's quality "
-        "check, not something the user wrote",
         "spotdown_studio_budgets": "when a design job first used spotdown for its studio tracks "
         "and whether spotdown was unreachable (ADR 0040 section 8): no content, gone with the "
         "job, nothing the user wrote",

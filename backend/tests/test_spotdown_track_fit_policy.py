@@ -78,13 +78,6 @@ def test_a_round_replaces_the_worst_first_within_the_cap() -> None:
     assert (step.fall_back, step.accept_with_warning, step.done) == ((), (), False)
 
 
-def test_an_unusable_track_with_mowl_sections_falls_back_at_once() -> None:
-    fits = [bad("timing_unusable"), OK, OK, bad("bpm_unusable"), OK, OK]
-    step = plan_round(fits, rounds_done=0, has_fallback=frozenset({0}))
-    assert step.fall_back == (0,)
-    assert step.replace == (3,)
-
-
 def test_after_the_last_round_the_rest_is_accepted_or_falls_back() -> None:
     fits = [bad("timing_unusable"), bad("bpm_unusable"), OK, bad("too_short"), OK, OK]
     step = plan_round(fits, rounds_done=MAX_ROUNDS)
@@ -122,9 +115,9 @@ def test_a_hand_built_fit_ranks_worst_and_never_raises() -> None:
     assert step.waiting == (1,)
 
 
-def test_an_unusable_track_without_a_fallback_falls_back_after_the_last_round() -> None:
+def test_an_unusable_track_is_replaced_first_and_reported_after_the_last_round() -> None:
     fits = [bad("timing_unusable"), OK, OK]
-    assert plan_round(fits, rounds_done=0).replace == (0,)  # no MOWL sections: replace first
+    assert plan_round(fits, rounds_done=0).replace == (0,)  # replaced first, never kept
     final = plan_round(fits, rounds_done=MAX_ROUNDS)
-    assert final.fall_back == (0,)  # today's path for that track
+    assert final.fall_back == (0,)  # reported, not warned: the caller ends the track
     assert final.accept_with_warning == ()

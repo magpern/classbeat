@@ -29,7 +29,7 @@ __all__ = ["env", "harness", "spotdown", "work"]  # the fixtures
 
 pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
 KEY = bytes(range(32))
-UPLOAD_ON = TracksConfig(frozenset({"upload"}), KEY)
+UPLOAD_ON = TracksConfig(KEY)
 
 
 @pytest.fixture(autouse=True)
@@ -68,8 +68,6 @@ async def test_each_failure_kind_ends_the_job_in_its_category(
     )
     if config == "not_configured":
         studio_tracks_config.configure(None)
-    elif config == "source_off":
-        studio_tracks_config.configure(TracksConfig(frozenset(), KEY))
     owner = await harness.user()
     with caplog.at_level(logging.WARNING):
         row = await harness.run(owner, [ONE, TWO])

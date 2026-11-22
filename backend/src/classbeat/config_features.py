@@ -16,7 +16,6 @@ from pydantic_settings import BaseSettings
 
 from classbeat.config_turnstile import check_site_key as check_turnstile_site_key
 from classbeat.player.base_url_policy import player_base_url as check_player_base_url
-from classbeat.spotdown.sources_policy import canonical as check_spotdown_sources
 from classbeat.spotdown.url_policy import spotdown_url as check_spotdown_url
 from classbeat.swedebeat_gateway.url_policy import gateway_url as check_swedebeat_gateway_url
 from classbeat.swedebeat_studio.config_policy import canonical as check_swedebeat_studio
@@ -121,15 +120,9 @@ class FeatureSettings(BaseSettings):
     player_base_url: str | None = None
     # ADR 0040 section 10 (#1301): spotdown's internal origin (``spotdown.url_policy``), worker
     # only. Unset (the default) is off: nothing calls spotdown. Its key is
-    # ``Settings.spotdown_service_key`` (a file); the sources it may use are
-    # ``spotdown_sources``, a comma list of ``upload`` and ``youtube`` (empty: none).
+    # ``Settings.spotdown_service_key`` (a file). classbeat uses spotdown's ``upload`` source for
+    # SwedeBeat audio and ``youtube`` for matches; there is no setting for either.
     spotdown_url: str | None = None
-    spotdown_sources: str = ""
-    # ADR 0040 section 9 (#1301 part 3): shadow mode for studio tracks, worker only. On (and with
-    # spotdown installed and ``upload`` among the sources), each downloaded studio track is also
-    # analysed by spotdown and only the comparison is recorded (``spotdown.shadow_config``); the
-    # design keeps today's analysis. Off by default.
-    spotdown_shadow: bool = False
 
     @field_validator("swedebeat_gateway_url")
     @classmethod
@@ -150,11 +143,6 @@ class FeatureSettings(BaseSettings):
     @classmethod
     def _check_spotdown_url(cls, value: str | None) -> str | None:
         return None if value is None else check_spotdown_url(value)
-
-    @field_validator("spotdown_sources")
-    @classmethod
-    def _check_spotdown_sources(cls, value: str) -> str:
-        return check_spotdown_sources(value)
 
     @field_validator("oidc_player_client_id")
     @classmethod

@@ -10,8 +10,7 @@ Spotify-derived) and the MOWL links of Swedebeat mixes.
   playlist id of the old one.
 - ``FORGET_TRACK_MAPS``: every studio track analysis of the user (``swedebeat_track_maps``, ADR
   0036 section 4.1), run by ``forget.forget_swedebeat_account`` when the SwedeBeat connection is
-  dropped (Disconnect, a keys wipe); ``FORGET_SHADOW_TRACKS`` the same for spotdown's shadow
-  comparisons of those tracks (``spotdown_shadow_tracks``, ADR 0040 section 9).
+  dropped (Disconnect, a keys wipe).
 
 Every statement filters on ``owner_id`` itself as well as through row security.
 """
@@ -25,7 +24,6 @@ from classbeat.db import user_session
 _ANALYSED = text("SELECT mix_id FROM swedebeat_mix_maps WHERE owner_id = :owner_id")
 FORGET_MIX_MAPS = text("DELETE FROM swedebeat_mix_maps WHERE owner_id = :owner_id")
 FORGET_TRACK_MAPS = text("DELETE FROM swedebeat_track_maps WHERE owner_id = :owner_id")
-FORGET_SHADOW_TRACKS = text("DELETE FROM spotdown_shadow_tracks WHERE owner_id = :owner_id")
 
 
 async def analysed_mix_ids(

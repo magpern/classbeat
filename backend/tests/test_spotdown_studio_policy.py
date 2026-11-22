@@ -193,7 +193,7 @@ def test_the_budget_is_about_ten_minutes() -> None:
 # --- when spotdown is usable ---------------------------------------------------------------------
 
 KEY = bytes(range(32))
-ON = TracksConfig(frozenset({"upload"}), KEY)
+ON = TracksConfig(KEY)
 
 
 @pytest.fixture
@@ -212,9 +212,7 @@ def test_usable_only_with_everything_set_else_the_refusal_names_the_unreachable_
 ) -> None:
     assert ON.refusal() is None
     assert TracksConfig().refusal() == "not_configured"  # the default: nothing set
-    assert TracksConfig(ON.sources, None).refusal() == "not_configured"  # no scope key
-    assert TracksConfig(frozenset({"youtube"}), KEY).refusal() == "source_off"
-    assert TracksConfig(frozenset(), KEY).refusal() == "source_off"
+    assert TracksConfig(None).refusal() == "not_configured"  # no scope key
     assert "scope_key" not in repr(ON)
     assert str(KEY) not in repr(ON)
 

@@ -56,7 +56,7 @@ __all__ = ["env", "operator_log", "spotdown", "work"]  # the fixtures
 pytestmark = pytest.mark.usefixtures("mowl_api", "analysis_slot_by_default")
 KEY = bytes(range(32))
 NAME = "Planted Mix Name q9z"
-UPLOAD_ON = TracksConfig(frozenset({"upload"}), KEY)
+UPLOAD_ON = TracksConfig(KEY)
 
 
 class PreferHarness(Harness):
@@ -149,11 +149,10 @@ def mapped_of(fake: FakeSpotdown, analysis_id: str, mix: str, sha: str) -> MixMa
 # --- spotdown not installed ---------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("config", [None, TracksConfig(frozenset(), KEY)])
-async def test_not_installed_or_without_upload_the_job_is_unavailable_before_the_fetch(
-    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl, config: Any
+async def test_not_installed_the_job_is_unavailable_before_the_fetch(
+    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl
 ) -> None:
-    studio_tracks_config.configure(config)
+    studio_tracks_config.configure(None)
     owner, connection = await on_mix(harness, mowl_api)
     mix = add_beats(mowl_api, NAME)
     row = await harness.run(owner, connection, mix)

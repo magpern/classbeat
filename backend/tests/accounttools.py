@@ -166,13 +166,6 @@ class Person:
             "FROM jobs WHERE owner_id = :u ORDER BY created_at LIMIT 1",
             u=u,
         )
-        # ADR 0040 section 9 (#1301): a shadow comparison of one of the user's jobs' tracks.
-        self.sql(
-            "INSERT INTO spotdown_shadow_tracks (owner_id, job_id, outcome) "
-            "SELECT owner_id, id, 'compared' FROM jobs WHERE owner_id = :u "
-            "ORDER BY created_at LIMIT 1",
-            u=u,
-        )
         # ADR 0040 section 8 (#1302): a design job's spotdown budget.
         self.sql(
             "INSERT INTO spotdown_studio_budgets (owner_id, job_id) "

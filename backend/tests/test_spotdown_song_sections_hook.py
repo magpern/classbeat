@@ -18,7 +18,7 @@ tracks.
 import copy
 import json
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
@@ -33,7 +33,7 @@ from classbeat.design.music import MusicStep
 from classbeat.jobs import JobFailure, RunStopped
 from classbeat.jobs.errors import LeaseLost
 from classbeat.songs import phase2, phase2_spotdown
-from classbeat.spotdown import outage_policy, song_match_config
+from classbeat.spotdown import outage_policy
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.provenance_read_calc import AudioIdentity
 from classbeat.spotdown.song_analysis_record_model import (
@@ -127,12 +127,8 @@ class World:
 
 
 @pytest.fixture
-def world(spotdown: FakeSpotdown) -> Iterator[World]:
-    song_match_config.configure(song_match_config.MatchConfig(frozenset({"youtube"})))
-    try:
-        yield World(spotdown)
-    finally:
-        song_match_config.configure(None)
+def world(spotdown: FakeSpotdown) -> World:
+    return World(spotdown)
 
 
 def track_songs(m: dict[str, Any], track: int) -> list[dict[str, Any]]:
@@ -172,12 +168,8 @@ async def test_every_marked_song_is_on_spotdowns_sections_and_approximate(world:
 async def test_a_song_with_no_recorded_entry_is_analysis_failed(spotdown: FakeSpotdown) -> None:
     """A designed track always has a stamp: a position the record has no spotdown entry for ends
     the job; nothing is made of MOWL's sections for it."""
-    song_match_config.configure(song_match_config.MatchConfig(frozenset({"youtube"})))
-    try:
-        world = World(spotdown, positions=(1, 3))
-        await world.fails("analysis_failed")
-    finally:
-        song_match_config.configure(None)
+    world = World(spotdown, positions=(1, 3))
+    await world.fails("analysis_failed")
     assert [r.path for r in world.reads()] == []  # stopped at the first (position 0)
 
 
@@ -296,7 +288,6 @@ def _targets(monkeypatch: pytest.MonkeyPatch) -> dict[str, Callable[[Callable[..
         return lambda f: monkeypatch.setattr(phase2_spotdown, name, f)
 
     return {
-        "config": lambda f: monkeypatch.setattr(song_match_config, "current", f),
         "recorded": module("recorded"),
         "client": module("SpotdownClient"),
         "get_analysis": lambda f: monkeypatch.setattr(SpotdownClient, "get_analysis", f),
@@ -307,7 +298,7 @@ def _targets(monkeypatch: pytest.MonkeyPatch) -> dict[str, Callable[[Callable[..
     }
 
 
-TARGETS = ("config", "recorded", "client", "get_analysis", "verified", "reference_sections",
+TARGETS = ("recorded", "client", "get_analysis", "verified", "reference_sections",
            "source_kind", "apply_track", "checkpoint")  # fmt: skip
 
 

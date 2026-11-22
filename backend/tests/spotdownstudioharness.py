@@ -98,14 +98,5 @@ def harness(xenv: OpsEnv, gateway_api: FakeGateway) -> Harness:
     return Harness(xenv, gateway_api)
 
 
-async def baseline(harness: Harness, references: list[str]) -> tuple[list[Any], list[Any]]:
-    """The result and stored maps of a run without shadow mode (another owner, the same audio)."""
-    owner = await harness.user()
-    row = await harness.run(owner, references)
-    assert (row.state, row.error_category) == ("completed", None)
-    result = [(t.reference, t.sha256, t.music_map, t.cached) for t in harness.results[-1]]
-    return result, [(r, s, m) for r, s, m in harness.maps(owner)]
-
-
 def last_result(harness: Harness) -> list[Any]:
     return [(t.reference, t.sha256, t.music_map, t.cached) for t in harness.results[-1]]

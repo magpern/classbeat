@@ -55,7 +55,7 @@ THREE = "trk-three-03"  # the same bytes as ONE under another reference
 KEY = bytes(range(32))
 SHARED = shared_scope(KEY, "studio")  # #1338: every owner's studio analyses
 OTHER_SHA = hashlib.sha256(OTHER_AUDIO).hexdigest()
-UPLOAD_ON = studio_tracks_config.TracksConfig(frozenset({"upload"}), KEY)
+UPLOAD_ON = studio_tracks_config.TracksConfig(KEY)
 
 
 @pytest.fixture(autouse=True)
@@ -107,11 +107,10 @@ async def on_owner(harness: Harness) -> UUID:
 # --- spotdown not installed ---------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("config", [None, studio_tracks_config.TracksConfig(frozenset(), KEY)])
-async def test_not_installed_or_without_upload_the_job_is_unavailable_and_sends_nothing(
-    harness: Harness, spotdown: FakeSpotdown, config: Any
+async def test_not_installed_the_job_is_unavailable_and_sends_nothing(
+    harness: Harness, spotdown: FakeSpotdown
 ) -> None:
-    studio_tracks_config.configure(config)
+    studio_tracks_config.configure(None)
     owner = await on_owner(harness)
     row = await harness.run(owner, [ONE])
     assert (row.state, row.error_category) == ("failed", "analysis_unavailable")

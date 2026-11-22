@@ -70,7 +70,7 @@ async def drain(factory: Factory) -> int:
         return int(getattr(result, "rowcount", 0) or 0)
     async with system_session(factory) as db:
         taken = [str(s) for (s,) in (await db.execute(_TAKE, {"n": BATCH})).all()]
-    client, deleted = SpotdownClient(frozenset()), 0
+    client, deleted = SpotdownClient(), 0
     for scope in taken:
         if isinstance(await client.delete_scope(scope), Deleted):
             async with system_session(factory) as db:

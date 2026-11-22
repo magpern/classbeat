@@ -68,7 +68,7 @@ def mix_documents(spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch) -> An
 
     monkeypatch.setattr(spotdown, "analysis", analysis)
     monkeypatch.setattr(track_spotdown, "pause", pause)
-    studio_tracks_config.configure(TracksConfig(frozenset({"upload"}), KEY))
+    studio_tracks_config.configure(TracksConfig(KEY))
     yield
     studio_tracks_config.configure(None)
 

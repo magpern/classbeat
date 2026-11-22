@@ -35,7 +35,7 @@ from test_swedebeat_studio_design import (
 __all__ = ["analysed", "spotdown"]  # the fixtures
 
 
-ON = studio_tracks_config.TracksConfig(frozenset({"upload"}), b"k" * 32)
+ON = studio_tracks_config.TracksConfig(b"k" * 32)
 
 
 @pytest.fixture(autouse=True)

@@ -67,7 +67,7 @@ def session_for(run: JobRun) -> relay.Session:
     if refused is not None or config.scope_key is None:
         raise spotdown_ending.unreachable(refused or "not_configured")
     scope = scope_policy.scope_for("mix", config.scope_key, run.lease.owner_id)
-    return relay.Session(SpotdownClient(config.sources), scope)
+    return relay.Session(SpotdownClient(), scope)
 
 
 async def _attempt(
