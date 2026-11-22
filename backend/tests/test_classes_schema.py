@@ -65,6 +65,7 @@ def insert(conn: Connection, table: str, **values: Any) -> uuid.UUID:
         "params",
         "track_ids",
         "metrics",
+        "set_against_analysis",
     }
     params = ", ".join(f"CAST(:{k} AS jsonb)" if k in jsonb else f":{k}" for k in values)
     row = {k: json.dumps(v) if k in jsonb else v for k, v in values.items()}
@@ -596,6 +597,10 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     # Migration 0029: a beat-one correction of the class (ADR 0007 amendment).
     insert(admin, "beat_one_corrections", owner_id=owner, class_id=class_id,
            fingerprint="ab" * 32, song=2, beats=1, bpm=128.0)  # fmt: skip
+    # Migration 0078: a Spotify alignment correction of the class (ADR 0042 section 7.4).
+    insert(admin, "spotify_offset_corrections", owner_id=owner, class_id=class_id,
+           fingerprint="ab" * 32, song=2, offset_ms=-250,
+           set_against_analysis={"map_version": 3, "sha256": "cd" * 32})  # fmt: skip
     # Migration 0020: when a new mix analysis started (the daily limit).
     insert(admin, "swedebeat_analyses", owner_id=owner)
     match = admin.execute(
