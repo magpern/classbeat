@@ -227,8 +227,8 @@ async def test_another_owners_cache_is_not_a_hit(harness: Harness) -> None:
 async def test_an_older_analyser_version_is_analysed_again(harness: Harness) -> None:
     owner = await harness.user()
     harness.ops.sql(
-        "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map) "
-        "VALUES (:o, :r, :v, :h, '{}'::jsonb)",
+        "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map, "
+        "analyser, provenance) VALUES (:o, :r, :v, :h, '{}'::jsonb, 'spotdown', '{}'::jsonb)",
         o=owner, r=ONE, v=track.TRACK_VERSION + 1, h=bytes(32),
     )  # fmt: skip
     row = await harness.run(owner, [ONE])

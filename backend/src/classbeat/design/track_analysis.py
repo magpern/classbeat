@@ -1,6 +1,6 @@
 """The analysis of a studio class's approved tracks (ADR 0036 section 4.1, SR C4; ADR 0040
-amendment "spotdown is the only analysis path", #1353): after the ``song_list`` approval, each
-track's map from the user's own cache or from spotdown.
+amendment "spotdown is the only analysis path", #1353, #1356): after the ``song_list`` approval,
+each track's map from the user's own cache or from spotdown.
 
 ``analyse_tracks`` is the step a studio design job runs (C5) with the bearer it opened
 (``swedebeat_match.kind.open_match_bearer``) and the gateway's client key. It never reads a flag
@@ -8,9 +8,9 @@ itself: the kind's ``admit`` and its run check them before calling it.
 
 1. **The references** (``track_map_policy.wanted``): the approved list's catalogue references, in
    order, once each, at most 40; anything else is ``invalid_input`` before anything is read.
-2. **The cache** (``track_cache.cached``, under the connection's ``hold``): the owner's rows of
-   the ``spotdown`` analyser whose provenance is this build's (``accept``); a ``local`` row is
-   never a hit. **A hit needs no download.** When every track is a hit nothing is called at all.
+2. **The cache** (``track_cache.cached``, under the connection's ``hold``): the owner's rows
+   (all of them spotdown's) whose provenance is this build's (``accept``). **A hit needs no
+   download.** When every track is a hit nothing is called at all.
 3. **The misses.** With spotdown not usable in this worker the run ends ``analysis_unavailable``
    (``track_spotdown.session_for``) before anything is requeued, counted or downloaded. A run
    without one of the worker's mix-analysis slots (#574) is requeued with one here, the attempt
@@ -31,7 +31,7 @@ itself: the kind's ``admit`` and its run check them before calling it.
    (``track_cache.store``) and used as stored (jsonb's form, which the draft's ``map_hash`` is
    of); a later failure keeps the tracks already stored, so a retry downloads only the rest.
 
-No call to a local analysis remains on this path. **Named failures** (job categories):
+**Named failures** (job categories):
 ``track_too_large`` (over 60 MB, or the gateway's ``413``), ``track_unavailable`` (``404``: no file
 for that reference), ``analysis_unavailable`` (retried) and ``analysis_failed`` for spotdown's
 outcomes (``track_spotdown``, ``spotdown_ending``), ``track_limit``, ``not_connected``, and the
@@ -92,9 +92,9 @@ async def _download(
 
 
 def accept(row: Stored) -> bool:
-    """Which cached rows are hits: ``spotdown`` ones whose provenance is this build's
-    (``current_provenance``); never a ``local`` one (#1353)."""
-    return row.analyser == "spotdown" and current_provenance(row.provenance, row.sha256)
+    """Which cached rows are hits: those whose provenance is this build's
+    (``current_provenance``)."""
+    return current_provenance(row.provenance, row.sha256)
 
 
 async def _from_spotdown(

@@ -1,7 +1,6 @@
-"""The child process that decodes and analyses one Swedebeat mix (ADR 0016 section 3 step 2, T109)
-or one studio track (ADR 0036 section 4.1).
+"""The child process that decodes and analyses one Swedebeat mix (ADR 0016 section 3 step 2, T109).
 
-``python -I .../classbeat/design/mixchild.py AUDIO_PATH MAX_SECONDS MAX_RSS_BYTES [MODE]`` runs
+``python -I .../classbeat/design/mixchild.py AUDIO_PATH MAX_SECONDS MAX_RSS_BYTES`` runs
 in its own interpreter with a minimal environment (``classbeat.design.mixanalysis`` starts it and
 limits it to 1.5 GiB of resident memory and 180 s), so a crash, an out-of-memory kill or a hostile
 file ends only this process. It holds no database connection, no key and no network: it reads the
@@ -23,9 +22,8 @@ one file it is given.
   counted as it goes: past ``MAX_SECONDS`` (the listed length plus five minutes, never over 120
   minutes) the child stops and fails. A header that already says so fails before any block. MP3
   (what MOWL serves) is decoded by the libsndfile the ``soundfile`` wheel bundles.
-- **The analysis is the library's** (``librosa`` underneath): ``MODE`` ``mix`` (the default)
-  is ``mowl.music.analyze_signal``, ``track`` is ``mowl.music.analyze_track`` (one song, events up
-  to its edges, section energy); any other mode fails before the file is opened.
+- **The analysis is the library's** (``librosa`` underneath): ``mowl.music.analyze_signal``; any
+  further argument fails before the file is opened.
 - **The answer** is one JSON line on stdout: ``{"map": ..., "peak_rss": bytes or null,
   "sandbox": {"syscalls": bool, "files": bool}}``. Every failure is exit status 3 with nothing on
   stdout; stderr is not read (a path or a file's own words never reach a log).
@@ -39,7 +37,6 @@ from types import ModuleType
 from typing import Any
 
 EXIT_FAILED = 3
-MODES = ("mix", "track")
 BLOCK_FRAMES = 1 << 16  # frames per read, whatever rate the header claims
 MAX_RATE = 768_000
 MAX_CHANNELS = 8
@@ -123,8 +120,7 @@ def decode(path: str, max_seconds: float, rate: int) -> Any:
 def main(argv: list[str]) -> int:
     try:
         path, max_seconds, max_rss = argv[1], float(argv[2]), int(argv[3])
-        mode = argv[4] if len(argv) > 4 else "mix"
-        if not 0 < max_seconds <= 7200 or max_rss <= 0 or mode not in MODES or len(argv) > 5:
+        if not 0 < max_seconds <= 7200 or max_rss <= 0 or len(argv) > 4:
             return _fail()
         sandbox, rss = sibling("sandbox"), sibling("rss")
         confined = confine(sandbox, path)
@@ -133,8 +129,7 @@ def main(argv: list[str]) -> int:
         from mowl import music
 
         signal = decode(path, max_seconds, music.SR)
-        analyse = music.analyze_track if mode == "track" else music.analyze_signal
-        analysis = analyse(signal, music.SR)
+        analysis = music.analyze_signal(signal, music.SR)
         out = json.dumps(
             {"map": analysis, "peak_rss": rss.own_peak_rss(), "sandbox": confined},
             default=_jsonable,

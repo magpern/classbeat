@@ -1,5 +1,6 @@
-"""``classbeat.design.track_map_policy`` (ADR 0036 section 4.1, SR C4): which child answers are a
-track map, and which references are analysed. Pure; no database, no child."""
+"""``classbeat.design.track_map_policy`` (ADR 0036 section 4.1, SR C4): which stored maps are a
+track map (the cache validates what spotdown's mapping stored), and which references are analysed.
+Pure; no database."""
 
 import copy
 from typing import Any
@@ -7,7 +8,6 @@ from typing import Any
 import pytest
 from mowl import track
 
-from classbeat.design.mixanalysis import child_argv
 from classbeat.design.track_map_policy import MAX_TRACKS, valid_track_map, wanted
 
 V = track.TRACK_VERSION
@@ -97,11 +97,3 @@ def test_the_references_are_kept_in_order_once_each() -> None:
 def test_a_bad_reference_or_too_many_is_refused(references: list[str]) -> None:
     with pytest.raises(ValueError, match=r"reference|too many"):
         wanted(references)
-
-
-def test_the_child_is_told_the_mode_only_for_a_track() -> None:
-    from pathlib import Path
-
-    mix = child_argv(Path("/w/a"), 10.0, 5)
-    assert mix[-3:] == ["/w/a", "10.0", "5"]
-    assert child_argv(Path("/w/a"), 10.0, 5, "track") == [*mix, "track"]

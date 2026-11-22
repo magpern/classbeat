@@ -6,9 +6,7 @@ hit needs no configuration); gone from the cache, the rows are not replaced: ``m
 On the fakes (the fake gateway, the fake model, the fake spotdown); never the network."""
 
 import copy
-import json
 from collections.abc import Iterator
-from typing import Any
 from uuid import UUID
 
 import pytest
@@ -18,10 +16,8 @@ from classbeat.design import track_spotdown
 from classbeat.spotdown import studio_tracks_config
 from ctx import make_context
 from spotdownfake import FakeSpotdown, spotdown
-from studiomaps import track_map
 from studiotools import StudioEnv
 from test_swedebeat_studio_design import (
-    LENGTH,
     MIX_8,
     analysed,
     approved,
@@ -56,17 +52,6 @@ def spotdown_maps(spotdown: FakeSpotdown, analysed: list[str]) -> FakeSpotdown:
     return spotdown
 
 
-def local_beside(studio: StudioEnv, owner: Any) -> None:
-    """A local map of every track beside the spotdown rows (what a later local job stores)."""
-    studio.songs.sql(
-        "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map) "
-        "SELECT owner_id, reference, analyser_version, sha256, CAST(:m AS jsonb) "
-        "FROM swedebeat_track_maps WHERE owner_id = :o AND analyser = 'spotdown'",
-        o=owner,
-        m=json.dumps(track_map(LENGTH, bpm=100.0)),
-    )
-
-
 async def test_a_class_designed_on_spotdown_keeps_its_maps_and_provenance(
     studio: StudioEnv, analysed: list[str], spotdown_maps: FakeSpotdown
 ) -> None:
@@ -85,9 +70,7 @@ async def test_a_class_designed_on_spotdown_keeps_its_maps_and_provenance(
         o=rider.user_id,
     ).scalars()
     assert all(m["cut_candidates"] for m in stored)  # #1328: each map carries its candidates
-    # Not installed any more, a later local row of the same tracks coexist with spotdown's.
-    studio_tracks_config.configure(None)  # a cache hit needs no configuration
-    local_beside(studio, rider.user_id)
+    studio_tracks_config.configure(None)  # not installed any more: a hit needs no config
     ctx = make_context(rider.user_id)
     before = await studio_timeline.view(studio.songs.spot.env.factory, ctx, class_id)
     assert isinstance(before, dict)
@@ -103,7 +86,7 @@ async def test_a_class_designed_on_spotdown_keeps_its_maps_and_provenance(
     ).scalar_one()
     assert studio.songs.revision(new_id).music["analyses"] == records
     assert analysed == []
-    # Gone from the cache, the spotdown rows are never replaced by the local ones: music_changed.
+    # Gone from the cache, the rows are not read from anything else: music_changed.
     studio.songs.sql(
         "DELETE FROM swedebeat_track_maps WHERE owner_id = :o AND analyser = 'spotdown'",
         o=rider.user_id,

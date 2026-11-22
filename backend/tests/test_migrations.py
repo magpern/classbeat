@@ -35,7 +35,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0074_drop_spotdown_shadow"]
+    assert script.get_heads() == ["0075_drop_local_track_maps"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -56,7 +56,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0074_drop_spotdown_shadow"]
+        assert applied_revisions(database_url) == ["0075_drop_local_track_maps"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -1220,6 +1220,75 @@ def test_0074_drops_the_shadow_table_and_the_downgrade_recreates_it_empty(
         command.upgrade(config, "head")
         with admin.connect() as connection:
             assert connection.execute(exists).scalar_one() is False
+    finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0075_deletes_the_local_track_maps_and_the_downgrade_restores_the_check(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1356: at head ``swedebeat_track_maps.analyser`` admits only ``spotdown`` and has no
+    default; the upgrade deleted the ``local`` rows (and kept the ``spotdown`` ones); the
+    downgrade restores the check (``local`` or ``spotdown``) and the ``local`` default."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+    plant = text(
+        "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map, "
+        "analyser, provenance) VALUES (:o, :r, 1, :h, '{}', :a, CAST(:p AS jsonb))"
+    )
+    default = text(
+        "SELECT column_default FROM information_schema.columns "
+        "WHERE table_name = 'swedebeat_track_maps' AND column_name = 'analyser'"
+    )
+
+    def references(owner: uuid.UUID) -> list[str]:
+        with admin.connect() as connection:
+            return sorted(
+                connection.execute(
+                    text("SELECT reference FROM swedebeat_track_maps WHERE owner_id = :o"),
+                    {"o": owner},
+                ).scalars()
+            )
+
+    owners: list[uuid.UUID] = []
+
+    def refused(analyser: str, ref: str) -> None:
+        with (
+            pytest.raises(IntegrityError, match="swedebeat_track_maps_analyser"),
+            admin.begin() as connection,
+        ):
+            connection.execute(
+                plant, {"o": owners[0], "r": ref, "h": bytes(32), "a": analyser, "p": None}
+            )
+
+    try:
+        command.upgrade(config, "0074_drop_spotdown_shadow")
+        with admin.begin() as connection:
+            owner = new_user(connection)
+            owners.append(owner)
+            for ref, analyser, provenance in (("loc", "local", None), ("spd", "spotdown", "{}")):
+                connection.execute(
+                    plant,
+                    {"o": owner, "r": ref, "h": bytes(32), "a": analyser, "p": provenance},
+                )
+        assert references(owner) == ["loc", "spd"]
+        command.upgrade(config, "head")
+        assert references(owner) == ["spd"]  # the local row is gone, the spotdown one is kept
+        with admin.connect() as connection:
+            assert connection.execute(default).scalar_one() is None
+        for analyser in ("local", "mowl"):
+            refused(analyser, "x")
+        command.downgrade(config, "0074_drop_spotdown_shadow")
+        with admin.connect() as connection:
+            assert "'local'" in str(connection.execute(default).scalar_one())
+        with admin.begin() as connection:  # the check admits a local row again
+            connection.execute(
+                plant, {"o": owner, "r": "back", "h": bytes(32), "a": "local", "p": None}
+            )
+        assert references(owner) == ["back", "spd"]
+        refused("mowl", "y")
     finally:
         admin.dispose()
         command.downgrade(config, "base")

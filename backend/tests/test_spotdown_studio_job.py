@@ -346,27 +346,6 @@ async def test_an_error_in_the_spotdown_code_is_internal_and_not_swallowed(
 # --- the cache's rule, fenced writes and deletion -----------------------------------------------
 
 
-async def test_a_local_row_is_no_hit_and_is_left_beside_the_spotdown_row(
-    harness: Harness, spotdown: FakeSpotdown
-) -> None:
-    """A ``local`` row (stored before #1353) is analysed again by spotdown, and kept."""
-    owner = await on_owner(harness)
-    await harness.run(owner, [ONE])
-    [made] = rows(harness, owner)
-    harness.ops.sql(
-        "UPDATE swedebeat_track_maps SET analyser = 'local', provenance = NULL WHERE owner_id = :o",
-        o=owner,
-    )
-    fetched = downloads(harness, owner)
-    row = await harness.run(owner, [ONE])
-    assert (row.state, row.error_category) == ("completed", None)
-    assert downloads(harness, owner) == fetched + 1  # a miss
-    assert last_result(harness)[0][3] is False
-    assert sorted(r.analyser for r in rows(harness, owner)) == ["local", "spotdown"]
-    new = next(r for r in rows(harness, owner) if r.analyser == "spotdown")
-    assert new.map == made.map
-
-
 async def test_a_row_of_other_policy_versions_is_analysed_again(
     harness: Harness, spotdown: FakeSpotdown
 ) -> None:
