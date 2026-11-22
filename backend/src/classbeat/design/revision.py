@@ -193,6 +193,21 @@ class DraftRevision:
         return revision_id
 
 
+def checked_content(result: DesignResult) -> tuple[dict[str, Any], bool]:
+    """The fitted content, validated again server-side, and whether it is a running draft;
+    ``invalid_output`` if it no longer validates (also a composer's preview, which has no music)."""
+    draft = fitted_draft(result)
+    running = isinstance(draft, RunningDraft)
+    try:  # again, server-side, before it is stored
+        (workout.validate_running if running else workout.validate)(draft.to_spec())
+    except ValueError:
+        raise JobFailure("invalid_output") from None
+    content = draft.model_dump(mode="json", exclude_none=True)
+    if len(canonical(content)) > MAX_CONTENT_BYTES:
+        raise JobFailure("invalid_output")
+    return content, running
+
+
 def content_and_music(
     result: DesignResult,
     music_map: dict[str, Any] | None,
@@ -200,22 +215,10 @@ def content_and_music(
     song_list_id: UUID | None,
     spotdown_list_id: UUID | None = None,
 ) -> tuple[dict[str, Any], bytes, RevisionMusic | NoRevisionMusic, bool]:
-    """The fitted content (validated again, server-side), its hash, the revision's music and
-    whether it is a running draft; ``invalid_output`` if the draft no longer validates.
+    """``checked_content``, its hash, the revision's music and whether it is a running draft.
     ``spotdown_list_id`` (a revise or refit): the list a stamped track came from, else
     ``song_list_id`` (``revision_spotdown_model``)."""
-    draft = fitted_draft(result)
-    running = isinstance(draft, RunningDraft)
-    try:  # again, server-side, before it is stored
-        if running:
-            workout.validate_running(draft.to_spec())
-        else:
-            workout.validate(draft.to_spec())
-    except ValueError:
-        raise JobFailure("invalid_output") from None
-    content = draft.model_dump(mode="json", exclude_none=True)
-    if len(canonical(content)) > MAX_CONTENT_BYTES:
-        raise JobFailure("invalid_output")
+    content, running = checked_content(result)
     music: RevisionMusic | NoRevisionMusic
     if isinstance(step, NoMusicStep):
         if running or song_list_id is not None or music_map is not None:

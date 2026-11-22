@@ -286,6 +286,20 @@ async def test_a_failure_in_a_revise_has_no_fallback_and_no_revision(
     )
 
 
+async def test_a_draft_on_a_list_without_its_spotdown_field_is_music_changed(
+    songenv: SongEnv, fake: FakeSpotdown, carried: list[Any]
+) -> None:
+    """#1386: a base designed on a song list but without ``music.spotdown`` (a draft from before
+    the stages) is never revised on MOWL's sections: ``music_changed``, nothing read or stored."""
+    rider, class_id, draft = await spotdown_class(songenv)
+    songenv.sql("UPDATE class_revisions SET music = music - 'spotdown' WHERE id = :r", r=draft.id)
+    reads = len(fake.seen)
+    await revise(songenv, rider, class_id, draft.id, ends=("failed", "music_changed"))
+    assert current(songenv, class_id) == draft.id  # no new revision
+    assert carried == []  # never reached the carry
+    assert not [s for s in fake.seen[reads:] if s.path.startswith("/v2/analyses/")]
+
+
 # --- a change of one song -----------------------------------------------------------------------
 
 

@@ -9,8 +9,9 @@ On ``composertools``' world (the fake Spotify with an invented catalogue, ``Fake
   no model and stores the first real draft (``origin = design_with_songs``, provenance ``fit:
   kept`` naming the preview's design run, ``music.song_list_id``) by compare-and-set from the
   sketch, and ``save_pending`` names it;
-- a song out of tolerance or a total drift over 5 seconds re-designs with a model on the approved
-  preview, with no ``save_pending`` and the class saying the songs differed;
+- a total drift over 5 seconds re-designs with a model on the approved preview, with no
+  ``save_pending`` and the class saying the songs differed; a song whose recorded spotdown
+  analysis no longer verifies against the final track is ``analysis_failed`` (stage D, #1386);
 - a sketch that is no longer current makes ``prepare`` refuse before any Spotify write;
 - ``save: true`` is refused for any other job, and a repeated approval never drops it.
 
@@ -137,9 +138,14 @@ async def test_an_approval_without_save_stores_the_draft_and_no_save_pending(
     assert view["save_pending"] is None
 
 
+# spotdown's recorded analysis verifies only within ``song_sections_calc.MAX_LENGTH_DIFF_S`` (1 s)
+# of the final track's length (stage D, #1386): a song that differs more is ``analysis_failed``
+# (``test_a_final_song_spotdown_no_longer_verifies_is_analysis_failed``), so the songs that still
+# differ enough to re-design do so by the total drift: eight songs 0.9 s longer each (7.2 s).
+EIGHT_LONGER = {n: 900 for n in range(8)}
 DIFFERED = {
-    "a song 3 s longer": {2: 3_000},
-    "four songs 1.5 s longer each (total 6 s)": {0: 1_500, 1: 1_500, 2: 1_500, 3: 1_500},
+    "eight songs 0.9 s longer each (total 7.2 s)": EIGHT_LONGER,
+    "seven songs 0.8 s longer each (total 5.6 s)": {n: 800 for n in range(7)},
 }
 
 
@@ -169,6 +175,23 @@ async def test_final_songs_that_differ_are_re_designed_with_no_save_pending(
     view = (await rider.browser.get(f"/api/classes/{class_id}")).json()
     assert view["save_pending"] is None
     assert view["phase2"] == {"state": "differed"}
+
+
+@pytest.mark.parametrize("extra", [{2: 3_000}, {0: 1_500}], ids=["3 s", "1.5 s"])
+async def test_a_final_song_spotdown_no_longer_verifies_is_analysis_failed(
+    cenv: ComposerEnv, extra: dict[int, int]
+) -> None:
+    """Stage D is always strict (#1386): a final track whose length moved more than the recorded
+    analysis's alignment allows fails the job; nothing is designed on MOWL's sections."""
+    rider, class_id, sketch, job_id, list_id, digest = await waiting(cenv)
+    answer = await approve(rider, job_id, list_id, digest)
+    assert answer.status_code == 200, answer.text
+    stretch(cenv, list_id, extra)
+    before = turns(cenv)
+    row = await cenv.songenv.run(job_id)
+    assert (row.state, row.error_category) == ("failed", "analysis_failed")
+    assert turns(cenv) == before  # no model designed anything
+    assert cenv.current(class_id) == sketch  # no draft adopted
 
 
 UNPROVEN = {
@@ -249,7 +272,7 @@ async def test_a_sketch_replaced_after_it_was_read_fails_the_store_by_compare_an
 
         monkeypatch.setattr(module, name, retimed)
     else:
-        stretch(cenv, list_id, {2: 3_000})  # the final songs differ: the re-design path
+        stretch(cenv, list_id, EIGHT_LONGER)  # the final songs differ: the re-design path
         cenv.songenv.script = change_script()
 
         async def design_on(*args: Any, **kwargs: Any) -> Any:

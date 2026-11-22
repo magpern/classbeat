@@ -7,7 +7,7 @@ of ``mowl.spotify.build_map``. For each song the list's stage-B record marks
 
 - ``recorded``: what the record says of each marked song (the analysis id, the audio sha256, the
   timing decision and the source kind); an entry that lacks any of them, or a position recorded
-  twice, is left out, so its song keeps MOWL's sections (today's path);
+  twice, is left out, so stage D fails its song ``analysis_failed`` (never MOWL's sections, #1386);
 - ``verified``: the document read is that analysis (the same id and audio sha256, the same source
   kind, which must be ``youtube``: an allowlist) **aligned to this track** (a ``spotify``
   reference with the track's opaque id, ``reference_id``, and its length within
@@ -18,12 +18,12 @@ of ``mowl.spotify.build_map``. For each song the list's stage-B record marks
   played: spotdown adds section-level energy, not the tempo), so its drops and breakdowns are the
   loudness steps between those sections as for MOWL's; then the track is stamped
   (``track_timing_calc.stamp``). Only a class that ``track_timing_calc.capped`` reads as
-  ``approximate`` is applied: ``unusable`` or an unknown class gives ``None`` (MOWL's sections,
-  no stamp), and a ``youtube`` source is never ``exact``.
+  ``approximate`` is applied: ``unusable`` or an unknown class gives ``None`` (the caller fails
+  the song; no stamp), and a ``youtube`` source is never ``exact``.
 
 Every other track, section and event of the map is kept as it was, in order; only the section
 numbers (``song``) after the track move. A map whose order is not the library's raises
-``ValueError`` (the caller then keeps today's path).
+``ValueError``.
 """
 
 import copy

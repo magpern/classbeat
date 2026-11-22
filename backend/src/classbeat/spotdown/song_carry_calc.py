@@ -8,8 +8,8 @@ new list's ``spotdown_analysis`` record gets, for each kept song in its own slot
 list's entry for that slot, as it was (``kept: true`` added): phase 2 then reads that analysis
 again and verifies it against the track (stage D), exactly as for a new song.
 
-Carried only when the new list has a record (the stage ran for this class and did not fall
-back; else today's path for the whole class) and only for a slot the parent marked
+Carried only when the new list has a record (every list gets one, #1386) and only for a slot the
+parent marked
 (``timing_marks``: a ``spotdown`` use, ``approximate``) with exactly one entry
 (``entries_by_position``), whose kept song is still in that slot and not new. A slot the new
 record already names is never overwritten.

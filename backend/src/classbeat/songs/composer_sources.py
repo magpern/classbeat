@@ -24,6 +24,7 @@ from typing import Any, Final
 
 from mowl import spotify_web
 
+from classbeat.agent.choose_songs import ChosenList
 from classbeat.agent.find_songs import WantedSong, song_query
 from classbeat.agent.interpretation_record import InterpretationItem
 from classbeat.agent.pick_pool import SearchUnavailable
@@ -37,6 +38,7 @@ from classbeat.design.music_sources import MusicSource
 from classbeat.jobs import JobFailure, JobRun
 from classbeat.playlists import common
 from classbeat.songs.search import job_searcher
+from classbeat.songs.song_list import SongSource
 
 MAX_FAVOURED: Final = 60
 MAX_ITEMS_READ: Final = 200  # per attached playlist
@@ -162,3 +164,23 @@ async def verify_pins(
         else:
             found.append((at, entry))
     return Pinned(tuple(found), tuple(unmet))
+
+
+def sources_of(
+    chosen: ChosenList, favoured: Favoured, pinned: Pinned, kept: dict[str, SongSource]
+) -> dict[str, SongSource]:
+    """Each chosen song's source: kept from the earlier list, pinned, an attached playlist's, or
+    found by search."""
+    pins = {e.spotify_id for _, e in pinned.found}
+    out: dict[str, SongSource] = {}
+    for song in chosen.songs:
+        tid = song.spotify_id
+        if tid in kept:
+            out[tid] = kept[tid]
+        elif tid in pins:
+            out[tid] = SongSource(kind="pinned")
+        elif tid in favoured.playlist_of:
+            out[tid] = SongSource(kind="playlist", playlist=favoured.playlist_of[tid])
+        else:
+            out[tid] = SongSource(kind="search")
+    return out

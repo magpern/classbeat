@@ -27,7 +27,8 @@ jobs API's, as for every kind.
    step's fingerprint); a fingerprint other than the base's ends the job ``music_changed`` with
    nothing stored (the music is not what the base was designed on: a chat revision designs on
    the new music); a base that had tracks on spotdown's sections has them read again first
-   (``spotdown_base``, ``songs.spotdown_carry``; ADR 0040 SD-P6 stage E), else today's music;
+   (``spotdown_base``, ``songs.spotdown_carry``; ADR 0040 SD-P6 stage E); a base on a song
+   list without them is ``music_changed`` (#1386);
 3. the base's stored content fitted again (``agent.design.check``, for a running class
    ``agent.running.check_running``) to the corrected map: the total is kept and each change moves
    to the corrected grid within the fit's tolerance;
@@ -231,7 +232,7 @@ async def run(job_run: JobRun) -> Complete:
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
     await job_run.stage("music")
     prefer = base_music.fingerprint  # a mix: the analysis the base was designed on (#1304)
-    carry = await base_sections(job_run, base_id)  # SD-P6 stage E: None is today's path
+    carry = await base_sections(job_run, base_id, mix=isinstance(music, SwedebeatMusicChoice))
     step = await music_step(job_run, runtime, music, given.mowl_connection_id, prefer, carry)
     handed_over = False
     try:

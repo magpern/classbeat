@@ -21,6 +21,7 @@ from classbeat.songs.inputs import DesignWithSongsInput
 from classbeat.songs.pick import generations
 from classbeat.songs.seed import SeedSpec, class_of, load_seeded
 from classbeat.songs.song_list import SongSource
+from classbeat.spotdown.song_analysis_record_model import timing_marks
 
 _SKETCH = text(
     "SELECT r.content, r.content_hash, r.provenance ->> 'origin' AS origin, c.brief, "
@@ -107,6 +108,7 @@ def await_list(
             unmet=picked.unmet,
             preview=made.preview,  # invalid_output over 64 KB, before anything is stored
             sources=picked.sources,
+            approximate=frozenset(p for p, _, _ in timing_marks(picked.provenance)),
         )
     except BaseException:
         step.close()
