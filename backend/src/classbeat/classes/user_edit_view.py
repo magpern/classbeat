@@ -3,8 +3,9 @@
 
 - the records, and those without effect: **unapplied** and **orphaned** (``studio_edit_records``);
 - **undo** is a pick of the current revision's parent, offered while the current revision is a
-  ``user_edit``; **redo** is a pick of the current revision's **newest** ``user_edit`` child. So an
-  undo followed by a new edit (a branch) clears the old redo: the newest child is the branch.
+  ``user_edit`` or a studio revise (``revise_draft``, #1423: a revise is undone in one step);
+  **redo** is a pick of the current revision's **newest** child of those origins. So an undo
+  followed by a new edit or revise (a branch) clears the old redo: the newest child is the branch.
 
 Both answer the id and content hash a pick takes (``POST /current`` with ``expected_current_id``,
 which answers ``409 stale_revision`` when another tab moved the class).
@@ -24,16 +25,18 @@ from classbeat.studio.mix_proposal_policy import USER_EDIT_ORIGIN
 from classbeat.swedebeat_studio import current_draft
 from classbeat.swedebeat_studio.studio_edit_records import listed
 
+REVISE_ORIGIN = "revise_draft"  # a studio revise (``swedebeat_studio.revise_kind``)
+
 _UNDO = text(
     "SELECT p.id, p.content_hash FROM class_revisions c JOIN class_revisions p "
     "ON p.owner_id = c.owner_id AND p.class_id = c.class_id AND p.id = c.parent_id "
     "AND p.kind = 'draft' WHERE c.owner_id = :owner_id AND c.class_id = :class_id AND c.id = :id "
-    "AND c.provenance ->> 'origin' = :origin"
+    "AND c.provenance ->> 'origin' IN (:origin, :revise)"
 )
 _REDO = text(
     "SELECT id, content_hash FROM class_revisions WHERE owner_id = :owner_id "
     "AND class_id = :class_id AND parent_id = :id AND kind = 'draft' "
-    "AND provenance ->> 'origin' = :origin ORDER BY number DESC LIMIT 1"
+    "AND provenance ->> 'origin' IN (:origin, :revise) ORDER BY number DESC LIMIT 1"
 )
 
 
@@ -75,6 +78,7 @@ async def view(
             "class_id": class_id,
             "id": found.revision_id,
             "origin": USER_EDIT_ORIGIN,
+            "revise": REVISE_ORIGIN,
         }
         undo = await _step(db, _UNDO, params)
         redo = await _step(db, _REDO, params)

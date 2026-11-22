@@ -19,7 +19,9 @@ analyses. No credit; ``admit`` is ``design_admit``'s.
    A base with an **edit overlay** (ADR 0042 sections 3 and 8, #1391; the overlay read and its
    hash checked in step 1) states the instructor's locks and overrides as fixed in the message,
    and each submitted draft is reconciled with it (``revise_overlay``: a lock breach is
-   ``overlay_violated``, a correction round); the new revision stores the reconciled overlay.
+   ``overlay_violated``, a correction round), its cut pins re-applied to the model's new spec by
+   Apply's rules (#1423: a spec that cannot hold them is a correction round, never stored); the
+   new revision stores the reconciled overlay and the pinned spec.
 4. **Store**, in the final fenced transaction: the connection held, the class still the studio's,
    the revision (parent = base, ``origin = revise_draft``; the same draft and mix again are
    ``invalid_output``), the compare-and-set of ``current_revision_id`` and the assistant message
@@ -111,6 +113,7 @@ def _reconcile(
     base: dict[str, Any],
     overlay: EditOverlay,
     music: draft.StudioMusic,
+    stored: song_list.StudioList,
     base_music: StudioRevisionMusic,
     gates: PlanGates | None,
 ) -> revise_overlay.Reconcile | None:
@@ -118,7 +121,8 @@ def _reconcile(
     if not overlay.records:
         return None
     analysed = {a.reference: a.sha256 for a in base_music.analyses or ()}
-    return revise_overlay.reconciler(base, overlay, music.references, analysed, gates)
+    target = stored.content.target_sec
+    return revise_overlay.reconciler(base, overlay, music, target, analysed, gates)
 
 
 async def run(job_run: JobRun) -> Complete:
@@ -153,6 +157,7 @@ async def run(job_run: JobRun) -> Complete:
         except mix_choice_model.MixChoiceRefused:
             raise JobFailure("internal") from None
     base_plan = music.plan_of(base_music.mix_spec)
+    base_spec = base_music.mix_spec.model_dump(mode="json")
     rules = rules_for(brief, row.dismissed_rules)
     stated = await revise_stated.layered(job_run, model, brief, given.request, given.plan_gates)
     await job_run.stage("revise")
@@ -163,8 +168,8 @@ async def run(job_run: JobRun) -> Complete:
         row.earlier_requests,
         given.request,
         choices,
-        fixed=revise_overlay.fixed_section(base_content, overlay),
-        reconcile=_reconcile(base_content, overlay, music, base_music, given.plan_gates),
+        fixed=revise_overlay.fixed_section(base_content, overlay, base_spec, base_plan),
+        reconcile=_reconcile(base_content, overlay, music, stored, base_music, given.plan_gates),
     )
     ctx = StudioContext(stated.brief, music.tracks, rules, given.plan_gates, base)
     outcome = await run_stage(

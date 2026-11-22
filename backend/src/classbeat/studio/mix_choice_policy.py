@@ -95,7 +95,7 @@ def applied(
         "tracks": [{"reference": r, "start_sec": a, "end_sec": b} for _, r, a, b in kept],
         "crossfades": crossfades,
     }
-    return _gated(spec, proposal, known)
+    return gated(spec, proposal, known)
 
 
 def pinned(
@@ -115,10 +115,10 @@ def pinned(
     )
     if not pins_of(found.spec):
         return Pinned(base, found.unapplied, found.dropped)
-    return Pinned(_gated(found.spec, proposal, known), found.unapplied, found.dropped)
+    return Pinned(gated(found.spec, proposal, known), found.unapplied, found.dropped)
 
 
-def _gated(
+def gated(
     spec: Mapping[str, Any], proposal: Proposal, known: Mapping[str, TrackFacts]
 ) -> dict[str, Any]:
     """Steps 3 and 4 of the module docstring."""
