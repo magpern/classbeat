@@ -271,7 +271,6 @@ async def test_a_record_over_its_bound_is_refused_before_stage_d_and_never_inter
     renv: ReviseEnv, spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     real, real_fits = draft_spotdown.playlist_spotdown, draft_spotdown.fits
-    after_b: list[int] = []  # the analysis reads once stages A and B are done (stage B reads each)
     checked: list[bool] = []  # what the size check answered
     stage_d_calls: list[Any] = []
 
@@ -285,16 +284,15 @@ async def test_a_record_over_its_bound_is_refused_before_stage_d_and_never_inter
         # refuses (no more entries than a revision records, no other field changed).
         records[KEY]["songs"] = records[KEY]["songs"] * (MAX_TRACKS // TRACKS)
         assert len(records[KEY]["songs"]) == MAX_TRACKS
-        after_b.append(gets(spotdown))
         return records
 
     def seen_fits(record: dict[str, Any]) -> bool:
         checked.append(real_fits(record))
         return checked[-1]
 
-    async def no_stage_d(*args: Any) -> Any:
+    async def no_stage_d(*args: Any) -> Any:  # stage D, here, would only record that it ran
         stage_d_calls.append(args)
-        raise AssertionError("stage D ran")
+        return args[-1]
 
     monkeypatch.setattr(draft_spotdown, "playlist_spotdown", wide)
     monkeypatch.setattr(draft_spotdown, "fits", seen_fits)
@@ -302,9 +300,9 @@ async def test_a_record_over_its_bound_is_refused_before_stage_d_and_never_inter
     job_id, row = await designing(renv)
     assert (row.state, ending(renv, job_id)) == ("failed", "invalid_input")
     assert checked == [False]  # refused by the size check, not for another reason
-    assert stage_d_calls == []  # stage D never ran ...
-    assert after_b == [TRACKS]  # stage B read each analysis once ...
-    assert gets(spotdown) == TRACKS  # ... and nothing was read after it
+    # Stage D never ran. (Counting analysis reads cannot show it: stage B reads each analysis
+    # once, and stage D finds no stamped entry in this padded record and stops before a read.)
+    assert stage_d_calls == []
     assert drafts(renv, job_id) == []  # no draft revision stored
     budget = renv.sql("SELECT 1 FROM spotdown_song_budgets WHERE job_id = :j", j=job_id).all()
     assert len(budget) == 1  # stage A's wait budget is kept, as for any failure after stage A
