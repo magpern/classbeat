@@ -175,7 +175,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             SESSION_COOKIE in value for value in response.headers.getlist("set-cookie")
         ):
             clear_session_cookie(response)
-        if request.url.path.startswith("/api/") or request.url.path == "/api":
+        # An audition clip keeps its ``private, no-store`` (ADR 0042 section 6.5): no-store too.
+        api = request.url.path.startswith("/api/") or request.url.path == "/api"
+        if api and response.headers.get("Cache-Control") != "private, no-store":
             response.headers["Cache-Control"] = "no-store"
         # The security log (#632): a row per request the general limit counted, its own refusals
         # here (429, 403) included; an exempt, anonymous or non-API request writes none.

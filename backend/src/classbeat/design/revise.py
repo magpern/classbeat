@@ -34,8 +34,8 @@ retry restarts the stage from its beginning and the final store is the only writ
 2. the music step of ``design_draft`` (``kind.music_step``: the playlist, or the mix after
    ``mixadmit.still_on``); a fingerprint that differs from the base revision's is told to the
    model as a fact; a base that had tracks on spotdown's sections has them read again
-   (``spotdown_base``, ``songs.spotdown_carry``; ADR 0040 SD-P6 stage E); a base on a song
-   list without them is ``music_changed`` (#1386);
+   (``spotdown_base``, ``songs.spotdown_carry``; ADR 0040 SD-P6 stage E); a Spotify base
+   without them is ``music_changed`` (#1386, #1407);
 3. for a brief that states values (``Brief.explicit``; the class's, with the nearest stated layer
    of the base's chain applied, ``chat.load_base``), the request's stated values layered onto it
    (``classbeat.design.revise_stated``, #904: the ``interpret`` stage told the class's values,
@@ -179,8 +179,14 @@ async def run(job_run: JobRun) -> Complete:
         sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)
     await job_run.stage("music")
     carry = await base_sections(job_run, base_id, mix=isinstance(music, SwedebeatMusicChoice))
-    step = await music_step(
-        job_run, runtime, music, given.mowl_connection_id, base.fingerprint, carry
+    step, timing = await music_step(
+        job_run,
+        runtime,
+        music,
+        given.mowl_connection_id,
+        base.fingerprint,
+        carry,
+        fresh_on_change=True,
     )
     handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
@@ -223,7 +229,7 @@ async def run(job_run: JobRun) -> Complete:
             base_hash=base_hash,
             request_message_id=request_message_id,
             rules=rules.provenance() if rules else None,
-            spotdown_list_id=carry.song_list_id if carry is not None else None,
+            spotdown=timing,
         )
         draft = with_interpretation(
             draft,

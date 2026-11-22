@@ -202,6 +202,8 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/classes/{class_id}/outputs/{output}/{action}"): "owned",  # SR C7: the actions
     ("GET", "/api/classes/{class_id}/spotify-sync/{revision_id}"): "owned",  # SR C8: sync states
     ("POST", "/api/classes/{class_id}/spotify-sync/{revision_id}/{target}"): "owned",  # Sync again
+    ("POST", "/api/classes/{class_id}/preview/sessions"): "owned",  # ADR 0042 6.3: audition
+    ("GET", "/api/classes/{class_id}/preview/clip"): "owned",  # ADR 0042 6.5: a session's clip
     ("GET", "/api/classes/{class_id}/interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/design-from-interpretation"): "owned",
     ("POST", "/api/classes/{class_id}/interpret-again"): "owned",
@@ -876,6 +878,14 @@ OWNED_ROUTES = [
     OwnedRoute(
         "POST",
         "/api/classes/{class_id}/spotify-sync/{revision_id}/{target}",
+        control=frozenset({404}),
+    ),
+    # ADR 0042 sections 6.3 to 6.5 (#1394; test_preview_clips: another user's session or class is
+    # 404 with the audition on). Off here, the owner's own call is 404 too.
+    OwnedRoute("POST", "/api/classes/{class_id}/preview/sessions", control=frozenset({404})),
+    OwnedRoute(
+        "GET",
+        f"/api/classes/{{class_id}}/preview/clip?session={uuid.uuid4()}&start_ms=0",
         control=frozenset({404}),
     ),
     OwnedRoute("DELETE", "/api/classes/{class_id}", control=frozenset({200, 409})),

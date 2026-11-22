@@ -1,16 +1,22 @@
 """The music step of ``design_draft``, ``revise_draft`` and ``refit_draft`` (split out of
 ``classbeat.design.kind``): the user's Spotify playlist in MOWL (``music.load_music``) or their
-SwedeBeat mix (``swedebeat_music.swedebeat_step``), then the class's beat-one corrections for that
-music (ADR 0007 amendment).
+SwedeBeat mix (``swedebeat_music.swedebeat_step``), then, on a playlist, spotdown's sections for
+every track, then the class's beat-one corrections for that music (ADR 0007 amendment).
 
 ``prefer`` (a revise or refit: the fingerprint of the map its base was designed on) makes a mix's
 cached row with that map the hit, whichever analyser made it (``mix_cache.cached``, #1304), so a
-later job reads the analysis the class was designed on; a playlist ignores it.
+later job reads the analysis the class was designed on; on a playlist it is the music a carried
+record must still be (``songs.spotdown_carry``).
 
-``carry`` (a revise or refit of a draft that had tracks on spotdown's sections, ADR 0040 SD-P6
-stage E: ``design.spotdown_base``) reads those tracks again on a playlist
-(``songs.spotdown_carry``), before the corrections; ``None`` is the step as loaded (a mix, or
-``design_draft``).
+**A playlist is always timed on spotdown** (ADR 0040 amendment "spotdown is the only analysis
+path", item 3; #1407): ``carry`` (a revise or refit: the base's ``music.spotdown``, which every
+Spotify base has, ``design.spotdown_base``) reads the base's tracks again
+(``songs.spotdown_carry``); without one (``design_draft``) stages A, B and D run on every track
+(``songs.draft_spotdown``), as they do for a revise (``fresh_on_change``) of such a design whose
+playlist changed since (its own record no longer fits; a song list's base is ``music_changed``).
+No path gives back MOWL's sections. The second value is where the
+step's spotdown record lives, for the revision (``revision_spotdown_model.sections_of``): the
+carry, the design's own record, or ``None`` on a mix (its own spotdown path, ``mix_spotdown``).
 """
 
 from typing import TYPE_CHECKING
@@ -34,9 +40,13 @@ async def music_step(
     connection_id: UUID,
     prefer: str | None = None,
     carry: SpotdownSections | None = None,
-) -> MusicStep:
-    """The music step of the class's source (the caller checked a mix's flag with
-    ``mixadmit.still_on``)."""
+    *,
+    fresh_on_change: bool = False,
+) -> tuple[MusicStep, SpotdownSections | None]:
+    """The music step of the class's source and its spotdown origin (module docstring; the caller
+    checked a mix's flag with ``mixadmit.still_on``). ``fresh_on_change`` (a revise): a playlist
+    design's base whose music changed since gets the design's stages again, not
+    ``music_changed``."""
     if isinstance(music, SwedebeatMusicChoice):
         step = await swedebeat_step(
             run, runtime.keyring, music.mix_id, connection_id=connection_id, prefer=prefer
@@ -46,13 +56,19 @@ async def music_step(
             run, runtime.keyring, music.spotify_playlist_id, connection_id=connection_id
         )
     try:
-        if carry is not None and not isinstance(music, SwedebeatMusicChoice):
+        timing: SpotdownSections | None = None
+        if not isinstance(music, SwedebeatMusicChoice):
             # Imported here: ``classbeat.songs`` imports this package.
+            from classbeat.songs.draft_spotdown import drafted_music
             from classbeat.songs.spotdown_carry import carried_music
 
-            step = await carried_music(run, step, carry)
+            changed = carry is not None and carry.record is not None and step.fingerprint != prefer
+            if carry is None or (changed and fresh_on_change):  # stages A, B and D (#1407)
+                step, timing = await drafted_music(run, step)
+            else:
+                step, timing = await carried_music(run, step, carry, prefer), carry
         # the class's beat-one corrections for this music (ADR 0007 amendment)
-        return await corrections.attach(run, step)
+        return await corrections.attach(run, step), timing
     except BaseException:
         step.close()
         raise

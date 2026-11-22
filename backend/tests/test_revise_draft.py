@@ -193,8 +193,9 @@ async def test_the_step_is_closed_whether_the_store_ran_or_not(
     real_load, real_run_stage = revise_mod.music_step, revise_mod.run_stage
 
     async def keep_step(*args: Any, **kwargs: Any) -> Any:
-        steps.append(await real_load(*args, **kwargs))
-        return steps[-1]
+        made = await real_load(*args, **kwargs)  # the step and its spotdown origin (#1407)
+        steps.append(made[0])
+        return made
 
     async def run_then_cancel(*args: Any, **kwargs: Any) -> Any:
         outcome = await real_run_stage(*args, **kwargs)

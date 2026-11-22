@@ -30,8 +30,10 @@ re_frontend='^(frontend/|backend/src/classbeat/design/rules/|backend/src/classbe
 # Playwright (the slow part of the e2e job) runs only for what a browser can see: the UI, the e2e
 # suite and its fakes, the compose files, the image and the docker/ files. A backend-only, scripts-only
 # or docs-only change gets the stack build, the stack checks and the image scan without it. `main`
-# runs everything after each merge (push) and weekly, so nothing goes untested for long.
-re_playwright='^(frontend/|e2e/|docker/|Dockerfile$|compose[^/]*\.ya?ml$|\.dockerignore$)'
+# runs everything after each merge (push) and weekly, so nothing goes untested for long. The fakes'
+# cores and the recorded model scripts that compose.e2e.yaml mounts from backend/tests/ are part of
+# the e2e fakes: a change to one of them changes what the stack answers, so it runs Playwright too.
+re_playwright='^(frontend/|e2e/|docker/|Dockerfile$|compose[^/]*\.ya?ml$|\.dockerignore$|backend/tests/(spotifycore|gatewaycore|spotdowncore|songanalysisdocs)\.py$|backend/tests/(contracts/spotdown|agent_scripts)/)'
 re_stack='^((backend|frontend|e2e|docker)/|scripts/(worktree|backup|restore|validate-backup|backup-restore-drill)\.sh$|scripts/drill/|Dockerfile$|compose[^/]*\.ya?ml$|\.dockerignore$|\.env\.example$|\.trivyignore$)'
 
 backend=false

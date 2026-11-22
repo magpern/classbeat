@@ -43,11 +43,7 @@ from classbeat.classes.preview_spotify_routes import router as preview_spotify_r
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.classes.song_fill_routes import router as song_fill_router
-from classbeat.classes.studio_design_routes import router as studio_design_router
-from classbeat.classes.studio_output_actions_routes import router as studio_output_actions_router
-from classbeat.classes.studio_outputs_routes import router as studio_outputs_router
-from classbeat.classes.studio_songs_routes import router as studio_songs_router
-from classbeat.classes.studio_sync_routes import router as studio_sync_router
+from classbeat.classes.studio_routers import install as install_studio
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.mowl_qr import QrWaits
 from classbeat.connections.mowl_qr_routes import router as mowl_qr_router
@@ -269,11 +265,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(history_router)
     app.include_router(duplicate_router)
     app.include_router(handoff_router)
-    app.include_router(studio_songs_router)
-    app.include_router(studio_design_router)
-    app.include_router(studio_outputs_router)  # SR C6a: timeline and output choice
-    app.include_router(studio_output_actions_router)  # SR C7: output states and their actions
-    app.include_router(studio_sync_router)  # SR C8: Spotify sync state and Sync again
+    install_studio(app, settings)  # its stages and the audition (#1394)
     app.include_router(interpretation_router)
     app.include_router(pending_router)  # ADR 0038 section 8: pending chat messages
     app.include_router(beat_one_router)  # split out of the classes router

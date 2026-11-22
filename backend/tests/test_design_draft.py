@@ -72,7 +72,13 @@ async def test_a_draft_is_designed_on_a_new_playlist_and_stored(
         "unknown_bpm": [],
         # ADR 0007 amendment "beat-one corrections": the songs the class plays; no correction.
         "songs": revision.music["songs"],
+        # #1407: every track on spotdown's sections, the draft keeps its own record.
+        "spotdown": revision.music["spotdown"],
     }
+    spotdown = revision.music["spotdown"]
+    assert spotdown["tracks"] == list(range(len(fake_mowl.music.tracks)))
+    assert set(spotdown) == {"tracks", "record"}  # no song list
+    assert set(spotdown["record"]) == {"spotdown_match", "spotdown_analysis"}
     assert len(revision.music["fingerprint"]) == 64
     songs = revision.music["songs"]
     assert songs
