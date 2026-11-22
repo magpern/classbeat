@@ -28,6 +28,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat.design.edit_overlay_model import EMPTY, EditOverlay, parsed
 from classbeat.design.revision_hash import revision_hash
 from classbeat.design.studio_revision_model import StudioRevisionMusic, wanted
 from classbeat.design.track_cache import cached_in, recorded
@@ -54,6 +55,7 @@ class ProposalDraft:
     revision_id: UUID
     content: dict[str, Any]
     music: StudioRevisionMusic
+    overlay: EditOverlay = EMPTY  # its ``edit_overlay`` (ADR 0042 section 8: Apply carries it)
 
     @property
     def spec(self) -> dict[str, Any]:
@@ -117,10 +119,14 @@ async def load(
         music = StudioRevisionMusic.model_validate_json(json.dumps(row.music))
     except ValidationError:
         return None
+    try:
+        overlay = parsed(row.edit_overlay)
+    except ValueError:
+        return None
     spec = music.mix_spec.model_dump(mode="json")
     if revision_hash(content, mix_spec=spec, overlay=row.edit_overlay) != bytes(row.content_hash):
         return None
-    return ProposalDraft(revision_id, content, music)
+    return ProposalDraft(revision_id, content, music, overlay)
 
 
 def approved(songs: song_list.StudioList) -> list[str | None]:

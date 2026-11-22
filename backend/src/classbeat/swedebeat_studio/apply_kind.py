@@ -25,7 +25,9 @@ depth: on the same immutable rows it answers the same; a refusal ends the job wi
 ``internal`` for one that is no job category); then **one** fenced transaction: the class still
 the studio's, the ``draft`` revision (``apply_revision.build``: parent the base, provenance
 ``{origin: mix_choices, proposal_revision_id, choices}``) and the revise compare-and-set of
-``current_revision_id`` (no row: kept, but not current).
+``current_revision_id`` (no row: kept, but not current). A base with an edit overlay carries it
+(``mix_apply``'s docstring, ADR 0042 section 8): the new draft stores the re-applied overlay and its
+hash covers it (``revision_hash``).
 """
 
 from typing import Any, ClassVar, Final, Self
@@ -96,7 +98,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: Any) -> Admitted | R
     if current.revision_id != base_id or current.content_hash.hex() != parsed.base_content_hash:
         return Refused("stale_base")
     _, gates = await current_gates(db, ctx)
-    base = mix_proposal.ProposalDraft(current.revision_id, current.content, current.music)
+    base = mix_proposal.ProposalDraft(
+        current.revision_id, current.content, current.music, current.overlay
+    )
     try:
         await mix_apply.derive(
             db, ctx.user_id, class_id, base, current.songs, parsed.choices,
@@ -167,11 +171,12 @@ async def run(job_run: JobRun) -> Complete:
         raise JobFailure("internal")  # the gates are a server field: an input without is not ours
     await job_run.stage("apply")
     derivation = await _derived(job_run, given)
-    if derivation.fitted is None:
+    made = derivation.fitted or derivation.carried
+    if made is None:
         raise JobFailure("internal")
     resolved = derivation.resolved
     built = apply_revision.build(
-        derivation.fitted,
+        made,
         resolved.music,
         resolved.draft.music.song_list_id,
         derivation.choices,

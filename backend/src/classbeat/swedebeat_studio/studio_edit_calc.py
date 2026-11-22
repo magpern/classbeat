@@ -27,7 +27,7 @@ nothing.
 import copy
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NamedTuple
 
 from pydantic import BaseModel, ValidationError
 
@@ -84,6 +84,14 @@ class EditResult:
     orphaned: tuple[Anchor, ...] = ()
     hints: tuple[str, ...] = ()
     result: DesignResult | None = field(default=None, compare=False)
+    map_version: int | None = field(default=None, compare=False)  # the composed map's
+
+
+class Fit(NamedTuple):
+    content: dict[str, Any]  # the fitted workout
+    result: DesignResult
+    hints: tuple[str, ...]
+    map_version: int  # the composed map's ``version``
 
 
 def _fitted(content: dict[str, Any], fitted_spec: dict[str, Any]) -> dict[str, Any]:
@@ -104,7 +112,7 @@ def fit(
     *,
     refused: str = "invalid_edit",
     before: dict[str, Any] | None = None,
-) -> tuple[dict[str, Any], DesignResult, tuple[str, ...]]:
+) -> Fit:
     """``agent.design.check`` of ``content`` on ``spec`` composed, then the plan gates."""
     references = state.music.references
     old = None if before is None else keyed(references, before)
@@ -120,8 +128,9 @@ def fit(
         too_long = gates is not None and result.duration_sec > max_draft_seconds(gates)
         raise EditRefused(PLAN_TOO_LONG if too_long else PLAN_NOT_ALLOWED) from None
     try:
-        return _fitted(content, result.spec), result, composed.hints
-    except (ValidationError, ValueError, KeyError):
+        version = int(composed.map["version"])
+        return Fit(_fitted(content, result.spec), result, composed.hints, version)
+    except (ValidationError, ValueError, KeyError, TypeError):
         raise EditRefused(refused) from None
 
 

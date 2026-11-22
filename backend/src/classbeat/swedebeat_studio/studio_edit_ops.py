@@ -146,11 +146,11 @@ def _edited(
 def _workout(state: EditState, edit: Edit, gates: PlanGates | None) -> EditResult:
     timing, attrs = calc.locked(state)
     content, placed, loose = _edited(state, edit, timing, attrs)
-    fitted, result, hints = calc.fit(state, content, state.spec, gates)
+    fitted, result, hints, _ = calc.fit(state, content, state.spec, gates)
     if isinstance(edit, Drag):  # the dragged boundary takes the fitted end, checked again
         at = edit.block
         if set_end(content, at, blocks(fitted)[at].end_ms, timing):
-            _, result, hints = calc.fit(state, content, state.spec, gates)
+            _, result, hints, _ = calc.fit(state, content, state.spec, gates)
         ai = recs.ai_value(placed, at, "boundary", blocks(state.content)[at].end_ms)
         placed = calc.upsert(placed, content, at, "boundary", blocks(content)[at].end_ms, ai)
     content = calc.normal(content)
@@ -201,6 +201,35 @@ def _audio(state: EditState, edit: PinEdit | ClearAll, gates: PlanGates | None) 
         base, records, loose = recs.restored(state.content, placed, timing), [], []
     else:
         pins = _pins(state, edit)
+    content, spec, out, made = _onto(state, base, records, loose, pins, gates)
+    return _result(state, content, spec, out, made.result, made.hints)
+
+
+def carried(state: EditState, gates: PlanGates | None) -> EditResult:
+    """**Apply these choices** on a draft with an overlay (ADR 0042 section 8): ``state.choices``
+    are the new choices; the derived spec takes the overlay's pins, the draft's workout is remapped
+    onto it, the overlay re-applied by its fixed order and fitted, as an audio edit (``_audio``),
+    so the user's pins and workout edits survive. Nothing changed is the caller's to refuse."""
+    _, loose = calc.placed_of(state)
+    pins = list(state.overlay.pins())
+    content, spec, out, made = _onto(state, state.content, _others(state), loose, pins, gates)
+    overlay = calc.overlay_of(out)
+    unapplied, orphaned = recs.listed(content, spec, overlay, state.analysed)
+    return EditResult(
+        content, spec, overlay, unapplied, orphaned, made.hints, made.result, made.map_version
+    )
+
+
+def _onto(
+    state: EditState,
+    base: dict[str, Any],
+    records: list[Record],
+    loose: list[Record],
+    pins: list[OverlayPin],
+    gates: PlanGates | None,
+) -> tuple[dict[str, Any], dict[str, Any], list[Record], calc.Fit]:
+    """Amendment B's order from the derived spec on: ``base`` remapped onto the spec with
+    ``pins``, ``records`` re-applied (``locked_block_conflict``), fitted, the locks held again."""
     spec, _ = calc.pinned_spec(state, pins)
     content = calc.remapped(state, base, spec)
     finder = event_ms(spec, state.analysed)
@@ -208,17 +237,18 @@ def _audio(state: EditState, edit: PinEdit | ClearAll, gates: PlanGates | None) 
         applied = reapplied(content, base, records, event_ms=finder, remap=True)
     except OverlayViolated:
         raise EditRefused(LOCKED_BLOCK_CONFLICT) from None
-    fitted, result, hints = calc.fit(
+    made = calc.fit(
         state, applied.content, spec, gates, refused="workout_does_not_fit", before=state.spec
     )
-    was, now = blocks(applied.content), blocks(fitted)
+    was, now = blocks(applied.content), blocks(made.content)
     for record, at in applied.placed:
         moved_by_fit = (was[at].start_ms, was[at].end_ms) != (now[at].start_ms, now[at].end_ms)
         if isinstance(record, Lock) and record.covers_timing() and moved_by_fit:
             raise EditRefused(LOCKED_BLOCK_CONFLICT)
     kept = [*applied.unapplied, *applied.orphaned]
-    out = [*calc.retargeted(applied.placed, fitted), *kept, *[r for r in loose if r not in kept]]
-    return _result(state, fitted, spec, [*out, *pins], result, hints)
+    out = [*calc.retargeted(applied.placed, made.content), *kept]
+    out += [r for r in loose if r not in kept]
+    return made.content, spec, [*out, *pins], made
 
 
 def _result(
