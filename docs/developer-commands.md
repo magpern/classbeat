@@ -29,9 +29,9 @@ docker compose --profile maint run --rm maint python -m classbeat keys wipe --co
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
-The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.12.0-py3-none-any.whl`,
-built from the v0.12.0 tag (commit `b83fa460`; vendored wheel SHA-256 `07c08e1d…`, release asset
-`e5dbaa11…`, 83352 bytes) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
+The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.13.0-py3-none-any.whl`,
+built from commit `58408fd7` (the v0.13.0 tag; vendored wheel SHA-256 `fd35db6e…`; the release asset's size and
+digest are pinned once its release exists, until then the script stops at that check) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
 (needs `gh` access to the private repo; it checks the tag's commit, the missing key file, the release
 asset's pinned size and SHA-256, that the release wheel holds the key file by name (never read), and that
 every other file and the `Requires-Dist` lines match the release wheel). After a rebuild run `uv lock`. classbeat leaves out
@@ -81,6 +81,15 @@ rate limit is 10 per user and 30 per IP per 10 minutes. It answers `{covers: [{s
 `Cache-Control: no-store`, each cover a whole-string match of `classbeat.covers.playlist_cover_url`, never stored, never
 model input; every failure is `{covers: []}`. The fake Spotify's playlists carry `images` from
 `spotifycore.playlist_images` (the e2e control `playlist?...&id=&images=`).
+0.13.0 moves `librosa` and `soundfile` into the optional `analysis` extra (mowl-workouts#45, #1358, ADR 0040
+amendment item 3). classbeat installs it **without** the extra: spotdown analyses every track and mix, so the
+environment and the image hold no `librosa`, `numba`, `llvmlite` or `scipy` (the image's virtualenv shrinks from
+about 650 MB to about 240 MB). `numpy`, `soundfile` and `soxr`, which the render child (`studio/renderchild.py`)
+and the preview key (`preview/identity.py`) import, are direct pinned dependencies, at the versions locked before,
+so renders and preview keys are unchanged. `tests/test_runtime_no_librosa.py` imports the worker, the web app and
+every module in a fresh interpreter and checks that none of those four is loaded or installed. Nothing classbeat
+calls changed: `music.features` computes the same frequencies with numpy, and `MAP_VERSION` (13) and `TRACK_VERSION`
+(1) are unchanged.
 
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own

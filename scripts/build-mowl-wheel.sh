@@ -6,7 +6,7 @@
 # workflow from a secret); the source never does, so a wheel built from the tagged source has no
 # key file.
 #
-#   scripts/build-mowl-wheel.sh            # v0.12.0 into backend/vendor/
+#   scripts/build-mowl-wheel.sh            # v0.13.0 into backend/vendor/
 #
 # Needs `gh` signed in with read access to magpern/mowl-workouts (private) and `uv`. It never
 # prints a token. Then refresh the lock: `cd backend && uv lock`.
@@ -21,19 +21,23 @@
 #
 # What was pinned (the release asset's size and digest are checked, so a re-uploaded asset
 # stops the build; the vendored wheel's hash is what uv.lock verifies at install time):
-#   tag v0.12.0 commit       b83fa4606c87e1c5fdccda5894e5759893fb1914
-#   release asset size       83352 bytes
-#   release asset sha256     e5dbaa114b70450ae61e88430070a2b9c4adaafc11fbbca3e24e68274c25bb7a
-#   vendored wheel sha256    07c08e1d91044331215b98c8aff380de029f25fe8cf4e9bcb88142a3b0bbe65a
+#   tag v0.13.0 commit       58408fd7c54823aedb1c33d207b99894af1f65f4
+#   release asset size       (not pinned yet: see below)
+#   release asset sha256     (not pinned yet: see below)
+#   vendored wheel sha256    fd35db6ed4630d02c15ddd5516ada575dfa5d87d8efe681a5fa6fca67a2a2ea7
 # The two wheels differ (the release one has the key file), so their digests differ too.
+# v0.13.0 (#1358) was vendored before its release existed: the owner pushes the tag on that
+# commit, and the release workflow then uploads the asset. Until RELEASE_SIZE and RELEASE_SHA256
+# are pinned from that asset, this script stops at the release comparison (fails closed); the
+# vendored wheel was built by the same steps up to that point from the commit's source.
 set -euo pipefail
 
 REPO=magpern/mowl-workouts
-TAG=v0.12.0
-COMMIT=b83fa4606c87e1c5fdccda5894e5759893fb1914
-WHEEL=mowl_workouts-0.12.0-py3-none-any.whl
-RELEASE_SIZE=83352
-RELEASE_SHA256=e5dbaa114b70450ae61e88430070a2b9c4adaafc11fbbca3e24e68274c25bb7a
+TAG=v0.13.0
+COMMIT=58408fd7c54823aedb1c33d207b99894af1f65f4
+WHEEL=mowl_workouts-0.13.0-py3-none-any.whl
+RELEASE_SIZE="" # pin from the v0.13.0 release asset
+RELEASE_SHA256="" # pin from the v0.13.0 release asset
 KEY_FILE=mowl/_swedebeat_app.json
 
 PYTHON="$(command -v python3 || command -v python || true)"
