@@ -11,8 +11,8 @@ import { resetSwedebeat } from './swedebeat-helpers'
 // spotdown's maps is opened in the editor, a boundary is moved with the keyboard, a block is locked,
 // the lock is undone, and a second tab's edit makes the first tab's next edit a stale 409 that reloads and
 // offers to re-apply. A second test keeps an attribute edit across a chat revise with its "Your edit kept" badge.
-// Nothing plays: the page has a silent cursor and no audio. No real spotdown, SwedeBeat, Spotify or
-// model: the fakes answer and the worker replays recorded scripts.
+// The audio preview has its own spec (editor-preview.spec.ts); here nothing is played. No real spotdown,
+// SwedeBeat, Spotify or model: the fakes answer and the worker replays recorded scripts.
 
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(420_000)
@@ -56,13 +56,13 @@ test('edit a studio class by keyboard: move a boundary, lock, undo, survive a st
   const classId = await designOnSpotdown(page, owner, 'Editor e2e climb')
   const start = currentRevision(classId)
 
-  // The page opens on the class page's link, with the blocks, the songs and nothing to play.
+  // The page opens on the class page's link, with the blocks, the songs and Play, nothing loaded yet.
   await page.goto(`/classes/${classId}`)
   await page.getByRole('link', { name: 'Open the editor' }).click()
   await shows(page, page.getByTestId('editor-timeline'))
   await expect(page.getByTestId('block-list').getByRole('button').first()).toBeVisible()
-  await expect(page.locator('audio, video')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /play/i })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible()
+  await expect(page.locator('audio[src]')).toHaveCount(0) // no clip is asked for before Play
 
   // Drag a boundary with the keyboard: the arrows choose, Enter makes one edit (one new version).
   const handle = page.getByRole('slider', { name: /^End of block 1,/ })
