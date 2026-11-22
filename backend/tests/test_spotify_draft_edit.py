@@ -348,8 +348,8 @@ async def test_an_ancestor_on_other_music_gives_no_map(renv: ReviseEnv) -> None:
     first = await edit(renv, class_id, base, {"op": "drag", "block": 0, "delta_sec": 20})
     one = UUID(first.json()["revision_id"])
     renv.sql(
-        "UPDATE class_revisions SET music = jsonb_set(music, '{fingerprint}', to_jsonb(repeat('0', 64))) "
-        "WHERE id = :r",
+        "UPDATE class_revisions "
+        "SET music = jsonb_set(music, '{fingerprint}', to_jsonb(repeat('0', 64))) WHERE id = :r",
         r=base,
     )
     stored = count(renv, class_id)
