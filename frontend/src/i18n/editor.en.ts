@@ -1,5 +1,5 @@
 // The Class Preview and Editor page (ADR 0042, CP-E3): the blocks, the songs, the cut pins, undo.
-// No audio yet: the cursor is a silent clock.
+// The audio preview (CP-R3) plays the studio drafts; the cursor stays a silent clock where it is unavailable.
 
 export const editorEn = {
   'editor.open': 'Open the editor',
@@ -9,7 +9,7 @@ export const editorEn = {
   'editor.retry': 'Try again',
   'editor.loadFailed': 'The editor could not be loaded. Try again in a moment.',
   'editor.notFound': 'This class was not found.',
-  'editor.noAudio': 'Nothing plays here yet. The cursor only shows where you are in the class.',
+  'editor.noAudio': 'The audio preview is not available here. The cursor only shows where you are in the class.',
 
   // Why a draft opens read-only, and the way forward that exists.
   'editor.readonly.no_draft': 'This class has no version to edit yet.',
@@ -33,6 +33,26 @@ export const editorEn = {
   'editor.cursor.none': 'No cursor.',
   'editor.cursor.at': 'Cursor at {time}.',
   'editor.cursor.stop': 'Stop the cursor',
+
+  // The audio preview (CP-R3): Play, Pause and what the transport says.
+  'editor.play.play': 'Play',
+  'editor.play.pause': 'Pause',
+  'editor.play.retry': 'Try again',
+  'editor.play.label': 'Audio preview of the class',
+  'editor.play.approx': 'The preview is approximate: the finished mix can differ a little.',
+  'editor.play.limit': 'Preview paused after 15 minutes. Press Play to continue.',
+  'editor.play.sessionEnded': 'The preview session has ended. Press Play to continue.',
+  'editor.play.starting': 'Getting the audio ready.',
+  'editor.play.rendering': 'Rendering this part of the class. It can take a few seconds.',
+  'editor.play.nextPart': 'Getting the next part of the class ready.',
+  'editor.play.err.unavailable': 'The audio preview is not available right now.',
+  'editor.play.err.rate_limited': 'Too many previews in a short time. Wait a moment, then press Try again.',
+  'editor.play.err.render_failed': 'This part of the class could not be rendered. Press Try again.',
+  'editor.play.err.draft_changed': 'This class can no longer be played as it is. Reload the page to see its current version.',
+  'editor.play.err.network': 'The preview could not be reached. Check your connection, then press Try again.',
+  'editor.play.err.blocked': 'Your browser blocked the sound. Press Try again.',
+  'editor.play.err.failed': 'The preview could not play. Press Try again.',
+
   'editor.list.label': 'The blocks of the class',
   'editor.list.item': '{n}. {name}, {from} to {to}, Z{zone} {zoneName}',
   'editor.list.locked': 'Locked',

@@ -57,3 +57,21 @@ export function editorRoutes(extra: Record<string, unknown> = {}) {
 
 export const staleAnswer = () => json({ detail: { reason: 'stale_revision', current_revision_id: REV2 } }, 409)
 export const refusal = (why: string) => json({ detail: { reason: why } }, 409)
+
+export const PREVIEW_SESSION = 'c1111111-1111-4111-8111-111111111111'
+export const PREVIEW_PATH = `${CLASS_PATH}/preview`
+/** The clip request of a window that starts at `startMs`. */
+export const clipPath = (startMs: number, session = PREVIEW_SESSION) => `GET ${PREVIEW_PATH}/clip?session=${session}&start_ms=${String(startMs)}`
+
+/** The server's answer for a ready window (the browser's `Range: bytes=0-0` probe): one byte and the window's bounds. */
+export const readyClip = (startMs: number, endMs: number) =>
+  new Response('x', { status: 206, headers: { 'X-Preview-Start-Ms': String(startMs), 'X-Preview-End-Ms': String(endMs), 'Content-Type': 'audio/mpeg' } })
+
+/** The routes of a working audio preview: a session and the first window (0 to 240 s). */
+export function previewRoutes(extra: Record<string, unknown> = {}) {
+  return {
+    [`POST ${PREVIEW_PATH}/sessions`]: { session_id: PREVIEW_SESSION },
+    [clipPath(0)]: () => readyClip(0, 240_000),
+    ...extra,
+  }
+}

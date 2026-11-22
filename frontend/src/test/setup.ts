@@ -50,3 +50,31 @@ if (!('matchMedia' in window)) {
     writable: true,
   })
 }
+
+// jsdom has no media playback: an `audio` element's play, pause and load are not implemented (they only
+// log) and `paused` stays true. These shims keep `paused` honest; a test fires the element's events itself.
+const playing = new WeakSet<HTMLMediaElement>()
+Object.defineProperties(HTMLMediaElement.prototype, {
+  play: {
+    value(this: HTMLMediaElement) {
+      playing.add(this)
+      return Promise.resolve()
+    },
+    configurable: true,
+    writable: true,
+  },
+  pause: {
+    value(this: HTMLMediaElement) {
+      playing.delete(this)
+    },
+    configurable: true,
+    writable: true,
+  },
+  paused: {
+    get(this: HTMLMediaElement) {
+      return !playing.has(this)
+    },
+    configurable: true,
+  },
+  load: { value: noop, configurable: true, writable: true },
+})
