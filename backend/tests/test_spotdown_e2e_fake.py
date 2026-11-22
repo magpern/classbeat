@@ -9,6 +9,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import socket
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -212,3 +213,35 @@ def test_a_cache_hit_with_another_reference_is_aligned_to_the_one_asked(
         assert list(VALIDATOR.iter_errors(got)) == []
     assert _aligned(client, source, pick, "k3") == second  # the same reference: the same analysis
     assert _aligned(client, source, mowl, "k4") == first
+
+
+def _raw_chunked(client: httpx.Client, path: str, chunks: bytes) -> int:
+    """The status of a hand-written chunked request (httpx cannot send a malformed size)."""
+    host, port = client.base_url.host, client.base_url.port
+    key = client.headers["Authorization"]
+    head = (
+        f"PUT {path} HTTP/1.1\r\nHost: {host}:{port}\r\nAuthorization: {key}\r\n"
+        "Idempotency-Key: k\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+    )
+    with socket.create_connection((host, port), timeout=5) as conn:
+        conn.sendall(head.encode() + chunks)
+        return int(conn.makefile("rb").readline().split()[1])
+
+
+def test_a_chunked_body_over_the_cap_is_refused_before_it_is_read(
+    server: tuple[httpx.Client, ModuleType], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, module = server
+    monkeypatch.setattr(module, "UPLOAD_MAX", 1_000)
+    path = "/v2/uploads?cache_scope=" + SCOPE_A
+    # The declared size alone is over the cap: the (absent) chunk data is never waited for.
+    assert _raw_chunked(client, path, b"7d1\r\n") == 413
+
+
+def test_a_malformed_chunk_size_is_a_400_not_a_crash(
+    server: tuple[httpx.Client, ModuleType],
+) -> None:
+    client, _ = server
+    path = "/v2/uploads?cache_scope=" + SCOPE_A
+    assert _raw_chunked(client, path, b"zz\r\nabc\r\n0\r\n\r\n") == 400
+    assert client.get("/__e2e/state").status_code == 200  # the server is still up

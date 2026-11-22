@@ -219,11 +219,14 @@ test('describe with a playlist and a pinned song, shape it, swap a song, approve
   nothingYet()
 
   // Approve and save: the bar's copy, then one click. Phase 2 makes the playlist; the web saves.
+  // The bar renders only once the new song list has been read (a request of its own, after the chip).
+  const bar = page.getByTestId('approve-bar')
+  await expect(bar).toBeVisible(LONG)
   await expect(
-    page.getByText(
+    bar.getByText(
       'Approving saves a private workout to MOWL and creates a playlist in your Spotify in this order (a public playlist, so MOWL can find it).',
     ),
-  ).toBeVisible()
+  ).toBeVisible(LONG)
   await page.getByRole('button', { name: 'Approve and save' }).click()
   await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible(LONG)
 

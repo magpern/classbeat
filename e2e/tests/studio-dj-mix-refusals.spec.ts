@@ -12,6 +12,16 @@ test.describe.configure({ mode: 'serial' })
 test.setTimeout(420_000)
 useStudioFakes()
 
+// The free plan's class length before this file changes it (read once, put back in afterAll too).
+let planMinutes: string | undefined
+const restorePlan = () => {
+  if (planMinutes) sql(`UPDATE plans SET max_class_minutes = ${planMinutes} WHERE id = 'free'`)
+}
+test.beforeAll(() => {
+  planMinutes = sql(`SELECT max_class_minutes FROM plans WHERE id = 'free'`)
+})
+test.afterAll(restorePlan)
+
 const count = (owner: string, kind: string) => sql(`SELECT count(*) FROM jobs WHERE owner_id = '${owner}' AND kind = '${kind}'`)
 
 /** Nothing was created for the class: no apply or outputs job, no output row, no write, no playlist. */
@@ -32,9 +42,9 @@ test('every song kept whole past the plan’s class length is refused on the scr
   // free one cut to its 10 minute floor (630 s with the tolerance; restored at the end), and the
   // workout the whole songs make is about 31 minutes (ADR 0036 B6: a later downgrade is the one way
   // a whole-songs form can still be too long for the plan).
-  sql(`DELETE FROM entitlements WHERE owner_id = '${owner}'`)
-  sql(`UPDATE plans SET max_class_minutes = 10 WHERE id = 'free'`)
   try {
+    sql(`DELETE FROM entitlements WHERE owner_id = '${owner}'`)
+    sql(`UPDATE plans SET max_class_minutes = 10 WHERE id = 'free'`)
     await page.goto(`/classes/${classId}`)
     const outputs = page.getByTestId('studio-outputs')
     await outputs.getByRole('checkbox', { name: /^DJ mix/ }).check()
@@ -47,6 +57,7 @@ test('every song kept whole past the plan’s class length is refused on the scr
     await expect(outputs.getByTestId('mix-total')).toContainText('the mix is 32:00. The class is 30:00')
     const before = gatewayRequests().length
 
+    // The refusal does not depend on these choices: any form of this draft is over the plan's length.
     await outputs.getByRole('button', { name: 'Apply these choices' }).click()
     await expect(outputs.getByText(/longer than your plan allows/).first()).toBeVisible(LONG)
     await expect(outputs.getByRole('link', { name: 'Change songs' })).toBeVisible() // nothing left to trim: no re-plan
@@ -54,7 +65,7 @@ test('every song kept whole past the plan’s class length is refused on the scr
     expect(gatewayRequests()).toHaveLength(before) // the fake gateway was asked nothing
     expectNothingSent(owner, 'Studio mix too long')
   } finally {
-    sql(`UPDATE plans SET max_class_minutes = 30 WHERE id = 'free'`)
+    restorePlan()
   }
 })
 
