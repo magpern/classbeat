@@ -175,3 +175,28 @@ async def test_a_failure_at_phase_two_has_no_fallback_and_no_design(
     assert songenv.revision(revision_id).content.get("design") is None  # no design was made
     design = songenv.providers[-1]
     assert design.sent == [] or "approximate" not in sent_to_design(songenv)
+
+
+# --- a video another track was aligned to first ---------------------------------------------------
+
+
+async def test_a_video_aligned_to_another_track_first_is_aligned_to_the_picked_one(
+    songenv: SongEnv, spotdown: FakeSpotdown, hooked: list[Any]
+) -> None:
+    """The e2e stack's case: a design on the user's MOWL playlist (another track, 240 s) analysed
+    the video first, so the pick's request is a cache hit; spotdown answers with an analysis
+    aligned to the picked track (contract v2), which stage D verifies, so the class completes."""
+    earlier: set[str] = set()
+    for n in range(20):
+        source = f"youtube:{vid(n)}"  # the document keeps its placeholder reference
+        spotdown.documents[source] = youtube_doc(vid(n), float(mowl_bpm(song_id(n))))
+        held = spotdown.add_analysis(None, source)
+        other = {"kind": "spotify", "id": reference_id(f"InventedTr{n:012d}"), "duration_s": 240.0}
+        spotdown.aligned[held] = other
+        earlier.add(held)
+    listed, _ = await designed(songenv)
+    analysis_ids = {e["analysis_id"] for e in listed.provenance[KEY]["songs"]}
+    assert len(analysis_ids) == 8
+    assert not analysis_ids & earlier  # aligned to the picked tracks, never to the other ones
+    [(_, step, _)] = hooked
+    assert tt.classes(step.data.analysis["map"]) == {n: "approximate" for n in range(8)}
