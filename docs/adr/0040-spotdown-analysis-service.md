@@ -1141,7 +1141,8 @@ still timed its tracks on MOWL's sections, and #1406 had narrowed item 3's "a ba
    provenance holds it, at most 384 KiB as canonical JSON: the worst case of 200 tracks at realistic
    field widths is about 335 KiB, derived in `revision_spotdown_model`; a record over it, which only
    adversarial text can make, is refused `invalid_input` right after stage B, before stage D and
-   before anything is stored, #1438). This amends stage E item 1's "never an
+   before any draft revision is stored; only stage A's wait budget, `spotdown_song_budgets`, is
+   kept, as for any failure after stage A, #1438). This amends stage E item 1's "never an
    analysis id" for this variant only, as a mix draft's `music.provenance` already names its
    analysis (#1304): analysis ids, versions and audio identities, never a title, a Spotify id, a
    source reference, a scope or a URL. A class copy (#550) keeps a `spotdown` that has its own

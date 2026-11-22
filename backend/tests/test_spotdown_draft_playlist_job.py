@@ -27,6 +27,7 @@ import pytest
 from classbeat import design, egress_spotdown
 from classbeat.agent import track_timing_calc
 from classbeat.design import DESIGN_DRAFT, REFIT_DRAFT, REVISE_DRAFT
+from classbeat.design.revision_spotdown_model import MAX_TRACKS
 from classbeat.jobs import KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.songs import draft_spotdown, playlist_spotdown, spotdown_carry
@@ -269,20 +270,44 @@ async def test_an_error_of_any_type_in_the_stages_is_internal(
 async def test_a_record_over_its_bound_is_refused_before_stage_d_and_never_internal(
     renv: ReviseEnv, spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    real = draft_spotdown.playlist_spotdown
+    real, real_fits = draft_spotdown.playlist_spotdown, draft_spotdown.fits
+    after_b: list[int] = []  # the analysis reads once stages A and B are done (stage B reads each)
+    checked: list[bool] = []  # what the size check answered
+    stage_d_calls: list[Any] = []
 
     async def wide(*args: Any) -> dict[str, Any]:
         records = await real(*args)
+        assert len(records[KEY]["songs"]) == TRACKS
         for entry in records[KEY]["songs"]:  # a fingerprint the reader takes: 128 non-BMP chars
             entry["audio"]["fingerprint"] = "\U0001f600" * 128  # 12 B each as canonical JSON
-        records[KEY]["songs"] = records[KEY]["songs"] * 40
+        # The fake playlist has TRACKS songs; repeated to MAX_TRACKS entries, the record is what a
+        # 200-track playlist with such fingerprints gives: still a list the size check alone
+        # refuses (no more entries than a revision records, no other field changed).
+        records[KEY]["songs"] = records[KEY]["songs"] * (MAX_TRACKS // TRACKS)
+        assert len(records[KEY]["songs"]) == MAX_TRACKS
+        after_b.append(gets(spotdown))
         return records
 
+    def seen_fits(record: dict[str, Any]) -> bool:
+        checked.append(real_fits(record))
+        return checked[-1]
+
+    async def no_stage_d(*args: Any) -> Any:
+        stage_d_calls.append(args)
+        raise AssertionError("stage D ran")
+
     monkeypatch.setattr(draft_spotdown, "playlist_spotdown", wide)
+    monkeypatch.setattr(draft_spotdown, "fits", seen_fits)
+    monkeypatch.setattr(draft_spotdown, "listed_music", no_stage_d)
     job_id, row = await designing(renv)
     assert (row.state, ending(renv, job_id)) == ("failed", "invalid_input")
-    assert drafts(renv, job_id) == []  # nothing stored
-    assert gets(spotdown) == 0  # stage D never ran
+    assert checked == [False]  # refused by the size check, not for another reason
+    assert stage_d_calls == []  # stage D never ran ...
+    assert after_b == [TRACKS]  # stage B read each analysis once ...
+    assert gets(spotdown) == TRACKS  # ... and nothing was read after it
+    assert drafts(renv, job_id) == []  # no draft revision stored
+    budget = renv.sql("SELECT 1 FROM spotdown_song_budgets WHERE job_id = :j", j=job_id).all()
+    assert len(budget) == 1  # stage A's wait budget is kept, as for any failure after stage A
 
 
 # --- its revise and refit ------------------------------------------------------------------------

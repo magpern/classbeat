@@ -40,8 +40,9 @@ Position = Annotated[int, Field(ge=0, lt=MAX_TRACKS)]
 # a track, 335,321 B in all. 384 KiB leaves about 17 % over it.
 # NOT covered, on purpose: adversarial text (the readers take 128-character words and 256-character
 # texts, and ``json.dumps`` writes a character outside the BMP as 12 bytes) and hundreds of distinct
-# matcher versions. Such a record is refused up front, ``invalid_input`` (``fits``), never stored
-# and never ``internal``. No other limit applies: ``class_revisions.music`` has no size check.
+# matcher versions. Such a record is refused right after stage B (``draft_spotdown``, ``fits``),
+# ``invalid_input``, never ``internal``: no draft holds it. No other limit applies:
+# ``class_revisions.music`` has no size check.
 MAX_RECORD_BYTES: Final = 393216
 
 

@@ -11,7 +11,8 @@ MOWL's map is the **frame** (track order, MOWL's length, Spotify's BPM) and its 
 2. stages A and B as for the user's own playlist (``playlist_spotdown``: no spares, no rounds; a
    song that is missing is ``analysis_failed``, an unsuitable one a warning);
    The record is the first thing that holds its size: one over ``MAX_RECORD_BYTES`` ends the job
-   ``invalid_input`` here, before stage D and before anything is stored (#1438);
+   ``invalid_input`` here, before stage D and before any draft revision is stored; stage A's wait
+   budget (``spotdown_song_budgets``) is kept, as for any failure after stage A (#1438);
 3. stage D on that record (``phase2_spotdown.listed_music``): every track read again by its
    analysis id, verified against the track and rebuilt on spotdown's sections, then stamped.
 
@@ -46,7 +47,7 @@ async def drafted_music(run: JobRun, step: MusicStep) -> tuple[MusicStep, Spotdo
         raise JobFailure(chosen)
     records = await playlist_spotdown(run, chosen, analysis_map)  # stages A and B
     if not fits(records):
-        raise JobFailure("invalid_input")  # over its bound: refused before stage D, never stored
+        raise JobFailure("invalid_input")  # over its bound: before stage D, no draft stored
     ids = [s.spotify_id for s in chosen.songs]
     timing = SpotdownSections(record=records, tracks=list(range(len(ids))))
     step = await listed_music(run, ids, records, step)  # stage D
