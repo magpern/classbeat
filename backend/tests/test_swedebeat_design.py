@@ -119,8 +119,7 @@ async def env(clean_auth: None, app_database_url: str) -> AsyncIterator[Env]:
 
 @pytest.fixture(autouse=True)
 def work(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """The audio directory of these tests. Each analysis keeps its numba cache inside that job's
-    private directory (``mixanalysis.NUMBA_CACHE``), so there is no shared cache to pin."""
+    """The audio directory of these tests (the job's private directory)."""
     root = tmp_path / "audio-root"
     root.mkdir()
     monkeypatch.setattr(mixfetch, "work_root", lambda: root)

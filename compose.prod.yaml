@@ -257,10 +257,10 @@ services:
     command: ["python", "-m", "classbeat.worker"]
     # ADR 0005 section 3: up to 25 s for runs to reach a checkpoint, then the leases go back.
     stop_grace_period: 30s
-    # ADR 0026 stage 1 (#735): a mix analysis (a child of up to 1.5 GiB, a core or more for up to
-    # 180 s) must not starve web and db. Memory: CLASSBEAT_MIX_ANALYSIS_CONCURRENCY x 1.5 GiB plus
-    # about 1 GiB for the worker itself (3g for the default cap of 1). Over the ceiling the kernel
-    # kills the container: compose restarts it and the reaper requeues its jobs. Override in .env
+    # ADR 0026 stage 1 (#735): a render child (up to 1 GiB, a core or more while it runs) must not
+    # starve web and db. The analysis runs in spotdown, not here (#1357). Memory: about 1 GiB for
+    # the worker itself plus 1 GiB for each render child running at once (3g). Over the ceiling the
+    # kernel kills the container: compose restarts it and the reaper requeues its jobs. Override in .env
     # (WORKER_CPUS, WORKER_MEMORY); never above the host's CPU count. Runbook section 5c.
     cpus: ${WORKER_CPUS:-1.0}
     mem_limit: ${WORKER_MEMORY:-3g}

@@ -8,7 +8,7 @@ import pytest
 from mowl import track
 from sqlalchemy import create_engine, text
 
-from classbeat.design import mixanalysis, track_map_policy
+from classbeat.design import mix_map_shape_policy, track_map_policy
 from classbeat.jsonb_text_calc import jsonb_text_size
 
 VALUES: list[Any] = [
@@ -85,7 +85,7 @@ def test_a_map_that_fits_compactly_but_not_as_jsonb_is_refused(
     monkeypatch.setattr(track_map_policy, "MAX_MAP_BYTES", as_table)
     assert track_map_policy.valid_track_map(m, track.TRACK_VERSION)
     mix = {"version": 13, "duration": 240.0, "songs": m["songs"], "events": [], "x": m["sections"]}
-    monkeypatch.setattr(mixanalysis, "MAX_MAP_BYTES", jsonb_text_size(mix) - 1)
-    assert not mixanalysis.valid_map(mix, 13)
-    monkeypatch.setattr(mixanalysis, "MAX_MAP_BYTES", jsonb_text_size(mix))
-    assert mixanalysis.valid_map(mix, 13)
+    monkeypatch.setattr(mix_map_shape_policy, "MAX_MAP_BYTES", jsonb_text_size(mix) - 1)
+    assert not mix_map_shape_policy.valid_map(mix, 13)
+    monkeypatch.setattr(mix_map_shape_policy, "MAX_MAP_BYTES", jsonb_text_size(mix))
+    assert mix_map_shape_policy.valid_map(mix, 13)

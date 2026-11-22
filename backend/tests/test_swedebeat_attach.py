@@ -402,8 +402,8 @@ async def test_a_tracks_failure_ends_the_wait_with_its_category(
 def plant_map(h: Harness, owner: UUID, connection: UUID, mix_id: str = "mix-1") -> None:
     h.ops.sql(
         "INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, name, "
-        "duration, listed_duration, map) VALUES (:o, :m, :c, 9001, 'Planted name', 600, 600, "
-        "CAST(:map AS jsonb))",
+        "duration, listed_duration, map, analyser, provenance) VALUES (:o, :m, :c, 9001, "
+        "'Planted name', 600, 600, CAST(:map AS jsonb), 'spotdown', '{}'::jsonb)",
         o=owner,
         m=mix_id,
         c=connection,
@@ -508,8 +508,9 @@ async def test_the_checks_bound_a_row(harness: Harness, column_values: dict[str,
     with pytest.raises(DBAPIError):
         harness.ops.sql(
             "INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, "
-            "name, duration, listed_duration, map) VALUES (:o, :mix_id, :c, :playlist_id, :name, "
-            ":duration, :listed_duration, '{}'::jsonb)",
+            "name, duration, listed_duration, map, analyser, provenance) VALUES (:o, :mix_id, :c, "
+            ":playlist_id, :name, :duration, :listed_duration, '{}'::jsonb, 'spotdown', "
+            "'{}'::jsonb)",
             o=owner,
             c=connection,
             **values,

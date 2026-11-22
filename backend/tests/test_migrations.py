@@ -35,7 +35,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0075_drop_local_track_maps"]
+    assert script.get_heads() == ["0076_drop_local_mix_maps"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -56,7 +56,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0075_drop_local_track_maps"]
+        assert applied_revisions(database_url) == ["0076_drop_local_mix_maps"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -1289,6 +1289,76 @@ def test_0075_deletes_the_local_track_maps_and_the_downgrade_restores_the_check(
             )
         assert references(owner) == ["back", "spd"]
         refused("mowl", "y")
+    finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0076_deletes_the_local_mix_maps_and_the_downgrade_restores_the_check(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1357: at head ``swedebeat_mix_maps.analyser`` admits only ``spotdown`` and has no default;
+    the upgrade deleted the ``local`` rows (and kept the ``spotdown`` ones, row security lifted only
+    for the delete); the downgrade restores the check (``local`` or ``spotdown``) and the ``local``
+    default."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+    plant = text(
+        "INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, name, "
+        "duration, listed_duration, map, analyser, provenance) VALUES (:o, :m, :c, 1, 'n', 60, 60, "
+        "'{}', :a, CAST(:p AS jsonb))"
+    )
+    column = text(
+        "SELECT column_default FROM information_schema.columns "
+        "WHERE table_name = 'swedebeat_mix_maps' AND column_name = 'analyser'"
+    )
+    forced = text("SELECT relforcerowsecurity FROM pg_class WHERE relname = 'swedebeat_mix_maps'")
+
+    def mixes(owner: uuid.UUID) -> list[str]:
+        with admin.connect() as connection:
+            return sorted(
+                connection.execute(
+                    text(
+                        "SELECT mix_id || ':' || analyser FROM swedebeat_mix_maps WHERE owner_id=:o"
+                    ),
+                    {"o": owner},
+                ).scalars()
+            )
+
+    def put(owner: uuid.UUID, mix: str, analyser: str) -> None:
+        provenance = "{}" if analyser == "spotdown" else None
+        with admin.begin() as connection:
+            connection.execute(
+                plant,
+                {"o": owner, "m": mix, "c": uuid.uuid4(), "a": analyser, "p": provenance},
+            )
+
+    try:
+        command.upgrade(config, "0075_drop_local_track_maps")
+        with admin.begin() as connection:
+            owner = new_user(connection)
+        put(owner, "both", "local")
+        put(owner, "both", "spotdown")  # a mix with a row of each analyser
+        put(owner, "old", "local")
+        assert mixes(owner) == ["both:local", "both:spotdown", "old:local"]
+        command.upgrade(config, "head")
+        assert mixes(owner) == ["both:spotdown"]  # one row per mix; the local ones are gone
+        with admin.connect() as connection:
+            assert connection.execute(column).scalar_one() is None
+            assert connection.execute(forced).scalar_one() is True  # FORCE is back on
+        for analyser in ("local", "mowl"):
+            with (
+                pytest.raises(IntegrityError, match="swedebeat_mix_maps_analyser"),
+            ):
+                put(owner, "x", analyser)
+        command.downgrade(config, "0075_drop_local_track_maps")
+        with admin.connect() as connection:
+            assert "'local'" in str(connection.execute(column).scalar_one())
+        put(owner, "back", "local")  # the check admits a local row again
+        assert mixes(owner) == ["back:local", "both:spotdown"]
+        with pytest.raises(IntegrityError, match="swedebeat_mix_maps_analyser"):
+            put(owner, "y", "mowl")
     finally:
         admin.dispose()
         command.downgrade(config, "base")

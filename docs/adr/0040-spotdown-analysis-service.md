@@ -1,6 +1,6 @@
 # ADR 0040: spotdown as classbeat's music-analysis service (#1300)
 
-Status: Accepted. This ADR itself changes no code, setting, compose file or runtime behaviour.
+Status: Accepted. This ADR itself changes no code, setting, compose file or runtime behaviour. (Since #1356 and #1357 the local studio-track and mix analyses are gone: `design/mixanalysis.py` and `design/mixchild.py` are deleted, migrations 0075 and 0076 deleted the `local` rows, and the render child keeps the confinement of `design/sandbox.py`.)
 **Every phase it describes (SD-P0 to SD-P7, and the SD-P2+ enhancements) was authorized by the owner
 on 2026-11-20**, except the owner decisions #1296 to #1299 and magpern/spotdown#1; no deploy, live-account test or real YouTube, SwedeBeat, MOWL or Spotify call by any agent (roadmap
 [Amendment 31](../roadmap.md)). Its amendment to ADR 0010 and ADR 0021 §2 (§12 below) took effect
@@ -1039,7 +1039,7 @@ sections and amendments carry a one-line pointer and are otherwise kept as histo
      new design; the rule stays as written.
    - **Kept, not analysis:** `studio/render.py` and `studio/renderchild.py` (rendering a mix needs
      numpy, soundfile and soxr); `design/sandbox.py`, `design/rss.py` and the child limits they use,
-     which move out of `mixanalysis` unchanged before it is deleted; the MOWL temporary-link fetch
+     (already modules of their own; `studio/render.py` has its own runner, so nothing moved when #1357 deleted `mixanalysis`); the MOWL temporary-link fetch
      (`design.mixfetch`) and the 250 MB and 60 MB caps; the queue SQL.
 4. **Outage and failure behaviour: no silent degraded analysis.**
    - **`analysis_unavailable`**, a new job category, **retryable**: in `jobs.errors.RETRYABLE`, with

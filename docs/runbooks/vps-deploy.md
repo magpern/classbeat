@@ -383,27 +383,27 @@ cookie notice already name the check; they ship in the release, so do not run an
 
 ### 5c. CPU and memory ceilings (ADR 0026 stage 1)
 
-`compose.prod.yaml` gives `web` and `worker` a CPU and a memory ceiling, so a Swedebeat mix analysis
-(a child process of up to 1.5 GiB that keeps a core or more busy for up to 180 s) cannot starve the web
+`compose.prod.yaml` gives `web` and `worker` a CPU and a memory ceiling, so a mix render
+(a child process of up to 1 GiB that keeps a core or more busy while it runs; the analysis is spotdown's, #1357) cannot starve the web
 tier or the database on the one box. `db` has none: it is the one service that must never be killed
 for memory. The defaults, and the `.env` variables that change them:
 
 | Service | CPUs | Memory | Why |
 |---|---|---|---|
-| `worker` | `WORKER_CPUS=1.0` | `WORKER_MEMORY=3g` | `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY` (default 1) x 1.5 GiB for the analysis child, plus about 1 GiB for the worker's own process and its other running job |
+| `worker` | `WORKER_CPUS=1.0` | `WORKER_MEMORY=3g` | about 1 GiB for the worker's own process plus 1 GiB for each render child running at once (the analysis runs in spotdown, not in a child here, #1357) |
 | `web` | `WEB_CPUS=1.0` | `WEB_MEMORY=1g` | one Python process: it cannot use much more than a core; the memory covers its pool and requests (bodies are capped at 64 KiB) |
 
 - **Never set a CPU value above the host's core count** (`nproc`): Docker refuses to start the
   container. On a 2-core server keep the defaults (the worker gets at most one core, web and db share
-  the rest); on 4 cores or more `WORKER_CPUS=2` lets one analysis and a design job run side by side.
-- **Raise `WORKER_MEMORY` with the cap.** `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY=2` needs `WORKER_MEMORY=4g`.
-  The sum of `WORKER_MEMORY`, `WEB_MEMORY` and what Postgres uses must fit the server's RAM; with two
+  the rest); on 4 cores or more `WORKER_CPUS=2` lets a render and a design job run side by side.
+- **Raise `WORKER_MEMORY` with the renders you run side by side:** each render child may use 1 GiB
+  on top of the worker's own process (two at once need `WORKER_MEMORY=4g`). The sum of `WORKER_MEMORY`, `WEB_MEMORY` and what Postgres uses must fit the server's RAM; with two
   worker containers (`--scale worker=2`, ADR 0026 stage 2) the worker's ceiling counts twice.
-- **What happens at the ceiling.** CPU: the worker is slowed, never killed (the analysis has 180 s of
-  wall clock; a slower decode can end `analysis_failed` and is retried by the user). Memory: the kernel
+- **What happens at the ceiling.** CPU: the worker is slowed, never killed (a render has a wall-clock
+  cap; a slower one can end `RenderFailed` and is retried by the user). Memory: the kernel
   kills the container (`docker inspect --format '{{.State.OOMKilled}}' <container>` says `true`);
   `restart: unless-stopped` starts it again, and the reaper requeues its jobs when their leases run out.
-  Repeated kills mean the ceiling is too low for the cap: raise `WORKER_MEMORY` or lower the cap.
+  Repeated kills mean the ceiling is too low for the renders run at once: raise `WORKER_MEMORY`.
 - **Swap.** The file sets `mem_limit` only, not `memswap_limit` (the production check refuses any
   key it does not list). On a host with swap enabled, a container that reaches its ceiling can
   therefore swap before the kernel kills it, so it gets slow instead of restarting. Check with

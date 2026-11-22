@@ -3,7 +3,7 @@
 - ``mix_map_policy.mix_map``: the songs read as spotdown's harness reads them for the mix gates
   (content edges and trusted structure boundaries; the tempo at each song's midpoint), only
   trusted features, a span without a beat joining its neighbour, beat 1 an estimate unless a
-  trusted downbeat says so, the library's map shape (``mixanalysis.valid_map``);
+  trusted downbeat says so, the library's map shape (``mix_map_shape_policy.valid_map``);
 - ``mix_map_model.mix_map_of``: path (a) only, and the provenance record (no mix id, ``source.ref``
   null, the mix policy's version), ``current_mix_provenance`` the cache's rule;
 - the fixture form of the plan section 7 mix gates: on documents whose features sit where the
@@ -20,7 +20,7 @@ import pytest
 from mowl import music
 
 from classbeat.config import Settings
-from classbeat.design.mixanalysis import valid_map
+from classbeat.design.mix_map_shape_policy import valid_map
 from classbeat.spotdown import mix_map_policy, studio_tracks_config
 from classbeat.spotdown.mix_map_model import (
     MIX_POLICY_VERSIONS,

@@ -17,7 +17,6 @@ from uuid import UUID
 import pytest
 
 from classbeat.design import track_spotdown
-from classbeat.design.mix_cache import fingerprint
 from classbeat.design.refit import KIND as REFIT_KIND
 from classbeat.design.refit import REFIT_DRAFT
 from classbeat.design.revise import KIND as REVISE_KIND
@@ -190,10 +189,11 @@ async def test_with_spotdown_failing_the_design_ends_with_its_category_and_no_dr
     )
 
 
-async def test_admit_counts_a_spotdown_row_as_a_cached_mix_and_a_local_row_not(
+async def test_admit_counts_a_spotdown_row_as_a_cached_mix_and_a_missing_row_not(
     browsers: Any, menv: MixEnv, mowl_api: FakeMowl
 ) -> None:
-    """#1353: only a current ``spotdown`` row is a hit, so only it skips the daily limit."""
+    """#1353: only a current ``spotdown`` row is a hit, so only it skips the daily limit; with the
+    row gone (30 days, the cap) the mix is a new analysis (#1357: there is no other analyser)."""
     from classbeat.design import mixlimit
     from test_swedebeat_design import plant_analyses
 
@@ -208,37 +208,27 @@ async def test_admit_counts_a_spotdown_row_as_a_cached_mix_and_a_local_row_not(
     ).scalars().all() == ["spotdown"]
     cached = await create(browser, design_body(browser))
     assert cached.status_code == 201, cached.text  # a spotdown row is a hit: no new analysis
-    menv.ops.sql(
-        "UPDATE swedebeat_mix_maps SET analyser = 'local', provenance = NULL WHERE owner_id = :o",
-        o=owner,
-    )
+    menv.ops.sql("DELETE FROM swedebeat_mix_maps WHERE owner_id = :o", o=owner)
     refused = await create(browser, design_body(browser))
     assert refused.status_code == 409, refused.text
     assert refused.json()["detail"]["reason"] == "analysis_limit"
 
 
-async def test_a_refit_of_a_draft_recorded_on_a_local_row_ends_music_changed(
+async def test_a_refit_whose_row_is_gone_and_whose_audio_now_analyses_differently_is_music_changed(
     browsers: Any,
     menv: MixEnv,
     mowl_api: FakeMowl,
     spotdown: FakeSpotdown,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """#1353 (B1): a draft made before spotdown was the only path was designed on a ``local`` row.
-    That row carries the base's OWN fingerprint, yet it is no cache hit, so the refit analyses
-    again on spotdown, finds another map and ends ``music_changed``; it never reads the row."""
+    """#1353 (B1), #1357: the base's row is gone (30 days, the per-user cap; a ``local`` row can no
+    longer exist), so the refit analyses again on spotdown, finds another map and ends
+    ``music_changed``."""
     browser = await designed(browsers, menv, mowl_api, TOKEN_A)
     created = await create(browser, design_body(browser))
     await menv.run_next()
     [base] = revisions(menv, UUID(created.json()["id"]))
-    menv.ops.sql(  # the row the base was designed on, as an earlier build stored it
-        "UPDATE swedebeat_mix_maps SET analyser = 'local', provenance = NULL WHERE owner_id = :o",
-        o=browser.user_id,
-    )
-    [row] = menv.ops.sql(
-        "SELECT map, analyser FROM swedebeat_mix_maps WHERE owner_id = :o", o=browser.user_id
-    ).all()
-    assert (row.analyser, fingerprint(row.map)) == ("local", base.music["fingerprint"])
+    menv.ops.sql("DELETE FROM swedebeat_mix_maps WHERE owner_id = :o", o=browser.user_id)
     # What spotdown now says of the same audio is another map.
     other = [(a, b, bpm + 10.0) for a, b, bpm in SONGS]
     monkeypatch.setattr(sys.modules[__name__], "SONGS", other)
@@ -264,4 +254,4 @@ async def test_a_refit_of_a_draft_recorded_on_a_local_row_ends_music_changed(
     )  # fmt: skip
     refit = menv.ops.row(UUID(made.json()["id"]))
     assert (refit.state, refit.error_category) == ("failed", "music_changed")
-    assert len(menv.media.requests) == fetches + 1  # analysed again: the local row was no hit
+    assert len(menv.media.requests) == fetches + 1  # analysed again: the row was gone

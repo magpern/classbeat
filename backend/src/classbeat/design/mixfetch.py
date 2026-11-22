@@ -53,7 +53,6 @@ MAX_LINK_CHARACTERS: Final = 4096
 CHECKPOINT_SECONDS: Final = 5.0
 ROOT_NAME: Final = "classbeat-mix-audio"
 PREFIX: Final = "mix-"
-LEGACY_CACHE: Final = "numba-cache"
 _HOST_SHAPE = re.compile(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?")
 
 
@@ -95,9 +94,9 @@ def private_directory(root: Path | None = None) -> Iterator[Path]:
 
 
 def sweep_work_root(root: Path | None = None) -> int:
-    """At worker start: remove every directory a crashed run left behind, and the numba cache an
-    earlier version shared between children; the number removed. A root that is not ours is left
-    alone (logged): ``work_root`` then refuses it to every analysis."""
+    """At worker start: remove every directory a crashed run left behind; the number removed. A
+    root that is not ours is left alone (logged): ``work_root`` then refuses it to every
+    analysis."""
     base = root or Path(tempfile.gettempdir()) / ROOT_NAME
     try:
         check_private(base)
@@ -108,7 +107,7 @@ def sweep_work_root(root: Path | None = None) -> int:
         return 0
     removed = 0
     for entry in base.iterdir():
-        if entry.name.startswith(PREFIX) or entry.name == LEGACY_CACHE:
+        if entry.name.startswith(PREFIX):
             shutil.rmtree(entry, ignore_errors=True)
             removed += 1
     return removed

@@ -5,8 +5,8 @@ and an error in a step. A kind that is not a map ends the job; nothing is stored
 ``Unreachable`` site logs ``outage_policy.log_message``; and an error of any type is ``internal``
 and never swallowed.
 
-Also: ``analyse_audio`` (the local analysis) is never called from the design path (it is
-unreachable, and the module's source does not name it); and a retried ending gives the next attempt
+Also: there is no local fallback on the design path (the local analysis is gone, #1357: no design
+module names ``analyse_audio``); and a retried ending gives the next attempt
 a fresh wait budget and outage flag (a requeue that is not a retry keeps what was spent).
 """
 
@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from classbeat.design import mixanalysis, track_spotdown
+from classbeat.design import track_spotdown
 from classbeat.spotdown import outage_policy, studio_tracks_config
 from classbeat.spotdown.studio_tracks_config import TracksConfig
 from jobtools import new_job
@@ -85,16 +85,9 @@ async def test_each_failure_kind_ends_the_job_in_its_category(
 # --- the local analysis is gone ------------------------------------------------------------------
 
 
-async def test_the_local_analysis_is_never_called_from_the_design_path(
-    harness: Harness, spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch
+async def test_there_is_no_local_fallback_on_the_design_path(
+    harness: Harness, spotdown: FakeSpotdown
 ) -> None:
-    calls: list[str] = []
-
-    async def local(*_args: object, **_kwargs: object) -> Any:
-        calls.append("analyse_audio")
-        raise AssertionError("the local analysis was called")
-
-    monkeypatch.setattr(mixanalysis, "analyse_audio", local)
     owner = await harness.user()
     row = await harness.run(owner, [ONE, TWO])
     assert (row.state, row.error_category) == ("completed", None)
@@ -102,18 +95,15 @@ async def test_the_local_analysis_is_never_called_from_the_design_path(
     other = await harness.user()
     failed = await harness.run(other, [ONE])
     assert (failed.state, failed.error_category) == ("failed", "analysis_unavailable")
-    assert calls == []
 
 
 def test_no_design_module_names_the_local_analysis() -> None:
     import classbeat.design as design
 
     root = Path(design.__file__).parent
-    named = [
-        p.name
-        for p in root.glob("*.py")
-        if p.name != "mixanalysis.py" and "analyse_audio" in p.read_text(encoding="utf-8")
-    ]
+    assert not (root / "mixanalysis.py").exists()  # #1357: the files are gone
+    assert not (root / "mixchild.py").exists()
+    named = [p.name for p in root.glob("*.py") if "analyse_audio" in p.read_text(encoding="utf-8")]
     assert named == []
 
 

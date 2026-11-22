@@ -15,7 +15,8 @@ its own cache (``mix_cache.cached``) missed, asks ``analyse`` for the map:
 
 The document is read in the same scope and goes through ``mix_map_model.mix_map_of``
 (``timing_class_policy`` path (a), then ``mix_map_policy.mix_map``) and
-``mixanalysis.valid_map``; only an ``exact`` played-recording map is returned with its provenance.
+``mix_map_shape_policy.valid_map``; only an ``exact`` played-recording map is returned with its
+provenance.
 
 **Bounds.** The relay, the session, the attempt's budget and the outage flag are the studio's
 (``design.track_spotdown``, ``track_spotdown_budget``: the design job's ``spotdown_studio_budgets``
@@ -43,7 +44,7 @@ from mowl import music
 
 from classbeat.design import spotdown_ending
 from classbeat.design import track_spotdown as relay
-from classbeat.design.mixanalysis import valid_map
+from classbeat.design.mix_map_shape_policy import valid_map
 from classbeat.egress_spotdown import CALL_SECONDS
 from classbeat.jobs import JobRun
 from classbeat.spotdown import scope_policy, studio_policy, studio_tracks_config

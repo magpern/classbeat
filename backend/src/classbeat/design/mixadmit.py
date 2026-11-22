@@ -16,7 +16,7 @@ nothing:
    connection category. The listing has a total deadline of ``LISTING_SECONDS``, well inside the
    role's ``idle_in_transaction_session_timeout``.
 4. ``analysis_limit`` (with ``limit`` and ``used``) when the mix has no usable cached analysis (a
-   current ``spotdown`` row; a ``local`` row is none, #1353) and
+   current ``spotdown`` row; there is no other, #1353, #1357) and
    the user started ``mixlimit.ANALYSES_PER_DAY`` new analyses in the last 24 hours.
 
 The worker repeats what can change after creation: ``still_on`` (a queued job whose flag went off,
@@ -67,7 +67,7 @@ class Listing(Protocol):
 # A cache hit as ``mix_cache.cached`` judges it: young enough, this connection, the stored link's
 # playlist and the library's current map version. The user's own rows only (RLS). Only a
 # ``spotdown`` row whose provenance is this build's counts (#1353: spotdown is the only analysis
-# path; a ``local`` row is no hit), checked in ``_cached``.
+# path), checked in ``_cached``.
 _CACHED = text(
     "SELECT m.provenance FROM swedebeat_mix_maps m "
     "JOIN mowl_playlist_links l ON l.owner_id = m.owner_id "

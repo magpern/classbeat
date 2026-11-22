@@ -3,7 +3,8 @@
 
 ``mix_map`` turns an **``exact``** document of the played mix (path (a): the analysed bytes are the
 mix that is played, so the file's clock is the class's clock) into the shape
-``mowl.music.analyze_signal`` gives and ``design.mixanalysis.valid_map`` checks: ``version``,
+``mowl.music.analyze_signal`` gives and ``design.mix_map_shape_policy.valid_map`` checks:
+``version``,
 ``duration``, ``songs`` (``song``, ``start``, ``end``, ``bpm``, ``first_downbeat``,
 ``first_phrase``, ``phrase_bars``, ``grid_score``, ``beat1_margin``) and ``events`` (drops and
 breakdowns with ``t``, ``precise``, ``kind``, ``strength`` and their ``song``).
@@ -43,7 +44,7 @@ from classbeat.spotdown.spotdown_map_policy import MapRefused
 from classbeat.spotdown.timing_class_policy import TimingDecision
 
 POLICY_VERSION: Final = "1"
-MAX_SONGS: Final = 200  # as ``design.mixanalysis``
+MAX_SONGS: Final = 200  # as ``design.mix_map_shape_policy``
 MAX_EVENTS: Final = 2000
 MIX_EVENT_KINDS: Final = frozenset({"drop", "breakdown"})  # the mix map's own kinds
 PHRASE_BARS: Final = 8  # ``mowl.music.PHRASE_BARS``
