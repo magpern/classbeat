@@ -81,7 +81,10 @@ async def test_there_is_no_source_setting_so_both_kinds_of_call_are_sent(
     key = idempotency_key("job", "1")
     assert not isinstance(await client.match((track("t1"),)), Unreachable)
     assert not isinstance(await client.upload(chunks(), SCOPE_A, key), Unreachable)
-    assert spotdown.seen != []
+    assert [(seen.method, seen.path) for seen in spotdown.seen] == [
+        ("POST", "/v2/match"),
+        ("PUT", "/v2/uploads"),
+    ]
 
 
 @pytest.mark.parametrize("ref", ["url:https://example.com/a.mp3", "url:abcdefghijk", "http://x"])

@@ -1142,7 +1142,7 @@ def test_0073_drops_the_shadow_table_and_the_downgrade_recreates_it_empty(
     owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """#1355: ``spotdown_shadow_tracks`` is gone at head; the downgrade recreates it empty, with
-    its owner row security, and upgrading again drops it (and whatever was put in it)."""
+    its owner row security and both indexes, and upgrading again drops it again."""
     monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
     config = alembic_config()
     admin = create_engine(database_url)
@@ -1150,6 +1150,11 @@ def test_0073_drops_the_shadow_table_and_the_downgrade_recreates_it_empty(
     rls = text(
         "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class "
         "WHERE oid = 'public.spotdown_shadow_tracks'::regclass"
+    )
+    indexes = text(
+        "SELECT indexname FROM pg_indexes WHERE tablename = 'spotdown_shadow_tracks' "
+        "AND indexname IN ('spotdown_shadow_tracks_owner_job', "
+        "'spotdown_shadow_tracks_owner_started')"
     )
     try:
         command.upgrade(config, "head")
@@ -1159,6 +1164,10 @@ def test_0073_drops_the_shadow_table_and_the_downgrade_recreates_it_empty(
         with admin.begin() as connection:
             assert connection.execute(exists).scalar_one() is True
             assert connection.execute(rls).scalar_one() is True
+            assert sorted(connection.execute(indexes).scalars()) == [
+                "spotdown_shadow_tracks_owner_job",
+                "spotdown_shadow_tracks_owner_started",
+            ]
             owner = new_user(connection)
             job = new_job(connection, owner, state="failed", error_category="internal",
                           finished_at="2026-01-01")  # fmt: skip
