@@ -7,7 +7,8 @@ count only. The job that writes the rows is ``test_swedebeat_track_analysis.py``
 
 import uuid
 from collections.abc import Iterator
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from sqlalchemy import Engine, text
@@ -20,6 +21,8 @@ from classbeat.account.export import build_export
 from classbeat.account.registry import NOT_EXPORTED
 from classbeat.connections.repository import delete_all_in
 from classbeat.db import RETENTION, SYSTEM_TABLES, user_session
+from classbeat.design import track_cache
+from classbeat.jobs import JobFailure, JobRun
 from ctx import make_context
 from gatewayfake import FakeGateway, store_bearer
 from jobtools import as_user, engine_for, new_user
@@ -169,6 +172,43 @@ def test_only_a_spotdown_row_with_its_provenance_is_stored(
             ),
             {"o": owner, "h": bytes(32), "a": analyser, "p": provenance},
         )
+
+
+def test_the_same_bytes_are_read_newest_first(admin: Connection) -> None:
+    """#1356 review: ``cached_by_sha256`` takes the newest analysis of the bytes first."""
+    owner = new_user(admin)
+    for reference in ("old-ref", "new-ref"):
+        admin.execute(
+            text(MAP),
+            {"o": owner, "r": reference, "v": 1, "h": bytes(32), "m": '{"track_version": 1}'},
+        )
+    admin.execute(
+        text("UPDATE swedebeat_track_maps SET created_at = now() - interval '2 days' "
+             "WHERE owner_id = :o AND reference = 'old-ref'"),
+        {"o": owner},
+    )  # fmt: skip
+    rows = admin.execute(
+        track_cache._BY_SHA256,
+        {"owner_id": owner, "version": 1, "sha256": bytes(32), "days": 30},
+    ).all()
+    assert [r.reference for r in rows] == ["new-ref", "old-ref"]
+
+
+@pytest.mark.parametrize(
+    ("analyser", "provenance"), [("local", {"a": 1}), ("mowl", {"a": 1}), ("spotdown", None)]
+)
+async def test_store_refuses_a_map_the_table_would_refuse(
+    analyser: str, provenance: dict[str, object] | None
+) -> None:
+    """#1356 review: ``store`` raises ``internal`` before it touches the run or the database."""
+    run = cast(JobRun, SimpleNamespace(lease=SimpleNamespace(owner_id=uuid.uuid4())))
+    analysed = track_cache.TrackMap(
+        "trk-1", "00" * 32, {"track_version": 1}, cached=False,
+        analyser=cast(Any, analyser), provenance=provenance,
+    )  # fmt: skip
+    with pytest.raises(JobFailure) as refused:
+        await track_cache.store(run, cast(Any, None), analysed, release_slot=False)
+    assert refused.value.args[0] == "internal"
 
 
 def test_the_rows_go_with_the_account(admin: Connection, app: Engine) -> None:
