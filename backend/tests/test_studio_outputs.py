@@ -33,6 +33,7 @@ from gatewaycore import SESSION_PATH
 from songtools import new_key
 from studiotools import StudioEnv, StudioRider
 from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage]
+    WHOLE_8,
     analysed,  # noqa: F401 - the autouse stand-in of the sandboxed child
     designed,
     spotdown,  # noqa: F401 - the fake spotdown that stand-in answers from
@@ -170,7 +171,7 @@ async def test_the_timeline_without_the_analyses_is_music_changed(studio: Studio
 
 @pytest.mark.usefixtures("outputs_on")
 async def test_a_choice_binds_the_draft_the_outputs_and_the_connection(studio: StudioEnv) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     before = sessions(studio)
     body = choice(current, studio, "swedebeat_mix", "swedebeat_playlist")
     key = new_key()
@@ -207,7 +208,7 @@ async def test_a_choice_binds_the_draft_the_outputs_and_the_connection(studio: S
 async def test_a_job_without_this_binding_version_writes_nothing(
     studio: StudioEnv, version: int | None
 ) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     answer = await choose(rider, class_id, choice(current, studio, "swedebeat_playlist"))
     assert answer.status_code == 201, answer.text
     job_id = UUID(answer.json()["job_id"])
@@ -273,7 +274,7 @@ async def test_bass_swap_is_never_an_output_even_with_every_value_on(studio: Stu
 
 
 async def test_an_output_the_setting_does_not_run_is_refused(studio: StudioEnv) -> None:
-    rider, class_id, _, current = await designed(studio)  # the studio's "design" only
+    rider, class_id, _, current = await designed(studio, WHOLE_8)  # the studio's "design" only
     for chosen in (["swedebeat_playlist"], ["swedebeat_mix"], ["swedebeat_mix", "mowl"]):
         answer = await choose(rider, class_id, choice(current, studio, *chosen))
         assert (answer.status_code, answer.json()["detail"]["reason"]) == (409, "output_off")
@@ -289,7 +290,7 @@ async def test_an_output_the_setting_does_not_run_is_refused(studio: StudioEnv) 
 
 @pytest.mark.usefixtures("outputs_on")
 async def test_another_users_class_is_not_found(studio: StudioEnv) -> None:
-    _, class_id, _, current = await designed(studio)
+    _, class_id, _, current = await designed(studio, WHOLE_8)
     other = await studio.rider()
     before = sessions(studio)
     answer = await choose(other, class_id, choice(current, studio, "swedebeat_playlist"))
@@ -300,7 +301,7 @@ async def test_another_users_class_is_not_found(studio: StudioEnv) -> None:
 
 @pytest.mark.usefixtures("outputs_on")
 async def test_a_refused_session_is_refused_with_nothing_stored(studio: StudioEnv) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     studio.gateway.inject("bearer_401", SESSION_PATH)
     answer = await choose(rider, class_id, choice(current, studio, "swedebeat_playlist"))
     assert (answer.status_code, answer.json()["detail"]["reason"]) == (409, "session_refused")
@@ -315,7 +316,7 @@ async def test_a_refused_session_is_refused_with_nothing_stored(studio: StudioEn
 async def test_a_reconnect_after_the_session_check_is_connection_changed(
     studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     real = outputs_session.check
 
     async def then_reconnected(*args: Any) -> Any:
@@ -334,7 +335,7 @@ async def test_a_reconnect_after_the_session_check_is_connection_changed(
 
 @pytest.mark.usefixtures("outputs_on")
 async def test_a_reconnect_before_the_job_starts_refuses_it(studio: StudioEnv) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     answer = await choose(rider, class_id, choice(current, studio, "swedebeat_playlist"))
     assert answer.status_code == 201, answer.text
     studio.songs.sql(
@@ -380,7 +381,7 @@ async def test_another_spotify_account_before_the_job_starts_refuses_it(
 
 @pytest.mark.usefixtures("outputs_on")
 async def test_a_draft_changed_after_the_create_refuses_the_job(studio: StudioEnv) -> None:
-    rider, class_id, list_id, current = await designed(studio)
+    rider, class_id, list_id, current = await designed(studio, WHOLE_8)
     answer = await choose(rider, class_id, choice(current, studio, "swedebeat_playlist"))
     assert answer.status_code == 201, answer.text
     # Another draft is now the class's current one (as a revise between the create and the run).
@@ -425,7 +426,7 @@ async def test_only_the_consent_route_creates_the_job(studio: StudioEnv) -> None
 
 @pytest.mark.usefixtures("outputs_on")
 async def test_a_busy_class_asks_the_gateway_nothing(studio: StudioEnv) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     first = await choose(rider, class_id, choice(current, studio, "swedebeat_playlist"))
     assert first.status_code == 201, first.text
     before = sessions(studio)

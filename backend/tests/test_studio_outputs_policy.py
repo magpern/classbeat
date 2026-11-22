@@ -20,6 +20,10 @@ from classbeat.swedebeat_studio import config_policy
 from studiomaps import track_map
 
 ALL = frozenset(OUTPUTS)
+# A whole-songs draft that is the applied form of its proposal (ADR 0036 amendment B9); a draft
+# that repeats a song is mixed (an applied form only with DJ mix and exact tracks).
+PLAIN: dict[str, bool] = {"mixed": False, "applied_form": True}
+REPEATS: dict[str, bool] = {"repeats": True, "mixed": True, "applied_form": True}
 
 
 @pytest.mark.parametrize(
@@ -44,11 +48,11 @@ ALL = frozenset(OUTPUTS)
     ],
 )
 def test_the_choice_rules(chosen: list[str], enabled: frozenset[str], reason: str | None) -> None:
-    assert refusal(chosen, enabled, repeats=False) == reason
+    assert refusal(chosen, enabled, repeats=False, **PLAIN) == reason
 
 
 def test_the_dependency_is_checked_before_the_setting() -> None:
-    assert refusal(["mowl"], frozenset(), repeats=False) == "mowl_needs_mix"
+    assert refusal(["mowl"], frozenset(), repeats=False, **PLAIN) == "mowl_needs_mix"
 
 
 # --- #1342 (ADR 0036 amendment A8): a class that repeats a song is mix-only --------------------
@@ -57,28 +61,28 @@ def test_the_dependency_is_checked_before_the_setting() -> None:
 @pytest.mark.parametrize(
     ("chosen", "enabled", "reason"),
     [
-        (["swedebeat_playlist"], ALL, "playlist_has_repeats"),
+        (["swedebeat_playlist"], ALL, "mix_not_chosen"),  # B9: a repeat is mixed
         (["swedebeat_playlist", "swedebeat_mix"], ALL, "playlist_has_repeats"),
         (list(OUTPUTS), ALL, "playlist_has_repeats"),
         (["swedebeat_mix", "mowl"], ALL, None),  # the mix renders one piece per entry
         (["spotify_playlist"], ALL, None),  # each song once (outputs_spotify)
         (["spotify_playlist", "swedebeat_mix"], ALL, None),
-        # The fixed order: invalid_input, mowl_needs_mix, playlist_has_repeats, output_off.
+        # The fixed order (every pair: test_mix_applied_policy.py).
         (["swedebeat_playlist", "swedebeat_playlist"], ALL, "invalid_input"),
         (["swedebeat_playlist", "mowl"], ALL, "mowl_needs_mix"),
-        (["swedebeat_playlist"], frozenset(), "playlist_has_repeats"),
+        (["swedebeat_playlist", "swedebeat_mix"], frozenset(), "playlist_has_repeats"),
         (["swedebeat_mix"], frozenset(), "output_off"),
     ],
 )
 def test_the_playlist_is_refused_for_a_draft_with_repeats(
     chosen: list[str], enabled: frozenset[str], reason: str | None
 ) -> None:
-    assert refusal(chosen, enabled, repeats=True) == reason
+    assert refusal(chosen, enabled, **REPEATS) == reason
 
 
 def test_a_draft_without_repeats_may_have_the_playlist() -> None:
-    assert refusal(["swedebeat_playlist"], ALL, repeats=False) is None
-    assert refusal(["swedebeat_playlist"], frozenset(), repeats=False) == "output_off"
+    assert refusal(["swedebeat_playlist"], ALL, repeats=False, **PLAIN) is None
+    assert refusal(["swedebeat_playlist"], frozenset(), repeats=False, **PLAIN) == "output_off"
 
 
 def test_a_choice_is_kept_in_one_order() -> None:

@@ -45,6 +45,7 @@ from studiooutputs import (
 )
 from studiotools import StudioEnv
 from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage]
+    WHOLE_8,
     analysed,  # noqa: F401 - the autouse stand-in of the sandboxed child
     designed,
     spotdown,  # noqa: F401 - the fake spotdown that stand-in answers from
@@ -69,7 +70,7 @@ def on_publish(
 
 
 async def test_the_playlist_alone_is_created_and_published_once(studio: StudioEnv) -> None:
-    rider, class_id, list_id, current = await designed(studio)
+    rider, class_id, list_id, current = await designed(studio, WHOLE_8)
     done = await produce(studio, rider, class_id, current, "swedebeat_playlist")
     assert (done.state, done.error_category) == ("completed", None)
     (create,) = sent(studio.gateway, "POST", CREATE)
@@ -108,7 +109,7 @@ async def test_the_playlist_alone_is_created_and_published_once(studio: StudioEn
 async def test_a_refused_publish_resumes_on_the_stored_id(
     studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     fake = studio.gateway
     refusing = [True]
 
@@ -142,7 +143,7 @@ async def test_a_refused_publish_resumes_on_the_stored_id(
 async def test_a_publish_in_doubt_is_found_on_a_later_shared_page(
     studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     fake = studio.gateway
     fake.shared_page_size = 1
 
@@ -167,7 +168,7 @@ async def test_a_publish_in_doubt_is_found_on_a_later_shared_page(
 async def test_a_publish_that_failed_unseen_is_published_again_on_the_same_id(
     studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     fake = studio.gateway
     calls: list[str] = []
 
@@ -203,7 +204,7 @@ CHANGES = {
 async def test_check_again_lists_a_publish_only_with_the_approved_connection(
     studio: StudioEnv, monkeypatch: pytest.MonkeyPatch, change: str | None
 ) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     fake = studio.gateway
 
     def lost(real: Publish, pid: str, body: Any, session: Session) -> Reply:
@@ -242,7 +243,7 @@ async def test_check_again_lists_a_publish_only_with_the_approved_connection(
 async def test_a_create_in_doubt_blocks_until_create_another_anyway(
     studio: StudioEnv, fault: str
 ) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     fake = studio.gateway
     fake.inject(fault, CREATE, status=502)  # after the work: it may exist
     done = await produce(studio, rider, class_id, current, "swedebeat_playlist")
@@ -282,7 +283,7 @@ async def test_a_create_in_doubt_blocks_until_create_another_anyway(
 
 
 async def test_a_create_that_never_left_is_retried(studio: StudioEnv) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     studio.gateway.inject("connect_error", CREATE)
     done = await produce(studio, rider, class_id, current, "swedebeat_playlist")
     assert (done.state, done.error_category) == ("completed", None)
@@ -293,7 +294,7 @@ async def test_a_create_that_never_left_is_retried(studio: StudioEnv) -> None:
 async def test_an_orphaned_pending_create_is_never_sent_again(
     studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     fake = studio.gateway
     job_id = await choose(rider, class_id, choice(current, studio, "swedebeat_playlist"))
     real = fake._create  # pyright: ignore[reportPrivateUsage]
@@ -329,7 +330,7 @@ async def test_the_output_limit_per_class(
     studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(outputs_rows, "ATTEMPTS_PER_CLASS", 1)
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     studio.gateway.inject("status", CREATE, status=502)  # attempt 1 in doubt
     done = await produce(studio, rider, class_id, current, "swedebeat_playlist")
     assert (done.state, done.error_category) == ("failed", "uncertain_write")
@@ -343,7 +344,7 @@ async def test_the_output_limit_per_class(
 
 
 async def test_the_output_limit_per_rolling_day(studio: StudioEnv) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     starts = outputs_rows.STARTS_PER_DAY
     studio.songs.sql(  # the user's other classes opened the day's attempts 23 h 59 min ago
         "INSERT INTO studio_output_starts (owner_id, created_at) SELECT :o, "
@@ -366,7 +367,7 @@ async def test_the_output_limit_per_rolling_day(studio: StudioEnv) -> None:
 
 
 async def test_writes_off_is_a_state_the_user_sees(studio: StudioEnv) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     studio.gateway.writes_enabled = False
     done = await produce(studio, rider, class_id, current, "swedebeat_playlist")
     assert (done.state, done.error_category) == ("failed", "writes_off")
@@ -381,7 +382,7 @@ async def test_writes_off_is_a_state_the_user_sees(studio: StudioEnv) -> None:
 
 
 async def test_a_reconnect_before_the_job_writes_nothing(studio: StudioEnv) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     job_id = await choose(rider, class_id, choice(current, studio, "swedebeat_playlist"))
     studio.songs.sql(
         "UPDATE connections SET generation = generation + 1 WHERE id = :c",
@@ -394,7 +395,7 @@ async def test_a_reconnect_before_the_job_writes_nothing(studio: StudioEnv) -> N
 
 
 async def test_the_spotify_playlist_is_public_and_in_the_mix_order(studio: StudioEnv) -> None:
-    rider, class_id, list_id, current = await designed(studio)
+    rider, class_id, list_id, current = await designed(studio, WHOLE_8)
     before = set(studio.songs.fake.playlists)
     done = await produce(studio, rider, class_id, current, "spotify_playlist")
     assert (done.state, done.error_category) == ("completed", None)
@@ -423,7 +424,7 @@ async def test_the_spotify_playlist_is_public_and_in_the_mix_order(studio: Studi
 
 
 async def test_another_users_outputs_are_not_found(studio: StudioEnv) -> None:
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     await produce(studio, rider, class_id, current, "swedebeat_playlist")
     other = await studio.rider()
     shown = await other.browser.get(f"/api/classes/{class_id}/outputs")
@@ -436,7 +437,7 @@ async def test_another_users_outputs_are_not_found(studio: StudioEnv) -> None:
 
 
 async def test_the_view_lists_the_outputs_the_page_may_offer(studio: StudioEnv) -> None:
-    rider, class_id, _, _ = await designed(studio)
+    rider, class_id, _, _ = await designed(studio, WHOLE_8)
     answer = await rider.browser.get(f"/api/classes/{class_id}/outputs")
     assert answer.json() == {"enabled_outputs": list(OUTPUTS), "outputs": []}
     studio_config.configure(studio_config.StudioConfig(frozenset({"design", "swedebeat_mix"})))

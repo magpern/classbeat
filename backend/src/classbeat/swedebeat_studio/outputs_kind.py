@@ -8,8 +8,11 @@ the user chose on the consent screen for **one** approved studio draft, each wit
    SwedeBeat connection the list's, live and share-locked **at the approved generation**, the
    Spotify account for ``spotify_playlist``). A failure ends the job with nothing written:
    ``feature_off``, ``invalid_input``, ``not_connected``, ``connection_changed`` (another or a
-   reconnected SwedeBeat connection), ``account_changed``, ``playlist_has_repeats`` (the
-   SwedeBeat playlist for a draft that repeats a song, ADR 0036 amendment A8) or ``internal``.
+   reconnected SwedeBeat connection), ``account_changed``, ``mix_not_chosen`` (the SwedeBeat
+   playlist without DJ mix for a mixed draft, ADR 0036 amendment B9), ``mix_not_applied`` (a
+   SwedeBeat output for a draft that is not the applied form of its proposal, B9),
+   ``playlist_has_repeats`` (the SwedeBeat playlist for a draft that repeats a song, ADR 0036
+   amendment A8) or ``internal``.
    Then the bearer of that connection (its generation again) and the user's analyses of the
    draft's tracks.
 2. **Each chosen output**, in ``output_choice_policy.OUTPUTS`` order, on its current attempt
@@ -61,6 +64,8 @@ _AS_JOB: Final = {
     "not_connected": "not_connected",
     "connection_changed": "connection_changed",
     "account_changed": "account_changed",
+    "mix_not_chosen": "mix_not_chosen",
+    "mix_not_applied": "mix_not_applied",
     "playlist_has_repeats": "playlist_has_repeats",
     "internal": "internal",
 }
