@@ -193,6 +193,7 @@ async def test_a_choice_binds_the_draft_the_outputs_and_the_connection(studio: S
         "spotify_connection_id": None,
         "swedebeat_generation": generation,
         "binding_version": 2,
+        "base_revision_id": None,  # #1391: the approval's optional stale-revision guard
     }
     # The same key and body again (in another order): the same job, no second one.
     again = await choose(rider, class_id, {**body, "outputs": body["outputs"][::-1]}, key)

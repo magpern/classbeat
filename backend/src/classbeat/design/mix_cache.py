@@ -1,9 +1,9 @@
 """The user's cache of their mix analyses, ``swedebeat_mix_maps`` (ADR 0016 section 3 steps 2 and
 4; ADR 0040 sections 5 and 6; split out of ``design.swedebeat_music``).
 
-**One row per mix** (migration 0076, #1357): spotdown is the only analysis path (ADR 0040
+**One row per mix** (migration 0077, #1357): spotdown is the only analysis path (ADR 0040
 amendment), so a row is a ``spotdown`` map (``spotdown.mix_map_model``, with its ``provenance``);
-migration 0076 deleted the ``local`` rows (migration 0065 had added the column; the table's check
+migration 0077 deleted the ``local`` rows (migration 0065 had added the column; the table's check
 now admits only ``spotdown``). The key stays ``(owner_id, mix_id, analyser)``, one row per mix.
 
 - ``cached``: one fenced transaction share-locks the connection (``hold``) and reads the user's

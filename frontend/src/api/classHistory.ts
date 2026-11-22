@@ -201,6 +201,7 @@ export function askedFor(entry: TimelineEntry): string {
   if (entry.origin === 'revise_songs') return t('class.asked.songs')
   if (entry.origin === 'beat_one') return t('class.asked.beatOne')
   if (entry.origin === 'mix_choices') return t('class.asked.mixChoices')
+  if (entry.origin === 'user_edit') return t('class.asked.userEdit')
   return t('class.asked.first')
 }
 

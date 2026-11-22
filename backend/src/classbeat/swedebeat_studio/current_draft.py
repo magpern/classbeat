@@ -7,8 +7,9 @@ of this holds, otherwise a reason:
 - ``not_found``: no such class of the user (another user's class answers the same);
 - ``no_studio_draft``: the class is not a studio class (``music_source``), has no current revision,
   or the current revision is no ``draft`` whose ``music`` parses as ``StudioRevisionMusic``;
-- ``internal``: the stored ``content_hash`` is no longer the SHA-256 of ``{content, mix_spec}``
-  (a revision is immutable: this never happens without tampering), or its approved studio
+- ``internal``: the stored ``content_hash`` is no longer ``revision_hash`` of ``{content,
+  mix_spec}`` and its ``edit_overlay`` (ADR 0042 section 3: the one hash; a revision is immutable,
+  so this never happens without tampering), its overlay does not read, or its approved studio
   ``song_list`` no longer loads (``song_list.load``, its own hash re-checked).
 
 With ``lock`` the class row is share-locked until the caller commits (``FOR SHARE``), so the
@@ -25,14 +26,15 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.design import revision
+from classbeat.design.edit_overlay_model import EditOverlay, parsed
 from classbeat.design.revision import StudioRevisionMusic
+from classbeat.design.revision_hash import revision_hash
 from classbeat.swedebeat_studio import song_list
 from classbeat.swedebeat_studio.song_list_model import SOURCE
 
 _SELECT = (
     "SELECT c.music_source ->> 'source' AS source, c.current_revision_id AS current, "
-    "r.kind, r.content, r.content_hash, r.music FROM classes c "
+    "r.kind, r.content, r.content_hash, r.music, r.edit_overlay FROM classes c "
     "LEFT JOIN class_revisions r ON r.owner_id = c.owner_id AND r.class_id = c.id "
     "AND r.id = c.current_revision_id WHERE c.owner_id = :owner_id AND c.id = :class_id"
 )
@@ -47,6 +49,7 @@ class CurrentDraft:
     content: dict[str, Any]
     music: StudioRevisionMusic
     songs: song_list.StudioList
+    overlay: EditOverlay  # the stored ``edit_overlay`` (no record: NULL)
 
     @property
     def spec(self) -> dict[str, Any]:
@@ -71,9 +74,14 @@ async def load(
     except ValidationError:
         return "no_studio_draft"
     stored = bytes(row.content_hash)
-    if revision.studio_hash(content, music.mix_spec.model_dump(mode="json")) != stored:
+    try:
+        overlay = parsed(row.edit_overlay)
+    except ValueError:
+        return "internal"
+    spec = music.mix_spec.model_dump(mode="json")
+    if revision_hash(content, mix_spec=spec, overlay=row.edit_overlay) != stored:
         return "internal"
     songs = await song_list.load(db, owner_id, class_id, music.song_list_id)
     if songs is None:
         return "internal"
-    return CurrentDraft(row.current, stored, content, music, songs)
+    return CurrentDraft(row.current, stored, content, music, songs, overlay)

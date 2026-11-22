@@ -12,8 +12,10 @@ against the authenticated user and failing closed:
   another class, is ``invalid_input``, never a different answer), and it is a ``draft``;
 - it is ready (``design.revision_ready``, ADR 0038 section 4): a sketch is ``not_ready``, before
   any other check;
-- its stored ``content_hash`` equals the approved one (``hash_mismatch``) and the SHA-256 of its
-  canonical content recomputed now (``invalid_input``: the row is not what was hashed);
+- its stored ``content_hash`` equals the approved one (``hash_mismatch``) and the one hash of its
+  content and edit overlay recomputed now (``design.revision_hash``, ADR 0042 section 3: the
+  SHA-256 of the canonical content when there is no overlay; ``invalid_input``: the row is not
+  what was hashed, or its overlay does not read);
 - no interval names a game MOWL no longer offers (``game_retired``, ADR 0029 section 3), checked
   on the stored JSON before the strict schema below or the library's ``GAMES`` is reached;
 - the class's sport is the class's stored brief's (ADR 0018 section 1, M8 R1b): absent (every
@@ -54,7 +56,6 @@ The connection checks (``not_connected``) and the unresolved-write rule (``write
 Reasons are codes only; nothing of the row is logged.
 """
 
-import hashlib
 import json
 from dataclasses import dataclass
 from typing import Annotated, Any, Final
@@ -69,6 +70,7 @@ from classbeat.agent.schemas import draft_model
 from classbeat.context import UserContext
 from classbeat.design import music_kind
 from classbeat.design import sport as class_sport
+from classbeat.design.edit_overlay_model import parsed
 from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.design.revision import (
     MIX_SOURCE,
@@ -76,8 +78,8 @@ from classbeat.design.revision import (
     NoRevisionMusic,
     RevisionMusic,
     SpotifyRevisionMusic,
-    canonical,
 )
+from classbeat.design.revision_hash import revision_hash
 from classbeat.design.revision_ready import revision_ready
 from classbeat.operations.attach import SOURCE
 from classbeat.operations.swedebeat import SOURCE as MIX_LINK_SOURCE
@@ -97,7 +99,7 @@ SAVED_MUSIC: Final = TypeAdapter[RevisionMusic | NoRevisionMusic](
 
 _REVISION = text(
     "SELECT r.id, r.class_id, r.number, r.kind, r.content, r.content_hash, r.music, "
-    "c.brief ->> 'sport' AS sport, c.music_source FROM class_revisions r "
+    "r.edit_overlay, c.brief ->> 'sport' AS sport, c.music_source FROM class_revisions r "
     "JOIN classes c ON c.owner_id = r.owner_id AND c.id = r.class_id "
     "WHERE r.owner_id = :owner_id AND r.class_id = :class_id AND r.id = :revision_id"
 )
@@ -176,6 +178,14 @@ def spec_of(content: object, sport: str = class_sport.CYCLING) -> dict[str, Any]
     return spec
 
 
+def _hash_holds(content: object, overlay: object, stored: bytes) -> bool:
+    try:
+        parsed(overlay)
+    except ValueError:
+        return False  # an overlay that does not read: fail closed
+    return isinstance(content, dict) and revision_hash(content, overlay=overlay) == stored  # pyright: ignore[reportUnknownArgumentType, reportArgumentType]
+
+
 async def revision(
     db: AsyncSession, ctx: UserContext, class_id: UUID, revision_id: UUID, content_hash: bytes
 ) -> Revision | Refusal:
@@ -197,7 +207,7 @@ async def revision(
     stored = bytes(row.content_hash)
     if stored != content_hash:
         return Refusal("hash_mismatch")
-    if hashlib.sha256(canonical(row.content)).digest() != stored:
+    if not _hash_holds(row.content, row.edit_overlay, stored):
         return Refusal("invalid_input")
     if has_retired_game(row.content):
         return Refusal(RETIRED)  # ADR 0029: before the strict schema and ``GAMES`` (``spec_of``)

@@ -139,8 +139,14 @@ def compose(tracks: Sequence[StudioTrack], given: MixInput) -> Composed:
     return compose_spec(tracks, spec)
 
 
-def compose_spec(tracks: Sequence[StudioTrack], spec: Mapping[str, Any]) -> Composed:
-    """``spec`` (references as ``KEY`` of the list index) checked and composed, as ``compose``."""
+def compose_spec(
+    tracks: Sequence[StudioTrack],
+    spec: Mapping[str, Any],
+    before: Mapping[str, Any] | None = None,
+) -> Composed:
+    """``spec`` (references as ``KEY`` of the list index) checked and composed, as ``compose``;
+    ``before``, keyed the same way, the spec a user edit recomposed it from (its moved pins are
+    ``pin_moved``; ADR 0042 section 5, #1391)."""
     facts = {KEY.format(n): t.facts() for n, t in enumerate(tracks)}
     try:
         good = checked(spec, list(facts), facts)
@@ -164,7 +170,7 @@ def compose_spec(tracks: Sequence[StudioTrack], spec: Mapping[str, Any]) -> Comp
     found = mix_hint_policy.hints(good, {k: f.length for k, f in facts.items()})
     found += mix_hint_policy.inexact_cuts(good, facts)  # B5: a cut the user's mix undoes
     joins = mix_transition_policy.hints(good, facts)  # #1330: tempo and downbeat lock
-    pinned = mix_hint_policy.pin_hints(good, facts)  # #1390: none without a pin
+    pinned = mix_hint_policy.pin_hints(good, facts, before)  # #1390: none without a pin
     hints = (
         *mix_hint_policy.texts(found),
         *mix_transition_policy.texts(joins),

@@ -15,7 +15,7 @@ import classbeat.web
 import classbeat.worker.loop  # registers every job kind the worker runs
 from authtools import make_settings
 from classbeat.agent import interpretation_record, interpreted
-from classbeat.classes import service
+from classbeat.classes import service, user_edit
 from classbeat.design import revise_sketch, revision_ready_policy
 from classbeat.design.revision_ready import is_sketch
 from classbeat.jobs import KINDS, Complete, JobKind, JobRun
@@ -56,6 +56,7 @@ KINDS_ALLOWED: Final = {
 ROUTES_THAT_CALL: Final = frozenset(
     {
         ("POST", "/api/classes/{class_id}/current"),
+        ("POST", "/api/classes/{class_id}/edits"),  # ADR 0042 (#1391): classes.user_edit
         ("POST", "/api/classes/{class_id}/duplicate"),
         ("PUT", "/api/classes/{class_id}/beat-one/{song}"),
         ("DELETE", "/api/classes/{class_id}/beat-one/{song}"),
@@ -213,6 +214,19 @@ def test_a_route_whose_call_is_removed_fails(app: FastAPI, monkeypatch: pytest.M
     assert route_problems(app.routes) == [
         "('POST', '/api/classes/{class_id}/current') ['PickIn:revision_id', 'body:revision_id']: "
         "does not reach revision_ready"
+    ]
+
+
+def test_the_edit_route_whose_call_is_removed_fails(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def not_the_rule(*_: Any) -> None:
+        return None
+
+    monkeypatch.setattr(user_edit, "revision_ready", not_the_rule)
+    assert route_problems(app.routes) == [
+        "('POST', '/api/classes/{class_id}/edits') ['EditIn:base_revision_id', "
+        "'body:base_revision_id']: does not reach revision_ready"
     ]
 
 

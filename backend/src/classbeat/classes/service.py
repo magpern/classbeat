@@ -215,17 +215,25 @@ class Outcome:
     """``reason`` is ``None`` when the call went through."""
 
     reason: str | None = None
+    current_revision_id: UUID | None = None  # with ``stale_revision``
 
 
 async def pick(
-    factory: Factory, ctx: UserContext, class_id: UUID, revision_id: UUID, content_hash: bytes
+    factory: Factory,
+    ctx: UserContext,
+    class_id: UUID,
+    revision_id: UUID,
+    content_hash: bytes,
+    expected_current_id: UUID | None = None,
 ) -> Outcome:
     """ADR 0007 section 2: one transaction, the class row locked, so a pick can't race a store.
 
     ``not_found`` (the class, or a revision that is not a draft of this class), ``hash_mismatch``,
     ``class_busy`` (an open job), ``game_retired`` (a game MOWL no longer offers), ``not_ready``
     (a sketch, ``design.revision_ready``, before anything else is read). Picking the
-    current revision again writes nothing.
+    current revision again writes nothing. With ``expected_current_id`` (an undo or redo, ADR 0042
+    section 6) a class whose current revision is another is ``stale_revision`` with that id,
+    before anything else.
 
     No model runs here, so the draft is checked against the user's **current** plan (#496): an
     older revision with a game, an FTP test or a length the plan does not include now (one made
@@ -240,6 +248,9 @@ async def pick(
         locked = (await db.execute(LOCK_CLASS, _ids(ctx, class_id))).first()
         if locked is None:
             return Outcome("not_found")
+        current = locked.current_revision_id
+        if expected_current_id is not None and current != expected_current_id:
+            return Outcome("stale_revision", current_revision_id=current)
         not_ready = await revision_ready(db, ctx.user_id, class_id, revision_id)
         if not_ready is not None:
             return Outcome(not_ready)  # a sketch is never picked, current or not (ADR 0038)

@@ -187,9 +187,11 @@ def revise_message(
     *,
     rules: str | None,
     choices: MixChoices | None = None,
+    fixed: str = "",
 ) -> str:
     """The revise's first message; with ``choices`` (a re-plan, ADR 0036 B6) the choices come
-    first, by list index (``studio_replan``)."""
+    first, by list index (``studio_replan``); ``fixed`` states the instructor's locks and
+    overrides (ADR 0042 section 3, ``swedebeat_studio.revise_overlay.fixed_section``)."""
     payload = {
         "brief": brief_for_model(brief),
         "music": music,
@@ -199,4 +201,4 @@ def revise_message(
         "request": clean_text(request),
     }
     replan = "" if choices is None else choices_section(choices)
-    return REVISE + replan + _rules(rules) + _json(payload)
+    return REVISE + replan + fixed + _rules(rules) + _json(payload)

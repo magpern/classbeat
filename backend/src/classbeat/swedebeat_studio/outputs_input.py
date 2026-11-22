@@ -39,6 +39,7 @@ class ProduceOutputsInput(JobInput):
 
     revision_id: UUID
     content_hash: Sha256Hex
+    base_revision_id: UUID | None = None  # the current revision the page showed (ADR 0042)
     outputs: list[Output] = Field(min_length=1, max_length=len(OUTPUTS))
     swedebeat_connection_id: UUID
     spotify_connection_id: UUID | None = None

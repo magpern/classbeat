@@ -54,12 +54,12 @@ are logged.
 
 import time
 from dataclasses import dataclass
-from typing import Annotated, Any, ClassVar, Final, Self, cast
+from typing import Any, ClassVar, Final, Self, cast
 from uuid import UUID
 
 from mowl import api as mowl_api
 from mowl import workout
-from pydantic import BaseModel, StringConstraints, model_validator
+from pydantic import BaseModel, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,11 +68,11 @@ from classbeat.connections import Credentials, OpenConnection, call_opened, hold
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun
-from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.operations import CallResult, OperationRequest, UncertainAnswer, orphans, perform
 from classbeat.quota.gates import check_stored_draft
 from classbeat.saving import approval, operation
+from classbeat.saving.approve_input import ApprovedRevision
 from classbeat.saving.caps import check_write_caps
 from classbeat.saving.save_pending import guarded
 from classbeat.saving.verify import verify_program
@@ -87,17 +87,13 @@ PREPARE_CATEGORY: Final = {
     "music_unlinked": "music_unlinked",
 }
 
-ContentHash = Annotated[str, StringConstraints(pattern=approval.HEX_SHA256)]
 
-
-class SaveWorkoutInput(JobInput):
+class SaveWorkoutInput(ApprovedRevision):
     """A Save: the class, the revision and its content hash (lower-case hex), and the MOWL
     connection the page shows. Always an existing class, never a title."""
 
     CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl",)
 
-    revision_id: UUID
-    content_hash: ContentHash
     mowl_connection_id: UUID
     save_pending_job_id: UUID | None = None  # the composer's phase 2 (``saving.save_pending``)
 

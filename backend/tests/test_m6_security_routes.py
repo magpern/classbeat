@@ -182,6 +182,8 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/classes/{class_id}/history"): "owned",
     ("GET", "/api/classes/{class_id}/history/compare"): "owned",
     ("POST", "/api/classes/{class_id}/current"): "owned",
+    ("POST", "/api/classes/{class_id}/edits"): "owned",  # ADR 0042 (#1391)
+    ("GET", "/api/classes/{class_id}/overlay"): "owned",
     ("POST", "/api/classes/{class_id}/duplicate"): "owned",
     ("POST", "/api/classes/{class_id}/swedebeat-match"): "owned",
     ("GET", "/api/classes/{class_id}/swedebeat-handoff"): "owned",
@@ -779,6 +781,15 @@ OWNED_ROUTES = [
         "GET", "/api/classes/{class_id}/history/compare?from={revision_id}&to={revision_id}"
     ),
     OwnedRoute("POST", "/api/classes/{class_id}/current", _pick, frozenset({200, 409})),
+    # The planted class is no studio class: the owner's own edit and read are 409
+    # ``edit_unavailable`` (ADR 0042, #1391), another user's 404.
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/edits",
+        lambda rows: {"base_revision_id": str(rows.revision_id), "edit": {"op": "clear_all"}},
+        frozenset({409}),
+    ),
+    OwnedRoute("GET", "/api/classes/{class_id}/overlay", control=frozenset({409})),
     # The planted class has no stored brief: the owner's own duplicate is 409 not_ready.
     OwnedRoute(
         "POST",

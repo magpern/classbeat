@@ -1,7 +1,7 @@
 """swedebeat_mix_maps: the local analyser is gone (ADR 0040 amendment; #1357)
 
-Revision ID: 0076_drop_local_mix_maps
-Revises: 0075_drop_local_track_maps
+Revision ID: 0077_drop_local_mix_maps
+Revises: 0076_edit_overlay
 Create Date: 2026-11-22
 
 spotdown is the only analysis path (ADR 0040 amendment "spotdown is the only analysis path", items
@@ -19,8 +19,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0076_drop_local_mix_maps"
-down_revision: str | Sequence[str] | None = "0075_drop_local_track_maps"
+revision: str = "0077_drop_local_mix_maps"
+down_revision: str | Sequence[str] | None = "0076_edit_overlay"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

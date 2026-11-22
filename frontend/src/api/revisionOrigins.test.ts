@@ -21,6 +21,7 @@ const LABEL: Record<string, string> = {
   beat_one: 'Version',
   swedebeat_match: 'Version',
   mix_choices: 'Version',
+  user_edit: 'Version',
 }
 
 // What the history says asked for a version of each origin, without a request and with one.
@@ -35,6 +36,7 @@ const ASKED: Record<string, [string, string]> = {
   beat_one: ['Beat 1 adjusted', 'Beat 1 adjusted'],
   swedebeat_match: ['First design', 'First design'],
   mix_choices: ['Mix choices applied', 'Mix choices applied'],
+  user_edit: ['Edited by you', 'Edited by you'],
 }
 
 function entry(origin: string, request: string | null): TimelineEntry {
