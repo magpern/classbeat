@@ -390,14 +390,14 @@ for memory. The defaults, and the `.env` variables that change them:
 
 | Service | CPUs | Memory | Why |
 |---|---|---|---|
-| `worker` | `WORKER_CPUS=1.0` | `WORKER_MEMORY=3g` | about 1 GiB for the worker's own process plus 1 GiB for each render child running at once (the analysis runs in spotdown, not in a child here, #1357) |
+| `worker` | `WORKER_CPUS=1.0` | `WORKER_MEMORY=3g` | about 1 GiB for the worker's own process plus 1 GiB per render child running at once; the default covers two, and only `WORKER_CONCURRENCY` bounds how many run together (the analysis runs in spotdown, not in a child here, #1357) |
 | `web` | `WEB_CPUS=1.0` | `WEB_MEMORY=1g` | one Python process: it cannot use much more than a core; the memory covers its pool and requests (bodies are capped at 64 KiB) |
 
 - **Never set a CPU value above the host's core count** (`nproc`): Docker refuses to start the
   container. On a 2-core server keep the defaults (the worker gets at most one core, web and db share
   the rest); on 4 cores or more `WORKER_CPUS=2` lets a render and a design job run side by side.
 - **Raise `WORKER_MEMORY` with the renders you run side by side:** each render child may use 1 GiB
-  on top of the worker's own process (two at once need `WORKER_MEMORY=4g`). The sum of `WORKER_MEMORY`, `WEB_MEMORY` and what Postgres uses must fit the server's RAM; with two
+  on top of the worker's own process (two at once need `WORKER_MEMORY=3g`, the default; three need `4g`; only `WORKER_CONCURRENCY` bounds how many run together). The sum of `WORKER_MEMORY`, `WEB_MEMORY` and what Postgres uses must fit the server's RAM; with two
   worker containers (`--scale worker=2`, ADR 0026 stage 2) the worker's ceiling counts twice.
 - **What happens at the ceiling.** CPU: the worker is slowed, never killed (a render has a wall-clock
   cap; a slower one can end `RenderFailed` and is retried by the user). Memory: the kernel

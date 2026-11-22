@@ -259,7 +259,8 @@ services:
     stop_grace_period: 30s
     # ADR 0026 stage 1 (#735): a render child (up to 1 GiB, a core or more while it runs) must not
     # starve web and db. The analysis runs in spotdown, not here (#1357). Memory: about 1 GiB for
-    # the worker itself plus 1 GiB for each render child running at once (3g). Over the ceiling the
+    # the worker itself plus 1 GiB per render child running at once; the default 3g covers two at
+    # once, and only WORKER_CONCURRENCY bounds how many run together. Over the ceiling the
     # kernel kills the container: compose restarts it and the reaper requeues its jobs. Override in .env
     # (WORKER_CPUS, WORKER_MEMORY); never above the host's CPU count. Runbook section 5c.
     cpus: ${WORKER_CPUS:-1.0}

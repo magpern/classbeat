@@ -102,17 +102,33 @@ def test_the_confined_process_has_no_socket_no_new_session_and_no_file_outside(
 
 
 @linux_only
-def test_the_worker_is_non_dumpable_once_it_has_started_a_child() -> None:
+def test_the_worker_is_non_dumpable_when_render_files_starts_a_child(tmp_path: Path) -> None:
+    """``render_files`` itself makes the worker non-dumpable before it starts the child (so the
+    child cannot read the worker's memory through ``/proc``): the stand-in ``argv`` is called
+    while the child's command line is built, right before ``Popen``, and reports the flag."""
     probe = (
-        "import ctypes, sys\n"
-        "from classbeat.design import sandbox\n"
+        "import asyncio, ctypes, sys\n"
+        "from pathlib import Path\n"
+        "from classbeat.studio import render\n"
         "libc = ctypes.CDLL(None)\n"
+        "work = Path(sys.argv[1])\n"
+        "(work / 't.mp3').write_bytes(b'x')\n"
+        "rate = render.render_policy.RATE\n"
+        "tracks = [{'path': str(work / 't.mp3'), 'src_start': 0, 'src_end': rate,"
+        " 'dst_start': 0, 'fade_in': 0, 'fade_out': 0}]\n"
+        "seen = []\n"
+        "def argv(*_):\n"
+        "    seen.append(libc.prctl(3, 0, 0, 0, 0))\n"
+        "    return [sys.executable, '-c', 'raise SystemExit(3)']\n"
         "before = libc.prctl(3, 0, 0, 0, 0)\n"
-        "assert sandbox.make_undumpable() is True\n"
-        "print(before, libc.prctl(3, 0, 0, 0, 0))\n"
+        "try:\n"
+        "    asyncio.run(render.render_files(work, tracks, argv=argv))\n"
+        "except render.RenderFailed:\n"
+        "    pass\n"
+        "print(before, *seen)\n"
     )
     done = subprocess.run(
-        [sys.executable, "-c", probe], capture_output=True, timeout=60, check=True
+        [sys.executable, "-c", probe, str(tmp_path)], capture_output=True, timeout=60, check=True
     )
     assert done.stdout.split() == [b"1", b"0"]
 
@@ -145,10 +161,12 @@ async def test_a_process_the_child_started_is_killed_with_it(tmp_path: Path) -> 
     pidfile = tmp_path / "grandchild"
     code = (
         "import subprocess, sys, time\n"
-        "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+        "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(150)'],"
+        " stdout=subprocess.DEVNULL)\n"
         f"open({str(pidfile)!r}, 'w').write(str(p.pid))\n"
         "time.sleep(60)\n"
     )
+    started = time.monotonic()
     with pytest.raises(RenderFailed):
         await render.render_files(
             tmp_path,
@@ -156,6 +174,8 @@ async def test_a_process_the_child_started_is_killed_with_it(tmp_path: Path) -> 
             timeout_seconds=2.0,
             argv=lambda *_: [sys.executable, "-c", code],
         )
+    # The grandchild does not hold the child's stdout, so only the group kill ends the wait for it.
+    assert time.monotonic() - started < 20
     pid = int(pidfile.read_text())
     deadline = time.monotonic() + 10
     while _alive(pid) and time.monotonic() < deadline:
@@ -182,15 +202,23 @@ async def test_a_child_over_the_memory_limit_is_killed_by_the_parent(tmp_path: P
     assert time.monotonic() - started < 30  # killed at the limit, not left to sleep
 
 
-def test_the_child_gets_a_minimal_environment(
+async def test_the_child_gets_a_minimal_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("CLASSBEAT_DATABASE_URL", "postgresql://secret")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
-    env = render.child_environment(tmp_path / "mix-x")
-    assert not any("SECRET" in k.upper() or "KEY" in k.upper() for k in env)
-    assert "secret" not in repr(env)
-    assert set(env) <= {
+    code = (
+        "import json, os\n"
+        "open('env.json', 'w').write(json.dumps(sorted(os.environ)))\n"
+        "raise SystemExit(3)\n"
+    )
+    with pytest.raises(RenderFailed):
+        await render.render_files(
+            tmp_path, _one_second_track(tmp_path), argv=lambda *_: [sys.executable, "-c", code]
+        )
+    seen = set(json.loads((tmp_path / "env.json").read_text()))  # what the child really got
+    assert not any("SECRET" in k.upper() or "KEY" in k.upper() or "DATABASE" in k for k in seen)
+    assert seen <= {
         "PATH", "SYSTEMROOT", "TMPDIR", "TEMP", "TMP", "PYTHONDONTWRITEBYTECODE",
-        "PYTHONUNBUFFERED",
+        "PYTHONUNBUFFERED", "LC_CTYPE",
     }  # fmt: skip
