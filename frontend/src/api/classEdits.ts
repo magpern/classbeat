@@ -168,12 +168,13 @@ export async function pickStep(classId: string, step: EditStep, expectedCurrentI
   })
 }
 
-/** The refusal of an edit or pick: a 409 with its reason code, or null for anything else. */
-export function conflictReason(error: unknown): string | null {
-  return error instanceof ApiError && error.status === 409 ? (error.reason ?? 'conflict') : null
+/** The refusal of an edit or pick: a 409 (or a 422 `invalid_input`) with its reason code, or null for anything else. */
+export function refusalReason(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null
+  return error.status === 409 || error.status === 422 ? (error.reason ?? 'conflict') : null
 }
 
 /** A 409 `stale_revision`: the class moved under the page. */
 export function isStale(error: unknown): boolean {
-  return conflictReason(error) === 'stale_revision'
+  return refusalReason(error) === 'stale_revision'
 }

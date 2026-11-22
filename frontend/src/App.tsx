@@ -36,6 +36,7 @@ import { Link, RouterProvider, useRouter, type Location } from './router/Router'
 // do the sign-in, sign-up and mail-link pages: a mail link's token is stripped from the address bar on mount.
 const ClassPage = lazy(() => import('./pages/ClassPage').then((m) => ({ default: m.ClassPage })))
 const ClassesPage = lazy(() => import('./pages/ClassesPage').then((m) => ({ default: m.ClassesPage })))
+const ClassEditorPage = lazy(() => import('./pages/ClassEditorPage').then((m) => ({ default: m.ClassEditorPage })))
 const NewClassPage = lazy(() => import('./pages/NewClassPage').then((m) => ({ default: m.NewClassPage })))
 const JobPage = lazy(() => import('./pages/JobPage').then((m) => ({ default: m.JobPage })))
 const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })))
@@ -138,6 +139,7 @@ export const ROUTE_PATHS: readonly string[] = [
   ...Object.keys(PAGES),
   '/jobs/:id',
   '/classes/:id',
+  '/classes/:id/edit',
   '/admin',
   '/admin/*',
 ]
@@ -159,6 +161,8 @@ function Routes() {
   if (job?.[1] !== undefined) return <JobPage key={job[1]} jobId={job[1]} />
   const cls = /^\/classes\/([0-9a-fA-F-]{36})$/.exec(path)
   if (cls?.[1] !== undefined) return <ClassPage key={cls[1]} classId={cls[1]} />
+  const edit = /^\/classes\/([0-9a-fA-F-]{36})\/edit$/.exec(path)
+  if (edit?.[1] !== undefined) return <ClassEditorPage key={edit[1]} classId={edit[1]} />
   if (isAdminPath(path)) return <Admin />
   if (path === '/') return session?.authenticated === true ? <HomePage /> : <LandingPage />
   const page = Object.hasOwn(PAGES, path) ? PAGES[path] : undefined

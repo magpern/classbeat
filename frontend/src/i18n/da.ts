@@ -3,6 +3,7 @@ import { helpDa } from './help.da'
 import { examplesDa } from './examples.da'
 import { legalDa } from './legal.da'
 import { publicDa } from './public.da'
+import { editorDa } from './editor.da'
 import { workspaceDa } from './workspace.da'
 
 const da: Catalogue = {
@@ -11,6 +12,7 @@ const da: Catalogue = {
   ...publicDa,
   ...examplesDa,
   ...workspaceDa,
+  ...editorDa,
   'language.label': 'Sprog',
   'language.follow': 'Følg denne browser',
   'language.help': 'Sprog for siden og mails. »Følg denne browser« giver mails på engelsk.',
