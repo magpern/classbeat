@@ -5,8 +5,9 @@ brief, the analysed tracks the model is shown, and the arithmetic of a song list
 240)`` kept in 1..40, both computed here from the brief and told to the model as facts. In replace
 mode ``replace`` holds the roles of the slots to fill and ``kept`` the songs that stay.
 
-**The total** (``total_sec``): the sum of the songs' lengths less the crossfade overlap of 9 s per
-transition (ADR 0006 section 3), from the analysis; a list is valid when the total is within 10 %
+**The total** (``total_sec``): the sum of the songs' lengths less the crossfade overlap of 9.54 s
+per transition (``crossfade_calc.CROSSFADE_SEC``, MOWL's own value; ADR 0006 section 3 and its
+amendment), from the analysis; a list is valid when the total is within 10 %
 of ``target_sec``. The model never states a length.
 
 Nothing here knows a Spotify id except as an opaque string carried beside the text the model may
@@ -18,17 +19,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
-from mowl import spotify
-
 from classbeat.agent import model_input
 from classbeat.agent.brief import Brief
 from classbeat.agent.registry import MAX_TEXT, normalised
 from classbeat.agent.schemas import MAX_POOL, MAX_SONGS
 from classbeat.agent.section_energy import pool_sections
 from classbeat.covers import cover_url
+from classbeat.crossfade_calc import CROSSFADE_SEC
 
 SONG_SEC: Final = 240
-CROSSFADE_SEC: Final = float(spotify.CROSSFADE_SEC)
 TOLERANCE: Final = 0.10
 MAX_MARKS: Final = 6  # drops and breakdowns shown per track
 MIN_REPLACE_POOL: Final = 6
@@ -131,7 +130,7 @@ class PickPlan:
 
 
 def total_sec(lengths: Sequence[int]) -> float:
-    """The class time of songs played in a row: their lengths less 9 s per transition."""
+    """The class time of songs played in a row: their lengths less ``CROSSFADE_SEC`` per change."""
     if not lengths:
         return 0.0
     return float(sum(lengths)) - CROSSFADE_SEC * (len(lengths) - 1)

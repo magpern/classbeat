@@ -164,7 +164,9 @@ def test_a_spotify_map_cannot_be_read_as_a_mix() -> None:
 # (summary, first message, every track's detail, the warnings and the fitted timeline). Recorded
 # from the code on main before this change; any difference fails here. Re-pinned once on purpose
 # by #1035: every track's detail now carries each section's ``energy`` (the only difference).
-SPOTIFY_DIGEST = "4bb2fcee10ecfac5f05dc2847d6d76c909d0cd6a22fcb056a3db26c8adfcc50b"
+# Re-pinned again by #1427: the Spotify crossfade is MOWL's 9.54 s (the only difference: the same
+# code with ``CROSSFADE_SEC`` 9.0 gives the previous digest, 4bb2fcee...).
+SPOTIFY_DIGEST = "fcf4eff1ef03fec8c3c30d04af8247bde2c30a4f262e60c6b10c62cb5296e4ad"
 
 
 def spotify_view(data: MusicData) -> str:

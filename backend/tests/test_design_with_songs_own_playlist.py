@@ -77,7 +77,7 @@ async def test_the_playlist_is_the_list_to_approve_with_no_model_no_pool_and_no_
     assert [s["spotify_id"] for s in content["songs"]] == OWN  # the playlist's order
     assert [s["role"] for s in content["songs"]] == ["warmup", *["interval"] * 6, "cooldown"]
     assert {s["new"] for s in content["songs"]} == {False}
-    assert (content["mode"], content["target_sec"], content["total_sec"]) == ("pick", 1800, 1857)
+    assert (content["mode"], content["target_sec"], content["total_sec"]) == ("pick", 1800, 1853)
     # The approval hash is the stored hash, and it covers the ids in their order.
     assert bytes(stored.content_hash).hex() == digest
     assert stored.music["fingerprint"] == common.ids_hash(OWN).hex()

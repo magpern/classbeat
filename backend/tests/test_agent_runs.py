@@ -8,7 +8,6 @@ import uuid
 from typing import Any
 
 import pytest
-from mowl import spotify
 from pydantic import ValidationError
 
 from agentfake import CONFIG, Planted, analysed, brief, provider, synthetic_tracks
@@ -22,6 +21,7 @@ from classbeat.agent import (
 )
 from classbeat.agent.loop import StageOutcome
 from classbeat.agent.providers.fake import FakeProvider
+from classbeat.crossfade_calc import CROSSFADE_SEC
 from classbeat.jobs import Complete, JobRun
 from jobcore import JobsEnv, registry_for, run_next, store_draft
 
@@ -218,7 +218,7 @@ async def test_provenance_records_the_run_and_the_crossfade(
     await run_next(jenv, design_kind(ctx, provider("good_first_draft"), outcomes))
     made = provenance(outcomes, ctx.map)
     assert made.agent_run_ids == [outcomes[0].run_id]
-    assert (made.map_version, made.crossfade_sec) == (13, spotify.CROSSFADE_SEC)
+    assert (made.map_version, made.crossfade_sec) == (13, CROSSFADE_SEC)
     assert made.mowl_version == "0.12.0"
     assert made.cost_micros == runs(jenv, job_id)[0].cost_micros
     assert made.usage.input_tokens == 3000
@@ -251,7 +251,7 @@ async def test_provenance_records_the_run_and_the_crossfade(
     assert (data["route_key"], data["eval_result_id"]) == (None, None)
     legacy = dict(ctx.map)
     del legacy["crossfade"]  # a 0.4.1 map is fitted at the default, and recorded so
-    assert provenance(outcomes, legacy).crossfade_sec == spotify.CROSSFADE_SEC
+    assert provenance(outcomes, legacy).crossfade_sec == CROSSFADE_SEC
     back_to_back = {**ctx.map, "crossfade": 0.0}
     assert provenance(outcomes, back_to_back).crossfade_sec == 0.0
     with pytest.raises(ValidationError):

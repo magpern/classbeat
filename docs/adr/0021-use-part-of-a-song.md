@@ -183,3 +183,10 @@ and spotdown never fetches audio from Spotify; a Spotify-catalogue track may be 
 from a non-Spotify source of the same recording (the optional YouTube source, enabled per deployment
 by the owner), with the timing class `approximate` at best. Part of a Spotify song stays not allowed,
 neither audio nor timing; the rest of this ADR is unchanged.
+
+
+## Amendment of 2026-11-22: the crossfade is 9.54 s (issue #1427)
+
+The "9 s per change of song" of this ADR (the total, the 10 % check and the full-length reading of
+a Spotify class) is MOWL's **9.54 s** since ADR 0006's amendment of 2026-11-22 (`crossfade_calc`);
+nothing else here changes, and Spotify classes still use whole songs (#580 stays as decided).

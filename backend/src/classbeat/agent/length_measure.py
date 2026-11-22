@@ -2,7 +2,7 @@
 
 A ``LengthMeasure`` is the total function, the crossfade shown to the model and stored with the
 list, and the bounds check with its model-facing error text. The default (``SONG_MEASURE``) is
-the Spotify pick's: lengths less 9 s per change of song (``songs.total_sec``) within 10 % of the
+the Spotify pick's: lengths less 9.54 s per change of song (``songs.total_sec``) within 10 % of the
 target (``songs.within_tolerance``). The studio passes its own (``swedebeat_studio.length_policy``,
 ADR 0036 amendment B, B6): whole songs, no crossfade.
 """

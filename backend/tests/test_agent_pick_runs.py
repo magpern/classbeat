@@ -199,7 +199,7 @@ async def test_the_first_message_holds_the_facts_and_the_computed_numbers() -> N
     assert pool_msg["target_sec"] == 1800
     assert pool_msg["songs"] == 8
     assert pool_msg["pool_size"] == {"min": 8, "max": 32}
-    assert pool_msg["crossfade_sec"] == 9.0
+    assert pool_msg["crossfade_sec"] == 9.54
     assert pool_msg["mode"] == "pick"
     choose_msg = json.loads(fake.sent[1].spec.first_message.split("\n\n", 1)[1])
     assert choose_msg["pool_tracks"] == 14

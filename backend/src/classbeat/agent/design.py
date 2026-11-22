@@ -11,7 +11,7 @@ ending with ``submit_draft``.
   report is a warning only: it never refuses a draft.
 
 All of it is pure: no network, no credentials, no database. The map is the one the backend loaded
-for this job, in the beta's 9 s crossfade (``model_input.music_map``; a Swedebeat mix through
+for this job, in classbeat's 9.54 s crossfade (``model_input.music_map``; a Swedebeat mix through
 ``mix_input``, crossfade 0). TSS, duration and the fitted
 timing always come from here, never from a number the model states.
 """

@@ -19,6 +19,7 @@ from classbeat.agent.model_input import MusicData, music_map
 from classbeat.agent.provider import ToolCall
 from classbeat.agent.schemas import Game, Interval, WorkoutDraft, clean_text
 from classbeat.agent.stage import Stage, Tool, ToolAnswer, ToolError
+from classbeat.crossfade_calc import CROSSFADE_SEC
 
 
 @pytest.fixture
@@ -303,7 +304,7 @@ def test_the_result_is_computed_by_the_backend(stage: Stage, data: MusicData) ->
     assert result.tss == round(workout.tss(result.spec), 1)
     assert result.duration_sec == workout.total_seconds(result.spec)
     workout.validate(result.spec)
-    assert (result.map_version, result.crossfade_sec) == (13, spotify.CROSSFADE_SEC)
+    assert (result.map_version, result.crossfade_sec) == (13, CROSSFADE_SEC)
 
 
 def test_a_zone_7_interval_sets_the_approximate_flag_from_the_fitted_draft(
@@ -345,20 +346,20 @@ def test_a_stored_map_without_crossfade_is_converted_exactly(data: MusicData) ->
     old = legacy(data)
     assert "crossfade" not in old.analysis["map"]
     assert music_map(old.analysis["map"]) == music_map(data.analysis["map"])
-    assert music_map(data.analysis["map"])["crossfade"] == spotify.CROSSFADE_SEC
-    assert music_map(old.analysis["map"])["duration"] == 8 * 240 - 7 * 9
+    assert music_map(data.analysis["map"])["crossfade"] == CROSSFADE_SEC
+    assert music_map(old.analysis["map"])["duration"] == pytest.approx(8 * 240 - 7 * CROSSFADE_SEC)
 
 
 def test_model_input_and_tools_use_the_crossfade_for_a_legacy_map(data: MusicData) -> None:
     new = DesignContext.build(brief(), data)
     old = DesignContext.build(brief(), legacy(data))
     assert old.summary == new.summary
-    assert old.summary["crossfade_sec"] == 9.0
-    assert old.summary["tracks"][1]["from"] == "3:51"  # 240 - 9 s
+    assert old.summary["crossfade_sec"] == CROSSFADE_SEC
+    assert old.summary["tracks"][1]["from"] == "3:50.5"  # 240 - 9.54 s
     draft = {"draft": good_draft()}
     for tool in ("preview_draft", "submit_draft"):
         assert call(design_stage(old), tool, draft)[0] == call(design_stage(new), tool, draft)[0]
-    assert check(WorkoutDraft.model_validate(good_draft()), old.map).crossfade_sec == 9.0
+    assert check(WorkoutDraft.model_validate(good_draft()), old.map).crossfade_sec == CROSSFADE_SEC
 
 
 # --- warnings -------------------------------------------------------------------------------
@@ -369,7 +370,8 @@ def test_the_librarys_crossfade_advice_and_availability_texts_never_reach_the_mo
 ) -> None:
     data = analysed(monkeypatch)
     data = MusicData(data.analysis, data.playlist_id, ["Track X is not playable in SE"])
-    m = music_map(data.analysis["map"])
+    # the library words its advice for its own 9.0 crossfade; classbeat's map is at 9.54
+    m = spotify.with_crossfade(music_map(data.analysis["map"]), spotify.CROSSFADE_SEC)
     entry = {"map": m, "unavailable": list(data.unavailable)}
     library_text = " ".join(service._spotify_warnings(entry))  # pyright: ignore[reportPrivateUsage]
     assert '"crossfade": 0' in library_text  # what the library would say
@@ -404,7 +406,7 @@ def test_a_workout_longer_than_the_music_is_a_warning(stage: Stage) -> None:
     draft["segments"][0]["intervals"][0]["sec"] = 600
     body, done = call(stage, "preview_draft", {"draft": draft})
     assert done.ok
-    assert body["warnings"][0] == "The workout (37:00) is longer than the music (30:57)."
+    assert body["warnings"][0] == "The workout (37:00) is longer than the music (30:53.2)."
 
 
 # --- a lent read may answer later (ADR 0008 section 3: the job's Spotify search) ---------------

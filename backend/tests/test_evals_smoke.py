@@ -101,8 +101,8 @@ def test_the_synthetic_music_is_invented_and_in_the_analysis_format() -> None:
     data = build_music(MusicSpec(tracks=3, no_bpm=[1]))
     m = data.analysis["map"]
     assert [t["title"] for t in m["tracks"]] == ["Smoke Song 0", "Smoke Song 1", "Smoke Song 2"]
-    assert m["crossfade"] == 9.0
-    assert m["duration"] == 3 * 240 - 2 * 9
+    assert m["crossfade"] == 9.54
+    assert m["duration"] == pytest.approx(3 * 240 - 2 * 9.54)
     assert m["tracks"][1]["bpm"] == 0
     assert m["tracks"][0]["bpm"] == 120
     assert all(t["spotify_id"].startswith("SmokeSynth") for t in m["tracks"])

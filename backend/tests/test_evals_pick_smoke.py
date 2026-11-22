@@ -57,7 +57,7 @@ async def test_the_pick_stores_the_analysis_and_the_replace_keeps_its_slots() ->
     )
     assert result.chosen is not None
     chosen = result.chosen
-    assert (chosen.total_sec, chosen.mode, len(chosen.songs)) == (1857, "pick", 8)
+    assert (chosen.total_sec, chosen.mode, len(chosen.songs)) == (1853, "pick", 8)
     assert [s.title for s in chosen.songs] == [
         f"Smoke Song {i}" for i in (0, 2, 4, 10, 6, 7, 11, 12)
     ]

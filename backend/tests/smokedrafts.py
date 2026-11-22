@@ -40,6 +40,7 @@ def make_draft(
     races: int = 0,
     ftp: int | None = None,
     ftp_lead: int = 300,
+    climb_standing: int = 30,
     games: tuple[str, ...] = (),
     name: str = "Invented smoke class",
     description: str = "A class made for the smoke set.",
@@ -61,7 +62,7 @@ def make_draft(
                 f"Climb {n + 1}",
                 "main",
                 iv(150, p["climb"], [68, 76]),
-                iv(30, 5, [65, 75], standing=True),
+                iv(climb_standing, 5, [65, 75], standing=True),
                 iv(90, p["climb"], [68, 76]),
                 iv(60, 1, [75, 85]),
             )

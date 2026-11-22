@@ -86,7 +86,7 @@ def slot(n: int, length: int = 240, title: str | None = None) -> Slot:
     return Slot(f"id{n}", title or f"Song {n}", "Band", length)
 
 
-LISTED = [slot(n) for n in range(8)]  # 8 x 240 s less 7 crossfades: 1857 s, target 1800
+LISTED = [slot(n) for n in range(8)]  # 8 x 240 s less 7 crossfades (9.54 s): 1853 s, target 1800
 
 
 def test_the_first_spare_that_keeps_the_total_is_chosen() -> None:

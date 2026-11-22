@@ -70,6 +70,10 @@ def fitting_lead(case: Case, **draft: Any) -> int:
     raise AssertionError(f"{case.name}: no FTP lead fits the music")
 
 
+# At MOWL's 9.54 s crossfade the fitted zone 5 seconds of this case fell just under the 3 % bound.
+CLIMB_STANDING = {"std_moderate_35_climbs": 36}
+
+
 def design_draft(case: Case) -> dict[str, Any]:
     if case.expect.patterns is not None:  # the class_patterns category (issue #399)
         return pattern_draft(case)
@@ -90,6 +94,7 @@ def design_draft(case: Case) -> dict[str, Any]:
         races=b.races,
         ftp=b.ftp_test,
         games=games,
+        climb_standing=CLIMB_STANDING.get(case.name, 30),
         name=f"Invented {case.name.replace('_', ' ')} class",
     )
     if b.ftp_test:

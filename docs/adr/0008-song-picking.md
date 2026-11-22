@@ -926,3 +926,14 @@ signal. §3's stages had the request text only, free-text search, and no check o
 - **Eval.** Suite version 24: `agent/music_taste.py` joins the digest's rule sources, and the interpret
   and `pick_pool` prompt versions are re-pinned. No case changed; the offline gate runs on the fake
   model.
+
+
+## Amendment of 2026-11-22: the crossfade is 9.54 s (issue #1427)
+
+Wherever this ADR says 9 s of crossfade it now means MOWL's own **9.54 s**
+(`crossfade_calc.CROSSFADE_SEC`; ADR 0006 amendment of 2026-11-22, a measured value from one owner
+capture, #580). Concretely: the 10 % total of §3 (line 314) is the lengths less 9.54 s per transition;
+the example list's `"crossfade_sec": 9` is 9.54 for a new list (a stored list keeps its 9); and the
+tempo-clash amendment of 2026-11-13 judges adjacent songs at the 9.54 s overlap (`CROSSFADE_SEC` is
+the constant it names; the 6 % rule is unchanged). The SwedeBeat studio is unaffected (its list has
+`crossfade_sec` 0).

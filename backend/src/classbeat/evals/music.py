@@ -3,8 +3,9 @@ analysis format of ``library.spotify_analysis``, with no Spotify data and no net
 
 ``MusicSpec`` describes a playlist (how many tracks, how long, which BPMs, which tracks MOWL has no
 BPM or sections for, odd titles); ``build_music`` turns it into the ``MusicData`` the design stage
-is given, through the library's own ``spotify.build_map`` in the beta's 9 s crossfade. The ids are
-invented placeholders that never reach the model (``classbeat.agent.model_input`` drops them).
+is given, through the library's own ``spotify.build_map`` in classbeat's crossfade
+(``crossfade_calc``). The ids are invented placeholders that never reach the model
+(``classbeat.agent.model_input`` drops them).
 """
 
 from typing import Any, Final, Literal
@@ -13,6 +14,7 @@ from mowl import spotify
 from pydantic import BaseModel, ConfigDict, Field
 
 from classbeat.agent.model_input import MusicData
+from classbeat.crossfade_calc import CROSSFADE_SEC
 
 SECTION_SEC: Final = 60
 # A drop every second section: loudness (dB) of consecutive sections, cycling.
@@ -46,7 +48,7 @@ def _sections(track_sec: int) -> list[dict[str, float]]:
 
 
 def build_music(spec: MusicSpec) -> MusicData:
-    """The analysed playlist: tracks in play order, fitted with the 9 s crossfade."""
+    """The analysed playlist: tracks in play order, fitted with the Spotify crossfade."""
     tracks: list[dict[str, Any]] = []
     sections: dict[str, list[dict[str, float]]] = {}
     for i in range(spec.tracks):
@@ -65,6 +67,6 @@ def build_music(spec: MusicSpec) -> MusicData:
         "source": "spotify",
         "source_id": "SmokeSynthPlaylist01",
         "name": spec.name,
-        "map": spotify.build_map(tracks, sections),
+        "map": spotify.build_map(tracks, sections, CROSSFADE_SEC),
     }
     return MusicData(analysis, PLAYLIST_ID)

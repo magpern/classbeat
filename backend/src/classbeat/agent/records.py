@@ -32,7 +32,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Literal, Self
 from uuid import UUID
 
-from mowl import music, spotify
+from mowl import music
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -48,6 +48,7 @@ from classbeat.agent.loop import StageOutcome
 from classbeat.agent.provenance_parts import DuplicatedFrom, ProvenanceRules, ProvenanceUsage
 from classbeat.agent.stage_host import JobStageHost as JobStageHost  # re-exported
 from classbeat.agent.stated_layer import StatedLayer
+from classbeat.crossfade_calc import CROSSFADE_SEC
 
 
 def mowl_version() -> str:
@@ -228,7 +229,7 @@ def provenance(
         # is converted to the default first.
         map_version=None if music_map is None else int(music_map.get("version", music.MAP_VERSION)),
         crossfade_sec=(
-            None if music_map is None else float(music_map.get("crossfade", spotify.CROSSFADE_SEC))
+            None if music_map is None else float(music_map.get("crossfade", CROSSFADE_SEC))
         ),
         agent_run_ids=[r.run_id for r in runs],
         usage=ProvenanceUsage(

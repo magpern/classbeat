@@ -31,8 +31,8 @@ def test_a_margin_over_10_seconds_survives_fitting() -> None:
     assert min(games_of(result.spec)) >= 10
 
 
-def test_a_game_just_over_10_seconds_can_fall_under_it_once_fitted() -> None:
-    draft = WorkoutDraft.model_validate(margin_draft(CASE, 12))
+def test_a_game_of_exactly_10_seconds_can_fall_under_it_once_fitted() -> None:
+    draft = WorkoutDraft.model_validate(margin_draft(CASE, 10))
     with pytest.raises(ToolError) as caught:
         check(draft, music_map(CASE))
     assert caught.value.code == "invalid_draft"

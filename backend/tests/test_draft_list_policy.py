@@ -23,7 +23,8 @@ def test_every_track_is_listed_in_order_with_its_slot() -> None:
     assert [s.role for s in chosen.songs] == ["warmup", "interval", "interval", "cooldown"]
     assert [s.length_sec for s in chosen.songs] == [200] * 4
     assert {s.new for s in chosen.songs} == {False}
-    assert chosen.total_sec == chosen.target_sec == 200 * 4 - 9 * 3
+    assert chosen.total_sec == chosen.target_sec == round(200 * 4 - 9.54 * 3)
+    assert chosen.crossfade_sec == 9.54
 
 
 @pytest.mark.parametrize("bpm", [None, 0, -3, True, "120"])

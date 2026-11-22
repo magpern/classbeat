@@ -20,6 +20,7 @@ from mowl import spotify
 from pydantic import BaseModel, ConfigDict, Field
 
 from classbeat.agent.songs import KeptSong
+from classbeat.crossfade_calc import CROSSFADE_SEC
 
 TRACK_SEC: Final = 240
 FIRST_BPM: Final = 100
@@ -166,7 +167,7 @@ def analysis_map(tracks: Sequence[CatalogueTrack]) -> dict[str, Any]:
             }
             for n, s in enumerate(range(0, t.sec, SECTION_SEC))
         ]
-    return spotify.build_map(rows, sections)
+    return spotify.build_map(rows, sections, CROSSFADE_SEC)
 
 
 def kept_songs(spec: ReplaceSpec) -> list[KeptSong]:

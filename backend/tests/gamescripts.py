@@ -14,7 +14,7 @@ GENERIC: dict[str, str] = {
     "games_any_pacing_35": "overflow",
     "games_any_team_race_30": "racetrack",
 }
-MARGIN_GAME_SEC = 20  # fits to 17 s on the case's music; a 12 s game fits to under 10 s
+MARGIN_GAME_SEC = 20  # fits to 19 s on the case's music; a 10 s game fits to under 10 s
 MARGIN_LEAD_SEC = 60
 
 

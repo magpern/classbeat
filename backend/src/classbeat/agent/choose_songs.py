@@ -7,7 +7,7 @@
   the map has it), ``omitted_no_bpm`` and, in replace mode, the kept songs. A track still without
   a BPM is left out and counted.
 - ``check_song_list(songs, note?)`` and ``submit_song_list``: every index exists, no song twice,
-  the **backend-computed total** (``ctx.measure``: lengths less 9 s per transition within 10 % of
+  the **backend-computed total** (``ctx.measure``: lengths less 9.54 s per transition within 10 % of
   ``target_sec``; the studio's is whole songs, ``length_policy``),
   ``kept`` only when replacing and in its own slot with its own role, the class opens with a
   ``warmup`` or ``build`` and ends with a ``cooldown``. Errors come back for correction.

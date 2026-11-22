@@ -18,10 +18,12 @@ the section energy (``section_energy``: numbers only) follow the same allowlist;
 ``classbeat.agent`` puts data in front of the model; ``tests/test_agent_model_input.py`` plants a
 value in each of those places and checks that none reaches what the provider adapter would send.
 
-**Crossfade.** A stored analysis made under ``mowl-workouts`` 0.4.1 has no ``crossfade`` key (its
-tracks are back to back); ``music_map`` converts it exactly with ``spotify.with_crossfade(map,
-spotify.CROSSFADE_SEC)``, the beta's constant default (9 s of overlap for the 10 s Spotify
-crossfade MOWL's how-to asks for). A per-user setting is deferred (ADR 0006 section 3).
+**Crossfade.** ``music_map`` puts every map in classbeat's crossfade
+(``crossfade_calc.CROSSFADE_SEC``, 9.54 s, the value MOWL itself sends; ADR 0006 amendment, #1427)
+with ``spotify.with_crossfade``, which is exact: a stored analysis was built at the wheel's 9.0
+(or, under ``mowl-workouts`` 0.4.1, has no ``crossfade`` key and its tracks are back to back), and
+the stored map is never rewritten.
+A per-user setting is deferred (ADR 0006 section 3).
 
 **Warnings.** The library's Spotify warning tells the user to set ``"crossfade": 0`` in the spec's
 music options, which a classbeat user cannot do, and its "skipped" lines are MOWL's availability
@@ -35,9 +37,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from mowl import library, music, quality, spotify
+from mowl import library, music, quality
 from mowl.workout import mmss
 
+from classbeat import crossfade_calc
 from classbeat.agent.brief import Brief
 from classbeat.agent.schemas import clean_text
 from classbeat.agent.section_energy import energy_of
@@ -79,11 +82,8 @@ class MusicData:
 
 
 def music_map(analysis_map: Mapping[str, Any]) -> dict[str, Any]:
-    """The map to fit and summarise: a copy, in the 9 s crossfade of the beta."""
-    m = copy.deepcopy(dict(analysis_map))
-    if "crossfade" not in m:
-        m = spotify.with_crossfade(m, spotify.CROSSFADE_SEC)
-    return m
+    """The map to fit and summarise: a copy, in classbeat's crossfade."""
+    return crossfade_calc.with_classbeat(copy.deepcopy(dict(analysis_map)))
 
 
 def brief_for_model(brief: Brief) -> dict[str, Any]:
