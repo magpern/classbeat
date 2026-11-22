@@ -10,11 +10,12 @@ is the PUBLIC TEST value of `service-key.txt` (also mounted into the worker as i
 
 The fake itself is `backend/tests/spotdowncore.py`, mounted at /fake-core: the same code the backend
 tests run in process (`spotdownfake`), so the two cannot drift. It answers `/v2/match`,
-`/v2/analyses`, `/v2/jobs/{id}` and `/v2/analyses/{id}`. Every `youtube` video it names carries an
-analysis document (`songanalysisdocs.youtube_doc`) whose tempo is the fake MOWL's tempo of the
-Spotify track whose title it was asked for: the fake Spotify's titles end in the track's catalogue
-number, so the document agrees with MOWL and the song's timing is "approximate", as it would for a
-real YouTube analysis. It never logs a request: no title, source or key reaches its output.
+`/v2/analyses`, `/v2/jobs/{id}` and `/v2/analyses/{id}`. Every `youtube` video it names (one per
+song: its title and artists) carries an analysis document (`songanalysisdocs.youtube_doc`) whose
+tempo is the fake MOWL's tempo of the Spotify track whose title it was asked for: the fake Spotify's
+titles end in the track's catalogue number, so the document agrees with MOWL and the song's timing
+is "approximate", as it would for a real YouTube analysis. It never logs a request: no title,
+source or key reaches its output.
 
 `/__e2e/...` is the test control, reached from the compose network only (no key): `state` (every
 request's method and path, no header, body or key) and `reset`.
@@ -27,6 +28,7 @@ import os
 import re
 import sys
 import threading
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import httpx
@@ -45,12 +47,19 @@ NUMBER = re.compile(r"(\d{1,3})$")  # the catalogue number a fake Spotify title 
 
 
 class E2eSpotdown(spotdowncore.FakeSpotdown):
-    """The core, with a video per Spotify track (the same in every batch) and its document."""
+    """The core, with a video per song (the same in every batch) and its document."""
 
     def video(self, kind: str, n: int, track: dict[str, object]) -> str:
-        found = NUMBER.search(str(track.get("title", "")))
+        title = str(track.get("title", ""))
+        found = NUMBER.search(title)
         index = int(found[1]) if found else n
-        video = f"{kind}{index:08d}"
+        # One video per SONG, never per catalogue number: the fake MOWL's playlist songs ("Invented
+        # Song 3") and the fake Spotify's catalogue ("Tempo Cascade 3") share their numbers, and an
+        # analysis is aligned to the one track it was first asked for. A design on the playlist
+        # (always on spotdown since #1407) would otherwise hand a later pick the other song's
+        # analysis, which phase 2 refuses as ``analysis_failed`` (#1415).
+        song = f"{title}\0{track.get('artists')}".encode()
+        video = f"{kind}{zlib.crc32(song) % 10**8:08d}"
         tempo = float(spotifycore.mowl_bpm(spotifycore.track_id(index)))
         self.documents[f"youtube:{video}"] = songanalysisdocs.youtube_doc(video, tempo)
         return video

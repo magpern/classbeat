@@ -21,6 +21,7 @@ import pytest
 import soundfile
 from jsonschema import Draft202012Validator
 
+import spotifycore
 from spotdowncore import CONTRACTS, SCOPE_A, SCOPE_B
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -112,6 +113,58 @@ def test_every_youtube_document_validates_against_analysis_v1(
     for document in documents:
         assert list(VALIDATOR.iter_errors(document)) == []
     assert {d["tempo"]["bpm"] for d in documents} > {100.0 + 3 * 24}  # a tempo by catalogue number
+
+
+def reference_of(client: httpx.Client, title: str, artist: str, reference_id: str) -> str:
+    """The id of the alignment reference in the document of the best video of one song, analysed
+    asking for ``reference_id`` (stage B of a pick, or of a design on a playlist)."""
+    track = {"client_ref": "0", "title": title, "artists": [artist], "duration_s": 240}
+    best = client.post("/v2/match", json={"tracks": [track]}).json()["results"][0]["best"]
+    start = client.post(
+        "/v2/analyses",
+        json={
+            "source_ref": best["source"],
+            "client_ref": "x",
+            "reference": {"kind": "spotify_track", "id": reference_id, "duration_s": 240.0},
+        },
+        headers={"Idempotency-Key": f"k-{reference_id}"},
+    )
+    return str(finished(client, start)["alignment"]["reference"]["id"])
+
+
+def test_two_songs_whose_titles_end_in_the_same_number_are_never_one_video(
+    server: tuple[httpx.Client, ModuleType],
+) -> None:
+    """The fake MOWL's playlist songs ("Invented Song 3") and the fake Spotify's catalogue ("Tempo
+    Cascade 3") share their catalogue numbers. A design on the playlist analyses one video per
+    number for ever; a pick of a catalogue song must not be handed that analysis (aligned to the
+    other song: phase 2's ``verified`` ends ``analysis_failed``, #1415)."""
+    client, _ = server
+    assert reference_of(client, "Invented Song 3", "Made-up Artist 0", "a" * 32) == "a" * 32
+    assert reference_of(client, "Tempo Cascade 3", "Some Artist", "b" * 32) == "b" * 32
+    # the same song again is the same video: its analysis is reused, aligned to the same track
+    assert reference_of(client, "Tempo Cascade 3", "Some Artist", "b" * 32) == "b" * 32
+
+
+def test_every_song_of_both_fake_worlds_has_its_own_video(
+    server: tuple[httpx.Client, ModuleType],
+) -> None:
+    """The fake MOWL's eight playlist songs and the fake Spotify's catalogue, together: no two
+    songs share a video, and a song keeps its video in every batch (a revise asks again)."""
+    client, _ = server
+    songs = [(f"Invented Song {i}", "Made-up Artist") for i in range(8)]
+    songs += [(str(t["name"]), str(t["artist"])) for t in spotifycore._catalogue().values()]
+    tracks = [
+        {"client_ref": str(n), "title": title, "artists": [artist], "duration_s": 240}
+        for n, (title, artist) in enumerate(songs)
+    ]
+    first = client.post("/v2/match", json={"tracks": tracks}).json()["results"]
+    again = client.post("/v2/match", json={"tracks": tracks[::-1]}).json()["results"]
+    best = [r["best"]["source"] for r in first]
+    alternate = [r["alternates"][0]["source"] for r in first]
+    assert len(set(best)) == len(set(alternate)) == len(songs)
+    assert set(best).isdisjoint(alternate)
+    assert [r["best"]["source"] for r in again[::-1]] == best
 
 
 def test_the_schema_check_can_fail(server: tuple[httpx.Client, ModuleType]) -> None:
