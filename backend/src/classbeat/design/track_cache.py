@@ -10,17 +10,15 @@
 - **A store** (``store``) is one fenced transaction per analysed track: the connection held again
   (so a Disconnect that forgot the rows cannot be undone by a late store), the row upserted with
   the SHA-256 of the analysed bytes, then the user's rows past ``MAP_TTL_DAYS`` and all but the
-  newest ``MAPS_PER_USER`` dropped (rows of both analysers count), as ``swedebeat_mix_maps``
-  does. The last store of a run frees its mix-analysis slot (#574). The run goes on with the map
-  **as stored** (jsonb's form, ``RETURNING map``), the one a later read sees and hashes.
-- **The analyser** (ADR 0040 section 6, #1302): a row is ``local`` (``mowl.music.analyze_track``)
-  or ``spotdown`` (spotdown's analysis of the same bytes, with its ``provenance`` record). A
-  track's two rows coexist; a store replaces only the row of its own analyser, so a class
-  designed on one analyser's map is never moved to the other's. Every read takes an ``Accept``
-  rule over the ``Stored`` row: ``track_analysis`` takes only current ``spotdown`` rows (#1353:
-  a ``local`` row is no hit; it stays unread until #1356 drops them); revise, outputs and the
-  timeline take exactly the row the draft recorded (``recorded``), which, until #1356, still
-  reads a ``local`` row a draft made before #1353 recorded.
+  newest ``MAPS_PER_USER`` dropped, as ``swedebeat_mix_maps`` does. The last store of a run frees
+  its mix-analysis slot (#574). The run goes on with the map **as stored**
+  (jsonb's form, ``RETURNING map``), the one a later read sees and hashes.
+- **The analyser** (ADR 0040 section 6, #1302; amendment "spotdown is the only analysis path",
+  #1356): every row is ``spotdown``'s analysis of the same bytes, with its ``provenance`` record
+  (the ``local`` rows are gone: migration 0075 deleted them and the table's check admits only
+  ``spotdown``). Every read takes an ``Accept`` rule over the ``Stored`` row: ``track_analysis``
+  takes only rows whose provenance is this build's; revise, outputs and the timeline take exactly
+  the row the draft recorded (``recorded``).
 
 Every statement filters on ``owner_id`` itself as well as through row security. Nothing here logs.
 """
@@ -42,8 +40,6 @@ from classbeat.jobs import JobFailure, JobRun
 
 MAP_TTL_DAYS: Final = 30
 MAPS_PER_USER: Final = 200  # five classes of 40 tracks
-
-ANALYSERS: Final[frozenset[str]] = frozenset({"local", "spotdown"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +63,7 @@ _CACHED = text(
 ).bindparams(bindparam("references", expanding=True))
 _BY_SHA256 = text(
     f"SELECT {_COLUMNS}WHERE owner_id = :owner_id AND analyser_version = :version "
-    f"AND sha256 = :sha256 {_FRESH} ORDER BY (analyser = 'spotdown') DESC, created_at DESC, id"
+    f"AND sha256 = :sha256 {_FRESH} ORDER BY created_at DESC, id"
 )
 _UPSERT = text(
     "INSERT INTO swedebeat_track_maps "
@@ -99,14 +95,14 @@ class TrackMap:
     sha256: str
     music_map: dict[str, Any]
     cached: bool
-    analyser: Analyser = "local"
+    analyser: Analyser = "spotdown"
     provenance: Mapping[str, object] | None = None
 
 
 def _hit(row: Any, accept: Accept, reference: str | None = None) -> TrackMap | None:
     stored: object = row.map
     analyser, provenance, sha256 = str(row.analyser), row.provenance, bytes(row.sha256).hex()
-    if analyser not in ANALYSERS or not valid_track_map(stored, track.TRACK_VERSION):
+    if analyser != "spotdown" or not valid_track_map(stored, track.TRACK_VERSION):
         return None  # not what this version reads: analysed again
     music_map = cast(dict[str, Any], stored)
     if not accept(Stored(str(row.reference), analyser, sha256, provenance, music_map)):
@@ -124,9 +120,9 @@ def _hit(row: Any, accept: Accept, reference: str | None = None) -> TrackMap | N
 async def cached_in(
     db: AsyncSession, owner_id: UUID, references: list[str], accept: Accept
 ) -> dict[str, TrackMap]:
-    """The user's current analyses of ``references`` (the hits only, those ``accept`` takes; a
-    ``spotdown`` one before a ``local`` one), in the caller's transaction: a page's read (the
-    timeline), which holds no connection and writes nothing."""
+    """The user's current analyses of ``references`` (the hits only, those ``accept`` takes), in the
+    caller's transaction: a page's read (the timeline), which holds no connection and writes
+    nothing."""
     params = {
         "owner_id": owner_id,
         "version": track.TRACK_VERSION,
@@ -137,7 +133,7 @@ async def cached_in(
     hits: dict[str, TrackMap] = {}
     for row in rows:
         hit = _hit(row, accept)
-        if hit is not None and (hit.reference not in hits or hit.analyser == "spotdown"):
+        if hit is not None:
             hits[hit.reference] = hit
     return hits
 
@@ -155,7 +151,7 @@ async def cached(
 async def cached_by_sha256(
     run: JobRun, connection: OpenConnection, reference: str, sha256: str, accept: Accept
 ) -> TrackMap | None:
-    """The user's current analysis of the same bytes under any reference (a ``spotdown`` one
+    """The user's current analysis of the same bytes under any reference (the newest
     first), as ``reference``'s, with the connection held; ``None`` when there is none."""
     params = {
         "owner_id": run.lease.owner_id,
@@ -183,9 +179,9 @@ async def store(
     owner = run.lease.owner_id
     payload = json.dumps(analysed.music_map, separators=(",", ":"), allow_nan=False)
     provenance = analysed.provenance
-    if (analysed.analyser == "spotdown") != (provenance is not None):
-        raise JobFailure("internal")  # the table's check, before anything is written
-    record = None if provenance is None else json.dumps(dict(provenance), allow_nan=False)
+    if analysed.analyser != "spotdown" or provenance is None:
+        raise JobFailure("internal")  # the table's checks, before anything is written
+    record = json.dumps(dict(provenance), allow_nan=False)
     async with run.fenced() as fs:
         if not await hold(fs.db, run.ctx, connection):
             raise JobFailure("not_connected")
@@ -224,8 +220,6 @@ def recorded(wanted: Mapping[str, Wanted]) -> Accept:
         want = wanted.get(row.reference)
         if want is None or row.analyser != want.analyser:
             return False
-        if want.sha256 is None:
-            return True  # a draft stored before #1302: its local row, as before
         return want.sha256 == row.sha256 and want.map_hash == map_hash(row.music_map)
 
     return accepted

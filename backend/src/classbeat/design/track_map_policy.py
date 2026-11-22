@@ -1,16 +1,16 @@
 """The rules of a studio track's analysis (ADR 0036 section 4.1, SR C4). Pure: no I/O.
 
-- **The map** (``valid_track_map``) is what ``mowl.track.analyze_track`` returns for one song: the
-  library's ``TRACK_VERSION``, a positive duration within ``MAX_TRACK_SECONDS``, exactly one song
-  with a BPM and a beat grid, at most ``MAX_EVENTS`` events each at a time, and sections each with
-  a start, an end and an energy (a number or ``None``). It must fit the table's 1 MiB check,
-  measured as the table measures it (``jsonb_text_calc``, SR C5). The child's answer is checked
-  against this before anything is stored or used: never model text, never the file's own words.
+- **The map** (``valid_track_map``) is the library's track map of one song, as spotdown's mapping
+  builds it: the library's ``TRACK_VERSION``, a positive duration within ``MAX_TRACK_SECONDS``,
+  exactly one song with a BPM and a beat grid, at most ``MAX_EVENTS`` events each at a time, and
+  sections each with a start, an end and an energy (a number or ``None``). It must fit the table's
+  1 MiB check, measured as the table measures it (``jsonb_text_calc``, SR C5). A cached map is
+  checked against this before it is used: never model text, never the file's own words.
 - **The references** (``wanted``): the approved tracks' catalogue references, each of the
   gateway's shape (``track_policy.is_reference``), in order, without repeats, at most
   ``MAX_TRACKS`` (the mix spec's bound).
-- **The limits**: ``MAX_TRACK_SECONDS`` is how much audio one track may decode to (a 60 MB MP3 at
-  128 kbit/s is about an hour); a longer file fails in the child.
+- **The limits**: ``MAX_TRACK_SECONDS`` is how long one track's map may be (a 60 MB MP3 at
+  128 kbit/s is about an hour); a longer one is not a hit.
 """
 
 import math

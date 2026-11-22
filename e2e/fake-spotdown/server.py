@@ -112,14 +112,36 @@ def make_handler(state: State) -> type[BaseHTTPRequestHandler]:
         def _json(self, status: int, value: object) -> None:
             self._send(status, {"content-type": "application/json"}, json.dumps(value).encode())
 
+        def _chunked(self, cap: int) -> bytes | None:
+            """The body of a ``Transfer-Encoding: chunked`` request (the worker streams an upload
+            from an async iterator, so it has no length); ``None`` when it is over ``cap``."""
+            body = bytearray()
+            while True:
+                size = int((self.rfile.readline().split(b";")[0].strip()) or b"0", 16)
+                if size == 0:
+                    while self.rfile.readline().strip():  # the trailers, up to the blank line
+                        pass
+                    return bytes(body)
+                body += self.rfile.read(size)
+                self.rfile.readline()  # the CRLF after the chunk
+                if len(body) > cap:
+                    return None
+
         def _serve(self, method: str) -> None:
-            length = int(self.headers.get("Content-Length") or 0)
             path = self.path.partition("?")[0]
             cap = UPLOAD_MAX if path == UPLOAD_PATH else BODY_MAX
-            if length > cap:  # refuse, never cut the body short
-                self._refuse(length)
-                return
-            body = self.rfile.read(length) if length else b""
+            if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
+                got = self._chunked(cap)
+                if got is None:
+                    self._refuse(0)
+                    return
+                body = got
+            else:
+                length = int(self.headers.get("Content-Length") or 0)
+                if length > cap:  # refuse, never cut the body short
+                    self._refuse(length)
+                    return
+                body = self.rfile.read(length) if length else b""
             if path.startswith(CONTROL):
                 self._control(method, path.removeprefix(CONTROL))
                 return

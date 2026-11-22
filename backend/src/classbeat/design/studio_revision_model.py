@@ -6,16 +6,18 @@
   from #1302, ``analyses``: per track, **the analysis it was designed on** (``TrackRecord``).
   No link, fingerprint or MOWL object; its ``content_hash`` is ``revision.studio_hash``'s (the
   content and the mix spec), so a cut, the order or a crossfade is under it.
-- ``TrackRecord``: the track's reference, its analyser (``local`` or ``spotdown``), the hex
-  SHA-256 of the analysed bytes, the hex SHA-256 of the map itself (``map_hash``: a re-analysis
-  of the same bytes by the same analyser, say after a policy change, is another map) and, for
-  spotdown, ``provenance_model``'s record (the analysis id, versions, the audio identity, the
-  timing class and its evidence; at most ``MAX_TRACKS`` records, each provenance read from a cache
-  row, which the table caps at 64 KiB): the provenance kept per track in a class (plan section
-  4a), under the class's retention (ADR 0007 section 11), not only the 30-day cache row's.
+- ``TrackRecord``: the track's reference, its analyser (``spotdown``, the only one: ADR 0040
+  amendment, #1356), the hex SHA-256 of the analysed bytes, the hex SHA-256 of the map itself
+  (``map_hash``: a re-analysis of the same bytes by the same analyser, say after a policy change,
+  is another map) and, for spotdown, ``provenance_model``'s record (the analysis id, versions, the
+  audio identity, the timing class and its evidence; at most ``MAX_TRACKS`` records, each
+  provenance read from a cache row, which the table caps at 64 KiB): the provenance kept per track
+  in a class (plan section 4a), under the class's retention (ADR 0007 section 11), not only the
+  30-day cache row's.
 - ``wanted``: what a later step (revise, outputs, the timeline) must read for each reference:
-  exactly the recorded analyser, bytes and map. A draft stored before #1302 has no ``analyses``; its
-  tracks were all analysed locally, so it wants the ``local`` row, of any bytes, as before.
+  exactly the recorded analyser, bytes and map. A draft with no ``analyses`` (stored before #1302,
+  when every track was analysed locally) wants nothing, so its tracks read as gone: the music
+  changed (#1356, the local analysis and its rows are gone).
 """
 
 import hashlib
@@ -30,7 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from classbeat.design.track_map_policy import MAX_TRACKS
 from classbeat.studio.mix_spec_model import MixSpec
 
-Analyser = Literal["local", "spotdown"]
+Analyser = Literal["spotdown"]
 
 
 class TrackRecord(BaseModel):
@@ -58,8 +60,8 @@ class StudioRevisionMusic(BaseModel):
 @dataclass(frozen=True, slots=True)
 class Wanted:
     analyser: Analyser
-    sha256: str | None  # None: any bytes and map (a draft stored before #1302)
-    map_hash: str | None = None
+    sha256: str
+    map_hash: str
 
 
 def map_hash(music_map: Mapping[str, Any]) -> str:
@@ -72,7 +74,7 @@ def wanted(music: StudioRevisionMusic, references: list[str]) -> Mapping[str, Wa
     """The row each of ``references`` must be read from; a reference without a record of a
     draft that has records is wanted from nothing (so it reads as gone: ``music_changed``)."""
     if music.analyses is None:
-        return {r: Wanted("local", None) for r in references}
+        return {}
     by_reference = {a.reference: a for a in music.analyses}
     return {
         r: Wanted(by_reference[r].analyser, by_reference[r].sha256, by_reference[r].map_hash)

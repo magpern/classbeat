@@ -123,8 +123,9 @@ class Person:
         self.sql("INSERT INTO swedebeat_analyses (owner_id) VALUES (:u)", u=u)
         # ADR 0036 section 4.1 (SR C4): a studio track's analysis and its download record.
         self.sql(
-            "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map) "
-            "VALUES (:u, 'trk-1', 1, :h, '{}'::jsonb)",
+            "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map, "
+            "analyser, provenance) VALUES (:u, 'trk-1', 1, :h, '{}'::jsonb, 'spotdown', "
+            "'{}'::jsonb)",
             u=u,
             h=bytes(32),
         )

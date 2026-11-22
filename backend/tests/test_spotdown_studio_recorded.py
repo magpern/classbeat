@@ -1,14 +1,12 @@
 """#1302 review C1 (ADR 0040 section 6): **a designed class reads exactly the analysis it was
 designed on**, by its analyser, its bytes and its map (``track_cache.recorded``). For a class
 designed on spotdown's maps, each later reader (the timeline, a revise and the outputs job) is
-run against three caches, on the fakes (the fake gateway, the fake model, the fake spotdown);
+run against two caches, on the fakes (the fake gateway, the fake model, the fake spotdown);
 never the network:
 
 - ``kept``: the rows as the design stored them, so the reader works (the gate can pass);
 - ``remapped``: the spotdown rows hold another map of the same bytes (a re-analysis by the same
   analyser, say under another policy version): ``music_changed``, which only the map hash sees;
-- ``local_only``: the spotdown rows are gone and a ``local`` row of the same bytes with **the same
-  map** is left: ``music_changed``, which only the analyser comparison sees.
 
 Plus the stored form (review non-blocking 1): a map whose jsonb form differs from its Python form
 (``-0.0``, ``1e+16``) is recorded by the hash of what is stored, so its class stays readable.
@@ -47,7 +45,7 @@ from test_swedebeat_studio_design import (
 
 __all__ = ["analysed", "no_pause", "outputs_on", "spotdown", "spotdown_maps"]  # the fixtures
 
-CACHES = ("kept", "remapped", "local_only")
+CACHES = ("kept", "remapped")
 
 
 def remap(studio: StudioEnv, owner: UUID) -> None:
@@ -61,29 +59,9 @@ def remap(studio: StudioEnv, owner: UUID) -> None:
     )
 
 
-def local_only(studio: StudioEnv, owner: UUID) -> None:
-    """A ``local`` row of the same bytes with the very same map, then the spotdown rows gone."""
-    studio.songs.sql(
-        "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map) "
-        "SELECT owner_id, reference, analyser_version, sha256, map "
-        "FROM swedebeat_track_maps WHERE owner_id = :o AND analyser = 'spotdown'",
-        o=owner,
-    )
-    studio.songs.sql(
-        "DELETE FROM swedebeat_track_maps WHERE owner_id = :o AND analyser = 'spotdown'",
-        o=owner,
-    )
-    left = studio.songs.sql(
-        "SELECT DISTINCT analyser FROM swedebeat_track_maps WHERE owner_id = :o", o=owner
-    ).scalars()
-    assert list(left) == ["local"]
-
-
 def change(studio: StudioEnv, owner: UUID, cache: str) -> None:
     if cache == "remapped":
         remap(studio, owner)
-    elif cache == "local_only":
-        local_only(studio, owner)
 
 
 def cut_last() -> dict[str, Any]:

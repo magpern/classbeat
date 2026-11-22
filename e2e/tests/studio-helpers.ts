@@ -74,7 +74,7 @@ export async function readyForStudio(page: Page): Promise<void> {
   await expect(page.getByRole('dialog', { name: 'Connect Swedebeat' })).toHaveCount(0)
 }
 
-async function csrf(page: Page): Promise<Record<string, string>> {
+export async function csrf(page: Page): Promise<Record<string, string>> {
   const session = (await (await page.request.get('/api/auth/session')).json()) as { csrf_token: string }
   return { 'X-CSRF-Token': session.csrf_token, Origin: new URL(page.url()).origin }
 }
