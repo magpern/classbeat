@@ -1116,6 +1116,52 @@ remaining "#1298 gates the default" (the "#1296 accepted" item 4, the SD-P7a pre
 E preambles, the stage E audit row and its e2e note); and the Alternatives and Consequences lines on the
 local paths and the default switch. #1298 gates nothing (owner, 2026-11-21).
 
+### Amendment (2026-11-22, #1407): the last MOWL-sections path, a design on the user's MOWL playlist (implements item 3 of "spotdown is the only analysis path" for `design_draft`)
+
+Recorded with the code. Before it, a `design_draft` on a `mowl_spotify_playlist` (a running class,
+the `draft` plan with no Spotify connection, an interpretation hand-off without song picking)
+still timed its tracks on MOWL's sections, and #1406 had narrowed item 3's "a base without
+`music.spotdown` is `music_changed`" to bases on a song list. Both gaps are closed here.
+
+1. **The design.** `design.kind_music_step.music_step` always times a playlist on spotdown: after
+   MOWL's analysis (the frame) and before the beat-one corrections, `songs.draft_spotdown` runs
+   stage A and stage B on **every track of the map, in its order** (`songs.draft_list_policy`, then
+   `songs.playlist_spotdown` as for an own playlist: no spares, no rounds) and stage D
+   (`phase2_spotdown.listed_music`) on the record. A track spotdown cannot match, analyse, align
+   (no Spotify track id) or time is `analysis_failed` (item 5: the user's playlist has no spare);
+   spotdown unreachable, an outage, the budget spent or a `rate_limited` read is
+   `analysis_unavailable` (item 4, with `outage_policy.log_message`); a map longer than a revision
+   records (`MAX_TRACKS`, 200) is `invalid_input`; an unsuitable song is kept with a warning. A
+   track MOWL has no BPM for yet keeps the library's 120 BPM guess (as `mowl.spotify.build_map`
+   does) and is still listed in `unknown_bpm`; its sections are spotdown's. No path returns MOWL's
+   sections to a design.
+2. **Where the record lives.** The playlist has no `song_list` revision, so the draft keeps the
+   stage-A and stage-B record itself: `music.spotdown = {tracks, record}` (exactly one of
+   `song_list_id` and `record`; `record` is `{spotdown_match, spotdown_analysis}` as a list's
+   provenance holds it, at most 256 KiB as canonical JSON). This amends stage E item 1's "never an
+   analysis id" for this variant only, as a mix draft's `music.provenance` already names its
+   analysis (#1304): analysis ids, versions and audio identities, never a title, a Spotify id, a
+   source reference, a scope or a URL. A class copy (#550) keeps a `spotdown` that has its own
+   record (it names no other row of the source class) and still drops one that names a song list.
+3. **Its revise and refit.** The base's `music.spotdown` is carried (`songs.spotdown_carry`): when
+   the music MOWL analyses now has the base's fingerprint and the base had every track on
+   spotdown's sections, every recorded analysis is read again and verified exactly as stage D does,
+   and the new revision keeps the same record. When the user changed the playlist since (another
+   fingerprint), a **revise** runs the design's stages A, B and D on the new music
+   (`music_step(..., fresh_on_change=True)`), records the new record and tells the model "the
+   music changed" as before; a **refit** (beat-one corrections for the base's music) ends
+   `music_changed` before anything is sent to spotdown. A base on a song list keeps stage E's rule:
+   other music than the list's is `music_changed`.
+4. **The literal rule.** `design.spotdown_base.base_sections` makes **every** Spotify base without
+   `music.spotdown` `music_changed`, whatever it was designed on; only a mix base reads nothing.
+5. **A running class (or any class) whose stored base has no `music.spotdown`** was designed on
+   MOWL's sections, before this amendment. Decision (the owner's "app has never run, anything old
+   is gone"): there is no migration and no fallback. Its revise and refit end `music_changed` (not
+   retried, no revision, no credit for the revise or refit); the user designs the class again (a
+   new `design_draft` on the same playlist, which runs stages A, B and D), and that design's
+   revisions carry the record from then on. Save, the beat-one page and a copy of such a draft are
+   unchanged; only the jobs that would design or fit on its timing refuse it.
+
 ## Status
 
 Accepted. §12 took effect on 2026-11-20, when the owner accepted #1296.

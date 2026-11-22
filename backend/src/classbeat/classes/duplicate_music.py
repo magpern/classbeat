@@ -49,10 +49,16 @@ def music_source_copy(source: Any) -> dict[str, str] | None:
 
 def music_copy(music: Any) -> dict[str, Any]:
     """The revision's music reference without the source class's song list (``song_list_id``,
-    and ``spotdown``, which names one too: the copy's revise designs on MOWL's sections)."""
+    and a ``spotdown`` that names one too: the copy's revise is then ``music_changed``). A
+    ``spotdown`` that keeps its own record (a design on the user's MOWL playlist, #1407) names no
+    other row of the source class and is copied, so the copy's revise reads the same analyses."""
     copied = _dict(music)
     copied.pop("song_list_id", None)
-    copied.pop("spotdown", None)
+    spotdown = _dict(copied.get("spotdown"))
+    if "spotdown" in copied and (
+        spotdown.get("song_list_id") is not None or "record" not in spotdown
+    ):
+        copied.pop("spotdown")
     return copied
 
 

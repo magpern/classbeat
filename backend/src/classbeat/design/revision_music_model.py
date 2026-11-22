@@ -72,8 +72,8 @@ class SpotifyRevisionMusic(BaseModel):
     song_list_id: UUID | None = None
     beat_one: BeatOneList = None
     songs: SongList = None
-    # ADR 0040 SD-P6 stage E (#1303): the tracks on spotdown's sections and the list whose record
-    # gave them (``revision_spotdown_model``); absent on every other draft (stored as before).
+    # ADR 0040 SD-P6 stage E (#1303, #1407): the tracks on spotdown's sections and the list, or
+    # the record, that gave them (``revision_spotdown_model``); a Spotify draft without it is old.
     spotdown: SpotdownSections | None = None
 
 

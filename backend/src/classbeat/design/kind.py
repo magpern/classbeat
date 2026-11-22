@@ -5,8 +5,9 @@ being ``{source: "mowl_spotify_playlist", spotify_playlist_id}`` or, on the user
 (ADR 0016 section 3), ``{source: "mowl_swedebeat_mix", mix_id}``, or for a cycling class with no
 music (ADR 0007 amendment of 2026-11-03, #527) ``{source: "none"}``. Stages:
 
-1. ``music`` (``classbeat.design.music``): the link or the attach, then the read-only analysis,
-   with a checkpoint before every library read and the BPM wait inside the lease and budget; on
+1. ``music`` (``kind_music_step``): the link or the attach, then the read-only analysis, with a
+   checkpoint before every library read and the BPM wait inside the lease and budget, then
+   spotdown's stages A, B and D on every track (``songs.draft_spotdown``, #1407); on
    a mix, first ``mixadmit.still_on`` (``feature_off`` when ``swedebeat_enabled`` is off now,
    before anything is called), then ``swedebeat_music.swedebeat_step`` (the cached analysis, or
    the daily slot, the listing, the attach and the analysis of the audio);
@@ -225,7 +226,7 @@ async def run(job_run: JobRun) -> Complete:
         music_kind.require_covered(model)  # a model evaluated for soundless only (#527)
         return await run_no_music(job_run, given, model)  # soundless, or a sketch (ADR 0038)
     await job_run.stage("music")
-    step = await music_step(job_run, runtime, given.music, given.mowl_connection_id)
+    step, timing = await music_step(job_run, runtime, given.music, given.mowl_connection_id)
     handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
         rules = rules_for(given.brief)  # nothing is dismissed on a new class
@@ -242,6 +243,7 @@ async def run(job_run: JobRun) -> Complete:
             ctx.map,
             step,
             rules=rules.provenance() if rules else None,
+            spotdown=timing,  # a playlist's own record (#1407); ``None`` on a mix
         )
         draft = with_interpretation(draft, given.brief, outcome.output.unmet, given.plan_gates)
 

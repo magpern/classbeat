@@ -17,8 +17,7 @@
       {
        "sec": 300,
        "zone": 1,
-       "gradient": 0,
-       "cue": "Easy jog, about 160 spm"
+       "gradient": 0
       }
      ]
     },
@@ -34,8 +33,7 @@
       {
        "sec": 60,
        "zone": 4,
-       "gradient": 0,
-       "cue": "Incline up"
+       "gradient": 0
       },
       {
        "sec": 240,
