@@ -72,7 +72,14 @@ test('Play continues across a window end in the same session; Pause ends it and 
   const { endMs } = await first
   expect(endMs).toBeGreaterThan(0)
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible(LONG)
-  await expect(page.getByTestId('cursor')).toBeVisible(LONG)
+  // The cursor is a zero-width SVG line (Playwright counts it hidden), so wait for it to be attached and to
+  // MOVE: the page draws it only from what the transport observed, and it advances while the audio plays.
+  const cursor = page.getByTestId('cursor')
+  await expect(cursor).toBeAttached(LONG)
+  // The cursor is gone for a moment while the next window loads (nothing is observed to draw): read it with a short wait.
+  const cursorMs = async () => Number(await cursor.getAttribute('data-cursor-ms', { timeout: 2000 }).catch(() => '-1'))
+  const before = await cursorMs()
+  await expect.poll(cursorMs, LONG).toBeGreaterThan(before + 500)
   expect(sessions(owner)).toBe(1)
   // The browser really plays the clip (it is not blocked): the element's own clock moves.
   await expect
@@ -89,9 +96,7 @@ test('Play continues across a window end in the same session; Pause ends it and 
   }, endMs / 1000 - 4)
   const following = await next
   expect(following.startMs).toBe(endMs) // the window continues where the previous one ended
-  await expect
-    .poll(async () => Number(await page.getByTestId('cursor').getAttribute('data-cursor-ms')), LONG)
-    .toBeGreaterThanOrEqual(endMs)
+  await expect.poll(cursorMs, LONG).toBeGreaterThanOrEqual(endMs)
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
   expect(sessions(owner)).toBe(1) // the same session
   expect(clips(owner)).toBeGreaterThanOrEqual(2)
