@@ -24,6 +24,8 @@ from classbeat.auth.tables import (
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.db import system_session, user_session
+from classbeat.preview import purge as preview_purge
+from classbeat.preview import storage as preview_storage
 from classbeat.swedebeat_handoff.purge import purge_owner
 
 RETENTION_DAYS = 30
@@ -63,7 +65,9 @@ async def purge_expired(
     - ``spotify_oauth_flows`` and ``player_link_flows``: expired or used (owned tables: per
       user, in their own session);
     - ``security_log``: older than ``security_log_days`` (7; owned, per user likewise; #632);
-    - ``invite_requests``: decided 30 days ago, or pending for 90 days (ADR 0033).
+    - ``invite_requests``: decided 30 days ago, or pending for 90 days (ADR 0033);
+    - the audition's sessions, clips and source tracks and their files (owned, per user likewise;
+      ADR 0042 section 6.5, ``preview.purge``), and the directories of no user.
     """
     idle = timedelta(days=settings.session_idle_days)
     now = func.now()
@@ -113,6 +117,7 @@ async def purge_expired(
     counts["security_log"] = await _purge_security_log(
         factory, contexts, settings.security_log_days
     )
+    counts.update(await _purge_preview(factory, contexts))
     return counts
 
 
@@ -148,3 +153,24 @@ async def _purge_security_log(
         async with user_session(factory, ctx) as db:
             removed += await securitylog.purge_owner(db, ctx.user_id, days)
     return removed
+
+
+async def _purge_preview(
+    factory: async_sessionmaker[AsyncSession], contexts: list[UserContext]
+) -> dict[str, int]:
+    """Each user's audition rows in their own session, their files after its commit; then the
+    preview volume's directories that are no user's."""
+    root = preview_storage.current()
+    counts: dict[str, int] = {}
+    for ctx in contexts:
+        async with user_session(factory, ctx) as db:
+            done = await preview_purge.purge_owner(db, root, ctx.user_id)
+        for path in done.files:
+            preview_storage.remove(path)
+        for name, count in done.counts.items():
+            counts[name] = counts.get(name, 0) + count
+    stray = preview_purge.stray_owner_dirs(root, (ctx.user_id for ctx in contexts))
+    for directory in stray:
+        preview_storage.remove_dir(directory)
+    counts["preview_stray_dirs"] = len(stray)
+    return counts

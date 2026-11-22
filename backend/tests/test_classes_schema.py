@@ -657,6 +657,13 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     insert(admin, "spotify_syncs", owner_id=owner, class_id=class_id, revision_id=rev,
            target="working_copy", lock_key="working_copy", track_ids=["0vvXsWCC9xrXsKd4FyS8kM"],
            state="synced")  # fmt: skip
+    # ADR 0042 section 6.5 (migration 0071): a listening session, a cached track and a clip.
+    insert(admin, "preview_sessions", owner_id=owner, class_id=class_id,
+           expires_at=datetime.now(UTC) + timedelta(minutes=10))  # fmt: skip
+    insert(admin, "preview_sources", owner_id=owner, class_id=class_id, reference="trk_1",
+           sha256=digest("source"), bytes=10)  # fmt: skip
+    insert(admin, "preview_clips", owner_id=owner, class_id=class_id, key=digest("key"),
+           start_ms=0, end_ms=60_000, sha256=digest("clip"), bytes=10)  # fmt: skip
     # M5 (migration 0007): an entitlement from a code, its redemption, a credit and its lock row.
     code_id = admin.execute(
         text("INSERT INTO redeem_codes (code_hash, label, plan_id, grant_days, max_redemptions, "

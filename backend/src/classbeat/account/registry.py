@@ -111,6 +111,13 @@ NOT_EXPORTED: Mapping[str, str] = MappingProxyType(
         "swedebeat_mix_maps": "exported as a count only (``swedebeat_mix_analyses`` in the file, "
         "ADR 0016 section 3): the analysis of a licensed mix is a derived map, not something the "
         "user wrote",
+        "preview_sessions": "an audition's listening session (ADR 0042 section 6.3): a lifetime "
+        "and counters, purged after a day, nothing the user wrote",
+        "preview_sources": "the audition's cache of SwedeBeat catalogue audio (ADR 0042 section "
+        "6.5): licensed tracks, not something the user wrote, purged after 14 idle days",
+        "preview_clips": "rendered audition clips of the user's own studio draft (ADR 0042 "
+        "section 6.5): derived audio and digests, re-rendered on demand, purged after 14 idle "
+        "days",
         "spotify_oauth_flows": "an unfinished connect: a one-time PKCE verifier and state hash, "
         "deleted when used or expired, nothing the user wrote",
         "player_link_flows": "an unfinished link to classbeat-player (ADR 0034 section 3): a "

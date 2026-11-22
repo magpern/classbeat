@@ -18,6 +18,7 @@ security.
   reconnect in place keeps them: a bearer expires daily, and the catalogue is the same. The
   account digest a publish recorded in its operation's context (``account``, #1117) is removed
   too: the operation stays, and without it a later Check again stays ``connection_changed``.
+  The audition's cached tracks and clips go too (``FORGET_PREVIEW``), their files with the sweep.
 - **Spotify** and **player** are their own modules' (``spotify_data``, ``player_data``).
 """
 
@@ -63,7 +64,18 @@ FORGET_PUBLISH_ACCOUNT: Final = text(
 )
 
 
+# ADR 0042 section 6.5 (#1394): the audition's cached catalogue tracks and the clips rendered from
+# them are that account's audio too. The rows go here; their files are no row's, and the hourly
+# sweep removes them (``preview.purge``).
+FORGET_PREVIEW: Final = (
+    text("DELETE FROM preview_clips WHERE owner_id = :owner_id"),
+    text("DELETE FROM preview_sources WHERE owner_id = :owner_id"),
+)
+
+
 async def forget_swedebeat_account(db: AsyncSession, ctx: UserContext) -> None:
+    for statement in FORGET_PREVIEW:
+        await db.execute(statement, {"owner_id": ctx.user_id})
     await db.execute(FORGET_TRACK_MAPS, {"owner_id": ctx.user_id})
     await db.execute(FORGET_PUBLISH_ACCOUNT, {"owner_id": ctx.user_id})
 

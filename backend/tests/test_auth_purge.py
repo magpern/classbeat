@@ -107,6 +107,8 @@ async def test_purge_deletes_what_is_expired_or_used_and_keeps_the_rest(env: Env
         "swedebeat_handoffs": 0,
         "security_log": 1,
         "invite_requests": 0,  # planted in test_invite_requests_purge.py
+        "preview_sessions": 0,  # the audition's purge: test_preview_purge.py
+        "preview_stray_dirs": 0,
         "oidc_requests": 0,  # planted in test_oidc_purge.py
         "oidc_codes": 0,
     }
