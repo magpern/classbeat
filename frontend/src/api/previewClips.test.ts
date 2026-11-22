@@ -5,8 +5,11 @@ import { PreviewError, createPreviewSession, probeClip } from './previewClips'
 const answer = (status: number, headers: Record<string, string> = {}, body: BodyInit | null = 'x') => new Response(body, { status, headers })
 const ready = (start: string, end: string) => answer(206, { 'X-Preview-Start-Ms': start, 'X-Preview-End-Ms': end })
 
-function stub(response: Response | { throws: unknown }) {
-  const fetchMock = vi.fn(() => (response instanceof Response ? Promise.resolve(response) : Promise.reject(response.throws)))
+function stub(response: Response | { throws: Error | DOMException }) {
+  const fetchMock = vi.fn(() => {
+    if (response instanceof Response) return Promise.resolve(response)
+    return Promise.reject(response.throws)
+  })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
