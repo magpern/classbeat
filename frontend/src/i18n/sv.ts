@@ -4,6 +4,7 @@ import { examplesSv } from './examples.sv'
 import { legalSv } from './legal.sv'
 import { publicSv } from './public.sv'
 import { editorSv } from './editor.sv'
+import { previewSv } from './preview.sv'
 import { workspaceSv } from './workspace.sv'
 
 const sv: Catalogue = {
@@ -13,6 +14,7 @@ const sv: Catalogue = {
   ...examplesSv,
   ...workspaceSv,
   ...editorSv,
+  ...previewSv,
   'language.label': 'Språk',
   'language.follow': 'Följ den här webbläsaren',
   'language.help': 'Språk för sidan och mejlen. ”Följ den här webbläsaren” ger engelska mejl.',

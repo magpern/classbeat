@@ -228,6 +228,10 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/classes/{class_id}/preview/spotify/pause"): "owned",
     ("GET", "/api/classes/{class_id}/preview/spotify/state"): "owned",
     ("GET", "/api/classes/{class_id}/preview/spotify/devices"): "owned",
+    # ADR 0042 section 7.4 (#1398): the alignment facts and the instructor's corrections.
+    ("GET", "/api/classes/{class_id}/preview/spotify/alignment"): "owned",
+    ("PUT", "/api/classes/{class_id}/preview/spotify/corrections/{song}"): "owned",
+    ("DELETE", "/api/classes/{class_id}/preview/spotify/corrections/{song}"): "owned",
     ("GET", "/api/admin/whoami"): "admin",
     ("GET", "/api/admin/users"): "admin",
     ("GET", "/api/admin/users/{user_id}"): "admin",
@@ -754,6 +758,10 @@ def _beat_one(rows: Rows) -> dict[str, Any]:
     return {"beats": 1, "revision_id": str(rows.revision_id)}
 
 
+def _correction(rows: Rows) -> dict[str, Any]:
+    return {"revision_id": str(rows.revision_id), "offset_ms": 250}
+
+
 def _pick(rows: Rows) -> dict[str, str]:
     return {"revision_id": str(rows.revision_id), "content_hash": rows.digest}
 
@@ -965,6 +973,22 @@ OWNED_ROUTES = [
     OwnedRoute("POST", "/api/classes/{class_id}/preview/spotify/pause", control=frozenset({409})),
     OwnedRoute("GET", "/api/classes/{class_id}/preview/spotify/state", control=frozenset({409})),
     OwnedRoute("GET", "/api/classes/{class_id}/preview/spotify/devices", control=frozenset({409})),
+    # ADR 0042 section 7.4 (#1398): the planted draft names no approved song list, so the owner's
+    # call is 409 ``no_draft``; a foreign class or revision is 404 like an unknown one.
+    OwnedRoute(
+        "GET", "/api/classes/{class_id}/preview/spotify/alignment", control=frozenset({409})
+    ),
+    OwnedRoute(
+        "PUT",
+        "/api/classes/{class_id}/preview/spotify/corrections/{song}",
+        _correction,
+        frozenset({409}),
+    ),
+    OwnedRoute(
+        "DELETE",
+        "/api/classes/{class_id}/preview/spotify/corrections/{song}?revision_id={revision_id}",
+        control=frozenset({409}),
+    ),
     OwnedRoute("DELETE", "/api/auth/sessions/{session_id}", control=frozenset({204})),
     OwnedRoute("DELETE", "/api/auth/identities/{identity_id}", control=frozenset({204, 409})),
     # Passkeys on in this app, so rename reads the id: the owner's own is 200, a foreign one 404

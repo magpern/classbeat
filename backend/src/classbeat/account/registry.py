@@ -52,6 +52,11 @@ SECTIONS: tuple[Section, ...] = (
     # ADR 0007 amendment "beat-one corrections": the fingerprint is bookkeeping, already in the
     # exported revision's ``music``.
     _section("beat_one_corrections", "class_id, song, id", "fingerprint"),
+    # ADR 0042 section 7.4: the instructor's own corrections of the Spotify audition; the
+    # fingerprint and the analysis they were set against are bookkeeping.
+    _section(
+        "spotify_offset_corrections", "class_id, song, id", "fingerprint set_against_analysis"
+    ),
     _section("saved_workouts", omit="content_hash state_hash"),
     _section("class_playlists", omit="content_hash"),
     # ADR 0036 section 6 (SR C7): what each output attempt published, with its state; the stored

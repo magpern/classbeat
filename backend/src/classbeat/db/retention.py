@@ -181,6 +181,12 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # the song's BPM per class and music fingerprint (a hash of the user's own music); no title,
         # no id.
         "beat_one_corrections": _entry("", "fingerprint", "class", "account"),
+        # ADR 0042 section 7.4 (#1398): a song number, a correction in ms and the analysis it was
+        # set against (a ``map_version`` and the analysed file's sha256) per class and music
+        # fingerprint; no title, no Spotify id, no analysis.
+        "spotify_offset_corrections": _entry(
+            "", "fingerprint set_against_analysis", "class", "account"
+        ),
         "agent_runs": _entry(
             "",
             "stage provider model model_answered effort prompt_version outcome job_kind "

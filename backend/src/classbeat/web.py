@@ -44,6 +44,7 @@ from classbeat.classes.preview_spotify_routes import router as preview_spotify_r
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.classes.song_fill_routes import router as song_fill_router
+from classbeat.classes.spotify_corrections_routes import router as spotify_corrections_router
 from classbeat.classes.studio_routers import install as install_studio
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.mowl_qr import QrWaits
@@ -273,6 +274,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(beat_one_router)  # split out of the classes router
     app.include_router(song_fill_router)  # ADR 0038 section 5: songs into the sketch
     app.include_router(preview_spotify_router)  # ADR 0042 section 7.2: the Spotify audition
+    app.include_router(
+        spotify_corrections_router
+    )  # ADR 0042 section 7.4: the alignment corrections
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():

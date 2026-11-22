@@ -47,6 +47,7 @@ KEEPING: Final = (
     ("class_playlists", "class_id"),
     ("swedebeat_handoffs", "class_id"),
     ("beat_one_corrections", "class_id"),
+    ("spotify_offset_corrections", "class_id"),
     ("class_outputs", "class_id"),
     ("spotify_syncs", "class_id"),
     ("player_publications", "source_class_id"),

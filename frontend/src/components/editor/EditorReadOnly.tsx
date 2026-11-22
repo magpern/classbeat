@@ -6,6 +6,7 @@ import { Link } from '../../router/Router'
 import { ProfileChart } from '../classes/ProfileChart'
 import { Notice } from '../forms'
 import { Button } from '../ui/button'
+import { SpotifyAudition } from './spotify/SpotifyAudition'
 
 /** The class's zones as one segment, for the read-only chart (the editor's blocks are not available). */
 function segmentsOf(summary: ClassSummary) {
@@ -32,6 +33,7 @@ export function EditorReadOnly({ reason, summary, onReload }: { reason: ReadOnly
           {t('editor.readonly.back')}
         </Link>
       </p>
+      {reason === 'edit_unavailable' ? <SpotifyAudition key={summary.id} classId={summary.id} /> : null}
       {summary.profile.length > 0 ? <ProfileChart segments={segmentsOf(summary)} title={summary.title} songs={null} /> : null}
     </div>
   )

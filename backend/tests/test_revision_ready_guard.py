@@ -60,6 +60,9 @@ ROUTES_THAT_CALL: Final = frozenset(
         ("POST", "/api/classes/{class_id}/duplicate"),
         ("PUT", "/api/classes/{class_id}/beat-one/{song}"),
         ("DELETE", "/api/classes/{class_id}/beat-one/{song}"),
+        # ADR 0042 section 7.4 (#1398): classes.spotify_corrections writes a correction.
+        ("PUT", "/api/classes/{class_id}/preview/spotify/corrections/{song}"),
+        ("DELETE", "/api/classes/{class_id}/preview/spotify/corrections/{song}"),
     }
 )
 _STUDIO: Final = "a studio class only: unreachable for a non-studio class (current_draft.py)"

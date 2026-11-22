@@ -36,7 +36,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0077_drop_local_mix_maps"]
+    assert script.get_heads() == ["0078_spotify_offset_corrections"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -57,7 +57,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0077_drop_local_mix_maps"]
+        assert applied_revisions(database_url) == ["0078_spotify_offset_corrections"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -203,6 +203,8 @@ JOBS = [
     "user_preferences",
     # ADR 0007 amendment "beat-one corrections" (0029).
     "beat_one_corrections",
+    # ADR 0042 section 7.4 (0078_spotify_offset_corrections, #1398).
+    "spotify_offset_corrections",
     # Issue #632 (0034_security_log).
     "security_log",
     # ADR 0022 section 4, ME5 #656 (0037_mail_handoff).
