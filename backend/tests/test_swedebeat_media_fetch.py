@@ -1,36 +1,29 @@
 """A3 of ADR 0016 without a database: the media fetch (``classbeat.design.mixfetch``) against the
-fake media endpoint with an injected list, the limited child process (``classbeat.design.
-mixanalysis`` and ``mixchild``), the decode cap and the private directory. In-process fakes and
-loopback only; the child runs the real library on generated audio.
+fake media endpoint with an injected list, and the private directory and work root. In-process
+fakes and loopback only. (The limited analysis child and the decode cap went with the local
+analysis, #1357; the render child's limits are in ``test_studio_render*.py``.)
 """
 
 import io
 import logging
 import os
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
 
 import httpx
-import numpy as np
 import pytest
-from mowl import music
 
-from classbeat.design import mixanalysis, mixfetch
-from classbeat.design.mixanalysis import (
-    MAX_RSS_BYTES,
-    child_environment,
-    decode_limit_seconds,
-    valid_map,
-)
+from classbeat.design import mixfetch
 from classbeat.egress import Allowlist, mowl_media_test_client
 from classbeat.jobs import JobFailure, JobRun, RunStopped
 from classbeat.log import QUIET_LOGGERS, configure_logging
-from mediafake import FakeMedia, kick_wav_bytes
+from mediafake import FakeMedia
 
-# ruff: noqa: ASYNC240, ASYNC251, PT012, PT018, SIM117, SIM300
+# ruff: noqa: ASYNC240, PT012, PT018, SIM117
 
 pytestmark = pytest.mark.filterwarnings("ignore::ResourceWarning")
 
@@ -302,262 +295,60 @@ def test_the_sweep_at_worker_start_removes_what_a_crash_left(tmp_path: Path) -> 
     for name in ("mix-aaaa", "mix-bbbb"):
         (root / name).mkdir()
         (root / name / "mix.audio").write_bytes(b"x")
-    (root / "numba-cache").mkdir()  # the cache an earlier version shared: removed too
     (root / "other").mkdir()  # not ours to judge: kept
-    assert mixfetch.sweep_work_root(root) == 3
+    assert mixfetch.sweep_work_root(root) == 2
     assert sorted(p.name for p in root.iterdir()) == ["other"]
     assert mixfetch.sweep_work_root(tmp_path / "missing") == 0
 
 
-# --- the decode cap ----------------------------------------------------------------------------
+# --- the private temp root ----------------------------------------------------------------------
 
 
-def test_the_decoded_length_is_the_listed_length_plus_five_minutes_never_over_120_minutes() -> None:
-    assert decode_limit_seconds(0) == 300
-    assert decode_limit_seconds(600) == 900
-    assert decode_limit_seconds(119 * 60) == 7200
-    assert decode_limit_seconds(7200) == 7200
-    assert decode_limit_seconds(86_400) == 7200
-    for bad in (-1.0, float("nan"), float("inf")):
-        with pytest.raises(ValueError, match="finite"):
-            decode_limit_seconds(bad)
+@pytest.fixture
+def temp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    return tmp_path
 
 
-# --- the child process --------------------------------------------------------------------------
+def test_the_work_root_is_created_private(temp: Path) -> None:
+    root = mixfetch.work_root()
+    assert root == temp / mixfetch.ROOT_NAME
+    assert root.is_dir()
+    if sys.platform != "win32":
+        assert root.stat().st_mode & 0o777 == 0o700
+    assert mixfetch.work_root() == root  # an existing one that is ours is used
 
 
-def program(code: str) -> Callable[[Path, float, int], list[str]]:
-    return lambda _audio, _seconds, _rss: [sys.executable, "-c", code]
-
-
-async def analyse(audio: Path, run: FakeRun | None = None, **kwargs: Any) -> mixanalysis.Analysis:
-    return await mixanalysis.analyse_audio(
-        (run or FakeRun()).job, audio, map_version=music.MAP_VERSION, **kwargs
-    )
-
-
-async def test_the_fake_mix_is_analysed_in_a_child_within_the_memory_limit(
-    tmp_path: Path,
-) -> None:
-    audio = tmp_path / "mix.audio"
-    audio.write_bytes(kick_wav_bytes(60.0, 124.0))
-    result = await analyse(audio, max_seconds=360.0)
-    (song,) = result.music_map["songs"]
-    assert song["bpm"] == pytest.approx(124.0, abs=0.5)
-    assert result.music_map["duration"] == pytest.approx(60.0, abs=0.5)
-    assert result.peak_rss is not None
-    assert 0 < result.peak_rss < MAX_RSS_BYTES
-    assert MAX_RSS_BYTES == int(1.5 * 1024**3)
-    assert mixanalysis.ANALYSIS_SECONDS == 180.0
-
-
-async def test_audio_longer_than_the_cap_ends_analysis_failed_before_any_analysis(
-    tmp_path: Path,
-) -> None:
-    audio = tmp_path / "mix.audio"
-    audio.write_bytes(kick_wav_bytes(400.0))  # a listed minute plus five: 360 s allowed
-    with pytest.raises(JobFailure) as failed:
-        await analyse(audio, max_seconds=decode_limit_seconds(60.0))
-    assert failed.value.category == "analysis_failed"
-    audio.write_bytes(kick_wav_bytes(300.0))  # the same cap lets 300 s through
-    assert (await analyse(audio, max_seconds=decode_limit_seconds(60.0))).music_map["songs"]
-
-
-async def test_the_length_is_counted_as_it_decodes_not_only_from_the_header(
-    tmp_path: Path,
-) -> None:
-    # A header that lies low (or says nothing) cannot let a long file through: the blocks count.
-    from classbeat.design import mixchild
-
-    audio = tmp_path / "mix.audio"
-    audio.write_bytes(kick_wav_bytes(60.0))
-
-    import soundfile
-
-    real = soundfile.SoundFile
-
-    class LyingFile:
-        def __init__(self, path: str) -> None:
-            self._inner = real(path)
-            self.samplerate = self._inner.samplerate
-            self.channels = self._inner.channels
-            self.frames = -1  # unknown, as for some streams
-
-        def __enter__(self) -> "LyingFile":
-            return self
-
-        def __exit__(self, *_exc: object) -> None:
-            self._inner.close()
-
-        def blocks(self, **kwargs: Any) -> Any:
-            return self._inner.blocks(**kwargs)
-
-    monkey = pytest.MonkeyPatch()
-    monkey.setattr(soundfile, "SoundFile", LyingFile)
+def test_a_symlinked_work_root_is_refused_and_not_swept(temp: Path) -> None:
+    elsewhere = temp / "elsewhere"
+    elsewhere.mkdir(mode=0o700)
+    (elsewhere / "mix-keep").mkdir()
     try:
-        with pytest.raises(ValueError, match="too long"):
-            mixchild.decode(str(audio), 30.0, music.SR)
-        assert len(mixchild.decode(str(audio), 90.0, music.SR)) > 0
-    finally:
-        monkey.undo()
+        (temp / mixfetch.ROOT_NAME).symlink_to(elsewhere, target_is_directory=True)
+    except OSError:
+        pytest.skip("this machine cannot create symlinks")
+    with pytest.raises(mixfetch.UnsafeWorkRoot):
+        mixfetch.work_root()
+    with pytest.raises(mixfetch.UnsafeWorkRoot), mixfetch.private_directory():
+        pass
+    assert mixfetch.sweep_work_root() == 0
+    assert (elsewhere / "mix-keep").is_dir()
 
 
-async def test_a_file_the_decoder_cannot_open_ends_analysis_failed(tmp_path: Path) -> None:
-    audio = tmp_path / "mix.audio"
-    audio.write_bytes(os.urandom(4096))
-    with pytest.raises(JobFailure) as failed:
-        await analyse(audio, max_seconds=300.0)
-    assert failed.value.category == "analysis_failed"
+def test_a_work_root_that_is_a_file_is_refused(temp: Path) -> None:
+    (temp / mixfetch.ROOT_NAME).write_bytes(b"x")
+    with pytest.raises(mixfetch.UnsafeWorkRoot):
+        mixfetch.work_root()
 
 
-async def test_audio_with_no_steady_beat_ends_analysis_failed(tmp_path: Path) -> None:
-    from mediafake import _wav  # pyright: ignore[reportPrivateUsage]
-
-    audio = tmp_path / "mix.audio"
-    audio.write_bytes(_wav(np.zeros(11025 * 40), 11025))  # silence
-    with pytest.raises(JobFailure) as failed:
-        await analyse(audio, max_seconds=300.0)
-    assert failed.value.category == "analysis_failed"
-
-
-async def test_a_crash_of_the_child_ends_analysis_failed_and_the_parent_lives_on(
-    tmp_path: Path,
-) -> None:
-    audio = tmp_path / "mix.audio"
-    audio.write_bytes(b"x")
-    for code in ("import os; os._exit(9)", "import os, signal; os.kill(os.getpid(), 9)"):
-        if code.startswith("import os, signal") and os.name == "nt":
-            continue
-        with pytest.raises(JobFailure) as failed:
-            await analyse(audio, max_seconds=60.0, argv=program(code))
-        assert failed.value.category == "analysis_failed"
-
-
-async def test_the_child_ends_itself_over_the_memory_limit(tmp_path: Path) -> None:
-    # The real child with a limit its own import already passes: its watchdog thread ends it.
-    audio = tmp_path / "mix.audio"
-    audio.write_bytes(kick_wav_bytes(60.0))
-    started = time.monotonic()
-    with pytest.raises(JobFailure) as failed:
-        await analyse(audio, max_seconds=360.0, max_rss=40 * 1024 * 1024)
-    assert failed.value.category == "analysis_failed"
-    assert time.monotonic() - started < 60
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="a launcher process stands before python")
-async def test_a_child_over_the_memory_limit_is_killed_by_the_parent(tmp_path: Path) -> None:
-    audio = tmp_path / "mix.audio"
-    audio.write_bytes(b"x")
-    hog = (
-        "import time\n"
-        "b = bytearray(600 * 1024 * 1024)\n"
-        "for i in range(0, len(b), 4096): b[i] = 1\n"
-        "time.sleep(60)\n"
-    )
-    started = time.monotonic()
-    with pytest.raises(JobFailure) as failed:
-        await analyse(audio, max_seconds=60.0, argv=program(hog), max_rss=200 * 1024 * 1024)
-    assert failed.value.category == "analysis_failed"
-    assert time.monotonic() - started < 30  # killed at the limit, not left to sleep
-
-
-async def test_a_child_over_the_time_limit_is_killed(tmp_path: Path) -> None:
-    audio = tmp_path / "mix.audio"
-    audio.write_bytes(b"x")
-    started = time.monotonic()
-    with pytest.raises(JobFailure) as failed:
-        await analyse(
-            audio,
-            max_seconds=60.0,
-            argv=program("import time; time.sleep(60)"),
-            timeout_seconds=0.5,
-        )
-    assert failed.value.category == "analysis_failed"
-    assert time.monotonic() - started < 20
-
-
-async def test_a_cancel_kills_the_child_at_the_next_checkpoint(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(mixanalysis, "CHECKPOINT_SECONDS", 0.2)
-    audio = tmp_path / "mix.audio"
-    audio.write_bytes(b"x")
-    pidfile = tmp_path / "pid"
-    code = f"import os, time; open({str(pidfile)!r}, 'w').write(str(os.getpid())); time.sleep(60)"
-    run = FakeRun()
-    run.stop = RunStopped("cancelled")
-    started = time.monotonic()
-    with pytest.raises(RunStopped):
-        await analyse(audio, run, max_seconds=60.0, argv=program(code))
-    assert time.monotonic() - started < 20
-    assert run.checkpoints >= 1
-    from classbeat.design.rss import process_rss
-
-    pid = int(pidfile.read_text())
-    deadline = time.monotonic() + 10
-    while process_rss(pid) is not None and time.monotonic() < deadline:
-        time.sleep(0.1)
-    assert process_rss(pid) is None  # the child is gone
-
-
-@pytest.mark.parametrize(
-    "code",
-    [
-        "print('not json')",
-        "print('[1, 2]')",
-        'print(\'{"map": {"version": 1}}\')',
-        "import sys; sys.stdout.write('x' * (5 * 1024 * 1024))",
-    ],
-)
-async def test_an_answer_that_is_not_a_valid_map_is_refused(tmp_path: Path, code: str) -> None:
-    audio = tmp_path / "mix.audio"
-    audio.write_bytes(b"x")
-    with pytest.raises(JobFailure) as failed:
-        await analyse(audio, max_seconds=60.0, argv=program(code))
-    assert failed.value.category == "analysis_failed"
-
-
-def test_the_child_gets_a_minimal_environment(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("CLASSBEAT_DATABASE_URL", "postgresql://secret")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
-    env = child_environment(tmp_path / "mix-x")
-    assert not any("SECRET" in k.upper() or "KEY" in k.upper() for k in env)
-    assert "secret" not in repr(env)
-    assert set(env) <= {
-        "PATH", "SYSTEMROOT", "NUMBA_CACHE_DIR", "NUMBA_NUM_THREADS", "OMP_NUM_THREADS",
-        "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "TMPDIR", "TEMP", "TMP",
-        "PYTHONDONTWRITEBYTECODE", "PYTHONUNBUFFERED",
-    }  # fmt: skip
-
-
-def good_map() -> dict[str, Any]:
-    return {
-        "version": music.MAP_VERSION,
-        "duration": 60.0,
-        "songs": [{"start": 0.0, "end": 60.0, "bpm": 124.0, "first_downbeat": 0.4}],
-        "events": [{"t": 10.0, "kind": "drop"}],
-    }
-
-
-def test_a_map_is_valid_only_with_the_current_version_and_the_fields_the_design_reads() -> None:
-    assert valid_map(good_map(), music.MAP_VERSION)
-    assert not valid_map(good_map(), music.MAP_VERSION + 1)
-    for broken in (
-        {**good_map(), "songs": []},
-        {**good_map(), "songs": [{"start": 0.0}]},
-        {
-            **good_map(),
-            "songs": [{"start": 0.0, "end": 1.0, "bpm": float("nan"), "first_downbeat": 0}],
-        },
-        {**good_map(), "events": [{"kind": "drop"}]},
-        {**good_map(), "events": "x"},
-        {**good_map(), "duration": 0},
-        {**good_map(), "duration": True},
-        {**good_map(), "events": [{"t": 1.0}] * (mixanalysis.MAX_EVENTS + 1)},
-        {**good_map(), "pad": "x" * (mixanalysis.MAX_MAP_BYTES + 1)},
-        [],
-        None,
-    ):
-        assert not valid_map(broken, music.MAP_VERSION)
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX modes")
+def test_a_work_root_others_can_enter_is_refused(temp: Path) -> None:
+    root = temp / mixfetch.ROOT_NAME
+    root.mkdir()
+    root.chmod(0o755)
+    with pytest.raises(mixfetch.UnsafeWorkRoot):
+        mixfetch.work_root()
+    (root / "mix-keep").mkdir()
+    assert mixfetch.sweep_work_root() == 0
+    root.chmod(0o700)
+    assert mixfetch.work_root() == root

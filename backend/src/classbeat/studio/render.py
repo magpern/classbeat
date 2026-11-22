@@ -4,7 +4,7 @@ The tracks are audio of external origin, so the decode, the cut and the encode n
 worker's own process: ``renderchild.py`` does, started by path in isolated mode, and a crash, an
 out-of-memory kill or a decoder bug ends only the child (``RenderFailed``).
 
-- **Limits** are those of ``design.mixanalysis``: the child confines itself before it opens a file
+- **Limits**: the child confines itself before it opens a file
   (system call filter required on Linux, Landlock when the kernel has it), the parent watches its
   resident memory (``MAX_RSS_BYTES``, 1 GiB) and a wall clock (``RENDER_SECONDS``), starts it in a
   process group it kills whole, makes itself non-dumpable first, and refuses a Linux answer that

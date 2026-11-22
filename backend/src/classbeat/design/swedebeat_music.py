@@ -11,7 +11,7 @@ kinds' ``admit`` and their run check the flag before calling it. After ``design.
 2. **The cache** (``mix_cache.cached``). One fenced transaction share-locks the connection
    (``hold``, the connection guard of ``design.music``) and reads the user's ``swedebeat_mix_maps``
    rows for the mix and their stored link. A row counts only if it is a ``spotdown`` one with
-   this build's provenance (a ``local`` row never does, #1353), younger than 30 days, made for
+   this build's provenance (the table holds no other, #1357), younger than 30 days, made for
    **this MOWL connection** (``mowl_connection_id``: the table has no foreign key to it, so this
    is compared there), names the link's MOWL playlist and has the library's current map version;
    a revise or refit (``prefer``) takes the row its base was designed on first. **A hit makes no
@@ -298,7 +298,7 @@ async def swedebeat_step(
             duration=analysis.duration,
             listed_duration=analysis.listed_duration,
             unsure_beat_one=tuple(unsure_beat_one(m)),
-            analyser="spotdown" if analysis.analyser == "spotdown" else None,
-            provenance=analysis.provenance if analysis.analyser == "spotdown" else None,
+            analyser=analysis.analyser,
+            provenance=analysis.provenance,
         ),
     )

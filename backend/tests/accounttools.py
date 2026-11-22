@@ -116,8 +116,8 @@ class Person:
         )
         self.sql(
             "INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, "
-            "name, duration, listed_duration, map) VALUES (:u, 'mix-1', gen_random_uuid(), 9001, "
-            "'A mix', 600, 600, '{}'::jsonb)",
+            "name, duration, listed_duration, map, analyser, provenance) VALUES (:u, 'mix-1', "
+            "gen_random_uuid(), 9001, 'A mix', 600, 600, '{}'::jsonb, 'spotdown', '{}'::jsonb)",
             u=u,
         )
         self.sql("INSERT INTO swedebeat_analyses (owner_id) VALUES (:u)", u=u)

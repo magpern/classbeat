@@ -1,7 +1,7 @@
 """#1353 (ADR 0040 section 8 and its amendment, item 4): **every failure kind ends a SwedeBeat mix
 analysis in its category**, from the same table as the studio tracks (``spotdownkinds``). Nothing
 is stored and nothing is left on disk; every ``Unreachable`` site logs
-``outage_policy.log_message``; the local analysis is never called; and a retried ending gives the
+``outage_policy.log_message``; there is no local fallback; and a retried ending gives the
 next attempt a fresh wait budget (a requeue that is not a retry keeps it).
 """
 
@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from classbeat.design import mix_spotdown, mixanalysis, track_spotdown
+from classbeat.design import mix_spotdown, track_spotdown
 from classbeat.spotdown import outage_policy, studio_tracks_config
 from classbeat.spotdown.studio_tracks_config import TracksConfig
 from mowlfake import FakeMowl
@@ -78,19 +78,11 @@ async def test_each_failure_kind_ends_the_mix_in_its_category(
     assert NAME not in caplog.text  # no mix name in what is logged
 
 
-async def test_the_local_analysis_is_never_called_from_the_mix_path(
+async def test_there_is_no_local_fallback_on_the_mix_path(
     harness: PreferHarness,
     spotdown: FakeSpotdown,
     mowl_api: Any,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[str] = []
-
-    async def local(*_args: object, **_kwargs: object) -> Any:
-        calls.append("analyse_audio")
-        raise AssertionError("the local analysis was called")
-
-    monkeypatch.setattr(mixanalysis, "analyse_audio", local)
     owner, connection = await on_mix(harness, mowl_api)
     row = await harness.run(owner, connection, add_beats(mowl_api, NAME))
     assert (row.state, row.error_category) == ("completed", None)
@@ -98,4 +90,3 @@ async def test_the_local_analysis_is_never_called_from_the_mix_path(
     other, other_connection = await on_mix(harness, mowl_api, TOKEN_B)
     failed = await harness.run(other, other_connection, add_beats(mowl_api, NAME, token=TOKEN_B))
     assert failed.error_category == "analysis_unavailable"
-    assert calls == []

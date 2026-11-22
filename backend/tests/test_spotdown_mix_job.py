@@ -516,25 +516,6 @@ async def test_a_lost_lease_while_waiting_stops_the_run_and_stores_nothing(
 # --- rows per analyser: a class keeps the analysis it was designed on ---------------------------
 
 
-async def test_a_local_row_is_no_hit_and_is_left_beside_the_spotdown_row(
-    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl
-) -> None:
-    """A ``local`` row (stored before #1353) is analysed again by spotdown, and kept."""
-    owner, connection = await on_mix(harness, mowl_api)
-    mix = add_beats(mowl_api, NAME)
-    await harness.run(owner, connection, mix)
-    harness.ops.sql(
-        "UPDATE swedebeat_mix_maps SET analyser = 'local', provenance = NULL WHERE owner_id = :o",
-        o=owner,
-    )
-    fetches = len(harness.media.requests)
-    row = await harness.run(owner, connection, mix)
-    assert (row.state, row.error_category) == ("completed", None)
-    assert (harness.results[-1].analyser, harness.results[-1].cached) == ("spotdown", False)
-    assert len(harness.media.requests) == fetches + 1  # a miss: fetched again
-    assert sorted(r.analyser for r in rows(harness, owner)) == ["local", "spotdown"]
-
-
 async def test_a_spotdown_row_of_other_policy_versions_is_analysed_again(
     harness: PreferHarness,
     spotdown: FakeSpotdown,
@@ -555,29 +536,30 @@ async def test_a_spotdown_row_of_other_policy_versions_is_analysed_again(
     assert stored.provenance["policy_versions"] == dict(stale)
 
 
-async def test_prefer_reads_the_row_the_base_was_designed_on_and_never_a_local_one(
-    harness: PreferHarness, spotdown: FakeSpotdown, mowl_api: FakeMowl
+async def test_prefer_reads_the_row_the_base_was_designed_on_even_when_its_policy_is_old(
+    harness: PreferHarness,
+    spotdown: FakeSpotdown,
+    mowl_api: FakeMowl,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A revise names the fingerprint of its base's analysis: that row is a hit although this
+    build's provenance has moved on; without it (or with another) the row is no hit (#1357: one
+    row per mix, spotdown's)."""
     owner, connection = await on_mix(harness, mowl_api)
     mix = add_beats(mowl_api, NAME)
-    await harness.run(owner, connection, mix)  # the spotdown row
+    await harness.run(owner, connection, mix)
     designed_on = harness.results[-1].fingerprint
-    # A local row of another map beside it (what a pre-#1353 job stored).
-    harness.ops.sql(
-        "INSERT INTO swedebeat_mix_maps (owner_id, mowl_connection_id, mix_id, playlist_id, "
-        "name, duration, listed_duration, map, analyser, created_at) "
-        "SELECT owner_id, mowl_connection_id, mix_id, playlist_id, name, duration, "
-        "listed_duration, jsonb_set(map, '{songs,0,bpm}', '100'), 'local', "
-        "created_at - interval '1 minute' FROM swedebeat_mix_maps WHERE owner_id = :o",
-        o=owner,
-    )
+    stale = (*mix_map_model.MIX_POLICY_VERSIONS[:-1], ("mix_map_policy", "0"))
+    monkeypatch.setattr(mix_map_model, "MIX_POLICY_VERSIONS", stale)
     calls, fetches = len(spotdown.seen), len(harness.media.requests)
-    for prefer in (designed_on, None, "f" * 64):
-        harness.prefer = prefer
-        await harness.run(owner, connection, mix)
-        got = harness.results[-1]
-        assert (got.analyser, got.cached, got.fingerprint) == ("spotdown", True, designed_on)
+    harness.prefer = designed_on
+    await harness.run(owner, connection, mix)
+    got = harness.results[-1]
+    assert (got.analyser, got.cached, got.fingerprint) == ("spotdown", True, designed_on)
     assert (len(spotdown.seen), len(harness.media.requests)) == (calls, fetches)
+    harness.prefer = "f" * 64  # another base: the old row is no hit (and is replaced by a new one)
+    await harness.run(owner, connection, mix)
+    assert harness.results[-1].cached is False
 
 
 async def test_account_deletion_deletes_the_owners_scope_in_spotdown(
