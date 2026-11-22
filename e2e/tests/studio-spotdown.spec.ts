@@ -3,7 +3,7 @@ import { fakePlaylists, sql } from './song-helpers'
 import { resetSpotify } from './spotify-helpers'
 import { resetSpotdown, spotdownCount } from './spotdown-helpers'
 import { syncState, untilJob } from './studio-helpers'
-import { LONG, designOnSpotdown, mapAnalysers, mapCount, newStudioUser, outputStates } from './studio-flow-helpers'
+import { LONG, designOnSpotdown, distinctAudio, mapAnalysers, mapCount, newStudioUser, outputStates } from './studio-flow-helpers'
 import { gatewayRequests, resetSwedebeat } from './swedebeat-helpers'
 
 // The studio and the DJ mix on spotdown's maps (ADR 0040 amendment "spotdown is the only analysis
@@ -50,9 +50,11 @@ test('whole songs by default: the design runs on spotdown maps and no mix is mad
   expect(mapCount(owner)).toBe(8)
   expect(mapAnalysers(owner)).toBe('spotdown')
   // Independent of the column: the fake spotdown was reset empty and nothing was seeded, so each
-  // of the stored maps must be backed by an analysis the fake received. A map made locally (and
-  // merely labelled `spotdown`) would leave fewer analyses than maps.
-  expect(spotdownCount('POST', '/v2/analyses')).toBeGreaterThanOrEqual(mapCount(owner))
+  // distinct audio file (sha256) behind a stored map must have been analysed by the fake. The fake
+  // gateway serves one file for every track, so later tracks reuse the first map (one analysis, 8
+  // maps); a map made locally would leave fewer analyses than distinct audio, or none at all.
+  expect(distinctAudio(owner)).toBeGreaterThanOrEqual(1)
+  expect(spotdownCount('POST', '/v2/analyses')).toBeGreaterThanOrEqual(distinctAudio(owner))
 
   await page.goto(`/classes/${classId}`)
   await expect(page.getByRole('heading', { name: 'Music timeline' })).toBeVisible(LONG)

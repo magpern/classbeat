@@ -54,6 +54,13 @@ export function mapCount(owner: string): number {
   return Number(sql(`SELECT count(*) FROM swedebeat_track_maps WHERE owner_id = '${owner}'`))
 }
 
+/** How many distinct audio files (sha256) the user's stored maps were made from. The fake gateway
+ * serves the same bytes for every track, so this can be less than `mapCount`: a track whose bytes
+ * the user already has a map for reuses it without asking spotdown again. */
+export function distinctAudio(owner: string): number {
+  return Number(sql(`SELECT count(DISTINCT sha256) FROM swedebeat_track_maps WHERE owner_id = '${owner}'`))
+}
+
 /** The outputs of a class as `output:state`, sorted. */
 export function outputStates(owner: string): string {
   return sql(`SELECT string_agg(output || ':' || state, ',' ORDER BY output) FROM class_outputs WHERE owner_id = '${owner}'`)
