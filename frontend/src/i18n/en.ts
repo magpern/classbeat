@@ -2248,6 +2248,10 @@ export const en = {
     'This is no longer the class’s current version. Reload the page.',
   'studio.reason.mowl_needs_mix':
     'A MOWL workout needs the mix. Choose the mix too.',
+  'studio.reason.mix_not_chosen':
+    'This class is mixed (cuts or crossfades), so the SwedeBeat playlist alone would not play it as designed. Choose DJ mix too, or apply whole songs first.',
+  'studio.reason.mix_not_applied':
+    'This version is not the form you chose for the music. Apply your choices again, then approve the new version.',
   'studio.reason.playlist_has_repeats':
     'This class repeats a song, so it can be produced as a mix only. Choose the mix instead of the SwedeBeat playlist.',
   'studio.reason.output_off':

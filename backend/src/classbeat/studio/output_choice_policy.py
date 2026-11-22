@@ -4,12 +4,19 @@ The outputs are ``spotify_playlist`` (the final Spotify playlist), ``swedebeat_p
 ``swedebeat_mix`` and ``mowl``, always kept in that order (``canonical``), each at most once.
 
 ``refusal`` is the one check of a choice, against the outputs this environment has on
-(``enabled``) and whether the draft's mix spec repeats a song (``repeats``,
-``mix_repeat_calc.has_repeats`` of its references), with one named reason, in this order:
+(``enabled``) and three facts of the draft's stored, hash-checked mix spec: whether it repeats a
+song (``repeats``, ``mix_repeat_calc.has_repeats`` of its references), whether it is not whole
+songs (``mixed``) and whether it is the applied form of its proposal (``applied_form``; both
+``mix_applied_policy``, ADR 0036 amendment B9), with one named reason, in this order:
 
 - ``invalid_input``: no output, an unknown one or one named twice;
 - ``mowl_needs_mix``: ``mowl`` without ``swedebeat_mix`` (the MOWL workout attaches the mix). The
   SwedeBeat playlist needs no render and no MOWL, and the mix does not need the playlist;
+- ``mix_not_chosen``: ``swedebeat_playlist`` without ``swedebeat_mix`` for a mixed draft (B9:
+  nothing is mixed unless the user chose DJ mix);
+- ``mix_not_applied``: a SwedeBeat output (``SWEDEBEAT``) for a draft that is not
+  ``applied_form`` (B9: B5 and B6 hold for every draft approved for one, never only through the
+  screen). A Spotify playlist alone is admitted from any draft (whole songs by nature, A8);
 - ``playlist_has_repeats``: ``swedebeat_playlist`` for a draft whose spec plays a song in more than
   one piece (ADR 0036 amendment A8: such a class is mix-only until the owner's live check A9 shows
   the gateway and the app accept one track twice with distinct cuts);
@@ -36,6 +43,8 @@ STUDIO_VALUES: Final = frozenset({"swedebeat_playlist", "swedebeat_mix", "mowl"}
 # The outputs that need the one render of the mix (section 6): only the mix itself. MOWL attaches
 # that same render; the playlists need none.
 RENDERED: Final = frozenset({"swedebeat_mix"})
+# The outputs written to SwedeBeat: only an applied form may bind them (B9; ``mowl`` needs the mix).
+SWEDEBEAT: Final = frozenset({"swedebeat_playlist", "swedebeat_mix"})
 
 
 def canonical(chosen: Iterable[str]) -> tuple[str, ...]:
@@ -56,7 +65,14 @@ def enabled_outputs(studio_values: Collection[str], *, spotify_on: bool) -> froz
     return frozenset(on)
 
 
-def refusal(chosen: Collection[str], enabled: Collection[str], *, repeats: bool) -> str | None:
+def refusal(
+    chosen: Collection[str],
+    enabled: Collection[str],
+    *,
+    repeats: bool,
+    mixed: bool,
+    applied_form: bool,
+) -> str | None:
     """The reason ``chosen`` is refused, or None (see the module docstring)."""
     try:
         outputs = canonical(chosen)
@@ -66,6 +82,10 @@ def refusal(chosen: Collection[str], enabled: Collection[str], *, repeats: bool)
         return "invalid_input"
     if "mowl" in outputs and "swedebeat_mix" not in outputs:
         return "mowl_needs_mix"
+    if mixed and "swedebeat_playlist" in outputs and "swedebeat_mix" not in outputs:
+        return "mix_not_chosen"
+    if not applied_form and any(o in SWEDEBEAT for o in outputs):
+        return "mix_not_applied"
     if repeats and "swedebeat_playlist" in outputs:
         return "playlist_has_repeats"
     if any(o not in enabled for o in outputs):

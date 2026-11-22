@@ -43,6 +43,9 @@ MIX_8 = {
     "tracks": [{"track": n, "start_sec": 0, "end_sec": LENGTH} for n in (1, 0, 2, 3, 4, 5, 6, 7)],
     "crossfades": [8] * 7,
 }
+# MIX_8 as whole songs, every crossfade 0: the only form a SwedeBeat playlist without DJ mix may
+# bind (ADR 0036 amendment B9, ``mix_not_chosen``).
+WHOLE_8 = {**MIX_8, "crossfades": [0] * 7}
 
 
 def design_script(mix: dict[str, Any], *, note: str | None = None) -> dict[str, Any]:
@@ -147,9 +150,11 @@ def ledger_rows(studio: StudioEnv, owner: UUID) -> int:
     ).scalar_one()
 
 
-async def designed(studio: StudioEnv) -> tuple[StudioRider, UUID, UUID, Any]:
+async def designed(
+    studio: StudioEnv, mix: dict[str, Any] = MIX_8
+) -> tuple[StudioRider, UUID, UUID, Any]:
     rider, class_id, list_id = await approved(studio)
-    studio.songs.script = design_script(MIX_8)
+    studio.songs.script = design_script(mix)
     response = await start_design(rider, class_id, list_id)
     assert response.status_code == 201, response.text
     assert response.json()["kind"] == "studio_design"

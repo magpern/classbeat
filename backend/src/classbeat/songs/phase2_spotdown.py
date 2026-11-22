@@ -7,8 +7,7 @@ The match (stage A) and the analysis with its refinement (stage B) ran in phase 
 was stored and approved; this stage calls neither again (the approved list is fixed) and reads only
 what stage B recorded in the list's provenance (``spotdown_analysis``).
 
-For a list that went through the stages (its provenance has the record), **every song** of the
-list, in order:
+For **every song** of the list, in order:
 
 1. has a recorded entry (``song_sections_calc.recorded``): a song without one is
    ``analysis_failed`` (a designed track always has a stamp);
@@ -24,13 +23,17 @@ list, in order:
 reason, its fixed line logged), or a ``rate_limited`` read (phase 2 never waits) ->
 ``analysis_unavailable``; a recorded analysis that is gone, or does not verify, map or stay
 ``approximate`` -> ``analysis_failed``. There is no fallback to MOWL's sections and no error is
-swallowed. A list **without** the record (an own-playlist list, ``classbeat.songs.from_playlist``,
-which runs no stage A or B yet) is given back as it is. Only counts and codes are logged: never a
-title, an id, a source or a key.
+swallowed. **Always strict** (#1386): a list without the record, or with a song it does not
+mark, is ``analysis_failed``; every list that reaches a design runs stages A and B first (a pick,
+``pick``; an own playlist, ``playlist_spotdown``; the composer, ``composer_spotdown``). Only
+counts and codes are logged: never a title, an id, a source or a key.
+
+``listed_music`` is the same stage for the songs of a list that is not stored yet: the composer's
+preview design (``composer_design.songs_music``), on its list's provenance.
 """
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from classbeat.agent.model_input import MusicData
@@ -42,7 +45,6 @@ from classbeat.spotdown import outage_policy, song_match_config
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.failure_policy import TrackFailure, Unreachable
 from classbeat.spotdown.provenance_read_calc import source_kind
-from classbeat.spotdown.song_analysis_record_model import KEY
 from classbeat.spotdown.song_sections_calc import Recorded, apply_track, recorded, verified
 from classbeat.spotdown.spotdown_map_policy import MapRefused, reference_sections
 
@@ -76,10 +78,10 @@ async def _track(
 
 
 async def _with_spotdown(
-    run: JobRun, stored: SongListRevision, analysis: Mapping[str, Any]
+    run: JobRun, ids: Sequence[str], provenance: Mapping[str, Any], analysis: Mapping[str, Any]
 ) -> dict[str, Any]:
     """The analysis with spotdown's sections for every song of the list."""
-    ids, by_position = stored.track_ids, {r.position: r for r in recorded(stored.provenance)}
+    by_position = {r.position: r for r in recorded(provenance)}
     client = SpotdownClient(song_match_config.current().sources)
     m = analysis["map"]
     for position, spotify_id in enumerate(ids):
@@ -91,15 +93,22 @@ async def _with_spotdown(
     return {**analysis, "map": m}
 
 
-async def spotdown_music(run: JobRun, stored: SongListRevision, step: MusicStep) -> MusicStep:
-    """``step`` on spotdown's sections for every song, or ``JobFailure`` (module docstring). The
-    caller closes ``step`` when this raises."""
-    if KEY not in stored.provenance:
-        return step  # an own-playlist list: no stage ran (module docstring)
-    analysis = await _with_spotdown(run, stored, step.data.analysis)
+async def listed_music(
+    run: JobRun, ids: Sequence[str], provenance: Mapping[str, Any], step: MusicStep
+) -> MusicStep:
+    """``step`` on spotdown's sections for every song ``ids`` lists (in order), from the record in
+    ``provenance``, or ``JobFailure`` (module docstring). The caller closes ``step`` when this
+    raises. A list with no song is ``internal``: every designed list has one."""
+    if not ids:
+        raise JobFailure(outage_policy.INTERNAL)
+    analysis = await _with_spotdown(run, ids, provenance, step.data.analysis)
     logger.info(
-        "spotdown song sections",
-        extra={"job_id": str(run.lease.job_id), "songs": len(stored.track_ids)},
+        "spotdown song sections", extra={"job_id": str(run.lease.job_id), "songs": len(ids)}
     )
     step.data = MusicData(analysis, step.data.playlist_id, step.data.unavailable)
     return step
+
+
+async def spotdown_music(run: JobRun, stored: SongListRevision, step: MusicStep) -> MusicStep:
+    """``step`` on spotdown's sections for every song of the stored list (``listed_music``)."""
+    return await listed_music(run, stored.track_ids, stored.provenance, step)

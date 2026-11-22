@@ -1,4 +1,4 @@
-"""Migration 0071 (#1394, ADR 0042 section 6.5): the audition's tables and the ``preview_render``
+"""Migration 0072 (#1394, ADR 0042 section 6.5): the audition's tables and the ``preview_render``
 job's shape. Each constraint is shown to refuse what it must and to admit the allowed shape."""
 
 import secrets
@@ -132,7 +132,7 @@ def test_a_source_is_one_per_class_and_reference(admin: Connection) -> None:
         admin.execute(_SOURCE, {**row, "r": "trk_2", "b": 60 * 1024 * 1024 + 1})
 
 
-def test_0071_up_and_down(
+def test_0072_up_and_down(
     owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The downgrade deletes the ``preview_render`` jobs (the old check refuses them) and drops the
@@ -147,7 +147,7 @@ def test_0071_up_and_down(
             class_id = new_class(conn, owner)
             _job(conn, owner, "preview_render", None, class_id)
             _session(conn, owner, class_id)
-        command.downgrade(config, "0070_spotify_granted_scopes")
+        command.downgrade(config, "0071_mix_not_applied")
         with engine.connect() as conn:
             kinds = conn.execute(text("SELECT kind FROM jobs WHERE owner_id = :o"), {"o": owner})
             assert list(kinds.scalars()) == []

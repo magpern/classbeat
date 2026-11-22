@@ -28,14 +28,16 @@ from classbeat.design import track_spotdown
 from classbeat.design.studio_revision_model import map_hash
 from classbeat.spotdown import studio_tracks_config
 from ctx import make_context
+from songtools import new_key
 from spotdownfake import FakeSpotdown, spotdown
 from studiomaps import track_map
-from studiooutputs import outputs_on, produce
+from studiooutputs import choice, outputs_on, produce
 from studiotools import StudioEnv
 from test_spotdown_studio_design import ON, no_pause, spotdown_maps
 from test_swedebeat_studio_design import (
     LENGTH,
     MIX_8,
+    WHOLE_8,
     analysed,
     design_script,
     designed,
@@ -98,9 +100,9 @@ def on_spotdown(spotdown_maps: FakeSpotdown) -> Iterator[FakeSpotdown]:
 
 
 async def designed_on_spotdown(
-    studio: StudioEnv, analysed: list[str], cache: str
+    studio: StudioEnv, analysed: list[str], cache: str, mix: dict[str, Any] = MIX_8
 ) -> tuple[Any, UUID, Any]:
-    rider, class_id, _list, current = await designed(studio)
+    rider, class_id, _list, current = await designed(studio, mix)
     records = studio.songs.revision(current.current_revision_id).music["analyses"]
     assert {r["analyser"] for r in records} == {"spotdown"}
     analysed.clear()
@@ -145,12 +147,21 @@ async def test_a_revise_reads_only_the_recorded_row(
 async def test_the_outputs_read_only_the_recorded_row(
     studio: StudioEnv, analysed: list[str], cache: str
 ) -> None:
-    rider, class_id, current = await designed_on_spotdown(studio, analysed, cache)
-    done = await produce(studio, rider, class_id, current, "swedebeat_playlist")
+    rider, class_id, current = await designed_on_spotdown(studio, analysed, cache, WHOLE_8)
     if cache == "kept":
+        done = await produce(studio, rider, class_id, current, "swedebeat_playlist")
         assert (done.state, done.error_category) == ("completed", None)
     else:
-        assert (done.state, done.error_category) == ("failed", "music_changed")
+        # B9 (#1370): without the recorded analyses the draft cannot be shown to be whole songs
+        # (``mixed``) or the applied form of its proposal, so the choice is refused before any
+        # job (fail closed); with the playlist alone the first reason is ``mix_not_chosen``.
+        answer = await rider.browser.post(
+            f"/api/classes/{class_id}/outputs",
+            choice(current, studio, "swedebeat_playlist"),
+            {"Idempotency-Key": new_key()},
+        )
+        assert answer.status_code == 409, answer.text
+        assert answer.json()["detail"]["reason"] == "mix_not_chosen"
         assert studio.gateway.playlists == {}  # nothing written
     assert analysed == []
 

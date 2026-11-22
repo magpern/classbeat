@@ -28,6 +28,7 @@ from studiooutputs import act, operations, outputs_on, produce, sent, view  # no
 from studiotools import StudioEnv, StudioRider
 from test_studio_produce_playlist import SHARED, Publish, on_publish, published
 from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage]
+    WHOLE_8,
     analysed,  # noqa: F401 - the autouse stand-in of the sandboxed child
     designed,
     spotdown,  # noqa: F401 - the fake spotdown that stand-in answers from
@@ -59,7 +60,7 @@ async def in_doubt(
     """A designed class whose publish is in doubt (a 502 after the request, the job's own check
     reading nothing). ``takes_effect``: the gateway published it anyway. ``connected``: the
     approval ran after a real connect (its account on record), else on a row without one."""
-    rider, class_id, _, current = await designed(studio)
+    rider, class_id, _, current = await designed(studio, WHOLE_8)
     fake = studio.gateway
     if connected:
         await connect(studio, rider)

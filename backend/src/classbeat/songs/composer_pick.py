@@ -8,12 +8,14 @@
    ``MAX_POOL`` in all; model picks are dropped from the end first): a favoured or pinned song is
    always a candidate, whatever the model did, except a song a swap takes out, which is never one
    (``candidate_set``: the one set the write, the analysis and the choice use).
-2. **pool_write** and **pool_analyse**: as a pick's (``pick``'s ``_write`` and the music step).
+2. spotdown's stage A on that set (``composer_spotdown``; #1386), then **pool_write** and
+   **pool_analyse** of the matched candidates, as a pick's.
 3. **choose**: the ``choose_songs`` stage. A fill with pinned songs is a replace-mode choice: the
    pinned songs, analysed, are kept at their slots (``composer_slots_policy.pin_slots``) and the
    other slots are filled from the pool; a pinned song MOWL could not analyse is Not as asked
    ``pinned_not_found``. A swap is the replace of the waiting list's slots (``seed``). Then the
-   favoured tracks are preferred where they fit (``favoured_policy``).
+   favoured tracks are preferred where they fit (``favoured_policy``), and spotdown's stage B
+   analyses and refines the list (``composer_spotdown``; a pinned song is never replaced).
 
 Nothing here stores anything: the caller designs on the chosen songs and stores the list.
 """
@@ -48,11 +50,13 @@ from classbeat.connections import OpenConnection
 from classbeat.crypto.keks import KeyRing
 from classbeat.design.music import MusicStep, load_music
 from classbeat.jobs import JobFailure, JobRun
-from classbeat.songs.composer_sources import PINNED_NOT_FOUND, Favoured, Pinned
+from classbeat.songs.composer_sources import PINNED_NOT_FOUND, Favoured, Pinned, sources_of
+from classbeat.songs.composer_spotdown import analysed_choice, matched_candidates
 from classbeat.songs.config import SongConfig
 from classbeat.songs.favoured_policy import prefer_favoured
 from classbeat.songs.inputs import DesignWithSongsInput
 from classbeat.songs.pick import stage_config, write_pool_playlist
+from classbeat.songs.pick_match import MatchedPool
 from classbeat.songs.search import job_searcher
 from classbeat.songs.song_list import MAX_UNMET, SongSource
 
@@ -65,26 +69,6 @@ class Picked:
     provenance: dict[str, Any]
     unmet: tuple[InterpretationItem, ...]
     sources: dict[str, SongSource] = field(default_factory=dict[str, SongSource])
-
-
-def sources_of(
-    chosen: ChosenList, favoured: Favoured, pinned: Pinned, kept: dict[str, SongSource]
-) -> dict[str, SongSource]:
-    """Each chosen song's source: kept from the earlier list, pinned, an attached playlist's, or
-    found by search."""
-    pins = {e.spotify_id for _, e in pinned.found}
-    out: dict[str, SongSource] = {}
-    for song in chosen.songs:
-        tid = song.spotify_id
-        if tid in kept:
-            out[tid] = kept[tid]
-        elif tid in pins:
-            out[tid] = SongSource(kind="pinned")
-        elif tid in favoured.playlist_of:
-            out[tid] = SongSource(kind="playlist", playlist=favoured.playlist_of[tid])
-        else:
-            out[tid] = SongSource(kind="search")
-    return out
 
 
 def pool_message(
@@ -164,7 +148,8 @@ async def pick_composer(
     pool_config = stage_config(
         agent, config, turns=pool_module.MAX_TURNS, calls=pool_module.MAX_TOOL_CALLS
     )
-    ctx = PoolContext(plan, registry, job_searcher(run, keyring, spotify))
+    searcher = job_searcher(run, keyring, spotify)
+    ctx = PoolContext(plan, registry, searcher)
     pool_outcome = await run_stage(
         JobStageHost(run, "pool_search"),
         provider,
@@ -176,7 +161,9 @@ async def pick_composer(
         raise JobFailure("internal")
     pin_roles = {e.ref: slots[pin_slots[i]] for i, e in pinned.found if i in pin_slots}
     picks = candidate_set(pool_outcome.output, favoured, pinned, pin_roles, excluded)
-    track_ids = tuple(p.spotify_id for p in picks)
+    stage = (provider, searcher, pool_config)  # SD-P6 stage A, #1386: always, no fallback
+    matched = await matched_candidates(run, plan, picks, registry, stage, excluded)
+    track_ids = tuple(p.spotify_id for p in matched.eligible)
     playlist_id = await write_pool_playlist(run, keyring, spotify, given, track_ids)
     await run.stage("pool_analyse")
     step = await load_music(
@@ -191,7 +178,7 @@ async def pick_composer(
         return await _choose(
             run,
             plan,
-            picks,
+            matched,
             step,
             pin_slots,
             slots,
@@ -211,7 +198,7 @@ async def pick_composer(
 async def _choose(
     run: JobRun,
     plan: PickPlan,
-    picks: tuple[PoolPick, ...],
+    matched: MatchedPool,
     step: MusicStep,
     pin_slots: dict[int, int],
     slots: list[str],
@@ -223,7 +210,7 @@ async def _choose(
     config: SongConfig,
     excluded: frozenset[str],
 ) -> Picked:
-    analysis_map = step.data.analysis["map"]
+    analysis_map, picks = step.data.analysis["map"], matched.eligible
     wanted = [(p.spotify_id, p.role) for p in picks]
     tracks, omitted = analysed_pool(analysis_map, wanted, {p.spotify_id: p.cover for p in picks})
     by_id = {t.spotify_id: t for t in tracks}
@@ -280,12 +267,15 @@ async def _choose(
     # ``tracks`` come from ``candidate_set`` and hold no excluded song; ``excluded`` here is
     # defence in depth.
     chosen = prefer_favoured(outcome.output, tracks, favourite_ids, fixed, excluded)
+    pins = frozenset(k.slot for k in kept)  # SD-P6 stage B (#1386): analysed, never replaced
+    chosen, records = await analysed_choice(run, matched, analysis_map, chosen, pins)
     made = provenance(
-        [pool_outcome, outcome],
+        [pool_outcome, *matched.runs, outcome],
         analysis_map,
         origin="design_with_songs",
         schema_version=SONG_SCHEMA_VERSION,
     )
     unmet += list_unmet(plan.brief.music_taste, picks, chosen)
     sources = sources_of(chosen, favoured, pinned, {})
-    return Picked(chosen, made.model_dump(mode="json"), tuple(unmet[:MAX_UNMET]), sources)
+    made_by = {**made.model_dump(mode="json"), **records}
+    return Picked(chosen, made_by, tuple(unmet[:MAX_UNMET]), sources)

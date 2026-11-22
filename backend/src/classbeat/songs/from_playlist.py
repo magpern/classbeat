@@ -13,7 +13,12 @@ and choice with the playlist itself, and hands over to the pick's own wait and p
 3. the ``song_list`` revision from that analysis in the playlist's order
    (``playlist_list_policy.chosen_list``; ``invalid_input`` when no track is usable or there are
    more than 40), for the connected Spotify account and both connection generations;
-4. ``pick.await_approval``: the same final fenced transaction (Spotify held, the MOWL link still
+4. spotdown's stages A and B on every song of that list (``playlist_spotdown``; ADR 0040
+   amendment "spotdown is the only analysis path", #1386): a song spotdown cannot match or time
+   has no spare and ends the job ``analysis_failed``; spotdown unreachable is
+   ``analysis_unavailable``. The records go into the list's provenance, so phase 2 designs every
+   song on spotdown's sections (stage D), never on MOWL's;
+5. ``pick.await_approval``: the same final fenced transaction (Spotify held, the MOWL link still
    current, the revision and its hash) and the same ``waiting_for_approval``.
 
 No model runs here (the song stages' cost is 0). After Approve, phase 2 (``classbeat.songs.phase2``)
@@ -33,6 +38,8 @@ from classbeat.playlists import open_spotify
 from classbeat.songs import playlist_list_policy, song_list
 from classbeat.songs.inputs import DesignWithSongsInput
 from classbeat.songs.pick import await_approval, generations
+from classbeat.songs.playlist_spotdown import playlist_spotdown
+from classbeat.spotdown.song_analysis_record_model import timing_marks
 
 logger = logging.getLogger(__name__)
 
@@ -75,11 +82,13 @@ async def run_source_phase_one(
         )
         if chosen is None:
             raise JobFailure("invalid_input")
+        records = await playlist_spotdown(run, chosen, analysis_map)  # stages A and B, #1386
         built = song_list.build(
             chosen,
             account=account,
-            provenance=_provenance(analysis_map),
+            provenance={**_provenance(analysis_map), **records},
             generations=generations(spotify, step),
+            approximate=frozenset(p for p, _, _ in timing_marks(records)),
         )
     except BaseException:
         step.close()

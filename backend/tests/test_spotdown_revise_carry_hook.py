@@ -2,9 +2,10 @@
 network (a stand-in run and fenced session; stage D's ``World`` on the fake spotdown for the music).
 Nothing here is swallowed: there is no fallback to MOWL's sections.
 
-- ``design.spotdown_base.base_sections``: a base with no field is ``None`` (a base made without the
-  stages), a field that does not parse is ``internal``, an error of any type in each call (the
-  fence, the query, its result) propagates;
+- ``design.spotdown_base.base_sections``: a base on a song list with no field is
+  ``music_changed`` (#1386), a mix base is ``None`` and reads nothing, a ``design_draft`` base
+  (no list) is ``None``, a row or a field that does not parse is ``internal``, an error of any
+  type in each call (the fence, the query, its result) propagates;
 - ``songs.spotdown_carry.carried_music``: the list gone, other music than the list's, or a base that
   had only some tracks on spotdown is ``music_changed``; every track of the list is read again;
   what ``spotdown_music`` ends in passes; an error of any type in each call propagates;
@@ -42,6 +43,7 @@ __all__ = ["spotdown"]  # the fixture
 
 LIST = uuid4()
 FIELD = {"song_list_id": str(LIST), "tracks": [0, 2]}
+MUSIC = {"source": "mowl_spotify_playlist", "song_list_id": str(LIST), "spotdown": FIELD}
 
 
 class Result:
@@ -102,21 +104,48 @@ def on(spotdown: FakeSpotdown) -> Any:  # the fake installs spotdown
 
 @pytest.mark.usefixtures("on")
 async def test_the_base_field_is_read_through_the_jobs_class() -> None:
-    run = Run(FIELD)
-    got = await spotdown_base.base_sections(run, LIST)  # pyright: ignore[reportArgumentType]
+    run = Run(MUSIC)
+    got = await spotdown_base.base_sections(run, LIST, mix=False)  # pyright: ignore[reportArgumentType]
     assert got == SpotdownSections(song_list_id=LIST, tracks=[0, 2])
     [params] = run.db.asked
     assert params == {"base": LIST, "job_id": run.lease.job_id, "owner_id": OWNER}
 
 
-async def test_a_base_without_the_field_is_none() -> None:
-    assert await spotdown_base.base_sections(Run(None), LIST) is None  # pyright: ignore[reportArgumentType]
+@pytest.mark.parametrize("spotdown", [None, "absent"])
+async def test_a_base_on_a_song_list_without_the_field_is_music_changed(spotdown: Any) -> None:
+    """#1386: no "today's music" for a base designed on a list (never MOWL's sections)."""
+    music = {k: v for k, v in MUSIC.items() if k != "spotdown"}
+    if spotdown is None:
+        music["spotdown"] = None
+    with pytest.raises(JobFailure) as raised:
+        await spotdown_base.base_sections(Run(music), LIST, mix=False)  # pyright: ignore[reportArgumentType]
+    assert raised.value.category == "music_changed"
+
+
+async def test_a_design_draft_base_with_no_song_list_is_none() -> None:
+    """A ``design_draft`` on the user's MOWL playlist has no list (outside #1386)."""
+    music = {"source": "mowl_spotify_playlist", "link_id": "x", "fingerprint": "f"}
+    assert await spotdown_base.base_sections(Run(music), LIST, mix=False) is None  # pyright: ignore[reportArgumentType]
+
+
+@pytest.mark.parametrize("value", [None, "x", 3, [MUSIC]])
+async def test_a_base_row_that_is_not_music_is_internal(value: Any) -> None:
+    with pytest.raises(JobFailure) as raised:
+        await spotdown_base.base_sections(Run(value), LIST, mix=False)  # pyright: ignore[reportArgumentType]
+    assert raised.value.category == "internal"
+
+
+@pytest.mark.parametrize("value", [None, MUSIC])
+async def test_a_mix_base_is_none_and_reads_nothing(value: Any) -> None:
+    run = Run(value)
+    assert await spotdown_base.base_sections(run, LIST, mix=True) is None  # pyright: ignore[reportArgumentType]
+    assert run.db.asked == []  # a mix's own path reads spotdown, never a carry
 
 
 @pytest.mark.parametrize("value", [{"tracks": [0]}, {**FIELD, "tracks": [2, 0]}, "x", 3])
 async def test_a_field_that_does_not_parse_is_internal(value: Any) -> None:
     with pytest.raises(JobFailure) as raised:
-        await spotdown_base.base_sections(Run(value), LIST)  # pyright: ignore[reportArgumentType]
+        await spotdown_base.base_sections(Run({**MUSIC, "spotdown": value}), LIST, mix=False)  # pyright: ignore[reportArgumentType]
     assert raised.value.category == "internal"
 
 
@@ -138,10 +167,10 @@ BASE_TARGETS = ("fenced", "execute", "result")
 async def test_an_error_of_any_type_in_each_base_call_propagates(
     monkeypatch: pytest.MonkeyPatch, target: str, error: type[Exception]
 ) -> None:
-    run = Run(FIELD)
+    run = Run(MUSIC)
     _base_targets(monkeypatch, run)[target](error("injected secret"))
     with pytest.raises(error):
-        await spotdown_base.base_sections(run, LIST)  # pyright: ignore[reportArgumentType]
+        await spotdown_base.base_sections(run, LIST, mix=False)  # pyright: ignore[reportArgumentType]
 
 
 @pytest.mark.parametrize("stop", PASSED, ids=lambda e: type(e).__name__)
@@ -149,10 +178,10 @@ async def test_an_error_of_any_type_in_each_base_call_propagates(
 async def test_a_stop_a_lost_lease_and_a_role_error_pass_the_base_read(
     monkeypatch: pytest.MonkeyPatch, target: str, stop: Exception
 ) -> None:
-    run = Run(FIELD)
+    run = Run(MUSIC)
     _base_targets(monkeypatch, run)[target](stop)
     with pytest.raises(type(stop)):
-        await spotdown_base.base_sections(run, LIST)  # pyright: ignore[reportArgumentType]
+        await spotdown_base.base_sections(run, LIST, mix=False)  # pyright: ignore[reportArgumentType]
 
 
 # --- carried_music --------------------------------------------------------------------------------

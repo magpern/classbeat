@@ -79,7 +79,7 @@ async def delete(
     the player is not connected, ``player_send.publications.on_class_delete``); a class never
     sent takes no lock on the connection row. The cascade is the schema's (migrations 0004 and
     0005); ``agent_runs`` keeps its rows. The audition's clip and source files of the class are
-    removed once the delete committed (their rows went with the cascade, migration 0071)."""
+    removed once the delete committed (their rows went with the cascade, migration 0072)."""
     require_context(ctx)
     async with user_session(factory, ctx) as db:
         await seams.resolve_orphans(db, ctx)

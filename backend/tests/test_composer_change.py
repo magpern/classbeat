@@ -80,6 +80,9 @@ async def test_a_change_that_does_not_fit_the_songs_is_a_new_sketch(cenv: Compos
         sketch_long["segments"][0]["intervals"].insert(
             0, {"sec": 600, "zone": 2, "rpm": [85, 95], "standing": False}
         )
+        for segment in sketch_long["segments"]:  # every track is spotdown's ``approximate``
+            for interval in segment["intervals"]:  # timing (#1386): no cue the gate refuses
+                interval.pop("cue", None)
         submit = {"draft": {"$draft": "sketch"}, "note": "Longer."}
         script = {
             "model": "fake-model",

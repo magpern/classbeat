@@ -19,7 +19,7 @@ row security:
    reused, a job of the key that failed in the last two minutes is ``render_failed`` with its
    category, and a new job beyond ``OPEN_RENDERS`` open or ``RENDERS_PER_HOUR`` an hour is
    ``rate_limited``. Else the job is inserted with ``class_id`` NULL and ``preview_class_id`` set
-   (migration 0071: outside the class's job slot) with its ``queued`` event (``Rendering``).
+   (migration 0072: outside the class's job slot) with its ``queued`` event (``Rendering``).
 
 The job is never offered to the jobs API (its input is no ``JobInput``). Nothing of the rows is
 logged.

@@ -43,11 +43,18 @@ from classbeat.songs.composer_common import (
     sources_of_list,
     waiting_list,
 )
-from classbeat.songs.composer_pick import Picked, pick_composer, sources_of
+from classbeat.songs.composer_pick import Picked, pick_composer
 from classbeat.songs.composer_slots_policy import pin_slots, sketch_seconds, slot_roles
-from classbeat.songs.composer_sources import Favoured, Pinned, read_sources, verify_pins
+from classbeat.songs.composer_sources import (
+    Favoured,
+    Pinned,
+    read_sources,
+    sources_of,
+    verify_pins,
+)
 from classbeat.songs.config import SongConfig
 from classbeat.songs.inputs import DesignWithSongsInput
+from classbeat.songs.pick_analyse import kept_timing
 
 ORIGIN: Final = "design_with_songs"
 
@@ -183,7 +190,8 @@ async def _swap(
     earlier = sources_of_list(content)
     kept = {k.spotify_id: earlier[k.spotify_id] for k in seeded.kept if k.spotify_id in earlier}
     sources = sources_of(picked.chosen, favoured, Pinned((), ()), kept)
-    picked = Picked(picked.chosen, picked.provenance, picked.unmet, sources)
+    carried = kept_timing(picked.provenance, seeded, picked.chosen)  # a kept song's entry, #1386
+    picked = Picked(picked.chosen, carried, picked.unmet, sources)
     return picked, seeded.revision_id, preview.content
 
 
@@ -203,7 +211,7 @@ async def _designed(
 ) -> AwaitApproval:
     track_ids = tuple(s.spotify_id for s in picked.chosen.songs)
     step = await composer_design.songs_music(
-        run, runtime.keyring, spotify, given.mowl_connection_id, track_ids, songs
+        run, runtime.keyring, spotify, given.mowl_connection_id, track_ids, songs, picked.provenance
     )
     try:
         made = await composer_design.design_preview(

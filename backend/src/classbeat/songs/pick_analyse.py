@@ -6,7 +6,8 @@ stage. It always runs: there is no switch, no MOWL-sections timing and no fallba
 1. The job's budget row (``pick_match_budget``, the 600 s the match stage shares): an earlier run of
    this attempt that found spotdown unavailable ends ``analysis_unavailable`` at once.
 2. **Only the selected songs** are analysed: each new song of the list (``pick_analyse_batch``;
-   nothing of the pool, no kept song).
+   nothing of the pool, no kept song), and each ``fixed`` one (a song of the user's own playlist,
+   a composer's pinned song: analysed, never replaced; #1386).
 3. Each document (``pick_outcome``): ``timing_class_policy`` decides the class (what is played is
    Spotify's audio: **at best ``approximate``**; MOWL's sections are anchors,
    ``song_anchors_calc``);
@@ -51,7 +52,11 @@ logger = logging.getLogger(__name__)
 
 
 async def _analyse(
-    run: JobRun, matched: MatchedPool, analysis_map: Mapping[str, Any], chosen: ChosenList
+    run: JobRun,
+    matched: MatchedPool,
+    analysis_map: Mapping[str, Any],
+    chosen: ChosenList,
+    fixed: frozenset[int],
 ) -> tuple[ChosenList, dict[str, Any], int]:
     spent, unavailable = await budget.open(run)
     if unavailable:
@@ -60,8 +65,14 @@ async def _analyse(
     covers = {p.spotify_id: p.cover for p in matched.playlist}
     pairs = [(p.spotify_id, p.role) for p in matched.eligible]
     pool = {t.spotify_id: t for t in analysed_pool(analysis_map, pairs, covers)[0]}
-    state = Refine(matched, pool, list(chosen.songs))
-    todo = [w for n, s in enumerate(state.songs) if (w := want_of(matched, s, n)) is not None]
+    state = Refine(matched, pool, list(chosen.songs), fixed)
+    todo = [
+        w
+        for n, s in enumerate(state.songs)
+        if (w := want_of(matched, s, n, fixed=n in fixed)) is not None
+    ]
+    if fixed - {w.position for w in todo}:
+        raise JobFailure(outage_policy.FAILED)  # a fixed song stage A gave no source: no spare
     rounds = fit_rounds = missing_rounds = 0  # ``rounds``: all, for the keys and the record
     while True:
         got = await analyse_tracks(session, todo, rounds)
@@ -126,10 +137,15 @@ def _log_done(run: JobRun, record: Mapping[str, Any], swaps: int) -> None:
 
 
 async def analyse_list(
-    run: JobRun, matched: MatchedPool, analysis_map: Mapping[str, Any], chosen: ChosenList
+    run: JobRun,
+    matched: MatchedPool,
+    analysis_map: Mapping[str, Any],
+    chosen: ChosenList,
+    fixed: frozenset[int] = frozenset(),
 ) -> tuple[ChosenList, dict[str, Any]]:
-    """The list to store and its record; ``JobFailure`` for every ending but a usable list."""
-    refined, record, swaps = await _analyse(run, matched, analysis_map, chosen)
+    """The list to store and its record; ``JobFailure`` for every ending but a usable list.
+    ``fixed``: positions analysed although not new and never replaced (``pick_refine.Refine``)."""
+    refined, record, swaps = await _analyse(run, matched, analysis_map, chosen, fixed)
     _log_done(run, record, swaps)
     return refined, record
 

@@ -4,7 +4,7 @@ the clip endpoint (``classes.preview_clips``), never by the jobs API or a model:
 ``JobInput``, so ``POST /api/jobs`` answers ``unknown_kind``.
 
 **Outside the class's job slot.** The job's ``class_id`` is NULL and its class is
-``preview_class_id`` (migration 0071: an owner-inclusive foreign key, ``ON DELETE CASCADE``), so it
+``preview_class_id`` (migration 0072: an owner-inclusive foreign key, ``ON DELETE CASCADE``), so it
 is outside ``jobs_one_open_per_class``: an edit, an undo or another job of the class goes on while a
 clip renders. It is bounded instead by the per-owner rate limits of the clip endpoint
 (``session_policy``), the lease and fencing of ADR 0005, and an **analysis slot** (#574: a render is
