@@ -28,29 +28,34 @@ test('every song kept whole past the plan’s class length is refused on the scr
   const owner = await newStudioUser(page, 'studio-mix-long')
   const classId = await designOnSpotdown(page, owner, 'Studio mix too long')
   await untilIdle(owner)
-  // The design was made on the instructor plan (75 minutes). The plan is the free one by the time
-  // the choices are applied: 30 minutes, 1890 s with the tolerance, and eight whole 240 s songs
-  // with hard cuts are 32 minutes (ADR 0036 B6: a later downgrade is the one way a whole-songs
-  // form can still be too long).
+  // The design was made on the instructor plan. Before the choices are applied the plan is the
+  // free one cut to its 10 minute floor (630 s with the tolerance; restored at the end), and the
+  // workout the whole songs make is about 31 minutes (ADR 0036 B6: a later downgrade is the one way
+  // a whole-songs form can still be too long for the plan).
   sql(`DELETE FROM entitlements WHERE owner_id = '${owner}'`)
-  await page.goto(`/classes/${classId}`)
-  const outputs = page.getByTestId('studio-outputs')
-  await outputs.getByRole('checkbox', { name: /^DJ mix/ }).check()
-  const rows = page.getByTestId('mix-song')
-  await expect(rows).toHaveCount(8, LONG)
-  await outputs.getByRole('switch', { name: /^Blend transitions/ }).click() // every change is a hard cut
-  await outputs.getByRole('button', { name: 'All songs' }).click()
-  await outputs.getByRole('button', { name: 'Keep selected whole' }).click()
-  await expect(rows.getByRole('checkbox', { name: /^Keep whole/, checked: true })).toHaveCount(8)
-  await expect(outputs.getByTestId('mix-total')).toContainText('the mix is 32:00. The class is 30:00')
-  const before = gatewayRequests().length
+  sql(`UPDATE plans SET max_class_minutes = 10 WHERE id = 'free'`)
+  try {
+    await page.goto(`/classes/${classId}`)
+    const outputs = page.getByTestId('studio-outputs')
+    await outputs.getByRole('checkbox', { name: /^DJ mix/ }).check()
+    const rows = page.getByTestId('mix-song')
+    await expect(rows).toHaveCount(8, LONG)
+    await outputs.getByRole('switch', { name: /^Blend transitions/ }).click() // every change is a hard cut
+    await outputs.getByRole('button', { name: 'All songs' }).click()
+    await outputs.getByRole('button', { name: 'Keep selected whole' }).click()
+    await expect(rows.getByRole('checkbox', { name: /^Keep whole/, checked: true })).toHaveCount(8)
+    await expect(outputs.getByTestId('mix-total')).toContainText('the mix is 32:00. The class is 30:00')
+    const before = gatewayRequests().length
 
-  await outputs.getByRole('button', { name: 'Apply these choices' }).click()
-  await expect(outputs.getByText(/longer than your plan allows/).first()).toBeVisible(LONG)
-  await expect(outputs.getByRole('link', { name: 'Change songs' })).toBeVisible() // nothing left to trim: no re-plan
-  await expect(page).toHaveURL(new RegExp(`/classes/${classId}$`)) // no job was made, so the page stays
-  expect(gatewayRequests()).toHaveLength(before) // the fake gateway was asked nothing
-  expectNothingSent(owner, 'Studio mix too long')
+    await outputs.getByRole('button', { name: 'Apply these choices' }).click()
+    await expect(outputs.getByText(/longer than your plan allows/).first()).toBeVisible(LONG)
+    await expect(outputs.getByRole('link', { name: 'Change songs' })).toBeVisible() // nothing left to trim: no re-plan
+    await expect(page).toHaveURL(new RegExp(`/classes/${classId}$`)) // no job was made, so the page stays
+    expect(gatewayRequests()).toHaveLength(before) // the fake gateway was asked nothing
+    expectNothingSent(owner, 'Studio mix too long')
+  } finally {
+    sql(`UPDATE plans SET max_class_minutes = 30 WHERE id = 'free'`)
+  }
 })
 
 test('a SwedeBeat playlist from a mixed draft without DJ mix is refused by the server', async ({ page }) => {
