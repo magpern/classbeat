@@ -27,8 +27,10 @@ transport: no socket, no network, deterministic). Public test values only.
 ``fake.end`` sets how every new job ends (for a caller whose ``client_ref`` it does not choose);
 ``fake.ends_by_source[source]`` how the next jobs of a ``youtube:<id>`` source end, one each;
 ``fake.documents[source]`` the document of that source's analyses; ``fake.references[source]``
-records the alignment reference last asked for. An analysis of a ``youtube`` source needs no
-``cache_scope`` (contract v2: a global source).
+records the alignment reference last asked for, and ``fake.aligned[analysis_id]`` the reference an
+analysis is aligned to: as in contract v2, a cache hit asked with another reference than the hit's
+answers with an analysis aligned to the one asked (a new id), never with another's alignment. An
+analysis of a ``youtube`` source needs no ``cache_scope`` (contract v2: a global source).
 A document of an analysis held for ``sha256:<hex>`` carries that sha256 in its provenance.
 
 ``fake.inject[path] = [httpx.Response, ...]`` answers the next requests to ``path`` with those
@@ -138,6 +140,9 @@ class FakeSpotdown:
     # per source: the analysis-v1 document of its analyses (else the minimal example)
     documents: dict[str, dict[str, Any]] = field(default_factory=lambda: {})
     references: dict[str, dict[str, Any]] = field(default_factory=lambda: {})  # the last asked
+    # per analysis id: the reference it is aligned to (contract v2: an aligned analysis per
+    # reference, so a cache hit with another reference never answers with another's alignment)
+    aligned: dict[str, dict[str, Any]] = field(default_factory=lambda: {})
     # spotdown#36: the caller's ``explicit`` flag of the latest match that chose a video (a later
     # match without a flag removes it), and the evidence each new analysis was made with.
     match_flags: dict[str, bool] = field(default_factory=lambda: {})  # youtube:<id>: flag
@@ -176,7 +181,7 @@ class FakeSpotdown:
         document["analysis_id"] = analysis_id
         if by.startswith("sha256:"):
             document["provenance"]["audio"]["sha256"] = by.removeprefix("sha256:")
-        asked = self.references.get(by)  # a placeholder reference becomes the asked one (#1354)
+        asked = self.aligned.get(analysis_id)  # a placeholder becomes the asked one (#1354)
         alignment = document.get("alignment")
         if asked and isinstance(alignment, dict) and alignment["reference"]["id"] == "0" * 32:
             alignment["reference"] = dict(asked)
@@ -325,6 +330,8 @@ class FakeSpotdown:
         cached = self._find(scope or None, by)
         job_id = self._next("job")
         if cached is not None:
+            if "reference" in request:
+                cached = self._aligned_hit(cached, by, dict(request["reference"]))
             return httpx.Response(
                 200, json={"job_id": job_id, "status": "done", "analysis_id": cached}
             )
@@ -340,9 +347,29 @@ class FakeSpotdown:
         if end in ("done", "alignment_failed"):
             held_scope = None if by.startswith("youtube:") else scope
             made = self.add_analysis(held_scope, by)
+            if "reference" in request:
+                self.aligned[made] = dict(request["reference"])
             self.jobs[job_id].analysis_id = made
             self.explicit_evidence[made] = evidence_of(request, self.match_flags.get(by))
         return httpx.Response(202, json={"job_id": job_id, "status": "queued"})
+
+    def _aligned_hit(self, cached: str, by: str, reference: dict[str, Any]) -> str:
+        """The analysis a cache hit with ``reference`` answers (contract v2, "aligned analysis":
+        the alignment cache is keyed on the audio and the reference): the one already aligned to
+        it, else the hit itself when it has no alignment yet, else a new analysis of the same
+        audio in the hit's scope, aligned to it."""
+        held = self.analyses[cached][0]
+        for analysis_id, (scope, key) in self.analyses.items():
+            if key == by and scope == held and self.aligned.get(analysis_id) == reference:
+                return analysis_id
+        if cached not in self.aligned:
+            self.aligned[cached] = reference
+            return cached
+        made = self.add_analysis(held, by)
+        self.aligned[made] = reference
+        if cached in self.explicit_evidence:
+            self.explicit_evidence[made] = self.explicit_evidence[cached]
+        return made
 
     def _poll(self, job_id: str) -> httpx.Response:
         job = self.jobs.get(job_id)
@@ -391,6 +418,7 @@ class FakeSpotdown:
 
     def _delete(self, scope: str) -> httpx.Response:
         self.analyses = {k: v for k, v in self.analyses.items() if v[0] != scope}
+        self.aligned = {k: v for k, v in self.aligned.items() if k in self.analyses}
         self.uploads = {k: v for k, v in self.uploads.items() if v[0] != scope}
         self.jobs = {k: v for k, v in self.jobs.items() if v.scope != scope}
         self.idempotency = {k: v for k, v in self.idempotency.items() if k[0] != scope}
