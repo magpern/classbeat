@@ -17,12 +17,14 @@ from classbeat.design.revision_spotdown_model import (
     MAX_RECORD_BYTES,
     MAX_TRACKS,
     SpotdownSections,
+    fits,
     sections_of,
     stamped,
 )
 from classbeat.songs import pick_analyse
 from classbeat.songs.seed import Seeded
 from classbeat.spotdown import song_carry_calc
+from classbeat.spotdown.explicit_model import MAX_EVIDENCE, document_group
 from classbeat.spotdown.provenance_read_calc import AudioIdentity
 from classbeat.spotdown.song_analysis_record_model import (
     KEY,
@@ -249,7 +251,7 @@ def a_full_record(n: int) -> dict[str, Any]:
     key the timing policy writes with floats at their widest text (spotdown's arrive unrounded),
     ``content.explicit``, and a "fits with a warning" fit naming every reason there is."""
     wide = WIDEST_FLOAT
-    audio = AudioIdentity("a" * 64, "f" * 128, "mp3", wide, 2.0, wide, wide)
+    audio = AudioIdentity("a" * 64, "f" * 128, "mp3" + "x" * 13, wide, 2.0, wide, wide)
     evidence = {
         "played_kind": "spotify",
         "source_kind": "youtube",
@@ -266,13 +268,25 @@ def a_full_record(n: int) -> dict[str, Any]:
         "offset_s": wide,
     }
     decision = TimingDecision("approximate", "recording_match_residual_ok", evidence)
-    explicit = {"is_explicit": True, "confidence": wide}
+    explicit = document_group(
+        {
+            "content": {
+                "explicit": {
+                    "method": "metadata",
+                    "value": "unknown",
+                    "confidence": 0.1234567890123456,
+                    "evidence": [{"source": "youtube_age_limit", "value": 18}] * MAX_EVIDENCE,
+                }
+            }
+        }
+    )
+    assert explicit is not None  # the real shape: value, confidence, up to three evidence items
     outcomes = {
         i: SongOutcome(
             "spotdown",
             Analysed(
-                str(uuid.uuid4()),
-                ("spotdown-analyzer", "6.3.0", "c" * 64),
+                "i" * 64,  # the longest ``ID_PATTERN`` takes
+                ("n" * 32, "v" * 16, "c" * 64),
                 audio,
                 decision,
                 explicit,
@@ -283,7 +297,7 @@ def a_full_record(n: int) -> dict[str, Any]:
         for i in range(n)
     }
     matches = {
-        f"id{i}": TrackMatch("timing", "matched", "confident", wide, "match-v1") for i in range(n)
+        f"id{i}": TrackMatch("timing", "matched", "confident", 0.912, "match-v1") for i in range(n)
     }
     return {
         **match_record(list(matches), matches, {}, rounds=0, candidates=n, missing=0),
@@ -300,7 +314,7 @@ def test_a_record_of_the_most_tracks_stays_within_its_bound() -> None:
     record = a_full_record(n)
     size = canonical_size(record)
     assert size <= MAX_RECORD_BYTES, f"{size} B for {n} tracks, bound {MAX_RECORD_BYTES}"
-    assert size > 290_000  # the widest inputs: a bound derived from thinner ones would pass
+    assert size > 330_000  # the widest inputs: a bound derived from thinner ones would pass
     field = SpotdownSections(tracks=list(range(n)), record=record)  # the model accepts it
     assert field.record == record
 
@@ -310,3 +324,13 @@ def test_the_bound_is_what_refuses_an_over_large_record() -> None:
     record["pad"] = "x" * MAX_RECORD_BYTES  # the same model, a record no list could make
     with pytest.raises(ValidationError, match="too large"):
         SpotdownSections(tracks=[0], record=record)
+
+
+def test_a_non_bmp_record_is_over_the_bound_and_refused() -> None:
+    record = a_full_record(MAX_TRACKS)
+    for song in record[KEY]["songs"]:  # the reader takes 128 characters; each is 12 B as JSON
+        song["audio"]["fingerprint"] = "\U0001f600" * 128
+    assert not fits(record)
+    with pytest.raises(ValidationError, match="too large"):
+        SpotdownSections(tracks=list(range(MAX_TRACKS)), record=record)
+    assert fits(a_full_record(MAX_TRACKS))

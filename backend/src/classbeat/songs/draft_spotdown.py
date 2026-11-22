@@ -10,6 +10,8 @@ MOWL's map is the **frame** (track order, MOWL's length, Spotify's BPM) and its 
    align is ``analysis_failed``; more than a revision records is ``invalid_input``);
 2. stages A and B as for the user's own playlist (``playlist_spotdown``: no spares, no rounds; a
    song that is missing is ``analysis_failed``, an unsuitable one a warning);
+   The record is the first thing that holds its size: one over ``MAX_RECORD_BYTES`` ends the job
+   ``invalid_input`` here, before stage D and before anything is stored (#1438);
 3. stage D on that record (``phase2_spotdown.listed_music``): every track read again by its
    analysis id, verified against the track and rebuilt on spotdown's sections, then stamped.
 
@@ -25,15 +27,12 @@ error is not swallowed. Only counts are logged: never a title, an id, a source o
 
 import logging
 
-from pydantic import ValidationError
-
 from classbeat.design.music import MusicStep
-from classbeat.design.revision_spotdown_model import SpotdownSections
+from classbeat.design.revision_spotdown_model import SpotdownSections, fits
 from classbeat.jobs import JobFailure, JobRun
 from classbeat.songs.draft_list_policy import whole_list
 from classbeat.songs.phase2_spotdown import listed_music
 from classbeat.songs.playlist_spotdown import playlist_spotdown
-from classbeat.spotdown import outage_policy
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +45,11 @@ async def drafted_music(run: JobRun, step: MusicStep) -> tuple[MusicStep, Spotdo
     if isinstance(chosen, str):
         raise JobFailure(chosen)
     records = await playlist_spotdown(run, chosen, analysis_map)  # stages A and B
+    if not fits(records):
+        raise JobFailure("invalid_input")  # over its bound: refused before stage D, never stored
     ids = [s.spotify_id for s in chosen.songs]
+    timing = SpotdownSections(record=records, tracks=list(range(len(ids))))
     step = await listed_music(run, ids, records, step)  # stage D
-    try:
-        timing = SpotdownSections(record=records, tracks=list(range(len(ids))))
-    except ValidationError:
-        raise JobFailure(outage_policy.INTERNAL) from None  # a record over its bound
     logger.info(
         "spotdown playlist design", extra={"job_id": str(run.lease.job_id), "songs": len(ids)}
     )

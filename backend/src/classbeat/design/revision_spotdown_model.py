@@ -30,12 +30,28 @@ from classbeat.agent import track_timing_calc
 
 MAX_TRACKS: Final = 200  # a revision's ``music.songs`` bound; a picked list has at most 40
 Position = Annotated[int, Field(ge=0, lt=MAX_TRACKS)]
-# A playlist draft's own record, as canonical JSON (#1407, #1438). Worst case at ``MAX_TRACKS``
-# tracks: a track's two entries (match and analysis) at their widest (17-digit floats written with
-# an exponent, a 128-character fingerprint, a fit naming every reason, ``warning``) are 1,476 B,
-# so 200 tracks are 295,121 B with the lists' fixed parts. 320 KiB leaves about 11 % over that,
-# and no other limit applies to a revision's ``music`` (it is not a size-checked column).
-MAX_RECORD_BYTES: Final = 327680
+# A playlist draft's own record, as canonical JSON (#1407, #1438). Derivation, for ``MAX_TRACKS``
+# (200) tracks built with the real record builders at the widest values the readers take in
+# realistic form: floats written with 17 digits and an exponent (23 characters; the match
+# confidence is stored rounded to 3 decimals), a 128-character fingerprint, a 64-character analysis
+# id (``ID_PATTERN``), a 32-character analyzer name, a 16-character version and codec, a sha256
+# config hash, the real ``explicit`` shape with three evidence items, and a "fits with a warning"
+# fit naming all 9 reasons of ``track_fit_policy.SEVERITY`` plus ``warning``. That is about 1,676 B
+# a track, 335,321 B in all. 384 KiB leaves about 17 % over it.
+# NOT covered, on purpose: adversarial text (the readers take 128-character words and 256-character
+# texts, and ``json.dumps`` writes a character outside the BMP as 12 bytes) and hundreds of distinct
+# matcher versions. Such a record is refused up front, ``invalid_input`` (``fits``), never stored
+# and never ``internal``. No other limit applies: ``class_revisions.music`` has no size check.
+MAX_RECORD_BYTES: Final = 393216
+
+
+def record_bytes(record: dict[str, Any]) -> int:
+    """The record's size as canonical JSON, the measure ``MAX_RECORD_BYTES`` bounds."""
+    return len(json.dumps(record, sort_keys=True, separators=(",", ":")).encode())
+
+
+def fits(record: dict[str, Any]) -> bool:
+    return record_bytes(record) <= MAX_RECORD_BYTES
 
 
 class SpotdownSections(BaseModel):
@@ -57,10 +73,8 @@ class SpotdownSections(BaseModel):
     def _one_origin(self) -> Self:
         if (self.song_list_id is None) == (self.record is None):
             raise ValueError("exactly one of a song list and a record")
-        if self.record is not None:
-            size = len(json.dumps(self.record, sort_keys=True, separators=(",", ":")).encode())
-            if size > MAX_RECORD_BYTES:
-                raise ValueError("the record is too large")
+        if self.record is not None and not fits(self.record):
+            raise ValueError("the record is too large")
         return self
 
 

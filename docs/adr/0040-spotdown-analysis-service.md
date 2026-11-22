@@ -1138,7 +1138,10 @@ still timed its tracks on MOWL's sections, and #1406 had narrowed item 3's "a ba
 2. **Where the record lives.** The playlist has no `song_list` revision, so the draft keeps the
    stage-A and stage-B record itself: `music.spotdown = {tracks, record}` (exactly one of
    `song_list_id` and `record`; `record` is `{spotdown_match, spotdown_analysis}` as a list's
-   provenance holds it, at most 256 KiB as canonical JSON). This amends stage E item 1's "never an
+   provenance holds it, at most 384 KiB as canonical JSON: the worst case of 200 tracks at realistic
+   field widths is about 335 KiB, derived in `revision_spotdown_model`; a record over it, which only
+   adversarial text can make, is refused `invalid_input` right after stage B, before stage D and
+   before anything is stored, #1438). This amends stage E item 1's "never an
    analysis id" for this variant only, as a mix draft's `music.provenance` already names its
    analysis (#1304): analysis ids, versions and audio identities, never a title, a Spotify id, a
    source reference, a scope or a URL. A class copy (#550) keeps a `spotdown` that has its own

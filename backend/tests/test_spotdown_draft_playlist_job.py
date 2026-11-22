@@ -266,6 +266,25 @@ async def test_an_error_of_any_type_in_the_stages_is_internal(
     assert drafts(renv, job_id) == []
 
 
+async def test_a_record_over_its_bound_is_refused_before_stage_d_and_never_internal(
+    renv: ReviseEnv, spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = draft_spotdown.playlist_spotdown
+
+    async def wide(*args: Any) -> dict[str, Any]:
+        records = await real(*args)
+        for entry in records[KEY]["songs"]:  # a fingerprint the reader takes: 128 non-BMP chars
+            entry["audio"]["fingerprint"] = "\U0001f600" * 128  # 12 B each as canonical JSON
+        records[KEY]["songs"] = records[KEY]["songs"] * 40
+        return records
+
+    monkeypatch.setattr(draft_spotdown, "playlist_spotdown", wide)
+    job_id, row = await designing(renv)
+    assert (row.state, ending(renv, job_id)) == ("failed", "invalid_input")
+    assert drafts(renv, job_id) == []  # nothing stored
+    assert gets(spotdown) == 0  # stage D never ran
+
+
 # --- its revise and refit ------------------------------------------------------------------------
 
 
