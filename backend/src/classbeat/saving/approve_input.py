@@ -1,4 +1,4 @@
-"""What a Save and an Update approve (ADR 0007 section 5, ADR 0042 section 6, #1391): one revision
+"""What a Save and an Update approve (ADR 0007 section 5, ADR 0042 section 4, #1391): one revision
 of the class by id and content hash (lower-case hex), and the class's current revision the page
 showed (``base_revision_id``, optional). Split out of ``saving.kind`` and ``saving.update``.
 

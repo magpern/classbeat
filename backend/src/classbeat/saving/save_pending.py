@@ -17,7 +17,7 @@ with ``save_pending_job_id`` = ``job_id`` (the phase-2 job); the worker never en
   **an admitted save or update clears it** in that transaction, so the driver and a manual Save
   can never both save: the second is ``class_busy`` while the first is open and ``not_pending``
   after it.
-- **The base** (ADR 0042 section 6): with ``base_revision_id``, a class whose current revision is
+- **The base** (ADR 0042 section 4): with ``base_revision_id``, a class whose current revision is
   another is ``stale_revision`` (``approve_input.stale``), before anything else.
 - **A save that ends**, however it ends, finds it already cleared (its admit cleared it, and no
   phase 2 can set it again while the save job is the class's open job), so a failed save shows
@@ -86,7 +86,7 @@ def guarded(inner: Admit) -> Admit:
             return await inner(db, ctx, parsed)  # the input model refuses it already
         base = getattr(parsed, "base_revision_id", None)
         if await stale(db, ctx.user_id, class_id, base if isinstance(base, UUID) else None):
-            return Refused(STALE_REVISION)  # another tab moved the class (ADR 0042 section 6)
+            return Refused(STALE_REVISION)  # another tab moved the class (ADR 0042 section 4)
         if job_id is not None:
             found = await current(db, ctx.user_id, class_id, lock=True)
             if (

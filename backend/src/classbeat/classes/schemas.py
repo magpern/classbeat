@@ -283,7 +283,7 @@ class PickIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     revision_id: UUID
     content_hash: str
-    expected_current_id: UUID | None = None  # an undo or redo (ADR 0042 section 6)
+    expected_current_id: UUID | None = None  # an undo or redo (ADR 0042 section 4)
 
 
 class DismissedRulesOut(BaseModel):

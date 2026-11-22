@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import __version__ as classbeat_version
 from classbeat.agent.records import mowl_version
+from classbeat.design.edit_overlay_model import storable
 from classbeat.design.revision import MAX_CONTENT_BYTES, StudioRevisionMusic, canonical
 from classbeat.design.revision_hash import revision_hash
 from classbeat.design.workout_edit_policy import EditRefused
@@ -90,7 +91,10 @@ async def store(
     if len(canonical(made.content)) > MAX_CONTENT_BYTES:
         raise EditRefused("invalid_edit")
     music = _music(base_music, made.spec)
-    overlay = made.overlay.stored()
+    try:
+        overlay = storable(made.overlay)
+    except ValueError:
+        raise EditRefused("overlay_too_large") from None  # past the bounds: never stored
     content_hash = revision_hash(made.content, mix_spec=music["mix_spec"], overlay=overlay)
     provenance = UserEditProvenance(
         origin=USER_EDIT_ORIGIN,

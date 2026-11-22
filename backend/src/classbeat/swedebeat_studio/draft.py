@@ -30,7 +30,7 @@ from classbeat.agent.loop import StageOutcome
 from classbeat.agent.studio_design import StudioResult
 from classbeat.agent.studio_mix import StudioTrack
 from classbeat.design import revision
-from classbeat.design.edit_overlay_model import EditOverlay
+from classbeat.design.edit_overlay_model import EditOverlay, storable
 from classbeat.design.revision import DraftRevision, StudioRevisionMusic
 from classbeat.design.revision_hash import revision_hash
 from classbeat.design.studio_revision_model import TrackRecord, map_hash
@@ -149,7 +149,10 @@ def build(
     dumped = stored.model_dump(mode="json")
     if studio.overlay is not None and not isinstance(studio.overlay, EditOverlay):
         raise JobFailure("internal")
-    overlay = None if studio.overlay is None else studio.overlay.stored()  # ADR 0042 section 3
+    try:  # ADR 0042 section 3: stored only as a read would accept it
+        overlay = None if studio.overlay is None else storable(studio.overlay)
+    except ValueError:
+        raise JobFailure("internal") from None
     content_hash = revision_hash(content, mix_spec=dumped["mix_spec"], overlay=overlay)
     if base_hash is not None and content_hash == base_hash:
         raise JobFailure("invalid_output")  # the base again: not a revision

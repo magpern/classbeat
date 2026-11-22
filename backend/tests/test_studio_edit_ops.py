@@ -3,6 +3,8 @@
 locked blocks, Use AI value, the automatic overrides, the cut pins through amendment B's order and
 their hints. Pure: no I/O; the composed map is the fake's (``studiomaps``)."""
 
+import copy
+import dataclasses
 import uuid
 from typing import Any
 
@@ -11,6 +13,7 @@ import pytest
 from classbeat.classes.user_edit_model import EditIn
 from classbeat.design.edit_overlay_model import EMPTY, EditOverlay, Lock, Override
 from classbeat.design.workout_edit_policy import EditRefused, blocks, total_sec
+from classbeat.plan_gates import PlanGates
 from classbeat.swedebeat_studio import mix_apply_calc, studio_edit_ops
 from classbeat.swedebeat_studio import studio_edit_calc as calc
 from classbeat.swedebeat_studio.studio_edit_calc import EditResult, EditState
@@ -176,6 +179,42 @@ def test_an_audio_edit_that_moves_a_timing_locked_block_is_a_conflict() -> None:
     assert reason(state, raw) == "locked_block_conflict"
 
 
+def snapped(monkeypatch: pytest.MonkeyPatch, first: int) -> None:
+    """``calc.fit`` as the real one, then one second moved from block ``first + 1`` to block
+    ``first`` (the fit's snap, ``agent.design.check`` moves a start up to 6 s)."""
+    real = calc.fit
+
+    def fit(*args: Any, **kwargs: Any) -> calc.Fit:
+        made = real(*args, **kwargs)
+        content = copy.deepcopy(made.content)
+        intervals = [i for seg in content["segments"] for i in seg["intervals"]]
+        intervals[first]["sec"] += 1
+        intervals[first + 1]["sec"] -= 1
+        return made._replace(content=content)
+
+    monkeypatch.setattr(calc, "fit", fit)
+
+
+def test_a_fit_that_moves_a_timing_locked_block_is_a_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = locked_at(0, "timing")
+    assert spans(pin(state, 200.0).content)[0] == spans(STATE.content)[0]  # the remap keeps it
+    snapped(monkeypatch, 0)
+    raw = {"op": "pin_set", "piece": 0, "edge": "end", "requested_sec": 200.0, "mode": "exact"}
+    assert reason(state, raw) == "locked_block_conflict"
+
+
+def test_a_fit_that_moves_an_unlocked_block_keeps_the_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = locked_at(0, "timing")
+    snapped(monkeypatch, 2)
+    made = pin(state, 200.0)
+    assert spans(made.content)[0] == spans(STATE.content)[0]
+    assert any(isinstance(r, Lock) for r in made.overlay.records)
+
+
 # --- Use AI value and the clears ---------------------------------------------------------------
 
 
@@ -271,3 +310,49 @@ def test_pin_clear_and_clear_all_restore_the_spec() -> None:
         made = run(first, raw)
         assert made.spec == STATE.spec
         assert made.overlay.stored() is None
+
+
+# --- each refusal of the studio edit, by name --------------------------------------------------
+
+EVENT = {"piece": 0, "source_ms": 60000, "kind": "downbeat"}
+NO_MUSIC = dataclasses.replace(STATE, analysed={})  # the analysed files are no longer known
+REFUSED: list[tuple[EditState, dict[str, Any], str]] = [
+    (STATE, {"op": "lock", "block": 50, "scope": "all"}, "invalid_input"),
+    (STATE, {"op": "unlock", "block": 50}, "invalid_input"),
+    (STATE, {"op": "unlock", "block": 0}, "nothing_changed"),
+    (STATE, {"op": "remove_anchor", "block": 0, "edge": "end"}, "nothing_changed"),
+    (STATE, {"op": "use_ai_value", "block": 0, "field": "zone"}, "nothing_changed"),
+    (STATE, {"op": "clear_all"}, "nothing_changed"),
+    (STATE, {"op": "anchor", "block": 0, "edge": "start", "event": EVENT}, "anchor_out_of_reach"),
+    (STATE, {"op": "anchor", "block": 3, "edge": "end", "event": EVENT}, "anchor_out_of_reach"),
+    (STATE, {"op": "anchor", "block": 3, "edge": "end", "event": {**EVENT, "piece": 9}},
+     "invalid_input"),
+    (NO_MUSIC, {"op": "anchor", "block": 0, "edge": "end", "event": EVENT}, "music_changed"),
+    (NO_MUSIC, {"op": "pin_confirm", "piece": 0, "edge": "end"}, "music_changed"),
+    (STATE, {"op": "set", "block": 0, "field": "zone", "value": 99}, "invalid_input"),
+    (STATE, {"op": "duration", "total_sec": 600}, "class_length_out_of_tolerance"),
+    (STATE, {"op": "pin_set", "piece": 9, "edge": "end", "requested_sec": 100.0, "mode": "exact"},
+     "invalid_input"),
+    (STATE, {"op": "pin_set", "piece": 0, "edge": "end", "requested_sec": 20.0, "mode": "exact"},
+     "window_too_short"),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(("state", "raw", "why"), REFUSED)
+def test_each_refusal_of_a_studio_edit(state: EditState, raw: dict[str, Any], why: str) -> None:
+    assert reason(state, raw) == why
+
+
+def test_an_anchor_on_a_reachable_event_is_made() -> None:
+    made = run(STATE, {"op": "anchor", "block": 0, "edge": "end", "event": EVENT})
+    assert any(r.type == "anchor" for r in made.overlay.records)
+
+
+def test_the_plan_gates_refuse_an_edit_the_plan_does_not_include() -> None:
+    short = PlanGates(max_class_minutes=10, games=True, races=True, ftp_tests=True)
+    zone = op({"op": "set", "block": 0, "field": "zone", "value": 4})
+    with pytest.raises(EditRefused) as refused:
+        studio_edit_ops.edited(STATE, zone, short)
+    assert refused.value.reason == "plan_class_too_long"
+    whole = PlanGates(max_class_minutes=180, games=True, races=True, ftp_tests=True)
+    studio_edit_ops.edited(STATE, zone, whole)  # the same edit on a plan that includes it

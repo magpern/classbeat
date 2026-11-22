@@ -8,8 +8,12 @@ import hashlib
 import json
 from typing import Any
 
+import pytest
+
 from agentfake import good_draft
+from classbeat.design.revision import DraftRevision
 from classbeat.design.revision_hash import edited_hash, of_music, revision_hash, studio_hash
+from classbeat.jobs import JobFailure
 from classbeat.saving import approval
 
 CONTENT = good_draft()
@@ -62,3 +66,13 @@ def test_of_music_takes_the_spec_of_a_studio_draft_only() -> None:
     assert of_music(CONTENT, studio, None) == studio_hash(CONTENT, SPEC)
     assert of_music(CONTENT, {"source": "spotify", "mix_spec": SPEC}, None) == sha(CONTENT)
     assert of_music(CONTENT, studio, OVERLAY) == edited_hash(CONTENT, SPEC, OVERLAY)
+
+
+async def test_a_revision_whose_hash_is_not_the_one_hash_is_never_stored() -> None:
+    music = {"source": "swedebeat_studio", "mix_spec": SPEC}
+    wrong = revision_hash(CONTENT, mix_spec=SPEC)  # the hash without the overlay it carries
+    made = DraftRevision(CONTENT, wrong, music, {}, edit_overlay=OVERLAY)
+    unused: Any = None  # the check runs before the session is touched
+    with pytest.raises(JobFailure) as failed:
+        await made.store(unused)
+    assert failed.value.category == "internal"

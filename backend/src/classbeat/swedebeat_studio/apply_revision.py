@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from classbeat import __version__ as classbeat_version
 from classbeat.agent.records import mowl_version
 from classbeat.design import revision
+from classbeat.design.edit_overlay_model import storable
 from classbeat.design.revision import DraftRevision, StudioRevisionMusic
 from classbeat.design.revision_hash import revision_hash
 from classbeat.jobs import JobFailure
@@ -63,7 +64,11 @@ def build(
         if made.result is None or made.map_version is None:
             raise JobFailure("internal")
         content, map_version, spec = made.content, made.map_version, made.spec
-        overlay, tss_approximate = made.overlay.stored(), made.result.tss_approximate
+        try:  # stored only as a read would accept it (ADR 0042 section 3)
+            overlay = storable(made.overlay)
+        except ValueError:
+            raise JobFailure("internal") from None
+        tss_approximate = made.result.tss_approximate
     if len(revision.canonical(content)) > revision.MAX_CONTENT_BYTES:
         raise JobFailure("invalid_output")
     stored = StudioRevisionMusic(

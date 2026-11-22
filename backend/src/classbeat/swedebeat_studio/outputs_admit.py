@@ -75,7 +75,7 @@ async def the_draft(
         return "class_not_found" if found == "not_found" else found
     base = given.base_revision_id
     if base is not None and found.revision_id != base:
-        return "stale_revision"  # another tab moved the class (ADR 0042 section 6)
+        return "stale_revision"  # another tab moved the class (ADR 0042 section 4)
     if found.revision_id != given.revision_id:
         return "not_current"
     if found.content_hash.hex() != given.content_hash:

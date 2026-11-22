@@ -13,8 +13,9 @@ No I/O: ``revise_kind`` reads the base's overlay and passes these to the stage
   composed map (``agent.design.check``, the plan gates; its refusal is a correction round too), and
   a timing-locked block that fit moved is ``overlay_violated``. The result is the checked draft and
   the reconciled overlay: the records retargeted on the fitted workout, the unapplied and orphaned
-  ones kept, the pins carried as they are (ADR 0042 section 5 re-applies them to a new spec; that is
-  not done here, reported on #1391).
+  ones kept, the pins carried as they are, not re-applied to the model's new spec (a deliberate
+  deferral, ADR 0042 implementation note on decision 4). A reconciled overlay past its bound is
+  ``ToolError("overlay_too_large")``, a correction round.
 """
 
 from collections.abc import Callable, Mapping, Sequence
@@ -36,10 +37,11 @@ from classbeat.design.edit_overlay_policy import (
     reapplied,
     retargeted,
 )
-from classbeat.design.workout_edit_policy import Block, blocks
+from classbeat.design.workout_edit_policy import Block, EditRefused, blocks
 from classbeat.plan_gates import PlanGates
 from classbeat.swedebeat_studio.studio_edit_calc import fitted_content, overlay_of
 
+_TOO_LARGE = "the instructor's edits no longer fit this draft; keep its blocks closer to base_draft"
 Reconcile = Callable[[DesignResult, Composed], tuple[DesignResult, EditOverlay]]
 
 
@@ -118,6 +120,9 @@ def reconciler(
             if isinstance(record, Lock) and record.covers_timing() and moved:
                 raise _violated(record, before)
         kept: list[Record] = [*applied.unapplied, *applied.orphaned]
-        return again, overlay_of([*retargeted(applied.placed, fitted), *kept, *pins])
+        try:
+            return again, overlay_of([*retargeted(applied.placed, fitted), *kept, *pins])
+        except EditRefused:  # past the bound: the model's draft, not the job's end
+            raise ToolError("overlay_too_large", [_TOO_LARGE]) from None
 
     return reconcile

@@ -180,3 +180,12 @@ def parsed(raw: object) -> EditOverlay:
     if not found.records:
         raise ValueError("an empty overlay is stored as NULL")
     return found
+
+
+def storable(overlay: EditOverlay) -> dict[str, Any] | None:
+    """``overlay.stored()`` once it reads back as itself through ``parsed`` (the bounds, the
+    record shapes); ``ValueError`` otherwise, so a write never stores what a read would refuse."""
+    raw = overlay.stored()
+    if parsed(raw).stored() != raw:
+        raise ValueError("the overlay does not read back as stored")
+    return raw
