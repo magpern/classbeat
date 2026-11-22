@@ -41,13 +41,8 @@ from classbeat.player.delivery import run_player_delivery
 from classbeat.playlists.runtime import playlists_runtime
 from classbeat.preview import render_kind  # noqa: F401 - registers preview_render (#1394)
 from classbeat.preview import storage as preview_storage
-from classbeat.spotdown import (
-    shadow_config,
-    song_match_config,
-    studio_tracks_config,
-)
+from classbeat.spotdown import studio_tracks_config
 from classbeat.spotdown.scope_key import scope_key
-from classbeat.spotdown.sources_policy import parse_sources
 from classbeat.swedebeat_studio import (  # noqa: F401 - each registers its kind on import
     apply_kind,  # apply_mix_choices (ADR 0036 amendment B, #1369)
     design_kind,  # studio_design (SR C5)
@@ -69,28 +64,14 @@ def _install_signal_handlers(loop: asyncio.AbstractEventLoop, stop: asyncio.Even
 
 
 def configure_spotdown(settings: Settings) -> None:
-    """The worker's spotdown switches, each from its own settings (ADR 0040 section 9); each is
-    off unless set."""
-    # spotdown's shadow mode for studio tracks (ADR 0040 section 9): off unless set, and active
-    # only with spotdown installed (``main``) and ``upload`` among the sources.
-    shadow_config.configure(
-        shadow_config.ShadowConfig(
-            settings.spotdown_shadow, parse_sources(settings.spotdown_sources), scope_key(settings)
-        )
-    )
-    # Studio tracks and SwedeBeat mixes: spotdown is the only analysis path (ADR 0040 amendment
-    # "spotdown is the only analysis path", #1353): no switch, no allowlist, no fallback.
-    tracks = studio_tracks_config.TracksConfig(
-        parse_sources(settings.spotdown_sources), scope_key(settings)
-    )
+    """The worker's spotdown settings (ADR 0040 amendment "spotdown is the only analysis path",
+    #1353, #1354): no switch, no allowlist, no fallback. Studio tracks, SwedeBeat mixes and the
+    Spotify song pick all use spotdown, or end ``analysis_unavailable``."""
+    tracks = studio_tracks_config.TracksConfig(scope_key(settings))
     studio_tracks_config.configure(tracks)
     if tracks.refusal() is not None:
-        # Once, at start; no value (a URL, a key or a source) is logged.
+        # Once, at start; no value (a URL or a key) is logged.
         logger.warning("music analysis is unavailable: spotdown is not installed in this worker")
-    # The Spotify song pick's spotdown stages (ADR 0040 amendment, #1354): always on, no switch.
-    song_match_config.configure(
-        song_match_config.MatchConfig(parse_sources(settings.spotdown_sources))
-    )
 
 
 async def _run(settings: Settings, signer: EventSigner | None = None) -> None:

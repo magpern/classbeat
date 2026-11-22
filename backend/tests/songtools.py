@@ -44,7 +44,6 @@ from classbeat.jobs import KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.playlists import common
 from classbeat.songs import pick_match_batch
-from classbeat.spotdown import song_match_config
 from ctx import make_context
 from jobapi import Browser
 from jobtools import grant_plan
@@ -475,11 +474,9 @@ async def songenv(
         Runtime(keyring=spot.ring, models=FactoryModels(made.new_provider), agent=CONFIG)
     )
     songs.configure(songs.SongConfig(enabled=True, sync_wait_seconds=0.3))
-    song_match_config.configure(song_match_config.MatchConfig(frozenset({"youtube"})))
     try:
         yield made
     finally:
-        song_match_config.configure(None)
         songs.configure(None)
         design.configure(None)
         common.configure(previous)

@@ -32,7 +32,6 @@ from classbeat.egress import WORKER_ALLOWLIST, build_allowlist_opener
 from classbeat.jobs import KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.songs import pick_match_batch
-from classbeat.spotdown import song_match_config
 from jobtools import new_job
 from optools import ACCOUNT_BASE, PLAYLIST, FakeMowlAttach, OpsEnv
 
@@ -209,9 +208,7 @@ def denv(xenv: OpsEnv, spotdown: Any, monkeypatch: pytest.MonkeyPatch) -> Iterat
     monkeypatch.setattr(pick_match_batch, "_sleep", no_wait)
     made = DesignEnv(xenv)
     design.configure(made.runtime())
-    song_match_config.configure(song_match_config.MatchConfig(frozenset({"youtube"})))
     try:
         yield made
     finally:
-        song_match_config.configure(None)
         design.configure(None)

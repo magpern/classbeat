@@ -53,9 +53,9 @@ KEEPING: Final = (
 )
 KEEPING_BY_JOB: Final = ("external_operations", "mail_handoff")
 # Rows that go with the discarded class or its reading (or outlive it, as the usage does); a
-# pending chat message (ADR 0038 section 8) is chat, like ``class_messages``; a spotdown
-# shadow comparison (ADR 0040 section 9) measures a job's tracks and never keeps a class, nor
-# does a design job's spotdown budget or a song job's spotdown match budget (section 8).
+# pending chat message (ADR 0038 section 8) is chat, like ``class_messages``; a design job's
+# spotdown budget and a song job's spotdown match budget (ADR 0040 section 8) never keep a class
+# either.
 DISCARDED_WITH: Final = frozenset(
     {
         "jobs",
@@ -65,7 +65,6 @@ DISCARDED_WITH: Final = frozenset(
         "job_events",
         "agent_runs",
         "credit_ledger",
-        "spotdown_shadow_tracks",
         "spotdown_studio_budgets",
         "spotdown_song_budgets",
         # ADR 0042 section 6.5: the audition of a studio draft (a discarded first creation has

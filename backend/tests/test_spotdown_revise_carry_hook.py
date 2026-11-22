@@ -33,7 +33,6 @@ from classbeat.design.revision_spotdown_model import SpotdownSections
 from classbeat.jobs import JobFailure
 from classbeat.songs import draft_spotdown, pick_analyse, spotdown_carry
 from classbeat.songs.seed import Seeded
-from classbeat.spotdown import song_match_config
 from spotdownfake import FakeSpotdown, spotdown
 from test_spotdown_revise_carry_calc import chosen, entry, record, seeded
 from test_spotdown_song_sections_calc import playlist
@@ -92,12 +91,8 @@ def araiser(error: BaseException | type[BaseException]) -> Callable[..., Any]:
 
 
 @pytest.fixture
-def on(spotdown: FakeSpotdown) -> Any:  # the fake installs spotdown
-    song_match_config.configure(song_match_config.MatchConfig(frozenset({"youtube"})))
-    try:
-        yield
-    finally:
-        song_match_config.configure(None)
+def on(spotdown: FakeSpotdown) -> None:  # the fake installs spotdown
+    return None
 
 
 # --- base_sections --------------------------------------------------------------------------------
@@ -226,11 +221,7 @@ class Carry:
 
 @pytest.fixture
 def carry(spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch) -> Any:
-    song_match_config.configure(song_match_config.MatchConfig(frozenset({"youtube"})))
-    try:
-        yield Carry(World(spotdown), monkeypatch)
-    finally:
-        song_match_config.configure(None)
+    return Carry(World(spotdown), monkeypatch)
 
 
 ALL = [0, 1, 2, 3]

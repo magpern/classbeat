@@ -29,7 +29,7 @@ from sqlalchemy import text
 from classbeat import egress_spotdown
 from classbeat.db import user_session
 from classbeat.songs import pick, pick_match, pick_match_batch, pick_match_budget
-from classbeat.spotdown import outage_policy, song_match_config
+from classbeat.spotdown import outage_policy
 from classbeat.spotdown import song_match_policy as policy
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.song_match_record_model import KEY
@@ -297,8 +297,6 @@ def inject(spotdown: FakeSpotdown, how: str, songenv: SongEnv) -> None:
         spotdown.inject["/v2/match"] = [httpx.Response(422, json=error)]
     elif how == "not_configured":
         egress_spotdown.install_spotdown(None, None)
-    elif how == "source_off":
-        song_match_config.configure(song_match_config.MatchConfig(frozenset({"upload"})))
     elif how == "outage":
         tag(songenv, "provider_error", 1, 3, 5, 8, 9, 12, 13)  # 7 of 14, after the retry
 
@@ -313,7 +311,6 @@ UNREACHABLE = [
     ("wrong_key", "unauthorized", ("queued", "analysis_unavailable")),
     ("source_disabled", "source_disabled", ("queued", "analysis_unavailable")),
     ("not_configured", "not_configured", ("queued", "analysis_unavailable")),
-    ("source_off", "source_off", ("queued", "analysis_unavailable")),
     ("outage", None, ("queued", "analysis_unavailable")),
     ("413", "too_large", ("failed", "analysis_failed")),
     ("400", "rejected", ("failed", "analysis_failed")),
@@ -334,11 +331,8 @@ async def test_each_unreachable_reason_ends_its_category_and_makes_no_list(
     rider = await songenv.rider()
     inject(spotdown, how, songenv)
     songenv.script = script(*pool_turns(), *chosen(POOL))
-    try:
-        with caplog.at_level(logging.INFO):
-            job_id, state, category = await ended(songenv, rider)
-    finally:
-        song_match_config.configure(None)
+    with caplog.at_level(logging.INFO):
+        job_id, state, category = await ended(songenv, rider)
     assert (state, category) == ending
     assert songenv.row(job_id).approval_revision_id is None  # no list, from no other timing
     if reason is not None:

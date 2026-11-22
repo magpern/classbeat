@@ -33,7 +33,7 @@ from classbeat.songs import pick_match_budget as budget
 from classbeat.songs.pick_analyse import analyse_list
 from classbeat.songs.pick_match import MatchedPool
 from classbeat.songs.pick_match_batch import Session, match_picks
-from classbeat.spotdown import outage_policy, song_match_config
+from classbeat.spotdown import outage_policy
 from classbeat.spotdown.client import SpotdownClient
 from classbeat.spotdown.song_swap_calc import Candidate, usable
 
@@ -58,7 +58,7 @@ async def _matched(run: JobRun, chosen: ChosenList) -> MatchedPool:
     spent, unavailable = await budget.open(run)
     if unavailable:
         raise JobFailure(outage_policy.UNAVAILABLE)  # an earlier run of this attempt found it
-    session = Session(run, SpotdownClient(song_match_config.current().sources), spent)
+    session = Session(run, SpotdownClient(), spent)
     picks, entries = _entries(chosen)
     matches = await match_picks(session, picks, entries, 0)
     candidates = {

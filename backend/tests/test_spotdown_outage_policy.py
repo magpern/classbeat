@@ -8,7 +8,7 @@ from classbeat.jobs import CATEGORIES, RETRYABLE
 from classbeat.spotdown.failure_policy import UnreachableReason
 from classbeat.spotdown.outage_policy import log_message, unreachable_category
 
-UNAVAILABLE = ("not_configured", "source_off", "source_disabled", "blocked", "connection",
+UNAVAILABLE = ("not_configured", "source_disabled", "blocked", "connection",
                "unauthorized", "server_error")  # fmt: skip
 FAILED = ("too_large", "rejected", "bad_answer")
 INTERNAL = ("conflict",)

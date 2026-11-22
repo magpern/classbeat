@@ -126,7 +126,7 @@ async def chunks() -> AsyncIterator[bytes]:
 async def test_every_answer_of_the_fake_and_every_request_of_the_client_keep_the_contract(
     spotdown: FakeSpotdown,
 ) -> None:
-    client = SpotdownClient(frozenset({"upload", "youtube"}))
+    client = SpotdownClient()
     spotdown.add_analysis(None, "youtube:vid00000000")  # a cached candidate with its summary
     titles = ["Song", *(f"Song [{s}]" for s in MATCH_STATUSES)]
     tracks = tuple(TrackQuery(f"t{n}", t, ("Artist",), 200.0) for n, t in enumerate(titles))

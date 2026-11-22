@@ -6,11 +6,11 @@ must parse:
 - a **per-track status** (``TrackFailure``): ``not_found``, ``uncertain``, ``source_unavailable``,
   ``provider_error``, ``rate_limited`` (with ``retry_after_s``), ``processing_failed`` (with its
   ``failure_kind``) or ``alignment_failed`` (with the file-clock ``analysis_id``, which exists);
-- **spotdown unreachable** (``Unreachable``) with a reason: nothing usable came back, so the whole
-  class uses today's paths (spotdown is never a hard dependency);
+- **spotdown unreachable** (``Unreachable``) with a reason: nothing usable came back, so the job
+  ends in a category of ``outage_policy`` (spotdown is the only analysis path);
 - or the call's success value (``Matched``, ``UncertainMatch``, ``Pending``, ``AnalysisReady``).
 
-The reactions (spare, alternate, replacement, fallback; the bounds per class) are the caller's
+The reactions (spare, alternate, replacement; the bounds per class) are the caller's
 policy, not this module's. ``retry_after_s`` is clamped here to ``RETRY_AFTER_MIN`` to
 ``RETRY_AFTER_MAX`` (the ~10 min spotdown wait budget of section 8), whatever the answer says.
 """
@@ -37,7 +37,6 @@ TrackStatus = Literal[
 ]
 UnreachableReason = Literal[
     "not_configured",  # no origin or no key in this process: nothing was sent
-    "source_off",  # the source is not in ``CLASSBEAT_SPOTDOWN_SOURCES``: nothing was sent
     "source_disabled",  # spotdown's ``422 source_disabled``
     "blocked",  # the egress builder refused a request or a redirect
     "connection",  # connect, read or write error, a timeout or the total deadline
@@ -73,7 +72,7 @@ class Matched:
 @dataclass(frozen=True, slots=True)
 class UncertainMatch:
     """``uncertain``: not used for timing; the best candidate and alternates are kept for the
-    caller's own decision (keep with MOWL sections, or replace)."""
+    caller's own decision (a spare or an alternate)."""
 
     best: Candidate
     alternates: tuple[Candidate, ...]

@@ -8,7 +8,7 @@ chosen list's songs at once, with the reactions of ``song_analysis_policy``.
   (a digest of the Spotify id; no Spotify id leaves). A cache hit is ready at once.
 - The songs go in **rounds**: every song that has a request to make makes it, every queued job is
   polled, then the run waits once, for the longest pause any of them asked for (a retry pause, a
-  ``rate_limited`` wait, the poll pace of ``shadow_policy.poll_delay``). **Every wait is charged
+  ``rate_limited`` wait, the poll pace of ``poll_pace_calc.poll_delay``). **Every wait is charged
   to the job's budget before it is made** (``pick_match_batch.wait``, the budget the match stage
   shares) and made only when it fits what is left; a wait that does not fit ends the job
   ``analysis_unavailable`` (the budget is spent, item 4).
@@ -31,10 +31,10 @@ from classbeat.spotdown import song_analysis_policy as policy
 from classbeat.spotdown import song_match_policy
 from classbeat.spotdown.failure_policy import AnalysisReady, Pending, TrackFailure, Unreachable
 from classbeat.spotdown.match_model import Candidate
+from classbeat.spotdown.poll_pace_calc import poll_delay
 from classbeat.spotdown.provenance_read_calc import youtube_ref
 from classbeat.spotdown.request_model import Reference
 from classbeat.spotdown.scope_calc import idempotency_key
-from classbeat.spotdown.shadow_policy import poll_delay
 from classbeat.spotdown.song_sections_calc import REFERENCE_KIND, reference_id
 
 

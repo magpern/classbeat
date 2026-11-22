@@ -6,9 +6,9 @@ returns a typed result of ``failure_policy``; **no call raises** for anything sp
 
 - **Off means nothing is sent.** With no origin and key installed (``CLASSBEAT_SPOTDOWN_URL``
   empty, the default) every call returns ``Unreachable("not_configured")`` before a client is
-  built. A source not in ``CLASSBEAT_SPOTDOWN_SOURCES`` is ``Unreachable("source_off")``, also
-  before anything is built: ``match`` and a ``youtube:`` source need ``youtube``, an upload and an
-  analysis of an upload need ``upload``.
+  built. There is no setting for the sources: classbeat uses ``upload`` (SwedeBeat audio) and
+  ``youtube`` (matches), and spotdown's ``url`` source can never be requested (``request_model``
+  builds only ``youtube:<video id>`` and an upload id).
 - **Headers:** ``Accept: application/json``, ``Accept-Encoding: identity``, ``Content-Type`` for a
   body and ``Idempotency-Key`` (required on ``upload`` and ``start_analysis``, optional on
   ``match``). The service key is set by the builder's transport, never here.
@@ -61,17 +61,11 @@ class Deleted:
 
 
 class SpotdownClient:
-    """The calls, for the sources this deployment enabled (``sources_policy.parse_sources``)."""
+    """The calls of the contract."""
 
-    def __init__(self, sources: frozenset[str]) -> None:
-        self._sources = sources
-
-    def _refusal(self, source: str | None) -> Unreachable | None:
-        if not egress_spotdown.spotdown_installed():
-            return Unreachable("not_configured")
-        if source is not None and source not in self._sources:
-            return Unreachable("source_off")
-        return None
+    @staticmethod
+    def _refusal() -> Unreachable | None:
+        return None if egress_spotdown.spotdown_installed() else Unreachable("not_configured")
 
     async def match(
         self,
@@ -81,7 +75,7 @@ class SpotdownClient:
     ) -> tuple[MatchOutcome, ...] | Failure:
         """``POST /v2/match``: one outcome per track, in order. No download, no analysis."""
         content = rq.match_body(tracks, cache_scope)
-        refused = self._refusal("youtube")
+        refused = self._refusal()
         if refused is not None:
             return refused
         headers = headers_for(body=JSON, idempotency_key=idempotency_key)
@@ -110,7 +104,7 @@ class SpotdownClient:
         try ``lookup_content`` first, so unchanged audio is never uploaded twice."""
         params = {"cache_scope": rq.check_scope(cache_scope)}
         headers = headers_for(body="application/octet-stream", idempotency_key=idempotency_key)
-        refused = self._refusal("upload")
+        refused = self._refusal()
         if refused is not None:
             return refused
         answer = await exchange(
@@ -151,8 +145,7 @@ class SpotdownClient:
             reference=reference,
             explicit=explicit,
         )
-        source = "upload" if source_ref is None else source_ref.split(":", 1)[0]
-        refused = self._refusal(source)
+        refused = self._refusal()
         if refused is not None:
             return refused
         answer = await exchange(
@@ -178,7 +171,7 @@ class SpotdownClient:
     async def poll(self, job_id: str) -> JobOutcome | Unreachable:
         """``GET /v2/jobs/{id}``: pending, ready or a per-track status (callers back off)."""
         path = rq.job_path(job_id)
-        refused = self._refusal(None)
+        refused = self._refusal()
         if refused is not None:
             return refused
         answer = await _get(path, JOB_ANSWER_MAX)
@@ -196,13 +189,13 @@ class SpotdownClient:
     ) -> AnalysisReady | Failure | None:
         """``GET /v2/analyses/lookup?source=``: the cached analysis, or ``None`` on a ``404``."""
         params = rq.source_lookup_params(source_ref, cache_scope)
-        refused = self._refusal(source_ref.split(":", 1)[0])
+        refused = self._refusal()
         return refused or await _lookup(params)
 
     async def lookup_content(self, sha256: str, cache_scope: str) -> AnalysisReady | Failure | None:
         """``GET /v2/analyses/lookup?sha256=``, in the caller's scope, before any upload."""
         params = rq.content_lookup_params(sha256, cache_scope)
-        refused = self._refusal("upload")
+        refused = self._refusal()
         return refused or await _lookup(params)
 
     async def get_analysis(
@@ -212,7 +205,7 @@ class SpotdownClient:
         ``cache_scope`` spotdown reads only a global (``youtube``) analysis; a private one needs
         the scope that holds it."""
         path, params = rq.analysis_path(analysis_id), rq.analysis_params(cache_scope)
-        refused = self._refusal(None)
+        refused = self._refusal()
         if refused is not None:
             return refused
         answer = await _get(path, ANALYSIS_ANSWER_MAX, seconds=ANALYSIS_SECONDS, params=params)
@@ -228,7 +221,7 @@ class SpotdownClient:
     async def delete_scope(self, cache_scope: str) -> Deleted | Failure:
         """``DELETE /v2/scopes/{scope}``: everything held for the scope (account deletion)."""
         path = rq.scope_path(cache_scope)
-        refused = self._refusal(None)
+        refused = self._refusal()
         if refused is not None:
             return refused
         answer = await exchange(

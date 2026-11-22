@@ -1,7 +1,7 @@
 """The edit overlay of a draft revision (ADR 0042 sections 3 and 4; #1391)
 
-Revision ID: 0074_edit_overlay
-Revises: 0073_pin_unconfirmed
+Revision ID: 0075_edit_overlay
+Revises: 0074_drop_spotdown_shadow
 Create Date: 2026-11-22
 
 ``class_revisions.edit_overlay`` (jsonb, nullable): the instructor's overrides, locks, anchors and
@@ -21,8 +21,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0074_edit_overlay"
-down_revision: str | Sequence[str] | None = "0073_pin_unconfirmed"
+revision: str = "0075_edit_overlay"
+down_revision: str | Sequence[str] | None = "0074_drop_spotdown_shadow"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
