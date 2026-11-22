@@ -27,6 +27,8 @@ export interface TimelineTrack {
   repeatOf: number | null
   /** The same song as the piece before it, playing on (a loop join, A4: exact timing, on phrase points). */
   loop: boolean
+  /** The first downbeat of the piece in class time; absent in an older answer (the editor then offers no snap). */
+  firstDownbeatSec?: number
 }
 
 /** A soft check of the mix (never a refusal): its code and the piece positions it names. */
@@ -97,6 +99,9 @@ function decodeTrack(value: unknown): TimelineTrack {
     crossfadeOutSec: num(item, 'crossfade_out_sec'),
     repeatOf: optionalCount(item, 'repeat_of'),
     loop: optionalFlag(item, 'loop') === true,
+    ...(typeof item['first_downbeat_sec'] === 'number' && Number.isFinite(item['first_downbeat_sec'])
+      ? { firstDownbeatSec: item['first_downbeat_sec'] }
+      : {}),
   }
 }
 
