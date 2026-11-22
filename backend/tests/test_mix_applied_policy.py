@@ -14,6 +14,7 @@ from classbeat.studio import mix_applied_policy
 from classbeat.studio.mix_applied_policy import basis, holds, implied, mixed
 from classbeat.studio.mix_choice_model import MixChoices, canonical
 from classbeat.studio.mix_choice_policy import applied
+from classbeat.studio.mix_pin_policy import Pinned
 from classbeat.studio.mix_proposal_policy import APPLIED_ORIGIN, PROPOSAL_ORIGINS
 from classbeat.studio.output_choice_policy import OUTPUTS, refusal
 from mix_choice_fixtures import FACTS, ORDER, PLAIN, REPEAT, proposal, spec, track
@@ -24,6 +25,7 @@ ORDERED = (
     "mowl_needs_mix",
     "mix_not_chosen",
     "mix_not_applied",
+    "pin_unconfirmed",
     "playlist_has_repeats",
     "output_off",
 )
@@ -36,13 +38,15 @@ def case(triggers: tuple[str, ...]) -> tuple[list[str], frozenset[str], dict[str
     """The SwedeBeat playlist alone, refused by nothing, with each of ``triggers`` added."""
     chosen = ["swedebeat_playlist"]
     enabled = ALL
-    facts = {"repeats": False, "mixed": False, "applied_form": True}
+    facts = {"repeats": False, "mixed": False, "applied_form": True, "pin_unconfirmed": False}
     if "mowl_needs_mix" in triggers:
         chosen.append("mowl")
     if "mix_not_chosen" in triggers:
         facts["mixed"] = True
     if "mix_not_applied" in triggers:
         facts["applied_form"] = False
+    if "pin_unconfirmed" in triggers:
+        facts["pin_unconfirmed"] = True
     if "playlist_has_repeats" in triggers:
         facts["repeats"] = True
     if "output_off" in triggers:
@@ -84,7 +88,10 @@ def test_the_first_reason_of_the_fixed_order_wins_for_every_combination(
 def test_the_two_facts(
     chosen: list[str], is_mixed: bool, is_applied: bool, reason: str | None
 ) -> None:
-    assert refusal(chosen, ALL, repeats=False, mixed=is_mixed, applied_form=is_applied) == reason
+    found = refusal(
+        chosen, ALL, repeats=False, mixed=is_mixed, applied_form=is_applied, pin_unconfirmed=False
+    )
+    assert found == reason
 
 
 # --- mixed ----------------------------------------------------------------------------------
@@ -203,9 +210,10 @@ def test_a_refusal_or_anything_unreadable_does_not_hold(monkeypatch: pytest.Monk
         def raising(*_args: object, error: Exception = error) -> Any:
             raise error
 
-        monkeypatch.setattr(mix_applied_policy, "applied", raising)
+        monkeypatch.setattr(mix_applied_policy, "pinned", raising)  # applied, then the pins
         assert not holds(PLAIN, proposal(PLAIN), FACTS, DJ)
-    monkeypatch.setattr(mix_applied_policy, "applied", lambda *_: {"tracks": [], "crossfades": []})
+    empty = Pinned({"tracks": [], "crossfades": []})
+    monkeypatch.setattr(mix_applied_policy, "pinned", lambda *_: empty)
     assert not holds(PLAIN, proposal(PLAIN), FACTS, DJ)  # not a stored spec (ValidationError)
 
 

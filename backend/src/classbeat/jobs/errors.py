@@ -116,6 +116,10 @@ CATEGORIES: Final = (
     # job runs; nothing is written. Not retried.
     "mix_not_chosen",
     "mix_not_applied",
+    # ADR 0042 section 5 (migration 0073, #1390): an output chosen while a confirmed cut pin's
+    # music changed and it is not re-confirmed or cleared, refused again when the job runs;
+    # nothing is written. Not retried.
+    "pin_unconfirmed",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).

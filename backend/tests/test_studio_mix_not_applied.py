@@ -99,7 +99,7 @@ async def admitted_past_the_check(
     the job-time check is the one tested; the job's row after it ran."""
 
     async def bypassed(*_args: Any) -> Form:
-        return Form(mixed=False, applied_form=True)
+        return Form(mixed=False, applied_form=True, pin_unconfirmed=False)
 
     monkeypatch.setattr(applied_form, "form", bypassed)
     answer = await post(rider, class_id, choice(current, studio, *outputs))
@@ -182,7 +182,7 @@ async def test_the_create_transaction_checks_both_facts_again(
 
     async def first_passes(*args: Any) -> Form:
         calls.append(1)
-        return Form(False, True) if len(calls) == 1 else await real(*args)
+        return Form(False, True, False) if len(calls) == 1 else await real(*args)
 
     monkeypatch.setattr(applied_form, "form", first_passes)
     assert await refused(studio, rider, class_id, current, *outputs) == reason

@@ -8,8 +8,9 @@ each track's length, BPM and first downbeat from its analysis, never a model's n
 stored timing class and cut candidates, #1328) and returns it with its cuts placed (a candidate
 selected, snapped) and rounded, or raises ``MixPlanRefused`` with one named reason:
 
-- ``unknown_field`` / ``tempo_change``: a track names anything but its reference and cut (a tempo,
-  rate, BPM, speed or pitch is a tempo change, which the gateway has no field for);
+- ``unknown_field`` / ``tempo_change``: a track names anything but its reference, its cut and its
+  cut pins (a tempo, rate, BPM, speed or pitch is a tempo change, which the gateway has no field
+  for), or a cut pin that does not read (``mix_pin_model.CutPin``);
 - ``list_has_gap``: the approved list has a gap (it can never go into a mix);
 - ``not_a_permutation``: no piece, a piece whose reference is not on the approved list, or an
   approved reference with no piece (each approved track at least once, and only those);
@@ -39,7 +40,12 @@ selected, snapped) and rounded, or raises ``MixPlanRefused`` with one named reas
    a trusted candidate of an ``exact`` track within the tolerance, at a transition its phrase
    point first (#1330), else the proposed cut; the bar
    grid for ``exact`` or no stored timing decision only), and its range again once placed
-   (``cut_out_of_range``, a named detail). One piece's checks all run before the next piece's;
+   (``cut_out_of_range``, a named detail). One piece's checks all run before the next piece's.
+   A **pinned** cut (``start_pin`` / ``end_pin``, ADR 0042 section 5, #1390) skips the selection,
+   so no candidate ever replaces a pin: its proposed cut is the pin's (``CutPin.proposed``), and
+   it is placed as ``pinned`` says (``bar``: ``snapped(requested_sec)``; ``exact``:
+   ``requested_sec``; confirmed: exactly ``confirmed_sec``, never re-snapped). Both range checks
+   and every later rule hold for it unchanged, the loop rules included (no exact-pin override);
 3. coverage (step 5): each approved reference has a piece (``not_a_permutation``);
 4. the loop joins (step 6, ``mix_loop_policy.join_refusal``), each join in mix order:
    ``loop_needs_exact_timing``, then ``loop_not_on_phrase``, on the stored timing class and
@@ -65,15 +71,18 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
+from pydantic import ValidationError
+
 from classbeat.studio import mix_loop_policy
-from classbeat.studio.mix_cut_policy import placed
+from classbeat.studio.mix_cut_policy import Side, placed, snapped
 from classbeat.studio.mix_facts_model import CS, TrackFacts, cs
+from classbeat.studio.mix_pin_model import EDGES, FIELD_OF, PIN_FIELDS, CutPin, Edge
 
 MAX_TRACKS: Final = 40
 MAX_TOTAL_SEC: Final = 150 * 60
 MIN_PLAYED_SEC: Final = 60.0
 MAX_CROSSFADE: Final = 30
-TRACK_FIELDS: Final = frozenset({"reference", "start_sec", "end_sec"})
+TRACK_FIELDS: Final = frozenset({"reference", "start_sec", "end_sec"}) | PIN_FIELDS
 TEMPO_FIELDS: Final = frozenset({"tempo", "rate", "bpm", "speed", "pitch", "stretch"})
 COVERAGE: Final = "each approved track at least once, and only those"
 
@@ -90,11 +99,39 @@ def _seconds(value: object) -> float:
     return float(value)
 
 
+Pins = dict[Edge, CutPin]
+
+
+def _pins(item: Mapping[str, Any]) -> Pins:
+    out: Pins = {}
+    for edge in EDGES:
+        if FIELD_OF[edge] not in item:
+            continue
+        try:
+            out[edge] = CutPin.model_validate(item[FIELD_OF[edge]])
+        except ValidationError:
+            raise MixPlanRefused("unknown_field", "a cut pin does not read") from None
+    return out
+
+
+def pinned(pin: CutPin, facts: TrackFacts) -> float:
+    """Where a pinned cut lands: never through ``selected`` (module docstring)."""
+    if pin.confirmed_sec is not None:
+        return pin.confirmed_sec  # confirmed: exactly that, never re-snapped
+    if pin.mode == "exact":
+        return pin.requested_sec
+    return snapped(pin.requested_sec, facts)
+
+
+def _placed(at: float, pin: CutPin | None, facts: TrackFacts, side: Side) -> float:
+    return placed(at, facts, side) if pin is None else pinned(pin, facts)
+
+
 def _track(
     raw: object, facts: Mapping[str, TrackFacts], n: int, count: int
-) -> tuple[str, float, float]:
+) -> tuple[tuple[str, float, float], Pins]:
     """Piece ``n`` of ``count``: its start is a transition's after the first piece, its end
-    before the last (``mix_cut_policy.Side``, #1330)."""
+    before the last (``mix_cut_policy.Side``, #1330); with its pins."""
     if not isinstance(raw, Mapping):
         raise MixPlanRefused("unknown_field", "each track is an object")
     item: Mapping[str, Any] = raw  # pyright: ignore[reportUnknownVariableType]
@@ -108,15 +145,18 @@ def _track(
         raise MixPlanRefused("not_a_permutation", COVERAGE)
     known = facts[reference]
     start, end = _seconds(item.get("start_sec")), _seconds(item.get("end_sec"))
+    pins = _pins(item)
+    start = pins["start"].proposed() if "start" in pins else start  # a pin's cut, never the field
+    end = pins["end"].proposed() if "end" in pins else end
     if not 0 <= cs(start) < cs(end) <= cs(known.length) + 1:  # the library's 0.01 s of slack
         raise MixPlanRefused("cut_out_of_range", "need 0 <= start_sec < end_sec <= length")
-    start = placed(start, known, "start" if n > 0 else None)  # A7 steps 2 and 3
-    end = placed(end, known, "end" if n < count - 1 else None)
+    start = _placed(start, pins.get("start"), known, "start" if n > 0 else None)  # A7 steps 2, 3
+    end = _placed(end, pins.get("end"), known, "end" if n < count - 1 else None)
     if not 0 <= cs(start) < cs(end) <= cs(known.length):  # A7 step 4: the range once placed
         raise MixPlanRefused(
             "cut_out_of_range", "the placed cut (candidate, snap) leaves no window"
         )
-    return reference, start, end
+    return (reference, start, end), pins
 
 
 def _crossfades(raw: object, windows: Sequence[int], *, references: Sequence[str]) -> list[int]:
@@ -164,7 +204,8 @@ def checked(
         raise MixPlanRefused("too_many_tracks", f"at most {MAX_TRACKS} pieces")
     known = {r: facts[r] for r in approved if r is not None and r in facts}
     count = len(tracks)  # pyright: ignore[reportUnknownArgumentType]
-    cut = [_track(t, known, n, count) for n, t in enumerate(tracks)]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+    placed_pieces = [_track(t, known, n, count) for n, t in enumerate(tracks)]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+    cut = [c for c, _ in placed_pieces]
     if {r for r in approved if r is not None} - {r for r, _, _ in cut}:  # "only those": _track
         raise MixPlanRefused("not_a_permutation", COVERAGE)
     joins = mix_loop_policy.join_refusal(cut, known)  # A7 step 6, on the placed cuts
@@ -178,6 +219,14 @@ def checked(
     if sum(windows) - CS * sum(crossfades) > MAX_TOTAL_SEC * CS:
         raise MixPlanRefused("mix_too_long", f"at most {MAX_TOTAL_SEC // 60} minutes")
     return {
-        "tracks": [{"reference": r, "start_sec": a, "end_sec": b} for r, a, b in cut],
+        "tracks": [
+            {"reference": r, "start_sec": a, "end_sec": b, **_stored(pins)}
+            for (r, a, b), pins in placed_pieces
+        ],
         "crossfades": crossfades,
     }
+
+
+def _stored(pins: Pins) -> dict[str, Any]:
+    """A piece's pins in their stored form; nothing at all for a piece without one."""
+    return {FIELD_OF[e]: pins[e].stored() for e in EDGES if e in pins}

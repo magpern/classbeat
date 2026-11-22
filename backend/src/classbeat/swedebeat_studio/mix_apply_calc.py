@@ -6,7 +6,10 @@ first reason is the same in both):
 
 1. ``derived``: ``mix_choice_policy.applied`` on the **proposal** (never on an applied draft):
    the choices' ``invalid_input``, ``mix_plan_policy.checked``'s reasons, then the class length
-   (``class_length_out_of_tolerance``);
+   (``class_length_out_of_tolerance``); with the edit overlay's cut pins
+   (``mix_choice_policy.pinned``, ADR 0042 sections 3 and 5, #1390) those two run again on the
+   pinned spec, so **every pin edit runs this one order** (``checked``, the class length, the
+   remap and fit, the plan gates) and a pin is no exception;
 2. ``fitted``: the proposal's stored, fitted workout moved onto the derived timeline by
    ``mix_remap_calc.remapped`` (B4a steps 1 to 5; a squeezed interval is
    ``workout_does_not_fit``); the derived spec composed (``agent.studio_mix.compose``) and the
@@ -32,12 +35,12 @@ from pydantic import ValidationError
 from classbeat.agent.design import DesignResult, check, within_plan
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.stage import ToolError
-from classbeat.agent.studio_mix import Composed, StudioTrack, compose
-from classbeat.agent.studio_schemas import MixInput
+from classbeat.agent.studio_mix import KEY, Composed, StudioTrack, compose_spec
 from classbeat.plan_gates import PlanGates, max_draft_seconds
 from classbeat.studio import mix_choice_policy, mix_remap_calc
 from classbeat.studio.mix_choice_model import MixChoiceRefused, MixChoices, Proposal
 from classbeat.studio.mix_facts_model import TrackFacts
+from classbeat.studio.mix_pin_model import PinRecord
 from classbeat.studio.mix_spec_model import MixSpec
 
 DOES_NOT_FIT: Final = mix_remap_calc.DOES_NOT_FIT
@@ -67,9 +70,15 @@ class Fitted:
     result: DesignResult
 
 
-def derived(proposal: Proposal, music: StudioTracks, choices: MixChoices) -> dict[str, Any]:
-    """Step 1: the derived, checked spec, else ``MixChoiceRefused`` by name."""
-    return mix_choice_policy.applied(proposal, music.facts(), choices)
+def derived(
+    proposal: Proposal,
+    music: StudioTracks,
+    choices: MixChoices,
+    pins: Sequence[PinRecord] = (),
+) -> dict[str, Any]:
+    """Step 1: the derived, checked spec with ``pins`` (none: ``applied``'s), else
+    ``MixChoiceRefused`` by name."""
+    return mix_choice_policy.pinned(proposal, music.facts(), choices, pins).spec
 
 
 def stored_spec(spec: dict[str, Any]) -> dict[str, Any]:
@@ -89,6 +98,19 @@ def plan_of(references: Sequence[str], spec: dict[str, Any]) -> dict[str, Any]:
             {"track": index[t["reference"]], "start_sec": t["start_sec"], "end_sec": t["end_sec"]}
             for t in stored["tracks"]
         ],
+        "crossfades": list(stored["crossfades"]),
+    }
+
+
+def keyed(references: Sequence[str], spec: dict[str, Any]) -> dict[str, Any]:
+    """A spec by the stage's keys (``agent.studio_mix.KEY``), its cut pins kept, for
+    ``compose_spec``; ``ValueError`` for a reference off the list (as ``plan_of``)."""
+    index = {r: n for n, r in enumerate(references)}
+    stored = stored_spec(spec)
+    if any(t["reference"] not in index for t in stored["tracks"]):
+        raise ValueError("a piece is not a track of the approved list")
+    return {
+        "tracks": [{**t, "reference": KEY.format(index[t["reference"]])} for t in stored["tracks"]],
         "crossfades": list(stored["crossfades"]),
     }
 
@@ -135,8 +157,8 @@ def fitted(
     workout = moved(content, proposal_spec, spec)
     plan = plan_of(music.references, spec)
     try:
-        composed = compose(music.tracks, MixInput.model_validate(plan))
-    except (ToolError, ValidationError):
+        composed = compose_spec(music.tracks, keyed(music.references, spec))
+    except ToolError:
         raise ValueError("the derived spec does not compose") from None
     if composed.plan != plan:
         raise ValueError("the composed plan is not the derived spec")

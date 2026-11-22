@@ -2372,6 +2372,8 @@ const da: Catalogue = {
     'Denne klasse er mixet (klip eller overgange), så SwedeBeat-playlisten alene ville ikke spille den, som den er lavet. Vælg også DJ-mix, eller brug hele sange først.',
   'studio.reason.mix_not_applied':
     'Denne version er ikke den form, du valgte for musikken. Anvend dine valg igen, og godkend så den nye version.',
+  'studio.reason.pin_unconfirmed':
+    'Musikken i en sang er ændret, efter du bekræftede et klip i den. Lyt til klippet igen og bekræft det, eller fjern det, og godkend så.',
   'studio.reason.playlist_has_repeats':
     'Denne klasse gentager en sang, så den kan kun laves som et mix. Vælg mixet i stedet for SwedeBeat-playlisten.',
   'studio.reason.output_off':

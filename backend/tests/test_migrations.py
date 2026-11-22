@@ -35,7 +35,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0072_preview_clips"]
+    assert script.get_heads() == ["0073_pin_unconfirmed"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -56,7 +56,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0072_preview_clips"]
+        assert applied_revisions(database_url) == ["0073_pin_unconfirmed"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -1134,6 +1134,45 @@ def test_0071_admits_the_mix_categories_and_the_downgrade_turns_them_into_intern
         assert failed_job("mix_too_long") is not None  # the check before 0071 is back
         command.upgrade(config, "head")
         assert failed_job("mix_not_applied") is not None
+    finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0073_admits_pin_unconfirmed_and_the_downgrade_turns_it_into_internal(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1390: ``jobs.error_category`` takes ``pin_unconfirmed`` at head and refuses it after the
+    downgrade, which first turns a stored one into ``internal`` (as 0071)."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+
+    def failed_job(category: str) -> uuid.UUID:
+        with admin.begin() as connection:
+            owner = new_user(connection)
+            return new_job(
+                connection, owner, state="failed", error_category=category,
+                finished_at="2026-01-01",
+            )  # fmt: skip
+
+    def category_of(job_id: uuid.UUID) -> str:
+        with admin.connect() as connection:
+            return connection.execute(
+                text("SELECT error_category FROM jobs WHERE id = :i"), {"i": job_id}
+            ).scalar_one()
+
+    try:
+        command.upgrade(config, "head")
+        stored = failed_job("pin_unconfirmed")
+        assert category_of(stored) == "pin_unconfirmed"
+        command.downgrade(config, "0072_preview_clips")
+        assert category_of(stored) == "internal"
+        with pytest.raises(IntegrityError, match="jobs_error_category"):
+            failed_job("pin_unconfirmed")
+        assert failed_job("mix_not_applied") is not None  # the check before 0073 is back
+        command.upgrade(config, "head")
+        assert failed_job("pin_unconfirmed") is not None
     finally:
         admin.dispose()
         command.downgrade(config, "base")

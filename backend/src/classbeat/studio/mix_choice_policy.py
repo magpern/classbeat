@@ -13,12 +13,16 @@ Pure: no I/O. What the screen shows per song is ``mix_suggestion_policy.suggesti
   4. the class length (B6): the composed duration within ``length_policy.within`` of the list's
      ``target_sec``, else ``class_length_out_of_tolerance`` with the total and the allowed range.
   ``invalid_input`` (a position off the list) comes before all of them (B4, the one order).
+- ``pinned``: ``applied``, then the edit overlay's cut pins written into it by target
+  (``mix_pin_policy.with_pins``; ADR 0042 sections 5 and 8, #1390; a song made whole has none, its
+  pins unapplied), run through steps 3 and 4 again, so a pinned spec is held to the same gates.
+  Without a pin that applies it is ``applied``'s spec, unchanged.
 - ``is_plain``: every piece ``[0, length]`` in whole hundredths, every crossfade 0 and no reference
   twice (B9's ``mixed`` is its negation).
 """
 
 import itertools
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
 from classbeat.agent.songs import TOLERANCE
@@ -32,6 +36,8 @@ from classbeat.studio.mix_choice_model import (
 )
 from classbeat.studio.mix_choice_model import positions_refusal as _positions
 from classbeat.studio.mix_facts_model import CS, TrackFacts, cs
+from classbeat.studio.mix_pin_model import PinRecord
+from classbeat.studio.mix_pin_policy import Pinned, pins_of, with_pins
 from classbeat.swedebeat_studio import length_policy
 
 OUT_OF_TOLERANCE: Final = "class_length_out_of_tolerance"
@@ -42,21 +48,31 @@ def allowed(target_sec: int) -> tuple[float, float]:
     return target_sec * (1 - TOLERANCE), target_sec * (1 + length_policy.UPPER)
 
 
+def whole_songs(
+    proposal: Proposal, known: Mapping[str, TrackFacts], choices: MixChoices
+) -> frozenset[str]:
+    """The approved references B4 step 1 plays whole (module docstring)."""
+    at = {r: n for n, r in enumerate(proposal.approved) if r is not None}
+    return frozenset(
+        r
+        for r in known
+        if not choices.dj_mix
+        or not choices.trim
+        or at[r] in choices.keep_whole
+        or known[r].timing_class != "exact"
+    )
+
+
 def applied(
     proposal: Proposal, facts: Mapping[str, TrackFacts], choices: MixChoices
 ) -> dict[str, Any]:
     """The derived, checked spec (module docstring), else ``MixChoiceRefused`` by name."""
     _positions(choices, len(proposal.approved))
     known = dict(approved_facts(proposal, facts))
-    at = {r: n for n, r in enumerate(proposal.approved) if r is not None}
+    made_whole = whole_songs(proposal, known, choices)
 
     def whole(reference: str) -> bool:
-        return (
-            not choices.dj_mix
-            or not choices.trim
-            or at[reference] in choices.keep_whole
-            or known[reference].timing_class != "exact"
-        )
+        return reference in made_whole
 
     kept: list[tuple[int, str, float, float]] = []  # (proposal position, reference, start, end)
     seen: set[str] = set()
@@ -79,6 +95,33 @@ def applied(
         "tracks": [{"reference": r, "start_sec": a, "end_sec": b} for _, r, a, b in kept],
         "crossfades": crossfades,
     }
+    return _gated(spec, proposal, known)
+
+
+def pinned(
+    proposal: Proposal,
+    facts: Mapping[str, TrackFacts],
+    choices: MixChoices,
+    pins: Sequence[PinRecord],
+) -> Pinned:
+    """``applied`` with the overlay's pins, gated again (module docstring); ``MixChoiceRefused``
+    by name, ``ValueError`` for records that do not read."""
+    base = applied(proposal, facts, choices)
+    if not pins:
+        return Pinned(base)
+    known = dict(approved_facts(proposal, facts))
+    found = with_pins(
+        base, pins, approved=proposal.approved, whole=whole_songs(proposal, known, choices)
+    )
+    if not pins_of(found.spec):
+        return Pinned(base, found.unapplied, found.dropped)
+    return Pinned(_gated(found.spec, proposal, known), found.unapplied, found.dropped)
+
+
+def _gated(
+    spec: Mapping[str, Any], proposal: Proposal, known: Mapping[str, TrackFacts]
+) -> dict[str, Any]:
+    """Steps 3 and 4 of the module docstring."""
     try:
         good = mix_plan_policy.checked(spec, proposal.approved, known)
     except mix_plan_policy.MixPlanRefused as exc:
