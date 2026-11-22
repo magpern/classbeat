@@ -77,6 +77,12 @@ describe('the DJ mix opt-in on the consent screen', () => {
     expect(await screen.findByRole('button', { name: 'Approve and create' })).toBeEnabled()
   })
 
+  it('keeps Approve disabled while the preview for the current choices is awaited', async () => {
+    fakeApi(routes({ [`POST ${PREVIEW_PATH}`]: () => new Promise<never>(() => {}) }))
+    renderAt(PAGE)
+    expect(await screen.findByRole('button', { name: 'Approve and create' })).toBeDisabled()
+  })
+
   it('shows both switches on with DJ mix and asks for the DJ form', async () => {
     const api = fakeApi(routes())
     renderAt(PAGE)
@@ -213,7 +219,7 @@ describe('the new total, the refusal and the way out', () => {
     expect(screen.getByRole('alert')).not.toHaveTextContent(why)
   })
 
-  it('starts the re-plan only from its button, as a revise that carries the choices', async () => {
+  it('starts the re-plan only from its button, as a revise without a choices field until #1372', async () => {
     const api = fakeApi(
       routes({
         [`POST ${PREVIEW_PATH}`]: OUT,
@@ -230,11 +236,10 @@ describe('the new total, the refusal and the way out', () => {
     const call = api.to('POST', '/api/jobs')[0]!
     expect(call.body).toMatchObject({
       kind: 'studio_revise',
-      input: {
-        class_id: CLASS_ID, base_revision_id: REV1, swedebeat_connection_id: CONNECTION,
-        choices: { ...DJ, keep_whole: [0] },
-      },
+      input: { class_id: CLASS_ID, base_revision_id: REV1, swedebeat_connection_id: CONNECTION },
     })
+    // TODO(#1372): the choices go with it once the job input accepts them (extra fields are refused today).
+    expect(call.body as { input: object }).not.toHaveProperty('input.choices')
     expect(call.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
   })
 

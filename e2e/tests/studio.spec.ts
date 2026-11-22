@@ -103,12 +103,23 @@ test('a studio class from the description to its outputs, with no MOWL connectio
   await expect(outputs).toBeVisible()
   const spotify = outputs.getByRole('checkbox', { name: /^Spotify playlist/ })
   const playlist = outputs.getByRole('checkbox', { name: /^SwedeBeat playlist/ })
-  const mix = outputs.getByRole('checkbox', { name: /^SwedeBeat mix/ })
+  const mix = outputs.getByRole('checkbox', { name: /^DJ mix/ })
   await expect(spotify).toBeChecked()
   await expect(playlist).toBeChecked()
   await expect(mix).not.toBeChecked() // optional without MOWL (ADR 0036 section 6)
   await mix.check()
-  await expect(page.getByTestId('studio-consent')).toContainText('SwedeBeat playlist, SwedeBeat mix')
+  // The DJ mix is a separate output with its own choices (ADR 0036 Amendment B): they are applied to
+  // a new draft first, and only that draft is approved.
+  await outputs.getByRole('button', { name: 'Apply these choices' }).click()
+  await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/, LONG)
+  const applyId = /\/jobs\/([0-9a-f-]{36})$/.exec(page.url())![1]!
+  await untilJob(page, applyId, 'completed')
+  await page.goto(`/classes/${classId}`)
+  await expect(page.getByRole('heading', { name: 'Music timeline' })).toBeVisible(LONG)
+  expect(drafts()).toBe('3')
+  await expect(mix).toBeChecked(LONG) // the applied draft records the choice
+  await expect(page.getByTestId('studio-consent')).toContainText('SwedeBeat playlist, DJ mix')
+  await expect(outputs.getByRole('button', { name: 'Approve and create' })).toBeEnabled(LONG)
   await outputs.getByRole('button', { name: 'Approve and create' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/, LONG)
   const outputsId = /\/jobs\/([0-9a-f-]{36})$/.exec(page.url())![1]!
