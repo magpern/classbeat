@@ -108,18 +108,12 @@ test('a studio class from the description to its outputs, with no MOWL connectio
   await expect(playlist).toBeChecked()
   await expect(mix).not.toBeChecked() // optional without MOWL (ADR 0036 section 6)
   await mix.check()
-  // The DJ mix is a separate output with its own choices (ADR 0036 Amendment B): they are applied to
-  // a new draft first, and only that draft is approved.
-  await outputs.getByRole('button', { name: 'Apply these choices' }).click()
-  await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/, LONG)
-  const applyId = /\/jobs\/([0-9a-f-]{36})$/.exec(page.url())![1]!
-  await untilJob(page, applyId, 'completed')
-  await page.goto(`/classes/${classId}`)
-  await expect(page.getByRole('heading', { name: 'Music timeline' })).toBeVisible(LONG)
-  expect(drafts()).toBe('3')
-  await expect(mix).toBeChecked(LONG) // the applied draft records the choice
-  await expect(page.getByTestId('studio-consent')).toContainText('SwedeBeat playlist, DJ mix')
+  // The DJ mix is a separate output with its own choices (ADR 0036 Amendment B). The preview of the
+  // default choices (Blend and Trim) equals this draft, so no apply job is needed and Approve is
+  // enabled once the preview has answered (its digest is the draft's, B10).
   await expect(outputs.getByRole('button', { name: 'Approve and create' })).toBeEnabled(LONG)
+  expect(drafts()).toBe('2')
+  await expect(page.getByTestId('studio-consent')).toContainText('SwedeBeat playlist, DJ mix')
   await outputs.getByRole('button', { name: 'Approve and create' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/, LONG)
   const outputsId = /\/jobs\/([0-9a-f-]{36})$/.exec(page.url())![1]!

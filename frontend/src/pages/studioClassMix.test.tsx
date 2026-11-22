@@ -219,7 +219,7 @@ describe('the new total, the refusal and the way out', () => {
     expect(screen.getByRole('alert')).not.toHaveTextContent(why)
   })
 
-  it('starts the re-plan only from its button, as a revise without a choices field until #1372', async () => {
+  it('starts the re-plan only from its button, as a revise that carries the choices', async () => {
     const api = fakeApi(
       routes({
         [`POST ${PREVIEW_PATH}`]: OUT,
@@ -236,10 +236,11 @@ describe('the new total, the refusal and the way out', () => {
     const call = api.to('POST', '/api/jobs')[0]!
     expect(call.body).toMatchObject({
       kind: 'studio_revise',
-      input: { class_id: CLASS_ID, base_revision_id: REV1, swedebeat_connection_id: CONNECTION },
+      input: {
+        class_id: CLASS_ID, base_revision_id: REV1, swedebeat_connection_id: CONNECTION,
+        choices: { ...DJ, keep_whole: [0] },
+      },
     })
-    // TODO(#1372): the choices go with it once the job input accepts them (extra fields are refused today).
-    expect(call.body as { input: object }).not.toHaveProperty('input.choices')
     expect(call.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
   })
 

@@ -139,8 +139,9 @@ export async function createApplyJob(
 }
 
 /**
- * Re-plan the other songs: a `studio_revise`, a new proposal that is never applied. The choices are
- * not sent yet (#1372 adds them to the job input).
+ * Re-plan the other songs: a `studio_revise` that carries the choices (#1372; the same shape as
+ * `apply_mix_choices`, checked against the approved list), so the model keeps what the user fixed and
+ * designs the rest again. A new proposal, never applied.
  */
 export async function createReplanJob(
   input: { classId: string; revisionId: string; connectionId: string; request: string; choices: MixChoicesBody },
@@ -153,8 +154,7 @@ export async function createReplanJob(
       base_revision_id: input.revisionId,
       request: input.request,
       swedebeat_connection_id: input.connectionId,
-      // TODO(#1372): send `choices` once the studio_revise input accepts them; JobInput forbids
-      // extra fields, so today the field would be refused as invalid_input.
+      choices: input.choices,
     },
   }
   return decodeJob(await post('/api/jobs', body, { 'Idempotency-Key': idempotencyKey }))
