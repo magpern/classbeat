@@ -2,6 +2,7 @@
 spotdown's sections) and ``song_carry_calc.with_kept`` (a kept song's entry carried into a "Change
 songs" list); and the ``kept_timing`` adapter (it swallows nothing)."""
 
+import json
 import uuid
 from typing import Any
 
@@ -12,12 +13,28 @@ from classbeat.agent import track_timing_calc as tt
 from classbeat.agent.choose_songs import ChosenSong
 from classbeat.agent.songs import KeptSong
 from classbeat.classes.duplicate_music import music_copy
-from classbeat.design.revision_spotdown_model import SpotdownSections, sections_of, stamped
+from classbeat.design.revision_spotdown_model import (
+    MAX_RECORD_BYTES,
+    MAX_TRACKS,
+    SpotdownSections,
+    sections_of,
+    stamped,
+)
 from classbeat.songs import pick_analyse
 from classbeat.songs.seed import Seeded
 from classbeat.spotdown import song_carry_calc
-from classbeat.spotdown.song_analysis_record_model import KEY
+from classbeat.spotdown.provenance_read_calc import AudioIdentity
+from classbeat.spotdown.song_analysis_record_model import (
+    KEY,
+    Analysed,
+    SongOutcome,
+    analysis_record,
+)
 from classbeat.spotdown.song_carry_calc import with_kept
+from classbeat.spotdown.song_match_policy import TrackMatch
+from classbeat.spotdown.song_match_record_model import match_record
+from classbeat.spotdown.timing_class_policy import TimingDecision
+from classbeat.spotdown.track_fit_policy import Fit
 
 LIST = uuid.uuid4()
 
@@ -217,3 +234,60 @@ def test_a_stamped_draft_without_a_list_fails_the_job_internal() -> None:
         revision._sections(m, None, None)  # pyright: ignore[reportPrivateUsage]
     assert failed.value.category == "internal"
     assert revision._sections(a_map(), None, None) is None  # pyright: ignore[reportPrivateUsage]
+
+
+# --- the record's size bound at the most tracks (#1411 follow-up) --------------------------------
+
+
+def a_full_record(n: int) -> dict[str, Any]:
+    """The stage-A/B record of ``n`` tracks, built by the real record builders from what a long
+    playlist's tracks carry: a 128-character fingerprint (the longest the reader takes), a sha256
+    config hash, every evidence key the timing policy writes and ``content.explicit``."""
+    audio = AudioIdentity("a" * 64, "f" * 128, "mp3", 44100.0, 2.0, 241.123, 240.456)
+    evidence = {
+        "played_kind": "spotify",
+        "source_kind": "youtube",
+        "sha256_equal": False,
+        "uploaded_as_played": False,
+        "anchors": 4,
+        "match_band": "confident",
+        "recording_match_confidence": 0.912,
+        "duration_check": "within_tolerance",
+        "decoded_duration_check": "within_tolerance",
+        "isrc_equal": True,
+        "alignment": "aligned",
+        "residual_s": 0.842,
+        "offset_s": 12.345,
+    }
+    decision = TimingDecision("approximate", "recording_match_residual_ok", evidence)
+    explicit = {"is_explicit": True, "confidence": 0.93}
+    outcomes = {
+        i: SongOutcome(
+            "spotdown",
+            Analysed(
+                str(uuid.uuid4()),
+                ("spotdown-analyzer", "6.3.0", "c" * 64),
+                audio,
+                decision,
+                explicit,
+            ),
+            Fit(True, ()),
+        )
+        for i in range(n)
+    }
+    matches = {
+        f"id{i}": TrackMatch("timing", "matched", "confident", 0.912, "match-v1") for i in range(n)
+    }
+    return {
+        **match_record(list(matches), matches, {}, rounds=0, candidates=n, missing=0),
+        **analysis_record(outcomes, {}, rounds=0),
+    }
+
+
+def test_a_record_of_the_most_tracks_stays_within_its_bound() -> None:
+    n = MAX_TRACKS
+    record = a_full_record(n)
+    size = len(json.dumps(record, sort_keys=True, separators=(",", ":")).encode())
+    assert size <= MAX_RECORD_BYTES, f"{size} B for {n} tracks, bound {MAX_RECORD_BYTES}"
+    field = SpotdownSections(tracks=list(range(n)), record=record)  # the model accepts it
+    assert field.record == record

@@ -136,6 +136,10 @@ async def test_every_track_is_matched_analysed_and_designed_on_spotdown(
     assert [p for p, _, _ in timing_marks(field["record"])] == list(range(TRACKS))
     assert [e["use"] for e in field["record"][MATCH_KEY]["songs"]] == ["timing"] * TRACKS
     assert field["record"][KEY]["swaps"] == []
+    assert field["record"][MATCH_KEY]["swaps"] == []  # a swap would hold an id, a title, an artist
+    stored = json.dumps(field)  # the whole stored field: no Spotify id and no title or artist
+    for planted in ("PlantedTrk", "Invented Song", "Made-up Artist", '"spotify_id"', '"title"'):
+        assert planted not in stored
     sent = str([s.body for s in spotdown.seen])
     assert "PlantedTrk" not in sent  # no Spotify id leaves
 
