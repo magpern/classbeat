@@ -1918,7 +1918,7 @@ const da: Catalogue = {
   'class.reason.game_retired':
     'Denne version har et Ghost Target-spil, som MOWL ikke længere tilbyder. Bed i chatten om at få det fjernet.',
   'class.reason.has_user_edits':
-    'Det her hold har dine egne ændringer. Fortryd dem, før du beder om en ændring, så de ikke går tabt.',
+    'Det her hold har dine egne ændringer. Fortryd dem, før du beder om en ændring, ellers går de tabt.',
   'start.formLabel': 'Start et hold',
   'start.backToStart': 'Tilbage til start',
   'start.prompt.label': 'Beskriv dit hold',

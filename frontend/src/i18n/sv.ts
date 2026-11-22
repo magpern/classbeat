@@ -1931,7 +1931,7 @@ const sv: Catalogue = {
   'class.reason.game_retired':
     'Den här versionen har ett Ghost Target-spel, som MOWL inte längre erbjuder. Be om att få bort det i chatten.',
   'class.reason.has_user_edits':
-    'Det här passet har dina egna ändringar. Ångra dem innan du ber om en ändring, så att de inte går förlorade.',
+    'Det här passet har dina egna ändringar. Ångra dem innan du ber om en ändring, annars försvinner de.',
   'start.formLabel': 'Starta ett pass',
   'start.backToStart': 'Tillbaka till start',
   'start.prompt.label': 'Beskriv ditt pass',
