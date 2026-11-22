@@ -18,6 +18,12 @@ describe('studio songs api', () => {
     expect(chosen + applied).not.toMatch(/mix_not_/)
   })
 
+  it('asks to listen again to a confirmed cut whose music changed (ADR 0042 section 5)', () => {
+    const text = studioError(new ApiError(409, 'pin_unconfirmed', null, undefined))
+    expect(text).toContain('Listen to that cut again')
+    expect(text).not.toContain('pin_unconfirmed')
+  })
+
   it('falls back to a plain sentence for an unknown reason', () => {
     expect(studioError(new ApiError(500, 'weird_code', null, undefined))).not.toContain('weird_code')
   })

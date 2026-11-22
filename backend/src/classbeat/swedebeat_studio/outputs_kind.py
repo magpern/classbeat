@@ -11,6 +11,7 @@ the user chose on the consent screen for **one** approved studio draft, each wit
    reconnected SwedeBeat connection), ``account_changed``, ``mix_not_chosen`` (the SwedeBeat
    playlist without DJ mix for a mixed draft, ADR 0036 amendment B9), ``mix_not_applied`` (a
    SwedeBeat output for a draft that is not the applied form of its proposal, B9),
+   ``pin_unconfirmed`` (a confirmed cut pin whose music changed, ADR 0042 section 5),
    ``playlist_has_repeats`` (the SwedeBeat playlist for a draft that repeats a song, ADR 0036
    amendment A8) or ``internal``.
    Then the bearer of that connection (its generation again) and the user's analyses of the
@@ -66,6 +67,7 @@ _AS_JOB: Final = {
     "account_changed": "account_changed",
     "mix_not_chosen": "mix_not_chosen",
     "mix_not_applied": "mix_not_applied",
+    "pin_unconfirmed": "pin_unconfirmed",
     "playlist_has_repeats": "playlist_has_repeats",
     "internal": "internal",
 }

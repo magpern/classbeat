@@ -2372,6 +2372,8 @@ const da: Catalogue = {
     'Denne klasse er mixet (klip eller overgange), så SwedeBeat-playlisten alene ville ikke spille den, som den er lavet. Vælg også DJ-mix, eller brug hele sange først.',
   'studio.reason.mix_not_applied':
     'Denne version er ikke den form, du valgte for musikken. Anvend dine valg igen, og godkend så den nye version.',
+  'studio.reason.pin_unconfirmed':
+    'Musikken i en sang er ændret, efter du bekræftede et klip i den. Lyt til klippet igen og bekræft det, eller fjern det, og godkend så.',
   'studio.reason.playlist_has_repeats':
     'Denne klasse gentager en sang, så den kan kun laves som et mix. Vælg mixet i stedet for SwedeBeat-playlisten.',
   'studio.reason.output_off':
@@ -2435,11 +2437,11 @@ const da: Catalogue = {
   'studio.out.swedebeat_playlist':
     'SwedeBeat-playliste',
   'studio.out.swedebeat_playlist.desc':
-    'En playliste, der oprettes og udgives i SwedeBeat.',
+    'En playliste med hele sange, der oprettes og udgives i SwedeBeat. Med DJ-mix følger den mixets klip og overtoninger.',
   'studio.out.swedebeat_mix':
-    'SwedeBeat-mix',
+    'DJ-mix',
   'studio.out.swedebeat_mix.desc':
-    'Én renderet MP3 af hele mixet, udgivet i SwedeBeat.',
+    'En mixet version af sangene med de overtoninger og klip, du vælger nedenfor, som én MP3 udgivet i SwedeBeat.',
   'studio.out.mowl':
     'MOWL-træningspas',
   'studio.out.mowl.desc':
@@ -2624,6 +2626,98 @@ const da: Catalogue = {
     'Et hold lavet med SwedeBeats studie kan ikke kopieres. Lav et nyt valg i stedet.',
   'job.failure.studioMusicChanged.title':
     'Musikken skal analyseres igen',
+  'studio.mix.title':
+    'Valg til DJ-mixet',
+  'studio.mix.blend':
+    'Bløde overgange',
+  'studio.mix.blend.desc':
+    'Sangene overlapper med en overtoning. Fra: hvert skift er et hårdt klip.',
+  'studio.mix.trim':
+    'Forkort sange',
+  'studio.mix.trim.desc':
+    'classbeat må forkorte sange og gentage dele af dem. Fra: hver sang spilles én gang, hel.',
+  'studio.mix.songs':
+    'Sangene i DJ-mixet',
+  'studio.mix.select':
+    'Vælg {song}',
+  'studio.mix.song.unnamed':
+    'Sang {n}',
+  'studio.mix.song.suggests':
+    'Forslag: {plays}',
+  'studio.mix.song.proposal':
+    'spil {from} til {to} af {length}',
+  'studio.mix.song.endsOnPhrase':
+    'slutter på en frase',
+  'studio.mix.song.full':
+    'spil hele sangen ({length})',
+  'studio.mix.song.keepWhole':
+    'Behold hel',
+  'studio.mix.song.hardCutIn':
+    'Hårdt klip ind',
+  'studio.mix.song.hardCutOut':
+    'Hårdt klip ud',
+  'studio.mix.song.playsOnce':
+    'Hvis du beholder den hel, spilles den én gang.',
+  'studio.mix.song.result':
+    'Med dine valg: {plays}',
+  'studio.mix.fullOnly':
+    'Kun hel sang: {reason}.',
+  'studio.mix.fullOnly.approximate':
+    'taktingen er kun omtrentlig',
+  'studio.mix.fullOnly.unusable':
+    'taktingen kan ikke bruges',
+  'studio.mix.fullOnly.unknown':
+    'taktingen er ikke analyseret endnu',
+  'studio.mix.all':
+    'Alle sange',
+  'studio.mix.none':
+    'Ingen',
+  'studio.mix.selected':
+    '{count} valgt',
+  'studio.mix.bulk.keepWhole':
+    'Behold valgte hele',
+  'studio.mix.bulk.hardCut':
+    'Hårdt klip på valgte',
+  'studio.mix.bulk.suggestion':
+    'Tilbage til forslaget',
+  'studio.mix.checking':
+    'Tjekker disse valg…',
+  'studio.mix.total':
+    'Med disse valg bliver mixet {total}. Klassen er {target}; mixet skal være mellem {low} og {high}.',
+  'studio.mix.refusedOther':
+    'Disse valg kan ikke blive til et mix. Ret dem og prøv igen.',
+  'studio.mix.apply':
+    'Anvend disse valg',
+  'studio.mix.applying':
+    'Anvender…',
+  'studio.mix.applyFirst':
+    'Anvend først valgene. Tjek så den nye tidslinje ovenfor og godkend.',
+  'studio.mix.replan':
+    'Planlæg de andre sange om',
+  'studio.mix.replanRequest':
+    'Planlæg de sange om, som jeg ikke har ændret. Behold mine valg for de andre.',
+  'studio.consent.playlistFollowsMix':
+    'SwedeBeat-playlisten følger DJ-mixets klip og overtoninger.',
+  'studio.consent.mixChoices':
+    'DJ-mix: sange forkortet {trimmed}, hårde klip {cuts}.',
+  'studio.reason.class_length_out_of_tolerance':
+    'Med disse valg bliver mixet for langt eller for kort til klassen. Ret valgene, eller brug muligheden nedenfor.',
+  'studio.reason.no_proposal':
+    'Der er endnu intet forslag at vælge imellem. Planlæg sangene om for at få et.',
+  'studio.reason.apply_limit':
+    'Valg er anvendt så mange gange, som denne klasse tillader.',
+  'studio.reason.workout_does_not_fit':
+    'Passet passer ikke til musikken med disse valg. Planlæg de andre sange om, så designes passet igen.',
+  'studio.reason.plan_class_too_long':
+    'Med disse valg bliver klassen længere, end din plan tillader. Ret valgene, eller brug muligheden nedenfor.',
+  'studio.reason.plan_not_allowed':
+    'Din plan tillader ikke det, disse valg giver. Planlæg de andre sange om for at designe den igen.',
+  'studio.reason.mix_too_long':
+    'Mixet er for langt. Vælg kortere sange, eller forkort mere.',
+  'studio.reason.nothing_pending':
+    'Disse valg giver det udkast, du allerede har. Der er intet at anvende.',
+  'job.stage.apply':
+    'Anvender dine valg',
   'job.failure.studioMusicChanged.detail':
     'Analysen af musikken er udløbet. Skift sange for at analysere den igen.',
 }

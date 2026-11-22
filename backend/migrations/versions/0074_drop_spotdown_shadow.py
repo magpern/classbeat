@@ -1,7 +1,7 @@
 """drop spotdown_shadow_tracks: shadow mode is gone (ADR 0040 amendment; #1355)
 
-Revision ID: 0073_drop_spotdown_shadow
-Revises: 0072_preview_clips
+Revision ID: 0074_drop_spotdown_shadow
+Revises: 0073_pin_unconfirmed
 Create Date: 2026-11-22
 
 Shadow mode only compared spotdown with the local analysis, and spotdown is the only analysis path
@@ -18,8 +18,8 @@ from alembic import op
 
 from classbeat.db.rls import enable_owner_rls
 
-revision: str = "0073_drop_spotdown_shadow"
-down_revision: str | Sequence[str] | None = "0072_preview_clips"
+revision: str = "0074_drop_spotdown_shadow"
+down_revision: str | Sequence[str] | None = "0073_pin_unconfirmed"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -13,8 +13,9 @@ order, each refusal writing nothing:
    (a stale hash), ``internal`` (a stored hash that no longer holds);
 4. the choice (``output_choice_policy.refusal``, with the draft's own spec: whether it repeats a
    song, whether it is mixed and whether it is the applied form of its proposal, read by
-   ``applied_form``, ADR 0036 amendment B9): ``invalid_input``, ``mowl_needs_mix``,
-   ``mix_not_chosen``, ``mix_not_applied``, ``playlist_has_repeats``, ``output_off``;
+   ``applied_form``, ADR 0036 amendment B9, and whether a cut pin is to be listened to again,
+   ADR 0042 section 5): ``invalid_input``, ``mowl_needs_mix``, ``mix_not_chosen``,
+   ``mix_not_applied``, ``pin_unconfirmed``, ``playlist_has_repeats``, ``output_off``;
 5. the SwedeBeat connection: ``not_connected`` unless it is the user's, ``connected`` and live;
    ``connection_changed`` unless it is the one the approved list was matched with **and** its
    generation (read share-locked) is the one the route's session check saw;
@@ -116,6 +117,7 @@ async def bound(
         repeats=repeats,
         mixed=form.mixed,
         applied_form=form.applied_form,
+        pin_unconfirmed=form.pin_unconfirmed,
     )
     if refused is not None:
         return refused

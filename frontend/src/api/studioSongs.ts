@@ -193,6 +193,7 @@ const OWN: Record<string, CatalogueKey> = {
   mowl_needs_mix: 'studio.reason.mowl_needs_mix',
   mix_not_chosen: 'studio.reason.mix_not_chosen',
   mix_not_applied: 'studio.reason.mix_not_applied',
+  pin_unconfirmed: 'studio.reason.pin_unconfirmed',
   playlist_has_repeats: 'studio.reason.playlist_has_repeats',
   output_off: 'studio.reason.output_off',
   connection_changed: 'studio.reason.connection_changed',
@@ -201,6 +202,20 @@ const OWN: Record<string, CatalogueKey> = {
   account_changed: 'studio.reason.account_changed',
   not_in_doubt: 'studio.reason.not_in_doubt',
   nothing_to_confirm: 'studio.reason.nothing_to_confirm',
+  // The DJ mix choices (ADR 0036 amendment B): the preview's refusals and the apply job's.
+  class_length_out_of_tolerance: 'studio.reason.class_length_out_of_tolerance',
+  no_proposal: 'studio.reason.no_proposal',
+  apply_limit: 'studio.reason.apply_limit',
+  workout_does_not_fit: 'studio.reason.workout_does_not_fit',
+  plan_class_too_long: 'studio.reason.plan_class_too_long',
+  plan_not_allowed: 'studio.reason.plan_not_allowed',
+  mix_too_long: 'studio.reason.mix_too_long',
+  nothing_pending: 'studio.reason.nothing_pending',
+}
+
+/** The plain sentence of a studio refusal reason, or null for one this page has no words for. */
+export function studioReason(reason: string): string | null {
+  return Object.hasOwn(OWN, reason) ? t(OWN[reason]!) : null
 }
 
 export function studioError(error: unknown): string {
@@ -210,8 +225,9 @@ export function studioError(error: unknown): string {
       ? t('studio.reason.revision_limit')
       : t('studio.reason.revision_limit_counts', { count: changes.count, limit: changes.limit })
   }
-  if (error instanceof ApiError && error.reason !== null && Object.hasOwn(OWN, error.reason)) {
-    return t(OWN[error.reason]!)
+  if (error instanceof ApiError && error.reason !== null) {
+    const own = studioReason(error.reason)
+    if (own !== null) return own
   }
   return swedebeatError(error)
 }

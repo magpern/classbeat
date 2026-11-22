@@ -1,5 +1,5 @@
 import { ApiError, get, post } from './client'
-import { count, flag, list, object, optionalCount, optionalFlag, optionalText, text } from './decode'
+import { count, flag, isObject, list, object, optionalCount, optionalFlag, optionalText, text } from './decode'
 import { decodeJob, decodeStartedJob, type Job } from './jobs'
 
 // A studio class's timeline, its design start, its chat revise and its output choice (ADR 0036
@@ -64,6 +64,14 @@ export interface Timeline {
   hints: TimelineHint[]
   crossfades: TimelineFade[]
   intervals: TimelineInterval[]
+  /** SHA-256 of the stored mix spec: Approve is offered only when the mix screen's preview has this digest (B10). */
+  specDigest: string
+  /** The model's design the choices apply to; null: none (`no_proposal`), so only a re-plan helps. */
+  proposalRevisionId: string | null
+  /** The spec is the whole-songs form. */
+  isPlain: boolean
+  /** The recorded choices of an applied draft, to pre-fill the screen as toggles; never applied by themselves. */
+  choices: Record<string, unknown> | null
 }
 
 function num(item: Record<string, unknown>, key: string): number {
@@ -141,6 +149,10 @@ export function decodeTimeline(value: unknown): Timeline {
     hints: decodeHints(item),
     crossfades: list(item, 'crossfades').map(decodeFade),
     intervals: list(item, 'intervals').map(decodeInterval),
+    specDigest: text(item, 'spec_digest'),
+    proposalRevisionId: optionalText(item, 'proposal_revision_id'),
+    isPlain: flag(item, 'is_plain'),
+    choices: isObject(item['choices']) ? item['choices'] : null,
   }
 }
 
