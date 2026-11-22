@@ -143,6 +143,16 @@ changes "design rules"      pull_request      "backend/src/classbeat/design/rule
 changes "design profiles"   pull_request      "backend/src/classbeat/design/profiles/index.json" "true true true false false"
 changes "frontend only"     pull_request      "frontend/src/a.ts"                   "false true true true false"
 changes "e2e only"          pull_request      "e2e/tests/a.ts"                      "true false true true false"
+# The fakes' cores and the model scripts compose.e2e.yaml mounts from backend/tests/ (and nothing
+# else under backend/tests/) run Playwright: a change to one changes what the stack answers.
+changes "spotdown fake core" pull_request     "backend/tests/spotdowncore.py"       "true false true true false"
+changes "spotify fake core" pull_request      "backend/tests/spotifycore.py"        "true false true true false"
+changes "gateway fake core" pull_request      "backend/tests/gatewaycore.py"        "true false true true false"
+changes "analysis docs"     pull_request      "backend/tests/songanalysisdocs.py"   "true false true true false"
+changes "spotdown contract" pull_request      "backend/tests/contracts/spotdown/analysis-v1.json" "true false true true false"
+changes "model script"      pull_request      "backend/tests/agent_scripts/e2e_pick.json" "true false true true false"
+changes "other backend test" pull_request     "backend/tests/test_spotdown_e2e_fake.py" "true false true false false"
+changes "core-like test"    pull_request      "backend/tests/spotdowncore_extra.py" "true false true false false"
 changes "Dockerfile"        pull_request      "Dockerfile"                          "true false true true false"
 changes "compose file"      pull_request      "compose.e2e.yaml"                    "true false true true false"
 changes "compose.yaml"      pull_request      "compose.yaml"                        "true false true true false"

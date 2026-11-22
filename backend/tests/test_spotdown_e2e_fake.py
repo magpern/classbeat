@@ -174,3 +174,41 @@ def test_the_fake_needs_the_service_key(server: tuple[httpx.Client, ModuleType])
     client, _ = server
     bare = httpx.Client(base_url=str(client.base_url))
     assert bare.post("/v2/match", json={"tracks": []}).status_code == 401
+
+
+def _aligned(client: httpx.Client, source: str, reference: dict[str, Any], key: str) -> str:
+    start = client.post(
+        "/v2/analyses",
+        json={"source_ref": source, "client_ref": "p0", "reference": reference},
+        headers={"Idempotency-Key": key},
+    )
+    return finished(client, start)["analysis_id"]
+
+
+def test_a_cache_hit_with_another_reference_is_aligned_to_the_one_asked(
+    server: tuple[httpx.Client, ModuleType],
+) -> None:
+    """The e2e stack's MOWL playlist ("Invented Song 3", a 240 s track) and a song pick's catalogue
+    track 3 share one video (the title's number), so its global analysis is a cache hit for the
+    second caller; as in contract v2 that caller gets an analysis aligned to its own reference,
+    never to the first caller's (stage D refused that one: every e2e pick after a MOWL playlist
+    design ended ``analysis_failed``)."""
+    client, _ = server
+    [result] = client.post(
+        "/v2/match",
+        json={"tracks": [{"client_ref": "0", "title": "Invented Song 3", "artists": ["A"],
+                          "duration_s": 240}]},
+    ).json()["results"]  # fmt: skip
+    source = result["best"]["source"]
+    mowl = {"kind": "spotify", "id": "a" * 32, "duration_s": 240.0}
+    pick = {"kind": "spotify", "id": "b" * 32, "duration_s": 213.4}
+    first = _aligned(client, source, mowl, "k1")
+    second = _aligned(client, source, pick, "k2")
+    assert second != first
+    for analysis_id, reference in ((first, mowl), (second, pick)):
+        got = client.get(f"/v2/analyses/{analysis_id}").json()
+        assert got["alignment"]["reference"] == reference
+        assert got["provenance"]["alignment"]["reference"] == reference
+        assert list(VALIDATOR.iter_errors(got)) == []
+    assert _aligned(client, source, pick, "k3") == second  # the same reference: the same analysis
+    assert _aligned(client, source, mowl, "k4") == first
