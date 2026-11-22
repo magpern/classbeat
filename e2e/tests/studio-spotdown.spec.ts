@@ -49,6 +49,10 @@ test('whole songs by default: the design runs on spotdown maps and no mix is mad
   expect(spotdownCount('POST', '/v2/analyses')).toBeGreaterThan(0)
   expect(mapCount(owner)).toBe(8)
   expect(mapAnalysers(owner)).toBe('spotdown')
+  // Independent of the column: the fake spotdown was reset empty and nothing was seeded, so each
+  // of the stored maps must be backed by an analysis the fake received. A map made locally (and
+  // merely labelled `spotdown`) would leave fewer analyses than maps.
+  expect(spotdownCount('POST', '/v2/analyses')).toBeGreaterThanOrEqual(mapCount(owner))
 
   await page.goto(`/classes/${classId}`)
   await expect(page.getByRole('heading', { name: 'Music timeline' })).toBeVisible(LONG)
