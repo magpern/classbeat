@@ -55,6 +55,13 @@ test('Play continues across a window end in the same session; Pause ends it and 
   const owner = await newStudioUser(page, 'preview')
   const classId = await designOnSpotdown(page, owner, 'Preview e2e climb')
 
+  // The page's CSP allows its own origin's media and nothing else (`media-src 'self'`): the browser
+  // reports a refused clip as a console error, which fails this test.
+  const violations: string[] = []
+  page.on('console', (message) => {
+    if (/Content Security Policy|media-src/i.test(message.text())) violations.push(message.text())
+  })
+
   await page.goto(`/classes/${classId}/edit`)
   await expect(page.getByTestId('editor-timeline')).toBeVisible(LONG)
   expect(sessions(owner)).toBe(0) // nothing is asked for before Play
@@ -67,6 +74,10 @@ test('Play continues across a window end in the same session; Pause ends it and 
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible(LONG)
   await expect(page.getByTestId('cursor')).toBeVisible(LONG)
   expect(sessions(owner)).toBe(1)
+  // The browser really plays the clip (it is not blocked): the element's own clock moves.
+  await expect
+    .poll(() => page.evaluate(() => document.querySelector<HTMLAudioElement>('audio[src]')?.currentTime ?? 0), LONG)
+    .toBeGreaterThan(0.5)
 
   // Move the playing window to its last seconds: the next window is asked for at its end, and playback
   // goes on there. The page draws its cursor from what the transport observed, never from the seek.
@@ -85,6 +96,7 @@ test('Play continues across a window end in the same session; Pause ends it and 
   expect(sessions(owner)).toBe(1) // the same session
   expect(clips(owner)).toBeGreaterThanOrEqual(2)
   await expect(page.getByText(/Preview paused after 15 minutes/)).toHaveCount(0)
+  expect(violations).toEqual([])
 
   // Pause ends the session; the next Play starts a new one.
   await page.getByRole('button', { name: 'Pause' }).click()

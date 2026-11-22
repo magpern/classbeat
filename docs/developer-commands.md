@@ -574,7 +574,8 @@ npm run build        # typecheck, Vite writes frontend/dist, then the prerender 
   (`classbeat.headers`, never a `<meta>`): `'self'` for everything, `img-src 'self'` plus the path-scoped cover
   sources of `classbeat.covers.IMG_SOURCES` (`https://i.scdn.co/image/`, `https://mosaic.scdn.co/300/` and
   `/640/`, `https://image-cdn-ak.spotifycdn.com/image/`, `https://image-cdn-fa.spotifycdn.com/image/`), no
-  inline script or style, no `data:`, `object-src`/`base-uri`/`frame-ancestors 'none'`, and
+  inline script or style, no `data:`, `media-src 'self'` (the audition's same-origin clips, ADR 0042 section 6; no other
+  media source), `object-src`/`base-uri`/`frame-ancestors 'none'`, and
   `frame-src <public_base_url>/api/admin/mail/` (path-scoped, for the admin Mail preview iframe; that route
   alone sends its own stricter policy with `sandbox` and `frame-ancestors 'self'`, and `SecurityHeaders` keeps
   it on a 2xx answer only; 401/403/404/500 get the default CSP; ADR 0022 §6); plus
