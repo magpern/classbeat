@@ -190,6 +190,9 @@ export class SpotifyConnectTransport implements PreviewTransport {
     const device = seen.state.device
     const position = positionAt(seen, now)
     const requested = seen.state.pieces.includes(intent.piece) && position !== null
+    // A paused read of the requested song inside the grace is the state from before the play (a replay
+    // of a song just paused): Spotify has not started it yet, so it is not final. After the grace it is.
+    if (starting && seen.state.status === 'paused') return none('starting', undefined, { device })
     if (seen.state.status === 'idle' || seen.state.status === 'external' || !requested) {
       // Still the state from before the play, or another track: wait for the grace, then say so.
       if (starting) return none('starting', undefined, { device })

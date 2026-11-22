@@ -171,6 +171,30 @@ describe('the states', () => {
     expect(transport.observe().status).toBe('external')
   })
 
+  it('a paused read of the requested song while the play is unconfirmed stays "starting" and keeps polling', async () => {
+    const transport = make()
+    await play(transport, 0, 5000)
+    player.status = 'paused' // a replay of a song just paused: Spotify has not started it yet
+    await poll(transport)
+    expect(transport.observe().status).toBe('starting')
+    expect(transport.wantsPolling()).toBe(true)
+    player.status = 'playing'
+    await poll(transport)
+    expect(transport.observe().status).toBe('playing')
+    expect(transport.wantsPolling()).toBe(true)
+  })
+
+  it('a paused read of the requested song after the grace settles to "paused" and stops polling', async () => {
+    const transport = make()
+    await play(transport, 0, 5000)
+    player.status = 'paused'
+    await poll(transport)
+    await clock.advance(STARTING_GRACE_MS)
+    await poll(transport)
+    expect(transport.observe().status).toBe('paused')
+    expect(transport.wantsPolling()).toBe(false)
+  })
+
   it('a song whose timing is "unusable" is "unaligned": it plays, but there is no cursor', async () => {
     const transport = make([song(0, { timingClass: 'unusable' })])
     await play(transport, 0, 5000)
