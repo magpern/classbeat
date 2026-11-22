@@ -26,8 +26,9 @@ from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design.studio_revision_model import wanted
 from classbeat.design.track_cache import TrackMap, cached_in, recorded
-from classbeat.spotdown.studio_map_model import stored_timing_class
+from classbeat.spotdown.studio_map_model import track_timing_class
 from classbeat.studio.mix_choice_policy import is_plain
+from classbeat.studio.mix_facts_model import of_map
 from classbeat.studio.mix_proposal_policy import APPLIED_ORIGIN
 from classbeat.studio.timeline_calc import SongFacts, timeline
 from classbeat.swedebeat_studio import current_draft, mix_proposal
@@ -43,7 +44,7 @@ _PROVENANCE = text(
 
 
 def _track_mix(found: TrackMap) -> dict[str, Any]:
-    timing = stored_timing_class(found.provenance) if found.analyser == "spotdown" else None
+    timing = track_timing_class(found.analyser, found.provenance)  # the one shared rule
     return TrackMix(length_sec=float(found.music_map["duration"]), timing_class=timing).model_dump(
         mode="json"
     )
@@ -92,7 +93,13 @@ async def view(factory: Factory, ctx: UserContext, class_id: UUID) -> dict[str, 
         for r in references
     ]
     try:
-        made = timeline(found.spec, [maps[r].music_map for r in references], facts, found.content)
+        stored = {  # the facts the mix rules read, so the timeline shows the hints the model got
+            r: of_map(maps[r].music_map, track_timing_class(maps[r].analyser, maps[r].provenance))
+            for r in references
+        }
+        made = timeline(
+            found.spec, [maps[r].music_map for r in references], facts, found.content, stored
+        )
     except (ValueError, KeyError, TypeError):
         return "music_changed"  # the cached analyses no longer fit the stored cuts
     try:

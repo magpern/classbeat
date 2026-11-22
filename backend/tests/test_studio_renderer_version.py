@@ -21,6 +21,11 @@ HISTORY: dict[int, dict[str, str]] = {
         "render_curves.py": ("ce86814fab58232975a8b085a2b85e545ea172c4eabfe2ed13b38cd39c106bc1"),
         "render_policy.py": ("821839b5da694cbaf7c2fdfde7f1d49c3d99db16ef47586d12a3cc0afaae00b9"),
     },
+    2: {  # #1365: render_curves refuses overlapping swap regions of one track
+        "renderchild.py": ("3752276e6de36b07271e3877de505f9160ea0fff6f9af16eac5f79f0d9183d59"),
+        "render_curves.py": ("7401501255e138bbf4103cdb73de7377f8c15544dc5e65aaf0fc0fc925e3b7a6"),
+        "render_policy.py": ("821839b5da694cbaf7c2fdfde7f1d49c3d99db16ef47586d12a3cc0afaae00b9"),
+    },
 }
 
 

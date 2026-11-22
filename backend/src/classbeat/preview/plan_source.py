@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.design.studio_revision_model import wanted
 from classbeat.design.track_cache import TrackMap, cached_in, recorded
-from classbeat.spotdown.studio_map_model import stored_timing_class
+from classbeat.spotdown.studio_map_model import track_timing_class
 from classbeat.studio import output_body_policy
 from classbeat.studio.mix_facts_model import TrackFacts, of_map
 from classbeat.swedebeat_studio import config as studio_config
@@ -42,9 +42,9 @@ def track_facts_of(
     out: dict[str, TrackFacts] = {}
     for reference in references:
         found = maps[reference]
-        spotdown = found.analyser == "spotdown"
-        timing = stored_timing_class(found.provenance) if spotdown else None
-        out[reference] = of_map(found.music_map, timing)
+        out[reference] = of_map(
+            found.music_map, track_timing_class(found.analyser, found.provenance)
+        )
     return out
 
 

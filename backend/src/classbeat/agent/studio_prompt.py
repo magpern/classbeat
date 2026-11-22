@@ -31,8 +31,9 @@ SwedeBeat playlist;
 - a loop: two pieces of one track next to each other are a loop (for example a chorus two or \
 three times in a row), allowed only for a track whose timing is exact. Where the two pieces meet, \
 the first one's end_sec and the next one's start_sec are each on a trusted phrase point of that \
-track (get_music lists them; a bar of its grid when it has none), with crossfade 0 between \
-them. Each piece of a loop plays at least 8 bars, and the loop's pieces together at least 60 s. \
+track (get_music lists them; where it lists none, only a downbeat the backend trusts counts, which \
+you cannot see, so the backend may refuse the cut), with crossfade 0 between them. \
+Each piece of a loop plays at least 8 bars, and the loop's pieces together at least 60 s. \
 Otherwise put another track between them;
 - the cut of each piece: start_sec and end_sec in the track's own seconds, 0 <= start_sec < \
 end_sec <= its length, with at least 60 s played (a piece of a loop: 8 bars). A cut near a \

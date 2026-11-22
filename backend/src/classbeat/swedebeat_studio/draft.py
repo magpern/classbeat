@@ -33,7 +33,7 @@ from classbeat.design.revision import DraftRevision, StudioRevisionMusic
 from classbeat.design.studio_revision_model import TrackRecord, map_hash
 from classbeat.design.track_cache import TrackMap
 from classbeat.jobs import JobFailure
-from classbeat.spotdown.studio_map_model import stored_timing_class
+from classbeat.spotdown.studio_map_model import track_timing_class
 from classbeat.studio.mix_plan_policy import MixPlanRefused, TrackFacts, checked
 from classbeat.studio.mix_spec_model import MixSpec
 from classbeat.swedebeat_studio.song_list_model import SOURCE, StudioListContent
@@ -60,7 +60,7 @@ class StudioMusic:
                 raise JobFailure("internal")  # the caller checked the list and analysed it
             found = by_reference[song.swedebeat.reference]
             refs.append(found.reference)
-            timing = stored_timing_class(found.provenance) if found.analyser == "spotdown" else None
+            timing = track_timing_class(found.analyser, found.provenance)
             tracks.append(StudioTrack(song.title, song.artist, found.music_map, timing))
             provenance = None if found.provenance is None else dict(found.provenance)
             records.append(TrackRecord(
