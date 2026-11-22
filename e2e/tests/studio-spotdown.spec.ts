@@ -59,8 +59,14 @@ test('whole songs by default: the design runs on spotdown maps and no mix is mad
   const mix = outputs.getByRole('checkbox', { name: /^DJ mix/ })
   await expect(mix).not.toBeChecked() // the mix is the user's opt-in, never the default
 
-  await expect(outputs.getByRole('button', { name: 'Approve and create' })).toBeEnabled(LONG)
-  await outputs.getByRole('button', { name: 'Approve and create' }).click()
+  // The SwedeBeat playlist binds the whole-songs form of the draft: Apply these choices makes it
+  // (a job with no model), then Approve and create.
+  await outputs.getByRole('button', { name: 'Apply these choices' }).click()
+  await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/, LONG)
+  await untilJob(page, /\/jobs\/([0-9a-f-]{36})$/.exec(page.url())![1]!, 'completed')
+  await page.goto(`/classes/${classId}`)
+  await expect(page.getByTestId('studio-outputs').getByRole('button', { name: 'Approve and create' })).toBeEnabled(LONG)
+  await page.getByTestId('studio-outputs').getByRole('button', { name: 'Approve and create' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/, LONG)
   const outputsId = /\/jobs\/([0-9a-f-]{36})$/.exec(page.url())![1]!
   await untilJob(page, outputsId, 'completed')
