@@ -26,6 +26,11 @@ HISTORY: dict[int, dict[str, str]] = {
         "render_curves.py": ("7401501255e138bbf4103cdb73de7377f8c15544dc5e65aaf0fc0fc925e3b7a6"),
         "render_policy.py": ("821839b5da694cbaf7c2fdfde7f1d49c3d99db16ef47586d12a3cc0afaae00b9"),
     },
+    3: {  # #1425 follow-up: renderchild's docstring no longer names the deleted mix analysis
+        "renderchild.py": ("e71209f4b22c7d6ef1980cfb941ffc9e8b9d62d2612847d7d02af91d0759820b"),
+        "render_curves.py": ("7401501255e138bbf4103cdb73de7377f8c15544dc5e65aaf0fc0fc925e3b7a6"),
+        "render_policy.py": ("821839b5da694cbaf7c2fdfde7f1d49c3d99db16ef47586d12a3cc0afaae00b9"),
+    },
 }
 
 
