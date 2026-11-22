@@ -2,7 +2,7 @@
 
 Through the choose stage's tool handler with a studio ``ChooseContext`` (the plain sum, 10 % bounds
 narrowed by the plan's maximum, ``MAX_TOTAL_SEC`` and a margin per song) and, for comparison, the
-Spotify context (9 s per change, today's text). The empty bounds fail ``mix_too_long`` before any
+Spotify context (9.54 s per change, today's text). The empty bounds fail ``mix_too_long`` before any
 model call. No network, no model, no database."""
 
 import json
@@ -87,7 +87,7 @@ def refusal(stage: Stage) -> str:
 def test_a_list_inside_the_margin_is_accepted_with_the_plain_sum() -> None:
     out = check(studio_stage(2880, PLAN_60))
     assert out["ok"] is True
-    assert out["total_sec"] == 2880  # no 9 s per change of song subtracted
+    assert out["total_sec"] == 2880  # no 9.54 s per change of song subtracted
 
 
 def test_the_per_song_margin_refuses_what_the_class_bounds_alone_would_allow() -> None:
@@ -105,13 +105,13 @@ def test_the_lower_end_and_the_upper_end(total: int, accepted: bool) -> None:
 
 
 def test_the_spotify_pick_keeps_its_measure_and_text() -> None:
-    # 2880 s of songs are 2880 - 11 * 9 = 2781 s there; 2965 is 2866 s and fits, 2440 is 2341.
+    # 2880 s of songs are 2880 - 11 * 9.54 = 2775.06 s there; 2965 is 2860 s and fits, 2440 is 2335.
     out = check(spotify_stage(2880))
-    assert out["total_sec"] == 2880 - 11 * 9
+    assert out["total_sec"] == round(2880 - 11 * 9.54)
     assert check(spotify_stage(2965))["ok"] is True
     message = refusal(spotify_stage(2440))
     assert message == (
-        "the total time is 2341 s (lengths less 9 s per change of song); "
+        "the total time is 2335 s (lengths less 9.54 s per change of song); "
         "it must be between 2430 and 2970 s"
     )
     # the same list the studio refuses (2965 is outside its margin) the Spotify pick accepts

@@ -52,7 +52,7 @@ def test_the_list_keeps_the_playlists_order_and_mowls_analysis() -> None:
         0,
         "",
     )
-    assert chosen.total_sec == 8 * 240 - 7 * 9  # lengths less 9 s per change of song
+    assert chosen.total_sec == round(8 * 240 - 7 * 9.54)  # lengths less 9.54 s per change of song
     assert all(not s.new and s.cover is None for s in chosen.songs)  # the user's own songs
 
 
