@@ -30,7 +30,12 @@ from classbeat.agent import track_timing_calc
 
 MAX_TRACKS: Final = 200  # a revision's ``music.songs`` bound; a picked list has at most 40
 Position = Annotated[int, Field(ge=0, lt=MAX_TRACKS)]
-MAX_RECORD_BYTES: Final = 262144  # a playlist draft's own record, as canonical JSON (#1407)
+# A playlist draft's own record, as canonical JSON (#1407, #1438). Worst case at ``MAX_TRACKS``
+# tracks: a track's two entries (match and analysis) at their widest (17-digit floats written with
+# an exponent, a 128-character fingerprint, a fit naming every reason, ``warning``) are 1,476 B,
+# so 200 tracks are 295,121 B with the lists' fixed parts. 320 KiB leaves about 11 % over that,
+# and no other limit applies to a revision's ``music`` (it is not a size-checked column).
+MAX_RECORD_BYTES: Final = 327680
 
 
 class SpotdownSections(BaseModel):

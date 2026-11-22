@@ -34,7 +34,7 @@ from classbeat.spotdown.song_carry_calc import with_kept
 from classbeat.spotdown.song_match_policy import TrackMatch
 from classbeat.spotdown.song_match_record_model import match_record
 from classbeat.spotdown.timing_class_policy import TimingDecision
-from classbeat.spotdown.track_fit_policy import Fit
+from classbeat.spotdown.track_fit_policy import SEVERITY, Fit
 
 LIST = uuid.uuid4()
 
@@ -100,7 +100,7 @@ def test_a_playlist_designs_own_record_is_its_origin() -> None:
     [
         {"tracks": [0]},  # neither
         {"song_list_id": LIST, "record": RECORD, "tracks": [0]},  # both
-        {"record": {"x": "y" * 270_000}, "tracks": [0]},  # over the bound
+        {"record": {"x": "y" * (MAX_RECORD_BYTES + 1)}, "tracks": [0]},  # over the bound
         {"record": [], "tracks": [0]},  # not an object
     ],
     ids=["neither", "both", "too_large", "not_an_object"],
@@ -239,11 +239,17 @@ def test_a_stamped_draft_without_a_list_fails_the_job_internal() -> None:
 # --- the record's size bound at the most tracks (#1411 follow-up) --------------------------------
 
 
+# The longest text Python writes for a float (17 significant digits, a negative exponent).
+WIDEST_FLOAT = -1.2345678901234567e-05
+
+
 def a_full_record(n: int) -> dict[str, Any]:
-    """The stage-A/B record of ``n`` tracks, built by the real record builders from what a long
-    playlist's tracks carry: a 128-character fingerprint (the longest the reader takes), a sha256
-    config hash, every evidence key the timing policy writes and ``content.explicit``."""
-    audio = AudioIdentity("a" * 64, "f" * 128, "mp3", 44100.0, 2.0, 241.123, 240.456)
+    """The stage-A/B record of ``n`` tracks at its widest, built by the real record builders: a
+    128-character fingerprint (the longest the reader takes), a sha256 config hash, every evidence
+    key the timing policy writes with floats at their widest text (spotdown's arrive unrounded),
+    ``content.explicit``, and a "fits with a warning" fit naming every reason there is."""
+    wide = WIDEST_FLOAT
+    audio = AudioIdentity("a" * 64, "f" * 128, "mp3", wide, 2.0, wide, wide)
     evidence = {
         "played_kind": "spotify",
         "source_kind": "youtube",
@@ -251,16 +257,16 @@ def a_full_record(n: int) -> dict[str, Any]:
         "uploaded_as_played": False,
         "anchors": 4,
         "match_band": "confident",
-        "recording_match_confidence": 0.912,
+        "recording_match_confidence": wide,
         "duration_check": "within_tolerance",
         "decoded_duration_check": "within_tolerance",
         "isrc_equal": True,
         "alignment": "aligned",
-        "residual_s": 0.842,
-        "offset_s": 12.345,
+        "residual_s": wide,
+        "offset_s": wide,
     }
     decision = TimingDecision("approximate", "recording_match_residual_ok", evidence)
-    explicit = {"is_explicit": True, "confidence": 0.93}
+    explicit = {"is_explicit": True, "confidence": wide}
     outcomes = {
         i: SongOutcome(
             "spotdown",
@@ -271,12 +277,13 @@ def a_full_record(n: int) -> dict[str, Any]:
                 decision,
                 explicit,
             ),
-            Fit(True, ()),
+            Fit(False, SEVERITY),
+            warning=True,
         )
         for i in range(n)
     }
     matches = {
-        f"id{i}": TrackMatch("timing", "matched", "confident", 0.912, "match-v1") for i in range(n)
+        f"id{i}": TrackMatch("timing", "matched", "confident", wide, "match-v1") for i in range(n)
     }
     return {
         **match_record(list(matches), matches, {}, rounds=0, candidates=n, missing=0),
@@ -284,10 +291,22 @@ def a_full_record(n: int) -> dict[str, Any]:
     }
 
 
+def canonical_size(record: dict[str, Any]) -> int:
+    return len(json.dumps(record, sort_keys=True, separators=(",", ":")).encode())
+
+
 def test_a_record_of_the_most_tracks_stays_within_its_bound() -> None:
     n = MAX_TRACKS
     record = a_full_record(n)
-    size = len(json.dumps(record, sort_keys=True, separators=(",", ":")).encode())
+    size = canonical_size(record)
     assert size <= MAX_RECORD_BYTES, f"{size} B for {n} tracks, bound {MAX_RECORD_BYTES}"
+    assert size > 290_000  # the widest inputs: a bound derived from thinner ones would pass
     field = SpotdownSections(tracks=list(range(n)), record=record)  # the model accepts it
     assert field.record == record
+
+
+def test_the_bound_is_what_refuses_an_over_large_record() -> None:
+    record = a_full_record(MAX_TRACKS)
+    record["pad"] = "x" * MAX_RECORD_BYTES  # the same model, a record no list could make
+    with pytest.raises(ValidationError, match="too large"):
+        SpotdownSections(tracks=[0], record=record)
