@@ -124,6 +124,7 @@ const STAGES: Record<string, CatalogueKey> = {
   save: 'job.stage.save',
   verify: 'job.stage.verify',
   fit: 'job.stage.fit',
+  apply: 'job.stage.apply',
 }
 
 interface Step {
@@ -167,6 +168,9 @@ const REFIT_STEPS: readonly Step[] = [
   { stage: 'fit', key: 'job.stage.fit' },
 ]
 
+/** `apply_mix_choices` (ADR 0036 amendment B): the user's DJ mix choices as a new draft, one stage, no model. */
+const APPLY_STEPS: readonly Step[] = [{ stage: 'apply', key: 'job.stage.apply' }]
+
 const SOUNDLESS_STEPS: readonly Step[] = [{ stage: 'design', key: 'job.stage.design' }]
 
 /** The checklist of the Designing page for a job, in the order its stages run. */
@@ -177,6 +181,7 @@ export function designSteps(
 ): readonly { stage: string; label: string }[] {
   const steps = ((): readonly Step[] => {
     if (kind === 'refit_draft') return REFIT_STEPS
+    if (kind === 'apply_mix_choices') return APPLY_STEPS
     // A soundless design reads no playlist and makes no MOWL or Spotify call (ADR 0007 amendment item 3).
     if (soundless && kind === 'design_draft') return SOUNDLESS_STEPS
     if (kind === 'revise_songs') return REVISE_SONGS_STEPS

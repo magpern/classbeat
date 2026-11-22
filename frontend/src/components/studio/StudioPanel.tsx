@@ -53,6 +53,7 @@ export function StudioPanel({ summary, view, studioList }: { summary: ClassSumma
         <StudioOutputs
           classId={summary.id}
           timeline={view.timeline}
+          songs={summary.songs}
           disabled={summary.openJob !== null}
           enabled={loaded?.enabled ?? null}
           limitReached={outputLimitReached(summary.id)}
