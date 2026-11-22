@@ -127,6 +127,16 @@ async function settled(page: Page, id: string, revisions: number): Promise<void>
     .toBe(true)
 }
 
+/** Waits until the class has no open job: a swap or a change is over, whatever it stored. */
+async function idle(page: Page, id: string): Promise<void> {
+  await expect
+    .poll(async () => {
+      const view = (await (await page.request.get(`/api/classes/${id}`)).json()) as ClassView
+      return (view.open_job ?? null) === null
+    }, LONG)
+    .toBe(true)
+}
+
 /** The playlists the fake Spotify holds that are not classbeat's working copy. */
 const kept = (): FakePlaylist[] => fakePlaylists().filter((p) => p.name !== WORKING_COPY)
 const finals = (): FakePlaylist[] => kept().filter((p) => p.id !== PLAYLISTS.draft.id)
@@ -215,6 +225,7 @@ test('describe with a playlist and a pinned song, shape it, swap a song, approve
   await expect(swap).toHaveCount(0, LONG)
   await expect(swaps).toHaveCount(rows, LONG)
   await expect(page.getByText('Ready to approve').first()).toBeVisible(LONG)
+  await idle(page, id) // the swap job itself is over, not only the page showing a ready class
   await expect(list.getByText(PINNED).first()).toBeVisible()
   nothingYet()
 
