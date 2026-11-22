@@ -1,14 +1,14 @@
 """The child process that renders one SwedeBeat mix (ADR 0036 section 6, Mix; issue #1092).
 
 ``python -I .../classbeat/studio/renderchild.py PLAN_PATH MAX_RSS_BYTES`` runs in its own
-interpreter with a minimal environment (``classbeat.studio.render`` starts it under the limits of
-``design.mixanalysis``: 1 GiB resident memory, a wall-clock cap), so a crash, an out-of-memory
-kill or a hostile file ends only this process. It holds no database connection, no key and no
-network: it reads the plan and the tracks the plan names, and writes the one output file.
+interpreter with a minimal environment (``classbeat.studio.render`` starts it under its limits:
+1 GiB resident memory, a wall-clock cap), so a crash, an out-of-memory kill or a hostile file ends
+only this process. It holds no database connection, no key and no network: it reads the plan and
+the tracks the plan names, and writes the one output file.
 
-- **Run by path, not as a module** (as ``design/mixchild.py``): nothing named ``classbeat`` is
-  imported. ``render_policy`` and ``render_curves`` are loaded by path from this directory,
-  ``sandbox`` and ``rss`` from ``design/``.
+- **Run by path, not as a module**: nothing named ``classbeat`` is imported. ``render_policy``
+  and ``render_curves`` are loaded by path from this directory, ``sandbox`` and ``rss`` from
+  ``design/``.
 - **Confined before a file is opened** (``design.sandbox``): the system call filter is required
   (its failure ends the child), Landlock is applied when the kernel has it: the interpreter's
   files read-only, the plan's directory (the job's private directory) read-write, nothing else.
