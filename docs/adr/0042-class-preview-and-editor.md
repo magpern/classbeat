@@ -724,7 +724,7 @@ Decisions E2 took within this ADR, each safe and reversible. The two deviations 
    `base_revision_id` is refused `409 stale_revision` with the reason only: a job refusal has no payload. The
    page reloads the class to get its current revision. The edit and `POST /current` refusals do carry
    `current_revision_id`.
-3. **Pins are not re-applied on a studio revise (a deliberate deferral of §5's "Pins and regeneration").** A
+3. **Pins are not re-applied on a studio revise (a deliberate deferral of §5's "Pins and regeneration"). Superseded: #1423 (PR #1440, 2026-11-22) re-applies them; the text below is the E2 state.** A
    revise re-applies the overlay's locks, overrides and anchors to the model's workout and keeps its pin
    records as they are. It does not apply them to the model's new spec. The new draft's spec is then not the
    applied form of its choices, so the draft fails closed: an audio edit and a SwedeBeat output (the mix or the
@@ -750,3 +750,21 @@ by our own `GET /api/classes/{id}/preview/clip`, which is same-origin, authorize
 and sent `Cache-Control: private, no-store` (section 6.5); no third-party media is loaded. The change makes
 no claim that the audio cannot be recorded or saved: section 6.5 already states the preview is not DRM, and
 the 15-minute limit is the browser's courtesy, not a protection.
+
+## Implementation notes (#1423, pins on a studio revise and undo)
+
+Written 2026-11-22. Supersedes E2 note 3.
+
+1. **A studio revise applies the overlay's pins to the model's spec** (`studio/mix_revise_pin_policy.py`,
+   `swedebeat_studio/revise_pins.py`), under the choices B9 implies for the DJ mix (`dj_defaults`): a song that
+   is whole under those choices gets no pin. The pinned spec goes through the same checks as Apply (`checked`,
+   the class-length rule, plan equality) before the draft is stored, and the model's workout is moved onto it
+   with B4a's remap. A confirmed pin never moves.
+2. **A pin the model's spec cannot hold is a correction round**, like `overlay_violated`; if it never fits the
+   job ends `invalid_output` with nothing stored and the base still current.
+3. **Clearing a pin after a revise** leaves the cut where the pin put it, as an ordinary cut.
+4. **Undo and redo** on the overlay view now also apply to a `revise_draft` revision, through the same
+   `service.pick` (class lock, `expected_current_id`, no open job).
+5. **Known edge (follow-up):** B9 re-derives a stored revise draft and re-places a pinned cut without its pin
+   first; in a borderline case the draft answers `mix_not_applied` (it fails closed). A final `holds` check in
+   `pinned_mix` would turn it into a correction round.
