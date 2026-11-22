@@ -67,6 +67,19 @@ class StudioResult:
     composed: Composed
     note: str = ""
     overlay: Any = None  # a revise of an edited draft: the reconciled overlay (``StudioBase``)
+    mix_spec: Any = None  # and with its cut pins applied: the pinned spec to store (``Reconciled``)
+
+
+@dataclass(frozen=True)
+class Reconciled:
+    """What ``StudioBase.reconcile`` makes of a submitted draft: the draft checked again, the mix
+    it was checked on (with the overlay's cut pins, #1423), the reconciled overlay and, when a pin
+    applies, the pinned spec by reference; the last two are opaque to the stage."""
+
+    result: DesignResult
+    composed: Composed
+    overlay: Any
+    mix_spec: Any = None
 
 
 @dataclass(frozen=True)
@@ -74,9 +87,9 @@ class StudioBase:
     """A revise's starting point: the base draft (``content``) and its mix by index; ``choices``
     for a re-plan (ADR 0036 B6), already checked against the list. A base with an edit overlay
     (ADR 0042 section 3, #1391) adds ``fixed``, the message's statement of the instructor's locks
-    and overrides, and ``reconcile``, run on each submitted draft: the overlay re-applied (a lock
-    breach is ``overlay_violated``, a correction round) and the draft checked again
-    (``swedebeat_studio.revise_overlay``)."""
+    and overrides, and ``reconcile``, run on each submitted draft: the overlay's cut pins applied
+    to the mix (#1423), its other records re-applied (a lock breach is ``overlay_violated``, a
+    correction round) and the draft checked again (``swedebeat_studio.revise_overlay``)."""
 
     draft: dict[str, Any]
     plan: dict[str, Any]
@@ -84,7 +97,7 @@ class StudioBase:
     request: str
     choices: MixChoices | None = None
     fixed: str = ""
-    reconcile: Callable[[DesignResult, Composed], tuple[DesignResult, Any]] | None = None
+    reconcile: Callable[[DesignResult, Composed], Reconciled] | None = None
 
 
 @dataclass(frozen=True)
@@ -153,22 +166,23 @@ def studio_stage(ctx: StudioContext) -> Stage:
         return ToolAnswer({**_answer(result, composed, ctx), "timeline": timeline})
 
     def submit(args: StudioDraftInput, note: str) -> ToolAnswer:
-        made: list[tuple[Composed, Any]] = []
+        made: list[Reconciled] = []
         reconcile = None if ctx.base is None else ctx.base.reconcile
 
         def build() -> DesignResult:
             result, composed = checked(ctx, args)
-            overlay = None
+            done = Reconciled(result, composed, None)
             if reconcile is not None:
-                result, overlay = reconcile(result, composed)
-            made.append((composed, overlay))
-            return result
+                done = reconcile(result, composed)
+            made.append(done)
+            return done.result
 
         result = within_request(gate, build)
-        composed, overlay = made[-1]
-        answer = {"accepted": True, **_answer(result, composed, ctx)}
+        done = made[-1]
+        answer = {"accepted": True, **_answer(result, done.composed, ctx)}
         answer.pop("duration_sec")
-        return ToolAnswer(answer, output=StudioResult(result, composed, note, overlay))
+        output = StudioResult(result, done.composed, note, done.overlay, done.mix_spec)
+        return ToolAnswer(answer, output=output)
 
     def submit_draft(args: StudioDraftInput) -> ToolAnswer:
         return submit(args, "")
@@ -195,4 +209,4 @@ def studio_stage(ctx: StudioContext) -> Stage:
     )
 
 
-__all__ = ["StudioBase", "StudioContext", "StudioResult", "studio_stage"]
+__all__ = ["Reconciled", "StudioBase", "StudioContext", "StudioResult", "studio_stage"]

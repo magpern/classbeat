@@ -50,13 +50,14 @@ def result(content: dict[str, Any], moved: int | None = None) -> Any:
 
 
 COMPOSED: Any = SimpleNamespace(plan={"tracks": [], "crossfades": []}, map={})
+MUSIC: Any = SimpleNamespace(references=(), tracks=(), facts=dict)  # no pin: never composed
 
 
 def reconcile(monkeypatch: pytest.MonkeyPatch, moved: int | None) -> Any:
     """The reconciler of a timing lock on block 0, its re-fit moving block ``moved``."""
     monkeypatch.setattr(revise_overlay, "check", lambda draft, _map: result(BASE, moved))
     overlay = of_records([lock(0)])
-    run = revise_overlay.reconciler(BASE, overlay, [], {}, None)
+    run = revise_overlay.reconciler(BASE, overlay, MUSIC, 2700, {}, None)
     return run(result(copy.deepcopy(BASE)), COMPOSED)
 
 
@@ -71,8 +72,9 @@ def test_a_refit_that_moves_a_timing_locked_block_is_overlay_violated(
 def test_a_refit_that_moves_an_unlocked_block_keeps_the_lock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _, overlay = reconcile(monkeypatch, 2)
-    (record,) = overlay.records
+    done = reconcile(monkeypatch, 2)
+    assert done.mix_spec is None  # no pin: the model's spec is stored as it is
+    (record,) = done.overlay.records
     assert isinstance(record, Lock)
     assert record.target.span == [0, blocks(BASE)[0].end_ms]
 

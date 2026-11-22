@@ -11,7 +11,9 @@ catalogue reference).
   revise's base mix).
 - ``build``: the fitted draft validated again; the stage's plan mapped to references and checked
   once more by ``mix_plan_policy`` against the stored analyses (the backend's own check, never
-  the stage's word); its ``StudioRevisionMusic``; the ``content_hash`` (``revision_hash``) of
+  the stage's word), or a revise's spec with the overlay's cut pins (``revise_pins``, #1423) checked
+  again and held to the plan the workout was fitted on; its ``StudioRevisionMusic``; the
+  ``content_hash`` (``revision_hash``) of
   ``{content, mix_spec}``, or with a revise's reconciled overlay ``{content, mix_spec, overlay}``,
   which ``edit_overlay`` stores. A revise whose hash is the base's is ``invalid_output``: a cut, the
   order or a crossfade alone is a change, the same draft and mix are not.
@@ -39,6 +41,7 @@ from classbeat.jobs import JobFailure
 from classbeat.spotdown.studio_map_model import track_timing_class
 from classbeat.studio.mix_plan_policy import MixPlanRefused, TrackFacts, checked
 from classbeat.studio.mix_spec_model import MixSpec
+from classbeat.swedebeat_studio.mix_apply_calc import plan_of
 from classbeat.swedebeat_studio.song_list_model import SOURCE, StudioListContent
 
 Origin = Literal["design_draft", "revise_draft"]
@@ -115,6 +118,19 @@ class StudioMusic:
             raise JobFailure("invalid_output")
         return again
 
+    def pinned_of(self, given: object, plan: Mapping[str, Any]) -> dict[str, Any]:
+        """A revise's pinned spec (``revise_pins``) checked again against the stored analyses,
+        and the very mix the stage's plan composed; ``invalid_output`` otherwise."""
+        try:
+            spec = MixSpec.model_validate(given).model_dump(mode="json")
+            again = checked(spec, self.references, self.facts())
+            same_plan = plan_of(self.references, spec) == dict(plan)
+        except (MixPlanRefused, ValueError, KeyError, TypeError):  # ValidationError is a ValueError
+            raise JobFailure("invalid_output") from None
+        if again != spec or not same_plan:
+            raise JobFailure("invalid_output")
+        return again
+
 
 def build(
     studio: StudioResult,
@@ -133,7 +149,10 @@ def build(
     draft = revision.fitted_draft(studio.result)
     try:
         workout.validate(draft.to_spec())
-        spec = MixSpec.model_validate(music.spec_of(studio.composed.plan))
+        plan = studio.composed.plan
+        pinned = studio.mix_spec  # a revise of a pinned draft: its pins applied (#1423)
+        mixed = music.spec_of(plan) if pinned is None else music.pinned_of(pinned, plan)
+        spec = MixSpec.model_validate(mixed)
         stored = StudioRevisionMusic(
             source=SOURCE,
             song_list_id=song_list_id,

@@ -3,19 +3,23 @@ No I/O: ``revise_kind`` reads the base's overlay and passes these to the stage
 (``agent.studio_design.StudioBase``), which never sees a catalogue reference.
 
 - ``fixed_section``: the revise message's statement of the instructor's locks and overrides as
-  fixed, each block by segment and interval index and class time, the overridden values given.
-  Cut pins and anchors name recordings, so they are not stated (they are re-applied below).
-- ``reconciler``: what ``submit_draft`` runs on the model's checked draft. The overlay's records
-  (not its pins) are re-applied to the model's fitted workout by ``edit_overlay_policy.reapplied``'s
-  fixed order (locks, boundary overrides, attribute overrides, anchors) against the base's workout;
-  a lock whose block the model changed within its scope is ``ToolError("overlay_violated")``, a
-  correction round, naming the block. The re-applied workout is then checked again on the model's
-  composed map (``agent.design.check``, the plan gates; its refusal is a correction round too), and
-  a timing-locked block that fit moved is ``overlay_violated``. The result is the checked draft and
-  the reconciled overlay: the records retargeted on the fitted workout, the unapplied and orphaned
-  ones kept, the pins carried as they are, not re-applied to the model's new spec (a deliberate
-  deferral, ADR 0042 implementation note on decision 4). A reconciled overlay past its bound is
-  ``ToolError("overlay_too_large")``, a correction round.
+  fixed, each block by segment and interval index and class time, the overridden values given,
+  and of the base mix's pinned cuts by track index (``revise_pins.pin_lines``). Anchors name
+  recordings, so they are not stated.
+- ``reconciler``: what ``submit_draft`` runs on the model's checked draft. First the overlay's cut
+  pins are re-applied to the model's new spec (``revise_pins.pinned_mix``, #1423: by target, by
+  Apply's rules, a spec that cannot hold them a correction round) and the model's fitted workout
+  moved onto the pinned mix. Then the overlay's other records are re-applied to that workout by
+  ``edit_overlay_policy.reapplied``'s fixed order (locks, boundary overrides, attribute
+  overrides, anchors) against the base's workout; a lock whose block the model changed within its
+  scope is ``ToolError("overlay_violated")``, a correction round, naming the block. The re-applied
+  workout is then checked again on the (pinned) composed map (``agent.design.check``, the plan
+  gates; its refusal is a correction round too), and a timing-locked block that fit moved is
+  ``overlay_violated``. The result (``agent.studio_design.Reconciled``) is the checked draft, the
+  mix it was checked on, the reconciled overlay (the records retargeted on the fitted workout, the
+  unapplied and orphaned ones kept, every pin record carried) and the pinned spec to store
+  (``None`` when no pin applies, so the model's spec is stored as before). A reconciled overlay
+  past its bound is ``ToolError("overlay_too_large")``, a correction round.
 """
 
 from collections.abc import Callable, Mapping, Sequence
@@ -27,6 +31,7 @@ from pydantic import ValidationError
 from classbeat.agent.design import DesignResult, check, within_plan
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.stage import ToolError
+from classbeat.agent.studio_design import Reconciled
 from classbeat.agent.studio_mix import Composed
 from classbeat.design.edit_overlay_model import EditOverlay, Lock, OverlayPin, Override, Record
 from classbeat.design.edit_overlay_policy import (
@@ -39,10 +44,12 @@ from classbeat.design.edit_overlay_policy import (
 )
 from classbeat.design.workout_edit_policy import Block, EditRefused, blocks
 from classbeat.plan_gates import PlanGates
+from classbeat.swedebeat_studio.mix_apply_calc import StudioTracks
+from classbeat.swedebeat_studio.revise_pins import pin_lines, pinned_mix
 from classbeat.swedebeat_studio.studio_edit_calc import fitted_content, overlay_of
 
 _TOO_LARGE = "the instructor's edits no longer fit this draft; keep its blocks closer to base_draft"
-Reconcile = Callable[[DesignResult, Composed], tuple[DesignResult, EditOverlay]]
+Reconcile = Callable[[DesignResult, Composed], Reconciled]
 
 
 def _where(block: Block) -> str:
@@ -52,8 +59,14 @@ def _where(block: Block) -> str:
     )
 
 
-def fixed_section(base: dict[str, Any], overlay: EditOverlay) -> str:
-    """The revise message's section of fixed edits (module docstring); ``""`` with none."""
+def fixed_section(
+    base: dict[str, Any],
+    overlay: EditOverlay,
+    base_spec: Mapping[str, Any] | None = None,
+    base_plan: Mapping[str, Any] | None = None,
+) -> str:
+    """The revise message's section of fixed edits (module docstring); ``""`` with none.
+    ``base_spec`` and ``base_plan``: the base mix by reference and by track index."""
     found = blocks(base)
     lines: list[str] = []
     for record in overlay.records:
@@ -69,6 +82,8 @@ def fixed_section(base: dict[str, Any], overlay: EditOverlay) -> str:
             lines.append(f"- {where}: the instructor set its end; keep its end time")
         else:
             lines.append(f"- {where}: the instructor set {record.field} = {record.value!r}")
+    if base_spec is not None and base_plan is not None and overlay.pins():
+        lines += pin_lines(base_spec, base_plan)
     if not lines:
         return ""
     head = "The instructor's own edits are fixed. Keep each of them in the revised draft:\n"
@@ -84,7 +99,8 @@ def _violated(record: Record, found: Sequence[Block]) -> ToolError:
 def reconciler(
     base: dict[str, Any],
     overlay: EditOverlay,
-    references: Sequence[str],
+    music: StudioTracks,
+    target_sec: int,
     analysed: Mapping[str, str | None],
     gates: PlanGates | None,
 ) -> Reconcile:
@@ -92,18 +108,21 @@ def reconciler(
     records = [r for r in overlay.records if not isinstance(r, OverlayPin)]
     pins = list(overlay.pins())
     before = blocks(base)
+    references = music.references
 
-    def reconcile(result: DesignResult, composed: Composed) -> tuple[DesignResult, EditOverlay]:
+    def reconcile(result: DesignResult, composed: Composed) -> Reconciled:
         content = fitted_content(result.draft.model_dump(mode="json"), result.spec)
-        spec = {
+        model = {
             "tracks": [
                 {"reference": references[t["track"]], **{k: t[k] for k in ("start_sec", "end_sec")}}
                 for t in composed.plan["tracks"]
             ],
             "crossfades": list(composed.plan["crossfades"]),
         }
+        mix = pinned_mix(model, composed, content, music, target_sec, pins)
+        spec = model if mix.spec is None else mix.spec
         try:
-            applied = reapplied(content, base, records, event_ms=event_ms(spec, analysed))
+            applied = reapplied(mix.content, base, records, event_ms=event_ms(spec, analysed))
         except OverlayViolated as violated:
             raise _violated(violated.record, before) from None
         try:
@@ -112,7 +131,7 @@ def reconciler(
             raise ToolError(
                 "invalid_draft", ["the instructor's edits do not fit this draft"]
             ) from None
-        again = within_plan(gates, check(draft, composed.map))
+        again = within_plan(gates, check(draft, mix.composed.map))
         fitted = fitted_content(applied.content, again.spec)
         was, now = blocks(applied.content), blocks(fitted)
         for record, at in applied.placed:
@@ -121,8 +140,9 @@ def reconciler(
                 raise _violated(record, before)
         kept: list[Record] = [*applied.unapplied, *applied.orphaned]
         try:
-            return again, overlay_of([*retargeted(applied.placed, fitted), *kept, *pins])
+            made = overlay_of([*retargeted(applied.placed, fitted), *kept, *pins])
         except EditRefused:  # past the bound: the model's draft, not the job's end
             raise ToolError("overlay_too_large", [_TOO_LARGE]) from None
+        return Reconciled(again, mix.composed, made, mix.spec)
 
     return reconcile
