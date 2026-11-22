@@ -44,6 +44,13 @@ export function StudioPanel({ summary, view, studioList }: { summary: ClassSumma
   return (
     <Card className="flex flex-col gap-5">
       <StudioTimeline timeline={view.timeline} />
+      {summary.openJob === null ? (
+        <p className="m-0">
+          <Link className="button" to={`/classes/${summary.id}/edit`}>
+            {t('editor.open')}
+          </Link>
+        </p>
+      ) : null}
       {loaded !== null ? (
         <StudioOutputStates classId={summary.id} outputs={loaded.outputs} onChange={outputs.replace} />
       ) : null}

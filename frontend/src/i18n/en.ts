@@ -8,6 +8,7 @@ import { helpEn } from './help.en'
 import { legalDraftEn } from './legalDraft.en'
 import { legalEn } from './legal.en'
 import { publicEn } from './public.en'
+import { editorEn } from './editor.en'
 import { workspaceEn } from './workspace.en'
 
 export const en = {
@@ -17,6 +18,7 @@ export const en = {
   ...publicEn,
   ...examplesEn,
   ...workspaceEn,
+  ...editorEn,
   'language.label': 'Language',
   'language.follow': 'Follow this browser',
   'language.help': 'This site and email language. “Follow this browser” means English email.',
