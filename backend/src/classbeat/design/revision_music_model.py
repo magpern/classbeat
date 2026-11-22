@@ -14,6 +14,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from classbeat.design import revision_edit_map
 from classbeat.design.revision_spotdown_model import SpotdownSections
 
 
@@ -75,6 +76,18 @@ class SpotifyRevisionMusic(BaseModel):
     # ADR 0040 SD-P6 stage E (#1303, #1407): the tracks on spotdown's sections and the list, or
     # the record, that gave them (``revision_spotdown_model``); a Spotify draft without it is old.
     spotdown: SpotdownSections | None = None
+    # ADR 0042 section 4 (#1424): the map the draft was fitted to, kept so the web process can check
+    # a user's edit against it without reading MOWL (``revision_edit_map``); a ``user_edit``
+    # revision has none (its nearest other ancestor's is read), and neither has a running draft.
+    edit_map: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _edit_map_bounded(self) -> Self:
+        if self.edit_map is not None:
+            found = revision_edit_map.size(self.edit_map)
+            if found is None or found > revision_edit_map.MAX_BYTES:
+                raise ValueError("the edit map is too large")
+        return self
 
 
 class SwedebeatRevisionMusic(BaseModel):

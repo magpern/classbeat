@@ -6,9 +6,9 @@ import { useSilentCursor } from './useSilentCursor'
 /**
  * The editor's playback: the rendered preview, or, when the server has no preview to give (the
  * feature is off, 404 `unavailable`), the silent clock cursor the editor had before, for the rest of
- * the page's life. `rendered` says which one the page is drawing.
+ * the page's life. A Spotify draft has no rendered audio, so it starts there (`silentOnly`). `rendered` says which one the page is drawing.
  */
-export function useEditorPlayback(options: { classId: string; workoutMs: number; mixEndMs: number; audioKey: string }): {
+export function useEditorPlayback(options: { classId: string; workoutMs: number; mixEndMs: number; audioKey: string; silentOnly?: boolean }): {
   rendered: boolean
   state: TransportState
   audition: (piece: number, sourceMs: number, classMs: number) => void
@@ -20,7 +20,7 @@ export function useEditorPlayback(options: { classId: string; workoutMs: number;
     audioKey: options.audioKey,
   })
   const silent = useSilentCursor(options.workoutMs)
-  const [fallback, setFallback] = useState(false)
+  const [fallback, setFallback] = useState(options.silentOnly === true)
   const gone = preview.state.status === 'error' && preview.state.reason === 'unavailable'
   if (gone && !fallback) setFallback(true)
   return fallback ? { rendered: false, ...silent } : { rendered: true, ...preview }

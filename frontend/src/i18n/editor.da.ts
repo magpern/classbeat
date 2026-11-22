@@ -14,7 +14,7 @@ export const editorDa: Catalogue = {
   'editor.readonly.no_draft': 'Holdet har ingen version at redigere endnu.',
   'editor.readonly.open_job': 'Der laves en ændring af holdet. Redigeringen åbner, når den er færdig.',
   'editor.readonly.edit_unavailable':
-    'Den her version kan ikke redigeres her endnu. Hold med musik fra Spotify vises, som de er, uden redigering. Du kan stadig ændre holdet fra dets egen side.',
+    'Det her hold blev lavet, før Spotify-hold kunne redigeres her, så det vises, som det er. Du kan stadig ændre holdet fra dets egen side.',
   'editor.readonly.music_changed':
     'Analysen af holdets musik er udløbet, så det kan ikke redigeres. Skift sange for at analysere musikken igen.',
   'editor.readonly.mix_not_applied':
@@ -183,6 +183,7 @@ export const editorDa: Catalogue = {
   'editor.reason.class_busy': 'Der laves en ændring af holdet. Prøv igen, når den er færdig.',
   'editor.reason.revision_limit': 'Holdet har nået det højeste antal versioner, det kan have.',
   'editor.reason.edit_unavailable': 'Den her version kan ikke redigeres her.',
+  'editor.reason.audio_edit_unavailable': 'Musikken i et Spotify-hold kan ikke redigeres her. Ændr holdet, eller ændr det fra dets egen side.',
   'editor.reason.no_proposal': 'Holdet har ingen musikplan at redigere.',
   'editor.reason.music_changed': 'Analysen af musikken er udløbet. Skift sange for at analysere den igen.',
   'editor.reason.mix_not_applied':

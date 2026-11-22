@@ -750,3 +750,21 @@ by our own `GET /api/classes/{id}/preview/clip`, which is same-origin, authorize
 and sent `Cache-Control: private, no-store` (section 6.5); no third-party media is loaded. The change makes
 no claim that the audio cannot be recorded or saved: section 6.5 already states the preview is not DRM, and
 the 15-minute limit is the browser's courtesy, not a protection.
+
+## Implementation notes (#1424)
+
+2026-11-22. A Spotify draft is edited through the same path as a studio draft (`user_edit.apply`), with the
+studio parts taken out. Where the map comes from: the worker's own corrected map (the one the draft was
+fitted to) is stored in the revision's `music.edit_map` by `design.revision.content_and_music`, capped at
+256 KiB (`design/revision_edit_map.py`; a larger map is not stored). The web process reads it from the
+revision row, so the edit makes no MOWL read and no new egress. A `user_edit` revision stores no map and
+reads the nearest earlier non-`user_edit` revision's, only while that revision's fingerprint matches. A
+draft with no stored map (made before this change) answers `edit_unavailable` and stays read-only; the page
+still shows the audition panel. The edit runs the same `studio_edit_ops.edited` against `EditState` with a
+fixed map and a duration cap (the music's last end, so a class cannot be made longer than its songs), so one
+hash by the NULL overlay, the `base_revision_id` check in the transaction, locks and `locked_block_conflict`
+hold unchanged. Audio edits (pins, anchors) are refused `audio_edit_unavailable`: a Spotify draft has no
+mix to cut. Every place that recomputed a revision's hash from its content (revise, refit, song revise,
+duplicate) now uses `revision_hash(content, overlay=...)`, so an edited draft can be revised; a duplicate of
+an edited draft takes the nearest non-`user_edit` revision's provenance, and the copy has no map, so its
+editor is read-only until the class is refitted.

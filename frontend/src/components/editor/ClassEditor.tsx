@@ -19,19 +19,20 @@ import { CutPins } from './CutPins'
 import { EditOutcome } from './EditOutcome'
 import { EditorTimeline } from './EditorTimeline'
 import { EditorToolbar } from './EditorToolbar'
+import { SpotifyAudition } from './spotify/SpotifyAudition'
 import { PreviewControls } from './PreviewControls'
 import { ProvenanceCard } from './ProvenanceCard'
 import { useEditorPlayback } from './useEditorPlayback'
 
 /**
- * The editor of a studio draft (ADR 0042): the zone blocks on the class profile with the songs
+ * The editor of a studio draft or a Spotify draft (ADR 0042, #1424; a Spotify draft has no cut pins, anchors or rendered audio, its music is heard in the audition panel): the zone blocks on the class profile with the songs
  * under them, one block's controls, the cut pins and undo, and the audio preview (Play and Pause).
  * The cursor is drawn only from what the transport observed. Where the server has no preview the
  * transport is the silent clock cursor.
  */
 export function ClassEditor({ data, editor }: { data: EditorData; editor: Editor }) {
   const t = useT()
-  const { blocks, overlay, timeline } = data
+  const { blocks, overlay, timeline, spotify } = data
   const [selected, setSelected] = useState<number | null>(null)
   const [focusPiece, setFocusPiece] = useState<number | null>(null)
   const marks = useMemo(() => marksByBlock(blocks, overlay.records), [blocks, overlay.records])
@@ -40,7 +41,7 @@ export function ClassEditor({ data, editor }: { data: EditorData; editor: Editor
   const totalMs = Math.max(workoutMs, ...clips.map((c) => c.endMs))
   const mixEndMs = clips.length > 0 ? Math.max(...clips.map((c) => c.endMs)) : workoutMs
   const key = useMemo(() => audioKey(timeline), [timeline])
-  const cursor = useEditorPlayback({ classId: data.summary.id, workoutMs, mixEndMs, audioKey: key })
+  const cursor = useEditorPlayback({ classId: data.summary.id, workoutMs, mixEndMs, audioKey: key, silentOnly: spotify })
   const cursorMs = hasCursor(cursor.state) ? (cursor.state.transportMs ?? null) : null
   const index = selected !== null && selected < blocks.length ? selected : null
   const audition = (classMs: number) => {
@@ -52,7 +53,7 @@ export function ClassEditor({ data, editor }: { data: EditorData; editor: Editor
   const unapplied = overlay.unapplied.length + overlay.orphaned.length
   return (
     <div className="flex flex-col gap-5" data-testid="class-editor">
-      {cursor.rendered ? null : <p className="m-0 text-muted">{t('editor.noAudio')}</p>}
+      {cursor.rendered || spotify ? null : <p className="m-0 text-muted">{t('editor.noAudio')}</p>}
       <EditorToolbar
         key={workoutMs}
         canUndo={overlay.undo !== null}
@@ -133,9 +134,10 @@ export function ClassEditor({ data, editor }: { data: EditorData; editor: Editor
       {index === null ? (
         <p className="m-0 text-muted">{t('editor.block.select')}</p>
       ) : (
-        <BlockInspector blocks={blocks} marks={marks} timeline={timeline} index={index} busy={busy} onEdit={editor.apply} onAudition={audition} />
+        <BlockInspector blocks={blocks} marks={marks} timeline={timeline} index={index} music={!spotify} busy={busy} onEdit={editor.apply} onAudition={audition} />
       )}
-      <CutPins timeline={timeline} records={overlay.records} busy={busy} onEdit={editor.apply} />
+      {spotify ? null : <CutPins timeline={timeline} records={overlay.records} busy={busy} onEdit={editor.apply} />}
+      {spotify ? <SpotifyAudition key={`${data.summary.id}-${data.revisionId}`} classId={data.summary.id} /> : null}
     </div>
   )
 }

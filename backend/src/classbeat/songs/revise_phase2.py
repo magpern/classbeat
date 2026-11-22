@@ -4,7 +4,6 @@ reading layered onto the class's brief (``classbeat.songs.revise_reading``: the 
 the approved list, no second model call), the ``revise`` stage and the final transaction.
 """
 
-import hashlib
 import json
 from typing import Final
 from uuid import UUID
@@ -21,6 +20,7 @@ from classbeat.design import chat, corrections, diff, music_kind, revision
 from classbeat.design.games_policy import has_retired_game
 from classbeat.design.guidance import rule_set_for
 from classbeat.design.interpreted import with_interpretation
+from classbeat.design.revision_hash import revision_hash
 from classbeat.jobs import Complete, FencedSession, JobFailure, JobRun
 from classbeat.songs import revise_reading
 from classbeat.songs.config import SongConfig
@@ -68,7 +68,7 @@ async def run_revise_phase_two(
             raise JobFailure("invalid_input")
         if (
             base.content_hash != base_hash
-            or hashlib.sha256(revision.canonical(base.content)).digest() != base_hash
+            or revision_hash(base.content, overlay=base.overlay) != base_hash
         ):
             raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
         try:
@@ -112,7 +112,7 @@ async def run_revise_phase_two(
             step,
             origin=ORIGIN,
             base_revision_id=base_id,
-            base_hash=base_hash,
+            base_hash=revision_hash(base.content),  # the content alone, as a new revision's
             request_message_id=message_id,
             song_list_id=p.revision_id,
             rules=rules.provenance() if rules else None,

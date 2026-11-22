@@ -12,7 +12,7 @@ import { decodeBlocks, type EditorBlock } from '../../lib/editor/blocks'
 export type ReadOnlyReason =
   | 'no_draft'
   | 'open_job'
-  /** Not a studio draft: a Spotify draft until #1424. */
+  /** Neither a studio draft nor a Spotify draft the server can edit (an older Spotify draft has no stored map). */
   | 'edit_unavailable'
   | 'music_changed'
   /** After a studio revise, until the user undoes it or applies the choices (#1423). */
@@ -26,7 +26,26 @@ export interface EditorData {
   revisionId: string
   blocks: EditorBlock[]
   overlay: Overlay
+  /** Empty for a Spotify draft: it has no studio mix, so no pieces, cut pins or anchors. */
   timeline: Timeline
+  /** A Spotify draft: the workout is edited here, the music is heard in the Spotify audition panel. */
+  spotify: boolean
+}
+
+const NO_TIMELINE: Timeline = {
+  revisionId: '',
+  contentHash: '',
+  durationSec: 0,
+  workoutSec: 0,
+  tracks: [],
+  hasRepeats: false,
+  hints: [],
+  crossfades: [],
+  intervals: [],
+  specDigest: '',
+  proposalRevisionId: null,
+  isPlain: false,
+  choices: null,
 }
 
 export type EditorLoad =
@@ -55,8 +74,14 @@ export async function loadEditor(classId: string, signal: AbortSignal): Promise<
     getTimeline(classId, signal),
   ])
   if (timeline.kind === 'music_changed') return readonly('music_changed')
-  if (timeline.kind !== 'ready') return readonly('edit_unavailable')
+  // A class with no studio timeline whose overlay is ready is a Spotify draft the server can edit
+  // (an older one answers the overlay `edit_unavailable` above): same editor, without the studio parts.
+  if (timeline.kind === 'none') return readonly('edit_unavailable')
   const blocks = decodeBlocks(revision.raw)
   if (blocks === null) return readonly('unsupported')
-  return { kind: 'ready', data: { summary, revisionId: overlay.overlay.revisionId, blocks, overlay: overlay.overlay, timeline: timeline.timeline } }
+  const spotify = timeline.kind !== 'ready'
+  return {
+    kind: 'ready',
+    data: { summary, revisionId: overlay.overlay.revisionId, blocks, overlay: overlay.overlay, timeline: timeline.kind === 'ready' ? timeline.timeline : NO_TIMELINE, spotify },
+  }
 }

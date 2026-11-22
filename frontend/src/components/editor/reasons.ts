@@ -8,6 +8,7 @@ export const EDIT_REASONS = [
   'class_busy',
   'revision_limit',
   'edit_unavailable',
+  'audio_edit_unavailable',
   'no_proposal',
   'music_changed',
   'mix_not_applied',

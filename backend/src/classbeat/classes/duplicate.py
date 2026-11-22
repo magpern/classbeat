@@ -50,7 +50,6 @@ class on picked songs, which cannot be refitted) or is soundless. At most ``MAX_
 (the table's cap for one fingerprint) are copied, lowest song first; the source cannot hold more.
 """
 
-import hashlib
 import json
 import uuid
 from dataclasses import dataclass
@@ -60,7 +59,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat import auth, quota
@@ -72,15 +70,25 @@ from classbeat.classes.duplicate_music import (
     music_copy,
     music_source_copy,
 )
+from classbeat.classes.duplicate_origin import described
 from classbeat.classes.duplicate_provenance import provenance_copy
 from classbeat.classes.duplicate_request import clean_title as clean_title
 from classbeat.classes.duplicate_request import request_digest
+from classbeat.classes.duplicate_sql import (
+    ADOPT,
+    BY_KEY,
+    COPY_CORRECTIONS,
+    NEW_CLASS,
+    NEW_REVISION,
+    SOURCE,
+)
 from classbeat.config import Settings
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design import chat
 from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.design.music_kind import is_studio
+from classbeat.design.revision_hash import revision_hash
 from classbeat.design.revision_ready import revision_ready
 from classbeat.jobs.credits import QuotaRefused
 from classbeat.jobs.http import IDEMPOTENCY_KEY
@@ -93,43 +101,6 @@ Factory = async_sessionmaker[AsyncSession]
 router = APIRouter(prefix="/api/classes", tags=["classes"])
 
 STUDIO: Final = "studio_not_duplicable"  # a SwedeBeat studio class (ADR 0036)
-
-_SOURCE = text(
-    "SELECT r.id, r.number, r.content, r.content_hash, r.music, r.provenance, c.brief, "
-    "c.music_source FROM classes c JOIN class_revisions r ON r.owner_id = c.owner_id "
-    "AND r.class_id = c.id AND r.id = :revision_id AND r.kind = 'draft' "
-    "WHERE c.owner_id = :owner_id AND c.id = :class_id"
-)
-# The user's own duplicate made with this key, if any (the replay of D item 7).
-_BY_KEY = text(
-    "SELECT class_id, id, provenance -> 'duplicated_from' ->> 'request_hash' AS request_hash "
-    "FROM class_revisions WHERE owner_id = :owner_id AND kind = 'draft' "
-    "AND provenance ->> 'origin' = 'duplicate' "
-    "AND provenance -> 'duplicated_from' ->> 'idempotency_key' = :key LIMIT 1"
-)
-_NEW_CLASS = text(
-    "INSERT INTO classes (id, owner_id, title, brief, music_source) "
-    "VALUES (:id, :owner_id, :title, CAST(:brief AS jsonb), CAST(:music_source AS jsonb))"
-)
-_NEW_REVISION = text(
-    "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
-    "music, provenance, job_id, parent_id) VALUES (:id, :owner_id, :class_id, 1, 'draft', "
-    "CAST(:content AS jsonb), :content_hash, CAST(:music AS jsonb), CAST(:provenance AS jsonb), "
-    "NULL, NULL)"
-)
-# DU3: the source class's corrections for the chosen revision's fingerprint, re-keyed to the copy.
-# Both sides name the caller's ``owner_id`` (and row security holds them to it too); ``id``,
-# ``created_at`` and ``updated_at`` are the table's defaults.
-_COPY_CORRECTIONS = text(
-    "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
-    "SELECT :owner_id, :new_class_id, fingerprint, song, beats, bpm FROM beat_one_corrections "
-    "WHERE owner_id = :owner_id AND class_id = :class_id AND fingerprint = :fingerprint "
-    "ORDER BY song LIMIT :cap"
-)
-_ADOPT = text(
-    "UPDATE classes SET current_revision_id = :revision_id "
-    "WHERE owner_id = :owner_id AND id = :class_id AND current_revision_id IS NULL"
-)
 
 
 class DuplicateIn(BaseModel):
@@ -177,7 +148,7 @@ async def duplicate(
     async with user_session(factory, ctx) as db:
         await lock_owner(db, ctx)  # before the period lock, as job creation (ADR 0011)
         earlier = (
-            await db.execute(_BY_KEY, {"owner_id": ctx.user_id, "key": idempotency_key})
+            await db.execute(BY_KEY, {"owner_id": ctx.user_id, "key": idempotency_key})
         ).first()
         if earlier is not None:
             if earlier.request_hash != request_hash:
@@ -186,7 +157,7 @@ async def duplicate(
         not_ready = await revision_ready(db, ctx.user_id, class_id, revision_id)
         if not_ready is not None:
             return Outcome(not_ready)  # a sketch is never copied (ADR 0038 section 4)
-        row = (await db.execute(_SOURCE, ids)).first()
+        row = (await db.execute(SOURCE, ids)).first()
         if row is None:
             return Outcome("not_found")
         stored = bytes(row.content_hash)
@@ -198,10 +169,11 @@ async def duplicate(
             return Outcome(STUDIO)  # SR C5b: its hash covers the mix spec; not copied (ADR 0036)
         brief: dict[str, Any] = row.brief  # pyright: ignore[reportUnknownVariableType]
         sport = sport_of_brief(brief.get("sport"))
-        canonical = json.dumps(
-            row.content, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        ).encode()
-        if sport is None or hashlib.sha256(canonical).digest() != stored:
+        # The one hash (``design.revision_hash``): an edited draft's covers its overlay (#1424).
+        content: Any = row.content
+        if sport is None or not isinstance(content, dict):
+            return Outcome("internal")
+        if revision_hash(content, overlay=row.edit_overlay) != stored:  # pyright: ignore[reportUnknownArgumentType]
             return Outcome("internal")
         if has_retired_game(row.content):
             return Outcome(RETIRED)  # ADR 0029 section 3: before the strict ``spec_of`` (a 500)
@@ -209,8 +181,9 @@ async def duplicate(
             return Outcome("internal")
         layer = await chat.stated_layer(db, ctx.user_id, class_id, row.id)  # #907
         try:
+            made = await described(db, ctx.user_id, class_id, row.id, row.provenance)
             provenance = provenance_copy(
-                row.provenance,
+                made,
                 class_id,
                 row.id,
                 row.number,
@@ -230,7 +203,7 @@ async def duplicate(
         new_class, new_revision = uuid.uuid4(), uuid.uuid4()
         source = music_source_copy(row.music_source)
         await db.execute(
-            _NEW_CLASS,
+            NEW_CLASS,
             {
                 "id": new_class,
                 "owner_id": ctx.user_id,
@@ -240,26 +213,26 @@ async def duplicate(
             },
         )
         await db.execute(
-            _NEW_REVISION,
+            NEW_REVISION,
             {
                 "id": new_revision,
                 "owner_id": ctx.user_id,
                 "class_id": new_class,
                 "content": _json(row.content),
-                "content_hash": stored,
+                "content_hash": revision_hash(row.content),  # the copy has no overlay
                 "music": _json(music_copy(row.music)),
                 "provenance": _json(provenance),
             },
         )
         adopted = await db.execute(
-            _ADOPT, {"owner_id": ctx.user_id, "class_id": new_class, "revision_id": new_revision}
+            ADOPT, {"owner_id": ctx.user_id, "class_id": new_class, "revision_id": new_revision}
         )
         if adopted.rowcount != 1:  # pyright: ignore[reportAttributeAccessIssue]
             raise RuntimeError("the duplicate's revision was not made current")
         fingerprint = corrections_fingerprint(source, row.music)
         if fingerprint is not None:
             await db.execute(
-                _COPY_CORRECTIONS,
+                COPY_CORRECTIONS,
                 {
                     "owner_id": ctx.user_id,
                     "class_id": class_id,

@@ -38,7 +38,6 @@ jobs API's, as for every kind.
    ``current_revision_id``.
 """
 
-import hashlib
 import json
 from collections.abc import Mapping
 from typing import Annotated, Any, ClassVar, Final, Self
@@ -64,6 +63,7 @@ from classbeat.design.kind import (
     current_runtime,
     music_step,
 )
+from classbeat.design.revision_hash import revision_hash
 from classbeat.design.revision_ready import revision_ready
 from classbeat.design.spotdown_base import base_sections
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
@@ -108,7 +108,7 @@ _REFITS = text(
 
 # Through the job's own class (never the input's id alone).
 _BASE = text(
-    "SELECT c.brief, c.music_source, r.kind, r.content, r.content_hash, r.music "
+    "SELECT c.brief, c.music_source, r.kind, r.content, r.content_hash, r.edit_overlay, r.music "
     "FROM jobs j JOIN classes c ON c.owner_id = j.owner_id AND c.id = j.class_id "
     "JOIN class_revisions r ON r.owner_id = c.owner_id AND r.class_id = c.id AND r.id = :base "
     "WHERE j.id = :job_id AND j.owner_id = :owner_id"
@@ -210,7 +210,7 @@ async def run(job_run: JobRun) -> Complete:
     base_hash = bytes.fromhex(given.base_revision_hash)
     if (
         bytes(row.content_hash) != base_hash
-        or hashlib.sha256(revision.canonical(row.content)).digest() != base_hash
+        or revision_hash(row.content, overlay=row.edit_overlay) != base_hash
     ):
         raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
     try:
