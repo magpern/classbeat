@@ -169,6 +169,7 @@ async def _match(
     registry: SearchRegistry,
     stage: tuple[ModelProvider, Any, AgentConfig],
     runs: list[StageOutcome],
+    exclude: frozenset[str],
 ) -> MatchedPool:
     spent, unavailable = await budget.open(run)
     if unavailable:
@@ -180,7 +181,7 @@ async def _match(
     state = _Rounds(
         [c for c in made if usable(c)],
         [c for c in made if not usable(c)],
-        {p.spotify_id for p in pool.picks} | {k.spotify_id for k in plan.kept},
+        {p.spotify_id for p in pool.picks} | {k.spotify_id for k in plan.kept} | exclude,
     )
     while (
         state.missing
@@ -210,11 +211,13 @@ async def match_pool(
     pool: PoolResult,
     registry: SearchRegistry,
     stage: tuple[ModelProvider, Any, AgentConfig],
+    exclude: frozenset[str] = frozenset(),
 ) -> MatchedPool:
     """The pool the pick goes on with (``stage``: the song agent's provider, searcher and
-    limits, for a replacement round). ``JobFailure`` for every ending but a usable pool."""
+    limits, for a replacement round). ``exclude``: songs a replacement round never adds (a
+    composer swap's songs taken out). ``JobFailure`` for every ending but a usable pool."""
     runs: list[StageOutcome] = []
-    matched = await _match(run, plan, pool, registry, stage, runs)
+    matched = await _match(run, plan, pool, registry, stage, runs, exclude)
     logger.info(
         "spotdown song match",
         extra={

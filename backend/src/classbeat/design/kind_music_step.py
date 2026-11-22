@@ -9,7 +9,8 @@ later job reads the analysis the class was designed on; a playlist ignores it.
 
 ``carry`` (a revise or refit of a draft that had tracks on spotdown's sections, ADR 0040 SD-P6
 stage E: ``design.spotdown_base``) reads those tracks again on a playlist
-(``songs.spotdown_carry``), before the corrections; ``None`` is today's step exactly.
+(``songs.spotdown_carry``), before the corrections; ``None`` is the step as loaded (a mix, or
+``design_draft``).
 """
 
 from typing import TYPE_CHECKING

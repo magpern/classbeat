@@ -181,13 +181,20 @@ async def test_a_song_with_no_recorded_entry_is_analysis_failed(spotdown: FakeSp
     assert [r.path for r in world.reads()] == []  # stopped at the first (position 0)
 
 
-# --- a list without the record: the own-playlist exemption ------------------------------------
+# --- a list without the record: always strict (#1386; no own-playlist exemption) ---------------
 
 
-async def test_a_list_without_the_record_asks_nothing_and_is_today(world: World) -> None:
-    world.stored.provenance = {}
-    assert world.is_today(await world.hook())
-    assert world.fake.seen == []
+@pytest.mark.parametrize(
+    "provenance",
+    [{}, {"spotdown_analysis": {"songs": []}}, {"spotdown_analysis": None}],
+    ids=["no record", "no entries", "not a record"],
+)
+async def test_a_list_without_the_record_is_analysis_failed_and_asks_nothing(
+    world: World, provenance: dict[str, object]
+) -> None:
+    world.stored.provenance = provenance
+    await world.fails("analysis_failed")
+    assert world.fake.seen == []  # no MOWL-sections list is given back, and nothing is read
 
 
 # --- spotdown cannot be used: no fallback --------------------------------------------------------

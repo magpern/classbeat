@@ -130,8 +130,8 @@ def analysis_record(
 def timing_marks(provenance: Mapping[str, Any]) -> list[tuple[int, str, str]]:
     """``(position, class, source kind)`` of every song whose timing is spotdown's, for
     ``track_timing_calc.stamp``; empty for a list without the record. Strict: an entry that is
-    not exactly a ``spotdown`` use with an ``approximate`` class is not marked (its song keeps
-    MOWL's sections, today's path)."""
+    not exactly a ``spotdown`` use with an ``approximate`` class is not marked (stage D then fails
+    its song ``analysis_failed``: never MOWL's sections, #1386)."""
     record = provenance.get(KEY)
     songs: Sequence[Any] = record.get("songs", ()) if isinstance(record, dict) else ()
     marks: list[tuple[int, str, str]] = []

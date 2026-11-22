@@ -25,24 +25,34 @@ def slot_of(song: ChosenSong | PoolTrack) -> Slot:
     return Slot(song.spotify_id, song.title, song.artist, song.length_sec)
 
 
-def want_of(matched: MatchedPool, song: ChosenSong, position: int) -> Want | None:
-    """The song's analysis request, or ``None``. ``song.new`` and ``use == "timing"`` are defence in
-    depth: a kept song is never matched (stage A leaves it out of the pool), and only a ``timing``
-    match carries sources; ``test_a_replace_analyses_only_its_new_song`` runs a replace."""
+def want_of(
+    matched: MatchedPool, song: ChosenSong, position: int, *, fixed: bool = False
+) -> Want | None:
+    """The song's analysis request, or ``None``. ``song.new`` (or ``fixed``: a song of the user's
+    own playlist or a composer's pinned song, matched by stage A although not new) and
+    ``use == "timing"`` are defence in depth: a kept song is never matched (stage A leaves it out
+    of the pool), and only a ``timing`` match carries sources;
+    ``test_a_replace_analyses_only_its_new_song`` runs a replace."""
     match = matched.matches.get(song.spotify_id)
-    if not song.new or match is None or match.use != "timing" or not match.sources:
+    if not (song.new or fixed) or match is None or match.use != "timing" or not match.sources:
         return None
     explicit = matched.explicit_of(song.spotify_id)
     return Want(position, song.spotify_id, match.sources, float(song.length_sec), explicit)
 
 
 class Refine:
-    """The list while it is refined."""
+    """The list while it is refined. A ``fixed`` position (the user's own song, a pinned one) is
+    analysed but never replaced: missing, it has no spare (``analysis_failed``); unsuitable, it is
+    accepted with a warning."""
 
     def __init__(
-        self, matched: MatchedPool, pool: Mapping[str, PoolTrack], songs: list[ChosenSong]
+        self,
+        matched: MatchedPool,
+        pool: Mapping[str, PoolTrack],
+        songs: list[ChosenSong],
+        fixed: frozenset[int] = frozenset(),
     ) -> None:
-        self.matched, self.pool, self.songs = matched, pool, songs
+        self.matched, self.pool, self.songs, self.fixed = matched, pool, songs, fixed
         self.outcomes: dict[int, SongOutcome] = {}
         self.swaps: dict[int, RefineSwap] = {}
         self.tried: set[str] = {s.spotify_id for s in songs}  # never a spare again
@@ -63,7 +73,10 @@ class Refine:
     def replace(
         self, position: int, round_no: int, target_sec: int, reasons: Sequence[str]
     ) -> Want | None:
-        """Swap in a spare and give its ``Want``; ``None``: there is no spare (nothing changed)."""
+        """Swap in a spare and give its ``Want``; ``None``: there is no spare (nothing changed), as
+        for a ``fixed`` position."""
+        if position in self.fixed:
+            return None
         song = self.songs[position]
         listed = [s.spotify_id for s in self.songs]
         spares = [self.pool[p.spotify_id] for p in self.matched.spares(song.role, listed)

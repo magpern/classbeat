@@ -6,8 +6,10 @@ The class is designed on the chosen songs **before** the approval, and the resul
 1. **The songs' music.** The chosen songs are written to the user's private working copy in play
    order (``playlists.write_pool``, the pool's own consent, under a key of their own ids) and
    analysed by MOWL with the pool's sync wait (``design.music.load_music``): an analysis of
-   exactly these songs in this order, like the final playlist's in phase 2, so ``preview.music``
-   compares like with like (``preview_model.song_times``). Nothing of it is stored but the
+   exactly these songs in this order, like the final playlist's in phase 2; then every song on
+   spotdown's sections from the list's record (``phase2_spotdown.listed_music``, stage D, #1386;
+   never MOWL's), as phase 2 does, so ``preview.music`` compares like with like
+   (``preview_model.song_times``). Nothing of it is stored but the
    preview's small ``music``.
 2. **The design.** The ``revise`` stage (ADR 0007 section 3), as ``revise_songs``' phase 2 runs it,
    with ``songs_changed``: the base is the sketch (a fill) or the waiting list's preview (a swap
@@ -16,13 +18,14 @@ The class is designed on the chosen songs **before** the approval, and the resul
    ``SWAP_REQUEST``): keep the shape, re-time it to these songs. No new prompt: the stage's
    system prompt and tools are unchanged, and the request is data in its first message.
 3. **The preview**: the stage's content (fitted and validated server-side, as a draft's,
-   ``revision.content_and_music``), the songs' fingerprint and spans, and the run's
+   ``revision.checked_content``), the songs' fingerprint and spans, and the run's
    ``agent_runs`` id.
 
 ``fits_songs`` is the change's number test (section 6): the designed length against the songs'
 total, more than ``RESHAPE_TOLERANCE`` (10 %) apart is a reshape.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -45,6 +48,7 @@ from classbeat.playlists import write_pool
 from classbeat.songs import song_list
 from classbeat.songs.composer_slots_policy import sketch_seconds
 from classbeat.songs.config import SongConfig
+from classbeat.songs.phase2_spotdown import listed_music
 from classbeat.songs.pick import stage_config
 from classbeat.songs.preview_model import Preview, PreviewMusic, song_times
 
@@ -77,8 +81,9 @@ async def songs_music(
     mowl_connection_id: object,
     track_ids: tuple[str, ...],
     config: SongConfig,
+    provenance: Mapping[str, Any],
 ) -> MusicStep:
-    """Step 1 of the module docstring."""
+    """Step 1 of the module docstring; ``provenance``: the new list's, with its spotdown record."""
     await run.stage("pool_write")
     written = await write_pool(run, keyring, spotify, track_ids)
     await run.checkpoint()
@@ -96,10 +101,13 @@ async def songs_music(
         sync_wait_seconds=config.sync_wait_seconds,
     )
     analysed = tuple(str(t["spotify_id"]) for t in step.data.analysis["map"]["tracks"])
-    if analysed != track_ids:  # the songs' own order, as phase 2 checks the final playlist
+    try:
+        if analysed != track_ids:  # the songs' own order, as phase 2 checks the final playlist
+            raise JobFailure("playlist_mismatch")
+        return await listed_music(run, track_ids, provenance, step)  # stage D, #1386
+    except BaseException:
         step.close()
-        raise JobFailure("playlist_mismatch")
-    return step
+        raise
 
 
 async def design_preview(
@@ -118,10 +126,10 @@ async def design_preview(
 ) -> Designed:
     """Steps 2 and 3 of the module docstring; the caller owns ``step``."""
     await run.stage("design")
-    outcome, revised, music_map = await design_on(
+    outcome, revised, _ = await design_on(
         run, step, brief, base_content, request, provider, agent, config, gates, dismissed
     )
-    content = revision.content_and_music(revised.result, music_map, step, None)[0]
+    content = revision.checked_content(revised.result)[0]  # no music: the list is not stored yet
     try:
         preview = Preview(
             content=content,

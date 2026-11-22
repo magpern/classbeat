@@ -1,9 +1,11 @@
 """A composer's **change** (ADR 0038 section 6, #1188), split out of ``classbeat.songs.composer``:
-the waiting list's songs are kept, written and analysed again, and designed with the user's
-request on the waiting preview; a new list with the same songs and a new preview. When the
-designed length is more than 10 % from the songs' total (``composer_design.fits_songs``), it is a
-change of shape: the ordinary sketch revise (``design.revise_soundless``, ``sketch=True``), the
-new sketch current, the job complete, and the page starts the fill hand-off again for it.
+the waiting list's songs are kept, written and analysed again (each keeps its waiting list's
+spotdown entry, ``carried_records``, so the design is on spotdown's sections, #1386), and designed
+with the user's request on the waiting preview; a new list with the same songs and a new preview.
+When the designed length is more than 10 % from the songs' total (``composer_design.fits_songs``),
+it is a change of shape: the ordinary sketch revise (``design.revise_soundless``,
+``sketch=True``), the new sketch current, the job complete, and the page starts the fill hand-off
+again for it.
 """
 
 from typing import Any, Final
@@ -17,7 +19,7 @@ from classbeat.design.revise import ReviseDraftInput
 from classbeat.design.revise_base import load as load_base
 from classbeat.design.revise_soundless import run_soundless
 from classbeat.jobs import Complete, JobFailure, JobRun, Outcome
-from classbeat.songs import composer_design
+from classbeat.songs import composer_design, song_list
 from classbeat.songs.composer_common import (
     await_list,
     brief_of,
@@ -28,6 +30,9 @@ from classbeat.songs.composer_common import (
 from classbeat.songs.composer_pick import Picked
 from classbeat.songs.config import SongConfig
 from classbeat.songs.inputs import DesignWithSongsInput
+from classbeat.spotdown.song_analysis_record_model import analysis_record
+from classbeat.spotdown.song_carry_calc import with_kept
+from classbeat.spotdown.song_match_record_model import KEY as MATCH_KEY
 
 ORIGIN: Final = "design_with_songs"
 
@@ -61,8 +66,9 @@ async def run_change(
     if preview is None:
         raise JobFailure("internal")
     design = await group_model(runtime, run, given.route_key, "design")
+    records = carried_records(waiting)  # every song keeps its spotdown entry (#1386)
     step = await composer_design.songs_music(
-        run, runtime.keyring, spotify, given.mowl_connection_id, waiting.track_ids, songs
+        run, runtime.keyring, spotify, given.mowl_connection_id, waiting.track_ids, songs, records
     )
     try:
         made = await composer_design.design_preview(
@@ -87,10 +93,21 @@ async def run_change(
     made_by = provenance(
         [made.outcome], step.data.analysis["map"], origin=ORIGIN, schema_version=SONG_SCHEMA_VERSION
     )
-    picked = Picked(
-        chosen, made_by.model_dump(mode="json"), tuple(content.unmet), sources_of_list(content)
-    )
+    recorded = {**made_by.model_dump(mode="json"), **records}
+    picked = Picked(chosen, recorded, tuple(content.unmet), sources_of_list(content))
     return await_list(given, spotify, picked, made, seeded.revision_id)
+
+
+def carried_records(waiting: song_list.SongListRevision) -> dict[str, Any]:
+    """The waiting list's spotdown records for the same songs in the same slots: the match record
+    as it was, and every slot's analysis entry carried (``song_carry_calc.with_kept``, ``kept``).
+    A slot without its entry gets none, so stage D fails ``analysis_failed`` (no fallback)."""
+    ids = waiting.track_ids
+    empty = analysis_record({}, {}, rounds=0)
+    kept = list(enumerate(ids))
+    carried = with_kept(empty, waiting.provenance, kept, [(i, False) for i in ids])
+    match = waiting.provenance.get(MATCH_KEY)
+    return {**({MATCH_KEY: match} if isinstance(match, dict) else {}), **carried}
 
 
 async def _reshape(
