@@ -11,8 +11,9 @@ catalogue reference).
   revise's base mix).
 - ``build``: the fitted draft validated again; the stage's plan mapped to references and checked
   once more by ``mix_plan_policy`` against the stored analyses (the backend's own check, never
-  the stage's word); its ``StudioRevisionMusic``; the ``content_hash`` of ``{content, mix_spec}``
-  (``revision.studio_hash``). A revise whose hash is the base's is ``invalid_output``: a cut, the
+  the stage's word); its ``StudioRevisionMusic``; the ``content_hash`` (``revision_hash``) of
+  ``{content, mix_spec}``, or with a revise's reconciled overlay ``{content, mix_spec, overlay}``,
+  which ``edit_overlay`` stores. A revise whose hash is the base's is ``invalid_output``: a cut, the
   order or a crossfade alone is a change, the same draft and mix are not.
 """
 
@@ -29,7 +30,9 @@ from classbeat.agent.loop import StageOutcome
 from classbeat.agent.studio_design import StudioResult
 from classbeat.agent.studio_mix import StudioTrack
 from classbeat.design import revision
+from classbeat.design.edit_overlay_model import EditOverlay
 from classbeat.design.revision import DraftRevision, StudioRevisionMusic
+from classbeat.design.revision_hash import revision_hash
 from classbeat.design.studio_revision_model import TrackRecord, map_hash
 from classbeat.design.track_cache import TrackMap
 from classbeat.jobs import JobFailure
@@ -144,7 +147,10 @@ def build(
     if len(revision.canonical(content)) > revision.MAX_CONTENT_BYTES:
         raise JobFailure("invalid_output")
     dumped = stored.model_dump(mode="json")
-    content_hash = revision.studio_hash(content, dumped["mix_spec"])
+    if studio.overlay is not None and not isinstance(studio.overlay, EditOverlay):
+        raise JobFailure("internal")
+    overlay = None if studio.overlay is None else studio.overlay.stored()  # ADR 0042 section 3
+    content_hash = revision_hash(content, mix_spec=dumped["mix_spec"], overlay=overlay)
     if base_hash is not None and content_hash == base_hash:
         raise JobFailure("invalid_output")  # the base again: not a revision
     made = provenance(
@@ -162,4 +168,5 @@ def build(
         music=dumped,
         provenance=made.model_dump(mode="json"),
         parent_id=base_revision_id,
+        edit_overlay=overlay,
     )

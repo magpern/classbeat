@@ -60,6 +60,7 @@ TOOL_ERROR_CODES: Final = (
     "invalid_pool",
     "invalid_song_list",
     "invalid_mix",  # SR C5: a studio mix plan that breaks a rule of mix_plan_policy
+    "overlay_violated",  # #1391: a revise that breaks a lock of the edit overlay (ADR 0042)
 )
 
 

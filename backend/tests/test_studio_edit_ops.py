@@ -24,7 +24,7 @@ def base_state(overlay: EditOverlay = EMPTY) -> EditState:
     value, music, draft = case()
     spec = mix_apply_calc.derived(value, music, DJ, ())
     fitted = mix_apply_calc.fitted(draft, dict(value.spec), spec, music, None)
-    content = calc._fitted(draft, fitted.result.spec)  # pyright: ignore[reportPrivateUsage]
+    content = calc.fitted_content(draft, fitted.result.spec)
     stored = mix_apply_calc.stored_spec(spec)
     return EditState(content, stored, overlay, music, SHA, value, DJ, 1)
 

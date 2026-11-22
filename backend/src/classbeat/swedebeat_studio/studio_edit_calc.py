@@ -94,7 +94,7 @@ class Fit(NamedTuple):
     map_version: int  # the composed map's ``version``
 
 
-def _fitted(content: dict[str, Any], fitted_spec: dict[str, Any]) -> dict[str, Any]:
+def fitted_content(content: dict[str, Any], fitted_spec: dict[str, Any]) -> dict[str, Any]:
     """The content with the fitted lengths and cadences (``revision.fitted_draft``'s rule)."""
     out = copy.deepcopy(content)
     for seg, fitted in zip(out["segments"], fitted_spec["segments"], strict=True):
@@ -129,7 +129,7 @@ def fit(
         raise EditRefused(PLAN_TOO_LONG if too_long else PLAN_NOT_ALLOWED) from None
     try:
         version = int(composed.map["version"])
-        return Fit(_fitted(content, result.spec), result, composed.hints, version)
+        return Fit(fitted_content(content, result.spec), result, composed.hints, version)
     except (ValidationError, ValueError, KeyError, TypeError):
         raise EditRefused(refused) from None
 
