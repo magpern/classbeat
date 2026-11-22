@@ -34,7 +34,6 @@ in the same transaction after it (ADR 0007 section 2): the class's first design 
 ``classes.brief``, ``music_source`` and ``current_revision_id``, compare-and-set from NULL.
 """
 
-import hashlib
 import json
 import logging
 import uuid
@@ -53,6 +52,9 @@ from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
 from classbeat.design.music_kind import NoMusicStep
 from classbeat.design.revision_adopt import adopt_first as adopt_first
+from classbeat.design.revision_hash import canonical as canonical
+from classbeat.design.revision_hash import of_music, revision_hash
+from classbeat.design.revision_hash import studio_hash as studio_hash
 from classbeat.design.revision_music_model import NoRevisionMusic as NoRevisionMusic
 from classbeat.design.revision_music_model import RevisionSong
 from classbeat.design.revision_music_model import SpotifyRevisionMusic as SpotifyRevisionMusic
@@ -76,21 +78,15 @@ MAX_BEAT_ONE_BYTES: Final = 131072
 # checks only the owner), else no row is inserted.
 _INSERT = text(
     "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
-    "music, provenance, job_id, parent_id) "
+    "music, provenance, job_id, parent_id, edit_overlay) "
     "SELECT :id, j.owner_id, j.class_id, coalesce((SELECT max(r.number) FROM class_revisions r "
     "WHERE r.owner_id = j.owner_id AND r.class_id = j.class_id), 0) + 1, 'draft', "
     "CAST(:content AS jsonb), :content_hash, CAST(:music AS jsonb), CAST(:provenance AS jsonb), "
-    "j.id, p.id FROM jobs j LEFT JOIN class_revisions p ON p.id = CAST(:parent_id AS uuid) "
-    "AND p.owner_id = j.owner_id AND p.class_id = j.class_id "
+    "j.id, p.id, CAST(:edit_overlay AS jsonb) FROM jobs j LEFT JOIN class_revisions p "
+    "ON p.id = CAST(:parent_id AS uuid) AND p.owner_id = j.owner_id AND p.class_id = j.class_id "
     "WHERE j.id = :job_id AND j.owner_id = :owner_id "
     "AND (CAST(:parent_id AS uuid) IS NULL OR p.id IS NOT NULL) RETURNING number"
 )
-
-
-def studio_hash(content: Mapping[str, Any], mix_spec: Mapping[str, Any]) -> bytes:
-    """A studio draft's ``content_hash`` (ADR 0036 section 1, amending ADR 0007 section 2): the
-    SHA-256 of the canonical JSON ``{"content": ..., "mix_spec": ...}``."""
-    return hashlib.sha256(canonical({"content": content, "mix_spec": mix_spec})).digest()
 
 
 RevisionMusic = SpotifyRevisionMusic | SwedebeatRevisionMusic
@@ -132,12 +128,6 @@ REVISION_MUSIC: Final = TypeAdapter[RevisionMusic](
 )
 
 
-def canonical(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
-        "utf-8"
-    )
-
-
 def fitted_draft(result: DesignResult) -> AnyDraft:
     """The submitted draft with the fitted lengths and cadences (cues and names kept); a running
     draft with the fitted lengths (it has no cadence), read back with the running schema."""
@@ -166,8 +156,12 @@ class DraftRevision:
     music: dict[str, Any]
     provenance: dict[str, Any]
     parent_id: UUID | None = None  # the base of a revise; None for a design
+    edit_overlay: dict[str, Any] | None = None  # the carried overlay (ADR 0042 section 3)
 
     async def store(self, fs: FencedSession) -> UUID:
+        overlay = self.edit_overlay
+        if self.content_hash != of_music(self.content, self.music, overlay):
+            raise JobFailure("internal")  # the one hash (``revision_hash``): never stored otherwise
         revision_id = uuid.uuid4()
         found = (
             await fs.db.execute(
@@ -179,6 +173,7 @@ class DraftRevision:
                     "music": json.dumps(self.music, sort_keys=True, ensure_ascii=False),
                     "provenance": json.dumps(self.provenance, sort_keys=True),
                     "parent_id": self.parent_id,
+                    "edit_overlay": None if overlay is None else json.dumps(overlay),
                     "job_id": fs.lease.job_id,
                     "owner_id": fs.lease.owner_id,
                 },
@@ -255,7 +250,7 @@ def content_and_music(
     if not isinstance(step, NoMusicStep) and not isinstance(music, NoRevisionMusic):
         assert music_map is not None  # noqa: S101 - checked above
         music = _beat_one_fields(music, step, music_map, result.duration_sec)  # not soundless
-    return content, hashlib.sha256(canonical(content)).digest(), music, running
+    return content, revision_hash(content), music, running
 
 
 def build(
