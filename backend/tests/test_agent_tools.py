@@ -365,16 +365,23 @@ def test_model_input_and_tools_use_the_crossfade_for_a_legacy_map(data: MusicDat
 # --- warnings -------------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    ("library_xf", "library_words"),
+    [
+        (spotify.CROSSFADE_SEC, '"crossfade": 0'),  # the library's own 9.0: it advises crossfade 0
+        (CROSSFADE_SEC, "overlapping 9.54 s"),  # classbeat's 9.54: the library words it as a number
+    ],
+)
 def test_the_librarys_crossfade_advice_and_availability_texts_never_reach_the_model(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, library_xf: float, library_words: str
 ) -> None:
     data = analysed(monkeypatch)
     data = MusicData(data.analysis, data.playlist_id, ["Track X is not playable in SE"])
-    # the library words its advice for its own 9.0 crossfade; classbeat's map is at 9.54
-    m = spotify.with_crossfade(music_map(data.analysis["map"]), spotify.CROSSFADE_SEC)
+    # the library words its advice differently at its own 9.0 and at classbeat's 9.54
+    m = spotify.with_crossfade(music_map(data.analysis["map"]), library_xf)
     entry = {"map": m, "unavailable": list(data.unavailable)}
     library_text = " ".join(service._spotify_warnings(entry))  # pyright: ignore[reportPrivateUsage]
-    assert '"crossfade": 0' in library_text  # what the library would say
+    assert library_words in library_text  # what the library would say
     assert "not playable" in library_text
     stage = design_stage(DesignContext.build(brief(), data))
     for tool in ("preview_draft", "submit_draft"):
@@ -382,6 +389,7 @@ def test_the_librarys_crossfade_advice_and_availability_texts_never_reach_the_mo
         text = json.dumps(body)
         assert 'crossfade\\": 0' not in text
         assert '"crossfade": 0' not in text
+        assert "overlapping" not in text
         assert "in music" not in text
         assert "not playable" not in text
         assert body["warnings"][0].startswith("Timing assumes the playlist plays in order")
