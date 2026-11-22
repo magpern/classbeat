@@ -4,8 +4,11 @@ Shared by the read-only preview, the ``apply_mix_choices`` job and the output ch
 - ``resolve``: from a draft (the current one, or an applied draft whose proposal is wanted), the
   nearest draft on the same ``song_list`` whose origin is in ``mix_proposal_policy``'s allowlist,
   following ``parent_id`` within the class; ``None`` when there is none (``no_proposal``);
-- ``load``: that draft's content and music, its stored hash re-checked (``None`` when it no longer
-  holds or is not a studio draft: a revision is immutable, so that is never normal);
+- ``not_user_edit``: the nearest draft up the chain that is not a ``user_edit`` (ADR 0042 section
+  8, #1391);
+- ``load``: that draft's content and music, its stored hash re-checked by the one hash
+  (``revision_hash``, its edit overlay included; ``None`` when it no longer holds or is not a
+  studio draft: a revision is immutable, so that is never normal);
 - ``studio_music``: the approved list's analyses **exactly as the proposal recorded them**, from
   the user's cache in the caller's transaction (no download, no network, no connection held);
   ``None`` when one is gone (``music_changed``);
@@ -25,7 +28,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.design import revision
+from classbeat.design.revision_hash import revision_hash
 from classbeat.design.studio_revision_model import StudioRevisionMusic, wanted
 from classbeat.design.track_cache import cached_in, recorded
 from classbeat.jobs import JobFailure
@@ -41,7 +44,7 @@ _STEP = text(
     "WHERE owner_id = :owner_id AND class_id = :class_id AND id = :id"
 )
 _DRAFT = text(
-    "SELECT content, content_hash, music FROM class_revisions "
+    "SELECT content, content_hash, music, edit_overlay FROM class_revisions "
     "WHERE owner_id = :owner_id AND class_id = :class_id AND id = :id AND kind = 'draft'"
 )
 
@@ -82,6 +85,26 @@ async def resolve(
     return None
 
 
+async def not_user_edit(
+    db: AsyncSession, owner_id: UUID, class_id: UUID, start: UUID
+) -> UUID | None:
+    """The nearest draft from ``start`` up its ``parent_id`` chain whose origin is not
+    ``user_edit`` (ADR 0042 section 8: the draft whose choices a ``user_edit`` draft is checked
+    with), ``start`` itself when it is none; ``None`` past ``MAX_CHAIN`` or a missing row."""
+    at: UUID | None = start
+    for _ in range(mix_proposal_policy.MAX_CHAIN):
+        if at is None:
+            return None
+        params = {"owner_id": owner_id, "class_id": class_id, "id": at}
+        row = (await db.execute(_STEP, params)).first()
+        if row is None or row.kind != "draft":
+            return None
+        if row.origin != mix_proposal_policy.USER_EDIT_ORIGIN:
+            return at
+        at = row.parent_id
+    return None
+
+
 async def load(
     db: AsyncSession, owner_id: UUID, class_id: UUID, revision_id: UUID
 ) -> ProposalDraft | None:
@@ -95,7 +118,7 @@ async def load(
     except ValidationError:
         return None
     spec = music.mix_spec.model_dump(mode="json")
-    if revision.studio_hash(content, spec) != bytes(row.content_hash):
+    if revision_hash(content, mix_spec=spec, overlay=row.edit_overlay) != bytes(row.content_hash):
         return None
     return ProposalDraft(revision_id, content, music)
 

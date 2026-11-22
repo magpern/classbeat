@@ -34,10 +34,11 @@ from classbeat.agent.stored_draft import stored_draft
 from classbeat.agent.studio_design import StudioBase, StudioContext, StudioResult, studio_stage
 from classbeat.connections import hold
 from classbeat.connections.preferences import uses_swedebeat_in
-from classbeat.design import chat, diff, music_kind, revise_base, revise_stated, revision, sport
+from classbeat.design import chat, diff, music_kind, revise_base, revise_stated, sport
 from classbeat.design.interpreted import with_interpretation
 from classbeat.design.kind import current_runtime, group_model
 from classbeat.design.revision import StudioRevisionMusic
+from classbeat.design.revision_hash import revision_hash
 from classbeat.design.sport_rules import rules_for
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.quota.route import with_plan, with_plan_run
@@ -53,7 +54,7 @@ KIND: Final = "studio_revise"
 STAGES: Final = ("tracks", "revise")
 
 _BASE_MUSIC = text(
-    "SELECT r.music FROM class_revisions r JOIN jobs j ON j.owner_id = r.owner_id "
+    "SELECT r.music, r.edit_overlay FROM class_revisions r JOIN jobs j ON j.owner_id = r.owner_id "
     "AND j.class_id = r.class_id WHERE j.id = :job_id AND j.owner_id = :owner_id "
     "AND r.id = :base AND r.kind = 'draft'"
 )
@@ -90,7 +91,9 @@ async def _base(
         raise JobFailure("invalid_input")
     base_hash = bytes.fromhex(given.base_revision_hash)
     spec = music.mix_spec.model_dump(mode="json")
-    if row.content_hash != base_hash or revision.studio_hash(row.content, spec) != base_hash:
+    overlay = None if raw is None else raw.edit_overlay
+    hashed = revision_hash(row.content, mix_spec=spec, overlay=overlay)
+    if row.content_hash != base_hash or hashed != base_hash:
         raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
     return row, music, stored
 

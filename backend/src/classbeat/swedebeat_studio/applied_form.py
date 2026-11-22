@@ -17,11 +17,15 @@
   not the proposal's records that the preview and the apply job read (#1369 copies those into an
   applied draft, so the two agree; any difference is refused).
 - **The pins.** ``applied_form`` holds the stored spec to ``applied(...)`` with the edit
-  overlay's cut pins (``overlay_pins``; ADR 0042 section 8). The overlay is E2's (#1391): until it
-  is stored no draft has one, so a stored spec that carries a pin is not ``applied_form`` (fail
-  closed). ``pin_unconfirmed`` is ``mix_pin_policy.listen_again`` of the stored, hash-checked spec
-  against the analysed files the draft recorded (``analyses``; a draft without them knows none, so
-  every confirmed pin of it is to be listened to again).
+  overlay's cut pins (``overlay_pins``, the hash-checked ``edit_overlay``; ADR 0042 section 8,
+  #1391), so a stored pin without its record is not ``applied_form`` (fail closed).
+  ``pin_unconfirmed`` is ``mix_pin_policy.listen_again`` of the stored, hash-checked spec against
+  the analysed files the draft recorded (``analyses``; a draft without them knows none, so every
+  confirmed pin of it is to be listened to again), and ``requests_moved``: an unconfirmed pin
+  whose file is not the one it was set against.
+- **A ``user_edit`` draft** (ADR 0042 section 8) is checked with the origin, provenance and so the
+  choices of its nearest ancestor that is not a ``user_edit`` (``mix_proposal.not_user_edit``):
+  it is admitted when it differs from ``applied(...)`` only by its overlay.
 
 Nothing is written or logged.
 """
@@ -40,7 +44,8 @@ from classbeat.spotdown.studio_map_model import stored_timing_class
 from classbeat.studio.mix_applied_policy import basis, holds, mixed
 from classbeat.studio.mix_facts_model import TrackFacts, of_map
 from classbeat.studio.mix_pin_model import PinRecord
-from classbeat.studio.mix_pin_policy import listen_again
+from classbeat.studio.mix_pin_policy import listen_again, requests_moved
+from classbeat.studio.mix_proposal_policy import USER_EDIT_ORIGIN
 from classbeat.swedebeat_studio import mix_proposal
 from classbeat.swedebeat_studio.current_draft import CurrentDraft
 
@@ -58,17 +63,19 @@ class Form:
 
 
 def overlay_pins(found: CurrentDraft) -> tuple[PinRecord, ...]:
-    """The draft's edit-overlay pin records: none until E2 (#1391) stores the overlay."""
-    del found
-    return ()
+    """The draft's edit-overlay pin records (the overlay ``current_draft.load`` hash-checked)."""
+    return found.overlay.pins()
 
 
 def unconfirmed(found: CurrentDraft) -> bool:
-    """A confirmed pin of the stored spec whose analysed file is not the one it was confirmed
-    against (module docstring); anything that does not read is one (fail closed)."""
+    """A pin of the stored spec to listen to again (module docstring): a confirmed one whose
+    analysed file is not the one it was confirmed against, an unconfirmed one whose file is not
+    the one it was set against; anything that does not read is one (fail closed)."""
     analysed = {a.reference: a.sha256 for a in found.music.analyses or ()}
     try:
-        return bool(listen_again(found.spec, analysed))
+        against = {p.target(): p.set_against for p in found.overlay.pins()}
+        moved = requests_moved(found.spec, against, analysed)
+        return bool(listen_again(found.spec, analysed)) or bool(moved)
     except (ValueError, KeyError, TypeError):
         return True
 
@@ -87,9 +94,13 @@ async def facts_of(db: AsyncSession, owner_id: UUID, found: CurrentDraft) -> dic
     return out
 
 
-async def _row(db: AsyncSession, owner_id: UUID, class_id: UUID, revision_id: UUID) -> Any:
+async def _provenance(
+    db: AsyncSession, owner_id: UUID, class_id: UUID, revision_id: UUID
+) -> dict[str, Any]:
+    """The revision's provenance; ``{}`` for none or one that is no object (fail closed)."""
     params = {"owner_id": owner_id, "class_id": class_id, "revision_id": revision_id}
-    return (await db.execute(_ROW, params)).first()
+    found = (await db.execute(_ROW, params)).scalar_one_or_none()
+    return found if isinstance(found, dict) else {}  # pyright: ignore[reportUnknownVariableType]
 
 
 async def _applied_form(
@@ -100,14 +111,19 @@ async def _applied_form(
     facts: Mapping[str, TrackFacts],
     outputs: Collection[str],
 ) -> bool:
-    own = await _row(db, owner_id, class_id, found.revision_id)
-    provenance: object = own.provenance if own is not None else None
-    if not isinstance(provenance, dict):
+    basis_id: UUID | None = found.revision_id
+    provenance = await _provenance(db, owner_id, class_id, found.revision_id)
+    if provenance.get("origin") == USER_EDIT_ORIGIN:  # its nearest other draft's (section 8)
+        basis_id = await mix_proposal.not_user_edit(db, owner_id, class_id, found.revision_id)
+        if basis_id is None:
+            return False
+        provenance = await _provenance(db, owner_id, class_id, basis_id)
+    if not provenance:
         return False
     list_id = found.music.song_list_id
     resolved = await mix_proposal.resolve(db, owner_id, class_id, found.revision_id, list_id)
     origin = provenance.get("origin")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-    chosen = basis(found.revision_id, origin, resolved, provenance, outputs)  # pyright: ignore[reportUnknownArgumentType]
+    chosen = basis(basis_id, origin, resolved, provenance, outputs)  # pyright: ignore[reportUnknownArgumentType]
     if chosen is None:
         return False
     loaded = await mix_proposal.load(db, owner_id, class_id, chosen.proposal_id)
