@@ -162,6 +162,10 @@ async def test_another_user_cannot_replan_a_class_with_choices(studio: StudioEnv
     before = [counts(studio, owner) for owner in owners]
     sent_before = _sent(studio)
     refused = await replan(other, class_id, current.current_revision_id, valid)
-    assert 400 <= refused.status_code < 500, refused.text
+    assert (refused.status_code, refused.json()["detail"]["reason"]) == (404, "class_not_found")
     assert [counts(studio, owner) for owner in owners] == before
     assert _sent(studio) == sent_before  # nothing about A's class reached the model
+    # The body is valid (a 422 or 409 could not stand in for the ownership check): the owner's
+    # own re-plan with the very same choices is accepted.
+    accepted = await replan(rider, class_id, current.current_revision_id, valid)
+    assert accepted.status_code == 201, accepted.text

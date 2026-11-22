@@ -870,14 +870,14 @@ path, "no timing decision" no longer occurs for a studio track.
   choices for the songs they touched are never changed behind their back; a fair re-plan of the other songs
   needs musical judgement (phrase points, where the workout's efforts land), which is the model's design job,
   not a deterministic rule; a model call costs time and quota and is the user's action; and a refusal
-  fails closed. **Re-plan the other songs** is a `revise_draft` with the choices (#1372): the model is told
+  fails closed. **Re-plan the other songs** is a `studio_revise` job with the choices (#1372; the revision it stores has origin `revise_draft`): the model is told
   the **form** first (from `dj_mix`, `blend` and `trim`: whole songs, no crossfades, no trims when DJ mix is
   off; hard cuts only when Blend is off; every song once, whole, when Trim is off), then, by list index,
   which songs are kept whole and which cuts are hard, and re-plans the rest. Its result is a new
   proposal, and the same choices are applied to it again (B4), which is authoritative. **As built
   (#1409):** the re-plan's choices travel as the optional field `choices` of the `studio_revise` job input
   (a `MixChoices` object, checked against the approved list at admit), not as a field named `mix_choices`
-  as #1372 first called it; `mix_choices` remains only the provenance origin of an applied draft (B4). For
+  as #1372 first called it; the name `mix_choices` stays in the provenance origin of an applied draft (B4), the `apply_mix_choices` job kind and the `/mix-choices/preview` route. For
   `class_length_out_of_tolerance` and `plan_class_too_long` it is offered only while Trim songs is on and some
   song can still be trimmed (otherwise the screen offers **Change songs**: with nothing to trim, the length
   follows the songs, and a re-design cannot shorten them); for `workout_does_not_fit`, `plan_not_allowed` and
