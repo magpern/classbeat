@@ -527,21 +527,46 @@ async def test_an_analysis_that_does_not_read_fails_closed(
     assert await refused(studio, rider, class_id, current, "swedebeat_mix") == "mix_not_applied"
 
 
-async def test_a_proposal_whose_music_does_not_read_fails_closed(
-    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_a_proposal_whose_music_does_not_read_fails_closed(studio: StudioEnv) -> None:
+    """``mix_proposal.load`` answers nothing for a proposal row whose music no longer reads."""
     rider, class_id, _list, proposal = await designed(studio)
     pid = proposal.current_revision_id
     current = applied_draft(
         studio, class_id, pid, whole_spec(studio, pid), recorded(pid, WHOLE_CHOICES)
     )
+    studio.songs.sql("UPDATE class_revisions SET music = '{}'::jsonb WHERE id = :p", p=pid)
+    assert await refused(studio, rider, class_id, current, "swedebeat_playlist") == (
+        "mix_not_applied"
+    )
 
-    class Unreadable:
-        @staticmethod
-        def model_validate_json(_raw: str) -> Any:
-            raise ValueError("x")
 
-    monkeypatch.setattr(applied_form, "StudioRevisionMusic", Unreadable)  # the proposal's read only
+async def test_the_walk_stops_at_a_revision_of_another_list(studio: StudioEnv) -> None:
+    """B4's one walk (``mix_proposal.resolve``): between the applied draft and the proposal it
+    records lies a draft of another ``song_list``, so there is no proposal on this chain (it is
+    never passed over to the older one) and the draft is not the applied form."""
+    rider, class_id, _list, proposal = await designed(studio)
+    pid = proposal.current_revision_id
+    base = studio.songs.revision(pid)
+    between = uuid.uuid4()
+    studio.songs.sql(
+        "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
+        "music, provenance, job_id, parent_id) SELECT :id, owner_id, class_id, "
+        "(SELECT max(number) + 1 FROM class_revisions WHERE class_id = :c), 'draft', content, "
+        "content_hash, CAST(:music AS jsonb), provenance, job_id, id "
+        "FROM class_revisions WHERE id = :p",
+        id=between,
+        c=class_id,
+        p=pid,
+        music=json.dumps({**base.music, "song_list_id": str(uuid.uuid4())}),
+    )
+    current = applied_draft(
+        studio, class_id, pid, whole_spec(studio, pid), recorded(pid, WHOLE_CHOICES)
+    )
+    studio.songs.sql(
+        "UPDATE class_revisions SET parent_id = :b WHERE id = :r",
+        b=between,
+        r=current.current_revision_id,
+    )
     assert await refused(studio, rider, class_id, current, "swedebeat_playlist") == (
         "mix_not_applied"
     )

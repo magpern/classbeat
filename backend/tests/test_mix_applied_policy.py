@@ -1,7 +1,7 @@
 """ADR 0036 amendment B9 (#1370), the pure parts: the reason order of
 ``output_choice_policy.refusal`` with ``mixed`` and ``applied_form``, and
-``studio.mix_applied_policy`` (``mixed``, B4's proposal allowlist, the basis of an applied draft,
-``holds``). No database, no network."""
+``studio.mix_applied_policy`` (``mixed``, the basis of a proposal and of an applied draft over
+the shared allowlist, ``holds``). No database, no network."""
 
 import itertools
 import json
@@ -11,22 +11,11 @@ from typing import Any
 import pytest
 
 from classbeat.studio import mix_applied_policy
-from classbeat.studio.mix_applied_policy import (
-    APPLIED_ORIGIN,
-    MAX_CHAIN,
-    PROPOSAL_ORIGINS,
-    STUDIO_SOURCE,
-    Link,
-    basis,
-    holds,
-    implied,
-    mixed,
-    proposal_of,
-)
+from classbeat.studio.mix_applied_policy import basis, holds, implied, mixed
 from classbeat.studio.mix_choice_model import MixChoices, canonical
 from classbeat.studio.mix_choice_policy import applied
+from classbeat.studio.mix_proposal_policy import APPLIED_ORIGIN, PROPOSAL_ORIGINS
 from classbeat.studio.output_choice_policy import OUTPUTS, refusal
-from classbeat.swedebeat_studio.song_list_model import SOURCE
 from mix_choice_fixtures import FACTS, ORDER, PLAIN, REPEAT, proposal, spec, track
 
 ALL = frozenset(OUTPUTS)
@@ -113,87 +102,44 @@ def test_mixed_is_not_whole_songs_and_fails_closed() -> None:
 
 # --- the proposal and the basis -------------------------------------------------------------
 
-LIST = str(uuid.uuid4())
-OTHER_LIST = str(uuid.uuid4())
+PROPOSAL = uuid.uuid4()
+DRAFT = uuid.uuid4()
 
 
-def link(
-    origin: str | None,
-    song_list: str | None = LIST,
-    kind: str = "draft",
-    source: str | None = STUDIO_SOURCE,
-) -> Link:
-    return Link(uuid.uuid4(), kind, song_list, origin, source)
-
-
-def test_the_studio_source_is_the_song_lists() -> None:
-    assert STUDIO_SOURCE == SOURCE
-
-
-def test_the_proposal_is_the_nearest_allowlisted_studio_draft_on_the_same_list() -> None:
+def test_the_allowlist_is_the_shared_one() -> None:
+    """B4's allowlist lives in one place (#1402's ``mix_proposal_policy``); its walk and its stop
+    rule are tested there (``test_mix_apply_calc.py``) and in the apply job's refusals."""
     assert frozenset({"design_draft", "revise_draft"}) == PROPOSAL_ORIGINS
-    first = link("revise_draft")
-    older = link("design_draft")
-    passed_over = [  # studio drafts of the same list whose origin is not a model design
-        link(APPLIED_ORIGIN),
-        link("duplicate"),
-        link("beat_one"),
-        link(None),
-        link("studio_songs"),
-        link("refit_draft"),  # any origin added later until the allowlist names it
-    ]
-    assert proposal_of([*passed_over, first, older], LIST) == first.revision_id
-    assert proposal_of(passed_over, LIST) is None
-    assert proposal_of([], LIST) is None
-
-
-@pytest.mark.parametrize(
-    "barrier",
-    [
-        link("design_draft", OTHER_LIST),  # another list
-        link("design_draft", kind="song_list"),  # not a draft
-        link("design_draft", source="spotify"),  # a draft of another music source
-        link("design_draft", source=None),
-        link(APPLIED_ORIGIN, None),  # no list
-    ],
-)
-def test_the_walk_stops_at_a_revision_that_is_no_studio_draft_of_the_list(barrier: Link) -> None:
-    """#1402's rule (``mix_proposal_policy.step``): stop, never pass over to an older proposal."""
-    older = link("design_draft")
-    assert proposal_of([link(APPLIED_ORIGIN), barrier, older], LIST) is None
-    assert proposal_of([barrier, older], LIST) is None
-
-
-def test_the_walk_reads_at_most_max_chain_revisions() -> None:
-    proposed = link("design_draft")
-    assert MAX_CHAIN == 500
-    within = [*(link(APPLIED_ORIGIN) for _ in range(MAX_CHAIN - 1)), proposed]
-    assert proposal_of(within, LIST) == proposed.revision_id
-    assert proposal_of([link(APPLIED_ORIGIN), *within], LIST) is None
+    assert APPLIED_ORIGIN == "mix_choices"
 
 
 def test_a_proposal_is_its_own_basis_with_the_choices_its_outputs_imply() -> None:
-    own = link("design_draft")
-    found = basis([own], LIST, {}, ["swedebeat_playlist"])
-    assert found is not None
-    assert (found.proposal_id, found.choices) == (own.revision_id, WHOLE)
-    found = basis([own], LIST, {}, ["swedebeat_playlist", "swedebeat_mix"])
-    assert found is not None
-    assert found.choices == DJ
+    for origin in sorted(PROPOSAL_ORIGINS):
+        found = basis(PROPOSAL, origin, PROPOSAL, {}, ["swedebeat_playlist"])
+        assert found is not None
+        assert (found.proposal_id, found.choices) == (PROPOSAL, WHOLE)
+        found = basis(PROPOSAL, origin, PROPOSAL, {}, ["swedebeat_playlist", "swedebeat_mix"])
+        assert found is not None
+        assert found.choices == DJ
     assert implied(["mowl", "swedebeat_mix"]) == DJ
     assert implied(["spotify_playlist"]) == WHOLE
 
 
+def test_a_proposal_that_resolves_to_another_revision_or_none_has_no_basis() -> None:
+    assert basis(DRAFT, "design_draft", PROPOSAL, {}, ["swedebeat_playlist"]) is None
+    assert basis(DRAFT, "design_draft", None, {}, ["swedebeat_playlist"]) is None
+
+
 def test_an_applied_draft_has_its_recorded_proposal_and_choices() -> None:
-    own, proposed = link(APPLIED_ORIGIN), link("revise_draft")
     choices = MixChoices(dj_mix=True, blend=False, trim=True, keep_whole=(1,))
     record: dict[str, Any] = {
-        "proposal_revision_id": str(proposed.revision_id),
+        "proposal_revision_id": str(PROPOSAL),
         "choices": json.loads(canonical(choices)),
     }
-    found = basis([own, link(APPLIED_ORIGIN), proposed], LIST, record, ["swedebeat_mix"])
+    found = basis(DRAFT, APPLIED_ORIGIN, PROPOSAL, record, ["swedebeat_mix"])
     assert found is not None
-    assert (found.proposal_id, found.choices) == (proposed.revision_id, choices)
+    assert (found.proposal_id, found.choices) == (PROPOSAL, choices)
+    assert basis(DRAFT, APPLIED_ORIGIN, None, record, ["swedebeat_mix"]) is None  # no proposal
 
 
 @pytest.mark.parametrize(
@@ -212,20 +158,15 @@ def test_an_applied_draft_has_its_recorded_proposal_and_choices() -> None:
 def test_an_applied_draft_with_a_record_that_does_not_hold_has_no_basis(
     record: dict[str, Any],
 ) -> None:
-    own, proposed, older = link(APPLIED_ORIGIN), link("revise_draft"), link("design_draft")
-    ids = {"<proposal>": str(proposed.revision_id), "<older>": str(older.revision_id)}
+    ids = {"<proposal>": str(PROPOSAL), "<older>": str(uuid.uuid4())}
     given = {k: ids.get(v, v) if isinstance(v, str) else v for k, v in record.items()}
-    assert basis([own, proposed, older], LIST, given, ["swedebeat_mix"]) is None
+    assert basis(DRAFT, APPLIED_ORIGIN, PROPOSAL, given, ["swedebeat_mix"]) is None
 
 
 def test_any_other_draft_has_no_basis() -> None:
-    proposed = link("design_draft")
-    for origin in ("duplicate", "beat_one", None, "sketch", "refit_draft"):
-        assert basis([link(origin), proposed], LIST, {}, ["swedebeat_playlist"]) is None
-    assert basis([], LIST, {}, ["swedebeat_playlist"]) is None
-    # A proposal on another list than the draft's, or of another source, has none either.
-    assert basis([link("design_draft", OTHER_LIST)], LIST, {}, ["swedebeat_playlist"]) is None
-    assert basis([link("design_draft", source="x")], LIST, {}, ["swedebeat_playlist"]) is None
+    record = {"proposal_revision_id": str(PROPOSAL), "choices": json.loads(canonical(WHOLE))}
+    for origin in ("duplicate", "beat_one", None, "sketch", "refit_draft", 7):
+        assert basis(DRAFT, origin, PROPOSAL, record, ["swedebeat_playlist"]) is None
 
 
 # --- holds ------------------------------------------------------------------------------------
