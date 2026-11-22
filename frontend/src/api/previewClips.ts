@@ -57,14 +57,17 @@ function failureOf(status: number, reason: string | null): PreviewFailure {
   return 'failed'
 }
 
-function reasonOf(body: unknown): string | null {
+function detailReason(body: unknown): string | null {
   if (!isObject(body) || !isObject(body.detail)) return null
   return typeof body.detail.reason === 'string' ? body.detail.reason : null
 }
 
-function isAbort(error: unknown): boolean {
+export function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
+
+/** The failure code of anything the transport's service threw. */
+export const reasonOf = (error: unknown): PreviewFailure => (error instanceof PreviewError ? error.reason : 'failed')
 
 /** The Play gesture: a new listening session, `POST .../preview/sessions` with no body. */
 export async function createPreviewSession(classId: string): Promise<string> {
@@ -127,7 +130,7 @@ export async function probeClip(
   }
   let reason: string | null = null
   try {
-    reason = reasonOf((await response.json()) as unknown)
+    reason = detailReason((await response.json()) as unknown)
   } catch {
     // No JSON detail: the status says enough.
   }

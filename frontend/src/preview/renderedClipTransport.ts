@@ -1,4 +1,4 @@
-import { PreviewError, type Clip } from '../api/previewClips'
+import { isAbort, reasonOf, type Clip } from '../api/previewClips'
 import { Changes, ClipSlots, type ClipAudio, type Slot, type Win } from './clipSlots'
 import type { ClipService } from './clipService'
 import { ListenSession } from './listenSession'
@@ -7,10 +7,9 @@ import { isLast, viewOf, wantsPreload, windowAt } from './windowPolicy'
 
 // The SwedeBeat audition's transport (ADR 0042 sections 2, 6.3, 6.4): the server's rendered windows in
 // two `<audio>` elements (`ClipSlots`); no Web Audio, no gapless technique. The next window preloads in
-// the idle element and playback switches on `ended`; the short gap is accepted (R1: Chromium reads
-// libsndfile's gapless tag exactly, so no start offset is applied). The cursor is only `observe()`.
+// the idle element and playback switches on `ended`; the short gap is accepted (R1: no start offset).
 // A session lives from Play to Pause (`ListenSession`): `audition` starts one when there is none and
-// otherwise seeks inside it, and a seek, a track change or an edit never resets its counter.
+// otherwise seeks inside it; a seek, a track change or an edit never resets its counter.
 
 export type { ClipAudio } from './clipSlots'
 
@@ -25,11 +24,7 @@ export interface RenderedClipOptions {
   exactMix?: boolean
 }
 
-
 type Rest = { status: 'idle' | 'paused' | 'error'; reason?: string }
-
-const isAbort = (error: unknown): boolean => error instanceof DOMException && error.name === 'AbortError'
-const reasonOf = (error: unknown): string => (error instanceof PreviewError ? error.reason : 'failed')
 
 export class RenderedClipTransport implements PreviewTransport {
   readonly capabilities: TransportCapabilities
@@ -122,11 +117,7 @@ export class RenderedClipTransport implements PreviewTransport {
     })
   }
 
-  /**
-   * The draft's AUDIO changed (a cut pin, music): the clips fetched for it are stale. The session and
-   * the counter are kept; the playing position is fetched again from the server. A workout-only edit
-   * keeps the server's plan hash, so the page does not call this for it.
-   */
+  /** The draft's AUDIO changed: the clips are stale. Session and counter are kept; the position is fetched again. */
   invalidate(): void {
     if (this.cur !== null) this.cur.stale = true
     this.next = null
@@ -167,10 +158,7 @@ export class RenderedClipTransport implements PreviewTransport {
     this.notify()
   }
 
-  /**
-   * Playback stops with a reason the page words; the session and the counter stay, so Retry is a seek.
-   * `at` is the position the retry is for when it is not inside the window that was playing.
-   */
+  /** Playback stops with a reason the page words; session and counter stay, so Retry is a seek (`at`: where it is for). */
   private stall(reason: string, at?: number): void {
     this.lastMs = at ?? this.positionMs()
     if (at !== undefined) this.cur = null
