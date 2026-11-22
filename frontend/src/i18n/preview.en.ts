@@ -7,7 +7,6 @@ export const previewEn = {
     'Play the class songs on your own Spotify app and follow where you are. Spotify plays one song at a time, so a crossfade is not heard here. Nothing plays until you press Play.',
   'preview.loading': 'Checking the listening preview',
   'preview.loadFailed': 'The listening preview could not be loaded. Try again in a moment.',
-  'preview.editReadonly': 'This class is shown as it is: editing Spotify classes is not available yet.',
 
   // The cursor states.
   'preview.state.idle': 'Nothing is playing from here. Press Play on a song, or click the timeline.',
@@ -91,3 +90,6 @@ export const previewEn = {
   'preview.prov.title': 'Where the timing of song {n} comes from',
   'preview.prov.note': 'spotdown’s analysis and your correction are kept apart and never added into one number.',
 } as const
+
+/** The key of a sentence of the listening preview. */
+export type PreviewKey = keyof typeof previewEn

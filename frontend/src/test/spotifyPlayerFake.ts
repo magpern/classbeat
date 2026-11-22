@@ -68,7 +68,11 @@ export class FakePlayer implements SpotifyPlayerApi {
   private throws: Partial<Record<Call, boolean>> = {}
   private calls: Record<Call, number> = { audition: 0, pause: 0, state: 0 }
 
-  constructor(readonly clock: FakeClock) {}
+  readonly clock: FakeClock
+
+  constructor(clock: FakeClock) {
+    this.clock = clock
+  }
 
   /** The latency of the next calls of `call`, in order; the last one repeats. */
   latency(call: Call, ...list: Latency[]): void {

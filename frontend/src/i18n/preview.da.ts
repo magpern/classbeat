@@ -7,7 +7,6 @@ export const previewDa: Catalogue = {
     'Afspil klassens sange i din egen Spotify-app, og følg med i hvor du er. Spotify afspiller én sang ad gangen, så en overgang høres ikke her. Intet afspilles, før du trykker på Afspil.',
   'preview.loading': 'Tjekker lytteforhåndsvisningen',
   'preview.loadFailed': 'Lytteforhåndsvisningen kunne ikke indlæses. Prøv igen om lidt.',
-  'preview.editReadonly': 'Holdet vises, som det er: Spotify-hold kan ikke redigeres endnu.',
 
   'preview.state.idle': 'Intet afspilles herfra. Tryk på Afspil ved en sang, eller klik på tidslinjen.',
   'preview.state.ended': 'Der afspilles ikke mere. Tryk på Afspil for at lytte igen.',

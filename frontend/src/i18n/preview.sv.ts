@@ -7,7 +7,6 @@ export const previewSv: Catalogue = {
     'Spela passets låtar i din egen Spotify-app och följ var du är. Spotify spelar en låt i taget, så en övertoning hörs inte här. Inget spelas förrän du trycker på Spela.',
   'preview.loading': 'Kontrollerar lyssningsförhandsvisningen',
   'preview.loadFailed': 'Lyssningsförhandsvisningen gick inte att läsa in. Försök igen om en stund.',
-  'preview.editReadonly': 'Passet visas som det är: Spotify-pass går inte att redigera ännu.',
 
   'preview.state.idle': 'Inget spelas härifrån. Tryck på Spela vid en låt eller klicka på tidslinjen.',
   'preview.state.ended': 'Inget spelas längre. Tryck på Spela för att lyssna igen.',

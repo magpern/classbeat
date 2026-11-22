@@ -73,7 +73,7 @@ interface Intent {
 export class SpotifyConnectTransport implements PreviewTransport {
   readonly capabilities = CAPABILITIES
   private readonly api: SpotifyPlayerApi
-  private readonly model: SpotifyModel
+  private model: SpotifyModel
   private readonly now: () => number
   private readonly grace: number
   private epoch = 0
@@ -90,6 +90,11 @@ export class SpotifyConnectTransport implements PreviewTransport {
     this.model = options.model
     this.now = options.now
     this.grace = options.startingGraceMs ?? STARTING_GRACE_MS
+  }
+
+  /** A new mapping (a correction was set or cleared): the cursor is derived through it from the next read on. */
+  setModel(model: SpotifyModel): void {
+    this.model = model
   }
 
   async audition(request: AuditionRequest): Promise<Ack> {

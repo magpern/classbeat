@@ -1,4 +1,5 @@
 import type { PreviewFailure } from '../api/spotifyPreview'
+import type { PreviewKey } from '../i18n/preview.en'
 
 // What a failure of the Spotify preview means to the person (ADR 0042 section 7). Pure: no React,
 // no fetch. A reason code from the backend (or one made in the api module) maps to ONE sentence
@@ -22,7 +23,7 @@ export type FailureAction =
 
 export interface FailureInfo {
   /** The catalogue key of the sentence. */
-  key: string
+  key: PreviewKey
   action: FailureAction
   /** True: polling cannot get better until the person acts, so it stops. */
   stops: boolean
@@ -70,7 +71,7 @@ export function retryWaitS(failure: PreviewFailure): number | null {
 }
 
 /** The sentence key for a rate limit that says when, else the one that does not. */
-export function failureKey(failure: PreviewFailure): string {
+export function failureKey(failure: PreviewFailure): PreviewKey {
   const info = describeFailure(failure)
   return info.key === 'preview.err.rate_limited' && retryWaitS(failure) !== null ? 'preview.err.rate_limited_for' : info.key
 }

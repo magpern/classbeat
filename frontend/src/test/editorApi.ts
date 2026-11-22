@@ -51,6 +51,8 @@ export function editorRoutes(extra: Record<string, unknown> = {}) {
     ...classRoutes({ cls: { studio: true }, revisionBodies: { [REV2]: revisionBody(REV2, 2) } }),
     [`GET ${CLASS_PATH}/overlay`]: overlayBody(REV1),
     [`GET ${CLASS_PATH}/timeline`]: timelineBody(REV1),
+    // Not a Spotify draft: the listening preview has nothing to show (a 409), so no panel opens.
+    [`GET ${CLASS_PATH}/preview/spotify/alignment`]: () => json({ detail: { reason: 'no_draft' } }, 409),
     ...extra,
   }
 }
