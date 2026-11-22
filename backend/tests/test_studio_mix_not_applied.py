@@ -396,40 +396,6 @@ async def test_an_applied_draft_whose_choices_name_a_position_off_the_list_is_re
 # --- the facts are the recorded analyses only (review finding 1 on #1403) ---------------------
 
 
-def as_local_design(studio: StudioEnv, class_id: UUID, owner: UUID, base_id: UUID) -> Any:
-    """The class as a draft designed on **local** analyses (as every studio draft before #1380
-    was): a ``local`` row beside each spotdown row, of the same bytes and map, and a new current
-    proposal (``design_draft``, the same content and spec) that records those local rows. The
-    spotdown rows stay in the cache, **exact** and unrecorded."""
-    studio.songs.sql(
-        "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map) "
-        "SELECT owner_id, reference, analyser_version, sha256, map "
-        "FROM swedebeat_track_maps WHERE owner_id = :o AND analyser = 'spotdown'",
-        o=owner,
-    )
-    base = studio.songs.revision(base_id)
-    records = [{**r, "analyser": "local", "provenance": None} for r in base.music["analyses"]]
-    made = uuid.uuid4()
-    studio.songs.sql(
-        "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
-        "music, provenance, job_id, parent_id) SELECT :id, owner_id, class_id, "
-        "(SELECT max(number) + 1 FROM class_revisions WHERE class_id = :c), 'draft', content, "
-        "content_hash, CAST(:music AS jsonb), provenance, job_id, id "
-        "FROM class_revisions WHERE id = :p",
-        id=made,
-        c=class_id,
-        p=base_id,
-        music=json.dumps({**base.music, "analyses": records}),
-    )
-    studio.songs.sql(
-        "UPDATE classes SET current_revision_id = :r WHERE id = :c", r=made, c=class_id
-    )
-    assert studio.songs.revision(made).provenance["origin"] == "design_draft"
-    return studio.songs.sql(
-        "SELECT current_revision_id FROM classes WHERE id = :c", c=class_id
-    ).one()
-
-
 def newer_spotdown_row(studio: StudioEnv, owner: UUID, reference: str) -> None:
     """The recorded spotdown row of ``reference`` replaced by a newer analysis of other bytes,
     still ``exact``: the draft did not record it."""
@@ -442,23 +408,19 @@ def newer_spotdown_row(studio: StudioEnv, owner: UUID, reference: str) -> None:
     )
 
 
-@pytest.mark.parametrize("cache", ["exact_spotdown_beside_recorded_local", "newer_spotdown"])
 async def test_the_facts_are_only_the_analyses_the_draft_recorded(
-    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch, cache: str
+    studio: StudioEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A cut on the last song, whose recorded analysis is not ``exact`` (a ``local`` one) or is
-    gone (replaced by a newer row), while an **unrecorded exact** analysis of the same reference
-    is in the cache. Read from that row the cut would be the applied form; read from the recorded
-    rows only, it is refused at the choice and when the job runs, with nothing asked."""
+    """A cut on the last song, whose recorded analysis is gone (replaced by a newer row of other
+    bytes), while an **unrecorded exact** analysis of the same reference is in the cache. Read
+    from that row the cut would be the applied form; read from the recorded rows only, it is
+    refused at the choice and when the job runs, with nothing asked. (A recorded ``local``
+    analysis, the other way this could happen, cannot exist since #1356.)"""
     rider, class_id, design = await designed_exact(studio, cut_last())
-    if cache == "newer_spotdown":
-        current = design
-        newer_spotdown_row(studio, rider.user_id, last_reference(studio, current))
-    else:
-        current = as_local_design(studio, class_id, rider.user_id, design.current_revision_id)
-    assert await refused(studio, rider, class_id, current, "swedebeat_mix") == "mix_not_applied"
+    newer_spotdown_row(studio, rider.user_id, last_reference(studio, design))
+    assert await refused(studio, rider, class_id, design, "swedebeat_mix") == "mix_not_applied"
     done = await admitted_past_the_check(
-        studio, monkeypatch, rider, class_id, current, "swedebeat_mix"
+        studio, monkeypatch, rider, class_id, design, "swedebeat_mix"
     )
     assert (done.state, done.error_category) == ("failed", "mix_not_applied")
 

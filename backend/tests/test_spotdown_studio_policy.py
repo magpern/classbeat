@@ -10,6 +10,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from classbeat import egress_spotdown
 from classbeat.config import Settings
@@ -258,7 +259,7 @@ def test_a_record_wants_exactly_its_analyser_and_bytes() -> None:
     spec = {"tracks": [{"reference": "a", "start_sec": 0.0, "end_sec": 60.0}], "crossfades": []}
     base = {"source": "swedebeat_studio", "song_list_id": str(uuid4()), "map_version": 1}
     legacy = StudioRevisionMusic.model_validate({**base, "mix_spec": spec}, strict=False)
-    assert wanted(legacy, ["a"]) == {"a": Wanted("local", None)}
+    assert wanted(legacy, ["a"]) == {}  # #1356: no local row to read; the music changed
     music = StudioRevisionMusic.model_validate(
         {**base, "mix_spec": spec, "analyses": [
             {"reference": "a", "analyser": "spotdown", "sha256": SHA,
@@ -272,20 +273,24 @@ def test_a_record_wants_exactly_its_analyser_and_bytes() -> None:
     assert not accept(Stored("a", "local", SHA, None, {"m": 1}))  # never the other analyser
     assert not accept(Stored("a", "spotdown", "d" * 64, {}, {"m": 1}))  # nor other bytes
     assert not accept(Stored("a", "spotdown", SHA, {}, {"m": 2}))  # nor another map of them
-    assert not accept(Stored("b", "local", SHA, None, {"m": 1}))
-    assert recorded(wanted(legacy, ["a"]))(Stored("a", "local", "d" * 64, None, {"m": 3}))
+    assert not accept(Stored("b", "spotdown", SHA, {}, {"m": 1}))  # a reference with no record
+    assert not recorded(wanted(legacy, ["a"]))(Stored("a", "spotdown", SHA, {}, {"m": 1}))
+    with pytest.raises(ValidationError):  # a record of the retired local analyser is refused
+        StudioRevisionMusic.model_validate(
+            {**base, "mix_spec": spec, "analyses": [
+                {"reference": "a", "analyser": "local", "sha256": SHA, "map_hash": SHA}]},
+            strict=False,
+        )  # fmt: skip
 
 
 def test_a_draft_records_at_most_one_analysis_per_track_of_a_mix() -> None:
     """#1302 review: ``class_revisions.music`` carries at most ``MAX_TRACKS`` records."""
-    from pydantic import ValidationError
-
     from classbeat.design.studio_revision_model import StudioRevisionMusic
     from classbeat.design.track_map_policy import MAX_TRACKS
 
     spec = {"tracks": [{"reference": "a", "start_sec": 0.0, "end_sec": 60.0}], "crossfades": []}
     base = {"source": "swedebeat_studio", "song_list_id": str(uuid4()), "map_version": 1}
-    record = {"reference": "a", "analyser": "local", "sha256": SHA, "map_hash": SHA}
+    record = {"reference": "a", "analyser": "spotdown", "sha256": SHA, "map_hash": SHA}
     fits = {**base, "mix_spec": spec, "analyses": [record] * MAX_TRACKS}
     assert len(StudioRevisionMusic.model_validate(fits, strict=False).analyses or []) == MAX_TRACKS
     with pytest.raises(ValidationError):

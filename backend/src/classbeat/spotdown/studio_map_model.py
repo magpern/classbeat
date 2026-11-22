@@ -135,7 +135,7 @@ def current_provenance(provenance: object, sha256: str) -> bool:
 
 def stored_timing_class(provenance: object) -> TimingClass | None:
     """The timing class a stored ``spotdown`` row's record names; ``unusable`` when it names none
-    (any doubt: no candidates), ``None`` for a row without a record (a local analysis)."""
+    (any doubt: no candidates), ``None`` for a row without a record (none is stored since #1356)."""
     if provenance is None:
         return None
     timing = _obj(provenance, "timing")
@@ -147,5 +147,5 @@ def stored_timing_class(provenance: object) -> TimingClass | None:
 
 def track_timing_class(analyser: str, provenance: object) -> TimingClass | None:
     """The one rule for the timing class of a stored analysis (draft and outputs share it): a
-    ``spotdown`` row's record names it, a local analysis has none."""
+    ``spotdown`` row's record names it (every stored row is one since #1356)."""
     return stored_timing_class(provenance) if analyser == "spotdown" else None
