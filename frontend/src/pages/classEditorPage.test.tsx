@@ -143,6 +143,42 @@ describe('the editor page: editing by keyboard and mouse', () => {
   })
 })
 
+describe('after an edit, until the page has read the draft it made', () => {
+  it('offers no edit, so none can be sent on the draft before it', async () => {
+    let release: () => void = () => undefined
+    const late = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let edited = false
+    const api = fakeApi(
+      editorRoutes({
+        [OVERLAY]: () => (edited ? late.then(() => overlayBody(REV2)) : overlayBody(REV1)),
+        [`GET ${CLASS_PATH}/timeline`]: () => timelineBody(edited ? REV2 : REV1),
+        [`POST ${EDITS_PATH}`]: () => {
+          edited = true
+          return { revision_id: REV2, number: 2, content_hash: HASH2, hints: [] }
+        },
+      }),
+    )
+    renderAt(EDIT_PAGE)
+    fireEvent.click(within(await screen.findByTestId('block-list')).getByRole('button', { name: /^2\. Climb/ }))
+    const lock = await screen.findByRole('button', { name: 'Lock the block' })
+    const handle = await boundary(1)
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    fireEvent.keyDown(handle, { key: 'Enter' })
+    await waitFor(() => { expect(api.to('POST', EDITS_PATH)).toHaveLength(1) })
+    await waitFor(() => { expect(lock).toBeDisabled() }) // the overlay read has not come back
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+    fireEvent.click(lock)
+    expect(api.to('POST', EDITS_PATH)).toHaveLength(1)
+    release()
+    await waitFor(() => { expect(screen.getByRole('button', { name: 'Lock the block' })).toBeEnabled() })
+    fireEvent.click(screen.getByRole('button', { name: 'Lock the block' }))
+    await waitFor(() => { expect(api.to('POST', EDITS_PATH)).toHaveLength(2) })
+    expect(api.to('POST', EDITS_PATH)[1]?.body).toMatchObject({ base_revision_id: REV2 }) // the draft the first edit made
+  })
+})
+
 describe('a stale draft (409 stale_revision)', () => {
   function staleServer(afterReload: unknown) {
     let moved = false

@@ -45,7 +45,8 @@ export function useClassEditor(classId: string): ClassEditor {
   const [state, setState] = useState<EditorState>({ status: 'loading' })
   const [round, setRound] = useState(0)
   const roundRef = useRef(0)
-  const [busy, setBusy] = useState(false)
+  const [inFlight, setBusy] = useState(false)
+  const loadedRound = useRef(0) // the read the page's data came from
   const [held, setOutcome] = useState<Held>(null)
   const current = useRef<EditorData | null>(null)
   const working = useRef(false)
@@ -56,10 +57,11 @@ export function useClassEditor(classId: string): ClassEditor {
       (found) => {
         if (abort.signal.aborted) return
         current.current = found.kind === 'ready' ? found.data : null
+        loadedRound.current = round
         setState({ status: 'done', round, ...found })
       },
       () => {
-        if (!abort.signal.aborted) setState((previous) => (previous.status === 'done' ? previous : { status: 'failed' }))
+        if (!abort.signal.aborted) setState({ status: 'failed' })
       },
     )
     return () => {
@@ -75,7 +77,8 @@ export function useClassEditor(classId: string): ClassEditor {
   const run = useCallback(
     async (work: (data: EditorData) => Promise<void>, pending: PendingEdit | null) => {
       const data = current.current
-      if (data === null || working.current) return
+      // Nothing is sent from a page that is still reading the draft its last edit made: it would be a stale edit.
+      if (data === null || working.current || loadedRound.current < roundRef.current) return
       working.current = true
       setBusy(true)
       setOutcome(null)
@@ -149,5 +152,7 @@ export function useClassEditor(classId: string): ClassEditor {
     setOutcome(null)
   }, [])
 
+  // Busy while an edit is in flight and until the page has read the draft it made.
+  const busy = inFlight || (state.status === 'done' && state.round < round)
   return { state, busy, outcome, apply, undo, redo, reapply, dismiss, reload }
 }
