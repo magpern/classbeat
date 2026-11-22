@@ -150,3 +150,22 @@ async def test_choices_the_admit_checked_but_the_stored_input_breaks_fail_intern
     )
     row = await run_kind(studio, job_id)
     assert (row.state, row.error_category) == ("failed", "internal")
+
+
+async def test_another_user_cannot_replan_a_class_with_choices(studio: StudioEnv) -> None:
+    """User B names user A's class and base revision with valid choices: refused, nothing is
+    created for either user and no model call is made (owner isolation, ADR 0002)."""
+    rider, class_id, _, current = await designed(studio)
+    other = await studio.rider()
+    valid = {"dj_mix": True, "blend": True, "trim": True, "keep_whole": [1]}
+    owners = (rider.user_id, other.user_id)
+    before = [counts(studio, owner) for owner in owners]
+    sent_before = _sent(studio)
+    refused = await replan(other, class_id, current.current_revision_id, valid)
+    assert (refused.status_code, refused.json()["detail"]["reason"]) == (404, "class_not_found")
+    assert [counts(studio, owner) for owner in owners] == before
+    assert _sent(studio) == sent_before  # nothing about A's class reached the model
+    # The body is valid (a 422 or 409 could not stand in for the ownership check): the owner's
+    # own re-plan with the very same choices is accepted.
+    accepted = await replan(rider, class_id, current.current_revision_id, valid)
+    assert accepted.status_code == 201, accepted.text
