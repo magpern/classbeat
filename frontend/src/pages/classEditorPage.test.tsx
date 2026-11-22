@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { CLASS_PATH, REV1, REV2, classBody, revisionBody } from '../test/classFixtures'
 import { CONTENT } from '../test/classFixtures'
-import { CURRENT_PATH, EDITS_PATH, EDIT_PAGE, HASH1, HASH2, editorRoutes, overlayBody, refusal, staleAnswer, timelineBody } from '../test/editorApi'
+import { CURRENT_PATH, EDITS_PATH, EDIT_PAGE, HASH1, HASH2, clipPath, editorRoutes, overlayBody, previewRoutes, readyClip, refusal, staleAnswer, timelineBody } from '../test/editorApi'
 import { fakeApi, json } from '../test/fakeApi'
 import { renderAt } from '../test/render'
 
@@ -17,15 +17,15 @@ async function ready() {
 }
 
 describe('the editor page: editing by keyboard and mouse', () => {
-  it('opens with the blocks, the songs and no way to play anything', async () => {
+  it('opens with the blocks, the songs and the audio preview, nothing playing yet', async () => {
     fakeApi(editorRoutes())
     renderAt(EDIT_PAGE)
     await ready()
     expect(within(screen.getByTestId('block-list')).getAllByRole('button')).toHaveLength(4)
     expect(screen.getByRole('button', { name: /^Song 1: First song/ })).toBeInTheDocument()
-    expect(screen.getByText(/Nothing plays here yet/)).toBeInTheDocument()
-    expect(document.querySelector('audio, video')).toBeNull()
-    expect(screen.queryByRole('button', { name: /play/i })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    expect(screen.queryByText(/audio preview is not available/)).toBeNull()
+    expect(document.querySelector('audio[src]')).toBeNull() // no clip is asked for before Play
     expect(screen.queryByTestId('cursor')).toBeNull()
   })
 
@@ -312,17 +312,20 @@ describe('a draft that cannot be edited opens read-only, never as a broken edito
 })
 
 describe('the cursor', () => {
-  it('appears only after a song is chosen and is the transport state, with no audio', async () => {
-    fakeApi(editorRoutes())
+  it('appears only after a song is chosen and is the transport state, never the position the click asked for', async () => {
+    fakeApi(editorRoutes(previewRoutes({ [clipPath(674_000)]: () => readyClip(674_000, 914_000) })))
     renderAt(EDIT_PAGE)
     await ready()
     expect(screen.getByText('No cursor.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^Song 2: Second song/ }))
+    // The clip is on its way: the transport is not playing, so there is no cursor yet.
+    await waitFor(() => { expect(document.querySelector('audio[src]')).not.toBeNull() })
+    expect(screen.queryByTestId('cursor')).toBeNull()
+    document.querySelector('audio[src]')?.dispatchEvent(new Event('playing'))
     const cursor = await screen.findByTestId('cursor')
     expect(Number(cursor.getAttribute('data-cursor-ms'))).toBeGreaterThanOrEqual(674_000)
     expect(Number(cursor.getAttribute('data-cursor-ms'))).toBeLessThan(680_000)
     expect(screen.getByText(/^Cursor at /)).toBeInTheDocument()
-    expect(document.querySelector('audio, video')).toBeNull()
   })
 
   it('shows what a song comes from, and "not recorded" for what the API does not give', async () => {

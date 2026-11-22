@@ -738,3 +738,15 @@ Decisions E2 took within this ADR, each safe and reversible. The two deviations 
 5. **The base ids are optional on the API.** `base_revision_id` (Save, Update, the outputs approval) and
    `expected_current_id` (`POST /current`) may be left out, so a client from before E2 keeps working, and the
    check runs only when they are sent. E3's client must always send them.
+
+## Implementation notes (R3, #1397)
+
+2026-11-22. The browser side of the audition (the rendered-clip transport) plays R2's clips in `audio`
+elements, and the app's CSP had `media-src 'none'`, which a browser enforces on every `audio` load. So the
+CSP changes by exactly one directive: `media-src 'self'` (`classbeat.headers`; `CSP_EXPECTED` in
+`tests/test_web.py` pins the whole policy, so any other change, or a wider `media-src` such as `blob:`,
+`data:` or a host, fails that test). It is the only change to the CSP. Why it is safe: the clips are served
+by our own `GET /api/classes/{id}/preview/clip`, which is same-origin, authorized per session and per owner,
+and sent `Cache-Control: private, no-store` (section 6.5); no third-party media is loaded. The change makes
+no claim that the audio cannot be recorded or saved: section 6.5 already states the preview is not DRM, and
+the 15-minute limit is the browser's courtesy, not a protection.

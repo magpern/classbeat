@@ -243,7 +243,8 @@ CSP_EXPECTED = {
     ],
     "font-src": ["'self'"],
     "connect-src": ["'self'"],
-    "media-src": ["'none'"],
+    # ADR 0042 section 6 (CP-R3): the audition's clips are same-origin; no other media source.
+    "media-src": ["'self'"],
     "object-src": ["'none'"],
     "frame-src": ["http://127.0.0.1:8000/api/admin/mail/"],
     "worker-src": ["'none'"],

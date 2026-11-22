@@ -6,7 +6,9 @@ T20, T93 and T97).
   covers in ``img-src``: exactly the path-scoped Spotify CDN sources of
   ``classbeat.covers.IMG_SOURCES`` (ADR 0013 section 9 and its "CSP widening", #537). No inline
   or ``eval`` script, no inline ``<style>``, no plugins, no ``<base>``, forms only to us, and no
-  framing by anyone. The one framing exception is the admin mail preview (ADR 0022 section 6,
+  framing by anyone. ``media-src 'self'`` lets an ``<audio>`` element play the audition's
+  clips, served from our own origin (ADR 0042 section 6; no other media source). The one framing
+  exception is the admin mail preview (ADR 0022 section 6,
   #653): ``frame-src`` is the path-scoped ``<public_base_url>/api/admin/mail/``, the only prefix a
   page may frame.
 - With Turnstile on and not the fake (ADR 0025 section 10), ``https://challenges.cloudflare.com``
@@ -47,7 +49,7 @@ _DIRECTIVES_BEFORE_FRAME: Final = (
     " ".join(("img-src 'self'", *IMG_SOURCES)),
     "font-src 'self'",
     "connect-src 'self'",
-    "media-src 'none'",
+    "media-src 'self'",
     "object-src 'none'",
 )
 _DIRECTIVES_AFTER_FRAME: Final = (

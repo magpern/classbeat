@@ -4,6 +4,7 @@ import type { EditorData } from '../../hooks/editor/loadEditor'
 import { useT } from '../../i18n/I18n'
 import { dragOp } from '../../lib/editor/blockActions'
 import { totalSec } from '../../lib/editor/blocks'
+import { audioKey } from '../../lib/editor/audioKey'
 import { studioClips } from '../../lib/editor/clips'
 import { marksByBlock } from '../../lib/editor/overlayMarks'
 import { zoneName } from '../../lib/profile'
@@ -18,13 +19,15 @@ import { CutPins } from './CutPins'
 import { EditOutcome } from './EditOutcome'
 import { EditorTimeline } from './EditorTimeline'
 import { EditorToolbar } from './EditorToolbar'
+import { PreviewControls } from './PreviewControls'
 import { ProvenanceCard } from './ProvenanceCard'
-import { useSilentCursor } from './useSilentCursor'
+import { useEditorPlayback } from './useEditorPlayback'
 
 /**
  * The editor of a studio draft (ADR 0042): the zone blocks on the class profile with the songs
- * under them, one block's controls, the cut pins and undo. Nothing here plays: the cursor is a
- * clock-driven transport with no audio, and it is drawn only from what that transport observed.
+ * under them, one block's controls, the cut pins and undo, and the audio preview (Play and Pause).
+ * The cursor is drawn only from what the transport observed. Where the server has no preview the
+ * transport is the silent clock cursor.
  */
 export function ClassEditor({ data, editor }: { data: EditorData; editor: Editor }) {
   const t = useT()
@@ -35,7 +38,9 @@ export function ClassEditor({ data, editor }: { data: EditorData; editor: Editor
   const clips = useMemo(() => studioClips(timeline), [timeline])
   const workoutMs = totalSec(blocks) * 1000
   const totalMs = Math.max(workoutMs, ...clips.map((c) => c.endMs))
-  const cursor = useSilentCursor(workoutMs)
+  const mixEndMs = clips.length > 0 ? Math.max(...clips.map((c) => c.endMs)) : workoutMs
+  const key = useMemo(() => audioKey(timeline), [timeline])
+  const cursor = useEditorPlayback({ classId: data.summary.id, workoutMs, mixEndMs, audioKey: key })
   const cursorMs = hasCursor(cursor.state) ? (cursor.state.transportMs ?? null) : null
   const index = selected !== null && selected < blocks.length ? selected : null
   const audition = (classMs: number) => {
@@ -47,7 +52,7 @@ export function ClassEditor({ data, editor }: { data: EditorData; editor: Editor
   const unapplied = overlay.unapplied.length + overlay.orphaned.length
   return (
     <div className="flex flex-col gap-5" data-testid="class-editor">
-      <p className="m-0 text-muted">{t('editor.noAudio')}</p>
+      {cursor.rendered ? null : <p className="m-0 text-muted">{t('editor.noAudio')}</p>}
       <EditorToolbar
         key={workoutMs}
         canUndo={overlay.undo !== null}
@@ -77,11 +82,24 @@ export function ClassEditor({ data, editor }: { data: EditorData; editor: Editor
         onFocusPiece={setFocusPiece}
         disabled={busy}
       />
+      {cursor.rendered ? (
+        <PreviewControls
+          state={cursor.state}
+          onPlay={() => {
+            audition(cursorMs !== null && cursorMs < mixEndMs ? cursorMs : 0)
+          }}
+          onPause={cursor.pause}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center gap-3" data-testid="cursor-status">
         <p className="m-0 text-[0.9375rem] text-muted" aria-live="off">
           {cursorMs === null ? t('editor.cursor.none') : t('editor.cursor.at', { time: clock(cursorMs / 1000) })}
         </p>
-        {cursor.state.status === 'playing' ? <Button variant="ghost" onClick={cursor.pause}>{t('editor.cursor.stop')}</Button> : null}
+        {!cursor.rendered && cursor.state.status === 'playing' ? (
+          <Button variant="ghost" onClick={cursor.pause}>
+            {t('editor.cursor.stop')}
+          </Button>
+        ) : null}
       </div>
       <ProvenanceCard clips={clips} piece={focusPiece} cursorMs={cursorMs} />
       {unapplied > 0 ? <Notice>{t('editor.unapplied', { count: unapplied })}</Notice> : null}
@@ -97,7 +115,14 @@ export function ClassEditor({ data, editor }: { data: EditorData; editor: Editor
               className="flex min-h-11 w-full cursor-pointer flex-wrap items-center gap-2 rounded-md border border-line bg-raised px-3 py-1 text-left text-[0.9375rem] text-text aria-pressed:border-brand"
             >
               <span className="font-medium">
-                {t('editor.list.item', { n: block.index + 1, name: block.segmentName, from: clock(block.startMs / 1000), to: clock(block.endMs / 1000), zone: block.zone, zoneName: zoneName(block.zone) })}
+                {t('editor.list.item', {
+                  n: block.index + 1,
+                  name: block.segmentName,
+                  from: clock(block.startMs / 1000),
+                  to: clock(block.endMs / 1000),
+                  zone: block.zone,
+                  zoneName: zoneName(block.zone),
+                })}
               </span>
               {marks[block.index]?.lock !== null ? <Chip tone="warn">{t('editor.list.locked')}</Chip> : null}
               {Object.keys(marks[block.index]?.overrides ?? {}).length > 0 ? <Chip>{t('editor.list.edited')}</Chip> : null}

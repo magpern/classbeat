@@ -178,8 +178,24 @@ services:
       timeout: 3s
       retries: 30
 
+  # ADR 0042 section 6.5 (CP-R3 e2e): the audition's private preview volume. Web and the worker mount it
+  # at the same path (CLASSBEAT_PREVIEW_DIR) and run as uid 10001; a new named volume is root's, and
+  # the directory must be 0700 and the web user's (`preview.storage`), so this one-shot makes it so.
+  # Test-only: the default stack leaves the audition off (no CLASSBEAT_PREVIEW_DIR).
+  preview-init:
+    profiles: [e2e]
+    image: ${COMPOSE_PROJECT_NAME:-classbeat}:local
+    pull_policy: never
+    restart: "no"
+    user: "0:0" # chown needs root (test-only service)
+    command: ["sh", "-c", "chown 10001:10001 /preview && chmod 0700 /preview"]
+    volumes:
+      - preview-data:/preview
+
   web:
     environment:
+      # ADR 0042 section 6.5: the audition's preview volume (web and the worker, the same path).
+      CLASSBEAT_PREVIEW_DIR: /preview
       # ADR 0015: the Swedebeat connection is on in the e2e stack only.
       CLASSBEAT_SWEDEBEAT_ENABLED: "true"
       # ADR 0035 section 9: the fake gateway's https alias (its CA is in the bundle below).
@@ -228,7 +244,10 @@ services:
     volumes:
       # The last bundle: every fake's CA, the gateway's included.
       - gateway-ca:/fake-ca:ro
+      - preview-data:/preview
     depends_on:
+      preview-init:
+        condition: service_completed_successfully
       oidc-fake:
         condition: service_healthy
       mowl-fake:
@@ -374,6 +393,8 @@ services:
       # ADR 0040 amendment (#1337, #1354): the Spotify song pick's spotdown match and analysis run
       # for every user, against the fake spotdown (the worker only); there is no switch.
       CLASSBEAT_SPOTDOWN_URL: http://spotdown-api:8000
+      # ADR 0042 section 6.5: the audition's preview volume, as web's.
+      CLASSBEAT_PREVIEW_DIR: /preview
       SSL_CERT_FILE: /fake-ca/bundle.pem
     secrets:
       - spotdown_service_key
@@ -381,9 +402,12 @@ services:
       # The last bundle: the other fakes' CAs and the gateway's (the match calls it).
       - gateway-ca:/fake-ca:ro
       - ./backend/tests/agent_scripts:/fake-scripts:ro
+      - preview-data:/preview
     tmpfs:
       - /fake-run:mode=1777
     depends_on:
+      preview-init:
+        condition: service_completed_successfully
       mowl-fake:
         condition: service_healthy
       spotify-fake:
@@ -411,6 +435,7 @@ secrets:
     file: ./e2e/fake-paddle/webhook-secret.txt
 
 volumes:
+  preview-data:
   oidc-ca:
   mowl-ca:
   spotify-ca:
