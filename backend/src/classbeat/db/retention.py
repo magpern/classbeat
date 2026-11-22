@@ -61,9 +61,11 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # ``content`` of a ``song_list`` (ADR 0008 sections 5 and 8) holds the chosen songs'
         # Spotify ids, titles, artists and, from ``v: 2``, their album cover URLs (``cover``, ADR
         # 0013 section 9): all go with the class and the account, like the drafts beside them.
-        # Each kind the table allows is in ``REVISION_KINDS`` below.
+        # Each kind the table allows is in ``REVISION_KINDS`` below. ``edit_overlay`` (ADR 0042
+        # section 4, #1391) holds the instructor's own edits (cues, values, catalogue references
+        # of its pins and anchors): it goes with the draft it belongs to.
         "class_revisions": _entry(
-            "content music provenance", "kind content_hash", "class", "account"
+            "content music provenance edit_overlay", "kind content_hash", "class", "account"
         ),
         "class_messages": _entry("body change", "role", "class", "account"),
         # ADR 0038 section 8 (#1186): a chat message sent while a job ran, before it is submitted.
