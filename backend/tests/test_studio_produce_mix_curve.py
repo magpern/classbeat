@@ -66,6 +66,7 @@ def store_spotdown_rows(
     with_bass: bool,
     step: float = 2.0,
     slow_first: bool = False,
+    unreadable_first: bool = False,
 ) -> None:
     """Every stored map becomes a current ``exact`` spotdown row (``current_provenance``), and
     the draft's record of the analyses it was designed on says so (the output reads exactly it)."""
@@ -76,6 +77,11 @@ def store_spotdown_rows(
         extra = dict(shared)
         if slow_first and n == 0:  # one track at another tempo: a neighbour pair clashes
             extra["songs"] = [{**row.map["songs"][0], "bpm": 80.0}]
+        if (
+            unreadable_first and n == 0
+        ):  # the stored facts cannot be read (no bpm: not a valid track map)
+            song = {**row.map["songs"][0], **(extra.get("songs") or [{}])[0]}
+            extra["songs"] = [{k: v for k, v in song.items() if k != "bpm"}]
         record = {
             "record_version": RECORD_VERSION,
             "audio": {"sha256": bytes(row.sha256).hex()},
@@ -154,3 +160,18 @@ async def test_clashing_tempos_are_a_tempo_jump_hint_on_the_timeline(studio: Stu
     answer = await rider.browser.get(f"/api/classes/{class_id}/timeline")
     assert answer.status_code == 200, answer.text
     assert "tempo_jump" in [h["code"] for h in answer.json()["hints"]]
+
+
+async def test_a_stored_map_that_cannot_be_read_makes_the_whole_timeline_music_changed(
+    studio: StudioEnv,
+) -> None:
+    """Intended (ADR 0036 section 5): ``cached_in`` returns no analysis for a map that does not
+    read (``valid_track_map``), the same as a gone one, and the answer is the draft's. So it is
+    ``music_changed`` (Change songs analyses again), never a timeline with a track missing and
+    never a 500."""
+    rider, class_id, _, current = await designed(studio)
+    store_spotdown_rows(
+        studio, current.current_revision_id, with_bass=True, slow_first=True, unreadable_first=True
+    )
+    answer = await rider.browser.get(f"/api/classes/{class_id}/timeline")
+    assert (answer.status_code, answer.json()["detail"]) == (409, {"reason": "music_changed"})
