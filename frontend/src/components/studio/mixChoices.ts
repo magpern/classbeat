@@ -27,9 +27,11 @@ export function toBody(djMix: boolean, state: MixState): MixChoicesBody {
     dj_mix: true,
     blend: state.blend,
     trim: state.trim,
-    keep_whole: sorted(state.keepWhole),
-    hard_cut_in: sorted(state.hardIn),
-    hard_cut_out: sorted(state.hardOut),
+    // A position the user cannot see (its switch is off) is not sent: keep-whole shows only with
+    // Trim, hard cuts only with Blend.
+    keep_whole: state.trim ? sorted(state.keepWhole) : [],
+    hard_cut_in: state.blend ? sorted(state.hardIn) : [],
+    hard_cut_out: state.blend ? sorted(state.hardOut) : [],
   }
 }
 

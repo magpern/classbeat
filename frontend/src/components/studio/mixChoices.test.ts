@@ -25,9 +25,21 @@ describe('the choices request', () => {
 
   it('carries the switches and the sorted sets under DJ mix', () => {
     const state = setPositions(setPositions(DEFAULT_MIX, 'keepWhole', [3, 1, 3], true), 'hardIn', [2], true)
-    expect(toBody(true, { ...state, blend: false })).toEqual({
-      dj_mix: true, blend: false, trim: true, keep_whole: [1, 3], hard_cut_in: [2], hard_cut_out: [],
+    expect(toBody(true, state)).toEqual({
+      dj_mix: true, blend: true, trim: true, keep_whole: [1, 3], hard_cut_in: [2], hard_cut_out: [],
     })
+  })
+
+  it('does not send positions the user cannot see because their switch is off', () => {
+    const state = hardCut(keepWhole(DEFAULT_MIX, [1, 3]), [2])
+    expect(toBody(true, { ...state, blend: false })).toEqual({
+      dj_mix: true, blend: false, trim: true, keep_whole: [1, 3], hard_cut_in: [], hard_cut_out: [],
+    })
+    expect(toBody(true, { ...state, trim: false })).toEqual({
+      dj_mix: true, blend: true, trim: false, keep_whole: [], hard_cut_in: [2], hard_cut_out: [2],
+    })
+    // Switching back on brings the user's earlier choices back: the local state keeps them.
+    expect(toBody(true, state)).toMatchObject({ keep_whole: [1, 3], hard_cut_in: [2] })
   })
 
   it('does bulk actions on a selection and takes them back', () => {
