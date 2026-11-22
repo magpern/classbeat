@@ -102,6 +102,9 @@ async def test_the_case_passes_on_spotdowns_maps(case: Any) -> None:
     # (whole tracks crossfaded over 6 and 8 s: the downbeats do not lock) reach the model as hints
     assert "downbeats_not_locked" in sent()
     assert "downbeats_not_locked: in the crossfade between pieces" in sent()
+    # #1372's prompt (a new prompt_version): the mix is a suggestion; exact tracks: no cut hint
+    assert "suggestions the instructor may decline" in sent()
+    assert "cut_on_inexact_track: pieces" not in sent()
     assert result.outcome == "submitted"
     assert result.passed, [(c.name, c.detail) for c in result.checks if not c.ok]
     assert {c.name for c in result.checks} >= {"mix_order", "mix_windows", "mix_total", "duration"}
