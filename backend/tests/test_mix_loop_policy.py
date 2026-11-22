@@ -284,12 +284,10 @@ def test_the_duration_counts_every_loop_piece_with_0_at_each_join() -> None:
     assert [o["dst_start"] for o in offsets[:4]] == [round(16.0 * n * 44100) for n in range(4)]
 
 
-def test_an_eight_bar_piece_rounded_one_hundredth_short_is_refused_as_the_adr_states() -> None:
-    # A4.4 compares ``cs(end) - cs(start) >= cs(8 * 240 / bpm)``. Each cut is rounded to 0.01 s
-    # on its own, so a piece of exactly 8 bars on the grid can play 1 cs less than 8 bars: at
-    # 90.7 BPM from 0.37 s, bars 1 to 9 are 3.02 to 24.18 s, 2116 cs against 2117, while bars 2
-    # to 10 play 2117 cs. The rule fails closed here; a slack of the cut rounding would be the
-    # Architect's call (ADR text), so this pins today's behaviour.
+def test_a_piece_one_hundredth_short_is_accepted_and_two_short_is_refused() -> None:
+    # A4.4 allows 1 cs of slack, the cut rounding: each cut is rounded to 0.01 s on its own, so a
+    # piece of exactly 8 bars on the grid can play 1 cs less than 8 bars. At 90.7 BPM from 0.37 s,
+    # bars 1 to 9 are 3.02 to 24.18 s, 2116 cs against 2117; bars 2 to 10 play 2117 cs.
     bar = 240.0 / 90.7
 
     def three_times(k: int) -> tuple[dict[str, Any], dict[str, TrackFacts]]:
@@ -298,10 +296,17 @@ def test_an_eight_bar_piece_rounded_one_hundredth_short_is_refused_as_the_adr_st
         return loop(*[(at[0], at[1])] * 3), facts(a)
 
     value, known = three_times(1)
-    with pytest.raises(MixPlanRefused) as caught:
-        checked(value, ORDER, known)
-    assert caught.value.reason == "loop_piece_too_short"
-    assert "piece 0 " in str(caught.value)
+    good = checked(value, ORDER, known)
+    assert cs(good["tracks"][0]["end_sec"]) - cs(good["tracks"][0]["start_sec"]) == 2116
+    # the rule itself, on windows of 2116 cs (1 short: kept) and 2115 cs (2 short: refused)
+    grid = {"a": TrackFacts(600.0, 90.7, 0.37, "exact", ())}
+    kept = [("a", 3.02, 24.18)] * 2
+    assert mix_loop_policy.length_refusal(kept, grid, 5.0) is None
+    short = [("a", 3.02, 24.17)] * 2
+    refusal = mix_loop_policy.length_refusal(short, grid, 5.0)
+    assert refusal is not None
+    assert refusal[0] == "loop_piece_too_short"
+    assert "piece 0 " in refusal[1]
     value, known = three_times(2)
     good = checked(value, ORDER, known)
     assert cs(good["tracks"][0]["end_sec"]) - cs(good["tracks"][0]["start_sec"]) == 2117

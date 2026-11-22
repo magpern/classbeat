@@ -140,7 +140,9 @@ The owner's direction (2026-11-15):
    pure `mix_plan_policy` validates it against the stored analysis, never against model text:
    - The order is a permutation of the approved references, with no gaps (§3.3). *(Amended 2026-11-21,
      #1331, at the end: each approved reference at least once, and a song may repeat.)*
-   - `0 <= start_sec < end_sec <= length`. Cuts snap to the nearest downbeat of the analysis. At least 60 s of
+   - `0 <= start_sec < end_sec <= length`. A cut first moves to a usable cut candidate in reach (A7 step 2) and then, for an `exact` track or one with
+     no stored timing decision only, snaps to the nearest bar of the analysis's grid (A7 step 3); an `approximate`
+     or `unusable` track is only rounded. At least 60 s of
      each track plays. *(Amended 2026-11-21, #1331, A4.4 at the end: a loop piece may be shorter; its loop
      run plays at least 60 s.)*
    - Each crossfade is a whole number of seconds from 0 to 30, shorter than the played window of **both**
@@ -272,7 +274,8 @@ row is committed before the call.
      definite failure (nothing sent), a retry downloads and renders again; the result has the same sha256
      because the render is deterministic. A sha256 different from the analysed bytes stops the
      output with "the music changed, review again"; nothing is published.
-  2. The render is sample-accurate from `mix_offsets`: cuts, equal-power crossfades, and 320 kb/s CBR MP3
+  2. The render is sample-accurate from `mix_offsets`: cuts, equal-power crossfades (a bass swap instead at a transition the backend finds fit for
+     it from the stored analyses, #1330), and 320 kb/s CBR MP3
      through the `soundfile` libsndfile encoder (checked: libsndfile 1.2.2 writes `MPEG_LAYER_III`; ffmpeg is
      not added).
   3. It runs in the sandboxed child and streams transition by transition, under 1 GiB.
@@ -486,8 +489,10 @@ be identical to an earlier piece's or different.
    `loop_crossfade_not_zero`. *(Reversible: if #1330 brings an accepted proposal for crossfades of whole bars, a
    loop join may take one.)*
 4. **The minimum length of a loop piece** is `MIN_LOOP_BARS` = **8 bars** (one phrase of four-four), on the
-   grid the snap uses: `cs(end) - cs(start) >= cs(MIN_LOOP_BARS * 240 / bpm)` with the track's
-   `TrackFacts.bpm`; otherwise `loop_piece_too_short`. `MIN_PLAYED_SEC` does not apply to a single loop
+   grid the snap uses: `cs(end) - cs(start) >= cs(MIN_LOOP_BARS * 240 / bpm) - 1` with the track's
+   `TrackFacts.bpm`; otherwise `loop_piece_too_short`. The 1 cs of slack (`ROUNDING_SLACK_CS`, amended
+   2026-11-21, #1365) is the cut rounding: each cut is rounded to 0.01 s on its own, so a piece of exactly 8 bars
+   can play 1 cs less; 2 cs less is still refused. `MIN_PLAYED_SEC` does not apply to a single loop
    piece. It applies to the **loop run**: the run's windows together (its joins have no crossfade) play at least
    60 s, so a song still never plays for less than a minute at a stretch (`window_too_short`). A run of one
    piece is an ordinary piece and keeps the 60 s rule.
@@ -530,7 +535,9 @@ piece. Steps 5 to 10 then run on the whole mix, in this order: coverage, then th
 2. candidate selection (#1328): the nearest **usable** candidate within `min(1.0 s, 0.45 × bar)` of the
    proposed cut, else the proposed cut. Usable means trusted **and** on an `exact` track (an `approximate`
    candidate is advisory and never sets a cut; an `unusable` track has none). A downbeat is chosen only when
-   no other kind is in reach, and a tie in distance goes to the earlier candidate. A cut at an edge (0, or
+   no other kind is in reach, and a tie in distance goes to the earlier candidate. **At a transition** (#1330) a
+   phrase point of that side ranks first: the outgoing piece's end takes a `phrase_end`, the incoming piece's
+   start a `phrase_start`, before any other kind in reach (a downbeat still last). A cut at an edge (0, or
    within 0.01 s of the length) is never moved, and an edge candidate is never selected;
 3. the bar-grid snap on the `TrackFacts` grid, for an `exact` track **or a track with no stored timing
    decision** (a local analysis of the played bytes, the played recording itself), as before #1328. An

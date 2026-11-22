@@ -18,7 +18,8 @@ selected, snapped) and rounded, or raises ``MixPlanRefused`` with one named reas
 - ``loop_needs_exact_timing`` / ``loop_not_on_phrase``: a loop join (two pieces of one track back
   to back) on a track whose stored timing is not ``exact``, or off its trusted phrase points
   (``mix_loop_policy``, A4.1 and A4.2);
-- ``loop_piece_too_short``: a loop piece under ``MIN_LOOP_BARS`` bars (A4.4);
+- ``loop_piece_too_short``: a loop piece under ``MIN_LOOP_BARS`` bars, less 1 cs of cut rounding
+  (A4.4);
 - ``window_too_short``: a piece, or a loop run's pieces together, under ``MIN_PLAYED_SEC`` played
   once snapped;
 - ``crossfade_count``: not one crossfade per change of piece;
@@ -44,9 +45,9 @@ selected, snapped) and rounded, or raises ``MixPlanRefused`` with one named reas
    ``loop_needs_exact_timing``, then ``loop_not_on_phrase``, on the stored timing class and
    candidates that ``TrackFacts`` carries;
 5. the lengths (step 7, ``mix_loop_policy.length_refusal``): each loop piece at least
-   ``MIN_LOOP_BARS`` (``loop_piece_too_short``), then every other piece and every loop run at
-   least ``MIN_PLAYED_SEC`` (``window_too_short``), after coverage, so a short window with a
-   missing track ends ``not_a_permutation``;
+   ``MIN_LOOP_BARS`` less 1 cs of cut rounding (``loop_piece_too_short``), then every other
+   piece and every loop run at least ``MIN_PLAYED_SEC`` (``window_too_short``), after coverage,
+   so a short window with a missing track ends ``not_a_permutation``;
 6. the crossfades (step 8: count, whole, range, ``loop_crossfade_not_zero``, too long, overlap),
    then the total (step 9, ``mix_too_long``).
 
@@ -118,7 +119,7 @@ def _track(
     return reference, start, end
 
 
-def _crossfades(raw: object, windows: Sequence[int], references: Sequence[str] = ()) -> list[int]:
+def _crossfades(raw: object, windows: Sequence[int], *, references: Sequence[str]) -> list[int]:
     """``windows`` in hundredths of a second, ``references`` the pieces' in mix order."""
     if not isinstance(raw, list | tuple) or len(raw) != len(windows) - 1:  # pyright: ignore[reportUnknownArgumentType]
         raise MixPlanRefused("crossfade_count", "one crossfade per change of piece")
@@ -173,7 +174,7 @@ def checked(
     if lengths is not None:
         raise MixPlanRefused(*lengths)
     windows = [cs(end) - cs(start) for _, start, end in cut]
-    crossfades = _crossfades(spec.get("crossfades"), windows, [r for r, _, _ in cut])
+    crossfades = _crossfades(spec.get("crossfades"), windows, references=[r for r, _, _ in cut])
     if sum(windows) - CS * sum(crossfades) > MAX_TOTAL_SEC * CS:
         raise MixPlanRefused("mix_too_long", f"at most {MAX_TOTAL_SEC // 60} minutes")
     return {

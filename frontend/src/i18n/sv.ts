@@ -2426,6 +2426,10 @@ const sv: Catalogue = {
     'Låtarna {songs} spelar samma hela spår. Be om en ändring om du inte ville det.',
   'studio.tl.hint.one_song_dominates':
     'Låtarna {songs} är samma spår och fyller mer än halva mixen.',
+  'studio.tl.hint.tempo_jump':
+    'Låtarna {songs} har tempon som krockar. Be om en annan ordning om inte passet byter fas där.',
+  'studio.tl.hint.downbeats_not_locked':
+    'Övertoningen mellan låtarna {songs} går inte i takt. Be om en annan längd på den.',
   'studio.tl.loadFailed':
     'Tidslinjen kunde inte hämtas. Ladda om sidan.',
   'studio.musicChanged.title':

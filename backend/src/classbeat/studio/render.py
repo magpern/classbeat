@@ -41,7 +41,7 @@ from classbeat.studio import render_policy
 # The renderer's identity in a preview clip's cache key (ADR 0042 section 6.4). Bump it with every
 # change to ``renderchild``, ``render_curves`` or ``render_policy``: a test hashes them and fails
 # on a change that did not bump it.
-RENDERER_VERSION: Final = 1
+RENDERER_VERSION: Final = 2
 MAX_RSS_BYTES: Final = 1024**3
 # Measured (macOS, one core, 20 minutes of output): about 280x real time, so 150 minutes take about
 # 30 s; a CI Linux runner was not measured but the test below demands at least 10x. The cap is

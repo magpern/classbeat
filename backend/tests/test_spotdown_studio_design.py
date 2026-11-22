@@ -24,10 +24,12 @@ from test_swedebeat_studio_design import (
     LENGTH,
     MIX_8,
     analysed,
+    approved,
     design_script,
     designed,
     revise,
     run_kind,
+    start_design,
 )
 
 __all__ = ["analysed", "spotdown"]  # the fixtures
@@ -113,3 +115,19 @@ async def test_a_class_designed_on_spotdown_keeps_its_maps_and_provenance(
     again = await revise(rider, class_id, new_id, "Harder")
     row = await run_kind(studio, UUID(again.json()["id"]))
     assert (row.state, row.error_category) == ("failed", "music_changed")
+
+
+async def test_the_design_stage_is_shown_the_stored_timing_class_of_spotdown_rows(
+    studio: StudioEnv, analysed: list[str], spotdown_maps: FakeSpotdown
+) -> None:
+    """``draft.StudioMusic.of`` gives each stage track its stored timing class (not ``None``):
+    the model's ``get_music`` names it."""
+    studio_tracks_config.configure(ON)
+    rider, class_id, list_id = await approved(studio)
+    script = design_script(MIX_8)
+    script["turns"][0]["calls"][0]["contains"] = ['"timing":"exact"']
+    studio.songs.script = script
+    response = await start_design(rider, class_id, list_id)
+    assert response.status_code == 201, response.text
+    row = await run_kind(studio, UUID(response.json()["job_id"]))
+    assert (row.state, row.error_category) == ("completed", None)
