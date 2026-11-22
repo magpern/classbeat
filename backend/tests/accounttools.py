@@ -203,6 +203,15 @@ class Person:
             f="cd" * 32,
         )
         self.sql(
+            "INSERT INTO spotify_offset_corrections (owner_id, class_id, fingerprint, song, "
+            "offset_ms, set_against_analysis) VALUES (:u, :c, :f, 2, 1500, "
+            "jsonb_build_object('map_version', 1, 'sha256', cast(:s as text)))",
+            u=u,
+            c=class_id,
+            f="cd" * 32,
+            s="ab" * 32,
+        )
+        self.sql(
             "INSERT INTO swedebeat_handoffs (owner_id, class_id, match_revision_id, state, "
             "mixes_before, expires_at) VALUES (:u, :c, :rev, 'open', '[]'::jsonb, "
             "now() + interval '1 hour')",
