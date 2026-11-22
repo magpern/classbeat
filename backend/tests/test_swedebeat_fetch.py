@@ -374,9 +374,10 @@ async def test_the_store_keeps_the_newest_twenty_and_drops_what_is_past_thirty_d
         for who, age in ((owner, rows - number), (other, 0)):
             harness.ops.sql(
                 "INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, "
-                "playlist_id, name, duration, listed_duration, map, created_at) "
-                "VALUES (:o, :m, :c, 5, 'x', 60, 60, CAST(:map AS jsonb), "
-                "now() - make_interval(hours => :age))",
+                "playlist_id, name, duration, listed_duration, map, analyser, provenance, "
+                "created_at) "
+                "VALUES (:o, :m, :c, 5, 'x', 60, 60, CAST(:map AS jsonb), 'spotdown', "
+                "'{}'::jsonb, now() - make_interval(hours => :age))",
                 o=who,
                 m=f"old-{number:02d}",
                 c=connection,

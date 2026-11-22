@@ -1,11 +1,10 @@
 """The user's cache of their mix analyses, ``swedebeat_mix_maps`` (ADR 0016 section 3 steps 2 and
 4; ADR 0040 sections 5 and 6; split out of ``design.swedebeat_music``).
 
-**Rows per analyser** (migration 0065, #1304): a mix's ``local`` map (``design.mixanalysis``, every
-row before #1304) and its ``spotdown`` map (``spotdown.mix_map_model``, with its ``provenance``)
-are two rows; a store replaces only its own analyser's row. spotdown is the only analysis path
-(ADR 0040 amendment, #1353): **a ``local`` row is never a hit**, whatever asks (the rows go in
-#1356).
+**One row per mix** (migration 0077, #1357): spotdown is the only analysis path (ADR 0040
+amendment), so a row is a ``spotdown`` map (``spotdown.mix_map_model``, with its ``provenance``);
+migration 0077 deleted the ``local`` rows (migration 0065 had added the column; the table's check
+now admits only ``spotdown``). The key stays ``(owner_id, mix_id, analyser)``, one row per mix.
 
 - ``cached``: one fenced transaction share-locks the connection (``hold``) and reads the user's
   rows for the mix with their stored link. A row counts only if it is younger than
@@ -13,14 +12,13 @@ are two rows; a store replaces only its own analyser's row. spotdown is the only
   the library's current map version. Of the ``spotdown`` rows among those, the one whose map has
   the fingerprint ``prefer`` (a revise or refit: the analysis its base was designed on) comes
   first; else one whose provenance is this build's (``mix_map_model.current_mix_provenance``). A
-  base designed on a ``local`` row finds no row with its fingerprint, so its revise is told
+  base whose row is gone finds no row with its fingerprint, so its revise is told
   ``music_changed`` by the fingerprint check. **A hit makes no request at all.**
 - ``store``: one fenced transaction (the connection and the link held again) upserts the row,
-  drops what is past 30 days and all but the newest ``MAPS_PER_USER`` rows of the user (rows of
-  **both** analysers count, as in ``track_cache``: an owner whose mixes have a ``local`` and a
-  ``spotdown`` row each keeps about half as many mixes cached), frees the
-  job's analysis slot, marks the job as one that ran a fresh analysis
-  (``jobs.mail_handoff``) and records the fetch and analysis times (``jobs.analysis_times``).
+  drops what is past 30 days and all but the newest ``MAPS_PER_USER`` rows of the user (one row
+  per mix), frees the job's analysis slot, marks the job as one that ran a fresh analysis
+  (``jobs.mail_handoff``) and records the fetch and analysis times (``jobs.analysis_times``;
+  ``jobs.analysis_decode_ms`` is spotdown's analysis time, since #1353).
 
 Every statement filters on ``owner_id`` itself as well as through row security. Nothing here logs.
 """
@@ -41,7 +39,7 @@ from classbeat.spotdown.mix_map_model import current_mix_provenance
 MAPS_PER_USER: Final = 20
 MAP_TTL_DAYS: Final = 30
 
-Analyser = Literal["local", "spotdown"]
+Analyser = Literal["spotdown"]
 
 _CACHED = text(
     "SELECT m.mowl_connection_id, m.playlist_id, m.name, m.duration, m.listed_duration, m.map, "
@@ -82,7 +80,7 @@ _TRIM = text(
 class MixAnalysis:
     """The user's analysis of one mix. ``music_map`` is the library's map; ``fingerprint`` a hash
     of it (a later revise notices a re-analysis); ``cached`` is whether no audio was fetched;
-    ``analyser`` made it, and a ``spotdown`` one carries its ``provenance`` record."""
+    ``analyser`` made it (always ``spotdown``) and ``provenance`` is its record."""
 
     mix_id: str
     playlist_id: int
@@ -92,7 +90,7 @@ class MixAnalysis:
     music_map: dict[str, Any]
     fingerprint: str
     cached: bool
-    analyser: Analyser = "local"
+    analyser: Analyser = "spotdown"
     provenance: dict[str, Any] | None = None
 
 
@@ -114,7 +112,7 @@ def fingerprint(music_map: dict[str, Any]) -> str:
 def _analysis(row: Any, mix_id: str, connection_id: UUID) -> MixAnalysis | None:
     if row.mowl_connection_id != connection_id or row.linked is None:
         return None
-    if row.linked != row.playlist_id or row.analyser != "spotdown":
+    if row.linked != row.playlist_id:
         return None
     stored: object = row.map
     if not isinstance(stored, dict) or stored.get("version") != music.MAP_VERSION:  # pyright: ignore[reportUnknownMemberType]
@@ -130,8 +128,8 @@ def _analysis(row: Any, mix_id: str, connection_id: UUID) -> MixAnalysis | None:
         music_map,
         fingerprint(music_map),
         cached=True,
-        analyser=row.analyser,
-        provenance=provenance if row.analyser == "spotdown" else None,
+        analyser="spotdown",
+        provenance=provenance,
     )
 
 

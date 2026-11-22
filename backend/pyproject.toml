@@ -13,9 +13,14 @@ dependencies = [
     "fastapi>=0.138",  # fastapi.routing.iter_route_contexts (the admin router guard)
     "httpx==0.28.1",
     "joserfc==1.8.0",
-    # The domain library (ADR 0001): v0.12.0 built from its tag WITHOUT the bundled Swedebeat app
+    # The domain library (ADR 0001): v0.13.0 built from its tag WITHOUT the bundled Swedebeat app
     # key (scripts/build-mowl-wheel.sh; threat model, accepted risks). Pinned by uv.lock's hash.
-    "mowl-workouts==0.12.0",
+    # Installed without its `analysis` extra, so no librosa, numba, llvmlite or scipy (#1358).
+    "mowl-workouts==0.13.0",
+    # The render child (studio/renderchild.py) and the preview key (preview/identity.py) import
+    # these; they came through mowl-workouts and librosa until #1358. Pinned at the versions
+    # locked before, so renders and preview keys (libsndfile and soxr versions) do not change.
+    "numpy==2.5.4",
     # ADR 0012 section 3: 2.54.0 is the last release on httpx (3.x requires httpx2, which the
     # egress allowlist is not built on); the `httpx2` extra is never installed. Review with #120.
     "openai==2.54.0",
@@ -25,6 +30,8 @@ dependencies = [
     "pyotp==2.11.2",
     "rfc8785==0.1.4",
     "segno==1.6.6",
+    "soundfile==0.14.0",
+    "soxr==1.1.0",
     "sqlalchemy[asyncio]>=2.0.36",
     "uvicorn[standard]>=0.34",
     # ADR 0019 section 2 (#771): py_webauthn (Duo Labs / Cisco, BSD-3-Clause), the relying-party
@@ -52,7 +59,7 @@ audit = [
 exclude-dependencies = ["mcp"]
 
 [tool.uv.sources]
-mowl-workouts = { path = "vendor/mowl_workouts-0.12.0-py3-none-any.whl" }
+mowl-workouts = { path = "vendor/mowl_workouts-0.13.0-py3-none-any.whl" }
 
 [build-system]
 requires = ["hatchling"]

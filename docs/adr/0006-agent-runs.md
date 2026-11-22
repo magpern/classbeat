@@ -477,7 +477,7 @@ out of step with MOWL's timeline whatever classbeat models. Whether 9540 varies 
 or Spotify setting is an owner check on #1348, never run by an agent.
 
 - **One definition**: `classbeat/crossfade_calc.py` (`CROSSFADE_SEC` = 9.54, pure). `agent/songs.CROSSFADE_SEC`
-  re-exports it. It no longer derives from the vendored wheel (still 0.12.0, not rebuilt).
+  re-exports it. It no longer derives from the vendored wheel (not rebuilt or changed by #1427).
 - **Every map is converted, none rewritten.** The wheel builds (`spotify.build_map`) and converts
   (`library._entry`) at its 9.0, so a stored analysis carries `crossfade` 9.0 (or no key, under
   0.4.1). `model_input.music_map` (and so `mix_input.music_map`, which design, revise, refit and the

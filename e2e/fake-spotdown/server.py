@@ -114,24 +114,33 @@ def make_handler(state: State) -> type[BaseHTTPRequestHandler]:
 
         def _chunked(self, cap: int) -> bytes | None:
             """The body of a ``Transfer-Encoding: chunked`` request (the worker streams an upload
-            from an async iterator, so it has no length); ``None`` when it is over ``cap``."""
+            from an async iterator, so it has no length); ``None`` when it is over ``cap`` (checked
+            from each chunk's declared size, before the chunk is read); ``ValueError`` when a chunk
+            size is not hexadecimal (the caller answers ``400``)."""
             body = bytearray()
             while True:
                 size = int((self.rfile.readline().split(b";")[0].strip()) or b"0", 16)
+                if size < 0:
+                    raise ValueError("negative chunk size")
                 if size == 0:
                     while self.rfile.readline().strip():  # the trailers, up to the blank line
                         pass
                     return bytes(body)
+                if len(body) + size > cap:
+                    return None
                 body += self.rfile.read(size)
                 self.rfile.readline()  # the CRLF after the chunk
-                if len(body) > cap:
-                    return None
 
         def _serve(self, method: str) -> None:
             path = self.path.partition("?")[0]
             cap = UPLOAD_MAX if path == UPLOAD_PATH else BODY_MAX
             if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
-                got = self._chunked(cap)
+                try:
+                    got = self._chunked(cap)
+                except ValueError:
+                    self.close_connection = True
+                    self._json(400, {"error": {"code": "bad_request", "message": "bad chunk size"}})
+                    return
                 if got is None:
                     self._refuse(0)
                     return
