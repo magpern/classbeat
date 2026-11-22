@@ -9,7 +9,8 @@ order, each refusal writing nothing:
    ``POST /api/classes/{id}/outputs``, after ``GET /auth/session``, creates this job;
 2. ``feature_off`` unless the studio runs and the user's "I use Swedebeat" is on;
 3. the draft (``current_draft.load`` with the class row share-locked): ``class_not_found``,
-   ``no_studio_draft``, ``not_current`` (not the class's current revision), ``hash_mismatch``
+   ``no_studio_draft``, ``stale_revision`` (``base_revision_id`` given and no longer the class's
+   current revision), ``not_current`` (not the class's current revision), ``hash_mismatch``
    (a stale hash), ``internal`` (a stored hash that no longer holds);
 4. the choice (``output_choice_policy.refusal``, with the draft's own spec: whether it repeats a
    song, whether it is mixed and whether it is the applied form of its proposal, read by
@@ -72,6 +73,9 @@ async def the_draft(
     found = await current_draft.load(db, owner_id, given.the_class, lock=lock)
     if isinstance(found, str):
         return "class_not_found" if found == "not_found" else found
+    base = given.base_revision_id
+    if base is not None and found.revision_id != base:
+        return "stale_revision"  # another tab moved the class (ADR 0042 section 6)
     if found.revision_id != given.revision_id:
         return "not_current"
     if found.content_hash.hex() != given.content_hash:

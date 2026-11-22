@@ -94,7 +94,7 @@ async def facts_of(db: AsyncSession, owner_id: UUID, found: CurrentDraft) -> dic
     return out
 
 
-async def _provenance(
+async def provenance_of(
     db: AsyncSession, owner_id: UUID, class_id: UUID, revision_id: UUID
 ) -> dict[str, Any]:
     """The revision's provenance; ``{}`` for none or one that is no object (fail closed)."""
@@ -112,12 +112,12 @@ async def _applied_form(
     outputs: Collection[str],
 ) -> bool:
     basis_id: UUID | None = found.revision_id
-    provenance = await _provenance(db, owner_id, class_id, found.revision_id)
+    provenance = await provenance_of(db, owner_id, class_id, found.revision_id)
     if provenance.get("origin") == USER_EDIT_ORIGIN:  # its nearest other draft's (section 8)
         basis_id = await mix_proposal.not_user_edit(db, owner_id, class_id, found.revision_id)
         if basis_id is None:
             return False
-        provenance = await _provenance(db, owner_id, class_id, basis_id)
+        provenance = await provenance_of(db, owner_id, class_id, basis_id)
     if not provenance:
         return False
     list_id = found.music.song_list_id

@@ -25,6 +25,7 @@ nothing.
 """
 
 import copy
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -57,6 +58,7 @@ from classbeat.swedebeat_studio.mix_apply_calc import StudioTracks, keyed, store
 
 PLAN_TOO_LONG = "plan_class_too_long"
 PLAN_NOT_ALLOWED = "plan_not_allowed"
+MIX_NOT_APPLIED = "mix_not_applied"
 
 
 @dataclass(frozen=True)
@@ -67,9 +69,9 @@ class EditState:
     spec: dict[str, Any]  # the stored, hash-checked spec
     overlay: EditOverlay
     music: StudioTracks  # the approved list's tracks with the analyses the draft holds
-    analysed: dict[str, str | None]  # each reference's analysed file's SHA-256
+    analysed: Mapping[str, str | None]  # each reference's analysed file's SHA-256
     proposal: Proposal
-    choices: MixChoices  # its nearest non-``user_edit`` ancestor's (ADR 0042 section 8)
+    choices: MixChoices | None  # its basis's (ADR 0042 section 8); None: not ``applied_form``
     map_version: int
 
 
@@ -238,6 +240,8 @@ def class_length(state: EditState, total: int) -> None:
 
 def pinned_spec(state: EditState, pins: list[OverlayPin]) -> tuple[dict[str, Any], tuple[Any, ...]]:
     """Steps 1 and 2 of the audio-edit order: the derived spec with ``pins``, gated."""
+    if state.choices is None:
+        raise EditRefused(MIX_NOT_APPLIED)  # its spec is no ``applied`` of its choices (B9)
     try:
         found = mix_choice_policy.pinned(state.proposal, state.music.facts(), state.choices, pins)
         return stored_spec(found.spec), (*found.unapplied, *found.dropped)

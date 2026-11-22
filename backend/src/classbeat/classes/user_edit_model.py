@@ -193,3 +193,19 @@ class EditOut(BaseModel):
     unapplied: list[RecordOut]
     orphaned: list[RecordOut]
     hints: list[str]
+
+
+class StepOut(BaseModel):
+    """An undo or redo: the pick it takes (``POST /current`` with ``expected_current_id``)."""
+
+    revision_id: UUID
+    content_hash: str
+
+
+class OverlayOut(BaseModel):
+    revision_id: UUID
+    records: list[RecordOut]
+    unapplied: list[RecordOut]
+    orphaned: list[RecordOut]
+    undo: StepOut | None
+    redo: StepOut | None

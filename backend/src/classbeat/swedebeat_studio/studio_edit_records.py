@@ -9,6 +9,7 @@
 """
 
 import copy
+from collections.abc import Mapping
 from typing import Any
 
 from classbeat.design.edit_overlay_model import (
@@ -28,7 +29,7 @@ def listed(
     content: dict[str, Any],
     spec: dict[str, Any],
     overlay: EditOverlay,
-    analysed: dict[str, str | None],
+    analysed: Mapping[str, str | None],
 ) -> tuple[tuple[Record, ...], tuple[Anchor, ...]]:
     found = blocks(content)
     pieces = set(occurrences(spec))

@@ -58,7 +58,12 @@ class Chosen:
 
 
 def _input(
-    ctx: UserContext, class_id: UUID, revision_id: UUID, content_hash: str, outputs: Sequence[str]
+    ctx: UserContext,
+    class_id: UUID,
+    revision_id: UUID,
+    content_hash: str,
+    outputs: Sequence[str],
+    base_revision_id: UUID | None = None,
 ) -> ProduceOutputsInput | str:
     swedebeat = ctx.connection("swedebeat")
     spotify = ctx.connection("spotify") if "spotify_playlist" in outputs else None
@@ -70,6 +75,7 @@ def _input(
                 "class_id": str(class_id),
                 "revision_id": str(revision_id),
                 "content_hash": content_hash,
+                "base_revision_id": None if base_revision_id is None else str(base_revision_id),
                 "outputs": list(outputs),
                 "swedebeat_connection_id": str(swedebeat),
                 "spotify_connection_id": None if spotify is None else str(spotify),
@@ -89,6 +95,7 @@ async def choose(
     outputs: Sequence[str],
     *,
     idempotency_key: str,
+    base_revision_id: UUID | None = None,
     ledger: CreditLedger,
     limit: JobLimitPolicy,
     enqueue: JobEnqueue,
@@ -99,7 +106,7 @@ async def choose(
             return Chosen(None, False, "feature_off")
         if await current_draft.load(db, ctx.user_id, class_id) == "not_found":
             return Chosen(None, False, "not_found")
-    given = _input(ctx, class_id, revision_id, content_hash, outputs)
+    given = _input(ctx, class_id, revision_id, content_hash, outputs, base_revision_id)
     if isinstance(given, str):
         return Chosen(None, False, given)
     params = {"owner_id": ctx.user_id, "class_id": class_id, "key": idempotency_key}

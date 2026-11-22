@@ -84,16 +84,15 @@ from classbeat.connections import (
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun
-from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.operations import CallResult, OperationRequest, UncertainAnswer, orphans, perform
 from classbeat.quota.gates import check_stored_draft
 from classbeat.saving import approval, operation, targets, update_operation
+from classbeat.saving.approve_input import ApprovedRevision
 from classbeat.saving.caps import check_write_caps
 from classbeat.saving.kind import (
     JOB_CLASS,
     PREPARE_CATEGORY,
-    ContentHash,
     current_runtime,
     preflight,
     program_id_of_answer,
@@ -111,14 +110,12 @@ STAGES: Final = ("prepare", "read", "save", "verify")
 MISSING_CATEGORIES: Final = frozenset({"unknown"})
 
 
-class UpdateWorkoutInput(JobInput):
+class UpdateWorkoutInput(ApprovedRevision):
     """An Update: the class, the revision and its content hash (lower-case hex), the user's
     saved row, the "Update anyway" confirmation and the MOWL connection the page shows."""
 
     CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl",)
 
-    revision_id: UUID
-    content_hash: ContentHash
     saved_workout_id: UUID
     overwrite: StrictBool = False
     mowl_connection_id: UUID
