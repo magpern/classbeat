@@ -15,6 +15,8 @@ from classbeat.classes.schemas import PlaylistNameOut
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.player_send.publications import on_class_delete
+from classbeat.preview import purge as preview_purge
+from classbeat.preview import storage as preview_storage
 
 KEPT_NOTE = "The workouts classbeat saved to your MOWL account stay there; delete them in MOWL."
 SPOTIFY_NOTE = (
@@ -76,7 +78,8 @@ async def delete(
     A class sent to the player gets its ``player_remove`` job in this transaction (none while
     the player is not connected, ``player_send.publications.on_class_delete``); a class never
     sent takes no lock on the connection row. The cascade is the schema's (migrations 0004 and
-    0005); ``agent_runs`` keeps its rows."""
+    0005); ``agent_runs`` keeps its rows. The audition's clip and source files of the class are
+    removed once the delete committed (their rows went with the cascade, migration 0072)."""
     require_context(ctx)
     async with user_session(factory, ctx) as db:
         await seams.resolve_orphans(db, ctx)
@@ -92,7 +95,11 @@ async def delete(
         kept = int((await db.execute(_KEPT, _ids(ctx, class_id))).scalar_one())
         left = (await song_views.playlists_of(db, ctx.user_id, class_id)).all
         job_id = await on_class_delete(db, ctx.user_id, class_id)  # ADR 0034 section 5
+        root = preview_storage.current()  # ADR 0042 section 6.5: the audition's files go too
+        files = await preview_purge.class_files(db, root, ctx.user_id, class_id)
         await db.execute(DELETE_CLASS, _ids(ctx, class_id))
+    for path in files:  # after the commit; one left behind is the hourly sweep's
+        preview_storage.remove(path)
     return DeleteOutcome(None, kept, left, job_id)
 
 

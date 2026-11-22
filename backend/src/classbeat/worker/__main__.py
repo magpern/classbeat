@@ -39,6 +39,8 @@ from classbeat.egress_spotdown import install_spotdown
 from classbeat.log import configure_logging
 from classbeat.player.delivery import run_player_delivery
 from classbeat.playlists.runtime import playlists_runtime
+from classbeat.preview import render_kind  # noqa: F401 - registers preview_render (#1394)
+from classbeat.preview import storage as preview_storage
 from classbeat.spotdown import (
     shadow_config,
     song_match_config,
@@ -128,6 +130,8 @@ async def _run(settings: Settings, signer: EventSigner | None = None) -> None:
     # studio_songs (ADR 0036): CLASSBEAT_SWEDEBEAT_STUDIO (off unless the worker has it too: a
     # queued job then ends feature_off); it shares swedebeat_match's gateway and key ring.
     studio_config.configure(studio_config.StudioConfig.from_settings(settings))
+    # ADR 0042 section 6.5: the audition's preview volume (unset: preview_render is feature_off).
+    preview_storage.configure_from(settings.preview_dir, settings.preview_owner_max_mb)
     configure_spotdown(settings)
     stop = asyncio.Event()
     # Before "worker started" is logged, so a signal after that line is always handled.
