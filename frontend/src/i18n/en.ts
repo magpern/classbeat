@@ -2311,11 +2311,11 @@ export const en = {
   'studio.out.swedebeat_playlist':
     'SwedeBeat playlist',
   'studio.out.swedebeat_playlist.desc':
-    'A playlist created and published in SwedeBeat.',
+    'A playlist of whole songs, created and published in SwedeBeat. With DJ mix it follows the mix’s cuts and crossfades.',
   'studio.out.swedebeat_mix':
-    'SwedeBeat mix',
+    'DJ mix',
   'studio.out.swedebeat_mix.desc':
-    'One rendered MP3 of the whole mix, published in SwedeBeat.',
+    'A mixed version of the songs with the crossfades and cuts you choose below, as one MP3 published in SwedeBeat.',
   'studio.out.mowl':
     'MOWL workout',
   'studio.out.mowl.desc':
@@ -2500,6 +2500,98 @@ export const en = {
     'A class made with SwedeBeat’s studio cannot be copied. Start a new pick instead.',
   'job.failure.studioMusicChanged.title':
     'The music needs a new analysis',
+  'studio.mix.title':
+    'DJ mix choices',
+  'studio.mix.blend':
+    'Blend transitions',
+  'studio.mix.blend.desc':
+    'Songs overlap with a crossfade. Off: every change is a hard cut.',
+  'studio.mix.trim':
+    'Trim songs',
+  'studio.mix.trim.desc':
+    'classbeat may shorten songs and repeat parts of them. Off: every song plays once, whole.',
+  'studio.mix.songs':
+    'Songs of the DJ mix',
+  'studio.mix.select':
+    'Select {song}',
+  'studio.mix.song.unnamed':
+    'Song {n}',
+  'studio.mix.song.suggests':
+    'Suggested: {plays}',
+  'studio.mix.song.proposal':
+    'play {from} to {to} of {length}',
+  'studio.mix.song.endsOnPhrase':
+    'ends on a phrase',
+  'studio.mix.song.full':
+    'play the whole song ({length})',
+  'studio.mix.song.keepWhole':
+    'Keep whole',
+  'studio.mix.song.hardCutIn':
+    'Hard cut in',
+  'studio.mix.song.hardCutOut':
+    'Hard cut out',
+  'studio.mix.song.playsOnce':
+    'Keeping it whole plays it once.',
+  'studio.mix.song.result':
+    'With your choices: {plays}',
+  'studio.mix.fullOnly':
+    'Full song only: {reason}.',
+  'studio.mix.fullOnly.approximate':
+    'its timing is only approximate',
+  'studio.mix.fullOnly.unusable':
+    'its timing cannot be used',
+  'studio.mix.fullOnly.unknown':
+    'its timing has not been analysed yet',
+  'studio.mix.all':
+    'All songs',
+  'studio.mix.none':
+    'None',
+  'studio.mix.selected':
+    '{count} selected',
+  'studio.mix.bulk.keepWhole':
+    'Keep selected whole',
+  'studio.mix.bulk.hardCut':
+    'Hard cut selected',
+  'studio.mix.bulk.suggestion':
+    'Back to the suggestion',
+  'studio.mix.checking':
+    'Checking these choices…',
+  'studio.mix.total':
+    'With these choices the mix is {total}. The class is {target}; the mix must be between {low} and {high}.',
+  'studio.mix.refusedOther':
+    'These choices cannot be made into a mix. Change them and try again.',
+  'studio.mix.apply':
+    'Apply these choices',
+  'studio.mix.applying':
+    'Applying…',
+  'studio.mix.applyFirst':
+    'Apply these choices first. Then check the new timeline above and approve.',
+  'studio.mix.replan':
+    'Re-plan the other songs',
+  'studio.mix.replanRequest':
+    'Re-plan the songs I have not changed. Keep my choices for the others.',
+  'studio.consent.playlistFollowsMix':
+    'The SwedeBeat playlist follows the DJ mix’s cuts and crossfades.',
+  'studio.consent.mixChoices':
+    'DJ mix: songs trimmed {trimmed}, hard cuts {cuts}.',
+  'studio.reason.class_length_out_of_tolerance':
+    'With these choices the mix is too long or too short for the class. Change the choices, or use the option below.',
+  'studio.reason.no_proposal':
+    'There is no design to choose from yet. Re-plan the songs to get one.',
+  'studio.reason.apply_limit':
+    'Choices have been applied as many times as this class allows.',
+  'studio.reason.workout_does_not_fit':
+    'The workout does not fit the music with these choices. Re-plan the other songs and the workout is designed again.',
+  'studio.reason.plan_class_too_long':
+    'With these choices the class is longer than your plan allows. Change the choices, or use the option below.',
+  'studio.reason.plan_not_allowed':
+    'Your plan does not allow what these choices make. Re-plan the other songs to design it again.',
+  'studio.reason.mix_too_long':
+    'This mix is too long. Choose shorter songs, or trim more.',
+  'studio.reason.nothing_pending':
+    'These choices give the draft you already have. There is nothing to apply.',
+  'job.stage.apply':
+    'Applying your choices',
   'job.failure.studioMusicChanged.detail':
     'The analysis of the music has expired. Change songs to analyse it again.',
 } as const satisfies Record<string, Message>

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import type { ClassSongs } from '../../api/classSongs'
+import { recordedChoices } from '../../api/studioMix'
 import { studioError } from '../../api/studioSongs'
 import {
   chooseOutputs,
@@ -14,6 +16,20 @@ import { forgetOutputLimit } from './studioAction'
 import { useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
+import {
+  changeSongsOffered,
+  choiceSummary,
+  fromRecorded,
+  replanOffered,
+  stepOf,
+  toBody,
+  type MixState,
+  type Step,
+} from './mixChoices'
+import { StudioMixSection } from './StudioMixSection'
+import { StudioMixTotal } from './StudioMixTotal'
+import { useMixActions } from './useMixActions'
+import { useMixPreview, type PreviewAnswer } from './useMixPreview'
 
 /**
  * The output choice and its consent (ADR 0036 section 6): the defaults of the matrix, the facts
@@ -26,16 +42,25 @@ import { Button } from '../ui/button'
  * (`timeline.hasRepeats`) is mix-only (ADR 0036 amendment A8): the SwedeBeat playlist is shown off
  * and disabled with the reason, and the server refuses it too. The per-output states and their
  * actions are `StudioOutputStates`.
+ *
+ * Whole songs is the default (ADR 0036 amendment B, B1): the Spotify and SwedeBeat playlists play
+ * each song once, whole. **DJ mix** is its own output, off by default, with the choices of
+ * `StudioMixChoices`. With a SwedeBeat output the draft must be the form the screen shows: the
+ * preview's spec digest is compared with the draft's (B10), and until they are equal the button is
+ * **Apply these choices** (a new draft; nothing is applied on open), then **Approve**.
  */
 export function StudioOutputs({
   classId,
   timeline,
+  songs,
   disabled,
   enabled = null,
   limitReached = false,
 }: {
   classId: string
   timeline: Timeline
+  /** The class's approved song list state, to name the songs of the mix rows. */
+  songs: ClassSongs
   /** Another job of the class is open. */
   disabled: boolean
   enabled?: readonly Output[] | null
@@ -47,13 +72,40 @@ export function StudioOutputs({
   const offered = OUTPUTS.filter((o) => enabled === null || enabled.includes(o))
   const mixOnly = timeline.hasRepeats
   const allowed = (o: Output) => offered.includes(o) && !(mixOnly && o === 'swedebeat_playlist')
-  const [picked, setChosen] = useState<Output[]>(() => DEFAULT_OUTPUTS.filter(allowed))
+  // The choices of an applied draft come back as toggles, never applied by themselves (B3, B6).
+  const recorded = recordedChoices(timeline.choices)
+  const [mix, setMix] = useState<MixState>(() => fromRecorded(recorded))
+  const [picked, setChosen] = useState<Output[]>(() =>
+    OUTPUTS.filter((o) => allowed(o) && (DEFAULT_OUTPUTS.includes(o) || (o === 'swedebeat_mix' && recorded?.dj_mix === true))),
+  )
   // An output that went off after the page loaded is dropped from the choice (and MOWL goes with a mix that is off),
   // and so is the SwedeBeat playlist of a draft that repeats a song.
   const chosen = picked.filter((o) => allowed(o) && (o !== 'mowl' || offered.includes('swedebeat_mix')))
   const action = useAction()
   const has = (output: Output) => chosen.includes(output)
-  const publishes = has('swedebeat_playlist') || has('swedebeat_mix')
+  const djMix = has('swedebeat_mix')
+  const publishes = has('swedebeat_playlist') || djMix
+  // Every SwedeBeat output binds a draft that is the chosen form (the server's `mix_not_applied`).
+  const needsForm = publishes
+  const choices = toBody(djMix, mix)
+  const hasProposal = timeline.proposalRevisionId !== null
+  const preview = useMixPreview(classId, timeline.revisionId, timeline.contentHash, choices, needsForm && hasProposal)
+  const actions = useMixActions(classId, timeline, choices)
+  const noProposal: PreviewAnswer = { status: 'failed', reason: 'no_proposal', message: '' }
+  const answer = hasProposal ? preview.answer : noProposal
+  const step: Step = needsForm ? stepOf(answer, timeline.specDigest) : 'ready'
+  const ready = step === 'ready'
+  // While the answer for these choices is awaited the consent stays and Approve waits, disabled.
+  const approving = ready || step === 'checking'
+  const ahead = answer.status === 'ready' ? answer.preview : null
+  const reason = (answer.status === 'failed' ? answer.reason : (ahead?.refusal ?? null)) ?? actions.refused
+  const replan = reason !== null && replanOffered(reason, djMix, mix, preview.suggestions)
+  const busy = action.busy || actions.busy
+  const error = action.error ?? actions.error
+  const summary =
+    ready && djMix && ahead?.windows
+      ? choiceSummary(ahead.windows, preview.suggestions, timeline.crossfades)
+      : null
 
   const approve = () => {
     const scope = `studio-outputs.${timeline.revisionId}.${timeline.contentHash}.${chosen.join('+')}`
@@ -86,7 +138,7 @@ export function StudioOutputs({
                   type="checkbox"
                   className="mt-1"
                   checked={has(output)}
-                  disabled={locked || repeats || action.busy || disabled}
+                  disabled={locked || repeats || busy || disabled}
                   onChange={(event) => {
                     setChosen(toggleOutput(chosen, output, event.target.checked))
                   }}
@@ -106,8 +158,34 @@ export function StudioOutputs({
           )
         })}
       </ul>
+      {djMix ? (
+        <StudioMixSection
+          classId={classId}
+          songs={songs}
+          suggestions={preview.suggestions}
+          state={mix}
+          windows={ahead?.windows ?? null}
+          disabled={busy || disabled}
+          onChange={setMix}
+        />
+      ) : null}
+      {needsForm ? (
+        <StudioMixTotal
+          classId={classId}
+          answer={answer}
+          reason={reason}
+          replan={replan}
+          changeSongs={reason !== null && changeSongsOffered(reason, replan)}
+          busy={busy || disabled}
+          onReplan={actions.replan}
+        />
+      ) : null}
       {chosen.length === 0 ? (
         <Notice>{t(offered.length === 0 ? 'studio.out.noneEnabled' : 'studio.out.none')}</Notice>
+      ) : !approving ? (
+        <p className="m-0 text-muted" data-testid="studio-apply-first">
+          {t('studio.mix.applyFirst')}
+        </p>
       ) : (
         <div className="flex flex-col gap-1" data-testid="studio-consent">
           <p className="m-0 font-medium text-text">{t('studio.consent.title')}</p>
@@ -116,16 +194,28 @@ export function StudioOutputs({
           </p>
           {publishes ? <p className="m-0 text-muted">{t('studio.consent.noDelete')}</p> : null}
           {has('swedebeat_playlist') ? <p className="m-0 text-muted">{t('studio.consent.publicPlaylist')}</p> : null}
-          {has('swedebeat_mix') ? <p className="m-0 text-muted">{t('studio.consent.mix')}</p> : null}
+          {has('swedebeat_playlist') && djMix ? <p className="m-0 text-muted">{t('studio.consent.playlistFollowsMix')}</p> : null}
+          {summary !== null ? (
+            <p className="m-0 text-text" data-testid="studio-mix-summary">
+              {t('studio.consent.mixChoices', { trimmed: summary.trimmed, cuts: summary.hardCuts })}
+            </p>
+          ) : null}
+          {djMix ? <p className="m-0 text-muted">{t('studio.consent.mix')}</p> : null}
           {mixOnly ? <p className="m-0 text-muted">{t('studio.consent.repeats')}</p> : null}
         </div>
       )}
       {limitReached ? <Notice>{t('studio.os.limitReached')}</Notice> : null}
-      {action.error ? <Notice kind="error">{action.error}</Notice> : null}
+      {error !== null ? <Notice kind="error">{error}</Notice> : null}
       <div>
-        <Button disabled={disabled || action.busy || chosen.length === 0} onClick={approve}>
-          {action.busy ? t('studio.consent.sending') : t('studio.consent.approve')}
-        </Button>
+        {approving ? (
+          <Button disabled={disabled || busy || chosen.length === 0 || !ready} onClick={approve}>
+            {busy ? t('studio.consent.sending') : t('studio.consent.approve')}
+          </Button>
+        ) : (
+          <Button disabled={disabled || busy || chosen.length === 0 || step !== 'apply'} onClick={actions.apply}>
+            {busy ? t('studio.mix.applying') : t('studio.mix.apply')}
+          </Button>
+        )}
       </div>
     </section>
   )

@@ -2443,11 +2443,11 @@ const sv: Catalogue = {
   'studio.out.swedebeat_playlist':
     'SwedeBeat-spellista',
   'studio.out.swedebeat_playlist.desc':
-    'En spellista som skapas och publiceras i SwedeBeat.',
+    'En spellista med hela låtar som skapas och publiceras i SwedeBeat. Med DJ-mix följer den mixens klipp och övertoningar.',
   'studio.out.swedebeat_mix':
-    'SwedeBeat-mix',
+    'DJ-mix',
   'studio.out.swedebeat_mix.desc':
-    'En renderad MP3 av hela mixen, publicerad i SwedeBeat.',
+    'En mixad version av låtarna med de övertoningar och klipp du väljer nedan, som en MP3 publicerad i SwedeBeat.',
   'studio.out.mowl':
     'MOWL-träningspass',
   'studio.out.mowl.desc':
@@ -2632,6 +2632,98 @@ const sv: Catalogue = {
     'Ett pass som gjorts med SwedeBeats studio kan inte kopieras. Gör ett nytt val i stället.',
   'job.failure.studioMusicChanged.title':
     'Musiken behöver analyseras på nytt',
+  'studio.mix.title':
+    'Val för DJ-mixen',
+  'studio.mix.blend':
+    'Mjuka övergångar',
+  'studio.mix.blend.desc':
+    'Låtarna överlappar med en övertoning. Av: varje byte är ett hårt klipp.',
+  'studio.mix.trim':
+    'Korta låtar',
+  'studio.mix.trim.desc':
+    'classbeat får korta låtar och upprepa delar av dem. Av: varje låt spelas en gång, hel.',
+  'studio.mix.songs':
+    'Låtarna i DJ-mixen',
+  'studio.mix.select':
+    'Markera {song}',
+  'studio.mix.song.unnamed':
+    'Låt {n}',
+  'studio.mix.song.suggests':
+    'Förslag: {plays}',
+  'studio.mix.song.proposal':
+    'spela {from} till {to} av {length}',
+  'studio.mix.song.endsOnPhrase':
+    'slutar på en fras',
+  'studio.mix.song.full':
+    'spela hela låten ({length})',
+  'studio.mix.song.keepWhole':
+    'Behåll hel',
+  'studio.mix.song.hardCutIn':
+    'Hårt klipp in',
+  'studio.mix.song.hardCutOut':
+    'Hårt klipp ut',
+  'studio.mix.song.playsOnce':
+    'Om du behåller den hel spelas den en gång.',
+  'studio.mix.song.result':
+    'Med dina val: {plays}',
+  'studio.mix.fullOnly':
+    'Endast hel låt: {reason}.',
+  'studio.mix.fullOnly.approximate':
+    'taktningen är bara ungefärlig',
+  'studio.mix.fullOnly.unusable':
+    'taktningen går inte att använda',
+  'studio.mix.fullOnly.unknown':
+    'taktningen har inte analyserats ännu',
+  'studio.mix.all':
+    'Alla låtar',
+  'studio.mix.none':
+    'Ingen',
+  'studio.mix.selected':
+    '{count} markerade',
+  'studio.mix.bulk.keepWhole':
+    'Behåll markerade hela',
+  'studio.mix.bulk.hardCut':
+    'Hårt klipp på markerade',
+  'studio.mix.bulk.suggestion':
+    'Tillbaka till förslaget',
+  'studio.mix.checking':
+    'Kontrollerar de här valen…',
+  'studio.mix.total':
+    'Med de här valen blir mixen {total}. Klassen är {target}; mixen ska vara mellan {low} och {high}.',
+  'studio.mix.refusedOther':
+    'De här valen går inte att göra till en mix. Ändra dem och försök igen.',
+  'studio.mix.apply':
+    'Använd dessa val',
+  'studio.mix.applying':
+    'Använder…',
+  'studio.mix.applyFirst':
+    'Använd valen först. Kontrollera sedan den nya tidslinjen ovan och godkänn.',
+  'studio.mix.replan':
+    'Planera om de andra låtarna',
+  'studio.mix.replanRequest':
+    'Planera om de låtar jag inte har ändrat. Behåll mina val för de andra.',
+  'studio.consent.playlistFollowsMix':
+    'SwedeBeat-spellistan följer DJ-mixens klipp och övertoningar.',
+  'studio.consent.mixChoices':
+    'DJ-mix: låtar som kortats {trimmed}, hårda klipp {cuts}.',
+  'studio.reason.class_length_out_of_tolerance':
+    'Med de här valen blir mixen för lång eller för kort för klassen. Ändra valen eller använd alternativet nedan.',
+  'studio.reason.no_proposal':
+    'Det finns ännu inget förslag att välja bland. Planera om låtarna för att få ett.',
+  'studio.reason.apply_limit':
+    'Val har använts så många gånger som den här klassen tillåter.',
+  'studio.reason.workout_does_not_fit':
+    'Passet passar inte musiken med de här valen. Planera om de andra låtarna så designas passet på nytt.',
+  'studio.reason.plan_class_too_long':
+    'Med de här valen blir klassen längre än din plan tillåter. Ändra valen eller använd alternativet nedan.',
+  'studio.reason.plan_not_allowed':
+    'Din plan tillåter inte det de här valen ger. Planera om de andra låtarna för att designa den på nytt.',
+  'studio.reason.mix_too_long':
+    'Mixen är för lång. Välj kortare låtar eller korta mer.',
+  'studio.reason.nothing_pending':
+    'De här valen ger samma utkast som du redan har. Det finns inget att använda.',
+  'job.stage.apply':
+    'Använder dina val',
   'job.failure.studioMusicChanged.detail':
     'Analysen av musiken har gått ut. Byt låtar för att analysera den igen.',
 }

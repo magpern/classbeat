@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { CLASS_PATH, REV1, classRoutes } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { CLASS_ID, SESSION_ROUTES } from '../test/jobFixtures'
+import { DRAFT_MIX, PREVIEW_PATH, previewBody } from '../test/mixFixtures'
 import { renderAt } from '../test/render'
 
 // #1342 (ADR 0036 amendment A8): a studio draft whose mix plays a song again is mix-only. The
@@ -25,6 +26,7 @@ function piece(position: number, title: string, repeatOf: number | null) {
 const REPEATED = {
   revision_id: REV1,
   content_hash: HASH,
+  ...DRAFT_MIX,
   duration_sec: 704,
   workout_sec: 700,
   tracks: [piece(0, 'Alpha', null), piece(1, 'Beta', null), piece(2, 'Alpha', 0)],
@@ -46,12 +48,19 @@ function routes(extra: Record<string, unknown> = {}) {
     ...classRoutes({ cls: { studio: true } }),
     'GET /api/connections': { connections: [] },
     [`GET ${CLASS_PATH}/timeline`]: REPEATED,
+    [`POST ${PREVIEW_PATH}`]: previewBody(),
     [`GET ${CLASS_PATH}/outputs`]: {
       enabled_outputs: ['spotify_playlist', 'swedebeat_playlist', 'swedebeat_mix', 'mowl'],
       outputs: [],
     },
     ...extra,
   }
+}
+
+async function approveButton() {
+  const button = await screen.findByRole('button', { name: 'Approve and create' })
+  await waitFor(() => { expect(button).toBeEnabled() })
+  return button
 }
 
 describe('a studio class whose mix repeats a song', () => {
@@ -76,7 +85,7 @@ describe('a studio class whose mix repeats a song', () => {
     expect(screen.getByTestId('studio-out-mix-only')).toHaveTextContent(
       'This class repeats a song, so it can be produced as a mix only.',
     )
-    expect(screen.getByRole('checkbox', { name: /SwedeBeat mix/ })).toBeEnabled()
+    expect(screen.getByRole('checkbox', { name: /^DJ mix/ })).toBeEnabled()
     expect(screen.getByTestId('studio-consent')).toHaveTextContent('more than once')
   })
 
@@ -88,8 +97,8 @@ describe('a studio class whose mix repeats a song', () => {
     )
     renderAt(PAGE)
     await screen.findByTestId('studio-consent')
-    fireEvent.click(screen.getByRole('checkbox', { name: /SwedeBeat mix/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Approve and create' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /^DJ mix/ }))
+    fireEvent.click(await approveButton())
     await waitFor(() => { expect(api.to('POST', `${CLASS_PATH}/outputs`)).toHaveLength(1) })
     expect(api.to('POST', `${CLASS_PATH}/outputs`)[0]!.body).toEqual({
       revision_id: REV1,
@@ -102,7 +111,7 @@ describe('a studio class whose mix repeats a song', () => {
     fakeApi(routes({ [`POST ${CLASS_PATH}/outputs`]: () => reason(409, 'playlist_has_repeats') }))
     renderAt(PAGE)
     await screen.findByTestId('studio-consent')
-    fireEvent.click(screen.getByRole('button', { name: 'Approve and create' }))
+    fireEvent.click(await approveButton())
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Choose the mix instead of the SwedeBeat playlist.')
     expect(alert).not.toHaveTextContent('playlist_has_repeats')

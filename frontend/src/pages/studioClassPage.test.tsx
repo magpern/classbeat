@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { CLASS_PATH, REV1, REVISE_JOB, classBody, classRoutes } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { CLASS_ID, SESSION_ROUTES, jobBody } from '../test/jobFixtures'
+import { DRAFT_MIX, PREVIEW_PATH, previewBody } from '../test/mixFixtures'
 import { renderAt } from '../test/render'
 
 const PAGE = `/classes/${CLASS_ID}`
@@ -26,6 +27,7 @@ const SWEDEBEAT = {
 const TIMELINE = {
   revision_id: REV1,
   content_hash: HASH,
+  ...DRAFT_MIX,
   duration_sec: 1320,
   workout_sec: 1200,
   tracks: [
@@ -53,12 +55,19 @@ function studioRoutes(extra: Record<string, unknown> = {}) {
     ...classRoutes({ cls: { studio: true } }),
     'GET /api/connections': SWEDEBEAT,
     [`GET ${CLASS_PATH}/timeline`]: TIMELINE,
+    [`POST ${PREVIEW_PATH}`]: previewBody(),
     [`GET ${CLASS_PATH}/outputs`]: {
       enabled_outputs: ['spotify_playlist', 'swedebeat_playlist', 'swedebeat_mix', 'mowl'],
       outputs: [],
     },
     ...extra,
   }
+}
+
+async function approveButton() {
+  const button = await screen.findByRole('button', { name: 'Approve and create' })
+  await waitFor(() => { expect(button).toBeEnabled() })
+  return button
 }
 
 describe('a studio class on the class page', () => {
@@ -79,7 +88,7 @@ describe('a studio class on the class page', () => {
     const spotify = await screen.findByRole('checkbox', { name: /Spotify playlist/ })
     expect(spotify).toBeChecked()
     expect(screen.getByRole('checkbox', { name: /SwedeBeat playlist/ })).toBeChecked()
-    const mix = screen.getByRole('checkbox', { name: /SwedeBeat mix/ })
+    const mix = screen.getByRole('checkbox', { name: /^DJ mix/ })
     const mowl = screen.getByRole('checkbox', { name: /MOWL/ })
     expect(mix).not.toBeChecked()
     expect(mowl).not.toBeChecked()
@@ -98,7 +107,7 @@ describe('a studio class on the class page', () => {
     expect(consent).toHaveTextContent('SwedeBeat has no delete')
     expect(consent).toHaveTextContent('name and email')
     expect(consent).not.toHaveTextContent('merged mix')
-    fireEvent.click(screen.getByRole('checkbox', { name: /SwedeBeat mix/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /^DJ mix/ }))
     expect(screen.getByTestId('studio-consent')).toHaveTextContent('merged mix')
   })
 
@@ -110,7 +119,7 @@ describe('a studio class on the class page', () => {
     )
     renderAt(PAGE)
     await screen.findByTestId('studio-consent')
-    fireEvent.click(screen.getByRole('button', { name: 'Approve and create' }))
+    fireEvent.click(await approveButton())
     await waitFor(() => { expect(api.to('POST', `${CLASS_PATH}/outputs`)).toHaveLength(1) })
     const call = api.to('POST', `${CLASS_PATH}/outputs`)[0]!
     expect(call.body).toEqual({
@@ -125,7 +134,7 @@ describe('a studio class on the class page', () => {
     fakeApi(studioRoutes({ [`POST ${CLASS_PATH}/outputs`]: () => reason(409, why) }))
     renderAt(PAGE)
     await screen.findByTestId('studio-consent')
-    fireEvent.click(screen.getByRole('button', { name: 'Approve and create' }))
+    fireEvent.click(await approveButton())
     const alert = await screen.findByRole('alert')
     expect(alert).not.toHaveTextContent(why)
     expect(alert.textContent?.length).toBeGreaterThan(10)
@@ -324,7 +333,7 @@ describe('a studio class on the class page', () => {
     expect(await screen.findByRole('checkbox', { name: /SwedeBeat playlist/ })).toBeChecked()
     expect(screen.queryByRole('checkbox', { name: /Spotify playlist/ })).toBeNull()
     expect(screen.queryByRole('checkbox', { name: /MOWL/ })).toBeNull()
-    expect(screen.getByRole('checkbox', { name: /SwedeBeat mix/ })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /^DJ mix/ })).not.toBeChecked()
   })
 
   it('says so when no output is enabled', async () => {
@@ -354,7 +363,7 @@ describe('a studio class on the class page', () => {
     fakeApi(studioRoutes())
     renderAt(PAGE)
     expect(await screen.findByText(/24 per day across all your classes/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Approve and create' })).toBeEnabled()
+    await waitFor(() => { expect(screen.getByRole('button', { name: 'Approve and create' })).toBeEnabled() })
     window.sessionStorage.clear()
   })
 })
