@@ -571,6 +571,21 @@ choice, the user applies it: B4 makes a new draft, which can be undone.
   does. This amends ADR 0009 §10. The token never leaves the
   backend.
 
+> **Built in S2 (#1395, 2026-11-21).** `classbeat.classes.preview_spotify` and its routes; the path guard,
+> client and `spotify_call` mode are recorded in ADR 0009 §10's amendment of that date. Choices made there:
+> - `piece_index` is 0-based in play order. The tracks and lengths come from the draft's approved
+>   `song_list` (`music.song_list_id`, its hash and fingerprint re-checked): a draft without one (a class
+>   designed directly on a MOWL link, which stores no Spotify id) is `no_draft`.
+> - The device is the active one of the devices list, else the first; a restricted device or an id of an
+>   unexpected shape is skipped. Device ids never reach the browser (names and types only).
+> - `pause` reads the state first and is sent only while a song of this class plays.
+> - `GET …/state` answers `idle` (nothing plays), `external` (another item; its id is not passed on),
+>   `paused` or `playing`, with the piece indexes of the playing track; `no_device` comes from the devices
+>   list and from an audition. Refusals: 404 `not_found`; 409 `not_connected`, `needs_reconnect`,
+>   `preview_not_granted` (with `action: enable_listening_preview`), `no_draft`, `no_device`,
+>   `premium_or_allowlist` (Spotify's 403); 422 `piece_out_of_range`, `position_out_of_range`; 429
+>   `rate_limited` with `Retry-After`; 503 `upstream_unavailable`.
+
 **7.3 State and drift.**
 
 | Observed | State |

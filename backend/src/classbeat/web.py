@@ -39,6 +39,7 @@ from classbeat.classes.handoff_routes import router as handoff_router
 from classbeat.classes.history import router as history_router
 from classbeat.classes.interpretation_routes import router as interpretation_router
 from classbeat.classes.pending_routes import router as pending_router
+from classbeat.classes.preview_spotify_routes import router as preview_spotify_router
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.classes.song_fill_routes import router as song_fill_router
@@ -77,13 +78,14 @@ from classbeat.spa_routes import add_single_page_app
 from classbeat.spotdown.scope_key import scope_key
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
-from classbeat.swedebeat_studio import config as studio_config
 from classbeat.swedebeat_studio import (  # noqa: F401 - each registers its kind on import
+    apply_kind,  # apply_mix_choices (ADR 0036 amendment B, #1369)
     design_kind,  # studio_design (SR C5)
     outputs_kind,  # produce_outputs (SR C7)
     revise_kind,  # studio_revise (SR C5)
     sync_kind,  # spotify_sync (SR C8)
 )
+from classbeat.swedebeat_studio import config as studio_config
 from classbeat.swedebeat_studio import kind as studio_kind  # noqa: F401 - registers studio_songs
 from classbeat.usage.routes import router as usage_router
 
@@ -276,6 +278,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(pending_router)  # ADR 0038 section 8: pending chat messages
     app.include_router(beat_one_router)  # split out of the classes router
     app.include_router(song_fill_router)  # ADR 0038 section 5: songs into the sketch
+    app.include_router(preview_spotify_router)  # ADR 0042 section 7.2: the Spotify audition
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():

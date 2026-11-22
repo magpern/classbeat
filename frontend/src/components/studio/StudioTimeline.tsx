@@ -7,7 +7,8 @@ import { Chip } from '../ui/chip'
  * The music timeline of a studio draft (ADR 0036 section 5): the songs with their cut points, the
  * crossfades and the intervals, all from the server's composed map. No audio: nothing here plays.
  * A piece that plays a song again is marked with the song it repeats, and the mix's soft hints
- * (a whole track again, one song over half the mix, clashing tempos, a crossfade off the beat) are shown by song number (#1342).
+ * (a whole track again, one song over half the mix, clashing tempos, a crossfade off the beat)
+ * are shown by song number (#1342).
  */
 export function StudioTimeline({ timeline }: { timeline: Timeline }) {
   const t = useT()

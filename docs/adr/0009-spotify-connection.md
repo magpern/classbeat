@@ -399,6 +399,31 @@ fails `consent_missing` before any call. Consent is logged as `job_events`-free 
   response bodies are not logged by any layer; the redaction list of ADR 0004 §7 gains `code`,
   `code_verifier` and `state`, and a caplog test plants each.
 
+> **Amendment, 2026-11-21 (ADR 0042 section 7.2, S2 #1395): the listening preview's player calls.**
+>
+> - **Paths, not only hosts.** The allowlists stay per host. The web process may also send exactly
+>   `PUT /v1/me/player/play` (query `device_id` only; body `uris` with one track and `position_ms`),
+>   `PUT /v1/me/player/pause`, `GET /v1/me/player` and `GET /v1/me/player/devices` on
+>   `api.spotify.com`, and no other player path (no next, previous, seek, queue, volume, shuffle,
+>   repeat or transfer). `classbeat.spotify.player_policy` names them (`PLAYER_CALLS`); a static
+>   guard (`tests/test_spotify_player_guard.py`) refuses a player path named anywhere else or any
+>   other one, and `classbeat.spotify.player_http` checks every built request (method, https, host,
+>   path, query keys) before it is sent, raising `OutboundBlocked` otherwise.
+> - **The client** is the existing `egress.spotify_async_client` (the Spotify allowlist,
+>   `trust_env=False`, no redirects, a total deadline of 5 s per request). No new client.
+> - **A browser-sent id is never used.** The track is rebuilt as `spotify:track:<id>` from the id
+>   of the class's current draft's approved song list (`^[0-9A-Za-z]{22}$`, checked again), the
+>   position is bounded by that song's length, and the `device_id` comes only from the server's own
+>   `GET /v1/me/player/devices` answer. The answers carry the observed state only: never a token,
+>   a device id or another item's track id.
+> - **The player mode of `spotify_call`** (`classbeat.spotify.player_access.player_call`; amends
+>   §6): no `record_result`; a refresh under the row lock only inside the margin (a poll of a fresh
+>   token sends no token request), shielded so it is never cancelled; a 401 forces one refresh
+>   (reused if another caller refreshed) and **one repeat of the same request, a play or pause
+>   included** (a 401 proves nothing was applied, and the command sets the player's state, so a
+>   repeat cannot do more than the first); only a 401 on the repeat flips `needs_reconnect`, under
+>   the conditions of §6 (`id`, `generation`, `wrapped_dek`). 403, 404 and 429 never flip.
+
 ### 11. The Spotify API migration (roadmap §10)
 
 Every Spotify call classbeat makes uses the current shape; nothing calls `/tracks`:

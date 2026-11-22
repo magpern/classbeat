@@ -196,6 +196,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/swap-anyway"): "owned",
     ("POST", "/api/classes/{class_id}/studio-songs/{revision_id}/design"): "owned",  # SR C5
     ("GET", "/api/classes/{class_id}/timeline"): "owned",  # SR C6a
+    ("POST", "/api/classes/{class_id}/mix-choices/preview"): "owned",  # #1369: read-only
     ("POST", "/api/classes/{class_id}/outputs"): "owned",  # SR C6a: the output choice
     ("GET", "/api/classes/{class_id}/outputs"): "owned",  # SR C7: the per-output states
     ("POST", "/api/classes/{class_id}/outputs/{output}/{action}"): "owned",  # SR C7: the actions
@@ -218,6 +219,11 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("DELETE", "/api/classes/{class_id}/beat-one/{song}"): "owned",
     ("DELETE", "/api/classes/{class_id}/beat-one/rows/{row_id}"): "owned",
     ("DELETE", "/api/classes/{class_id}/beat-one"): "owned",
+    # ADR 0042 section 7.2 (#1395): the Spotify Connect audition of a class.
+    ("POST", "/api/classes/{class_id}/preview/spotify/audition"): "owned",
+    ("POST", "/api/classes/{class_id}/preview/spotify/pause"): "owned",
+    ("GET", "/api/classes/{class_id}/preview/spotify/state"): "owned",
+    ("GET", "/api/classes/{class_id}/preview/spotify/devices"): "owned",
     ("GET", "/api/admin/whoami"): "admin",
     ("GET", "/api/admin/users"): "admin",
     ("GET", "/api/admin/users/{user_id}"): "admin",
@@ -833,6 +839,16 @@ OWNED_ROUTES = [
     # SR C6a (test_studio_outputs: another user's class is 404 with the studio on, and asks the
     # gateway nothing).
     OwnedRoute("GET", "/api/classes/{class_id}/timeline", control=frozenset({404})),
+    OwnedRoute(  # #1369 (test_studio_apply_mix_choices: another user's class is 404, studio on)
+        "POST",
+        "/api/classes/{class_id}/mix-choices/preview",
+        lambda rows: {
+            "revision_id": str(rows.revision_id),
+            "content_hash": rows.digest,
+            "choices": {"dj_mix": False, "blend": False, "trim": False},
+        },
+        frozenset({404}),
+    ),
     OwnedRoute(
         "POST",
         "/api/classes/{class_id}/outputs",
@@ -917,6 +933,17 @@ OWNED_ROUTES = [
     ),
     OwnedRoute("DELETE", "/api/classes/{class_id}/beat-one/rows/{row_id}"),
     OwnedRoute("DELETE", "/api/classes/{class_id}/beat-one"),
+    # ADR 0042 section 7.2 (#1395): the planted user has no Spotify connection, so the owner's
+    # call is 409 ``not_connected`` before any Spotify request; a foreign class is 404.
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/preview/spotify/audition",
+        lambda rows: {"piece_index": 0, "position_ms": 0},
+        frozenset({409}),
+    ),
+    OwnedRoute("POST", "/api/classes/{class_id}/preview/spotify/pause", control=frozenset({409})),
+    OwnedRoute("GET", "/api/classes/{class_id}/preview/spotify/state", control=frozenset({409})),
+    OwnedRoute("GET", "/api/classes/{class_id}/preview/spotify/devices", control=frozenset({409})),
     OwnedRoute("DELETE", "/api/auth/sessions/{session_id}", control=frozenset({204})),
     OwnedRoute("DELETE", "/api/auth/identities/{identity_id}", control=frozenset({204, 409})),
     # Passkeys on in this app, so rename reads the id: the owner's own is 200, a foreign one 404
