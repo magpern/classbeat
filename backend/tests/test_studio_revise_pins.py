@@ -14,6 +14,7 @@ from uuid import UUID
 import pytest
 
 from classbeat.design.revision_hash import revision_hash
+from classbeat.design.workout_edit_policy import blocks
 from studiooutputs import (
     choice,
     outputs_on,  # noqa: F401 - fixture
@@ -53,7 +54,8 @@ def spec_of(studio: StudioEnv, revision_id: UUID) -> Any:
 
 async def pinned(studio: StudioEnv) -> tuple[Any, UUID, UUID]:
     """A designed class with piece 0's end pinned and confirmed, and piece 2's end pinned to a
-    bar; the class and its current draft."""
+    bar; the class and its current draft (whose workout the pin edits fitted to the pinned
+    mix)."""
     rider, class_id, _list, proposal = await designed(studio)
     base: object = proposal.current_revision_id
     for op in (
@@ -65,6 +67,18 @@ async def pinned(studio: StudioEnv) -> tuple[Any, UUID, UUID]:
         assert answer.status_code == 200, answer.text
         base = answer.json()["revision_id"]
     return rider, class_id, UUID(str(base))
+
+
+def boundaries(content: dict[str, Any]) -> list[tuple[int, int]]:
+    return [(b.start_ms, b.end_ms) for b in blocks(content)]
+
+
+def stored_design(studio: StudioEnv, class_id: UUID) -> UUID:
+    return studio.songs.sql(
+        "SELECT id FROM class_revisions WHERE class_id = :c "
+        "AND provenance ->> 'origin' = 'design_draft'",
+        c=class_id,
+    ).scalar_one()
 
 
 def with_bad_submits(count: int) -> dict[str, Any]:
@@ -105,6 +119,12 @@ async def test_a_revise_keeps_each_pin_by_its_rule_and_passes_b9(studio: StudioE
         stored.content, mix_spec=spec, overlay=overlay
     )
     assert "pinned by the instructor (confirmed after listening)" in _sent(studio)
+    # The workout is the model's (the same draft as the design), moved onto the PINNED mix and
+    # fitted on its map: exactly the base's, whose pin edits fitted it to that mix. The model's
+    # own mix (its piece 0 whole, 15 s longer) would give the design's timing instead.
+    assert stored.content == studio.songs.revision(base).content
+    design = studio.songs.revision(stored_design(studio, class_id)).content
+    assert boundaries(stored.content) != boundaries(design)
     body = choice(SimpleNamespace(current_revision_id=new), studio, *MIX)
     chosen = await post(rider, class_id, body)
     assert chosen.status_code == 201, chosen.text  # B9: applied_form, no pin to listen to again
