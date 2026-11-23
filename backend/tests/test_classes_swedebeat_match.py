@@ -189,7 +189,22 @@ async def two(browsers: Any, jobs_admin: Connection) -> tuple[Plant, Plant]:
 def clean(response: Any) -> None:
     for bad in (*PLANTED, "threshold", "matcher_version", "song_list_hash", "provenance"):
         assert bad not in response.text, bad
-    assert "0.85" not in response.text  # the matcher threshold's value
+    # The matcher threshold's value, checked on the parsed values: a raw-text search would also
+    # match a timestamp such as "...:12.855963".
+    assert not any(leaf in (0.85, "0.85") for leaf in leaves(response.json()))
+
+
+def leaves(value: Any) -> Iterator[Any]:
+    """Every scalar in a parsed JSON body (dict keys included), depth first."""
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            yield key
+            yield from leaves(inner)
+    elif isinstance(value, list):
+        for inner in value:
+            yield from leaves(inner)
+    else:
+        yield value
 
 
 async def test_the_owner_reads_a_match_with_found_unsure_and_missing(
