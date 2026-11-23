@@ -36,7 +36,7 @@ one builds it twice, what is missing, and the point at which each step is allowe
 | Piece | State | Where |
 |---|---|---|
 | Worker concurrency | exists: `CLASSBEAT_WORKER_CONCURRENCY`, default 2 (1 to 16) running jobs per worker process; the worker's pool is `2n + 2` connections | `config.py`, `worker/loop.py` |
-| Global cap on concurrent mix analyses | exists (#574, merged in #630): `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY`, default 1 (1 to 16). A job that must analyse and holds no slot is requeued with `analysis_slot` (attempt not counted) and `queue_claim` claims it only while fewer than the cap running jobs hold one. The count runs under one advisory lock **in the database, across all workers**; other jobs are claimed past a full cap. Kept below the summed `worker_concurrency` so analyses cannot take every slot | `docker/postgres/queue/20-queue.sql`, `jobs/queue.py`, `tests/test_analysis_slots.py`, `test_queue_functions.py` |
+| Global cap on concurrent mix analyses | exists (#574, merged in #630): `CLASSBEAT_SPOTDOWN_MIX_CONCURRENCY`, default 1 (1 to 16). A job that must analyse and holds no slot is requeued with `spotdown_slot` (attempt not counted) and `queue_claim` claims it only while fewer than the cap running jobs hold one. The count runs under one advisory lock **in the database, across all workers**; other jobs are claimed past a full cap. Kept below the summed `worker_concurrency` so analyses cannot take every slot | `docker/postgres/queue/20-queue.sql`, `jobs/queue.py`, `tests/test_analysis_slots.py`, `test_queue_functions.py` |
 | Per-user daily limit on new analyses | exists (ADR 0016 §7, A4, **not** #577 or #626): 10 per user in 24 hours, taken before the listing, attach and fetch, so a failed fetch counts; a cache hit costs none | `design/mixlimit.py` |
 | Per-user concurrent jobs | exists: `CLASSBEAT_JOBS_PER_USER`, default 3 since M7a (ADR 0005 §2, ADR 0011). Checked when a job is created or approved (`jobs/http.py` through `quota/policies.py`), not in the queue SQL, so it holds unchanged with N workers | `config.py`, `jobs/http.py`, `quota/policies.py` |
 | General API and Save/Update rate limits | exist (#577, merged in #626): per-user and per-IP request windows, saves per hour and per day. They bound the web tier and MOWL writes; they do not bound analysis | `config.py` |
@@ -97,7 +97,7 @@ cache). Add, in follow-up issues (not in this PR):
 - **Measure.** Record for each job that analyses: the queue wait (from `available_at` to the claim
   that holds the analysis slot) and the analysis seconds (fetch and decode, separately), and make
   the p95 of each readable by the admin and by a command like `jobs stats`, without ids and without
-  titles. Queue wait of jobs with and without `analysis_slot` are kept apart. Also a number that
+  titles. Queue wait of jobs with and without `spotdown_slot` are kept apart. Also a number that
   shows analysis CPU hurting the web tier (web request latency during an analysis, or host load).
   The mechanism is chosen in the issue and stays within what the project has (structured log lines
   and a `SECURITY DEFINER` stats function in the style of `queue_stats`); this ADR does not add a
@@ -123,7 +123,7 @@ name, claims are `SKIP LOCKED`, leases and fencing are per job, and the analysis
 the database. To record before use:
 
 - It raises **job** throughput, not **analysis** throughput: the cap is global, so
-  `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY` must be raised as well, the same value on every worker
+  `CLASSBEAT_SPOTDOWN_MIX_CONCURRENCY` must be raised as well, the same value on every worker
   (each worker passes its own value to `queue_claim`), and kept below the summed
   `worker_concurrency`.
 - The database pool is `2n + 2` per worker: N workers need `N * (2 * concurrency + 2)` connections

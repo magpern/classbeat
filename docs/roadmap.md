@@ -112,7 +112,7 @@ classbeat's music-analysis service: [docs/plans/spotdown-integration.md](plans/s
 - **Owner decisions,** each blocking only what it names: #1296 (YouTube terms-of-service risk and
   enablement; blocks SD-P6; accepted 2026-11-20, Amendment 32), #1297 (cross-user reuse of private-source analyses; blocks nothing),
   #1298 (the real-music quality corpus; blocks the default switches), #1299 (retirement; blocks
-  SD-P7c) *(both answered 2026-11-21: no default switch and no fallback to retire, the paths are gone)*, magpern/spotdown#1 (the spotdown ruleset).
+  SD-P7c) *(#1299 answered 2026-11-21: no fallback to retire, the paths are gone; #1298 is still the owner's)*, magpern/spotdown#1 (the spotdown ruleset).
 
 ## Amendment 30 (2026-11-19, owner decision: Spotify playlists are created public; issue #1287)
 
