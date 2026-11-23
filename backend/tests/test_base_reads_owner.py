@@ -8,6 +8,12 @@ run here as the superuser (row-level security does not apply, the way
 draft, with this owner's id: it finds nothing. The control run with the class's own owner finds
 the row, so the plant matches each statement and the empty result is the owner filter's doing.
 A swap (``UPDATE``) runs in a transaction that is rolled back.
+
+Limits (#1462). ``chat._CHAIN`` has an owner clause on its anchor revision and one on its message
+join, and each alone refuses the plant (a class id belongs to one owner): the test fails only when
+both are removed. The owner clause on a walk's recursive step (``chat._CHAIN``, ``chat._STATED``)
+cannot be pinned: the composite key ``(owner_id, parent_id)`` makes another owner's parent
+impossible to store, so no plant reaches it.
 """
 
 import json
@@ -22,7 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from classbeat.classes import spotify_edit_draft
 from classbeat.design import chat, refit, revise_base, spotdown_base
+from classbeat.songs import revise as songs_revise
 from classbeat.songs import revise_brief, revise_phase2
+from classbeat.swedebeat_studio import revise_kind
 from jobtools import digest, new_class, new_job, new_user
 
 pytestmark = pytest.mark.usefixtures("jobs_admin")
@@ -30,11 +38,16 @@ pytestmark = pytest.mark.usefixtures("jobs_admin")
 STATEMENTS: dict[str, TextClause] = {
     "refit._BASE": refit._BASE,  # pyright: ignore[reportPrivateUsage]
     "refit._BASE_MUSIC": refit._BASE_MUSIC,  # pyright: ignore[reportPrivateUsage]
+    "refit._SOURCE": refit._SOURCE,  # pyright: ignore[reportPrivateUsage]
     "refit._CAS": refit._CAS,  # pyright: ignore[reportPrivateUsage]
     "chat._BASE": chat._BASE,  # pyright: ignore[reportPrivateUsage]
+    "chat._STATED": chat._STATED,  # pyright: ignore[reportPrivateUsage]
+    "chat._CHAIN": chat._CHAIN,  # pyright: ignore[reportPrivateUsage]
     "chat._BASE_FOR_RUN": chat._BASE_FOR_RUN,  # pyright: ignore[reportPrivateUsage]
     "revise_base.CAS": revise_base.CAS,
     "spotdown_base._MUSIC": spotdown_base._MUSIC,  # pyright: ignore[reportPrivateUsage]
+    "songs.revise._BASE_LIST": songs_revise._BASE_LIST,  # pyright: ignore[reportPrivateUsage]
+    "revise_kind._BASE_MUSIC": revise_kind._BASE_MUSIC,  # pyright: ignore[reportPrivateUsage]
     "revise_brief._CLASS_BRIEF": revise_brief._CLASS_BRIEF,  # pyright: ignore[reportPrivateUsage]
     "revise_phase2._CAS": revise_phase2._CAS,  # pyright: ignore[reportPrivateUsage]
     "spotify_edit_draft._SELECT": spotify_edit_draft._SELECT,  # pyright: ignore[reportPrivateUsage]
@@ -59,13 +72,22 @@ def plant(admin: Connection) -> dict[str, Any]:
     class_id = new_class(admin, owner)
     job_id = new_job(admin, owner, class_id)
     base = uuid.uuid4()
+    message = uuid.uuid4()  # the request the draft answers (``chat._CHAIN`` reads its body)
+    admin.execute(
+        text(
+            "INSERT INTO class_messages (id, owner_id, class_id, seq, role, body) "
+            "VALUES (:m, :o, :c, 1, 'user', 'a request')"
+        ),
+        {"m": message, "o": owner, "c": class_id},
+    )
+    provenance = {"request_message_id": str(message), "stated": {"layer": "x"}}
     admin.execute(
         text(
             "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, "
             "content_hash, music, provenance) VALUES (:id, :o, :c, 1, 'draft', '{}'::jsonb, "
-            ":h, '{}'::jsonb, '{}'::jsonb)"
+            ":h, '{}'::jsonb, CAST(:p AS jsonb))"
         ),
-        {"id": base, "o": owner, "c": class_id, "h": digest("{}")},
+        {"id": base, "o": owner, "c": class_id, "h": digest("{}"), "p": json.dumps(provenance)},
     )
     admin.execute(
         text("UPDATE classes SET current_revision_id = :r WHERE id = :c"),
@@ -78,6 +100,7 @@ def plant(admin: Connection) -> dict[str, Any]:
         "base": base,
         "id": base,
         "revision_id": base,
+        "n": 5,
         "music_source": json.dumps({"source": "none"}),
     }
 

@@ -90,7 +90,9 @@ def fixed_section(
         elif record.field == "boundary":
             lines.append(f"- {where}: the instructor set its end; keep its end time")
         else:
-            value = json.dumps(record.value)  # JSON: a cue's quotes cannot end the line's prose
+            # JSON: a cue's quotes cannot end the line's prose; not ASCII-escaped, so å ä ö æ ø
+            # reach the prompt as written (as in the base draft JSON)
+            value = json.dumps(record.value, ensure_ascii=False)
             lines.append(f"- {where}: the instructor set {record.field} = {value}")
     if base_spec is not None and base_plan is not None and overlay.pins():
         lines += pin_lines(base_spec, base_plan)
