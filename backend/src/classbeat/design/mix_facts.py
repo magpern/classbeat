@@ -10,7 +10,7 @@ class MixFacts:
     """For the user only: the mix's id and name, the analysed and the listed length, and the
     songs (0-based) whose beat 1 is an estimate. Never model input. From #1304, a map spotdown
     made records ``analyser`` (``spotdown``) and its ``provenance`` record (plan section 4a: kept
-    per class); a local map records neither, so its revision is stored exactly as before."""
+    per class); both are ``None`` only for a revision stored without them."""
 
     mix_id: str
     name: str

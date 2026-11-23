@@ -6,6 +6,7 @@ librosa, numba, llvmlite or scipy, and they are not installed. The render child'
 (numpy, soundfile, soxr) are declared directly, no longer only through mowl-workouts.
 """
 
+import ast
 import importlib.util
 import subprocess
 import sys
@@ -68,3 +69,48 @@ def test_the_render_libraries_are_declared_directly() -> None:
     # never the `analysis` extra
     analysis = [r for r in reqs if canonicalize_name(r.name) == "mowl-workouts" and r.extras]
     assert not analysis
+
+
+# --- no local analysis creeps back (ADR 0040 amendment "spotdown is the only analysis path") ------
+
+SRC = Path(__file__).parents[1] / "src" / "classbeat"
+# The library's own analysis entry points: classbeat never calls one (spotdown analyses every
+# source), and ``mowl.music.require_audio_decoding`` would only work with the ``analysis`` extra.
+LIBRARY_ANALYSIS = ("analyze_signal", "analyze_track", "require_audio_decoding")
+
+
+def _source_files() -> list[Path]:
+    return sorted(SRC.rglob("*.py"))
+
+
+def test_no_source_file_imports_an_analysis_library() -> None:
+    offenders: list[str] = []
+    for path in _source_files():
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            names = (
+                [a.name for a in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module or ""]
+                if isinstance(node, ast.ImportFrom)
+                else []
+            )
+            offenders += [f"{path.name}: {n}" for n in names if n.split(".")[0] in ABSENT]
+    assert not offenders
+
+
+def test_no_source_file_calls_the_librarys_analysis() -> None:
+    offenders: list[str] = []
+    for path in _source_files():
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            called = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            if called in LIBRARY_ANALYSIS:
+                offenders.append(f"{path.name}: {called}")
+    assert not offenders
+
+
+def test_the_deleted_analysis_modules_stay_deleted() -> None:
+    for name in ("design/mixanalysis.py", "design/mixchild.py", "design/track_shadow.py"):
+        assert not (SRC / name).exists(), name

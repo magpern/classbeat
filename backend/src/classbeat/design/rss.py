@@ -1,4 +1,4 @@
-"""Resident memory of a process, for the Swedebeat mix analysis (ADR 0016 section 3): the worker
+"""Resident memory of a process, for the studio render (ADR 0016 section 3, ADR 0036): the worker
 watches its child's RSS and kills it over the limit; the child reports its own peak.
 
 Linux (the image) reads ``/proc/<pid>/statm`` and ``getrusage``; Windows (a developer's machine)

@@ -2,7 +2,7 @@
 Pure: no I/O, no reference.
 
 - ``StudioTrack``: one approved track as the stage holds it: the list's Spotify title and artist,
-  its analysis (``mowl.track``'s map) and its stored timing class (``None`` for a local analysis);
+  its analysis (``mowl.track``'s map) and its stored timing class (``None``: none stored);
   ``facts`` adds the cut candidates stored with a spotdown map (#1328, trust inherited again).
   **No catalogue reference**: the stage names tracks by index, and only the backend maps an index
   back to a reference (``swedebeat_studio.design``).
@@ -56,7 +56,7 @@ class StudioTrack:
     title: str
     artist: str
     music_map: Mapping[str, Any]
-    timing_class: TimingClass | None = None  # the stored decision's; ``None``: a local analysis
+    timing_class: TimingClass | None = None  # the stored decision's; ``None``: none stored
 
     def facts(self) -> TrackFacts:
         return of_map(self.music_map, self.timing_class)

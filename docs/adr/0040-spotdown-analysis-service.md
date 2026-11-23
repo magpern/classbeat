@@ -609,6 +609,7 @@ Notes for operators and the next phases:
   `played_recording`.
 - **(d) Shadow mode** (`CLASSBEAT_SPOTDOWN_SHADOW`, off by default) and its open points are in
   [developer-commands.md](../developer-commands.md) ("spotdown shadow mode for studio tracks").
+  *(Deleted 2026-11-21, #1355: see the amendment "spotdown is the only analysis path".)*
 
 ### Amendment (2026-11-20, owner): #1296 accepted; YouTube for Spotify classes, analysis through spotdown, retention of the global entries
 
@@ -946,7 +947,7 @@ decision.
 2. **An allowlist** (`spotdown.scope_policy.scope_for`, pure): `studio` gets the shared scope;
    `mix` and `upload` get the owner's `cache_scope`; any other kind raises `ScopeRefused`, so a new
    kind is never shared by mistake. Both studio paths use it (the live source,
-   `design.track_spotdown`, and shadow mode, `design.track_shadow`), and the mix path
+   `design.track_spotdown`; shadow mode, `design.track_shadow`, is deleted, #1355), and the mix path
    (`design.mix_spotdown`) asks it for `mix`. The request builder still refuses an upload, a sha256
    lookup or an upload's analysis without a scope (`request_model`, `client`), so nothing private
    or shared ever goes scope-less.
@@ -988,7 +989,7 @@ decision.
 
 Tests: `test_spotdown_scope_policy.py` (the table over kinds, an unknown kind refused),
 `test_spotdown_scope_calc.py` (the shared scope's form), `test_spotdown_client.py` (no scope-less
-upload or lookup), `test_spotdown_studio_job.py` and `test_spotdown_shadow_job.py` (a second owner
+upload or lookup), `test_spotdown_studio_job.py` (a second owner
 reuses the first's analysis without an upload; account deletion leaves the shared scope) and
 `test_spotdown_mix_job.py` (mixes stay per owner, unchanged).
 

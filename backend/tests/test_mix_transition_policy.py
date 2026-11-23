@@ -193,7 +193,7 @@ def test_half_or_double_time_needs_only_the_slower_tracks_downbeats() -> None:
         (track(), track(), 0),  # no overlap: nothing to lock
         (track(timing="approximate"), track(), 8),
         (track(), track(timing="unusable"), 8),
-        (track(), track(timing=None), 8),  # a local analysis has no trusted downbeats
+        (track(), track(timing=None), 8),  # no stored timing decision: no trusted downbeats
         (track(trusted=False), track(), 8),  # the downbeats are hints
         (PLAIN, track(), 8),  # no candidates at all
     ],

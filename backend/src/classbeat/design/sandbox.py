@@ -1,4 +1,4 @@
-"""The confinement the Swedebeat mix analysis child puts on itself before it opens the file
+"""The confinement the studio render child puts on itself before it opens the file
 (ADR 0016 section 3 step 2, threat model T109).
 
 The child runs as the worker's own user, so without this a decoder exploit could read what the
