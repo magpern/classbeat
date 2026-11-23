@@ -36,7 +36,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0078_spotify_offset_corrections"]
+    assert script.get_heads() == ["0079_song_budget_unavailable"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -57,7 +57,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0078_spotify_offset_corrections"]
+        assert applied_revisions(database_url) == ["0079_song_budget_unavailable"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -1418,6 +1418,37 @@ def test_0077_deletes_the_local_mix_maps_and_the_downgrade_restores_the_check(
         assert mixes(owner) == ["back:local", "both:spotdown"]
         with pytest.raises(IntegrityError, match="swedebeat_mix_maps_analyser"):
             put(owner, "y", "mowl")
+    finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0079_renames_the_song_budget_flag_and_the_downgrade_renames_it_back(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1299: ``spotdown_song_budgets.fallback`` is ``unavailable`` (there is no fallback path);
+    the column keeps its type and default, and the downgrade restores the old name."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+    columns = text(
+        "SELECT column_name || ':' || data_type || ':' || column_default "
+        "FROM information_schema.columns WHERE table_name = 'spotdown_song_budgets' "
+        "AND column_name IN ('fallback', 'unavailable')"
+    )
+
+    def flag() -> list[str]:
+        with admin.connect() as connection:
+            return list(connection.execute(columns).scalars())
+
+    try:
+        command.downgrade(config, "base")  # whatever an earlier test left
+        command.upgrade(config, "0078_spotify_offset_corrections")
+        assert flag() == ["fallback:boolean:false"]
+        command.upgrade(config, "head")
+        assert flag() == ["unavailable:boolean:false"]
+        command.downgrade(config, "0078_spotify_offset_corrections")
+        assert flag() == ["fallback:boolean:false"]
     finally:
         admin.dispose()
         command.downgrade(config, "base")

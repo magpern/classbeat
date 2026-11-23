@@ -136,8 +136,8 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # ADR 0040 section 8 (#1302): a design job's spotdown wait budget and outage flag (a
         # time and a boolean): no content; gone with the job (so the class) and the account.
         "spotdown_studio_budgets": _entry("", "", "class", "account"),
-        # ADR 0040 section 8 (#1303): a song job's spotdown match budget (seconds waited, a
-        # fallback flag): no content; gone with the job (so the class) and the account.
+        # ADR 0040 section 8 (#1303): a song job's spotdown match budget (seconds waited, an
+        # unavailable flag): no content; gone with the job (so the class) and the account.
         "spotdown_song_budgets": _entry("", "", "class", "account"),
         # The daily limit of track downloads: no content; a user's rows past 48 hours go with
         # their next one, all with the account.

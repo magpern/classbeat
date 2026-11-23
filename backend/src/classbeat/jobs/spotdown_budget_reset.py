@@ -23,7 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 _RESET = text(
-    "UPDATE spotdown_song_budgets SET spent_seconds = 0, fallback = false "
+    "UPDATE spotdown_song_budgets SET spent_seconds = 0, unavailable = false "
     "WHERE owner_id = :owner_id AND job_id = :job_id"
 )
 _RESET_STUDIO = text(
