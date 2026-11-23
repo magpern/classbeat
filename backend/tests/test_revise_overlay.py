@@ -128,3 +128,14 @@ def test_a_cue_override_is_given_as_json_on_one_line(value: str, checked: bool) 
     assert rest == []  # one statement, nothing the cue could add
     said = line.split(": the instructor set cue = ", 1)[1]
     assert json.loads(said) == value
+
+
+def test_a_cue_with_swedish_and_danish_letters_reaches_the_prompt_unescaped() -> None:
+    """#1462: ``json.dumps`` defaults to ``ensure_ascii=True``, which would give the model
+    ``\\u00e5``; the cue is given as it was typed, like the base draft JSON."""
+    value = "Håll farten, sätt dig ner, öka; æble og ørn"
+    fixed = revise_overlay.fixed_section(BASE, of_records([cue_override(value)]))
+    assert value in fixed
+    assert "\\u" not in fixed
+    said = fixed.rstrip("\n").split(": the instructor set cue = ", 1)[1]
+    assert json.loads(said) == value
