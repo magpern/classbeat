@@ -21,6 +21,7 @@ export const editorEn = {
   'editor.readonly.mix_not_applied':
     'This version came from a chat change, so it no longer matches the music form you chose. Editing is paused. Open the class and either go back to the version before the change or use “Apply these choices”.',
   'editor.readonly.not_editable': 'This version cannot be edited here.',
+  'editor.readonly.map_too_large': 'This class’s music is too large to edit here. You can still change the class from its own page.',
   'editor.readonly.no_proposal': 'This class has no music design to edit. Plan the music again from the class page.',
   'editor.readonly.unsupported': 'This version has a shape the editor does not edit.',
   'editor.readonly.back': 'Open the class',

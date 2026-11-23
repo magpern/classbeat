@@ -3,7 +3,8 @@ No I/O: ``revise_kind`` reads the base's overlay and passes these to the stage
 (``agent.studio_design.StudioBase``), which never sees a catalogue reference.
 
 - ``fixed_section``: the revise message's statement of the instructor's locks and overrides as
-  fixed, each block by segment and interval index and class time, the overridden values given,
+  fixed, each block by segment and interval index and class time, the overridden values given
+  as JSON (``json.dumps``: a cue is the instructor's free text),
   and of the base mix's pinned cuts by track index (``revise_pins.pin_lines``). Anchors name
   recordings, so they are not stated.
 - ``reconciler``: what ``submit_draft`` runs on the model's checked draft. First the overlay's cut
@@ -22,6 +23,7 @@ No I/O: ``revise_kind`` reads the base's overlay and passes these to the stage
   past its bound is ``ToolError("overlay_too_large")``, a correction round.
 """
 
+import json
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -88,7 +90,8 @@ def fixed_section(
         elif record.field == "boundary":
             lines.append(f"- {where}: the instructor set its end; keep its end time")
         else:
-            lines.append(f"- {where}: the instructor set {record.field} = {record.value!r}")
+            value = json.dumps(record.value)  # JSON: a cue's quotes cannot end the line's prose
+            lines.append(f"- {where}: the instructor set {record.field} = {value}")
     if base_spec is not None and base_plan is not None and overlay.pins():
         lines += pin_lines(base_spec, base_plan)
     if not lines:

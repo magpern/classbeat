@@ -20,6 +20,7 @@ export const editorSv: Catalogue = {
   'editor.readonly.mix_not_applied':
     'Den här versionen kommer från en chattändring och stämmer inte längre med den musikform du valde. Redigeringen är pausad. Öppna passet och gå antingen tillbaka till versionen före ändringen eller använd ”Använd dessa val”.',
   'editor.readonly.not_editable': 'Den här versionen kan inte redigeras här.',
+  'editor.readonly.map_too_large': 'Passets musik är för stor för att redigeras här. Du kan fortfarande ändra passet från dess egen sida.',
   'editor.readonly.no_proposal': 'Passet har ingen musikplan att redigera. Planera musiken igen från passets sida.',
   'editor.readonly.unsupported': 'Den här versionen har en form som redigeraren inte redigerar.',
   'editor.readonly.back': 'Öppna passet',

@@ -27,7 +27,13 @@ from classbeat.quota.gates import current_gates
 from classbeat.swedebeat_studio.studio_edit_ops import edited
 
 EDIT_UNAVAILABLE = "edit_unavailable"
-_UNAVAILABLE = frozenset({spotify_edit_draft.NO_SPOTIFY_DRAFT, spotify_edit_draft.EDIT_UNAVAILABLE})
+_UNAVAILABLE = frozenset(
+    {
+        spotify_edit_draft.NO_SPOTIFY_DRAFT,
+        spotify_edit_draft.EDIT_UNAVAILABLE,
+        spotify_edit_draft.MAP_TOO_LARGE,  # the page says why (#1453); an edit stays as before
+    }
+)
 
 
 async def apply(

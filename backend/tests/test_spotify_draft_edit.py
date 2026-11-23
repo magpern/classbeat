@@ -332,8 +332,12 @@ async def test_a_map_past_the_bound_is_not_stored_and_its_draft_stays_read_only(
     class_id, base = await renv.design()  # the design still completes
     [first] = renv.revisions(class_id)
     assert "edit_map" not in first.music
+    assert first.music["edit_map_dropped"] == "map_too_large"  # #1453: the reason is kept
     answer = await edit(renv, class_id, base, {"op": "lock", "block": 0, "scope": "all"})
     assert (answer.status_code, answer.json()["detail"]["reason"]) == (409, "edit_unavailable")
+    # The editor's read says why it is read-only (#1453); still no edit is possible.
+    overlay = await renv.browser.get(f"/api/classes/{class_id}/overlay")
+    assert (overlay.status_code, overlay.json()["detail"]["reason"]) == (409, "map_too_large")
 
 
 async def test_a_refit_stores_the_corrected_map_and_an_edit_of_it_is_checked_against_it(

@@ -103,4 +103,11 @@ describe('a Spotify draft in the editor', () => {
     expect(screen.queryByTestId('editor-toolbar')).toBeNull()
     expect(screen.queryByRole('slider')).toBeNull()
   })
+
+  it('says why a Spotify draft whose map was too large to keep stays read-only (#1453)', async () => {
+    fakeApi(routes({ [`GET ${CLASS_PATH}/overlay`]: () => refusal('map_too_large') }))
+    renderAt(EDIT_PAGE)
+    expect(await screen.findByTestId('readonly-map_too_large')).toHaveTextContent(/music is too large to edit here/)
+    expect(screen.queryByTestId('editor-toolbar')).toBeNull()
+  })
 })

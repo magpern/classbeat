@@ -10,7 +10,9 @@ process reads it back from the revision. Nothing is fetched, so there is no new 
 
 - ``stored`` is the map as a revision keeps it, or ``None`` when it cannot be kept (not JSON, a
   non-finite number, or over ``MAX_BYTES`` as canonical JSON). The draft is then stored without it
-  and its editor is read-only (``edit_unavailable``); a design never fails for it.
+  and its editor is read-only; a design never fails for it. ``fields`` gives the draft's
+  ``edit_map`` and, for a map dropped for its size alone, ``edit_map_dropped`` (``TOO_LARGE``), so
+  the editor says why (``map_too_large``, #1453) instead of ``edit_unavailable``.
 - **What it holds** (ADR 0006 section 6, ADR 0007: a revision holds no Spotify id, title or
   artist): the library map less each track's ``spotify_id``, ``title`` and ``artist``. What stays
   is timing only: the version, the length and crossfade, the songs' sections and the events, and
@@ -27,6 +29,7 @@ from typing import Any, Final, cast
 
 MAX_BYTES: Final = 262144  # as ``SpotdownSections.record``: a stored analysis document
 IDENTITY: Final = ("spotify_id", "title", "artist")  # what names a song: never stored
+TOO_LARGE: Final = "map_too_large"
 
 
 def size(value: object) -> int | None:
@@ -41,8 +44,8 @@ def size(value: object) -> int | None:
         return None
 
 
-def stored(music_map: Mapping[str, Any]) -> dict[str, Any] | None:
-    """``music_map`` as the revision keeps it (a plain copy), or ``None`` (module docstring)."""
+def _stripped(music_map: Mapping[str, Any]) -> dict[str, Any] | None:
+    """A plain copy of ``music_map`` less each track's identity; ``None`` when it is not JSON."""
     try:
         copied = cast(dict[str, Any], json.loads(json.dumps(music_map)))
     except (TypeError, ValueError):
@@ -53,10 +56,31 @@ def stored(music_map: Mapping[str, Any]) -> dict[str, Any] | None:
             if isinstance(track, dict):
                 for key in IDENTITY:
                     cast(dict[str, Any], track).pop(key, None)
-    found = size(copied)
+    return copied
+
+
+def stored(music_map: Mapping[str, Any]) -> dict[str, Any] | None:
+    """``music_map`` as the revision keeps it (a plain copy), or ``None`` (module docstring)."""
+    copied = _stripped(music_map)
+    found = None if copied is None else size(copied)
     if found is None or found > MAX_BYTES:
         return None
     return copied
+
+
+def fields(music_map: Mapping[str, Any], running: bool) -> dict[str, Any]:
+    """A Spotify draft's ``edit_map`` and ``edit_map_dropped`` (module docstring). A running draft
+    keeps no map and names no drop; a map that is not finite JSON names none either (the library
+    never makes one, so it is no reason a user could act on)."""
+    if running:
+        return {"edit_map": None}
+    kept = stored(music_map)
+    if kept is not None:
+        return {"edit_map": kept}
+    copied = _stripped(music_map)
+    found = None if copied is None else size(copied)
+    too_large = found is not None and found > MAX_BYTES
+    return {"edit_map": None, "edit_map_dropped": TOO_LARGE if too_large else None}
 
 
 def restored(edit_map: Mapping[str, Any]) -> dict[str, Any]:

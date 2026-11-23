@@ -13,9 +13,12 @@ this holds, otherwise a reason:
 - ``internal``: the stored ``content_hash`` is no longer ``revision_hash`` of the content and its
   ``edit_overlay`` (the one hash: a revision is immutable, so this never happens without
   tampering), or its overlay does not read;
-- ``edit_unavailable``: the draft has no edit map (a draft made before #1424, a running class, a
-  map past ``revision_edit_map.MAX_BYTES``) or its nearest source of one is not this music. The
-  page opens read-only, as it did for every Spotify draft before.
+- ``map_too_large``: the draft has no edit map because the worker dropped it past
+  ``revision_edit_map.MAX_BYTES`` (``edit_map_dropped``, #1453). The page opens read-only and says
+  so; an edit (``classes.spotify_edit``) answers ``edit_unavailable`` as before;
+- ``edit_unavailable``: the draft has no edit map otherwise (a draft made before #1424, a running
+  class) or its nearest source of one is not this music. The page opens read-only, as it did for
+  every Spotify draft before.
 
 **Where the map is read.** ``music.edit_map`` of the draft itself, else, for a ``user_edit``
 revision (which keeps none), of its nearest ancestor that is not a ``user_edit``
@@ -42,6 +45,7 @@ from classbeat.swedebeat_studio import mix_proposal
 
 NO_SPOTIFY_DRAFT = "no_spotify_draft"
 EDIT_UNAVAILABLE = "edit_unavailable"
+MAP_TOO_LARGE = revision_edit_map.TOO_LARGE
 
 _SELECT = text(
     "SELECT c.current_revision_id AS current, r.kind, r.content, r.content_hash, r.music, "
@@ -100,7 +104,7 @@ async def load(db: AsyncSession, owner_id: UUID, class_id: UUID) -> SpotifyDraft
     if edit_map is None and row.origin == USER_EDIT_ORIGIN:
         edit_map = await _ancestors_map(db, owner_id, class_id, row.current, music.fingerprint)
     if edit_map is None:
-        return EDIT_UNAVAILABLE
+        return MAP_TOO_LARGE if music.edit_map_dropped == MAP_TOO_LARGE else EDIT_UNAVAILABLE
     # The stored map holds no song identity (``revision_edit_map``): neutral stand-ins go back in.
     return SpotifyDraft(
         row.current, stored, content, music, overlay, revision_edit_map.restored(edit_map)

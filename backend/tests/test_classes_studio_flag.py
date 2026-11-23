@@ -46,6 +46,7 @@ def row(**over: Any) -> SimpleNamespace:
         "sport": "cycling",
         "soundless": False,
         "studio": False,
+        "spotify": False,
         "swedebeat_written": False,
         "request": None,
         "song_count": None,
