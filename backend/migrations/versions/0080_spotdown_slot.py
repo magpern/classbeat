@@ -18,7 +18,10 @@ after it commits, and a claim of v6 runs only after it. Until ``db-functions`` i
 worker's claims fail, as on every queue version bump; ``up`` runs it right after ``migrate``.
 
 The downgrade renames it back; pair it with reinstalling ``classbeat-queue v5`` (the queue SQL of
-the commit before this one), whose ``queue_claim`` reads ``analysis_slot``.
+the commit before this one), whose ``queue_claim`` reads ``analysis_slot``. v5 uses ``CREATE OR
+REPLACE``, which cannot rename v6's ``p_spotdown_slots`` parameter back, so drop v6's function
+first (``DROP FUNCTION public.queue_claim(text, integer, text[], integer)``) and then run the v5
+script, in one transaction.
 """
 
 from collections.abc import Sequence

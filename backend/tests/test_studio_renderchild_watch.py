@@ -69,9 +69,10 @@ def probe(used: str, limit: int, sleep: float) -> subprocess.CompletedProcess[st
 
 def test_the_child_ends_itself_once_its_memory_passes_the_limit() -> None:
     done = probe(str(LIMIT + 1), LIMIT, sleep=10.0)
+    # A watcher that polls slower than MAX_POLL raises SystemExit in its own thread, which ends
+    # only that thread (silently), so the process survives and both checks fail.
     assert done.returncode == 3  # EXIT_FAILED
     assert "survived" not in done.stdout  # it ended at once, not after its work
-    assert "poll too slow" not in done.stderr  # and the watcher reads often enough to do so
 
 
 @pytest.mark.parametrize("used", [str(LIMIT), str(LIMIT - 1), "none"])

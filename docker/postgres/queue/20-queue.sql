@@ -306,10 +306,11 @@ END $$;
 -- fails is skipped (and stays locked until this transaction ends), so it cannot stall the queue.
 -- A job with spotdown_slot (it must analyse a mix with spotdown, issue #574) is claimed only
 -- while fewer than p_spotdown_slots running jobs have it; over the cap it stays queued and other
--- jobs are claimed past it. The count runs under one transaction-level advisory lock, taken only for such a job,
--- and in READ COMMITTED (refused otherwise), so it sees every such claim committed before the
--- lock was granted: concurrent claimers never claim more than the cap between them. Only this
--- function moves a job to running, and nothing sets spotdown_slot on a running job.
+-- jobs are claimed past it. The count runs under one transaction-level advisory lock, taken
+-- only for such a job, and in READ COMMITTED (refused otherwise), so it sees every such claim
+-- committed before the lock was granted: concurrent claimers never claim more than the cap
+-- between them. Only this function moves a job to running, and nothing sets spotdown_slot on
+-- a running job.
 -- The claimed event records the claim's queue wait (wait_ms: from the job's available_at, which
 -- every requeue sets, to this claim) and whether the claim holds a spotdown slot, for the stage 1
 -- measurement of ADR 0026 (#735, queue_stats below). The event's key stays ``analysis_slot``:

@@ -276,6 +276,7 @@ audit = [
 ]
 dev = [
     { name = "jsonschema" },
+    { name = "packaging" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -313,6 +314,7 @@ requires-dist = [
 audit = [{ name = "pip-audit", specifier = "==2.10.1" }]
 dev = [
     { name = "jsonschema", specifier = ">=4.26.0" },
+    { name = "packaging", specifier = ">=24" },
     { name = "pyright", specifier = ">=1.1.390" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.25" },

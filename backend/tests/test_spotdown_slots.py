@@ -131,6 +131,25 @@ async def test_a_lost_lease_writes_no_requeue(jenv: JobsEnv) -> None:
     assert "requeued" not in jenv.kinds(job_id)
 
 
+async def test_a_row_that_holds_a_slot_already_is_never_requeued_for_one(jenv: JobsEnv) -> None:
+    # The run was claimed without a slot, but its row has one (a wrong caller, or a bug that set
+    # it on a running job): the requeue matches no row (``AND NOT spotdown_slot``), so nothing is
+    # written and the attempt is not refunded; the run ends as lost, the reaper's job.
+    _, job_id = jenv.job(input=ANALYSE)
+
+    async def run(job_run: JobRun) -> Complete:
+        assert job_run.spotdown_slot is False
+        jenv.sql("UPDATE jobs SET spotdown_slot = true WHERE id = :id", id=job_id)
+        job_run.require_spotdown_slot()
+        return Complete()
+
+    execution = await run_next(jenv, registry_for(run))
+    assert execution.result == "lost"
+    row = jenv.row(job_id)
+    assert (row.state, row.attempt, row.spotdown_slot) == ("running", 1, True)
+    assert "requeued" not in jenv.kinds(job_id)
+
+
 async def test_a_job_holding_a_slot_runs_on_and_frees_it_only_once_stored(jenv: JobsEnv) -> None:
     _, job_id = jenv.job(input=ANALYSE, spotdown_slot=True)
     seen: list[bool] = []
