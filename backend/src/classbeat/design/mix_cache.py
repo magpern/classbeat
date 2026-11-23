@@ -14,7 +14,9 @@ then admitted only ``spotdown``, and made ``provenance`` required (#1299).
   first; else one whose provenance is this build's (``mix_map_model.current_mix_provenance``). A
   base whose row is gone finds no row with its fingerprint, so its revise is told
   ``music_changed`` by the fingerprint check. **A hit makes no request at all.**
-- ``store``: one fenced transaction (the connection and the link held again) upserts the row,
+- ``store``: a map without its provenance is ``internal`` before anything is written (the table's
+  ``NOT NULL``, as ``track_cache.store``); then one fenced transaction (the connection and the
+  link held again) upserts the row,
   drops what is past 30 days and all but the newest ``MAPS_PER_USER`` rows of the user (one row
   per mix), frees the job's analysis slot, marks the job as one that ran a fresh analysis
   (``jobs.mail_handoff``) and records the fetch and analysis times (``jobs.analysis_times``;
@@ -162,8 +164,11 @@ async def store(
     connection_id: UUID,
     timing: Timing,
 ) -> None:
+    if analysis.provenance is None:
+        raise JobFailure("internal")  # the table's NOT NULL (migration 0080), before any write
+    record = json.dumps(analysis.provenance, separators=(",", ":"), allow_nan=False)
     async with run.fenced() as fs:
-        await _store_row(fs, run, opened, analysis, connection_id)
+        await _store_row(fs, run, opened, analysis, connection_id, record)
         await run.release_analysis_slot(fs)  # #574: the slot is free once this commits
         await mail_handoff.note_fresh_analysis(fs)  # ME5: the job ran a fresh analysis
         # ADR 0026 stage 1 (#735): for the p95 of ``queue_stats()``.
@@ -177,13 +182,9 @@ async def _store_row(
     opened: OpenConnection,
     analysis: MixAnalysis,
     connection_id: UUID,
+    record: str,
 ) -> None:
     payload = json.dumps(analysis.music_map, separators=(",", ":"), allow_nan=False)
-    provenance = (
-        None
-        if analysis.provenance is None
-        else json.dumps(analysis.provenance, separators=(",", ":"), allow_nan=False)
-    )
     owner = run.lease.owner_id
     if not await hold(fs.db, run.ctx, opened):
         raise JobFailure("not_connected")
@@ -201,7 +202,7 @@ async def _store_row(
             "duration": analysis.duration,
             "listed": analysis.listed_duration,
             "map": payload,
-            "provenance": provenance,
+            "provenance": record,
         },
     )
     await fs.db.execute(_EXPIRE, {"owner_id": owner, "days": MAP_TTL_DAYS})

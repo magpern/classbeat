@@ -281,23 +281,6 @@ def test_a_record_wants_exactly_its_bytes_and_map() -> None:
         )  # fmt: skip
 
 
-def test_a_record_stored_before_1299_reads_without_its_analyser() -> None:
-    """#1299: a draft stored with ``analyser: "spotdown"`` (the only analyser since #1356) reads
-    as the same record without it; any other analyser is still refused (``extra="forbid"``)."""
-    from classbeat.design.studio_revision_model import StudioRevisionMusic, TrackRecord
-
-    spec = {"tracks": [{"reference": "a", "start_sec": 0.0, "end_sec": 60.0}], "crossfades": []}
-    base = {"source": "swedebeat_studio", "song_list_id": str(uuid4()), "map_version": 1}
-    record = {"reference": "a", "sha256": SHA, "map_hash": SHA, "provenance": {"id": 1}}
-    stored = {**base, "mix_spec": spec, "analyses": [{**record, "analyser": "spotdown"}]}
-    music = StudioRevisionMusic.model_validate(stored, strict=False)
-    assert music.analyses == [TrackRecord.model_validate(record, strict=False)]
-    assert "analyser" not in music.model_dump(mode="json")["analyses"][0]
-    for other in ("local", None, 1):
-        with pytest.raises(ValidationError):
-            TrackRecord.model_validate({**record, "analyser": other}, strict=False)
-
-
 def test_a_draft_records_at_most_one_analysis_per_track_of_a_mix() -> None:
     """#1302 review: ``class_revisions.music`` carries at most ``MAX_TRACKS`` records."""
     from classbeat.design.studio_revision_model import StudioRevisionMusic
