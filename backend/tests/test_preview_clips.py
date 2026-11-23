@@ -46,7 +46,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
     spotdown,  # noqa: F401 - the fake spotdown that stand-in answers from
 )
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "volume", "renders")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default", "volume", "renders")
 
 
 def delivered(studio: StudioEnv, session: str) -> int:

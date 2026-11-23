@@ -25,7 +25,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
 from test_user_edit_revise import CUT, edited, revised
 from test_user_edit_routes import edit, revision_count
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default")
 
 LOCK = {"op": "lock", "block": 1, "scope": "attributes"}  # no timing: Apply may move it
 

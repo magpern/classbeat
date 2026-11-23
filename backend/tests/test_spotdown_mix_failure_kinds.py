@@ -23,7 +23,7 @@ from test_swedebeat_fetch import add_beats, env, leftovers, operator_log, work
 
 __all__ = ["env", "operator_log", "spotdown", "work", "xenv"]  # the fixtures
 
-pytestmark = pytest.mark.usefixtures("mowl_api", "analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("mowl_api", "spotdown_slot_by_default")
 KEY = bytes(range(32))
 UPLOAD_ON = TracksConfig(KEY)
 

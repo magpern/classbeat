@@ -37,7 +37,7 @@ from test_evals_studio_spotdown import document
 from test_swedebeat_studio_songs import ALL_POOL, _sent  # pyright: ignore[reportPrivateUsage]
 
 __all__ = ["spotdown"]  # the fixture
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default")
 LENGTH = 240.0
 MIX_8 = {
     "tracks": [{"track": n, "start_sec": 0, "end_sec": LENGTH} for n in (1, 0, 2, 3, 4, 5, 6, 7)],
@@ -91,7 +91,7 @@ def analysed(spotdown: FakeSpotdown, monkeypatch: pytest.MonkeyPatch) -> Iterato
 
 
 async def run_kind(studio: StudioEnv, job_id: UUID) -> Any:
-    """Claim and run the job until it is no longer queued (a requeue for an analysis slot)."""
+    """Claim and run the job until it is no longer queued (a requeue for a spotdown slot)."""
     songs = studio.songs
     registry = KindRegistry()
     registry.register(STUDIO_DESIGN)

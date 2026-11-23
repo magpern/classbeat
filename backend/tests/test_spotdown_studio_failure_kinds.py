@@ -27,7 +27,7 @@ from spotdownstudioharness import ONE, TWO, Harness, env, harness, work
 
 __all__ = ["env", "harness", "spotdown", "work"]  # the fixtures
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default")
 KEY = bytes(range(32))
 UPLOAD_ON = TracksConfig(KEY)
 

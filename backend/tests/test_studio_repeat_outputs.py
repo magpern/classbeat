@@ -45,7 +45,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
     start_design,
 )
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default", "outputs_on")
 
 # The eight approved tracks as MIX_8 plays them, then track 1 again for 90 s (not next to itself).
 MIX_REPEAT: dict[str, Any] = {

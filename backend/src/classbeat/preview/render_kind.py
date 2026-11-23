@@ -7,7 +7,7 @@ the clip endpoint (``classes.preview_clips``), never by the jobs API or a model:
 ``preview_class_id`` (migration 0072: an owner-inclusive foreign key, ``ON DELETE CASCADE``), so it
 is outside ``jobs_one_open_per_class``: an edit, an undo or another job of the class goes on while a
 clip renders. It is bounded instead by the per-owner rate limits of the clip endpoint
-(``session_policy``), the lease and fencing of ADR 0005, and an **analysis slot** (#574: a render is
+(``session_policy``), the lease and fencing of ADR 0005, and a **spotdown slot** (#574: a render is
 as heavy as an analysis), which also makes it yield to the queue's other work.
 
 1. **check** (one fenced read): the studio on and the preview volume configured (``feature_off``);
@@ -17,7 +17,7 @@ as heavy as an analysis), which also makes it yield to the queue's other work.
    window and this worker's renderer identity). A window or key that is not the input's ends the
    job ``invalid_input`` with nothing stored: the audio changed since the request (a workout-only
    edit keeps the key). A clip already stored under the key ends it at once.
-2. **sources**: an analysis slot, the draft's SwedeBeat connection's bearer
+2. **sources**: a spotdown slot, the draft's SwedeBeat connection's bearer
    (``open_match_bearer``), then each distinct track from the per-owner source cache or
    **downloaded fresh** with the gateway's read-only download and its existing caps
    (``sources.gather``). **No external write.**
@@ -155,7 +155,7 @@ async def run(job_run: JobRun) -> Complete:
         return Complete()  # a twin job rendered it meanwhile
     if found.connection_id is None:
         raise JobFailure("not_connected")
-    job_run.require_analysis_slot()  # #574: requeued with one, the attempt not counted
+    job_run.require_spotdown_slot()  # #574: requeued with one, the attempt not counted
     cfg = match_config.current()
     bearer = await open_match_bearer(job_run, cfg, UUID(found.connection_id))
     if cfg.swedebeat_gateway_key is None:  # pragma: no cover - checked by the open

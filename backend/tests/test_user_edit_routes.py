@@ -21,7 +21,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
     spotdown,  # noqa: F401 - the fake spotdown the stand-in answers from
 )
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default", "outputs_on")
 
 
 async def edit(rider: StudioRider, class_id: UUID, base: object, op: dict[str, Any]) -> Any:

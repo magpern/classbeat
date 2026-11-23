@@ -3,7 +3,7 @@
 Up to ``worker_concurrency`` runs as asyncio tasks. When a slot is free the loop calls
 ``queue_claim``, woken by ``LISTEN jobs_queued`` (``classbeat.worker.listen``) or a poll every
 ``worker_poll_seconds``; a job that must analyse a mix is claimed only while fewer than
-``mix_analysis_concurrency`` running jobs hold an analysis slot (#574). It claims nothing until
+``spotdown_mix_concurrency`` running jobs hold a spotdown slot (#574). It claims nothing until
 the queue check of a connection has passed (``queue_verified``). Every
 ``worker_maintenance_seconds`` it runs the reaper, the expiry sweep and the credit settle; the
 hourly auth purge stays.
@@ -181,7 +181,7 @@ class Worker:
                 self.id,
                 self.settings.job_lease_seconds,
                 kinds,
-                self.settings.mix_analysis_concurrency,
+                self.settings.spotdown_mix_concurrency,
             )
             if row is None:
                 break

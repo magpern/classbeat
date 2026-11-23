@@ -3,7 +3,7 @@
 Started by the test with ``sys.executable`` and killed with ``SIGKILL``, as ``docker kill`` ends a
 container of ``docker compose up --scale worker=2``: its own interpreter, engine, pool and worker
 id against the test's database. It runs the real ``classbeat.worker.loop.Worker`` with the drill's
-test kind: a job with the note ``analyse`` takes a mix-analysis slot and then sleeps (holding the
+test kind: a job with the note ``analyse`` takes a spotdown slot and then sleeps (holding the
 slot, its lease kept alive by the heartbeat) until the process is killed; any other job completes.
 It prints its worker id once and only talks to the loopback database named in
 ``DRILL_DATABASE_URL``: it installs the same ``netguard`` as the test process, so a non-loopback
@@ -29,7 +29,7 @@ async def _run(job_run: JobRun) -> Complete:
     assert isinstance(given, KindInput)
     await job_run.stage("pick")
     if given.note == "analyse":
-        job_run.require_analysis_slot()
+        job_run.require_spotdown_slot()
         await asyncio.sleep(3600)  # killed here, holding the slot
     return Complete()
 
@@ -40,7 +40,7 @@ async def main() -> None:
         job_lease_seconds=30,
         worker_poll_seconds=0.1,
         worker_concurrency=2,
-        mix_analysis_concurrency=1,
+        spotdown_mix_concurrency=1,
     )
     engine = create_engine(settings)
     worker = Worker(settings, engine, registry=registry_for(_run), ledger=CountingLedger())

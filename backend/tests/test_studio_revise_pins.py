@@ -34,7 +34,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
 from test_swedebeat_studio_songs import _sent  # pyright: ignore[reportPrivateUsage]
 from test_user_edit_routes import current_id, edit, overlay_of, revision_count
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default", "outputs_on")
 
 MIX = ("swedebeat_playlist", "swedebeat_mix")
 PINNED = 225.0  # piece 0's end (list track 1), pinned exact and confirmed

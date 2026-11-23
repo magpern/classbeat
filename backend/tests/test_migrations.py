@@ -36,7 +36,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0079_song_budget_unavailable"]
+    assert script.get_heads() == ["0080_spotdown_slot"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -57,7 +57,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0079_song_budget_unavailable"]
+        assert applied_revisions(database_url) == ["0080_spotdown_slot"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -349,8 +349,8 @@ def test_0031_oauth_sign_up_purpose_up_and_down(
 def test_0032_analysis_slot_up_and_down(
     owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """#574: ``jobs.analysis_slot`` exists at head, false by default and never NULL; the
-    downgrade drops it."""
+    """#574: ``jobs.analysis_slot`` exists from 0032, false by default and never NULL; the
+    downgrade drops it. (0080 renames it ``spotdown_slot``, tested below.)"""
     monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
     config = alembic_config()
     admin = create_engine(database_url)
@@ -365,13 +365,14 @@ def test_0032_analysis_slot_up_and_down(
             ).first()
 
     try:
-        command.upgrade(config, "head")
+        command.downgrade(config, "base")  # whatever an earlier test left
+        command.upgrade(config, "0032_analysis_slot")
         found = column()
         assert found is not None
         assert tuple(found) == ("boolean", "NO", "false")
         command.downgrade(config, "0031_oauth_sign_up_purpose")
         assert column() is None
-        command.upgrade(config, "head")
+        command.upgrade(config, "0032_analysis_slot")
         assert column() is not None
     finally:
         admin.dispose()
@@ -1449,6 +1450,53 @@ def test_0079_renames_the_song_budget_flag_and_the_downgrade_renames_it_back(
         assert flag() == ["unavailable:boolean:false"]
         command.downgrade(config, "0078_spotify_offset_corrections")
         assert flag() == ["fallback:boolean:false"]
+    finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0080_renames_the_slot_flag_and_keeps_its_rows_and_the_downgrade_renames_it_back(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1299: ``jobs.analysis_slot`` is ``spotdown_slot`` (the slot caps concurrent spotdown mix
+    analyses); the column keeps its type, default, NOT NULL and every row's value, and the
+    downgrade restores the old name with the values."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+    columns = text(
+        "SELECT column_name || ':' || data_type || ':' || is_nullable || ':' || column_default "
+        "FROM information_schema.columns WHERE table_name = 'jobs' "
+        "AND column_name IN ('analysis_slot', 'spotdown_slot')"
+    )
+
+    def flag() -> list[str]:
+        with admin.connect() as connection:
+            return list(connection.execute(columns).scalars())
+
+    def held(column: str, ids: list[Any]) -> list[bool]:
+        with admin.connect() as connection:
+            return [
+                connection.execute(
+                    text(f"SELECT {column} FROM jobs WHERE id = :id"),  # noqa: S608
+                    {"id": job_id},
+                ).scalar_one()
+                for job_id in ids
+            ]
+
+    try:
+        command.downgrade(config, "base")  # whatever an earlier test left
+        command.upgrade(config, "0079_song_budget_unavailable")
+        assert flag() == ["analysis_slot:boolean:NO:false"]
+        with admin.begin() as connection:
+            owner = new_user(connection)
+            ids = [new_job(connection, owner, analysis_slot=slot) for slot in (True, False)]
+        command.upgrade(config, "head")
+        assert flag() == ["spotdown_slot:boolean:NO:false"]
+        assert held("spotdown_slot", ids) == [True, False]
+        command.downgrade(config, "0079_song_budget_unavailable")
+        assert flag() == ["analysis_slot:boolean:NO:false"]
+        assert held("analysis_slot", ids) == [True, False]
     finally:
         admin.dispose()
         command.downgrade(config, "base")
