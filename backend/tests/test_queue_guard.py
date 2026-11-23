@@ -84,6 +84,36 @@ def test_the_script_is_idempotent(admin: Connection, database_url: str) -> None:
     assert check_queue(admin) == []
 
 
+async def test_the_script_replaces_a_v5_claim_whose_parameter_had_the_old_name(
+    admin: Connection, database_url: str, app_database_url: str
+) -> None:
+    """#1299: a database upgraded from ``classbeat-queue v5`` holds ``queue_claim`` with
+    ``p_analysis_slots``, which ``CREATE OR REPLACE`` cannot rename; the script drops it first, so
+    ``db-functions`` installs v6 over it and the checks pass."""
+    admin.execute(text(f"DROP FUNCTION {CLAIM_SIG}"))
+    admin.execute(
+        text(
+            "CREATE FUNCTION public.queue_claim(p_worker text, p_lease_seconds integer, "
+            "p_kinds text[], p_analysis_slots integer) "
+            "RETURNS TABLE (job_id uuid, owner_id uuid, lease_version bigint) "
+            "LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp "
+            "AS $$ BEGIN RETURN; END $$"
+        )
+    )
+    admin.execute(text(f"ALTER FUNCTION {CLAIM_SIG} OWNER TO classbeat_queue"))
+    admin.execute(text(f"COMMENT ON FUNCTION {CLAIM_SIG} IS 'classbeat-queue v5'"))
+    try:
+        assert any("queue_claim" in problem for problem in check_queue(admin))
+    finally:
+        install_queue(database_url)
+    arguments = admin.execute(
+        text(f"SELECT pg_get_function_identity_arguments('{CLAIM_SIG}'::regprocedure)")
+    ).scalar_one()
+    assert arguments.endswith("p_spotdown_slots integer"), arguments
+    assert check_queue(admin) == []
+    assert await startup_and_connection_problems(app_database_url) == ("", "")
+
+
 DRIFT = [
     ("GRANT EXECUTE ON FUNCTION public.queue_stats() TO PUBLIC", "queue_stats"),
     ("GRANT EXECUTE ON FUNCTION public.queue_stats() TO classbeat_owner", "queue_stats"),

@@ -4,7 +4,7 @@
 only analysis path, #1353). Never the network: the autouse netguard refuses any other connection.
 
 - a fresh analysis downloads each track once, stores its map with the SHA-256 of the bytes and
-  leaves no audio; a cache hit makes no download (and needs no analysis slot);
+  leaves no audio; a cache hit makes no download (and needs no spotdown slot);
 - the audio directory is gone after a success and after every failure;
 - the size cap, a missing file, the daily limit and the gateway's statuses end in
   named categories, with nothing stored.
@@ -43,7 +43,7 @@ from studiomaps import track_map as studio_track_map
 from test_evals_studio_spotdown import document
 
 __all__ = ["spotdown"]  # the fixture
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default")
 ONE, TWO = "trk-one-01", "trk-two-02"
 AUDIO = kick_wav_bytes(30.0)  # a 124 BPM kick track; WAV bytes served as audio/mpeg
 
@@ -175,7 +175,7 @@ async def test_each_track_is_downloaded_analysed_stored_and_its_audio_deleted(
     row = await harness.run(owner, [ONE, TWO, ONE])
     assert at_store == [[], []]
     assert (row.state, row.error_category) == ("completed", None)
-    assert row.analysis_slot is False  # freed with the last store
+    assert row.spotdown_slot is False  # freed with the last store
     (result,) = harness.results
     assert [t.reference for t in result] == [ONE, TWO]  # in order, once each
     assert [t.cached for t in result] == [False, False]
@@ -196,13 +196,13 @@ async def test_each_track_is_downloaded_analysed_stored_and_its_audio_deleted(
     assert harness.downloads(owner) == 2  # the daily slots of the two misses
 
 
-async def test_a_cache_hit_makes_no_download_and_needs_no_analysis_slot(
+async def test_a_cache_hit_makes_no_download_and_needs_no_spotdown_slot(
     harness: Harness, work: Path
 ) -> None:
     owner = await harness.user()
     await harness.run(owner, [ONE])
     seen = list(harness.gateway.requests)
-    row = await harness.run(owner, [ONE], analysis_slot=False)
+    row = await harness.run(owner, [ONE], spotdown_slot=False)
     assert (row.state, row.error_category) == ("completed", None)
     assert [t.cached for t in harness.results[-1]] == [True]
     assert harness.results[-1][0].music_map == harness.results[0][0].music_map
@@ -240,8 +240,8 @@ async def test_a_miss_without_a_slot_is_requeued_before_any_slot_or_download(
     harness: Harness,
 ) -> None:
     owner = await harness.user()
-    row = await harness.run(owner, [ONE], analysis_slot=False)
-    assert (row.state, row.analysis_slot) == ("queued", True)
+    row = await harness.run(owner, [ONE], spotdown_slot=False)
+    assert (row.state, row.spotdown_slot) == ("queued", True)
     assert (harness.fetched(), harness.downloads(owner), harness.maps(owner)) == ([], 0, [])
 
 
@@ -357,12 +357,12 @@ async def test_a_run_holds_the_slot_for_one_batch_then_is_requeued_for_the_rest(
     )
     await harness.ops.run_next()
     row = harness.ops.row(job_id)
-    assert (row.state, row.analysis_slot) == ("queued", True)  # requeued, the attempt not counted
+    assert (row.state, row.spotdown_slot) == ("queued", True)  # requeued, the attempt not counted
     assert harness.fetched() == [route(ONE)]
     assert [m.reference for m in harness.maps(owner)] == [ONE]
     await harness.ops.run_next()
     row = harness.ops.row(job_id)
-    assert (row.state, row.error_category, row.analysis_slot) == ("completed", None, False)
+    assert (row.state, row.error_category, row.spotdown_slot) == ("completed", None, False)
     assert harness.fetched() == [route(ONE), route(TWO)]  # ONE was not downloaded again
     assert [t.cached for t in harness.results[-1]] == [True, False]
     assert harness.downloads(owner) == 2

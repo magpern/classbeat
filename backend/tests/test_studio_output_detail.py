@@ -34,7 +34,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
     spotdown,  # noqa: F401 - the fake spotdown that stand-in answers from
 )
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default")
 OLD_MAX_DETAIL_BYTES = 32768
 LONG_URL = "https://" + "h" * (wp.MAX_URL - len("https://") - 6) + "/x.mp3"
 

@@ -53,7 +53,7 @@ from test_swedebeat_fetch import (
 
 __all__ = ["env", "operator_log", "spotdown", "work"]  # the fixtures
 
-pytestmark = pytest.mark.usefixtures("mowl_api", "analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("mowl_api", "spotdown_slot_by_default")
 KEY = bytes(range(32))
 NAME = "Planted Mix Name q9z"
 UPLOAD_ON = TracksConfig(KEY)

@@ -7,7 +7,7 @@ pattern): at most ``DOWNLOADS_PER_DAY`` per user in any 24 hours, because each o
 run's misses, so a class's tracks are analysed together or not at all; then ``reserve`` adds **one
 row right before each download** (in the fenced transaction that extends the lease for it), so a
 failed download counts too, and a retried run (``upstream_unavailable``, a lost lease, a requeue
-for an analysis slot) reserves only the downloads it starts again, never the whole list once more
+for a spotdown slot) reserves only the downloads it starts again, never the whole list once more
 (SR C5, the C4 review's carry-over). Both run under a per-user advisory lock, so two runs of one
 user never both take the last slots. The rows are not the maps: a forgotten analysis, a reconnect
 or a Disconnect never gives the user a fresh day.

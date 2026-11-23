@@ -46,7 +46,7 @@ from test_swedebeat_design import (
 
 __all__ = ["env", "menv", "spotdown", "work"]  # the fixtures
 
-pytestmark = pytest.mark.usefixtures("jenv", "mowl_api", "analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("jenv", "mowl_api", "spotdown_slot_by_default")
 KEY = bytes(range(32))
 SONGS = [(0.0, 75.0, 124.0), (75.0, SECONDS, 126.0)]
 

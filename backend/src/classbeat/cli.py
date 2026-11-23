@@ -4,7 +4,7 @@
 
 ``jobs stats`` prints the queue's counts (``queue_stats()``, ADR 0005 section 7's admin seam: per
 job state and of ``uncertain`` external operations, no ids) and the stage 1 measurement of ADR 0026
-(#735): the p95 queue wait of claims with and without an analysis slot, at the peak hour, and of
+(#735): the p95 queue wait of claims with and without a spotdown slot, at the peak hour, and of
 the analyses' fetch and decode, over the last seven days; ``-`` where there are too few samples.
 
 ``oidc keys`` and ``admin player-subject`` (ADR 0034) live in ``classbeat.oidc_cli``.

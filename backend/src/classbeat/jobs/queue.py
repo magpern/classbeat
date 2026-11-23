@@ -26,17 +26,17 @@ async def claim(
     worker: str,
     lease_seconds: int,
     kinds: Sequence[str],
-    analysis_slots: int = 1,
+    spotdown_slots: int = 1,
 ) -> Claimed | None:
-    """The next job of ``kinds``; a job with ``analysis_slot`` only while fewer than
-    ``analysis_slots`` running jobs have one (``CLASSBEAT_MIX_ANALYSIS_CONCURRENCY``, #574)."""
+    """The next job of ``kinds``; a job with ``spotdown_slot`` only while fewer than
+    ``spotdown_slots`` running jobs have one (``CLASSBEAT_SPOTDOWN_MIX_CONCURRENCY``, #574)."""
     if not kinds:
         return None
     params = {
         "worker": worker,
         "lease": lease_seconds,
         "kinds": list(kinds),
-        "slots": analysis_slots,
+        "slots": spotdown_slots,
     }
     async with system_session(factory) as db:
         row = (await db.execute(_CLAIM, params)).first()

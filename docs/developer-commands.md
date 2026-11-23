@@ -288,22 +288,23 @@ and maintenance, so at most 50), `CLASSBEAT_WORKER_POLL_SECONDS` (2; the claim p
 `CLASSBEAT_WORKER_SHUTDOWN_WAIT_SECONDS` (25, inside compose's `stop_grace_period: 30s`),
 `CLASSBEAT_APPROVAL_TTL_HOURS` (168), `CLASSBEAT_JOB_BUSY_REQUEUE_LIMIT` (5 `operation_busy`
 requeues per phase without an attempt), `CLASSBEAT_JOBS_PER_USER` (3 queued or running jobs, the upper bound of every plan: Free 1, Individual 2, Professional 3;
-the jobs API answers 429 above it) and `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY` (1, 1 to 16; #574: running
-jobs that may analyse a Swedebeat mix, across every worker). Keep it below
+the jobs API answers 429 above it) and `CLASSBEAT_SPOTDOWN_MIX_CONCURRENCY` (1, 1 to 16; #574: running
+jobs that may analyse a mix with spotdown, across every worker; named `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY`
+before #1299, which is no longer read: rename it in an existing `.env`). Keep it below
 `CLASSBEAT_WORKER_CONCURRENCY` summed over all workers, or analyses can take every worker slot
 and delay design jobs. A run that must analyse (a cache miss in
 `swedebeat_music.open_swedebeat_mix`, before the daily slot is taken) and holds no slot stops
-(`JobRun.require_analysis_slot`) and its job goes back to `queued` with `jobs.analysis_slot` (migration
-0032), the attempt not counted, and a `requeued` event `{"reason": "analysis_slot"}` (what #572 shows as
-"waiting for a free slot"). `queue_claim(worker, lease, kinds, analysis_slots)` (queue v3; v5 adds the wait to its event) claims such a job
+(`JobRun.require_spotdown_slot`) and its job goes back to `queued` with `jobs.spotdown_slot` (migration
+0032; `analysis_slot` until migration 0080), the attempt not counted, and a `requeued` event `{"reason": "analysis_slot"}` (a recorded value that keeps its name; what #572 shows as
+"waiting for a free slot"). `queue_claim(worker, lease, kinds, spotdown_slots)` (queue v3; v5 adds the wait to its event; v6 renames the parameter `p_spotdown_slots`) claims such a job
 only while fewer running jobs hold a slot than the cap, counted under one advisory lock in READ COMMITTED,
 and claims other jobs past it, so analyses never fill every worker slot; the transaction that stores the
 analysis (or finds it cached) frees the slot and wakes the workers. A slot job whose lease expired keeps
 its slot until the reaper requeues it. Tests: `tests/test_queue_functions.py` (the claim, the race) and
-`tests/test_analysis_slots.py` (the requeue, the release, two workers).
+`tests/test_spotdown_slots.py` (the requeue, the release, two workers).
 
 **Measuring analysis load (ADR 0026 stage 1, #735).** Every claim's `claimed` event records its queue
-wait and whether it holds an analysis slot: `{"attempt", "analysis_slot", "wait_ms"}` (queue v5), the
+wait and whether it holds a spotdown slot: `{"attempt", "analysis_slot", "wait_ms"}` (queue v5; the key keeps its name), the
 wait from the job's `available_at` to that claim. Every requeue sets `available_at` (the slot requeue to
 now, a retry or the reaper to the end of its backoff), so a requeued job's next claim measures its own
 wait; `jobs.started_at` keeps the first claim only and is not used. The transaction that stores a fresh
@@ -316,7 +317,7 @@ days**, all users together, in milliseconds (`-` when there are too few samples)
 
 | Metric | What |
 |---|---|
-| `claim_wait_slot_samples_7d`, `claim_wait_slot_p95_ms_7d` | claims holding an analysis slot (the wait for the cap) |
+| `claim_wait_slot_samples_7d`, `claim_wait_slot_p95_ms_7d` | claims holding a spotdown slot (the wait for the cap) |
 | `claim_wait_other_samples_7d`, `claim_wait_other_p95_ms_7d` | every other claim (design jobs, a job's first claim before its slot requeue) |
 | `claim_wait_slot_peak_hour_utc`, `claim_wait_slot_peak_samples`, `claim_wait_slot_peak_p95_ms` | slot claims **at peak** (below) |
 | `analysis_samples_7d`, `analysis_fetch_p95_ms_7d`, `analysis_decode_p95_ms_7d` | stored fresh analyses: the fetch and the decode |
@@ -332,7 +333,7 @@ show these (it reads as `classbeat_maint`, which has no grant on `queue_stats()`
 `tests/test_swedebeat_fetch.py` (the timings of a fresh analysis, none for a cache hit).
 
 **Two workers (ADR 0026 stage 2, `--scale worker=N`).** `tests/test_two_workers.py` is the drill: a
-second real worker process (`tests/drill_worker.py`) holds the only analysis slot while an in-process
+second real worker process (`tests/drill_worker.py`) holds the only spotdown slot while an in-process
 worker runs every design job and claims none of the waiting analyses; the process is killed with
 `SIGKILL`, its job is reaped under a new token (a write under the old one is refused) and finished by
 the other worker, every job completes once and no more than one analysis ever runs. The operator's
@@ -343,14 +344,14 @@ docker compose up -d --scale worker=2 --wait         # two worker containers, on
 docker compose ps worker                             # two, each with its own host name (the worker id)
 # start two designs on uncached Swedebeat mixes from two accounts (dev: the e2e fakes), then:
 docker compose exec db psql -U postgres -d classbeat -c \
-  "SELECT count(*) FROM jobs WHERE state = 'running' AND analysis_slot"   # never above the cap
+  "SELECT count(*) FROM jobs WHERE state = 'running' AND spotdown_slot"   # never above the cap
 docker kill "$(docker compose ps -q worker | head -1)"   # one container, as a crash: no hand-back
 # within the lease (CLASSBEAT_JOB_LEASE_SECONDS) plus the backoff the other worker reaps and finishes it:
 docker compose exec web python -m classbeat jobs stats
 docker compose up -d --scale worker=1                # back to one
 ```
 
-Before scaling in production: set `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY` to the **same** value on every
+Before scaling in production: set `CLASSBEAT_SPOTDOWN_MIX_CONCURRENCY` to the **same** value on every
 worker (each passes its own value to `queue_claim`) and keep it below the summed
 `CLASSBEAT_WORKER_CONCURRENCY`; the database needs `N * (2 * concurrency + 2)` worker connections plus
 an overflow of `N * concurrency`, beside web's, under Postgres's `max_connections` (the image default,

@@ -29,7 +29,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
 from test_swedebeat_studio_songs import _sent  # pyright: ignore[reportPrivateUsage]
 from test_user_edit_routes import current_id, edit, overlay_of
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default")
 
 CUT = copy.deepcopy(MIX_8)
 CUT["tracks"][-1]["end_sec"] = 230.0  # after the workout's end: the model's workout is the same
