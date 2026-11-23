@@ -651,7 +651,7 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     insert(admin, "spotdown_studio_budgets", owner_id=owner, job_id=job_id, outage=True)
     # ADR 0040 section 8 (migration 0066): a song job's spotdown match budget; it goes with the
     # class.
-    insert(admin, "spotdown_song_budgets", owner_id=owner, job_id=job_id, fallback=True)
+    insert(admin, "spotdown_song_budgets", owner_id=owner, job_id=job_id, unavailable=True)
     # ADR 0036 section 6 (migration 0054): a studio output attempt and its daily-limit record.
     insert(admin, "class_outputs", owner_id=owner, class_id=class_id, revision_id=rev,
            output="swedebeat_mix", attempt=1, state="in_doubt", detail={"name": "x"})  # fmt: skip

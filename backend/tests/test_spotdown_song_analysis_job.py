@@ -156,7 +156,7 @@ def entry(revision: Any, position: int) -> dict[str, Any]:
 
 def budget_row(songenv: SongEnv, job_id: UUID) -> Any:
     return songenv.sql(
-        "SELECT spent_seconds, fallback FROM spotdown_song_budgets WHERE job_id = :j", j=job_id
+        "SELECT spent_seconds, unavailable FROM spotdown_song_budgets WHERE job_id = :j", j=job_id
     ).first()
 
 
@@ -197,7 +197,7 @@ async def test_only_the_chosen_songs_are_analysed_and_each_is_approximate(
         assert leak not in stored
     assert timing_marks(revision.provenance) == [(n, "approximate", "youtube") for n in range(8)]
     assert MATCH_KEY in revision.provenance
-    assert budget_row(songenv, job_id).fallback is False
+    assert budget_row(songenv, job_id).unavailable is False
 
 
 async def test_a_cached_analysis_is_ready_at_once(songenv: SongEnv, spotdown: FakeSpotdown) -> None:
@@ -657,12 +657,13 @@ async def test_approve_starts_phase_two_with_a_fresh_budget(songenv: SongEnv) ->
     songenv.script = script()
     job_id, revision_id, digest = await songenv.waiting(rider)
     songenv.sql(
-        "UPDATE spotdown_song_budgets SET spent_seconds = 400, fallback = true WHERE job_id = :j",
+        "UPDATE spotdown_song_budgets SET spent_seconds = 400, unavailable = true "
+        "WHERE job_id = :j",
         j=job_id,
     )
     assert (await rider.approve(job_id, revision_id, digest)).status_code == 200
     row = budget_row(songenv, job_id)
-    assert (row.spent_seconds, row.fallback) == (0, False)
+    assert (row.spent_seconds, row.unavailable) == (0, False)
 
 
 # The sprint at position 4 is song 6; its spares are 8, then 9, then none. The recovery at

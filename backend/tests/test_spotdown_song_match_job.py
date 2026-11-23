@@ -102,7 +102,7 @@ async def listed(songenv: SongEnv, rider: Rider, **extra: Any) -> tuple[UUID, An
 
 def budget_row(songenv: SongEnv, job_id: UUID) -> Any:
     return songenv.sql(
-        "SELECT spent_seconds, fallback FROM spotdown_song_budgets WHERE job_id = :j", j=job_id
+        "SELECT spent_seconds, unavailable FROM spotdown_song_budgets WHERE job_id = :j", j=job_id
     ).first()
 
 
@@ -391,7 +391,7 @@ async def test_an_unavailable_flag_ends_the_same_attempt_before_spotdown_is_aske
     rider = await songenv.rider()
     job_id = await songenv.created(rider)
     songenv.sql(
-        "INSERT INTO spotdown_song_budgets (owner_id, job_id, spent_seconds, fallback) "
+        "INSERT INTO spotdown_song_budgets (owner_id, job_id, spent_seconds, unavailable) "
         "VALUES (:o, :j, 0, true)",
         o=rider.user_id,
         j=job_id,

@@ -24,7 +24,7 @@ _OPEN = text(
     "ON CONFLICT (owner_id, job_id) DO NOTHING"
 )
 _READ = text(
-    "SELECT spent_seconds, fallback FROM spotdown_song_budgets "
+    "SELECT spent_seconds, unavailable FROM spotdown_song_budgets "
     "WHERE owner_id = :owner_id AND job_id = :job_id"
 )
 _CHARGE = text(
@@ -32,7 +32,7 @@ _CHARGE = text(
     "WHERE owner_id = :owner_id AND job_id = :job_id"
 )
 _UNAVAILABLE = text(
-    "UPDATE spotdown_song_budgets SET fallback = true "
+    "UPDATE spotdown_song_budgets SET unavailable = true "
     "WHERE owner_id = :owner_id AND job_id = :job_id"
 )
 
@@ -46,7 +46,7 @@ async def open(run: JobRun) -> tuple[float, bool]:
     async with run.fenced() as fs:
         await fs.db.execute(_OPEN, _params(run))
         row = (await fs.db.execute(_READ, _params(run))).one()
-    return float(row.spent_seconds), bool(row.fallback)
+    return float(row.spent_seconds), bool(row.unavailable)
 
 
 async def charge(run: JobRun, seconds: float) -> None:

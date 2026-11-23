@@ -21,7 +21,7 @@ SPENT = (123.0, True)
 
 def plant(env: JobsEnv, owner: uuid.UUID, job_id: uuid.UUID) -> None:
     env.sql(
-        "INSERT INTO spotdown_song_budgets (owner_id, job_id, spent_seconds, fallback) "
+        "INSERT INTO spotdown_song_budgets (owner_id, job_id, spent_seconds, unavailable) "
         "VALUES (:o, :j, :s, :f)",
         o=owner,
         j=job_id,
@@ -32,9 +32,9 @@ def plant(env: JobsEnv, owner: uuid.UUID, job_id: uuid.UUID) -> None:
 
 def budget(env: JobsEnv, job_id: uuid.UUID) -> tuple[float, bool] | None:
     row = env.sql(
-        "SELECT spent_seconds, fallback FROM spotdown_song_budgets WHERE job_id = :j", j=job_id
+        "SELECT spent_seconds, unavailable FROM spotdown_song_budgets WHERE job_id = :j", j=job_id
     ).first()
-    return None if row is None else (float(row.spent_seconds), bool(row.fallback))
+    return None if row is None else (float(row.spent_seconds), bool(row.unavailable))
 
 
 def fails_with(category: str) -> Any:
