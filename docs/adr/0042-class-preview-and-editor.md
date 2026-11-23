@@ -625,7 +625,7 @@ choice, the user applies it: B4 makes a new draft, which can be undone.
 
 ### 8. Relation to ADR 0036 amendment B
 
-Amendment B (#1366; its header still reads Proposed in ADR 0036 and is aligned in a later docs PR) was written
+Amendment B (#1366; Accepted in ADR 0036) was written
 in parallel with this ADR. This ADR depends on it and **amends three of its items and A1**, listed first; the
 rest is unchanged.
 

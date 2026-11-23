@@ -65,7 +65,7 @@
 
 ## Notes at freeze (2026-11-21)
 
-- **ADR 0036 amendment B** (#1366, Proposed; merged to `main` as #1375 while this plan was reviewed) is
+- **ADR 0036 amendment B** (#1366, Accepted; merged to `main` as #1375 while this plan was reviewed) is
   reconciled in ADR 0042 §8. Nothing in it changes this plan's architecture:
   - E1 gets an Opus Developer per B12 and depends on #1367;
   - pins are unapplied on whole songs;
