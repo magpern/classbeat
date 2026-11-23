@@ -28,10 +28,11 @@ STRICT = ConfigDict(extra="forbid", strict=True)
 
 def clean_text(value: str) -> str:
     """``value`` without control (Cc) and format (Cf: bidi overrides, zero-width) characters,
-    tabs and newlines kept as spaces, trimmed."""
+    tabs, newlines and the Unicode line and paragraph separators (U+2028, U+2029: category Zl and
+    Zp, which a prompt's line splitters treat as line breaks) kept as spaces, trimmed."""
     out = []
     for char in value:
-        if char in "\t\n\r":
+        if char in "\t\n\r\u2028\u2029":
             out.append(" ")
         elif unicodedata.category(char) not in ("Cc", "Cf"):
             out.append(char)

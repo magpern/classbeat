@@ -817,10 +817,11 @@ the studio parts taken out.
   cannot end the statement's prose. The base reads and current-pointer swaps of a revise, song revise
   and refit (`refit`, `chat`, `revise_base`, `spotdown_base`, `revise_brief`, `revise_phase2`,
   `spotify_edit_draft`, `songs.revise` and `swedebeat_studio.revise_kind`: every base read, source
-  read, history walk and swap of them, #1462) are pinned to their owner clause by `tests/test_base_reads_owner.py`,
+  read, history walk, class lock, request read and swap of them, #1462, #1472) are pinned to their owner clause by `tests/test_base_reads_owner.py`,
   run with row security lifted, since `test_user_context_guard` does not read SQL. Two limits: the
   owner clauses of `chat._CHAIN`'s anchor and message join are pinned together (either alone is
   covered by the other), and those of the recursive step of `chat._CHAIN` and `chat._STATED` are not
-  pinned at all, since the composite `(owner_id, parent_id)` key makes the plant impossible. The class list and
+  pinned at all, since the composite `(owner_id, parent_id)` key makes the plant impossible. U+2028 and U+2029 become spaces in `schemas.clean_text` (#1472), as a newline does, so they
+  cannot reach the revise prompt as line breaks. The class list and
   page carry `spotify` (the class's stored source is a Spotify playlist's) beside `soundless` and
   `studio`.
