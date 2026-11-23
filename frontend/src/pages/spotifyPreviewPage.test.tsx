@@ -46,7 +46,7 @@ const playing = (piece: number, progress: number) => ({ status: 'playing', piece
 
 function routes(extra: Record<string, unknown> = {}, granted = true) {
   return editorRoutes({
-    [`GET ${CLASS_PATH}`]: classBody(), // a Spotify class, not the studio's
+    [`GET ${CLASS_PATH}`]: classBody({ spotify: true }), // a Spotify class, not the studio's
     [OVERLAY]: () => refusal('edit_unavailable'),
     'GET /api/connections/spotify': status(granted),
     [`GET ${A}/alignment`]: alignment(),

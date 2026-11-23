@@ -277,7 +277,8 @@ describe('a refused edit', () => {
 
 describe('a draft that cannot be edited opens read-only, never as a broken editor', () => {
   const cases: [string, Record<string, unknown>, RegExp][] = [
-    ['edit_unavailable (an older Spotify draft)', { [`GET ${CLASS_PATH}`]: classBody(), [OVERLAY]: () => refusal('edit_unavailable') }, /made before Spotify classes could be edited here/],
+    ['edit_unavailable (an older Spotify draft)', { [`GET ${CLASS_PATH}`]: classBody({ spotify: true }), [OVERLAY]: () => refusal('edit_unavailable') }, /made before Spotify classes could be edited here/],
+    ['edit_unavailable on a SwedeBeat-mix class (not Spotify)', { [`GET ${CLASS_PATH}`]: classBody(), [OVERLAY]: () => refusal('edit_unavailable') }, /^This version cannot be edited here\.$/],
     ['edit_unavailable on a studio class', { [OVERLAY]: () => refusal('edit_unavailable') }, /^This version cannot be edited here\.$/],
     ['edit_unavailable on a soundless class', { [`GET ${CLASS_PATH}`]: classBody({ soundless: true }), [OVERLAY]: () => refusal('edit_unavailable') }, /^This version cannot be edited here\.$/],
     ['edit_unavailable on a running class', { [`GET ${CLASS_PATH}`]: classBody({ sport: 'running' }), [OVERLAY]: () => refusal('edit_unavailable') }, /^This version cannot be edited here\.$/],

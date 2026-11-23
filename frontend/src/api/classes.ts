@@ -94,6 +94,8 @@ export interface ClassSummary {
   soundless: boolean
   /** ADR 0036 section 5 (#1173): the class's stored music is the SwedeBeat studio's; an answer without it is not. */
   studio: boolean
+  /** #1453: the class's stored music is a Spotify playlist draft (not a SwedeBeat mix); an answer without it is not. */
+  spotify: boolean
   createdAt: string
   updatedAt: string
   currentRevisionId: string | null
@@ -143,6 +145,7 @@ function decodeClass(value: unknown): ClassSummary {
     sport: item.sport === 'running' ? 'running' : 'cycling',
     soundless: item.soundless === true,
     studio: item.studio === true,
+    spotify: item.spotify === true,
     createdAt: text(item, 'created_at'),
     updatedAt: text(item, 'updated_at'),
     currentRevisionId: optionalText(item, 'current_revision_id'),

@@ -72,7 +72,7 @@ describe('Play and Pause', () => {
 
   it('has no play control on an older Spotify draft (no stored map), which opens read-only', async () => {
     // A Spotify class, not the studio's, whose draft has no stored map: the server answers edit_unavailable.
-    const api = fakeApi(editorRoutes(previewRoutes({ [`GET ${CLASS_PATH}`]: classBody(), [`GET ${CLASS_PATH}/overlay`]: () => refusal('edit_unavailable') })))
+    const api = fakeApi(editorRoutes(previewRoutes({ [`GET ${CLASS_PATH}`]: classBody({ spotify: true }), [`GET ${CLASS_PATH}/overlay`]: () => refusal('edit_unavailable') })))
     renderAt(EDIT_PAGE)
     expect(await screen.findByTestId('readonly-edit_unavailable')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /play|pause/i })).toBeNull()

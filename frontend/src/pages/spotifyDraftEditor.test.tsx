@@ -36,7 +36,7 @@ const spotifyStatus = {
 function routes(extra: Record<string, unknown> = {}) {
   return editorRoutes({
     // Not a studio class: the class is not the studio's, the timeline answers 409 no_studio_draft.
-    [`GET ${CLASS_PATH}`]: classBody(),
+    [`GET ${CLASS_PATH}`]: classBody({ spotify: true }),
     [`GET ${CLASS_PATH}/timeline`]: () => refusal('no_studio_draft'),
     'GET /api/connections/spotify': spotifyStatus,
     [`GET ${A}/alignment`]: { revision_id: REV1, map_version: 3, crossfade_ms: 10_000, songs: [song(0), song(1), song(2)] },

@@ -16,3 +16,16 @@ describe('the class summary studio flag (#1173)', () => {
     expect((await getClass(CLASS_ID)).studio).toBe(expected)
   })
 })
+
+describe('the class summary spotify flag (#1453)', () => {
+  it.each([
+    [{ spotify: true }, true],
+    [{ spotify: false }, false],
+    [{}, false],
+    [{ spotify: 'true' }, false],
+    [{ spotify: null }, false],
+  ])('reads %j as %s', async (extra, expected) => {
+    fakeApi({ [`GET ${CLASS_PATH}`]: classBody(extra) })
+    expect((await getClass(CLASS_ID)).spotify).toBe(expected)
+  })
+})
