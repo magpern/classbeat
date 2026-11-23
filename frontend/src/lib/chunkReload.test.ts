@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { RELOAD_KEY, RELOAD_WINDOW_MS, installChunkReload } from './chunkReload'
+import { MAX_RELOADS, RELOAD_KEY, RELOAD_WINDOW_MS, installChunkReload } from './chunkReload'
 
 // A failed page chunk (`vite:preloadError`) reloads the page once instead of leaving it blank; a
 // second failure inside the window, or no session storage, surfaces the error instead.
@@ -70,5 +70,16 @@ describe('installChunkReload', () => {
       expect(page.fail()).toBe(false)
       expect(page.reload).not.toHaveBeenCalled()
     }
+  })
+
+  it('stops reloading after MAX_RELOADS in one session, however far apart the failures are', () => {
+    const store = memoryStore()
+    const page = setup(() => store)
+    for (let i = 0; i < MAX_RELOADS; i += 1) {
+      expect(page.fail()).toBe(true)
+      page.advance(RELOAD_WINDOW_MS)
+    }
+    expect(page.fail()).toBe(false)
+    expect(page.reload).toHaveBeenCalledTimes(MAX_RELOADS)
   })
 })

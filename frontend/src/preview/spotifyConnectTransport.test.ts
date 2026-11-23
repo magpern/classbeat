@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { FakeClock, FakePlayer, flush } from '../test/spotifyPlayerFake'
-import { NOTE_MS, SpotifyConnectTransport, STARTING_GRACE_MS } from './spotifyConnectTransport'
+import { DEFAULT_BACKOFF_S, MAX_BACKOFF_S, NOTE_MS, SpotifyConnectTransport, STARTING_GRACE_MS } from './spotifyConnectTransport'
 import { buildSpotifyModel, type SpotifySong } from './timeModel'
 import type { PreviewFailure } from '../api/spotifyPreview'
 
@@ -289,6 +289,32 @@ describe('failures', () => {
     await poll(transport)
     expect(transport.view().state.status).toBe('playing')
     expect(transport.notBefore()).toBeNull()
+  })
+
+  it('a 429 without a Retry-After backs off, longer each time in a row, and starts over after an answer', async () => {
+    const transport = make()
+    await play(transport, 0, 5000)
+    const wait = () => (transport.notBefore() ?? 0) - clock.t
+    player.failNext('state', fail('rate_limited', 429))
+    await poll(transport)
+    expect(wait()).toBeGreaterThan(DEFAULT_BACKOFF_S * SEC - 500) // not every second
+    expect(wait()).toBeLessThanOrEqual(DEFAULT_BACKOFF_S * SEC)
+    await clock.advance(DEFAULT_BACKOFF_S * SEC)
+    player.failNext('state', fail('rate_limited', 429))
+    await poll(transport)
+    expect(wait()).toBeGreaterThan(2 * DEFAULT_BACKOFF_S * SEC - 500)
+    for (let i = 0; i < 6; i += 1) {
+      await clock.advance(MAX_BACKOFF_S * SEC)
+      player.failNext('state', fail('rate_limited', 429))
+      await poll(transport)
+    }
+    expect(wait()).toBeLessThanOrEqual(MAX_BACKOFF_S * SEC) // capped
+    await clock.advance(MAX_BACKOFF_S * SEC)
+    await poll(transport) // an answer
+    expect(transport.notBefore()).toBeNull()
+    player.failNext('state', fail('rate_limited', 429))
+    await poll(transport)
+    expect(wait()).toBeLessThanOrEqual(DEFAULT_BACKOFF_S * SEC) // the streak started over
   })
 
   it('a failure that needs the person stops the polling', async () => {

@@ -39,14 +39,20 @@ describe('410 preview_session_ended', () => {
     expect(r.transport.listenedMs()).toBe(0)
   })
 
-  it('on the preload of the next window stops playback at once and says so', async () => {
+  it('on the preload of the next window lets the playing window finish, then ends the session and says so', async () => {
     const r = rig()
     r.service.failures.set(WINDOW_MS, 'session_ended')
     await play(r)
     r.current().currentTime = 200
     r.current().fire('timeupdate')
     await flush()
-    expect(r.transport.observe()).toMatchObject({ status: 'paused', reason: 'session_ended' })
+    expect(r.transport.observe().status).toBe('playing') // 40 s are left to hear: not cut ~90 s early
+    expect(r.audio.some((a) => !a.paused)).toBe(true)
+    await r.advance(40_000)
+    const first = r.current()
+    first.fire('ended')
+    first.paused = true
+    expect(r.transport.observe()).toMatchObject({ status: 'paused', reason: 'session_ended', transportMs: WINDOW_MS })
     expect(r.audio.every((a) => a.paused)).toBe(true)
   })
 })
@@ -133,6 +139,46 @@ describe('a clip that cannot be had: the session stays, and so does the counter,
     r.service.createFailure = 'draft_changed'
     await r.transport.audition({ ...PLAY, classMs: 0 })
     expect(r.transport.observe()).toMatchObject({ status: 'error', reason: 'draft_changed' })
+  })
+})
+
+describe('an audio element that cannot load or decode its clip', () => {
+  it('stops with a failure the page can retry, and the retry asks for a fresh clip in the same session', async () => {
+    const r = rig()
+    await play(r)
+    await r.advance(5000)
+    r.current().currentTime = 12
+    r.current().fire('error')
+    expect(r.transport.observe()).toMatchObject({ status: 'error', reason: 'failed', transportMs: 12_000 })
+    expect(r.transport.listenedMs()).toBe(5000) // the counter stopped
+    r.service.requests.length = 0
+    await play(r, 12_000)
+    expect(r.service.sessions).toHaveLength(1)
+    expect(r.service.requests).toEqual([{ sessionId: 's1', startMs: 12_000 }])
+  })
+
+  it('ignores an error of the element that is not playing', async () => {
+    const r = rig()
+    await play(r)
+    r.audio.find((a) => a !== r.current())?.fire('error')
+    expect(r.transport.observe().status).toBe('playing')
+  })
+})
+
+describe('the join gap is not listening time', () => {
+  it('a window switch stops the counter until the element says playing again', async () => {
+    const r = rig()
+    await play(r)
+    await r.advance(10_000)
+    r.service.hold.add(600_000)
+    const seeking = r.transport.audition({ ...PLAY, classMs: 600_000 })
+    await flush()
+    r.service.held[0]?.release({ url: '/clip/s1/600000', startMs: 600_000, endMs: 600_000 + WINDOW_MS })
+    await seeking // switchTo: the counter stops here, though no stop event came from the fake element
+    await r.advance(3000) // the gap before `playing`
+    r.current().fire('playing')
+    await r.advance(2000)
+    expect(r.transport.listenedMs()).toBe(12_000)
   })
 })
 

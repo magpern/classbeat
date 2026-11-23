@@ -39,6 +39,9 @@ const CAPABILITIES: TransportCapabilities = {
 export const STARTING_GRACE_MS = 6000
 /** How long a note (a seek, a device switch) stays on the view, in ms. */
 export const NOTE_MS = 5000
+/** A 429 without a Retry-After waits this long, doubling for each one in a row up to the cap, in seconds. */
+export const DEFAULT_BACKOFF_S = 5
+export const MAX_BACKOFF_S = 60
 
 /** The things the page shows beside the contract's state. */
 export interface SpotifyView {
@@ -84,6 +87,7 @@ export class SpotifyConnectTransport implements PreviewTransport {
   private noted: { note: Note; at: number } | null = null
   private pending = 0
   private rateLimitedUntil: number | null = null
+  private rateLimitStreak = 0
 
   constructor(options: SpotifyTransportOptions) {
     this.api = options.api
@@ -105,6 +109,7 @@ export class SpotifyConnectTransport implements PreviewTransport {
     this.intent = null
     this.failed = null
     this.rateLimitedUntil = null
+    this.rateLimitStreak = 0
     const answer = await guard(() => this.api.audition(request.piece, positionMs))
     if (!answer.ok) {
       this.fail(answer.failure)
@@ -138,6 +143,7 @@ export class SpotifyConnectTransport implements PreviewTransport {
       if (!answer.ok) return this.fail(answer.failure)
       this.failed = null
       this.rateLimitedUntil = null
+      this.rateLimitStreak = 0
       this.take(observationOf(seq, epoch, sentAt, this.now(), answer.value))
     } finally {
       this.pending -= 1
@@ -238,8 +244,10 @@ export class SpotifyConnectTransport implements PreviewTransport {
 
   private fail(failure: PreviewFailure): void {
     this.failed = failure
-    if (failure.reason === 'rate_limited' && failure.retryAfterS !== null) {
-      this.rateLimitedUntil = this.now() + failure.retryAfterS * 1000
-    }
+    if (failure.reason !== 'rate_limited') return
+    // Without a Retry-After the page must still not ask again every second: back off, longer each time.
+    const backoff = Math.min(DEFAULT_BACKOFF_S * 2 ** this.rateLimitStreak, MAX_BACKOFF_S)
+    this.rateLimitStreak += 1
+    this.rateLimitedUntil = this.now() + (failure.retryAfterS ?? backoff) * 1000
   }
 }

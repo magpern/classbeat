@@ -29,6 +29,7 @@ export const editorSv: Catalogue = {
   'editor.tl.boundary':
     'Slutet på block {n}, vid {time}. Piltangenterna väljer ny plats, Enter flyttar, Escape avbryter. Håll ner Skift för fem sekunder.',
   'editor.tl.song': 'Låt {n}: {title}. Tryck Enter för att lägga markören vid dess början.',
+  'editor.tl.songCursor': 'Markören är i den här låten.',
   'editor.cursor.none': 'Ingen markör.',
   'editor.cursor.at': 'Markören står vid {time}.',
   'editor.cursor.stop': 'Stoppa markören',

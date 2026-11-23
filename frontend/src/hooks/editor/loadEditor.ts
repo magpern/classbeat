@@ -62,7 +62,19 @@ function olderSpotify(summary: ClassSummary): boolean {
   return !summary.soundless && !summary.studio && summary.sport === 'cycling'
 }
 
+/** The reads are not one snapshot: another tab can move the class between the overlay and the timeline. */
+const MAX_READS = 3
+
+/** Reads again while the timeline is of another draft than the overlay; a read that never agrees fails (the page offers a retry). */
 export async function loadEditor(classId: string, signal: AbortSignal): Promise<EditorLoad> {
+  for (let read = 0; read < MAX_READS; read += 1) {
+    const found = await readOnce(classId, signal)
+    if (found !== 'moved') return found
+  }
+  throw new Error('the class kept moving while it was read')
+}
+
+async function readOnce(classId: string, signal: AbortSignal): Promise<EditorLoad | 'moved'> {
   let summary: ClassSummary
   try {
     summary = await getClass(classId, signal)
@@ -87,6 +99,7 @@ export async function loadEditor(classId: string, signal: AbortSignal): Promise<
   // A class with no studio timeline whose overlay is ready is a Spotify draft the server can edit
   // (an older one answers the overlay `edit_unavailable` above): same editor, without the studio parts.
   if (timeline.kind === 'none') return readonly('not_editable')
+  if (timeline.kind === 'ready' && timeline.timeline.revisionId !== overlay.overlay.revisionId) return 'moved'
   const blocks = decodeBlocks(revision.raw)
   if (blocks === null) return readonly('unsupported')
   const spotify = timeline.kind !== 'ready'

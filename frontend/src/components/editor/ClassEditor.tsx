@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { ClassEditor as Editor } from '../../hooks/editor/useClassEditor'
 import type { EditorData } from '../../hooks/editor/loadEditor'
 import { useT } from '../../i18n/I18n'
@@ -23,6 +23,7 @@ import { SpotifyAudition } from './spotify/SpotifyAudition'
 import { PreviewControls } from './PreviewControls'
 import { ProvenanceCard } from './ProvenanceCard'
 import { useEditorPlayback } from './useEditorPlayback'
+import { useRestoreFocus } from './useRestoreFocus'
 
 /**
  * The editor of a studio draft or a Spotify draft (ADR 0042, #1424; a Spotify draft has no cut pins, anchors or rendered audio, its music is heard in the audition panel): the zone blocks on the class profile with the songs
@@ -47,12 +48,15 @@ export function ClassEditor({ data, editor }: { data: EditorData; editor: Editor
   const audition = (classMs: number) => {
     const heard = mapStudio(clips, classMs)
     const piece = heard[heard.length - 1] // inside a crossfade the incoming song is the default
-    cursor.audition(piece?.piece ?? 0, piece?.sourceMs ?? 0, classMs)
+    if (piece === undefined) return // no song is audible there: nothing to audition, never piece 0 at source 0
+    cursor.audition(piece.piece, piece.sourceMs ?? 0, classMs)
   }
   const busy = editor.busy
+  const root = useRef<HTMLDivElement>(null)
+  useRestoreFocus(root, busy)
   const unapplied = overlay.unapplied.length + overlay.orphaned.length
   return (
-    <div className="flex flex-col gap-5" data-testid="class-editor">
+    <div ref={root} className="flex flex-col gap-5" data-testid="class-editor">
       {cursor.rendered || spotify ? null : <p className="m-0 text-muted">{t('editor.noAudio')}</p>}
       <EditorToolbar
         key={workoutMs}

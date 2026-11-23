@@ -31,6 +31,7 @@ export const editorEn = {
   'editor.tl.boundary':
     'End of block {n}, at {time}. Arrow keys choose a new place, Enter moves it, Escape cancels. Hold Shift for five seconds.',
   'editor.tl.song': 'Song {n}: {title}. Press Enter to put the cursor at its start.',
+  'editor.tl.songCursor': 'The cursor is in this song.',
   'editor.cursor.none': 'No cursor.',
   'editor.cursor.at': 'Cursor at {time}.',
   'editor.cursor.stop': 'Stop the cursor',

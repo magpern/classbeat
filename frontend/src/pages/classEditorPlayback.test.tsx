@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CLASS_PATH, REV2, classBody } from '../test/classFixtures'
-import { EDITS_PATH, EDIT_PAGE, HASH2, PREVIEW_PATH, PREVIEW_SESSION, clipPath, editorRoutes, previewRoutes, readyClip, refusal, timelineBody } from '../test/editorApi'
+import { CLASS_PATH, REV1, REV2, classBody } from '../test/classFixtures'
+import { EDITS_PATH, EDIT_PAGE, HASH2, PREVIEW_PATH, PREVIEW_SESSION, clipPath, editorRoutes, overlayBody, previewRoutes, readyClip, refusal, timelineBody } from '../test/editorApi'
 import { fakeApi, json } from '../test/fakeApi'
 import { renderAt } from '../test/render'
 
@@ -187,7 +187,9 @@ describe('an edit while the audio plays', () => {
           done = true
           return { revision_id: REV2, number: 2, content_hash: HASH2, hints: [] }
         },
-        [`GET ${CLASS_PATH}/timeline`]: () => (done && changeAudio ? { ...timelineBody(REV2), spec_digest: 'cd'.repeat(32) } : timelineBody(REV2)),
+        // The overlay and the timeline answer for the same draft: the one the edit made once it is done.
+        [`GET ${CLASS_PATH}/overlay`]: () => overlayBody(done ? REV2 : REV1),
+        [`GET ${CLASS_PATH}/timeline`]: () => (done && changeAudio ? { ...timelineBody(REV2), spec_digest: 'cd'.repeat(32) } : timelineBody(done ? REV2 : REV1)),
       }),
     )
   }
