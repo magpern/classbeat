@@ -1,5 +1,5 @@
 """The user's own cache of studio track analyses (ADR 0036 section 4.1, SR C4):
-``swedebeat_track_maps``, one row per ``(owner_id, reference, analyser_version, analyser)``.
+``swedebeat_track_maps``, one row per ``(owner_id, reference, analyser_version)``.
 
 - **A hit** (``cached``) is a row of the caller's references younger than ``MAP_TTL_DAYS``, of the
   library's current ``TRACK_VERSION``, whose map still passes ``valid_track_map``. It is read in a
@@ -13,12 +13,13 @@
   newest ``MAPS_PER_USER`` dropped, as ``swedebeat_mix_maps`` does. The last store of a run frees
   its spotdown slot (#574). The run goes on with the map **as stored**
   (jsonb's form, ``RETURNING map``), the one a later read sees and hashes.
-- **The analyser** (ADR 0040 section 6, #1302; amendment "spotdown is the only analysis path",
-  #1356): every row is ``spotdown``'s analysis of the same bytes, with its ``provenance`` record
-  (the ``local`` rows are gone: migration 0075 deleted them and the table's check admits only
-  ``spotdown``). Every read takes an ``Accept`` rule over the ``Stored`` row: ``track_analysis``
-  takes only rows whose provenance is this build's; revise, outputs and the timeline take exactly
-  the row the draft recorded (``recorded``).
+- **spotdown's rows** (ADR 0040 section 6, #1302; amendment "spotdown is the only analysis path",
+  #1356, #1299): every row is spotdown's analysis of the same bytes, with its ``provenance`` record
+  (migration 0075 deleted the ``local`` rows; 0081 dropped the ``analyser`` column, which then
+  admitted only ``spotdown``, and made ``provenance`` required). Every read takes an ``Accept``
+  rule over the ``Stored`` row: ``track_analysis`` takes only rows whose provenance is this
+  build's; revise, outputs and the timeline take exactly the row the draft recorded
+  (``recorded``).
 
 Every statement filters on ``owner_id`` itself as well as through row security. Nothing here logs.
 """
@@ -34,7 +35,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.connections import OpenConnection, hold
-from classbeat.design.studio_revision_model import Analyser, Wanted, map_hash
+from classbeat.design.studio_revision_model import Wanted, map_hash
 from classbeat.design.track_map_policy import valid_track_map
 from classbeat.jobs import JobFailure, JobRun
 
@@ -47,7 +48,6 @@ class Stored:
     """A row as an ``Accept`` rule sees it."""
 
     reference: str
-    analyser: str
     sha256: str
     provenance: object
     music_map: Mapping[str, Any]
@@ -55,7 +55,7 @@ class Stored:
 
 Accept = Callable[[Stored], bool]
 
-_COLUMNS = "reference, sha256, map, analyser, provenance FROM swedebeat_track_maps "
+_COLUMNS = "reference, sha256, map, provenance FROM swedebeat_track_maps "
 _FRESH = "AND created_at > now() - make_interval(days => :days)"
 _CACHED = text(
     f"SELECT {_COLUMNS}WHERE owner_id = :owner_id AND analyser_version = :version "
@@ -67,10 +67,10 @@ _BY_SHA256 = text(
 )
 _UPSERT = text(
     "INSERT INTO swedebeat_track_maps "
-    "(owner_id, reference, analyser_version, sha256, map, analyser, provenance) "
-    "VALUES (:owner_id, :reference, :version, :sha256, CAST(:map AS jsonb), :analyser, "
+    "(owner_id, reference, analyser_version, sha256, map, provenance) "
+    "VALUES (:owner_id, :reference, :version, :sha256, CAST(:map AS jsonb), "
     "CAST(:provenance AS jsonb)) "
-    "ON CONFLICT (owner_id, reference, analyser_version, analyser) DO UPDATE SET "
+    "ON CONFLICT (owner_id, reference, analyser_version) DO UPDATE SET "
     "sha256 = EXCLUDED.sha256, map = EXCLUDED.map, provenance = EXCLUDED.provenance, "
     "created_at = now() RETURNING map"
 )
@@ -88,31 +88,29 @@ _TRIM = text(
 @dataclass(frozen=True, slots=True)
 class TrackMap:
     """The user's analysis of one catalogue track: the library's map, the hex SHA-256 of the
-    analysed bytes, whether it came from the cache (no download), what analysed it and, for
-    spotdown, its provenance record."""
+    analysed bytes, whether it came from the cache (no download) and spotdown's provenance
+    record."""
 
     reference: str
     sha256: str
     music_map: dict[str, Any]
     cached: bool
-    analyser: Analyser = "spotdown"
     provenance: Mapping[str, object] | None = None
 
 
 def _hit(row: Any, accept: Accept, reference: str | None = None) -> TrackMap | None:
     stored: object = row.map
-    analyser, provenance, sha256 = str(row.analyser), row.provenance, bytes(row.sha256).hex()
-    if analyser != "spotdown" or not valid_track_map(stored, track.TRACK_VERSION):
+    provenance, sha256 = row.provenance, bytes(row.sha256).hex()
+    if not valid_track_map(stored, track.TRACK_VERSION):
         return None  # not what this version reads: analysed again
     music_map = cast(dict[str, Any], stored)
-    if not accept(Stored(str(row.reference), analyser, sha256, provenance, music_map)):
+    if not accept(Stored(str(row.reference), sha256, provenance, music_map)):
         return None
     return TrackMap(
         reference or str(row.reference),
         sha256,
         music_map,
         cached=True,
-        analyser=cast(Analyser, analyser),
         provenance=cast(Mapping[str, object], provenance) if provenance is not None else None,
     )
 
@@ -179,8 +177,8 @@ async def store(
     owner = run.lease.owner_id
     payload = json.dumps(analysed.music_map, separators=(",", ":"), allow_nan=False)
     provenance = analysed.provenance
-    if analysed.analyser != "spotdown" or provenance is None:
-        raise JobFailure("internal")  # the table's checks, before anything is written
+    if provenance is None:
+        raise JobFailure("internal")  # the table's check, before anything is written
     record = json.dumps(dict(provenance), allow_nan=False)
     async with run.fenced() as fs:
         if not await hold(fs.db, run.ctx, connection):
@@ -193,7 +191,6 @@ async def store(
                 "version": track.TRACK_VERSION,
                 "sha256": bytes.fromhex(analysed.sha256),
                 "map": payload,
-                "analyser": analysed.analyser,
                 "provenance": record,
             },
         )
@@ -208,17 +205,16 @@ async def store(
         analysed.sha256,
         cast(dict[str, Any], kept),
         cached=analysed.cached,
-        analyser=analysed.analyser,
         provenance=analysed.provenance,
     )
 
 
 def recorded(wanted: Mapping[str, Wanted]) -> Accept:
-    """Exactly the rows a draft recorded: each reference's analyser and, when recorded, bytes."""
+    """Exactly the rows a draft recorded: each reference's bytes and map."""
 
     def accepted(row: Stored) -> bool:
         want = wanted.get(row.reference)
-        if want is None or row.analyser != want.analyser:
+        if want is None:
             return False
         return want.sha256 == row.sha256 and want.map_hash == map_hash(row.music_map)
 

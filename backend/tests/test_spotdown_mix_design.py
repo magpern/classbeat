@@ -2,7 +2,7 @@
 ``refit_draft`` on a SwedeBeat mix whose map spotdown made, through the real jobs API and worker
 side on the fakes (``test_swedebeat_design``'s ``MixEnv``, the fake spotdown in process).
 
-- a class designed on spotdown's map records the analyser and the analysis's provenance with its
+- a class designed on spotdown's map records the analysis's provenance (no analyser code) with its
   revision (plan section 4a: per class) and nothing the model is sent names the mix;
 - switched off afterwards, a revise and a refit read the row the class was designed on
   (``prefer``): no fetch, the same map, the same recorded analysis, never ``music_changed``;
@@ -99,12 +99,11 @@ async def test_a_class_designed_on_spotdowns_map_keeps_it_when_spotdown_is_gone(
     row = menv.ops.row(job_id)
     assert (row.state, row.error_category) == ("completed", None)
     [stored] = menv.ops.sql(
-        "SELECT map, analyser, provenance FROM swedebeat_mix_maps WHERE owner_id = :o",
+        "SELECT map, provenance FROM swedebeat_mix_maps WHERE owner_id = :o",
         o=browser.user_id,
     ).all()
-    assert stored.analyser == "spotdown"
     [base] = revisions(menv, job_id)
-    assert base.music["analyser"] == "spotdown"
+    assert "analyser" not in base.music  # #1299: the provenance says it is spotdown's
     assert base.music["provenance"] == stored.provenance
     assert base.music["provenance"]["timing"]["class"] == "exact"
     assert MIX_ID not in str(base.music["provenance"])
@@ -123,7 +122,7 @@ async def test_a_class_designed_on_spotdowns_map_keeps_it_when_spotdown_is_gone(
     revise_id = UUID(revised.json()["id"])
     assert menv.ops.row(revise_id).state == "completed"
     [new] = revisions(menv, revise_id)
-    assert new.music == base.music  # the same map, analyser and provenance
+    assert new.music == base.music  # the same map and provenance
     assert (len(menv.media.requests), len(spotdown.seen)) == (fetches, calls)
 
     # A refit of the revised (current) draft too: the same fingerprint, never ``music_changed``.
@@ -150,10 +149,8 @@ async def test_a_class_designed_on_spotdowns_map_keeps_it_when_spotdown_is_gone(
     assert (refit.state, refit.error_category) == ("completed", None)  # never music_changed
     assert len(menv.media.requests) == fetches
     [refitted] = revisions(menv, UUID(made.json()["id"]))
-    assert (refitted.music["analyser"], refitted.music["fingerprint"]) == (
-        "spotdown",
-        base.music["fingerprint"],
-    )
+    assert refitted.music["provenance"] == base.music["provenance"]
+    assert refitted.music["fingerprint"] == base.music["fingerprint"]
 
 
 @pytest.mark.parametrize(
@@ -193,7 +190,7 @@ async def test_admit_counts_a_spotdown_row_as_a_cached_mix_and_a_missing_row_not
     browsers: Any, menv: MixEnv, mowl_api: FakeMowl
 ) -> None:
     """#1353: only a current ``spotdown`` row is a hit, so only it skips the daily limit; with the
-    row gone (30 days, the cap) the mix is a new analysis (#1357: there is no other analyser)."""
+    row gone (30 days, the cap) the mix is a new analysis (#1357: no other analysis path)."""
     from classbeat.design import mixlimit
     from test_swedebeat_design import plant_analyses
 
@@ -204,8 +201,8 @@ async def test_admit_counts_a_spotdown_row_as_a_cached_mix_and_a_missing_row_not
     owner = browser.user_id
     plant_analyses(menv, owner, mixlimit.ANALYSES_PER_DAY - 1)
     assert menv.ops.sql(
-        "SELECT analyser FROM swedebeat_mix_maps WHERE owner_id = :o", o=owner
-    ).scalars().all() == ["spotdown"]
+        "SELECT mix_id FROM swedebeat_mix_maps WHERE owner_id = :o", o=owner
+    ).scalars().all() == [MIX_ID]
     cached = await create(browser, design_body(browser))
     assert cached.status_code == 201, cached.text  # a spotdown row is a hit: no new analysis
     menv.ops.sql("DELETE FROM swedebeat_mix_maps WHERE owner_id = :o", o=owner)

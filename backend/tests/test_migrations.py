@@ -36,7 +36,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0080_spotdown_slot"]
+    assert script.get_heads() == ["0081_drop_map_analyser"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -57,7 +57,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0080_spotdown_slot"]
+        assert applied_revisions(database_url) == ["0081_drop_map_analyser"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -1232,7 +1232,7 @@ def test_0074_drops_the_shadow_table_and_the_downgrade_recreates_it_empty(
 def test_0075_deletes_the_local_track_maps_and_the_downgrade_restores_the_check(
     owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """#1356: at head ``swedebeat_track_maps.analyser`` admits only ``spotdown`` and has no
+    """#1356: at 0075 ``swedebeat_track_maps.analyser`` admits only ``spotdown`` and has no
     default; the upgrade deleted the ``local`` rows (and kept the ``spotdown`` ones); the
     downgrade restores the check (``local`` or ``spotdown``) and the ``local`` default."""
     monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
@@ -1278,7 +1278,7 @@ def test_0075_deletes_the_local_track_maps_and_the_downgrade_restores_the_check(
                     {"o": owner, "r": ref, "h": bytes(32), "a": analyser, "p": provenance},
                 )
         assert references(owner) == ["loc", "spd"]
-        command.upgrade(config, "head")
+        command.upgrade(config, "0075_drop_local_track_maps")
         assert references(owner) == ["spd"]  # the local row is gone, the spotdown one is kept
         with admin.connect() as connection:
             assert connection.execute(default).scalar_one() is None
@@ -1356,7 +1356,7 @@ def test_0076_adds_the_bounded_edit_overlay_and_the_downgrade_drops_it(
 def test_0077_deletes_the_local_mix_maps_and_the_downgrade_restores_the_check(
     owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """#1357: at head ``swedebeat_mix_maps.analyser`` admits only ``spotdown`` and has no default;
+    """#1357: at 0077 ``swedebeat_mix_maps.analyser`` admits only ``spotdown`` and has no default;
     the upgrade deleted the ``local`` rows (and kept the ``spotdown`` ones, row security lifted only
     for the delete); the downgrade restores the check (``local`` or ``spotdown``) and the ``local``
     default."""
@@ -1402,7 +1402,7 @@ def test_0077_deletes_the_local_mix_maps_and_the_downgrade_restores_the_check(
         put(owner, "both", "spotdown")  # a mix with a row of each analyser
         put(owner, "old", "local")
         assert mixes(owner) == ["both:local", "both:spotdown", "old:local"]
-        command.upgrade(config, "head")
+        command.upgrade(config, "0077_drop_local_mix_maps")
         assert mixes(owner) == ["both:spotdown"]  # one row per mix; the local ones are gone
         with admin.connect() as connection:
             assert connection.execute(column).scalar_one() is None
@@ -1491,12 +1491,116 @@ def test_0080_renames_the_slot_flag_and_keeps_its_rows_and_the_downgrade_renames
         with admin.begin() as connection:
             owner = new_user(connection)
             ids = [new_job(connection, owner, analysis_slot=slot) for slot in (True, False)]
-        command.upgrade(config, "head")
+        command.upgrade(config, "0080_spotdown_slot")
         assert flag() == ["spotdown_slot:boolean:NO:false"]
         assert held("spotdown_slot", ids) == [True, False]
         command.downgrade(config, "0079_song_budget_unavailable")
         assert flag() == ["analysis_slot:boolean:NO:false"]
         assert held("analysis_slot", ids) == [True, False]
+    finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0081_drops_the_map_analyser_and_the_downgrade_restores_it(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1299: at head neither map cache has ``analyser`` (it admitted only ``spotdown``), the keys
+    are ``(owner_id, reference, analyser_version)`` and ``(owner_id, mix_id)`` again and
+    ``provenance`` is required; rows survive both ways. The downgrade restores 0080's shape: the
+    column (``spotdown`` on every row, no default), its check, the provenance check and the keys
+    with the column."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+    track = (
+        "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map, "
+        "provenance{a}) VALUES (:o, :r, 1, :h, '{{}}', CAST(:p AS jsonb){v})"
+    )
+    mix = (
+        "INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, name, "
+        "duration, listed_duration, map, provenance{a}) "
+        "VALUES (:o, :r, :c, 1, 'n', 60, 60, '{{}}', CAST(:p AS jsonb){v})"
+    )
+    shape = text(
+        "SELECT c.relname || ':' || k.conname || ':' || pg_get_constraintdef(k.oid) "
+        "FROM pg_constraint k JOIN pg_class c ON c.oid = k.conrelid "
+        "WHERE c.relname IN ('swedebeat_track_maps', 'swedebeat_mix_maps') "
+        "AND (k.contype = 'u' AND k.conname NOT LIKE '%owner_id_id_key' "
+        "OR k.conname LIKE '%analyser' OR k.conname LIKE '%provenance_spotdown')"
+    )
+    column = text(
+        "SELECT table_name || ':' || column_name || ':' || is_nullable || ':' "
+        "|| coalesce(column_default, '-') FROM information_schema.columns "
+        "WHERE table_name IN ('swedebeat_track_maps', 'swedebeat_mix_maps') "
+        "AND column_name IN ('analyser', 'provenance')"
+    )
+
+    def snapshot() -> tuple[list[str], list[str]]:
+        with admin.connect() as connection:
+            return (
+                sorted(connection.execute(shape).scalars()),
+                sorted(connection.execute(column).scalars()),
+            )
+
+    def put(owner: uuid.UUID, ref: str, provenance: str | None, *, analyser: bool) -> None:
+        a, v = (", analyser", ", 'spotdown'") if analyser else ("", "")
+        params = {"o": owner, "r": ref, "h": bytes(32), "c": uuid.uuid4(), "p": provenance}
+        with admin.begin() as connection:
+            connection.execute(text(track.format(a=a, v=v)), params)
+            connection.execute(text(mix.format(a=a, v=v)), params)
+
+    def rows(owner: uuid.UUID) -> list[str]:
+        with admin.connect() as connection:
+            return sorted(
+                connection.execute(
+                    text(
+                        "SELECT 't:' || reference FROM swedebeat_track_maps WHERE owner_id = :o "
+                        "UNION ALL SELECT 'm:' || mix_id FROM swedebeat_mix_maps "
+                        "WHERE owner_id = :o"
+                    ),
+                    {"o": owner},
+                ).scalars()
+            )
+
+    try:
+        command.downgrade(config, "base")  # whatever an earlier test left
+        command.upgrade(config, "0080_spotdown_slot")
+        before = snapshot()
+        with admin.begin() as connection:
+            owner = new_user(connection)
+        put(owner, "kept", "{}", analyser=True)
+        command.upgrade(config, "head")
+        assert rows(owner) == ["m:kept", "t:kept"]  # every row survives
+        keys, columns = snapshot()
+        assert keys == [
+            "swedebeat_mix_maps:swedebeat_mix_maps_owner_id_mix_id_key:UNIQUE (owner_id, mix_id)",
+            "swedebeat_track_maps:swedebeat_track_maps_owner_id_reference_analyser_version_key:"
+            "UNIQUE (owner_id, reference, analyser_version)",
+        ]
+        assert columns == [
+            "swedebeat_mix_maps:provenance:NO:-",
+            "swedebeat_track_maps:provenance:NO:-",
+        ]
+        put(owner, "new", "{}", analyser=False)
+        with pytest.raises(IntegrityError, match="provenance"):  # a row needs its record
+            put(owner, "bare", None, analyser=False)
+        with pytest.raises(IntegrityError, match="_key"):  # one row per mix and track version
+            put(owner, "new", "{}", analyser=False)
+        command.downgrade(config, "0080_spotdown_slot")
+        assert snapshot() == before
+        assert rows(owner) == ["m:kept", "m:new", "t:kept", "t:new"]
+        with admin.connect() as connection:
+            assert set(
+                connection.execute(
+                    text(
+                        "SELECT analyser FROM swedebeat_track_maps UNION "
+                        "SELECT analyser FROM swedebeat_mix_maps"
+                    )
+                ).scalars()
+            ) == {"spotdown"}
+        with pytest.raises(IntegrityError, match="provenance_spotdown"):
+            put(owner, "bare", None, analyser=True)
     finally:
         admin.dispose()
         command.downgrade(config, "base")

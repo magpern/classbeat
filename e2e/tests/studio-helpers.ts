@@ -149,9 +149,9 @@ export function seedTrackMaps(owner: string, listRevisionId: string): void {
   const provenance = seedProvenance('studio', sha256)
   for (const reference of references) {
     sql(
-      `INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, analyser, sha256, map, provenance) VALUES ` +
-        `('${owner}', '${reference}', ${String(made.version)}, 'spotdown', '\\x${sha256}'::bytea, '${map}'::jsonb, '${provenance}'::jsonb) ` +
-        `ON CONFLICT (owner_id, reference, analyser_version, analyser) DO UPDATE SET map = EXCLUDED.map, ` +
+      `INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map, provenance) VALUES ` +
+        `('${owner}', '${reference}', ${String(made.version)}, '\\x${sha256}'::bytea, '${map}'::jsonb, '${provenance}'::jsonb) ` +
+        `ON CONFLICT (owner_id, reference, analyser_version) DO UPDATE SET map = EXCLUDED.map, ` +
         `sha256 = EXCLUDED.sha256, provenance = EXCLUDED.provenance, created_at = now()`,
     )
   }

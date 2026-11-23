@@ -8,14 +8,13 @@ from typing import Any
 @dataclass(frozen=True, slots=True)
 class MixFacts:
     """For the user only: the mix's id and name, the analysed and the listed length, and the
-    songs (0-based) whose beat 1 is an estimate. Never model input. From #1304, a map spotdown
-    made records ``analyser`` (``spotdown``) and its ``provenance`` record (plan section 4a: kept
-    per class); both are ``None`` only for a revision stored without them."""
+    songs (0-based) whose beat 1 is an estimate. Never model input. From #1304, the map's
+    spotdown ``provenance`` record (plan section 4a: kept per class); ``None`` only for a revision
+    stored without it."""
 
     mix_id: str
     name: str
     duration: float
     listed_duration: float
     unsure_beat_one: tuple[int, ...]
-    analyser: str | None = None
     provenance: dict[str, Any] | None = None

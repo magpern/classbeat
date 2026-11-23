@@ -113,7 +113,6 @@ async def _from_spotdown(
             sha256,
             same.music_map,
             cached=False,
-            analyser=same.analyser,
             provenance=same.provenance,
         )
     mapped = await track_spotdown.analyse(run, session, reference, sha256, audio)
@@ -122,7 +121,6 @@ async def _from_spotdown(
         sha256,
         mapped.track_map,
         cached=False,
-        analyser="spotdown",
         provenance=mapped.provenance,
     )
 

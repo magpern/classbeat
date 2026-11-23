@@ -116,8 +116,7 @@ def set_timing(studio: StudioEnv, owner: UUID, reference: str, timing: str) -> N
     """The stored timing class of one cached spotdown row; its map (and map hash) untouched."""
     studio.songs.sql(
         "UPDATE swedebeat_track_maps SET provenance = jsonb_set(provenance, '{timing,class}', "
-        "to_jsonb(CAST(:t AS text))) WHERE owner_id = :o AND reference = :r "
-        "AND analyser = 'spotdown'",
+        "to_jsonb(CAST(:t AS text))) WHERE owner_id = :o AND reference = :r",
         o=owner,
         r=reference,
         t=timing,
@@ -401,7 +400,7 @@ def newer_spotdown_row(studio: StudioEnv, owner: UUID, reference: str) -> None:
     still ``exact``: the draft did not record it."""
     studio.songs.sql(
         "UPDATE swedebeat_track_maps SET sha256 = :b, created_at = now() "
-        "WHERE owner_id = :o AND reference = :r AND analyser = 'spotdown'",
+        "WHERE owner_id = :o AND reference = :r",
         o=owner,
         r=reference,
         b=bytes(range(32)),

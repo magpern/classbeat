@@ -2,11 +2,12 @@
 of ``design.revision``). Pure: no I/O.
 
 ``SwedebeatRevisionMusic`` of a draft designed on spotdown's map of the mix (#1304) also records
-``analyser`` (``spotdown``) and that analysis's ``provenance`` record (``mix_map_model``: ids,
+that analysis's ``provenance`` record (``mix_map_model``: ids,
 versions, the audio identity and the timing class with its evidence; no title, link, URL or
 scope); this model does not bound its size: ``mix_map_model.mix_map_of`` refuses a record over
 ``PROVENANCE_MAX`` before any map is used, as the table's check does on the cache row. A draft on
-a local map has neither.
+a local map has none. A draft stored before #1299 also names the analyser (always ``spotdown``):
+that key is read and dropped (``studio_revision_model.drop_legacy_analyser``).
 """
 
 from typing import Annotated, Any, Literal, Self
@@ -16,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from classbeat.design import revision_edit_map
 from classbeat.design.revision_spotdown_model import SpotdownSections
+from classbeat.design.studio_revision_model import drop_legacy_analyser
 
 
 class UnknownBpmTrack(BaseModel):
@@ -116,8 +118,9 @@ class SwedebeatRevisionMusic(BaseModel):
     songs: SongList = None
     # ADR 0040 section 6 (#1304): set only on a draft designed on spotdown's map of the mix (the
     # analysis kept per class, plan section 4a); absent on a local map, stored exactly as before.
-    analyser: Literal["spotdown"] | None = None
     provenance: dict[str, Any] | None = None
+
+    _legacy = model_validator(mode="before")(drop_legacy_analyser)
 
 
 class NoRevisionMusic(BaseModel):

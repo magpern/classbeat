@@ -86,7 +86,7 @@ async def facts_of(db: AsyncSession, owner_id: UUID, found: CurrentDraft) -> dic
     maps = await cached_in(db, owner_id, references, recorded(wanted(found.music, references)))
     out: dict[str, TrackFacts] = {}
     for reference, hit in maps.items():
-        timing = stored_timing_class(hit.provenance) if hit.analyser == "spotdown" else None
+        timing = stored_timing_class(hit.provenance)
         try:
             out[reference] = of_map(hit.music_map, timing)
         except (ValueError, KeyError, TypeError):

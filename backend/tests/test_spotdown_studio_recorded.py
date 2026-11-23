@@ -1,12 +1,12 @@
 """#1302 review C1 (ADR 0040 section 6): **a designed class reads exactly the analysis it was
-designed on**, by its analyser, its bytes and its map (``track_cache.recorded``). For a class
+designed on**, by its bytes and its map (``track_cache.recorded``). For a class
 designed on spotdown's maps, each later reader (the timeline, a revise and the outputs job) is
 run against two caches, on the fakes (the fake gateway, the fake model, the fake spotdown);
 never the network:
 
 - ``kept``: the rows as the design stored them, so the reader works (the gate can pass);
-- ``remapped``: the spotdown rows hold another map of the same bytes (a re-analysis by the same
-  analyser, say under another policy version): ``music_changed``, which only the map hash sees;
+- ``remapped``: the spotdown rows hold another map of the same bytes (a re-analysis, say under
+  another policy version): ``music_changed``, which only the map hash sees;
 
 Plus the stored form (review non-blocking 1): a map whose jsonb form differs from its Python form
 (``-0.0``, ``1e+16``) is recorded by the hash of what is stored, so its class stays readable.
@@ -49,11 +49,10 @@ CACHES = ("kept", "remapped")
 
 
 def remap(studio: StudioEnv, owner: UUID) -> None:
-    """Another valid map of the same bytes, by the same analyser, provenance untouched."""
+    """Another valid map of the same bytes, provenance untouched."""
     other = track_map(LENGTH, bpm=100.0)
     studio.songs.sql(
-        "UPDATE swedebeat_track_maps SET map = CAST(:m AS jsonb) "
-        "WHERE owner_id = :o AND analyser = 'spotdown'",
+        "UPDATE swedebeat_track_maps SET map = CAST(:m AS jsonb) WHERE owner_id = :o",
         o=owner,
         m=json.dumps(other),
     )
@@ -82,7 +81,7 @@ async def designed_on_spotdown(
 ) -> tuple[Any, UUID, Any]:
     rider, class_id, _list, current = await designed(studio, mix)
     records = studio.songs.revision(current.current_revision_id).music["analyses"]
-    assert {r["analyser"] for r in records} == {"spotdown"}
+    assert all("analyser" not in r for r in records)  # #1299: no analyser code
     analysed.clear()
     studio_tracks_config.configure(None)  # a later job, spotdown not installed: cache hits only
     change(studio, rider.user_id, cache)

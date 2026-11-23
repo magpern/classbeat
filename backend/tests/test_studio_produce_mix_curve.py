@@ -89,7 +89,7 @@ def store_spotdown_rows(
             "policy_versions": dict(STUDIO_POLICY_VERSIONS),
         }
         studio.songs.sql(
-            "UPDATE swedebeat_track_maps SET analyser = 'spotdown', "
+            "UPDATE swedebeat_track_maps SET "
             "provenance = CAST(:provenance AS jsonb), map = map || CAST(:extra AS jsonb) "
             "WHERE id = :id",
             id=row.id,
@@ -97,7 +97,7 @@ def store_spotdown_rows(
             extra=json.dumps(extra),
         )
         records.append({
-            "reference": row.reference, "analyser": "spotdown", "sha256": bytes(row.sha256).hex(),
+            "reference": row.reference, "sha256": bytes(row.sha256).hex(),
             "map_hash": map_hash({**row.map, **extra}), "provenance": record,
         })  # fmt: skip
     studio.songs.sql(

@@ -238,7 +238,6 @@ def content_and_music(
             unsure_beat_one=list(step.mix.unsure_beat_one),
             fingerprint=step.fingerprint,
             link_id=step.link_id,
-            analyser="spotdown" if step.mix.analyser == "spotdown" else None,
             provenance=step.mix.provenance,
         )
     else:
