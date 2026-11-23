@@ -1,8 +1,9 @@
 """#1342 (ADR 0036 amendment "a song may appear more than once in a mix", A2, A3, A5 to A7): plain
 repeats in the mix spec. Coverage, the per-piece check structure, the loop join refused on a track
-with no stored timing decision (the loop rules themselves: ``test_mix_loop_policy.py``), the
+whose stored timing is not ``exact`` (the loop rules themselves: ``test_mix_loop_policy.py``), the
 ordinary rules on repeated pieces, and the soft hints. Pure: no I/O."""
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -22,8 +23,13 @@ from classbeat.studio.mix_plan_policy import (
 from classbeat.studio.mix_spec_model import MixSpec
 from classbeat.swedebeat_studio.length_policy import studio_total, within
 
-FACTS = {r: TrackFacts(length=240.0, bpm=120.0, first_downbeat=0.5) for r in ("a", "b", "c")}
+FACTS = {
+    r: TrackFacts(length=240.0, bpm=120.0, first_downbeat=0.5, timing_class="exact")
+    for r in ("a", "b", "c")
+}
 ORDER = ["a", "b", "c"]
+# the same tracks with a stored timing class that is not ``exact`` (every analysis has one, #1299)
+INEXACT = {r: replace(f, timing_class="approximate") for r, f in FACTS.items()}
 LENGTHS = {r: f.length for r, f in FACTS.items()}
 
 
@@ -106,7 +112,10 @@ def test_no_cap_on_repeats_only_on_pieces() -> None:
 
 
 def test_the_total_bound_counts_every_piece() -> None:
-    long = {r: TrackFacts(length=600.0, bpm=120.0, first_downbeat=0.5) for r in ORDER}
+    long = {
+        r: TrackFacts(length=600.0, bpm=120.0, first_downbeat=0.5, timing_class="exact")
+        for r in ORDER
+    }
     pieces = [("a" if n % 3 == 0 else "b" if n % 3 == 1 else "c", 0, 600.0) for n in range(16)]
     value = spec(*pieces, crossfades=[0] * 15)
     assert MAX_TOTAL_SEC < 16 * 600
@@ -115,13 +124,13 @@ def test_the_total_bound_counts_every_piece() -> None:
     assert checked(fits, ORDER, long)  # exactly 150 minutes, repeats counted
 
 
-# --- the loop join without a stored timing decision (A4.1) ------------------------------------
+# --- the loop join of a track whose timing is not exact (A4.1) ---------------------------------
 
 
-def test_a_loop_join_is_refused_without_a_stored_timing_decision() -> None:
+def test_a_loop_join_is_refused_without_exact_timing() -> None:
     value = spec(("a", 0.5, 120.5), ("a", 120.5, 240.0), ("b", 0, 240.0), ("c", 0, 240.0),
                  crossfades=[0, 8, 8])  # fmt: skip
-    refused = refusal(value)
+    refused = refusal(value, INEXACT)
     assert refused.reason == "loop_needs_exact_timing"
     assert "pieces 0 and 1" in str(refused)
     assert "'a'" not in str(refused)
@@ -131,7 +140,7 @@ def test_a_loop_join_is_refused_without_a_stored_timing_decision() -> None:
 def test_the_first_loop_join_in_mix_order_is_named() -> None:
     value = spec(("b", 0, 240.0), ("a", 0, 120.5), ("c", 0, 240.0), ("c", 0, 240.0),
                  ("a", 0, 120.5), ("a", 0, 120.5))  # fmt: skip
-    assert "pieces 2 and 3" in str(refusal(value))
+    assert "pieces 2 and 3" in str(refusal(value, INEXACT))
 
 
 # --- the fixed order (A7) and the check structure -------------------------------------------------
@@ -163,7 +172,8 @@ def test_the_first_loop_join_in_mix_order_is_named() -> None:
     ],
 )  # fmt: skip
 def test_the_first_reason_follows_the_fixed_order(value: dict[str, Any], reason: str) -> None:
-    assert refusal(value).reason == reason
+    facts = INEXACT if reason == "loop_needs_exact_timing" else FACTS  # the loop is not exact
+    assert refusal(value, facts).reason == reason
 
 
 # --- the ordinary rules with repeats (A3, A6) -----------------------------------------------------
@@ -248,7 +258,10 @@ def test_the_hints(value: dict[str, Any], expected: list[Hint]) -> None:
 
 
 def test_whole_is_ninety_percent_of_the_analysed_length() -> None:
-    on_zero = {r: TrackFacts(length=240.0, bpm=120.0, first_downbeat=0.0) for r in ORDER}
+    on_zero = {
+        r: TrackFacts(length=240.0, bpm=120.0, first_downbeat=0.0, timing_class="exact")
+        for r in ORDER
+    }
     whole = spec(("a", 0, 216.0), ("b", 0, 240.0), ("a", 24.0, 240.0), ("c", 0, 240.0))
     good = checked(whole, ORDER, on_zero)
     assert [t["end_sec"] - t["start_sec"] for t in good["tracks"]][0::2] == [216.0, 216.0]
@@ -275,7 +288,10 @@ def test_a_class_of_one_song_is_never_flagged_as_dominated() -> None:
 
 
 def test_hints_name_pieces_never_a_reference() -> None:
-    refs = {r: TrackFacts(240.0, 120.0, 0.5) for r in ("ref-AAAA1111", "ref-BBBB2222", "ref-C333")}
+    refs = {
+        r: TrackFacts(240.0, 120.0, 0.5, "exact")
+        for r in ("ref-AAAA1111", "ref-BBBB2222", "ref-C333")
+    }
     value = {
         "tracks": [
             {"reference": "ref-AAAA1111", "start_sec": 0, "end_sec": 240.0},

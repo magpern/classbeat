@@ -3,7 +3,7 @@ trust is inherited again from the track's stored timing class (``StudioTrack.fac
 sees the points by track index with hints marked as hints and no downbeats, the prompts keep the
 whole track by default, and a plan cut near a trusted point comes back on it. Pure: no I/O."""
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -45,7 +45,6 @@ def test_an_approximate_track_has_advisory_candidates_only() -> None:
     ("timing", "points"),
     [
         ("unusable", None),
-        (None, None),  # no stored timing decision
         ("exact", [*as_json(POINTS), {"at_s": 1.0, "kind": "drop", "trusted": True}]),
         ("exact", "points"),
     ],
@@ -57,15 +56,14 @@ def test_no_candidates_without_a_usable_timing_class_or_a_whole_stored_list(
 
 
 def test_the_stored_timing_class_is_the_records_and_any_doubt_is_unusable() -> None:
-    assert stored_timing_class(None) is None
     assert stored_timing_class({"timing": {"class": "exact"}}) == "exact"
     assert stored_timing_class({"timing": {"class": "approximate"}}) == "approximate"
-    for doubt in ({}, {"timing": "exact"}, {"timing": {"class": "EXACT"}}, "exact"):
-        assert stored_timing_class(doubt) == "unusable"
+    for doubt in ({}, {"timing": "exact"}, {"timing": {"class": "EXACT"}}, "exact", None):
+        assert stored_timing_class(cast(Any, doubt)) == "unusable"  # never None (#1299)
 
 
 def test_the_model_sees_the_edges_in_the_summary_and_every_point_in_a_detail() -> None:
-    tracks = (with_points("exact"), StudioTrack("Local", "Band", track_map(300.0)))
+    tracks = (with_points("exact"), StudioTrack("Plain", "Band", track_map(300.0), "unusable"))
     summary = studio_mix.music_summary(tracks)["tracks"]
     assert summary[0]["timing"] == "exact"
     assert summary[0]["cut_points"] == [
@@ -73,7 +71,7 @@ def test_the_model_sees_the_edges_in_the_summary_and_every_point_in_a_detail() -
         {"at_sec": 0.3, "kind": "content_start", "use": "trusted"},
         {"at_sec": 296.0, "kind": "fade_out_start", "use": "trusted"},
     ]
-    assert "timing" not in summary[1]
+    assert summary[1]["timing"] == "unusable"  # every track names its class (#1299)
     assert "cut_points" not in summary[1]
     detail = studio_mix.track_detail(tracks, 0)["cut_points"]
     assert [p["kind"] for p in detail] == [
@@ -96,14 +94,15 @@ def test_the_prompts_keep_the_whole_track_by_default() -> None:
 
 
 def test_a_plan_cut_near_a_trusted_point_comes_back_on_it() -> None:
-    tracks = (with_points("exact"), *[StudioTrack("Song", "Band", track_map(310.0))])
+    tracks = (with_points("exact"), *[StudioTrack("Song", "Band", track_map(310.0), "exact")])
     mix = whole_mix(2)
     mix["tracks"][0] |= {"start_sec": 30.9, "why": "A shorter intro for the warm-up."}
     composed = studio_mix.compose(tracks, MixInput.model_validate(mix))
     # 30.9 selects the segment start at 31.5, which snaps to the bar at 32.27 (0.4 + 17 bars)
     assert composed.plan["tracks"][0]["start_sec"] == 32.27
     plain = studio_mix.compose(
-        (StudioTrack("Song", "Band", track_map(300.0)), tracks[1]), MixInput.model_validate(mix)
+        (StudioTrack("Song", "Band", track_map(300.0), "exact"), tracks[1]),
+        MixInput.model_validate(mix),
     )
     assert (
         plain.plan["tracks"][0]["start_sec"] == 30.4

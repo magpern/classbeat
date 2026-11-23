@@ -1,13 +1,15 @@
 """The ``music`` models of ``class_revisions`` (``design.revision``'s module docstring; split out
 of ``design.revision``). Pure: no I/O.
 
-``SwedebeatRevisionMusic`` of a draft designed on spotdown's map of the mix (#1304) also records
-that analysis's ``provenance`` record (``mix_map_model``: ids,
-versions, the audio identity and the timing class with its evidence; no title, link, URL or
-scope); this model does not bound its size: ``mix_map_model.mix_map_of`` refuses a record over
-``PROVENANCE_MAX`` before any map is used, as the table's check does on the cache row. A draft on
-a local map has none. A draft stored before #1299 also names the analyser (always ``spotdown``):
-that key is read and dropped (``studio_revision_model.drop_legacy_analyser``).
+``SwedebeatRevisionMusic`` also records the ``provenance`` record of spotdown's map of the mix it
+was designed on (#1304; ``mix_map_model``: ids, versions, the audio identity and the timing class
+with its evidence; no title, link, URL or scope); this model does not bound its size:
+``mix_map_model.mix_map_of`` refuses a record over ``PROVENANCE_MAX`` before any map is used, as
+the table's check does on the cache row. Every draft made now has it (``MixFacts.provenance`` is
+required, #1299); only a draft stored before #1304, on a local map, has none, so the field stays
+optional for that one legacy read (Save and the player still read such a draft). A draft stored
+before #1299 also names the analyser (always ``spotdown``): that key is read and dropped
+(``studio_revision_model.drop_legacy_analyser``).
 """
 
 from typing import Annotated, Any, Literal, Self
@@ -116,8 +118,9 @@ class SwedebeatRevisionMusic(BaseModel):
     link_id: UUID
     beat_one: BeatOneList = None
     songs: SongList = None
-    # ADR 0040 section 6 (#1304): set only on a draft designed on spotdown's map of the mix (the
-    # analysis kept per class, plan section 4a); absent on a local map, stored exactly as before.
+    # ADR 0040 section 6 (#1304): spotdown's record of the mix's map (the analysis kept per class,
+    # plan section 4a), set on every draft made now; absent only on a draft stored before #1304
+    # (a local map), which still reads (the module docstring's one legacy read).
     provenance: dict[str, Any] | None = None
 
     _legacy = model_validator(mode="before")(drop_legacy_analyser)

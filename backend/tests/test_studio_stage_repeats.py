@@ -31,7 +31,7 @@ RECOVERY = {"track": 2, "start_sec": 0.4, "end_sec": 62.0}  # a minute of track 
 
 
 async def test_the_model_repeats_a_track_by_naming_its_index_again() -> None:
-    ctx = StudioContext(BRIEF, tracks())
+    ctx = StudioContext(BRIEF, tracks(timing="approximate"))
     mix = with_repeat(RECOVERY)
     outcome, _ = await run(
         ctx,
@@ -46,8 +46,8 @@ async def test_the_model_repeats_a_track_by_naming_its_index_again() -> None:
     windows = [t["end_sec"] - t["start_sec"] for t in plan["tracks"]]
     assert outcome.output.composed.duration_sec == round(sum(windows) - 8 * 8, 2)
     assert outcome.output.composed.map["duration"] == outcome.output.composed.duration_sec
-    # A minute again is no whole track (no ``whole_track_repeated``); but these local tracks have
-    # no timing decision, so the cut minute is ``cut_on_inexact_track`` (#1372), a soft hint only.
+    # A minute again is no whole track (no ``whole_track_repeated``); but these tracks' timing is
+    # ``approximate``, so the cut minute is ``cut_on_inexact_track`` (#1372), a soft hint only.
     assert [h.split(":")[0] for h in outcome.output.composed.hints] == ["cut_on_inexact_track"]
     assert "pieces 8 cut a track" in outcome.output.composed.hints[0]
 
@@ -108,7 +108,7 @@ async def test_a_loop_join_on_an_exact_track_is_composed() -> None:
 
 
 async def test_a_loop_join_comes_back_with_its_reason() -> None:
-    ctx = StudioContext(BRIEF, tracks())
+    ctx = StudioContext(BRIEF, tracks(timing="approximate"))
     loop = whole_mix()
     loop["tracks"].insert(1, {"track": 0, "start_sec": 0, "end_sec": 300.0})
     loop["crossfades"].append(8)

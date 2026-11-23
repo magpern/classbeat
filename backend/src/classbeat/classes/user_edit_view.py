@@ -96,7 +96,7 @@ async def view(
             return found
         else:
             spec = found.spec
-            analysed = {a.reference: a.sha256 for a in found.music.analyses or ()}
+            analysed = {a.reference: a.sha256 for a in found.music.analyses}
             read = _Read(found.revision_id, found.content, found.overlay)
         unapplied, orphaned = listed(read.content, spec, read.overlay, analysed)
         params: dict[str, object] = {

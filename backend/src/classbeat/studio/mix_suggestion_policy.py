@@ -5,7 +5,7 @@ no I/O.
 timing class, the proposal's pieces of it (``(start, end)`` in mix order), whether each proposed
 end lands within ``LOCK_TOLERANCE_MS`` of a trusted phrase point (A4.2; display only, it decides
 nothing), and ``full_only``, the reason a song whose stored timing is not ``exact`` is never trimmed
-(``timing_approximate``, ``timing_unusable``, ``timing_unknown``; ``mix_choice_policy.applied``
+(``timing_approximate``, ``timing_unusable``; ``mix_choice_policy.applied``
 keeps it whole whatever the proposal says).
 """
 
@@ -19,10 +19,9 @@ from classbeat.studio.mix_cut_policy import trusted
 from classbeat.studio.mix_facts_model import TrackFacts
 from classbeat.studio.mix_loop_policy import LOCK_TOLERANCE_MS, PHRASE_KINDS
 
-FULL_ONLY: Final[dict[TimingClass | None, str]] = {
+FULL_ONLY: Final[dict[TimingClass, str]] = {
     "approximate": "timing_approximate",
     "unusable": "timing_unusable",
-    None: "timing_unknown",
 }
 
 
@@ -33,7 +32,7 @@ class Suggestion:
 
     position: int
     length: float
-    timing_class: TimingClass | None
+    timing_class: TimingClass
     pieces: tuple[tuple[float, float], ...]
     ends_on_phrase: tuple[bool, ...]
     full_only: str | None

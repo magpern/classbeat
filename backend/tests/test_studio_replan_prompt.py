@@ -88,7 +88,9 @@ def test_the_whole_songs_default_says_whole_songs_no_crossfades_no_trims() -> No
 
 
 def titled(n: int) -> StudioTrack:
-    return StudioTrack(f"Typed Title {n} ref-0000abcd", "Typed Band", track_map(300.0 + 10 * n))
+    return StudioTrack(
+        f"Typed Title {n} ref-0000abcd", "Typed Band", track_map(300.0 + 10 * n), "exact"
+    )
 
 
 def revise_ctx(given: MixChoices | None) -> StudioContext:
@@ -165,7 +167,7 @@ def cut_first(mix: dict[str, Any]) -> dict[str, Any]:
     return mix
 
 
-@pytest.mark.parametrize("timing", ["approximate", "unusable", None])
+@pytest.mark.parametrize("timing", ["approximate", "unusable"])
 def test_a_cut_on_a_track_that_is_not_exact_is_hinted(timing: Any) -> None:
     composed = studio_mix.compose(timed(timing), MixInput.model_validate(cut_first(whole_mix())))
     hinted = [h for h in composed.hints if h.startswith("cut_on_inexact_track")]
@@ -194,7 +196,10 @@ def test_the_hint_reaches_the_design_stages_preview_answer() -> None:
 
 
 def test_the_hint_names_every_cut_piece_and_reads_whole_in_hundredths() -> None:
-    facts = {"a": TrackFacts(240.004, 128.0, 0.4, "approximate"), "b": TrackFacts(200, 128, 0.4)}
+    facts = {
+        "a": TrackFacts(240.004, 128.0, 0.4, "approximate"),
+        "b": TrackFacts(200, 128, 0.4, "unusable"),
+    }
     spec = {
         "tracks": [
             {"reference": "a", "start_sec": 0.0, "end_sec": 240.0},  # whole in hundredths

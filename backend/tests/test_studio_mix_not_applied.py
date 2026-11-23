@@ -223,7 +223,7 @@ async def test_a_proposal_outside_the_class_length_is_refused_for_the_playlist(
     stored = studio.songs.revision(current.current_revision_id).music["mix_spec"]
     target = studio.songs.revision(list_id).content["target_sec"]
     references = [t["reference"] for t in stored["tracks"]]
-    facts = {r: of_map(track_map(short), None) for r in references}
+    facts = {r: of_map(track_map(short), "exact") for r in references}
     with pytest.raises(MixChoiceRefused) as caught:  # the reason is the class length (B6)
         applied(Proposal(references, stored, target), facts, MixChoices.whole_songs())
     assert caught.value.reason == "class_length_out_of_tolerance"

@@ -41,7 +41,9 @@ def track(
     return TrackFacts(length, bpm, first, timing, (*beats, *extra))
 
 
-PLAIN = TrackFacts(length=240.0, bpm=120.0, first_downbeat=0.5)  # 2 s bars on 0.5 + 2n
+PLAIN = TrackFacts(
+    length=240.0, bpm=120.0, first_downbeat=0.5, timing_class="exact"
+)  # 2 s bars on 0.5 + 2n
 
 
 def spec(*cuts: tuple[str, Any, Any], crossfades: list[int]) -> dict[str, Any]:
@@ -108,7 +110,6 @@ def test_the_other_sides_phrase_point_is_no_better_than_any_other_kind() -> None
     [
         ("approximate", True, 201.4),  # advisory: never moved, never snapped
         ("unusable", True, 201.4),
-        (None, True, 200.5),  # no stored decision: no candidate, the bar snap as before
         ("exact", False, 200.5),  # hints never set a cut: the trusted segment start does
     ],
 )
@@ -193,7 +194,6 @@ def test_half_or_double_time_needs_only_the_slower_tracks_downbeats() -> None:
         (track(), track(), 0),  # no overlap: nothing to lock
         (track(timing="approximate"), track(), 8),
         (track(), track(timing="unusable"), 8),
-        (track(), track(timing=None), 8),  # no stored timing decision: no trusted downbeats
         (track(trusted=False), track(), 8),  # the downbeats are hints
         (PLAIN, track(), 8),  # no candidates at all
     ],

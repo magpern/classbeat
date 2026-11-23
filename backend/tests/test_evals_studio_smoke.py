@@ -62,11 +62,13 @@ async def test_the_case_passes_against_its_recorded_script(case: Any) -> None:
     assert {c.name for c in result.checks} >= {"mix_order", "mix_windows", "mix_total", "duration"}
     assert len(result.prompt_version) == 64
     assert "tempo_jump (neighbours whose" in sent()  # #1330's prompt, a new prompt_version
-    assert "downbeats_not_locked: in the crossfade" not in sent()  # local maps: no trusted grid
-    # #1372's prompt (a new prompt_version): the mix is a suggestion, and a local map has no
-    # timing decision, so the trimmed first piece is the soft hint ``cut_on_inexact_track``
+    # the synthetic tracks have no stored candidates: no trusted point to lock a downbeat on
+    assert "downbeats_not_locked: in the crossfade" not in sent()
+    # #1372's prompt (a new prompt_version): the mix is a suggestion. The synthetic tracks are
+    # ``exact`` (every analysis has its timing class, #1299), so the trimmed first piece is no
+    # ``cut_on_inexact_track`` (``test_studio_replan_prompt.py`` has it on a track that is not)
     assert "suggestions the instructor may decline" in sent()
-    assert "cut_on_inexact_track: pieces 0 cut a track" in sent()
+    assert "cut_on_inexact_track: pieces" not in sent()
     assert fake.remaining == 0
 
 

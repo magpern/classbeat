@@ -20,9 +20,7 @@ def phrases(*points: float) -> tuple[Candidate, ...]:
     )
 
 
-def track(
-    timing: TimingClass | None = "exact", length: float = 240.0, *points: float
-) -> TrackFacts:
+def track(timing: TimingClass = "exact", length: float = 240.0, *points: float) -> TrackFacts:
     return TrackFacts(length, 120.0, 0.0, timing, phrases(*(points or (32.0, 96.0, 180.0))))
 
 

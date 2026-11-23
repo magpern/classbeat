@@ -3,8 +3,8 @@
 
 ``TrackFacts`` holds the track's length, BPM and first downbeat from its **stored** analysis,
 never a model's number, and, for #1328, the track's **stored** timing class and its cut candidates
-(``spotdown.cut_candidates_calc``). A track with no stored timing decision (``None``) has no
-candidates; a spotdown analysis has its decision's class and the candidates stored with its map.
+(``spotdown.cut_candidates_calc``). Every stored analysis is spotdown's, with its decision's class
+(``spotdown.studio_map_model.stored_timing_class``) and the candidates stored with its map.
 """
 
 from collections.abc import Mapping
@@ -30,16 +30,16 @@ class TrackFacts:
     length: float
     bpm: float
     first_downbeat: float
-    timing_class: TimingClass | None = None  # ``None``: no stored timing decision
+    timing_class: TimingClass
     candidates: tuple[Candidate, ...] = ()
     low_band: low_band_model.Curve | None = None  # ``None``: not known (no bass swap)
 
 
-def stored_candidates(raw: object, timing_class: TimingClass | None) -> tuple[Candidate, ...]:
+def stored_candidates(raw: object, timing_class: TimingClass) -> tuple[Candidate, ...]:
     """A track map's stored candidates as ``TrackFacts`` takes them, trust inherited again from
-    the stored timing class: none without a decision or for ``unusable``, all advisory for
+    the stored timing class: none for ``unusable``, all advisory for
     ``approximate``, and none at all when the stored list does not read whole."""
-    if timing_class not in ("exact", "approximate"):
+    if timing_class == "unusable":
         return ()
     found = parse(raw)
     if found is None:
@@ -49,7 +49,7 @@ def stored_candidates(raw: object, timing_class: TimingClass | None) -> tuple[Ca
     return tuple(Candidate(c.at_s, c.kind, c.confidence, c.method, False, c.label) for c in found)
 
 
-def of_map(music_map: Mapping[str, Any], timing_class: TimingClass | None) -> TrackFacts:
+def of_map(music_map: Mapping[str, Any], timing_class: TimingClass) -> TrackFacts:
     """A stored track map's facts: its one song's BPM and first downbeat, and what the stored
     timing class lets through (candidates; the low band of an ``exact`` track only)."""
     (song,) = music_map["songs"]

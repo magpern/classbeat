@@ -39,7 +39,7 @@ selected, snapped) and rounded, or raises ``MixPlanRefused`` with one named reas
    range (``cut_out_of_range``), the candidate selection and the snap (``mix_cut_policy.placed``:
    a trusted candidate of an ``exact`` track within the tolerance, at a transition its phrase
    point first (#1330), else the proposed cut; the bar
-   grid for ``exact`` or no stored timing decision only), and its range again once placed
+   grid for ``exact`` only), and its range again once placed
    (``cut_out_of_range``, a named detail). One piece's checks all run before the next piece's.
    A **pinned** cut (``start_pin`` / ``end_pin``, ADR 0042 section 5, #1390) skips the selection,
    so no candidate ever replaces a pin: its proposed cut is the pin's (``CutPin.proposed``), and

@@ -6,6 +6,7 @@ from typing import Any
 from mowl import track
 
 from classbeat.agent.studio_mix import StudioTrack
+from classbeat.spotdown.timing_inputs_model import TimingClass
 
 
 def track_map(
@@ -32,9 +33,12 @@ def track_map(
     }  # fmt: skip
 
 
-def tracks(count: int = 8, duration: float = 300.0) -> tuple[StudioTrack, ...]:
+def tracks(
+    count: int = 8, duration: float = 300.0, timing: TimingClass = "exact"
+) -> tuple[StudioTrack, ...]:
+    """``count`` tracks with the stored timing class ``timing`` (every analysis has one, #1299)."""
     return tuple(
-        StudioTrack(f"Invented Song {n}", "Made-up Band", track_map(duration + 10 * n))
+        StudioTrack(f"Invented Song {n}", "Made-up Band", track_map(duration + 10 * n), timing)
         for n in range(count)
     )
 

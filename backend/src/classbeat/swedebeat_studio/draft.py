@@ -68,12 +68,11 @@ class StudioMusic:
             refs.append(found.reference)
             timing = stored_timing_class(found.provenance)
             tracks.append(StudioTrack(song.title, song.artist, found.music_map, timing))
-            provenance = None if found.provenance is None else dict(found.provenance)
             records.append(TrackRecord(
                 reference=found.reference,
                 sha256=found.sha256,
                 map_hash=map_hash(found.music_map),
-                provenance=provenance,
+                provenance=dict(found.provenance),
             ))  # fmt: skip
         return cls(tuple(refs), tuple(tracks), tuple(records))
 

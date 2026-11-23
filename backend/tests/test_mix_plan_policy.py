@@ -16,7 +16,10 @@ from classbeat.studio.mix_plan_policy import (
 from classbeat.studio.mix_spec_model import MixSpec
 
 BAR = 240.0 / 120.0  # 2 s bars at 120 BPM
-FACTS = {r: TrackFacts(length=240.0, bpm=120.0, first_downbeat=0.5) for r in ("a", "b", "c")}
+FACTS = {
+    r: TrackFacts(length=240.0, bpm=120.0, first_downbeat=0.5, timing_class="exact")
+    for r in ("a", "b", "c")
+}
 ORDER = ["a", "b", "c"]
 
 
@@ -93,7 +96,10 @@ def test_each_rule_is_refused_with_its_reason(value: dict[str, Any], reason: str
 
 
 def test_a_middle_tracks_crossfades_leave_part_of_it_alone() -> None:
-    one_minute = {k: TrackFacts(length=60.0, bpm=120.0, first_downbeat=0.5) for k in ORDER}
+    one_minute = {
+        k: TrackFacts(length=60.0, bpm=120.0, first_downbeat=0.5, timing_class="exact")
+        for k in ORDER
+    }
     edges = spec(*[(r, 0, 60.0) for r in ORDER], crossfades=[30, 29])
     assert checked(edges, ORDER, one_minute)["crossfades"] == [30, 29]  # 59 < 60
     with pytest.raises(MixPlanRefused) as caught:
@@ -133,12 +139,18 @@ def test_any_other_field_is_unknown() -> None:
 
 
 def test_at_most_forty_tracks_and_150_minutes() -> None:
-    many = {f"t{n}": TrackFacts(length=240.0, bpm=120.0, first_downbeat=0.5) for n in range(41)}
+    many = {
+        f"t{n}": TrackFacts(length=240.0, bpm=120.0, first_downbeat=0.5, timing_class="exact")
+        for n in range(41)
+    }
     over = spec(*[(r, 0, 240.0) for r in many])
     with pytest.raises(MixPlanRefused) as caught:
         checked(over, list(many), many)
     assert caught.value.reason == "too_many_tracks"
-    long = {f"t{n}": TrackFacts(length=300.0, bpm=120.0, first_downbeat=0.5) for n in range(31)}
+    long = {
+        f"t{n}": TrackFacts(length=300.0, bpm=120.0, first_downbeat=0.5, timing_class="exact")
+        for n in range(31)
+    }
     value = spec(*[(r, 0, 300.0) for r in long], crossfades=[0] * 30)
     assert MAX_TOTAL_SEC < 31 * 300
     with pytest.raises(MixPlanRefused) as caught:
@@ -160,7 +172,10 @@ def test_the_stored_shape_refuses_unrounded_cuts_and_a_wrong_count() -> None:
 # --- SR C5b: whole hundredths, as mowl.compose ----------------------------------------------
 
 FIRST = 0.01  # a grid on which float subtraction leaves 59.999... for many exact minutes
-GRID = {r: TrackFacts(length=300.0, bpm=120.0, first_downbeat=FIRST) for r in ORDER}
+GRID = {
+    r: TrackFacts(length=300.0, bpm=120.0, first_downbeat=FIRST, timing_class="exact")
+    for r in ORDER
+}
 
 
 def _minute_at(start: float) -> dict[str, Any]:
@@ -196,9 +211,11 @@ def test_thirty_and_thirty_over_a_minute_is_refused_from_any_downbeat(bar: int) 
 # --- the end clamped to the length in hundredths, as mowl.compose._clamp -----------------------
 
 ODD = {
-    "a": TrackFacts(length=300.0, bpm=120.0, first_downbeat=0.5),
-    "b": TrackFacts(length=60.005, bpm=120.0, first_downbeat=0.5),  # 6000 cs, not round(, 2)
-    "c": TrackFacts(length=300.0, bpm=120.0, first_downbeat=0.5),
+    "a": TrackFacts(length=300.0, bpm=120.0, first_downbeat=0.5, timing_class="exact"),
+    "b": TrackFacts(
+        length=60.005, bpm=120.0, first_downbeat=0.5, timing_class="exact"
+    ),  # 6000 cs, not round(, 2)
+    "c": TrackFacts(length=300.0, bpm=120.0, first_downbeat=0.5, timing_class="exact"),
 }
 
 
@@ -235,7 +252,10 @@ def test_a_cut_snapped_to_a_downbeat_just_past_the_length_is_clamped_to_it() -> 
     # first downbeat at 0.006 s and 2 s bars, 59.5 s snaps to the downbeat 60.006 s, past the
     # 60.005 s track. Clamped to cs(60.005) = 6000 cs, the window is 60.00 s and 30 + 30 s of
     # crossfade overlap; unclamped (60.01 s, 6001 cs) they would pass.
-    early = {**ODD, "b": TrackFacts(length=60.005, bpm=120.0, first_downbeat=0.006)}
+    early = {
+        **ODD,
+        "b": TrackFacts(length=60.005, bpm=120.0, first_downbeat=0.006, timing_class="exact"),
+    }
     value = spec(("a", 0, 300.0), ("b", 0, 59.5), ("c", 0, 300.0), crossfades=[30, 30])
     with pytest.raises(MixPlanRefused) as caught:
         checked(value, ORDER, early)

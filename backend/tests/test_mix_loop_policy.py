@@ -13,7 +13,9 @@ from classbeat.spotdown.cut_candidates_model import Candidate
 from classbeat.studio import mix_loop_policy
 from classbeat.studio.mix_plan_policy import MixPlanRefused, TrackFacts, checked, cs, total_sec
 
-PLAIN = TrackFacts(length=240.0, bpm=120.0, first_downbeat=0.5)  # 2 s bars on 0.5 + 2n
+PLAIN = TrackFacts(
+    length=240.0, bpm=120.0, first_downbeat=0.5, timing_class="exact"
+)  # 2 s bars on 0.5 + 2n
 
 
 def point(at: float, kind: str = "phrase_start", trusted: bool = True) -> Candidate:
@@ -87,8 +89,6 @@ BEATS = tuple(point(0.5 + 2 * n, "downbeat") for n in range(240))
          "loop_needs_exact_timing"),
         (loop((0.5, 64.5), (64.5, 128.5)), facts(replace(LOOPED, timing_class="unusable")),
          "loop_needs_exact_timing"),
-        (loop((0.5, 64.5), (64.5, 128.5)), facts(replace(LOOPED, timing_class=None)),
-         "loop_needs_exact_timing"),
         # A4.2: off a phrase point on either side (66.5 is a bar, not a phrase point).
         (loop((0.5, 66.5), (66.5, 128.5)), None, "loop_not_on_phrase"),
         (loop((0.5, 64.5), (66.5, 128.5)), None, "loop_not_on_phrase"),
@@ -132,7 +132,7 @@ def test_without_a_trusted_phrase_grid_the_trusted_downbeats_are_the_anchors() -
     assert reason(loop((0.5, 66.5), (66.5, 128.5)), known) == "loop_not_on_phrase"
 
 
-@pytest.mark.parametrize("timing", ["approximate", "unusable", None])
+@pytest.mark.parametrize("timing", ["approximate", "unusable"])
 def test_a_non_adjacent_repeat_of_a_track_without_exact_timing_is_accepted(timing: Any) -> None:
     known = facts(replace(LOOPED, timing_class=timing))
     value = spec(("a", 0.5, 64.5), ("b", 0, 240.0), ("a", 64.5, 128.5), ("c", 0, 240.0))
@@ -220,7 +220,8 @@ def _refused(value: dict[str, Any], a: TrackFacts) -> bool:
         (loop((0.5, 34.5), (34.5, 44.5)), None, "loop_not_on_phrase"),
         # step 6, join by join in mix order: b's join (not exact) comes before a's (off-phrase)
         (spec(("b", 0, 120.5), ("b", 120.5, 240.0), ("a", 0.5, 66.5), ("a", 66.5, 128.5),
-              ("c", 0, 240.0)), None, "loop_needs_exact_timing"),
+              ("c", 0, 240.0)), facts(b=replace(PLAIN, timing_class="approximate")),
+         "loop_needs_exact_timing"),
         (spec(("a", 0.5, 66.5), ("a", 66.5, 128.5), ("b", 0, 120.5), ("b", 120.5, 240.0),
               ("c", 0, 240.0)), None, "loop_not_on_phrase"),
         # step 7, loop pieces' bars before the run's 60 s, and before any crossfade rule
