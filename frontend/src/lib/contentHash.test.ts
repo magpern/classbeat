@@ -77,4 +77,11 @@ describe('the brief size', () => {
   it('cleans the text the way the backend does before it counts', () => {
     expect(cleanText('  a\tb​c\u0007\n ')).toBe('a bc')
   })
+
+  it('counts a line or paragraph separator as one byte, like a space', () => {
+    expect(cleanText('a\u2028b\u2029c')).toBe('a b c')
+    const base = briefBytes({ ...brief, text: 'a b' })
+    expect(briefBytes({ ...brief, text: 'a\u2028b' })).toBe(base)
+    expect(briefBytes({ ...brief, text: 'a\u2029b' })).toBe(base)
+  })
 })

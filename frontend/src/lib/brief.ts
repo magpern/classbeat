@@ -3,14 +3,14 @@ import type { Brief, RunningBrief } from '../api/jobs'
 // The brief is stored on the class as jsonb and may not exceed 4096 bytes there (backend
 // `classbeat.design.revision.MAX_BRIEF_BYTES`, checked when the job is created). The limit is in
 // bytes, not characters: an accented or non-Latin letter takes two to four. The size is measured
-// the way the backend does: control and format characters removed, tabs and newlines as spaces,
+// the way the backend does: control and format characters removed, tabs, newlines and the line and paragraph separators (U+2028, U+2029) as spaces,
 // trimmed, then printed the way jsonb prints it (`", "` and `": "` separators), as UTF-8.
 
 export const MAX_BRIEF_BYTES = 4096
 
 export function cleanText(value: string): string {
   return value
-    .replace(/[\t\n\r]/g, ' ')
+    .replace(/[\t\n\r\u2028\u2029]/g, ' ')
     .replace(/[\p{Cc}\p{Cf}]/gu, '')
     .trim()
 }
