@@ -7,12 +7,12 @@ pins in the revise message.
   then ``mix_plan_policy.checked`` and the class length, the rules **Apply these choices** runs),
   composed again, and the model's fitted workout moved onto it by B4a's song-anchored remap
   (``mix_remap_calc``), as Apply moves a workout. A pinned spec the gates refuse is
-  ``ToolError("invalid_mix")`` naming the reason and the pinned cuts, a correction round: the model
-  may change any other cut or crossfade, never a pin (a confirmed one stays exactly at its
-  ``confirmed_sec``). If no correction holds them, the run ends ``invalid_output`` and nothing is
-  stored. A remap the workout cannot follow is ``ToolError("invalid_draft")``, a correction round
-  too. With no pin that applies, the model's mix and workout stand unchanged (``spec`` is
-  ``None``).
+  ``ToolError("invalid_mix")`` naming the reason and the pinned cuts, a correction round (so is a
+  pinned spec B9's ``holds`` would not accept, ``held``, the final gate): the model may change any
+  other cut or crossfade, never a pin (a confirmed one stays exactly at its ``confirmed_sec``). If
+  no correction holds them, the run ends ``invalid_output`` and nothing is stored. A remap the
+  workout cannot follow is ``ToolError("invalid_draft")``, a correction round too. With no pin that
+  applies, the model's mix and workout stand unchanged (``spec`` is ``None``).
 - ``pin_lines``: the revise message's statement of the base mix's pinned cuts, by the list's track
   index and the cut's second (never a catalogue reference), so the model keeps them.
 """
@@ -26,7 +26,7 @@ from classbeat.studio import mix_remap_calc
 from classbeat.studio.mix_choice_model import MixChoiceRefused
 from classbeat.studio.mix_pin_model import PinRecord
 from classbeat.studio.mix_pin_policy import pins_of
-from classbeat.studio.mix_revise_pin_policy import revised
+from classbeat.studio.mix_revise_pin_policy import held, revised
 from classbeat.swedebeat_studio.mix_apply_calc import StudioTracks, keyed, plan_of
 
 _KEEP = (
@@ -77,6 +77,11 @@ def pinned_mix(
         raise ToolError("invalid_mix", [f"{refused.reason}: {refused}", keep]) from None
     if not pins_of(found.spec):
         return PinnedMix(None, composed, content)
+    try:
+        held(found.spec, references, music.facts(), target_sec, pins)
+    except MixChoiceRefused as refused:  # B9 would answer ``mix_not_applied``: a correction round
+        keep = _KEEP.format(cuts=_requested(pins, references))
+        raise ToolError("invalid_mix", [f"{refused.reason}: {refused}", keep]) from None
     spec = found.spec
     keep = _KEEP.format(cuts=_cuts(spec, references))
     try:
