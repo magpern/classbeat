@@ -821,7 +821,7 @@ the studio parts taken out.
   run with row security lifted, since `test_user_context_guard` does not read SQL. Two limits: the
   owner clauses of `chat._CHAIN`'s anchor and message join are pinned together (either alone is
   covered by the other), and those of the recursive step of `chat._CHAIN` and `chat._STATED` are not
-  pinned at all, since the composite `(owner_id, parent_id)` key makes the plant impossible. U+2028 and U+2029 become spaces in `schemas.clean_text` (#1472), as a newline does, so they
-  cannot reach the revise prompt as line breaks. The class list and
+  pinned at all, since the composite `(owner_id, parent_id)` key makes the plant impossible. U+2028 and U+2029 become spaces in `schemas.clean_text` (#1472), as a newline does, for text
+  cleaned from now on; cues and descriptions stored earlier are not re-cleaned. The class list and
   page carry `spotify` (the class's stored source is a Spotify playlist's) beside `soundless` and
   `studio`.
