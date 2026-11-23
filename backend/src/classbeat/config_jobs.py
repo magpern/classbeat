@@ -22,12 +22,13 @@ class JobSettings(BaseSettings):
     job_lease_seconds: int = Field(default=120, ge=30, le=600)
     # The worker's engine pool follows it (classbeat.worker.loop.worker_pool: 3 * n + 2 at most).
     worker_concurrency: int = Field(default=2, ge=1, le=16)
-    # Running jobs that may analyse a Swedebeat mix at once, across every worker (#574): a job
-    # that must analyse waits queued for one of these slots, so analyses never fill every worker
-    # slot. queue_claim enforces it; each worker passes its own value. Keep it below
+    # Running jobs that may analyse a mix with spotdown at once, across every worker (#574;
+    # ``jobs.spotdown_slot``; named ``mix_analysis_concurrency`` before #1299, which is no longer
+    # read): a job that must analyse waits queued for one of these slots, so analyses never fill
+    # every worker slot. queue_claim enforces it; each worker passes its own value. Keep it below
     # worker_concurrency summed over all workers: at or above it, analyses can take every slot
     # and delay design jobs, which is what the cap is for.
-    mix_analysis_concurrency: int = Field(default=1, ge=1, le=16)
+    spotdown_mix_concurrency: int = Field(default=1, ge=1, le=16)
     # Reap, expire and settle (ADR 0005 section 3: every 30 s).
     worker_maintenance_seconds: float = Field(default=30.0, gt=0)
     # On SIGTERM, how long runs may take to reach a checkpoint or return from a call before

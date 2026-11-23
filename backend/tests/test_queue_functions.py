@@ -114,7 +114,7 @@ def test_the_claim_refuses_a_bad_analysis_cap(
     admin: Connection, app: Engine, slots: int | None
 ) -> None:
     new_job(admin, new_user(admin))
-    with pytest.raises(DBAPIError, match="p_analysis_slots must be 1 to 16"):
+    with pytest.raises(DBAPIError, match="p_spotdown_slots must be 1 to 16"):
         call(app, CLAIM, w="w1", lease=60, kinds=["test_kind"], slots=slots)
 
 
@@ -336,10 +336,10 @@ def test_each_claim_records_its_wait_from_available_at_and_whether_it_holds_a_sl
     assert 90_000 <= first < 150_000
     assert slot is False
     started = job(admin, job_id).started_at
-    # As ``transitions.wait_for_analysis_slot`` requeues it: with the slot, available now.
+    # As ``transitions.wait_for_spotdown_slot`` requeues it: with the slot, available now.
     admin.execute(
         text(
-            "UPDATE jobs SET state = 'queued', attempt = attempt - 1, analysis_slot = true, "
+            "UPDATE jobs SET state = 'queued', attempt = attempt - 1, spotdown_slot = true, "
             "available_at = now() - interval '2 seconds', lease_version = lease_version + 1, "
             "leased_by = NULL, lease_expires_at = NULL, heartbeat_at = NULL WHERE id = :id"
         ),
@@ -462,16 +462,16 @@ def test_the_one_open_job_per_class_rule_holds_for_claimed_jobs(
         new_job(admin, owner, class_id)
 
 
-# Issue #574: the separate cap on running jobs that analyse a mix (``jobs.analysis_slot``).
+# Issue #574: the separate cap on running jobs that analyse a mix (``jobs.spotdown_slot``).
 
 
 def slot_job(admin: Connection, owner: uuid.UUID, **columns: Any) -> uuid.UUID:
-    return new_job(admin, owner, analysis_slot=True, **columns)
+    return new_job(admin, owner, spotdown_slot=True, **columns)
 
 
 def running_slots(admin: Connection) -> int:
     return admin.execute(
-        text("SELECT count(*) FROM jobs WHERE state = 'running' AND analysis_slot")
+        text("SELECT count(*) FROM jobs WHERE state = 'running' AND spotdown_slot")
     ).scalar_one()
 
 
@@ -523,7 +523,7 @@ def test_an_expired_slot_job_holds_its_slot_until_the_reaper_requeues_it(
     assert claim(app) == []  # the old holder may still be analysing
     assert call(app, "SELECT public.queue_reap(10)")[0][0] == 1
     reaped = job(admin, held)
-    assert (reaped.state, reaped.analysis_slot) == ("queued", True)
+    assert (reaped.state, reaped.spotdown_slot) == ("queued", True)
     assert [r.job_id for r in claim(app)] == [waiting]
 
 

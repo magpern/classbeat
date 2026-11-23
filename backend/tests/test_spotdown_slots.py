@@ -34,7 +34,7 @@ async def until(check: Callable[[], bool], seconds: float = 20) -> None:
 
 def slot_rows(env: JobsEnv) -> int:
     return env.sql(
-        "SELECT count(*) FROM jobs WHERE state = 'running' AND analysis_slot"
+        "SELECT count(*) FROM jobs WHERE state = 'running' AND spotdown_slot"
     ).scalar_one()
 
 
@@ -56,14 +56,14 @@ class Analyses:
         assert isinstance(given, KindInput)
         await job_run.stage("pick")
         if given.note == "analyse":
-            self.slots_seen.append(job_run.analysis_slot)
-            job_run.require_analysis_slot()
+            self.slots_seen.append(job_run.spotdown_slot)
+            job_run.require_spotdown_slot()
             self.live += 1
             self.peak = max(self.peak, self.live)
             try:
                 await asyncio.sleep(self.analysis_seconds)
                 async with job_run.fenced() as fs:
-                    await job_run.release_analysis_slot(fs)
+                    await job_run.release_spotdown_slot(fs)
             finally:
                 self.live -= 1
             job_run.slot_released()
@@ -84,7 +84,7 @@ async def test_a_run_without_a_slot_is_requeued_with_one_and_the_attempt_not_cou
     _, job_id = jenv.job(input=ANALYSE)
     await run_next(jenv, kind.registry())
     row = jenv.row(job_id)
-    assert (row.state, row.attempt, row.analysis_slot) == ("queued", 0, True)
+    assert (row.state, row.attempt, row.spotdown_slot) == ("queued", 0, True)
     assert (row.lease_version, row.leased_by, row.lease_expires_at) == (2, None, None)
     assert row.available_at <= jenv.sql("SELECT now()").scalar_one()
     # recorded under the token the run held, as every requeue
@@ -93,7 +93,7 @@ async def test_a_run_without_a_slot_is_requeued_with_one_and_the_attempt_not_cou
 
     await run_next(jenv, kind.registry())  # claimed again, holding the slot
     row = jenv.row(job_id)
-    assert (row.state, row.attempt, row.analysis_slot) == ("completed", 1, False)
+    assert (row.state, row.attempt, row.spotdown_slot) == ("completed", 1, False)
     assert kind.slots_seen == [False, True]
     assert kind.analysed == [job_id]
     assert jenv.kinds(job_id) == [
@@ -107,12 +107,12 @@ async def test_a_cancel_requested_before_the_requeue_cancels_the_job(jenv: JobsE
 
     async def run(job_run: JobRun) -> Complete:
         jenv.sql("UPDATE jobs SET cancel_requested_at = now() WHERE id = :id", id=job_id)
-        job_run.require_analysis_slot()
+        job_run.require_spotdown_slot()
         return Complete()
 
     await run_next(jenv, registry_for(run))
     row = jenv.row(job_id)
-    assert (row.state, row.analysis_slot) == ("cancelled", False)
+    assert (row.state, row.spotdown_slot) == ("cancelled", False)
     assert jenv.kinds(job_id)[-1] == "cancelled"
 
 
@@ -121,31 +121,31 @@ async def test_a_lost_lease_writes_no_requeue(jenv: JobsEnv) -> None:
 
     async def run(job_run: JobRun) -> Complete:
         jenv.sql("UPDATE jobs SET lease_version = lease_version + 1 WHERE id = :id", id=job_id)
-        job_run.require_analysis_slot()
+        job_run.require_spotdown_slot()
         return Complete()
 
     execution = await run_next(jenv, registry_for(run))
     assert execution.result == "lost"
     row = jenv.row(job_id)
-    assert (row.state, row.analysis_slot) == ("running", False)  # the reaper's job now
+    assert (row.state, row.spotdown_slot) == ("running", False)  # the reaper's job now
     assert "requeued" not in jenv.kinds(job_id)
 
 
 async def test_a_job_holding_a_slot_runs_on_and_frees_it_only_once_stored(jenv: JobsEnv) -> None:
-    _, job_id = jenv.job(input=ANALYSE, analysis_slot=True)
+    _, job_id = jenv.job(input=ANALYSE, spotdown_slot=True)
     seen: list[bool] = []
 
     async def run(job_run: JobRun) -> Complete:
-        job_run.require_analysis_slot()  # holds one: no requeue
+        job_run.require_spotdown_slot()  # holds one: no requeue
         with contextlib.suppress(RuntimeError):
             async with job_run.fenced() as fs:
-                await job_run.release_analysis_slot(fs)
+                await job_run.release_spotdown_slot(fs)
                 raise RuntimeError("the store failed")  # rolled back with the release
-        seen.append(jenv.row(job_id).analysis_slot)
+        seen.append(jenv.row(job_id).spotdown_slot)
         async with job_run.fenced() as fs:
-            await job_run.release_analysis_slot(fs)
+            await job_run.release_spotdown_slot(fs)
         job_run.slot_released()
-        seen.append(jenv.row(job_id).analysis_slot)
+        seen.append(jenv.row(job_id).spotdown_slot)
         return Complete()
 
     await run_next(jenv, registry_for(run))
@@ -155,21 +155,21 @@ async def test_a_job_holding_a_slot_runs_on_and_frees_it_only_once_stored(jenv: 
 
 
 async def test_the_release_refuses_another_runs_session(jenv: JobsEnv) -> None:
-    _, first = jenv.job(input=ANALYSE, analysis_slot=True)
+    _, first = jenv.job(input=ANALYSE, spotdown_slot=True)
     held: list[JobRun] = []
 
     async def run(job_run: JobRun) -> Complete:
         if held:
             async with job_run.fenced() as fs:
                 with pytest.raises(ValueError, match="not this run's"):
-                    await held[0].release_analysis_slot(fs)
+                    await held[0].release_spotdown_slot(fs)
         held.append(job_run)
         return Complete()
 
     await run_next(jenv, registry_for(run))
-    jenv.job(input=ANALYSE, analysis_slot=True)
+    jenv.job(input=ANALYSE, spotdown_slot=True)
     await run_next(jenv, registry_for(run))
-    assert jenv.row(first).analysis_slot is True  # never released by anyone
+    assert jenv.row(first).spotdown_slot is True  # never released by anyone
 
 
 def test_the_requeued_event_takes_only_the_known_reason() -> None:
@@ -221,8 +221,8 @@ async def test_extra_analyses_wait_while_other_users_designs_run_and_all_finish(
 
     registry = kind.registry()
     async with (
-        worker(jenv, registry, worker_concurrency=3, mix_analysis_concurrency=1),
-        worker(jenv, registry, worker_concurrency=3, mix_analysis_concurrency=1),
+        worker(jenv, registry, worker_concurrency=3, spotdown_mix_concurrency=1),
+        worker(jenv, registry, worker_concurrency=3, spotdown_mix_concurrency=1),
     ):
         await until(all_done, seconds=40)
 
@@ -234,7 +234,7 @@ async def test_extra_analyses_wait_while_other_users_designs_run_and_all_finish(
     assert sorted(kind.analysed) == sorted(analyses)
     for job_id in analyses:
         row = jenv.row(job_id)
-        assert (row.attempt, row.analysis_slot) == (1, False)  # the requeue cost no attempt
+        assert (row.attempt, row.spotdown_slot) == (1, False)  # the requeue cost no attempt
         assert ("requeued", {"reason": "analysis_slot"}) in [
             (kind_, payload) for _, kind_, payload, _ in jenv.events(job_id)
         ]
@@ -243,6 +243,6 @@ async def test_extra_analyses_wait_while_other_users_designs_run_and_all_finish(
 async def test_a_cap_of_two_runs_two_analyses_at_once(jenv: JobsEnv) -> None:
     kind = Analyses(analysis_seconds=0.5)
     analyses = [jenv.job(input=ANALYSE)[1] for _ in range(4)]
-    async with worker(jenv, kind.registry(), worker_concurrency=4, mix_analysis_concurrency=2):
+    async with worker(jenv, kind.registry(), worker_concurrency=4, spotdown_mix_concurrency=2):
         await until(lambda: all(jenv.row(j).state == "completed" for j in analyses), 30)
     assert kind.peak == 2

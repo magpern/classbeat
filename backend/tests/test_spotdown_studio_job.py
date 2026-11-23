@@ -50,7 +50,7 @@ from spotdownstudioharness import (
 
 __all__ = ["env", "harness", "spotdown", "work"]  # the fixtures
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default")
 THREE = "trk-three-03"  # the same bytes as ONE under another reference
 KEY = bytes(range(32))
 SHARED = shared_scope(KEY, "studio")  # #1338: every owner's studio analyses

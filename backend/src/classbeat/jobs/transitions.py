@@ -42,20 +42,20 @@ _REQUEUE = text(
     "WHERE id = :job_id AND owner_id = :owner_id AND lease_version = :v AND state = 'running' "
     "RETURNING next_seq, available_at"
 )
-# A job that must analyse a mix and was claimed without an analysis slot (#574): back to the
+# A job that must analyse a mix and was claimed without a spotdown slot (#574): back to the
 # queue at once with the slot, the attempt not counted, like the shutdown hand-back.
 _REQUEUE_FOR_SLOT = text(
-    "UPDATE jobs SET state = 'queued', attempt = attempt - 1, analysis_slot = true, "
+    "UPDATE jobs SET state = 'queued', attempt = attempt - 1, spotdown_slot = true, "
     "available_at = now(), lease_version = lease_version + 1, "
     "next_seq = next_seq + 1, updated_at = now(), "
     "leased_by = NULL, lease_expires_at = NULL, heartbeat_at = NULL "
     "WHERE id = :job_id AND owner_id = :owner_id AND lease_version = :v AND state = 'running' "
-    "AND NOT analysis_slot "
+    "AND NOT spotdown_slot "
     "RETURNING next_seq"
 )
 # The analysis is stored (or was found cached): the slot is free for the next job.
 _RELEASE_SLOT = text(
-    "UPDATE jobs SET analysis_slot = false, updated_at = now() "
+    "UPDATE jobs SET spotdown_slot = false, updated_at = now() "
     "WHERE id = :job_id AND owner_id = :owner_id AND lease_version = :v AND state = 'running'"
 )
 _WAIT = text(
@@ -218,12 +218,13 @@ async def hand_back(fs: FencedSession) -> str:
     return await _requeue(fs, refund=True, delay=0, kind="requeued", category=None)
 
 
-async def wait_for_analysis_slot(fs: FencedSession) -> str:
-    """The run must analyse a mix and holds no analysis slot (#574): back to ``queued`` with
-    ``analysis_slot`` at once, the attempt not counted, and a ``requeued`` event with the reason
-    ``analysis_slot``; ``queue_claim`` claims it again only while a slot is free. ``cancelled``
-    if a cancel was requested. A job that holds a slot already never comes here (0 rows: the
-    lease is gone, or the caller is wrong; both are ``LeaseLost``, nothing is written)."""
+async def wait_for_spotdown_slot(fs: FencedSession) -> str:
+    """The run must analyse a mix and holds no spotdown slot (#574): back to ``queued`` with
+    ``spotdown_slot`` at once, the attempt not counted, and a ``requeued`` event with the reason
+    ``analysis_slot`` (a recorded value the job page reads, so it keeps its name); ``queue_claim``
+    claims it again only while a slot is free. ``cancelled`` if a cancel was requested. A job
+    that holds a slot already never comes here (0 rows: the lease is gone, or the caller is
+    wrong; both are ``LeaseLost``, nothing is written)."""
     if fs.cancel_requested:
         return await cancel(fs)
     seq = (await fs.db.execute(_REQUEUE_FOR_SLOT, fs.lease.params())).scalar_one_or_none()
@@ -234,8 +235,8 @@ async def wait_for_analysis_slot(fs: FencedSession) -> str:
     return "queued"
 
 
-async def release_analysis_slot(fs: FencedSession) -> None:
-    """Free the job's analysis slot inside the fenced transaction that stores the analysis; a
+async def release_spotdown_slot(fs: FencedSession) -> None:
+    """Free the job's spotdown slot inside the fenced transaction that stores the analysis; a
     waiting job is woken (``jobs_queued``) when it commits."""
     result = await fs.db.execute(_RELEASE_SLOT, fs.lease.params())
     if result.rowcount != 1:  # pyright: ignore[reportAttributeAccessIssue]

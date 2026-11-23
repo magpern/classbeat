@@ -4,7 +4,7 @@
 Worker A is a real second process (``tests/drill_worker.py``: its own interpreter, engine, pool
 and worker id); worker B is a ``Worker`` in this process. With a global cap of one analysis:
 
-- while A holds the only analysis slot, B runs every design job and none of the waiting analyses:
+- while A holds the only spotdown slot, B runs every design job and none of the waiting analyses:
   a waiting analysis is claimed once without a slot, stops before analysing and goes back to the
   queue asking for one (#574), and is never claimed with one (the cap is counted in the database,
   across workers);
@@ -13,7 +13,7 @@ and worker id); worker B is a ``Worker`` in this process. With a global cap of o
   is refused) and B finishes it and the waiting analyses, one at a time;
 - every job completes exactly once (A, while alive, may take design jobs too), never more than one
   analysis runs at a time, and every claim recorded its queue wait (``claimed.wait_ms``,
-  ``analysis_slot``).
+  ``spotdown_slot``).
 
 The operator's version of the drill, with containers, is in docs/developer-commands.md
 ("Two workers").
@@ -71,13 +71,13 @@ class Analyses:
         assert isinstance(given, KindInput)
         await job_run.stage("pick")
         if given.note == "analyse":
-            job_run.require_analysis_slot()
+            job_run.require_spotdown_slot()
             self.live += 1
             self.peak = max(self.peak, self.live)
             try:
                 await asyncio.sleep(0.3)
                 async with job_run.fenced() as fs:
-                    await job_run.release_analysis_slot(fs)
+                    await job_run.release_spotdown_slot(fs)
             finally:
                 self.live -= 1
             job_run.slot_released()
@@ -96,7 +96,7 @@ async def worker_b(env: JobsEnv, registry: KindRegistry) -> AsyncIterator[Worker
         worker_poll_seconds=0.1,
         worker_maintenance_seconds=0.2,
         worker_concurrency=3,
-        mix_analysis_concurrency=1,
+        spotdown_mix_concurrency=1,
     )
     engine = create_engine(config)
     made = Worker(config, engine, registry=registry, ledger=CountingLedger())
@@ -127,7 +127,7 @@ def start_worker_a(env: JobsEnv) -> subprocess.Popen[str]:
 def waits_for_slot(env: JobsEnv, job_id: Any) -> bool:
     """The job's first pass, without a slot, has ended: it is back in the queue asking for one."""
     row = env.row(job_id)
-    return row.state == "queued" and row.analysis_slot
+    return row.state == "queued" and row.spotdown_slot
 
 
 def waiting_report(env: JobsEnv, jobs: list[Any]) -> Callable[[], str]:
@@ -136,7 +136,7 @@ def waiting_report(env: JobsEnv, jobs: list[Any]) -> Callable[[], str]:
     def report() -> str:
         rows = [env.row(j) for j in jobs]
         return "; ".join(
-            f"{r.id}: state={r.state} analysis_slot={r.analysis_slot} leased_by={r.leased_by}"
+            f"{r.id}: state={r.state} spotdown_slot={r.spotdown_slot} leased_by={r.leased_by}"
             for r in rows
         )
 
@@ -145,7 +145,7 @@ def waiting_report(env: JobsEnv, jobs: list[Any]) -> Callable[[], str]:
 
 def slot_rows(env: JobsEnv) -> int:
     return env.sql(
-        "SELECT count(*) FROM jobs WHERE state = 'running' AND analysis_slot"
+        "SELECT count(*) FROM jobs WHERE state = 'running' AND spotdown_slot"
     ).scalar_one()
 
 
@@ -154,7 +154,7 @@ async def test_two_workers_keep_the_cap_and_a_killed_workers_job_is_reaped_and_f
     jenv: JobsEnv,
 ) -> None:
     kind = Analyses()
-    held = jenv.job(input=ANALYSE, analysis_slot=True)[1]
+    held = jenv.job(input=ANALYSE, spotdown_slot=True)[1]
     process = start_worker_a(jenv)
     try:
         assert process.stdout is not None
@@ -162,7 +162,7 @@ async def test_two_workers_keep_the_cap_and_a_killed_workers_job_is_reaped_and_f
         assert a_id
         await until(lambda: jenv.row(held).state == "running", 60)
         a_row = jenv.row(held)
-        assert (a_row.leased_by, a_row.analysis_slot) == (a_id, True)
+        assert (a_row.leased_by, a_row.spotdown_slot) == (a_id, True)
         sampled: list[int] = []
 
         def sample(check: Callable[[], bool]) -> Callable[[], bool]:

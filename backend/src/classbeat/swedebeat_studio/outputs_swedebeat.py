@@ -8,7 +8,7 @@ publish that failed resumes **on that stored id** and never creates a second pla
 **The mix** (``mix``): with no merge operation yet (or only a ``failed`` one), and never before
 the approval:
 
-1. one of the worker's analysis slots (#574: the render is as heavy as an analysis);
+1. one of the worker's spotdown slots (#574: the render is as heavy as an analysis);
 2. each **distinct** track **downloaded fresh**, once per attempt however many pieces it plays
    in (ADR 0036 amendment A8; ``fresh_download.download_checked``: 120 s and 60 MB each, counted
    in the daily track-download limit), into the render's private directory; one whose sha256 is
@@ -144,7 +144,7 @@ async def mix(p: Producer, row: OutputRow) -> None:
     distinct = list(dict.fromkeys(str(part["reference"]) for part in plan))
     async with p.run.fenced() as fs:
         await tracklimit.check(fs, len(distinct))
-    p.run.require_analysis_slot()  # #574: requeued with one, the attempt not counted
+    p.run.require_spotdown_slot()  # #574: requeued with one, the attempt not counted
 
     async def prepare(work: Path) -> list[dict[str, Any]]:
         files: dict[str, Path] = {}
@@ -183,7 +183,7 @@ async def mix(p: Producer, row: OutputRow) -> None:
 async def _check_render(p: Producer, row: OutputRow, sha256: str) -> None:
     """The first render's sha256 is stored with the attempt; a later one must equal it."""
     async with p.run.fenced() as fs:
-        await p.run.release_analysis_slot(fs)
+        await p.run.release_spotdown_slot(fs)
         now = await outputs_rows.latest(
             fs.db, p.owner_id, row.class_id, row.revision_id, row.output, lock=True
         )

@@ -11,11 +11,11 @@
   (so a Disconnect that forgot the rows cannot be undone by a late store), the row upserted with
   the SHA-256 of the analysed bytes, then the user's rows past ``MAP_TTL_DAYS`` and all but the
   newest ``MAPS_PER_USER`` dropped, as ``swedebeat_mix_maps`` does. The last store of a run frees
-  its mix-analysis slot (#574). The run goes on with the map **as stored**
+  its spotdown slot (#574). The run goes on with the map **as stored**
   (jsonb's form, ``RETURNING map``), the one a later read sees and hashes.
 - **spotdown's rows** (ADR 0040 section 6, #1302; amendment "spotdown is the only analysis path",
   #1356, #1299): every row is spotdown's analysis of the same bytes, with its ``provenance`` record
-  (migration 0075 deleted the ``local`` rows; 0080 dropped the ``analyser`` column, which then
+  (migration 0075 deleted the ``local`` rows; 0081 dropped the ``analyser`` column, which then
   admitted only ``spotdown``, and made ``provenance`` required). Every read takes an ``Accept``
   rule over the ``Stored`` row: ``track_analysis`` takes only rows whose provenance is this
   build's; revise, outputs and the timeline take exactly the row the draft recorded
@@ -197,7 +197,7 @@ async def store(
         await fs.db.execute(_EXPIRE, {"owner_id": owner, "days": MAP_TTL_DAYS})
         await fs.db.execute(_TRIM, {"owner_id": owner, "keep": MAPS_PER_USER})
         if release_slot:
-            await run.release_analysis_slot(fs)  # #574: free once this commits
+            await run.release_spotdown_slot(fs)  # #574: free once this commits
     if release_slot:
         run.slot_released()
     return TrackMap(  # the map as stored: a jsonb object reads back as a dict

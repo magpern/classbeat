@@ -20,7 +20,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
 )
 from test_user_edit_routes import edit, overlay_of, revision_count
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default")
 
 
 def zone_at(studio: StudioEnv, revision_id: UUID, at: int) -> Any:

@@ -56,7 +56,7 @@ from spotdownfake import FakeSpotdown, spotdown
 from test_spotdown_mix_policy import mix_document
 
 __all__ = ["spotdown"]  # the fixture
-pytestmark = pytest.mark.usefixtures("jenv", "mowl_api", "analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("jenv", "mowl_api", "spotdown_slot_by_default")
 
 MIX_NAME = "Planted Mix Name q9z"  # searched for in everything the model is sent
 MIX_ID = "planted-mix-id-77"

@@ -13,7 +13,7 @@ itself: the kind's ``admit`` and its run check them before calling it.
    download.** When every track is a hit nothing is called at all.
 3. **The misses.** With spotdown not usable in this worker the run ends ``analysis_unavailable``
    (``track_spotdown.session_for``) before anything is requeued, counted or downloaded. A run
-   without one of the worker's mix-analysis slots (#574) is requeued with one here, the attempt
+   without one of the worker's spotdown slots (#574) is requeued with one here, the attempt
    not counted; then the user's daily window must hold every miss (``tracklimit.check``:
    ``track_limit`` and nothing written when they do not fit). A run holds the slot for at most
    ``SLOT_BATCH`` downloads: the store of the last one frees it and the run is requeued for a slot
@@ -72,7 +72,7 @@ logger = logging.getLogger(__name__)
 
 AUDIO_NAME: Final = "track.mp3"
 OWN_CATEGORIES: Final = frozenset({"track_too_large", "track_unavailable", "internal"})
-SLOT_BATCH: Final = 4  # downloads per hold of an analysis slot (about 4 x 5 min at worst)
+SLOT_BATCH: Final = 4  # downloads per hold of a spotdown slot (about 4 x 5 min at worst)
 
 
 async def _download(
@@ -159,15 +159,15 @@ async def analyse_tracks(
     found = await cached(run, connection, refs, accept)
     misses = [r for r in refs if r not in found]
     if not misses:
-        if run.analysis_slot:  # requeued for a slot, then another job stored the analyses
+        if run.spotdown_slot:  # requeued for a slot, then another job stored the analyses
             async with run.fenced() as fs:
-                await run.release_analysis_slot(fs)
+                await run.release_spotdown_slot(fs)
             run.slot_released()
         extra = {"job_id": str(run.lease.job_id), "tracks": len(refs)}
         logger.info("swedebeat tracks from cache", extra=extra)
         return [found[r] for r in refs]
     session = track_spotdown.session_for(run)  # analysis_unavailable when not usable: no slot yet
-    run.require_analysis_slot()  # #574: requeued with a slot, before the daily slots are taken
+    run.require_spotdown_slot()  # #574: requeued with a slot, before the daily slots are taken
     async with run.fenced() as fs:
         await tracklimit.check(fs, len(misses))
     batch = misses[:SLOT_BATCH]
@@ -180,7 +180,7 @@ async def analyse_tracks(
             "swedebeat tracks batch analysed",
             extra={"job_id": str(run.lease.job_id), "downloaded": len(batch)},
         )
-        run.require_analysis_slot()
+        run.require_spotdown_slot()
     logger.info(
         "swedebeat tracks analysed",
         extra={

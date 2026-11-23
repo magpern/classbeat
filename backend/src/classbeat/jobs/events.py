@@ -75,13 +75,14 @@ class Empty(Payload):
 
 # Why a job went back to the queue without counting an attempt: no reason is the shutdown
 # hand-back; ``analysis_slot`` is a job that must analyse a mix and waits for one of the
-# worker's analysis slots (#574), so the page can say it is waiting for a free slot.
+# worker's spotdown slots (``jobs.spotdown_slot``, #574), so the page can say it is waiting for a
+# free slot. The recorded value (here and in ``Claimed``) keeps its old name (#1299).
 class Requeued(Payload):
     reason: Literal["analysis_slot"] | None = None
 
 
 # ADR 0026 stage 1 (#735): ``queue_claim`` records the claim's queue wait (from the job's
-# ``available_at`` to the claim, in ms) and whether the claim holds a mix-analysis slot. Both are
+# ``available_at`` to the claim, in ms) and whether the claim holds a spotdown slot. Both are
 # absent on events written before ``classbeat-queue v5``.
 class Claimed(Payload):
     attempt: Annotated[int, Field(ge=1, le=10)]

@@ -1,7 +1,7 @@
 """swedebeat_track_maps and swedebeat_mix_maps: no ``analyser`` column (ADR 0040 amendment; #1299)
 
-Revision ID: 0080_drop_map_analyser
-Revises: 0079_song_budget_unavailable
+Revision ID: 0081_drop_map_analyser
+Revises: 0080_spotdown_slot
 Create Date: 2026-11-23
 
 spotdown is the only analysis path (ADR 0040 amendment "spotdown is the only analysis path", item
@@ -14,7 +14,7 @@ is spotdown's analysis with its record. No row changes (each is a ``spotdown`` r
 provenance, which those checks guaranteed). ``analyser_version`` (the library's track map version)
 stays.
 
-The downgrade restores 0079's shape: the column (every row ``spotdown``, no default), its check,
+The downgrade restores 0080's shape: the column (every row ``spotdown``, no default), its check,
 the provenance checks and the keys with the column, and ``provenance`` nullable again.
 """
 
@@ -22,8 +22,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0080_drop_map_analyser"
-down_revision: str | Sequence[str] | None = "0079_song_budget_unavailable"
+revision: str = "0081_drop_map_analyser"
+down_revision: str | Sequence[str] | None = "0080_spotdown_slot"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

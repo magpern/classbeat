@@ -304,18 +304,24 @@ END $$;
 
 -- Claim the next queued job of one of p_kinds whose attempts are not spent. A row whose update
 -- fails is skipped (and stays locked until this transaction ends), so it cannot stall the queue.
--- A job with analysis_slot (it must analyse a mix, issue #574) is claimed only while fewer than
--- p_analysis_slots running jobs have it; over the cap it stays queued and other jobs are claimed
--- past it. The count runs under one transaction-level advisory lock, taken only for such a job,
+-- A job with spotdown_slot (it must analyse a mix with spotdown, issue #574) is claimed only
+-- while fewer than p_spotdown_slots running jobs have it; over the cap it stays queued and other
+-- jobs are claimed past it. The count runs under one transaction-level advisory lock, taken only for such a job,
 -- and in READ COMMITTED (refused otherwise), so it sees every such claim committed before the
 -- lock was granted: concurrent claimers never claim more than the cap between them. Only this
--- function moves a job to running, and nothing sets analysis_slot on a running job.
+-- function moves a job to running, and nothing sets spotdown_slot on a running job.
 -- The claimed event records the claim's queue wait (wait_ms: from the job's available_at, which
--- every requeue sets, to this claim) and whether the claim holds an analysis slot, for the stage 1
--- measurement of ADR 0026 (#735, queue_stats below). started_at is set on the first claim only, so
--- the event, not the row, carries the wait of every claim.
-CREATE OR REPLACE FUNCTION public.queue_claim(p_worker text, p_lease_seconds integer,
-                                              p_kinds text[], p_analysis_slots integer)
+-- every requeue sets, to this claim) and whether the claim holds a spotdown slot, for the stage 1
+-- measurement of ADR 0026 (#735, queue_stats below). The event's key stays ``analysis_slot``:
+-- it is recorded history that queue_stats and the account export read (#1299 renamed only the
+-- column, the parameter and the setting). started_at is set on the first claim only, so the
+-- event, not the row, carries the wait of every claim.
+-- CREATE OR REPLACE cannot rename a parameter, so the function is dropped first (it had
+-- p_analysis_slots before classbeat-queue v6); the block at the end of this file restores its
+-- owner, ACL and comment, all in the one transaction this script runs in.
+DROP FUNCTION IF EXISTS public.queue_claim(text, integer, text[], integer);
+CREATE FUNCTION public.queue_claim(p_worker text, p_lease_seconds integer,
+                                   p_kinds text[], p_spotdown_slots integer)
   RETURNS TABLE (job_id uuid, owner_id uuid, lease_version bigint)
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
@@ -329,7 +335,7 @@ DECLARE
   v_attempt integer;
   v_slot boolean;
   v_available timestamptz;
-  v_full boolean;  -- NULL until a job with analysis_slot is met and the slots are counted
+  v_full boolean;  -- NULL until a job with spotdown_slot is met and the slots are counted
 BEGIN
   IF p_worker IS NULL OR p_worker !~ '^[A-Za-z0-9._:-]{1,100}$' THEN
     RAISE EXCEPTION 'invalid worker id' USING ERRCODE = '22023';
@@ -337,8 +343,8 @@ BEGIN
   IF p_lease_seconds IS NULL OR p_lease_seconds < 30 OR p_lease_seconds > 600 THEN
     RAISE EXCEPTION 'p_lease_seconds must be 30 to 600' USING ERRCODE = '22023';
   END IF;
-  IF p_analysis_slots IS NULL OR p_analysis_slots < 1 OR p_analysis_slots > 16 THEN
-    RAISE EXCEPTION 'p_analysis_slots must be 1 to 16' USING ERRCODE = '22023';
+  IF p_spotdown_slots IS NULL OR p_spotdown_slots < 1 OR p_spotdown_slots > 16 THEN
+    RAISE EXCEPTION 'p_spotdown_slots must be 1 to 16' USING ERRCODE = '22023';
   END IF;
   IF current_setting('transaction_isolation') <> 'read committed' THEN
     RAISE EXCEPTION 'queue_claim runs in READ COMMITTED only' USING ERRCODE = '25001';
@@ -347,12 +353,12 @@ BEGIN
     RETURN;
   END IF;
   FOR i IN 1..10 LOOP
-    SELECT j.id, j.owner_id, j.analysis_slot, j.available_at
+    SELECT j.id, j.owner_id, j.spotdown_slot, j.available_at
       INTO v_id, v_owner, v_slot, v_available
       FROM public.jobs j
      WHERE j.state = 'queued' AND j.available_at <= now() AND j.attempt < j.max_attempts
        AND j.kind = ANY (p_kinds) AND j.id <> ALL (v_skipped)
-       AND NOT (j.analysis_slot AND coalesce(v_full, false))
+       AND NOT (j.spotdown_slot AND coalesce(v_full, false))
      ORDER BY j.available_at, j.created_at
      LIMIT 1
        FOR UPDATE SKIP LOCKED;
@@ -361,12 +367,12 @@ BEGIN
     END IF;
     IF v_slot THEN
       IF v_full IS NULL THEN
-        PERFORM pg_advisory_xact_lock(hashtextextended('classbeat.jobs.analysis_slots', 0));
+        PERFORM pg_advisory_xact_lock(hashtextextended('classbeat.jobs.spotdown_slots', 0));
         v_full := (SELECT count(*) FROM public.jobs r
-                    WHERE r.state = 'running' AND r.analysis_slot) >= p_analysis_slots;
+                    WHERE r.state = 'running' AND r.spotdown_slot) >= p_spotdown_slots;
       END IF;
       IF v_full THEN
-        CONTINUE;  -- it stays queued; the next pass looks only at jobs without analysis_slot
+        CONTINUE;  -- it stays queued; the next pass looks only at jobs without spotdown_slot
       END IF;
     END IF;
     BEGIN
@@ -531,7 +537,7 @@ END $$;
 -- Counts only, never ids: jobs per state and uncertain external operations, then the stage 1
 -- measurement of ADR 0026 (#735) over the last 7 days, all users together:
 --   claim_wait_{slot,other}_*  the queue wait of each claim (the claimed event's wait_ms), kept
---     apart for claims that hold an analysis slot and the rest; samples and the p95 in ms;
+--     apart for claims that hold a spotdown slot and the rest; samples and the p95 in ms;
 --   claim_wait_slot_peak_*  the same for slot claims at peak: the hour of the day (UTC, 0 to 23)
 --     with the most slot claims over the 7 days, pooled across the days (ties: the earlier hour);
 --   analysis_*  the fetch and the decode of each stored fresh mix analysis (jobs.analysis_*_ms).
@@ -664,6 +670,6 @@ BEGIN
     END LOOP;
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO classbeat_queue', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO classbeat_app', f);
-    EXECUTE format('COMMENT ON FUNCTION %s IS %L', f, 'classbeat-queue v5');
+    EXECUTE format('COMMENT ON FUNCTION %s IS %L', f, 'classbeat-queue v6');
   END LOOP;
 END $$;

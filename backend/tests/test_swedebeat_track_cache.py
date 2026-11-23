@@ -87,7 +87,7 @@ def test_the_new_tables_meet_the_guards(admin: Connection) -> None:
         assert forced is True, table
         assert table in NOT_EXPORTED  # a count (maps) or nothing (downloads), never the rows
     assert RETENTION["swedebeat_track_maps"].deleted_with == {"account", "swedebeat_connection"}
-    # ADR 0040 section 6 (#1302, migration 0064): a spotdown row's provenance (migration 0080,
+    # ADR 0040 section 6 (#1302, migration 0064): a spotdown row's provenance (migration 0081,
     # #1299: no analyser code any more).
     assert RETENTION["swedebeat_track_maps"].columns == {"reference", "sha256", "map", "provenance"}
     assert RETENTION["swedebeat_track_maps"].reviewed == set()
@@ -153,7 +153,7 @@ def test_one_row_per_owner_reference_and_analyser_version(admin: Connection) -> 
 
 
 def test_a_row_is_stored_only_with_its_provenance(admin: Connection) -> None:
-    """#1356, #1299: every row is spotdown's analysis with its provenance record (migration 0080:
+    """#1356, #1299: every row is spotdown's analysis with its provenance record (migration 0081:
     ``provenance`` is required; there is no ``analyser`` column)."""
     owner = new_user(admin)
     with pytest.raises(IntegrityError, match=r'"provenance"'):

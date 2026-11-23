@@ -1,6 +1,6 @@
 """A design job's spotdown budget for its studio tracks and mixes (``spotdown_studio_budgets``,
 ADR 0040 section 8; migration 0064): the bounds of section 8 hold **per attempt**, over the runs
-of that attempt (a shutdown hand-back or an analysis-slot requeue keeps them), not per run. A run
+of that attempt (a shutdown hand-back or a spotdown-slot requeue keeps them), not per run. A run
 that ends in a retryable category deletes the row (``jobs.transitions.retry``, ADR 0040 amendment
 "spotdown is the only analysis path", item 4), so the next attempt starts with a full budget and no
 outage flag; a lease-lost requeue keeps them.

@@ -18,10 +18,10 @@ kinds' ``admit`` and their run check the flag before calling it. After ``design.
    request at all.**
 3. **A miss.** With spotdown not usable in this worker the run ends ``analysis_unavailable``
    (``mix_spotdown.session_for``) before anything else. A run without one of the worker's
-   mix-analysis slots (#574,
-   ``JobRun.require_analysis_slot``) stops here and its job is requeued with one, the attempt
+   spotdown slots (#574,
+   ``JobRun.require_spotdown_slot``) stops here and its job is requeued with one, the attempt
    not counted; ``queue_claim`` then claims it only while a slot is free
-   (``CLASSBEAT_MIX_ANALYSIS_CONCURRENCY``). Then one of the user's daily analysis slots
+   (``CLASSBEAT_SPOTDOWN_MIX_CONCURRENCY``). Then one of the user's daily analysis slots
    (``mixlimit.reserve``, ``analysis_limit`` past 10 in 24 hours; A4), then the user's fresh
    listing must hold the mix (``invalid_input`` otherwise) and gives
    its listed length; the attach (``operations.swedebeat``, which stores the link) and the wait for
@@ -166,9 +166,9 @@ async def open_swedebeat_mix(
         raise JobFailure("not_connected")
     hit = await cached(run, opened, mix_id, connection_id, prefer=prefer)
     if hit is not None:
-        if run.analysis_slot:  # requeued for a slot, then another job stored the analysis
+        if run.spotdown_slot:  # requeued for a slot, then another job stored the analysis
             async with run.fenced() as fs:
-                await run.release_analysis_slot(fs)
+                await run.release_spotdown_slot(fs)
             run.slot_released()
         logger.info(
             "swedebeat mix from cache",
@@ -176,9 +176,9 @@ async def open_swedebeat_mix(
         )
         return hit, opened
     session = mix_spotdown.session_for(run)  # analysis_unavailable when not usable: nothing taken
-    # #574: a miss analyses only in a job holding one of the mix-analysis slots; without one the
+    # #574: a miss analyses only in a job holding one of the spotdown slots; without one the
     # job is requeued with it here, before the daily slot is taken or anything is called.
-    run.require_analysis_slot()
+    run.require_spotdown_slot()
     async with run.fenced() as fs:
         await mixlimit.reserve(fs)
     await run.checkpoint()

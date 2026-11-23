@@ -1,6 +1,6 @@
 """``mix_cache.store``'s own refusal (#1299 review): a mix map without its provenance is
 ``internal`` before the run or the database is touched, as ``track_cache.store`` does, since
-migration 0080 made ``swedebeat_mix_maps.provenance`` required. Pure: no database."""
+migration 0081 made ``swedebeat_mix_maps.provenance`` required. Pure: no database."""
 
 from types import SimpleNamespace
 from typing import Any, cast

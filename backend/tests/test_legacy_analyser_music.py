@@ -1,4 +1,4 @@
-"""#1299 (migration 0080): ``class_revisions.music`` stored before the ``analyser`` code was
+"""#1299 (migration 0081): ``class_revisions.music`` stored before the ``analyser`` code was
 dropped still reads. A SwedeBeat mix draft (``SwedebeatRevisionMusic``) and each studio track
 record (``TrackRecord`` in ``StudioRevisionMusic.analyses``) were stored with
 ``analyser: "spotdown"``; the models are ``extra="forbid"``, so the before-validator

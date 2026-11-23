@@ -3,7 +3,7 @@
 
 **One row per mix** (key ``(owner_id, mix_id)``): spotdown is the only analysis path (ADR 0040
 amendment), so a row is spotdown's map (``spotdown.mix_map_model``, with its ``provenance``);
-migration 0077 deleted the ``local`` rows (#1357) and 0080 dropped the ``analyser`` column, which
+migration 0077 deleted the ``local`` rows (#1357) and 0081 dropped the ``analyser`` column, which
 then admitted only ``spotdown``, and made ``provenance`` required (#1299).
 
 - ``cached``: one fenced transaction share-locks the connection (``hold``) and reads the user's
@@ -18,7 +18,7 @@ then admitted only ``spotdown``, and made ``provenance`` required (#1299).
   ``NOT NULL``, as ``track_cache.store``); then one fenced transaction (the connection and the
   link held again) upserts the row,
   drops what is past 30 days and all but the newest ``MAPS_PER_USER`` rows of the user (one row
-  per mix), frees the job's analysis slot, marks the job as one that ran a fresh analysis
+  per mix), frees the job's spotdown slot, marks the job as one that ran a fresh analysis
   (``jobs.mail_handoff``) and records the fetch and analysis times (``jobs.analysis_times``;
   ``jobs.analysis_decode_ms`` is spotdown's analysis time, since #1353).
 
@@ -165,11 +165,11 @@ async def store(
     timing: Timing,
 ) -> None:
     if analysis.provenance is None:
-        raise JobFailure("internal")  # the table's NOT NULL (migration 0080), before any write
+        raise JobFailure("internal")  # the table's NOT NULL (migration 0081), before any write
     record = json.dumps(analysis.provenance, separators=(",", ":"), allow_nan=False)
     async with run.fenced() as fs:
         await _store_row(fs, run, opened, analysis, connection_id, record)
-        await run.release_analysis_slot(fs)  # #574: the slot is free once this commits
+        await run.release_spotdown_slot(fs)  # #574: the slot is free once this commits
         await mail_handoff.note_fresh_analysis(fs)  # ME5: the job ran a fresh analysis
         # ADR 0026 stage 1 (#735): for the p95 of ``queue_stats()``.
         await analysis_times.note_analysis_times(fs, timing.fetch, timing.decode)

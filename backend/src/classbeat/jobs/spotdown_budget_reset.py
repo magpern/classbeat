@@ -11,7 +11,7 @@ A budget belongs to **one attempt**: it is reset only when
   find spotdown up, or end ``analysis_unavailable`` again with a fresh budget); and
 - Approve starts a phase (``approval.approve``).
 
-A lease-lost requeue, ``hand_back``, ``operation_busy`` and a wait for the analysis slot keep what
+A lease-lost requeue, ``hand_back``, ``operation_busy`` and a wait for the spotdown slot keep what
 was spent. One statement, filtered on ``owner_id`` and ``job_id`` as well as through row security.
 A job with no row yet is untouched (nothing to reset). The studio row is deleted, not zeroed:
 ``track_spotdown_budget`` makes it again on its first use, with a full budget and no outage flag.

@@ -28,7 +28,7 @@ from test_swedebeat_studio_design import (
 from test_swedebeat_studio_songs import _sent  # pyright: ignore[reportPrivateUsage]
 
 __all__ = ["analysed", "spotdown"]  # the fixtures
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default")
 
 REPLAN = "Re-plan the other songs around my choices"
 

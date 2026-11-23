@@ -26,7 +26,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
 )
 from test_user_edit_routes import current_id, edit, overlay_of, revision_count
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default", "outputs_on")
 
 MIX = ("swedebeat_playlist", "swedebeat_mix")
 

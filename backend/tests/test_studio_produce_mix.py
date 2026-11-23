@@ -53,7 +53,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
     spotdown,  # noqa: F401 - the fake spotdown that stand-in answers from
 )
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default", "outputs_on")
 
 
 class Listing:

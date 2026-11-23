@@ -104,9 +104,9 @@ async def run_sync(studio: StudioEnv, job_id: UUID) -> Any:
         "AND state = 'queued' AND id <> :id",
         id=job_id,
     )
-    # A sync never takes a mix-analysis slot (``analysis_slot_by_default`` would give it one).
+    # A sync never takes a spotdown slot (``spotdown_slot_by_default`` would give it one).
     songs.sql(
-        "UPDATE jobs SET available_at = now(), analysis_slot = false WHERE id = :id", id=job_id
+        "UPDATE jobs SET available_at = now(), spotdown_slot = false WHERE id = :id", id=job_id
     )
     lease = songs.spot.env.settings.job_lease_seconds
     row = await queue.claim(songs.factory, "sync-w", lease, [SPOTIFY_SYNC.name])

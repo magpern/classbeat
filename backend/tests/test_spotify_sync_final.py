@@ -41,7 +41,7 @@ from test_swedebeat_studio_design import (  # pyright: ignore[reportPrivateUsage
 )
 from test_swedebeat_studio_songs import SWAP_12, SWAPPED_LIST
 
-pytestmark = pytest.mark.usefixtures("analysis_slot_by_default", "outputs_on")
+pytestmark = pytest.mark.usefixtures("spotdown_slot_by_default", "outputs_on")
 ONE = r"/v1/playlists/[0-9A-Za-z]{22}"
 
 
