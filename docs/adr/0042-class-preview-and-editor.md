@@ -768,3 +768,39 @@ Written 2026-11-22. Supersedes E2 note 3.
 5. **Known edge (follow-up):** B9 re-derives a stored revise draft and re-places a pinned cut without its pin
    first; in a borderline case the draft answers `mix_not_applied` (it fails closed). A final `holds` check in
    `pinned_mix` would turn it into a correction round.
+
+## Implementation notes (#1424)
+
+2026-11-22. A Spotify draft is edited through the same path as a studio draft (`user_edit.apply`), with
+the studio parts taken out.
+
+- **Where the map comes from.** The worker stores the corrected map the draft was fitted to in the
+  revision's `music.edit_map` (`design.revision.content_and_music`), capped at 256 KiB
+  (`design/revision_edit_map.py`; a larger map is not stored and its draft stays read-only). The web
+  process reads it from the revision row, so the edit makes no MOWL read and no new egress. A
+  `user_edit` revision stores no map and reads the nearest earlier non-`user_edit` revision's, only
+  while that revision's fingerprint matches. A draft with no stored map (made before this change), or
+  a map that does not have the shape `agent.design.check` reads (`spotify_edit_state.readable`),
+  answers `edit_unavailable` and stays read-only; the page still shows the audition panel.
+- **What the map holds.** Timing only: the version, the length and crossfade, the songs' sections, the
+  events, and per track its position, length, tempo and timing class. It holds **no Spotify id, no
+  title and no artist** (ADR 0006 section 6, ADR 0007): `stored` removes them and `restored` gives each
+  track neutral stand-ins when the edit reads it back, because `check` reads no identity. It lives in
+  `class_revisions.music`, so it is deleted with the class and exported with the account like the rest of
+  that column, and holds nothing that column did not already hold in kind.
+- **The edit.** It runs the shared `studio_edit_ops.edited` against an `EditState` with a fixed map and a
+  duration cap (the song that ends last, so a class cannot be made longer than its music), so one
+  hash by the NULL overlay, the `base_revision_id` check in the transaction, locks and
+  `locked_block_conflict` hold unchanged. Pins and anchors are refused `audio_edit_unavailable`: a
+  Spotify draft has no mix to cut.
+- **Known deviation from section 3 ("On AI regeneration") and from the issue's "same overlay rules".**
+  An AI revise, a song revise and a refit of an edited Spotify draft (a `user_edit` revision, or any
+  base whose overlay holds a record) would have to re-apply the overrides and enforce the locks as a
+  studio revise does. That is not built for a Spotify draft. Rather than drop the user's edits
+  silently, the three are refused `has_user_edits` at admission (`design/edited_base.py`, before any
+  message, job or credit), and the page says in words (en, sv, da) to undo the edits first. A studio draft
+  is unchanged. Undo (or making an earlier version current) lifts the refusal. Follow-up: carry and
+  enforce the overlay on Spotify revise, song revise and refit, then remove the refusal.
+- **Duplicate.** A duplicate of an edited draft takes the nearest non-`user_edit` revision's
+  provenance and the plain content hash with no overlay; the copy has no map, so its editor is
+  read-only until the class is refitted.

@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CLASS_PATH, REV2 } from '../test/classFixtures'
+import { CLASS_PATH, REV2, classBody } from '../test/classFixtures'
 import { EDITS_PATH, EDIT_PAGE, HASH2, PREVIEW_PATH, PREVIEW_SESSION, clipPath, editorRoutes, previewRoutes, readyClip, refusal, timelineBody } from '../test/editorApi'
 import { fakeApi, json } from '../test/fakeApi'
 import { renderAt } from '../test/render'
@@ -70,8 +70,9 @@ describe('Play and Pause', () => {
     await waitFor(() => { expect(sessions(api)).toBe(2) })
   })
 
-  it('has no play control on a Spotify draft, which opens read-only', async () => {
-    const api = fakeApi(editorRoutes(previewRoutes({ [`GET ${CLASS_PATH}/overlay`]: () => refusal('edit_unavailable') })))
+  it('has no play control on an older Spotify draft (no stored map), which opens read-only', async () => {
+    // A Spotify class, not the studio's, whose draft has no stored map: the server answers edit_unavailable.
+    const api = fakeApi(editorRoutes(previewRoutes({ [`GET ${CLASS_PATH}`]: classBody(), [`GET ${CLASS_PATH}/overlay`]: () => refusal('edit_unavailable') })))
     renderAt(EDIT_PAGE)
     expect(await screen.findByTestId('readonly-edit_unavailable')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /play|pause/i })).toBeNull()

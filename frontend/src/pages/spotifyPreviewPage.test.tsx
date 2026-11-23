@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CLASS_PATH } from '../test/classFixtures'
+import { CLASS_PATH, classBody } from '../test/classFixtures'
 import { EDIT_PAGE, editorRoutes, refusal } from '../test/editorApi'
 import { fakeApi, json } from '../test/fakeApi'
 import { renderAt } from '../test/render'
@@ -46,6 +46,7 @@ const playing = (piece: number, progress: number) => ({ status: 'playing', piece
 
 function routes(extra: Record<string, unknown> = {}, granted = true) {
   return editorRoutes({
+    [`GET ${CLASS_PATH}`]: classBody(), // a Spotify class, not the studio's
     [OVERLAY]: () => refusal('edit_unavailable'),
     'GET /api/connections/spotify': status(granted),
     [`GET ${A}/alignment`]: alignment(),

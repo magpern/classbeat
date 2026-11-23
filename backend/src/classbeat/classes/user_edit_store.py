@@ -9,13 +9,15 @@
 - ``provenance``: ``{origin: user_edit, base_revision_id, edit: <op>}`` plus the versions; no model
   ran, so no model field. Parent the base.
 
-``store`` inserts the row (``kind = 'draft'``, no job: ``job_id`` NULL, the next ``number`` of the
-class) and moves ``current_revision_id`` from the base to it only while the base is still the
-current revision (compare and set; ``False``: nothing moved, the caller rolls back).
+``store`` (a studio draft) and ``store_spotify`` (a Spotify draft, #1424) insert the row
+(``kind = 'draft'``, no job: ``job_id`` NULL, the next ``number`` of the class) and move
+``current_revision_id`` from the base to it only while the base is still the current revision
+(compare and set; ``None``: nothing moved, the caller rolls back).
 """
 
 import json
 import uuid
+from collections.abc import Callable
 from typing import Any, Literal
 from uuid import UUID
 
@@ -26,7 +28,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat import __version__ as classbeat_version
 from classbeat.agent.records import mowl_version
 from classbeat.design.edit_overlay_model import storable
-from classbeat.design.revision import MAX_CONTENT_BYTES, StudioRevisionMusic, canonical
+from classbeat.design.revision import (
+    MAX_CONTENT_BYTES,
+    SpotifyRevisionMusic,
+    StudioRevisionMusic,
+    canonical,
+)
 from classbeat.design.revision_hash import revision_hash
 from classbeat.design.workout_edit_policy import EditRefused
 from classbeat.studio.mix_proposal_policy import USER_EDIT_ORIGIN
@@ -77,32 +84,33 @@ def _music(base: StudioRevisionMusic, spec: dict[str, Any]) -> dict[str, Any]:
     return StudioRevisionMusic.model_validate(edited.model_dump()).model_dump(mode="json")
 
 
-async def store(
+async def _write(
     db: AsyncSession,
     owner_id: UUID,
     class_id: UUID,
     base_id: UUID,
-    base_music: StudioRevisionMusic,
     made: EditResult,
+    music: dict[str, Any],
+    content_hash_of: Callable[[dict[str, Any] | None], bytes],
+    base_map_version: int,
     op: str,
 ) -> Stored | None:
-    """The edited revision stored and made current (module docstring); ``None`` when the base
-    is no longer current (nothing moved)."""
+    """The row and the pointer move (module docstring); ``content_hash_of`` is the one hash of the
+    new content and the stored overlay (``None``: NULL), by the kind of draft."""
     if len(canonical(made.content)) > MAX_CONTENT_BYTES:
         raise EditRefused("invalid_edit")
-    music = _music(base_music, made.spec)
     try:
         overlay = storable(made.overlay)
     except ValueError:
         raise EditRefused("overlay_too_large") from None  # past the bounds: never stored
-    content_hash = revision_hash(made.content, mix_spec=music["mix_spec"], overlay=overlay)
+    content_hash = content_hash_of(overlay)
     provenance = UserEditProvenance(
         origin=USER_EDIT_ORIGIN,
         base_revision_id=base_id,
         edit=op,
         classbeat_version=classbeat_version,
         mowl_version=mowl_version(),
-        map_version=base_music.map_version,
+        map_version=base_map_version,
         tss_approximate=made.result.tss_approximate if made.result else False,
     )
     revision_id = uuid.uuid4()
@@ -127,3 +135,47 @@ async def store(
     if moved is None:
         return None
     return Stored(revision_id=revision_id, number=found.number, content_hash=content_hash)
+
+
+async def store(
+    db: AsyncSession,
+    owner_id: UUID,
+    class_id: UUID,
+    base_id: UUID,
+    base_music: StudioRevisionMusic,
+    made: EditResult,
+    op: str,
+) -> Stored | None:
+    """A studio draft's edited revision stored and made current (module docstring); ``None`` when
+    the base is no longer current (nothing moved)."""
+    music = _music(base_music, made.spec)
+
+    def hashed(overlay: dict[str, Any] | None) -> bytes:
+        return revision_hash(made.content, mix_spec=music["mix_spec"], overlay=overlay)
+
+    return await _write(
+        db, owner_id, class_id, base_id, made, music, hashed, base_music.map_version, op
+    )
+
+
+async def store_spotify(
+    db: AsyncSession,
+    owner_id: UUID,
+    class_id: UUID,
+    base_id: UUID,
+    base_music: SpotifyRevisionMusic,
+    map_version: int,
+    made: EditResult,
+    op: str,
+) -> Stored | None:
+    """A Spotify draft's edited revision (#1424): the base's music as it is, **without** its edit
+    map (a ``user_edit`` keeps none: ``classes.spotify_edit_draft`` reads its ancestor's), the
+    hash of the content and the overlay, as ``saving.approval`` recomputes it."""
+    music = base_music.model_copy(update={"edit_map": None}).model_dump(
+        mode="json", exclude_none=True
+    )
+
+    def hashed(overlay: dict[str, Any] | None) -> bytes:
+        return revision_hash(made.content, overlay=overlay)
+
+    return await _write(db, owner_id, class_id, base_id, made, music, hashed, map_version, op)

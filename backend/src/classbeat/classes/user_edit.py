@@ -11,8 +11,9 @@ sections 3 to 6, #1391). No model runs and no job is queued.
 4. ``revision_limit``: the class has ``REVISION_LIMIT`` user-edit revisions already (a clear is
    one; an undo or redo is a pick and stores none);
 5. the draft: ``current_draft.load`` (the one hash checked, the overlay read). A class that is not
-   a studio class is ``edit_unavailable``: a Spotify draft's composed map needs MOWL's analyses,
-   which the web process does not read (reported to the Architect, #1391);
+   a studio class goes to ``spotify_edit`` (#1424: a Spotify draft with the edit map the worker
+   stored with it, else ``edit_unavailable``), which does the rest of this list with that map in
+   place of a composed one and no studio choices;
 6. its proposal and analyses (``mix_proposal.for_draft``: ``no_proposal``, ``music_changed``) and
    its choices: the basis of its nearest draft that is not a ``user_edit``
    (``mix_applied_policy.basis``, section 8): an applied draft's recorded choices, a proposal's
@@ -22,14 +23,15 @@ sections 3 to 6, #1391). No model runs and no job is queued.
    (``user_edit_store``). Any refusal stores nothing.
 """
 
-from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.classes import spotify_edit
 from classbeat.classes.class_sql import LOCK_CLASS, OPEN_JOB_SQL
 from classbeat.classes.user_edit_model import EditIn
-from classbeat.classes.user_edit_store import COUNT_EDITS, REVISION_LIMIT, Stored, store
+from classbeat.classes.user_edit_outcome import Outcome as Outcome
+from classbeat.classes.user_edit_store import COUNT_EDITS, REVISION_LIMIT, store
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design.revision_ready import revision_ready
@@ -41,21 +43,10 @@ from classbeat.studio.mix_proposal_policy import USER_EDIT_ORIGIN
 from classbeat.swedebeat_studio import current_draft, mix_proposal
 from classbeat.swedebeat_studio.applied_form import provenance_of
 from classbeat.swedebeat_studio.current_draft import CurrentDraft
-from classbeat.swedebeat_studio.studio_edit_calc import EditResult, EditState
+from classbeat.swedebeat_studio.studio_edit_calc import EditState
 from classbeat.swedebeat_studio.studio_edit_ops import edited
 
 Factory = async_sessionmaker[AsyncSession]
-EDIT_UNAVAILABLE = "edit_unavailable"
-
-
-@dataclass(frozen=True, slots=True)
-class Outcome:
-    """``reason`` is ``None`` when the edit was stored."""
-
-    reason: str | None = None
-    current_revision_id: UUID | None = None  # with ``stale_revision``
-    stored: Stored | None = None
-    made: EditResult | None = None
 
 
 async def _choices(
@@ -104,8 +95,10 @@ async def edit(factory: Factory, ctx: UserContext, class_id: UUID, body: EditIn)
         if int((await db.execute(COUNT_EDITS, ids)).scalar_one()) >= REVISION_LIMIT:
             return Outcome("revision_limit")
         found = await current_draft.load(db, owner_id, class_id)
+        if found == "no_studio_draft":
+            return await spotify_edit.apply(db, ctx, class_id, locked.current_revision_id, body)
         if isinstance(found, str):
-            return Outcome(EDIT_UNAVAILABLE if found == "no_studio_draft" else found)
+            return Outcome(found)
         list_id = found.music.song_list_id
         resolved = await mix_proposal.for_draft(
             db, owner_id, class_id, found.revision_id, list_id, found.songs

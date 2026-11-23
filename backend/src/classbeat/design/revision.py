@@ -11,7 +11,9 @@
   ``song_list_id``, the approved ``song_list`` revision, on a draft of ``design_with_songs``):
   the user's ``mowl_playlist_links`` row, the fingerprint of the analysed track list
   (``classbeat.design.music.fingerprint``) and the tracks MOWL had no BPM for yet, by index and
-  title, so the user is told (their bars were a guess at 120 BPM). No MOWL or Spotify id, no map.
+  title, so the user is told (their bars were a guess at 120 BPM). No MOWL or Spotify id. A cycling
+  draft also keeps ``edit_map``, the corrected map it was fitted to, so the web process can check
+  a user's edit without reading MOWL (``design.revision_edit_map``, ADR 0042 section 4, #1424).
   A draft with a track on spotdown's sections adds ``spotdown`` (``revision_spotdown_model``).
   On a Swedebeat mix (ADR 0016 section 3, A4): ``{source: "mowl_swedebeat_mix", mix_id, name,
   duration, listed_duration, unsure_beat_one, fingerprint, link_id}`` (``SwedebeatRevisionMusic``):
@@ -52,6 +54,7 @@ from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
 from classbeat.design.music_kind import NoMusicStep
 from classbeat.design.revision_adopt import adopt_first as adopt_first
+from classbeat.design.revision_edit_map import stored as edit_map_of
 from classbeat.design.revision_hash import canonical as canonical
 from classbeat.design.revision_hash import of_music, revision_hash
 from classbeat.design.revision_hash import studio_hash as studio_hash
@@ -246,6 +249,7 @@ def content_and_music(
             unknown_bpm=[UnknownBpmTrack(index=u.index, title=u.title) for u in step.unknown_bpm],
             song_list_id=song_list_id,
             spotdown=_sections(music_map, song_list_id, spotdown),
+            edit_map=None if running else edit_map_of(music_map),
         )
     if not isinstance(step, NoMusicStep) and not isinstance(music, NoRevisionMusic):
         assert music_map is not None  # noqa: S101 - checked above

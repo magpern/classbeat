@@ -14,11 +14,12 @@ export const editorSv: Catalogue = {
   'editor.readonly.no_draft': 'Passet har ingen version att redigera ännu.',
   'editor.readonly.open_job': 'En ändring av passet pågår. Redigeraren öppnas när den är klar.',
   'editor.readonly.edit_unavailable':
-    'Den här versionen kan inte redigeras här ännu. Pass med musik från Spotify visas som de är, utan redigering. Du kan fortfarande ändra passet från dess egen sida.',
+    'Det här passet gjordes innan Spotify-pass gick att redigera här, så det visas som det är. Du kan fortfarande ändra passet från dess egen sida.',
   'editor.readonly.music_changed':
     'Analysen av passets musik har gått ut, så det går inte att redigera. Byt låtar för att analysera musiken igen.',
   'editor.readonly.mix_not_applied':
     'Den här versionen kommer från en chattändring och stämmer inte längre med den musikform du valde. Redigeringen är pausad. Öppna passet och gå antingen tillbaka till versionen före ändringen eller använd ”Använd dessa val”.',
+  'editor.readonly.not_editable': 'Den här versionen kan inte redigeras här.',
   'editor.readonly.no_proposal': 'Passet har ingen musikplan att redigera. Planera musiken igen från passets sida.',
   'editor.readonly.unsupported': 'Den här versionen har en form som redigeraren inte redigerar.',
   'editor.readonly.back': 'Öppna passet',
@@ -183,6 +184,7 @@ export const editorSv: Catalogue = {
   'editor.reason.class_busy': 'En ändring av passet pågår. Försök igen när den är klar.',
   'editor.reason.revision_limit': 'Passet har nått det högsta antalet versioner det kan ha.',
   'editor.reason.edit_unavailable': 'Den här versionen kan inte redigeras här.',
+  'editor.reason.audio_edit_unavailable': 'Musiken i ett Spotify-pass kan inte redigeras här. Ändra passet, eller ändra det från dess egen sida.',
   'editor.reason.no_proposal': 'Passet har ingen musikplan att redigera.',
   'editor.reason.music_changed': 'Analysen av musiken har gått ut. Byt låtar för att analysera den igen.',
   'editor.reason.mix_not_applied':

@@ -15,6 +15,8 @@ interface Props {
   blocks: EditorBlock[]
   marks: BlockMarks[]
   timeline: Timeline
+  /** False for a Spotify draft: it has no studio pieces to tie a block to. */
+  music?: boolean
   index: number
   busy: boolean
   onEdit: (op: EditOp) => void
@@ -22,7 +24,7 @@ interface Props {
 }
 
 /** Everything one block can do, in three groups: its timing, its settings, its tie to the music. */
-export function BlockInspector({ blocks, marks, timeline, index, busy, onEdit, onAudition }: Props) {
+export function BlockInspector({ blocks, marks, timeline, music = true, index, busy, onEdit, onAudition }: Props) {
   const t = useT()
   const block = blocks[index]
   const mark = marks[index]
@@ -38,7 +40,7 @@ export function BlockInspector({ blocks, marks, timeline, index, busy, onEdit, o
       {attributesLocked(mark.lock) ? <Notice>{t('editor.block.attributesLocked')}</Notice> : null}
       <BlockStructure blocks={blocks} block={block} actions={actions} busy={busy} onEdit={onEdit} key={`s-${String(block.index)}-${String(block.sec)}`} />
       <BlockAttributes block={block} marks={mark} enabled={actions.setAttributes && !busy} onEdit={onEdit} key={`a-${String(block.index)}-${JSON.stringify([block.rpm, block.cue])}`} />
-      <BlockMusic blocks={blocks} block={block} marks={mark} timeline={timeline} busy={busy} onEdit={onEdit} onAudition={onAudition} />
+      {music ? <BlockMusic blocks={blocks} block={block} marks={mark} timeline={timeline} busy={busy} onEdit={onEdit} onAudition={onAudition} /> : null}
     </section>
   )
 }

@@ -73,6 +73,11 @@ class EditState:
     proposal: Proposal
     choices: MixChoices | None  # its basis's (ADR 0042 section 8); None: not ``applied_form``
     map_version: int
+    # A Spotify draft (#1424): the one map the class was fitted to, instead of one composed from
+    # the spec, and the most its total may be; ``music``, ``proposal`` and ``spec`` are then empty
+    # (``classes.spotify_edit_state``). Both stay ``None`` for a studio draft.
+    fixed_map: dict[str, Any] | None = None
+    max_total_sec: int | None = None
 
 
 @dataclass(frozen=True)
@@ -117,9 +122,13 @@ def fit(
     references = state.music.references
     old = None if before is None else keyed(references, before)
     try:
-        composed = compose_spec(state.music.tracks, keyed(references, spec), old)
+        if state.fixed_map is None:
+            composed = compose_spec(state.music.tracks, keyed(references, spec), old)
+            music_map, hints = composed.map, composed.hints
+        else:
+            music_map, hints = copy.deepcopy(state.fixed_map), ()  # ``check`` never edits it
         draft = WorkoutDraft.model_validate(content)
-        result = check(draft, composed.map)
+        result = check(draft, music_map)
     except (ToolError, ValidationError):
         raise EditRefused(refused) from None
     try:
@@ -128,8 +137,8 @@ def fit(
         too_long = gates is not None and result.duration_sec > max_draft_seconds(gates)
         raise EditRefused(PLAN_TOO_LONG if too_long else PLAN_NOT_ALLOWED) from None
     try:
-        version = int(composed.map["version"])
-        return Fit(fitted_content(content, result.spec), result, composed.hints, version)
+        version = int(music_map["version"])
+        return Fit(fitted_content(content, result.spec), result, hints, version)
     except (ValidationError, ValueError, KeyError, TypeError):
         raise EditRefused(refused) from None
 
@@ -243,6 +252,10 @@ def event_of(state: EditState, piece: int, source_ms: int, kind: str) -> Event:
 
 
 def class_length(state: EditState, total: int) -> None:
+    if state.max_total_sec is not None:  # a Spotify draft: no brief's target, the music's length
+        if total > state.max_total_sec:
+            raise EditRefused(mix_choice_policy.OUT_OF_TOLERANCE)
+        return
     if not length_policy.within(total, state.proposal.target_sec):
         raise EditRefused(mix_choice_policy.OUT_OF_TOLERANCE)
 

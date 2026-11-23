@@ -15,11 +15,12 @@ export const editorEn = {
   'editor.readonly.no_draft': 'This class has no version to edit yet.',
   'editor.readonly.open_job': 'A change to this class is being made. The editor opens when it is done.',
   'editor.readonly.edit_unavailable':
-    'This version cannot be edited here yet. Classes with music from Spotify are shown as they are, without editing. You can still change the class from its own page.',
+    'This class was made before Spotify classes could be edited here, so it is shown as it is. You can still change the class from its own page.',
   'editor.readonly.music_changed':
     'The analysis of this class’s music has expired, so it cannot be edited. Change songs to analyse the music again.',
   'editor.readonly.mix_not_applied':
     'This version came from a chat change, so it no longer matches the music form you chose. Editing is paused. Open the class and either go back to the version before the change or use “Apply these choices”.',
+  'editor.readonly.not_editable': 'This version cannot be edited here.',
   'editor.readonly.no_proposal': 'This class has no music design to edit. Plan the music again from the class page.',
   'editor.readonly.unsupported': 'This version has a shape the editor does not edit.',
   'editor.readonly.back': 'Open the class',
@@ -191,6 +192,7 @@ export const editorEn = {
   'editor.reason.class_busy': 'A change to this class is being made. Try again when it is done.',
   'editor.reason.revision_limit': 'This class has reached the most versions it can have.',
   'editor.reason.edit_unavailable': 'This version cannot be edited here.',
+  'editor.reason.audio_edit_unavailable': 'The music of a Spotify class cannot be edited here. Change the workout, or change the class from its own page.',
   'editor.reason.no_proposal': 'This class has no music design to edit.',
   'editor.reason.music_changed': 'The analysis of the music has expired. Change songs to analyse it again.',
   'editor.reason.mix_not_applied':

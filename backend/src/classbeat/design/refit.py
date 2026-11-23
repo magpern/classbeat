@@ -56,6 +56,7 @@ from classbeat.agent.stage import ToolError
 from classbeat.agent.stored_draft import stored_draft
 from classbeat.context import UserContext
 from classbeat.design import chat, mixadmit, music_kind, revision, revision_refit, sport
+from classbeat.design.edited_base import refuse_edited
 from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.design.kind import (
     CLASS_MUSIC_SOURCE,
@@ -143,6 +144,10 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("invalid_input")
     if state.current != parsed.base_revision_id:
         return Refused("stale_base")
+    # An edited Spotify draft is not refitted until its overlay is carried (``edited_base_calc``).
+    edited = await refuse_edited(db, ctx.user_id, class_id, parsed.base_revision_id)
+    if edited is not None:
+        return edited
     if state.base_retired:
         return Refused(RETIRED)  # ADR 0029: a retired game is never fitted or stored again
     running = await sport.admit_class(db, ctx, class_id)  # ADR 0018 (#509): the running gate

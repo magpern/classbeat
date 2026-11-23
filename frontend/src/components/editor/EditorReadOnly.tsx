@@ -33,7 +33,7 @@ export function EditorReadOnly({ reason, summary, onReload }: { reason: ReadOnly
           {t('editor.readonly.back')}
         </Link>
       </p>
-      {reason === 'edit_unavailable' ? <SpotifyAudition key={summary.id} classId={summary.id} /> : null}
+      {reason === 'edit_unavailable' || reason === 'not_editable' ? <SpotifyAudition key={summary.id} classId={summary.id} /> : null}
       {summary.profile.length > 0 ? <ProfileChart segments={segmentsOf(summary)} title={summary.title} songs={null} /> : null}
     </div>
   )
