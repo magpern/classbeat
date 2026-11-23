@@ -9,6 +9,9 @@ draft, with this owner's id: it finds nothing. The control run with the class's 
 the row, so the plant matches each statement and the empty result is the owner filter's doing.
 A swap (``UPDATE``) runs in a transaction that is rolled back.
 
+The class lock (``chat._LOCK_CLASS``, the current revision pointer) and the request read
+(``chat._REQUEST``) are in the list too (#1472); ``_REQUEST``'s ``:id`` is the plant's message.
+
 Limits (#1462). ``chat._CHAIN`` has an owner clause on its anchor revision and one on its message
 join, and each alone refuses the plant (a class id belongs to one owner): the test fails only when
 both are removed. The owner clause on a walk's recursive step (``chat._CHAIN``, ``chat._STATED``)
@@ -40,6 +43,8 @@ STATEMENTS: dict[str, TextClause] = {
     "refit._BASE_MUSIC": refit._BASE_MUSIC,  # pyright: ignore[reportPrivateUsage]
     "refit._SOURCE": refit._SOURCE,  # pyright: ignore[reportPrivateUsage]
     "refit._CAS": refit._CAS,  # pyright: ignore[reportPrivateUsage]
+    "chat._LOCK_CLASS": chat._LOCK_CLASS,  # pyright: ignore[reportPrivateUsage]
+    "chat._REQUEST": chat._REQUEST,  # pyright: ignore[reportPrivateUsage]
     "chat._BASE": chat._BASE,  # pyright: ignore[reportPrivateUsage]
     "chat._STATED": chat._STATED,  # pyright: ignore[reportPrivateUsage]
     "chat._CHAIN": chat._CHAIN,  # pyright: ignore[reportPrivateUsage]
@@ -98,6 +103,7 @@ def plant(admin: Connection) -> dict[str, Any]:
         "job_id": job_id,
         "class_id": class_id,
         "base": base,
+        "message": message,
         "id": base,
         "revision_id": base,
         "n": 5,
@@ -106,6 +112,8 @@ def plant(admin: Connection) -> dict[str, Any]:
 
 
 def bound(statement: TextClause, values: dict[str, Any]) -> dict[str, Any]:
+    if statement is chat._REQUEST:  # pyright: ignore[reportPrivateUsage]
+        values = {**values, "id": values["message"]}  # ``:id`` is the request message here
     names = statement._bindparams  # pyright: ignore[reportPrivateUsage]
     assert set(names) <= set(values), f"the plant lacks {set(names) - set(values)}"
     return {name: values[name] for name in names}

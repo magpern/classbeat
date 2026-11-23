@@ -135,6 +135,11 @@ def test_the_schema_is_strict() -> None:
         WorkoutDraft.model_validate_json(json.dumps(extra), strict=True)
 
 
+def test_line_and_paragraph_separators_become_spaces() -> None:
+    assert clean_text("a\u2028b\u2029c") == "a b c"
+    assert clean_text("\u2028\u2029") == ""
+
+
 def test_text_fields_lose_control_and_format_characters() -> None:
     assert clean_text("A\x00b\u202ec\u200bd\te\n") == "Abcd e"
     interval = Interval.model_validate(
