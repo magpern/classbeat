@@ -72,7 +72,7 @@ in [ADR 0040](adr/0040-spotdown-analysis-service.md), amendment "#1296 accepted"
   safeguards (timing classes, no `exact` for a matched source, scopes, no audio kept, egress) stay.
 - **Spotify classes get their analysis through spotdown,** replacing "Spotify classes keep today's MOWL
   sections". The MOWL sections stay as the fallback (spotdown unreachable or off, a track `unusable`).
-  SD-P6 (#1303) is unblocked.
+  SD-P6 (#1303) is unblocked. *(Superseded 2026-11-21, owner, #1299: spotdown is the only analysis path, with no fallback; ADR 0040, the amendment "spotdown is the only analysis path".)*
 - **Retention of spotdown's global entries** (ADR 0040 §7, the Architect's reversible default): global,
   no user data; kept until the version changes or 90 days unused, then purged; an operator takedown per
   source; deleting a user never touches them; classbeat's per-owner record stays in class provenance.
@@ -93,7 +93,7 @@ classbeat's music-analysis service: [docs/plans/spotdown-integration.md](plans/s
   processing and derived analysis metadata; it never returns audio and receives no user token.
   spotdown needs no per-user Spotify OAuth. SwedeBeat audio is preferred when the workout uses
   SwedeBeat. Today's analysis paths (MOWL sections, `mixanalysis`, `mixchild`, `track_analysis`)
-  stay as fallbacks until the plan's quality gates and the owner's sign-off (#1299).
+  stay as fallbacks until the plan's quality gates and the owner's sign-off (#1299). *(Superseded 2026-11-21, owner, #1299: spotdown is the only analysis path, with no fallback; ADR 0040, the amendment "spotdown is the only analysis path".)*
 - **Authorized (owner, 2026-11-20, after the freeze).** Every phase (SD-P0 to SD-P7, and the
   nonblocking SD-P2+ enhancements) is authorized for implementation, except the owner decisions
   #1296 to #1299 and magpern/spotdown#1, which stay with the owner (status.md). No deploy, live-account test or real YouTube, SwedeBeat, MOWL or Spotify call by any agent. This
@@ -112,7 +112,7 @@ classbeat's music-analysis service: [docs/plans/spotdown-integration.md](plans/s
 - **Owner decisions,** each blocking only what it names: #1296 (YouTube terms-of-service risk and
   enablement; blocks SD-P6; accepted 2026-11-20, Amendment 32), #1297 (cross-user reuse of private-source analyses; blocks nothing),
   #1298 (the real-music quality corpus; blocks the default switches), #1299 (retirement; blocks
-  SD-P7c), magpern/spotdown#1 (the spotdown ruleset).
+  SD-P7c) *(both answered 2026-11-21: no default switch and no fallback to retire, the paths are gone)*, magpern/spotdown#1 (the spotdown ruleset).
 
 ## Amendment 30 (2026-11-19, owner decision: Spotify playlists are created public; issue #1287)
 

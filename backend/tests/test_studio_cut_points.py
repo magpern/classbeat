@@ -45,7 +45,7 @@ def test_an_approximate_track_has_advisory_candidates_only() -> None:
     ("timing", "points"),
     [
         ("unusable", None),
-        (None, None),  # a local analysis: no stored timing decision
+        (None, None),  # no stored timing decision
         ("exact", [*as_json(POINTS), {"at_s": 1.0, "kind": "drop", "trusted": True}]),
         ("exact", "points"),
     ],

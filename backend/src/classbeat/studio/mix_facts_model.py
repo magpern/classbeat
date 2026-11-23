@@ -3,7 +3,7 @@
 
 ``TrackFacts`` holds the track's length, BPM and first downbeat from its **stored** analysis,
 never a model's number, and, for #1328, the track's **stored** timing class and its cut candidates
-(``spotdown.cut_candidates_calc``). A local analysis has no timing decision (``None``) and no
+(``spotdown.cut_candidates_calc``). A track with no stored timing decision (``None``) has no
 candidates; a spotdown analysis has its decision's class and the candidates stored with its map.
 """
 
