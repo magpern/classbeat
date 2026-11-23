@@ -134,13 +134,11 @@ def current_provenance(provenance: object, sha256: str) -> bool:
     )
 
 
-def stored_timing_class(provenance: object) -> TimingClass | None:
+def stored_timing_class(provenance: Mapping[str, object]) -> TimingClass:
     """The one rule for the timing class of a stored analysis (draft, outputs, the timeline and the
     preview share it): the class its spotdown record names; ``unusable`` when it names none (any
-    doubt: no candidates), ``None`` without a record (none is stored since #1356; migration 0081
-    made the cache's ``provenance`` required, #1299)."""
-    if provenance is None:
-        return None
+    doubt: no candidates). Every stored analysis has its record (migration 0081 made the cache's
+    ``provenance`` required, #1299)."""
     timing = _obj(provenance, "timing")
     found = None if timing is None else timing.get("class")
     if found == "exact":

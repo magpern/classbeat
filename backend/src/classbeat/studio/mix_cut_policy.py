@@ -24,9 +24,8 @@ a snapped cut checked again selects only a point that snaps back to the same bar
 of a checked spec changes nothing (``swedebeat_studio.draft`` relies on it).
 
 **Step 3, the snap** (``snapped``): to the nearest downbeat of the ``TrackFacts`` grid (its first
-downbeat plus whole bars at its BPM), only for an ``exact`` track or one with no stored timing
-decision; an ``approximate`` or ``unusable`` track keeps its cut, rounded, and is never snapped to
-a grid. A start of 0 stays the
+downbeat plus whole bars at its BPM), only for an ``exact`` track; an ``approximate`` or
+``unusable`` track keeps its cut, rounded, and is never snapped to a grid. A start of 0 stays the
 file's start, and an end within 0.01 s of the length, or past it, is the length in whole
 hundredths (``cs(length)``, as ``mowl.compose._clamp`` clamps a window), **after** the snap and
 the rounding as well as before: a bar that lands within the cut rounding of the end is the end,
@@ -45,7 +44,7 @@ PHRASE_OF: Final = {"start": "phrase_start", "end": "phrase_end"}
 
 
 def snaps(facts: TrackFacts) -> bool:
-    return facts.timing_class in (None, "exact")
+    return facts.timing_class == "exact"
 
 
 def trusted(candidate: Candidate, facts: TrackFacts) -> bool:

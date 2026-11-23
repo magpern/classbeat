@@ -7,8 +7,7 @@ count only. The job that writes the rows is ``test_swedebeat_track_analysis.py``
 
 import uuid
 from collections.abc import Iterator
-from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from sqlalchemy import Engine, text
@@ -22,7 +21,6 @@ from classbeat.account.registry import NOT_EXPORTED
 from classbeat.connections.repository import delete_all_in
 from classbeat.db import RETENTION, SYSTEM_TABLES, user_session
 from classbeat.design import track_cache
-from classbeat.jobs import JobFailure, JobRun
 from ctx import make_context
 from gatewayfake import FakeGateway, store_bearer
 from jobtools import as_user, engine_for, new_user
@@ -184,17 +182,6 @@ def test_the_same_bytes_are_read_newest_first(admin: Connection) -> None:
         {"owner_id": owner, "version": 1, "sha256": bytes(32), "days": 30},
     ).all()
     assert [r.reference for r in rows] == ["new-ref", "old-ref"]
-
-
-async def test_store_refuses_a_map_the_table_would_refuse() -> None:
-    """#1356 review: ``store`` raises ``internal`` before it touches the run or the database."""
-    run = cast(JobRun, SimpleNamespace(lease=SimpleNamespace(owner_id=uuid.uuid4())))
-    analysed = track_cache.TrackMap(
-        "trk-1", "00" * 32, {"track_version": 1}, cached=False, provenance=None
-    )
-    with pytest.raises(JobFailure) as refused:
-        await track_cache.store(run, cast(Any, None), analysed, release_slot=False)
-    assert refused.value.args[0] == "internal"
 
 
 def test_the_rows_go_with_the_account(admin: Connection, app: Engine) -> None:

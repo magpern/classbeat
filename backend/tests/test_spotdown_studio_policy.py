@@ -288,8 +288,8 @@ def test_a_draft_records_at_most_one_analysis_per_track_of_a_mix() -> None:
 
     spec = {"tracks": [{"reference": "a", "start_sec": 0.0, "end_sec": 60.0}], "crossfades": []}
     base = {"source": "swedebeat_studio", "song_list_id": str(uuid4()), "map_version": 1}
-    record = {"reference": "a", "sha256": SHA, "map_hash": SHA}
+    record = {"reference": "a", "sha256": SHA, "map_hash": SHA, "provenance": {"record_version": 1}}
     fits = {**base, "mix_spec": spec, "analyses": [record] * MAX_TRACKS}
-    assert len(StudioRevisionMusic.model_validate(fits, strict=False).analyses or []) == MAX_TRACKS
+    assert len(StudioRevisionMusic.model_validate(fits, strict=False).analyses) == MAX_TRACKS
     with pytest.raises(ValidationError):
         StudioRevisionMusic.model_validate({**fits, "analyses": [record] * (MAX_TRACKS + 1)})

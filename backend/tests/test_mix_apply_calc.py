@@ -163,7 +163,7 @@ def test_the_pure_modules_import_no_io(path: str) -> None:
 def fit_case() -> tuple[Proposal, Any, dict[str, Any]]:
     """Eight whole 240 s tracks crossfaded 8 s (1864 s) and the fake's good draft made 1864 s."""
     refs = tuple(f"r{n}" for n in range(8))
-    tracks = tuple(StudioTrack(f"Song {n}", "Band", track_map(240.0)) for n in range(8))
+    tracks = tuple(StudioTrack(f"Song {n}", "Band", track_map(240.0), "exact") for n in range(8))
     music = StudioMusic(refs, tracks)
     raw = {"tracks": [{"reference": r, "start_sec": 0.0, "end_sec": 240.0} for r in refs]}
     proposed = mix_plan_policy.checked({**raw, "crossfades": [8] * 7}, refs, music.facts())

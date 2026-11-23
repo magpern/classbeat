@@ -1,7 +1,7 @@
 """#1328 (#580's approved design; ADR 0036 amendment A7): the mix spec's cuts with spotdown's cut
 candidates. Per piece the fixed order is the range of the proposed cut, the candidate selection (a
 trusted candidate of an ``exact`` track within the tolerance, else the proposed cut), the bar snap
-(``exact`` or no stored timing decision only) and the range again; then coverage, the loop joins,
+(``exact`` only) and the range again; then coverage, the loop joins,
 ``MIN_PLAYED_SEC``, the crossfades and the total, all on the placed cuts. Plus the regression
 cases of the design: the one duration rule, the crossfade rules and the 10 % class-length
 tolerance with trimmed songs. Pure: no I/O."""
@@ -18,7 +18,9 @@ from classbeat.spotdown.cut_candidates_model import Candidate
 from classbeat.studio import mix_cut_policy
 from classbeat.studio.mix_plan_policy import MixPlanRefused, TrackFacts, checked, cs, total_sec
 
-PLAIN = TrackFacts(length=240.0, bpm=120.0, first_downbeat=0.5)  # 2 s bars on 0.5 + 2n
+PLAIN = TrackFacts(
+    length=240.0, bpm=120.0, first_downbeat=0.5, timing_class="exact"
+)  # 2 s bars on 0.5 + 2n
 ORDER = ["a", "b", "c"]
 
 
@@ -71,7 +73,6 @@ def test_a_trusted_candidate_within_the_tolerance_sets_the_cut_then_the_bar_snap
     [
         exact(point(31.8)),  # 1.0 s away: out of reach
         exact(point(31.6, trusted=False)),  # a hint
-        exact(point(31.6), timing=None),  # no stored timing decision: no candidate is usable
         exact(point(31.6), timing="approximate"),  # advisory only, even if marked trusted
         exact(point(31.6), timing="unusable"),
     ],
@@ -229,10 +230,9 @@ def test_the_ten_percent_class_length_tolerance_counts_the_trimmed_windows() -> 
     assert within_tolerance(total_sec(windows, good["crossfades"]), target)  # 580 s
 
 
-@pytest.mark.parametrize("timing", [None, "exact"])
-def test_a_bar_within_the_cut_rounding_of_the_end_is_the_end(timing: Any) -> None:
+def test_a_bar_within_the_cut_rounding_of_the_end_is_the_end() -> None:
     # 1.993 + 99 bars of 2 s = 199.993: rounded 199.99, one hundredth from the 200 s end
-    facts = TrackFacts(200.0, 120.0, 1.993, timing)
+    facts = TrackFacts(200.0, 120.0, 1.993, "exact")
     assert mix_cut_policy.placed(199.5, facts) == 200.0
     others = {"b": PLAIN, "c": PLAIN}
     value = spec(("a", 0, 199.5), ("b", 0, 240.0), ("c", 0, 240.0))
@@ -249,7 +249,7 @@ def test_cuts_near_the_end_place_once_on_any_grid(seed: int) -> None:
     bar = 240.0 / bpm
     # every other grid has a downbeat just before the end, within the cut rounding of it
     first = (length - rng.uniform(0.004, 0.014)) % bar if seed % 2 else rng.uniform(0.0, 2.0)
-    facts = TrackFacts(length, bpm, first, rng.choice([None, "exact"]))
+    facts = TrackFacts(length, bpm, first, "exact")
     for _ in range(25):
         at = round(rng.uniform(length - 3.0, length + 0.005), rng.choice([2, 3]))
         once = mix_cut_policy.placed(at, facts)

@@ -11,10 +11,11 @@ plays every track at least once and no other (a repeat is allowed, #1342), each 
 piece, or a loop's pieces together) plays at least 60 s, the total is the backend's one duration
 rule and the composed map's, and no stand-in for a catalogue reference reached the model.
 
-The local tracks have no stored timing decision and so no cut candidates (#1328); the spotdown
-variant (``tests/test_evals_studio_spotdown.py``) gives the same tracks with their candidates, and
-the recorded script's trimmed piece carries its ``why`` (the prompts of #1328). The spotdown variant
-also sees #1330's downbeat-lock hints on the trusted grid; the local tracks have none.
+The synthetic tracks are ``exact`` (the grid is the one they were built on) with no stored cut
+candidates (#1328); the spotdown variant (``tests/test_evals_studio_spotdown.py``) gives the same
+tracks with their candidates, and the recorded script's trimmed piece carries its ``why`` (the
+prompts of #1328). The spotdown variant also sees #1330's downbeat-lock hints on the trusted grid;
+the synthetic tracks, with no candidates, have none.
 """
 
 from collections.abc import Callable
@@ -63,7 +64,7 @@ def studio_tracks(count: int) -> tuple[StudioTrack, ...]:
         ]
         music_map = {"duration": duration, "songs": [song], "events": drops,
                      "sections": sections, "track_version": track.TRACK_VERSION}  # fmt: skip
-        out.append(StudioTrack(f"Studio Song {n}", "Invented Band", music_map))
+        out.append(StudioTrack(f"Studio Song {n}", "Invented Band", music_map, "exact"))
     return tuple(out)
 
 

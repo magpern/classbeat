@@ -90,7 +90,6 @@ def test_a_studio_record_stored_with_the_spotdown_analyser_reads_without_it() ->
         studio_music({**RECORD, "analyser": "spotdown"})
     )
     assert legacy.analyses == current.analyses
-    assert legacy.analyses is not None
     assert "analyser" not in legacy.model_dump(mode="json")["analyses"][0]
 
 

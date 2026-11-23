@@ -2,7 +2,7 @@
 what the mix screen reads to show each song and to pre-fill and gate the choices:
 
 - per track (``TrackMix``): its **analysed** length (the stored analysis's, not the list's
-  SwedeBeat ``duration_sec``) and its stored timing class (``None``: none stored);
+  SwedeBeat ``duration_sec``) and its stored timing class;
 - per draft (``DraftMix``): the stored spec's ``spec_digest`` (``mix_apply_calc.spec_digest``, the
   one Approve compares with the preview's), the ``proposal_revision_id`` the choices apply to
   (``None``: ``no_proposal``), whether the spec ``is_plain`` (whole songs,
@@ -23,7 +23,7 @@ class TrackMix(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     length_sec: float = Field(gt=0)
-    timing_class: TimingClass | None
+    timing_class: TimingClass
 
 
 class DraftMix(BaseModel):

@@ -49,7 +49,7 @@ class Stored:
 
     reference: str
     sha256: str
-    provenance: object
+    provenance: Mapping[str, object]
     music_map: Mapping[str, Any]
 
 
@@ -95,12 +95,13 @@ class TrackMap:
     sha256: str
     music_map: dict[str, Any]
     cached: bool
-    provenance: Mapping[str, object] | None = None
+    provenance: Mapping[str, object]
 
 
 def _hit(row: Any, accept: Accept, reference: str | None = None) -> TrackMap | None:
     stored: object = row.map
-    provenance, sha256 = row.provenance, bytes(row.sha256).hex()
+    # A jsonb object, never null (the table's checks: 0064's object check, 0081's NOT NULL).
+    provenance, sha256 = cast(Mapping[str, object], row.provenance), bytes(row.sha256).hex()
     if not valid_track_map(stored, track.TRACK_VERSION):
         return None  # not what this version reads: analysed again
     music_map = cast(dict[str, Any], stored)
@@ -111,7 +112,7 @@ def _hit(row: Any, accept: Accept, reference: str | None = None) -> TrackMap | N
         sha256,
         music_map,
         cached=True,
-        provenance=cast(Mapping[str, object], provenance) if provenance is not None else None,
+        provenance=provenance,
     )
 
 
@@ -176,10 +177,7 @@ async def store(
     read (``recorded``)."""
     owner = run.lease.owner_id
     payload = json.dumps(analysed.music_map, separators=(",", ":"), allow_nan=False)
-    provenance = analysed.provenance
-    if provenance is None:
-        raise JobFailure("internal")  # the table's check, before anything is written
-    record = json.dumps(dict(provenance), allow_nan=False)
+    record = json.dumps(dict(analysed.provenance), allow_nan=False)
     async with run.fenced() as fs:
         if not await hold(fs.db, run.ctx, connection):
             raise JobFailure("not_connected")

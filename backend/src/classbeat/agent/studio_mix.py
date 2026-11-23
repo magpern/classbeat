@@ -2,13 +2,13 @@
 Pure: no I/O, no reference.
 
 - ``StudioTrack``: one approved track as the stage holds it: the list's Spotify title and artist,
-  its analysis (``mowl.track``'s map) and its stored timing class (``None``: none stored);
+  its analysis (``mowl.track``'s map) and its stored timing class;
   ``facts`` adds the cut candidates stored with a spotdown map (#1328, trust inherited again).
   **No catalogue reference**: the stage names tracks by index, and only the backend maps an index
   back to a reference (``swedebeat_studio.design``).
 - ``music_summary`` / ``track_detail``: per track its index, title, artist, BPM, length, bar
   length and first downbeat, the drops and breakdowns in the track's own seconds, its timing class
-  when spotdown analysed it and its edge cut points (``cut_points_input``); a track's detail adds
+  and its edge cut points (``cut_points_input``); a track's detail adds
   its sections with their energy and every cut point but the downbeats. Numbers come from the
   analysis only.
 - ``compose``: the model's plan (indexes, cuts, crossfades) checked by ``mix_plan_policy`` against
@@ -56,7 +56,7 @@ class StudioTrack:
     title: str
     artist: str
     music_map: Mapping[str, Any]
-    timing_class: TimingClass | None = None  # the stored decision's; ``None``: none stored
+    timing_class: TimingClass  # the stored decision's (``stored_timing_class``)
 
     def facts(self) -> TrackFacts:
         return of_map(self.music_map, self.timing_class)
@@ -80,7 +80,6 @@ def _events(m: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 def _track(index: int, track: StudioTrack) -> dict[str, Any]:
     facts = track.facts()
-    timing = {} if facts.timing_class is None else {"timing": facts.timing_class}
     points = cut_points_input.edge_points(facts)
     return {
         "index": index,
@@ -91,7 +90,7 @@ def _track(index: int, track: StudioTrack) -> dict[str, Any]:
         "bar_sec": round(240.0 / facts.bpm, 3),
         "first_downbeat_sec": round(facts.first_downbeat, 2),
         "drops_and_breakdowns": _events(track.music_map),
-        **timing,
+        "timing": facts.timing_class,
         **({"cut_points": points} if points else {}),
     }
 

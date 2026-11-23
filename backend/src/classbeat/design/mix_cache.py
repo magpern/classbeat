@@ -90,7 +90,7 @@ class MixAnalysis:
     music_map: dict[str, Any]
     fingerprint: str
     cached: bool
-    provenance: dict[str, Any] | None = None
+    provenance: dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,7 +117,7 @@ def _analysis(row: Any, mix_id: str, connection_id: UUID) -> MixAnalysis | None:
     if not isinstance(stored, dict) or stored.get("version") != music.MAP_VERSION:  # pyright: ignore[reportUnknownMemberType]
         return None  # an older analysis format: redone, as the library does
     music_map = cast(dict[str, Any], stored)
-    provenance = cast(dict[str, Any] | None, row.provenance)
+    provenance = cast(dict[str, Any], row.provenance)  # NOT NULL (migration 0081), an object
     return MixAnalysis(
         mix_id,
         int(row.playlist_id),
@@ -164,8 +164,6 @@ async def store(
     connection_id: UUID,
     timing: Timing,
 ) -> None:
-    if analysis.provenance is None:
-        raise JobFailure("internal")  # the table's NOT NULL (migration 0081), before any write
     record = json.dumps(analysis.provenance, separators=(",", ":"), allow_nan=False)
     async with run.fenced() as fs:
         await _store_row(fs, run, opened, analysis, connection_id, record)

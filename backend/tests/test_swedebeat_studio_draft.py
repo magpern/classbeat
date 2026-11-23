@@ -69,9 +69,9 @@ def test_the_total_is_the_composed_maps_for_a_three_decimal_length() -> None:
     from studiomaps import track_map
 
     odd = (
-        StudioTrack("One", "Band", track_map(300.0)),
-        StudioTrack("Two", "Band", track_map(60.005)),
-        StudioTrack("Three", "Band", track_map(300.0)),
+        StudioTrack("One", "Band", track_map(300.0), "exact"),
+        StudioTrack("Two", "Band", track_map(60.005), "exact"),
+        StudioTrack("Three", "Band", track_map(300.0), "exact"),
     )
     given = MixInput.model_validate(
         {

@@ -120,7 +120,7 @@ def _reconcile(
     """The overlay's reconciliation of each submitted draft; ``None`` without an overlay."""
     if not overlay.records:
         return None
-    analysed = {a.reference: a.sha256 for a in base_music.analyses or ()}
+    analysed = {a.reference: a.sha256 for a in base_music.analyses}
     target = stored.content.target_sec
     return revise_overlay.reconciler(base, overlay, music, target, analysed, gates)
 

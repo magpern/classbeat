@@ -94,7 +94,6 @@ def test_repeats_and_loops_stay_with_trim_on() -> None:
     [
         ("approximate", "timing_approximate"),
         ("unusable", "timing_unusable"),
-        (None, "timing_unknown"),
     ],
 )
 def test_a_track_without_exact_timing_is_always_whole_with_its_reason(

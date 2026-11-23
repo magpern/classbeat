@@ -126,7 +126,10 @@ async def test_the_model_cannot_write_a_reference_a_length_or_a_tempo(
 
 
 async def test_the_model_sees_no_reference_and_lengths_only_from_the_analysis() -> None:
-    planted = (StudioTrack("Invented Song", "Made-up Band", track_map(271.5)), *tracks(7)[1:])
+    planted = (
+        StudioTrack("Invented Song", "Made-up Band", track_map(271.5), "exact"),
+        *tracks(7)[1:],
+    )
     ctx = StudioContext(BRIEF, planted)
     first = ctx.first_message()
     assert PLANTED_REFERENCE not in first

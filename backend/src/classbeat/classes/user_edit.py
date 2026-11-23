@@ -110,7 +110,7 @@ async def edit(factory: Factory, ctx: UserContext, class_id: UUID, body: EditIn)
             spec=found.spec,
             overlay=found.overlay,
             music=resolved.music,
-            analysed={a.reference: a.sha256 for a in found.music.analyses or ()},
+            analysed={a.reference: a.sha256 for a in found.music.analyses},
             proposal=resolved.proposal,
             choices=await _choices(db, owner_id, class_id, found, resolved),
             map_version=found.music.map_version,

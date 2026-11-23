@@ -25,8 +25,8 @@ such a track whole whatever the proposal says.
 ``pin_hints`` are the cut pins' soft checks (ADR 0042 section 5, #1390), each naming one piece and
 its ``edge``, in mix order, start before end:
 
-- ``off_beat_cut``: a pinned cut off the bar grid of a track that has a trusted one (``exact`` or
-  no stored timing decision, ``mix_cut_policy.snaps``): an ``exact`` pin, or a confirmed one. A
+- ``off_beat_cut``: a pinned cut off the bar grid of a track that has a trusted one (``exact``,
+  ``mix_cut_policy.snaps``): an ``exact`` pin, or a confirmed one. A
   ``bar`` pin is on the grid by definition.
 - ``pin_moved``: the same target's pinned cut is not where it was in ``before`` (a reanalysis
   re-snapped an unconfirmed ``bar`` pin), with ``moved_sec``, so nothing moves silently.

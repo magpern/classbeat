@@ -170,7 +170,7 @@ def test_the_facts_carry_the_low_band_of_an_exact_track_only() -> None:
     mapped = studio_map(doc(), "trk-ref-01", "c" * 64, 1)
     assert isinstance(mapped, StudioMap)
     assert of_map(mapped.track_map, "exact").low_band == low_band_model.curve(doc())
-    for timing in ("approximate", "unusable", None):
+    for timing in ("approximate", "unusable"):
         assert of_map(mapped.track_map, timing).low_band is None  # type: ignore[arg-type]
 
 

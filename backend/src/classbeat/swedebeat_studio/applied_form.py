@@ -71,7 +71,7 @@ def unconfirmed(found: CurrentDraft) -> bool:
     """A pin of the stored spec to listen to again (module docstring): a confirmed one whose
     analysed file is not the one it was confirmed against, an unconfirmed one whose file is not
     the one it was set against; anything that does not read is one (fail closed)."""
-    analysed = {a.reference: a.sha256 for a in found.music.analyses or ()}
+    analysed = {a.reference: a.sha256 for a in found.music.analyses}
     try:
         against = {p.target(): p.set_against for p in found.overlay.pins()}
         moved = requests_moved(found.spec, against, analysed)

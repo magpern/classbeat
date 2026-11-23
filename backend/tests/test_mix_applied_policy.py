@@ -186,7 +186,7 @@ def test_a_proposal_holds_only_as_the_applied_form_of_its_choices() -> None:
 
 
 def test_a_cut_on_a_track_that_is_not_exact_never_holds() -> None:
-    for timing in ("approximate", "unusable", None):
+    for timing in ("approximate", "unusable"):
         facts = {**FACTS, "b": track(timing)}
         assert not holds(PLAIN, proposal(PLAIN), facts, DJ)  # b is cut 20 to 220
 

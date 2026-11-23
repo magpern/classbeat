@@ -150,7 +150,7 @@ def _carried(
         spec=base.spec,
         overlay=base.overlay,
         music=found.music,
-        analysed={a.reference: a.sha256 for a in base.music.analyses or ()},
+        analysed={a.reference: a.sha256 for a in base.music.analyses},
         proposal=found.proposal,
         choices=choices,
         map_version=base.music.map_version,

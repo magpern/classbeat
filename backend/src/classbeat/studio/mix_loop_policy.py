@@ -8,7 +8,7 @@ and 3) and the **stored** facts (``TrackFacts``: the stored timing class and its
 a model's word), each at its step of A7:
 
 - step 6, ``join_refusal``: for each loop join in mix order, ``loop_needs_exact_timing`` (A4.1: the
-  track's stored timing decision is not ``exact``; ``approximate``, ``unusable`` or none), then
+  track's stored timing decision is not ``exact``: ``approximate`` or ``unusable``), then
   ``loop_not_on_phrase`` (A4.2): the outgoing piece's ``end_sec`` and the incoming piece's
   ``start_sec`` each within ``LOCK_TOLERANCE_MS`` of an **anchor**, a trusted candidate's own time
   (``anchors``: the trusted phrase starts and ends when the track has any, else its trusted
