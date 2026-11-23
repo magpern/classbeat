@@ -27,7 +27,8 @@ export function playMessage(state: TransportState): PlayMessage | null {
     return {
       key: `editor.play.err.${reason}`,
       tone: 'error',
-      retry: reason !== 'unavailable',
+      // The draft changed: playing again would fail the same way until the page is reloaded.
+      retry: reason !== 'unavailable' && reason !== 'draft_changed',
     }
   }
   return null

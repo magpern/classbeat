@@ -234,6 +234,7 @@ export async function chooseOutputs(
   input: { revisionId: string; contentHash: string; outputs: readonly Output[] },
   idempotencyKey: string,
 ): Promise<Job> {
-  const body = { revision_id: input.revisionId, content_hash: input.contentHash, outputs: input.outputs }
+  // `base_revision_id` is the draft the page showed: the server answers `stale_revision` when the class moved.
+  const body = { revision_id: input.revisionId, base_revision_id: input.revisionId, content_hash: input.contentHash, outputs: input.outputs }
   return decodeStartedJob(await post(`${classBase(classId)}/outputs`, body, { 'Idempotency-Key': idempotencyKey }))
 }

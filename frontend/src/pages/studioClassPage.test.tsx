@@ -124,6 +124,7 @@ describe('a studio class on the class page', () => {
     const call = api.to('POST', `${CLASS_PATH}/outputs`)[0]!
     expect(call.body).toEqual({
       revision_id: REV1,
+      base_revision_id: REV1,
       content_hash: HASH,
       outputs: ['spotify_playlist', 'swedebeat_playlist'],
     })

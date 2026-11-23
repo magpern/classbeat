@@ -78,13 +78,14 @@ export function CorrectionPanel({ alignment, initialPiece, saving, failure, onCo
       <p className="m-0" data-testid="correction-value">
         {song.correction === null ? t('preview.corr.none') : t('preview.corr.value', { value: seconds(song.correction.offsetMs) })}
       </p>
+      {/* While it waits for confirmation the steps are off: a nudge would store a fresh correction, which confirms it unseen. */}
       {again ? <Notice>{t('preview.corr.listenAgain')}</Notice> : null}
       <div className="flex flex-wrap gap-2" role="group" aria-label={t('preview.corr.title', { n: song.song })}>
         {[-1, 1].flatMap((sign) =>
           NUDGE_STEPS_MS.map((step) => {
             const delta = `${sign < 0 ? '−' : '+'}${plain(step / 1000)}`
             return (
-              <Button key={`${String(sign)}${String(step)}`} variant="secondary" disabled={saving} aria-label={t('preview.corr.step', { delta })} data-testid={`nudge-${sign < 0 ? 'minus' : 'plus'}-${String(step)}`} onClick={() => onCorrect(song.song, nudged(stored, sign * step))}>
+              <Button key={`${String(sign)}${String(step)}`} variant="secondary" disabled={saving || again} aria-label={t('preview.corr.step', { delta })} data-testid={`nudge-${sign < 0 ? 'minus' : 'plus'}-${String(step)}`} onClick={() => onCorrect(song.song, nudged(stored, sign * step))}>
                 {delta}
               </Button>
             )

@@ -28,7 +28,7 @@ export interface Win {
   stale: boolean
 }
 
-const EVENTS = ['playing', 'timeupdate', ...STOP_EVENTS]
+const EVENTS = ['playing', 'timeupdate', 'error', ...STOP_EVENTS]
 
 export class ClipSlots {
   active: Slot = 0

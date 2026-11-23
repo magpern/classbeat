@@ -319,6 +319,7 @@ describe('Apply these choices, then Approve', () => {
     await waitFor(() => { expect(api.to('POST', `${CLASS_PATH}/outputs`)).toHaveLength(1) })
     expect(api.to('POST', `${CLASS_PATH}/outputs`)[0]!.body).toEqual({
       revision_id: REV1,
+      base_revision_id: REV1,
       content_hash: HASH,
       outputs: ['spotify_playlist', 'swedebeat_playlist', 'swedebeat_mix'],
     })

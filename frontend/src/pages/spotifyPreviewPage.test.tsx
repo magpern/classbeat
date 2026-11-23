@@ -487,6 +487,16 @@ describe('timing corrections', () => {
       expect(screen.getByTestId('spotify-cursor')).toHaveTextContent(/^Cursor at 1:0[2-3]/)
     })
 
+    it('is not confirmed by a nudge: the steps wait until it is confirmed or cleared', async () => {
+      const api = fakeApi(routes({ [`GET ${A}/alignment`]: again(), [PUT]: alignment() }))
+      await open()
+      for (const id of ['nudge-plus-100', 'nudge-minus-1000', 'nudge-plus-10000']) expect(screen.getByTestId(id)).toBeDisabled()
+      fireEvent.click(screen.getByTestId('nudge-plus-100'))
+      expect(api.to('PUT', `${A}/corrections/1`)).toHaveLength(0)
+      expect(screen.getByTestId('correction-confirm')).toBeEnabled()
+      expect(screen.getByTestId('correction-clear')).toBeEnabled()
+    })
+
     it('is used only after it is confirmed again, with the same value', async () => {
       const api = fakeApi(routes({ [`GET ${A}/alignment`]: again(), [PUT]: alignment([song(0, { correction: correction(2000) }), song(1), song(2)]) }))
       await open()

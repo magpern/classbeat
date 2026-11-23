@@ -91,7 +91,7 @@ export function useClassEditor(classId: string): ClassEditor {
         else if (reason !== null) setOutcome({ kind: 'refused', reason })
         else setOutcome({ kind: 'failed' })
         // A refusal that says the draft can no longer be edited, and a stale answer, need the new truth.
-        if (reason !== null && (isStale(error) || reason === 'music_changed' || reason === 'mix_not_applied' || reason === 'class_busy')) reload()
+        if (reason !== null && (isStale(error) || reason === 'music_changed' || reason === 'mix_not_applied' || reason === 'class_busy' || reason === 'hash_mismatch')) reload()
       } finally {
         working.current = false
         setBusy(false)

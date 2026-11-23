@@ -2,6 +2,7 @@ import { isAbort, reasonOf, type Clip } from '../api/previewClips'
 import { Changes, ClipSlots, type ClipAudio, type Slot, type Win } from './clipSlots'
 import type { ClipService } from './clipService'
 import { ListenSession } from './listenSession'
+import type { RenderedClipOptions } from './renderedClipOptions'
 import type { Ack, AuditionRequest, PreviewTransport, TransportCapabilities, TransportState } from './transport'
 import { isLast, viewOf, wantsPreload, windowAt } from './windowPolicy'
 
@@ -12,17 +13,7 @@ import { isLast, viewOf, wantsPreload, windowAt } from './windowPolicy'
 // otherwise seeks inside it; a seek, a track change or an edit never resets its counter.
 
 export type { ClipAudio } from './clipSlots'
-
-export interface RenderedClipOptions {
-  service: ClipService
-  audio: readonly [ClipAudio, ClipAudio]
-  /** The monotonic clock in ms (`performance.now`), injected. */
-  now: () => number
-  /** The mix's length in ms: the class ends there. */
-  mixEndMs: number
-  /** True only when the chosen outputs include the mix. */
-  exactMix?: boolean
-}
+export type { RenderedClipOptions } from './renderedClipOptions'
 
 type Rest = { status: 'idle' | 'paused' | 'error'; reason?: string }
 
@@ -259,8 +250,8 @@ export class RenderedClipTransport implements PreviewTransport {
         if (gen !== this.gen || isAbort(error)) return
         this.loadingNext = false
         const reason = reasonOf(error)
-        if (reason === 'session_ended' || reason === 'unavailable') {
-          this.endSession({ status: reason === 'unavailable' ? 'error' : 'paused', reason })
+        if (reason === 'unavailable') {
+          this.endSession({ status: 'error', reason })
           return
         }
         if (reason === 'past_end') this.pastEnd = true
@@ -280,6 +271,9 @@ export class RenderedClipTransport implements PreviewTransport {
     } else if (type === 'timeupdate') {
       const idle = this.next === null && this.nextFailure === null && !this.pastEnd
       if (idle && wantsPreload(this.cur.clip, this.positionMs(), this.mixEndMs)) this.startPreload()
+    } else if (type === 'error') {
+      // The element could not load or decode the clip: say so and leave a retry that asks for a fresh clip here.
+      this.stall('failed', this.positionMs())
     } else {
       this.listen.timer.stop()
       if (type === 'ended') this.advance()
@@ -293,6 +287,8 @@ export class RenderedClipTransport implements PreviewTransport {
     if (cur === null || this.loading !== null) return
     if (isLast(cur.clip, this.mixEndMs) || this.pastEnd) this.endSession({ status: 'idle' }, 0)
     else if (this.next !== null) this.switchTo(this.next, 0)
+    // The session ran out while the next window was asked for ~90 s early: what plays plays to its end, then the session ends.
+    else if (this.nextFailure === 'session_ended') this.endSession({ status: 'paused', reason: 'session_ended' }, cur.clip.endMs)
     else if (this.nextFailure !== null) this.stall(this.nextFailure, cur.clip.endMs)
     else {
       this.waitingForNext = true

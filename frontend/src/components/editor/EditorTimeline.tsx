@@ -80,6 +80,11 @@ export function EditorTimeline(props: EditorTimelineProps) {
     const width = svg.current?.getBoundingClientRect().width ?? 0
     setDrag({ index, deltaSec: clamp(index, pxToDeltaSec(event.clientX - start.current, width, totalSec)) })
   }
+  // The status is in the label too: the live line under the chart is aria-live="off", so it is never announced.
+  const songLabel = (clip: StudioClip) => {
+    const base = t('editor.tl.song', { n: clip.piece + 1, title: clip.label })
+    return cursorMs !== null && cursorMs >= clip.startMs && cursorMs < clip.endMs ? `${base} ${t('editor.tl.songCursor')}` : base
+  }
   return (
     <svg
       ref={svg}
@@ -170,7 +175,7 @@ export function EditorTimeline(props: EditorTimelineProps) {
             data-piece={clip.piece}
             tabIndex={0}
             role="button"
-            aria-label={t('editor.tl.song', { n: clip.piece + 1, title: clip.label })}
+            aria-label={songLabel(clip)}
             x={xOf(totalMs, clip.startMs)}
             y={LANE_Y + (clip.piece % 2 === 0 ? 0 : 3)}
             width={Math.max(widthOf(totalMs, clip.endMs - clip.startMs), 1)}

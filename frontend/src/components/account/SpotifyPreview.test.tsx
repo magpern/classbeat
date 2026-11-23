@@ -69,6 +69,20 @@ describe('the wizard opt-in', () => {
     expect(call?.body).toEqual({ client_id: GOOD_ID, confirm_account_change: false })
   })
 
+  it('starts with the box ticked for a user who already granted the preview', async () => {
+    const api = spotifyApi(status({ status: 'connected', client_id: GOOD_ID, preview_granted: true }))
+    renderAt('/account/spotify?result=account_changed')
+    const sp = within(await screen.findByRole('dialog', { name: 'Spotify' }))
+    expect(await sp.findByRole('checkbox', { name: 'Enable listening preview' })).toBeChecked()
+    fireEvent.change(sp.getByLabelText('Spotify Client ID'), { target: { value: GOOD_ID } })
+    fireEvent.click(sp.getByRole('button', { name: 'Switch account' }))
+    await waitFor(() => {
+      expect(goToProvider).toHaveBeenCalledWith(AUTHORIZE)
+    })
+    const [call] = api.to('POST', '/api/connections/spotify/start')
+    expect(call?.body).toEqual({ client_id: GOOD_ID, confirm_account_change: true, preview: true })
+  })
+
   it('sends preview only when ticked', async () => {
     const api = spotifyApi(status())
     const sp = await openSpotify()

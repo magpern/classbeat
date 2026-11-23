@@ -190,6 +190,7 @@ const OWN: Record<string, CatalogueKey> = {
   stale_base: 'studio.reason.stale_base',
   hash_mismatch: 'studio.reason.hash_mismatch',
   not_current: 'studio.reason.not_current',
+  stale_revision: 'studio.reason.not_current',
   mowl_needs_mix: 'studio.reason.mowl_needs_mix',
   mix_not_chosen: 'studio.reason.mix_not_chosen',
   mix_not_applied: 'studio.reason.mix_not_applied',

@@ -29,6 +29,7 @@ export const editorDa: Catalogue = {
   'editor.tl.boundary':
     'Slutningen af blok {n}, ved {time}. Piletasterne vælger et nyt sted, Enter flytter, Escape annullerer. Hold Skift nede for fem sekunder.',
   'editor.tl.song': 'Sang {n}: {title}. Tryk Enter for at sætte markøren ved dens start.',
+  'editor.tl.songCursor': 'Markøren er i denne sang.',
   'editor.cursor.none': 'Ingen markør.',
   'editor.cursor.at': 'Markøren står ved {time}.',
   'editor.cursor.stop': 'Stop markøren',

@@ -34,7 +34,8 @@ export function SpotifyWizard({
   const t = useT()
   const [clientId, setClientId] = useState('')
   const [invalid, setInvalid] = useState(false)
-  const [preview, setPreview] = useState(false)
+  // A user who already granted the listening preview starts with it on: connecting again must not drop it.
+  const [preview, setPreview] = useState(status.previewGranted)
   const previewHint = useId()
   const [copy, setCopy] = useState<'copied' | 'failed' | null>(null)
 
