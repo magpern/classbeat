@@ -778,7 +778,9 @@ the studio parts taken out.
 
 - **Where the map comes from.** The worker stores the corrected map the draft was fitted to in the
   revision's `music.edit_map` (`design.revision.content_and_music`), capped at 256 KiB
-  (`design/revision_edit_map.py`; a larger map is not stored and its draft stays read-only). The web
+  (`design/revision_edit_map.py`; a larger map is not stored and its draft stays read-only, with
+  `music.edit_map_dropped = "map_too_large"` so the editor's read answers `map_too_large` and the page
+  says why, #1453; an edit still answers `edit_unavailable`). The web
   process reads it from the revision row, so the edit makes no MOWL read and no new egress. A
   `user_edit` revision stores no map and reads the nearest earlier non-`user_edit` revision's, only
   while that revision's fingerprint matches. A draft with no stored map (made before this change), or
@@ -810,3 +812,11 @@ the studio parts taken out.
 - **Duplicate.** A duplicate of an edited draft takes the nearest non-`user_edit` revision's
   provenance and the plain content hash with no overlay; the copy has no map, so its editor is
   read-only until the class is refitted.
+- **Hardening (#1453).** An override's value is given in the revise message's fixed section as JSON
+  (`revise_overlay.fixed_section`, shared by the studio and the Spotify revise), so a cue's quotes
+  cannot end the statement's prose. The base reads and current-pointer swaps of a revise, song revise
+  and refit (`refit`, `chat`, `revise_base`, `spotdown_base`, `revise_brief`, `revise_phase2`,
+  `spotify_edit_draft`) are each pinned to their owner clause by `tests/test_base_reads_owner.py`,
+  run with row security lifted, since `test_user_context_guard` does not read SQL. The class list and
+  page carry `spotify` (the class's stored source is a Spotify playlist's) beside `soundless` and
+  `studio`.

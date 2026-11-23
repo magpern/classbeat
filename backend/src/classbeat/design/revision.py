@@ -54,7 +54,7 @@ from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
 from classbeat.design.music_kind import NoMusicStep
 from classbeat.design.revision_adopt import adopt_first as adopt_first
-from classbeat.design.revision_edit_map import stored as edit_map_of
+from classbeat.design.revision_edit_map import fields as edit_map_fields
 from classbeat.design.revision_hash import canonical as canonical
 from classbeat.design.revision_hash import of_music, revision_hash
 from classbeat.design.revision_hash import studio_hash as studio_hash
@@ -249,7 +249,7 @@ def content_and_music(
             unknown_bpm=[UnknownBpmTrack(index=u.index, title=u.title) for u in step.unknown_bpm],
             song_list_id=song_list_id,
             spotdown=_sections(music_map, song_list_id, spotdown),
-            edit_map=None if running else edit_map_of(music_map),
+            **edit_map_fields(music_map, running),
         )
     if not isinstance(step, NoMusicStep) and not isinstance(music, NoRevisionMusic):
         assert music_map is not None  # noqa: S101 - checked above

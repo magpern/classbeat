@@ -205,12 +205,14 @@ def test_a_spec_that_does_not_compose_is_a_broken_invariant(
 
 
 def test_an_invalid_derived_spec_is_still_refused_without_a_mix_input_model() -> None:
-    """E1: ``fitted`` no longer validates through ``MixInput``; ``plan_of`` and ``compose_spec``
-    (``checked``) do. A spec naming a track the list does not have never gets to a result."""
+    """E1: ``fitted`` no longer validates through ``MixInput``. A spec naming a track the list does
+    not have never gets to a result: ``mix_remap_calc.kept`` (reached from ``moved``) refuses it
+    as not a derivation of the proposal, before ``plan_of`` or ``compose_spec`` sees it. Their own
+    checks of a spec that is a derivation but has invalid fields are not what this pins."""
     value, music, draft = fit_case()
     spec = mix_apply_calc.derived(value, music, MixChoices.whole_songs())
     broken = {**spec, "tracks": [{**spec["tracks"][0], "reference": "r99"}, *spec["tracks"][1:]]}
-    with pytest.raises(ValueError, match=r"not a derivation|does not compose"):
+    with pytest.raises(ValueError, match=r"not a derivation"):
         mix_apply_calc.fitted(draft, dict(value.spec), broken, music, None)
 
 

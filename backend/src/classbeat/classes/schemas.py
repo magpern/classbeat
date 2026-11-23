@@ -71,6 +71,9 @@ class ClassOut(BaseModel):
     # (``swedebeat_studio``); false for every other and every older class. The client reads it to
     # skip ``GET /classes/{id}/timeline`` for a class that cannot have a studio draft.
     studio: bool = False
+    # #1453: true only when ``music_source`` is a Spotify playlist's (``mowl_spotify_playlist``,
+    # picked songs too); false for a SwedeBeat mix, a studio or soundless class and an older one.
+    spotify: bool = False
     # ADR 0036 section 6: an output was written to SwedeBeat (a playlist or a mix); a class delete
     # cannot take it back, so the delete card says so.
     swedebeat_written: bool = False
@@ -114,6 +117,7 @@ class ClassOut(BaseModel):
             sport="running" if row.sport == "running" else "cycling",
             soundless=row.soundless is True,
             studio=row.studio is True,
+            spotify=row.spotify is True,
             swedebeat_written=row.swedebeat_written is True,
             request=row.request if isinstance(row.request, str) else None,
             song_count=row.song_count if isinstance(row.song_count, int) else None,

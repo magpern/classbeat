@@ -14,6 +14,8 @@ export type ReadOnlyReason =
   | 'open_job'
   /** An older Spotify draft: it has no stored map to check an edit against (#1424). */
   | 'edit_unavailable'
+  /** A Spotify draft whose map was too large to keep, so no edit can be checked (#1453). */
+  | 'map_too_large'
   /** Anything else the editor cannot edit (a soundless or running class, a shape it does not know). */
   | 'not_editable'
   | 'music_changed'
@@ -55,7 +57,7 @@ export type EditorLoad =
   | { kind: 'readonly'; reason: ReadOnlyReason; summary: ClassSummary }
   | { kind: 'not_found' }
 
-const KNOWN: readonly string[] = ['music_changed', 'mix_not_applied', 'no_proposal']
+const KNOWN: readonly string[] = ['music_changed', 'mix_not_applied', 'no_proposal', 'map_too_large']
 
 /** Only a cycling class with music can be an older Spotify draft: the sentence for it is true only then. */
 function olderSpotify(summary: ClassSummary): boolean {

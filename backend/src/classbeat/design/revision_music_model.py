@@ -80,6 +80,9 @@ class SpotifyRevisionMusic(BaseModel):
     # a user's edit against it without reading MOWL (``revision_edit_map``); a ``user_edit``
     # revision has none (its nearest other ancestor's is read), and neither has a running draft.
     edit_map: dict[str, Any] | None = None
+    # #1453: set only when the worker dropped the map for its size (``revision_edit_map.fields``),
+    # so the editor answers ``map_too_large``; absent on every other draft (stored as before).
+    edit_map_dropped: Literal["map_too_large"] | None = None
 
     @model_validator(mode="after")
     def _edit_map_bounded(self) -> Self:
@@ -87,6 +90,8 @@ class SpotifyRevisionMusic(BaseModel):
             found = revision_edit_map.size(self.edit_map)
             if found is None or found > revision_edit_map.MAX_BYTES:
                 raise ValueError("the edit map is too large")
+            if self.edit_map_dropped is not None:
+                raise ValueError("a kept edit map is not dropped")
         return self
 
 
