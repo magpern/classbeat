@@ -33,7 +33,14 @@ from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.stage import ToolError
 from classbeat.agent.studio_design import Reconciled
 from classbeat.agent.studio_mix import Composed
-from classbeat.design.edit_overlay_model import EditOverlay, Lock, OverlayPin, Override, Record
+from classbeat.design.edit_overlay_model import (
+    EditOverlay,
+    Event,
+    Lock,
+    OverlayPin,
+    Override,
+    Record,
+)
 from classbeat.design.edit_overlay_policy import (
     OVERLAY_VIOLATED,
     OverlayViolated,
@@ -96,6 +103,45 @@ def _violated(record: Record, found: Sequence[Block]) -> ToolError:
     return ToolError(OVERLAY_VIOLATED, [f"{where} is locked by the instructor; keep it as it was"])
 
 
+def kept_on(
+    content: dict[str, Any],
+    base: dict[str, Any],
+    records: Sequence[Record],
+    pins: Sequence[OverlayPin],
+    music_map: dict[str, Any],
+    gates: PlanGates | None,
+    event_of: Callable[[Event], int | None],
+) -> tuple[DesignResult, EditOverlay]:
+    """``records`` (set against ``base``) re-applied to the model's fitted ``content``, the result
+    checked again on ``music_map`` and the plan gates, and the reconciled overlay (``pins`` carried
+    as they are): the part of ``reconcile`` after the pins (module docstring), shared with a
+    Spotify draft's revise and refit (``design.spotify_overlay_calc``, #1451). ``ToolError`` for
+    a lock breach (``overlay_violated``), a draft or overlay that no longer fits, or a refused
+    check."""
+    before = blocks(base)
+    try:
+        applied = reapplied(content, base, records, event_ms=event_of)
+    except OverlayViolated as violated:
+        raise _violated(violated.record, before) from None
+    try:
+        draft = WorkoutDraft.model_validate(applied.content)
+    except ValidationError:
+        raise ToolError("invalid_draft", ["the instructor's edits do not fit this draft"]) from None
+    again = within_plan(gates, check(draft, music_map))
+    fitted = fitted_content(applied.content, again.spec)
+    was, now = blocks(applied.content), blocks(fitted)
+    for record, at in applied.placed:
+        moved = (was[at].start_ms, was[at].end_ms) != (now[at].start_ms, now[at].end_ms)
+        if isinstance(record, Lock) and record.covers_timing() and moved:
+            raise _violated(record, before)
+    kept: list[Record] = [*applied.unapplied, *applied.orphaned]
+    try:
+        made = overlay_of([*retargeted(applied.placed, fitted), *kept, *pins])
+    except EditRefused:  # past the bound: the model's draft, not the job's end
+        raise ToolError("overlay_too_large", [_TOO_LARGE]) from None
+    return again, made
+
+
 def reconciler(
     base: dict[str, Any],
     overlay: EditOverlay,
@@ -107,7 +153,6 @@ def reconciler(
     """The function the revise stage runs on each submitted draft (module docstring)."""
     records = [r for r in overlay.records if not isinstance(r, OverlayPin)]
     pins = list(overlay.pins())
-    before = blocks(base)
     references = music.references
 
     def reconcile(result: DesignResult, composed: Composed) -> Reconciled:
@@ -121,28 +166,8 @@ def reconciler(
         }
         mix = pinned_mix(model, composed, content, music, target_sec, pins)
         spec = model if mix.spec is None else mix.spec
-        try:
-            applied = reapplied(mix.content, base, records, event_ms=event_ms(spec, analysed))
-        except OverlayViolated as violated:
-            raise _violated(violated.record, before) from None
-        try:
-            draft = WorkoutDraft.model_validate(applied.content)
-        except ValidationError:
-            raise ToolError(
-                "invalid_draft", ["the instructor's edits do not fit this draft"]
-            ) from None
-        again = within_plan(gates, check(draft, mix.composed.map))
-        fitted = fitted_content(applied.content, again.spec)
-        was, now = blocks(applied.content), blocks(fitted)
-        for record, at in applied.placed:
-            moved = (was[at].start_ms, was[at].end_ms) != (now[at].start_ms, now[at].end_ms)
-            if isinstance(record, Lock) and record.covers_timing() and moved:
-                raise _violated(record, before)
-        kept: list[Record] = [*applied.unapplied, *applied.orphaned]
-        try:
-            made = overlay_of([*retargeted(applied.placed, fitted), *kept, *pins])
-        except EditRefused:  # past the bound: the model's draft, not the job's end
-            raise ToolError("overlay_too_large", [_TOO_LARGE]) from None
+        on = event_ms(spec, analysed)
+        again, made = kept_on(mix.content, base, records, pins, mix.composed.map, gates, on)
         return Reconciled(again, mix.composed, made, mix.spec)
 
     return reconcile

@@ -58,7 +58,7 @@ _INSERT = text(
 )
 _BASE_FOR_RUN = text(
     "SELECT j.class_id, c.brief, c.music_source, c.dismissed_rules, r.kind, r.content, "
-    "r.content_hash, "
+    "r.content_hash, r.edit_overlay, "
     "r.music ->> 'fingerprint' AS fingerprint "
     "FROM jobs j JOIN classes c ON c.owner_id = j.owner_id AND c.id = j.class_id "
     "JOIN class_revisions r ON r.owner_id = c.owner_id AND r.class_id = c.id AND r.id = :base "
@@ -180,6 +180,7 @@ class BaseForRun:
     earlier_requests: tuple[str, ...]
     dismissed_rules: tuple[str, ...] = ()  # ADR 0017 section 4; ids the user dismissed
     class_id: UUID | None = None  # the job's own class
+    edit_overlay: Any = None  # as stored (NULL: None); ``revision_overlay.base_overlay`` reads it
 
 
 async def stated_layer(
@@ -219,6 +220,7 @@ async def load_base(
         tuple(r.body for r in chain),
         tuple(r for r in (row.dismissed_rules or []) if isinstance(r, str)),
         row.class_id,
+        row.edit_overlay,
     )
 
 

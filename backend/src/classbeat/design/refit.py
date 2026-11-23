@@ -31,14 +31,15 @@ jobs API's, as for every kind.
    without them is ``music_changed`` (#1386, #1407);
 3. the base's stored content fitted again (``agent.design.check``, for a running class
    ``agent.running.check_running``) to the corrected map: the total is kept and each change moves
-   to the corrected grid within the fit's tolerance;
+   to the corrected grid within the fit's tolerance. An edited base (its hash checked with its
+   overlay) has its edits re-applied (``spotify_overlay_calc.refitted``, #1451): a lock the new
+   fit would move, or edits it cannot keep, end the job ``invalid_output`` with nothing stored;
 4. the final fenced transaction: the connection guard, the revision (parent = base, provenance
    ``origin: beat_one``; stored even when the content is the base's, because its
    ``music.beat_one`` records what is applied) and the revise compare-and-set of
    ``current_revision_id``.
 """
 
-import hashlib
 import json
 from collections.abc import Mapping
 from typing import Annotated, Any, ClassVar, Final, Self
@@ -56,17 +57,19 @@ from classbeat.agent.stage import ToolError
 from classbeat.agent.stored_draft import stored_draft
 from classbeat.context import UserContext
 from classbeat.design import chat, mixadmit, music_kind, revision, revision_refit, sport
-from classbeat.design.edited_base import refuse_edited
 from classbeat.design.games_policy import RETIRED, has_retired_game
 from classbeat.design.kind import (
     CLASS_MUSIC_SOURCE,
+    ClassSpotifyMusic,
     NoMusicChoice,
     SwedebeatMusicChoice,
     current_runtime,
     music_step,
 )
+from classbeat.design.revision_overlay import base_overlay, carried, only_spotify
 from classbeat.design.revision_ready import revision_ready
 from classbeat.design.spotdown_base import base_sections
+from classbeat.design.spotify_overlay_calc import refitted
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import Admitted, Refused
@@ -109,7 +112,7 @@ _REFITS = text(
 
 # Through the job's own class (never the input's id alone).
 _BASE = text(
-    "SELECT c.brief, c.music_source, r.kind, r.content, r.content_hash, r.music "
+    "SELECT c.brief, c.music_source, r.kind, r.content, r.content_hash, r.music, r.edit_overlay "
     "FROM jobs j JOIN classes c ON c.owner_id = j.owner_id AND c.id = j.class_id "
     "JOIN class_revisions r ON r.owner_id = c.owner_id AND r.class_id = c.id AND r.id = :base "
     "WHERE j.id = :job_id AND j.owner_id = :owner_id"
@@ -144,10 +147,6 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("invalid_input")
     if state.current != parsed.base_revision_id:
         return Refused("stale_base")
-    # An edited Spotify draft is not refitted until its overlay is carried (``edited_base_calc``).
-    edited = await refuse_edited(db, ctx.user_id, class_id, parsed.base_revision_id)
-    if edited is not None:
-        return edited
     if state.base_retired:
         return Refused(RETIRED)  # ADR 0029: a retired game is never fitted or stored again
     running = await sport.admit_class(db, ctx, class_id)  # ADR 0018 (#509): the running gate
@@ -213,11 +212,7 @@ async def run(job_run: JobRun) -> Complete:
     if row is None or row.kind != "draft" or not row.brief or not row.music_source:
         raise JobFailure("invalid_input")
     base_hash = bytes.fromhex(given.base_revision_hash)
-    if (
-        bytes(row.content_hash) != base_hash
-        or hashlib.sha256(revision.canonical(row.content)).digest() != base_hash
-    ):
-        raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
+    overlay = base_overlay(row.content, row.edit_overlay, bytes(row.content_hash), base_hash)
     try:
         brief = Brief.model_validate(row.brief)
         music = CLASS_MUSIC_SOURCE.validate_python(row.music_source)
@@ -225,6 +220,8 @@ async def run(job_run: JobRun) -> Complete:
         base_music = revision.REVISION_MUSIC.validate_json(json.dumps(row.music))
     except ValidationError:
         raise JobFailure("internal") from None
+    spotify = isinstance(music, ClassSpotifyMusic) and not isinstance(base_draft, RunningDraft)
+    only_spotify(overlay, spotify)  # the editor writes a cycling Spotify draft's only (#1424)
     if has_retired_game(row.content):
         raise JobFailure("invalid_input")  # defence in depth: admit refuses it ``game_retired``
     if music_kind.is_none(row.music_source) or isinstance(music, NoMusicChoice):
@@ -248,6 +245,13 @@ async def run(job_run: JobRun) -> Complete:
         await job_run.stage("fit")
         m = mix_input.music_map(step.data)
         result = refit(base_draft, m)
+        base = base_draft.model_dump(mode="json", exclude_none=True)
+        try:  # the base's own edits kept on the new fit (#1451)
+            result, made = refitted(result, base, overlay, m)
+        except ToolError:
+            raise JobFailure("invalid_output") from None
+        except ValueError:
+            raise JobFailure("internal") from None  # a record the editor never writes
         song_list_id = getattr(base_music, "song_list_id", None)
         draft = revision_refit.build_refit(
             result,
@@ -257,6 +261,7 @@ async def run(job_run: JobRun) -> Complete:
             song_list_id=song_list_id,
             spotdown=timing,
         )
+        draft = carried(draft, made, None)
 
         async def store(fs: FencedSession) -> UUID:
             """The connection guard, the revision, the compare-and-set."""

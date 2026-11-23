@@ -83,7 +83,6 @@ const START_ERRORS: Record<string, CatalogueKey> = {
   class_busy: 'songs.start.class_busy',
   stale_base: 'songs.start.stale_base',
   game_retired: 'class.reason.game_retired',
-  has_user_edits: 'class.reason.has_user_edits',
   revision_limit: 'songs.start.revision_limit',
   chat_full: 'songs.start.chat_full',
   not_song_picked: 'songs.start.not_song_picked',

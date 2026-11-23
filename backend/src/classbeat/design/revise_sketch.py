@@ -21,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.context import UserContext
 from classbeat.design import music_kind, sport
-from classbeat.design.edited_base import refuse_edited
 from classbeat.design.kind_music import has_music_source
 from classbeat.design.revision_ready import is_sketch
 from classbeat.jobs.kinds import Refused
@@ -45,11 +44,8 @@ async def admit_base(
     db: AsyncSession, ctx: UserContext, class_id: UUID, base: UUID
 ) -> tuple[bool, Refused | None]:
     """Whether the base is a sketch, and the refusal of the base's gates (None admits). Reads
-    only; nothing is written before them. An edited Spotify draft is refused first
-    (``edited_base_calc``): it is not revised until its overlay is carried."""
-    edited = await refuse_edited(db, ctx.user_id, class_id, base)
-    if edited is not None:
-        return False, edited
+    only; nothing is written before them. An edited Spotify draft is admitted like any other: its
+    run carries the edits (``revise_base.RunBase.kept``, #1451)."""
     if await is_sketch(db, ctx.user_id, class_id, base):
         return True, await music_kind.admit_soundless(db, ctx)
     if not await has_music_source(db, ctx.user_id, class_id):

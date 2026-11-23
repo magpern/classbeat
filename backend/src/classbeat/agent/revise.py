@@ -12,11 +12,15 @@ base draft and the instructor's request, ending with ``submit_draft`` and an opt
   characters removed). The note is for the user's page only: it is stored with the answer, shown
   as plain text and **never read back** by any model (``model_input.revise_message`` takes no
   note), so text that was prompt-injected into it cannot reach a later request.
+- ``Kept`` (ADR 0042 section 3, #1451): the base's own edits, stated as fixed in the message and
+  reconciled with each submitted draft inside the explicit-values gate (a lock breach is a
+  correction round); ``ReviseResult.overlay`` carries the reconciled overlay to the revision.
 
 The stage has its own system prompt and its own ``submit_draft`` schema, so its ``prompt_version``
 is its own. Everything is pure: no network, no credentials, no database.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -117,6 +121,7 @@ class ReviseResult:
 
     result: DesignResult
     note: str
+    overlay: Any = None  # with ``Kept``: the reconciled overlay (``EditOverlay``), opaque here
 
 
 SONGS_REQUESTED_TOOL: Final = "songs_requested"
@@ -132,6 +137,15 @@ class SongsRequested:
 
 
 @dataclass(frozen=True)
+class Kept:
+    """The base's own edits (module docstring): ``reconcile`` takes a checked draft and the run's
+    map to the draft checked again with them and the reconciled overlay (``ToolError`` refuses)."""
+
+    fixed: str
+    reconcile: Callable[[DesignResult, dict[str, Any]], tuple[DesignResult, Any]]
+
+
+@dataclass(frozen=True)
 class ReviseContext:
     brief: Brief
     map: dict[str, Any]  # model_input.music_map(...)
@@ -143,6 +157,7 @@ class ReviseContext:
     songs_changed: bool = False  # ``revise_songs``: the request's new songs are the music now
     rules: Guidance | None = None  # ADR 0017: None = no profile applies (dismissed already out)
     gates: PlanGates | None = None  # the job's plan gates (#496): None = none (evals, old jobs)
+    kept: Kept | None = None  # the base's own edits (#1451): None = none
 
     @classmethod
     def build(
@@ -157,6 +172,7 @@ class ReviseContext:
         songs_changed: bool = False,
         rules: Guidance | None = None,
         gates: PlanGates | None = None,
+        kept: Kept | None = None,
     ) -> "ReviseContext":
         design = DesignContext.build(brief, data)
         return cls(
@@ -170,12 +186,13 @@ class ReviseContext:
             songs_changed,
             rules,
             gates,
+            kept,
         )
 
     def first_message(self) -> str:
         if self.brief.sport == "running":  # ADR 0018: the running brief, never the cycling one
-            if self.songs_changed:
-                raise ValueError("a running class has no song picking")
+            if self.songs_changed or self.kept is not None:
+                raise ValueError("a running class has no song picking and no edit overlay")
             return with_explicit(
                 running_input.revise_message(
                     self.brief,
@@ -188,19 +205,20 @@ class ReviseContext:
                 ),
                 self.brief,
             )
-        return with_explicit(
-            model_input.revise_message(
-                self.brief,
-                self.summary,
-                self.base.model_dump(mode="json", exclude_none=True),
-                self.earlier_requests,
-                self.request,
-                music_changed=self.music_changed,
-                songs_changed=self.songs_changed,
-                rules=self.rules.section() if self.rules else None,
-            ),
+        text = model_input.revise_message(
             self.brief,
+            self.summary,
+            self.base.model_dump(mode="json", exclude_none=True),
+            self.earlier_requests,
+            self.request,
+            music_changed=self.music_changed,
+            songs_changed=self.songs_changed,
+            rules=self.rules.section() if self.rules else None,
         )
+        if self.kept is not None:  # after the head, as the studio places it (``model_input`` is
+            n = len(model_input.REVISE_MESSAGE)  # an eval rule source, so it stays as it is)
+            text = text[:n] + self.kept.fixed + text[n:]
+        return with_explicit(text, self.brief)
 
 
 def revise_stage(ctx: ReviseContext) -> Stage:
@@ -211,7 +229,16 @@ def revise_stage(ctx: ReviseContext) -> Stage:
     gate = ExplicitGate(ctx.brief)
 
     def submit_draft(args: ReviseInput) -> ToolAnswer:
-        result = within_request(gate, lambda: within_plan(ctx.gates, check(args.draft, ctx.map)))
+        carried: list[Any] = []
+
+        def build() -> DesignResult:
+            result, overlay = within_plan(ctx.gates, check(args.draft, ctx.map)), None
+            if ctx.kept is not None:
+                result, overlay = ctx.kept.reconcile(result, ctx.map)
+            carried.append(overlay)
+            return result
+
+        result = within_request(gate, build)
         return ToolAnswer(
             {
                 "accepted": True,
@@ -222,7 +249,7 @@ def revise_stage(ctx: ReviseContext) -> Stage:
                 "warnings": result.warnings,
                 **rules_result(ctx.rules, result.spec),
             },
-            output=ReviseResult(result, args.note),
+            output=ReviseResult(result, args.note, carried[-1]),
         )
 
     def described(name: str, description: str) -> Tool:
@@ -262,6 +289,7 @@ def revise_stage(ctx: ReviseContext) -> Stage:
 
 __all__ = [
     "DraftInput",
+    "Kept",
     "MusicInput",
     "ReviseContext",
     "ReviseResult",
