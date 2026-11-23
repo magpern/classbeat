@@ -20,11 +20,18 @@ is, so a revise of a draft without pins stores what it stored before.
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from classbeat.studio.mix_choice_model import MixChoices, Proposal, approved_facts
+from classbeat.studio.mix_applied_policy import holds
+from classbeat.studio.mix_choice_model import (
+    MixChoiceRefused,
+    MixChoices,
+    Proposal,
+    approved_facts,
+)
 from classbeat.studio.mix_choice_policy import gated, whole_songs
 from classbeat.studio.mix_facts_model import TrackFacts
 from classbeat.studio.mix_pin_model import PinRecord
 from classbeat.studio.mix_pin_policy import Pinned, pins_of, with_pins
+from classbeat.studio.mix_spec_model import MixSpec
 
 
 def revised(
@@ -46,3 +53,28 @@ def revised(
     if not pins_of(found.spec):
         return Pinned(model, found.unapplied, found.dropped)
     return Pinned(gated(found.spec, proposal, known), found.unapplied, found.dropped)
+
+
+def held(
+    spec: Mapping[str, Any],
+    approved: Sequence[str],
+    facts: Mapping[str, TrackFacts],
+    target_sec: int,
+    pins: Sequence[PinRecord],
+) -> None:
+    """The final gate: the pinned ``spec``, as the revise draft (a proposal, its spec its own), must
+    pass B9's ``holds`` under the DJ-mix choices with ``pins``, or the outputs answer
+    ``mix_not_applied`` for it. ``MixChoiceRefused("pin_not_held")`` otherwise, so the model gets a
+    correction round instead of a stored draft that fails closed. Before ``revised``'s gates
+    a spec with no pin is exempt: nothing to hold."""
+    if not pins_of(spec):
+        return
+    try:
+        stored = MixSpec.model_validate(spec).model_dump(mode="json")  # the stored form
+    except ValueError:
+        stored = {}
+    proposal = Proposal(approved, stored, target_sec)
+    if not holds(stored, proposal, facts, MixChoices.dj_defaults(), pins):
+        raise MixChoiceRefused(
+            "pin_not_held", "the mix does not hold the pins when the outputs re-derive it"
+        )

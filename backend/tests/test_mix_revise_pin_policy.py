@@ -16,7 +16,7 @@ from classbeat.studio.mix_applied_policy import holds
 from classbeat.studio.mix_choice_model import MixChoiceRefused, MixChoices, Proposal
 from classbeat.studio.mix_choice_policy import composed_sec
 from classbeat.studio.mix_pin_model import PinRecord
-from classbeat.studio.mix_revise_pin_policy import revised
+from classbeat.studio.mix_revise_pin_policy import held, revised
 from classbeat.studio.mix_spec_model import MixSpec
 from classbeat.studio.output_choice_policy import refusal
 from classbeat.swedebeat_studio.applied_form import unconfirmed
@@ -148,3 +148,17 @@ def test_a_pin_whose_file_changed_is_pin_unconfirmed_at_the_outputs(pin: PinReco
         "pin_unconfirmed"
     )
     assert refusal(chosen, chosen, **gate, pin_unconfirmed=False) is None
+
+
+def test_a_pinned_spec_b9_would_not_hold_is_refused_by_the_final_gate() -> None:
+    """#1452: ``held`` is B9's ``holds`` on the revise draft; a pin it does not hold (here b's end
+    is 2 s from where the pin puts it) is ``pin_not_held``, not a stored ``mix_not_applied``."""
+    pin = record("b", "end", 218.7)
+    value = stored((pin,))
+    held(value, ORDER, FACTS, TARGET, (pin,))  # the revised spec holds
+    off = json.loads(json.dumps(value))
+    off["tracks"][1]["end_sec"] += 2.0
+    with pytest.raises(MixChoiceRefused) as caught:
+        held(off, ORDER, FACTS, TARGET, (pin,))
+    assert caught.value.reason == "pin_not_held"
+    held(MODEL, ORDER, FACTS, TARGET, ())  # no pin: nothing to hold

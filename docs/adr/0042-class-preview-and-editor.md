@@ -765,9 +765,11 @@ Written 2026-11-22. Supersedes E2 note 3.
 3. **Clearing a pin after a revise** leaves the cut where the pin put it, as an ordinary cut.
 4. **Undo and redo** on the overlay view now also apply to a `revise_draft` revision, through the same
    `service.pick` (class lock, `expected_current_id`, no open job).
-5. **Known edge (follow-up):** B9 re-derives a stored revise draft and re-places a pinned cut without its pin
-   first; in a borderline case the draft answers `mix_not_applied` (it fails closed). A final `holds` check in
-   `pinned_mix` would turn it into a correction round.
+5. **Resolved (#1452):** B9 re-derives a stored revise draft and re-places a pinned cut without its pin
+   first; in a borderline case that used to answer `mix_not_applied` (it fails closed). `pinned_mix` now
+   ends with `mix_revise_pin_policy.held`, B9's `holds` on the pinned spec as the revise draft, so a pin
+   the produced mix does not hold is a correction round (`invalid_mix`, `pin_not_held`) and, if never
+   held, `invalid_output` with nothing stored.
 
 ## Implementation notes (#1424)
 
