@@ -627,8 +627,8 @@ candidates; non-adjacent repeats do not.
 
 ## Amendment B (2026-11-21, owner): the DJ mix is opt-in, with per-song suggestions (#1366)
 
-Status: **Proposed** (owner request and approval of the design, 2026-11-21; Accepted when the fresh Opus review
-of #1366's PR passes). Amends §1 (what a studio draft is approved as), §3.3 (the upper bound), §4.4 and §4.5
+Status: **Accepted** (owner request and approval of the design, 2026-11-21; the fresh Opus review of #1366's
+PR #1375 passed on its fourth head, `df31188`, 2026-11-21). Amends §1 (what a studio draft is approved as), §3.3 (the upper bound), §4.4 and §4.5
 (the model's mix is a suggestion), §5 (the approval with the output choice), §6 (the output matrix and the
 consent screen) and the bass swap of #1330. Everything not named here is unchanged, amendment A (A1 to A11)
 included. Nothing is built by this amendment; the work is B12.
