@@ -49,8 +49,8 @@ def plant_map(env: Env, owner: UUID, mix_id: str, superuser: Any) -> None:
     superuser.execute(
         text(
             "INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, "
-            "name, duration, listed_duration, map, analyser, provenance) VALUES (:o, :m, "
-            "gen_random_uuid(), 9001, 'Planted', 100, 100, '{}'::jsonb, 'spotdown', '{}'::jsonb)"
+            "name, duration, listed_duration, map, provenance) VALUES (:o, :m, "
+            "gen_random_uuid(), 9001, 'Planted', 100, 100, '{}'::jsonb, '{}'::jsonb)"
         ),
         {"o": owner, "m": mix_id},
     )

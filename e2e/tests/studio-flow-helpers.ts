@@ -44,9 +44,12 @@ export async function designOnSpotdown(page: Page, owner: string, title: string)
   return pick.class_id
 }
 
-/** The analysers of the user's stored track maps, one per distinct analyser: `spotdown` only. */
-export function mapAnalysers(owner: string): string {
-  return sql(`SELECT string_agg(DISTINCT analyser, ',') FROM swedebeat_track_maps WHERE owner_id = '${owner}'`)
+/** The analyzers the user's stored track maps' provenance names, one per distinct name: `spotdown`
+ * only (#1299: there is no `analyser` column; every row carries spotdown's record). */
+export function mapAnalyzers(owner: string): string {
+  return sql(
+    `SELECT string_agg(DISTINCT provenance->'analyzer'->>'name', ',') FROM swedebeat_track_maps WHERE owner_id = '${owner}'`,
+  )
 }
 
 /** How many track maps the user has stored. */

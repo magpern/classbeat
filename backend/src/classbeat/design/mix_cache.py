@@ -1,15 +1,15 @@
 """The user's cache of their mix analyses, ``swedebeat_mix_maps`` (ADR 0016 section 3 steps 2 and
 4; ADR 0040 sections 5 and 6; split out of ``design.swedebeat_music``).
 
-**One row per mix** (migration 0077, #1357): spotdown is the only analysis path (ADR 0040
-amendment), so a row is a ``spotdown`` map (``spotdown.mix_map_model``, with its ``provenance``);
-migration 0077 deleted the ``local`` rows (migration 0065 had added the column; the table's check
-now admits only ``spotdown``). The key stays ``(owner_id, mix_id, analyser)``, one row per mix.
+**One row per mix** (key ``(owner_id, mix_id)``): spotdown is the only analysis path (ADR 0040
+amendment), so a row is spotdown's map (``spotdown.mix_map_model``, with its ``provenance``);
+migration 0077 deleted the ``local`` rows (#1357) and 0080 dropped the ``analyser`` column, which
+then admitted only ``spotdown``, and made ``provenance`` required (#1299).
 
 - ``cached``: one fenced transaction share-locks the connection (``hold``) and reads the user's
   rows for the mix with their stored link. A row counts only if it is younger than
   ``MAP_TTL_DAYS``, was made for **this MOWL connection**, names the link's MOWL playlist and has
-  the library's current map version. Of the ``spotdown`` rows among those, the one whose map has
+  the library's current map version. Of those, the one whose map has
   the fingerprint ``prefer`` (a revise or refit: the analysis its base was designed on) comes
   first; else one whose provenance is this build's (``mix_map_model.current_mix_provenance``). A
   base whose row is gone finds no row with its fingerprint, so its revise is told
@@ -26,7 +26,7 @@ Every statement filters on ``owner_id`` itself as well as through row security. 
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, cast
 from uuid import UUID
 
 from mowl import music
@@ -39,11 +39,9 @@ from classbeat.spotdown.mix_map_model import current_mix_provenance
 MAPS_PER_USER: Final = 20
 MAP_TTL_DAYS: Final = 30
 
-Analyser = Literal["spotdown"]
-
 _CACHED = text(
     "SELECT m.mowl_connection_id, m.playlist_id, m.name, m.duration, m.listed_duration, m.map, "
-    "m.analyser, m.provenance, l.playlist_id AS linked "
+    "m.provenance, l.playlist_id AS linked "
     "FROM swedebeat_mix_maps m "
     "LEFT JOIN mowl_playlist_links l ON l.owner_id = m.owner_id AND l.source = 'swedebeat' "
     "AND l.source_id = m.mix_id "
@@ -56,10 +54,10 @@ _LINK = text(
 )
 _UPSERT = text(
     "INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, name, "
-    "duration, listed_duration, map, analyser, provenance) "
+    "duration, listed_duration, map, provenance) "
     "VALUES (:owner_id, :mix_id, :connection_id, :playlist_id, :name, :duration, :listed, "
-    "CAST(:map AS jsonb), :analyser, CAST(:provenance AS jsonb)) "
-    "ON CONFLICT (owner_id, mix_id, analyser) DO UPDATE SET "
+    "CAST(:map AS jsonb), CAST(:provenance AS jsonb)) "
+    "ON CONFLICT (owner_id, mix_id) DO UPDATE SET "
     "mowl_connection_id = EXCLUDED.mowl_connection_id, playlist_id = EXCLUDED.playlist_id, "
     "name = EXCLUDED.name, duration = EXCLUDED.duration, "
     "listed_duration = EXCLUDED.listed_duration, map = EXCLUDED.map, "
@@ -80,7 +78,7 @@ _TRIM = text(
 class MixAnalysis:
     """The user's analysis of one mix. ``music_map`` is the library's map; ``fingerprint`` a hash
     of it (a later revise notices a re-analysis); ``cached`` is whether no audio was fetched;
-    ``analyser`` made it (always ``spotdown``) and ``provenance`` is its record."""
+    and ``provenance`` is spotdown's record."""
 
     mix_id: str
     playlist_id: int
@@ -90,7 +88,6 @@ class MixAnalysis:
     music_map: dict[str, Any]
     fingerprint: str
     cached: bool
-    analyser: Analyser = "spotdown"
     provenance: dict[str, Any] | None = None
 
 
@@ -128,13 +125,12 @@ def _analysis(row: Any, mix_id: str, connection_id: UUID) -> MixAnalysis | None:
         music_map,
         fingerprint(music_map),
         cached=True,
-        analyser="spotdown",
         provenance=provenance,
     )
 
 
 def choose(found: list[MixAnalysis], *, prefer: str | None) -> MixAnalysis | None:
-    """The hit among the usable ``spotdown`` rows (module docstring)."""
+    """The hit among the usable rows (module docstring)."""
     if prefer is not None:
         same = next((a for a in found if a.fingerprint == prefer), None)
         if same is not None:
@@ -205,7 +201,6 @@ async def _store_row(
             "duration": analysis.duration,
             "listed": analysis.listed_duration,
             "map": payload,
-            "analyser": analysis.analyser,
             "provenance": provenance,
         },
     )

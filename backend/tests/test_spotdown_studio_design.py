@@ -1,6 +1,6 @@
 """#1302 review B2 (ADR 0040 section 6, amendment "spotdown is the only analysis path", #1353): **a
-class designed on spotdown keeps its maps and provenance.** Its record carries the analyser and
-the provenance of each track; a later local row beside spotdown's is never read; a revise reads
+class designed on spotdown keeps its maps and provenance.** Its record carries the bytes, the map's
+hash and the provenance of each track (no analyser code since #1299); a revise reads
 the recorded spotdown rows with no new analysis, also with spotdown no longer installed (a cache
 hit needs no configuration); gone from the cache, the rows are not replaced: ``music_changed``.
 On the fakes (the fake gateway, the fake model, the fake spotdown); never the network."""
@@ -61,12 +61,12 @@ async def test_a_class_designed_on_spotdown_keeps_its_maps_and_provenance(
     base = studio.songs.revision(current.current_revision_id)
     records = base.music["analyses"]
     assert len(records) == 8
-    assert {r["analyser"] for r in records} == {"spotdown"}
+    assert all("analyser" not in r for r in records)  # #1299: no analyser code
     for record in records:  # the provenance kept with the class, not only in the cache
         assert record["provenance"]["timing"]["class"] == "exact"
         assert record["provenance"]["audio"]["sha256"] == record["sha256"]
     stored = studio.songs.sql(
-        "SELECT map FROM swedebeat_track_maps WHERE owner_id = :o AND analyser = 'spotdown'",
+        "SELECT map FROM swedebeat_track_maps WHERE owner_id = :o",
         o=rider.user_id,
     ).scalars()
     assert all(m["cut_candidates"] for m in stored)  # #1328: each map carries its candidates
@@ -88,7 +88,7 @@ async def test_a_class_designed_on_spotdown_keeps_its_maps_and_provenance(
     assert analysed == []
     # Gone from the cache, the rows are not read from anything else: music_changed.
     studio.songs.sql(
-        "DELETE FROM swedebeat_track_maps WHERE owner_id = :o AND analyser = 'spotdown'",
+        "DELETE FROM swedebeat_track_maps WHERE owner_id = :o",
         o=rider.user_id,
     )
     assert await studio_timeline.view(studio.songs.spot.env.factory, ctx, class_id) == (

@@ -347,6 +347,12 @@ analyser reaches the trim sooner, and a class whose recorded row was trimmed ans
 checked by the model), each no larger than the 64 KiB the cache table allows its `provenance`.
 A class reads back exactly the row it recorded: its analyser, its bytes and the hash of its map
 **as stored** (jsonb's form, so `-0.0` and `1e+16` hash as the stored `0.0` and integer).
+*Note 2026-11-23 (#1299, item 6 of the amendment "spotdown is the only analysis path"): migration
+0080 drops the single-valued `analyser` column of `swedebeat_track_maps` and `swedebeat_mix_maps`
+(the keys are `(owner_id, reference, analyser_version)` and `(owner_id, mix_id)` again, and
+`provenance` is required); a class reads back its row by its bytes and its map's hash, and its
+record (`analyses`) names no analyser. A record stored earlier with `analyser: "spotdown"` still
+reads (the key is dropped on read); any other value is refused.*
 
 ### 9. Quality gates and the rollout (plan §7)
 
@@ -747,6 +753,9 @@ no tempo change points, and the harness's recall-only edge gate cannot see that.
   `analyser` and the provenance (kept per class, §6), and a revise or refit reads the row whose map has
   its base's fingerprint first, whatever the switch, so a class never changes analyser silently.
   The web app's admission counts only `local` rows as a cache hit for the daily limit (stricter).
+  *Note 2026-11-23 (#1299): migration 0077 left only `spotdown` rows and migration 0080 drops the
+  column: the key is `(owner_id, mix_id)`, a revision records only the provenance (a stored
+  `analyser: "spotdown"` is dropped on read), and the admission counts a current row as a hit.*
 - **Bounds** (§8). The per-class budget and outage flag are the design job's
   `spotdown_studio_budgets` row: the mix **reuses that table** (Architect, 2026-11-21) because a design
   job designs on either a mix or studio tracks, never both, so one class has one budget; a mix also waits
@@ -1096,6 +1105,9 @@ sections and amendments carry a one-line pointer and are otherwise kept as histo
    cover a map's content. Removing a fallback does not change a
    spotdown map, so the retirement does not bump them. The rows of the `local` analyser are deleted
    by migration, and the `analyser` checks narrowed to `spotdown`, in the deletion PRs.
+   *As built (#1299): migrations 0075 and 0077 did that; migration 0080 then drops the
+   single-valued `analyser` column and its checks, rebuilds the unique keys without it and makes
+   `provenance` required. The code keeps no analyser type or branch.*
 7. **Evidence.** The quality gates of §9 and plan §7 are engineering checks on the fixtures, not
    gates on shipping: none blocks a default (there is none left to switch) or a removal. The two hard
    rules of §9 stay rules of the code: no `exact` for a matched or YouTube source (§3), and no audio

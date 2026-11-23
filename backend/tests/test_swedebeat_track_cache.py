@@ -34,7 +34,7 @@ from test_classes_schema import count, run_as
 TABLES = ("swedebeat_track_maps", "swedebeat_track_downloads")
 MAP = (
     "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, map, "
-    "analyser, provenance) VALUES (:o, :r, :v, :h, CAST(:m AS jsonb), 'spotdown', '{}'::jsonb)"
+    "provenance) VALUES (:o, :r, :v, :h, CAST(:m AS jsonb), '{}'::jsonb)"
 )
 REFERENCE_MARK = "PlantedTrackRef-Q7"
 
@@ -87,9 +87,10 @@ def test_the_new_tables_meet_the_guards(admin: Connection) -> None:
         assert forced is True, table
         assert table in NOT_EXPORTED  # a count (maps) or nothing (downloads), never the rows
     assert RETENTION["swedebeat_track_maps"].deleted_with == {"account", "swedebeat_connection"}
-    # ADR 0040 section 6 (#1302, migration 0064): a spotdown row's provenance; the analyser code.
+    # ADR 0040 section 6 (#1302, migration 0064): a spotdown row's provenance (migration 0080,
+    # #1299: no analyser code any more).
     assert RETENTION["swedebeat_track_maps"].columns == {"reference", "sha256", "map", "provenance"}
-    assert RETENTION["swedebeat_track_maps"].reviewed == {"analyser"}
+    assert RETENTION["swedebeat_track_maps"].reviewed == set()
     assert RETENTION["swedebeat_track_downloads"].deleted_with == {"account"}
 
 
@@ -148,29 +149,20 @@ def test_one_row_per_owner_reference_and_analyser_version(admin: Connection) -> 
     plant(admin, owner, "trk-1", v=2)  # another analyser version is another row
     with pytest.raises(IntegrityError) as raised:
         admin.execute(text(MAP), {"o": owner, "r": "trk-1", "v": 1, "h": bytes(32), "m": "{}"})
-    assert "swedebeat_track_maps_owner_reference_version_analyser_key" in str(raised.value)
+    assert "swedebeat_track_maps_owner_id_reference_analyser_version_key" in str(raised.value)
 
 
-@pytest.mark.parametrize(
-    ("analyser", "provenance"),
-    [("local", None), ("local", "{}"), ("mowl", "{}"), ("spotdown", None)],
-)
-def test_only_a_spotdown_row_with_its_provenance_is_stored(
-    admin: Connection, analyser: str, provenance: str | None
-) -> None:
-    """#1356: the ``local`` analyser is gone from the table's check (migration 0075), and a
-    ``spotdown`` row still carries its provenance record."""
+def test_a_row_is_stored_only_with_its_provenance(admin: Connection) -> None:
+    """#1356, #1299: every row is spotdown's analysis with its provenance record (migration 0080:
+    ``provenance`` is required; there is no ``analyser`` column)."""
     owner = new_user(admin)
-    with pytest.raises(
-        IntegrityError, match=r"swedebeat_track_maps_(analyser|provenance_spotdown)"
-    ):
+    with pytest.raises(IntegrityError, match=r'"provenance"'):
         admin.execute(
             text(
                 "INSERT INTO swedebeat_track_maps (owner_id, reference, analyser_version, sha256, "
-                "map, analyser, provenance) "
-                "VALUES (:o, 'trk-1', 1, :h, '{}', :a, CAST(:p AS jsonb))"
+                "map, provenance) VALUES (:o, 'trk-1', 1, :h, '{}', NULL)"
             ),
-            {"o": owner, "h": bytes(32), "a": analyser, "p": provenance},
+            {"o": owner, "h": bytes(32)},
         )
 
 
@@ -194,18 +186,12 @@ def test_the_same_bytes_are_read_newest_first(admin: Connection) -> None:
     assert [r.reference for r in rows] == ["new-ref", "old-ref"]
 
 
-@pytest.mark.parametrize(
-    ("analyser", "provenance"), [("local", {"a": 1}), ("mowl", {"a": 1}), ("spotdown", None)]
-)
-async def test_store_refuses_a_map_the_table_would_refuse(
-    analyser: str, provenance: dict[str, object] | None
-) -> None:
+async def test_store_refuses_a_map_the_table_would_refuse() -> None:
     """#1356 review: ``store`` raises ``internal`` before it touches the run or the database."""
     run = cast(JobRun, SimpleNamespace(lease=SimpleNamespace(owner_id=uuid.uuid4())))
     analysed = track_cache.TrackMap(
-        "trk-1", "00" * 32, {"track_version": 1}, cached=False,
-        analyser=cast(Any, analyser), provenance=provenance,
-    )  # fmt: skip
+        "trk-1", "00" * 32, {"track_version": 1}, cached=False, provenance=None
+    )
     with pytest.raises(JobFailure) as refused:
         await track_cache.store(run, cast(Any, None), analysed, release_slot=False)
     assert refused.value.args[0] == "internal"

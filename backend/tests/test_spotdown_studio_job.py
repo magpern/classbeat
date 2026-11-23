@@ -71,8 +71,8 @@ def no_pause(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 def rows(harness: Harness, owner: UUID) -> list[Any]:
     return harness.ops.sql(
-        "SELECT reference, sha256, map, analyser, provenance FROM swedebeat_track_maps "
-        "WHERE owner_id = :o ORDER BY reference, analyser",
+        "SELECT reference, sha256, map, provenance FROM swedebeat_track_maps "
+        "WHERE owner_id = :o ORDER BY reference",
         o=owner,
     ).all()
 
@@ -150,7 +150,7 @@ async def test_spotdown_gives_each_map_with_its_provenance(
     assert ONE.encode() not in body  # no reference leaves
     assert TWO.encode() not in body
     stored = rows(harness, owner)
-    assert [(r.reference, r.analyser) for r in stored] == [(ONE, "spotdown"), (TWO, "spotdown")]
+    assert [r.reference for r in stored] == [ONE, TWO]
     for r, sha in zip(stored, (SHA, OTHER_SHA), strict=True):
         assert bytes(r.sha256).hex() == sha
         assert r.map == expected_map(spotdown, scope, sha, r.reference)
@@ -195,7 +195,7 @@ async def test_the_same_bytes_under_another_reference_are_neither_looked_up_nor_
     await harness.run(owner, [THREE])
     assert len(spotdown.seen) == seen  # the owner's own cache by sha256
     one, three = rows(harness, owner)
-    assert (three.reference, three.analyser, three.map) == (THREE, "spotdown", one.map)
+    assert (three.reference, three.map) == (THREE, one.map)
     assert three.provenance == one.provenance
 
 
@@ -206,7 +206,7 @@ async def test_an_analysis_in_the_shared_scope_is_read_without_an_upload(
     spotdown.add_analysis(SHARED, f"sha256:{SHA}")
     await harness.run(owner, [ONE])
     assert sent(spotdown, "/v2/uploads") == []
-    assert [r.analyser for r in rows(harness, owner)] == ["spotdown"]
+    assert len(rows(harness, owner)) == 1
 
 
 async def test_a_second_owner_reuses_the_studio_analysis_without_an_upload(
@@ -227,7 +227,7 @@ async def test_a_second_owner_reuses_the_studio_analysis_without_an_upload(
     for s in later:
         for owner in (first, second):
             assert cache_scope(KEY, owner) not in s.query + s.body.decode("latin-1")
-    assert [r.analyser for r in rows(harness, second)] == ["spotdown"]  # their own row
+    assert len(rows(harness, second)) == 1  # their own row
     assert rows(harness, second)[0].map == rows(harness, first)[0].map
 
 
@@ -282,7 +282,7 @@ async def test_a_rate_limited_call_is_tried_again_and_is_not_an_attempt(
     owner = await on_owner(harness)
     await harness.run(owner, [ONE])
     assert len(sent(spotdown, "/v2/analyses/lookup")) == 2
-    assert [r.analyser for r in rows(harness, owner)] == ["spotdown"]
+    assert len(rows(harness, owner)) == 1
 
 
 async def test_a_spent_budget_calls_nothing_and_is_unavailable(
@@ -327,7 +327,7 @@ async def test_the_tracks_before_a_failing_one_keep_their_maps(
     owner = await on_owner(harness)
     row = await harness.run(owner, [ONE, TWO])
     assert (row.state, row.error_category) == ("failed", "analysis_failed")
-    assert [(r.reference, r.analyser) for r in rows(harness, owner)] == [(ONE, "spotdown")]
+    assert [r.reference for r in rows(harness, owner)] == [ONE]
 
 
 async def test_an_error_in_the_spotdown_code_is_internal_and_not_swallowed(
@@ -464,7 +464,7 @@ async def test_the_wait_budget_is_the_jobs_over_its_runs(
     row = await two_runs(harness, owner, monkeypatch)
     assert (row.state, row.error_category) == ("failed", "analysis_unavailable")
     assert len(sent(spotdown, "/v2/analyses/lookup")) == 1  # nothing in the second run
-    assert [r.analyser for r in rows(harness, owner)] == ["spotdown"]
+    assert len(rows(harness, owner)) == 1
     assert [b.outage for b in budget(harness, owner)] == [False]
 
 
@@ -478,7 +478,7 @@ async def test_a_rate_limited_start_keeps_the_same_upload(
     assert len({u.headers["idempotency-key"] for u in uploads}) == 1  # the same upload, again
     starts = sent(spotdown, "/v2/analyses")
     assert len({s.headers["idempotency-key"] for s in starts}) == 1
-    assert [r.analyser for r in rows(harness, owner)] == ["spotdown"]
+    assert len(rows(harness, owner)) == 1
 
 
 async def test_a_retry_after_a_timeout_is_a_new_attempt_that_can_succeed(
@@ -496,7 +496,7 @@ async def test_a_retry_after_a_timeout_is_a_new_attempt_that_can_succeed(
     await harness.run(owner, [ONE])
     uploads = sent(spotdown, "/v2/uploads")
     assert len({u.headers["idempotency-key"] for u in uploads}) == 2  # a new attempt's keys
-    assert [r.analyser for r in rows(harness, owner)] == ["spotdown"]
+    assert len(rows(harness, owner)) == 1
 
 
 async def test_the_by_sha256_read_filters_on_the_owner_itself(

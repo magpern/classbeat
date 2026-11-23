@@ -593,7 +593,7 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     # ADR 0016 (migration 0018): the user's analysis of a Swedebeat mix.
     insert(admin, "swedebeat_mix_maps", owner_id=owner, mix_id="mix-1",
            mowl_connection_id=uuid.uuid4(), playlist_id=9001, name="A mix", duration=600,
-           listed_duration=600, map={}, analyser="spotdown", provenance={})  # fmt: skip
+           listed_duration=600, map={}, provenance={})  # fmt: skip
     # Migration 0029: a beat-one correction of the class (ADR 0007 amendment).
     insert(admin, "beat_one_corrections", owner_id=owner, class_id=class_id,
            fingerprint="ab" * 32, song=2, beats=1, bpm=128.0)  # fmt: skip
@@ -644,8 +644,7 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     insert(admin, "player_publications", owner_id=owner, source_class_id=class_id, last_number=1)
     # ADR 0036 section 4.1 (migration 0053): a studio track's analysis and its download record.
     insert(admin, "swedebeat_track_maps", owner_id=owner, reference="trk-1", analyser_version=1,
-           sha256=bytes(32), map={"track_version": 1}, analyser="spotdown",
-           provenance={})  # fmt: skip
+           sha256=bytes(32), map={"track_version": 1}, provenance={})  # fmt: skip
     insert(admin, "swedebeat_track_downloads", owner_id=owner)
     # ADR 0040 section 8 (migration 0064): a design job's spotdown budget; it goes with the class.
     insert(admin, "spotdown_studio_budgets", owner_id=owner, job_id=job_id, outage=True)

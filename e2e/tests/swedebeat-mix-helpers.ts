@@ -88,7 +88,7 @@ export function seedCachedMix(ownerId: string, connectionId: string, mixId: stri
   )
   const provenance = seedProvenance('mix', '')
   sql(
-    `INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, name, duration, listed_duration, analyser, map, provenance) VALUES ('${ownerId}', '${mixId}', '${connectionId}', ${String(PLANTED_PLAYLIST_ID)}, '${CACHED_MIX_NAME}', 120, 120, 'spotdown', '${map}'::jsonb, '${provenance}'::jsonb) ON CONFLICT (owner_id, mix_id, analyser) DO UPDATE SET mowl_connection_id = EXCLUDED.mowl_connection_id, playlist_id = EXCLUDED.playlist_id, map = EXCLUDED.map, provenance = EXCLUDED.provenance, created_at = now()`,
+    `INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, name, duration, listed_duration, map, provenance) VALUES ('${ownerId}', '${mixId}', '${connectionId}', ${String(PLANTED_PLAYLIST_ID)}, '${CACHED_MIX_NAME}', 120, 120, '${map}'::jsonb, '${provenance}'::jsonb) ON CONFLICT (owner_id, mix_id) DO UPDATE SET mowl_connection_id = EXCLUDED.mowl_connection_id, playlist_id = EXCLUDED.playlist_id, map = EXCLUDED.map, provenance = EXCLUDED.provenance, created_at = now()`,
   )
 }
 

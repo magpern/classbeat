@@ -8,7 +8,6 @@ that stands behind it. Pure: rows are stand-ins, no database, no network.
 from types import SimpleNamespace
 from typing import Any
 
-import pytest
 from mowl import track
 
 from classbeat.design import track_cache
@@ -26,10 +25,9 @@ def good_map() -> dict[str, Any]:
     }
 
 
-def row(music_map: Any = None, analyser: str = "spotdown") -> SimpleNamespace:
+def row(music_map: Any = None) -> SimpleNamespace:
     return SimpleNamespace(
         reference="trk-1",
-        analyser=analyser,
         provenance={},
         sha256=SHA,
         map=good_map() if music_map is None else music_map,
@@ -55,11 +53,6 @@ def test_a_stored_map_without_its_bpm_is_no_hit() -> None:
 def test_a_map_of_another_track_version_is_no_hit() -> None:
     old = {**good_map(), "track_version": track.TRACK_VERSION - 1}
     assert track_cache._hit(row(old), take_all) is None  # pyright: ignore[reportPrivateUsage]
-
-
-@pytest.mark.parametrize("other", ["librosa", "swedebeat"])
-def test_a_row_of_another_analyser_is_no_hit(other: str) -> None:
-    assert track_cache._hit(row(analyser=other), take_all) is None  # pyright: ignore[reportPrivateUsage]
 
 
 def test_a_row_the_rule_refuses_is_no_hit() -> None:

@@ -224,7 +224,6 @@ async def open_swedebeat_mix(
         mapped.music_map,
         fingerprint(mapped.music_map),
         cached=False,
-        analyser="spotdown",
         provenance=mapped.provenance,
     )
     await store(run, opened, analysis, connection_id, timing)
@@ -262,7 +261,7 @@ async def swedebeat_step(
     ``design.music`` does for a playlist. ``MusicStep.still_current`` repeats that check in the
     transaction that stores the revision (``link_source = 'swedebeat'``). The model is given the
     map only (``mix_input.mix_summary``); the name and the ids stay in ``MusicStep.mix``, with
-    the analyser and a spotdown map's provenance (recorded with the revision)."""
+    the map's spotdown provenance (recorded with the revision)."""
     analysis, opened = await open_swedebeat_mix(
         run,
         keyring,
@@ -298,7 +297,6 @@ async def swedebeat_step(
             duration=analysis.duration,
             listed_duration=analysis.listed_duration,
             unsure_beat_one=tuple(unsure_beat_one(m)),
-            analyser=analysis.analyser,
             provenance=analysis.provenance,
         ),
     )

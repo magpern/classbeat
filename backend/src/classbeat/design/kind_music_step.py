@@ -4,7 +4,7 @@ SwedeBeat mix (``swedebeat_music.swedebeat_step``), then, on a playlist, spotdow
 every track, then the class's beat-one corrections for that music (ADR 0007 amendment).
 
 ``prefer`` (a revise or refit: the fingerprint of the map its base was designed on) makes a mix's
-cached row with that map the hit, whichever analyser made it (``mix_cache.cached``, #1304), so a
+cached row with that map the hit (``mix_cache.cached``, #1304), so a
 later job reads the analysis the class was designed on; on a playlist it is the music a carried
 record must still be (``songs.spotdown_carry``).
 

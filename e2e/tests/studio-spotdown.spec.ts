@@ -3,14 +3,14 @@ import { fakePlaylists, sql } from './song-helpers'
 import { resetSpotify } from './spotify-helpers'
 import { resetSpotdown, spotdownCount } from './spotdown-helpers'
 import { syncState, untilJob } from './studio-helpers'
-import { LONG, designOnSpotdown, mapAnalysers, mapCount, newStudioUser, outputStates } from './studio-flow-helpers'
+import { LONG, designOnSpotdown, mapAnalyzers, mapCount, newStudioUser, outputStates } from './studio-flow-helpers'
 import { gatewayRequests, resetSwedebeat } from './swedebeat-helpers'
 
 // The studio and the DJ mix on spotdown's maps (ADR 0040 amendment "spotdown is the only analysis
 // path", #1363; the SwedeBeat studio itself is studio.spec.ts, which seeds the analyses): nothing
 // is seeded here, so the design job downloads the eight tracks from the fake gateway and analyses
-// them through the fake spotdown (lookup, upload, start, poll). The stored maps are spotdown's and
-// no other analyser's. Whole songs are the default output; the DJ mix is the user's opt-in on the
+// them through the fake spotdown (lookup, upload, start, poll). The stored maps' records name
+// spotdown alone. Whole songs are the default output; the DJ mix is the user's opt-in on the
 // consent screen. The fakes record what was sent. No real spotdown, SwedeBeat, MOWL, YouTube or
 // Spotify, and no model: the worker replays a recorded script.
 
@@ -48,7 +48,7 @@ test('whole songs by default: the design runs on spotdown maps and no mix is mad
   expect(spotdownCount('GET', '/v2/analyses/lookup')).toBeGreaterThan(0)
   expect(spotdownCount('POST', '/v2/analyses')).toBeGreaterThan(0)
   expect(mapCount(owner)).toBe(8)
-  expect(mapAnalysers(owner)).toBe('spotdown')
+  expect(mapAnalyzers(owner)).toBe('spotdown')
 
   await page.goto(`/classes/${classId}`)
   await expect(page.getByRole('heading', { name: 'Music timeline' })).toBeVisible(LONG)
@@ -79,13 +79,13 @@ test('whole songs by default: the design runs on spotdown maps and no mix is mad
   expect(mergePublishes()).toHaveLength(0)
   expect(gatewayRequests().filter((r) => r.method === 'POST' && r.path === '/playlists')).toHaveLength(1)
   // No local analysis happened for the produce either: the maps are still spotdown's alone.
-  expect(mapAnalysers(owner)).toBe('spotdown')
+  expect(mapAnalyzers(owner)).toBe('spotdown')
 })
 
 test('the DJ mix opted in on spotdown maps is rendered and published once', async ({ page }) => {
   const owner = await newStudioUser(page, 'studio-sd-mix')
   const classId = await designOnSpotdown(page, owner, 'Studio spotdown mix')
-  expect(mapAnalysers(owner)).toBe('spotdown')
+  expect(mapAnalyzers(owner)).toBe('spotdown')
 
   await page.goto(`/classes/${classId}`)
   const outputs = page.getByTestId('studio-outputs')
@@ -103,5 +103,5 @@ test('the DJ mix opted in on spotdown maps is rendered and published once', asyn
   // sha256 spotdown analysed) and merge-published once.
   expect(mergePublishes()).toHaveLength(1)
   expect(gatewayRequests().filter((r) => r.method === 'GET' && r.path.startsWith('/tracks/')).length).toBeGreaterThanOrEqual(8)
-  expect(mapAnalysers(owner)).toBe('spotdown')
+  expect(mapAnalyzers(owner)).toBe('spotdown')
 })

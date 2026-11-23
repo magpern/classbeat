@@ -3,7 +3,7 @@ between the stage (which names tracks by index) and the stored revision (which n
 catalogue reference).
 
 - ``StudioMusic``: the approved tracks in the list's order, each with its reference and stored
-  analysis, and the record of each analysis (``records``: the analyser, the bytes and spotdown's
+  analysis, and the record of each analysis (``records``: the bytes, the map's hash and spotdown's
   provenance, ADR 0040 section 6) that the draft keeps in its ``music.analyses``; a spotdown
   track's stage track carries its stored timing class, and so its cut candidates (#1328);
   ``stage_tracks`` is what the stage gets (the list's Spotify title and artist and the map, **no
@@ -38,7 +38,7 @@ from classbeat.design.revision_hash import revision_hash
 from classbeat.design.studio_revision_model import TrackRecord, map_hash
 from classbeat.design.track_cache import TrackMap
 from classbeat.jobs import JobFailure
-from classbeat.spotdown.studio_map_model import track_timing_class
+from classbeat.spotdown.studio_map_model import stored_timing_class
 from classbeat.studio.mix_plan_policy import MixPlanRefused, TrackFacts, checked
 from classbeat.studio.mix_spec_model import MixSpec
 from classbeat.swedebeat_studio.mix_apply_calc import plan_of
@@ -66,12 +66,11 @@ class StudioMusic:
                 raise JobFailure("internal")  # the caller checked the list and analysed it
             found = by_reference[song.swedebeat.reference]
             refs.append(found.reference)
-            timing = track_timing_class(found.analyser, found.provenance)
+            timing = stored_timing_class(found.provenance)
             tracks.append(StudioTrack(song.title, song.artist, found.music_map, timing))
             provenance = None if found.provenance is None else dict(found.provenance)
             records.append(TrackRecord(
                 reference=found.reference,
-                analyser=found.analyser,
                 sha256=found.sha256,
                 map_hash=map_hash(found.music_map),
                 provenance=provenance,

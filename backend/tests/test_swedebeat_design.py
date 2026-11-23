@@ -307,7 +307,6 @@ async def test_a_class_is_designed_on_a_fake_mix_and_saved_to_mowl(
         "fingerprint": sbm.fingerprint(stored_map.map),
         "link_id": str(link.id),
         "songs": music["songs"],  # ADR 0007 amendment "beat-one corrections"; no correction
-        "analyser": "spotdown",  # ADR 0040 amendment: the only analysis path
         "provenance": music["provenance"],
     }
     assert music["provenance"]["analyzer"]["name"] == "spotdown"

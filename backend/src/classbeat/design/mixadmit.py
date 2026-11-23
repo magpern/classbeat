@@ -65,16 +65,15 @@ class Listing(Protocol):
 
 
 # A cache hit as ``mix_cache.cached`` judges it: young enough, this connection, the stored link's
-# playlist and the library's current map version. The user's own rows only (RLS). Only a
-# ``spotdown`` row whose provenance is this build's counts (#1353: spotdown is the only analysis
-# path), checked in ``_cached``.
+# playlist and the library's current map version. The user's own rows only (RLS). Only a row
+# whose provenance is this build's counts (#1353: spotdown is the only analysis path), checked in
+# ``_cached``.
 _CACHED = text(
     "SELECT m.provenance FROM swedebeat_mix_maps m "
     "JOIN mowl_playlist_links l ON l.owner_id = m.owner_id "
     "AND l.source = 'swedebeat' AND l.source_id = m.mix_id AND l.playlist_id = m.playlist_id "
     "WHERE m.owner_id = :owner_id AND m.mix_id = :mix_id AND m.mowl_connection_id = :connection_id "
-    "AND m.created_at > now() - make_interval(days => :days) AND m.map->>'version' = :version "
-    "AND m.analyser = 'spotdown'"
+    "AND m.created_at > now() - make_interval(days => :days) AND m.map->>'version' = :version"
 )
 _CLASS_MIX = text(
     "SELECT music_source->>'mix_id' AS mix_id FROM classes "

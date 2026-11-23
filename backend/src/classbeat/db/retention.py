@@ -102,11 +102,10 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # name, MOWL's playlist id, the map). No audio, nothing Spotify-derived. At most 20 per user
         # and 30 days (A3); gone with the account and with the MOWL connection (Disconnect, an
         # account change, ``connections.forget.forget_mowl_account``).
-        # ADR 0040 section 6 (#1304): ``analyser`` is a code (``spotdown`` only since #1357) and a
-        # ``spotdown`` row's ``provenance`` is ids, versions, the audio identity and the timing
-        # evidence (no title, mix id, link, URL or scope).
+        # ADR 0040 section 6 (#1304): a row's spotdown ``provenance`` is ids, versions, the audio
+        # identity and the timing evidence (no title, mix id, link, URL or scope).
         "swedebeat_mix_maps": _entry(
-            "mix_id name playlist_id map provenance", "analyser", "account", "mowl_connection"
+            "mix_id name playlist_id map provenance", "", "account", "mowl_connection"
         ),
         # ADR 0016 section 7 (A4): when each new mix analysis started, for the daily limit. No
         # content; a user's rows past 48 hours go with their next one, all with the account.
@@ -115,11 +114,10 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # reference, the SHA-256 of the analysed bytes, the map). No audio, nothing
         # Spotify-derived. At most ``track_cache.MAPS_PER_USER`` per user and 30 days, as the mix
         # maps; gone with the account and with the SwedeBeat connection (Disconnect, a keys wipe).
-        # ADR 0040 section 6 (#1302): ``analyser`` is a code (``spotdown``, the only one since
-        # #1356) and a ``spotdown`` row's ``provenance`` is ids, versions, the audio identity and
-        # the timing evidence (no title, reference, URL or scope).
+        # ADR 0040 section 6 (#1302): a row's spotdown ``provenance`` is ids, versions, the audio
+        # identity and the timing evidence (no title, reference, URL or scope).
         "swedebeat_track_maps": _entry(
-            "reference sha256 map provenance", "analyser", "account", "swedebeat_connection"
+            "reference sha256 map provenance", "", "account", "swedebeat_connection"
         ),
         # ADR 0042 section 6.5 (#1394): the audition. A listening session holds counters and the
         # keys (digests) of the clips it served: no content; gone a day after its creation (the

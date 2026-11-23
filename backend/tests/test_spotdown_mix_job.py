@@ -11,8 +11,8 @@ the network: the autouse netguard refuses any other connection.
 - every spotdown failure, the budget and the 180 s wait cap end the job with their category
   (ADR 0040 section 8; ``test_spotdown_failure_kinds`` is the table), and an error of any type in a
   step is ``internal``, never swallowed;
-- rows per analyser: only a ``spotdown`` row is a hit, a revise's ``prefer`` reads the row its base
-  was designed on; a lost lease stores nothing; account deletion deletes the scope.
+- the cached row: only a row of this build's provenance is a hit, a revise's ``prefer`` reads the
+  row its base was designed on; a lost lease stores nothing; account deletion deletes the scope.
 """
 
 import json
@@ -119,8 +119,8 @@ def hashed(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 def rows(harness: Harness, owner: UUID) -> list[Any]:
     return harness.ops.sql(
-        "SELECT mix_id, map, analyser, provenance, name, duration, listed_duration, playlist_id "
-        "FROM swedebeat_mix_maps WHERE owner_id = :o ORDER BY analyser",
+        "SELECT mix_id, map, provenance, name, duration, listed_duration, playlist_id "
+        "FROM swedebeat_mix_maps WHERE owner_id = :o ORDER BY mix_id",
         o=owner,
     ).all()
 
@@ -131,7 +131,7 @@ def sent(fake: FakeSpotdown, path: str) -> list[Any]:
 
 def result_of(harness: Harness) -> tuple[Any, ...]:
     r = harness.results[-1]
-    return (r.name, r.duration, r.listed_duration, r.music_map, r.cached, r.analyser)
+    return (r.name, r.duration, r.listed_duration, r.music_map, r.cached)
 
 
 async def on_mix(
@@ -195,16 +195,14 @@ async def test_spotdown_gives_the_map_with_its_provenance(
     [(analysis_id, _)] = spotdown.analyses.items()
     expected = mapped_of(spotdown, analysis_id, mix, sha)
     [stored] = rows(harness, owner)
-    assert (stored.analyser, stored.map, stored.provenance) == (
-        "spotdown",
+    assert (stored.map, stored.provenance) == (
         expected.music_map,
         expected.provenance,
     )
     assert stored.provenance["source"] == {"kind": "upload", "ref": None}
     assert stored.provenance["policy_versions"] == dict(MIX_POLICY_VERSIONS)
     result = harness.results[-1]
-    assert (result.analyser, result.provenance, result.cached) == (
-        "spotdown",
+    assert (result.provenance, result.cached) == (
         expected.provenance,
         False,
     )
@@ -235,7 +233,7 @@ async def test_the_cached_spotdown_row_needs_no_fetch_and_no_spotdown_call(
     first, calls, fetches = harness.results[-1], len(spotdown.seen), len(harness.media.requests)
     await harness.run(owner, connection, mix)
     again = harness.results[-1]
-    assert (again.cached, again.analyser, again.music_map) == (True, "spotdown", first.music_map)
+    assert (again.cached, again.music_map) == (True, first.music_map)
     assert again.provenance == first.provenance
     assert (len(spotdown.seen), len(harness.media.requests)) == (calls, fetches)
 
@@ -253,7 +251,7 @@ async def test_an_analysis_in_the_owners_scope_is_read_without_an_upload(
     uploads = len(sent(spotdown, "/v2/uploads"))
     await harness.run(owner, connection, mix)
     assert len(sent(spotdown, "/v2/uploads")) == uploads  # no upload for the owner
-    assert [r.analyser for r in rows(harness, owner)] == ["spotdown"]
+    assert len(rows(harness, owner)) == 1
 
 
 async def test_another_owners_scope_is_never_read_or_written(
@@ -404,7 +402,7 @@ async def test_a_rate_limited_start_waits_and_keeps_the_same_upload(
     spotdown.inject["/v2/analyses"] = [httpx.Response(429, headers={"Retry-After": "2"})]
     owner, connection = await on_mix(harness, mowl_api)
     await harness.run(owner, connection, add_beats(mowl_api, NAME))
-    assert [r.analyser for r in rows(harness, owner)] == ["spotdown"]
+    assert len(rows(harness, owner)) == 1
     uploads = sent(spotdown, "/v2/uploads")
     assert len({u.headers["idempotency-key"] for u in uploads}) == 1  # the same upload, again
     starts = sent(spotdown, "/v2/analyses")
@@ -513,7 +511,7 @@ async def test_a_lost_lease_while_waiting_stops_the_run_and_stores_nothing(
     assert leftovers(work) == []
 
 
-# --- rows per analyser: a class keeps the analysis it was designed on ---------------------------
+# --- the cached row: a class keeps the analysis it was designed on -------------------------------
 
 
 async def test_a_spotdown_row_of_other_policy_versions_is_analysed_again(
@@ -555,7 +553,7 @@ async def test_prefer_reads_the_row_the_base_was_designed_on_even_when_its_polic
     harness.prefer = designed_on
     await harness.run(owner, connection, mix)
     got = harness.results[-1]
-    assert (got.analyser, got.cached, got.fingerprint) == ("spotdown", True, designed_on)
+    assert (got.cached, got.fingerprint) == (True, designed_on)
     assert (len(spotdown.seen), len(harness.media.requests)) == (calls, fetches)
     harness.prefer = "f" * 64  # another base: the old row is no hit (and is replaced by a new one)
     await harness.run(owner, connection, mix)

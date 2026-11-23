@@ -8,9 +8,9 @@ C5). Every statement filters on ``owner_id`` as well as running under row securi
   re-checked, ``song_list.load``) and refuses a gap.
 - ``pinned``: the bearer's SwedeBeat connection is still the one the list was made with.
 - ``cached_maps``: the list's analyses from the user's cache only, for a revise: **no download**,
-  and exactly the rows the base recorded (``studio_revision_model.wanted``: the analyser and the
-  bytes, ADR 0040 section 6). A track whose analysis is gone (expired, forgotten by a
-  Disconnect, or only another analyser's row is left) ends the job ``music_changed``: the music
+  and exactly the rows the base recorded (``studio_revision_model.wanted``: the bytes and the
+  map, ADR 0040 section 6). A track whose analysis is gone (expired, forgotten by a
+  Disconnect, or re-analysed into another map) ends the job ``music_changed``: the music
   is not what the base was designed on, and Change songs designs again.
 - ``adopt``: the class's first design adopts the brief and ``{"source": "swedebeat_studio"}``;
   a design on a newer approved list (a new pick) becomes the class's current revision.
