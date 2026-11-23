@@ -4,6 +4,7 @@ import { isSongKind } from '../../api/songs'
 import { DeleteClass } from './DeleteClass'
 import { ChatPanel } from './ChatPanel'
 import { StudioPanel } from '../studio/StudioPanel'
+import { SpotifyEditorLink } from './SpotifyEditorLink'
 import { useClassKind } from '../studio/useClassKind'
 import { useStudioTimeline } from '../studio/useStudioTimeline'
 import { ChangeMusic } from './ChangeMusic'
@@ -212,6 +213,7 @@ export function ClassBody({
               />
             ) : null}
             <StudioPanel summary={summary} view={studioView} studioList={studio} />
+            <SpotifyEditorLink summary={summary} />
             {shown.status === 'ready' ? <PlannedSongs segments={shown.revision.segments} songs={songs} /> : null}
             {summary.beatOne.available && viewingId === summary.currentRevisionId ? (
               <BeatOnePanel

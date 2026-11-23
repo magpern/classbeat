@@ -59,9 +59,9 @@ export type EditorLoad =
 
 const KNOWN: readonly string[] = ['music_changed', 'mix_not_applied', 'no_proposal', 'map_too_large']
 
-/** Only a cycling class with music can be an older Spotify draft: the sentence for it is true only then. */
+/** Only a Spotify-playlist class can be an older Spotify draft: the sentence for it is true only then (#1453). */
 function olderSpotify(summary: ClassSummary): boolean {
-  return !summary.soundless && !summary.studio && summary.sport === 'cycling'
+  return summary.spotify
 }
 
 /** The reads are not one snapshot: another tab can move the class between the overlay and the timeline. */

@@ -22,6 +22,7 @@ export function classBody(extra: Record<string, unknown> = {}) {
     profile: [[2, 300], [5, 90], [3, 600]],
     open_job_id: null,
     open_job: null,
+    spotify: false,
     ...extra,
   }
 }
