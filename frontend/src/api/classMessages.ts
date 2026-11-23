@@ -27,7 +27,6 @@ const REASON_CODES = [
   'nothing_pending',
   'refit_limit',
   'game_retired',
-  'has_user_edits',
 ] as const
 
 type ReasonCode = (typeof REASON_CODES)[number]

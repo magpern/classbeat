@@ -28,9 +28,9 @@ music ``{"source": "none"}``, ``music_changed`` never told.
 retry restarts the stage from its beginning and the final store is the only write:
 
 1. the class's brief, its ``music_source`` and the base (``classbeat.design.revise_base``, one
-   fenced read; the base's hash is checked against the one ``admit`` stored and against its
-   content). A legacy base's retired game becomes a regular interval before the model sees it,
-   and the change summary records a ``game_retired`` Not as asked item (ADR 0029 section 3);
+   fenced read; the base's hash checked against admit's and its content and edit overlay, whose
+   edits are carried, #1451). A legacy base's retired game becomes a regular interval before the
+   model sees it, and the change summary records a ``game_retired`` Not as asked item (ADR 0029);
 2. the music step of ``design_draft`` (``kind.music_step``: the playlist, or the mix after
    ``mixadmit.still_on``); a fingerprint that differs from the base revision's is told to the
    model as a fact; a base that had tracks on spotdown's sections has them read again
@@ -74,6 +74,7 @@ from classbeat.design import (
     revise_base,
     revise_stated,
     revision,
+    revision_overlay,
     sport,
 )
 from classbeat.design.interpreted import with_interpretation
@@ -204,6 +205,7 @@ async def run(job_run: JobRun) -> Complete:
             music_changed=step.fingerprint != base.fingerprint,
             rules=rules,
             gates=given.plan_gates,  # the plan's gates at creation (#496)
+            kept=loaded.kept(given.plan_gates),  # the base's own edits (#1451)
         )
         outcome = await run_stage(
             JobStageHost(job_run),
@@ -231,6 +233,7 @@ async def run(job_run: JobRun) -> Complete:
             rules=rules.provenance() if rules else None,
             spotdown=timing,
         )
+        draft = revision_overlay.carried(draft, revised.overlay, base_hash)
         draft = with_interpretation(
             draft,
             stated.brief,

@@ -12,9 +12,12 @@ with a retired game becomes a regular interval of the same length and zone (its 
 nothing else changed), and the run records a ``game_retired`` Not as asked item in the revision's
 change summary (``noted``). The model is never asked to pick a replacement game, and the draft it
 gets is the strict schema, so no retired game reaches a model or the stored result.
+
+**An edited base** (ADR 0042 section 3, #1451): its hash is checked with its ``edit_overlay``
+(``revision_overlay.base_overlay``), and ``kept`` gives the revise stage its edits to carry
+(``spotify_overlay_calc``); only a cycling Spotify draft has any (``only_spotify``).
 """
 
-import hashlib
 from dataclasses import dataclass
 from typing import Any, Final
 from uuid import UUID
@@ -23,9 +26,11 @@ from pydantic import ValidationError
 from sqlalchemy import text
 
 from classbeat.agent import Brief
+from classbeat.agent.revise import Kept
 from classbeat.agent.schemas import AnyDraft, RunningDraft, WorkoutDraft
 from classbeat.agent.stored_draft import StoredDraft, stored_draft
-from classbeat.design import chat, revision
+from classbeat.design import chat, revision_overlay, spotify_overlay_calc
+from classbeat.design.edit_overlay_model import EMPTY, EditOverlay
 from classbeat.design.games_policy import RETIRED, is_retired
 from classbeat.design.kind import (
     CLASS_MUSIC_SOURCE,
@@ -35,6 +40,7 @@ from classbeat.design.kind import (
 )
 from classbeat.design.revision_ready import is_sketch
 from classbeat.jobs import JobFailure, JobRun
+from classbeat.plan_gates import PlanGates
 
 # The change summary's key for what the revision did not do as asked (MA1b-1 moves it to the
 # interpretation record). A list of reason codes only, so the summary stays within its 1024 bytes.
@@ -58,6 +64,15 @@ class RunBase:
     music: ClassSpotifyMusic | SwedebeatMusicChoice | NoMusicChoice
     draft: AnyDraft
     retired: bool
+    overlay: EditOverlay = EMPTY  # the base's edits (#1451)
+
+    def kept(self, gates: PlanGates | None) -> Kept | None:
+        """The edits the revise stage carries (``spotify_overlay_calc.kept``), else None."""
+        base = self.draft.model_dump(mode="json", exclude_none=True)
+        try:
+            return spotify_overlay_calc.kept(base, self.overlay, gates)
+        except ValueError:
+            raise JobFailure("internal") from None  # a record the editor never writes
 
 
 def without_retired_games(stored: StoredDraft) -> tuple[AnyDraft, bool]:
@@ -98,11 +113,9 @@ async def load(
     if row is None or row.kind != "draft" or not row.brief or not (row.music_source or sketch):
         raise JobFailure("invalid_input")
     base_hash = bytes.fromhex(base_hash_hex)
-    if (
-        row.content_hash != base_hash
-        or hashlib.sha256(revision.canonical(row.content)).digest() != base_hash
-    ):
-        raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
+    overlay = revision_overlay.base_overlay(
+        row.content, row.edit_overlay, row.content_hash, base_hash
+    )
     try:
         brief = Brief.model_validate(row.brief)
         music = (
@@ -113,4 +126,6 @@ async def load(
         draft, retired = without_retired_games(stored_draft(row.content, brief.sport))
     except ValidationError:
         raise JobFailure("internal") from None
-    return RunBase(row, base_hash, brief, music, draft, retired)
+    spotify = isinstance(music, ClassSpotifyMusic) and isinstance(draft, WorkoutDraft)
+    revision_overlay.only_spotify(overlay, spotify and not sketch)
+    return RunBase(row, base_hash, brief, music, draft, retired, overlay)

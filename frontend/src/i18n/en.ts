@@ -377,8 +377,6 @@ export const en = {
   'class.reason.refit_limit': 'This class has had its timing fixed as often as it can. Design a new class to start again.',
   'class.reason.game_retired':
     'This version has a Ghost Target game, which MOWL no longer offers. Ask by chat to remove it.',
-  'class.reason.has_user_edits':
-    'This class has your own edits. Undo them before asking for a change, so they are not lost.',
   'class.reason.changedMeanwhile': 'This class changed meanwhile. The page has been reloaded.',
   'class.origin.design_draft': 'First design',
   'class.origin.revise_draft': 'Changed on request',

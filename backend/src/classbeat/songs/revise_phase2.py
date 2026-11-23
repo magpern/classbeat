@@ -2,9 +2,11 @@
 approved list's final playlist and music (``classbeat.songs.phase2.final_music``), the request's
 reading layered onto the class's brief (``classbeat.songs.revise_reading``: the stored reading of
 the approved list, no second model call), the ``revise`` stage and the final transaction.
+An edited base (ADR 0042 section 3, #1451: its hash checked with its overlay) has its edits
+carried: stated as fixed, re-applied to the model's draft on the new songs by class time, its locks
+enforced (``spotify_overlay_calc.kept``), and the reconciled overlay stored with the revision.
 """
 
-import hashlib
 import json
 from typing import Final
 from uuid import UUID
@@ -17,7 +19,15 @@ from classbeat.agent.provider import ModelProvider
 from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
 from classbeat.agent.stored_draft import stored_draft
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import chat, corrections, diff, music_kind, revision
+from classbeat.design import (
+    chat,
+    corrections,
+    diff,
+    music_kind,
+    revision,
+    revision_overlay,
+    spotify_overlay_calc,
+)
 from classbeat.design.games_policy import has_retired_game
 from classbeat.design.guidance import rule_set_for
 from classbeat.design.interpreted import with_interpretation
@@ -66,11 +76,9 @@ async def run_revise_phase_two(
             request = await chat.request_body(fs.db, fs.lease.owner_id, p.class_id, message_id)
         if base is None or base.kind != "draft" or not base.brief or request is None:
             raise JobFailure("invalid_input")
-        if (
-            base.content_hash != base_hash
-            or hashlib.sha256(revision.canonical(base.content)).digest() != base_hash
-        ):
-            raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
+        overlay = revision_overlay.base_overlay(
+            base.content, base.edit_overlay, base.content_hash, base_hash
+        )
         try:
             brief = Brief.model_validate(base.brief)
             if brief.sport != "cycling":
@@ -80,6 +88,12 @@ async def run_revise_phase_two(
             raise JobFailure("internal") from None
         if has_retired_game(base.content):
             raise JobFailure("invalid_input")  # defence in depth: admit refuses ``game_retired``
+        try:  # the base's own edits (#1451); a cycling draft on the user's Spotify playlist
+            kept = spotify_overlay_calc.kept(
+                base_draft.model_dump(mode="json", exclude_none=True), overlay, given.plan_gates
+            )
+        except ValueError:
+            raise JobFailure("internal") from None  # a record the editor never writes
         rules = rule_set_for(brief, base.dismissed_rules)
         await corrections.attach(run, step)  # the class's beat-one corrections (ADR 0007)
         stage = stage_config(
@@ -98,6 +112,7 @@ async def run_revise_phase_two(
             songs_changed=True,
             rules=rules,
             gates=given.plan_gates,  # the plan's gates at creation (#496)
+            kept=kept,
         )
         outcome = await run_stage(
             JobStageHost(run), provider, revise_stage(ctx), ctx.first_message(), stage
@@ -117,6 +132,7 @@ async def run_revise_phase_two(
             song_list_id=p.revision_id,
             rules=rules.provenance() if rules else None,
         )
+        draft = revision_overlay.carried(draft, revised.overlay, base_hash)
         draft = with_interpretation(
             draft,
             stated.brief,

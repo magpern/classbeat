@@ -793,14 +793,18 @@ the studio parts taken out.
   hash by the NULL overlay, the `base_revision_id` check in the transaction, locks and
   `locked_block_conflict` hold unchanged. Pins and anchors are refused `audio_edit_unavailable`: a
   Spotify draft has no mix to cut.
-- **Known deviation from section 3 ("On AI regeneration") and from the issue's "same overlay rules".**
-  An AI revise, a song revise and a refit of an edited Spotify draft (a `user_edit` revision, or any
-  base whose overlay holds a record) would have to re-apply the overrides and enforce the locks as a
-  studio revise does. That is not built for a Spotify draft. Rather than drop the user's edits
-  silently, the three are refused `has_user_edits` at admission (`design/edited_base.py`, before any
-  message, job or credit), and the page says in words (en, sv, da) to undo the edits first. A studio draft
-  is unchanged. Undo (or making an earlier version current) lifts the refusal. Follow-up: carry and
-  enforce the overlay on Spotify revise, song revise and refit, then remove the refusal.
+- **Section 3 ("On AI regeneration") on a Spotify draft (resolved by #1451).** #1424 first refused an
+  AI revise, a song revise and a refit of an edited Spotify draft `has_user_edits`. They now carry the
+  overlay as a studio revise does (`design/spotify_overlay_calc.py`, sharing
+  `swedebeat_studio/revise_overlay.kept_on`): the base's hash is checked with its overlay
+  (`design/revision_overlay.py`, `internal` for a tampered overlay or one that does not read); a revise
+  and a song revise state the locks and overrides as fixed in the model's message and reconcile each
+  submitted draft in section 3's fixed order (a lock breach is `overlay_violated`, a correction round;
+  an override survives with no lock); a refit re-applies them to the new fit with no model, and a lock
+  the new fit would move, or edits it cannot keep, end it `invalid_output` with nothing stored. The new
+  revision stores the reconciled overlay under the one hash, and its own `music.edit_map`. A cut pin
+  or an anchor on a Spotify draft (the edit never writes one) fails the run `internal`. The refusal and
+  its message are gone, so a `user_edit` base whose edits were all cleared is revised like any other.
 - **Duplicate.** A duplicate of an edited draft takes the nearest non-`user_edit` revision's
   provenance and the plain content hash with no overlay; the copy has no map, so its editor is
   read-only until the class is refitted.
