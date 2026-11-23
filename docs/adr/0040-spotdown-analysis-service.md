@@ -615,7 +615,7 @@ Notes for operators and the next phases:
   `played_recording`.
 - **(d) Shadow mode** (`CLASSBEAT_SPOTDOWN_SHADOW`, off by default) and its open points are in
   [developer-commands.md](../developer-commands.md) ("spotdown shadow mode for studio tracks").
-  *(Deleted 2026-11-21, #1355: see the amendment "spotdown is the only analysis path".)*
+  *(Deleted 2026-11-22, #1412: see the amendment "spotdown is the only analysis path".)*
 
 ### Amendment (2026-11-20, owner): #1296 accepted; YouTube for Spotify classes, analysis through spotdown, retention of the global entries
 
@@ -1029,9 +1029,10 @@ sections and amendments carry a one-line pointer and are otherwise kept as histo
    deploy-time switch for YouTube sourcing is spotdown's own `ALLOW_YTDLP_SOURCING`, the owner's
    (the amendment "#1296 accepted", item 2). **Kept:** `CLASSBEAT_SPOTDOWN_URL`, the
    `spotdown_service_key` secret, `app_secret_key` (the `cache_scope` key, §7), and
-   `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY` with the job's `analysis_slot` (ADR 0005 §2, #574). The slot
-   now bounds concurrent fetch-and-relay jobs and their disk, not a local decoder; its name is kept
-   to avoid a queue-SQL change.
+   `CLASSBEAT_SPOTDOWN_MIX_CONCURRENCY` with the job's `spotdown_slot` (ADR 0005 §2, #574). The slot
+   now bounds concurrent fetch-and-relay jobs and their disk, not a local decoder. *(Renamed by
+   migration 0080, #1465: `analysis_slot` became `spotdown_slot`, queue v6; the `requeued` event value
+   `analysis_slot` keeps its name.)*
 3. **The MOWL boundary.**
    - **Kept, as data MOWL gives us (not an analysis path we own):** MOWL's map of a Spotify class's
      playlist as the **frame** of the played recording (track order, MOWL's length, Spotify's BPM),
