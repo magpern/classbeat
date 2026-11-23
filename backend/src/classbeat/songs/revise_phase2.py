@@ -88,6 +88,8 @@ async def run_revise_phase_two(
             raise JobFailure("internal") from None
         if has_retired_game(base.content):
             raise JobFailure("invalid_input")  # defence in depth: admit refuses ``game_retired``
+        source = base.music_source.get("source") if isinstance(base.music_source, dict) else None
+        revision_overlay.only_spotify(overlay, source == revision.MUSIC_SOURCE)  # as the others
         try:  # the base's own edits (#1451); a cycling draft on the user's Spotify playlist
             kept = spotify_overlay_calc.kept(
                 base_draft.model_dump(mode="json", exclude_none=True), overlay, given.plan_gates

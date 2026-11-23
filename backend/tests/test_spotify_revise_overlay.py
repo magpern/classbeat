@@ -282,3 +282,92 @@ async def test_a_song_revise_keeps_the_users_edits(songenv: SongEnv) -> None:
     (record,) = stored.edit_overlay["records"]
     assert (record["field"], record["value"]) == ("zone", MINE)
     assert bytes(stored.content_hash) == revision_hash(stored.content, overlay=stored.edit_overlay)
+
+
+async def moved_block(renv: ReviseEnv) -> int:
+    """A block whose timing the class's corrections move: a plain class refitted first."""
+    class_id, base = await renv.design()
+    correct_all(renv, class_id)
+    await refit(renv, class_id, base)
+    first, second = renv.revisions(class_id)
+    pairs = zip(blocks(first.content), blocks(second.content), strict=True)
+    found = [
+        n for n, (a, b) in enumerate(pairs) if (a.start_ms, a.end_ms) != (b.start_ms, b.end_ms)
+    ]
+    assert found, "the corrections move a block"
+    return found[0]
+
+
+async def test_a_refit_that_would_move_a_timing_locked_block_stores_nothing(
+    renv: ReviseEnv,
+) -> None:
+    at = await moved_block(renv)
+    class_id, _first, base = await edited(renv, {"op": "lock", "block": at, "scope": "timing"})
+    correct_all(renv, class_id)
+    stored = count(renv, class_id)
+    job_id = await refit(renv, class_id, base)
+    row = renv.denv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_output")  # never dropped
+    assert (renv.current(class_id), count(renv, class_id)) == (base, stored)
+
+
+def plant_anchor(sql: Any, base: UUID) -> None:
+    """An anchor added to the base's overlay with its hash recomputed: the hash holds, only the
+    record is one the Spotify edit never writes."""
+    row = sql("SELECT * FROM class_revisions WHERE id = :r", r=base).one()
+    b = blocks(row.content)[1]
+    anchor = {
+        "type": "anchor",
+        "target": {"segment_kind": b.kind, "span": [b.start_ms, b.end_ms]},
+        "edge": "end",
+        "event": {
+            "reference": "r0",
+            "occurrence": 0,
+            "sha256": "a" * 64,
+            "source_ms": 1000,
+            "kind": "drop",
+            "map_version": 1,
+        },
+    }
+    overlay = {**row.edit_overlay, "records": [*row.edit_overlay["records"], anchor]}
+    sql(
+        "UPDATE class_revisions SET edit_overlay = CAST(:o AS jsonb), content_hash = :h "
+        "WHERE id = :r",
+        o=json.dumps(overlay),
+        h=revision_hash(row.content, overlay=overlay),
+        r=base,
+    )
+
+
+@pytest.mark.parametrize("kind", ["revise", "refit"])
+async def test_an_anchor_on_a_spotify_draft_fails_the_run_closed(
+    renv: ReviseEnv, kind: str
+) -> None:
+    class_id, _first, base = await edited(renv, LOCK)
+    plant_anchor(renv.sql, base)
+    stored = count(renv, class_id)
+    if kind == "refit":
+        correct_all(renv, class_id)
+        done = renv.denv.ops.row(await refit(renv, class_id, base))
+    else:
+        renv.use("revise_good")
+        done = await revised(renv, class_id, base)
+    assert (done.state, done.error_category) == ("failed", "internal")
+    assert (renv.current(class_id), count(renv, class_id)) == (base, stored)
+
+
+async def test_an_anchor_fails_a_song_revise_closed(songenv: SongEnv) -> None:
+    rider = await songenv.rider()
+    class_id, first, _list = await picked(songenv, rider)
+    made = await rider.browser.post(
+        f"/api/classes/{class_id}/edits", {"base_revision_id": str(first), "edit": LOCK}
+    )
+    assert made.status_code == 200, made.text
+    base = UUID(made.json()["revision_id"])
+    plant_anchor(songenv.sql, base)
+    job_id, list_id, digest = await changed_waiting(songenv, rider, class_id, base)
+    assert (await rider.approve(job_id, list_id, digest)).status_code == 200
+    songenv.script = revise_script()
+    row = await songenv.run(job_id)
+    assert (row.state, row.error_category) == ("failed", "internal")
+    assert current(songenv, class_id) == base
