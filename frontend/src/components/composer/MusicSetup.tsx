@@ -77,7 +77,15 @@ export function MusicSetup({
       </Notice>
     )
   }
-  if (gate === 'consent_missing' && setup.status !== null) {
+  if (gate === 'consent_missing') {
+    // The card's own place is kept while the status loads, so the page does not jump when it arrives.
+    if (setup.status === null) {
+      return (
+        <p className="m-0 text-muted" role="status" aria-busy="true" data-testid="music-consent-loading">
+          {t('common.loading')}
+        </p>
+      )
+    }
     return (
       <MusicConsentCard
         status={setup.status}

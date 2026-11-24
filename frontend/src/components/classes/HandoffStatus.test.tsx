@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { fakeApi } from '../../test/fakeApi'
+import { fakeApi, reason } from '../../test/fakeApi'
 import { SESSION_ROUTES } from '../../test/jobFixtures'
 import { NO_EXTRAS } from '../../api/readingExtras'
 import type { Handoff } from '../../hooks/useHandoff'
@@ -67,7 +67,8 @@ const REASONS: [string, string, string, string[]][] = [
   ['quota', 'account', 'You have used up what your plan allows for now. Nothing was charged and your request is kept.', [LINKS.account]],
   ['revision_limit', 'account', 'This class has reached the number of changes your plan allows. Start a new class to keep going.', [LINKS.account]],
   ['feature_off', 'site', 'Designing classes this way is switched off here right now. Nothing was charged and your request is kept.', []],
-  ['soundless_not_evaluated', 'site', 'Designing classes without music is not available here right now. Nothing was charged and your request is kept.', []],
+  ['soundless_not_evaluated', 'site', 'Designing classes without music is not available here right now. Nothing was charged and your request is kept.', [LINKS.account]],
+  ['needs_mowl_playlist', 'account', 'Running needs a playlist from your MOWL music.', [LINKS.account, LINKS.again]],
   ['busy', 'transient', 'Your other designs are still running. Nothing was charged and your request is kept. Try again in a moment.', [NOW]],
   ['pool_busy', 'transient', 'Another song pick is still running. Nothing was charged and your request is kept. Try again in a moment.', [NOW]],
   ['class_busy', 'transient', 'A design of this class is still running. Wait for it to finish, then try again.', [NOW]],
@@ -119,5 +120,19 @@ describe('HandoffStatus: one line per stored reason', () => {
       expect(reread).toHaveBeenCalledTimes(1)
     })
     expect(api.to('POST', '/api/classes/c1/design-from-interpretation')[0]?.body).toEqual({ retry: true })
+  })
+
+  it('reads the hand-off again after a 429 busy answer to the retry, not only after a 409', async () => {
+    const user = userEvent.setup()
+    const reread = vi.fn()
+    fakeApi({
+      ...SESSION_ROUTES,
+      'POST /api/classes/c1/design-from-interpretation': reason(429, 'busy'),
+    })
+    show('busy', 'en', reread)
+    await user.click(await screen.findByRole('button', { name: NOW }))
+    await waitFor(() => {
+      expect(reread).toHaveBeenCalledTimes(1)
+    })
   })
 })

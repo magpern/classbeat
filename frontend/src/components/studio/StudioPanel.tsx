@@ -6,6 +6,7 @@ import { Notice } from '../forms'
 import { Card, CardTitle } from '../ui/card'
 import { StudioStartDesign } from './StudioStartDesign'
 import { StudioOutputs } from './StudioOutputs'
+import { StudioOutputsUnread } from './StudioOutputsUnread'
 import { StudioOutputStates } from './StudioOutputStates'
 import { StudioSpotifySync } from './StudioSpotifySync'
 import { outputLimitReached } from './studioAction'
@@ -66,6 +67,8 @@ export function StudioPanel({ summary, view, studioList }: { summary: ClassSumma
           limitReached={outputLimitReached(summary.id)}
         />
       ) : null}
+      {/* The choice is not offered for an older version, but a failed read still says so, with a retry. */}
+      {!current && outputs.load.status === 'failed' ? <StudioOutputsUnread onRetry={outputs.retry} /> : null}
     </Card>
   )
 }

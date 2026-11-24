@@ -8,7 +8,10 @@ import { renderAt } from '../test/render'
 // The audio preview on the editor page (CP-R3): Play and Pause, the 15-minute pause, a session that
 // ended, an edit during playback. The server is the fake `fetch`; the browser's media events are
 // fired by the test on the real (jsdom) audio elements; the listening counter's clock is a
-// `performance.now` the test moves.
+// `performance.now` that only the test moves: it is frozen at the start of each test, so how long a
+// loaded machine takes between two steps never counts as listening time (it did, and the 15-minute
+// tests failed on a busy runner). No test waits for a real-time retry either: a window that is
+// "rendering" stays so until the test lets it finish.
 
 const SESSIONS = `POST ${PREVIEW_PATH}/sessions`
 const LIMIT = 'Preview paused after 15 minutes. Press Play to continue.'
@@ -16,8 +19,8 @@ let offsetMs = 0
 
 beforeEach(() => {
   offsetMs = 0
-  const real = performance.now.bind(performance)
-  vi.spyOn(performance, 'now').mockImplementation(() => real() + offsetMs)
+  const start = performance.now()
+  vi.spyOn(performance, 'now').mockImplementation(() => start + offsetMs)
 })
 
 afterEach(() => {
@@ -81,9 +84,11 @@ describe('Play and Pause', () => {
   })
 
   it('falls back to the silent cursor, and says so, when the server has no preview', async () => {
-    fakeApi(editorRoutes({ [SESSIONS]: () => json({ detail: { reason: 'not_found' } }, 404) }))
+    const api = fakeApi(editorRoutes({ [SESSIONS]: () => json({ detail: { reason: 'not_found' } }, 404) }))
     await open()
     fireEvent.click(screen.getByRole('button', { name: 'Play' }))
+    // The press reached the server first (a lost press and a lost fallback look the same otherwise).
+    await waitFor(() => { expect(sessions(api)).toBe(1) })
     expect(await screen.findByText(/audio preview is not available here/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Play' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /^Song 2: Second song/ }))
@@ -104,12 +109,16 @@ describe('Play and Pause', () => {
 
   it('says that a window is rendering, in words', async () => {
     let calls = 0
+    let finish: () => void = () => undefined
+    const finished = new Promise<void>((resolve) => { finish = resolve })
     fakeApi(
       editorRoutes(
         previewRoutes({
-          [clipPath(0)]: () => {
+          [clipPath(0)]: async () => {
             calls += 1
-            return calls === 1 ? new Response(null, { status: 202, headers: { 'Retry-After': '1' } }) : readyClip(0, 240_000)
+            if (calls === 1) return new Response(null, { status: 202, headers: { 'Retry-After': '1' } })
+            await finished // the window is ready only once the test has seen the wait
+            return readyClip(0, 240_000)
           },
         }),
       ),
@@ -117,6 +126,7 @@ describe('Play and Pause', () => {
     await open()
     fireEvent.click(screen.getByRole('button', { name: 'Play' }))
     expect(await screen.findByText(/Rendering this part of the class/)).toBeInTheDocument()
+    finish()
     await waitFor(() => { expect(activeAudio()).not.toBeNull() }, { timeout: 4000 })
   })
 })
