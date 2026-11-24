@@ -9,7 +9,11 @@ from pydantic import ValidationError
 from classbeat.agent.brief import Brief
 from classbeat.design import DESIGN_DRAFT
 from classbeat.design.interpret_kind import InterpretRequestInput
-from classbeat.design.interpret_music_policy import NEEDS_MOWL_PLAYLIST, stored_no_music_reason
+from classbeat.design.interpret_music_policy import (
+    NEEDS_MOWL_PLAYLIST,
+    NEEDS_SPOTIFY,
+    stored_no_music_reason,
+)
 from classbeat.design.interpretation_row import StoredInterpretation
 from classbeat.design.kind import DesignDraftInput, NoMusicChoice, SpotifyMusicChoice
 from classbeat.jobs.inputs import JobInput
@@ -27,8 +31,10 @@ def _undecided(row: StoredInterpretation) -> bool:
 
 def _sketched(row: StoredInterpretation, brief: Brief) -> bool:
     """A composer class that gets a sketch: cycling, with music (not "No music"), or with its
-    music left open (``undecided``; with no Spotify the reading found no music it could use, and
-    the sketch needs none: ADR 0038 amendment of 2026-11-24, decisions 5 and 6)."""
+    music left open (``undecided``) even when the reading found no music it could use (song
+    picking was off for the user): the sketch needs none (ADR 0038 amendment of 2026-11-24,
+    decisions 5 and 6). With no Spotify a composer reading takes a song pick or the named
+    playlist (``Offer.composed``), so that class has music."""
     if brief.sport != "cycling":
         return False
     source = (row.music or {}).get("source")
@@ -58,7 +64,9 @@ def design_input(
     section 4), a ``design_draft`` with no music in mode ``sketch``. A soundless class keeps its
     soundless design, and a running class its design on a MOWL playlist (the sketch's stage is the
     soundless one, cycling only). A class with no music that takes the older route (the composer
-    is not available now) is refused as before: ``needs_spotify`` (Amendment 25)."""
+    is not available now) is refused as before, and so is one read for the composer with no
+    Spotify (a song pick or a Spotify playlist, ``Offer.composed``): ``needs_spotify``
+    (Amendment 25)."""
     if row.music is None and not (composer and _undecided(row)):
         return _no_music(row)
     if not isinstance(job_input, dict):
@@ -82,6 +90,14 @@ def design_input(
         playlist = row.music.get("source") == PLAYLIST
         own_playlist = playlist and brief.sport == "cycling"
         own = own_playlist and song_picking
+        if (
+            given.composer is True
+            and given.spotify_connection_id is None
+            and (pick or own_playlist)
+        ):
+            # Read for the composer, which needs no Spotify until the song search; the older
+            # route needs it now (the addendum's fallback): Amendment 25's refusal.
+            return NEEDS_SPOTIFY
         if pick or (own and given.spotify_connection_id is not None):
             if given.spotify_connection_id is None:
                 return "not_connected"

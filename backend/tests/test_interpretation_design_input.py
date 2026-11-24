@@ -5,6 +5,8 @@ No database, no network, no model."""
 import uuid
 from typing import Any
 
+import pytest
+
 from classbeat.classes.interpretation_design import design_input
 from classbeat.design import DESIGN_DRAFT
 from classbeat.design.interpretation_row import StoredInterpretation
@@ -133,12 +135,29 @@ def test_without_the_composer_now_an_undecided_class_is_refused_needs_spotify() 
 
 
 def test_a_decided_class_with_no_music_it_could_use_keeps_amendment_25() -> None:
-    """Decided as requested (a taste or a named playlist, read with no Spotify) yet no music: the
-    request asked for music the sketch cannot promise, so the hand-off refuses as before."""
+    """No music, yet decided as requested: only when song picking was off for the user at the
+    reading (a taste needs a song pick; a disconnected instructor's reading takes the pick,
+    ``Offer.composed``), so the hand-off refuses as before."""
     for decision in ({"state": "decided", "choice": "request"}, None):
         row = composer_row(decision)
         got = design_input(row, composer_given(), CLASS, song_picking=True, composer=True)
         assert got == "needs_spotify"
+
+
+@pytest.mark.parametrize("music", [{"source": "pick"}, PLAYLIST])
+def test_a_class_read_for_the_composer_without_spotify_needs_it_on_the_older_route(
+    music: dict[str, str],
+) -> None:
+    """The addendum's fallback for a reading that took a pick or a playlist with no Spotify
+    (``Offer.composed``): ``needs_spotify``, never a write-free design or ``not_connected``."""
+    for decision in ({"state": "undecided"}, {"state": "decided", "choice": "request"}):
+        row = composer_row(decision, music)
+        got = design_input(row, composer_given(), CLASS, song_picking=True, composer=False)
+        assert got == "needs_spotify"
+        kind, made = design_input(row, composer_given(), CLASS, song_picking=True, composer=True)
+        assert kind is DESIGN_DRAFT
+        assert isinstance(made, DesignDraftInput)
+        assert made.mode == "sketch"
 
 
 def test_a_composer_class_with_music_is_sketched_whatever_its_decision() -> None:

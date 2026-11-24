@@ -11,13 +11,30 @@ from uuid import UUID
 import httpx
 import pytest
 
+from classbeat import connections
 from classbeat.design import interpret_kind, music_kind
-from interprettools import READING
+from classbeat.songs import config as songs_config
+from ctx import make_context
+from interprettools import READING, REQUEST
 from sketchtools import SketchEnv
 
 pytestmark = pytest.mark.usefixtures("jenv", "picking")
 
 PLAYLISTS = ["0123456789abcdefABCDEF", "ABCDEF0123456789abcdef"]
+EIGHTIES = f"{REQUEST} to 80s hits"
+TASTE: dict[str, Any] = {
+    **READING,
+    "music_taste": {
+        "eras": [{"year_from": 1980, "year_to": 1989, "origin": "explicit", "quote": "80s"}],
+        "hits": {"value": True, "origin": "explicit", "quote": "hits"},
+    },
+}
+HITS_80S: dict[str, Any] = {
+    "eras": [{"year_from": 1980, "year_to": 1989}],
+    "genres": [],
+    "hits": True,
+    "language": None,
+}
 
 
 @pytest.fixture
@@ -72,7 +89,7 @@ async def test_with_no_spotify_a_request_with_the_music_left_open_reaches_a_sket
         "sources": [],
         "note": None,
     }
-    assert stored["music"] is None  # the reading found no music it could use: no Spotify
+    assert stored["music"] == {"source": "pick"}  # read as with Spotify: the search asks for it
     sketch = await skenv.designed(class_id)
     [job] = skenv.ienv.design_jobs(class_id)
     assert (job.kind, skenv.ienv.stored_input(job.id)["mode"]) == ("design_draft", "sketch")
@@ -141,17 +158,57 @@ async def test_a_request_that_says_what_the_music_is_is_decided_as_requested(
     assert (decision["state"], decision["choice"]) == ("decided", "request")
 
 
-async def test_a_class_with_a_taste_and_no_spotify_is_refused_needs_spotify_at_hand_off(
+async def test_with_no_spotify_a_taste_is_kept_sketched_and_used_by_the_fill_once_connected(
     skenv: SketchEnv,
 ) -> None:
-    """Decided as requested, but the reading found no music it could use: the request asked for
-    music the sketch cannot promise, so the hand-off stores Amendment 25's refusal (no credit)."""
-    reading = {**READING, "music_taste": {"hits": {"value": True, "origin": "explicit"}}}
-    class_id, _ = await skenv.ienv.interpreted(reading, spotify=False)
-    refused = await skenv.ienv.handoff(class_id)
-    assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "needs_spotify")
-    assert skenv.ienv.design_jobs(class_id) == []
-    assert skenv.ienv.credits() == 0
+    """The Architect's decision on #1507: a disconnected instructor whose request describes the
+    music gets a sketch; the taste stays in the brief (the sketch ignores it) and the fill takes
+    it once Spotify is connected and the working playlist allowed."""
+    class_id, _ = await skenv.ienv.interpreted(TASTE, spotify=False, request=EIGHTIES)
+    stored = skenv.ienv.interpretation(class_id)
+    assert (stored["music_decision"]["state"], stored["music_decision"]["choice"]) == (
+        "decided",
+        "request",
+    )
+    assert stored["music"] == {"source": "pick"}
+    assert stored["brief"]["music_taste"] == HITS_80S
+    await skenv.designed(class_id)  # the sketch, with no Spotify
+    shown = await detail(skenv, class_id)
+    assert shown["music_decision"] == {"state": "decided", "choice": "request", "playlists": 0}
+    path = f"/api/classes/{class_id}/fill-songs"
+    refused = await skenv.renv.browser.post(path, None)
+    assert (refused.status_code, refused.json()["detail"]) == (409, {"reason": "not_connected"})
+    assert song_jobs(skenv, class_id) == 0
+    await skenv.ienv.connect_spotify()
+    ctx = make_context(skenv.ienv.owner)
+    assert await connections.give_pool_consent(skenv.renv.denv.ops.factory, ctx, 1)
+    skenv.sql(
+        "INSERT INTO entitlements (owner_id, features, source) "
+        "VALUES (:o, ARRAY['song_picking'], 'grant')",
+        o=skenv.ienv.owner,
+    )
+    songs_config.configure(songs_config.SongConfig(enabled=True))
+    try:
+        made = await skenv.renv.browser.post(path, None)
+    finally:
+        songs_config.configure(None)
+    assert made.status_code == 201, made.text
+    job = skenv.ienv.stored_input(UUID(made.json()["job_id"]))
+    assert (job["mode"], job["brief"]["music_taste"]) == ("fill", HITS_80S)
+
+
+async def test_with_no_spotify_a_named_playlist_is_kept_as_the_music_and_sketched(
+    skenv: SketchEnv,
+) -> None:
+    """The same decision: a named Spotify playlist needs Spotify only when it is used."""
+    named = {**READING, "music": {"value": 0, "origin": "explicit"}}
+    class_id, _ = await skenv.ienv.interpreted(named, spotify=False)
+    stored = skenv.ienv.interpretation(class_id)
+    assert stored["music"]["source"] == "mowl_spotify_playlist"
+    assert stored["music_decision"]["choice"] == "request"
+    await skenv.designed(class_id)
+    [job] = skenv.ienv.design_jobs(class_id)
+    assert skenv.ienv.stored_input(job.id)["mode"] == "sketch"
 
 
 async def test_a_class_read_with_the_composer_falls_back_to_needs_spotify_without_it(

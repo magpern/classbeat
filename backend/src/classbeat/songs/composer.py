@@ -9,8 +9,8 @@ songs as its ``preview``) and the wait for the user's one approval.
   ``pool_search``, ``pool_write``, ``pool_analyse`` and ``choose``; then ``composer_design``
   designs on the chosen songs with the sketch as its base.
 - **swap**: the replace of the waiting list's slots (``seed``, as ``revise_songs`` replaces), with
-  the attached playlists favoured again, then the design with the waiting list's preview as its
-  base, so the user's earlier changes stay.
+  the attached playlists favoured again and the fill's ``music_note`` in the pick's brief, then
+  the design with the waiting list's preview as its base, so the user's earlier changes stay.
 - **change**: no pick: the waiting list's songs are kept, written and analysed again (a new run of
   ``pool_write`` and ``pool_analyse``), then designed with the user's request on the waiting
   preview. When the designed length is more than 10 % from the songs' total
@@ -162,7 +162,7 @@ async def _swap(
         if given.sources
         else Favoured((), ())
     )
-    brief = brief_of(sketch)
+    brief = brief_with_note(brief_of(sketch), given.music_note)  # the song stages' brief only
     content = waiting.content
     plan = PickPlan(brief, content.target_sec, len(content.songs), seeded.roles, seeded.kept)
     seed = given.seed

@@ -236,7 +236,7 @@ async def run(job_run: JobRun) -> Complete:
         bool(given.pick_ready),
         given.spotify_connection_id is not None,
         given.song_picking is not False,
-    )
+    ).composed(bool(given.composer))
     override = None if given.music_override is None else given.music_override.model_dump()
     resolved = interpret_policy.resolve(
         outcome.output.request,

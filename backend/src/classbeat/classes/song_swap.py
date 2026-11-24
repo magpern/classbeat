@@ -68,6 +68,7 @@ async def swap(
             replaces_job_id=row.id,
             seed=Seed(song_list_revision_id=list_id, replace=replace),
             sources=stored.get("sources"),
+            music_note=stored.get("music_note"),  # #1495: the fill's, carried along
             mowl_connection_id=mowl,
             spotify_connection_id=spotify,
         )

@@ -26,10 +26,11 @@ spotify_playlist_id}, mowl_connection_id, spotify_connection_id}``.
   (``replaces_job_id``) and the list it waits on (``seed``; a change keeps every song, so its
   ``replace`` is empty). ``sources`` (the attached Spotify playlists) and ``pinned`` (the reading's
   pinned songs) come from the class's stored request, ``sources`` from its music decision when
-  it shared playlists, and ``music_note`` (a ``fill`` only, #1495) is the decision's note: the
-  instructor's own words about the music, which the song search reads as more of the brief's
-  text (``music_decision.brief_with_note``), never as instructions; left out of the stored input
-  when absent, so a fill stored before is byte-identical. All of these are **server fields**: only
+  it shared playlists, and ``music_note`` (#1495) is the decision's note, carried from the fill
+  to the swap or change that replaces it: the instructor's own words about the music, which a
+  song search reads as more of the brief's text (``music_decision.brief_with_note``), never as
+  instructions; left out of the stored input when absent, so an input of today is
+  byte-identical. All of these are **server fields**: only
   the hand-offs (``classbeat.classes.song_fill``, ``song_swap``, the pending submit) set them, with
   no credit, so ``POST /api/jobs`` can never create a composer mode.
 - **A composer resume** (ADR 0038 section 7, #1189): ``mode = "resume"`` with the receipt's sketch
@@ -123,7 +124,7 @@ class DesignWithSongsInput(ModelJobInput):
     request: Request | None = None
     request_message_id: UUID | None = None
     save: bool | None = None  # a composer resume only: the receipt's ``save``
-    music_note: MusicNote | None = None  # a fill only: the music decision's note (#1495)
+    music_note: MusicNote | None = None  # the music decision's note (#1495)
 
     @property
     def composer(self) -> bool:
@@ -166,8 +167,6 @@ class DesignWithSongsInput(ModelJobInput):
             raise ValueError("a composer job names its class and its sketch")
         if self.save is not None:
             raise ValueError("a composer job's save is its approval's")
-        if self.music_note is not None and self.mode != "fill":
-            raise ValueError("the music note belongs to a fill")
         replacing = self.mode in REPLACING_MODES
         if replacing != (self.replaces_job_id is not None) or replacing != (self.seed is not None):
             raise ValueError("a swap or change names the waiting job and its list")

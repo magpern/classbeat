@@ -25,7 +25,7 @@ substring of the request. Nothing a model wrote as text reaches the brief.
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Final
 
 from classbeat.agent.brief import Brief, BriefGame
@@ -58,6 +58,15 @@ class Offer:
     spotify: bool = False  # a Spotify connection is named: a cycling class may use a playlist
     # song picking admits the user; without it a class with no music is ``song_picking_unavailable``
     song_picking: bool = True
+
+    def composed(self, composer: bool) -> "Offer":
+        """A reading admitted with the composer (ADR 0038 amendment of 2026-11-24, decision 6):
+        Spotify is needed only by the song search, which refuses ``not_connected`` before any
+        write, so a named or chosen Spotify playlist, a song pick and its music taste are read as
+        with the connection, and the sketch needs none of them. Unchanged otherwise."""
+        if not composer:
+            return self
+        return replace(self, spotify=True, pick_ready=self.song_picking)
 
 
 @dataclass(frozen=True)

@@ -16,7 +16,7 @@ import pytest
 from classbeat import connections
 from classbeat.classes import song_fill
 from classbeat.design.music_decision import NOTE_LABEL
-from composertools import SKETCH, ComposerEnv, fill_script
+from composertools import SKETCH, ComposerEnv, fill_script, swap, swap_script
 from ctx import make_context
 from songtools import Rider
 
@@ -265,3 +265,36 @@ async def test_an_answer_needs_a_composer_sketch_and_the_composer_on(cenv: Compo
     off = await put_music(rider, class_id, {"choice": "pick"})
     assert (off.status_code, off.json()["detail"]) == (409, {"reason": "feature_off"})
     assert decision(cenv, class_id) == UNDECIDED
+
+
+async def test_the_note_is_carried_into_the_swap_and_the_change(cenv: ComposerEnv) -> None:
+    """The Architect's decision on #1507: a swap and a change replace the fill with its note, and
+    the swap's song search reads it as the fill's does (the change keeps its songs: no search)."""
+    rider = await cenv.songenv.rider()
+    described = {"state": "decided", "choice": "describe", "note": NOTE}
+    class_id, _ = await cenv.sketched(rider, decision=described)
+    _, list_id, _ = await cenv.waiting(rider, class_id, fill_script())
+    swapped = await swap(rider, class_id, list_id)
+    assert swapped.status_code == 201, swapped.text
+    swap_id = UUID(swapped.json()["job_id"])
+    assert cenv.songenv.row(swap_id).input["music_note"] == NOTE
+    earlier = len(cenv.songenv.providers)
+    cenv.songenv.script = swap_script()
+    row = await cenv.songenv.run(swap_id)
+    assert row.state == "waiting_for_approval", (row.state, row.error_category)
+    pool = [
+        s.spec
+        for p in cenv.songenv.providers[earlier:]
+        for s in p.sent
+        if s.spec.stage == "pick_pool"
+    ]
+    assert pool
+    assert all(NOTE_LABEL + NOTE in spec.first_message for spec in pool)
+    message = str(uuid.uuid4())
+    base = f"/api/classes/{class_id}/pending-messages"
+    stored = await rider.browser.post(base, {"message_id": message, "body": "Longer warm-up."})
+    assert stored.status_code == 201, stored.text
+    changed = await rider.browser.post(f"{base}/{message}/submit", None)
+    assert changed.status_code == 201, changed.text
+    change = cenv.songenv.row(UUID(changed.json()["job_id"]))
+    assert (change.input["mode"], change.input["music_note"]) == ("change", NOTE)

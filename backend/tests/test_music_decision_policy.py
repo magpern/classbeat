@@ -10,6 +10,8 @@ from pydantic import ValidationError
 from classbeat.agent.brief import Brief
 from classbeat.agent.interpreted import InterpretedRequest
 from classbeat.design import music_decision
+from classbeat.design.interpret_music_policy import MusicOption
+from classbeat.design.interpret_policy import Offer, resolve
 from classbeat.design.interpretation_row import StoredInterpretation
 from classbeat.design.music_decision import (
     DEFAULT,
@@ -162,3 +164,23 @@ def test_the_note_follows_the_request_in_the_brief_text_and_is_never_cut() -> No
     assert cut.text.endswith(NOTE_LABEL + note)
     bare = brief_with_note(brief.model_copy(update={"text": ""}), "Dark techno")
     assert bare.text == NOTE_LABEL + "Dark techno"
+
+
+# --- the reading of a composer request with no Spotify (``Offer.composed``) ---------------------
+
+
+def test_a_composer_reading_takes_a_pick_a_playlist_and_a_taste_without_spotify() -> None:
+    options = (MusicOption("playlist", "Climb mix", B),)
+    taste = {"hits": {"value": True, "origin": "explicit"}}
+    plain = Offer(options=options, song_picking=True)
+    assert plain.composed(False) is plain
+    composed = plain.composed(True)
+    assert (composed.spotify, composed.pick_ready) == (True, True)
+    picked = resolve(read(music_taste=taste), "A class with hits", composed)
+    assert (picked.music, picked.brief.music_taste is not None) == ({"source": "pick"}, True)
+    named = resolve(read(music={"value": 0, "origin": "explicit"}), "Climb mix", composed)
+    assert named.music == {"source": "mowl_spotify_playlist", "spotify_playlist_id": B}
+    before = resolve(read(music_taste=taste), "A class with hits", plain)
+    assert (before.music, before.brief.music_taste) == (None, None)  # the older flow: as today
+    off = Offer(options=options, song_picking=False).composed(True)
+    assert off.pick_ready is False  # song picking off: still no pick
