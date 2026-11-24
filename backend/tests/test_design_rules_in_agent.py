@@ -38,9 +38,11 @@ from classbeat.models.versions import all_prompt_versions
 # on purpose: a guidance line on each section's energy, and get_pool's and get_music's description.
 # #1040 (tempo adjacency): choose_songs changed once more, on purpose: a guidance line on the
 # crossfade between adjacent tempos and on the tempo_jumps note of check_song_list.
+# #1493 (the ride shape): design, revise, soundless_design and soundless_revise changed on purpose
+# (suite version 31): the section tag on a segment and the shape rules.
 PINNED = {
-    "design": "120dc25a1e01d60f1657af8e608a853e7486ea87af65d0b00e09aa25cd03782c",
-    "revise": "317d75e31910bb71dff3498f8a798901409a990f25f691ba29d11a6b680235b6",
+    "design": "f35eca26e771544373e63fcef1e36d6a36ad4a05e060837d65e04c1bec722f83",
+    "revise": "c5e9582a5641f81cc1689a46f8bdbbd80e353b51c7db36c90c2e058c26d34632",
     "pick_pool": "e1887da4f5959cc9adb94ae3a3d332161dda107364c7f7c6363ad8ea1b826a75",
     "choose_songs": "74882603467ec87dc133b32addc24491c2f0e68d45f6a7c92f4d9f49f2a560ac",
     # The running stages (ADR 0018), listed since E1 (#465) under their own keys.
@@ -48,8 +50,8 @@ PINNED = {
     "running_revise": "5b5a99c92433da84c0ff8cacfd71e8b4c0081e02d53e13d316839923b9024e0a",
     # The soundless design and revise stages (ADR 0007 amendment of 2026-11-03, #527 and #528),
     # under their own keys.
-    "soundless_design": "ea0ea2e6966763a5f5d09a59ceaf07d76a4789978cabb77e5a3f0e959b3d2c30",
-    "soundless_revise": "8279c4a6a9750c9ff238bbd7db5c915e9b9a8dc44f1b16e7fbbcae502fdfdc7b",
+    "soundless_design": "e2019b424b33c51a6a122674b55b036a80d29eddc539c53da729ff2d71f46e1d",
+    "soundless_revise": "c7b527f1e587393d6dc7aa1b3622496dbca19ae0892ab809473177380903cd93",
     # The interpret stage (MA1b-2, #880), under its own key. #1133 changed it and pick_pool on
     # purpose: the music taste (interpret) and the find_songs tool (pick_pool). #1140 changed
     # interpret once more, on purpose: the era caps (4 eras, 30 years each) in the prompt. #1185

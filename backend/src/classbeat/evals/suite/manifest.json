@@ -1,6 +1,6 @@
 {
- "suite_version": 30,
- "digest": "ed2a4b53b96ec22c664abc42109903883fe4b40f0c36de87fad438d9a1005641",
+ "suite_version": 31,
+ "digest": "7c0410e79fb8da9853f3936a01d3c851e0dc1dfe53052bcb7f10d4392d768dbf",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -89,7 +89,9 @@
    ]
   },
   "soundless": {
-   "design": ["soundless_45", "soundless_30_sprints", "soundless_revise_sprints"]
+   "design": [
+    "soundless_45", "soundless_30_sprints", "soundless_revise_sprints", "soundless_ride_shape"
+   ]
   },
   "interpret": {
    "design": [

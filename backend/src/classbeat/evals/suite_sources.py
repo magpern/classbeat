@@ -113,6 +113,10 @@ RULE_SOURCES: Final = (
     "agent/brief_input.py",
     "agent/stated_layer.py",
     "design/shape_policy.py",
+    # The design follows the shape (#1493, suite version 31): the check that holds a draft to it
+    # (with its correction rounds and Not as asked ``shape_off``) and what the stages are told.
+    "agent/shape_check.py",
+    "agent/shape_prompt.py",
 )
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")

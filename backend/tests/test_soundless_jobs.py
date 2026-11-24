@@ -42,7 +42,8 @@ pytestmark = pytest.mark.usefixtures("jenv")
 NONE: dict[str, str] = {"source": "none"}
 SPOTIFY: dict[str, str] = {"source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST}
 # Words of music that may never reach a soundless model (ADR 0007 amendment, item 5).
-MUSIC_WORDS = ("playlist", "track", "bpm", "drop", "breakdown", "section", "beat", "song")
+# "section" is not here: it is the ride shape's own word (`Segment.section`, #1493), not music.
+MUSIC_WORDS = ("playlist", "track", "bpm", "drop", "breakdown", "beat", "song")
 
 
 def gate(*, enabled: bool = True, fake: bool = True) -> None:

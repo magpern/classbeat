@@ -13,13 +13,15 @@ The brief of the new-class form (``Brief``) is ``classbeat.agent.brief``.
 """
 
 import unicodedata
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, Final, Literal, Self
 
 from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
     model_validator,
 )
 
@@ -62,7 +64,7 @@ Game = Literal["racetrack", "power_pull", "fast_lane", "overflow"]
 Rpm = Annotated[list[Annotated[int, Field(ge=0, le=200)]], Field(min_length=2, max_length=2)]
 
 
-def _ordered(rpm: list[int] | str) -> list[int] | str:
+def ordered_rpm(rpm: list[int] | str) -> list[int] | str:
     if isinstance(rpm, list) and rpm[0] > rpm[1]:
         raise ValueError("rpm must be [from, to] with from <= to")
     return rpm
@@ -73,7 +75,7 @@ class Interval(BaseModel):
 
     sec: int = Field(ge=1, le=3600, description="Length in whole seconds.")
     zone: int = Field(ge=1, le=7, description="Effort zone 1 (recovery) to 7 (all out).")
-    rpm: Annotated[Rpm | Literal["beat"], AfterValidator(_ordered)] = Field(
+    rpm: Annotated[Rpm | Literal["beat"], AfterValidator(ordered_rpm)] = Field(
         description='Cadence as [from, to], or "beat" to ride on the beat of the song under it.'
     )
     standing: bool
@@ -97,12 +99,41 @@ class Interval(BaseModel):
         return spec
 
 
-class Segment(BaseModel):
+# The section of the brief's ride shape a segment realises (ADR 0029 amendment of 2026-11-24,
+# #1493). ``SECTION_TAG_MAX`` is ``ride_shape.MAX_SECTIONS - 1`` (a test pins it). A comment, not a
+# docstring: a docstring becomes the schema's description, which the model reads.
+SECTION_TAG_MAX: Final = 11
+SectionTag = Annotated[
+    int | None,
+    Field(
+        ge=0,
+        le=SECTION_TAG_MAX,
+        description=(
+            "The index (from 0) of the brief's shape section this segment belongs to. Give it on "
+            "every segment when the brief has a shape; leave it out otherwise."
+        ),
+    ),
+]
+
+
+# Left out of every dump when absent, so a draft without section tags is stored, hashed and sent
+# to a model exactly as before. ``to_spec`` lists its fields and never carries it.
+class SectionTagged(BaseModel):
+    @model_serializer(mode="wrap")
+    def _omit_absent_section(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        out: dict[str, Any] = handler(self)
+        if out.get("section") is None:
+            out.pop("section", None)
+        return out
+
+
+class Segment(SectionTagged):
     model_config = STRICT
 
     name: SegmentName
     kind: Literal["warmup", "main", "recovery", "cooldown"]
     intervals: list[Interval] = Field(min_length=1, max_length=60)
+    section: SectionTag = None
 
 
 class WorkoutDraft(BaseModel):
@@ -183,46 +214,6 @@ class RunningDraft(BaseModel):
         }
 
 
-# The soundless schemas (ADR 0007 amendment of 2026-11-03, item 4; #527): ``Interval`` with the
-# cadence a range only, so the music cadence is neither offered nor accepted (the strict schema
-# refuses it). Comments, not docstrings: a docstring becomes the schema's description, which the
-# model reads, and a soundless model is never told about music.
-class SoundlessInterval(BaseModel):
-    model_config = STRICT
-
-    sec: int = Field(ge=1, le=3600, description="Length in whole seconds.")
-    zone: int = Field(ge=1, le=7, description="Effort zone 1 (recovery) to 7 (all out).")
-    rpm: Annotated[Rpm, AfterValidator(_ordered)] = Field(description="Cadence as [from, to].")
-    standing: bool
-    game: Game | None = None
-    ftp_test: Literal[3, 5, 20] | None = Field(
-        default=None, description="An FTP test of 3, 5 or 20 minutes; sec must match."
-    )
-    cue: Cue = ""
-
-
-class SoundlessSegment(BaseModel):
-    model_config = STRICT
-
-    name: SegmentName
-    kind: Literal["warmup", "main", "recovery", "cooldown"]
-    intervals: list[SoundlessInterval] = Field(min_length=1, max_length=60)
-
-
-# A soundless class as the model hands it back: exactly the fields of a ``WorkoutDraft``, the
-# cadence a range only, so ``workout_draft`` gives the ``WorkoutDraft`` that is checked and stored
-# (Save and the class page read it unchanged).
-class SoundlessDraft(BaseModel):
-    model_config = STRICT
-
-    name: WorkoutName
-    description: Description = ""
-    segments: list[SoundlessSegment] = Field(min_length=1, max_length=20)
-
-    def workout_draft(self) -> WorkoutDraft:
-        return WorkoutDraft.model_validate(self.model_dump(mode="python"))
-
-
 AnyDraft = WorkoutDraft | RunningDraft
 
 
@@ -259,21 +250,6 @@ class RunningDraftInput(BaseModel):
 class RunningReviseInput(RunningDraftInput):
     """``submit_draft`` of a running ``revise``: the draft and the optional note, as
     ``ReviseInput``."""
-
-    note: Note = Field(default="", description="One sentence on what you changed (optional).")
-
-
-class SoundlessDraftInput(BaseModel):
-    """``preview_draft`` and ``submit_draft`` of a class: the schema of its draft."""
-
-    model_config = STRICT
-
-    draft: SoundlessDraft
-
-
-class SoundlessReviseInput(SoundlessDraftInput):
-    """``submit_draft`` of a soundless ``revise``: the draft and the optional note, as
-    ``ReviseInput`` (shown to the user as plain text, never sent back to a model)."""
 
     note: Note = Field(default="", description="One sentence on what you changed (optional).")
 

@@ -11,14 +11,18 @@
   tool error (a correction round) up to ``ROUNDS`` times; after that the draft is accepted and
   the misses are recorded as Not as asked, so a stated value that cannot be kept never ends the
   job.
+- With ``follow_shape`` (the stages that design to the brief's ride shape, #1493) the gate also
+  runs ``agent.shape_check`` on the section tags of the draft's segments; a section still missed
+  after the corrections is recorded as Not as asked ``shape_off``.
 """
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Final
 
 from classbeat.agent.brief import Brief
 from classbeat.agent.explicit_check import MIN_GAME_SEC, Miss, check_explicit
+from classbeat.agent.shape_check import check_shape, recorded
 from classbeat.agent.stage import ToolError
 
 DEFAULT_CORRECTIONS: Final = 3  # ``Limits.max_corrections`` until the run binds its own
@@ -65,8 +69,15 @@ class ExplicitGate:
     (``Stage.bind_corrections``); the gate refuses while that count is below the limit, so a
     refusal here never takes the run past it. Unbound (a unit test), it counts its own refusals."""
 
-    def __init__(self, brief: Brief, max_corrections: int = DEFAULT_CORRECTIONS) -> None:
+    def __init__(
+        self,
+        brief: Brief,
+        max_corrections: int = DEFAULT_CORRECTIONS,
+        *,
+        follow_shape: bool = False,
+    ) -> None:
         self.brief = brief
+        self.follow_shape = follow_shape
         self.max_corrections = max_corrections
         self._own = 0
         self._used: Callable[[], int] = lambda: self._own
@@ -75,11 +86,16 @@ class ExplicitGate:
         self._used = used
         self.max_corrections = max_corrections
 
-    def review(self, spec: Mapping[str, Any]) -> tuple[Miss, ...]:
-        """No misses when the fitted ``spec`` keeps the stated values; a ``ToolError`` while a
-        correction is left; then the misses, to record as Not as asked."""
+    def review(
+        self, spec: Mapping[str, Any], tags: Sequence[int | None] | None = None
+    ) -> tuple[Miss, ...]:
+        """No misses when the fitted ``spec`` keeps the stated values (and, with ``follow_shape``
+        and the segments' section ``tags``, the brief's shape); a ``ToolError`` while a correction
+        is left; then the misses, to record as Not as asked."""
         misses = check_explicit(self.brief, spec)
+        if self.follow_shape and tags is not None:
+            misses += check_shape(self.brief, spec, tags)
         if misses and self._used() < self.max_corrections:
             self._own += 1
-            raise ToolError("invalid_draft", [m.sentence for m in misses])
-        return tuple(misses)
+            raise ToolError("invalid_draft", list(dict.fromkeys(m.sentence for m in misses)))
+        return tuple(recorded(m) for m in misses)

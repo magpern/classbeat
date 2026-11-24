@@ -21,6 +21,7 @@ from classbeat.design.revise_soundless import run_soundless
 from classbeat.jobs import Complete, JobFailure, JobRun, Outcome
 from classbeat.songs import composer_design, song_list
 from classbeat.songs.composer_common import (
+    Sketch,
     await_list,
     brief_of,
     dismissed_of,
@@ -42,7 +43,7 @@ async def run_change(
     given: DesignWithSongsInput,
     runtime: Runtime,
     spotify: OpenConnection,
-    sketch: Any,
+    sketch: Sketch,
     songs: SongConfig,
 ) -> Outcome:
     if given.request is None or given.request_message_id is None:
@@ -111,7 +112,7 @@ def carried_records(waiting: song_list.SongListRevision) -> dict[str, Any]:
 
 
 async def _reshape(
-    run: JobRun, given: DesignWithSongsInput, runtime: Runtime, sketch: Any
+    run: JobRun, given: DesignWithSongsInput, runtime: Runtime, sketch: Sketch
 ) -> Complete:
     """A change of shape: the ordinary sketch revise, the new sketch current (module docstring)."""
     base = given.base_revision_id

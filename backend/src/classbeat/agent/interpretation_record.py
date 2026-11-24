@@ -1,6 +1,6 @@
 """How a request was read: the ``provenance.interpretation`` items (ADR 0029 section 4; pure).
 
-An item is ``{path, origin, reason_code?, value, quote?}``:
+An item is ``{path, origin, reason_code?, value, quote?, found?}``:
 
 - ``origin``: ``explicit`` (the instructor stated it: "As you asked"), ``inferred`` or ``default``
   (the system chose: "Assumed"), or ``not_as_asked`` (the instructor asked and it was not done,
@@ -24,6 +24,7 @@ Section = Literal["as_asked", "not_as_asked", "assumed"]
 MAX_ITEMS: Final = 40
 MAX_VALUE_BYTES: Final = 300
 MAX_QUOTE: Final = 200
+MAX_FOUND: Final = 100
 # A path of the brief ("length_min", "games.0", "games.0.duration_sec", "music").
 PATH: Final = r"^[a-z][a-z_]{0,29}(\.[0-9]{1,2})?(\.[a-z_]{1,30})?$"
 
@@ -36,6 +37,9 @@ class InterpretationItem(BaseModel):
     reason_code: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{0,39}$")
     value: JsonValue = None
     quote: str | None = Field(default=None, min_length=1, max_length=MAX_QUOTE)
+    # What the draft has of a counted ride-shape section (``shape_off`` only, #1493); left out of
+    # every dump when absent, so every stored item is as before.
+    found: int | None = Field(default=None, ge=0, le=MAX_FOUND, exclude_if=lambda v: v is None)
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:

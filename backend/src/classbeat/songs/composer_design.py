@@ -32,6 +32,7 @@ from typing import Any, Final
 from pydantic import ValidationError
 
 from classbeat.agent import AgentConfig, Brief, JobStageHost, run_stage
+from classbeat.agent.interpretation_record import InterpretationItem
 from classbeat.agent.loop import StageOutcome
 from classbeat.agent.provider import ModelProvider
 from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
@@ -40,6 +41,7 @@ from classbeat.connections import OpenConnection
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import corrections, revision
 from classbeat.design.guidance import rule_set_for
+from classbeat.design.interpreted import shape_off_items
 from classbeat.design.music import MusicStep, load_music
 from classbeat.jobs import JobFailure, JobRun
 from classbeat.operations import attach_spotify_playlist
@@ -72,6 +74,9 @@ class Designed:
     step: MusicStep  # the songs' analysis; the caller closes it
     outcome: StageOutcome
     note: str
+    # The sections of the ride shape the design still misses after its corrections: Not as asked
+    # items (``shape.N``, ``shape_off``) the list carries to the approval (#1493).
+    unmet: tuple[InterpretationItem, ...] = ()
 
 
 async def songs_music(
@@ -141,7 +146,8 @@ async def design_preview(
         )
     except (ValidationError, ValueError):
         raise JobFailure("invalid_output") from None
-    return Designed(preview, step, outcome, revised.note)
+    missed = shape_off_items(brief, revised.result.unmet)
+    return Designed(preview, step, outcome, revised.note, tuple(missed))
 
 
 async def design_on(

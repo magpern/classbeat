@@ -93,6 +93,8 @@ RELEASED: dict[int, str] = {
     # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
     # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
     # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
+    # #1493: the design follows the shape of the ride (section tags, the ordered shape check).
+    31: "7c0410e79fb8da9853f3936a01d3c851e0dc1dfe53052bcb7f10d4392d768dbf",
 }
 
 SUITE = load_suite()
@@ -211,9 +213,13 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     # cases of #531 (four of its 30); #1035 (one song case:
     # section energy); #1040 (one: tempo adjacent); #1140 (one: the music taste's eras)
     songs_own = 8 + 7 + 1 + 1 + 1
-    # #1188: one revision, the composer's design on the songs with a sketch as its base
-    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10 + 2 + 2 + 10 + 3 + 1 + 1, songs_own)
-    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 70, 3 + 15 + 1 + 1 + 1)
+    # #1188: one revision, the composer's design on the songs with a sketch as its base;
+    # #1493: one soundless case, a class ridden in parts (suite/soundless)
+    assert (len(DESIGN_OWN), len(SONG_OWN)) == (
+        29 + 12 + 10 + 2 + 2 + 10 + 3 + 1 + 1 + 1,
+        songs_own,
+    )
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 70 + 1, 3 + 15 + 1 + 1 + 1)
     # #880: eight interpret cases, of their own kind (neither design nor song cases); #904: three
     # revise readings, #908: one (remove_games), #1023: one (a Change songs request), #1140: two
     # (the music taste: three eras, a long range split), #1185: four (pinned songs in English and
@@ -223,7 +229,9 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     assert set(SUITE.interpret_cases) == set(MANIFEST.cases_of("interpret", "design")) | {
         "interpret_playlist_injection"
     }  # the injection is judged in adversarial: every run
-    assert len(index) == 30 + 70 + 3 + 15 + 1 + 1 + 1 + 8 + 3 + 1 + 1 + 2 + 4 + 1 + 5  # #1485
+    assert (
+        len(index) == 30 + 70 + 3 + 15 + 1 + 1 + 1 + 8 + 3 + 1 + 1 + 2 + 4 + 1 + 5 + 1
+    )  # #1485, #1493 (a soundless ride in parts)
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)
@@ -238,7 +246,7 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
         "run_bike_words_30", "run_revise_easier",
     }  # fmt: skip
     assert {n for n, (cat, _) in index.items() if cat == "soundless"} == {
-        "soundless_45", "soundless_30_sprints", "soundless_revise_sprints",
+        "soundless_45", "soundless_30_sprints", "soundless_revise_sprints", "soundless_ride_shape",
     }  # fmt: skip
     soundless = {n for n, c in SUITE.design_cases.items() if c.soundless}
     assert soundless == {n for n, (cat, _) in index.items() if cat == "soundless"} | {
