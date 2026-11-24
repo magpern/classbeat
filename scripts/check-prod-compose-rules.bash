@@ -66,10 +66,23 @@ check_common() {
     || fail "soundless classes must be off by default" || return 1
   q '.services.worker.environment.CLASSBEAT_SOUNDLESS_ENABLED == "false"' \
     || fail "soundless classes must be off by default on the worker too" || return 1
-  # ADR 0038 section 2 (#1185): the composer flow waits for the owner's live check, so no service
-  # sets CLASSBEAT_COMPOSER_FLOW at all, not even to "false".
-  q '[.services[] | .environment // {} | has("CLASSBEAT_COMPOSER_FLOW")] | any | not' \
-    || fail "CLASSBEAT_COMPOSER_FLOW is not set in production (ADR 0038; the composer waits for the owner's live check)" || return 1
+  # Pre-production switches (roadmap Amendment 36, ADR 0038 section 2, #1498): the default render is
+  # off on web and the worker (the owner turns them on in .env, never the shipped default), the lags
+  # are unset and the worker's concurrency is 2 (worker only).
+  q '[.services.web, .services.worker | .environment.CLASSBEAT_SONG_PICKING] | all(. == "false")' \
+    || fail "song picking must be off by default on web and worker (the owner sets SONG_PICKING in .env)" || return 1
+  q '[.services.web, .services.worker | .environment.CLASSBEAT_COMPOSER_FLOW] | all(. == "false")' \
+    || fail "the composer flow must be off by default on web and worker (the owner sets COMPOSER_FLOW in .env)" || return 1
+  q '[.services.web, .services.worker | .environment.CLASSBEAT_MOWL_LISTING_LAG_SECONDS, .environment.CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS] | all(. == "")' \
+    || fail "the listing lags are unset by default on web and worker (the owner measures them)" || return 1
+  q '.services.worker.environment.CLASSBEAT_WORKER_CONCURRENCY == "2"' \
+    || fail "the worker's concurrency is 2 by default" || return 1
+  q '[.services | to_entries[] | select(.key != "worker") | .value.environment // {} | has("CLASSBEAT_WORKER_CONCURRENCY")] | any | not' \
+    || fail "CLASSBEAT_WORKER_CONCURRENCY belongs to the worker only" || return 1
+  q '[.services | to_entries[] | select(.key | IN("web","worker") | not) | .value.environment // {}
+      | has("CLASSBEAT_SONG_PICKING") or has("CLASSBEAT_COMPOSER_FLOW") or has("CLASSBEAT_MOWL_LISTING_LAG_SECONDS")
+        or has("CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS")] | any | not' \
+    || fail "the pre-production switches and lags belong to web and worker only" || return 1
   q '.services.web.environment.CLASSBEAT_MOWL_QR_ENABLED == "true"' \
     || fail "the MOWL QR sign-in must be on by default (ADR 0028)" || return 1
   q '.services.worker.environment | has("CLASSBEAT_MOWL_QR_ENABLED") | not' \
@@ -199,12 +212,13 @@ check_keys() {
       "CLASSBEAT_SMTP_TLS","CLASSBEAT_SMTP_USERNAME"];
     def spotdown: ["ALLOW_YTDLP_SOURCING","DATA_DIR","REDIS_URL","SERVE_UI","SERVICE_MODE","URL_ALLOWED_HOSTS"];
     def flags: ["CLASSBEAT_RUNNING_ENABLED","CLASSBEAT_SOUNDLESS_ENABLED","CLASSBEAT_SWEDEBEAT_ENABLED",
-      "CLASSBEAT_SWEDEBEAT_GATEWAY_URL","CLASSBEAT_SWEDEBEAT_STUDIO"];
+      "CLASSBEAT_SWEDEBEAT_GATEWAY_URL","CLASSBEAT_SWEDEBEAT_STUDIO","CLASSBEAT_SONG_PICKING",
+      "CLASSBEAT_COMPOSER_FLOW","CLASSBEAT_MOWL_LISTING_LAG_SECONDS","CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS"];
     def allowed_env: {
       "db": ["POSTGRES_DB","POSTGRES_PASSWORD_FILE"],
       "db-functions": [],
       "migrate": (app + ["CLASSBEAT_MIGRATIONS_DATABASE_URL"]),
-      "worker": (app + flags + ["CLASSBEAT_MODEL_PROVIDER"] + (if $sd then ["CLASSBEAT_SPOTDOWN_URL"] else [] end)),
+      "worker": (app + flags + ["CLASSBEAT_MODEL_PROVIDER","CLASSBEAT_WORKER_CONCURRENCY"] + (if $sd then ["CLASSBEAT_SPOTDOWN_URL"] else [] end)),
       "spotdown-api": (spotdown + ["SERVICE_KEY_FILE"]),
       "spotdown-worker": spotdown,
       "spotdown-redis": [],

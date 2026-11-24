@@ -8,11 +8,13 @@ export type OutputsLoad =
 
 /**
  * The class's outputs and their states, read again when the class's open job starts or ends (a
- * `produce_outputs` job changes them) and every few seconds while it is open. `replace` puts in the answer of an action.
+ * `produce_outputs` job changes them) and every few seconds while it is open. `replace` puts in the answer of an action; `retry` reads again.
  */
 export function useStudioOutputs(classId: string, enabled: boolean, open: boolean) {
   const [load, setLoad] = useState<{ key: string; value: OutputsLoad } | null>(null)
   const key = classId
+  const [attempt, setAttempt] = useState(0)
+  const retry = useCallback(() => setAttempt((n) => n + 1), [])
   useEffect(() => {
     if (!enabled) return
     const abort = new AbortController()
@@ -34,7 +36,7 @@ export function useStudioOutputs(classId: string, enabled: boolean, open: boolea
       abort.abort()
       if (timer !== undefined) window.clearInterval(timer)
     }
-  }, [classId, enabled, open, key])
+  }, [classId, enabled, open, key, attempt])
   const replace = useCallback((next: OutputStatus) => {
     setLoad((was) => {
       if (was === null || was.value.status !== 'done' || was.value.view === null) return was
@@ -45,5 +47,5 @@ export function useStudioOutputs(classId: string, enabled: boolean, open: boolea
     })
   }, [])
   const value: OutputsLoad = load?.key === key ? load.value : { status: 'loading' }
-  return { load: value, replace }
+  return { load: value, replace, retry }
 }
