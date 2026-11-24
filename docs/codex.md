@@ -68,11 +68,35 @@ green CI, only the Architect enqueues the PR with:
 `gh pr merge <n> --squash --match-head-commit <reviewed-sha>`.
 Never use --auto, --admin, approving reviews or ruleset changes to bypass the gate.
 
+## Codex Cloud
+
+A cloud task starts with an isolated checkout in `/workspace/classbeat`. Use that checkout
+for the task. Check `git status -sb` before writing, and use one issue branch per writer.
+Create another worktree only if the user explicitly requests one.
+
+Use Python 3.12 and Node 24. When the default home-directory caches are read-only, install
+the locked dependencies from the checkout with writable caches:
+
+```bash
+cd /workspace/classbeat
+export UV_CACHE_DIR=/tmp/classbeat-uv-cache
+export NPM_CONFIG_CACHE=/tmp/classbeat-npm-cache
+(cd backend && uv sync --locked)
+(cd frontend && npm ci)
+```
+
+Follow [the developer commands](developer-commands.md) for the area you change. Before
+running the database or browser stack checks, run `docker info` to check daemon access
+and `docker compose version` to check the Compose plugin. Use the repository's fakes.
+If the stack is unavailable, run the independent checks and identify in the PR which
+checks still need CI. The independent review rules above also apply to cloud tasks.
+
 ## First working session
 
 1. Read the shared rules, roadmap/status, open PRs and issues; inspect git worktree list.
    Resume the next unblocked issue, without re-planning completed milestones.
-2. Use `bash scripts/worktree.sh new <issue> <slug>` from the checkout, then change into
+2. In Codex Cloud, follow the [cloud checkout instructions](#codex-cloud). Locally, use
+   `bash scripts/worktree.sh new <issue> <slug>` from the checkout, then change into
    the printed worktree. Its branch, ports, database volume and secrets are isolated.
 3. Follow AGENTS.md's backend/frontend commands (full reference: developer-commands.md). Run lint, type checks and targeted
    tests for the change. Use its Compose/e2e instructions when required; CI runs the
