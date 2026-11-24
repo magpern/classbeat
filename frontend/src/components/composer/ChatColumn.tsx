@@ -54,6 +54,7 @@ export function ChatColumn({
   numbers,
   items,
   extras,
+  music = null,
   stored,
   send,
   blocked,
@@ -66,6 +67,8 @@ export function ChatColumn({
   numbers: ReadonlyMap<string, number>
   items: readonly InterpretationItem[] | null
   extras: ReadingExtras
+  /** The music question or the way on to the song search (`MusicSetup`), shown under the reading. */
+  music?: React.ReactNode
   /** The stored messages: the one that waits, and the newest if it was refused. */
   stored: { pending: PendingMessage | null; failed: PendingMessage | null }
   send: { run: (text: string) => Promise<boolean>; busy: boolean; error: string | null }
@@ -85,6 +88,7 @@ export function ChatColumn({
         <li className="m-0 flex flex-col">
           <ReadingCard items={items} extras={extras} onAnswer={send.run} disabled={send.busy || blocked !== null} />
         </li>
+        {music !== null ? <li className="m-0 flex flex-col">{music}</li> : null}
         {messages.map((m) => {
           if (m.role === 'user') {
             return (

@@ -30,6 +30,18 @@ export interface SavePending {
   jobId: string
 }
 
+/**
+ * The class answer's `music_decision` (ADR 0038 amendment of 2026-11-24, #1495): `undecided` while the
+ * instructor has not answered the music question; `choice` is what was chosen (`request`: the request
+ * itself settled it). `playlists` is how many playlists the song search will favour, never their ids.
+ * Null for a class with no such question (an older class), which reads as decided.
+ */
+export interface MusicDecision {
+  state: 'undecided' | 'decided'
+  choice: 'request' | 'pick' | 'playlists' | 'describe' | null
+  playlists: number
+}
+
 export interface ComposerState {
   fill: FillState | null
   savePending: SavePending | null
@@ -37,9 +49,24 @@ export interface ComposerState {
   phase2: 'failed' | 'differed' | null
   /** The class answer's `composer`: the interpret job was admitted with the flag on (#1188). */
   composer: boolean
+  musicDecision: MusicDecision | null
 }
 
-export const NO_COMPOSER_STATE: ComposerState = { fill: null, savePending: null, phase2: null, composer: false }
+export const NO_COMPOSER_STATE: ComposerState = { fill: null, savePending: null, phase2: null, composer: false, musicDecision: null }
+
+const CHOICES: readonly string[] = ['request', 'pick', 'playlists', 'describe']
+
+function musicDecisionOf(value: unknown): MusicDecision | null {
+  if (!isObject(value)) return null
+  const state = value.state
+  if (state !== 'undecided' && state !== 'decided') return null
+  const choice = optionalText(value, 'choice')
+  return {
+    state,
+    choice: choice !== null && CHOICES.includes(choice) ? (choice as MusicDecision['choice']) : null,
+    playlists: optionalCount(value, 'playlists') ?? 0,
+  }
+}
 
 function fillOf(value: unknown): FillState | null {
   if (!isObject(value)) return null
@@ -63,5 +90,6 @@ export function decodeComposerState(item: JsonObject): ComposerState {
     savePending: savePendingOf(item.save_pending),
     phase2: phase2 === 'failed' || phase2 === 'differed' ? phase2 : null,
     composer: item.composer === true,
+    musicDecision: musicDecisionOf(item.music_decision),
   }
 }

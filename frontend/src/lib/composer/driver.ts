@@ -1,12 +1,14 @@
 import type { SavePending } from '../../api/composerState'
 import type { PendingMessage } from '../../api/pendingMessages'
+import type { MusicGate } from './musicGate'
 
 // The web's one driver (ADR 0038 section 8). Pure: the next step from what the class says now.
 // When the class has no queued or running job it does the first of:
 //
 //   1. a sketch is current with no fill started for it: submit a pending message (a sketch revise,
 //      so a shape change made while the sketch job ran is applied before songs are chosen), else
-//      start the fill;
+//      start the fill, but only once the music is decided and Spotify is connected with the
+//      working-playlist consent (`music` is `ready`); until then nothing starts;
 //   2. `save_pending` is set: save exactly that revision and hash;
 //   3. a pending message exists: submit it (the server's state table decides what it becomes).
 //
@@ -25,6 +27,8 @@ export interface DriverInput {
   savePending: SavePending | null
   /** The class's stored messages; only a `pending` one counts. */
   messages: readonly PendingMessage[]
+  /** What the song search waits for (`musicGate`); only `ready` lets the fill start. */
+  music: MusicGate
 }
 
 export type DriverStep =
@@ -43,7 +47,8 @@ export function nextStep(input: DriverInput): DriverStep {
   if (input.running) return IDLE
   const message = pendingOf(input.messages)
   if (input.sketchCurrent && !input.fillStarted) {
-    return message !== null ? { kind: 'submit', messageId: message.messageId } : { kind: 'fill' }
+    if (message !== null) return { kind: 'submit', messageId: message.messageId }
+    return input.music === 'ready' ? { kind: 'fill' } : IDLE
   }
   if (input.savePending !== null) return { kind: 'save', target: input.savePending }
   if (message !== null) return { kind: 'submit', messageId: message.messageId }
