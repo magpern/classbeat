@@ -55,7 +55,10 @@ _NOT_STORED: Final = frozenset({"pinned_songs", "questions", "name"})
 
 
 def storable(reading: InterpretedRequest) -> dict[str, Any]:
-    dumped = reading.model_dump(mode="json", exclude_none=True, exclude=set(_NOT_STORED))
+    """The reading as a list's provenance keeps it; an empty ``shape`` (#1485) is left out, so a
+    reading of a request with no parts is stored as before."""
+    gone = _NOT_STORED if reading.shape else _NOT_STORED | {"shape"}
+    dumped = reading.model_dump(mode="json", exclude_none=True, exclude=set(gone))
     return _without_quotes(dumped)
 
 

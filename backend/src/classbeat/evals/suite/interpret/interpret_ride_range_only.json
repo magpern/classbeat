@@ -1,0 +1,25 @@
+{
+ "kind": "interpret",
+ "name": "interpret_ride_range_only",
+ "about": "A class-wide range with no parts is one efforts section with that range, never a single sprint count.",
+ "request": "A 45 minute class with 5-7 sprints",
+ "expect": {
+  "values": {
+   "length_min": 45
+  },
+  "absent": [
+   "climbs",
+   "sprints",
+   "races"
+  ],
+  "shape": [
+   {
+    "kind": "efforts",
+    "count": {
+     "min": 5,
+     "max": 7
+    }
+   }
+  ]
+ }
+}

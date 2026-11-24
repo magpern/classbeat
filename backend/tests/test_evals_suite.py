@@ -86,6 +86,11 @@ RELEASED: dict[int, str] = {
     # #1427: the Spotify crossfade is MOWL's 9.54 s (``crossfade_calc``), in the eval maps and
     # the song stage's total.
     29: "dfcb13a3858bedf66ad4440167b0298d23c6f11502139c09dcb45afb0684588a",
+    # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
+    30: "7ff5875c8f0b6e61f18fc15a809c6e871d99f51c4f1be3db0ebff9edcb6c3d57",
+    # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
+    # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
+    # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
 }
 
 SUITE = load_suite()
@@ -211,11 +216,12 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     # revise readings, #908: one (remove_games), #1023: one (a Change songs request), #1140: two
     # (the music taste: three eras, a long range split), #1185: four (pinned songs in English and
     # Swedish, attached music, questions), #1233: one (a new class's short name)
-    assert len(SUITE.interpret_cases) == 8 + 3 + 1 + 1 + 2 + 4 + 1
+    # #1485: five (a ride in parts, a range with no parts, Swedish parts, no parts, a revise)
+    assert len(SUITE.interpret_cases) == 8 + 3 + 1 + 1 + 2 + 4 + 1 + 5
     assert set(SUITE.interpret_cases) == set(MANIFEST.cases_of("interpret", "design")) | {
         "interpret_playlist_injection"
     }  # the injection is judged in adversarial: every run
-    assert len(index) == 30 + 70 + 3 + 15 + 1 + 1 + 1 + 8 + 3 + 1 + 1 + 2 + 4 + 1  # #1188, #1233
+    assert len(index) == 30 + 70 + 3 + 15 + 1 + 1 + 1 + 8 + 3 + 1 + 1 + 2 + 4 + 1 + 5  # #1485
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)

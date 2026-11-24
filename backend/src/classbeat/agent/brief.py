@@ -13,7 +13,10 @@ model-produced text can come back to a model through the brief.
 - ``music_taste`` (issue #1133): the request's eras, language, style words and "hits"
   (``classbeat.agent.music_taste``): years, an ISO code, a flag and words of the request itself.
 
-All three are left out of the serialized brief when empty, so every brief stored before them stays
+- ``shape`` (issue #1485, ``classbeat.agent.ride_shape``): the ordered sections of the ride when the
+  instructor described it in parts (a kind and closed modifiers each, never text). Cycling only.
+
+All four are left out of the serialized brief when empty, so every brief stored before them stays
 byte-identical (the evals, the size guard and every reader see what they saw).
 """
 
@@ -29,23 +32,24 @@ from pydantic import (
 )
 
 from classbeat.agent.music_taste import MusicTaste
+from classbeat.agent.ride_shape import MAX_SECTIONS, MAX_SHAPE_BYTES, ShapeSection, shape_bytes
 from classbeat.agent.schemas import STRICT, BriefText, Game, Style
 
 Sport = Literal["cycling", "running"]
 SPORTS: tuple[str, ...] = ("cycling", "running")
 # ADR 0018 section 4: the bike-only knobs of the brief. A running brief may not name them (not even
 # at their defaults), and its stored and sized form leaves them out. ``games`` joins them
-# (ADR 0029).
-CYCLING_ONLY_BRIEF: tuple[str, ...] = ("climbs", "sprints", "races", "ftp_test", "games")
+# (ADR 0029); so does ``shape`` (#1485).
+CYCLING_ONLY_BRIEF: tuple[str, ...] = ("climbs", "sprints", "races", "ftp_test", "games", "shape")
 
 MAX_GAMES = 6
 MAX_EXPLICIT = 20
 # The paths ``explicit`` may name: a brief field the instructor can state, or one of its games.
 EXPLICIT_PATH = (
-    r"^(sport|length_min|intensity|climbs|sprints|races|ftp_test|class_type|games\.[0-5])$"
+    r"^(sport|length_min|intensity|climbs|sprints|races|ftp_test|class_type|games\.[0-5]|shape)$"
 )
 ExplicitPath = Annotated[str, StringConstraints(pattern=EXPLICIT_PATH)]
-_CYCLING_ONLY_PATHS = ("climbs", "sprints", "races", "ftp_test", "games.")
+_CYCLING_ONLY_PATHS = ("climbs", "sprints", "races", "ftp_test", "games.", "shape")
 
 Position = Literal["start", "early", "middle", "late", "before_cooldown"]
 Relation = Literal["after", "replaces", "in"]
@@ -110,6 +114,15 @@ class Brief(BaseModel):
         default_factory=lambda: list[ExplicitPath](), max_length=MAX_EXPLICIT
     )
     music_taste: MusicTaste | None = None
+    shape: list[ShapeSection] = Field(
+        default_factory=lambda: list[ShapeSection](), max_length=MAX_SECTIONS
+    )
+
+    @model_validator(mode="after")
+    def _shape_fits_the_brief(self) -> Self:
+        if shape_bytes(self.shape) > MAX_SHAPE_BYTES:
+            raise ValueError("the shape is too large to store")
+        return self
 
     @model_validator(mode="after")
     def _running_has_no_bike_knobs(self) -> Self:
@@ -129,6 +142,8 @@ class Brief(BaseModel):
         for path in self.explicit:
             if path.startswith("games.") and int(path[6:]) >= len(self.games):
                 raise ValueError(f"explicit names {path}, which the brief does not have")
+            if path == "shape" and not self.shape:
+                raise ValueError("explicit names shape, which the brief does not have")
             if self.sport == "running" and path.startswith(_CYCLING_ONLY_PATHS):
                 raise ValueError(f"a running brief has no {path}")
         return self
@@ -137,14 +152,15 @@ class Brief(BaseModel):
     def _omit_absent_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         """An absent ``class_type`` is not written, so a stored or sized brief of today is
         byte-identical (the ``classes.brief`` size guard is unchanged). Nor is ``sport`` of a
-        cycling brief (ADR 0018: absent is cycling), nor an empty ``games`` or ``explicit``
-        (ADR 0029); a running brief is written with its sport and without the bike-only knobs,
-        so it validates again as written."""
+        cycling brief (ADR 0018: absent is cycling), nor an empty ``games``, ``explicit`` or
+        ``shape``
+        (ADR 0029, #1485); a running brief is written with its sport and without the bike-only
+        knobs, so it validates again as written."""
         out: dict[str, Any] = handler(self)
         for key in ("class_type", "music_taste"):
             if out.get(key) is None:
                 out.pop(key, None)
-        for key in ("games", "explicit"):
+        for key in ("games", "explicit", "shape"):
             if not out.get(key):
                 out.pop(key, None)
         if out.get("sport") == "running":

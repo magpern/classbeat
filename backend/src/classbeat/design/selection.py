@@ -25,12 +25,14 @@ class ClassTypeChoice:
 
 def resolve_class_type(brief: Brief) -> ClassTypeChoice:
     """The brief's own ``class_type``; else ``ftp_test`` set -> ``ftp_test``; ``sprints`` or
-    ``races`` > 0 or intensity ``hard`` -> ``interval``; otherwise ``plain``."""
+    ``races`` > 0, a shape with an ``efforts`` section (#1485) or intensity ``hard`` ->
+    ``interval``; otherwise ``plain``."""
     if brief.class_type is not None:
         return ClassTypeChoice(brief.class_type, "brief")
     if brief.ftp_test is not None:
         return ClassTypeChoice("ftp_test", "derived")
-    if brief.sprints > 0 or brief.races > 0 or brief.intensity == "hard":
+    efforts = any(s.kind == "efforts" for s in brief.shape)
+    if brief.sprints > 0 or brief.races > 0 or efforts or brief.intensity == "hard":
         return ClassTypeChoice("interval", "derived")
     return ClassTypeChoice("plain", "derived")
 

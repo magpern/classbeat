@@ -42,6 +42,7 @@ from mowl.workout import mmss
 
 from classbeat import crossfade_calc
 from classbeat.agent.brief import Brief
+from classbeat.agent.brief_input import brief_for_model
 from classbeat.agent.schemas import clean_text
 from classbeat.agent.section_energy import energy_of
 
@@ -84,19 +85,6 @@ class MusicData:
 def music_map(analysis_map: Mapping[str, Any]) -> dict[str, Any]:
     """The map to fit and summarise: a copy, in classbeat's crossfade."""
     return crossfade_calc.with_classbeat(copy.deepcopy(dict(analysis_map)))
-
-
-def brief_for_model(brief: Brief) -> dict[str, Any]:
-    return {
-        "length_min": brief.length_min,
-        "intensity": brief.intensity,
-        "climbs": brief.climbs,
-        "sprints": brief.sprints,
-        "races": brief.races,
-        "ftp_test": brief.ftp_test,
-        "style": brief.style,
-        "text": brief.text,
-    }
 
 
 def view_text(value: Any, limit: int = MAX_TITLE) -> str:

@@ -17,8 +17,9 @@ The song pick then searches per era and checks the chosen songs (``agent.taste_c
 from typing import Any, Final
 
 from classbeat.agent.interpretation_record import InterpretationItem, Origin, keep_quote
-from classbeat.agent.interpreted import InterpretedTaste, Stated
+from classbeat.agent.interpreted_taste import InterpretedTaste
 from classbeat.agent.music_taste import MusicTaste
+from classbeat.agent.stated import Stated
 
 TASTE_NEEDS_PICK: Final = "taste_needs_pick"
 
