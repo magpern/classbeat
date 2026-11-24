@@ -1,6 +1,6 @@
 name = "developer"
 description = "Implements one non-security issue in its assigned worktree."
-model = "gpt-6.1-sol"
+model = "gpt-6.2-sol"
 model_reasoning_effort = "high"
 developer_instructions = '''
 Read AGENTS.md in full, docs/codex.md, docs/developer-commands.md (the part for the area you touch), docs/roadmap.md, docs/status.md and the assigned issue and relevant ADRs before acting. Roadmap Amendment 10 maps Claude model tiers to Codex; all shared safety, review and merge rules still apply. Never expose secrets. Tests use fakes, never real accounts.

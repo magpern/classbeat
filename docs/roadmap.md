@@ -642,16 +642,19 @@ The owner requested Codex rules alongside Claude Code. For Codex development ses
 this amendment overrides Claude-specific model names and PR attribution in the development
 process and AGENTS.md; all other requirements remain in force.
 
+Routing updated 2026-11-24 for Codex development sessions.
+
 | Claude role/tier | Codex model | Reasoning effort |
 |---|---|---|
-| Opus Architect / Orchestrator | GPT-6 Astra (`gpt-6-astra`) | high |
-| Sonnet Developer or Reviewer | GPT-6.1 Sol (`gpt-6.1-sol`) | high |
-| Opus security-critical Developer or Reviewer | GPT-6 Astra (`gpt-6-astra`) | high |
-| Haiku Explorer | GPT-6 Luna (`gpt-6-luna`) | medium |
+| Opus Architect / Orchestrator | GPT-6.2 Astra (`gpt-6.2-astra`) | high |
+| Sonnet Developer or Reviewer | GPT-6.2 Sol (`gpt-6.2-sol`) | high |
+| Opus security-critical Developer or Reviewer | GPT-6.2 Astra (`gpt-6.2-astra`) | high |
+| Haiku Explorer (default) | GPT-6 Luna (`gpt-6-luna`) | medium |
+| Explorer inspecting screenshots or responsive layouts | GPT-6.1 Terra (`gpt-6.1-terra`) | medium |
 
 Risk classification, independent review, delta eligibility, escalation after repeated FAILs,
 CI, current-head SHA and merge rules are unchanged. Codex verdicts use the actual model name,
-for example `Agent review (GPT-6 Astra): PASS <head SHA>`, in a PR comment.
+for example `Agent review (GPT-6.2 Astra): PASS <head SHA>`, in a PR comment.
 Codex-authored PRs end with `🤖 Generated with [Codex](https://developers.openai.com/codex/)`;
 Claude-authored PRs keep their existing footer. No Co-Authored-By trailer in either case.
 Unavailable models are a capability blocker for that role: report it and continue independent

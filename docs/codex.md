@@ -8,7 +8,7 @@ touch. Roadmap Amendment 10 maps the Claude
 tiers to Codex; it changes development tooling only, not the application's model routing.
 The existing Claude setup stays available.
 
-The checked-in .codex/config.toml selects GPT-6 Astra with high reasoning for the
+The checked-in .codex/config.toml selects GPT-6.2 Astra with high reasoning for the
 Architect / Orchestrator and raises project_doc_max_bytes to 131072: AGENTS.md is over
 64 KB and must not be silently truncated (it was split on 2026-11-04 and is smaller now; the
 budget stays as a margin). Trust the checkout in Codex so its project
@@ -43,7 +43,12 @@ Do not enable application OpenAI routes as part of Codex setup.
 
 .codex/agents/ contains native standalone custom-agent TOML definitions:
 developer (Sol), security-developer (Astra), explorer (Luna), reviewer (Sol) and
-security-reviewer (Astra). The primary session is the Architect; use project config's
+security-reviewer (Astra). Use explorer (Luna) by default. For visual evidence, assign
+`visual-explorer` (Terra) the screen and viewports to inspect or a failing Playwright
+screenshot. It reports the observed state and artifact so the Developer can reproduce
+the mismatch. The Developer owns fixes and the Reviewer owns the verdict.
+
+The primary session is the Architect; use project config's
 Astra/high setting. Each role keeps the shared authority boundaries and risk rules.
 
 At startup verify that your client discovers these agents and can select their models.
@@ -58,7 +63,7 @@ head SHA, issue and repository evidence instead. If the interface can only fork 
 author's history, open a separate fresh Codex session for review. Never replace this
 with the author's own /review. Reviewers may inspect files and run targeted checks in
 a disposable worktree, but never fix the PR. They post a comment:
-`Agent review (GPT-6.1 Sol): PASS <full head SHA>` (or FAIL; Astra names itself GPT-6 Astra).
+`Agent review (GPT-6.2 Sol): PASS <full head SHA>` (or FAIL; Astra names itself GPT-6.2 Astra).
 Use the actual selected model. The same risk classifications, eligible delta reviews,
 mutation checks and second-FAIL escalation in AGENTS.md apply.
 

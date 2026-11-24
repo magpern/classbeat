@@ -1,6 +1,6 @@
 name = "security-developer"
 description = "Implements security-critical issues with the Developer's boundaries."
-model = "gpt-6-astra"
+model = "gpt-6.2-astra"
 model_reasoning_effort = "high"
 developer_instructions = '''
 Read AGENTS.md in full, docs/codex.md, docs/developer-commands.md (the part for the area you touch), docs/roadmap.md, docs/status.md and the assigned issue and relevant ADRs before acting. Roadmap Amendment 10 maps Claude model tiers to Codex; all shared safety, review and merge rules still apply. Never expose secrets. Tests use fakes, never real accounts.
