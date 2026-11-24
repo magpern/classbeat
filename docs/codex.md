@@ -92,7 +92,10 @@ export NPM_CONFIG_CACHE=/tmp/classbeat-npm-cache
 
 Follow [the developer commands](developer-commands.md) for the area you change. Before
 running the database or browser stack checks, run `docker info` to check daemon access
-and `docker compose version` to check the Compose plugin. Use the repository's fakes.
+and `docker compose version` to check the Compose plugin. Before starting Compose,
+run `bash scripts/worktree.sh init <issue>` from the checkout, replacing `<issue>` with
+the issue number. This prepares missing local environment and secret files for the
+existing checkout. Use the repository's fakes.
 If the stack is unavailable, run the independent checks and identify in the PR which
 checks still need CI. The independent review rules above also apply to cloud tasks.
 
@@ -109,8 +112,9 @@ checks still need CI. The independent review rules above also apply to cloud tas
 4. Create one PR closing the issue, with scope, each acceptance criterion and its test
    evidence. Use Conventional Commits and no Co-Authored-By trailer. Codex PRs end with:
    `🤖 Generated with [Codex](https://developers.openai.com/codex/)`.
-5. Wait for CI, obtain independent review, fix blocking findings and request the required
-   delta review. After merge, update durable status and clean up that issue's worktree.
+5. Follow the [draft handoff](../AGENTS.md#pr-loop). Once the PR is ready, wait for CI,
+   obtain independent review, fix blocking findings and request the required delta review.
+   After merge, update durable status. Remove a worktree only if the task created it.
 
 The shared safety envelope still requires specific owner authorization for deployment,
 DNS/TLS, paid services, provider dashboards, real-account writes/tests and contacting people.

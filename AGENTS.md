@@ -57,6 +57,11 @@ head after the Sonnet rounds, never an Opus Developer.
 
 ## PR loop
 
+When Developers work in parallel, they open draft PRs and report their local lint,
+type-check and targeted test results. CI skips the draft and deliberately fails its
+required gate. The Architect marks drafts ready one at a time in merge order. Once
+ready, wait for the required checks on the current head before recording a PASS.
+
 ```
 issue → Developer (+ Explorer) in its own worktree → PR → CI
       → fresh Reviewer → PASS → agent merges
@@ -256,9 +261,8 @@ when it's answered.
 For Cursor sessions, read [docs/cursor.md](docs/cursor.md) and use the explicit
 `cursor-*` roles in `.cursor/agents/`. Roadmap Amendment 11 authorizes Composer
 for routine implementation and Grok 4.7 High for security-critical implementation,
-coordination, and every review. Claude Code and Codex keep Opus for security-critical
-work. The shared
-worktree, CI, independent current-head review, merge and safety gates still apply.
+coordination, and every review. For security-critical work, Claude Code uses Opus and
+Codex follows the model mapping in roadmap Amendment 10. The shared worktree, CI, independent current-head review, merge and safety gates still apply.
 Verify the actual model used; a client substitution blocks that role. Claude Code
 and Codex keep their own profiles.
 
