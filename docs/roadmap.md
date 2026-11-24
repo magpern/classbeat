@@ -642,7 +642,10 @@ The owner requested Codex rules alongside Claude Code. For Codex development ses
 this amendment overrides Claude-specific model names and PR attribution in the development
 process and AGENTS.md; all other requirements remain in force.
 
-Routing updated 2026-11-24 for Codex development sessions.
+Routing updated 2026-11-24 for Codex development sessions. Claude Code starts from
+`CLAUDE.md`, which imports the shared `AGENTS.md`, and selects roles from `.claude/agents/`.
+In Claude sessions, visual evidence gathering falls under the existing Explorer role.
+The six profiles in `.codex/agents/` configure Codex sessions only.
 
 | Claude role/tier | Codex model | Reasoning effort |
 |---|---|---|
