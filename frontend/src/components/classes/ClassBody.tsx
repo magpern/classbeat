@@ -15,6 +15,7 @@ import { HandoffStatus } from './HandoffStatus'
 import { HistoryPanel } from './HistoryPanel'
 import { RequestBlock } from './RequestBlock'
 import { readingOf, requestOf } from '../../lib/requestReading'
+import { notAskedOf } from '../../lib/notAsked'
 import { Workspace, type WorkspaceTab } from './Workspace'
 import { CHANGE_SONGS_ID, ChangeSongs } from '../songs/ChangeSongs'
 import { useGoToPanel } from '../../hooks/useGoToPanel'
@@ -112,6 +113,7 @@ export function ClassBody({
         versionNumber={viewing?.number ?? null}
         versionLine={shown.status === 'ready' ? versionLineOf(t, shown.revision) : null}
         canChangeSongs={canChangeSongs}
+        notAsked={notAskedOf(shown.status === 'ready' && viewing?.isCurrent === true ? shown.revision.interpretation : null)}
         deleting={deleting}
         onGoTo={goTo}
         onDelete={() => {

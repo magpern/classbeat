@@ -6,6 +6,7 @@ import { publicDa } from './public.da'
 import { editorDa } from './editor.da'
 import { previewDa } from './preview.da'
 import { workspaceDa } from './workspace.da'
+import { shapeDa } from './shape.da'
 
 const da: Catalogue = {
   ...legalDa,
@@ -13,6 +14,7 @@ const da: Catalogue = {
   ...publicDa,
   ...examplesDa,
   ...workspaceDa,
+  ...shapeDa,
   ...editorDa,
   ...previewDa,
   'language.label': 'Sprog',

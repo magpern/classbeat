@@ -1,5 +1,7 @@
 import type { WorkspaceState } from '../../lib/composer/chip'
+import type { InterpretationItem } from '../../api/interpretationItems'
 import { useT } from '../../i18n/I18n'
+import { NotAskedBefore } from '../classes/NotAskedBefore'
 import { Button } from '../ui/button'
 import { SaveNotices } from '../classes/SavePanel'
 import type { SaveFlow } from '../classes/useSaveFlow'
@@ -18,12 +20,15 @@ export function SaveArea({
   chip,
   currentOrigin,
   differed,
+  notAsked = [],
 }: {
   flow: SaveFlow
   chip: WorkspaceState
   currentOrigin: string | null
   /** The class answer's `phase2.state === 'differed'`. */
   differed: boolean
+  /** The draft's Not as asked items, shown before Save. */
+  notAsked?: readonly InterpretationItem[]
 }) {
   const t = useT()
   const isDraft = currentOrigin !== null && currentOrigin !== 'sketch'
@@ -33,6 +38,7 @@ export function SaveArea({
   return (
     <section aria-label={t('cw.save.region')} data-testid="save-area" className="flex flex-col gap-3">
       {showDiffered ? <p className="m-0 text-[0.9375rem] text-muted">{t('cw.approve.differed')}</p> : null}
+      {showSave || showUpdate ? <NotAskedBefore items={notAsked} before="save" /> : null}
       {showSave || showUpdate ? (
         <div className="flex flex-wrap gap-2">
           {showSave ? (
