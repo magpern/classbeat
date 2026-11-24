@@ -1180,6 +1180,41 @@ still timed its tracks on MOWL's sections, and #1406 had narrowed item 3's "a ba
    revisions carry the record from then on. Save, the beat-one page and a copy of such a draft are
    unchanged; only the jobs that would design or fit on its timing refuse it.
 
+### Amendment (2026-11-24, #1481): spotdown in the production compose, as built (implements §10, hosting)
+
+Owner direction (2026-11-24): spotdown ships as the private image `ghcr.io/magpern/spotdown` with
+SemVer tags (its release workflow is magpern/spotdown#66). classbeat runs it as §10 says, with these
+choices (the Architect's reversible defaults):
+
+1. **An overlay, off by default.** The services are in `compose.prod.spotdown.yaml`, a release asset
+   next to `compose.prod.yaml`, which is unchanged. Without the overlay in `COMPOSE_FILE` the stack,
+   its settings and its secret files are exactly as before; with it, a class with music is analysed
+   (item 1 of "spotdown is the only analysis path"). No profile is used: the production check refuses
+   `profiles` (#517).
+2. **Three services, pinned.** `spotdown-api` (service mode, no UI), `spotdown-worker` (`rq worker`)
+   on `ghcr.io/magpern/spotdown:${SPOTDOWN_VERSION}` (required with the overlay, a release tag, never
+   `latest`) and `spotdown-redis` (a pinned `redis:X.Y.Z-alpine`). spotdown is versioned on its own;
+   classbeat's compose file runs whichever release `.env` pins.
+3. **Internal networks only, no published port.** `spotdown` joins classbeat's worker and
+   `spotdown-api`; `spotdown-internal` joins the three spotdown services. Web joins neither; Redis is
+   not reachable from classbeat. `CLASSBEAT_SPOTDOWN_URL` is `http://spotdown-api:8000` on the worker.
+4. **The key** is the secret file `spotdown_service_key` on classbeat's worker and on `spotdown-api`
+   (spotdown's `SERVICE_KEY_FILE`), never on web, `spotdown-worker` or Redis (`key_policy`).
+5. **ADR 0026 stage 1 ceilings** on each service (defaults: api 0.5 CPU / 1 GiB, worker 1 CPU / 4 GiB
+   above the analysis rlimit of 3 GiB, Redis 0.5 CPU / 256 MiB), no capability, no-new-privileges, an
+   explicit non-root user (`10001:10001`, which magpern/spotdown#66's image must use; Redis `999:1000`).
+6. **Data** on the named volumes `spotdown-data` and `spotdown-redis`, outside classbeat's backup
+   (runbook section 5d says what losing them costs).
+7. **The `url` source and YouTube sourcing are off** in this overlay (`URL_ALLOWED_HOSTS` empty,
+   `ALLOW_YTDLP_SOURCING=false`) because spotdown has no route out here. The owner chose YouTube on
+   (amendment "#1296 accepted"); giving spotdown an outbound network and that switch is a separate,
+   reviewed change, and until it lands a Spotify-catalogue pick ends `analysis_unavailable`.
+
+`scripts/check-prod-compose.sh` (`check-prod-compose-spotdown.bash`) checks all of it on every render,
+all of the overlay or none of it, with a self-test per rule; the install check also requires a filled
+`secrets/spotdown_service_key` when the overlay is in `COMPOSE_FILE`. Deploying and enabling are the
+owner's (runbook section 5d).
+
 ## Status
 
 Accepted. §12 took effect on 2026-11-20, when the owner accepted #1296.

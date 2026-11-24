@@ -19,7 +19,9 @@ proxy_ip_ok() {
 # Both variants. Each check returns 1 with its reason on the first violation.
 check_common() {
   q '.services | has("caddy") | not' || fail "no caddy: swag terminates TLS (#492)" || return 1
-  q '(.volumes // {} | keys) == ["db-data"]' || fail "the only named volume is db-data" || return 1
+  # spotdown's two volumes only with spotdown, exactly (check_spotdown_parts, #1481).
+  q '(.volumes // {} | keys) - ["spotdown-data","spotdown-redis"] == ["db-data"]' \
+    || fail "the only named volume is db-data (and spotdown's with compose.prod.spotdown.yaml)" || return 1
   q '.services | has("mailpit") | not' || fail "no mailpit in production" || return 1
   q '[.services | to_entries[] | select(.value.ports // [] | length > 0) | .key] | . == [] or . == ["web"]' \
     || fail "only web may publish a port (and only with the loopback overlay)" || return 1
@@ -27,8 +29,8 @@ check_common() {
   q '.networks.backend.internal == true' || fail "the backend network must be internal" || return 1
   q '[.services.db, .services.migrate, .services["db-functions"] | .networks | keys] | all(. == ["backend"])' \
     || fail "db, migrate and db-functions live on backend only" || return 1
-  q '(.services.worker.networks | keys) == ["backend","egress"]' \
-    || fail "worker joins backend and egress only" || return 1
+  q '(.services.worker.networks | keys) - ["spotdown"] == ["backend","egress"]' \
+    || fail "worker joins backend and egress only (and spotdown with compose.prod.spotdown.yaml)" || return 1
   q '[.services.db.image, .services["db-functions"].image] | all(. == "ghcr.io/magpern/classbeat-db:0.0.0")' \
     || fail "db and db-functions run the release's classbeat-db image (ADR 0020)" || return 1
   q '.services.web.read_only == true' || fail "web must be read-only" || return 1
@@ -117,6 +119,7 @@ check_common() {
   check_keys || return 1
   check_oauth || return 1
   check_secret_mounts || return 1
+  check_spotdown_parts || return 1
 }
 
 # Default deny (#517, after the #512 reviews B1 to B5 found one channel after another). Every key of
@@ -146,7 +149,13 @@ check_keys() {
       "web": ["cap_drop","command","cpus","depends_on","entrypoint","environment","expose","group_add","healthcheck",
              "image","logging","mem_limit","networks","ports","read_only","restart","secrets","security_opt","tmpfs"],
       "worker": ["cap_drop","command","cpus","depends_on","entrypoint","environment","group_add","image","logging",
-             "mem_limit","networks","restart","secrets","security_opt","stop_grace_period"]
+             "mem_limit","networks","restart","secrets","security_opt","stop_grace_period"],
+      "spotdown-api": ["cap_drop","command","cpus","depends_on","entrypoint","environment","group_add","healthcheck",
+             "image","logging","mem_limit","networks","restart","secrets","security_opt","user","volumes"],
+      "spotdown-worker": ["cap_drop","command","cpus","depends_on","entrypoint","environment","image","logging",
+             "mem_limit","networks","restart","security_opt","user","volumes"],
+      "spotdown-redis": ["cap_drop","command","cpus","entrypoint","healthcheck","image","logging","mem_limit","networks",
+             "restart","security_opt","user","volumes"]
     };
     # The keys of $o that are not in $allowed, named with their path; a non-mapping is refused whole.
     def extra($o; $allowed; $where):
@@ -183,17 +192,22 @@ check_keys() {
   # not set is refused. Its name is never printed: an env_file of a secret file gives a variable whose
   # name or value is the secret (a line without `=` becomes the name "" with the line as its value).
   bad="$(jq -r '
-    def app: ["CLASSBEAT_ADMIN_EMAILS","CLASSBEAT_CONNECTION_KEK_ID","CLASSBEAT_DATABASE_URL",
+    (.services | has("spotdown-api")) as $sd
+    | def app: ["CLASSBEAT_ADMIN_EMAILS","CLASSBEAT_CONNECTION_KEK_ID","CLASSBEAT_DATABASE_URL",
       "CLASSBEAT_DEEPSEEK_ENABLED","CLASSBEAT_ENVIRONMENT","CLASSBEAT_LOG_LEVEL","CLASSBEAT_MAIL_SUPPORT_ADDRESS","CLASSBEAT_PUBLIC_BASE_URL",
       "CLASSBEAT_SIGNUP_MODE","CLASSBEAT_SMTP_HOST","CLASSBEAT_SMTP_PORT","CLASSBEAT_SMTP_SENDER",
       "CLASSBEAT_SMTP_TLS","CLASSBEAT_SMTP_USERNAME"];
+    def spotdown: ["ALLOW_YTDLP_SOURCING","DATA_DIR","REDIS_URL","SERVE_UI","SERVICE_MODE","URL_ALLOWED_HOSTS"];
     def flags: ["CLASSBEAT_RUNNING_ENABLED","CLASSBEAT_SOUNDLESS_ENABLED","CLASSBEAT_SWEDEBEAT_ENABLED",
       "CLASSBEAT_SWEDEBEAT_GATEWAY_URL","CLASSBEAT_SWEDEBEAT_STUDIO"];
     def allowed_env: {
       "db": ["POSTGRES_DB","POSTGRES_PASSWORD_FILE"],
       "db-functions": [],
       "migrate": (app + ["CLASSBEAT_MIGRATIONS_DATABASE_URL"]),
-      "worker": (app + flags + ["CLASSBEAT_MODEL_PROVIDER"]),
+      "worker": (app + flags + ["CLASSBEAT_MODEL_PROVIDER"] + (if $sd then ["CLASSBEAT_SPOTDOWN_URL"] else [] end)),
+      "spotdown-api": (spotdown + ["SERVICE_KEY_FILE"]),
+      "spotdown-worker": spotdown,
+      "spotdown-redis": [],
       "web": (app + flags + ["CLASSBEAT_MAINT_DATABASE_URL","CLASSBEAT_OAUTH_GITHUB_CLIENT_ID",
         "CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID","CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID","CLASSBEAT_OAUTH_VISIBLE_PROVIDERS",
         "CLASSBEAT_LOCALES","CLASSBEAT_MOWL_QR_ENABLED","CLASSBEAT_SMTP_CA_FILE","CLASSBEAT_TRUSTED_PROXIES",
@@ -212,11 +226,11 @@ check_keys() {
   # the owner's external network; every other one is the project's own (not external, its default
   # name `<project>_<key>`), so a `name:` cannot join web or the worker to some other existing network.
   bad="$(jq -r '.name as $p | .networks // {} | to_entries[]
-      | if (.key | IN("backend","egress","proxy","web-out")) | not then "networks.\(.key)"
+      | if (.key | IN("backend","egress","proxy","web-out","spotdown","spotdown-internal")) | not then "networks.\(.key)"
         elif .key != "proxy" and ((.value.external // false) or .value.name != ($p + "_" + .key))
         then "networks.\(.key) (external or renamed)" else empty end' <<<"$J")" \
     || fail "the rendered networks could not be read" || return 1
-  [[ -z "$bad" ]] || fail "networks: only backend, egress, web-out (the project's own) and the external proxy: $(tr '\n' ' ' <<<"$bad")" \
+  [[ -z "$bad" ]] || fail "networks: only backend, egress, web-out, spotdown and spotdown-internal (the project's own) and the external proxy: $(tr '\n' ' ' <<<"$bad")" \
     || return 1
   # The values of the allowed keys that reach the host or another container.
   q '[.services[] | .logging.driver] | all(. == "json-file")' || fail "every service logs with json-file" || return 1
@@ -235,7 +249,9 @@ check_keys() {
   q 'def known: {
        "db": {}, "web": {"tmpfs": ["/tmp"]}, "worker": {"command": ["python","-m","classbeat.worker"]},
        "migrate": {"command": ["alembic","upgrade","head"]},
-       "db-functions": {"entrypoint": ["sh","/queue/db-functions.sh"], "tmpfs": ["/run/pgpass:mode=0700,uid=999,gid=999"]}
+       "db-functions": {"entrypoint": ["sh","/queue/db-functions.sh"], "tmpfs": ["/run/pgpass:mode=0700,uid=999,gid=999"]},
+       "spotdown-api": {}, "spotdown-redis": {},
+       "spotdown-worker": {"command": ["rq","worker","-u","redis://spotdown-redis:6379/0","spotdown"]}
      };
      [.services | to_entries[] | .key as $n | .value as $v | known[$n] as $k
        | ["command","entrypoint","tmpfs"][] | select(($v[.] // null) != ($k[.] // null))] | length == 0' \

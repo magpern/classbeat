@@ -100,7 +100,7 @@ fi
 env_misnamed_keys() {
   local file="$1" key name vars=" " f
   [[ -f "$file" ]] || return 0
-  for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml; do
+  for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml compose.prod.spotdown.yaml; do
     [[ -f "$f" ]] || continue
     vars+="$(grep -Eo '\$\{[A-Z][A-Z0-9_]*' "$f" | sed 's/^\${//' | sort -u | tr '\n' ' ')"
   done

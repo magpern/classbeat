@@ -3,8 +3,9 @@ never an environment value, a build argument or an image file; ``scripts/worktre
 creates it empty (no key: spotdown off). Static checks over the repository's own files, no
 network, no key.
 
-The production compose files do not mount it yet: spotdown joins the production stack with its own
-services in a later phase (ADR 0040 section 10, hosting), which adds the mount and its checks."""
+In production only the spotdown overlay ``compose.prod.spotdown.yaml`` (#1481, off unless the owner
+adds it to ``COMPOSE_FILE``) names it: on classbeat's worker and on spotdown's own API, which checks
+it; never on web. ``compose.prod.yaml`` alone does not name it (no spotdown, nothing changes)."""
 
 import re
 from pathlib import Path
@@ -38,8 +39,24 @@ def test_no_other_compose_file_names_it_and_no_environment_holds_it() -> None:
     for path in sorted(ROOT.glob("compose*.y*ml")):
         content = path.read_text("utf-8")
         assert "CLASSBEAT_SPOTDOWN_SERVICE_KEY" not in content, path  # never a variable
-        if path.name not in ("compose.yaml", "compose.e2e.yaml"):
+        if path.name not in ("compose.yaml", "compose.e2e.yaml", "compose.prod.spotdown.yaml"):
             assert NAME not in content, path.name
+
+
+def test_the_production_overlay_mounts_the_key_on_the_worker_and_spotdown_api_only() -> None:
+    overlay: dict[str, Any] = yaml.safe_load(text("compose.prod.spotdown.yaml"))
+    holders = sorted(n for n, s in overlay["services"].items() if NAME in mounts(s))
+    assert holders == ["spotdown-api", "worker"]  # never web, spotdown's worker or Redis
+    assert "web" not in overlay["services"]
+    assert overlay["secrets"][NAME] == {"file": f"./secrets/{NAME}"}
+    api_env = overlay["services"]["spotdown-api"]["environment"]
+    assert api_env["SERVICE_KEY_FILE"] == f"/run/secrets/{NAME}"  # spotdown reads the file
+    worker_env = overlay["services"]["worker"]["environment"]
+    assert worker_env == {"CLASSBEAT_SPOTDOWN_URL": "http://spotdown-api:8000"}
+    for name, service in overlay["services"].items():
+        env = service.get("environment") or {}
+        keys = [str(k).upper() for k in env if k != "SERVICE_KEY_FILE"]
+        assert not any("SERVICE_KEY" in k for k in keys), name  # a path, never the key itself
 
 
 def test_the_e2e_stack_mounts_its_public_test_key_on_the_worker_only() -> None:

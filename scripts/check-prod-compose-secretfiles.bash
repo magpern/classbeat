@@ -43,6 +43,12 @@ check_secrets_group() {   # check_secrets_group GID "$(getent group GID)" "$(get
 secret_names=()
 mapfile -t secret_names < <(jq -r '.secrets | keys[]' <<<"$shared")
 (( ${#secret_names[@]} >= 15 )) || { fail "compose.prod.yaml names fewer secrets than expected"; exit 1; }
+# On the server, also every secret the owner's real render names (an overlay in COMPOSE_FILE, such as
+# compose.prod.spotdown.yaml with spotdown_service_key, #1481); without that overlay nothing new is
+# required. Names only: compose renders a file secret as its path.
+if [[ -n "${real_json:-}" ]]; then
+  mapfile -t secret_names < <({ printf '%s\n' "${secret_names[@]}"; jq -r '.secrets // {} | keys[]' <<<"$real_json"; } | LC_ALL=C sort -u)
+fi
 server_secrets=""
 if [[ -n "${PROD_CHECK_SECRETS_DIR:-}" ]]; then
   server_secrets="$PROD_CHECK_SECRETS_DIR"
@@ -63,6 +69,9 @@ fi
 if [[ $mode == repo ]]; then   # the self-tests and the checkout-only checks (ADR 0020)
 # Self-test with throwaway empty files of this user's own group (no root needed to make them).
 st_dir="$tmp/secret-files"
+# The self-test covers every production secret, spotdown's overlay included (#1481).
+mapfile -t secret_names < <(jq -r '.secrets | keys[]' <<<"$spotdown")
+[[ " ${secret_names[*]} " == *" spotdown_service_key "* ]] || { fail "compose.prod.spotdown.yaml names no spotdown_service_key"; exit 1; }
 mygid="$(id -g)"
 reset_secret_files() {
   rm -rf "$st_dir"; mkdir "$st_dir"; chmod 2700 "$st_dir"
@@ -87,7 +96,8 @@ for m in 'chmod 644 "$st_dir/app_secret_key"' 'chmod 600 "$st_dir/connection_kek
   'rm "$st_dir/oauth_google_client_secret"' 'chmod 755 "$st_dir"' 'chmod 2701 "$st_dir"' 'chmod 2750 "$st_dir"' 'chmod 2710 "$st_dir"' 'chmod 2770 "$st_dir"' \
   'rm "$st_dir/turnstile_secret_key"; install -m 640 /dev/null "$tmp/outside"; ln -s "$tmp/outside" "$st_dir/turnstile_secret_key"' \
   'rm "$st_dir/deepseek_api_key"; mkdir -m 750 "$st_dir/deepseek_api_key"' \
-  'rm "$st_dir/swedebeat_gateway_key"' 'chmod 644 "$st_dir/swedebeat_gateway_key"'; do
+  'rm "$st_dir/swedebeat_gateway_key"' 'chmod 644 "$st_dir/swedebeat_gateway_key"' \
+  'rm "$st_dir/spotdown_service_key"' 'chmod 604 "$st_dir/spotdown_service_key"' 'chmod 660 "$st_dir/spotdown_service_key"'; do
   reset_secret_files
   eval "$m"
   if (check_secret_files "$st_dir" "$mygid" "${secret_names[@]}" 2>/dev/null); then

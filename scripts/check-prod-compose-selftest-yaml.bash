@@ -231,11 +231,11 @@ expect_text_refused 'services:
     extends:
       file: other.yaml
       service: web'
-# The same, written into each real file (copies): none of the three may carry one.
+# The same, written into each real file (copies): none of the four may carry one.
 mkdir "$tmp/textfiles"
-for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml; do
+for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml compose.prod.spotdown.yaml; do
   for key in 'env_file: ./secrets/app_secret_key' 'label_file: ./secrets/app_secret_key' 'profiles: [ops]'; do
-    cp "$tmp/compose.prod.yaml" "$tmp/compose.prod.loopback.yaml" "$tmp/compose.prod.lan.yaml" "$tmp/textfiles/"
+    cp "$tmp/compose.prod.yaml" "$tmp/compose.prod.loopback.yaml" "$tmp/compose.prod.lan.yaml" "$tmp/compose.prod.spotdown.yaml" "$tmp/textfiles/"
     sed -i -E "0,/^services:/s||services:\n  web:\n    $key|" "$tmp/textfiles/$f"
     if (check_prod_file_text "$tmp/textfiles" 2>/dev/null); then
       echo "check-prod-compose: self-test: accepted $f with '$key'" >&2; exit 1

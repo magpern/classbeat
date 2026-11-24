@@ -25,7 +25,7 @@ bad()  { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
 "$root/scripts/release-assets.sh" build "$work/assets"
 ( cd "$work/assets" && sha256sum -c --quiet SHA256SUMS ) || bad "SHA256SUMS does not verify"
 # The asset list is exactly what the runbook downloads.
-want="SHA256SUMS backup.sh check-prod-compose-owner.bash check-prod-compose-probe.bash check-prod-compose-rollback.bash check-prod-compose-rules.bash check-prod-compose-runbook.bash check-prod-compose-secretfiles.bash check-prod-compose-secrets.bash check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-setup.bash check-prod-compose-site-selftest.bash check-prod-compose-site.bash check-prod-compose-turnstile.bash check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml install-swag-logrotate.sh prod.env.example restore.sh swag-classbeat-logrotate.conf swag-classbeat.subdomain.conf validate-backup.sh"
+want="SHA256SUMS backup.sh check-prod-compose-owner.bash check-prod-compose-probe.bash check-prod-compose-rollback.bash check-prod-compose-rules.bash check-prod-compose-runbook.bash check-prod-compose-secretfiles.bash check-prod-compose-secrets.bash check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-setup.bash check-prod-compose-site-selftest.bash check-prod-compose-site.bash check-prod-compose-spotdown.bash check-prod-compose-turnstile.bash check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.spotdown.yaml compose.prod.yaml install-swag-logrotate.sh prod.env.example restore.sh swag-classbeat-logrotate.conf swag-classbeat.subdomain.conf validate-backup.sh"
 # find, not a glob: a glob (`*`) would not list a dotfile, so a hidden asset (a .env) could never fail this.
 list_dir() { find "$work/assets" -mindepth 1 -maxdepth 1 -printf '%f\n'; }
 got="$(list_dir | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
@@ -258,6 +258,25 @@ if (( can_gid )); then
   expect "Turnstile off, no keys" 0 '^install check'
   mksecrets; cp "$work/env.ts" "$install/.env"; echo 'TURNSTILE_ENABLED=true' >> "$install/.env"
   expect "Turnstile on explicitly, both keys present" 0 '^install check'
+  # 2d. spotdown (#1481): off unless COMPOSE_FILE names its overlay. The good installs above have no
+  # secrets/spotdown_service_key at all; with the overlay the key file must exist, be filled and have
+  # the group and mode of every secret, and SPOTDOWN_VERSION must be a release tag.
+  mksecrets; cp "$work/env.good" "$install/.env"
+  [ ! -e "$install/secrets/spotdown_service_key" ] || bad "the install fixture already holds a spotdown key"
+  printf 'COMPOSE_FILE=compose.prod.yaml:compose.prod.spotdown.yaml\n' >> "$install/.env"
+  expect "spotdown overlay without SPOTDOWN_VERSION" 1 'docker compose config fails with your .env'
+  echo 'SPOTDOWN_VERSION=0.4.0' >> "$install/.env"
+  expect "spotdown overlay without the key file" 1 'secrets/spotdown_service_key is missing'
+  install -m 640 /dev/null "$install/secrets/spotdown_service_key"; as_root chgrp "$gid" "$install/secrets/spotdown_service_key"
+  expect "spotdown overlay with an empty key file" 1 'spotdown_service_key is missing or empty.*section 5d'
+  printf '%s-spotdown_service_key' "$canary" > "$install/secrets/spotdown_service_key"
+  expect "good install with spotdown" 0 '^install check'
+  chmod 644 "$install/secrets/spotdown_service_key"
+  expect "spotdown key of mode 644" 1 'chmod 640 secrets/spotdown_service_key'
+  chmod 640 "$install/secrets/spotdown_service_key"
+  sed -i 's/^SPOTDOWN_VERSION=.*/SPOTDOWN_VERSION=latest/' "$install/.env"
+  expect "spotdown overlay on latest" 1 'never latest'
+  cp "$work/env.good" "$install/.env"; mksecrets
   cp "$work/env.ts" "$install/.env"
   mksecrets
 else

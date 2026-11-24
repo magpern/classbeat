@@ -15,7 +15,7 @@ env_file="${PROD_CHECK_ENV_FILE:-$root/.env}"
 # Every variable the dummies below replace, as the owner had it: --probe runs compose with these.
 dummy_names=(CLASSBEAT_VERSION CLASSBEAT_DOMAIN PROXY_IP SMTP_HOST SMTP_SENDER SMTP_CA_FILE COMPOSE_PROJECT_NAME
   COMPOSE_FILE PROXY_NETWORK WEB_HOST_PORT WEB_LAN_ADDRESS OAUTH_GOOGLE_CLIENT_ID OAUTH_GITHUB_CLIENT_ID OAUTH_MICROSOFT_CLIENT_ID
-  OAUTH_VISIBLE_PROVIDERS)
+  OAUTH_VISIBLE_PROVIDERS SPOTDOWN_VERSION)
 declare -A real_set=() real_val=()
 for n in "${dummy_names[@]}"; do
   if [[ -v "$n" ]]; then real_set[$n]=1; real_val[$n]="${!n}"; fi
@@ -34,19 +34,19 @@ if [[ "$mode" == install ]]; then
   # secret, a JSON key, base64) would be printed. A fixed sentence instead; the owner can run
   # `docker compose config -q` by hand to see Compose's message on their own terminal.
   real_json="$(docker compose config --format json 2>/dev/null)" \
-    || { echo "check-prod-compose: docker compose config fails with your .env: a required variable is unset (CLASSBEAT_VERSION, CLASSBEAT_DOMAIN, PROXY_IP, SMTP_HOST, SMTP_SENDER) or a file in COMPOSE_FILE, or an env_file it names, does not parse. Compose's message is not printed (it can quote a line of a secret file): run \`docker compose config -q\` yourself to read it" >&2; exit 1; }
+    || { echo "check-prod-compose: docker compose config fails with your .env: a required variable is unset (CLASSBEAT_VERSION, CLASSBEAT_DOMAIN, PROXY_IP, SMTP_HOST, SMTP_SENDER; SPOTDOWN_VERSION with compose.prod.spotdown.yaml) or a file in COMPOSE_FILE, or an env_file it names, does not parse. Compose's message is not printed (it can quote a line of a secret file): run \`docker compose config -q\` yourself to read it" >&2; exit 1; }
   # The same with every profile, for the allow-list (check_real, #610).
   real_all_json="$(docker compose --profile '*' config --format json 2>/dev/null)" \
     || { echo "check-prod-compose: docker compose --profile '*' config fails with your .env although the plain render passes: a service behind a profile needs a variable or file the others do not (run \`docker compose --profile '*' config -q\` yourself to read Compose's message; it is not printed here)" >&2; exit 1; }
 fi
 
 # Copies next to dummy secret files, so the checkout's own secrets/ is never read.
-cp compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml "$tmp/"
+cp compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml compose.prod.spotdown.yaml "$tmp/"
 mkdir "$tmp/secrets"
 oauth_providers=(google github microsoft)
 for n in postgres_password database_owner_password database_password database_maint_password \
   app_secret_key connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key \
-  swedebeat_gateway_key turnstile_secret_key; do
+  swedebeat_gateway_key turnstile_secret_key spotdown_service_key; do
   # One line without `=` (a dummy, never a real secret): an env_file of it, however spelled, gives
   # the variable "" in the render, which check_keys refuses (#610); an empty file would add nothing.
   printf 'dummy-secret-%s' "$n" > "$tmp/secrets/$n"
@@ -64,6 +64,10 @@ export SMTP_HOST=smtp.example.test SMTP_SENDER=noreply@example.test
 export SMTP_CA_FILE=/run/smtp-ca/bridge.pem
 export COMPOSE_PROJECT_NAME=classbeat-prod-check
 unset COMPOSE_FILE PROXY_NETWORK WEB_HOST_PORT
+# spotdown's overlay (#1481): a dummy release tag; its ceilings are the files' defaults, whatever the
+# shell exports.
+export SPOTDOWN_VERSION=0.0.0
+unset SPOTDOWN_API_CPUS SPOTDOWN_API_MEMORY SPOTDOWN_WORKER_CPUS SPOTDOWN_WORKER_MEMORY
 lan_ip=192.168.1.20   # the dummy WEB_LAN_ADDRESS (a private address, not swag's)
 export WEB_LAN_ADDRESS="$lan_ip"
 dir="$native/${tmp##*/}"
@@ -88,4 +92,7 @@ export OAUTH_MICROSOFT_CLIENT_ID=check-microsoft-client-id OAUTH_VISIBLE_PROVIDE
 shared="$(render -f "$dir/compose.prod.yaml")"
 loopback="$(render -f "$dir/compose.prod.yaml" -f "$dir/compose.prod.loopback.yaml")"
 lan="$(render -f "$dir/compose.prod.yaml" -f "$dir/compose.prod.lan.yaml")"
+# compose.prod.yaml with spotdown (#1481; ADR 0040 section 10), checked like the shared variant plus
+# spotdown's own rules (check_spotdown in check-prod-compose-rules.bash).
+spotdown="$(render -f "$dir/compose.prod.yaml" -f "$dir/compose.prod.spotdown.yaml")"
 

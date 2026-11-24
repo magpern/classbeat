@@ -3,8 +3,9 @@
 # No secret is ever read, nothing contacted but the local Docker daemon (and its registry for the
 # nginx image).
 #   scripts/check-prod-compose.sh        (needs docker, jq; run from anywhere)
-# 1. `docker compose config` accepts compose.prod.yaml alone (swag on a shared Docker network) and
-#    with compose.prod.loopback.yaml (a proxy on the host, web on 127.0.0.1);
+# 1. `docker compose config` accepts compose.prod.yaml alone (swag on a shared Docker network),
+#    with compose.prod.loopback.yaml (a proxy on the host, web on 127.0.0.1) and with
+#    compose.prod.spotdown.yaml (spotdown, off unless COMPOSE_FILE names it; #1481);
 # 2. the invariants of the production stack hold for both (with the OAuth settings of #507: the
 #    client ids only from their variables, the client secrets as files on web only, never a value
 #    in the rendered files; #511: every service that mounts a secret has group 10010 and a non-root
@@ -96,8 +97,9 @@ else
   root="$here"; layout=install
 fi
 [[ "$mode" != auto ]] || { [[ "$layout" == install ]] && mode=install || mode=repo; }
-[[ -f "$root/compose.prod.yaml" && -f "$root/compose.prod.loopback.yaml" && -f "$root/compose.prod.lan.yaml" ]] \
-  || { echo "check-prod-compose: compose.prod.yaml, compose.prod.loopback.yaml and compose.prod.lan.yaml must be next to this script" >&2; exit 1; }
+[[ -f "$root/compose.prod.yaml" && -f "$root/compose.prod.loopback.yaml" && -f "$root/compose.prod.lan.yaml" \
+  && -f "$root/compose.prod.spotdown.yaml" ]] \
+  || { echo "check-prod-compose: compose.prod.yaml, compose.prod.loopback.yaml, compose.prod.lan.yaml and compose.prod.spotdown.yaml must be next to this script" >&2; exit 1; }
 cd "$root"
 
 # --- The parts (#763) -------------------------------------------------------------------------------
@@ -105,7 +107,7 @@ cd "$root"
 # sourced into this shell, in the order the checks always ran, and holds one responsibility (its first
 # lines say which). They sit beside this script: a checkout's scripts/ and the install folder alike
 # (release-assets.sh ships them as assets), so the script alone, without them, is refused here.
-parts=(rollback setup rules secrets selftest-compose selftest-yaml owner secretfiles turnstile runbook
+parts=(rollback setup rules spotdown secrets selftest-compose selftest-yaml owner secretfiles turnstile runbook
   site site-selftest probe)
 for p in "${parts[@]}"; do
   [[ -f "$here/check-prod-compose-$p.bash" ]] \
@@ -119,6 +121,8 @@ source "$here/check-prod-compose-rollback.bash"
 source "$here/check-prod-compose-setup.bash"
 # shellcheck source=check-prod-compose-rules.bash
 source "$here/check-prod-compose-rules.bash"
+# shellcheck source=check-prod-compose-spotdown.bash
+source "$here/check-prod-compose-spotdown.bash"
 # shellcheck source=check-prod-compose-secrets.bash
 source "$here/check-prod-compose-secrets.bash"
 
@@ -135,6 +139,9 @@ source "$here/check-prod-compose-owner.bash"
 source "$here/check-prod-compose-secretfiles.bash"
 # shellcheck source=check-prod-compose-turnstile.bash
 source "$here/check-prod-compose-turnstile.bash"
+if [[ $mode == install ]]; then   # spotdown's key, when COMPOSE_FILE names its overlay (#1481)
+  check_spotdown_key "$real_json" "$server_secrets" || exit 1
+fi
 # shellcheck source=check-prod-compose-runbook.bash
 source "$here/check-prod-compose-runbook.bash"
 # shellcheck source=check-prod-compose-site.bash
@@ -157,4 +164,4 @@ if [[ $mode == install ]]; then
   echo "install check (compose files with dummies, the real render on the allow-list, .env, secrets/): ok; $owner_note"
   exit 0
 fi
-echo "compose.prod.yaml (shared network, loopback and LAN, default-deny keys, variables and networks, OAuth secrets on web only, secret files by group 10010), runbook network, swag site config and self-tests: ok; $owner_note"
+echo "compose.prod.yaml (shared network, loopback, LAN and spotdown, default-deny keys, variables and networks, OAuth secrets on web only, secret files by group 10010), runbook network, swag site config and self-tests: ok; $owner_note"
