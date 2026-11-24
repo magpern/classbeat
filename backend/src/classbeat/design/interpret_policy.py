@@ -27,7 +27,7 @@ substring of the request. Nothing a model wrote as text reaches the brief.
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any, Final
 
 from classbeat.agent.brief import Brief, BriefGame
@@ -70,7 +70,14 @@ class Offer:
         with the connection, and the sketch needs none of them. Unchanged otherwise."""
         if not composer:
             return self
-        return replace(self, spotify=True, pick_ready=self.song_picking)
+        return Offer(
+            self.sports,
+            self.gates,
+            self.options,
+            pick_ready=self.song_picking,
+            spotify=True,
+            song_picking=self.song_picking,
+        )
 
 
 @dataclass(frozen=True)
