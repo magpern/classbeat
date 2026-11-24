@@ -1,0 +1,55 @@
+{
+ "kind": "interpret",
+ "name": "interpret_ride_shape",
+ "about": "A ride described in parts keeps its order, ranges and modifiers; no class-wide counts are derived from it.",
+ "request": "A 60 min class that starts off slow and builds up the momentum. A hilly section, that turns into a tough intervall section, thinking 5-7 short heavy bursts, back on flats, bulding up for a new hilly section, finishing of with a few bursts of power.",
+ "expect": {
+  "values": {
+   "length_min": 60
+  },
+  "origins": {
+   "length_min": "explicit"
+  },
+  "not_values": {
+   "intensity": "hard"
+  },
+  "absent": [
+   "climbs",
+   "sprints",
+   "races"
+  ],
+  "shape": [
+   {
+    "kind": "warmup",
+    "trend": "rising"
+   },
+   {
+    "kind": "climb"
+   },
+   {
+    "kind": "efforts",
+    "effort": "hard",
+    "count": {
+     "min": 5,
+     "max": 7
+    },
+    "length": "short",
+    "load": "heavy"
+   },
+   {
+    "kind": "flat"
+   },
+   {
+    "kind": "climb",
+    "trend": "rising"
+   },
+   {
+    "kind": "efforts",
+    "count": {
+     "min": 2,
+     "max": 4
+    }
+   }
+  ]
+ }
+}

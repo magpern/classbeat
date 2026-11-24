@@ -2361,6 +2361,10 @@ export const en = {
     'Choose at least one output.',
   'studio.out.noneEnabled':
     'No output is available right now. Try again later.',
+  'studio.out.loadFailed':
+    'The outputs could not be loaded. Try again.',
+  'studio.out.retry':
+    'Try again',
   'studio.sync.working_copy':
     'Spotify working playlist',
   'studio.sync.final':
@@ -2457,8 +2461,6 @@ export const en = {
     'The earlier playlist may stay in your Spotify account; you can remove it there. Approve the outputs again to create the new one.',
   'studio.os.supersededHint.mowl':
     'The earlier workout may stay in MOWL. Approve the outputs again to create the new one.',
-  'studio.os.loadFailed':
-    'The status of the outputs could not be loaded. Reload the page.',
   'studio.os.state.pending':
     'Waiting to start.',
   'studio.os.state.running':

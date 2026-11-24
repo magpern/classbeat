@@ -1,0 +1,72 @@
+{
+ "kind": "interpret",
+ "name": "interpret_revise_shape",
+ "about": "A revise of one part reports the whole shape after the change, in order; the other sections stay as they are.",
+ "request": "Make it seven bursts.",
+ "current": {
+  "length_min": 60,
+  "intensity": "moderate",
+  "shape": [
+   {
+    "kind": "warmup",
+    "trend": "rising"
+   },
+   {
+    "kind": "climb"
+   },
+   {
+    "kind": "efforts",
+    "effort": "hard",
+    "count": {
+     "min": 5,
+     "max": 7
+    },
+    "length": "short",
+    "load": "heavy"
+   },
+   {
+    "kind": "cooldown"
+   }
+  ],
+  "explicit": [
+   "length_min",
+   "shape"
+  ]
+ },
+ "expect": {
+  "absent": [
+   "length_min",
+   "intensity",
+   "climbs",
+   "sprints",
+   "races",
+   "ftp_test",
+   "class_type",
+   "sport",
+   "music"
+  ],
+  "shape": [
+   {
+    "kind": "warmup",
+    "trend": "rising"
+   },
+   {
+    "kind": "climb"
+   },
+   {
+    "kind": "efforts",
+    "effort": "hard",
+    "count": {
+     "min": 7,
+     "max": 7
+    },
+    "length": "short",
+    "load": "heavy"
+   },
+   {
+    "kind": "cooldown"
+   }
+  ],
+  "games": []
+ }
+}

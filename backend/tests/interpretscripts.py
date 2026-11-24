@@ -26,6 +26,11 @@ def submission(case: InterpretCase) -> dict[str, Any]:
         games.append(item)
     if games:
         out["games"] = games
+    if e.shape:  # the ride's sections, as a good model reports them (#1485)
+        out["shape"] = [
+            {**section.model_dump(mode="json", exclude_none=True), "origin": "explicit"}
+            for section in e.shape
+        ]
     if e.remove_games:
         out["remove_games"] = True
     if e.taste is not None:

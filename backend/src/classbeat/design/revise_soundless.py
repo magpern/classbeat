@@ -85,7 +85,7 @@ async def run_soundless(
         revised.result.unmet,
         given.plan_gates,
         extra=stated.items,
-        stated=bool(brief.explicit),
+        stated=bool(brief.explicit or brief.shape),
     )
     if sketch:
         draft = sketched(draft)

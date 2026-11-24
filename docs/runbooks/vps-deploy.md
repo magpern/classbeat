@@ -281,7 +281,7 @@ Prod refuses anything but `https://`. **With `SMTP_CA_FILE` set, `compose.bridge
 `COMPOSE_FILE`**, or `up` and every restart recreate `web` with the variable but no mounted file,
 and `web` refuses to start.
 
-Song picking stays off (its default) until the owner runs [m4-live-activation.md](m4-live-activation.md).
+Song picking and the composer stay off (their defaults) until the owner runs [m4-live-activation.md](m4-live-activation.md) or the pre-production steps of section 5e.
 
 ### 5a. Sign in with Google (optional)
 
@@ -494,6 +494,29 @@ it reads.
 **Turn it off:** take `compose.prod.spotdown.yaml` out of `COMPOSE_FILE` and run `docker compose up -d
 --wait --remove-orphans` (the worker is recreated without the key and the URL; the volumes stay until
 `docker volume rm`).
+
+### 5e. Pre-production testing (optional, off by default; roadmap Amendment 36, ADR 0038)
+
+To make one class end to end on a pre-production server (never as a production default), the owner
+sets these in `.env`; `compose.prod.yaml` passes each to the services that read it (web and worker,
+except `WORKER_CONCURRENCY`: worker only), and `scripts/check-prod-compose.sh` still requires the
+shipped default to be off:
+
+| `.env` | Default | What it does |
+|---|---|---|
+| `SONG_PICKING=true` | `false` | the environment's song-picking switch; the stored `song_picking` flag must be `on` (admin area) or the account's plan or grant must have the `song_picking` feature |
+| `COMPOSER_FLOW=true` | `false` | the composer flow's environment switch; the stored admin flag `composer_flow` must also be `on` |
+| `MOWL_LISTING_LAG_SECONDS`, `SPOTIFY_LISTING_LAG_SECONDS` | empty (unset) | the owner-measured listing lags, seconds, above 0 and at most 86400; unset, an absent playlist or workout proves nothing |
+| `WORKER_CONCURRENCY` | `2` | runs at once, 1 to 16; with `WORKER_MEMORY` it bounds the render children (section 5c) |
+
+Also needed for one class with music: spotdown (section 5d; #1481, #1489), and a Spotify app with the
+callback URL for `CLASSBEAT_DOMAIN` ([m4-live-activation.md](m4-live-activation.md) step 1; the base URL
+must not be `localhost`). Then `docker compose up -d --wait` recreates web and worker. To switch off
+again, delete the lines (or set `false`) and run `up -d --wait` again.
+
+Every live step is the owner's: connecting a real Spotify or MOWL account, a playlist or workout write
+and the model run need the owner's authorization for that action (AGENTS.md, safety envelope). Agents
+only prepare the files.
 
 ## 6. The proxy network and the client address
 

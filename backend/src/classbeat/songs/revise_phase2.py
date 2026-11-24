@@ -141,7 +141,7 @@ async def run_revise_phase_two(
             revised.result.unmet,
             given.plan_gates,
             extra=stated.items,
-            stated=bool(brief.explicit),
+            stated=bool(brief.explicit or brief.shape),
         )
         change = diff.summarize(base.content, draft.content)
         mowl_playlist_id = step.data.playlist_id

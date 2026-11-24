@@ -309,6 +309,11 @@ def test_the_digest_sources_include_every_rule_source() -> None:
         "agent/interpreted_composer.py",
         # #1233: how the interpreter's short name for a new class is cleaned
         "class_title_policy.py",
+        # #1485: the shape of the ride (the closed sections, what the interpreter reports of
+        # them, how the policy reads them and what the design stages are told of the brief)
+        "agent/ride_shape.py", "agent/interpreted_shape.py", "agent/interpreted_taste.py",
+        "agent/stated.py", "agent/brief_input.py", "agent/stated_layer.py",
+        "design/shape_policy.py",
     }  # fmt: skip
 
 

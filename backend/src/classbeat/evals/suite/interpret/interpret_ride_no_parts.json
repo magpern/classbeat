@@ -1,0 +1,21 @@
+{
+ "kind": "interpret",
+ "name": "interpret_ride_no_parts",
+ "about": "A request that describes no parts has no shape; its class-wide count and intensity stay as they are.",
+ "request": "A tough 60 minutes with three climbs",
+ "expect": {
+  "values": {
+   "length_min": 60,
+   "intensity": "hard",
+   "climbs": 3
+  },
+  "origins": {
+   "climbs": "explicit"
+  },
+  "absent": [
+   "sprints",
+   "races"
+  ],
+  "shape": []
+ }
+}

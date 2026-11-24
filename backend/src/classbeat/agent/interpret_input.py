@@ -10,9 +10,9 @@ An allowlist, built here and nowhere else, so the interpreter never sees more th
   in that list, which ``InterpretedRequest.sanitised`` range-checks.
 
 On a revise (ADR 0029 section 4, #904) the message also holds ``current``: the class's values as
-they stand (``current_values``: the brief's closed numbers and enums and its games, never its text),
-so a relative change ("ten minutes longer") is read as the value it leads to. A message without it
-is byte-identical to before.
+they stand (``current_values``: the brief's closed numbers and enums, its games and its shape,
+never its text), so a relative change ("ten minutes longer") is read as the value it leads to. A
+message without it is byte-identical to before.
 
 A composer request with attached Spotify playlists (ADR 0038 section 3, #1185) also holds
 ``attached_playlists``: how many, never an id or a name, so a reference to them ("the playlist I
@@ -71,6 +71,7 @@ CURRENT_KEYS: Final = (
     "races",
     "ftp_test",
     "games",
+    "shape",
 )
 
 

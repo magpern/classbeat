@@ -98,14 +98,39 @@ done
 sb_app='.secrets.swedebeat_app = {"file": (.secrets.app_secret_key.file | rtrimstr("app_secret_key") + "swedebeat_app")}'
 expect_refused shared "$shared" "$sb_app | .services.web.secrets += [{\"source\":\"swedebeat_app\"}]" "swedebeat_app"
 expect_refused shared "$shared" "$sb_app" "swedebeat_app"
-# ADR 0038 section 2 (#1185): the composer flow is not set in production at all, on any service,
-# whatever its value (refused by its own rule, before the variable allow-list).
+# Pre-production switches (#1498): the default render is off / unset / 2; a value that is not the
+# default (a non-boolean, a non-numeric lag or concurrency, a switch on) is refused, as is a
+# variable on a service that does not read it.
+for m in \
+  '.services.web.environment.CLASSBEAT_SONG_PICKING = "true"' \
+  '.services.worker.environment.CLASSBEAT_SONG_PICKING = "maybe"' \
+  '.services.worker.environment.CLASSBEAT_SONG_PICKING = ""' \
+  'del(.services.web.environment.CLASSBEAT_SONG_PICKING)'; do
+  expect_refused shared "$shared" "$m" "song picking must be off by default"
+done
+expect_refused shared "$shared" '.services.migrate.environment.CLASSBEAT_SONG_PICKING = "false"' "web and worker only"
 for m in \
   '.services.web.environment.CLASSBEAT_COMPOSER_FLOW = "true"' \
-  '.services.worker.environment.CLASSBEAT_COMPOSER_FLOW = "false"' \
-  '.services.migrate.environment.CLASSBEAT_COMPOSER_FLOW = ""'; do
-  expect_refused shared "$shared" "$m" "CLASSBEAT_COMPOSER_FLOW is not set in production"
+  '.services.worker.environment.CLASSBEAT_COMPOSER_FLOW = "yes"' \
+  'del(.services.worker.environment.CLASSBEAT_COMPOSER_FLOW)'; do
+  expect_refused shared "$shared" "$m" "the composer flow must be off by default"
 done
+expect_refused shared "$shared" '.services.migrate.environment.CLASSBEAT_COMPOSER_FLOW = "false"' "web and worker only"
+for m in \
+  '.services.web.environment.CLASSBEAT_MOWL_LISTING_LAG_SECONDS = "soon"' \
+  '.services.worker.environment.CLASSBEAT_MOWL_LISTING_LAG_SECONDS = "30"' \
+  '.services.worker.environment.CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS = "abc"' \
+  '.services.web.environment.CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS = "5"'; do
+  expect_refused shared "$shared" "$m" "the listing lags are unset by default"
+done
+expect_refused shared "$shared" '.services.migrate.environment.CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS = ""' "web and worker only"
+for m in \
+  '.services.worker.environment.CLASSBEAT_WORKER_CONCURRENCY = "many"' \
+  '.services.worker.environment.CLASSBEAT_WORKER_CONCURRENCY = "8"' \
+  '.services.worker.environment.CLASSBEAT_WORKER_CONCURRENCY = ""'; do
+  expect_refused shared "$shared" "$m" "concurrency is 2 by default"
+done
+expect_refused shared "$shared" '.services.web.environment.CLASSBEAT_WORKER_CONCURRENCY = "2"' "belongs to the worker only"
 # Secret files (#511): the group, the users, one name per file, no other way into secrets/.
 for m in \
   'del(.services.web.group_add)' \
