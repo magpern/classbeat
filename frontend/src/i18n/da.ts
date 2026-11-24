@@ -2559,8 +2559,6 @@ const da: Catalogue = {
     'Den tidligere playliste kan blive på din Spotify-konto; du kan fjerne den dér. Godkend resultaterne igen for at oprette den nye.',
   'studio.os.supersededHint.mowl':
     'Det tidligere træningspas kan blive i MOWL. Godkend resultaterne igen for at oprette det nye.',
-  'studio.os.loadFailed':
-    'Resultaternes status kunne ikke hentes. Genindlæs siden.',
   'studio.os.state.pending':
     'Venter på at starte.',
   'studio.os.state.running':

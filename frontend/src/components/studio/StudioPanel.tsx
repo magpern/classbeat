@@ -54,7 +54,6 @@ export function StudioPanel({ summary, view, studioList }: { summary: ClassSumma
       {loaded !== null ? (
         <StudioOutputStates classId={summary.id} outputs={loaded.outputs} onChange={outputs.replace} />
       ) : null}
-      {outputs.load.status === 'failed' ? <Notice kind="error">{t('studio.os.loadFailed')}</Notice> : null}
       <StudioSpotifySync classId={summary.id} revisionId={view.timeline.revisionId} target="final" />
       {current && outputs.load.status !== 'loading' ? (
         <StudioOutputs
