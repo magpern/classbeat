@@ -1,5 +1,65 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 36 (2026-11-24, owner delegation: the composer sketches before music; the shape of the ride; issue #1491)
+
+The owner asked for the app to be brought to pre-production testing and delegated the open product and
+technical decisions to the Architect (2026-11-24, chat: "You have full authority. You decide."). The
+decisions follow a review of the settings and of a failed free-text request ("A 60 min class that starts
+off slow and builds up the momentum. A hilly section, that turns into a tough intervall section, thinking
+5-7 short heavy bursts, back on flats, bulding up for a new hilly section, finishing of with a few bursts
+of power."): the composer refused it (`feature_off`, #1484) and the reading kept none of its shape (#1485).
+The designs are [ADR 0038](adr/0038-composer-flow.md)'s amendment of 2026-11-24 and
+[ADR 0029](adr/0029-ai-first-class-design.md)'s amendment of 2026-11-24.
+
+- **The sketch does not read the soundless switch.** `CLASSBEAT_SOUNDLESS_ENABLED` protects one external
+  write, a MOWL save or update without a playlist (ADR 0007), and stays exactly as it is for a no-music
+  class. A sketch is never written anywhere, so no sketch path reads it; a sketch needs only a model
+  evaluated for the no-songs prompt **for the instructor's own plan**. Without one, a new request takes the
+  older flow (#1484).
+- **A ride in progress follows its class.** A class that took the sketch route reopens in the composer
+  workspace whatever the flag says now; when the operator switches the composer off, its rides are paused,
+  not lost (#1484, #1492).
+- **The shape of the ride.** The reading keeps the sections the instructor describes, in their order, with
+  their ranges ("5–7", "a few") and modifiers ("short", "heavy", a section's own "tough"), as closed values
+  in the brief. A count the instructor did not give is absent, never a contradicting zero. The current
+  revision's stated layer carries the latest instruction ("make it seven bursts"), and every stage from the
+  sketch to the saved workout is checked against it in order (#1485, #1493, #1494).
+- **A miss is never saved by itself.** A design that still misses the shape after its correction rounds is
+  shown as Not as asked before Approve and before Save; approving or saving with it shown is the
+  instructor's choice.
+- **classbeat asks about music when the request leaves it open** (amends Amendment 29's "songs start by
+  themselves" and ADR 0038 §3's questions). The sketch does not wait; the song search does. The decision is
+  stored on the class, so it survives closing and reopening; a missing connection never answers it (#1495,
+  #1496).
+- **A composer class may start without Spotify** (amends Amendment 25 for composer classes only). The
+  Spotify requirement moves from "before the request is read" to "before songs are searched". The older
+  flow keeps the early `needs_spotify` refusal.
+- **The working-playlist consent is asked before the first song search**, not at the start screen. The song
+  search writes candidates to the instructor's public working playlist and attaches it in MOWL (ADR 0008);
+  only Approve and save creates the final playlist and the workout (ADR 0038 §7).
+- **Pre-production.** `CLASSBEAT_SONG_PICKING`, `CLASSBEAT_COMPOSER_FLOW` (amends ADR 0038 §2: settable,
+  default off, the stored `on` still needed), the two listing lags and `WORKER_CONCURRENCY` become settable
+  in `compose.prod.yaml`, all off or at their defaults (#1498). spotdown's production wiring stays with
+  #1481 and #1489.
+- **Decided by the Architect under the delegation:**
+  - the older flow stays as the fallback for a request whose plan has no evaluated no-songs model; it is
+    not retired in this work;
+  - a remembered per-instructor music preference is not added now (a later decision; nothing stored);
+  - free-text "no music" is still not read as a no-music class (#1143).
+- **Still the owner's (live steps, never an agent's):** the M4 Spotify activation, the composer's live
+  check, ADR 0007's three conditions for "No music", and the live eval run that covers the new prompts.
+- **Unchanged:** ADR 0007's soundless off-switch, ADR 0008's consent, ADR 0028's MOWL QR off-switch,
+  ADR 0036 §10's per-output activation (a design-only studio stays valid), the safety envelope.
+- **Issues:** #1491 (this record); #1484, #1492 (the sketch gate; copy and workspace); #1485, #1493, #1494
+  (the shape); #1495, #1496 (the music decision); #1497 (the release criteria, e2e); #1498 (pre-production
+  compose); #1499 (studio outputs). Order: #1484 → #1492 and #1495 → #1496; #1485 → #1493 and #1494;
+  #1497 last; #1498 after PR #1482.
+- **Release criteria for the redesigned flow** (#1497): (A) an instructor with no Spotify connection
+  describes the ride, gets a sketch, edits it, reopens the class with music still undecided, connects
+  Spotify, allows the working playlist, gives a reference playlist, and gets songs on the edited ride;
+  (B) after "make it seven bursts", the reopened sketch, the song preview and the workout saved to MOWL
+  each have exactly seven middle efforts and the unchanged finishing block.
+
 ## Amendment 35 (2026-11-21, owner decision: the Class Preview & Editor milestone CP; ADR 0042; issue #1389)
 
 The owner froze the plan [class-preview-editor.md](plans/class-preview-editor.md) on 2026-11-21 after five
