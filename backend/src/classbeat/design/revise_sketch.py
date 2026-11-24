@@ -4,8 +4,9 @@ repository's split-on-touch rule), with the sketch base of ADR 0038 section 4 (#
 A **sketch** base (``revision_ready.is_sketch``: the composer's design with no songs, the class's
 current revision until its songs are in) is revised as a sketch: its class has no music source
 yet, so the music-source check does not apply, and its revise runs the soundless ``revise`` stage
-(``revise_soundless``, producing a ``sketch``), behind the soundless gate its design passed
-(``music_kind.admit_soundless``). It takes no credit and counts toward the class's revise limit
+(``revise_soundless``, producing a ``sketch``), behind the sketch gate
+(``sketch_gate.admit_sketch``: the job's own plan covers soundless, no switch, ADR 0038 amendment
+of 2026-11-24). It takes no credit and counts toward the class's revise limit
 like any chat revision (``chat.create_state``).
 
 Any other base keeps its gates in their order: ``not_changeable`` for a class without a music
@@ -20,7 +21,7 @@ from pydantic import BaseModel, SerializerFunctionWrapHandler, model_serializer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.context import UserContext
-from classbeat.design import music_kind, sport
+from classbeat.design import music_kind, sketch_gate, sport
 from classbeat.design.kind_music import has_music_source
 from classbeat.design.revision_ready import is_sketch
 from classbeat.jobs.kinds import Refused
@@ -47,7 +48,7 @@ async def admit_base(
     only; nothing is written before them. An edited Spotify draft is admitted like any other: its
     run carries the edits (``revise_base.RunBase.kept``, #1451)."""
     if await is_sketch(db, ctx.user_id, class_id, base):
-        return True, await music_kind.admit_soundless(db, ctx)
+        return True, await sketch_gate.admit_sketch(db, ctx)
     if not await has_music_source(db, ctx.user_id, class_id):
         return False, Refused("not_changeable")
     running = await sport.admit_class(db, ctx, class_id)
@@ -60,8 +61,8 @@ async def can_revise(
     db: AsyncSession, ctx: UserContext, class_id: UUID, current: UUID | None, sourced: bool
 ) -> bool:
     """What the history says of a revise of the class now (``can_change``), as ``admit_base``
-    decides it: a sketch through the soundless gate, any other class with a music source through
+    decides it: a sketch through the sketch gate, any other class with a music source through
     ``music_kind.admit_class``."""
     if current is not None and await is_sketch(db, ctx.user_id, class_id, current):
-        return await music_kind.admit_soundless(db, ctx) is None
+        return await sketch_gate.admit_sketch(db, ctx) is None
     return sourced and await music_kind.admit_class(db, ctx, class_id) is None

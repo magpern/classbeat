@@ -974,7 +974,7 @@ export const en = {
   'start.game.article.overflow': 'Teams earn progress by staying in their target intensity zones.',
   'start.handoff.waiting': 'Reading your request.',
   'start.handoff.starting': 'Starting the design.',
-  'start.handoff.refused': 'Your request could not be turned into a class as asked.',
+  'start.handoff.refused': 'classbeat could not start this design. Nothing was charged and your request is kept.',
   'start.handoff.failed': 'Your request could not be read.',
   'start.handoff.error': 'The design could not be started.',
   'start.handoff.tryAgain': 'Try again with the same request',
@@ -1048,6 +1048,28 @@ export const en = {
   'class.status.reading': 'Reading your request',
   'ws.request': 'Your request',
   'ws.refused.notConnected': 'Your request could not be read because MOWL was not connected. Connect it, then read the request again.',
+  'ws.refused.invalid_input':
+    'Your request could not be used as written. Change it, then try again.',
+  'ws.refused.too_large':
+    'Your request is too long to design in one go. Shorten it, then try again.',
+  'ws.refused.quota':
+    'You have used up what your plan allows for now. Nothing was charged and your request is kept.',
+  'ws.refused.revision_limit':
+    'This class has reached the number of changes your plan allows. Start a new class to keep going.',
+  'ws.refused.feature_off':
+    'Designing classes this way is switched off here right now. Nothing was charged and your request is kept.',
+  'ws.refused.soundless_not_evaluated':
+    'Designing classes without music is not available here right now. Nothing was charged and your request is kept.',
+  'ws.refused.busy':
+    'Your other designs are still running. Nothing was charged and your request is kept. Try again in a moment.',
+  'ws.refused.pool_busy':
+    'Another song pick is still running. Nothing was charged and your request is kept. Try again in a moment.',
+  'ws.refused.class_busy':
+    'A design of this class is still running. Wait for it to finish, then try again.',
+  'ws.refused.not_ready':
+    'Your request is still being read. Wait a moment, then try again.',
+  'ws.refused.class_designed':
+    'This class has already been designed. Open your classes to see it.',
   'ws.interpretAgain': 'Interpret again',
   'ws.tryAgainNow': 'Try again',
   'ws.opening': 'Your class is ready. Opening it.',
@@ -2341,6 +2363,10 @@ export const en = {
     'Choose at least one output.',
   'studio.out.noneEnabled':
     'No output is available right now. Try again later.',
+  'studio.out.loadFailed':
+    'The outputs could not be loaded. Try again.',
+  'studio.out.retry':
+    'Try again',
   'studio.sync.working_copy':
     'Spotify working playlist',
   'studio.sync.final':
@@ -2437,8 +2463,6 @@ export const en = {
     'The earlier playlist may stay in your Spotify account; you can remove it there. Approve the outputs again to create the new one.',
   'studio.os.supersededHint.mowl':
     'The earlier workout may stay in MOWL. Approve the outputs again to create the new one.',
-  'studio.os.loadFailed':
-    'The status of the outputs could not be loaded. Reload the page.',
   'studio.os.state.pending':
     'Waiting to start.',
   'studio.os.state.running':

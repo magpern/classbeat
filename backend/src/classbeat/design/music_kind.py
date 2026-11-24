@@ -94,7 +94,7 @@ async def soundless_on(db: AsyncSession) -> bool:
     return await effective.soundless_enabled(db, gate.enabled, fake_covers=gate.fake_covers)
 
 
-async def _plan_covers(db: AsyncSession, ctx: UserContext) -> bool:
+async def plan_covers(db: AsyncSession, ctx: UserContext) -> bool:
     if current().fake_covers:
         return True
     from classbeat.models.routes import covers  # the web loads the stage definitions lazily
@@ -116,7 +116,7 @@ async def admit_soundless(db: AsyncSession, ctx: UserContext) -> Refused | None:
     None admits. Reads only; reserves nothing."""
     if not switch_on():
         return Refused("feature_off")
-    if not await _plan_covers(db, ctx):
+    if not await plan_covers(db, ctx):
         return Refused("soundless_not_evaluated")
     if not await soundless_on(db):
         return Refused("feature_off")

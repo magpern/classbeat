@@ -66,7 +66,9 @@ export function ClassBody({
   const busy = summary.openJob !== null
   const [deleting, setDeleting] = useState(false)
   // Whether the class's history says Change it works (true until it says otherwise).
-  const [canChange, setCanChange] = useState(true)
+  const [fromHistory, setCanChange] = useState(true)
+  // The class answer says it at load (#1484); the history's value only fills in where it does not.
+  const canChange = summary.canChange ?? fromHistory
   // A studio class is found by its timeline; the summary's `studio` flag keeps the call off every
   // other class (#1173).
   const studioView = useStudioTimeline(classId, summary.currentRevisionId, summary.openJob === null, summary.studio)

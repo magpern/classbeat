@@ -21,10 +21,10 @@ export function ClassPage({ classId }: { classId: string }) {
 }
 
 /**
- * The class page. With `composer_flow` on, a class the server says is a composer class (ADR 0038
- * section 10.2) gets the workspace; every other class, and every class with the flag off, gets the
- * page it had. The flag is read, only for a composer class, before either body mounts, so the two
- * never both run their hand-off; any other class does not wait for it.
+ * The class page. A class the server says is a composer class (ADR 0038
+ * section 10.2) gets the workspace, with the flag on or off: it follows the class, not today's
+ * flag. The flag is read only for a composer class, to show the paused notice; every other class
+ * gets the page it had and never waits for it.
  */
 function ClassView({ classId }: { classId: string }) {
   const t = useT()
@@ -41,7 +41,9 @@ function ClassView({ classId }: { classId: string }) {
     )
   }
   if (state.status !== 'ready') return <ClassUnavailable classId={classId} state={state} onRetry={reload} />
-  if (composer && flag === null) return <p className="m-0">{t('common.loading')}</p>
-  const Body = isComposerClass(flag === true, state.data.summary) ? ComposerWorkspace : ClassBody
-  return <Body classId={classId} data={state.data} reload={reload} onDeleted={setDeleted} />
+  if (isComposerClass(state.data.summary)) {
+    if (flag === null) return <p className="m-0">{t('common.loading')}</p>
+    return <ComposerWorkspace classId={classId} data={state.data} reload={reload} onDeleted={setDeleted} paused={flag === false} />
+  }
+  return <ClassBody classId={classId} data={state.data} reload={reload} onDeleted={setDeleted} />
 }

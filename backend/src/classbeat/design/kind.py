@@ -200,6 +200,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         spotify_playlist=parsed.brief.sport == "cycling"
         and isinstance(parsed.music, SpotifyMusicChoice),
         spotify_optional=bool(parsed.spotify_optional),
+        sketch=parsed.mode == "sketch",
     )
     if refused is not None:
         return refused
@@ -217,8 +218,8 @@ async def run(job_run: JobRun) -> Complete:
         await sport.still_on(job_run)  # ADR 0018 section 5: before anything is called
     if isinstance(given.music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled, new_design=True)
-    if isinstance(given.music, NoMusicChoice):
-        music_kind.still_on()  # #527: the switch, before anything is called
+    if isinstance(given.music, NoMusicChoice) and given.mode != "sketch":
+        music_kind.still_on()  # #527: the switch; a sketch is never written, so has none (ADR 0038)
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
     if given.brief.sport == sport.RUNNING:
         sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)

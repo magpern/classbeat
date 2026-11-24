@@ -18,6 +18,9 @@ export function FlagSwitch({ item, busy, onSave }: { item: Flag; busy: boolean; 
   const on = (item.stored !== null && item.storedValid ? stored : asText(item.effective)) === 'on'
   const text = LABELS[item.key]
   const envOff = item.environment === 'off'
+  // A stored `on` that the server's own switch cancels is on in the form but not in effect.
+  const notInEffect = item.stored !== null && item.storedValid && stored === 'on' && (item.environmentNote === 'environment_off' || envOff || asText(item.effective) !== 'on')
+  const noteId = `note-${item.key}`
   const id = `switch-${item.key}`
   const reasonId = `reason-${item.key}`
   return (
@@ -32,6 +35,11 @@ export function FlagSwitch({ item, busy, onSave }: { item: Flag; busy: boolean; 
         }}
       />
       <label htmlFor={id}>{text?.label ?? item.key}</label>
+      {notInEffect ? (
+        <span id={noteId} data-testid={noteId} className="text-[0.9375rem] font-medium text-muted">
+          {REASONS.notInEffect}
+        </span>
+      ) : null}
       {envOff ? <Reason id={reasonId}>{text?.envOff}</Reason> : null}
     </div>
   )

@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.context import UserContext
-from classbeat.design import mixadmit, music_kind
+from classbeat.design import mixadmit, music_kind, sketch_gate
 from classbeat.design.interpret_music_policy import no_music_reason
 from classbeat.jobs.kinds import Refused
 
@@ -28,6 +28,7 @@ async def admit_music_choice(
     mowl_connection_id: UUID,
     spotify_playlist: bool = False,
     spotify_optional: bool = False,
+    sketch: bool = False,
 ) -> Refused | None:
     """``spotify_playlist``: a cycling class on the user's Spotify playlist, which needs the
     Spotify connection (roadmap Amendment 25, as the interpret admit); ``spotify_optional``: the
@@ -35,8 +36,10 @@ async def admit_music_choice(
     refused = await music_kind.admit_music(db, ctx.user_id, soundless, class_id)
     if refused is not None:
         return refused
-    if soundless:
-        refused = await music_kind.admit_soundless(db, ctx)
+    if soundless:  # a sketch is never written to MOWL: no switch (ADR 0038 amendment 2026-11-24)
+        refused = await (
+            sketch_gate.admit_sketch(db, ctx) if sketch else music_kind.admit_soundless(db, ctx)
+        )
         if refused is not None:
             return refused
     if spotify_playlist and not spotify_optional and ctx.connection("spotify") is None:
