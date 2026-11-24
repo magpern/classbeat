@@ -4,6 +4,7 @@ import { t } from '../i18n/t'
 import { gameLabel, gameLength } from './games'
 import type { DraftGame } from '../api/draftTypes'
 import { getActiveLocale } from '../i18n/locales'
+import { isShapeReading, isUntagged, shapeOffText, shapeReading, shapeWhat } from './shapeNote'
 
 // The three-part note of how a request was read (ADR 0029 section 4): "As you asked", "Not as
 // asked" and "Assumed". Pure: every sentence is built from catalogue keys, a path and a reason
@@ -19,6 +20,9 @@ export interface NoteLine {
 }
 
 export interface Note {
+  /** The ride's sections as read, in order (`shape.N`), and what classbeat chooses and adds. */
+  shape: NoteLine[]
+  shapeNotes: string[]
   asked: NoteLine[]
   notAsked: NoteLine[]
   assumed: NoteLine[]
@@ -93,6 +97,9 @@ export const REASONS: Record<string, CatalogueKey> = {
   era_too_few: 'interp.reason.era_too_few',
   songs_outside_eras: 'interp.reason.songs_outside_eras',
   songs_too_short: 'interp.reason.songs_too_short',
+  shape_off: 'interp.reason.shape_off',
+  cycling_only: 'interp.reason.cycling_only',
+  shape_too_large: 'interp.reason.shape_too_large',
 }
 
 const GAMES: readonly string[] = ['racetrack', 'power_pull', 'fast_lane', 'overflow', 'ghost_target']
@@ -179,26 +186,32 @@ function gameText(item: InterpretationItem): string {
 
 function what(item: InterpretationItem): string {
   if (item.path.startsWith('games.')) return gameText(item)
+  if (item.path.startsWith('shape.')) return shapeWhat(item)
   const kind = kindOf(item.path)
   const label = Object.hasOwn(LABELS, kind) ? t(LABELS[kind]!) : t('interp.path.other')
   const value = valueText(item)
   return value === null ? label : t('interp.line', { what: label, value })
 }
 
-function line(item: InterpretationItem, id: string): NoteLine {
+function line(item: InterpretationItem, id: string, untagged: boolean): NoteLine {
   const base = what(item)
   if (item.origin !== 'not_as_asked') return { id, text: base, quote: item.quote }
+  const off = untagged && item.reasonCode === 'shape_off' ? t('shape.untagged') : shapeOffText(item)
+  if (off !== null) return { id, text: off, quote: item.quote }
   const reason = item.reasonCode !== null && Object.hasOwn(REASONS, item.reasonCode) ? REASONS[item.reasonCode]! : 'interp.reason.other'
   return { id, text: t('interp.line.notAsked', { what: base, why: t(reason) }), quote: item.quote }
 }
 
 /** The items sorted into the three parts, each line worded from the catalogue. */
 export function interpretationNote(items: readonly InterpretationItem[]): Note {
-  const note: Note = { asked: [], notAsked: [], assumed: [] }
+  const { lines, notes } = shapeReading(items)
+  const untagged = isUntagged(items)
+  const note: Note = { shape: lines, shapeNotes: notes, asked: [], notAsked: [], assumed: [] }
   items.forEach((item, at) => {
+    if (isShapeReading(item)) return
     const id = `${item.path}.${String(at)}`
     const target = item.origin === 'explicit' ? note.asked : item.origin === 'not_as_asked' ? note.notAsked : note.assumed
-    target.push(line(item, id))
+    target.push(line(item, id, untagged))
   })
   return note
 }

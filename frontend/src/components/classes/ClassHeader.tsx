@@ -1,6 +1,7 @@
 import { Ellipsis } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import type { ClassSummary } from '../../api/classes'
+import type { InterpretationItem } from '../../api/interpretationItems'
 import { classStatus } from '../../lib/classCards'
 import { useT } from '../../i18n/I18n'
 import { Button } from '../ui/button'
@@ -8,6 +9,7 @@ import { Chip } from '../ui/chip'
 import { PageHeading } from '../ui/page-heading'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu'
 import { DuplicateClass } from './DuplicateClass'
+import { NotAskedBefore } from './NotAskedBefore'
 import { SaveActions, SaveNotices, SaveStatus } from './SavePanel'
 import { SendToPlayerActions } from './SendToPlayer'
 import type { SaveFlow } from './useSaveFlow'
@@ -35,6 +37,7 @@ export function ClassHeader({
   deleting,
   onGoTo,
   onDelete,
+  notAsked = [],
 }: {
   summary: ClassSummary
   flow: SaveFlow
@@ -47,6 +50,8 @@ export function ClassHeader({
   deleting: boolean
   onGoTo: (id: string) => void
   onDelete: () => void
+  /** The shown version's Not as asked items, so a difference is seen before Save. */
+  notAsked?: readonly InterpretationItem[]
 }) {
   const t = useT()
   const status = classStatus(summary)
@@ -109,6 +114,7 @@ export function ClassHeader({
         {summary.soundless ? <Chip data-testid="soundless">{t('class.page.noMusic')}</Chip> : null}
       </div>
       <SaveStatus flow={flow} />
+      <NotAskedBefore items={notAsked} before="save" />
       {player.showsState ? (
         <Suspense fallback={null}>
           <PlayerSentState summary={summary} />

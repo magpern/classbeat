@@ -36,6 +36,16 @@ export function InterpretationNote({ items }: { items: readonly InterpretationIt
       <h3 id="interp-title" className="m-0 text-lg font-semibold">
         {t('interp.title')}
       </h3>
+      <Part title={t('shape.title')} lines={note.shape} />
+      {note.shape.length > 0 && note.shapeNotes.length > 0 ? (
+        <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm text-muted" data-testid="shape-notes">
+          {note.shapeNotes.map((text) => (
+            <li key={text} className="m-0">
+              {text}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <Part title={t('interp.asked')} lines={note.asked} />
       <Part title={t('interp.notAsked')} lines={note.notAsked} />
       <Part title={t('interp.assumed')} lines={note.assumed} />

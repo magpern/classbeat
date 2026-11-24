@@ -11,6 +11,7 @@ import { publicEn } from './public.en'
 import { editorEn } from './editor.en'
 import { previewEn } from './preview.en'
 import { workspaceEn } from './workspace.en'
+import { shapeEn } from './shape.en'
 
 export const en = {
   ...legalEn,
@@ -19,6 +20,7 @@ export const en = {
   ...publicEn,
   ...examplesEn,
   ...workspaceEn,
+  ...shapeEn,
   ...editorEn,
   ...previewEn,
   'language.label': 'Language',

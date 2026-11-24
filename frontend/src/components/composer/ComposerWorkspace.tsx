@@ -19,6 +19,7 @@ import { useT } from '../../i18n/I18n'
 import { deriveChip } from '../../lib/composer/chip'
 import { recallRequest } from '../../lib/startRequest'
 import { requestOf } from '../../lib/requestReading'
+import { notAskedOf } from '../../lib/notAsked'
 import { sendOf } from '../player/operations'
 import { Link } from '../../router/Router'
 import { DeleteClass } from '../classes/DeleteClass'
@@ -105,6 +106,11 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = f
   // A waiting list shows its own designed class: that is what the approval covers.
   const segments = ready && list.preview != null ? list.preview.segments : shown.status === 'ready' ? shown.revision.segments : null
   const title = ready && list.preview != null ? list.preview.name : shown.status === 'ready' ? shown.revision.name : summary.title
+  // What the version about to be approved or saved does not do as asked: its own reading, and the waiting list's.
+  const notAsked = notAskedOf(
+    shown.status === 'ready' && shown.revision.id === summary.currentRevisionId ? shown.revision.interpretation : null,
+    ready ? list.unmet : null,
+  )
   const act = useAction()
   const approve = useAction()
 
@@ -153,9 +159,9 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = f
       ) : null}
       {using.error !== null ? <p className="notice" data-kind="error" role="alert">{using.error}</p> : null}
       {ready ? (
-        <ApproveBar holding={pending !== null} checking={stored.messages === null} checkFailed={stored.failed} onRetryCheck={stored.refresh} busy={approve.busy || running} error={approve.error} onApprove={onApprove} />
+        <ApproveBar holding={pending !== null} checking={stored.messages === null} checkFailed={stored.failed} onRetryCheck={stored.refresh} busy={approve.busy || running} error={approve.error} onApprove={onApprove} notAsked={notAsked} />
       ) : (
-        <SaveArea flow={save} chip={chip.state} currentOrigin={currentOrigin} differed={summary.composer.phase2 === 'differed'} />
+        <SaveArea flow={save} chip={chip.state} currentOrigin={currentOrigin} differed={summary.composer.phase2 === 'differed'} notAsked={notAsked} />
       )}
       <MorePanel
         section={more}
