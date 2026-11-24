@@ -141,7 +141,7 @@ async def get_class(
         if match is None
         else SwedebeatMatchPointerOut(revision_id=match.revision_id, approved=match.approved),
         beat_one=BeatOneOut(available=False) if beats is None else BeatOneOut.of(beats),
-        **found.composer.fields(),
+        **found.fields(),
     )
     if enabled:
         return detail

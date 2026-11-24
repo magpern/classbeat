@@ -94,7 +94,7 @@ RELEASED: dict[int, str] = {
     # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
     # #1485: the shape of the ride in the interpret prompt, the brief and the design input.
     # #1493: the design follows the shape of the ride (section tags, the ordered shape check).
-    31: "18ed5be9147f477f89654991142484dde3b2b478f5735fe79bd05b2e9abf2c2a",
+    31: "6d0f5cf483216cd0d19c8eab0ecb40b6f26fe778107dc9260abb505ab162bf3c",
 }
 
 SUITE = load_suite()

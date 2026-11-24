@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat import auth
 from classbeat.agent.design import ZONE7
 from classbeat.agent.stored_draft import stored_draft
+from classbeat.classes import change_view
 from classbeat.classes.history_compare import (
     BeforeAfterOut,
     CompareOut,
@@ -44,7 +45,7 @@ from classbeat.classes.history_compare import (
 from classbeat.classes.service import REVISION_LIMIT, stored_brief
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.design import diff, revise_sketch
+from classbeat.design import diff
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -57,11 +58,6 @@ HISTORY_LIMIT: Final = REVISION_LIMIT
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 # The ``uuid`` text check in SQL, so a malformed id in a stored provenance never fails the read.
 _UUID_SQL: Final = "'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'"
-
-_CLASS = text(
-    "SELECT brief IS NOT NULL AS briefed, music_source IS NOT NULL AS sourced, current_revision_id "
-    "AS base FROM classes WHERE owner_id = :owner_id AND id = :class_id"
-)
 
 # ``{music}``: the timeline reads only whether a draft names a song list (``class_revisions.music``
 # has no size check); compare, two rows, reads the whole value.
@@ -239,14 +235,11 @@ async def history(factory: Factory, ctx: UserContext, class_id: UUID) -> History
     """The timeline of the user's own class, oldest first; ``None`` when it is not theirs."""
     require_context(ctx)
     async with user_session(factory, ctx) as db:
-        found = (await db.execute(_CLASS, _params(ctx, class_id))).first()
-        if found is None:
+        can_change = await change_view.can_change(db, ctx, class_id)
+        if can_change is None:
             return None
         sport = _sport(await stored_brief(db, ctx.user_id, class_id))
         rows = (await db.execute(_ROWS, _params(ctx, class_id))).all()
-        can_change = found.briefed and await revise_sketch.can_revise(
-            db, ctx, class_id, found.base, found.sourced
-        )
     entries: list[TimelineEntryOut] = []
     unreadable = 0
     for row in rows:

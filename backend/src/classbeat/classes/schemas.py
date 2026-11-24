@@ -188,6 +188,8 @@ class ClassDetailOut(ClassOut):
     fill_songs: FillSongsOut | None = None
     save_pending: SavePendingOut | None = None  # ADR 0038 section 7 (#1189)
     phase2: Phase2Out | None = None
+    # The history's ``can_change`` (#1484): whether a chat change is offered now.
+    can_change: bool = False
 
 
 class ClassesOut(BaseModel):

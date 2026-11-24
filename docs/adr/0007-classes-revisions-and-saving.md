@@ -1614,3 +1614,7 @@ for each plan key) and then `SOUNDLESS_ENABLED=true`; there is no admin step
 (`docs/runbooks/soundless-evals.md`). Owner-side safety is unchanged: without coverage the
 effective flag is off whatever the environment says. In the e2e stack (environment on, the web's
 `fake` covering) "No music" is offered without anything stored.
+Since ADR 0038's amendment of 2026-11-24 (#1484) the soundless switch no longer gates the
+composer's sketch: its off switch is `composer_flow` and its gate is the plan's coverage
+(`design.sketch_gate.admit_sketch`); the switch still gates a real no-music class and its Save and
+Update.

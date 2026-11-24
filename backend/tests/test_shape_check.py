@@ -14,7 +14,7 @@ from classbeat.agent.explicit_input import DEFAULT_CORRECTIONS, ExplicitGate
 from classbeat.agent.provider import ToolCall
 from classbeat.agent.ride_shape import MAX_SECTIONS
 from classbeat.agent.schemas import SECTION_TAG_MAX, Segment, WorkoutDraft
-from classbeat.agent.shape_check import check_shape
+from classbeat.agent.shape_check import check_shape, recorded
 from classbeat.agent.soundless import (
     SoundlessContext,
     SoundlessReviseContext,
@@ -261,6 +261,32 @@ def test_a_remaining_miss_is_recorded_as_a_not_as_asked_item_of_its_section() ->
     (item,) = shape_off_items(b, done.output.unmet)
     assert (item.path, item.origin, item.reason_code) == ("shape.5", "not_as_asked", "shape_off")
     assert item.value == {"kind": "efforts", "count": {"min": 2, "max": 4}}
+    assert item.found == 5  # what the draft has: the count miss says how many
+    assert item.model_dump(mode="json")["found"] == 5
+
+
+def test_found_is_only_for_a_count_miss_and_never_dumped_when_absent() -> None:
+    from classbeat.agent.interpretation_record import InterpretationItem
+
+    b = shaped()
+    gone = ride()[:3] + ride()[4:]
+    missing = check_shape(b, spec_of(gone), tags(gone))
+    assert [(m.code, m.found) for m in missing] == [("shape_missing", None)]
+    (item,) = shape_off_items(b, [recorded(m) for m in missing])
+    assert item.found is None
+    assert "found" not in item.model_dump(mode="json")
+    assert "found" not in item.model_dump()
+    plain = InterpretationItem(path="length_min", origin="explicit", value=30)
+    assert plain.model_dump(mode="json") == {
+        "path": "length_min",
+        "origin": "explicit",
+        "reason_code": None,
+        "value": 30,
+        "quote": None,
+    }  # every item of before dumps as before
+    assert InterpretationItem.model_validate_json(plain.model_dump_json()) == plain
+    with pytest.raises(ValueError, match="found"):
+        InterpretationItem(path="shape.0", origin="inferred", value={}, found=101)
 
 
 def test_the_gate_checks_the_shape_only_where_asked_to() -> None:

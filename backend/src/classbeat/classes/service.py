@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.agent.brief import Brief
-from classbeat.classes import match_view, seams, song_views
+from classbeat.classes import change_view, match_view, seams, song_views
 from classbeat.classes.class_list_sql import CLASSES
 from classbeat.classes.class_sql import LOCK_CLASS, OPEN_JOB_SQL
 from classbeat.classes.composer_view import ComposerState, composer_state
@@ -136,6 +136,11 @@ class ClassDetail:
     match: match_view.MatchPointer | None = None  # only read while the Swedebeat flag is on
     player: SentState | None = None  # the revision the connected player holds (#1068)
     composer: ComposerState = field(default_factory=ComposerState)  # ADR 0038 (#1188)
+    can_change: bool = False  # the history's value (#1484)
+
+    def fields(self) -> dict[str, Any]:
+        """The class answer's composer fields and ``can_change`` (``ClassDetailOut``)."""
+        return {**self.composer.fields(), "can_change": self.can_change}
 
 
 async def stored_brief(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Brief | None:
@@ -172,7 +177,8 @@ async def get_class_detail(
         match = await match_view.newest_match(db, ctx.user_id, class_id) if with_match else None
         player = await sent_state(db, ctx.user_id, class_id)
         composer = await composer_state(db, ctx.user_id, class_id)
-        return ClassDetail(row, songs, playlists, brief, match, player, composer)
+        change = bool(await change_view.can_change(db, ctx, class_id))
+        return ClassDetail(row, songs, playlists, brief, match, player, composer, change)
 
 
 _DISMISSED = text(

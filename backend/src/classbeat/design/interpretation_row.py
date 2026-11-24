@@ -20,6 +20,10 @@
   attempt, and a refusal of the fill's create is stored here as the design hand-off's is. Left out
   when there is none, so every other row is as before.
 
+- ``route`` (ADR 0038 amendment of 2026-11-24, #1484): the route the hand-off took, ``sketch`` (a
+  composer sketch) or ``classic`` (the older design), recorded when no design job of the hand-off
+  exists yet. Absent on rows stored before and until the hand-off; left out when absent.
+
 The worker writes it once, in its final fenced transaction, on its own class while the class has
 no interpretation and no revision (``store``); after that only the hand-offs change ``refusal``
 and ``fill``, under the owner lock (``classbeat.classes.interpretation``, ``song_fill``). Every
@@ -41,6 +45,7 @@ from classbeat.jobs import FencedSession, JobFailure
 from classbeat.jobs.inputs import jsonb_size
 
 MAX_BYTES: Final = 32768  # the column's check (migration 0044)
+Route = Literal["sketch", "classic"]
 Code = Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,40}$")]
 CountValue = int | Annotated[str, StringConstraints(max_length=40)]
 
@@ -72,9 +77,10 @@ class StoredInterpretation(BaseModel):
     questions: QuestionList = Field(default_factory=lambda: [])
     refusal: Refusal | None = None
     fill: FillState | None = None
+    route: Route | None = None
 
     def dumped(self) -> str:
-        empty = {k for k in ("pinned_songs", "questions", "fill") if not getattr(self, k)}
+        empty = {k for k in ("pinned_songs", "questions", "fill", "route") if not getattr(self, k)}
         value = self.model_dump(mode="json", exclude=empty)
         for key in ("pinned_songs", "questions"):  # a pin's or question's own None fields go
             for entry in value.get(key, []):

@@ -26,6 +26,7 @@ from typing import Any, Final
 
 from classbeat.agent.brief import Brief
 from classbeat.agent.explicit_check import Miss
+from classbeat.agent.interpretation_record import MAX_FOUND
 from classbeat.agent.ride_shape import ShapeSection
 
 EFFORT_MIN_ZONE: Final = 5
@@ -115,7 +116,8 @@ def check_shape(brief: Brief, spec: Mapping[str, Any], tags: Sequence[int | None
         elif section.count is not None:
             found = _found(section, mine)
             if found is not None and not section.count.min <= found <= section.count.max:
-                out.append(Miss(f"shape.{n}", "shape_count", _count_sentence(n, section, found)))
+                sentence = _count_sentence(n, section, found)
+                out.append(Miss(f"shape.{n}", "shape_count", sentence, min(found, MAX_FOUND)))
     return out
 
 
@@ -123,5 +125,5 @@ def recorded(miss: Miss) -> Miss:
     """A remaining shape miss as it is recorded (Not as asked ``shape_off``, one per section); any
     other miss as it is."""
     if miss.code in CODES:
-        return Miss(miss.path, SHAPE_OFF, miss.sentence)
+        return Miss(miss.path, SHAPE_OFF, miss.sentence, miss.found)
     return miss

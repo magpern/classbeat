@@ -75,6 +75,7 @@ async def test_a_redesign_that_misses_the_shape_records_shape_off_and_is_not_sav
     assert [(i["path"], i["origin"], i["reason_code"]) for i in items] == [
         ("shape.0", "not_as_asked", "shape_off")
     ]
+    assert items[0]["found"] == 5  # the scripted design has five efforts
     assert items[0]["value"] == {"kind": "efforts", "count": {"min": 7, "max": 7}}
     pending = cenv.sql("SELECT save_pending FROM classes WHERE id = :c", c=class_id).scalar_one()
     assert pending is None  # only the instructor's own Save writes it
