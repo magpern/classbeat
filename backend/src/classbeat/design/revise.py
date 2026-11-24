@@ -240,7 +240,7 @@ async def run(job_run: JobRun) -> Complete:
             revised.result.unmet,
             given.plan_gates,
             extra=stated.items,
-            stated=bool(brief.explicit),
+            stated=bool(brief.explicit or brief.shape),
         )
         change = revise_base.noted(
             diff.summarize(base.content, draft.content, brief.sport), loaded.retired

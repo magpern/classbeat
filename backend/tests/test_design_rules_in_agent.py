@@ -39,7 +39,7 @@ from classbeat.models.versions import all_prompt_versions
 # #1040 (tempo adjacency): choose_songs changed once more, on purpose: a guidance line on the
 # crossfade between adjacent tempos and on the tempo_jumps note of check_song_list.
 PINNED = {
-    "design": "ead8ee6227b99d148d4ba7318fd6032d9e12605894a968775b4ab4813d019e2b",
+    "design": "120dc25a1e01d60f1657af8e608a853e7486ea87af65d0b00e09aa25cd03782c",
     "revise": "317d75e31910bb71dff3498f8a798901409a990f25f691ba29d11a6b680235b6",
     "pick_pool": "e1887da4f5959cc9adb94ae3a3d332161dda107364c7f7c6363ad8ea1b826a75",
     "choose_songs": "74882603467ec87dc133b32addc24491c2f0e68d45f6a7c92f4d9f49f2a560ac",
@@ -48,15 +48,17 @@ PINNED = {
     "running_revise": "5b5a99c92433da84c0ff8cacfd71e8b4c0081e02d53e13d316839923b9024e0a",
     # The soundless design and revise stages (ADR 0007 amendment of 2026-11-03, #527 and #528),
     # under their own keys.
-    "soundless_design": "19f070f1f62b715453650b64380c1dce53fd39c7e3e9791fd9ed433a69da295f",
+    "soundless_design": "ea0ea2e6966763a5f5d09a59ceaf07d76a4789978cabb77e5a3f0e959b3d2c30",
     "soundless_revise": "8279c4a6a9750c9ff238bbd7db5c915e9b9a8dc44f1b16e7fbbcae502fdfdc7b",
     # The interpret stage (MA1b-2, #880), under its own key. #1133 changed it and pick_pool on
     # purpose: the music taste (interpret) and the find_songs tool (pick_pool). #1140 changed
     # interpret once more, on purpose: the era caps (4 eras, 30 years each) in the prompt. #1185
     # changed interpret once more, on purpose: the composer's pinned songs, questions and attached
     # playlists (ADR 0038 section 3; suite version 26). #1233 changed interpret once more, on
-    # purpose: a new class's short name (suite version 28; #1237 unbounded it in the schema).
-    "interpret": "050a864d8efb4b3aa89ae2e1ff2e4f9ecb72803a5f596cb3b1a20eed91a01b92",
+    # purpose: a new class's short name (suite version 28; #1237 unbounded it in the schema). #1485
+    # changed interpret, design and soundless_design once more, on purpose (suite version 30): the
+    # ride's shape in the interpret prompt, and the design prompts' sentence on what a brief holds.
+    "interpret": "402010e27490eefafec6ff71debf80eecb1315e88022ca3e3a9cef80012e5121",
 }
 PLANTED = "Zq9 planted brief text"
 PLANTED_STYLE = "Zq9 planted style"

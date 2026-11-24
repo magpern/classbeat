@@ -2471,6 +2471,10 @@ const sv: Catalogue = {
     'Välj minst ett resultat.',
   'studio.out.noneEnabled':
     'Inget resultat är tillgängligt just nu. Försök igen senare.',
+  'studio.out.loadFailed':
+    'Resultaten kunde inte hämtas. Försök igen.',
+  'studio.out.retry':
+    'Försök igen',
   'studio.sync.working_copy':
     'Spotify-arbetsspellista',
   'studio.sync.final':
@@ -2567,8 +2571,6 @@ const sv: Catalogue = {
     'Den tidigare spellistan kan finnas kvar i ditt Spotify-konto; du kan ta bort den där. Godkänn resultaten igen för att skapa den nya.',
   'studio.os.supersededHint.mowl':
     'Det tidigare träningspasset kan finnas kvar i MOWL. Godkänn resultaten igen för att skapa det nya.',
-  'studio.os.loadFailed':
-    'Statusen för resultaten kunde inte hämtas. Ladda om sidan.',
   'studio.os.state.pending':
     'Väntar på att starta.',
   'studio.os.state.running':

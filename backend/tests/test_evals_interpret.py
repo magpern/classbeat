@@ -132,6 +132,76 @@ async def test_a_long_range_is_judged_by_the_years_its_eras_cover() -> None:
     assert await _failed(case, _with(case, short)) == ["taste"]
 
 
+async def test_the_shape_is_judged_section_by_section_in_order() -> None:  # issue #1485
+    case = CASES["interpret_ride_shape"]
+    expected = case.expect.shape
+    assert expected is not None
+    assert [s.kind for s in expected] == ["warmup", "climb", "efforts", "flat", "climb", "efforts"]
+    assert expected[2].count is not None
+    assert (expected[2].count.min, expected[2].count.max) == (5, 7)
+
+    def swap(d: dict[str, Any]) -> None:
+        d["shape"][1], d["shape"][2] = d["shape"][2], d["shape"][1]
+
+    def sixes(d: dict[str, Any]) -> None:
+        d["shape"][2]["count"] = {"min": 6, "max": 6}  # a range summed up to one number
+
+    def light(d: dict[str, Any]) -> None:
+        d["shape"][2]["load"] = "light"
+
+    def rising(d: dict[str, Any]) -> None:
+        d["shape"][0].pop("trend")
+
+    for mutate in (
+        swap,
+        sixes,
+        light,
+        rising,
+        lambda d: d["shape"].pop(),
+        lambda d: d["shape"].append({"kind": "flat", "origin": "inferred"}),
+        lambda d: d.pop("shape"),
+    ):
+        assert await _failed(case, _with(case, mutate)) == ["shape"]
+    unjudged = _with(case, lambda d: d["shape"][1].update(trend="steady"))  # the case says none
+    assert await _failed(case, unjudged) == []
+
+
+async def test_a_reading_that_sums_the_parts_up_fails_the_absent_counts() -> None:
+    case = CASES["interpret_ride_shape"]
+    summed = _with(case, lambda d: d.update(sprints={"value": 9, "origin": "inferred"}))
+    assert await _failed(case, summed) == ["absent"]
+    hard = _with(case, lambda d: d.update(intensity={"value": "hard", "origin": "inferred"}))
+    assert await _failed(case, hard) == ["values"]  # a part's effort is not the class's
+
+
+async def test_a_range_with_no_parts_is_one_efforts_section_not_a_single_sprint_count() -> None:
+    case = CASES["interpret_ride_range_only"]
+    assert case.expect.shape is not None
+    assert len(case.expect.shape) == 1
+    one = _with(case, lambda d: d.update(sprints={"value": 6, "origin": "explicit"}, shape=[]))
+    assert sorted(await _failed(case, one)) == ["absent", "shape"]
+
+
+async def test_a_request_with_no_parts_has_no_shape() -> None:
+    case = CASES["interpret_ride_no_parts"]
+    assert case.expect.shape == []
+    invented = _with(case, lambda d: d.update(shape=[{"kind": "climb", "origin": "inferred"}]))
+    assert await _failed(case, invented) == ["shape"]
+
+
+async def test_a_revise_of_one_part_reports_the_whole_shape_after_the_change() -> None:
+    case = CASES["interpret_revise_shape"]
+    assert case.current is not None
+    assert len(case.current.shape) == 4
+    expected = case.expect.shape
+    assert expected is not None
+    assert expected[2].count is not None
+    assert (expected[2].count.min, expected[2].count.max) == (7, 7)
+    assert await _failed(case, _with(case, lambda d: d["shape"].pop(0))) == ["shape"]  # only a part
+    unchanged = _with(case, lambda d: d["shape"][2].update(count={"min": 5, "max": 7}))
+    assert await _failed(case, unchanged) == ["shape"]
+
+
 async def test_a_new_class_must_be_named_with_a_name_that_survives_the_cleaning() -> None:
     # issue #1233
     case = CASES["interpret_class_name"]

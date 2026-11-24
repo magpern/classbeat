@@ -16,6 +16,8 @@
   to keep them) but are recorded as Assumed, as ``request_policy.UNVERIFIED`` says: nothing
   checks them against the draft, so the page never shows them under "As you asked" (the
   ``stated_unchecked`` decision of ADR 0029 section 4, settled here for the page's catalogue);
+- the shape of the ride (``shape_policy``, #1485): ``Brief.shape`` and one ``shape.N`` item per
+  section, in order;
 - the music as ``interpret_music_policy.choose`` picks it, and the music taste as
   ``interpret_taste_policy.resolve_taste`` reads it (a song pick only).
 
@@ -34,9 +36,11 @@ from classbeat.agent.interpret_input import clean_request
 from classbeat.agent.interpretation_record import InterpretationItem, Origin, keep_quote
 from classbeat.agent.interpreted import InterpretedRequest, Reading
 from classbeat.agent.music_taste import largest
+from classbeat.agent.ride_shape import largest as largest_shape
 from classbeat.design import request_policy
 from classbeat.design.interpret_music_policy import Music, MusicOption, choose
 from classbeat.design.interpret_taste_policy import resolve_taste
+from classbeat.design.shape_policy import SHAPE, read_shape
 from classbeat.plan_gates import PlanGates
 
 DEFAULT_LENGTH_MIN: Final = 45
@@ -186,7 +190,11 @@ def resolve(
     games, stated_games = _games(read, request, sport, offer, items)
     if games:
         fields["games"] = games
-    fields["explicit"] = explicit + stated_games
+    ride = read_shape(read.shape, request, sport)  # the ride in parts (#1485)
+    if ride.sections:
+        fields["shape"] = ride.sections
+    items.extend(ride.items)
+    fields["explicit"] = explicit + stated_games + ([SHAPE] if ride.explicit else [])
     override = dict(music_override or {}) or None
     music = choose(
         read.music,
@@ -217,15 +225,15 @@ def title_for(request: str) -> str:
 
 def worst_case_brief(text: str) -> Brief:
     """The largest brief ``resolve`` can make of this request (every knob, six games at a relative
-    placement, every path explicit, the largest music taste): the request is admitted only if
-    this one fits the class."""
+    placement, the largest shape, every path explicit, the largest music taste): the request is
+    admitted only if this one fits the class."""
     game = {
         "type": "any",
         "placement": {"relation": "replaces", "anchor": "interval", "ordinal": 20},
         "duration_sec": 600,
     }
     knobs = {"climbs": 10, "sprints": 20, "races": 5, "ftp_test": 20, "class_type": "journey"}
-    explicit = ["sport", *KNOBS, *(f"games.{n}" for n in range(6))]
+    explicit = ["sport", *KNOBS, *(f"games.{n}" for n in range(6)), SHAPE]
     return Brief.model_validate(
         {
             "length_min": 180,
@@ -235,5 +243,6 @@ def worst_case_brief(text: str) -> Brief:
             "games": [game] * 6,
             "explicit": explicit,
             "music_taste": largest(),
+            "shape": largest_shape(),
         }
     )

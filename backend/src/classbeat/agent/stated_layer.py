@@ -3,11 +3,11 @@
 A revise layers its request's stated values onto the brief it starts from
 (``classbeat.design.revise_layer_policy``), but ``classes.brief`` stays as the first design stored
 it. So the revision records the layered values in ``provenance.stated`` (``StatedLayer``): the
-brief's closed knobs, its games and its explicit paths, never its text or style. The next revise,
-and a Change songs, start from them: ``classbeat.design.chat.load_base`` applies the layer nearest
-the base along its ``parent_id`` chain onto the class's brief (``applied``), so a refit or a song
-change in between, which records no layer, keeps the one before it, and picking an older revision
-picks its values too.
+brief's closed knobs, its games, its shape (#1485) and its explicit paths, never its text or
+style. The next revise, and a Change songs, start from them: ``classbeat.design.chat.load_base``
+applies the layer nearest the base along its ``parent_id`` chain onto the class's brief
+(``applied``), so a refit or a song change in between, which records no layer, keeps the one
+before it, and picking an older revision picks its values too.
 
 A layer holds closed numbers and enums only (as the brief does), so no model text reaches it.
 """
@@ -18,6 +18,7 @@ from typing import Any, Final, Literal
 from pydantic import BaseModel, Field
 
 from classbeat.agent.brief import MAX_EXPLICIT, MAX_GAMES, Brief, BriefGame, ExplicitPath
+from classbeat.agent.ride_shape import MAX_SECTIONS, ShapeSection
 from classbeat.agent.schemas import STRICT
 
 # The brief's fields a layer replaces as a whole; every other field stays the class's own.
@@ -30,6 +31,7 @@ LAYER_KEYS: Final = (
     "ftp_test",
     "class_type",
     "games",
+    "shape",
     "explicit",
 )
 
@@ -47,17 +49,21 @@ class StatedLayer(BaseModel):
     ftp_test: Literal[3, 5, 20] | None = None
     class_type: Literal["plain", "interval", "hiit", "journey", "ftp_test"] | None = None
     games: list[BriefGame] = Field(default_factory=lambda: list[BriefGame](), max_length=MAX_GAMES)
+    shape: list[ShapeSection] = Field(
+        default_factory=lambda: list[ShapeSection](), max_length=MAX_SECTIONS
+    )
     explicit: list[ExplicitPath] = Field(
         default_factory=lambda: list[ExplicitPath](), max_length=MAX_EXPLICIT
     )
 
 
 def layer_of(brief: Brief) -> dict[str, Any]:
-    """The layer of a layered brief, as stored (an empty ``games`` or ``explicit`` left out)."""
+    """The layer of a layered brief, as stored (an empty ``games``, ``shape`` or ``explicit`` left
+    out, so a layer made before the shape (#1485) is byte-identical)."""
     dumped = brief.model_dump(mode="json", exclude_none=True)
     layer = StatedLayer.model_validate({k: dumped[k] for k in LAYER_KEYS if k in dumped})
     out = layer.model_dump(mode="json", exclude_none=True)
-    for key in ("games", "explicit"):
+    for key in ("games", "shape", "explicit"):
         if not out.get(key):
             out.pop(key, None)
     return out
