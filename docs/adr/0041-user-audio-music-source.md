@@ -1,16 +1,18 @@
 # ADR 0041: `user_audio`, a class built on the user's own audio files (#1305)
 
-Status: Proposed. This ADR itself changes no code, setting, compose file, proxy or runtime
+Status: Deferred (owner, 2026-11-21: no plans to allow uploads). Kept as the design if uploads are ever
+wanted; no implementation issue opens; nothing in ADR 0021 §2, ADR 0007 or ADR 0040 §7 is amended.
+This ADR itself changes no code, setting, compose file, proxy or runtime
 behaviour. It is SD-P7b of the spotdown programme (roadmap
 [Amendment 31](../roadmap.md); plan [spotdown-integration.md](../plans/spotdown-integration.md) §1
-and §5). The implementation issues of §14 are opened only after the owner accepts it (§13, item 1).
+and §5). The implementation issues of §14 are not opened: the owner deferred this ADR (see Status).
 
 Depends on: [ADR 0040](0040-spotdown-analysis-service.md) (the boundary, timing classes, scopes, the
 v2 API) and the relay pattern proven for studio tracks (classbeat#1302, merged as #1320). The web-side relay of §2
-is not the worker-side relay that classbeat#1302 proves, so the upload issue (U4, §14) waits for the owner's acceptance
+is not the worker-side relay that classbeat#1302 proves, so the upload issue (U4, §14), if it is ever opened, waits for the owner's acceptance
 (§13, item 1), not for #1302.
 
-Amends, effective on the owner's acceptance of this ADR (§13, item 1):
+Would amend, only if the owner ever accepts this ADR (§13, item 1); today it amends nothing:
 - [ADR 0021](0021-use-part-of-a-song.md) §2, third bullet ("User files: not a source. Needs its own
   ADR") and §3(c) ("the owner approves a user-file source as a separate product decision"). This ADR
   is that ADR and that decision. Part of a song stays out: a user's player cannot be told to skip
@@ -488,4 +490,7 @@ scan (§10), the 0 s crossfade (§5), the formats of v1.
 
 ## Status
 
-Proposed. §13 item 1 is the owner's acceptance; items 2, 4 and 5 are owner-only before use.
+Deferred (owner, 2026-11-21: "I have no plans on allowing uploads"; "no plans on allowing uploads, they
+keep per-owner scope if ever added"). Kept as the design if uploads are ever wanted; no implementation
+issue opens; nothing in ADR 0021 §2, ADR 0007 or ADR 0040 §7 is amended. If it is ever taken up, §13
+item 1 is the owner's acceptance, and items 2, 4 and 5 are owner-only before use.
