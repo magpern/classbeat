@@ -10,7 +10,7 @@ import type { CatalogueKey } from '../i18n/en'
  * - `account`: the instructor can act on the account (a link there);
  * - `site`: not available on this server now; nothing was charged and the request is kept; no
  *   retry, because a retry cannot succeed until the operator changes the installation;
- * - `transient`: busy now; "Try again now" asks the server once more;
+ * - `transient`: busy now; "Try again" asks the server once more;
  * - `state`: the class is past this step;
  * - `other`: a reason not in the table.
  *

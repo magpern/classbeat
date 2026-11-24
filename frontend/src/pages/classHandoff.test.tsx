@@ -74,15 +74,17 @@ describe('the hand-off from the start screen', () => {
     expect(api.to('POST', `${CLASS_PATH}/design-from-interpretation`)).toHaveLength(0)
   })
 
-  it('says a refused request could not be turned into a class and offers Try again', async () => {
+  it('says a refusal with an unlisted reason did not start, blames nothing, and offers the start screen', async () => {
     fakeApi(routes({ [INTERPRETATION]: { refusal: { reason: 'out_of_scope' }, design_job: null, items: [] } }))
     renderAt(PAGE)
-    expect(await screen.findByText(/could not be turned into a class as asked/)).toBeInTheDocument()
+    expect(await screen.findByText('classbeat could not start this design. Nothing was charged and your request is kept.')).toBeInTheDocument()
+    expect(screen.queryByText(/as asked/)).toBeNull()
     expect(screen.getByRole('link', { name: 'Try again with the same request' })).toHaveAttribute(
       'href',
       `/en/classes/new?from=${CLASS_ID}`,
     )
     expect(screen.queryByRole('button', { name: 'Interpret again' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
   })
 
   it('offers Interpret again after a stored not_connected refusal and opens the new class', async () => {
