@@ -93,7 +93,7 @@ the end of a milestone. It escalates only genuine blockers (see "Escalation" bel
      no hand-resolved conflict (`git diff <reviewed>..<head>` equals `main`'s own change), and
      CI is green. The Architect records `Agent review (merge check): PASS <head SHA> (carries
      <reviewed SHA>)`. If `main` changed a module the PR changes or calls, or a conflict was
-     resolved by hand, a fresh reviewer checks the merge (scoped review).
+     resolved by hand, resume the Reviewer for a scoped review under the reuse rules below.
    - *Fix round after a `FAIL`:* a **delta review** of the diff since the last reviewed head,
      verifying each earlier finding and whatever the delta touches.
    - *Reviewer reuse (owner decision, 2026-11-04, roadmap Amendment 14):* the first review of
@@ -190,8 +190,8 @@ Applies to classbeat source. New code follows it at once; existing files follow 
 lockfiles, SQL migrations). **Tests** are exempt from
 rule 2 (table-driven tests are long on purpose), though a new test file should still have one
 subject. This replaces the 500-line cap for classbeat only; `mowl-workouts` keeps its own.
-Security-critical modules (for example `egress.py`) are split only in a PR that gets the Opus
-review the area requires; in any other PR rule 2 does not apply to them, so leave the file whole.
+Security-critical modules (for example `egress.py`) are split only in a PR that gets the
+security-critical review required by the shared gate and the active client’s model mapping; in any other PR rule 2 does not apply to them, so leave the file whole.
 
 ## Safety envelope
 

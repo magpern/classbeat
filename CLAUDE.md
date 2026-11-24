@@ -20,7 +20,8 @@
   "I reviewed it" in chat is not one either: the owner can merge the PR themselves on GitHub.
 - Any push after a `PASS` invalidates it. A merge-only update of `main` with no hand-resolved
   conflict is covered by the Architect's merge check (AGENTS.md review gate, item 3); any
-  other push needs a fresh (delta) review.
+  other push needs a delta or scoped review on the new head. Resume the same Reviewer
+  under the exceptions in AGENTS.md, review gate item 3.
 - Merge only with `gh pr merge <n> --squash --match-head-commit <reviewed-sha>`. This squashes the
   reviewed head directly into `main`. CI then runs on `main` (see AGENTS.md, “Merging”).
 - Never `--auto`, never `--admin`, never an approving review, never a ruleset change, never a
