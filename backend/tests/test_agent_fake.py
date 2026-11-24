@@ -94,6 +94,13 @@ COVERED = {
     "composer_sketch",
     "composer_sketch_revised",
     "composer_sketch_again",
+    # the composer's release criteria (e2e/tests/composer-release-*.spec.ts, #1497), pinned by
+    # tests/test_composer_release_scripts.py: the issue's request as six sections, its sketch, the
+    # change "Make it seven bursts" and the fill on fifteen songs
+    "composer_release_read",
+    "composer_release_sketch",
+    "composer_release_seven",
+    "composer_release_fill",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")
