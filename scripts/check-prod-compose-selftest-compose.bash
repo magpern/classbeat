@@ -276,6 +276,10 @@ deny=(
   'networks.backend.ipam.driver|.networks.backend.ipam.driver = "x"'
   'networks.egress.attachable|.networks.egress.attachable = true'
   'secrets.app_secret_key.x_extra|.secrets.app_secret_key.x_extra = 1'
+  # a DNS alias anywhere but web's classbeat-web on proxy (#1481 review)
+  'no network alias|.services.worker.networks.egress = {"aliases":["api.anthropic.com"]}'
+  'no network alias|.services.migrate.networks.backend = {"aliases":["db"]}'
+  'no network alias|.services.web.networks.backend = {"aliases":["db"]}'
   # a changed command, entrypoint or tmpfs
   'command, entrypoint and tmpfs|.services.web.entrypoint = ["sh","-c","id"]'
   'command, entrypoint and tmpfs|.services.db.command = ["postgres","-c","x=y"]'
@@ -301,8 +305,8 @@ deny=(
   'services.migrate.cpus|.services.migrate.cpus = 1'
   'services.worker.memswap_limit|.services.worker.memswap_limit = "1"'
 )
-for v in shared loopback lan; do
-  case "$v" in shared) base="$shared" ;; loopback) base="$loopback" ;; *) base="$lan" ;; esac
+for v in shared loopback lan withspotdown; do
+  case "$v" in shared) base="$shared" ;; loopback) base="$loopback" ;; lan) base="$lan" ;; *) base="$spotdown" ;; esac
   for e in "${deny[@]}"; do
     expect_refused "$v" "$base" "${e#*|}" "${e%%|*}"
   done
@@ -311,6 +315,112 @@ for v in shared loopback lan; do
   expect_accepted "$v" "$base" '.'
   # The allow-list itself passes the shipped files through the real-render check (no bridge overlay).
   expect_accepted real "$base" '.'
+done
+# spotdown's overlay (#1481, ADR 0040 section 10). Each entry is FRAGMENT|MUTATION of the spotdown render.
+spot=(
+  # a published port, a route out, web or another service on spotdown's networks
+  'only web may publish a port|.services["spotdown-api"].ports = [{"host_ip":"127.0.0.1","target":8000,"published":"8000"}]'
+  'only web may publish a port|.services["spotdown-redis"].ports = [{"target":6379,"published":"6379"}]'
+  'spotdown and spotdown-internal networks are internal|.networks.spotdown.internal = false'
+  'spotdown and spotdown-internal networks are internal|del(.networks["spotdown-internal"].internal)'
+  'spotdown-api joins spotdown and spotdown-internal|.services["spotdown-api"].networks.egress = null'
+  'only classbeat'"'"'s worker and spotdown-api join the spotdown network|.services["spotdown-worker"].networks.spotdown = null'
+  'only the three spotdown services join spotdown-internal|.services["spotdown-api"].networks |= del(.["spotdown-internal"])'
+  'only classbeat'"'"'s worker and spotdown-api join the spotdown network|.services.web.networks.spotdown = null'
+  'worker joins backend and egress only|.services.worker.networks["spotdown-internal"] = null'
+  'only classbeat'"'"'s worker and spotdown-api join the spotdown network|.services.worker.networks |= del(.spotdown)'
+  # the key: never on web, nowhere but the worker and spotdown-api; no other secret on spotdown
+  'spotdown_service_key belongs to classbeat'"'"'s worker and spotdown-api only|.services.web.secrets += [{"source":"spotdown_service_key","target":"/run/secrets/spotdown_service_key"}]'
+  'services.spotdown-worker.secrets|.services["spotdown-worker"].secrets = [{"source":"spotdown_service_key"}] | .services["spotdown-worker"].group_add = ["10010"]'
+  'spotdown_service_key belongs to classbeat'"'"'s worker and spotdown-api only|.services.migrate.secrets += [{"source":"spotdown_service_key"}]'
+  'spotdown_service_key belongs to classbeat'"'"'s worker and spotdown-api only|.services.worker.secrets |= map(select(.source != "spotdown_service_key"))'
+  'spotdown-api mounts the service key and nothing else|.services["spotdown-api"].secrets += [{"source":"connection_kek"}]'
+  'reads the key from /run/secrets/spotdown_service_key|.services["spotdown-api"].environment.SERVICE_KEY_FILE = "/data/key"'
+  'services.web.environment: 1 variable|.services.web.environment.CLASSBEAT_SPOTDOWN_URL = "http://spotdown-api:8000"'
+  'CLASSBEAT_SPOTDOWN_URL is http://spotdown-api:8000|.services.worker.environment.CLASSBEAT_SPOTDOWN_URL = "https://spotdown.example.test"'
+  'services.worker.environment lacks CLASSBEAT_SPOTDOWN_URL|del(.services.worker.environment.CLASSBEAT_SPOTDOWN_URL)'
+  # the image: a release tag, never latest
+  'a release tag (X.Y.Z, never latest)|.services["spotdown-api"].image = "ghcr.io/magpern/spotdown:latest"'
+  'a release tag (X.Y.Z, never latest)|.services["spotdown-worker"].image = "ghcr.io/magpern/spotdown:1"'
+  'a release tag (X.Y.Z, never latest)|.services["spotdown-worker"].image = "ghcr.io/magpern/spotdown:9.9.9"'
+  'a release tag (X.Y.Z, never latest)|.services["spotdown-api"].image = "example.test/spotdown:0.0.0"'
+  'pinned redis:X.Y.Z-alpine|.services["spotdown-redis"].image = "redis:7-alpine"'
+  'pinned redis:X.Y.Z-alpine|.services["spotdown-redis"].image = "redis:latest"'
+  'pinned redis:X.Y.Z-alpine|.services["spotdown-redis"].image = "redis:7.4.12-alpine"'
+  'pinned redis:X.Y.Z-alpine|.services["spotdown-redis"].image = "redis:7.4.12-alpine@sha256:00"'
+  # root, capabilities, ceilings, healthchecks
+  'names a non-root uid:gid|del(.services["spotdown-worker"].user)'
+  'runs as root|.services["spotdown-redis"].user = "0"'
+  'runs as root|.services["spotdown-api"].user = "10001:0"'
+  'names its non-root user|del(.services["spotdown-api"].user)'
+  'every service that mounts a secret has group_add|del(.services["spotdown-api"].group_add)'
+  'drops every capability|del(.services["spotdown-worker"].cap_drop)'
+  'drops every capability|del(.services["spotdown-redis"].security_opt)'
+  'services.spotdown-api.cap_add|.services["spotdown-api"].cap_add = ["SYS_ADMIN"]'
+  'services.spotdown-worker.privileged|.services["spotdown-worker"].privileged = true'
+  'keeps a cpus and a mem_limit ceiling|del(.services["spotdown-worker"].mem_limit)'
+  'keeps a cpus and a mem_limit ceiling|del(.services["spotdown-api"].cpus)'
+  'keeps a cpus and a mem_limit ceiling|.services["spotdown-redis"].cpus = 0'
+  'keep their own healthchecks|del(.services["spotdown-api"].healthcheck)'
+  'keep their own healthchecks|del(.services["spotdown-worker"].healthcheck)'
+  'keep their own healthchecks|.services["spotdown-worker"].healthcheck.test = ["CMD","python","-m","app.healthcheck","api"]'
+  'keep their own healthchecks|.services["spotdown-api"].healthcheck.test = ["CMD","python","-c","import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/healthz\")"]'
+  'keep their own healthchecks|.services["spotdown-redis"].healthcheck.test = ["CMD","true"]'
+  # the image's own data path (/data) and users, read-only with /tmp the only tmpfs, bounded memory
+  'service mode without UI|.services["spotdown-api"].environment.DATA_DIR = "/app/data"'
+  'service mode without UI|.services["spotdown-worker"].environment.DATA_DIR = "/app/data"'
+  'spotdown-data (/data) and spotdown-redis (/data), nothing else|.services["spotdown-worker"].volumes[0].target = "/app/data"'
+  'spotdown-data (/data) and spotdown-redis (/data), nothing else|.services["spotdown-api"].volumes[0].target = "/app/data"'
+  '999:1000, exactly|.services["spotdown-redis"].user = "999:10010"'
+  '999:1000, exactly|.services["spotdown-api"].user = "10002:10002"'
+  '999:1000, exactly|.services["spotdown-worker"].user = "10001:10010"'
+  'is read-only|.services["spotdown-worker"].read_only = false'
+  'is read-only|del(.services["spotdown-redis"].read_only)'
+  'is read-only|del(.services["spotdown-api"].read_only)'
+  'command, entrypoint and tmpfs|.services["spotdown-worker"].tmpfs = ["/tmp:exec"]'
+  'command, entrypoint and tmpfs|.services["spotdown-api"].tmpfs += ["/data"]'
+  'services.spotdown-redis.tmpfs|.services["spotdown-redis"].tmpfs = ["/tmp"]'
+  'at most 64g each, and above 3g on spotdown-worker|.services["spotdown-api"].mem_limit = "99999999999999"'
+  'at most 64g each, and above 3g on spotdown-worker|.services["spotdown-worker"].mem_limit = "3221225472"'
+  'at most 64g each, and above 3g on spotdown-worker|.services["spotdown-worker"].mem_limit = "2147483648"'
+  # a DNS alias on a network classbeat'"'"'s worker shares could take a name it resolves
+  'no network alias|.services["spotdown-api"].networks.spotdown = {"aliases":["db"]}'
+  'no network alias|.services["spotdown-api"].networks.spotdown = {"aliases":["api.anthropic.com"]}'
+  'no network alias|.services["spotdown-redis"].networks["spotdown-internal"] = {"aliases":["spotdown-api"]}'
+  # service mode, no UI, YouTube and the url source off
+  'service mode without UI|.services["spotdown-api"].environment.SERVICE_MODE = "false"'
+  'service mode without UI|.services["spotdown-api"].environment.SERVE_UI = "true"'
+  'service mode without UI|.services["spotdown-worker"].environment.ALLOW_YTDLP_SOURCING = "true"'
+  'service mode without UI|.services["spotdown-api"].environment.URL_ALLOWED_HOSTS = "example.test"'
+  'services.spotdown-api.environment: 1 variable|.services["spotdown-api"].environment.SPOTIFY_CLIENT_SECRET = "x"'
+  'services.spotdown-api.environment: 1 variable|.services["spotdown-api"].environment.SPOTDOWN_UI = "on"'
+  'services.spotdown-worker.environment: 1 variable|.services["spotdown-worker"].environment.SERVICE_KEY_FILE = "/run/secrets/spotdown_service_key"'
+  # volumes, the command, the service set
+  'only the spotdown services mount|.services.db.volumes += [{"type":"volume","source":"spotdown-data","target":"/d","volume":{}}]'
+  'spotdown-data (/data) and spotdown-redis (/data), nothing else|.services["spotdown-api"].volumes += [{"type":"volume","source":"db-data","target":"/db","volume":{}}]'
+  'the only named volume is db-data|.volumes["spotdown-extra"] = {"name":"x"}'
+  'command, entrypoint and tmpfs|.services["spotdown-worker"].command = ["sh","-c","id"]'
+  'command, entrypoint and tmpfs|.services["spotdown-redis"].command = ["redis-server","--protected-mode","no"]'
+  'the three services spotdown-api, spotdown-worker and spotdown-redis|del(.services["spotdown-redis"])'
+  'services.spotdown-extra|.services["spotdown-extra"] = {"image":.services["spotdown-api"].image,"logging":.services.web.logging}'
+)
+for e in "${spot[@]}"; do
+  expect_refused withspotdown "$spotdown" "${e#*|}" "${e%%|*}"
+done
+expect_accepted withspotdown "$spotdown" '.services["spotdown-api"].image = "ghcr.io/magpern/spotdown:1.2.3-rc.1" | .services["spotdown-worker"].image = "ghcr.io/magpern/spotdown:1.2.3-rc.1"'
+# Without the overlay, any one spotdown piece is refused: all of spotdown or none of it.
+for v in shared loopback lan; do
+  case "$v" in shared) base="$shared" ;; loopback) base="$loopback" ;; *) base="$lan" ;; esac
+  expect_refused "$v" "$base" '.services.worker.environment.CLASSBEAT_SPOTDOWN_URL = "http://spotdown-api:8000"' 'services.worker.environment: 1 variable'
+done
+for m in \
+  '.secrets.spotdown_service_key = {"file": (.secrets.app_secret_key.file | rtrimstr("app_secret_key") + "spotdown_service_key")} | .services.worker.secrets += [{"source":"spotdown_service_key"}]' \
+  '.volumes["spotdown-data"] = {"name":"classbeat-prod-check_spotdown-data"}' \
+  '.networks.spotdown = {"name":"classbeat-prod-check_spotdown","internal":true} | .services.worker.networks.spotdown = null'; do
+  for v in shared loopback lan; do
+    case "$v" in shared) base="$shared" ;; loopback) base="$loopback" ;; *) base="$lan" ;; esac
+    expect_refused "$v" "$base" "$m" "spotdown"
+  done
 done
 # A refused variable's name and value are never printed (an env_file of a secret file puts the secret
 # in either, #610).

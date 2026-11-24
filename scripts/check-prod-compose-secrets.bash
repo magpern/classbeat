@@ -104,8 +104,8 @@ check_oauth_defaults() {
 # lines, so a quoted or explicit (`? env_file`) key can get past it: the check is the render's
 # (check_keys: variables by name, label_file and profiles by key, #610). Comment lines are skipped; a
 # mention after code on a line is not.
-check_prod_file_text() {   # check_prod_file_text DIR [FILE...] (default: the three production files)
-  local d="$1" f files=(compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml)
+check_prod_file_text() {   # check_prod_file_text DIR [FILE...] (default: the four production files)
+  local d="$1" f files=(compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml compose.prod.spotdown.yaml)
   local re=$'(^|[[:space:]{,"\'])(env_file|label_file|profiles|extends|include)["\']?[[:space:]]*:'
   shift
   (( $# == 0 )) || files=("$@")
@@ -117,10 +117,10 @@ check_prod_file_text() {   # check_prod_file_text DIR [FILE...] (default: the th
 }
 
 # The compose files as written: no variable named like a client secret, no client secret literal.
-# check_oauth_files DIR [FILE...] (default: the three production files; the repo mode adds the dev
+# check_oauth_files DIR [FILE...] (default: the four production files; the repo mode adds the dev
 # compose.yaml, #521).
 check_oauth_files() {
-  local d="$1" f files=(compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml)
+  local d="$1" f files=(compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml compose.prod.spotdown.yaml)
   shift
   (( $# == 0 )) || files=("$@")
   for f in "${files[@]}"; do
@@ -171,7 +171,8 @@ check_lan() {
 
 # The owner's real render (#610, #598 review finding 2): compose.prod.yaml with the overlays COMPOSE_FILE
 # names, the real .env and every profile, run through the same allow-list (check_keys) and secret-mount
-# rules. The value checks of check_common are left out: they compare with the dummies. One addition of
+# rules, and spotdown's rules when COMPOSE_FILE names its overlay (they compare with no dummy, #1481).
+# The other value checks of check_common are left out: they compare with the dummies. One addition of
 # the owner's own is allowed, exactly as proton-bridge-smtp.md writes it: compose.bridge.yaml's
 # read-only bind of ./smtp-ca/bridge.pem into web at /run/smtp-ca/bridge.pem, and the external network
 # `bridge-mail` (any name) that web alone joins. Anything else is refused like in the dummy files.
@@ -198,9 +199,11 @@ check_real() {
   J="$(jq "$strip_bridge" <<<"$J")" || fail "the real render could not be read" || return 1
   check_keys || return 1
   check_secret_mounts || return 1
+  check_spotdown_parts || return 1   # spotdown in COMPOSE_FILE: the whole overlay, its rules (#1481)
 }
 
 J="$shared"; check_shared || exit 1
 J="$loopback"; check_loopback || exit 1
 J="$lan"; check_lan || exit 1
+J="$spotdown"; check_withspotdown || exit 1
 J="$defaults"; check_oauth_defaults || exit 1
