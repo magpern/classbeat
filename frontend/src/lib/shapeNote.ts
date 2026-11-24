@@ -194,6 +194,10 @@ export function shapeOffText(item: InterpretationItem): string | null {
  * does not follow the ride's parts at all, so no single section is named. A `shape_off` on
  * `shape.0` is a real miss of section 1 (also what an older untagged version stored), worded as
  * any section's.
+ *
+ * Backend `agent/shape_check.py` `recorded()` (#1510 item 13): only a draft with no tag at all gets
+ * `shape_untagged`; `shape_missing` and `shape_order` of section 0 keep `shape_off`. The record does
+ * not say which of the two a `shape_off` on `shape.0` is, so it is worded generically.
  */
 export function isUntagged(items: readonly InterpretationItem[]): boolean {
   const marked = items.filter((i) => i.origin === 'not_as_asked' && i.reasonCode === 'shape_untagged')

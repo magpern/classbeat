@@ -43,6 +43,16 @@ describe('the shape of the ride in the reading', () => {
     expect(interpretationNote([item(0, { kind: 'flat' }, { quote: 'q' })]).shapeNotes).toEqual(['classbeat adds a warm-up and a cool-down.'])
   })
 
+  it('claims nothing about what classbeat adds or chooses for a reading with every section but none of the instructor\'s words', () => {
+    // Sections 0 to 2 in order (a whole-ride shape), a range and a missing cool-down, but no quote: not a first reading.
+    const noQuotes = ORIGINAL.slice(0, 3).map((i) => ({ ...i, quote: null }))
+    expect(interpretationNote(noQuotes).shape).toHaveLength(3)
+    expect(interpretationNote(noQuotes).shapeNotes).toEqual([])
+    // The same items with one quote kept do get the notes.
+    const oneQuote = noQuotes.map((i, n) => (n === 0 ? { ...i, quote: 'starts off slow' } : i))
+    expect(interpretationNote(oneQuote).shapeNotes).toHaveLength(2)
+  })
+
   it('words a revised reading: only the touched section, no quote, {7,7} as 7', () => {
     const note = interpretationNote([item(2, { kind: 'efforts', effort: 'hard', count: { min: 7, max: 7 }, length: 'short', load: 'heavy' }, { origin: 'inferred' })])
     expect(note.shape.map((l) => l.text)).toEqual(['3. 7 short, heavy efforts, hard'])

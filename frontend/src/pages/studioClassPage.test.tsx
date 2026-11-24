@@ -149,6 +149,28 @@ describe('a studio class on the class page', () => {
     expect(screen.queryByTestId('studio-outputs')).toBeNull()
   })
 
+  it('says the outputs could not be read, with a retry, also when the draft is not the current version', async () => {
+    const OLD_REV = 'f1111111-1111-4111-8111-111111111111'
+    let reads = 0
+    fakeApi(
+      studioRoutes({
+        [`GET ${CLASS_PATH}/timeline`]: { ...TIMELINE, revision_id: OLD_REV },
+        [`GET ${CLASS_PATH}/outputs`]: () => {
+          reads += 1
+          return reads === 1 ? reason(500, 'boom') : { enabled_outputs: [], outputs: [] }
+        },
+      }),
+    )
+    renderAt(PAGE)
+    const notice = await screen.findByTestId('studio-outputs-unread')
+    expect(notice).toHaveTextContent(/could not be read|could not be loaded|not be read/i)
+    // Not the current version: the choice itself is not offered.
+    expect(screen.queryByTestId('studio-outputs')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => { expect(screen.queryByTestId('studio-outputs-unread')).toBeNull() })
+    expect(reads).toBe(2)
+  })
+
   it('shows no legacy song panel on a studio class', async () => {
     fakeApi(studioRoutes())
     renderAt(PAGE)

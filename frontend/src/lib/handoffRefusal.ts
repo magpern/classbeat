@@ -9,7 +9,8 @@ import type { CatalogueKey } from '../i18n/en'
  * - `request`: the request is what to change (start screen with the same request);
  * - `account`: the instructor can act on the account (a link there);
  * - `site`: not available on this server now; nothing was charged and the request is kept; no
- *   retry, because a retry cannot succeed until the operator changes the installation;
+ *   retry, because a retry cannot succeed until the operator changes the installation (the
+ *   not-evaluated plan case also links the account, where the plan is);
  * - `transient`: busy now; "Try again" asks the server once more;
  * - `state`: the class is past this step;
  * - `other`: a reason not in the table.
@@ -28,11 +29,13 @@ export const REFUSALS: Readonly<Record<string, RefusalCopy>> = {
   needs_spotify: { kind: 'account', text: 'interp.reason.needs_spotify', actions: ['spotify', 'startAgain'] },
   // Nothing to connect: song picking is not available to the user; the start screen can drop the music.
   song_picking_unavailable: { kind: 'account', text: 'interp.reason.song_picking_unavailable', actions: ['startAgain'] },
+  // Running's music is a playlist from the user's MOWL music: say so, offer the account, or the start screen to pick one.
+  needs_mowl_playlist: { kind: 'account', text: 'interp.reason.needs_mowl_playlist', actions: ['account', 'startAgain'] },
   consent_missing: { kind: 'account', text: 'songs.start.consent_missing', actions: ['spotify', 'retry'] },
   quota: { kind: 'account', text: 'ws.refused.quota', actions: ['account'] },
   revision_limit: { kind: 'account', text: 'ws.refused.revision_limit', actions: ['account'] },
   feature_off: { kind: 'site', text: 'ws.refused.feature_off', actions: [] },
-  soundless_not_evaluated: { kind: 'site', text: 'ws.refused.soundless_not_evaluated', actions: [] },
+  soundless_not_evaluated: { kind: 'site', text: 'ws.refused.soundless_not_evaluated', actions: ['account'] },
   busy: { kind: 'transient', text: 'ws.refused.busy', actions: ['retry'] },
   pool_busy: { kind: 'transient', text: 'ws.refused.pool_busy', actions: ['retry'] },
   class_busy: { kind: 'transient', text: 'ws.refused.class_busy', actions: ['retry'] },

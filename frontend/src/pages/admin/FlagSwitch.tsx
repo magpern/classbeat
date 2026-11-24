@@ -18,8 +18,9 @@ export function FlagSwitch({ item, busy, onSave }: { item: Flag; busy: boolean; 
   const on = (item.stored !== null && item.storedValid ? stored : asText(item.effective)) === 'on'
   const text = LABELS[item.key]
   const envOff = item.environment === 'off'
-  // A stored `on` that the server's own switch cancels is on in the form but not in effect.
-  const notInEffect = item.stored !== null && item.storedValid && stored === 'on' && (item.environmentNote === 'environment_off' || envOff || asText(item.effective) !== 'on')
+  // A stored `on` that the server's own switch cancels is on in the form but not in effect: the
+  // backend then reports the effective value `off`, so that alone says it.
+  const notInEffect = item.stored !== null && item.storedValid && stored === 'on' && asText(item.effective) !== 'on'
   const noteId = `note-${item.key}`
   const id = `switch-${item.key}`
   const reasonId = `reason-${item.key}`

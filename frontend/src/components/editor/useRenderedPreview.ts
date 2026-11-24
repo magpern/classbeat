@@ -33,22 +33,35 @@ export function useRenderedPreview(options: { classId: string; mixEndMs: number;
 } {
   const { classId, mixEndMs, audioKey } = options
   const transport = useRef<RenderedClipTransport | null>(null)
+  const teardown = useRef<(() => void) | null>(null)
   const mixEnd = useRef(mixEndMs)
   const [state, setState] = useState<TransportState>(IDLE)
-  useEffect(() => {
+  // The transport exists from the first render's effect on, and also when a press comes first: React runs
+  // passive effects after paint, and on a loaded machine a Play press can arrive before they did (the press
+  // was dropped then, and the editor test of it failed about one run in ten).
+  const ensure = useCallback((): RenderedClipTransport => {
+    if (transport.current !== null) return transport.current
     const elements = [audioElement(0), audioElement(1)] as const
     const created = new RenderedClipTransport({ service: httpClipService(classId), audio: elements, now: () => performance.now(), mixEndMs: mixEnd.current })
     const off = created.subscribe(() => {
       setState(created.observe())
     })
     transport.current = created
-    return () => {
+    teardown.current = () => {
       off()
       transport.current = null
+      teardown.current = null
       created.dispose()
       for (const el of elements) el.remove()
     }
+    return created
   }, [classId])
+  useEffect(() => {
+    ensure()
+    return () => {
+      teardown.current?.()
+    }
+  }, [ensure])
   useEffect(() => {
     mixEnd.current = mixEndMs
     transport.current?.setMixEnd(mixEndMs)
@@ -71,12 +84,11 @@ export function useRenderedPreview(options: { classId: string; mixEndMs: number;
     }
   }, [playing])
   const audition = useCallback((piece: number, sourceMs: number, classMs: number) => {
-    const current = transport.current
-    if (current === null) return
+    const current = ensure()
     void current.audition({ piece, sourceMs, classMs }).then(() => {
       setState(current.observe())
     })
-  }, [])
+  }, [ensure])
   const pause = useCallback(() => {
     const current = transport.current
     if (current === null) return
