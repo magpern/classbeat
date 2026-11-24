@@ -91,9 +91,8 @@ async def test_a_class_read_as_a_composer_class_falls_back_when_coverage_lapses_
     assert skenv.ienv.interpretation(class_id)["route"] == "classic"
     detail, _ = await answers(skenv, class_id)
     assert detail["composer"] is False  # a class that fell back is an ordinary class
-    again = await skenv.ienv.handoff(class_id)  # a reopened tab, with coverage back: same job
     gate(enabled=False, fake=True)
-    again = await skenv.ienv.handoff(class_id)
+    again = await skenv.ienv.handoff(class_id)  # a reopened tab, with coverage back: same job
     assert (again.status_code, again.json()["job_id"]) == (200, str(job.id))
     assert skenv.ienv.interpretation(class_id)["route"] == "classic"  # the route never moves
 

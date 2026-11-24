@@ -138,6 +138,10 @@ class ClassDetail:
     composer: ComposerState = field(default_factory=ComposerState)  # ADR 0038 (#1188)
     can_change: bool = False  # the history's value (#1484)
 
+    def fields(self) -> dict[str, Any]:
+        """The class answer's composer fields and ``can_change`` (``ClassDetailOut``)."""
+        return {**self.composer.fields(), "can_change": self.can_change}
+
 
 async def stored_brief(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Brief | None:
     """The class's stored brief (ADR 0008 section 6): ``classes.brief`` once it has a design;

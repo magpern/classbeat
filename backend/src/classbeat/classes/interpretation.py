@@ -203,9 +203,8 @@ async def design_from_interpretation(
         params = {**owner, "job_id": row.job_id, "kind": INTERPRET_KIND}
         job_input = (await db.execute(_INTERPRET_JOB, params)).scalar_one_or_none()
         picking = await flags.song_picking_admits(db, ctx, songs_config.current().enabled)
-        composing = await composer.composer_available(
-            db, ctx
-        )  # ADR 0038 s4: the flag and plan, now
+        # ADR 0038 section 4: the operator's flag and the user's plan, now
+        composing = await composer.composer_available(db, ctx)
     planned = design_input(row, job_input, class_id, song_picking=picking, composer=composing)
     if isinstance(planned, str):
         return await _store_refusal(
