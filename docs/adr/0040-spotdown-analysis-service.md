@@ -273,7 +273,9 @@ evidence.
   is a scoped entry spotdown never purges (not on a version change, not after 90 days unused), so
   it is kept until an operator deletes it, and rotating the `cache_scope` key orphans it for good.
   See the amendment "studio-track analyses are shared" at the end, item 5, and
-  magpern/spotdown#40.)*
+  magpern/spotdown#40. **Superseded 2026-11-24 by the amendment "scoped analyses expire"
+  at the end:** a scoped entry is now purged after 90 days unread or on an analyser version
+  change.)*
 - **YouTube:** the match result already says whether an analysis is cached for each candidate, so a
   cached analysis is never downloaded or analysed again.
 - **Sources classbeat holds the bytes for:** classbeat checks its own per-owner cache (by reference
@@ -969,7 +971,7 @@ decision.
 4. **Account deletion:** `DELETE /v2/scopes/{scope}` still deletes the owner's scope (mixes and any
    future upload). The shared studio scope is never deleted for one account, by design: it holds
    a catalog file's analysis and no user data.
-5. **Retention: the shared scope is kept until an operator deletes it.** To spotdown it is a
+5. **Retention: the shared scope is kept until an operator deletes it** *(superseded 2026-11-24: see the amendment "scoped analyses expire" at the end; the text below is the position at the time)*. To spotdown it is a
    scoped entry like any owner's, and spotdown's retention only ever selects global rows (`main`
    at 94b1ee7: `retention_store` filters `cache_scope IS NULL` and `scope_key = ''`; contract v2,
    "Retention of global analyses": "the purge never touches a scoped one"). So **none** of these
@@ -1179,6 +1181,25 @@ still timed its tracks on MOWL's sections, and #1406 had narrowed item 3's "a ba
    new `design_draft` on the same playlist, which runs stages A, B and D), and that design's
    revisions carry the record from then on. Save, the beat-one page and a copy of such a draft are
    unchanged; only the jobs that would design or fit on its timing refuse it.
+
+### Amendment (2026-11-24, Architect; magpern/spotdown#40 option 1, spotdown PR 67): scoped analyses expire (supersedes item 5 of "studio-track analyses are shared" and the retention note in §7)
+
+spotdown now purges analyses under a cache scope too: the owner scopes (`o1-...`), the shared studio
+scope (`s1-...`) and upload scopes. An analysis is purged **after 90 days unread** (spotdown's
+`SCOPED_RETENTION_TTL_S`) **or when its `analyzer_version` differs from the running one**. A running
+job is never purged. Unchanged: the takedown (a global `youtube:` reference only), the purge of global
+entries, and `DELETE /v2/scopes/{scope}` (account deletion still deletes the owner's scope; an operator
+can still delete the shared scope at once).
+
+- **Consequence for the shared studio scope:** it is no longer "kept until an operator deletes it". An
+  unread studio analysis disappears after 90 days or on the next analyser version, and the next studio
+  track then uploads and analyses again. The three retention classes of item 5 become one rule for
+  every scope (owner, shared, upload): 90 days unread or a version change, beside the account-deletion
+  delete for owner scopes.
+- **Rotation:** rotating `app_secret_key` still orphans the old scopes, but they now expire by
+  themselves; the operator deletion before a rotation is optional hygiene, no longer the only way.
+- classbeat changes no code: it never relied on a scoped entry staying, and a missing analysis is a
+  cache miss that uploads again.
 
 ## Status
 

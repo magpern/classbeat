@@ -139,7 +139,7 @@ Its layers:
 | Sources | `upload` (bytes pushed), `url` (https, host allowlist set by the operator), `youtube` (yt-dlp, off by default) | `upload` yes; the others optional |
 | Matchers | metadata `{title, artists, duration_s, isrc?}` → ranked source candidates with confidences. YouTube first. | optional |
 | Alignment | `{reference: {kind, id, duration_s}}` → offset, residual, confidence. "spotify" is just one reference kind. | optional |
-| Standalone extras | web UI, Spotify URL resolution, file downloads | off in service mode |
+| Standalone extras | web UI, Spotify URL resolution, file downloads | Spotify URL resolution and file downloads off in service mode. The web UI is an independent switch `SPOTDOWN_UI` (default off in service mode and in the image, on standalone; note 2026-11-24 below) |
 
 - The schema is source-neutral: today's `start_spotify` and `drops_spotify` are replaced by an `alignment` object that the consumer applies.
 - Callers pass an opaque `client_ref` and, for private sources, an opaque `cache_scope` (§5).
@@ -232,7 +232,7 @@ This is kept under the per-owner retention of ADR 0007 §11.
 | Workout data | classbeat | unchanged: `track_cache` (owner, reference, analyser version, sha256), `swedebeat_mix_maps`, the MOWL path in memory only | ADR 0007 §11 | per owner (ADR 0002) |
 
 - classbeat sends an HMAC of `owner_id` as `cache_scope` for SwedeBeat, mix and user audio, so private-source analyses never cross users by default. Account deletion calls `DELETE /v2/scopes/{scope}`.
-  *(Note, 2026-11-21, owner answer to #1297, #1338: a SwedeBeat **studio track** is analysed in one scope shared by every owner (the same catalog file for everyone), because spotdown requires a scope for uploads; mixes and user audio keep the owner's scope. In the table above, the "until the analyser version changes" lifetime does not hold for that shared scope: spotdown purges only global entries, so it is kept until an operator deletes it (an older-version analysis is simply never hit again; magpern/spotdown#40). ADR 0040, amendment "studio-track analyses are shared".)*
+  *(Note, 2026-11-21, owner answer to #1297, #1338: a SwedeBeat **studio track** is analysed in one scope shared by every owner (the same catalog file for everyone), because spotdown requires a scope for uploads; mixes and user audio keep the owner's scope. In the table above, the "until the analyser version changes" lifetime does not hold for that shared scope: spotdown purges only global entries, so it was to be kept until an operator deletes it (an older-version analysis is simply never hit again; magpern/spotdown#40). **Superseded 2026-11-24 (spotdown PR 67, magpern/spotdown#40 option 1):** every scoped analysis, owner, shared studio and upload scopes, is now purged after 90 days unread (`SCOPED_RETENTION_TTL_S`) or when its `analyzer_version` differs from the running one; a running job is never purged; the takedown, the global purge and `DELETE /v2/scopes/{scope}` are unchanged. ADR 0040, amendments "studio-track analyses are shared" and "scoped analyses expire".)*
 - **YouTube:** the match result already says whether an analysis is cached for each candidate, so a cached analysis is never downloaded or analysed again.
 - **Sources classbeat holds the bytes for:** classbeat checks its own per-owner cache (by reference and sha256), then spotdown's lookup by sha256 within the scope, and only then uploads. Nothing is analysed or uploaded twice.
 
@@ -449,3 +449,5 @@ The following were decided by default, and the owner can override them:
   - partial replacement leaves the other tracks unchanged;
   - e2e against the fake.
 - **Quality:** the §7 corpus and the workout-level comparison before any default switch or removal.
+
+*Amendment note 2026-11-24 (Architect, owner direction on spotdown ADR 0004, spotdown PR 69; docs only): the standalone UI is no longer tied to service mode.* The UI is an independent switch `SPOTDOWN_UI`: default off in service mode and in the image, default on standalone. When it is on in service mode, the page uses the authenticated `/v2` API with a key the user types into the page and holds in memory only. Every other service-mode guarantee stays: `/v2` needs the key, `/files` answers 404, there is no CORS, and audio is deleted after each job. classbeat's deployment leaves the switch off, so nothing in classbeat changes. The "Standalone extras" row of the layer table above is amended accordingly; the rest of the plan is unchanged.
