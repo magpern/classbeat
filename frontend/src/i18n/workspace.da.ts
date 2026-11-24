@@ -37,6 +37,7 @@ export const workspaceDa: Catalogue = {
   'cw.chat.failed': 'Beskeden blev ikke sendt. {reason} Din tekst står igen i feltet.',
   'cw.chat.messagePending': 'Din seneste besked venter stadig på at blive sendt.',
   'cw.chat.pendingFull': 'Holdet kan ikke rumme flere beskeder. Lav et nyt hold for at komme videre.',
+  'cw.paused': 'Holdets arbejdsområde er sat på pause her lige nu. Du kan stadig læse og sammenligne dit hold; ændringer er ikke tilgængelige. Intet går tabt.',
   'cw.chat.noVersion': 'Holdet har ingen version at ændre endnu.',
   'cw.chip.reading': 'Ingen skitse endnu',
   'cw.chip.rough': 'Skitse: sangene er ikke på plads endnu',

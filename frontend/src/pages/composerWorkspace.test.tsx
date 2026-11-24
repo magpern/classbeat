@@ -635,23 +635,32 @@ describe('which class page renders, and what it waits for', () => {
     expect(fills(api)).toHaveLength(0)
   })
 
-  it('shows the old page for a composer class when the flag is off', async () => {
+  it('keeps a composer class in its workspace when the flag is off, with a paused notice and no editing', async () => {
     const { api } = setup({ extraRoutes: { 'GET /api/connections': () => json({ connections: [], composer_flow: false }) } })
     renderAt(PAGE)
+    expect(await screen.findByTestId('composer-workspace')).toBeInTheDocument()
+    // The notice above the class and the message box's own line both say it.
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Tuesday climb/ })).toBeInTheDocument()
+      expect(screen.getAllByText(/The composer is paused here right now/).length).toBeGreaterThan(1)
     })
-    expect(screen.queryByTestId('composer-workspace')).toBeNull()
     expect(fills(api)).toHaveLength(0)
   })
 
-  it('shows the old page for a composer class when the flag cannot be read', async () => {
+  it('disables the chat box on load when the class answer says it cannot be changed', async () => {
+    setup({ cls: { can_change: false } })
+    renderAt(PAGE)
+    expect(await screen.findByText(/Change it is not available for this class right now/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+  })
+
+  it('keeps a composer class in its workspace, without the notice, when the flag cannot be read', async () => {
     const { api } = setup({ extraRoutes: { 'GET /api/connections': () => json({ detail: { reason: 'internal' } }, 500) } })
     renderAt(PAGE)
+    expect(await screen.findByTestId('composer-workspace')).toBeInTheDocument()
+    expect(screen.queryByText(/The composer is paused here right now/)).toBeNull()
+    // Nothing is claimed: the workspace runs as it does with the flag on, and the server decides.
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Tuesday climb/ })).toBeInTheDocument()
+      expect(fills(api)).toHaveLength(1)
     })
-    expect(screen.queryByTestId('composer-workspace')).toBeNull()
-    expect(fills(api)).toHaveLength(0)
   })
 })

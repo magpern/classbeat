@@ -1999,7 +1999,7 @@ const da: Catalogue = {
   'start.game.article.overflow': 'Holdene optjener fremskridt ved at blive i deres intensitetszoner.',
   'start.handoff.waiting': 'Læser din anmodning.',
   'start.handoff.starting': 'Starter designet.',
-  'start.handoff.refused': 'Din anmodning kunne ikke gøres til et hold, som du bad om.',
+  'start.handoff.refused': 'classbeat kunne ikke starte designet. Intet blev debiteret, og din anmodning er gemt.',
   'start.handoff.failed': 'Din anmodning kunne ikke læses.',
   'start.handoff.error': 'Designet kunne ikke startes.',
   'start.handoff.tryAgain': 'Prøv igen med den samme anmodning',
@@ -2074,6 +2074,28 @@ const da: Catalogue = {
   'ws.request': 'Din anmodning',
   'ws.refused.notConnected':
     'Din anmodning kunne ikke læses, fordi MOWL ikke var tilsluttet. Tilslut det, og læs så anmodningen igen.',
+  'ws.refused.invalid_input':
+    'Din anmodning kunne ikke bruges, som den er skrevet. Ret den, og prøv igen.',
+  'ws.refused.too_large':
+    'Din anmodning er for lang til at blive designet på én gang. Gør den kortere, og prøv igen.',
+  'ws.refused.quota':
+    'Du har brugt det, din plan tillader, for nu. Intet blev debiteret, og din anmodning er gemt.',
+  'ws.refused.revision_limit':
+    'Dette hold har nået det antal ændringer, din plan tillader. Lav et nyt hold for at fortsætte.',
+  'ws.refused.feature_off':
+    'At designe hold på denne måde er slået fra her lige nu. Intet blev debiteret, og din anmodning er gemt.',
+  'ws.refused.soundless_not_evaluated':
+    'At designe hold uden musik er ikke tilgængeligt her lige nu. Intet blev debiteret, og din anmodning er gemt.',
+  'ws.refused.busy':
+    'Dine andre design kører stadig. Intet blev debiteret, og din anmodning er gemt. Prøv igen om lidt.',
+  'ws.refused.pool_busy':
+    'Et andet sangvalg kører stadig. Intet blev debiteret, og din anmodning er gemt. Prøv igen om lidt.',
+  'ws.refused.class_busy':
+    'Et design af dette hold kører stadig. Vent til det er færdigt, og prøv igen.',
+  'ws.refused.not_ready':
+    'Din anmodning bliver stadig læst. Vent et øjeblik, og prøv igen.',
+  'ws.refused.class_designed':
+    'Dette hold er allerede designet. Åbn dine hold for at se det.',
   'ws.interpretAgain': 'Fortolk igen',
   'ws.tryAgainNow': 'Prøv igen',
   'ws.opening': 'Dit hold er klart. Åbner det.',
