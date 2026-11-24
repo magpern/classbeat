@@ -81,9 +81,12 @@ export function Unanswered({
   latest,
   songs,
   onChangeSongs,
+  onReload,
 }: {
   message: ClassMessage
   latest: boolean
+  /** Reads the class and its conversation again (a completed job's answer may not be in the list yet). */
+  onReload: () => void
   /** Opens the Change songs panel (the workspace switches to the Class tab first on a phone). */
   onChangeSongs: () => void
   /** Where the class's songs stand: Change songs is there, a playlist of the user's own, or a pick not done. */
@@ -95,12 +98,19 @@ export function Unanswered({
   const [failed, setFailed] = useState(false)
   const [resolved, setResolved] = useState(false)
   const jobId = message.jobId
+  const reloaded = useRef(false)
   useEffect(() => {
     if (!latest || jobId === null) return
     let current = true
     getJob(jobId).then(
       (found) => {
-        if (current) setJob(found)
+        if (!current) return
+        setJob(found)
+        // A completed job has an answer: the list was read before it was written (#1519). Read it once more.
+        if (found.state === 'completed' && !reloaded.current) {
+          reloaded.current = true
+          onReload()
+        }
       },
       () => {
         if (current) setFailed(true)
@@ -109,7 +119,7 @@ export function Unanswered({
     return () => {
       current = false
     }
-  }, [latest, jobId])
+  }, [latest, jobId, onReload])
 
   if (!latest || jobId === null || failed) {
     return <p className="chat__outcome muted">{t('class.chat.unfinished')}</p>
@@ -170,5 +180,7 @@ export function Unanswered({
   if (job.state === 'cancelled' || job.state === 'expired') {
     return <p className="chat__outcome muted">{t('class.chat.stopped')}</p>
   }
+  // A completed job is not a failure: its answer is being read (the reload above), never "did not finish".
+  if (job.state === 'completed') return <p className="chat__outcome muted">{t('class.chat.checking')}</p>
   return <p className="chat__outcome muted">{t('class.chat.unfinished')}</p>
 }

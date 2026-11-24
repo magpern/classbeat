@@ -26,9 +26,11 @@ function History({
   openJobId,
   onView,
   onChangeSongs,
+  onReload,
   songs,
 }: {
   messages: ClassMessage[]
+  onReload: () => void
   numbers: ReadonlyMap<string, number>
   openJobId: string | null
   onView: (revisionId: string) => void
@@ -60,6 +62,7 @@ function History({
                   latest={m.seq === latestUnanswered}
                   songs={songs}
                   onChangeSongs={onChangeSongs}
+                  onReload={onReload}
                 />
               ) : null}
             </li>
@@ -233,6 +236,7 @@ export function ChatPanel({
         openJobId={running?.id ?? null}
         onView={onView}
         onChangeSongs={onChangeSongs}
+        onReload={onReload}
         songs={
           summary.soundless
             ? 'soundless'
