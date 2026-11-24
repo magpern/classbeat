@@ -19,6 +19,7 @@ assets=(
   "compose.prod.loopback.yaml compose.prod.loopback.yaml"
   "compose.prod.lan.yaml compose.prod.lan.yaml"
   "compose.prod.spotdown.yaml compose.prod.spotdown.yaml"
+  "compose.prod.spotdown-egress.yaml compose.prod.spotdown-egress.yaml"
   "scripts/check-prod-compose.sh check-prod-compose.sh"
   "scripts/check-prod-compose-rollback.bash check-prod-compose-rollback.bash"
   "scripts/check-prod-compose-setup.bash check-prod-compose-setup.bash"

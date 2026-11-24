@@ -25,7 +25,7 @@ bad()  { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
 "$root/scripts/release-assets.sh" build "$work/assets"
 ( cd "$work/assets" && sha256sum -c --quiet SHA256SUMS ) || bad "SHA256SUMS does not verify"
 # The asset list is exactly what the runbook downloads.
-want="SHA256SUMS backup.sh check-prod-compose-owner.bash check-prod-compose-probe.bash check-prod-compose-rollback.bash check-prod-compose-rules.bash check-prod-compose-runbook.bash check-prod-compose-secretfiles.bash check-prod-compose-secrets.bash check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-setup.bash check-prod-compose-site-selftest.bash check-prod-compose-site.bash check-prod-compose-spotdown.bash check-prod-compose-turnstile.bash check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.spotdown.yaml compose.prod.yaml install-swag-logrotate.sh prod.env.example restore.sh swag-classbeat-logrotate.conf swag-classbeat.subdomain.conf validate-backup.sh"
+want="SHA256SUMS backup.sh check-prod-compose-owner.bash check-prod-compose-probe.bash check-prod-compose-rollback.bash check-prod-compose-rules.bash check-prod-compose-runbook.bash check-prod-compose-secretfiles.bash check-prod-compose-secrets.bash check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-setup.bash check-prod-compose-site-selftest.bash check-prod-compose-site.bash check-prod-compose-spotdown.bash check-prod-compose-turnstile.bash check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.spotdown-egress.yaml compose.prod.spotdown.yaml compose.prod.yaml install-swag-logrotate.sh prod.env.example restore.sh swag-classbeat-logrotate.conf swag-classbeat.subdomain.conf validate-backup.sh"
 # find, not a glob: a glob (`*`) would not list a dotfile, so a hidden asset (a .env) could never fail this.
 list_dir() { find "$work/assets" -mindepth 1 -maxdepth 1 -printf '%f\n'; }
 got="$(list_dir | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
@@ -276,6 +276,23 @@ if (( can_gid )); then
   chmod 640 "$install/secrets/spotdown_service_key"
   sed -i 's/^SPOTDOWN_VERSION=.*/SPOTDOWN_VERSION=latest/' "$install/.env"
   expect "spotdown overlay on latest" 1 'never latest'
+  # 2e. YouTube (#1489): the owner's SPOTDOWN_YTDLP_SOURCING=true and the route out of
+  # compose.prod.spotdown-egress.yaml together, or neither; the switch exactly true or false.
+  sed -i 's/^SPOTDOWN_VERSION=.*/SPOTDOWN_VERSION=0.4.0/' "$install/.env"
+  echo 'SPOTDOWN_YTDLP_SOURCING=false' >> "$install/.env"
+  expect "spotdown with YouTube explicitly off" 0 '^install check'
+  sed -i 's/^SPOTDOWN_YTDLP_SOURCING=.*/SPOTDOWN_YTDLP_SOURCING=true/' "$install/.env"
+  expect "YouTube on without the route out" 1 'go together'
+  sed -i 's/^COMPOSE_FILE=.*/COMPOSE_FILE=compose.prod.yaml:compose.prod.spotdown.yaml:compose.prod.spotdown-egress.yaml/' "$install/.env"
+  expect "good install with YouTube and its route out" 0 '^install check'
+  for v in yes 1 True on; do
+    sed -i "s/^SPOTDOWN_YTDLP_SOURCING=.*/SPOTDOWN_YTDLP_SOURCING=$v/" "$install/.env"
+    expect "YouTube switch $v" 1 'exactly true or false'
+  done
+  sed -i 's/^SPOTDOWN_YTDLP_SOURCING=.*/SPOTDOWN_YTDLP_SOURCING=false/' "$install/.env"
+  expect "the route out with YouTube off" 1 'go together'
+  sed -i '/^SPOTDOWN_YTDLP_SOURCING=/d' "$install/.env"
+  expect "the route out without the switch" 1 'docker compose config fails with your .env'
   cp "$work/env.good" "$install/.env"; mksecrets
   cp "$work/env.ts" "$install/.env"
   mksecrets

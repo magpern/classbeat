@@ -240,11 +240,11 @@ check_keys() {
   # the owner's external network; every other one is the project's own (not external, its default
   # name `<project>_<key>`), so a `name:` cannot join web or the worker to some other existing network.
   bad="$(jq -r '.name as $p | .networks // {} | to_entries[]
-      | if (.key | IN("backend","egress","proxy","web-out","spotdown","spotdown-internal")) | not then "networks.\(.key)"
+      | if (.key | IN("backend","egress","proxy","web-out","spotdown","spotdown-internal","spotdown-egress")) | not then "networks.\(.key)"
         elif .key != "proxy" and ((.value.external // false) or .value.name != ($p + "_" + .key))
         then "networks.\(.key) (external or renamed)" else empty end' <<<"$J")" \
     || fail "the rendered networks could not be read" || return 1
-  [[ -z "$bad" ]] || fail "networks: only backend, egress, web-out, spotdown and spotdown-internal (the project's own) and the external proxy: $(tr '\n' ' ' <<<"$bad")" \
+  [[ -z "$bad" ]] || fail "networks: only backend, egress, web-out, spotdown, spotdown-internal and spotdown-egress (the project's own) and the external proxy: $(tr '\n' ' ' <<<"$bad")" \
     || return 1
   # A DNS alias on a shared network could take a name another container resolves (`db`, a model
   # provider): none anywhere but web's classbeat-web on the owner's proxy network (#1481 review).

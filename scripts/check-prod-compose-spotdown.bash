@@ -7,7 +7,10 @@
 # three services on internal networks only, no port, the service key on classbeat's worker and
 # spotdown-api only (never web), a pinned spotdown image (never `latest`), bounded ADR 0026 stage 1
 # ceilings, no capability, no-new-privileges, read-only, the images' own non-root users and spotdown's
-# own healthchecks on each, and YouTube and the `url` source off.
+# own healthchecks on each, and the `url` source off. YouTube (#1489) is off, or on together with the
+# route out of compose.prod.spotdown-egress.yaml: the outbound network spotdown-egress, joined by
+# spotdown-api and spotdown-worker only (never Redis, classbeat's worker or web), never one without the
+# other, and ALLOW_YTDLP_SOURCING exactly "true" or "false" (the owner's SPOTDOWN_YTDLP_SOURCING).
 spotdown_services='["spotdown-api","spotdown-redis","spotdown-worker"]'
 # shellcheck disable=SC2016  # jq variables, not shell ones
 check_spotdown_parts() {
@@ -25,6 +28,7 @@ check_spotdown_parts() {
 }
 # shellcheck disable=SC2016  # jq variables, not shell ones
 check_spotdown() {
+  local yt
   q --argjson s "$spotdown_services" '[.services | keys[] | select(startswith("spotdown"))] == $s' \
     || fail "spotdown is the three services spotdown-api, spotdown-worker and spotdown-redis, all of them" || return 1
   # Never `latest`, never a digest-less floating tag: a SemVer release, the same on api and worker.
@@ -33,17 +37,34 @@ check_spotdown() {
     || fail "spotdown-api and spotdown-worker run ghcr.io/magpern/spotdown:\$SPOTDOWN_VERSION, a release tag (X.Y.Z, never latest)" || return 1
   q '.services["spotdown-redis"].image | test("^redis:[0-9]+\\.[0-9]+\\.[0-9]+-alpine@sha256:[0-9a-f]{64}$")' \
     || fail "spotdown-redis runs a pinned redis:X.Y.Z-alpine@sha256:<digest>" || return 1
-  # Internal networks only, and who joins which: the worker reaches spotdown-api and nothing else.
+  # YouTube sourcing (#1489): the owner's switch SPOTDOWN_YTDLP_SOURCING, exactly "true" or "false"
+  # (spotdown would also read yes, 1 or on as true), the same on both, and on only with the route out.
+  yt="$(jq -r '[.services["spotdown-api"], .services["spotdown-worker"] | .environment.ALLOW_YTDLP_SOURCING]
+      | if . == ["false","false"] then "off" elif . == ["true","true"] then "on" else "bad" end' <<<"$J")" \
+    || fail "the rendered file could not be read for spotdown's YouTube switch" || return 1
+  [[ "$yt" != bad ]] \
+    || fail "ALLOW_YTDLP_SOURCING is SPOTDOWN_YTDLP_SOURCING, exactly true or false (the default), the same on spotdown-api and spotdown-worker" || return 1
+  q --arg yt "$yt" '(.networks | has("spotdown-egress")) == ($yt == "on")' \
+    || fail "YouTube sourcing and spotdown's route out go together: SPOTDOWN_YTDLP_SOURCING=true with compose.prod.spotdown-egress.yaml in COMPOSE_FILE, or neither (runbook section 5d)" || return 1
+  # The route out: the project's own plain network (no subnet of its own), spotdown-api and
+  # spotdown-worker on it and nobody else: never Redis (no password), classbeat's worker or web.
+  q '.networks["spotdown-egress"] // {} | (.internal // false) == false and (.external // false) == false and (.ipam // {}) == {}' \
+    || fail "spotdown-egress is an outbound network of the project's own (not internal, not external, no ipam)" || return 1
+  q --arg yt "$yt" '[.services | to_entries[] | select(.value.networks // {} | has("spotdown-egress")) | .key] | sort
+      == (if $yt == "on" then ["spotdown-api","spotdown-worker"] else [] end)' \
+    || fail "only spotdown-api and spotdown-worker join spotdown-egress (never spotdown-redis, classbeat's worker or web)" || return 1
+  # Internal networks, and who joins which: the worker reaches spotdown-api and nothing else.
   q '[.networks.spotdown, .networks["spotdown-internal"]] | all(. != null and .internal == true)' \
     || fail "the spotdown and spotdown-internal networks are internal (no route out)" || return 1
   q '[.services | to_entries[] | select(.value.networks // {} | has("spotdown")) | .key] | sort == ["spotdown-api","worker"]' \
     || fail "only classbeat's worker and spotdown-api join the spotdown network (never web)" || return 1
   q --argjson s "$spotdown_services" '[.services | to_entries[] | select(.value.networks // {} | has("spotdown-internal")) | .key] | sort == $s' \
     || fail "only the three spotdown services join spotdown-internal" || return 1
-  q '(.services["spotdown-api"].networks | keys) == ["spotdown","spotdown-internal"]
-     and (.services["spotdown-worker"].networks | keys) == ["spotdown-internal"]
+  q --arg yt "$yt" '(if $yt == "on" then ["spotdown-egress"] else [] end) as $e
+     | (.services["spotdown-api"].networks | keys) == (["spotdown","spotdown-internal"] + $e | sort)
+     and (.services["spotdown-worker"].networks | keys) == (["spotdown-internal"] + $e | sort)
      and (.services["spotdown-redis"].networks | keys) == ["spotdown-internal"]' \
-    || fail "spotdown-api joins spotdown and spotdown-internal, its worker and Redis spotdown-internal only" || return 1
+    || fail "spotdown-api joins spotdown and spotdown-internal, its worker and Redis spotdown-internal only (with the route out, spotdown-api and its worker also spotdown-egress)" || return 1
   # The one service key (classbeat.spotdown.key_policy): classbeat's worker and spotdown-api only.
   q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("spotdown_service_key")) | .key] | sort == ["spotdown-api","worker"]' \
     || fail "spotdown_service_key belongs to classbeat's worker and spotdown-api only (never web)" || return 1
@@ -56,12 +77,12 @@ check_spotdown() {
      and (.services.worker.environment | with_entries(select(.key | startswith("CLASSBEAT_SPOTDOWN_"))))
        == {"CLASSBEAT_SPOTDOWN_URL": "http://spotdown-api:8000"}' \
     || fail "CLASSBEAT_SPOTDOWN_URL is http://spotdown-api:8000, on classbeat's worker only" || return 1
-  # Service mode, no UI, the queue on its own Redis; the url source and YouTube off (no route out).
+  # Service mode, no UI, the queue on its own Redis; the url source off, always (classbeat never uses
+  # it: no host, no pattern), with or without the route out.
   q '[.services["spotdown-api"], .services["spotdown-worker"] | .environment
       | .SERVICE_MODE == "true" and .SERVE_UI == "false" and .DATA_DIR == "/data"
-        and .REDIS_URL == "redis://spotdown-redis:6379/0" and .URL_ALLOWED_HOSTS == ""
-        and .ALLOW_YTDLP_SOURCING == "false"] | all' \
-    || fail "spotdown runs in service mode without UI, with the url source and YouTube sourcing off" || return 1
+        and .REDIS_URL == "redis://spotdown-redis:6379/0" and .URL_ALLOWED_HOSTS == ""] | all' \
+    || fail "spotdown runs in service mode without UI, with the url source off (URL_ALLOWED_HOSTS empty)" || return 1
   # Each service: no capability, no-new-privileges, a named non-root user, a ceiling, log rotation.
   q --argjson s "$spotdown_services" '[.services[$s[]] | (.cap_drop // []) == ["ALL"] and (.security_opt // []) == ["no-new-privileges:true"]] | all' \
     || fail "every spotdown service drops every capability and sets no-new-privileges" || return 1
@@ -95,7 +116,8 @@ check_spotdown() {
   q --argjson s "$spotdown_services" '[.services | to_entries[] | select(.value.volumes // [] | map(.source // "") | any(startswith("spotdown"))) | .key] | sort == $s' \
     || fail "only the spotdown services mount spotdown's volumes" || return 1
 }
-# compose.prod.yaml with compose.prod.spotdown.yaml: the shared variant's rules, and spotdown is there.
+# compose.prod.yaml with compose.prod.spotdown.yaml (and compose.prod.spotdown-egress.yaml): the shared
+# variant's rules, and spotdown is there.
 check_withspotdown() {
   check_shared || return 1
   check_spotdown || return 1

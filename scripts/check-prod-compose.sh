@@ -4,8 +4,9 @@
 # nginx image).
 #   scripts/check-prod-compose.sh        (needs docker, jq; run from anywhere)
 # 1. `docker compose config` accepts compose.prod.yaml alone (swag on a shared Docker network),
-#    with compose.prod.loopback.yaml (a proxy on the host, web on 127.0.0.1) and with
-#    compose.prod.spotdown.yaml (spotdown, off unless COMPOSE_FILE names it; #1481);
+#    with compose.prod.loopback.yaml (a proxy on the host, web on 127.0.0.1), with
+#    compose.prod.spotdown.yaml (spotdown, off unless COMPOSE_FILE names it; #1481) and with
+#    compose.prod.spotdown-egress.yaml after it (spotdown's route out for YouTube, #1489);
 # 2. the invariants of the production stack hold for both (with the OAuth settings of #507: the
 #    client ids only from their variables, the client secrets as files on web only, never a value
 #    in the rendered files; #511: every service that mounts a secret has group 10010 and a non-root
@@ -97,9 +98,12 @@ else
   root="$here"; layout=install
 fi
 [[ "$mode" != auto ]] || { [[ "$layout" == install ]] && mode=install || mode=repo; }
-[[ -f "$root/compose.prod.yaml" && -f "$root/compose.prod.loopback.yaml" && -f "$root/compose.prod.lan.yaml" \
-  && -f "$root/compose.prod.spotdown.yaml" ]] \
-  || { echo "check-prod-compose: compose.prod.yaml, compose.prod.loopback.yaml, compose.prod.lan.yaml and compose.prod.spotdown.yaml must be next to this script" >&2; exit 1; }
+# The production compose files (the release assets), the one list every part reads.
+prod_files=(compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml compose.prod.spotdown.yaml
+  compose.prod.spotdown-egress.yaml)
+for f in "${prod_files[@]}"; do
+  [[ -f "$root/$f" ]] || { echo "check-prod-compose: ${prod_files[*]} must be next to this script ($f is missing)" >&2; exit 1; }
+done
 cd "$root"
 
 # --- The parts (#763) -------------------------------------------------------------------------------
@@ -164,4 +168,4 @@ if [[ $mode == install ]]; then
   echo "install check (compose files with dummies, the real render on the allow-list, .env, secrets/): ok; $owner_note"
   exit 0
 fi
-echo "compose.prod.yaml (shared network, loopback, LAN and spotdown, default-deny keys, variables and networks, OAuth secrets on web only, secret files by group 10010), runbook network, swag site config and self-tests: ok; $owner_note"
+echo "compose.prod.yaml (shared network, loopback, LAN, spotdown and its route out, default-deny keys, variables and networks, OAuth secrets on web only, secret files by group 10010), runbook network, swag site config and self-tests: ok; $owner_note"
