@@ -166,6 +166,18 @@ async def test_the_shape_is_judged_section_by_section_in_order() -> None:  # iss
     assert await _failed(case, unjudged) == []
 
 
+async def test_an_extra_modifier_on_a_section_named_in_full_fails_the_shape() -> None:  # #1510
+    case = CASES["interpret_ride_shape"]
+    # section 2 names effort, count, length and load: nothing else may come back with it
+    for extra in ({"trend": "rising"}, {"minutes": 4}):
+        added = _with(case, lambda d, extra=extra: d["shape"][2].update(extra))
+        assert await _failed(case, added) == ["shape"]
+    # a section the case names in part leaves the rest open (kind only, kind and trend)
+    for n, extra in ((1, {"effort": "hard", "minutes": 3}), (3, {"trend": "steady"})):
+        open_ = _with(case, lambda d, n=n, extra=extra: d["shape"][n].update(extra))
+        assert await _failed(case, open_) == []
+
+
 async def test_a_reading_that_sums_the_parts_up_fails_the_absent_counts() -> None:
     case = CASES["interpret_ride_shape"]
     summed = _with(case, lambda d: d.update(sprints={"value": 9, "origin": "inferred"}))

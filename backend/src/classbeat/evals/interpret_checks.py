@@ -20,7 +20,8 @@ On the sanitised ``InterpretedRequest`` (what the stage hands back), never on mo
   characters, no link); ``InterpretedRequest.sanitised`` drops one that is not, so this is the
   backstop;
 - ``shape`` (#1485): the sections in order, each of the expected kind and with every modifier the
-  case gives (``trend``, ``effort``, ``count``, ``length``, ``load``, ``minutes``);
+  case gives (``trend``, ``effort``, ``count``, ``length``, ``load``, ``minutes``); a section the
+  case names in full (``effort``, ``count``, ``length`` and ``load``) has no other modifier;
 - ``forbidden_text``: none of the case's strings is anywhere in what came back, the name included.
 """
 
@@ -115,10 +116,20 @@ def _shape(expect: list[SectionFields], got: InterpretedRequest) -> Check:
     )
 
 
+# A case that names all four of these for a section names the section in full (#1510).
+FULL_SECTION = frozenset({"effort", "count", "length", "load"})
+
+
 def _holds(made: SectionFields, want: SectionFields) -> bool:
-    """The section is of the expected kind and has every modifier the case names."""
+    """The section is of the expected kind and has every modifier the case names. A case that
+    names a section in full (``FULL_SECTION``) also refuses a modifier it does not name, so an
+    extra ``trend`` or ``minutes`` the model adds fails; a partly named section leaves the
+    rest open."""
     given = want.model_dump(exclude_none=True)
-    return all(made.model_dump().get(field) == value for field, value in given.items())
+    got = made.model_dump(exclude_none=True)
+    if not all(got.get(field) == value for field, value in given.items()):
+        return False
+    return not given.keys() >= FULL_SECTION or got.keys() == given.keys()
 
 
 def _pinned(expect: list[PinExpect], got: InterpretedRequest) -> Check:
