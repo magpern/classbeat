@@ -239,8 +239,15 @@ def test_an_untagged_draft_is_a_correction_round_then_one_shape_off() -> None:
     done = submit(stage, ride(tagged=False), 9)
     assert done.ok
     assert [(m.path, m.code, m.found) for m in done.output.unmet] == [
-        ("shape.0", "shape_off", None)
-    ]  # one item for a draft with no tag, not one per section
+        ("shape.0", "shape_untagged", None)
+    ]  # one item, with its own reason, for a draft with no tag (#1516), not one per section
+    (item,) = shape_off_items(b, done.output.unmet)
+    assert (item.path, item.origin, item.reason_code) == (
+        "shape.0",
+        "not_as_asked",
+        "shape_untagged",
+    )
+    assert item.found is None
 
 
 def test_a_count_miss_is_corrected_and_the_corrected_draft_ends_clean() -> None:
@@ -263,6 +270,22 @@ def test_a_remaining_miss_is_recorded_as_a_not_as_asked_item_of_its_section() ->
     assert item.value == {"kind": "efforts", "count": {"min": 2, "max": 4}}
     assert item.found == 5  # what the draft has: the count miss says how many
     assert item.model_dump(mode="json")["found"] == 5
+
+
+def test_a_section_zero_miss_stays_shape_off_and_only_an_untagged_draft_is_shape_untagged() -> None:
+    b = shaped()
+    no_zero = ride()[1:]  # section 0 has no segment; the others are tagged
+    (miss,) = check_shape(b, spec_of(no_zero), tags(no_zero))
+    assert (miss.path, miss.code) == ("shape.0", "shape_missing")
+    assert (recorded(miss).path, recorded(miss).code) == ("shape.0", "shape_off")
+    late = [ride()[1], ride()[0], *ride()[2:]]  # section 0 after section 1
+    (order,) = check_shape(b, spec_of(late), tags(late))
+    assert (order.path, order.code) == ("shape.0", "shape_order")
+    assert recorded(order).code == "shape_off"
+    bare = ride(tagged=False)
+    (untagged,) = check_shape(b, spec_of(bare), tags(bare))
+    assert recorded(untagged).code == "shape_untagged"
+    assert recorded(untagged).path == "shape.0"
 
 
 def test_found_is_only_for_a_count_miss_and_never_dumped_when_absent() -> None:

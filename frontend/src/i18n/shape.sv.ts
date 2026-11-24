@@ -33,6 +33,7 @@ export const shapeSv: Catalogue = {
   'shape.untagged': 'Den här versionen följer inte turens delar.',
   'shape.off': '{section}: du bad om {asked}; den här versionen har {found}',
   'interp.reason.shape_off': 'Den här versionen stämmer inte.',
+  'interp.reason.shape_untagged': 'Den här versionen följer inte turens delar.',
   'interp.reason.cycling_only': 'En turs form finns bara för cykelpass.',
   'interp.reason.shape_too_large': 'Turen har fler delar än vi kan behålla.',
   'cw.approve.notAsked': 'Innan du godkänner: det här blev inte som du bad om:',

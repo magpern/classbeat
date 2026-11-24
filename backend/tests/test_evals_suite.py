@@ -97,6 +97,8 @@ RELEASED: dict[int, str] = {
     31: "7c0410e79fb8da9853f3936a01d3c851e0dc1dfe53052bcb7f10d4392d768dbf",
     # #1510: an interpret case that names a section in full refuses an extra modifier.
     32: "cc3a588986f081bfc6990b342025ddc2d65213ab69376ad15dabf8402f28f038",
+    # #1516: a draft with no section tag records its own reason, shape_untagged.
+    33: "d9bcc86fcf944947d854b50ca0eba4ed0255ebb87225bafe42abcea9510a008b",
 }
 
 SUITE = load_suite()

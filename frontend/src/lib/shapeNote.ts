@@ -190,11 +190,13 @@ export function shapeOffText(item: InterpretationItem): string | null {
 }
 
 /**
- * An untagged draft records one `shape_off` on `shape.0` without a count: the version does not
- * follow the ride's parts at all, so no single section is named.
+ * A draft that names no section records one `shape_untagged` on `shape.0` (#1516): the version
+ * does not follow the ride's parts at all, so no single section is named. A `shape_off` on
+ * `shape.0` is a real miss of section 1 (also what an older untagged version stored), worded as
+ * any section's.
  */
 export function isUntagged(items: readonly InterpretationItem[]): boolean {
-  const off = items.filter((i) => i.origin === 'not_as_asked' && i.reasonCode === 'shape_off')
-  const [only] = off
-  return off.length === 1 && only !== undefined && only.path === 'shape.0' && (only.found ?? null) === null
+  const marked = items.filter((i) => i.origin === 'not_as_asked' && i.reasonCode === 'shape_untagged')
+  const [only] = marked
+  return marked.length === 1 && only !== undefined && only.path === 'shape.0'
 }

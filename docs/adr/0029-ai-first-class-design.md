@@ -489,7 +489,8 @@ resistance; "tough" was about one section).
    their correction rounds (§4), verifies that every section is realised, in order, and that counts are
    inside their ranges (an `efforts` section counts its intervals at zone 5 or above lasting at most 90 s;
    a `climb` section counts its `main` segments). A miss that survives the corrections is a Not as asked
-   item (`shape_off`).
+   item (`shape_off`); a draft that names no section at all is one item with its own
+   reason, `shape_untagged`, on `shape.0` (#1516).
 6. **A miss is never saved by itself.** Not as asked items are shown before Approve and before Save.
    Composer phase 2's `kept` fit re-times the approved design and cannot change its shape; a `redesigned`
    fit is checked, and is saved only by the instructor's own Save (ADR 0038 §7, unchanged). A `kept` fit

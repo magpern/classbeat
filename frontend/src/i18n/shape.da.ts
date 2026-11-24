@@ -33,6 +33,7 @@ export const shapeDa: Catalogue = {
   'shape.untagged': 'Denne version følger ikke turens dele.',
   'shape.off': '{section}: du bad om {asked}; denne version har {found}',
   'interp.reason.shape_off': 'Denne version passer ikke.',
+  'interp.reason.shape_untagged': 'Denne version følger ikke turens dele.',
   'interp.reason.cycling_only': 'En turs form findes kun for cykelhold.',
   'interp.reason.shape_too_large': 'Turen har flere dele, end vi kan beholde.',
   'cw.approve.notAsked': 'Før du godkender: det her blev ikke, som du bad om:',
