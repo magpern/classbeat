@@ -11,6 +11,7 @@ from classbeat.agent.brief import Brief
 from classbeat.classes.beat_one_schemas import BeatOneIn as BeatOneIn
 from classbeat.classes.beat_one_schemas import BeatOneOut as BeatOneOut
 from classbeat.classes.composer_view import FillSongsOut, Phase2Out, SavePendingOut
+from classbeat.classes.music_answer import MusicDecisionOut
 from classbeat.classes.provenance_out import ProvenanceOut
 
 
@@ -188,6 +189,7 @@ class ClassDetailOut(ClassOut):
     fill_songs: FillSongsOut | None = None
     save_pending: SavePendingOut | None = None  # ADR 0038 section 7 (#1189)
     phase2: Phase2Out | None = None
+    music_decision: MusicDecisionOut | None = None  # #1495: a composer class's music decision
     # The history's ``can_change`` (#1484): whether a chat change is offered now.
     can_change: bool = False
 

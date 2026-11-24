@@ -21,10 +21,26 @@ PLAYLIST: Final = "mowl_spotify_playlist"
 NO_MUSIC: Final = "none"
 
 
+def _undecided(row: StoredInterpretation) -> bool:
+    return row.music_decision is not None and row.music_decision.state == "undecided"
+
+
 def _sketched(row: StoredInterpretation, brief: Brief) -> bool:
-    """A composer class that gets a sketch: cycling, with music (not "No music")."""
-    music = row.music or {}
-    return brief.sport == "cycling" and music.get("source") not in (None, NO_MUSIC)
+    """A composer class that gets a sketch: cycling, with music (not "No music"), or with its
+    music left open (``undecided``; with no Spotify the reading found no music it could use, and
+    the sketch needs none: ADR 0038 amendment of 2026-11-24, decisions 5 and 6)."""
+    if brief.sport != "cycling":
+        return False
+    source = (row.music or {}).get("source")
+    return source not in (None, NO_MUSIC) or (source is None and _undecided(row))
+
+
+def _no_music(row: StoredInterpretation) -> str:
+    """Why a class with no music has no design: a running class has MOWL playlists only; a
+    cycling one needs Spotify (or song picking)."""
+    if row.brief.get("sport") == "running":
+        return NEEDS_MOWL_PLAYLIST
+    return stored_no_music_reason(row.items)
 
 
 def design_input(
@@ -37,14 +53,14 @@ def design_input(
 ) -> tuple[JobKind, JobInput] | str:
     """The design kind and its unchanged input, or the reason there is none. ``song_picking``:
     the flag admits the user, so a playlist class may get its new playlist (Amendment 26).
-    ``composer``: the ``composer_flow`` flag is on now; a cycling class whose interpret job was
-    admitted with it on and that has music gets a sketch (ADR 0038 section 4), a ``design_draft``
-    with no music in mode ``sketch``. A soundless class keeps its soundless design, and a running
-    class its design on a MOWL playlist (the sketch's stage is the soundless one, cycling only)."""
-    if row.music is None:  # a running class has MOWL playlists only; a cycling one needs Spotify
-        if row.brief.get("sport") == "running":
-            return NEEDS_MOWL_PLAYLIST
-        return stored_no_music_reason(row.items)
+    ``composer``: the composer is available now; a cycling class whose interpret job was
+    admitted with it and that has music, or whose music is undecided, gets a sketch (ADR 0038
+    section 4), a ``design_draft`` with no music in mode ``sketch``. A soundless class keeps its
+    soundless design, and a running class its design on a MOWL playlist (the sketch's stage is the
+    soundless one, cycling only). A class with no music that takes the older route (the composer
+    is not available now) is refused as before: ``needs_spotify`` (Amendment 25)."""
+    if row.music is None and not (composer and _undecided(row)):
+        return _no_music(row)
     if not isinstance(job_input, dict):
         return "not_ready"
     try:
@@ -58,6 +74,8 @@ def design_input(
                 mowl_connection_id=given.mowl_connection_id,
                 mode="sketch",
             )
+        if row.music is None:  # undecided, but not a sketch: the older route needs the music
+            return _no_music(row)
         pick = row.music.get("source") == "pick"
         # Amendment 26: a cycling class on the user's playlist gets a new one in class order. One
         # stored with no Spotify (only before Amendment 25) keeps its write-free design_draft.

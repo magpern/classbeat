@@ -81,3 +81,71 @@ def test_a_cycling_class_with_no_music_stores_the_reason_its_interpretation_gave
         assert design_input(row, {}, CLASS, song_picking=True) == reason
     running = StoredInterpretation(job_id=uuid.uuid4(), brief=RUNNING, music=None, items=[])
     assert design_input(running, {}, CLASS, song_picking=False) == "needs_mowl_playlist"
+
+
+# --- the music decision (ADR 0038 amendment of 2026-11-24, decisions 5 and 6, #1495) ---------
+
+NEEDS_SPOTIFY = {
+    "path": "music",
+    "origin": "not_as_asked",
+    "reason_code": "needs_spotify",
+    "value": None,
+}
+
+
+def composer_row(decision: dict[str, Any] | None, music: dict[str, str] | None = None) -> Any:
+    return StoredInterpretation.model_validate(
+        {
+            "job_id": str(uuid.uuid4()),
+            "brief": CYCLING,
+            "music": music,
+            "items": [] if music else [NEEDS_SPOTIFY],
+            "music_decision": decision,
+        }
+    )
+
+
+def composer_given(*, spotify: bool = False) -> dict[str, Any]:
+    given: dict[str, Any] = {
+        "request": "A class, please",
+        "mowl_connection_id": str(MOWL),
+        "composer": True,
+    }
+    if spotify:
+        given["spotify_connection_id"] = str(SPOTIFY)
+    return given
+
+
+def test_a_composer_class_with_its_music_undecided_is_sketched_without_spotify() -> None:
+    row = composer_row({"state": "undecided"})
+    kind, made = design_input(row, composer_given(), CLASS, song_picking=True, composer=True)
+    assert kind is DESIGN_DRAFT
+    assert isinstance(made, DesignDraftInput)
+    assert (made.mode, made.music.model_dump()) == ("sketch", {"source": "none"})
+
+
+def test_without_the_composer_now_an_undecided_class_is_refused_needs_spotify() -> None:
+    """The addendum's fallback: the composer was available at admit, not at hand-off; the older
+    route needs Spotify, so the stored refusal is ``needs_spotify`` (no credit)."""
+    row = composer_row({"state": "undecided"})
+    got = design_input(row, composer_given(), CLASS, song_picking=True, composer=False)
+    assert got == "needs_spotify"
+
+
+def test_a_decided_class_with_no_music_it_could_use_keeps_amendment_25() -> None:
+    """Decided as requested (a taste or a named playlist, read with no Spotify) yet no music: the
+    request asked for music the sketch cannot promise, so the hand-off refuses as before."""
+    for decision in ({"state": "decided", "choice": "request"}, None):
+        row = composer_row(decision)
+        got = design_input(row, composer_given(), CLASS, song_picking=True, composer=True)
+        assert got == "needs_spotify"
+
+
+def test_a_composer_class_with_music_is_sketched_whatever_its_decision() -> None:
+    for decision in ({"state": "undecided"}, {"state": "decided", "choice": "request"}, None):
+        row = composer_row(decision, {"source": "pick"})
+        given = composer_given(spotify=True)
+        kind, made = design_input(row, given, CLASS, song_picking=True, composer=True)
+        assert kind is DESIGN_DRAFT
+        assert isinstance(made, DesignDraftInput)
+        assert made.mode == "sketch"
