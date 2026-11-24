@@ -28,7 +28,7 @@ from classbeat.connections.preferences import uses_swedebeat
 from classbeat.connections.repository import ConnectionInfo, disconnect, list_connections
 from classbeat.connections.swedebeat_account import live, swedebeat_access, swedebeat_email
 from classbeat.context import UserContext
-from classbeat.db import system_session
+from classbeat.db import system_session, user_session
 from classbeat.emailnorm import normalize_email
 
 router = APIRouter(prefix="/api/connections", tags=["connections"])
@@ -111,8 +111,9 @@ class ConnectionsOut(BaseModel):
     # ADR 0024 (#647): whether the desktop page may offer "Scan with the MOWL app"
     # (``CLASSBEAT_MOWL_QR_ENABLED``). Nothing here says anything about the user's own account.
     mowl_qr_enabled: bool = False
-    # ADR 0038 section 2 (#1185): the effective ``composer_flow`` (the environment's switch and a
-    # stored ``on``), so the web shows the composer only when it is on.
+    # ADR 0038 section 2 (#1185): the effective ``composer_flow`` for this user (the operator's
+    # switch pair and the user's plan covering the sketch, #1484), so the web shows the composer
+    # only when it would be admitted.
     composer_flow: bool = False
 
 
@@ -151,7 +152,8 @@ async def get_connections(
 
         running = await sport.running_on(db)
         soundless = await music_kind.soundless_on(db)
-        composing = await composer.composer_on(db)
+    async with user_session(factory, ctx) as db:  # the plan is read under the user's own context
+        composing = await composer.composer_available(db, ctx)
     return ConnectionsOut(
         connections=[
             ConnectionOut.of(row, email if row.provider == "swedebeat" else None) for row in rows

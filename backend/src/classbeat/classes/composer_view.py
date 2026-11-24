@@ -2,7 +2,11 @@
 
 - ``composer``: the class was read with the composer flow on (its interpret job, named by the
   stored interpretation, was admitted with ``composer``: true, #1185). False for every other class,
-  so the page never guesses from the version history. **Reading window** (#1206): while the class
+  so the page never guesses from the version history. Once the hand-off ran, the route it took
+  decides (``interpretation.route``, #1484): ``sketch`` is true whatever the plan's coverage is
+  now, ``classic`` (the sketch was not available at hand-off, so the class took the older route)
+  is false; a row with no route (stored before, or not handed off yet) follows the job.
+  **Reading window** (#1206): while the class
   has no interpretation yet, it is true only while its ``interpret_request`` job is still queued or
   running, was admitted with ``composer``: true and a music choice other than "No music", **and**
   the ``composer_flow`` gate is on now; the workspace then shows from the first second. A job that
@@ -119,7 +123,10 @@ async def composer_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Co
     ids = {"owner_id": owner_id, "class_id": class_id}
     if row is None:  # no reading stored yet; ``save_pending`` follows its own rule
         return await _after_phase_two(db, owner_id, class_id, await _reading(db, ids), None)
-    composer = bool((await db.execute(_COMPOSER, {**ids, "job_id": row.job_id})).scalar())
+    composer = row.route != "classic" and (
+        row.route == "sketch"
+        or bool((await db.execute(_COMPOSER, {**ids, "job_id": row.job_id})).scalar())
+    )
     now = (await db.execute(_STATE, ids)).first()
     if now is not None and now.origin != SKETCH:
         return await _after_phase_two(db, owner_id, class_id, composer, now.fit)

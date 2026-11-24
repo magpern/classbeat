@@ -51,7 +51,7 @@ from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design import composer, interpretation_row
 from classbeat.design.interpret_kind import KIND as INTERPRET_KIND
-from classbeat.design.interpretation_row import Refusal, StoredInterpretation
+from classbeat.design.interpretation_row import Refusal, Route, StoredInterpretation
 from classbeat.flags import effective as flags
 from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.hold import Held
@@ -117,6 +117,7 @@ class _Hold:
     class_id: UUID
     job_id: UUID  # the interpret job whose interpretation this call read
     retry: bool
+    route: Route | None = None  # the route this call's design input takes (#1484)
 
     async def _row(self, db: AsyncSession) -> StoredInterpretation | None:
         row = await interpretation_row.read(db, self.owner_id, self.class_id, lock=True)
@@ -135,9 +136,20 @@ class _Hold:
         if row.refusal is not None:
             if not self.retry:
                 return Held(row.refusal.reason, dict(row.refusal.counts))
-            cleared = row.model_copy(update={"refusal": None})
-            await interpretation_row.write(db, self.owner_id, self.class_id, cleared)
+            row = row.model_copy(update={"refusal": None})
+            await interpretation_row.write(db, self.owner_id, self.class_id, row)
+        await self._record_route(db, row)
         return None
+
+    async def _record_route(self, db: AsyncSession, row: StoredInterpretation) -> None:
+        """Store the route this call takes, in the locked row. Never once a design job of this
+        hand-off exists: a later call (a reopened tab) must not move the class's route."""
+        if self.route is None or row.route == self.route:
+            return
+        if (await db.execute(_DESIGN_JOB, self.ids())).first() is not None:
+            return
+        stored = row.model_copy(update={"route": self.route})
+        await interpretation_row.write(db, self.owner_id, self.class_id, stored)
 
     async def refused(
         self, db: AsyncSession, reason: str, counts: Mapping[str, int | str], /
@@ -191,12 +203,16 @@ async def design_from_interpretation(
         params = {**owner, "job_id": row.job_id, "kind": INTERPRET_KIND}
         job_input = (await db.execute(_INTERPRET_JOB, params)).scalar_one_or_none()
         picking = await flags.song_picking_admits(db, ctx, songs_config.current().enabled)
-        composing = await composer.composer_on(db)  # ADR 0038 section 4: the flag, now
-    hold = _Hold(ctx.user_id, class_id, row.job_id, retry)
+        # ADR 0038 section 4: the operator's flag and the user's plan, now
+        composing = await composer.composer_available(db, ctx)
     planned = design_input(row, job_input, class_id, song_picking=picking, composer=composing)
     if isinstance(planned, str):
-        return await _store_refusal(factory, ctx, hold, planned)
+        return await _store_refusal(
+            factory, ctx, _Hold(ctx.user_id, class_id, row.job_id, retry), planned
+        )
     kind, parsed = planned
+    route: Route = "sketch" if getattr(parsed, "mode", None) == "sketch" else "classic"
+    hold = _Hold(ctx.user_id, class_id, row.job_id, retry, route)
     done = await enqueue(
         factory,
         ctx,

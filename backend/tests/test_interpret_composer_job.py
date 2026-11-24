@@ -13,7 +13,7 @@ from uuid import UUID
 
 import pytest
 
-from classbeat.design import composer
+from classbeat.design import composer, music_kind
 from interprettools import REQUEST, InterpretEnv, interpreter
 from revisetools import ReviseEnv
 
@@ -41,12 +41,17 @@ def flag(renv: ReviseEnv, value: Any) -> None:
 
 @pytest.fixture(autouse=True)
 def composer_off(renv: ReviseEnv) -> Iterator[None]:
+    """The composer off, the soundless switch off and the web's ``fake`` covering the user's plan
+    (#1484: the composer is available when its pair is on **and** the plan covers the sketch; the
+    switch is not read)."""
     composer.configure(None)
+    music_kind.configure(music_kind.SoundlessGate(enabled=False, fake_covers=True))
     flag(renv, None)
     try:
         yield
     finally:
         composer.configure(None)
+        music_kind.configure(None)
         flag(renv, None)
 
 
@@ -71,6 +76,18 @@ async def test_connections_carry_the_effective_flag(
     composer.configure(composer.ComposerGate(enabled=environment_on))
     flag(ienv.renv, stored)
     assert await shown(ienv) is expected
+
+
+async def test_the_pair_on_without_the_plans_coverage_is_not_available(ienv: InterpretEnv) -> None:
+    """#1484: the operator's pair is on, the user's plan covers nothing: ``composer_flow`` is
+    false and attached music is refused ``feature_off``, whatever the soundless switch says."""
+    for switch in (True, False):
+        turn_on(ienv.renv)
+        music_kind.configure(music_kind.SoundlessGate(enabled=switch, fake_covers=False))
+        assert await shown(ienv) is False
+        refused = await ienv.start(music_sources=SOURCES)
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["detail"]["reason"] == "feature_off"
 
 
 async def test_with_the_flag_off_attached_music_is_refused_before_anything_is_made(

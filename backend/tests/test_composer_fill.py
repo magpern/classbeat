@@ -13,8 +13,11 @@ from uuid import UUID
 
 import pytest
 
+from classbeat.db import user_session
+from classbeat.design import sketch_gate
 from classbeat.songs import composer_design, song_list
 from composertools import SKETCH, ComposerEnv, fill_script
+from ctx import make_context
 from songtools import CHOSEN
 
 pytestmark = pytest.mark.usefixtures("jenv")
@@ -37,6 +40,17 @@ async def test_a_fill_waits_on_a_v3_list_and_the_sketch_stays_current(cenv: Comp
     row = cenv.songenv.row(job_id)
     assert row.credit_state == "none"
     assert cenv.songenv.class_playlists(rider.user_id) == []  # no final playlist before Approve
+
+
+async def test_a_fill_does_not_depend_on_the_plans_sketch_coverage(cenv: ComposerEnv) -> None:
+    """#1484: a ride in progress follows its class; the fill runs no no-songs prompt, so it is
+    behind the composer switch pair only, whatever the plan covers now (none here)."""
+    rider = await cenv.songenv.rider()
+    class_id, _ = await cenv.sketched(rider)
+    async with user_session(cenv.songenv.factory, make_context(rider.user_id)) as db:
+        assert await sketch_gate.admit_sketch(db, make_context(rider.user_id)) is not None
+    made = await cenv.fill(rider, class_id)
+    assert made.status_code == 201, made.text
 
 
 async def test_two_concurrent_fill_calls_make_one_job(cenv: ComposerEnv) -> None:
