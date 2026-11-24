@@ -13,7 +13,7 @@ const msg = (status: PendingMessage['status'], id = 'm1'): PendingMessage => ({
 })
 
 function given(over: Partial<DriverInput> = {}): DriverInput {
-  return { running: false, sketchCurrent: false, fillStarted: false, savePending: null, messages: [], ...over }
+  return { running: false, sketchCurrent: false, fillStarted: false, savePending: null, messages: [], music: 'ready', ...over }
 }
 
 describe('the driver order (ADR 0038 section 8)', () => {
@@ -29,6 +29,13 @@ describe('the driver order (ADR 0038 section 8)', () => {
     ['a pending message on a draft', given({ messages: [msg('pending')] }), 'submit'],
     ['only submitted and failed messages: nothing', given({ messages: [msg('submitted'), msg('failed', 'm2')] }), 'none'],
     ['a draft with nothing to do', given(), 'none'],
+    ['a sketch while the music question is open: no fill', given({ sketchCurrent: true, music: 'undecided' }), 'none'],
+    ['a sketch with no Spotify connected: no fill', given({ sketchCurrent: true, music: 'not_connected' }), 'none'],
+    ['a sketch with no working-playlist consent: no fill', given({ sketchCurrent: true, music: 'consent_missing' }), 'none'],
+    ['a sketch while Spotify is still being read: no fill', given({ sketchCurrent: true, music: 'checking' }), 'none'],
+    ['a sketch with song picking unavailable: no fill', given({ sketchCurrent: true, music: 'unavailable' }), 'none'],
+    ['a pending message still goes first while the music waits', given({ sketchCurrent: true, music: 'undecided', messages: [msg('pending')] }), 'submit'],
+    ['a draft saves whatever the music says', given({ savePending: TARGET, music: 'undecided' }), 'save'],
   ]
   it.each(rows)('%s', (_name, input, kind) => {
     expect(nextStep(input).kind).toBe(kind)

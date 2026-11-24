@@ -7,6 +7,7 @@ import { getConnections } from '../../api/connections'
 import { fillSongs } from '../../api/fillSongs'
 import { submitPending, type PendingMessage } from '../../api/pendingMessages'
 import { nextStep, stepKey, type DriverStep } from '../../lib/composer/driver'
+import type { MusicGate } from '../../lib/composer/musicGate'
 import { SKETCH } from '../../lib/composer/workspaceKind'
 
 /**
@@ -21,6 +22,7 @@ export function useComposerDriver({
   summary,
   currentOrigin,
   messages,
+  music,
   reload,
   refreshMessages,
 }: {
@@ -28,6 +30,8 @@ export function useComposerDriver({
   currentOrigin: string | null
   /** `null` until the stored messages are read: the driver waits, so a pending one goes first. */
   messages: readonly PendingMessage[] | null
+  /** What the song search waits for: the fill starts only when it is `ready` (the question, Spotify, the consent). */
+  music: MusicGate
   reload: () => void
   refreshMessages: () => void
 }): { error: string | null } {
@@ -48,7 +52,7 @@ export function useComposerDriver({
   const step: DriverStep =
     messages === null
       ? { kind: 'none' }
-      : nextStep({ running, sketchCurrent, fillStarted, savePending: summary.composer.savePending, messages })
+      : nextStep({ running, sketchCurrent, fillStarted, savePending: summary.composer.savePending, messages, music })
   const key = stepKey(summary.id, step, summary.currentRevisionId)
 
   useEffect(() => {
