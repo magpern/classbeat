@@ -19,6 +19,7 @@ import { useT } from '../../i18n/I18n'
 import { deriveChip } from '../../lib/composer/chip'
 import { recallRequest } from '../../lib/startRequest'
 import { requestOf } from '../../lib/requestReading'
+import { notAskedOf } from '../../lib/notAsked'
 import { sendOf } from '../player/operations'
 import { Link } from '../../router/Router'
 import { DeleteClass } from '../classes/DeleteClass'
@@ -27,7 +28,7 @@ import { NotCurrent } from '../classes/ClassNotes'
 import { UncertainWrite } from '../classes/UncertainWrite'
 import { useSaveFlow } from '../classes/useSaveFlow'
 import { useSendToPlayer } from '../classes/useSendToPlayer'
-import { useAction } from '../forms'
+import { Notice, useAction } from '../forms'
 import { ChatColumn } from './ChatColumn'
 import { ClassColumn } from './ClassColumn'
 import { MoreMenu, MorePanel, type MoreSection } from './MoreMenu'
@@ -42,6 +43,8 @@ type Props = {
   data: ClassData
   reload: () => void
   onDeleted: (deleted: Deleted) => void
+  /** The operator has turned the composer off (`composer_flow` false for this user): a notice, no editing. */
+  paused?: boolean
 }
 
 /**
@@ -49,13 +52,15 @@ type Props = {
  * and the web's one driver. On a phone the class comes first and the message box is fixed at the
  * bottom; from 1024 px the chat is on the left.
  */
-export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
+export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = false }: Props) {
   const t = useT()
   const { summary, revisions, messages } = data
   const [chosen, setChosen] = useState<string | null>(null)
   const [more, setMore] = useState<MoreSection | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const [canChange, setCanChange] = useState(true)
+  const [fromHistory, setCanChange] = useState(true)
+  // The class answer says it at load (#1484); the history's value only fills in where it does not.
+  const canChange = summary.canChange ?? fromHistory
   const handoff = useHandoff(summary, reload)
   const reading = useReading(classId, summary.currentRevisionId)
   const stored = usePendingMessages(classId, summary)
@@ -69,6 +74,7 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
     messages: stored.messages,
     reload,
     refreshMessages: stored.refresh,
+    paused,
   })
   const viewingId = chosen !== null && revisions.some((r) => r.id === chosen) ? chosen : summary.currentRevisionId
   const shown = useRevision(classId, viewingId)
@@ -86,7 +92,9 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
   const request = requestOf(messages)
   const shownMessages = messages.filter((m) => m.seq !== request?.seq && (request === null || m.jobId !== request.jobId))
   const blocked =
-    summary.currentRevisionId === null
+    paused
+      ? t('cw.paused')
+      : summary.currentRevisionId === null
       ? t('cw.chat.noVersion')
       : pending !== null
         ? t('cw.chat.messagePending')
@@ -98,6 +106,11 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
   // A waiting list shows its own designed class: that is what the approval covers.
   const segments = ready && list.preview != null ? list.preview.segments : shown.status === 'ready' ? shown.revision.segments : null
   const title = ready && list.preview != null ? list.preview.name : shown.status === 'ready' ? shown.revision.name : summary.title
+  // What the version about to be approved or saved does not do as asked: its own reading, and the waiting list's.
+  const notAsked = notAskedOf(
+    shown.status === 'ready' && shown.revision.id === summary.currentRevisionId ? shown.revision.interpretation : null,
+    ready ? list.unmet : null,
+  )
   const act = useAction()
   const approve = useAction()
 
@@ -146,9 +159,9 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
       ) : null}
       {using.error !== null ? <p className="notice" data-kind="error" role="alert">{using.error}</p> : null}
       {ready ? (
-        <ApproveBar holding={pending !== null} checking={stored.messages === null} checkFailed={stored.failed} onRetryCheck={stored.refresh} busy={approve.busy || running} error={approve.error} onApprove={onApprove} />
+        <ApproveBar holding={pending !== null} checking={stored.messages === null} checkFailed={stored.failed} onRetryCheck={stored.refresh} busy={approve.busy || running} error={approve.error} onApprove={onApprove} notAsked={notAsked} />
       ) : (
-        <SaveArea flow={save} chip={chip.state} currentOrigin={currentOrigin} differed={summary.composer.phase2 === 'differed'} />
+        <SaveArea flow={save} chip={chip.state} currentOrigin={currentOrigin} differed={summary.composer.phase2 === 'differed'} notAsked={notAsked} />
       )}
       <MorePanel
         section={more}
@@ -175,6 +188,7 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted }: Props) {
       <p className="m-0">
         <Link to="/classes">{t('class.list.title')}</Link>
       </p>
+      {paused ? <Notice>{t('cw.paused')}</Notice> : null}
       <UncertainWrite classId={summary.id} version={save.version} onDecided={save.decided} onChanged={reload} />
       {player.offered ? (
         <Suspense fallback={null}>

@@ -216,6 +216,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/classes/{class_id}/fill-songs"): "owned",
     ("POST", "/api/classes/{class_id}/swap-songs"): "owned",
     ("POST", "/api/classes/{class_id}/resume-songs"): "owned",
+    ("PUT", "/api/classes/{class_id}/music"): "owned",  # ADR 0038 amendment 2026-11-24 (#1495)
     ("DELETE", "/api/classes/{class_id}"): "owned",
     ("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
     ("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
@@ -949,6 +950,11 @@ OWNED_ROUTES = [
         "/api/classes/{class_id}/resume-songs",
         control=frozenset({409}),
         headers={"Idempotency-Key": "resume-songs-owned-0001"},
+    ),
+    # ADR 0038 amendment of 2026-11-24 (#1495): composer_flow is off (``feature_off``), so the
+    # owner's answer is 409; another user's class is 404 like an unknown one.
+    OwnedRoute(
+        "PUT", "/api/classes/{class_id}/music", lambda rows: {"choice": "pick"}, frozenset({409})
     ),
     # #904: the planted class has no stored ``not_connected``, so the owner's call is 409.
     OwnedRoute("POST", "/api/classes/{class_id}/interpret-again", control=frozenset({409})),

@@ -23,6 +23,7 @@ export function useComposerDriver({
   messages,
   reload,
   refreshMessages,
+  paused = false,
 }: {
   summary: ClassSummary
   currentOrigin: string | null
@@ -30,6 +31,8 @@ export function useComposerDriver({
   messages: readonly PendingMessage[] | null
   reload: () => void
   refreshMessages: () => void
+  /** The operator has turned the composer off: no step is started (the server would answer `feature_off`). */
+  paused?: boolean
 }): { error: string | null } {
   const [error, setError] = useState<string | null>(null)
   const last = useRef<string>('')
@@ -46,7 +49,7 @@ export function useComposerDriver({
   const fillStarted =
     summary.composer.fill !== null && summary.composer.fill.sketchRevisionId === summary.currentRevisionId
   const step: DriverStep =
-    messages === null
+    messages === null || paused
       ? { kind: 'none' }
       : nextStep({ running, sketchCurrent, fillStarted, savePending: summary.composer.savePending, messages })
   const key = stepKey(summary.id, step, summary.currentRevisionId)

@@ -614,6 +614,20 @@ describe('Change it and the class history', () => {
     expect(screen.getByLabelText('What should change?')).toBeDisabled()
   })
 
+  it('disables Change it on load from the class answer, before the history has answered', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      ...classRoutes({ cls: { can_change: false } }),
+      'GET /api/connections': MOWL,
+      // The history never answers: the class answer alone decides.
+      [`GET ${HISTORY_PATH}`]: () => new Promise(() => undefined),
+    })
+    renderAt(PAGE)
+    expect((await screen.findAllByText(/Change it is not available for this class right now/)).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Change it' })).toBeDisabled()
+    expect(screen.getByLabelText('What should change?')).toBeDisabled()
+  })
+
   it('decodes and shows the count of versions that can no longer be read', async () => {
     fakeApi({
       ...SESSION_ROUTES,

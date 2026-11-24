@@ -25,7 +25,12 @@ spotify_playlist_id}, mowl_connection_id, spotify_connection_id}``.
   ``base_revision_id``; ``swap`` and ``change`` also the waiting job they replace
   (``replaces_job_id``) and the list it waits on (``seed``; a change keeps every song, so its
   ``replace`` is empty). ``sources`` (the attached Spotify playlists) and ``pinned`` (the reading's
-  pinned songs) come from the class's stored request. All of these are **server fields**: only
+  pinned songs) come from the class's stored request, ``sources`` from its music decision when
+  it shared playlists, and ``music_note`` (#1495) is the decision's note, carried from the fill
+  to the swap or change that replaces it: the instructor's own words about the music, which a
+  song search reads as more of the brief's text (``music_decision.brief_with_note``), never as
+  instructions; left out of the stored input when absent, so an input of today is
+  byte-identical. All of these are **server fields**: only
   the hand-offs (``classbeat.classes.song_fill``, ``song_swap``, the pending submit) set them, with
   no credit, so ``POST /api/jobs`` can never create a composer mode.
 - **A composer resume** (ADR 0038 section 7, #1189): ``mode = "resume"`` with the receipt's sketch
@@ -37,16 +42,24 @@ input reaches a Spotify or MOWL request: the pool, the playlists and every id wr
 the user's own rows.
 """
 
-from typing import Annotated, ClassVar, Final, Literal, Protocol, Self
+from typing import Annotated, Any, ClassVar, Final, Literal, Protocol, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 from classbeat.agent.brief import Brief
 from classbeat.agent.schemas import MAX_SONGS
 from classbeat.design import revision
 from classbeat.design.interpret_composer_policy import PinnedList
 from classbeat.design.kind import SpotifyMusicChoice
+from classbeat.design.music_decision import MusicNote
 from classbeat.design.music_sources import MusicSources
 from classbeat.design.revise import Request, Sha256Hex
 from classbeat.jobs.inputs import ModelJobInput, jsonb_size
@@ -67,6 +80,7 @@ COMPOSER_FIELDS: Final = frozenset(
         "request",
         "request_message_id",
         "save",
+        "music_note",
     }
 )
 # A composer resume (ADR 0038 section 7, #1189): ``mode = "resume"`` with these, from the receipt.
@@ -110,6 +124,7 @@ class DesignWithSongsInput(ModelJobInput):
     request: Request | None = None
     request_message_id: UUID | None = None
     save: bool | None = None  # a composer resume only: the receipt's ``save``
+    music_note: MusicNote | None = None  # the music decision's note (#1495)
 
     @property
     def composer(self) -> bool:
@@ -162,6 +177,15 @@ class DesignWithSongsInput(ModelJobInput):
         if (self.request is None) != (self.request_message_id is None):
             raise ValueError("a request comes with its message")
         return self
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_note(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """No ``music_note`` key without a note: every stored input of today stays as it is (its
+        request hash too, so a repeated fill call for a job made before still matches)."""
+        out: dict[str, Any] = handler(self)
+        if out.get("music_note") is None:
+            out.pop("music_note", None)
+        return out
 
 
 class ReviseSongsInput(ModelJobInput):

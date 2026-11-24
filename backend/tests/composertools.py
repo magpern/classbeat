@@ -133,8 +133,10 @@ class ComposerEnv:
         *,
         sources: list[str] | None = None,
         pinned: list[dict[str, Any]] | None = None,
+        decision: dict[str, Any] | None = None,
     ) -> tuple[UUID, UUID]:
-        """A composer class whose current revision is its sketch: (class id, sketch id)."""
+        """A composer class whose current revision is its sketch: (class id, sketch id). With no
+        ``decision`` the interpretation has no ``music_decision``, as a row stored before #1495."""
         owner = rider.user_id
         class_id, interpret_id, sketch_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
         self.sql(
@@ -172,6 +174,8 @@ class ComposerEnv:
         }
         if pinned:
             interpretation["pinned_songs"] = pinned
+        if decision is not None:
+            interpretation["music_decision"] = decision
         self.sql(
             "UPDATE classes SET current_revision_id = :r, brief = CAST(:b AS jsonb), "
             "interpretation = CAST(:i AS jsonb) WHERE id = :c",

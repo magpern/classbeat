@@ -63,6 +63,22 @@ class Offer:
     # song picking admits the user; without it a class with no music is ``song_picking_unavailable``
     song_picking: bool = True
 
+    def composed(self, composer: bool) -> "Offer":
+        """A reading admitted with the composer (ADR 0038 amendment of 2026-11-24, decision 6):
+        Spotify is needed only by the song search, which refuses ``not_connected`` before any
+        write, so a named or chosen Spotify playlist, a song pick and its music taste are read as
+        with the connection, and the sketch needs none of them. Unchanged otherwise."""
+        if not composer:
+            return self
+        return Offer(
+            self.sports,
+            self.gates,
+            self.options,
+            pick_ready=self.song_picking,
+            spotify=True,
+            song_picking=self.song_picking,
+        )
+
 
 @dataclass(frozen=True)
 class Resolved:

@@ -3,12 +3,14 @@ the class's sketch to a ``song_list`` revision (content ``v: 3``, with the class
 songs as its ``preview``) and the wait for the user's one approval.
 
 - **fill**: the attached playlists are read (favoured) and the pinned songs verified
-  (``composer_sources``); the sketch's song slots (``composer_slots_policy``) size the pick;
-  ``composer_pick`` runs ``pool_search``, ``pool_write``, ``pool_analyse`` and ``choose``; then
-  ``composer_design`` designs on the chosen songs with the sketch as its base.
+  (``composer_sources``); the sketch's song slots (``composer_slots_policy``) size the pick; the
+  pick's brief carries the music decision's note after the request (``music_note``, #1495: the
+  instructor's words, data to the song stages only, never to the design); ``composer_pick`` runs
+  ``pool_search``, ``pool_write``, ``pool_analyse`` and ``choose``; then ``composer_design``
+  designs on the chosen songs with the sketch as its base.
 - **swap**: the replace of the waiting list's slots (``seed``, as ``revise_songs`` replaces), with
-  the attached playlists favoured again, then the design with the waiting list's preview as its
-  base, so the user's earlier changes stay.
+  the attached playlists favoured again and the fill's ``music_note`` in the pick's brief, then
+  the design with the waiting list's preview as its base, so the user's earlier changes stay.
 - **change**: no pick: the waiting list's songs are kept, written and analysed again (a new run of
   ``pool_write`` and ``pool_analyse``), then designed with the user's request on the waiting
   preview. When the designed length is more than 10 % from the songs' total
@@ -31,6 +33,7 @@ from classbeat.agent import AgentConfig, PickPlan, SearchRegistry
 from classbeat.agent.provider import ModelProvider
 from classbeat.connections import OpenConnection
 from classbeat.design.kind import Runtime, group_model
+from classbeat.design.music_decision import brief_with_note
 from classbeat.jobs import AwaitApproval, JobFailure, JobRun, Outcome
 from classbeat.playlists import open_spotify
 from classbeat.songs import composer_design, config
@@ -122,7 +125,8 @@ async def _fill(
     slots = slot_roles(sketch.content)
     placed = pin_slots([pins[i].at for i, _ in pinned.found], slots)
     at = {i: s for (i, _), s in zip(pinned.found, placed, strict=True) if s is not None}
-    plan = PickPlan(brief_of(sketch), sketch_seconds(sketch.content), len(slots))
+    brief = brief_with_note(brief_of(sketch), given.music_note)  # the song stages' brief only
+    plan = PickPlan(brief, sketch_seconds(sketch.content), len(slots))
     picked, step = await pick_composer(
         run,
         given,
@@ -159,7 +163,7 @@ async def _swap(
         if given.sources
         else Favoured((), ())
     )
-    brief = brief_of(sketch)
+    brief = brief_with_note(brief_of(sketch), given.music_note)  # the song stages' brief only
     content = waiting.content
     plan = PickPlan(brief, content.target_sec, len(content.songs), seeded.roles, seeded.kept)
     seed = given.seed

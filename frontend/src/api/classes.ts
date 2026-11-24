@@ -28,6 +28,7 @@ import {
 export * from './beatOneTypes'
 export * from './revisionTypes'
 export * from './classSongs'
+export * from './beatOneCalls'
 
 // The class API (ADR 0007 section 12, backend/src/classbeat/classes/routes.py). Server text is
 // data: decoded into typed fields and rendered as text by React, never as HTML.
@@ -128,6 +129,8 @@ export interface ClassSummary {
   swedebeatWritten: boolean
   /** The composer flow's stored state (ADR 0038 sections 5 and 7); empty without the flag. */
   composer: ComposerState
+  /** #1484: whether a chat change is offered now, as the history says it; null when the answer has none (the list). */
+  canChange: boolean | null
 }
 
 function decodeClass(value: unknown): ClassSummary {
@@ -174,6 +177,7 @@ function decodeClass(value: unknown): ClassSummary {
     player: decodeClassPlayer(item.player),
     swedebeatWritten: item.swedebeat_written === true,
     composer: decodeComposerState(item),
+    canChange: optionalFlag(item, 'can_change'),
   }
 }
 
@@ -275,37 +279,4 @@ export async function dismissRule(classId: string, ruleId: string): Promise<void
 /** Undo a dismissal ("Show again"); idempotent. */
 export async function showRuleAgain(classId: string, ruleId: string): Promise<void> {
   await del(`${base(classId)}/dismissed-rules/${encodeURIComponent(ruleId)}`)
-}
-
-/** Set one song's beat-one correction (-3 to 3, not 0) for the music of `revisionId`. */
-export async function setBeatOne(
-  classId: string,
-  song: number,
-  beats: number,
-  revisionId: string,
-): Promise<BeatOne> {
-  const body = await request('PUT', `${base(classId)}/beat-one/${String(song)}`, {
-    body: { beats, revision_id: revisionId },
-  })
-  return decodeBeatOne(body)
-}
-
-/** Clear one song's correction; idempotent. */
-export async function clearBeatOne(
-  classId: string,
-  song: number,
-  revisionId: string,
-): Promise<BeatOne> {
-  const query = `?revision_id=${encodeURIComponent(revisionId)}`
-  return decodeBeatOne(await del(`${base(classId)}/beat-one/${String(song)}${query}`))
-}
-
-/** Clear one correction of the class by its id (for earlier music, or a song not played). */
-export async function clearBeatOneRow(classId: string, rowId: string): Promise<BeatOne> {
-  return decodeBeatOne(await del(`${base(classId)}/beat-one/rows/${encodeURIComponent(rowId)}`))
-}
-
-/** Clear every correction of the class. */
-export async function clearAllBeatOne(classId: string): Promise<BeatOne> {
-  return decodeBeatOne(await del(`${base(classId)}/beat-one`))
 }
