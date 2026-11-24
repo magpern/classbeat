@@ -2459,6 +2459,10 @@ const da: Catalogue = {
     'Vælg mindst ét resultat.',
   'studio.out.noneEnabled':
     'Intet resultat er tilgængeligt lige nu. Prøv igen senere.',
+  'studio.out.loadFailed':
+    'Resultaterne kunne ikke hentes. Prøv igen.',
+  'studio.out.retry':
+    'Prøv igen',
   'studio.sync.working_copy':
     'Spotify-arbejdsplayliste',
   'studio.sync.final':
@@ -2555,8 +2559,6 @@ const da: Catalogue = {
     'Den tidligere playliste kan blive på din Spotify-konto; du kan fjerne den dér. Godkend resultaterne igen for at oprette den nye.',
   'studio.os.supersededHint.mowl':
     'Det tidligere træningspas kan blive i MOWL. Godkend resultaterne igen for at oprette det nye.',
-  'studio.os.loadFailed':
-    'Resultaternes status kunne ikke hentes. Genindlæs siden.',
   'studio.os.state.pending':
     'Venter på at starte.',
   'studio.os.state.running':
