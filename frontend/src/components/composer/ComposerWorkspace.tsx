@@ -62,6 +62,8 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = f
   const [chosen, setChosen] = useState<string | null>(null)
   const [more, setMore] = useState<MoreSection | null>(null)
   const [deleting, setDeleting] = useState(false)
+  // The song list a successful swap replaced; it stays on screen until the reads bring the new one.
+  const [replaced, setReplaced] = useState<string | null>(null)
   const [fromHistory, setCanChange] = useState(true)
   // The class answer says it at load (#1484); the history's value only fills in where it does not.
   const canChange = summary.canChange ?? fromHistory
@@ -134,17 +136,22 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = f
   const sketchId = summary.currentRevisionId
   const onSwap = (song: Song) => {
     if (list === null) return
-    run(() =>
-      swapSong({
+    const replacing = list.id
+    run(async () => {
+      const job = await swapSong({
         classId,
-        listRevisionId: list.id,
+        listRevisionId: replacing,
         listJobId: list.jobId ?? summary.songs.jobId ?? list.id,
         slot: song.position - 1,
-      }),
-    )
+      })
+      // The server cancelled that list's job when it made the swap: it is not approvable from here on,
+      // however long the reads that show the new list take (#1521).
+      setReplaced(replacing)
+      return job
+    })
   }
   const onApprove = () => {
-    if (list === null) return
+    if (list === null || list.id === replaced) return
     const jobId = list.jobId ?? summary.songs.jobId
     if (jobId === null) return
     void approve.run(() => approveAndSave(jobId, list.id, list.contentHash), (e) => approveRefusal(e).text).then((done) => {
@@ -172,7 +179,7 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = f
       ) : null}
       {using.error !== null ? <p className="notice" data-kind="error" role="alert">{using.error}</p> : null}
       {ready ? (
-        <ApproveBar holding={pending !== null} checking={stored.messages === null} checkFailed={stored.failed} onRetryCheck={stored.refresh} busy={approve.busy || running} error={approve.error} onApprove={onApprove} notAsked={notAsked} />
+        <ApproveBar holding={pending !== null} checking={stored.messages === null} checkFailed={stored.failed} onRetryCheck={stored.refresh} busy={approve.busy || running || list?.id === replaced} error={approve.error} onApprove={onApprove} notAsked={notAsked} />
       ) : (
         <SaveArea flow={save} chip={chip.state} currentOrigin={currentOrigin} differed={summary.composer.phase2 === 'differed'} notAsked={notAsked} />
       )}
@@ -242,7 +249,7 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = f
             }
             below={below}
             runningJob={running}
-            canSwap={ready && !running && act.busy === false}
+            canSwap={ready && !running && act.busy === false && list?.id !== replaced}
             swapping={act.busy}
             onSwap={onSwap}
             onFinished={reload}
