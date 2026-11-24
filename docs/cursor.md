@@ -23,7 +23,8 @@ fix cycles and total usage. Grok 4.7 High implements security-critical Cursor is
 different fresh context, reviews them, including a review after a second failure. The Grok
 Architect can classify and schedule that work but does not make its production security
 decisions: those belong to the Cursor security developer. Routine implementation stays
-Composer. Claude Code and Codex keep Opus for the same work.
+Composer. For the same security-critical work Claude Code uses Opus, and Codex follows
+[its model mapping in roadmap Amendment 10](roadmap.md#amendment-10-2026-11-01-owner-request-codex-development-support).
 
 ## Configure Cursor
 
@@ -35,12 +36,11 @@ Composer. Claude Code and Codex keep Opus for the same work.
 3. Routine development stays `composer-2.5[fast=false]`. Architect, routine review, security
    development and security review are `grok-4.7-high`. The bracket form
    `grok-4.7[reasoning_effort=high,fast=false]` is not a model id this client can select.
-   Claude Code and Codex keep Opus.
 4. Verify the actual model on every task card and in the usage dashboard. Plan limits,
    admin restrictions and legacy Max Mode settings can cause Cursor to substitute another
    model even when it is explicitly configured. If it substitutes, do not proceed under
    the expected model's identity; report the blocked role.
-5. Cursor security work does not use Opus. Claude Code and Codex still do. Do not enable paid
+5. Do not enable paid
    services or change plans without the owner's specific authorization.
 
 The model selections are versioned defaults. If an ID or parameter is unavailable, report

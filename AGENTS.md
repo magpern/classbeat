@@ -57,6 +57,11 @@ head after the Sonnet rounds, never an Opus Developer.
 
 ## PR loop
 
+When Developers work in parallel, they open draft PRs and report their local lint,
+type-check and targeted test results. CI skips the draft and deliberately fails its
+required gate. The Architect marks drafts ready one at a time in merge order. Once
+ready, wait for the required checks on the current head before recording a PASS.
+
 ```
 issue → Developer (+ Explorer) in its own worktree → PR → CI
       → fresh Reviewer → PASS → agent merges
@@ -154,7 +159,9 @@ a red `main` is fixed forward first, before other merges.
 ## Branches, worktrees and commits
 
 - Every task is a feature branch `<issue>-<slug>` and a PR. One writing agent per branch.
-- Parallel developers each work in their own worktree: `scripts/worktree.sh new <issue> <slug>`
+- Each writer needs an isolated checkout. In Codex Cloud, assign one issue branch per
+  task and use its supplied checkout. Follow the [cloud setup](docs/codex.md#codex-cloud).
+- Local parallel developers each work in their own worktree: `scripts/worktree.sh new <issue> <slug>`
   creates `../classbeat-wt/<issue>-<slug>` with its own `.env`, so each runs its own stack
   (`COMPOSE_PROJECT_NAME=classbeat-<issue>`, own Postgres volume and ports). Remove the
   worktree after the merge (`scripts/worktree.sh rm <issue>`).
@@ -256,9 +263,8 @@ when it's answered.
 For Cursor sessions, read [docs/cursor.md](docs/cursor.md) and use the explicit
 `cursor-*` roles in `.cursor/agents/`. Roadmap Amendment 11 authorizes Composer
 for routine implementation and Grok 4.7 High for security-critical implementation,
-coordination, and every review. Claude Code and Codex keep Opus for security-critical
-work. The shared
-worktree, CI, independent current-head review, merge and safety gates still apply.
+coordination, and every review. For security-critical work, Claude Code uses Opus and
+Codex follows the model mapping in roadmap Amendment 10. The shared worktree, CI, independent current-head review, merge and safety gates still apply.
 Verify the actual model used; a client substitution blocks that role. Claude Code
 and Codex keep their own profiles.
 
@@ -299,5 +305,5 @@ scripts/worktree.sh new <issue> <slug>  # ../classbeat-wt/<issue>-<slug>, own .e
 docker compose up -d --build --wait     # web on http://127.0.0.1:$WEB_PORT; `docker compose down -v` to stop
 ```
 
-CI runs the full suite; locally run lint, types and the targeted tests only. A docs-only
+CI selects checks by changed paths on ready PRs. Locally run lint, types and targeted tests. A docs-only
 change needs no database.

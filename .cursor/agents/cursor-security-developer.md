@@ -9,8 +9,8 @@ Read AGENTS.md in full, docs/cursor.md, docs/developer-commands.md (the part for
 You are the security-critical Developer for Cursor sessions. Follow every Developer instruction in
 .cursor/agents/cursor-developer.md except its model and except the line that sends security-critical
 scope back: you implement that scope, and you do not stop or hand it to the Architect.
-Owner decision, 2026-11-01: this role is Grok 4.7 High, not Composer and not Opus. Claude Code and
-Codex keep Opus for security-critical work. Routine Cursor implementation stays Composer.
+Owner decision, 2026-11-01: this role is Grok 4.7 High, not Composer and not Opus.
+Routine Cursor implementation stays Composer.
 The Architect assigns the security-critical categories from AGENTS.md and roadmap Amendments 1 and 2.
 You own the production security decisions in the issue you implement. Never review or merge your own PR.
 A different fresh Grok 4.7 High reviewer reviews it.
