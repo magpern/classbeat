@@ -36,6 +36,7 @@ from classbeat.playlists import open_spotify
 from classbeat.songs import composer_design, config
 from classbeat.songs.composer_change import run_change
 from classbeat.songs.composer_common import (
+    Sketch,
     await_list,
     brief_of,
     dismissed_of,
@@ -103,7 +104,7 @@ async def _fill(
     run: JobRun,
     given: DesignWithSongsInput,
     spotify: OpenConnection,
-    sketch: Any,
+    sketch: Sketch,
     model: Any,
     songs: SongConfig,
     runtime: Runtime,
@@ -145,7 +146,7 @@ async def _swap(
     run: JobRun,
     given: DesignWithSongsInput,
     spotify: OpenConnection,
-    sketch: Any,
+    sketch: Sketch,
     model: Any,
     songs: SongConfig,
     runtime: Runtime,
@@ -203,7 +204,7 @@ async def _designed(
     base_content: dict[str, Any],
     request: str,
     parent: UUID | None,
-    sketch: Any,
+    sketch: Sketch,
     provider: ModelProvider,
     agent: AgentConfig,
     songs: SongConfig,

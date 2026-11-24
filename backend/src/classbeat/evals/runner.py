@@ -47,6 +47,7 @@ from classbeat.evals.results import suite_results as suite_results
 from classbeat.evals.results import suite_results_json as suite_results_json
 from classbeat.evals.results import suite_row as suite_row
 from classbeat.evals.revise_chain import ReadFailed, read_revision, with_interpret_spend
+from classbeat.evals.shape_checks import follows_shape
 from classbeat.jobs.errors import JobFailure
 
 
@@ -236,6 +237,10 @@ async def _run_stage(
             zone7_tss_margin=zone7_tss_margin,
             music_map=music_map,
         )
+        if case.expect.ride_shape:  # #1493: the order and counts of the brief's ride shape
+            checks.append(
+                Check("ride_shape", *follows_shape(case.brief, result.draft, result.spec))
+            )
         zone7 = has_zone7(result.spec)
     except Exception as exc:
         return failed(f"error:{type(exc).__name__}")

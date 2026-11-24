@@ -5,6 +5,7 @@ still the one used, the songs' music step still current, **the sketch still the 
 revision**, then the ``song_list`` revision. No draft revision is stored and no pointer moves.
 """
 
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -12,7 +13,10 @@ from pydantic import ValidationError
 from sqlalchemy import text
 
 from classbeat.agent.brief import Brief
+from classbeat.agent.interpretation_record import InterpretationItem
+from classbeat.agent.stated_layer import applied
 from classbeat.connections import OpenConnection, hold
+from classbeat.design.chat import stated_layer
 from classbeat.design.revision_ready_policy import SKETCH
 from classbeat.jobs import AwaitApproval, FencedSession, JobFailure, JobRun
 from classbeat.songs import composer_design, song_list
@@ -20,7 +24,7 @@ from classbeat.songs.composer_pick import Picked
 from classbeat.songs.inputs import DesignWithSongsInput
 from classbeat.songs.pick import generations
 from classbeat.songs.seed import SeedSpec, class_of, load_seeded
-from classbeat.songs.song_list import SongSource
+from classbeat.songs.song_list import MAX_UNMET, SongSource
 from classbeat.spotdown.song_analysis_record_model import timing_marks
 
 _SKETCH = text(
@@ -35,15 +39,32 @@ _STILL_CURRENT = text(
 )
 
 
-async def read_sketch(run: JobRun, base: UUID) -> Any:
+@dataclass(frozen=True, slots=True)
+class Sketch:
+    """What the composer reads of its sketch. ``brief`` is the class's stored brief with the
+    nearest stated layer applied (``stated_layer.applied``), so the instructor's latest request
+    (\"make it seven bursts\") is what the fill, the swap, the change and phase 2 design to, not
+    the brief the first design stored (#1493)."""
+
+    content: dict[str, Any]
+    content_hash: bytes
+    brief: Any
+    dismissed_rules: Any
+
+
+async def read_sketch(run: JobRun, base: UUID) -> Sketch:
     """The sketch, read through the job's own class: still a sketch and still current."""
     async with run.fenced() as fs:
         class_id = await class_of(fs)
         params = {"owner_id": fs.lease.owner_id, "class_id": class_id, "base": base}
         row = (await fs.db.execute(_SKETCH, params)).first()
+        stated = await stated_layer(fs.db, fs.lease.owner_id, class_id, base)
     if row is None or row.origin != SKETCH or not row.current or not isinstance(row.content, dict):
         raise JobFailure("invalid_input")  # stale: the page starts again from the current sketch
-    return row
+    brief = row.brief
+    if isinstance(brief, dict) and stated is not None:
+        brief = applied(brief, stated)  # pyright: ignore[reportUnknownArgumentType]
+    return Sketch(row.content, bytes(row.content_hash), brief, row.dismissed_rules)
 
 
 async def still_current(fs: FencedSession, base: UUID) -> None:
@@ -74,16 +95,23 @@ async def waiting_list(
     return seeded, found
 
 
-def brief_of(sketch: Any) -> Brief:
+def brief_of(sketch: Sketch) -> Brief:
     try:
         return Brief.model_validate(sketch.brief)
     except ValidationError:
         raise JobFailure("internal") from None
 
 
-def dismissed_of(sketch: Any) -> tuple[str, ...]:
+def dismissed_of(sketch: Sketch) -> tuple[str, ...]:
     value = sketch.dismissed_rules
     return tuple(str(v) for v in value) if isinstance(value, list) else ()
+
+
+def _unmet_of(picked: Picked, made: composer_design.Designed) -> tuple[InterpretationItem, ...]:
+    """The list's Not as asked items: this design's missed shape sections (a carried list's own
+    are replaced by them) and the picks' (#1493); at most ``MAX_UNMET``."""
+    kept = tuple(i for i in picked.unmet if not i.path.startswith("shape."))
+    return (*made.unmet, *kept)[:MAX_UNMET]
 
 
 def await_list(
@@ -105,7 +133,7 @@ def await_list(
             provenance={**picked.provenance, "composer": given.mode},
             parent_id=parent,
             generations=generations(spotify, step),
-            unmet=picked.unmet,
+            unmet=_unmet_of(picked, made),
             preview=made.preview,  # invalid_output over 64 KB, before anything is stored
             sources=picked.sources,
             approximate=frozenset(p for p, _, _ in timing_marks(picked.provenance)),

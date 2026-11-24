@@ -22,7 +22,7 @@ from classbeat.agent.limits import Limits
 from classbeat.agent.loop import AgentConfig
 from classbeat.agent.provider import ToolCall
 from classbeat.agent.revise import ReviseContext
-from classbeat.agent.schemas import RunningDraft, SoundlessDraft, WorkoutDraft
+from classbeat.agent.schemas import RunningDraft, WorkoutDraft
 from classbeat.agent.soundless import (
     REVISE_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
@@ -31,6 +31,7 @@ from classbeat.agent.soundless import (
     check_soundless,
     soundless_design_stage,
 )
+from classbeat.agent.soundless_schemas import SoundlessDraft
 from classbeat.agent.stage import Stage
 from classbeat.design.interpreted import with_interpretation
 from classbeat.design.request_policy import interpretation_for

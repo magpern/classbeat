@@ -25,6 +25,11 @@
    and the sport checked, the **compare-and-set from the sketch** (``composer_draft.adopt``, with
    ``music_source`` and ``save_pending``), and the MOWL id of the final playlist.
 
+A redesigned draft's ride shape is checked against the sketch's layered brief (the latest
+instruction, ``composer_common.read_sketch``) by the revise stage's gate; a section still missed
+after its corrections is recorded on the draft as Not as asked ``shape_off`` (``provenance.
+interpretation``). A kept fit carries the approved list's own such items.
+
 ``save_pending = {revision_id, content_hash, job_id}`` is stored only when the approval had
 ``save: true`` (the approved job's ``approval_save``; a resume's ``save``, copied from the
 receipt by its ``admit``) **and** the fit kept the preview. The worker never enqueues the save
@@ -45,11 +50,12 @@ from classbeat.agent import mix_input
 from classbeat.agent.loop import StageOutcome
 from classbeat.design import corrections, music_kind, revision, sport
 from classbeat.design.guidance import rule_set_for
+from classbeat.design.interpreted import shape_off_items, with_items
 from classbeat.design.kind import Runtime, group_model
 from classbeat.design.music import MusicStep
 from classbeat.jobs import Complete, FencedSession, JobFailure, JobRun
 from classbeat.songs import composer_design, composer_draft, config, fit_policy, song_list
-from classbeat.songs.composer_common import brief_of, dismissed_of, read_sketch
+from classbeat.songs.composer_common import Sketch, brief_of, dismissed_of, read_sketch
 from classbeat.songs.inputs import DesignWithSongsInput
 from classbeat.songs.phase2 import Prepared, final_music
 from classbeat.songs.phase2_final import final_checks, mark_mowl, music_source
@@ -94,6 +100,9 @@ async def run_composer_phase_two(
         if draft is None:
             fit = "redesigned"
             draft = await _redesigned(run, given, runtime, p, preview, step, sketch, recorded)
+        if fit == "kept":  # the approved preview's missed shape sections, shown at the approval
+            carried = [i for i in p.stored.content.unmet if i.path.startswith("shape.")]
+            draft = with_items(draft, carried)
         draft = composer_draft.with_fit(draft, fit)
         mowl_playlist_id = step.data.playlist_id
         kept_save = save and fit == "kept"
@@ -163,7 +172,7 @@ async def _redesigned(
     p: Prepared,
     preview: Preview,
     step: MusicStep,
-    sketch: object,
+    sketch: Sketch,
     rules: Mapping[str, Any] | None,
 ) -> revision.DraftRevision:
     """The model's design on the approved preview (module docstring, step 2)."""
@@ -180,7 +189,7 @@ async def _redesigned(
         given.plan_gates,
         dismissed_of(sketch),
     )
-    return revision.build(
+    built = revision.build(
         revised.result,
         outcome,
         music_map,
@@ -189,3 +198,6 @@ async def _redesigned(
         song_list_id=p.revision_id,
         rules=rules,
     )
+    # A shape section the design still misses is recorded on the draft, never saved by itself:
+    # ``save_pending`` stays unset for a redesigned draft (module docstring, step 3).
+    return with_items(built, shape_off_items(brief_of(sketch), revised.result.unmet))

@@ -37,11 +37,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.agent.brief import Brief
+from classbeat.agent.stated_layer import applied
 from classbeat.classes.interpretation import Handoff
 from classbeat.classes.song_fill_keys import fill_key
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design import composer, interpretation_row
+from classbeat.design.chat import stated_layer
 from classbeat.design.interpret_kind import KIND as INTERPRET_KIND
 from classbeat.design.interpret_kind import InterpretRequestInput
 from classbeat.design.interpretation_row import FillState, Refusal
@@ -165,6 +167,8 @@ async def _plan(
             return Handoff(reason="not_ready")
         params = {**owner, "job_id": row.job_id, "kind": INTERPRET_KIND}
         first = (await db.execute(_INTERPRET_JOB, params)).scalar_one_or_none()
+        # The sketch's nearest stated layer: the latest instruction, not the first design's brief.
+        layer = await stated_layer(db, ctx.user_id, class_id, found.current_revision_id)
     sketch = found.current_revision_id
     if base is not None and base != sketch:
         return Handoff(reason="stale_base")  # the page shows an older sketch: it reads again
@@ -176,7 +180,11 @@ async def _plan(
         given = InterpretRequestInput.model_validate(first)
         parsed = DesignWithSongsInput(
             class_id=class_id,
-            brief=Brief.model_validate(found.brief),
+            brief=Brief.model_validate(
+                applied(found.brief, layer)
+                if isinstance(found.brief, dict) and layer
+                else found.brief
+            ),
             mode="fill",
             base_revision_id=sketch,
             sources=given.music_sources,

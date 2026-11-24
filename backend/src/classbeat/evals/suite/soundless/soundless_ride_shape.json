@@ -1,0 +1,19 @@
+{
+ "name": "soundless_ride_shape",
+ "soundless": true,
+ "about": "A 30 minute class ridden in parts, without music: the design follows the ride's shape.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "shape": [
+   {"kind": "warmup", "trend": "rising"},
+   {"kind": "climb", "count": {"min": 1, "max": 1}},
+   {"kind": "efforts", "count": {"min": 5, "max": 7}, "length": "short", "load": "heavy"},
+   {"kind": "flat"},
+   {"kind": "climb", "count": {"min": 1, "max": 1}},
+   {"kind": "efforts", "count": {"min": 2, "max": 4}}
+  ],
+  "explicit": ["shape"]
+ },
+ "expect": {"ride_shape": true}
+}

@@ -149,6 +149,9 @@ class Expect(BaseModel):
     # A running case (ADR 0018, issue #465): at least this many seconds at gradient 1 (an incline
     # the brief asked for); unset, the incline is not judged. Running cases only.
     incline_min_sec: int | None = Field(default=None, ge=1, le=10800)
+    # The draft follows the brief's ride shape (#1493): every section realised in order, its
+    # counts inside the range (``agent.shape_check``). The brief must have a shape.
+    ride_shape: bool = False
 
 
 class ReviseSpec(BaseModel):
@@ -229,6 +232,8 @@ class Case(BaseModel):
                 )
         if self.revise is not None and isinstance(self.revise.base, RunningDraft) != running:
             raise ValueError("a revise case's base draft is of its brief's sport")
+        if self.expect.ride_shape and (running or not b.shape):
+            raise ValueError("expect.ride_shape is for a cycling case whose brief has a shape")
         if self.expect.incline_min_sec is not None and not running:
             raise ValueError("expect.incline_min_sec is for a running case")
         if self.expect.game_any and self.expect.games:
