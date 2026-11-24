@@ -26,6 +26,15 @@
   ``not_connected``, ``quota``, ``class_busy`` and the create's other refusals; 422 for a key that
   does not parse.
 
+- ``PUT .../music`` ``{choice: "pick" | "playlists" | "describe" | "later", playlists?:
+  [{kind: "spotify_playlist", id}] (1 to 5, each once; only and always with ``playlists``),
+  note?: str (the instructor's words, 1 to 200 characters; required with ``describe``, never with
+  ``later``)}`` (``classbeat.classes.music_answer``; ADR 0038 amendment of 2026-11-24, decision
+  5): 200 with the class's ``music_decision`` ``{state, choice, playlists}`` (a count), the same
+  answer for the same body; 409 ``music_fixed`` unless the current revision is a sketch with no
+  fill started for it, ``feature_off``; 404 ``not_found``; 422 for a body that does not parse.
+  No Spotify or MOWL call, no job, no credit.
+
 Only while ``composer_flow`` is on. The body is a reason code and whole numbers only; another
 user's class is 404 like an unknown one.
 """
@@ -38,10 +47,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from classbeat import auth
-from classbeat.classes import song_fill, song_resume, song_swap
+from classbeat.classes import music_answer, song_fill, song_resume, song_swap
 from classbeat.classes.handoff_routes import job_enqueue
 from classbeat.classes.interpretation_routes import DesignJobOut, RefusalOut
+from classbeat.classes.music_answer import MusicDecisionOut
 from classbeat.context import UserContext
+from classbeat.design.music_decision import MusicAnswer
 from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.http import IDEMPOTENCY_KEY, credit_ledger, job_limit
 from classbeat.jobs.user import JobLimitPolicy
@@ -223,3 +234,20 @@ async def resume_songs(
     if not done.created:
         return JSONResponse(out.model_dump(mode="json"), status_code=200)
     return out
+
+
+@router.put(
+    "/{class_id}/music", response_model=MusicDecisionOut, responses={404: {}, 409: {}, 422: {}}
+)
+async def put_music(
+    class_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
+) -> MusicDecisionOut | JSONResponse:
+    wanted = _uuid(class_id)
+    if wanted is None:
+        return _refuse("not_found")
+    try:
+        body = MusicAnswer.model_validate_json(await request.body())
+    except ValidationError:  # never echoed: the body may hold the instructor's words
+        return JSONResponse({"detail": {"reason": "invalid_input"}}, status_code=422)
+    done = await music_answer.answer(request.app.state.session_factory, ctx, wanted, body)
+    return _refuse(done) if isinstance(done, str) else done

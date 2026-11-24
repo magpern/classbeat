@@ -46,11 +46,16 @@ def without_spotify_is_refused(
     sport_override: str | None,
     running_offered: bool,
     mixes: bool,
+    composer: bool = False,
 ) -> bool:
     """Whether an interpretation with no Spotify connection can only end Not as asked
     ``needs_spotify``, so ``admit`` refuses it before any model call. It cannot when the music is
     "No music" or a Swedebeat mix, when the sport is (or may be read as) running, which has MOWL
-    playlists only (ADR 0018), or when the request may name a Swedebeat mix (``mixes``)."""
+    playlists only (ADR 0018), or when the request may name a Swedebeat mix (``mixes``). Never
+    with the composer available (``composer``): its sketch needs no Spotify, and the song search
+    asks for the connection when it is needed (ADR 0038 amendment of 2026-11-24, decision 6)."""
+    if composer:
+        return False
     if music_source in ("none", "mowl_swedebeat_mix") or sport_override == "running":
         return False
     if sport_override is None and running_offered:
