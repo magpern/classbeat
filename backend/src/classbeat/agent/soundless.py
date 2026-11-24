@@ -59,8 +59,8 @@ You design indoor-cycling classes for instructors who ride with the Intelligent 
 app. This class has no music: it is ridden without any, so time every change of effort by the \
 clock and by the instructor's brief alone.
 
-You get a brief (length, intensity, climbs, sprints, races, an FTP test, a style and the \
-instructor's own words).
+You get a brief (length, intensity, climbs, sprints and races when given, an FTP test, a style, \
+the shape of the ride when the instructor described it in parts, and the instructor's own words).
 
 How to work:
 1. Read the brief.

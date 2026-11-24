@@ -1,0 +1,40 @@
+{
+ "kind": "interpret",
+ "name": "interpret_ride_shape_swedish",
+ "about": "A Swedish request with parts gives the same closed sections, in order.",
+ "request": "Ett 45 minuters pass som börjar lugnt och bygger upp, sedan en backe, fem korta tunga intervaller, platt väg och en lugn nedvarvning på slutet.",
+ "expect": {
+  "values": {
+   "length_min": 45
+  },
+  "absent": [
+   "climbs",
+   "sprints",
+   "races"
+  ],
+  "shape": [
+   {
+    "kind": "warmup",
+    "trend": "rising"
+   },
+   {
+    "kind": "climb"
+   },
+   {
+    "kind": "efforts",
+    "count": {
+     "min": 5,
+     "max": 5
+    },
+    "length": "short",
+    "load": "heavy"
+   },
+   {
+    "kind": "flat"
+   },
+   {
+    "kind": "cooldown"
+   }
+  ]
+ }
+}

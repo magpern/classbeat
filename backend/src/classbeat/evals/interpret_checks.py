@@ -19,6 +19,8 @@ On the sanitised ``InterpretedRequest`` (what the stage hands back), never on mo
   that came back is one ``class_title_policy.proposed_name`` keeps as it is (clean, at most 60
   characters, no link); ``InterpretedRequest.sanitised`` drops one that is not, so this is the
   backstop;
+- ``shape`` (#1485): the sections in order, each of the expected kind and with every modifier the
+  case gives (``trend``, ``effort``, ``count``, ``length``, ``load``, ``minutes``);
 - ``forbidden_text``: none of the case's strings is anywhere in what came back, the name included.
 """
 
@@ -28,6 +30,7 @@ from itertools import pairwise
 
 from classbeat.agent.interpret_input import clean_request
 from classbeat.agent.interpreted import InterpretedRequest
+from classbeat.agent.ride_shape import SectionFields
 from classbeat.class_title_policy import proposed_name
 from classbeat.evals.checks import Check
 from classbeat.evals.interpret_cases import InterpretCase, PinExpect, TasteExpect
@@ -59,6 +62,8 @@ def check_interpretation(case: InterpretCase, got: InterpretedRequest) -> list[C
         checks.append(
             Check("remove_games", got.remove_games is True, "removal of every game: said or not")
         )
+    if expect.shape is not None:
+        checks.append(_shape(expect.shape, got))
     if expect.taste is not None:
         checks.append(_taste(expect.taste, got))
     if expect.pinned is not None:
@@ -98,6 +103,22 @@ def _taste(expect: TasteExpect, got: InterpretedRequest) -> Check:
     if expect.hits is not None and hits != expect.hits:
         wrong.append("hits")
     return Check("taste", not wrong, f"wrong: {', '.join(wrong) or '-'}; eras {eras}")
+
+
+def _shape(expect: list[SectionFields], got: InterpretedRequest) -> Check:
+    made = [s.closed() for s in got.shape]
+    wrong = [str(n) for n, (m, e) in enumerate(zip(made, expect, strict=False)) if not _holds(m, e)]
+    if len(made) != len(expect):
+        wrong.append("count")
+    return Check(
+        "shape", not wrong, f"{len(made)} sections of {len(expect)} expected; wrong: {wrong or '-'}"
+    )
+
+
+def _holds(made: SectionFields, want: SectionFields) -> bool:
+    """The section is of the expected kind and has every modifier the case names."""
+    given = want.model_dump(exclude_none=True)
+    return all(made.model_dump().get(field) == value for field, value in given.items())
 
 
 def _pinned(expect: list[PinExpect], got: InterpretedRequest) -> Check:

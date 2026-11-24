@@ -195,7 +195,7 @@ async def run(job_run: JobRun) -> Complete:
         revised.result.unmet,
         given.plan_gates,
         extra=stated.items,
-        stated=bool(brief.explicit),
+        stated=bool(brief.explicit or brief.shape),
     )
     change: dict[str, Any] = revise_base.noted(
         diff.summarize(row.content, built.content, brief.sport), retired

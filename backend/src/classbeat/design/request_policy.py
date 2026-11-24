@@ -147,7 +147,7 @@ def interpretation_for(
 ) -> list[InterpretationItem]:
     """How the brief was read. Nothing (an empty list) for a brief that states nothing and has no
     games, so every class of today is stored as before."""
-    if not brief.explicit and not brief.games:
+    if not brief.explicit and not brief.games and not brief.shape:
         return []
     limits = limits or Limits()
     missed = {m.path: m.code for m in unmet}
@@ -155,6 +155,8 @@ def interpretation_for(
     quotes = quotes or {}
     items: list[InterpretationItem] = []
     for path in brief.explicit:
+        if path == "shape":  # one item per section: ``shape.N``, as the reading records them
+            continue
         value = _value(brief, dumped, path)
         reason = hard_limit(path, value, limits, brief.sport) or missed.get(path)
         origin: Origin = "not_as_asked" if reason else "explicit"
@@ -172,4 +174,11 @@ def interpretation_for(
     for n, game in enumerate(dumped.get("games", [])):
         if f"games.{n}" not in stated:
             items.append(_item(f"games.{n}", game, "inferred", None, None))
+    for n, section in enumerate(dumped.get("shape", [])):  # the ride in parts (#1485)
+        reason = missed.get(f"shape.{n}")
+        kind: Origin = (
+            "not_as_asked" if reason else ("explicit" if "shape" in stated else "inferred")
+        )
+        quote = keep_quote(quotes.get(f"shape.{n}"), brief.text)
+        items.append(_item(f"shape.{n}", section, kind, reason, quote))
     return items

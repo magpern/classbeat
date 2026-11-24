@@ -104,6 +104,15 @@ RULE_SOURCES: Final = (
     # The short name a new class may get from its reading (issue #1233): how the interpreter's
     # name is cleaned before it is kept. Added with suite version 28.
     "class_title_policy.py",
+    # The shape of the ride (#1485, suite version 30): the closed sections, what the interpreter
+    # reports of them, how the policy reads them and how the design stages are told the brief.
+    "agent/ride_shape.py",
+    "agent/interpreted_shape.py",
+    "agent/interpreted_taste.py",
+    "agent/stated.py",
+    "agent/brief_input.py",
+    "agent/stated_layer.py",
+    "design/shape_policy.py",
 )
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")
