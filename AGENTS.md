@@ -159,7 +159,9 @@ a red `main` is fixed forward first, before other merges.
 ## Branches, worktrees and commits
 
 - Every task is a feature branch `<issue>-<slug>` and a PR. One writing agent per branch.
-- Parallel developers each work in their own worktree: `scripts/worktree.sh new <issue> <slug>`
+- Each writer needs an isolated checkout. In Codex Cloud, assign one issue branch per
+  task and use its supplied checkout. Follow the [cloud setup](docs/codex.md#codex-cloud).
+- Local parallel developers each work in their own worktree: `scripts/worktree.sh new <issue> <slug>`
   creates `../classbeat-wt/<issue>-<slug>` with its own `.env`, so each runs its own stack
   (`COMPOSE_PROJECT_NAME=classbeat-<issue>`, own Postgres volume and ports). Remove the
   worktree after the merge (`scripts/worktree.sh rm <issue>`).
@@ -303,5 +305,5 @@ scripts/worktree.sh new <issue> <slug>  # ../classbeat-wt/<issue>-<slug>, own .e
 docker compose up -d --build --wait     # web on http://127.0.0.1:$WEB_PORT; `docker compose down -v` to stop
 ```
 
-CI runs the full suite; locally run lint, types and the targeted tests only. A docs-only
+CI selects checks by changed paths on ready PRs. Locally run lint, types and targeted tests. A docs-only
 change needs no database.

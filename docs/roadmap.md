@@ -645,7 +645,10 @@ process and AGENTS.md; all other requirements remain in force.
 Routing updated 2026-11-24 for Codex development sessions. Claude Code starts from
 `CLAUDE.md`, which imports the shared `AGENTS.md`, and selects roles from `.claude/agents/`.
 In Claude sessions, visual evidence gathering falls under the existing Explorer role.
-The six profiles in `.codex/agents/` configure Codex sessions only.
+The six profiles in `.codex/agents/` configure Codex sessions only. For parallel
+writer isolation, a Codex Cloud task's supplied checkout stands in for a local worktree.
+Assign parallel writers separate cloud tasks and issue branches. Keep the supplied checkout
+after merge. Local parallel developers continue to use the worktree helper.
 
 | Claude role/tier | Codex model | Reasoning effort |
 |---|---|---|

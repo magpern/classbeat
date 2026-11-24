@@ -53,7 +53,7 @@ Astra/high setting. Each role keeps the shared authority boundaries and risk rul
 
 At startup verify that your client discovers these agents and can select their models.
 They are not executable orchestrators: the Architect must assign issues, worktrees and
-review requests. Each writer owns one issue branch and one worktree. Do not run Claude
+review requests. Each writer owns one issue branch in an isolated checkout. Do not run Claude
 and Codex writers on the same branch.
 
 A reviewer's first review of a PR must start with no inherited author/Architect conversation;
@@ -107,8 +107,7 @@ checks still need CI. The independent review rules above also apply to cloud tas
    `bash scripts/worktree.sh new <issue> <slug>` from the checkout, then change into
    the printed worktree. Its branch, ports, database volume and secrets are isolated.
 3. Follow AGENTS.md's backend/frontend commands (full reference: developer-commands.md). Run lint, type checks and targeted
-   tests for the change. Use its Compose/e2e instructions when required; CI runs the
-   full suite. Do not weaken a check to make it pass.
+   tests for the change. Use its Compose/e2e instructions when required; ready PRs run CI checks selected by the changed paths. Do not weaken a check to make it pass.
 4. Create one PR closing the issue, with scope, each acceptance criterion and its test
    evidence. Use Conventional Commits and no Co-Authored-By trailer. Codex PRs end with:
    `🤖 Generated with [Codex](https://developers.openai.com/codex/)`.
