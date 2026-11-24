@@ -2459,6 +2459,10 @@ const da: Catalogue = {
     'Vælg mindst ét resultat.',
   'studio.out.noneEnabled':
     'Intet resultat er tilgængeligt lige nu. Prøv igen senere.',
+  'studio.out.loadFailed':
+    'Resultaterne kunne ikke hentes. Prøv igen.',
+  'studio.out.retry':
+    'Prøv igen',
   'studio.sync.working_copy':
     'Spotify-arbejdsplayliste',
   'studio.sync.final':

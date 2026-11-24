@@ -2471,6 +2471,10 @@ const sv: Catalogue = {
     'Välj minst ett resultat.',
   'studio.out.noneEnabled':
     'Inget resultat är tillgängligt just nu. Försök igen senare.',
+  'studio.out.loadFailed':
+    'Resultaten kunde inte hämtas. Försök igen.',
+  'studio.out.retry':
+    'Försök igen',
   'studio.sync.working_copy':
     'Spotify-arbetsspellista',
   'studio.sync.final':

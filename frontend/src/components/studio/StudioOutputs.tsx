@@ -37,8 +37,9 @@ import { useMixPreview, type PreviewAnswer } from './useMixPreview'
  * a merged mix shows others is unconfirmed), and the approval of this draft for those outputs.
  *
  * `enabled` is the outputs the server runs for the user (`GET /outputs`), so only those are
- * offered and the defaults fall back to what is on; null (the list could not be read) offers all
- * four and a switched-off one is refused in words. A draft whose mix repeats a song
+ * offered and the defaults fall back to what is on; an empty list (a design-only studio, ADR 0036
+ * section 10) says none is on; null (the list could not be read) offers none, with a notice and a
+ * retry, so nothing is picked that the server would refuse. A draft whose mix repeats a song
  * (`timeline.hasRepeats`) is mix-only (ADR 0036 amendment A8): the SwedeBeat playlist is shown off
  * and disabled with the reason, and the server refuses it too. The per-output states and their
  * actions are `StudioOutputStates`.
@@ -54,7 +55,8 @@ export function StudioOutputs({
   timeline,
   songs,
   disabled,
-  enabled = null,
+  enabled,
+  onRetry,
   limitReached = false,
 }: {
   classId: string
@@ -63,13 +65,16 @@ export function StudioOutputs({
   songs: ClassSongs
   /** Another job of the class is open. */
   disabled: boolean
-  enabled?: readonly Output[] | null
+  /** The outputs the server runs; null when the list could not be read. */
+  enabled: readonly Output[] | null
+  /** Reads the enabled list again. */
+  onRetry: () => void
   /** The class's last approval stopped at the limit: a notice only, Approve stays on. */
   limitReached?: boolean
 }) {
   const t = useT()
   const { navigate } = useRouter()
-  const offered = OUTPUTS.filter((o) => enabled === null || enabled.includes(o))
+  const offered = OUTPUTS.filter((o) => enabled?.includes(o) === true)
   const mixOnly = timeline.hasRepeats
   const allowed = (o: Output) => offered.includes(o) && !(mixOnly && o === 'swedebeat_playlist')
   // The choices of an applied draft come back as toggles, never applied by themselves (B3, B6).
@@ -180,7 +185,14 @@ export function StudioOutputs({
           onReplan={actions.replan}
         />
       ) : null}
-      {chosen.length === 0 ? (
+      {enabled === null ? (
+        <div className="flex flex-col items-start gap-2" data-testid="studio-outputs-unread">
+          <Notice kind="error">{t('studio.out.loadFailed')}</Notice>
+          <Button type="button" variant="secondary" onClick={onRetry}>
+            {t('studio.out.retry')}
+          </Button>
+        </div>
+      ) : chosen.length === 0 ? (
         <Notice>{t(offered.length === 0 ? 'studio.out.noneEnabled' : 'studio.out.none')}</Notice>
       ) : !approving ? (
         <p className="m-0 text-muted" data-testid="studio-apply-first">

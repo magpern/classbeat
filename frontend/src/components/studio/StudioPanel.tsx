@@ -63,6 +63,7 @@ export function StudioPanel({ summary, view, studioList }: { summary: ClassSumma
           songs={summary.songs}
           disabled={summary.openJob !== null}
           enabled={loaded?.enabled ?? null}
+          onRetry={outputs.retry}
           limitReached={outputLimitReached(summary.id)}
         />
       ) : null}

@@ -2339,6 +2339,10 @@ export const en = {
     'Choose at least one output.',
   'studio.out.noneEnabled':
     'No output is available right now. Try again later.',
+  'studio.out.loadFailed':
+    'The outputs could not be loaded. Try again.',
+  'studio.out.retry':
+    'Try again',
   'studio.sync.working_copy':
     'Spotify working playlist',
   'studio.sync.final':
