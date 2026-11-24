@@ -314,6 +314,8 @@ def test_the_digest_sources_include_every_rule_source() -> None:
         "agent/ride_shape.py", "agent/interpreted_shape.py", "agent/interpreted_taste.py",
         "agent/stated.py", "agent/brief_input.py", "agent/stated_layer.py",
         "design/shape_policy.py",
+        # #1493: the check that holds a draft to the shape and what the design stages are told
+        "agent/shape_check.py", "agent/shape_prompt.py",
     }  # fmt: skip
 
 

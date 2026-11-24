@@ -23,10 +23,15 @@
 - ``route`` (ADR 0038 amendment of 2026-11-24, #1484): the route the hand-off took, ``sketch`` (a
   composer sketch) or ``classic`` (the older design), recorded when no design job of the hand-off
   exists yet. Absent on rows stored before and until the hand-off; left out when absent.
+- ``music_decision`` (ADR 0038 amendment of 2026-11-24, decision 5, #1495): the composer's
+  question about the music (``design.music_decision``), set by the reading of a composer cycling
+  class and changed by ``PUT /api/classes/{id}/music`` (``classbeat.classes.music_answer``).
+  Absent on rows stored before (read as ``decided`` / ``request``); left out when absent.
 
 The worker writes it once, in its final fenced transaction, on its own class while the class has
-no interpretation and no revision (``store``); after that only the hand-offs change ``refusal``
-and ``fill``, under the owner lock (``classbeat.classes.interpretation``, ``song_fill``). Every
+no interpretation and no revision (``store``); after that only the hand-offs change ``refusal``,
+``fill`` and ``route``, under the owner lock (``classbeat.classes.interpretation``,
+``song_fill``), and the music answer ``music_decision``, with the class row locked. Every
 statement filters on ``owner_id`` as well as running under RLS. The size is checked here with
 the jsonb measure, and the column's ``octet_length`` check is the backstop.
 """
@@ -41,6 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent.interpretation_record import InterpretationList
 from classbeat.design.interpret_composer_policy import PinnedList, QuestionList
+from classbeat.design.music_decision import MusicDecision
 from classbeat.jobs import FencedSession, JobFailure
 from classbeat.jobs.inputs import jsonb_size
 
@@ -78,9 +84,11 @@ class StoredInterpretation(BaseModel):
     refusal: Refusal | None = None
     fill: FillState | None = None
     route: Route | None = None
+    music_decision: MusicDecision | None = None
 
     def dumped(self) -> str:
-        empty = {k for k in ("pinned_songs", "questions", "fill", "route") if not getattr(self, k)}
+        optional = ("pinned_songs", "questions", "fill", "route", "music_decision")
+        empty = {k for k in optional if not getattr(self, k)}
         value = self.model_dump(mode="json", exclude=empty)
         for key in ("pinned_songs", "questions"):  # a pin's or question's own None fields go
             for entry in value.get(key, []):

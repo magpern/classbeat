@@ -45,3 +45,23 @@ def with_interpretation(
     if stated:
         provenance = {**provenance, "stated": layer_of(brief)}
     return DraftRevision(**kept, provenance=provenance)  # by name: a new field cannot be dropped
+
+
+def shape_off_items(brief: Brief, unmet: Iterable[Miss]) -> list[InterpretationItem]:
+    """The Not as asked items (``shape.N``, ``shape_off``) of the sections of the brief's ride shape
+    that a design missed after its corrections (#1493); none when it kept the shape."""
+    return [
+        i
+        for i in request_policy.interpretation_for(brief, unmet)
+        if i.origin == "not_as_asked" and i.path.startswith("shape.")
+    ]
+
+
+def with_items(draft: DraftRevision, items: Iterable[InterpretationItem]) -> DraftRevision:
+    """``draft`` with Not as asked ``items`` recorded in its provenance (composer phase 2, which
+    records no other reading); the draft unchanged for none."""
+    added = list(items)
+    if not added:
+        return draft
+    kept = {f.name: getattr(draft, f.name) for f in fields(draft) if f.name != "provenance"}
+    return DraftRevision(**kept, provenance=interpretation_record.attach(draft.provenance, added))

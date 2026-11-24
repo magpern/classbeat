@@ -417,14 +417,44 @@ describe('Surprise me', () => {
 })
 
 describe('the Spotify gate in the composer', () => {
-  it('connects Spotify first when no account is connected, and lets "No music" through', async () => {
+  it('lets a request with the music left open start without Spotify, says songs need it, and sends no connection', async () => {
+    const api = fakeApi(routes({}, connectionsBody(false)))
+    renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: 'An easy ride' } })
+    expect(await screen.findByText('Songs need Spotify. You can connect it after the sketch.')).toBeInTheDocument()
+    expect(screen.queryByTestId('spotify-prompt')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /^Start/ }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    const input = (sent(api) as { input: Record<string, unknown> }).input
+    expect(input).not.toHaveProperty('spotify_connection_id')
+    expect(input).not.toHaveProperty('music_sources')
+    expect(input).not.toHaveProperty('music_override')
+  })
+
+  it('lets it start without the working-playlist consent, with no note', async () => {
+    const api = fakeApi(routes({ 'GET /api/connections/spotify': { ...SPOTIFY_STATUS_OK, pool_consent: false } }))
+    renderAt('/classes/new')
+    fireEvent.change(await prompt(), { target: { value: 'An easy ride' } })
+    expect(screen.getByRole('button', { name: /^Start/ })).toBeEnabled()
+    expect(screen.queryByTestId('spotify-prompt')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /^Start/ }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+  })
+
+  it('still needs Spotify for attached playlists, and lets "No music" through', async () => {
     const api = fakeApi(routes({}, { ...connectionsBody(false), soundless_enabled: true }))
     renderAt('/classes/new')
     fireEvent.change(await prompt(), { target: { value: 'An easy ride' } })
+    fireEvent.click(screen.getByRole('button', { name: /Add music/ }))
+    choose('Hill climbs')
     const note = await screen.findByTestId('spotify-prompt')
     expect(note).toHaveAttribute('data-need', 'connect')
     expect(within(note).getByRole('link', { name: 'Connect Spotify' })).toHaveAttribute('href', '/en/account/spotify')
-    fireEvent.click(screen.getByRole('button', { name: /Add music/ }))
+    expect(screen.getByRole('button', { name: /^Start/ })).toBeDisabled()
     choose('No music')
     expect(screen.queryByTestId('spotify-prompt')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /^Start/ }))

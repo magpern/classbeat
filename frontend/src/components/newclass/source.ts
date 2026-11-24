@@ -39,7 +39,7 @@ function playlistError(error: unknown): CatalogueKey {
 }
 
 /** Whether "Pick for me" is offered, and what it still needs (ADR 0008 section 9). */
-async function songsAvailability(connections: Connection[], signal: AbortSignal): Promise<SongsAvailability> {
+export async function songsAvailability(connections: Connection[], signal: AbortSignal): Promise<SongsAvailability> {
   let status
   try {
     status = await getSpotifyStatus(signal)

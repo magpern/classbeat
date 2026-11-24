@@ -132,10 +132,15 @@ def _value(brief: Brief, dumped: Mapping[str, Any], path: str) -> Any:
 
 
 def _item(
-    path: str, value: Any, origin: Origin, reason: str | None, quote: str | None
+    path: str,
+    value: Any,
+    origin: Origin,
+    reason: str | None,
+    quote: str | None,
+    found: int | None = None,
 ) -> InterpretationItem:
     return InterpretationItem(
-        path=path, origin=origin, reason_code=reason, value=value, quote=quote
+        path=path, origin=origin, reason_code=reason, value=value, quote=quote, found=found
     )
 
 
@@ -151,6 +156,7 @@ def interpretation_for(
         return []
     limits = limits or Limits()
     missed = {m.path: m.code for m in unmet}
+    counted = {m.path: m.found for m in unmet}
     dumped = brief.model_dump(mode="json", exclude_none=True)
     quotes = quotes or {}
     items: list[InterpretationItem] = []
@@ -180,5 +186,6 @@ def interpretation_for(
             "not_as_asked" if reason else ("explicit" if "shape" in stated else "inferred")
         )
         quote = keep_quote(quotes.get(f"shape.{n}"), brief.text)
-        items.append(_item(f"shape.{n}", section, kind, reason, quote))
+        found = counted.get(f"shape.{n}") if reason else None
+        items.append(_item(f"shape.{n}", section, kind, reason, quote, found))
     return items

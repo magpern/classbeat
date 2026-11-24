@@ -110,6 +110,7 @@ async def create_change(
             replaces_job_id=row.id,
             seed=Seed(song_list_revision_id=row.approval_revision_id, replace=[]),
             sources=stored.get("sources"),
+            music_note=stored.get("music_note"),  # #1495: the fill's, carried along
             request=body,
             request_message_id=request_message_id(hold.class_id, hold.message_id),
             mowl_connection_id=mowl,

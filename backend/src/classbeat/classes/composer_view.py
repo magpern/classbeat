@@ -28,6 +28,9 @@
   current revision); ``{state: "differed"}`` while the current revision is a phase-2 draft whose
   final songs differed from the approved ones (``provenance.fit = "redesigned"``: re-designed, not
   saved by itself; the page asks the user to check the class and save). Null otherwise.
+- ``music_decision`` (ADR 0038 amendment of 2026-11-24, decision 5, #1495): ``{state, choice,
+  playlists}`` of a composer class (``music_answer.decision_out``: a count, never an id or the
+  note; a row stored before reads ``decided`` / ``request``). Null for every other class.
 
 Every read filters on ``owner_id`` and runs in the caller's ``user_session``. Codes only.
 """
@@ -40,6 +43,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat.classes.music_answer import MusicDecisionOut, decision_out
 from classbeat.classes.song_fill_keys import fill_key
 from classbeat.design import interpretation_row
 from classbeat.design.composer import composer_on
@@ -111,10 +115,11 @@ class ComposerState:
     fill_songs: FillSongsOut | None = None
     save_pending: SavePendingOut | None = None
     phase2: Phase2Out | None = None
+    music_decision: MusicDecisionOut | None = None
 
     def fields(self) -> dict[str, Any]:
         """The class answer's composer fields (``ClassDetailOut``)."""
-        names = ("composer", "fill_songs", "save_pending", "phase2")
+        names = ("composer", "fill_songs", "save_pending", "phase2", "music_decision")
         return {name: getattr(self, name) for name in names}
 
 
@@ -127,9 +132,10 @@ async def composer_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Co
         row.route == "sketch"
         or bool((await db.execute(_COMPOSER, {**ids, "job_id": row.job_id})).scalar())
     )
+    music = await decision_out(db, owner_id, class_id, row) if composer else None
     now = (await db.execute(_STATE, ids)).first()
     if now is not None and now.origin != SKETCH:
-        return await _after_phase_two(db, owner_id, class_id, composer, now.fit)
+        return await _after_phase_two(db, owner_id, class_id, composer, now.fit, music)
     fill = row.fill
     if (
         now is None
@@ -137,14 +143,14 @@ async def composer_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Co
         or fill is None
         or fill.sketch_revision_id != now.current_revision_id
     ):
-        return ComposerState(composer)
+        return ComposerState(composer, music_decision=music)
     phase2 = await _failed(db, owner_id, class_id, now.current_revision_id)
     failure = None if fill.refusal is None else fill.refusal.reason
     if failure is None:
         key = fill_key(class_id, fill.sketch_revision_id, fill.attempt)
         job = (await db.execute(_JOB_OF_KEY, {**ids, "key": key})).first()
         if job is None:  # recorded, but no job and no refusal (a transient class_busy): none
-            return ComposerState(composer)
+            return ComposerState(composer, music_decision=music)
         if job.state == "failed":
             failure = job.error_category or "internal"
         elif job is not None and job.state in ("cancelled", "expired"):
@@ -156,6 +162,7 @@ async def composer_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Co
             sketch_revision_id=fill.sketch_revision_id, attempt=fill.attempt, failure=failure
         ),
         phase2=phase2,
+        music_decision=music,
     )
 
 
@@ -168,7 +175,12 @@ async def _reading(db: AsyncSession, ids: dict[str, UUID]) -> bool:
 
 
 async def _after_phase_two(
-    db: AsyncSession, owner_id: UUID, class_id: UUID, composer: bool, fit: str | None
+    db: AsyncSession,
+    owner_id: UUID,
+    class_id: UUID,
+    composer: bool,
+    fit: str | None,
+    music: MusicDecisionOut | None = None,
 ) -> ComposerState:
     """A draft is current: the save phase 2 asked for, and whether its songs differed."""
     pending = await save_pending.current(db, owner_id, class_id)
@@ -176,6 +188,7 @@ async def _after_phase_two(
         composer,
         save_pending=None if pending is None else SavePendingOut(**pending.model_dump()),
         phase2=Phase2Out(state="differed") if fit == "redesigned" else None,
+        music_decision=music,
     )
 
 

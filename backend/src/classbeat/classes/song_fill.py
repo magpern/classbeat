@@ -8,20 +8,25 @@ or expired.
 
 1. One read (no lock): the class's current revision (``not_ready`` unless it is a sketch), its
    stored brief and interpretation, the interpret job's ``music_sources`` (the attached Spotify
-   playlists) and the reading's pinned songs; the user's current MOWL and Spotify connections
-   (``not_connected`` without them). The input is ``fill`` with ``base_revision_id`` = the sketch.
+   playlists) and the reading's pinned songs; ``music_undecided`` while the class's music
+   decision is ``undecided`` (ADR 0038 amendment of 2026-11-24, decision 5; never stored: the
+   decision itself is the state, ``PUT .../music`` changes it); the user's current MOWL and
+   Spotify connections (``not_connected`` without them). The input is ``fill`` with
+   ``base_revision_id`` = the sketch, the favoured playlists the decision's
+   (``music_decision.fill_sources``) and its ``music_note``. Each of these refusals is answered
+   before the create, so nothing is written: no job, no pool, no Spotify or MOWL call.
 2. The **key** = a hash of the class id, the sketch's revision id and ``attempt``
    (``fill_key``), kept on the class with the stored interpretation (``FillState``). A new sketch
    is a new key (its ``attempt`` starts at 0); **Find songs again** moves to the next ``attempt``.
 3. The jobs API's create (``JobEnqueue``) with ``consumes_credit=False`` (the sketch took the
    class credit) and a ``CreateHold``: under the owner lock, the interpretation row is locked
-   and read again, the sketch must still be the current revision (else the call plans again,
-   once); a stored refusal of this attempt is answered as it is, a retry stores the next
-   attempt (only while the class has no open job: ``class_busy``); a refusal of the create
-   (``pool_busy``, ``consent_missing``, ``quota``, ``busy`` and every other but ``class_busy``,
-   which only means "later") is stored on the class in that transaction. So two concurrent
-   calls make one job: the second finds the first's key and gets its job (or its stored
-   refusal).
+   and read again, the sketch must still be the current revision and the music decision the
+   planned one (else the call plans again, once); a stored refusal of this attempt is answered
+   as it is, a retry stores the next attempt (only while the class has no open job:
+   ``class_busy``); a refusal of the create (``pool_busy``, ``consent_missing``, ``quota``,
+   ``busy`` and every other but ``class_busy``, which only means "later") is stored on the
+   class in that transaction. So two concurrent calls make one job: the second finds the first's
+   key and gets its job (or its stored refusal).
 
 No credit is used either way. Every statement filters on ``owner_id`` as well as running under RLS;
 another user's class is ``not_found`` like an unknown one. Only codes and numbers are stored.
@@ -37,11 +42,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.agent.brief import Brief
+from classbeat.agent.stated_layer import applied
 from classbeat.classes.interpretation import Handoff
 from classbeat.classes.song_fill_keys import fill_key
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.design import composer, interpretation_row
+from classbeat.design import composer, interpretation_row, music_decision
+from classbeat.design.chat import stated_layer
 from classbeat.design.interpret_kind import KIND as INTERPRET_KIND
 from classbeat.design.interpret_kind import InterpretRequestInput
 from classbeat.design.interpretation_row import FillState, Refusal
@@ -88,6 +95,7 @@ class _Plan:
     sketch: UUID
     attempt: int
     interpret_job_id: UUID
+    decision: music_decision.MusicDecision
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +126,8 @@ class _Hold:
             return Held("not_ready")
         if now.current_revision_id != self.plan.sketch or now.origin != SKETCH:
             return Held(_REPLAN)  # a new sketch meanwhile, or not a sketch any more
+        if music_decision.decision_of(row.music_decision) != self.plan.decision:
+            return Held(_REPLAN)  # the music was answered meanwhile (``music_answer``)
         fill = fill_of(row, self.plan.sketch)
         if self.retry and fill.attempt + 1 == self.plan.attempt:
             if now.open:
@@ -165,10 +175,15 @@ async def _plan(
             return Handoff(reason="not_ready")
         params = {**owner, "job_id": row.job_id, "kind": INTERPRET_KIND}
         first = (await db.execute(_INTERPRET_JOB, params)).scalar_one_or_none()
+        # The sketch's nearest stated layer: the latest instruction, not the first design's brief.
+        layer = await stated_layer(db, ctx.user_id, class_id, found.current_revision_id)
     sketch = found.current_revision_id
     if base is not None and base != sketch:
         return Handoff(reason="stale_base")  # the page shows an older sketch: it reads again
     fill = fill_of(row, sketch)
+    decision = music_decision.decision_of(row.music_decision)
+    if decision.state == "undecided":
+        return Handoff(reason=music_decision.UNDECIDED)
     mowl, spotify = ctx.connection("mowl"), ctx.connection("spotify")
     if mowl is None or spotify is None:
         return Handoff(reason="not_connected")
@@ -176,18 +191,23 @@ async def _plan(
         given = InterpretRequestInput.model_validate(first)
         parsed = DesignWithSongsInput(
             class_id=class_id,
-            brief=Brief.model_validate(found.brief),
+            brief=Brief.model_validate(
+                applied(found.brief, layer)
+                if isinstance(found.brief, dict) and layer
+                else found.brief
+            ),
             mode="fill",
             base_revision_id=sketch,
-            sources=given.music_sources,
+            sources=music_decision.fill_sources(decision, given.music_sources),
             pinned=list(row.pinned_songs) or None,
+            music_note=decision.note,
             mowl_connection_id=mowl,
             spotify_connection_id=spotify,
         )
     except ValidationError:
         return Handoff(reason="invalid_input")
     attempt = fill.attempt + 1 if retry else fill.attempt
-    return _Plan(class_id, sketch, attempt, row.job_id), parsed
+    return _Plan(class_id, sketch, attempt, row.job_id, decision), parsed
 
 
 async def start(

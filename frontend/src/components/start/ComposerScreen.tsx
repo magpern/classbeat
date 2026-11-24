@@ -22,9 +22,10 @@ import { PlanLength } from './PlanLength'
 import { FieldCard } from './FieldCard'
 import { composerInput, initialDraft, keptFromRequest, type ComposerRequest, type Sport } from './composerModel'
 import { MusicTagRow } from './MusicTagRow'
-import { forSport, gateOverride, toggleNone, togglePlaylist, type PlaylistTag } from './musicTags'
+import { forSport, toggleNone, togglePlaylist, type PlaylistTag } from './musicTags'
 import { SpotifyPrompt } from './SpotifyPrompt'
-import { spotifyConnectionId, spotifyGate, type SpotifyGate } from './spotifyGate'
+import { composerSpotifyGate } from './composerSpotifyGate'
+import { spotifyConnectionId, type SpotifyGate } from './spotifyGate'
 import { pickSurprise } from './surprise'
 
 /**
@@ -73,8 +74,9 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
   // One key per distinct request: a repeated click or a retry after a lost answer returns the same job.
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
   const spotify = spotifyConnectionId(source.songs)
-  // A class with music needs Spotify (roadmap Amendment 25): say so before the request is sent.
-  const gate = spotifyGate(source.songs, source.swedebeat, gateOverride(tags), running)
+  // Songs need Spotify, but the composer asks about the music after the sketch (ADR 0038 amendment of
+  // 2026-11-24): a request with the music left open is not blocked, it only says so. Attached playlists still are.
+  const { gate, songsLater } = composerSpotifyGate(source.songs, source.swedebeat, tags, running)
 
   const start = (text: string) => {
     const words = text.trim()
@@ -175,6 +177,8 @@ export function ComposerScreen({ source, example = null }: { source: ReadySource
             <SpotifyPrompt need={gate.need} soundless={noMusicOffered} />
           ) : refusedForSpotify !== null ? (
             <SpotifyPrompt need={refusedForSpotify} soundless={noMusicOffered} />
+          ) : songsLater ? (
+            <Notice>{t('composer.spotify.later')}</Notice>
           ) : null}
         </FieldCard>
       </div>

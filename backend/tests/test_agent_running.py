@@ -70,9 +70,10 @@ RUN = {"sport": "running", "length_min": 30, "intensity": "moderate"}
 # on purpose: a guidance line on each section's energy, and get_pool's and get_music's description.
 # #1040 (tempo adjacency): choose_songs changed once more, on purpose: a tempo guidance line.
 # #1133 (music taste): pick_pool changed on purpose: the find_songs tool and its guidance.
+# #1493 (the ride shape): design and revise changed on purpose: the section tag and the shape rules.
 CYCLING_PROMPT_VERSIONS = {
-    "design": "120dc25a1e01d60f1657af8e608a853e7486ea87af65d0b00e09aa25cd03782c",
-    "revise": "317d75e31910bb71dff3498f8a798901409a990f25f691ba29d11a6b680235b6",
+    "design": "f35eca26e771544373e63fcef1e36d6a36ad4a05e060837d65e04c1bec722f83",
+    "revise": "c5e9582a5641f81cc1689a46f8bdbbd80e353b51c7db36c90c2e058c26d34632",
     "pick_pool": "e1887da4f5959cc9adb94ae3a3d332161dda107364c7f7c6363ad8ea1b826a75",
     "choose_songs": "74882603467ec87dc133b32addc24491c2f0e68d45f6a7c92f4d9f49f2a560ac",
 }

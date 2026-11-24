@@ -38,6 +38,7 @@ class Miss:
     path: str
     code: str
     sentence: str
+    found: int | None = None  # what the draft has of a counted ride-shape section (#1493)
 
 
 @dataclass(frozen=True)

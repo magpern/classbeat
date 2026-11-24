@@ -9,6 +9,7 @@ import type { Song } from '../../api/songs'
 import { swapSong } from '../../api/swapSong'
 import { useComposerDriver } from '../../hooks/composer/useComposerDriver'
 import { usePendingMessages } from '../../hooks/composer/usePendingMessages'
+import { useMusicSetup } from '../../hooks/composer/useMusicSetup'
 import { useReading } from '../../hooks/composer/useReading'
 import { useSendMessage } from '../../hooks/composer/useSendMessage'
 import { useSongsOfClass } from '../../hooks/composer/useSongsOfClass'
@@ -17,8 +18,11 @@ import { useHandoff } from '../../hooks/useHandoff'
 import { useUseRevision } from '../../hooks/useUseRevision'
 import { useT } from '../../i18n/I18n'
 import { deriveChip } from '../../lib/composer/chip'
+import { musicGate } from '../../lib/composer/musicGate'
+import { SKETCH } from '../../lib/composer/workspaceKind'
 import { recallRequest } from '../../lib/startRequest'
 import { requestOf } from '../../lib/requestReading'
+import { notAskedOf } from '../../lib/notAsked'
 import { sendOf } from '../player/operations'
 import { Link } from '../../router/Router'
 import { DeleteClass } from '../classes/DeleteClass'
@@ -30,6 +34,7 @@ import { useSendToPlayer } from '../classes/useSendToPlayer'
 import { Notice, useAction } from '../forms'
 import { ChatColumn } from './ChatColumn'
 import { ClassColumn } from './ClassColumn'
+import { MusicSetup } from './MusicSetup'
 import { MoreMenu, MorePanel, type MoreSection } from './MoreMenu'
 import { ApproveBar } from './ApproveBar'
 import { SaveArea } from './SaveArea'
@@ -67,10 +72,19 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = f
   const player = useSendToPlayer(summary, reload)
   const list = useSongsOfClass(classId, summary.songs)
   const currentOrigin = revisions.find((r) => r.id === summary.currentRevisionId)?.origin ?? null
+  // The music question and Spotify gate the song search while it has not started for the current sketch.
+  const decision = summary.composer.musicDecision
+  const searchOpen =
+    decision !== null &&
+    currentOrigin === SKETCH &&
+    (summary.composer.fill === null || summary.composer.fill.sketchRevisionId !== summary.currentRevisionId)
+  const music = useMusicSetup(searchOpen)
+  const gate = musicGate(decision, music.songs, searchOpen)
   const driver = useComposerDriver({
     summary,
     currentOrigin,
     messages: stored.messages,
+    music: gate,
     reload,
     refreshMessages: stored.refresh,
     paused,
@@ -105,6 +119,11 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = f
   // A waiting list shows its own designed class: that is what the approval covers.
   const segments = ready && list.preview != null ? list.preview.segments : shown.status === 'ready' ? shown.revision.segments : null
   const title = ready && list.preview != null ? list.preview.name : shown.status === 'ready' ? shown.revision.name : summary.title
+  // What the version about to be approved or saved does not do as asked: its own reading, and the waiting list's.
+  const notAsked = notAskedOf(
+    shown.status === 'ready' && shown.revision.id === summary.currentRevisionId ? shown.revision.interpretation : null,
+    ready ? list.unmet : null,
+  )
   const act = useAction()
   const approve = useAction()
 
@@ -153,9 +172,9 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = f
       ) : null}
       {using.error !== null ? <p className="notice" data-kind="error" role="alert">{using.error}</p> : null}
       {ready ? (
-        <ApproveBar holding={pending !== null} checking={stored.messages === null} checkFailed={stored.failed} onRetryCheck={stored.refresh} busy={approve.busy || running} error={approve.error} onApprove={onApprove} />
+        <ApproveBar holding={pending !== null} checking={stored.messages === null} checkFailed={stored.failed} onRetryCheck={stored.refresh} busy={approve.busy || running} error={approve.error} onApprove={onApprove} notAsked={notAsked} />
       ) : (
-        <SaveArea flow={save} chip={chip.state} currentOrigin={currentOrigin} differed={summary.composer.phase2 === 'differed'} />
+        <SaveArea flow={save} chip={chip.state} currentOrigin={currentOrigin} differed={summary.composer.phase2 === 'differed'} notAsked={notAsked} />
       )}
       <MorePanel
         section={more}
@@ -246,6 +265,18 @@ export function ComposerWorkspace({ classId, data, reload, onDeleted, paused = f
             numbers={new Map(revisions.map((r) => [r.id, r.number]))}
             items={handoff.items ?? reading.items}
             extras={handoff.items !== null ? handoff.extras : reading.extras}
+            music={
+              searchOpen ? (
+                <MusicSetup
+                  classId={classId}
+                  gate={gate}
+                  decision={decision}
+                  setup={music}
+                  words={request?.body ?? recallRequest(classId)?.request ?? null}
+                  reload={reload}
+                />
+              ) : null
+            }
             stored={{ pending, failed }}
             send={{ run: sender.send, busy: sender.busy, error: sender.error }}
             blocked={blocked}

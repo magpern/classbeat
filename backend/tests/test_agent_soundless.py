@@ -27,7 +27,7 @@ from classbeat.agent.design import SYSTEM_PROMPT as CYCLING_PROMPT
 from classbeat.agent.dispatcher import dispatch
 from classbeat.agent.provider import ToolCall
 from classbeat.agent.revise import ReviseResult
-from classbeat.agent.schemas import SoundlessDraft, WorkoutDraft
+from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.soundless import (
     REVISE_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
@@ -38,6 +38,7 @@ from classbeat.agent.soundless import (
     soundless_revise_stage,
 )
 from classbeat.agent.soundless_input import NO_MUSIC, first_message
+from classbeat.agent.soundless_schemas import SoundlessDraft
 from classbeat.agent.stage import Stage, ToolError
 from classbeat.design.kind import DesignDraftInput, NoMusicChoice
 from classbeat.design.music_kind import NO_MUSIC as NO_MUSIC_SOURCE
@@ -52,7 +53,10 @@ from classbeat.plans.tables import SETTING_KEYS
 
 # Music words that must never reach a soundless model (item 5), as whole words: the game
 # ``racetrack`` is no track.
-MUSIC_WORDS = ("playlist", "track", "bpm", "drop", "breakdown", "section", "beat", "song")
+# "section" is not here any more: it is the ride shape's own word (``Segment.section``, #1493),
+# the part of the class a segment belongs to, and says nothing of music. The music sections of a
+# song stay unnamed through "playlist", "track", "bpm", "drop", "breakdown" and "song".
+MUSIC_WORDS = ("playlist", "track", "bpm", "drop", "breakdown", "beat", "song")
 
 
 def mentions(text: str, word: str) -> bool:

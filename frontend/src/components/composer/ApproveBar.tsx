@@ -1,4 +1,6 @@
+import type { InterpretationItem } from '../../api/interpretationItems'
 import { useT } from '../../i18n/I18n'
+import { NotAskedBefore } from '../classes/NotAskedBefore'
 import { Notice } from '../forms'
 import { Button } from '../ui/button'
 
@@ -15,6 +17,7 @@ export function ApproveBar({
   busy,
   error,
   onApprove,
+  notAsked = [],
 }: {
   /** A chat message is pending. */
   holding: boolean
@@ -26,6 +29,8 @@ export function ApproveBar({
   busy: boolean
   error: string | null
   onApprove: () => void
+  /** The preview's Not as asked items: shown before the click, so a difference is seen first. */
+  notAsked?: readonly InterpretationItem[]
 }) {
   const t = useT()
   return (
@@ -35,6 +40,7 @@ export function ApproveBar({
       className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4"
     >
       <p className="m-0 text-[0.9375rem] text-muted">{t('cw.approve.text')}</p>
+      <NotAskedBefore items={notAsked} before="approve" />
       {holding ? <p className="m-0 text-sm text-muted">{t('cw.approve.hold')}</p> : null}
       {checking && !checkFailed ? <p className="m-0 text-sm text-muted">{t('cw.approve.checking')}</p> : null}
       {checking && checkFailed ? (

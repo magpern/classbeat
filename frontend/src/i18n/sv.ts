@@ -6,6 +6,7 @@ import { publicSv } from './public.sv'
 import { editorSv } from './editor.sv'
 import { previewSv } from './preview.sv'
 import { workspaceSv } from './workspace.sv'
+import { shapeSv } from './shape.sv'
 
 const sv: Catalogue = {
   ...legalSv,
@@ -13,6 +14,7 @@ const sv: Catalogue = {
   ...publicSv,
   ...examplesSv,
   ...workspaceSv,
+  ...shapeSv,
   ...editorSv,
   ...previewSv,
   'language.label': 'Språk',

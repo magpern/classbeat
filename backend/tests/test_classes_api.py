@@ -266,6 +266,8 @@ async def test_the_views_show_what_the_page_needs_and_no_provider_ids(
     extra |= {"composer", "fill_songs"}  # ADR 0038 (#1188): false and null for this class
     extra |= {"save_pending", "phase2"}  # ADR 0038 section 7 (#1189): null for this class
     extra |= {"can_change"}  # ADR 0038 amendment of 2026-11-24 (#1484): the history's value
+    extra |= {"music_decision"}  # the same amendment (#1495): null for a class of the old flow
+    assert shown.json()["music_decision"] is None
     assert {k: v for k, v in shown.json().items() if k not in extra} == row
     assert shown.json()["songs"] == {
         "state": "none", "job_id": None, "revision_id": None, "content_hash": None,

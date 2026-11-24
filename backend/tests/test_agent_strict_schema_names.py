@@ -29,9 +29,8 @@ from classbeat.agent.schemas import (
     SongList,
     SongPool,
     SongsRequestedInput,
-    SoundlessDraftInput,
-    SoundlessReviseInput,
 )
+from classbeat.agent.soundless_schemas import SoundlessDraftInput, SoundlessReviseInput
 from classbeat.agent.studio_schemas import MixInput, StudioDraftInput, StudioReviseInput
 from deepseekfake import DEEPSEEK_MODEL
 from openaifake import OPENAI_MODEL

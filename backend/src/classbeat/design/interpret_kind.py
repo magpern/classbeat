@@ -17,28 +17,28 @@ cost cap (``quota.check_cost``, 409 ``quota`` ``cost``). It then resolves, as se
 the interpreter may be offered (and refuses ``needs_spotify``, or ``song_picking_unavailable`` when
 song picking is off for the user, before any model call and with no credit, a request that has no
 Spotify connection and can only end without music: roadmap Amendment 25,
-``interpret_music_policy.without_spotify_is_refused``): ``sports`` (running only when the running
-gate admits the user, ``sport.admit_running``), ``pick_ready`` (a Spotify connection is named and
-song picking admits the user), ``song_picking`` (song picking admits the user), ``swedebeat_mixes``
-(the Swedebeat flag is on and the user uses Swedebeat) and ``composer`` (the ``composer_flow`` flag,
-``design.composer``; ADR 0038 section 2). With the flag off a request with ``music_sources`` is
-refused ``feature_off``, and the reading is exactly as before: only a job admitted with ``composer``
-stores pinned songs and questions (``interpret_composer_policy``). After the job row is inserted,
-the request is stored as the class's first message (seq 1, role ``user``). The kind takes **no class
-credit** (``consumes_credit=False``): the class credit is the design job's, taken by the hand-off.
-It counts toward the per-user limit like any job, and its model cost toward the cost cap through its
-``agent_runs``.
+``interpret_music_policy.without_spotify_is_refused``; never with the composer available, whose
+sketch needs no Spotify, ADR 0038 amendment of 2026-11-24): ``sports`` (running only when the
+running gate admits the user, ``sport.admit_running``), ``pick_ready`` (a Spotify connection is
+named and song picking admits the user), ``song_picking`` (song picking admits the user),
+``swedebeat_mixes`` (the Swedebeat flag is on and the user uses Swedebeat) and ``composer``
+(``design.composer``; ADR 0038 section 2). Without the composer a request with ``music_sources``
+is refused ``feature_off``, and the reading is as before: only a job admitted with ``composer``
+stores pinned songs, questions and a cycling class's music decision (``music_decision``). The
+request is then stored as the class's first message (seq 1, role ``user``). The kind takes **no
+class credit** (``consumes_credit=False``): the class credit is the design job's, taken by the
+hand-off. It counts toward the per-user limit and its model cost toward the cost cap.
 
 **Worker**: the ``design`` stage group's model first (an unusable route fails ``model_config``
 before any call), then the ``interpret`` stage: the user's music names (``interpret_music``), the
 ``interpret`` agent stage (``agent.interpret``) and ``interpret_policy.resolve``. The final fenced
 transaction stores ``classes.interpretation`` (``interpretation_row.store``), makes the reading's
 short ``name`` the class's title while the title is still the request's first words
-(``class_name.adopt``, #1233), and the job completes.
-It **never enqueues** the design: the worker cannot reach the jobs API (``tests/session_scan.py``)
-and the class's one-open-job index would refuse a design job while this one runs. The browser, or
-the class page after a reopened tab, calls ``POST /api/classes/{id}/design-from-interpretation``
-(``classbeat.classes.interpretation``). A failed interpret stores nothing and uses no credit.
+(``class_name.adopt``, #1233), and the job completes. It **never enqueues** the design: the worker
+cannot reach the jobs API (``tests/session_scan.py``) and the class's one-open-job index would
+refuse a design job while this one runs. The browser, or the class page after a reopened tab,
+calls ``POST /api/classes/{id}/design-from-interpretation`` (``classbeat.classes.interpretation``).
+A failed interpret stores nothing and uses no credit.
 """
 
 from typing import Annotated, ClassVar, Final, Literal, Self
@@ -63,6 +63,7 @@ from classbeat.design import (
     interpret_policy,
     interpretation_row,
     mixadmit,
+    music_decision,
     revision,
     sport,
 )
@@ -114,9 +115,7 @@ class InterpretRequestInput(ModelJobInput):
     # Server fields, set only by ``admit``.
     sports: list[Sport] | None = Field(default=None, max_length=2)
     pick_ready: bool | None = None
-    song_picking: bool | None = (
-        None  # song picking admits the user (None: a job queued before this field)
-    )
+    song_picking: bool | None = None  # song picking admits the user (None: queued before it)
     swedebeat_mixes: bool | None = None
     composer: bool | None = None  # the composer flow was on at admit (None: before #1185)
 
@@ -167,9 +166,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         sport_override=parsed.sport_override,
         running_offered=running,
         mixes=mixes,
-    ):
-        # Amendment 25: no model call and no credit. With song picking off for the user there is
-        # nothing to connect (the Spotify page is hidden): say so, without a link.
+        composer=composing,
+    ):  # Amendment 25: no model call and no credit; with song picking off, nothing to connect
         return Refused(no_music_reason(picking))
     request = parsed.request
 
@@ -238,7 +236,7 @@ async def run(job_run: JobRun) -> Complete:
         bool(given.pick_ready),
         given.spotify_connection_id is not None,
         given.song_picking is not False,
-    )
+    ).composed(bool(given.composer))
     override = None if given.music_override is None else given.music_override.model_dump()
     resolved = interpret_policy.resolve(
         outcome.output.request,
@@ -252,6 +250,12 @@ async def run(job_run: JobRun) -> Complete:
         if given.composer
         else ([], [])
     )
+    decision = music_decision.initial(
+        outcome.output.request,
+        composer=bool(given.composer) and resolved.brief.sport == "cycling",
+        attached=bool(given.music_sources),
+        chose=given.music_override is not None,
+    )
     from_request = interpret_policy.title_for(given.request)
     stored = interpretation_row.StoredInterpretation(
         job_id=job_run.lease.job_id,
@@ -260,6 +264,7 @@ async def run(job_run: JobRun) -> Complete:
         items=resolved.items,
         pinned_songs=pins,
         questions=questions,
+        music_decision=decision,
     )
 
     name = outcome.output.request.name if given.title == from_request else None
