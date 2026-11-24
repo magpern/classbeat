@@ -4,8 +4,9 @@
 ``check_shape(brief, spec, tags)`` reads the **fitted spec** and the section tag of each of its
 segments (``tags``, one per segment, ``None`` for a segment with no tag: the app's own warm-up
 and cool-down when the shape has none), and returns what is missed. Each miss is of one section
-(path ``shape.N``, as the reading's items), so a remaining miss is recorded as Not as asked
-``shape_off`` for that section (``recorded``):
+(path ``shape.N``, as the reading's items), so a remaining miss is recorded as Not as asked for
+that section (``recorded``): ``shape_off`` for a missing, misordered or miscounted section, and
+its own reason ``shape_untagged`` for a draft that names no section (#1516):
 
 - ``shape_untagged``: the brief has a shape and no segment names a section (one miss, on
   ``shape.0``, whatever the number of sections);
@@ -33,6 +34,7 @@ from classbeat.agent.ride_shape import ShapeSection
 EFFORT_MIN_ZONE: Final = 5
 EFFORT_MAX_SEC: Final = 90
 SHAPE_OFF: Final = "shape_off"  # the Not as asked reason code of a section the draft misses
+UNTAGGED: Final = "shape_untagged"  # the reason code of a draft that names no section at all
 CODES: Final = frozenset(
     {"shape_untagged", "shape_missing", "shape_order", "shape_count", "shape_tag"}
 )
@@ -123,8 +125,10 @@ def check_shape(brief: Brief, spec: Mapping[str, Any], tags: Sequence[int | None
 
 
 def recorded(miss: Miss) -> Miss:
-    """A remaining shape miss as it is recorded (Not as asked ``shape_off``, one per section); any
-    other miss as it is."""
+    """A remaining shape miss as it is recorded (Not as asked ``shape_off``, one per section;
+    ``shape_untagged`` for a draft with no tag, one on ``shape.0``); any other miss as it is."""
+    if miss.code == UNTAGGED:
+        return miss
     if miss.code in CODES:
         return Miss(miss.path, SHAPE_OFF, miss.sentence, miss.found)
     return miss

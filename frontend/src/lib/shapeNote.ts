@@ -190,16 +190,17 @@ export function shapeOffText(item: InterpretationItem): string | null {
 }
 
 /**
- * An untagged draft records one `shape_off` on `shape.0` without a count: the version does not
- * follow the ride's parts at all, so no single section is named.
+ * A draft that names no section records one `shape_untagged` on `shape.0` (#1516): the version
+ * does not follow the ride's parts at all, so no single section is named. A `shape_off` on
+ * `shape.0` is a real miss of section 1 (also what an older untagged version stored), worded as
+ * any section's.
  *
- * Known limit (backend `agent/shape_check.py`, #1510 item 13): `recorded()` gives every shape miss the
- * same reason `shape_off`, so a draft whose only miss is section 0 (`shape_missing`: no segment tagged 0,
- * or `shape_order`: a section-0 segment after a later section's) records the same single item. The
- * record carries nothing to tell the two apart; only a backend marker can.
+ * Backend `agent/shape_check.py` `recorded()` (#1510 item 13): only a draft with no tag at all gets
+ * `shape_untagged`; `shape_missing` and `shape_order` of section 0 keep `shape_off`. The record does
+ * not say which of the two a `shape_off` on `shape.0` is, so it is worded generically.
  */
 export function isUntagged(items: readonly InterpretationItem[]): boolean {
-  const off = items.filter((i) => i.origin === 'not_as_asked' && i.reasonCode === 'shape_off')
-  const [only] = off
-  return off.length === 1 && only !== undefined && only.path === 'shape.0' && (only.found ?? null) === null
+  const marked = items.filter((i) => i.origin === 'not_as_asked' && i.reasonCode === 'shape_untagged')
+  const [only] = marked
+  return marked.length === 1 && only !== undefined && only.path === 'shape.0'
 }

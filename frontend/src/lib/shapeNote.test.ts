@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { InterpretationItem } from '../api/interpretationItems'
 import { interpretationNote } from './interpretationNote'
+import { isUntagged } from './shapeNote'
 
 function item(at: number, value: unknown, extra: Partial<InterpretationItem> = {}): InterpretationItem {
   return { path: `shape.${String(at)}`, origin: 'explicit', reasonCode: null, value, quote: null, ...extra }
@@ -71,13 +72,29 @@ describe('the shape of the ride in the reading', () => {
   })
 
   it('words an untagged draft as one line about the ride, not about section 1', () => {
-    const note = interpretationNote([item(0, { kind: 'warmup' }, { origin: 'not_as_asked', reasonCode: 'shape_off' })])
+    const note = interpretationNote([item(0, { kind: 'warmup' }, { origin: 'not_as_asked', reasonCode: 'shape_untagged' })])
     expect(note.notAsked.map((l) => l.text)).toEqual(["This version does not follow your ride's parts."])
+  })
+
+  it('words a section 1 miss (shape_off on shape.0, also an older untagged item) as that section', () => {
+    const note = interpretationNote([item(0, { kind: 'warmup' }, { origin: 'not_as_asked', reasonCode: 'shape_off' })])
+    expect(note.notAsked.map((l) => l.text)).toEqual(['Section 1: Warm-up. This version does not match.'])
+    expect(isUntagged([item(0, { kind: 'warmup' }, { origin: 'not_as_asked', reasonCode: 'shape_off' })])).toBe(false)
+    expect(isUntagged([item(0, { kind: 'warmup' }, { origin: 'not_as_asked', reasonCode: 'shape_untagged' })])).toBe(true)
+  })
+
+  it('shows the other sections of a section 1 miss as read, and the miss on its own line', () => {
+    const note = interpretationNote([
+      item(0, { kind: 'warmup' }, { origin: 'not_as_asked', reasonCode: 'shape_off' }),
+      item(1, { kind: 'climb' }, { quote: 'a hill' }),
+    ])
+    expect(note.notAsked.map((l) => l.text)).toEqual(['Section 1: Warm-up. This version does not match.'])
+    expect(note.shape.map((l) => l.text)).toEqual(['2. Climb'])
   })
 
   it('lists the sections of an untagged revision neutrally, never as asked or assumed', () => {
     const note = interpretationNote([
-      item(0, { kind: 'warmup' }, { origin: 'not_as_asked', reasonCode: 'shape_off' }),
+      item(0, { kind: 'warmup' }, { origin: 'not_as_asked', reasonCode: 'shape_untagged' }),
       item(1, { kind: 'climb' }, { quote: 'a hill' }),
       item(2, { kind: 'flat' }, { origin: 'inferred' }),
     ])

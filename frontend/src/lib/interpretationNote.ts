@@ -98,6 +98,7 @@ export const REASONS: Record<string, CatalogueKey> = {
   songs_outside_eras: 'interp.reason.songs_outside_eras',
   songs_too_short: 'interp.reason.songs_too_short',
   shape_off: 'interp.reason.shape_off',
+  shape_untagged: 'interp.reason.shape_untagged',
   cycling_only: 'interp.reason.cycling_only',
   shape_too_large: 'interp.reason.shape_too_large',
 }
@@ -196,7 +197,7 @@ function what(item: InterpretationItem): string {
 function line(item: InterpretationItem, id: string, untagged: boolean): NoteLine {
   const base = what(item)
   if (item.origin !== 'not_as_asked') return { id, text: base, quote: item.quote }
-  const off = untagged && item.reasonCode === 'shape_off' ? t('shape.untagged') : shapeOffText(item)
+  const off = untagged && item.reasonCode === 'shape_untagged' ? t('shape.untagged') : shapeOffText(item)
   if (off !== null) return { id, text: off, quote: item.quote }
   const reason = item.reasonCode !== null && Object.hasOwn(REASONS, item.reasonCode) ? REASONS[item.reasonCode]! : 'interp.reason.other'
   return { id, text: t('interp.line.notAsked', { what: base, why: t(reason) }), quote: item.quote }

@@ -32,6 +32,7 @@ export const shapeEn = {
   'shape.untagged': 'This version does not follow your ride\'s parts.',
   'shape.off': '{section}: you asked for {asked}; this version has {found}',
   'interp.reason.shape_off': 'This version does not match.',
+  'interp.reason.shape_untagged': 'This version does not follow your ride\'s parts.',
   'interp.reason.cycling_only': 'The shape of a ride is for cycling classes only.',
   'interp.reason.shape_too_large': 'The ride has more parts than we can keep.',
   'cw.approve.notAsked': 'Before you approve, note what is not as you asked:',
