@@ -56,11 +56,15 @@ export function useClassData(classId: string): { state: ClassState; reload: () =
     const { signal } = abort
     void (async () => {
       try {
-        // All three at once; the class's own answer is awaited first, so its 404 is the one seen.
-        const rest = Promise.all([listRevisions(classId, signal), listMessages(classId, signal)])
-        rest.catch(() => undefined)
+        // The class's own answer first, so its 404 is the one seen, and the revisions and
+        // conversation after it, never beside it: a job that ends between the reads must leave the
+        // summary older than the conversation (the page then still watches the job and reloads), not
+        // newer (no open job to watch, and a request shown unanswered for good, #1519).
         const summary = await getClass(classId, signal)
-        const [revisions, messages] = await rest
+        const [revisions, messages] = await Promise.all([
+          listRevisions(classId, signal),
+          listMessages(classId, signal),
+        ])
         if (!signal.aborted) setState({ status: 'ready', data: { summary, revisions, messages } })
       } catch (error) {
         if (signal.aborted) return
