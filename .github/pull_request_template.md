@@ -18,4 +18,4 @@ Closes #
 
 <!-- Risks, decisions, anything outside the issue that changed and why. -->
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+<!-- Replace this comment with the authoring client’s footer from AGENTS.md, “Branches, worktrees and commits”. -->

@@ -65,7 +65,7 @@ ready, wait for the required checks on the current head before recording a PASS.
 ```
 issue → Developer (+ Explorer) in its own worktree → PR → CI
       → fresh Reviewer → PASS → agent merges
-                       → FAIL → Developer fixes every blocking finding → CI → fresh delta Reviewer
+                       → FAIL → Developer fixes every blocking finding → CI → resume Reviewer for delta (exceptions below)
 ```
 
 If the same blocking finding survives three cycles, the Architect re-assesses the root cause,
@@ -98,7 +98,7 @@ the end of a milestone. It escalates only genuine blockers (see "Escalation" bel
      no hand-resolved conflict (`git diff <reviewed>..<head>` equals `main`'s own change), and
      CI is green. The Architect records `Agent review (merge check): PASS <head SHA> (carries
      <reviewed SHA>)`. If `main` changed a module the PR changes or calls, or a conflict was
-     resolved by hand, a fresh reviewer checks the merge (scoped review).
+     resolved by hand, resume the Reviewer for a scoped review under the reuse rules below.
    - *Fix round after a `FAIL`:* a **delta review** of the diff since the last reviewed head,
      verifying each earlier finding and whatever the delta touches.
    - *Reviewer reuse (owner decision, 2026-11-04, roadmap Amendment 14):* the first review of
@@ -171,8 +171,34 @@ a red `main` is fixed forward first, before other merges.
   `feat(auth): …`, `fix(worker): …`, `refactor(db): …`, `test(security): …`, `ci: …`,
   `docs: …`, `build: …`, `chore: …`. Breaking changes use `!` or a `BREAKING CHANGE:` footer.
   CI checks the PR title with commitlint (`commitlint.config.cjs`).
-- No `Co-Authored-By` trailer in commits. PR descriptions end with
-  `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- No `Co-Authored-By` trailer in commits. End the PR description with the authoring client's footer:
+  `🤖 Generated with [Claude Code](https://claude.com/claude-code)` for Claude Code, or
+  the footer in [the Codex guide](docs/codex.md) or [the Cursor guide](docs/cursor.md).
+
+## Code structure and token economy (owner, 2026-11-07)
+
+Applies to classbeat source. New code follows it at once; existing files follow it when touched.
+
+1. **Small, cohesive modules.** A new source file has ONE clear responsibility and stays under
+   about 300 lines (about 150 for pure rule modules). Never split a logically cohesive function
+   artificially to meet a line cap: cohesion comes first.
+2. **Split on touch.** If you must change a non-test source file that is already over 300 lines,
+   do not just add to it: in the same PR move one cohesive part into its own module so the big
+   file ends with a net change of 0 lines or fewer.
+3. **Pure core first.** Keep business rules, policy and calculations (`*_policy`, `*_model`,
+   `*_calc`) apart from side effects (database, network, filesystem, UI). A pure module never
+   imports I/O (no `db`, `httpx`, filesystem or React). The suffixes are a naming convention for
+   new modules, not a rename of existing ones.
+4. **Token-frugal checks.** Never read a huge file whole when grep or a line range answers the
+   question. During work run only the test files that cover what you changed (CI runs the rest).
+
+**Exempt from rules 1 and 2:** data and generated files (the `frontend/src/i18n/*.ts` and
+`backend/src/classbeat/emails/locales/*.py` string catalogues, `backend/tests/mail_golden/**`,
+lockfiles, SQL migrations). **Tests** are exempt from
+rule 2 (table-driven tests are long on purpose), though a new test file should still have one
+subject. This replaces the 500-line cap for classbeat only; `mowl-workouts` keeps its own.
+Security-critical modules (for example `egress.py`) are split only in a PR that gets the
+security-critical review required by the shared gate and the active client’s model mapping; in any other PR rule 2 does not apply to them, so leave the file whole.
 
 ## Safety envelope
 

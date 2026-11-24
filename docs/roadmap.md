@@ -858,7 +858,7 @@ sessions; all other roadmap and AGENTS.md requirements remain in force.
   The Grok Architect schedules that work without taking over its security decisions.
 - The security categories, scope boundaries, issue/PR/worktree isolation, independent
   current-head PASS, CI and merge gates are unchanged. For this profile, even tests/docs-only
-  deltas on security-critical PRs are reviewed by a fresh Grok 4.7 High (stricter than Amendment 4
+  deltas on security-critical PRs follow Amendment 14’s reviewer reuse rules and use Grok 4.7 High (stricter than Amendment 4
   about who may review them, and no longer Opus).
 - Cursor verdicts use the actual model name, e.g. `Agent review (Grok 4.7): PASS <head SHA>`
   or `Agent review (Grok 4.7): FAIL <head SHA>`. Configured model substitutions are a
