@@ -65,6 +65,18 @@ describe('the shape of the ride in the reading', () => {
     expect(note.notAsked.map((l) => l.text)).toEqual(["This version does not follow your ride's parts."])
   })
 
+  it('lists the sections of an untagged revision neutrally, never as asked or assumed', () => {
+    const note = interpretationNote([
+      item(0, { kind: 'warmup' }, { origin: 'not_as_asked', reasonCode: 'shape_off' }),
+      item(1, { kind: 'climb' }, { quote: 'a hill' }),
+      item(2, { kind: 'flat' }, { origin: 'inferred' }),
+    ])
+    expect(note.notAsked.map((l) => l.text)).toEqual(["This version does not follow your ride's parts."])
+    expect(note.shape.map((l) => l.text)).toEqual(['2. Climb', '3. Flat road'])
+    expect(note.asked).toEqual([])
+    expect(note.assumed).toEqual([])
+  })
+
   it('words Not as asked on a section, with what was found when the record says', () => {
     const note = interpretationNote([
       item(2, { kind: 'efforts', count: { min: 7, max: 7 } }, { origin: 'not_as_asked', reasonCode: 'shape_off', found: 5 }),
