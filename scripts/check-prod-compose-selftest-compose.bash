@@ -330,8 +330,9 @@ deny=(
   'services.migrate.cpus|.services.migrate.cpus = 1'
   'services.worker.memswap_limit|.services.worker.memswap_limit = "1"'
 )
-for v in shared loopback lan withspotdown; do
-  case "$v" in shared) base="$shared" ;; loopback) base="$loopback" ;; lan) base="$lan" ;; *) base="$spotdown" ;; esac
+for b in shared loopback lan spotdown spotdown_egress; do
+  case "$b" in shared) v=shared base="$shared" ;; loopback) v=loopback base="$loopback" ;; lan) v=lan base="$lan" ;;
+    spotdown) v=withspotdown base="$spotdown" ;; *) v=withspotdown base="$spotdown_egress" ;; esac
   for e in "${deny[@]}"; do
     expect_refused "$v" "$base" "${e#*|}" "${e%%|*}"
   done
@@ -415,8 +416,11 @@ spot=(
   # service mode, no UI, YouTube and the url source off
   'service mode without UI|.services["spotdown-api"].environment.SERVICE_MODE = "false"'
   'service mode without UI|.services["spotdown-api"].environment.SERVE_UI = "true"'
-  'service mode without UI|.services["spotdown-worker"].environment.ALLOW_YTDLP_SOURCING = "true"'
-  'service mode without UI|.services["spotdown-api"].environment.URL_ALLOWED_HOSTS = "example.test"'
+  'the same on spotdown-api and spotdown-worker|.services["spotdown-worker"].environment.ALLOW_YTDLP_SOURCING = "yes"'
+  'the url source off|.services["spotdown-api"].environment.URL_ALLOWED_HOSTS = "example.test"'
+  'the url source off|.services["spotdown-worker"].environment.URL_ALLOWED_HOSTS = "*"'
+  'the url source off|.services["spotdown-api"].environment.URL_ALLOWED_HOSTS = "*.youtube.com"'
+  'the url source off|.services["spotdown-worker"].environment.URL_ALLOWED_HOSTS = "www.youtube.com,rr1---sn-abc.googlevideo.com"'
   'services.spotdown-api.environment: 1 variable|.services["spotdown-api"].environment.SPOTIFY_CLIENT_SECRET = "x"'
   'services.spotdown-api.environment: 1 variable|.services["spotdown-api"].environment.SPOTDOWN_UI = "on"'
   'services.spotdown-worker.environment: 1 variable|.services["spotdown-worker"].environment.SERVICE_KEY_FILE = "/run/secrets/spotdown_service_key"'
@@ -429,10 +433,63 @@ spot=(
   'the three services spotdown-api, spotdown-worker and spotdown-redis|del(.services["spotdown-redis"])'
   'services.spotdown-extra|.services["spotdown-extra"] = {"image":.services["spotdown-api"].image,"logging":.services.web.logging}'
 )
-for e in "${spot[@]}"; do
+# Every rule holds with the route out too (compose.prod.spotdown-egress.yaml with the switch on, #1489).
+for base in "$spotdown" "$spotdown_egress"; do
+  for e in "${spot[@]}"; do
+    expect_refused withspotdown "$base" "${e#*|}" "${e%%|*}"
+  done
+  expect_accepted withspotdown "$base" '.services["spotdown-api"].image = "ghcr.io/magpern/spotdown:1.2.3-rc.1" | .services["spotdown-worker"].image = "ghcr.io/magpern/spotdown:1.2.3-rc.1"'
+done
+# The YouTube switch and the route out (#1489): together or neither; the switch exactly true or false.
+yt_on='.services["spotdown-api"].environment.ALLOW_YTDLP_SOURCING = "true" | .services["spotdown-worker"].environment.ALLOW_YTDLP_SOURCING = "true"'
+yt_off='.services["spotdown-api"].environment.ALLOW_YTDLP_SOURCING = "false" | .services["spotdown-worker"].environment.ALLOW_YTDLP_SOURCING = "false"'
+route_out='.networks["spotdown-egress"] = {"name":"classbeat-prod-check_spotdown-egress","ipam":{}}
+  | .services["spotdown-api"].networks["spotdown-egress"] = null | .services["spotdown-worker"].networks["spotdown-egress"] = null'
+for v in '"yes"' '"1"' '"True"' '"on"' '""' 'null'; do
+  expect_refused withspotdown "$spotdown" ".services[\"spotdown-api\"].environment.ALLOW_YTDLP_SOURCING = $v | .services[\"spotdown-worker\"].environment.ALLOW_YTDLP_SOURCING = $v" 'exactly true or false'
+  expect_refused withspotdown "$spotdown_egress" ".services[\"spotdown-api\"].environment.ALLOW_YTDLP_SOURCING = $v | .services[\"spotdown-worker\"].environment.ALLOW_YTDLP_SOURCING = $v" 'exactly true or false'
+done
+spot_route=(
+  # the switch without the route out, the route out without the switch, one side only
+  "go together|$yt_on"
+  "go together|$route_out"
+  'the same on spotdown-api and spotdown-worker|.services["spotdown-api"].environment.ALLOW_YTDLP_SOURCING = "true"'
+)
+for e in "${spot_route[@]}"; do
   expect_refused withspotdown "$spotdown" "${e#*|}" "${e%%|*}"
 done
-expect_accepted withspotdown "$spotdown" '.services["spotdown-api"].image = "ghcr.io/magpern/spotdown:1.2.3-rc.1" | .services["spotdown-worker"].image = "ghcr.io/magpern/spotdown:1.2.3-rc.1"'
+expect_accepted withspotdown "$spotdown" "$yt_on | $route_out"   # what the overlay renders to
+spot_egress=(
+  "go together|$yt_off"
+  'the same on spotdown-api and spotdown-worker|.services["spotdown-worker"].environment.ALLOW_YTDLP_SOURCING = "false"'
+  # who joins the route out: spotdown-api and spotdown-worker, nobody else
+  'only spotdown-api and spotdown-worker join spotdown-egress|.services["spotdown-redis"].networks["spotdown-egress"] = null'
+  'worker joins backend and egress only|.services.worker.networks["spotdown-egress"] = null'
+  'only spotdown-api and spotdown-worker join spotdown-egress|.services.web.networks["spotdown-egress"] = null'
+  'db, migrate and db-functions live on backend only|.services.migrate.networks["spotdown-egress"] = null'
+  'only spotdown-api and spotdown-worker join spotdown-egress|.services["spotdown-api"].networks |= del(.["spotdown-egress"])'
+  'only spotdown-api and spotdown-worker join spotdown-egress|.services["spotdown-worker"].networks |= del(.["spotdown-egress"])'
+  # never classbeat's own route out (the worker's egress) instead, nor Redis on any route out
+  'spotdown-api joins spotdown and spotdown-internal|.services["spotdown-api"].networks.egress = null'
+  'spotdown-api joins spotdown and spotdown-internal|.services["spotdown-redis"].networks.egress = null'
+  'spotdown-api joins spotdown and spotdown-internal|.services["spotdown-worker"].networks.egress = null'
+  # the network itself: outbound, the project's own, no address plan, no alias, no port
+  'spotdown-egress is an outbound network|.networks["spotdown-egress"].internal = true'
+  'spotdown-egress is an outbound network|.networks["spotdown-egress"].ipam = {"config":[{"subnet":"10.99.0.0/24"}]}'
+  'networks.spotdown-egress (external or renamed)|.networks["spotdown-egress"].external = true'
+  'networks.spotdown-egress (external or renamed)|.networks["spotdown-egress"].name = "bridge"'
+  'networks.spotdown-egress.driver_opts|.networks["spotdown-egress"].driver_opts = {"com.docker.network.bridge.enable_ip_masquerade":"true"}'
+  'no network alias|.services["spotdown-api"].networks["spotdown-egress"] = {"aliases":["www.youtube.com"]}'
+  'services.spotdown-worker.networks.*.ipv4_address|.services["spotdown-worker"].networks["spotdown-egress"] = {"ipv4_address":"172.30.0.9"}'
+  'only web may publish a port|.services["spotdown-worker"].ports = [{"target":8000,"published":"8000"}]'
+  'only web may publish a port|.services["spotdown-api"].ports = [{"host_ip":"0.0.0.0","target":8000,"published":"8000"}]'
+  # the key stays where it was: a route out does not move it
+  'services.spotdown-worker.secrets|.services["spotdown-worker"].secrets = [{"source":"spotdown_service_key"}]'
+)
+for e in "${spot_egress[@]}"; do
+  expect_refused withspotdown "$spotdown_egress" "${e#*|}" "${e%%|*}"
+done
+expect_accepted withspotdown "$spotdown_egress" "$yt_off | del(.networks[\"spotdown-egress\"]) | .services[\"spotdown-api\"].networks |= del(.[\"spotdown-egress\"]) | .services[\"spotdown-worker\"].networks |= del(.[\"spotdown-egress\"])"
 # Without the overlay, any one spotdown piece is refused: all of spotdown or none of it.
 for v in shared loopback lan; do
   case "$v" in shared) base="$shared" ;; loopback) base="$loopback" ;; *) base="$lan" ;; esac
@@ -441,7 +498,8 @@ done
 for m in \
   '.secrets.spotdown_service_key = {"file": (.secrets.app_secret_key.file | rtrimstr("app_secret_key") + "spotdown_service_key")} | .services.worker.secrets += [{"source":"spotdown_service_key"}]' \
   '.volumes["spotdown-data"] = {"name":"classbeat-prod-check_spotdown-data"}' \
-  '.networks.spotdown = {"name":"classbeat-prod-check_spotdown","internal":true} | .services.worker.networks.spotdown = null'; do
+  '.networks.spotdown = {"name":"classbeat-prod-check_spotdown","internal":true} | .services.worker.networks.spotdown = null' \
+  '.networks["spotdown-egress"] = {"name":"classbeat-prod-check_spotdown-egress","ipam":{}} | .services.worker.networks["spotdown-egress"] = null'; do
   for v in shared loopback lan; do
     case "$v" in shared) base="$shared" ;; loopback) base="$loopback" ;; *) base="$lan" ;; esac
     expect_refused "$v" "$base" "$m" "spotdown"

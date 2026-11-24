@@ -7,6 +7,7 @@
 #
 #   SPOTDOWN_VERSION       release tag of ghcr.io/magpern/spotdown (X.Y.Z, never `latest`)  required
 #   SPOTDOWN_API_CPUS, SPOTDOWN_API_MEMORY, SPOTDOWN_WORKER_CPUS, SPOTDOWN_WORKER_MEMORY   optional
+#   SPOTDOWN_YTDLP_SOURCING  true or false (default); true only with compose.prod.spotdown-egress.yaml
 #
 # Three services: spotdown-api (the v2 API, service mode), spotdown-worker (the rq worker that runs
 # the analysis in its rlimited subprocess) and spotdown-redis (their queue). None publishes a port;
@@ -23,9 +24,12 @@
 # spotdown" (spotdown_available).
 #
 # classbeat relays SwedeBeat audio with spotdown's `upload` source; the `url` source is off
-# (URL_ALLOWED_HOSTS empty) and YouTube sourcing is off (ALLOW_YTDLP_SOURCING=false): spotdown has no
-# route out here, and enabling YouTube is a separate, owner-approved change (ADR 0040 section 12,
-# follow-up #1489).
+# (URL_ALLOWED_HOSTS empty, fixed: classbeat never uses it). YouTube sourcing (ALLOW_YTDLP_SOURCING) is
+# the owner's switch SPOTDOWN_YTDLP_SOURCING in .env, `false` unless set; with this file alone spotdown
+# has no route out. YouTube needs both (#1489, runbook section 5d): SPOTDOWN_YTDLP_SOURCING=true and
+# compose.prod.spotdown-egress.yaml after this file in COMPOSE_FILE (the outbound network, for
+# spotdown-api and spotdown-worker only). The check refuses one without the other, and any value but
+# `true` or `false`. Turning it on is the owner's deployment step (ADR 0040, amendment "#1296 accepted").
 # scripts/check-prod-compose.sh checks all of this. Needs Docker Compose 2.24.4 or later.
 
 x-spotdown-logging: &spotdown-logging
@@ -40,7 +44,7 @@ x-spotdown-env: &spotdown-env
   DATA_DIR: /data
   REDIS_URL: redis://spotdown-redis:6379/0
   URL_ALLOWED_HOSTS: ""
-  ALLOW_YTDLP_SOURCING: "false"
+  ALLOW_YTDLP_SOURCING: ${SPOTDOWN_YTDLP_SOURCING:-false}
 
 x-spotdown: &spotdown
   image: ghcr.io/magpern/spotdown:${SPOTDOWN_VERSION:?set SPOTDOWN_VERSION to a spotdown release tag}

@@ -1244,6 +1244,20 @@ choices (the Architect's reversible defaults):
    (amendment "#1296 accepted"); giving spotdown an outbound network and that switch is a separate,
    reviewed change (#1489: an outbound network for `spotdown-api` and `spotdown-worker` only and the
    switch as an owner setting), and until it lands a Spotify-catalogue pick ends `analysis_unavailable`.
+   *Amended 2026-11-24 (#1489), as built:* the `url` source stays off (`URL_ALLOWED_HOSTS` empty,
+   fixed; classbeat never uses it). YouTube sourcing is the owner's `.env` switch
+   `SPOTDOWN_YTDLP_SOURCING` (`ALLOW_YTDLP_SOURCING` on `spotdown-api` and `spotdown-worker`; default
+   `false`, never a literal `true` in a compose file), and its route out is a second overlay,
+   `compose.prod.spotdown-egress.yaml`: one network `spotdown-egress` of the project's own, not
+   internal (like spotdown's own `deploy/compose.yaml` `egress`), joined by `spotdown-api` and
+   `spotdown-worker` only. Redis, classbeat's worker and web never join it, no port is published, and
+   `spotdown` and `spotdown-internal` are unchanged. A Compose variable cannot add a network, so the
+   route out is a file and the switch a variable: `scripts/check-prod-compose.sh` requires both or
+   neither (the switch exactly `true` or `false`), and Compose refuses the route-out file without the
+   variable. Sourcing from YouTube is the owner's terms-of-service risk decision (the amendment
+   "#1296 accepted"; `docs/status.md`, "Waiting for the owner", item 7): turning it on in production is
+   the owner's deployment step (runbook section 5d), never an agent's, and agents and CI never call
+   YouTube.
 
 `scripts/check-prod-compose.sh` (`check-prod-compose-spotdown.bash`) checks all of it on every render,
 all of the overlay or none of it, with a self-test per rule; the install check also requires a filled

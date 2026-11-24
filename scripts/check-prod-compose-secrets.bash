@@ -104,8 +104,8 @@ check_oauth_defaults() {
 # lines, so a quoted or explicit (`? env_file`) key can get past it: the check is the render's
 # (check_keys: variables by name, label_file and profiles by key, #610). Comment lines are skipped; a
 # mention after code on a line is not.
-check_prod_file_text() {   # check_prod_file_text DIR [FILE...] (default: the four production files)
-  local d="$1" f files=(compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml compose.prod.spotdown.yaml)
+check_prod_file_text() {   # check_prod_file_text DIR [FILE...] (default: the production files, prod_files)
+  local d="$1" f files=("${prod_files[@]}")
   local re=$'(^|[[:space:]{,"\'])(env_file|label_file|profiles|extends|include)["\']?[[:space:]]*:'
   shift
   (( $# == 0 )) || files=("$@")
@@ -117,10 +117,10 @@ check_prod_file_text() {   # check_prod_file_text DIR [FILE...] (default: the fo
 }
 
 # The compose files as written: no variable named like a client secret, no client secret literal.
-# check_oauth_files DIR [FILE...] (default: the four production files; the repo mode adds the dev
+# check_oauth_files DIR [FILE...] (default: the production files, prod_files; the repo mode adds the dev
 # compose.yaml, #521).
 check_oauth_files() {
-  local d="$1" f files=(compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml compose.prod.spotdown.yaml)
+  local d="$1" f files=("${prod_files[@]}")
   shift
   (( $# == 0 )) || files=("$@")
   for f in "${files[@]}"; do
@@ -206,4 +206,5 @@ J="$shared"; check_shared || exit 1
 J="$loopback"; check_loopback || exit 1
 J="$lan"; check_lan || exit 1
 J="$spotdown"; check_withspotdown || exit 1
+J="$spotdown_egress"; check_withspotdown || exit 1
 J="$defaults"; check_oauth_defaults || exit 1
