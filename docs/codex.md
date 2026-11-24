@@ -64,7 +64,7 @@ mutation checks and second-FAIL escalation in AGENTS.md apply.
 
 If a model or independent session is unavailable, leave the PR open with review pending.
 Green CI alone is never permission to merge. After an independent current-SHA PASS and
-green CI, only the Architect enqueues the PR with:
+green CI, only the Architect merges the PR with:
 `gh pr merge <n> --squash --match-head-commit <reviewed-sha>`.
 Never use --auto, --admin, approving reviews or ruleset changes to bypass the gate.
 

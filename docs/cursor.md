@@ -87,7 +87,7 @@ Agent review (Grok 4.7): FAIL <full head SHA>
 Use the actual model name. No approving review, no Human review: comment, and no override
 of FAIL. Leave review pending when the required independent role cannot run.
 
-Only the Architect may enqueue a merge, after current-head PASS, green CI and no blocking
+Only the Architect may merge the PR, after current-head PASS, green CI and no blocking
 findings, with gh pr merge <n> --squash --match-head-commit <reviewed-sha>.
 Keep the shared merge-only carry-forward and new-head review rules; never use --auto,
 --admin or change rulesets to bypass them.
