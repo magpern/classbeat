@@ -1,0 +1,719 @@
+{
+ "model": "fake-model",
+ "drafts": {
+  "revised": {
+   "name": "Hills, heavy bursts and a power finish",
+   "description": "A 60 minute ride: two hills, heavy bursts between them and a power finish.",
+   "segments": [
+    {
+     "name": "Warm-up",
+     "kind": "warmup",
+     "intervals": [
+      {
+       "sec": 240,
+       "zone": 2,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 120,
+       "zone": 3,
+       "rpm": "beat",
+       "standing": false
+      }
+     ],
+     "section": 0
+    },
+    {
+     "name": "First hills",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 300,
+       "zone": 3,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 180,
+       "zone": 4,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 120,
+       "zone": 4,
+       "rpm": "beat",
+       "standing": true
+      }
+     ],
+     "section": 1
+    },
+    {
+     "name": "Heavy bursts",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 120,
+       "zone": 4,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        60,
+        70
+       ],
+       "standing": true
+      },
+      {
+       "sec": 120,
+       "zone": 2,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        60,
+        70
+       ],
+       "standing": true
+      },
+      {
+       "sec": 120,
+       "zone": 2,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        60,
+        70
+       ],
+       "standing": true
+      },
+      {
+       "sec": 120,
+       "zone": 2,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        60,
+        70
+       ],
+       "standing": true
+      },
+      {
+       "sec": 120,
+       "zone": 2,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        60,
+        70
+       ],
+       "standing": true
+      },
+      {
+       "sec": 120,
+       "zone": 2,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        60,
+        70
+       ],
+       "standing": true
+      },
+      {
+       "sec": 120,
+       "zone": 2,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        60,
+        70
+       ],
+       "standing": true
+      },
+      {
+       "sec": 120,
+       "zone": 2,
+       "rpm": "beat",
+       "standing": false
+      }
+     ],
+     "section": 2
+    },
+    {
+     "name": "Back on the flats",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 270,
+       "zone": 3,
+       "rpm": "beat",
+       "standing": false
+      }
+     ],
+     "section": 3
+    },
+    {
+     "name": "Second hills",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 300,
+       "zone": 3,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 180,
+       "zone": 4,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 120,
+       "zone": 4,
+       "rpm": "beat",
+       "standing": true
+      }
+     ],
+     "section": 4
+    },
+    {
+     "name": "Power bursts",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        60,
+        70
+       ],
+       "standing": true
+      },
+      {
+       "sec": 90,
+       "zone": 2,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        60,
+        70
+       ],
+       "standing": true
+      },
+      {
+       "sec": 90,
+       "zone": 2,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        60,
+        70
+       ],
+       "standing": true
+      },
+      {
+       "sec": 90,
+       "zone": 2,
+       "rpm": "beat",
+       "standing": false
+      }
+     ],
+     "section": 5
+    },
+    {
+     "name": "Cool-down",
+     "kind": "cooldown",
+     "intervals": [
+      {
+       "sec": 240,
+       "zone": 1,
+       "rpm": "beat",
+       "standing": false
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "turns": [
+  {
+   "only_in": "pick_pool",
+   "calls": [
+    {
+     "name": "search_tracks",
+     "input": {
+      "query": "the invented band"
+     },
+     "expect": {
+      "ok": true
+     }
+    },
+    {
+     "name": "search_tracks",
+     "input": {
+      "query": "placeholder collective"
+     },
+     "expect": {
+      "ok": true
+     }
+    }
+   ]
+  },
+  {
+   "only_in": "pick_pool",
+   "calls": [
+    {
+     "name": "check_pool",
+     "input": {
+      "entries": [
+       {
+        "ref": 0,
+        "role": "warmup"
+       },
+       {
+        "ref": 1,
+        "role": "warmup"
+       },
+       {
+        "ref": 2,
+        "role": "build"
+       },
+       {
+        "ref": 3,
+        "role": "build"
+       },
+       {
+        "ref": 4,
+        "role": "build"
+       },
+       {
+        "ref": 5,
+        "role": "build"
+       },
+       {
+        "ref": 6,
+        "role": "build"
+       },
+       {
+        "ref": 7,
+        "role": "build"
+       },
+       {
+        "ref": 8,
+        "role": "build"
+       },
+       {
+        "ref": 9,
+        "role": "build"
+       },
+       {
+        "ref": 10,
+        "role": "climb"
+       },
+       {
+        "ref": 11,
+        "role": "climb"
+       },
+       {
+        "ref": 12,
+        "role": "climb"
+       },
+       {
+        "ref": 13,
+        "role": "sprint"
+       },
+       {
+        "ref": 14,
+        "role": "sprint"
+       },
+       {
+        "ref": 15,
+        "role": "sprint"
+       },
+       {
+        "ref": 16,
+        "role": "sprint"
+       },
+       {
+        "ref": 17,
+        "role": "recovery"
+       },
+       {
+        "ref": 18,
+        "role": "cooldown"
+       },
+       {
+        "ref": 19,
+        "role": "cooldown"
+       }
+      ]
+     },
+     "expect": {
+      "ok": true,
+      "valid": true
+     }
+    }
+   ]
+  },
+  {
+   "only_in": "pick_pool",
+   "calls": [
+    {
+     "name": "submit_pool",
+     "input": {
+      "entries": [
+       {
+        "ref": 0,
+        "role": "warmup"
+       },
+       {
+        "ref": 1,
+        "role": "warmup"
+       },
+       {
+        "ref": 2,
+        "role": "build"
+       },
+       {
+        "ref": 3,
+        "role": "build"
+       },
+       {
+        "ref": 4,
+        "role": "build"
+       },
+       {
+        "ref": 5,
+        "role": "build"
+       },
+       {
+        "ref": 6,
+        "role": "build"
+       },
+       {
+        "ref": 7,
+        "role": "build"
+       },
+       {
+        "ref": 8,
+        "role": "build"
+       },
+       {
+        "ref": 9,
+        "role": "build"
+       },
+       {
+        "ref": 10,
+        "role": "climb"
+       },
+       {
+        "ref": 11,
+        "role": "climb"
+       },
+       {
+        "ref": 12,
+        "role": "climb"
+       },
+       {
+        "ref": 13,
+        "role": "sprint"
+       },
+       {
+        "ref": 14,
+        "role": "sprint"
+       },
+       {
+        "ref": 15,
+        "role": "sprint"
+       },
+       {
+        "ref": 16,
+        "role": "sprint"
+       },
+       {
+        "ref": 17,
+        "role": "recovery"
+       },
+       {
+        "ref": 18,
+        "role": "cooldown"
+       },
+       {
+        "ref": 19,
+        "role": "cooldown"
+       }
+      ]
+     },
+     "expect": {
+      "accepted": true
+     }
+    }
+   ]
+  },
+  {
+   "only_in": "choose_songs",
+   "calls": [
+    {
+     "name": "get_pool",
+     "input": {},
+     "expect": {
+      "ok": true
+     },
+     "contains": [
+      "\"tracks\""
+     ]
+    }
+   ]
+  },
+  {
+   "only_in": "choose_songs",
+   "calls": [
+    {
+     "name": "check_song_list",
+     "input": {
+      "songs": [
+       {
+        "source": "pool",
+        "index": 0,
+        "role": "warmup"
+       },
+       {
+        "source": "pool",
+        "index": 1,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 2,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 3,
+        "role": "climb"
+       },
+       {
+        "source": "pool",
+        "index": 4,
+        "role": "sprint"
+       },
+       {
+        "source": "pool",
+        "index": 5,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 6,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 7,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 8,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 9,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 10,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 11,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 12,
+        "role": "sprint"
+       },
+       {
+        "source": "pool",
+        "index": 13,
+        "role": "sprint"
+       },
+       {
+        "source": "pool",
+        "index": 14,
+        "role": "cooldown"
+       }
+      ]
+     },
+     "expect": {
+      "valid": true
+     }
+    }
+   ]
+  },
+  {
+   "only_in": "choose_songs",
+   "calls": [
+    {
+     "name": "submit_song_list",
+     "input": {
+      "songs": [
+       {
+        "source": "pool",
+        "index": 0,
+        "role": "warmup"
+       },
+       {
+        "source": "pool",
+        "index": 1,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 2,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 3,
+        "role": "climb"
+       },
+       {
+        "source": "pool",
+        "index": 4,
+        "role": "sprint"
+       },
+       {
+        "source": "pool",
+        "index": 5,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 6,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 7,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 8,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 9,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 10,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 11,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 12,
+        "role": "sprint"
+       },
+       {
+        "source": "pool",
+        "index": 13,
+        "role": "sprint"
+       },
+       {
+        "source": "pool",
+        "index": 14,
+        "role": "cooldown"
+       }
+      ],
+      "note": "Built up with the ride."
+     },
+     "expect": {
+      "accepted": true
+     }
+    }
+   ]
+  },
+  {
+   "only_in": "revise",
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {},
+     "expect": {
+      "ok": true
+     },
+     "contains": [
+      "\"tracks\""
+     ]
+    }
+   ]
+  },
+  {
+   "only_in": "revise",
+   "calls": [
+    {
+     "name": "submit_draft",
+     "input": {
+      "draft": {
+       "$draft": "revised"
+      },
+      "note": "Timed to the songs."
+     },
+     "expect": {
+      "accepted": true
+     }
+    }
+   ]
+  }
+ ]
+}
