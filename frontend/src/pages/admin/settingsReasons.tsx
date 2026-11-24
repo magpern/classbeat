@@ -12,6 +12,7 @@ export const REASONS = {
   billing: 'Billing does not exist yet. It comes with a later milestone and cannot be switched on here.',
   swedebeatOff:
     'Swedebeat is switched off on the server (CLASSBEAT_SWEDEBEAT_ENABLED). This setting has no effect until the server switches it on.',
+  notInEffect: 'On, not in effect',
   composerFlowOff:
     'The composer flow is switched off on the server. Storing on here has no effect until CLASSBEAT_COMPOSER_FLOW is true on the server.',
   runningOff:

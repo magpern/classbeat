@@ -630,6 +630,31 @@ describe('admin settings: composer_flow and running_enabled switches', () => {
     expect(screen.getByRole('switch', { name: 'Running classes' })).not.toHaveAccessibleDescription(REASONS.runningOff)
   })
 
+  it.each([
+    ['composer_flow', 'Composer flow', REASONS.composerFlowOff],
+    ['running_enabled', 'Running classes', REASONS.runningOff],
+  ])('shows %s as on, not in effect, with why, when stored on meets an off environment', async (key, label, why) => {
+    adminApi({
+      [`GET ${SETTINGS}`]: view({
+        flags: { [key]: { source: 'database', effective: 'off', environment: 'off', stored: 'on', environment_note: 'environment_off' } },
+      }),
+    })
+    renderAt('/admin/settings')
+    const toggle = await screen.findByRole('switch', { name: label })
+    expect(toggle).toBeChecked()
+    expect(within(card(label)).getByText('On, not in effect')).toBeInTheDocument()
+    expect(toggle).toHaveAccessibleDescription(why)
+  })
+
+  it('does not say not in effect when the stored on is in effect, or nothing is stored', async () => {
+    adminApi({
+      [`GET ${SETTINGS}`]: view({ flags: { composer_flow: { source: 'database', effective: 'on', environment: 'on', stored: 'on' } } }),
+    })
+    renderAt('/admin/settings')
+    await screen.findByRole('switch', { name: 'Composer flow' })
+    expect(screen.queryByText('On, not in effect')).toBeNull()
+  })
+
   it('clears a stored value with DELETE', async () => {
     const api = adminApi({
       [`GET ${SETTINGS}`]: view({ flags: { composer_flow: { source: 'database', effective: 'on', environment: 'on', stored: 'on' } } }),

@@ -37,6 +37,7 @@ export const workspaceEn = {
   'cw.chat.failed': 'This message was not sent. {reason} Your text is back in the box.',
   'cw.chat.messagePending': 'Your last message is still waiting to be sent.',
   'cw.chat.pendingFull': 'This class holds as many messages as it can. Design a new class to keep going.',
+  'cw.paused': 'The composer is paused here right now. You can still read and compare your class; changes are not available. Nothing is lost.',
   'cw.chat.noVersion': 'The class has no version to change yet.',
   'cw.chip.reading': 'No sketch yet',
   'cw.chip.rough': 'Rough: songs not in yet',
