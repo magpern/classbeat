@@ -557,6 +557,29 @@ describe('the composer workspace page', () => {
     expect(screen.queryByText('The final songs differed. Check the class and save.')).toBeNull()
   })
 
+  it('lists what the draft does not do as asked before Save, and nothing when it is as asked', async () => {
+    const off = { path: 'shape.2', origin: 'not_as_asked', reason_code: 'shape_off', value: { kind: 'efforts', count: { min: 7, max: 7 } }, found: 5 }
+    const draft = (items: unknown[]) => ({
+      origin: 'design_with_songs',
+      cls: { current_revision_id: DRAFT_ID, current_revision_number: 2 },
+      extraRoutes: {
+        [`GET ${CLASS_PATH}/revisions/${DRAFT_ID}`]: revisionBody(DRAFT_ID, 2, CONTENT, {
+          origin: 'design_with_songs',
+          provenance: { origin: 'design_with_songs', interpretation: items },
+        }),
+      },
+    })
+    setup(draft([off]))
+    const view = renderAt(PAGE)
+    const area = await screen.findByTestId('save-area')
+    expect(await within(area).findByTestId('not-asked-before')).toHaveTextContent('Section 3: you asked for 7 efforts; this version has 5')
+    view.unmount()
+    setup(draft([{ ...off, origin: 'explicit', reason_code: null }]))
+    renderAt(PAGE)
+    await within(await screen.findByTestId('save-area')).findByRole('button', { name: 'Save to MOWL' })
+    expect(screen.queryByTestId('not-asked-before')).toBeNull()
+  })
+
   it('keeps the More menu closed until it is opened, and lists its sections', async () => {
     const user = userEvent.setup()
     setup({ cls: { fill_songs: FILL } })

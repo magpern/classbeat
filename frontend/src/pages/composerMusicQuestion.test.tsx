@@ -27,6 +27,10 @@ interface Setup {
   soundless?: boolean
   /** The answer is refused with this reason (409). */
   refuse?: string
+  /** The consent card's Spotify status (the second read) is held back until the test lets it go. */
+  statusGate?: Promise<void>
+  /** Mutable: the next read of `GET /api/connections` answers with this (a connection made in another tab, or a failure). */
+  connections?: { spotify: boolean; fail: boolean }
 }
 
 /** A composer class whose sketch is current. The music answer is stored by `PUT`, and the class then reads it back. */
@@ -34,14 +38,24 @@ function setup(over: Setup = {}) {
   let decision = over.decision === undefined ? UNDECIDED : over.decision
   let consent = over.consent ?? true
   const spotify = over.spotify ?? true
+  let statusReads = 0
   const api = fakeApi({
     ...SESSION_ROUTES,
-    'GET /api/connections': {
-      connections: [{ id: MOWL_CONNECTION, provider: 'mowl', ...OK }, ...(spotify ? [{ id: SPOTIFY_ID, provider: 'spotify', ...OK }] : [])],
-      composer_flow: true,
-      soundless_enabled: over.soundless ?? false,
+    'GET /api/connections': () => {
+      const now = over.connections ?? { spotify, fail: false }
+      if (now.fail) return reason(500, 'boom')
+      return json({
+        connections: [{ id: MOWL_CONNECTION, provider: 'mowl', ...OK }, ...(now.spotify ? [{ id: SPOTIFY_ID, provider: 'spotify', ...OK }] : [])],
+        composer_flow: true,
+        soundless_enabled: over.soundless ?? false,
+      })
     },
-    'GET /api/connections/spotify': () => json({ ...STATUS, status: spotify ? 'connected' : 'not_connected', pool_consent: consent }),
+    'GET /api/connections/spotify': async () => {
+      // The first read is the availability check; the second one is the consent card's own status.
+      statusReads += 1
+      if (statusReads > 1) await over.statusGate
+      return json({ ...STATUS, status: spotify ? 'connected' : 'not_connected', pool_consent: consent })
+    },
     'GET /api/music/mowl-playlists': { playlists: IDS.map((id, i) => ({ spotify_playlist_id: id, name: NAMES[i] })) },
     [`GET ${CLASS_PATH}`]: () => classBody({ sport: 'cycling', composer: true, ...(decision === null ? {} : { music_decision: decision }) }),
     [`GET ${CLASS_PATH}/revisions`]: { revisions: [summaryBody(REV1, 1, { origin: 'sketch' })] },
@@ -245,6 +259,50 @@ describe('the consent before the first song search', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('music-consent')).toBeNull()
     })
+  })
+
+  it('keeps a placeholder where the card goes while the consent status loads', async () => {
+    let release: () => void = () => undefined
+    const api = setup({ decision: DECIDED, consent: false, statusGate: new Promise<void>((resolve) => { release = resolve }) })
+    renderAt(PAGE)
+    expect(await screen.findByTestId('music-consent-loading')).toBeInTheDocument()
+    expect(screen.queryByTestId('music-consent')).toBeNull()
+    release()
+    expect(await screen.findByTestId('music-consent')).toBeInTheDocument()
+    expect(screen.queryByTestId('music-consent-loading')).toBeNull()
+    expect(fills(api)).toHaveLength(0)
+  })
+
+  it('reads Spotify and the consent again when the window gets focus, and starts the search once they are there', async () => {
+    const connections = { spotify: false, fail: false }
+    // The status route answers as connected once the connection exists.
+    const api = setup({ decision: DECIDED, spotify: true, connections })
+    renderAt(PAGE)
+    expect(await screen.findByTestId('music-connect')).toBeInTheDocument()
+    expect(fills(api)).toHaveLength(0)
+    // Connected in another tab: the next read of the connections shows it.
+    connections.spotify = true
+    window.dispatchEvent(new Event('focus'))
+    await waitFor(() => {
+      expect(fills(api)).toHaveLength(1)
+    })
+    expect(screen.queryByTestId('music-connect')).toBeNull()
+  })
+
+  it('reads again when the tab becomes visible, and keeps what it showed when that read fails', async () => {
+    const connections = { spotify: true, fail: false }
+    const api = setup({ decision: DECIDED, consent: false, connections })
+    renderAt(PAGE)
+    await screen.findByTestId('music-consent')
+    const reads = api.to('GET', '/api/connections').length
+    connections.fail = true
+    document.dispatchEvent(new Event('visibilitychange'))
+    await waitFor(() => {
+      expect(api.to('GET', '/api/connections').length).toBeGreaterThan(reads)
+    })
+    await settle()
+    expect(screen.getByTestId('music-consent')).toBeInTheDocument()
+    expect(screen.queryByText(/Choosing songs is not available on your account/)).toBeNull()
   })
 
   it('shows no consent card while the music is undecided', async () => {

@@ -27,6 +27,7 @@ import {
   type Step,
 } from './mixChoices'
 import { StudioMixSection } from './StudioMixSection'
+import { StudioOutputsUnread } from './StudioOutputsUnread'
 import { StudioMixTotal } from './StudioMixTotal'
 import { useMixActions } from './useMixActions'
 import { useMixPreview, type PreviewAnswer } from './useMixPreview'
@@ -186,12 +187,7 @@ export function StudioOutputs({
         />
       ) : null}
       {enabled === null ? (
-        <div className="flex flex-col items-start gap-2" data-testid="studio-outputs-unread">
-          <Notice kind="error">{t('studio.out.loadFailed')}</Notice>
-          <Button type="button" variant="secondary" onClick={onRetry}>
-            {t('studio.out.retry')}
-          </Button>
-        </div>
+        <StudioOutputsUnread onRetry={onRetry} />
       ) : chosen.length === 0 ? (
         <Notice>{t(offered.length === 0 ? 'studio.out.noneEnabled' : 'studio.out.none')}</Notice>
       ) : !approving ? (

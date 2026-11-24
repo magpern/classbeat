@@ -48,7 +48,9 @@ export function HandoffStatus({ classId, handoff }: { classId: string; handoff: 
         try {
           await designFromInterpretation(classId, true)
         } catch (error) {
-          if (!(error instanceof ApiError && error.status === 409)) throw error
+          // Whatever the server answered (409 "already designed", 429 busy ...), the stored refusal
+          // may have changed: read the hand-off again. Anything that is not an API answer is a real error.
+          if (!(error instanceof ApiError)) throw error
         }
         return true
       })
