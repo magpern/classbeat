@@ -5,9 +5,9 @@
 # network or volume, no spotdown_service_key, no CLASSBEAT_SPOTDOWN_URL) passes untouched: that is
 # compose.prod.yaml alone, exactly as before. A render with any piece must have the whole overlay:
 # three services on internal networks only, no port, the service key on classbeat's worker and
-# spotdown-api only (never web), a pinned spotdown image (never `latest`), ADR 0026 stage 1 ceilings,
-# no capability, no-new-privileges and an explicit non-root user on each, and YouTube and the `url`
-# source off.
+# spotdown-api only (never web), a pinned spotdown image (never `latest`), bounded ADR 0026 stage 1
+# ceilings, no capability, no-new-privileges, read-only, the images' own non-root users and spotdown's
+# own healthchecks on each, and YouTube and the `url` source off.
 spotdown_services='["spotdown-api","spotdown-redis","spotdown-worker"]'
 # shellcheck disable=SC2016  # jq variables, not shell ones
 check_spotdown_parts() {
@@ -31,8 +31,8 @@ check_spotdown() {
   q '[.services["spotdown-api"].image, .services["spotdown-worker"].image]
      | all(test("^ghcr\\.io/magpern/spotdown:[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.]+)?$")) and .[0] == .[1]' \
     || fail "spotdown-api and spotdown-worker run ghcr.io/magpern/spotdown:\$SPOTDOWN_VERSION, a release tag (X.Y.Z, never latest)" || return 1
-  q '.services["spotdown-redis"].image | test("^redis:[0-9]+\\.[0-9]+\\.[0-9]+-alpine$")' \
-    || fail "spotdown-redis runs a pinned redis:X.Y.Z-alpine" || return 1
+  q '.services["spotdown-redis"].image | test("^redis:[0-9]+\\.[0-9]+\\.[0-9]+-alpine@sha256:[0-9a-f]{64}$")' \
+    || fail "spotdown-redis runs a pinned redis:X.Y.Z-alpine@sha256:<digest>" || return 1
   # Internal networks only, and who joins which: the worker reaches spotdown-api and nothing else.
   q '[.networks.spotdown, .networks["spotdown-internal"]] | all(. != null and .internal == true)' \
     || fail "the spotdown and spotdown-internal networks are internal (no route out)" || return 1
@@ -58,7 +58,7 @@ check_spotdown() {
     || fail "CLASSBEAT_SPOTDOWN_URL is http://spotdown-api:8000, on classbeat's worker only" || return 1
   # Service mode, no UI, the queue on its own Redis; the url source and YouTube off (no route out).
   q '[.services["spotdown-api"], .services["spotdown-worker"] | .environment
-      | .SERVICE_MODE == "true" and .SERVE_UI == "false" and .DATA_DIR == "/app/data"
+      | .SERVICE_MODE == "true" and .SERVE_UI == "false" and .DATA_DIR == "/data"
         and .REDIS_URL == "redis://spotdown-redis:6379/0" and .URL_ALLOWED_HOSTS == ""
         and .ALLOW_YTDLP_SOURCING == "false"] | all' \
     || fail "spotdown runs in service mode without UI, with the url source and YouTube sourcing off" || return 1
@@ -67,15 +67,31 @@ check_spotdown() {
     || fail "every spotdown service drops every capability and sets no-new-privileges" || return 1
   q --argjson s "$spotdown_services" '[.services[$s[]] | .user // "" | tostring | test("^[1-9][0-9]*:[1-9][0-9]*$")] | all' \
     || fail "every spotdown service names a non-root uid:gid" || return 1
+  # Exactly the images' own users (spotdown's Dockerfile, redis's image): no other group, the secrets
+  # group 10010 included, which only group_add on spotdown-api gives.
+  q '[.services["spotdown-api"].user, .services["spotdown-worker"].user, .services["spotdown-redis"].user]
+     == ["10001:10001","10001:10001","999:1000"]' \
+    || fail "spotdown runs as 10001:10001 and its Redis as 999:1000, exactly" || return 1
+  q --argjson s "$spotdown_services" '[.services[$s[]] | .read_only == true] | all' \
+    || fail "every spotdown service is read-only (data on its volume, caches on /tmp)" || return 1
   q --argjson s "$spotdown_services" '[.services[$s[]] | (.cpus | tonumber? // 0) > 0 and ((.mem_limit // "") | tostring | test("^[1-9][0-9]*$"))] | all' \
     || fail "every spotdown service keeps a cpus and a mem_limit ceiling (ADR 0026 stage 1)" || return 1
-  q '[.services["spotdown-api"], .services["spotdown-redis"]] | all(.healthcheck.test != null)' \
-    || fail "spotdown-api and spotdown-redis need their healthchecks" || return 1
+  # Bounded: at most 64 GiB each, and the worker above the analysis subprocess's 3 GiB rlimit
+  # (spotdown's ANALYSIS_MAX_MEMORY_MB default 3072), or the kernel kills it mid-analysis.
+  q --argjson s "$spotdown_services" '(.services["spotdown-worker"].mem_limit | tonumber? // 0) as $w
+     | ([.services[$s[]] | .mem_limit | tonumber? // 0 | . <= 68719476736] | all) and $w > 3221225472' \
+    || fail "spotdown's mem_limit is at most 64g each, and above 3g on spotdown-worker" || return 1
+  # spotdown's own probes (app/healthcheck.py): the API's /healthz, the worker's Redis ping (the
+  # image's HEALTHCHECK probes the API, which the worker does not run), Redis's ping.
+  q '.services["spotdown-api"].healthcheck.test == ["CMD","python","-m","app.healthcheck","api"]
+     and .services["spotdown-worker"].healthcheck.test == ["CMD","python","-m","app.healthcheck","worker"]
+     and .services["spotdown-redis"].healthcheck.test == ["CMD","redis-cli","ping"]' \
+    || fail "spotdown-api, spotdown-worker and spotdown-redis keep their own healthchecks (app.healthcheck api, app.healthcheck worker, redis-cli ping)" || return 1
   # spotdown's data on its named volumes, nothing else.
   q '(.volumes | keys) == ["db-data","spotdown-data","spotdown-redis"]
-     and ([.services["spotdown-api"], .services["spotdown-worker"]] | all(.volumes == [{"type":"volume","source":"spotdown-data","target":"/app/data","volume":{}}]))
+     and ([.services["spotdown-api"], .services["spotdown-worker"]] | all(.volumes == [{"type":"volume","source":"spotdown-data","target":"/data","volume":{}}]))
      and .services["spotdown-redis"].volumes == [{"type":"volume","source":"spotdown-redis","target":"/data","volume":{}}]' \
-    || fail "spotdown's data is the volumes spotdown-data (/app/data) and spotdown-redis (/data), nothing else" || return 1
+    || fail "spotdown's data is the volumes spotdown-data (/data) and spotdown-redis (/data), nothing else" || return 1
   q --argjson s "$spotdown_services" '[.services | to_entries[] | select(.value.volumes // [] | map(.source // "") | any(startswith("spotdown"))) | .key] | sort == $s' \
     || fail "only the spotdown services mount spotdown's volumes" || return 1
 }

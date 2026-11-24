@@ -432,7 +432,7 @@ runs from `compose.prod.spotdown.yaml`, an overlay that adds three services on t
 |---|---|---|---|---|
 | `spotdown-api` | `ghcr.io/magpern/spotdown:$SPOTDOWN_VERSION` | `spotdown`, `spotdown-internal` | `spotdown_service_key` | `SPOTDOWN_API_CPUS=0.5`, `SPOTDOWN_API_MEMORY=1g` |
 | `spotdown-worker` | the same image, `rq worker` | `spotdown-internal` | none | `SPOTDOWN_WORKER_CPUS=1.0`, `SPOTDOWN_WORKER_MEMORY=4g` |
-| `spotdown-redis` | `redis:7.4.6-alpine` | `spotdown-internal` | none | 0.5 CPU, 256 MiB (fixed) |
+| `spotdown-redis` | `redis:7.4.12-alpine` (pinned by digest, as spotdown's own `deploy/compose.yaml`) | `spotdown-internal` | none | 0.5 CPU, 256 MiB (fixed) |
 
 - **No published port, no route out.** Both networks are internal. `spotdown` joins classbeat's
   `worker` and `spotdown-api` only (the worker calls `http://spotdown-api:8000`, its
@@ -446,15 +446,20 @@ runs from `compose.prod.spotdown.yaml`, an overlay that adds three services on t
 - **YouTube and the `url` source are off** (`ALLOW_YTDLP_SOURCING=false`, `URL_ALLOWED_HOSTS` empty,
   both fixed in the overlay): spotdown has no route out here. YouTube sourcing for Spotify classes is
   the owner's deployment decision (ADR 0040 section 12) and needs outbound network for spotdown, a
-  separate, reviewed change; until then a Spotify-catalogue pick cannot be analysed.
+  separate, reviewed change (#1489); until then a Spotify-catalogue pick cannot be analysed.
 - **Ceilings (ADR 0026 stage 1, section 5c).** The analysis runs one at a time in `spotdown-worker`,
   in a subprocess limited to spotdown's `ANALYSIS_MAX_MEMORY_MB` (3072 by default): keep
   `SPOTDOWN_WORKER_MEMORY` above 3g. With spotdown the box needs about 5.25 GiB more than the table in
   section 5c (4g + 1g + 256m); add the spotdown CPUs to the others and never set one above `nproc`.
-- **Data** is the named volumes `spotdown-data` (`/app/data`: spotdown's cache and provenance
-  databases and the temporary audio of running jobs, deleted at the end of each job) and
-  `spotdown-redis` (the queue). The images run as non-root users (`10001:10001` and redis's
-  `999:1000`) with no capability.
+- **Data** is the named volumes `spotdown-data` (`/data`, the image's `DATA_DIR`: spotdown's cache
+  and provenance databases and the temporary audio of running jobs, deleted at the end of each job)
+  and `spotdown-redis` (the queue). A new volume takes `/data`'s owner from the image (uid 10001, mode
+  0750). The services run as the images' own non-root users (spotdown `10001:10001`, Redis
+  `999:1000`), read-only with no capability; spotdown's caches go to a 512 MiB tmpfs on `/tmp`.
+- **Health.** `spotdown-api` runs spotdown's `python -m app.healthcheck api` (its `/healthz` on
+  loopback), `spotdown-worker` `python -m app.healthcheck worker` (a Redis ping: the image's own
+  `HEALTHCHECK` probes the API, which the worker does not run) and Redis `redis-cli ping`, so
+  `docker compose up -d --wait` waits for all three.
 
 **Enable it** (the owner's step; nothing here is done by agents):
 
@@ -465,7 +470,7 @@ ls -ln secrets/spotdown_service_key          # <your uid> 10010, -rw-r-----
 # in .env (the overlay after any of section 6b/6c, compose.bridge.yaml last):
 #   COMPOSE_FILE=compose.prod.yaml:compose.prod.spotdown.yaml
 #   SPOTDOWN_VERSION=X.Y.Z                    # a spotdown release; never latest
-docker run --rm --entrypoint id ghcr.io/magpern/spotdown:X.Y.Z   # after the pull: uid=10001 gid=10001
+docker run --rm --entrypoint id ghcr.io/magpern/spotdown:X.Y.Z   # after the pull: uid=10001(spotdown) gid=10001(spotdown)
 ./check-prod-compose.sh                       # the overlay's rules, the key file's mode and that it is filled
 docker compose pull && ./check-prod-compose.sh --probe
 docker compose up -d --wait                   # recreates the worker with the key and the URL
@@ -1056,12 +1061,17 @@ overlay's address, `--probe` and `--rollback-check` against a stub `docker`) fro
 For spotdown (section 5d, `check-prod-compose-spotdown.bash`) it checks that a render holds all of the
 overlay or none of it: the three services on internal networks only, no port, only the worker and
 `spotdown-api` on `spotdown`, the key on those two only (never `web`), `CLASSBEAT_SPOTDOWN_URL` on the
-worker only, a SemVer `SPOTDOWN_VERSION` (never `latest`) and a pinned Redis, a non-root user, no
-capability and a ceiling on each, YouTube and the `url` source off, and in an install folder with the
-overlay in `COMPOSE_FILE` that `secrets/spotdown_service_key` is filled (size only) and has the mode and
-group of every secret. Not checked: that the spotdown image runs as `10001:10001` and serves `/healthz`
-(spotdown's own release, magpern/spotdown#66; section 5d's `docker run ... id` line), and a running
-spotdown.
+worker only, a SemVer `SPOTDOWN_VERSION` (never `latest`) and Redis pinned by digest, spotdown's data
+on `/data`, exactly the images' own users (`10001:10001`, Redis `999:1000`), read-only with `/tmp` the
+only tmpfs, no capability, spotdown's own healthchecks on all three (the worker's Redis ping, not the
+image's API probe), a ceiling on each (at most 64g, the worker above 3g), YouTube and the `url` source
+off, and in an install folder with the overlay in `COMPOSE_FILE` that `secrets/spotdown_service_key` is
+filled (size only) and has the mode and group of every secret. On every render (spotdown or not) no
+service has a network alias except web's `classbeat-web` on `proxy`, so nothing can take a name another
+container resolves (`db`, a model provider). The overlay's paths, users, environment, command and
+healthchecks were read against spotdown's merged `Dockerfile` (`USER 10001:10001`, `DATA_DIR=/data`,
+`/data` owned by 10001), `deploy/compose.yaml` and `app/config.py`. Not checked: a running spotdown
+(the image is private and agents never pull it).
 
 Not checked: the release run itself (the first real tag builds both images and attaches the assets;
 agents cannot push tags), pulling the private images with a real token, and a running prod stack

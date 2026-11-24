@@ -151,11 +151,11 @@ check_keys() {
       "worker": ["cap_drop","command","cpus","depends_on","entrypoint","environment","group_add","image","logging",
              "mem_limit","networks","restart","secrets","security_opt","stop_grace_period"],
       "spotdown-api": ["cap_drop","command","cpus","depends_on","entrypoint","environment","group_add","healthcheck",
-             "image","logging","mem_limit","networks","restart","secrets","security_opt","user","volumes"],
-      "spotdown-worker": ["cap_drop","command","cpus","depends_on","entrypoint","environment","image","logging",
-             "mem_limit","networks","restart","security_opt","user","volumes"],
+             "image","logging","mem_limit","networks","read_only","restart","secrets","security_opt","tmpfs","user","volumes"],
+      "spotdown-worker": ["cap_drop","command","cpus","depends_on","entrypoint","environment","healthcheck","image","logging",
+             "mem_limit","networks","read_only","restart","security_opt","tmpfs","user","volumes"],
       "spotdown-redis": ["cap_drop","command","cpus","entrypoint","healthcheck","image","logging","mem_limit","networks",
-             "restart","security_opt","user","volumes"]
+             "read_only","restart","security_opt","user","volumes"]
     };
     # The keys of $o that are not in $allowed, named with their path; a non-mapping is refused whole.
     def extra($o; $allowed; $where):
@@ -232,6 +232,11 @@ check_keys() {
     || fail "the rendered networks could not be read" || return 1
   [[ -z "$bad" ]] || fail "networks: only backend, egress, web-out, spotdown and spotdown-internal (the project's own) and the external proxy: $(tr '\n' ' ' <<<"$bad")" \
     || return 1
+  # A DNS alias on a shared network could take a name another container resolves (`db`, a model
+  # provider): none anywhere but web's classbeat-web on the owner's proxy network (#1481 review).
+  q '[.services | to_entries[] | .key as $n | .value.networks // {} | to_entries[]
+      | select((.value // {}).aliases // [] | length > 0) | select(($n == "web" and .key == "proxy") | not)] | length == 0' \
+    || fail "no network alias but web's on the proxy network (an alias could take a name another service resolves)" || return 1
   # The values of the allowed keys that reach the host or another container.
   q '[.services[] | .logging.driver] | all(. == "json-file")' || fail "every service logs with json-file" || return 1
   q '[.services[] | select(has("security_opt")) | .security_opt] | all(. == ["no-new-privileges:true"])' \
@@ -250,8 +255,9 @@ check_keys() {
        "db": {}, "web": {"tmpfs": ["/tmp"]}, "worker": {"command": ["python","-m","classbeat.worker"]},
        "migrate": {"command": ["alembic","upgrade","head"]},
        "db-functions": {"entrypoint": ["sh","/queue/db-functions.sh"], "tmpfs": ["/run/pgpass:mode=0700,uid=999,gid=999"]},
-       "spotdown-api": {}, "spotdown-redis": {},
-       "spotdown-worker": {"command": ["rq","worker","-u","redis://spotdown-redis:6379/0","spotdown"]}
+       "spotdown-api": {"tmpfs": ["/tmp:size=512m,mode=1777"]}, "spotdown-redis": {},
+       "spotdown-worker": {"command": ["rq","worker","-u","redis://spotdown-redis:6379/0","spotdown"],
+         "tmpfs": ["/tmp:size=512m,mode=1777"]}
      };
      [.services | to_entries[] | .key as $n | .value as $v | known[$n] as $k
        | ["command","entrypoint","tmpfs"][] | select(($v[.] // null) != ($k[.] // null))] | length == 0' \

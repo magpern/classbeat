@@ -1193,22 +1193,29 @@ choices (the Architect's reversible defaults):
    `profiles` (#517).
 2. **Three services, pinned.** `spotdown-api` (service mode, no UI), `spotdown-worker` (`rq worker`)
    on `ghcr.io/magpern/spotdown:${SPOTDOWN_VERSION}` (required with the overlay, a release tag, never
-   `latest`) and `spotdown-redis` (a pinned `redis:X.Y.Z-alpine`). spotdown is versioned on its own;
+   `latest`) and `spotdown-redis` (`redis:X.Y.Z-alpine` pinned by digest, the same as spotdown's own
+   `deploy/compose.yaml`). The overlay follows that file: `DATA_DIR=/data`, read-only services with a
+   tmpfs `/tmp`, and spotdown's own healthchecks (`python -m app.healthcheck api`, and `... worker` on
+   the worker, whose image healthcheck would probe the API). spotdown is versioned on its own;
    classbeat's compose file runs whichever release `.env` pins.
 3. **Internal networks only, no published port.** `spotdown` joins classbeat's worker and
    `spotdown-api`; `spotdown-internal` joins the three spotdown services. Web joins neither; Redis is
    not reachable from classbeat. `CLASSBEAT_SPOTDOWN_URL` is `http://spotdown-api:8000` on the worker.
 4. **The key** is the secret file `spotdown_service_key` on classbeat's worker and on `spotdown-api`
-   (spotdown's `SERVICE_KEY_FILE`), never on web, `spotdown-worker` or Redis (`key_policy`).
+   (spotdown's `SERVICE_KEY_FILE`), never on web, `spotdown-worker` or Redis (`key_policy`). No
+   service of the production stack has a network alias except web's on `proxy`, so a container from
+   another repository cannot take a name classbeat's worker resolves.
 5. **ADR 0026 stage 1 ceilings** on each service (defaults: api 0.5 CPU / 1 GiB, worker 1 CPU / 4 GiB
-   above the analysis rlimit of 3 GiB, Redis 0.5 CPU / 256 MiB), no capability, no-new-privileges, an
-   explicit non-root user (`10001:10001`, which magpern/spotdown#66's image must use; Redis `999:1000`).
-6. **Data** on the named volumes `spotdown-data` and `spotdown-redis`, outside classbeat's backup
+   above the analysis rlimit of 3 GiB, Redis 0.5 CPU / 256 MiB; at most 64 GiB each), no capability,
+   no-new-privileges, read-only, and exactly the images' own non-root users (spotdown's Dockerfile
+   `USER 10001:10001`; Redis `999:1000`).
+6. **Data** on the named volumes `spotdown-data` (`/data`) and `spotdown-redis`, outside classbeat's backup
    (runbook section 5d says what losing them costs).
 7. **The `url` source and YouTube sourcing are off** in this overlay (`URL_ALLOWED_HOSTS` empty,
    `ALLOW_YTDLP_SOURCING=false`) because spotdown has no route out here. The owner chose YouTube on
    (amendment "#1296 accepted"); giving spotdown an outbound network and that switch is a separate,
-   reviewed change, and until it lands a Spotify-catalogue pick ends `analysis_unavailable`.
+   reviewed change (#1489: an outbound network for `spotdown-api` and `spotdown-worker` only and the
+   switch as an owner setting), and until it lands a Spotify-catalogue pick ends `analysis_unavailable`.
 
 `scripts/check-prod-compose.sh` (`check-prod-compose-spotdown.bash`) checks all of it on every render,
 all of the overlay or none of it, with a self-test per rule; the install check also requires a filled

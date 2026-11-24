@@ -9,7 +9,8 @@
 #   SPOTDOWN_API_CPUS, SPOTDOWN_API_MEMORY, SPOTDOWN_WORKER_CPUS, SPOTDOWN_WORKER_MEMORY   optional
 #
 # Three services: spotdown-api (the v2 API, service mode), spotdown-worker (the rq worker that runs
-# the analysis in its rlimited subprocess) and spotdown-redis (their queue). None publishes a port.
+# the analysis in its rlimited subprocess) and spotdown-redis (their queue). None publishes a port;
+# each runs read-only as a non-root user with no capability (spotdown's deploy/compose.yaml).
 # Two internal networks (no route out): `spotdown` joins classbeat's worker and spotdown-api only, so
 # the worker reaches the API and nothing else of spotdown; `spotdown-internal` joins the three spotdown
 # services, so Redis (no password) is reachable from spotdown alone. Web joins neither.
@@ -23,7 +24,8 @@
 #
 # classbeat relays SwedeBeat audio with spotdown's `upload` source; the `url` source is off
 # (URL_ALLOWED_HOSTS empty) and YouTube sourcing is off (ALLOW_YTDLP_SOURCING=false): spotdown has no
-# route out here, and enabling YouTube is a separate, owner-approved change (ADR 0040 section 12).
+# route out here, and enabling YouTube is a separate, owner-approved change (ADR 0040 section 12,
+# follow-up #1489).
 # scripts/check-prod-compose.sh checks all of this. Needs Docker Compose 2.24.4 or later.
 
 x-spotdown-logging: &spotdown-logging
@@ -35,7 +37,7 @@ x-spotdown-logging: &spotdown-logging
 x-spotdown-env: &spotdown-env
   SERVICE_MODE: "true"
   SERVE_UI: "false"
-  DATA_DIR: /app/data
+  DATA_DIR: /data
   REDIS_URL: redis://spotdown-redis:6379/0
   URL_ALLOWED_HOSTS: ""
   ALLOW_YTDLP_SOURCING: "false"
@@ -48,10 +50,16 @@ x-spotdown: &spotdown
     - no-new-privileges:true
   cap_drop:
     - ALL
-  # The image's non-root user; the named volume below takes the image's /app/data ownership.
+  # The image's own non-root user (spotdown's Dockerfile: USER 10001:10001); a new named volume
+  # takes the ownership of the image's /data (10001, mode 0750). The image is read-only: spotdown
+  # writes only to /data and its caches to /tmp (XDG_CACHE_HOME, NUMBA_CACHE_DIR), as in spotdown's
+  # own deploy/compose.yaml.
   user: "10001:10001"
+  read_only: true
+  tmpfs:
+    - /tmp:size=512m,mode=1777
   volumes:
-    - spotdown-data:/app/data
+    - spotdown-data:/data
   depends_on:
     spotdown-redis:
       condition: service_healthy
@@ -83,12 +91,10 @@ services:
     networks:
       - spotdown
       - spotdown-internal
+    # spotdown's own probe (app/healthcheck.py): /healthz on loopback over plain http.client, so no
+    # HTTP_PROXY setting can send it anywhere else; it prints nothing.
     healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"
+      test: ["CMD", "python", "-m", "app.healthcheck", "api"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -104,11 +110,20 @@ services:
     mem_limit: ${SPOTDOWN_WORKER_MEMORY:-4g}
     environment:
       <<: *spotdown-env
+    # The image's HEALTHCHECK probes the API, which does not run here: the worker pings Redis
+    # instead (spotdown's deploy/compose.yaml does the same), or `up --wait` would never pass.
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.healthcheck", "worker"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks:
       - spotdown-internal
 
   spotdown-redis:
-    image: redis:7.4.6-alpine
+    # The same patch release and index digest as spotdown's deploy/compose.yaml.
+    image: redis:7.4.12-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
     restart: unless-stopped
     logging: *spotdown-logging
     security_opt:
@@ -118,6 +133,7 @@ services:
     # The image's redis user from the start: its root entrypoint would chown and gosu, which needs
     # capabilities this file drops.
     user: "999:1000"
+    read_only: true
     cpus: 0.5
     mem_limit: 256m
     volumes:
