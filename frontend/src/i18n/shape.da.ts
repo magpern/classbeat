@@ -30,6 +30,7 @@ export const shapeDa: Catalogue = {
   'shape.section': 'Del {n}',
   'shape.section.other': 'En del af turen',
   'shape.what': '{section}: {text}',
+  'shape.untagged': 'Denne version følger ikke turens dele.',
   'shape.off': '{section}: du bad om {asked}; denne version har {found}',
   'interp.reason.shape_off': 'Denne version passer ikke.',
   'interp.reason.cycling_only': 'En turs form findes kun for cykelhold.',

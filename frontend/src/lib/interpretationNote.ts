@@ -4,7 +4,7 @@ import { t } from '../i18n/t'
 import { gameLabel, gameLength } from './games'
 import type { DraftGame } from '../api/draftTypes'
 import { getActiveLocale } from '../i18n/locales'
-import { isShapeReading, shapeOffText, shapeReading, shapeWhat } from './shapeNote'
+import { isShapeReading, isUntagged, shapeOffText, shapeReading, shapeWhat } from './shapeNote'
 
 // The three-part note of how a request was read (ADR 0029 section 4): "As you asked", "Not as
 // asked" and "Assumed". Pure: every sentence is built from catalogue keys, a path and a reason
@@ -193,10 +193,10 @@ function what(item: InterpretationItem): string {
   return value === null ? label : t('interp.line', { what: label, value })
 }
 
-function line(item: InterpretationItem, id: string): NoteLine {
+function line(item: InterpretationItem, id: string, untagged: boolean): NoteLine {
   const base = what(item)
   if (item.origin !== 'not_as_asked') return { id, text: base, quote: item.quote }
-  const off = shapeOffText(item)
+  const off = untagged && item.reasonCode === 'shape_off' ? t('shape.untagged') : shapeOffText(item)
   if (off !== null) return { id, text: off, quote: item.quote }
   const reason = item.reasonCode !== null && Object.hasOwn(REASONS, item.reasonCode) ? REASONS[item.reasonCode]! : 'interp.reason.other'
   return { id, text: t('interp.line.notAsked', { what: base, why: t(reason) }), quote: item.quote }
@@ -205,12 +205,13 @@ function line(item: InterpretationItem, id: string): NoteLine {
 /** The items sorted into the three parts, each line worded from the catalogue. */
 export function interpretationNote(items: readonly InterpretationItem[]): Note {
   const { lines, notes } = shapeReading(items)
+  const untagged = isUntagged(items)
   const note: Note = { shape: lines, shapeNotes: notes, asked: [], notAsked: [], assumed: [] }
   items.forEach((item, at) => {
     if (isShapeReading(item)) return
     const id = `${item.path}.${String(at)}`
     const target = item.origin === 'explicit' ? note.asked : item.origin === 'not_as_asked' ? note.notAsked : note.assumed
-    target.push(line(item, id))
+    target.push(line(item, id, untagged))
   })
   return note
 }

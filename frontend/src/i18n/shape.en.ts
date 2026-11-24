@@ -29,6 +29,7 @@ export const shapeEn = {
   'shape.section': 'Section {n}',
   'shape.section.other': 'A part of the ride',
   'shape.what': '{section}: {text}',
+  'shape.untagged': 'This version does not follow your ride\'s parts.',
   'shape.off': '{section}: you asked for {asked}; this version has {found}',
   'interp.reason.shape_off': 'This version does not match.',
   'interp.reason.cycling_only': 'The shape of a ride is for cycling classes only.',

@@ -60,9 +60,14 @@ describe('the shape of the ride in the reading', () => {
     expect(note.asked.map((l) => l.text)).toEqual(['Section 1'])
   })
 
+  it('words an untagged draft as one line about the ride, not about section 1', () => {
+    const note = interpretationNote([item(0, { kind: 'warmup' }, { origin: 'not_as_asked', reasonCode: 'shape_off' })])
+    expect(note.notAsked.map((l) => l.text)).toEqual(["This version does not follow your ride's parts."])
+  })
+
   it('words Not as asked on a section, with what was found when the record says', () => {
     const note = interpretationNote([
-      item(2, { kind: 'efforts', count: { min: 7, max: 7 }, found: 5 }, { origin: 'not_as_asked', reasonCode: 'shape_off' }),
+      item(2, { kind: 'efforts', count: { min: 7, max: 7 } }, { origin: 'not_as_asked', reasonCode: 'shape_off', found: 5 }),
       item(3, { kind: 'climb' }, { origin: 'not_as_asked', reasonCode: 'shape_off' }),
       item(4, { kind: 'flat' }, { origin: 'not_as_asked', reasonCode: 'cycling_only' }),
       item(5, null, { origin: 'not_as_asked', reasonCode: 'shape_too_large' }),

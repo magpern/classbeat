@@ -11,7 +11,8 @@ const OFF: InterpretationItem = {
   path: 'shape.2',
   origin: 'not_as_asked',
   reasonCode: 'shape_off',
-  value: { kind: 'efforts', count: { min: 7, max: 7 }, found: 5 },
+  value: { kind: 'efforts', count: { min: 7, max: 7 } },
+  found: 5,
   quote: null,
 }
 const BAR = { holding: false, checking: false, checkFailed: false, onRetryCheck: () => undefined, busy: false, error: null, onApprove: () => undefined }

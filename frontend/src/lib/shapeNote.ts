@@ -184,6 +184,17 @@ export function shapeOffText(item: InterpretationItem): string | null {
   const section = sectionOf(item.value)
   if (item.reasonCode !== 'shape_off' || at === null || section === null) return null
   const asked = askedText(section)
-  if (asked === null || section.found === undefined) return null
-  return t('shape.off', { section: t('shape.section', { n: at + 1 }), asked, found: section.found })
+  const found = item.found ?? section.found
+  if (asked === null || found === undefined || found === null) return null
+  return t('shape.off', { section: t('shape.section', { n: at + 1 }), asked, found })
+}
+
+/**
+ * An untagged draft records one `shape_off` on `shape.0` without a count: the version does not
+ * follow the ride's parts at all, so no single section is named.
+ */
+export function isUntagged(items: readonly InterpretationItem[]): boolean {
+  const off = items.filter((i) => i.origin === 'not_as_asked' && i.reasonCode === 'shape_off')
+  const [only] = off
+  return off.length === 1 && only !== undefined && only.path === 'shape.0' && (only.found ?? null) === null
 }

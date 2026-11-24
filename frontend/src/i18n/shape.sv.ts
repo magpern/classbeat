@@ -30,6 +30,7 @@ export const shapeSv: Catalogue = {
   'shape.section': 'Del {n}',
   'shape.section.other': 'En del av turen',
   'shape.what': '{section}: {text}',
+  'shape.untagged': 'Den här versionen följer inte turens delar.',
   'shape.off': '{section}: du bad om {asked}; den här versionen har {found}',
   'interp.reason.shape_off': 'Den här versionen stämmer inte.',
   'interp.reason.cycling_only': 'En turs form finns bara för cykelpass.',
