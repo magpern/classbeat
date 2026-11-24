@@ -16,6 +16,8 @@ export interface InterpretationItem {
   reasonCode: string | null
   value: unknown
   quote: string | null
+  /** A `shape_off` count miss: how many the version has (item-level; absent for order and missing). */
+  found?: number | null
 }
 
 const ORIGINS: readonly string[] = ['explicit', 'inferred', 'default', 'not_as_asked']
@@ -32,6 +34,7 @@ export function decodeInterpretationItems(source: unknown): InterpretationItem[]
       origin: entry.origin as ItemOrigin,
       reasonCode: typeof entry.reason_code === 'string' ? entry.reason_code : null,
       value: entry.value ?? null,
+      found: typeof entry.found === 'number' && Number.isInteger(entry.found) ? entry.found : null,
       quote: typeof entry.quote === 'string' && entry.quote !== '' ? entry.quote : null,
     })
   }

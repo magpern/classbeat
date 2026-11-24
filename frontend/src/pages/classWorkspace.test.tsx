@@ -113,7 +113,7 @@ describe('the class workspace', () => {
     renderAt(PAGE)
     const asked = await screen.findByRole('region', { name: 'As you asked' })
     expect(within(asked).getByText('Climbs: 2')).toBeInTheDocument()
-    expect(await screen.findByText(/could not be turned into a class as asked/)).toBeInTheDocument()
+    expect(await screen.findByText('classbeat could not start this design. Nothing was charged and your request is kept.')).toBeInTheDocument()
   })
 
   it('has Chat and Class tabs for a phone; the class opens first and Chat swaps the panels', async () => {

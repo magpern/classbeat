@@ -35,6 +35,12 @@ it names what the class should have after the change, for what the request chang
   the default ``taste_note=False``) records no taste item: its pick already gets the request's own
   words first in the brief's text (``songs.revise_brief.pick_brief``), as before #1140.
 
+- the shape of the ride (#1485, ``shape_policy.revised``): a reported shape is the whole shape after
+  the change and replaces the base's when it differs (``shape`` stated when a reported section is
+  explicit, no longer stated when an inferred change replaces it); none reported leaves it as it
+  is. Its items are ``shape.N`` with each section's origin and no quote; a running class takes none
+  and an explicit one is Not as asked ``cycling_only``.
+
 Every value is closed (numbers, short enums, a game as a small object). No quote is kept (a quote
 must be a substring of ``brief.text``, the first request, and these are the revise request's),
 except a style word's: the word is its item's only content, and the interpreter kept it only when
@@ -51,9 +57,10 @@ from classbeat.agent.interpretation_record import InterpretationItem
 from classbeat.agent.interpreted import InterpretedRequest, InterpretedTaste
 from classbeat.design import request_policy
 from classbeat.design.interpret_policy import KNOBS, Offer, held
+from classbeat.design.shape_policy import SHAPE, revised
 from classbeat.plan_gates import PlanGates
 
-_ORDER: Final = ("sport", *KNOBS, *(f"games.{n}" for n in range(6)))
+_ORDER: Final = ("sport", *KNOBS, *(f"games.{n}" for n in range(6)), SHAPE)
 TASTE_ON_REVISE: Final = "taste_on_revise"
 
 
@@ -191,6 +198,15 @@ def layer(
         explicit.update(game_paths)
     else:
         _games(base, read, gates, items)  # every game of a running class is Not as asked
+    ride = revised(base.shape, read.shape, base.sport)  # the ride in parts (#1485)
+    if base.sport == "cycling":
+        fields["shape"] = ride.sections
+    if read.shape:
+        if ride.explicit:
+            explicit.add(SHAPE)
+        elif ride.sections != base.shape:
+            explicit.discard(SHAPE)
+    items.extend(ride.items)
     if taste_note and read.music_taste is not None:
         _taste(base, read.music_taste, items)
     fields["explicit"] = _ordered(sorted(explicit))

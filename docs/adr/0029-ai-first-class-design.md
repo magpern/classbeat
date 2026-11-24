@@ -470,7 +470,7 @@ resistance; "tough" was about one section).
    (`steady`, `rising`, `falling`), `effort` (`easy`, `moderate`, `hard`, the section's own), `count`
    (`{min, max}`, 1 to 20; only for `climb`, the number of hills, and `efforts`), `length` (`short`,
    `long`, each effort's), `load` (`light`, `heavy`) and `minutes`. Left out of the serialized brief when
-   empty, so every stored brief stays byte-identical. `explicit` may name `shape`.
+   empty, so every stored brief stays byte-identical. `explicit` may name `shape`. As built (#1485): the shape is bounded to 640 bytes of stored jsonb text (`MAX_SHAPE_BYTES`), so a 2000-character request still fits `classes.brief`; the brief keeps the leading sections that fit and an explicit section beyond it is Not as asked `shape_too_large`.
 2. **The reading** reports the sections in the request's order, each with its origin and a verbatim quote
    (kept only in the interpretation items `shape.N`, for display). A number is exact; a range keeps its
    ends ("5-7" is 5 to 7); "a couple" is 2, "a few" 2 to 4, "several" 3 to 5. A section's "tough" is that

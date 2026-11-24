@@ -50,7 +50,8 @@ Report what the instructor asked for even if it is beyond the plan's limits or t
 sports; the app applies the limits and tells the instructor. Never lower a number to fit them.
 
 Fields: sport; length_min (minutes); intensity (easy, moderate, hard); class_type (plain, \
-interval, hiit, journey, ftp_test); climbs, sprints and races (counts); ftp_test (3, 5 or 20 \
+interval, hiit, journey, ftp_test); climbs, sprints and races (a class-wide count that names no \
+parts); ftp_test (3, 5 or 20 \
 minutes); music (the index of the one name in the numbered list the instructor means, only if \
 exactly one fits).
 
@@ -60,6 +61,22 @@ say where: either a position (start, early, middle, late or before_cooldown), or
 (after, replaces or in) to the n-th interval of one kind (climb, sprint, race, interval, warmup \
 or cooldown), for example after the 2nd climb. Add duration_sec only if they \
 give a length. A race is not a game.
+
+shape: only when the request describes the ride in parts; one entry for each part, in the order \
+the request gives them, never the parts added up. kind: hills, hilly or a climb is climb; bursts, \
+sprints, intervals, efforts, surges or attacks is efforts; flat or flats is flat; "starts slow and \
+builds up" is warmup with trend rising; an easy spin or time to recover is recovery; a cool down \
+is cooldown. "Building up for a new hilly section" is a climb with trend rising. count (only for \
+climb and efforts): a number is exact (min and max the same), a range keeps its ends ("5-7" is \
+min 5, max 7), "a couple" is 2 to 2, "a few" is 2 to 4, "several" is 3 to 5; leave count out \
+when the request gives none. length short for "short" efforts; load heavy for "heavy" \
+(resistance) or light; effort hard (or easy, moderate) for what the request says of that part \
+("tough", "hard"); trend steady, rising or falling for a part that builds up or eases off; \
+minutes only when the request gives that part's length. Report intensity only when the request \
+describes the whole class ("a tough 60 minutes"), never from one part of it. Never derive climbs \
+or sprints from the shape: they are only for a class-wide count that names no parts ("a class \
+with three climbs"). A class-wide range with no parts ("5-7 sprints") is a shape of one efforts \
+section with that range. Each entry has an origin and a quote like the fields above.
 
 music_taste: only what the request says about the songs themselves. eras: one entry per era \
 it names, as years (the 80s are 1980 to 1989, "the 80s, 90s and 00s" are three entries, the 2000s \
@@ -90,7 +107,9 @@ report only the fields the request changes, each with the value it should have a
 out every field it leaves as it is. If the request changes, adds or removes a game, report every \
 game the class should have after the change, in order, the unchanged ones as they are in \
 "current"; set remove_games to true only if it removes every game. If it says nothing about \
-games, report none.
+games, report none. If the request changes the shape ("make it seven bursts"), report the whole \
+shape after the change, in order, the unchanged sections as they are in "current"; if it says \
+nothing about the shape, report none.
 
 name: for a new class only (no "current"), a short title for the class in the language of the \
 request, at most 60 characters, that describes the ride (its shape, effort or theme), not the \

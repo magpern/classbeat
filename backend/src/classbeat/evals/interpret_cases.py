@@ -11,8 +11,10 @@ asked". A revise case (#904) also holds ``current``: the class's brief, of which
 is told the closed values (``interpret_input.current_values``), and expects only what the request
 changes. A composer case (ADR 0038 section 3, #1185) may say how many playlists are
 ``attached`` and expect the ``pinned`` songs (title, artist and place, case aside, in order) and the
-questions it ``asks`` (paths that must be among them). A new-class case may expect the class to be
-``named`` (#1233): a short name that survives ``class_title_policy.proposed_name``. Pure: no I/O.
+questions it ``asks`` (paths that must be among them). The ride's ``shape`` (#1485) is judged
+section by section, in order: a field the case gives must match, one it leaves out is not judged.
+A new-class case may expect the class to be ``named`` (#1233): a short name that survives
+``class_title_policy.proposed_name``. Pure: no I/O.
 """
 
 from typing import Final, Literal
@@ -23,6 +25,7 @@ from classbeat.agent.brief import Brief, BriefGame, Sport
 from classbeat.agent.interpret_input import MusicName
 from classbeat.agent.interpreted import MAX_NAMES, SCALARS, StatedOrigin
 from classbeat.agent.interpreted_composer import MAX_PINNED, MAX_QUESTIONS, QuestionPath
+from classbeat.agent.ride_shape import MAX_SECTIONS, SectionFields
 
 MAX_REQUEST: Final = 2000
 
@@ -87,6 +90,8 @@ class InterpretExpect(BaseModel):
         default_factory=lambda: list[QuestionPath](), max_length=MAX_QUESTIONS
     )
     named: bool = False  # a new class gets a short name that survives the cleaning (#1233)
+    # The ride's sections in order (#1485); ``None``: not judged, ``[]``: the reading has none.
+    shape: list[SectionFields] | None = Field(default=None, max_length=MAX_SECTIONS)
 
     @model_validator(mode="after")
     def _removal_leaves_no_games(self) -> "InterpretExpect":

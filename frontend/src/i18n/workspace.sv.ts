@@ -37,6 +37,7 @@ export const workspaceSv: Catalogue = {
   'cw.chat.failed': 'Meddelandet skickades inte. {reason} Din text ligger kvar i rutan.',
   'cw.chat.messagePending': 'Ditt senaste meddelande väntar fortfarande på att skickas.',
   'cw.chat.pendingFull': 'Passet rymmer inte fler meddelanden. Skapa ett nytt pass för att gå vidare.',
+  'cw.paused': 'Arbetsytan för pass är pausad här just nu. Du kan fortfarande läsa och jämföra ditt pass; ändringar är inte tillgängliga. Inget går förlorat.',
   'cw.chat.noVersion': 'Passet har ingen version att ändra än.',
   'cw.chip.reading': 'Ingen skiss än',
   'cw.chip.rough': 'Skiss: låtarna är inte på plats än',

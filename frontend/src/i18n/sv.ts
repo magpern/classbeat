@@ -6,6 +6,7 @@ import { publicSv } from './public.sv'
 import { editorSv } from './editor.sv'
 import { previewSv } from './preview.sv'
 import { workspaceSv } from './workspace.sv'
+import { shapeSv } from './shape.sv'
 
 const sv: Catalogue = {
   ...legalSv,
@@ -13,6 +14,7 @@ const sv: Catalogue = {
   ...publicSv,
   ...examplesSv,
   ...workspaceSv,
+  ...shapeSv,
   ...editorSv,
   ...previewSv,
   'language.label': 'Språk',
@@ -2012,7 +2014,7 @@ const sv: Catalogue = {
   'start.game.article.overflow': 'Lagen tjänar framsteg genom att hålla sig i sina målzoner för intensitet.',
   'start.handoff.waiting': 'Läser din begäran.',
   'start.handoff.starting': 'Startar utformningen.',
-  'start.handoff.refused': 'Din begäran kunde inte göras om till ett pass som du bad om.',
+  'start.handoff.refused': 'classbeat kunde inte starta designen. Inget debiterades och din begäran finns kvar.',
   'start.handoff.failed': 'Din begäran kunde inte läsas.',
   'start.handoff.error': 'Utformningen kunde inte startas.',
   'start.handoff.tryAgain': 'Försök igen med samma begäran',
@@ -2087,6 +2089,28 @@ const sv: Catalogue = {
   'ws.request': 'Din begäran',
   'ws.refused.notConnected':
     'Din begäran kunde inte läsas eftersom MOWL inte var anslutet. Anslut det och läs sedan begäran igen.',
+  'ws.refused.invalid_input':
+    'Din begäran kunde inte användas som den är skriven. Ändra den och försök igen.',
+  'ws.refused.too_large':
+    'Din begäran är för lång för att designas på en gång. Korta ner den och försök igen.',
+  'ws.refused.quota':
+    'Du har använt det som din plan tillåter just nu. Inget debiterades och din begäran finns kvar.',
+  'ws.refused.revision_limit':
+    'Det här passet har nått det antal ändringar som din plan tillåter. Skapa ett nytt pass för att fortsätta.',
+  'ws.refused.feature_off':
+    'Att designa pass på det här sättet är avstängt här just nu. Inget debiterades och din begäran finns kvar.',
+  'ws.refused.soundless_not_evaluated':
+    'Att designa pass utan musik är inte tillgängligt här just nu. Inget debiterades och din begäran finns kvar.',
+  'ws.refused.busy':
+    'Dina andra designer pågår fortfarande. Inget debiterades och din begäran finns kvar. Försök igen om en stund.',
+  'ws.refused.pool_busy':
+    'Ett annat låtval pågår fortfarande. Inget debiterades och din begäran finns kvar. Försök igen om en stund.',
+  'ws.refused.class_busy':
+    'En design av det här passet pågår fortfarande. Vänta tills den är klar och försök igen.',
+  'ws.refused.not_ready':
+    'Din begäran läses fortfarande. Vänta en stund och försök igen.',
+  'ws.refused.class_designed':
+    'Det här passet är redan designat. Öppna dina pass för att se det.',
   'ws.interpretAgain': 'Tolka igen',
   'ws.tryAgainNow': 'Försök igen',
   'ws.opening': 'Ditt pass är klart. Öppnar det.',
@@ -2471,6 +2495,10 @@ const sv: Catalogue = {
     'Välj minst ett resultat.',
   'studio.out.noneEnabled':
     'Inget resultat är tillgängligt just nu. Försök igen senare.',
+  'studio.out.loadFailed':
+    'Resultaten kunde inte hämtas. Försök igen.',
+  'studio.out.retry':
+    'Försök igen',
   'studio.sync.working_copy':
     'Spotify-arbetsspellista',
   'studio.sync.final':
@@ -2567,8 +2595,6 @@ const sv: Catalogue = {
     'Den tidigare spellistan kan finnas kvar i ditt Spotify-konto; du kan ta bort den där. Godkänn resultaten igen för att skapa den nya.',
   'studio.os.supersededHint.mowl':
     'Det tidigare träningspasset kan finnas kvar i MOWL. Godkänn resultaten igen för att skapa det nya.',
-  'studio.os.loadFailed':
-    'Statusen för resultaten kunde inte hämtas. Ladda om sidan.',
   'studio.os.state.pending':
     'Väntar på att starta.',
   'studio.os.state.running':

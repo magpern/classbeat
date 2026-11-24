@@ -66,11 +66,12 @@ describe('the composer workspace while the request is being read', () => {
     expect(api.calls.filter((c) => c.method === 'POST')).toHaveLength(0)
   })
 
-  it('keeps the old class page when the flag is off for the browser', async () => {
+  it('keeps the workspace, with the paused notice, when the flag is off for the browser', async () => {
     setup({ flag: false })
     renderAt(PAGE)
-    await screen.findByText('This class has no version yet.')
-    expect(screen.queryByTestId('composer-workspace')).toBeNull()
+    expect(await screen.findByTestId('composer-workspace')).toBeInTheDocument()
+    expect((await screen.findAllByText(/The composer is paused here right now/)).length).toBeGreaterThan(0)
+    expect(screen.queryByText('This class has no version yet.')).toBeNull()
   })
 
   it('keeps the old class page for a class the answer says is not a composer class', async () => {
