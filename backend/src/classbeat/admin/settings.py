@@ -46,7 +46,7 @@ a banner's level and length), never free text.
 """
 
 import json
-from typing import Annotated, Any
+from typing import Annotated, Any, Final
 from uuid import UUID
 
 from fastapi import Path, Request
@@ -100,6 +100,15 @@ _CLEAR = text(
 KeyPath = Annotated[str, Path(pattern=r"^[a-z][a-z_]{0,39}$")]
 
 
+ENVIRONMENT_OFF: Final = "environment_off"  # the closed ``environment_note`` of a switch flag
+
+
+def _switch_off_note(environment_on: bool, stored: Any) -> str | None:
+    """A stored ``on`` that has no effect because the environment's switch is off (#1484). The
+    ``effective`` of ``composer_flow`` is the operator's pair only: coverage is per plan."""
+    return ENVIRONMENT_OFF if stored == "on" and not environment_on else None
+
+
 def _flag(
     key: str,
     settings: Settings,
@@ -127,10 +136,12 @@ def _flag(
         switch = core.running_switch(settings.running_enabled, stored)
         effective = "on" if switch and running_covered else "off"
         source = "database" if settings.running_enabled and stored is not None else "environment"
+        note = _switch_off_note(settings.running_enabled, stored)
     elif key == "composer_flow":  # ADR 0038 section 2: the switch and a stored ``on``
         environment = "on" if settings.composer_flow else "off"
         effective = "on" if core.composer_switch(settings.composer_flow, stored) else "off"
         source = "database" if settings.composer_flow and stored is not None else "environment"
+        note = _switch_off_note(settings.composer_flow, stored)
     elif key == "trial":
         environment = {"plan": None, "days": 0}
         trial = core.trial_setting(stored)

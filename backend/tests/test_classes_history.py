@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from classbeat.classes import history
+from classbeat.classes import change_view, history
 from classbeat.design import music_kind
 from jobapi import Browser
 from jobtools import new_class
@@ -334,7 +334,7 @@ def test_every_statement_names_the_owner_even_without_row_security(
                               duplicated_from={"class_id": str(theirs.class_id), "number": 1}),
     )  # fmt: skip
     params = {"owner_id": mine.owner, "class_id": theirs.class_id, "ids": None, "limit": 200}
-    assert mine.admin.execute(history._CLASS, params).first() is None  # pyright: ignore[reportPrivateUsage]
+    assert mine.admin.execute(change_view._CLASS, params).first() is None  # pyright: ignore[reportPrivateUsage]
     assert mine.admin.execute(history._ROWS, params).all() == []  # pyright: ignore[reportPrivateUsage]
     assert mine.admin.execute(history._PAIR, params).all() == []  # pyright: ignore[reportPrivateUsage]
     [row] = mine.admin.execute(history._ROWS, params | {"class_id": copy}).all()  # pyright: ignore[reportPrivateUsage]

@@ -50,7 +50,8 @@ async def run_soundless(
         given.request_message_id,
         bytes.fromhex(given.base_revision_hash),
     )
-    music_kind.still_on()  # the switch, before anything is called
+    if not sketch:  # a sketch is never written anywhere: no switch (ADR 0038 amendment 2026-11-24)
+        music_kind.still_on()  # the switch, before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")
     music_kind.require_covered(model)  # a model evaluated for soundless only
     step = music_kind.NoMusicStep()

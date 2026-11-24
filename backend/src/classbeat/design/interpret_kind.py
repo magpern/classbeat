@@ -150,7 +150,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     spotify = parsed.spotify_connection_id
     if spotify is not None and ctx.connection("spotify") != spotify:
         return Refused("not_connected")
-    composing = await composer.composer_on(db)
+    composing = await composer.composer_available(db, ctx)
     if parsed.music_sources is not None and not composing:
         return Refused("feature_off")
     await quota.check_cost(db, ctx)  # QuotaRefused ``cost``: 409 ``quota`` (ADR 0011 section 4)

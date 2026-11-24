@@ -336,8 +336,10 @@ async def test_the_composer_flag_is_on_only_stored_on_under_the_environment(
     assert (await put(actor, "composer_flow", "on")).status_code == 200
     still = flag(await actor.get(SETTINGS), "composer_flow")
     assert (still["effective"], still["source"]) == ("off", "environment")  # never past it
+    assert still["environment_note"] == "environment_off"  # #1484: a stored ``on`` with no effect
     env.app.state.settings = env.settings.model_copy(update={"composer_flow": True})
-    assert flag(await actor.get(SETTINGS), "composer_flow")["effective"] == "on"
+    on = flag(await actor.get(SETTINGS), "composer_flow")
+    assert (on["effective"], on["environment_note"]) == ("on", None)  # the operator pair only
     assert (await put(actor, "composer_flow", "off")).status_code == 200
     assert stored(superuser, "composer_flow") == "off"
     rows = [r for r in rows_of(superuser, actor.user_id) if r.action == "setting.set"]
