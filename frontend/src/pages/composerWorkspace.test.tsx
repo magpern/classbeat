@@ -500,6 +500,32 @@ describe('the composer workspace page', () => {
     expect(api.calls.some((c) => c.method === 'POST' && c.path.endsWith('/cancel'))).toBe(false)
   })
 
+  it('does not approve the replaced list between a successful swap and the read that shows the new one (#1521)', async () => {
+    const user = userEvent.setup()
+    const { api } = setup({
+      cls: {
+        songs: { state: 'waiting', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null },
+        fill_songs: FILL,
+        open_job_id: JOB_ID,
+        open_job: { id: JOB_ID, kind: 'design_with_songs', state: 'waiting_for_approval' },
+      },
+      list: { preview: PREVIEW },
+      // The reads keep answering with the old list: the new one has not reached the page yet.
+      extraRoutes: { [`POST ${CLASS_PATH}/swap-songs`]: () => json({ job_id: 'e1111111-1111-4111-8111-111111111111', kind: 'design_with_songs', state: 'queued' }, 201) },
+    })
+    renderAt(PAGE)
+    await user.click(await screen.findByRole('button', { name: /^Swap Hills/ }))
+    await waitFor(() => {
+      expect(api.to('POST', `${CLASS_PATH}/swap-songs`)).toHaveLength(1)
+    })
+    // The swap cancelled the waiting job on the server: its list can no longer be approved.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Approve and save' })).toBeDisabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Approve and save' }))
+    expect(api.to('POST', `/api/jobs/${JOB_ID}/approve`)).toHaveLength(0)
+  })
+
   it('keeps the waiting list approvable and shows the refusal when a swap is refused', async () => {
     const user = userEvent.setup()
     const { api } = setup({
