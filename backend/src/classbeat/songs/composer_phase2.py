@@ -28,7 +28,9 @@
 A redesigned draft's ride shape is checked against the sketch's layered brief (the latest
 instruction, ``composer_common.read_sketch``) by the revise stage's gate; a section still missed
 after its corrections is recorded on the draft as Not as asked ``shape_off`` (``provenance.
-interpretation``). A kept fit carries the approved list's own such items.
+interpretation``). A kept fit carries the approved list's own such items; it re-times within the fit
+tolerance and is not checked again, so an effort near 90 s may cross the boundary (accepted, ADR
+0029 amendment of 2026-11-24, decision 6).
 
 ``save_pending = {revision_id, content_hash, job_id}`` is stored only when the approval had
 ``save: true`` (the approved job's ``approval_save``; a resume's ``save``, copied from the

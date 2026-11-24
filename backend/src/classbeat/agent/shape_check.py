@@ -7,7 +7,8 @@ and cool-down when the shape has none), and returns what is missed. Each miss is
 (path ``shape.N``, as the reading's items), so a remaining miss is recorded as Not as asked
 ``shape_off`` for that section (``recorded``):
 
-- ``shape_untagged``: the brief has a shape and no segment names a section;
+- ``shape_untagged``: the brief has a shape and no segment names a section (one miss, on
+  ``shape.0``, whatever the number of sections);
 - ``shape_missing``: no segment is tagged with the section;
 - ``shape_order``: a segment of the section comes after one of a later section, so the tags are
   not non-decreasing through the draft;
@@ -97,7 +98,7 @@ def check_shape(brief: Brief, spec: Mapping[str, Any], tags: Sequence[int | None
             f"The brief has a shape: give every segment its section index, from 0 to {last}, "
             "in order."
         )
-        return out + [Miss(f"shape.{n}", "shape_untagged", sentence) for n in range(len(shape))]
+        return [*out, Miss("shape.0", "shape_untagged", sentence)]  # one item: the draft has none
     late = _late(tagged)
     for n, section in enumerate(shape):
         mine = [s for s, t in zip(segments, tags, strict=False) if t == n]

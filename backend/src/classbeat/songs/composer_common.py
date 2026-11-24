@@ -108,10 +108,10 @@ def dismissed_of(sketch: Sketch) -> tuple[str, ...]:
 
 
 def _unmet_of(picked: Picked, made: composer_design.Designed) -> tuple[InterpretationItem, ...]:
-    """The list's Not as asked items: this design's missed shape sections (a carried list's own
-    are replaced by them) and the picks' (#1493); at most ``MAX_UNMET``."""
+    """The list's Not as asked items: the picks' own first, then this design's missed shape
+    sections (a carried list's own are replaced by them) (#1493); at most ``MAX_UNMET``."""
     kept = tuple(i for i in picked.unmet if not i.path.startswith("shape."))
-    return (*made.unmet, *kept)[:MAX_UNMET]
+    return (*kept, *made.unmet)[:MAX_UNMET]
 
 
 def await_list(

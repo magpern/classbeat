@@ -140,7 +140,7 @@ def test_the_soundless_draft_carries_the_tag_into_the_stored_draft() -> None:
         (
             "untagged",
             ride(tagged=False),
-            [(f"shape.{n}", "shape_untagged") for n in range(len(SHAPE))],
+            [("shape.0", "shape_untagged")],
         ),
         ("a section with no segment", ride()[:3] + ride()[4:], [("shape.3", "shape_missing")]),
         (
@@ -230,7 +230,7 @@ def test_a_draft_that_follows_the_shape_is_accepted_at_once() -> None:
     assert done.output.unmet == ()
 
 
-def test_an_untagged_draft_is_a_correction_round_then_shape_off_per_section() -> None:
+def test_an_untagged_draft_is_a_correction_round_then_one_shape_off() -> None:
     b = shaped()
     stage = soundless_design_stage(SoundlessContext(b))
     for n in range(DEFAULT_CORRECTIONS):
@@ -238,9 +238,9 @@ def test_an_untagged_draft_is_a_correction_round_then_shape_off_per_section() ->
         assert (refused.ok, refused.error) == (False, "invalid_draft")
     done = submit(stage, ride(tagged=False), 9)
     assert done.ok
-    assert [(m.path, m.code) for m in done.output.unmet] == [
-        (f"shape.{n}", "shape_off") for n in range(len(SHAPE))
-    ]
+    assert [(m.path, m.code, m.found) for m in done.output.unmet] == [
+        ("shape.0", "shape_off", None)
+    ]  # one item for a draft with no tag, not one per section
 
 
 def test_a_count_miss_is_corrected_and_the_corrected_draft_ends_clean() -> None:
@@ -340,3 +340,35 @@ def test_the_sketch_then_make_it_seven_bursts() -> None:
         for n in (2, 5)
     }
     assert per_section == {2: 7, 5: 3}
+
+
+@pytest.mark.parametrize(
+    ("sec", "zone", "counts"),
+    [(90, 5, True), (91, 5, False), (90, 4, False), (30, 7, True), (60, 5, True), (1, 5, True)],
+)
+def test_the_effort_boundaries(sec: int, zone: int, counts: bool) -> None:
+    """Exactly 90 s and exactly zone 5 are efforts; 91 s and zone 4 are not."""
+    one = shaped([{"kind": "efforts", "count": {"min": 1, "max": 1}}])
+    segments = [seg("main", 0, ivs(1, zone, sec)), seg("cooldown", None, ivs(1, 1, 240))]
+    assert (codes(one, segments) == []) is counts
+
+
+def test_the_lists_not_as_asked_keep_the_picks_first_then_the_shape_and_are_cut_at_the_limit() -> (
+    None
+):
+    from types import SimpleNamespace
+
+    from classbeat.agent.interpretation_record import InterpretationItem
+    from classbeat.songs.composer_common import _unmet_of  # pyright: ignore[reportPrivateUsage]
+    from classbeat.songs.song_list_model import MAX_UNMET
+
+    def item(path: str) -> InterpretationItem:
+        return InterpretationItem(path=path, origin="not_as_asked", reason_code="shape_off")
+
+    picks = tuple(item(f"music_taste.{n}") for n in range(MAX_UNMET - 1))
+    earlier = (item("shape.1"),)  # a carried list's own shape item is replaced
+    made = SimpleNamespace(unmet=(item("shape.0"), item("shape.2")))
+    got = _unmet_of(SimpleNamespace(unmet=(*picks, *earlier)), made)  # type: ignore[arg-type]
+    assert [i.path for i in got] == [i.path for i in picks] + ["shape.0"]  # cut at the limit
+    short = _unmet_of(SimpleNamespace(unmet=picks[:2] + earlier), made)  # type: ignore[arg-type]
+    assert [i.path for i in short] == ["music_taste.0", "music_taste.1", "shape.0", "shape.2"]

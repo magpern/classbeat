@@ -492,7 +492,9 @@ resistance; "tough" was about one section).
    item (`shape_off`).
 6. **A miss is never saved by itself.** Not as asked items are shown before Approve and before Save.
    Composer phase 2's `kept` fit re-times the approved design and cannot change its shape; a `redesigned`
-   fit is checked, and is saved only by the instructor's own Save (ADR 0038 §7, unchanged).
+   fit is checked, and is saved only by the instructor's own Save (ADR 0038 §7, unchanged). A `kept` fit
+   re-times within the fit tolerance and is not checked again, so an effort near 90 s may cross the
+   boundary: accepted.
 
 ### Alternatives
 
